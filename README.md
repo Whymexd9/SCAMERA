@@ -1,67 +1,38 @@
 # SCAMERA
 
-Experimental computational RAW camera for Android, based on
-[PhotonCamera](https://github.com/eszdman/PhotonCamera) and HDR+ concepts.
+Экспериментальная вычислительная камера для Android на базе PhotonCamera.
 
-> **Development status:** early test build. Public releases and downloadable
-> APK files are intentionally not published yet.
+## Последняя тестовая сборка
 
-## What is different
+**Build 26784 — GPU RAISR black-frame fix**
 
-- ZSL and Night capture modes focused on multi-frame RAW photography.
-- Configurable normal, short and long exposure frame counts.
-- Adjustable exposure offsets for short and long frames.
-- Highlight recovery control from `0` (ignore short frames) to `200`.
-- Exposure-normalized short/normal/long RAW merging.
-- Optional Qualcomm HTP/DSP-targeted AI Bayer denoising.
-- Fast UNet and quality NAFNet denoising models.
-- Independent AI Luma, Chroma and overall-strength controls.
-- Independently switchable PhotonCamera Luma, Chroma and moiré reduction.
-- Selectable original PhotonCamera or configurable Luma sharpening pipeline.
+APK собирается GitHub Actions из частей, сохранённых в репозитории. Откройте вкладку [Actions](https://github.com/Whymexd9/SCAMERA/actions), выберите последний успешный запуск **Publish test APK** и скачайте артефакт `SCAMERA-26784-debug`.
 
-## Hardware Sharpening (Luma)
+SHA-256 APK:
 
-The configurable pipeline exposes eight independent groups with precise manual
-numeric input:
+`97bf6b87c476e34191e3cff9b1fe8c31d831e004d2cfba5e0fe5220f2d73f641`
 
-1. Lens Deblur (Pillbox)
-2. Gaussian Unsharp Mask
-3. Smart Edge (Sobel Mask)
-4. Bilateral Sharpening
-5. Guided Filter (Local Contrast & Shadows)
-6. Texture Restoration (Anti-Watercolor)
-7. Richardson–Lucy Deconvolution
-8. Tonal Protection (Smart Fade)
+### Что исправлено в 26784
 
-## Qualcomm NPU status
+- исправлено чтение результата GPU RAISR на Adreno: `glReadPixels` теперь использует direct-buffer;
+- добавлена проверка выходного framebuffer: пустой/чёрный результат не заменяет исходное фото;
+- RAISR: банки ×2/×3/×4, итоговый масштаб ×1.0–×4.0, сила, защита от ореолов, подавление алиасинга, режимы «Быстро»/«Качество»;
+- компактный двухуровневый переключатель объективов и цифрового увеличения;
+- настройки RawTherapee перегруппированы: там оставлены только перенесённые функции RawTherapee;
+- Richardson–Lucy остаётся в разделе **Hardware Sharpening**.
 
-The current experimental implementation selects a Qualcomm NNAPI accelerator
-by its exact device name and disables the explicit CPU fallback. The runtime is
-kept alive between captures to avoid recompiling the model for every photo.
-Direct QNN/QAIRT HTP integration is planned after device compatibility testing.
+## Основные возможности
 
-## Building
+- ZSL/PSL, ночной режим и выбираемые HDR-алгоритмы;
+- HDR+ Swift с отдельными настройками шумоподавления;
+- RAW Multi-Frame Super-Resolution;
+- Real-ESRGAN и Nano-RAISR;
+- AI-денойз с CPU/GPU/NPU-путями и безопасным fallback;
+- портретный режим;
+- группы обработки **RawTherapee**, **Capture One** и **Hardware Sharpening**;
+- настраиваемые названия и порядок камер;
+- прогресс обработки вокруг миниатюры галереи.
 
-Requirements:
+## Важно
 
-- JDK 17
-- Android SDK 36
-- Android NDK and CMake configured for the project
-
-Build the debug APK:
-
-```bash
-./gradlew assembleDebug
-```
-
-## Credits
-
-SCAMERA is a modified fork of
-[PhotonCamera by Eszdman/ParticlesDevs](https://github.com/eszdman/PhotonCamera).
-AI denoising work is derived from the open-source
-[Raspberry Pi AI denoise](https://github.com/raspberrypi/AI_denoise) project.
-
-## License
-
-Licensed under the GNU General Public License v3.0 or later. Original
-PhotonCamera copyright notices are retained.
+Это debug/test APK. Некоторые GPU/NPU-функции зависят от драйверов конкретного устройства. При проверке RAISR сравнивайте кадры одной сцены с одинаковой экспозицией и сначала используйте масштаб 1.1×.
