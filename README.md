@@ -1,4 +1,4 @@
-# SCAMERAC
+# SCAMERA
 
 Experimental computational RAW camera for Android, based on
 [PhotonCamera](https://github.com/eszdman/PhotonCamera) and HDR+ concepts.
@@ -56,7 +56,7 @@ Build the debug APK:
 
 ## Credits
 
-SCAMERAC is a modified fork of
+SCAMERA is a modified fork of
 [PhotonCamera by Eszdman/ParticlesDevs](https://github.com/eszdman/PhotonCamera).
 AI denoising work is derived from the open-source
 [Raspberry Pi AI denoise](https://github.com/raspberrypi/AI_denoise) project.
