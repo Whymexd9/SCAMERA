@@ -1,33 +1,9 @@
 # SCAMERA
 
-Экспериментальная вычислительная камера для Android на базе PhotonCamera.
+Android computational camera based on PhotonCamera.
 
-## Текущий статус
+The reproducible source snapshot is stored in `source-parts/` because it includes recovered native libraries and AI models. GitHub Actions verifies, restores and builds it.
 
-Последняя локальная тестовая сборка: **26784**. Публикация APK в GitHub Actions временно приостановлена до проверки на реальном устройстве.
+Current integration base: SCAMERA-26789 ACES ShadowFix.
 
-### Изменения сборки 26784
-
-- исправлено чтение результата GPU RAISR на Adreno: `glReadPixels` использует direct-buffer;
-- добавлена проверка выходного framebuffer: пустой/чёрный результат не заменяет исходное фото;
-- компактный двухуровневый переключатель объективов и цифрового увеличения;
-- настройки RawTherapee перегруппированы: там оставлены только перенесённые функции RawTherapee;
-- Richardson–Lucy остаётся в разделе **Hardware Sharpening**.
-
-## Основные возможности
-
-- ZSL/PSL, ночной режим и выбираемые HDR-алгоритмы;
-- HDR+ Swift с отдельными настройками шумоподавления;
-- RAW Multi-Frame Super-Resolution;
-- Real-ESRGAN и Nano-RAISR;
-- AI-денойз с CPU/GPU/NPU-путями и безопасным fallback;
-- портретный режим;
-- группы обработки **RawTherapee**, **Capture One** и **Hardware Sharpening**;
-- настраиваемые названия и порядок камер;
-- прогресс обработки вокруг миниатюры галереи.
-
-## RAISR
-
-Доступны банки ×2/×3/×4, итоговый масштаб ×1.0–×4.0, сила эффекта, защита от ореолов, подавление алиасинга и режимы «Быстро»/«Качество».
-
-Проект находится в активной разработке. Некоторые GPU/NPU-функции зависят от драйверов конкретного устройства.
+Build: open **Actions → Build SCAMERA** and download the `SCAMERA-Build` artifact.
