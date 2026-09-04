@@ -1,9 +1,7 @@
 # SCAMERA
 
-Android computational camera based on PhotonCamera.
+Computational Android camera based on PhotonCamera.
 
-The reproducible source snapshot is stored in `source-parts/` because it includes recovered native libraries and AI models. GitHub Actions verifies, restores and builds it.
+Current base: SCAMERA-26789 ACES ShadowFix. The source snapshot includes recovered native libraries and AI models and is restored by GitHub Actions from verified chunks.
 
-Current integration base: SCAMERA-26789 ACES ShadowFix.
-
-Build: open **Actions → Build SCAMERA** and download the `SCAMERA-Build` artifact.
+Build artifacts are published by **Build SCAMERA**.
