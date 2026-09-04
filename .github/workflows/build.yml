@@ -2,7 +2,7 @@ name: Build SCAMERA
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, codex/scamera-final-build ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
