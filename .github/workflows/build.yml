@@ -23,6 +23,12 @@ jobs:
           cat source-parts/SCAMERA-actions-source.tar.gz.part.* > SCAMERA-actions-source.tar.gz
           echo "851683a7f05156ae6e0f4c07b11c5873167829eb42106026d5a3a59040d2a76a  SCAMERA-actions-source.tar.gz" | sha256sum -c -
           tar -xzf SCAMERA-actions-source.tar.gz -C source
+      - name: Upload source checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCAMERA-Source
+          path: SCAMERA-actions-source.tar.gz
+          compression-level: 0
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
