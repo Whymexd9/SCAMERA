@@ -1,0 +1,40 @@
+diff --git a/app/src/main/java/com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java b/app/src/main/java/com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java
+--- a/app/src/main/java/com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java
++++ b/app/src/main/java/com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java
+@@ -182,6 +182,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
+             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
+             Log.d("SettingsFragment", "onCreate with rootKey: " + rootKey);
++
++            setupAcesNavigation();
+             
+             if ("pref_tunable_submenu".equals(rootKey)) {
+                 Log.d("SettingsFragment", "This is the tunable submenu fragment, generating preferences now");
+@@ -209,6 +211,31 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
+             setThisDevice();
+             setFetchConfigurationsPref();
+         }
++
++        /**
++         * Some vendor AndroidX builds do not dispatch the ACES PreferenceScreen
++         * through OnPreferenceStartScreenCallback. Consume the row click and
++         * open the existing nested screen explicitly exactly once.
++         */
++        private void setupAcesNavigation() {
++            Preference acesPreference = findPreference("aces_group_screen");
++            if (!(acesPreference instanceof PreferenceScreen)) {
++                Log.e("SettingsFragment", "ACES PreferenceScreen is missing");
++                return;
++            }
++
++            acesPreference.setOnPreferenceClickListener(preference -> {
++                Log.d("SettingsFragment", "Opening ACES settings explicitly");
++                if (activity instanceof SettingsActivity) {
++                    return ((SettingsActivity) activity).onPreferenceStartScreen(
++                            this, (PreferenceScreen) preference);
++                }
++                return false;
++            });
++        }
+         
+         private void generateTunablePreferences() {
+             // Only generate once per fragment instance
