@@ -33,6 +33,7 @@ import java.util.TimeZone;
 public class Log {
     private static final String DEBUG_FOLDER = "Download/SCAMERA/";
     private static final String DEBUG_FILE = "SCAMERA-debug.txt";
+    private static final String PHOTON_LOG_SUBFOLDER = "PhotonLog"; // legacy SAF fallback
 
     private static java.io.File logDir = null;
     private static Context logContext = null; // Application context for SimpleStorage
