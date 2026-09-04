@@ -22,9 +22,9 @@ jobs:
           cat source-parts/SCAMERA-actions-source.tar.gz.part.* > SCAMERA-actions-source.tar.gz
           echo "13890c59815b28a85c99f8a29db9d93cbd517a4dbf90ef762de15f0d776c04a6  SCAMERA-actions-source.tar.gz" | sha256sum -c -
           tar -xzf SCAMERA-actions-source.tar.gz -C source
-      - name: Apply source fixes
+      - name: Apply ACES navigation fix
         working-directory: source
-        run: patch -p1 < ../patches/0001-fix-aces-navigation.patch
+        run: python3 ../patches/fix_aces_navigation.py
       - name: Upload patched source
         uses: actions/upload-artifact@v4
         with:
