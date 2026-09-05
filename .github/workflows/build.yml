@@ -22,16 +22,6 @@ jobs:
           cat source-parts/SCAMERA-actions-source.tar.gz.part.* > SCAMERA-actions-source.tar.gz
           sha256sum -c SOURCE_SHA256
           tar -xzf SCAMERA-actions-source.tar.gz -C source
-      - name: Restore tested APK
-        run: |
-          cat release-parts/SCAMERA-0.98-26729-FullMenus-Dynamic.apk.part.* > SCAMERA-0.98-26729-FullMenus-Dynamic.apk
-          sha256sum -c APK_SHA256
-      - name: Upload tested APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SCAMERA-26729-Tested-APK
-          path: SCAMERA-0.98-26729-FullMenus-Dynamic.apk
-          compression-level: 0
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
