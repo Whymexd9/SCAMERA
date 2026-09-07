@@ -5,6 +5,11 @@ precision highp sampler2D;
 precision highp image2D;
 uniform highp usampler2D inTexture;
 uniform highp sampler2D alignmentTexture;
+// Tuning factor on the noise variance: larger accepts more of the aligned
+// frame (more denoising, less robustness). HDR+ fixes the equivalent to 8.
+#ifndef ROBUSTNESS
+#define ROBUSTNESS 8.0
+#endif
 uniform highp sampler2D alterSampler;
 //layout(r16ui, binding = 0) uniform highp readonly uimage2D inTexture;
 layout(rgba16f, binding = 0) uniform highp readonly image2D avrTexture;
@@ -136,9 +141,25 @@ void main() {
         vec4 bayerAlter = rawMfsr == 1
                 ? samplePackedBicubic(alterSampler, vec2(xy) + alignF)
                 : imageLoad(alterTexture, aligned);
-        vec4 w1 = (abs(bayerAlter*vec4(exposure) - bayerBase));
-        vec4 w2 = (abs(bayerNone*vec4(exposure) - bayerBase));
-        bayerAlter = mix(bayerNone, bayerAlter, smoothstep(w2/(w1+w2),vec4(0.48),vec4(0.51)));
+        // Robustness: how much of the aligned sample do we trust? The previous
+        // form compared relative residuals through smoothstep(.., 0.48, 0.51),
+        // a transition three hundredths wide - effectively a binary switch.
+        // Neighbouring pixels with nearly equal residuals landed on opposite
+        // sides of it and flipped between two different sources, which is what
+        // produced the blotches. Use a Wiener-style shrinkage instead: the
+        // aligned sample is accepted in proportion to how well its difference
+        // from the reference is explained by the noise model.
+        //
+        // The alternate frame is scaled by 'exposure' to reach the reference
+        // level, and its noise scales with it, so the tolerance has to grow the
+        // same way - otherwise a darker bracketed frame is judged against the
+        // reference frame's noise and rejected almost everywhere.
+        vec4 d = bayerAlter * vec4(exposure) - bayerBase;
+        vec4 sigma = noise * vec4(max(exposure, 1.0));
+        vec4 d2 = d * d;
+        vec4 n2 = ROBUSTNESS * sigma * sigma;
+        vec4 trust = n2 / (d2 + n2 + 1e-9);
+        bayerAlter = mix(bayerNone, bayerAlter, trust);
         alignedSum += bayerAlter * w[i];
     }
 
