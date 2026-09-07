@@ -249,6 +249,11 @@
                     android:summary="@string/max_hdr_ratio_summary"
                     android:defaultValue="9.8"
                     app:useSimpleSummaryProvider="true" />
+                <SwitchPreferenceCompat
+                    android:key="pref_tet_model_enabled_key"
+                    android:title="@string/tet_model_enabled"
+                    android:summary="@string/tet_model_enabled_summary"
+                    android:defaultValue="false" />
                 <EditTextPreference
                     android:key="pref_long_frame_shutter_cap_key"
                     android:title="@string/long_frame_shutter_cap"

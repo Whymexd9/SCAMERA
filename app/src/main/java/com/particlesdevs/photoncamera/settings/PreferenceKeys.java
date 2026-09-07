@@ -47,6 +47,19 @@ public class PreferenceKeys {
         return Float.parseFloat(getAcesString("pref_noise_model_coefficient_key", "1.0"));
     }
 
+    /**
+     * Derive the burst's shutter from the TET waypoint curve (see {@code TetModel})
+     * instead of the per-frame heuristics, and hold that shutter constant across the
+     * bracket so the ends differ by gain alone. This is what a GCam shot dump shows:
+     * one shutter for every frame in the burst, "Desired exposure time factor:
+     * 1.000000", with the whole bracket spread carried by "Desired TET factor".
+     * Off by default so the two behaviours can be compared on one build.
+     */
+    public static boolean isTetModelEnabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", "pref_tet_model_enabled_key", false);
+    }
+
     /** Clamp the O term's digital gain to 1, i.e. ignore gain applied above the analogue ISO. */
     public static boolean isNoiseDigitalGainDisabled() {
         return preferenceKeys.settingsManager.getBoolean(

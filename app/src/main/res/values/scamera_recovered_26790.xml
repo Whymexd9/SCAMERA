@@ -809,4 +809,6 @@
     <string name="long_frame_shutter_cap_summary">В периодах считывания сенсора (1/30 c); остаток EV уходит в усиление. 0 — без потолка (2.0)</string>
     <string name="max_hdr_ratio">Потолок HDR ratio</string>
     <string name="max_hdr_ratio_summary">Предел отношения самого длинного кадра к самому короткому; короткий поджимается вверх. GCam: 9.8 (ночь 15.3). 0 — без потолка</string>
+    <string name="tet_model_enabled">TET-модель экспозиций</string>
+    <string name="tet_model_enabled_summary">Выдержка выбирается по ломаной выдержка/усиление из дампа GCam и держится единой для всей серии; брекет разносится только усилением. Выключено — прежние эвристики</string>
 </resources>

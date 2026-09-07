@@ -173,11 +173,35 @@ public class IsoExpoSelector {
         // Only when ISO is already at the sensor floor is the remaining EV taken
         // from the shutter.
         int isoFloor = getISOLOW();
-        int gainMatchedIso = (int) Math.round(source.iso / factor);
-        pair.iso = Math.max(isoFloor, Math.min(source.iso, gainMatchedIso));
         long sensorMinimum = getEXPLOW();
-        long shutterMatched = Math.round(targetExposureProduct / Math.max(pair.iso, 1));
-        pair.exposure = Math.max(sensorMinimum, Math.min(source.exposure, shutterMatched));
+        if (PreferenceKeys.isTetModelEnabled()) {
+            // Shutter comes from the TET curve applied to the *base* frame's TET and is
+            // then held fixed; the bracket offset is carried entirely by gain. A GCam
+            // dump shows exactly this: one shutter for the whole burst and a TET factor
+            // of 13.33 delivered by gain alone.
+            double baseTet = TetModel.toTet(source.exposure, source.iso, isoFloor);
+            TetModel.Split baseSplit = TetModel.solve(baseTet, isoFloor, getISOHIGH(),
+                    sensorMinimum, Math.min(getEXPHIGH(), shutterCapNs(captureController)));
+            pair.exposure = baseSplit.exposureNs;
+            long tetIso = Math.round(targetExposureProduct / Math.max(pair.exposure, 1));
+            pair.iso = (int) Math.max(isoFloor, Math.min(getISOHIGH(), tetIso));
+            Log.i(TAG, "TET model (short): base TET " + baseTet + " -> shutter "
+                    + baseSplit.exposureNs + " ns, ISO " + pair.iso);
+        } else {
+            // Spend the EV on gain first and keep the shutter as close to the rest of
+            // the burst as possible. Google's own bracketed bursts do exactly this:
+            // in their capture description the ultra-short frame runs 48.3 ms at gain
+            // 4.0 while the regular frames run 66.7 ms at gain 44.4 - a 15x exposure
+            // difference produced almost entirely by gain. Matching shutter times keeps
+            // motion blur comparable across the burst, and differing motion blur is one
+            // of the three reasons Google name for bracketed frames being hard to align.
+            // Only when ISO is already at the sensor floor is the remaining EV taken
+            // from the shutter.
+            int gainMatchedIso = (int) Math.round(source.iso / factor);
+            pair.iso = Math.max(isoFloor, Math.min(source.iso, gainMatchedIso));
+            long shutterMatched = Math.round(targetExposureProduct / Math.max(pair.iso, 1));
+            pair.exposure = Math.max(sensorMinimum, Math.min(source.exposure, shutterMatched));
+        }
         pair.curlayer = ExpoPair.exposureLayer.Low;
         pair.isHighlightFrame = true;
         pair.isLongFrame = false;
@@ -245,10 +269,25 @@ public class IsoExpoSelector {
         // bracketed frame will not align. Whatever EV the cap leaves unspent is taken
         // from gain instead.
         long shutterCap = shutterCapNs(captureController);
-        pair.exposure = Math.min(Math.min(getEXPHIGH(), shutterCap),
-                Math.round(pair.exposure * factor));
-        int gainMatchedIso = (int) Math.round(targetProduct / Math.max(pair.exposure, 1));
-        pair.iso = Math.max(source.iso, Math.min(getISOHIGH(), gainMatchedIso));
+        if (PreferenceKeys.isTetModelEnabled()) {
+            // Same fixed shutter as the short frame, for the same reason: GCam's burst
+            // runs one shutter throughout and spreads the bracket with gain. This is the
+            // end of the bracket where the current heuristic disagrees with the dump -
+            // it stretches the shutter first and only gives the remainder to gain.
+            double baseTet = TetModel.toTet(source.exposure, source.iso, getISOLOW());
+            TetModel.Split baseSplit = TetModel.solve(baseTet, getISOLOW(), getISOHIGH(),
+                    getEXPLOW(), Math.min(getEXPHIGH(), shutterCap));
+            pair.exposure = baseSplit.exposureNs;
+            long tetIso = Math.round(targetProduct / Math.max(pair.exposure, 1));
+            pair.iso = (int) Math.max(getISOLOW(), Math.min(getISOHIGH(), tetIso));
+            Log.i(TAG, "TET model (long): base TET " + baseTet + " -> shutter "
+                    + baseSplit.exposureNs + " ns, ISO " + pair.iso);
+        } else {
+            pair.exposure = Math.min(Math.min(getEXPHIGH(), shutterCap),
+                    Math.round(pair.exposure * factor));
+            int gainMatchedIso = (int) Math.round(targetProduct / Math.max(pair.exposure, 1));
+            pair.iso = Math.max(source.iso, Math.min(getISOHIGH(), gainMatchedIso));
+        }
         pair.curlayer = ExpoPair.exposureLayer.High;
         pair.isHighlightFrame = false;
         pair.isLongFrame = true;
