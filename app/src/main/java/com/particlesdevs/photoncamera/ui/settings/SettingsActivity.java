@@ -540,6 +540,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             
             Log.d("SettingsFragment", "onSharedPreferenceChanged: key=" + key);
+
+            if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
+                boolean on = sharedPreferences.getBoolean(key, false);
+                com.particlesdevs.photoncamera.util.ScameraDebugLog.init(mContext);
+                com.particlesdevs.photoncamera.util.ScameraDebugLog.setEnabled(on);
+                if (on) {
+                    PhotonCamera.showToast(
+                            com.particlesdevs.photoncamera.util.ScameraDebugLog.getPath());
+                }
+            }
             
             if (key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)) {
                 setHdrxTitle();

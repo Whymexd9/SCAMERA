@@ -200,6 +200,11 @@ public class Log {
     }
 
     private static void writeToFile(String level, String tag, String message) {
+        // Full debug mirrors every line into Download/SCAMERA/SCAMERA-debug.log. This runs
+        // before the early returns below so the mirror still works when the regular PhotonLog
+        // folder is unavailable. ScameraDebugLog is a no-op while the switch is off.
+        ScameraDebugLog.mirror(level, tag, message);
+
         boolean useSimpleStorage = (logContext != null && SimpleStorageHelper.hasStorageAccess(logContext));
         if (!logEnabled) return;
         if (!useSimpleStorage && logDir == null) return;

@@ -3,6 +3,13 @@
     android:title="@string/settings"
     android:orderingFromXml="true"
     android:key="prefscreen">
+    <SwitchPreferenceCompat
+        android:key="scamera_full_debug"
+        android:title="@string/full_debug_title"
+        android:summary="@string/full_debug_summary"
+        android:defaultValue="false"
+        android:layout="@layout/preference_with_margin" />
+
     <PreferenceScreen
         android:key="scamera_mosaic_sr_screen"
         android:title="@string/mosaic_sr_title"

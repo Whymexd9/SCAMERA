@@ -1976,6 +1976,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
                     long frametime = 100;
                     Object time = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                     if(time != null) frametime = (long)time;
@@ -2509,6 +2510,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
                     Object time = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     Log.d(TAG, "Timestamp:" + time);
                     if (time != null) {
