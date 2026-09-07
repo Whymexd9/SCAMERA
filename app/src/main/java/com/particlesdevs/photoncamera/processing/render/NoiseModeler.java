@@ -20,8 +20,14 @@ public class NoiseModeler {
         // A selected profile replaces whatever the sensor reported, so it reaches every
         // consumer of computeModel at once: the denoise nodes and the alignment
         // significance gate in align.glsl.
-        NoiseModelProfile profile = NoiseModelProfile.byId(
-                com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseModelProfileId());
+        NoiseModelProfile profile = null;
+        try {
+            profile = NoiseModelProfile.byId(
+                    com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseModelProfileId());
+        } catch (Throwable t) {
+            // A broken profile must degrade to the sensor's own model, never abort a capture.
+            Log.e(TAG, "Noise model profile unavailable, falling back to the sensor profile", t);
+        }
         if (profile != null) {
             inModel = profile.evaluate(ISO, analogISO);
             Log.d(TAG, "Noise model profile: " + profile.name + " at ISO " + ISO

@@ -126,8 +126,10 @@ public final class NoiseModelProfile {
 
     // ---------------------------------------------------------------- import
 
+    // Android's ICU regex engine rejects a bare ']' or '}' outside a class, unlike the JDK's,
+    // so both closing brackets must be escaped or the class fails to initialise at all.
     private static final Pattern ARRAY = Pattern.compile(
-            "noise_model_([ABCD])\\s*\\[\\s*]\\s*=\\s*\\{([^}]*)}");
+            "noise_model_([ABCD])\\s*\\[\\s*\\]\\s*=\\s*\\{([^}]*)\\}");
 
     /**
      * Parse a calibration file. Returns null when the four coefficient arrays are not all present,
