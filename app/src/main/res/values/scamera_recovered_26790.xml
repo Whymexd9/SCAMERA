@@ -474,33 +474,33 @@
     <string name="aces_tone_contrast">Контраст полутонов</string>
     <string name="aces_tone_curve">Тоновая кривая</string>
     <string name="aces_tone_mix">Сила тоновой кривой</string>
-    <array name="merge_algorithm_entries">
+    <string-array name="merge_algorithm_entries">
         <item>@string/merge_algorithm_legacy</item>
         <item>@string/merge_algorithm_hdrplus</item>
-    </array>
-    <array name="merge_algorithm_values">
+    </string-array>
+    <string-array name="merge_algorithm_values">
         <item>legacy</item>
         <item>hdrplus</item>
-    </array>
-    <array name="raisr_filter_scale_entries">
+    </string-array>
+    <string-array name="raisr_filter_scale_entries">
         <item>×2</item>
         <item>×3</item>
         <item>×4</item>
-    </array>
-    <array name="raisr_filter_scale_values">
+    </string-array>
+    <string-array name="raisr_filter_scale_values">
         <item>2</item>
         <item>3</item>
         <item>4</item>
-    </array>
-    <array name="raisr_mode_entries">
+    </string-array>
+    <string-array name="raisr_mode_entries">
         <item>Быстро</item>
         <item>Качество</item>
-    </array>
-    <array name="raisr_mode_values">
+    </string-array>
+    <string-array name="raisr_mode_values">
         <item>fast</item>
         <item>quality</item>
-    </array>
-    <array name="raisr_output_scale_entries">
+    </string-array>
+    <string-array name="raisr_output_scale_entries">
         <item>1.0×</item>
         <item>1.1×</item>
         <item>1.2×</item>
@@ -532,8 +532,8 @@
         <item>3.8×</item>
         <item>3.9×</item>
         <item>4.0×</item>
-    </array>
-    <array name="raisr_output_scale_values">
+    </string-array>
+    <string-array name="raisr_output_scale_values">
         <item>10</item>
         <item>11</item>
         <item>12</item>
@@ -565,7 +565,7 @@
         <item>38</item>
         <item>39</item>
         <item>40</item>
-    </array>
+    </string-array>
     <array name="real_esrgan_model_entries">
         <item>Быстродействие — realesr-general-x4v3</item>
         <item>Качество — RealESRGAN_x2plus</item>
@@ -600,7 +600,7 @@
         <item>19</item>
         <item>20</item>
     </array>
-    <array name="aces_gamma_curve_entries">
+    <string-array name="aces_gamma_curve_entries">
         <item>sRGB</item>
         <item>Gamma 2.2</item>
         <item>Gamma 2.4 / BT.1886</item>
@@ -610,8 +610,8 @@
         <item>PQ / ST.2084 (экспериментально)</item>
         <item>HLG (экспериментально)</item>
         <item>Пользовательская</item>
-    </array>
-    <array name="aces_gamma_curve_values">
+    </string-array>
+    <string-array name="aces_gamma_curve_values">
         <item>0</item>
         <item>1</item>
         <item>2</item>
@@ -621,16 +621,16 @@
         <item>6</item>
         <item>7</item>
         <item>8</item>
-    </array>
-    <array name="aces_output_entries">
+    </string-array>
+    <string-array name="aces_output_entries">
         <item>sRGB / Rec.709</item>
         <item>Display P3</item>
-    </array>
-    <array name="aces_output_values">
+    </string-array>
+    <string-array name="aces_output_values">
         <item>0</item>
         <item>1</item>
-    </array>
-    <array name="aces_tone_curve_entries">
+    </string-array>
+    <string-array name="aces_tone_curve_entries">
         <item>ACES 2.0 (AP1 Wide Gamut)</item>
         <item>ACES 1.x</item>
         <item>Filmic</item>
@@ -643,8 +643,8 @@
         <item>Пользовательская</item>
         <item>Lottes (Soft AMD Filmic)</item>
         <item>Uchimura (Gran Turismo)</item>
-    </array>
-    <array name="aces_tone_curve_values">
+    </string-array>
+    <string-array name="aces_tone_curve_values">
         <item>0</item>
         <item>1</item>
         <item>2</item>
@@ -657,7 +657,7 @@
         <item>9</item>
         <item>10</item>
         <item>11</item>
-    </array>
+    </string-array>
     <bool name="abc_action_bar_embed_tabs">true</bool>
     <bool name="abc_config_actionMenuItemAllCaps">true</bool>
     <bool name="config_materialPreferenceIconSpaceReserved">false</bool>
