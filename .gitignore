@@ -99,3 +99,6 @@ lint/tmp/
 
 # ncnn prebuilt SDK, fetched by CI from upstream PhotonCamera
 app/src/main/cpp/ncnn/
+
+# forked ncnn SDK, fetched by CI from eszdman/PhotonCamera
+app/src/main/cpp/ncnn/
