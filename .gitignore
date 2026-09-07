@@ -102,3 +102,6 @@ app/src/main/cpp/ncnn/
 
 # forked ncnn SDK, fetched by CI from eszdman/PhotonCamera
 app/src/main/cpp/ncnn/
+
+# ncnn prebuilt SDK, fetched by CI (see build-test-apk.yml)
+app/src/main/cpp/ncnn/

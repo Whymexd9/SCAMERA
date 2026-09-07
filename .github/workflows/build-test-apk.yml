@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned so an upstream change cannot silently alter our native build.
+  NCNN_UPSTREAM_SHA: 0a5ea3df054bb8933eeedd882236670247747afc
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -57,6 +61,39 @@ jobs:
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
         env:
           UPSTREAM_SHA: '0a5ea3df054bb8933eeedd882236670247747afc'
+
+      - name: Cache ncnn prebuilt
+        id: ncnn-cache
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/cpp/ncnn
+          key: ncnn-${{ env.NCNN_UPSTREAM_SHA }}
+
+      - name: Fetch ncnn prebuilt from upstream PhotonCamera
+        if: steps.ncnn-cache.outputs.cache-hit != 'true'
+        run: |
+          # CMakeLists silently falls back to a stub JNI library when
+          # app/src/main/cpp/ncnn/<abi>/lib/libncnn.a is missing, which disables
+          # FlowNet/KernelNet entirely. Upstream ships an ncnn fork with batch
+          # support (Mat::n / Mat::nstep / Layer::support_batch) that the custom
+          # FlowNet layers require; stock Tencent ncnn does not compile against
+          # them. ~160 MB, so it is fetched and cached rather than committed.
+          git clone --filter=blob:none --no-checkout --depth 1 \
+            https://github.com/eszdman/PhotonCamera.git /tmp/upstream
+          cd /tmp/upstream
+          git fetch --depth 1 origin "$NCNN_UPSTREAM_SHA"
+          git sparse-checkout set --no-cone app/src/main/cpp/ncnn
+          git checkout "$NCNN_UPSTREAM_SHA"
+          cd -
+          mkdir -p app/src/main/cpp/ncnn
+          cp -r /tmp/upstream/app/src/main/cpp/ncnn/. app/src/main/cpp/ncnn/
+
+      - name: Verify ncnn is the batch-capable fork
+        run: |
+          test -f app/src/main/cpp/ncnn/arm64-v8a/lib/libncnn.a
+          grep -q 'size_t nstep;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/mat.h
+          grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
+          ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
       - name: Build debug APK
         env:
