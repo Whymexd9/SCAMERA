@@ -37,7 +37,7 @@ jobs:
       - name: Debug runtime classpath (temporary)
         run: |
           chmod +x gradlew
-          ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon | grep -i -B2 'androidx.test' || echo "no androidx.test on debugRuntimeClasspath"
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon | grep -i -B25 'androidx.test:monitor' || echo "no androidx.test on debugRuntimeClasspath"
 
       - name: Build debug APK
         env:
