@@ -34,12 +34,6 @@ jobs:
         id: ver
         run: echo "code=$((30000 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
 
-      - name: Locate androidx.test on runtime classpath
-        run: |
-          chmod +x gradlew
-          ./gradlew :app:dependencyInsight --configuration debugRuntimeClasspath \
-            --dependency androidx.test:monitor --no-daemon || true
-
       - name: Build debug APK
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
