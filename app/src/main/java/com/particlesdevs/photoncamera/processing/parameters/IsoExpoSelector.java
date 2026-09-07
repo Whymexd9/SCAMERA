@@ -138,6 +138,23 @@ public class IsoExpoSelector {
         ExpoPair pair = new ExpoPair(source);
         int requestedEv = Math.max(1, Math.min(8, PreferenceKeys.getShortExposureEvValue()));
         double factor = Math.scalb(1.0, requestedEv);
+        // Clamp the short frame so the whole burst stays inside the HDR ratio ceiling.
+        // GCam computes a short and a long AE independently and then pulls the short one
+        // up until their ratio fits max_hdr_ratio_default; the shot dump shows an ideal
+        // ratio of 17.48 being reduced to 9.80 exactly this way. The long frame is already
+        // committed at this point, so the short frame is what gives.
+        float maxRatio = PreferenceKeys.getMaxHdrRatio();
+        if (maxRatio > 1.0f) {
+            double longFactor = Math.scalb(1.0,
+                    Math.max(0, Math.min(8, PreferenceKeys.getLongExposureEvValue())));
+            double spread = factor * longFactor;
+            if (spread > maxRatio) {
+                double clamped = Math.max(1.0, maxRatio / longFactor);
+                Log.i(TAG, "HDR ratio " + spread + " exceeds the ceiling " + maxRatio
+                        + ", short frame factor " + factor + " -> " + clamped);
+                factor = clamped;
+            }
+        }
         double targetExposureProduct = ((double) source.exposure * source.iso) / factor;
         // Spend the EV on gain first and keep the shutter as close to the rest of
         // the burst as possible. Google's own bracketed bursts do exactly this:

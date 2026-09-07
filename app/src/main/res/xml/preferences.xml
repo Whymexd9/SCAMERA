@@ -244,6 +244,12 @@
                     android:defaultValue="0.99"
                     app:useSimpleSummaryProvider="true" />
                 <EditTextPreference
+                    android:key="pref_max_hdr_ratio_key"
+                    android:title="@string/max_hdr_ratio"
+                    android:summary="@string/max_hdr_ratio_summary"
+                    android:defaultValue="9.8"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
                     android:key="pref_long_frame_shutter_cap_key"
                     android:title="@string/long_frame_shutter_cap"
                     android:summary="@string/long_frame_shutter_cap_summary"

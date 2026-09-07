@@ -807,4 +807,6 @@
     <string name="merge_max_exposure_ratio_summary">Кадры с отличием от опорного больше этого не склеиваются; 0 — без предела (64)</string>
     <string name="long_frame_shutter_cap">Потолок выдержки длинного кадра</string>
     <string name="long_frame_shutter_cap_summary">В периодах считывания сенсора (1/30 c); остаток EV уходит в усиление. 0 — без потолка (2.0)</string>
+    <string name="max_hdr_ratio">Потолок HDR ratio</string>
+    <string name="max_hdr_ratio_summary">Предел отношения самого длинного кадра к самому короткому; короткий поджимается вверх. GCam: 9.8 (ночь 15.3). 0 — без потолка</string>
 </resources>

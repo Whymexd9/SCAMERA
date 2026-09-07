@@ -87,6 +87,18 @@ public class PreferenceKeys {
         return Float.parseFloat(getAcesString("pref_long_frame_shutter_cap_key", "2.0"));
     }
 
+    /**
+     * Hard ceiling on the ratio between the longest and shortest frame of the burst.
+     * GCam's tuning caps this at max_hdr_ratio_default = 9.8 (15.3 in Night Sight) and
+     * raises the short exposure until the burst fits, rather than letting the user pick an
+     * arbitrary spread: past this point the short frame holds nothing but noise and the
+     * long frame nothing but clipping, and alignment between them stops working. 0 removes
+     * the ceiling.
+     */
+    public static float getMaxHdrRatio() {
+        return Float.parseFloat(getAcesString("pref_max_hdr_ratio_key", "9.8"));
+    }
+
     /** Samples at or above this fraction of full scale are treated as clipped and not merged. */
     public static float getMergeClipLevel() {
         return Float.parseFloat(getAcesString("pref_merge_clip_level_key", "0.99"));
