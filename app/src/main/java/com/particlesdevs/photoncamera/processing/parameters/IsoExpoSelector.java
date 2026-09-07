@@ -130,8 +130,8 @@ public class IsoExpoSelector {
      * to it.  Keeping ISO unchanged preserves the sensor noise model while the
      * shorter shutter provides the user-selected amount of highlight headroom.
      */
-    public static void setUltraShortExpo(CaptureRequest.Builder builder,
-                                         CaptureController captureController) {
+    public static boolean setUltraShortExpo(CaptureRequest.Builder builder,
+                                            CaptureController captureController) {
         applyLinearCapture(builder);
         ExpoPair source = hdrPlusBasePair != null
                 ? hdrPlusBasePair : GenerateExpoPair(-1, captureController);
@@ -158,9 +158,23 @@ public class IsoExpoSelector {
                 Log.i(TAG, "HDR ratio " + spread + " exceeds the ceiling " + maxRatio
                         + ", short frame factor " + factor + " -> " + clamped
                         + " (long frame factor " + longFactor + " -> "
-                        + Math.max(1.0, longFactor / excess) + ")");
                 factor = clamped;
             }
+        }
+        // Drop the frame when the ceiling has collapsed the spread to nothing. At a
+        // factor of 1 this frame is the base frame: same shutter, same ISO, no highlight
+        // headroom. It is not a bracket member at that point, just an extra exposure
+        // occupying a slot and lengthening the burst - and a longer burst means more
+        // hand-shake and more to align. GCam gates the ultra-short frame on the HDR
+        // ratio as well: in the dump the burst is built while Final HDR ratio is 7.75,
+        // and fraction_pixels_clipped_at_final_short_tet reads 0.0000 there because it
+        // reports the clipping left *after* the short TET was chosen. That number is the
+        // outcome of the bracket, not the trigger for it.
+        if (factor < ULTRA_SHORT_MIN_FACTOR) {
+            Log.i(TAG, "Skipping the ultra-short frame: spread collapsed to "
+                    + String.format(Locale.ROOT, "%.3f", factor)
+                    + "x after the HDR ratio ceiling, which is the base frame");
+            return false;
         }
         double targetExposureProduct = ((double) source.exposure * source.iso) / factor;
         // Spend the EV on gain first and keep the shutter as close to the rest of
@@ -218,6 +232,7 @@ public class IsoExpoSelector {
                 + ExposureIndex.sec2string(ExposureIndex.time2sec(pair.exposure))
                 + " ISO " + pair.iso + " (target -" + requestedEv + " EV, actual -"
                 + String.format(Locale.ROOT, "%.2f", actualEv) + " EV)");
+        return true;
     }
 
 
@@ -306,6 +321,13 @@ public class IsoExpoSelector {
                 + " ISO " + pair.iso + " (target +" + requestedEv + " EV, actual +"
                 + String.format(Locale.ROOT, "%.2f", actualEv) + " EV)");
     }
+    /**
+     * Below this exposure spread the ultra-short frame is indistinguishable from the base
+     * frame. 1.05 is a twentieth of a stop - under that the two frames differ by less than
+     * the sensor's own ISO quantisation, so nothing is lost by not taking it.
+     */
+    private static final double ULTRA_SHORT_MIN_FACTOR = 1.05;
+
     private static double mpy1 = 1.0;
     public static ExpoPair GenerateExpoPair(int step, CaptureController captureController) {
         ExpoPair pair = new ExpoPair(captureController.mPreviewExposureTime, getEXPLOW(), getEXPHIGH(),

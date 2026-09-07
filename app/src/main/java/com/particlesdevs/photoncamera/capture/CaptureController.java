@@ -2432,9 +2432,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     captures.add(captureBuilder.build());
                     mCaptureRequest = captureBuilder.build();
                 }
-                for (int i = 0; i < shortFrameCount; i++, captureIndex++) {
-                    IsoExpoSelector.setUltraShortExpo(captureBuilder, this);
-                    times[captureIndex] = IsoExpoSelector.lastSelectedExposure;
+                for (int i = 0; i < shortFrameCount; i++) {
+                    if (!IsoExpoSelector.setUltraShortExpo(captureBuilder, this)) {
+                        // Spread collapsed to the base frame; nothing was appended to
+                        // fullpairs either, so the burst is simply one frame shorter.
+                        break;
+                    }
+                    times[captureIndex++] = IsoExpoSelector.lastSelectedExposure;
                     captures.add(captureBuilder.build());
                     mCaptureRequest = captureBuilder.build();
                 }
@@ -2450,7 +2454,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                     IsoExpoSelector.fullpairs.addAll(bracketPairs);
                 }
-                PhotonCamera.getGyro().PrepareGyroBurst(times, BurstShakiness);
+                // captureIndex, not times.length: a skipped ultra-short frame would
+                // otherwise leave a trailing zero exposure in the gyro burst.
+                PhotonCamera.getGyro().PrepareGyroBurst(
+                        Arrays.copyOf(times, captureIndex), BurstShakiness);
             }
 
             //img
