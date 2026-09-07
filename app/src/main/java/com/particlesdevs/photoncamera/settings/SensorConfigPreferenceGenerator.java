@@ -466,10 +466,19 @@ public class SensorConfigPreferenceGenerator {
                 }
             }
         }
+        // No entryValue matched the annotation default, so fall back to the first one.
+        // Leaving this null means the preference is added with no value at all, and
+        // SimpleSummaryProvider throws NullPointerException the moment the row is bound.
+        if (defaultValue == null && annotation.entryValues().length > 0) {
+            defaultValue = annotation.entryValues()[0];
+        }
         listPref.setDefaultValue(defaultValue);
         listPref.setSummaryProvider(ListPreference.SimpleSummaryProvider.getInstance());
 
         category.addPreference(listPref);
+        if (listPref.getValue() == null && defaultValue != null) {
+            listPref.setValue(defaultValue);
+        }
     }
 
     /**

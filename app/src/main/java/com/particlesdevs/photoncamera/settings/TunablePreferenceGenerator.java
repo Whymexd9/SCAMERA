@@ -353,6 +353,11 @@ public class TunablePreferenceGenerator {
         listPref.setSummaryProvider(ListPreference.SimpleSummaryProvider.getInstance());
 
         category.addPreference(listPref);
+        // addPreference() only persists the default on first run; for a key added to an
+        // already-installed app the value stays null and SimpleSummaryProvider crashes.
+        if (listPref.getValue() == null) {
+            listPref.setValue(defaultValue);
+        }
         Log.d(TAG, "Added list preference: " + prefKey + " with default: " + defaultValue);
     }
 

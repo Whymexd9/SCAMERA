@@ -224,6 +224,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 generateSensorConfigPreferences();
             }
             
+            // Generators add ListPreferences after onCreatePreferences() ran, so re-run the
+            // guard over whatever the tree looks like now.
+            seedMissingListValues(getPreferenceScreen());
+
             filterPreferencesByMode();
             showHideHdrxSettings();
             setFramesSummary();
