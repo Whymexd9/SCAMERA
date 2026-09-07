@@ -24,6 +24,33 @@ uniform highp sampler2D alignmentTexture;
 #ifndef FLOOR_SIGMAS
 #define FLOOR_SIGMAS 2.0
 #endif
+// --- RAW MFSR kernel regression tunables (Wronski et al. 2019) ---
+// Kernel support in packed-quad units for detailed and for flat areas.
+#ifndef MFSR_KDETAIL
+#define MFSR_KDETAIL 0.5
+#endif
+#ifndef MFSR_KDENOISE
+#define MFSR_KDENOISE 1.0
+#endif
+// Stretch along the edge and shrink across it, at full coherence.
+#ifndef MFSR_KSTRETCH
+#define MFSR_KSTRETCH 4.0
+#endif
+#ifndef MFSR_KSHRINK
+#define MFSR_KSHRINK 2.0
+#endif
+// Gradient magnitude at which a pixel starts counting as a feature, and the
+// width of that transition.
+#ifndef MFSR_DTH
+#define MFSR_DTH 0.005
+#endif
+#ifndef MFSR_DTR
+#define MFSR_DTR 0.02
+#endif
+// Lower bound on the kernel sigma in quad units, guarding against degeneracy.
+#ifndef MFSR_MIN_SIGMA
+#define MFSR_MIN_SIGMA 0.3
+#endif
 uniform highp sampler2D alterSampler;
 //layout(r16ui, binding = 0) uniform highp readonly uimage2D inTexture;
 layout(rgba16f, binding = 0) uniform highp readonly image2D avrTexture;
@@ -97,34 +124,126 @@ vec2 hash22(vec2 p)
     return fract((p3.xx+p3.yz)*p3.zy);
 }
 
-// Catmull-Rom reconstruction on the packed Bayer grid. Each RGBA channel is
-// one fixed CFA site, so this improves sub-pixel reconstruction without ever
-// interpolating red, green and blue sites into each other. The previous
-// hardware bilinear lookup suppressed exactly the high frequencies MFSR is
-// meant to recover.
-float cubicWeight(float x) {
-    x = abs(x);
-    if (x <= 1.0) return 1.5*x*x*x - 2.5*x*x + 1.0;
-    if (x < 2.0) return -0.5*x*x*x + 2.5*x*x - 4.0*x + 2.0;
-    return 0.0;
+// ---------------------------------------------------------------------------
+// Kernel regression reconstruction, after Wronski et al., "Handheld Multi-Frame
+// Super-Resolution" (ACM TOG 38(4), 2019), sections 5.1-5.1.2.
+//
+// The previous implementation resampled with Catmull-Rom. That kernel has
+// negative outer lobes: at a fractional shift of 0.5 its weights are
+// (-0.0625, 0.5625, 0.5625, -0.0625), and at 0.25 the outermost weight reaches
+// -0.070. Where the signal sits near black those negative lobes undershoot and
+// the clamp to [0,1] truncates the excursion asymmetrically, which is what
+// produced the coloured streaks in the shadows of the night test shots. The
+// paper instead uses anisotropic Gaussian RBF kernels (its equation 2), whose
+// weights are strictly positive, so no undershoot is possible.
+//
+// w_i = exp(-0.5 * d_i^T * Omega^-1 * d_i)
+//
+// Omega is built from the local gradient structure tensor of the base frame
+// (equations 3 and 4): eigenanalysis gives the edge direction and the two
+// eigenvalues; k1 and k2 then set the kernel variance along and across the
+// edge. The dominant eigenvalue drives the spatial support (the trade-off
+// between resolution and denoising) and the eigenvalue ratio drives the
+// anisotropy. Stretching the kernel along edges is what the paper's figure 7
+// shows removing zipper artifacts caused by small misalignments.
+
+// Luminance of a packed quad. Our packed texture already holds one Bayer quad
+// per texel, which is exactly the half-resolution single-channel luminance
+// image the paper decimates to in 5.1.2 - so the tensor is computed here
+// directly, without a separate pass.
+float quadLuma(ivec2 p) {
+    ivec2 sz = imageSize(baseTexture);
+    ivec2 q = clamp(p, ivec2(0), sz - ivec2(1));
+    return dot(imageLoad(baseTexture, q), vec4(0.25));
 }
-vec4 samplePackedBicubic(highp sampler2D tex, vec2 pos) {
+
+// Inverse kernel covariance at this pixel, packed as (a, b, c) of the
+// symmetric matrix [[a, b], [b, c]].
+vec3 kernelCovarianceInv(ivec2 xy) {
+    // Gradients by finite forward differencing over a 3x3 window (eq. 3).
+    float ixx = 0.0, iyy = 0.0, ixy = 0.0;
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            ivec2 p = xy + ivec2(i, j);
+            float gx = quadLuma(p + ivec2(1, 0)) - quadLuma(p);
+            float gy = quadLuma(p + ivec2(0, 1)) - quadLuma(p);
+            ixx += gx * gx;
+            iyy += gy * gy;
+            ixy += gx * gy;
+        }
+    }
+    ixx /= 9.0; iyy /= 9.0; ixy /= 9.0;
+
+    // Closed-form eigenanalysis of the 2x2 symmetric tensor.
+    float tr = ixx + iyy;
+    float det = ixx * iyy - ixy * ixy;
+    float disc = sqrt(max(tr * tr * 0.25 - det, 0.0));
+    float l1 = tr * 0.5 + disc;   // dominant
+    float l2 = max(tr * 0.5 - disc, 0.0);
+
+    // Dominant eigenvector; falls back to the x axis on a degenerate tensor.
+    vec2 e1 = vec2(ixy, l1 - ixx);
+    float e1len = length(e1);
+    e1 = e1len > 1e-12 ? e1 / e1len : vec2(1.0, 0.0);
+    vec2 e2 = vec2(-e1.y, e1.x);
+
+    // A = "presence of a sharp feature", driven by the dominant eigenvalue and
+    // the Dth/Dtr thresholds of the paper's supplemental material. High
+    // curvature -> narrow kernel (resolution), flat -> wide kernel (denoise).
+    float feature = clamp((sqrt(l1) - MFSR_DTH) / max(MFSR_DTR, 1e-6), 0.0, 1.0);
+    float support = mix(MFSR_KDENOISE, MFSR_KDETAIL, feature);
+
+    // Anisotropy from the eigenvalue ratio. The paper's own text uses l1/l2,
+    // which is unbounded; the normalized coherence measure below is the
+    // standard bounded form and is what makes the stretch factor well defined.
+    float coherence = (l1 + l2) > 1e-12 ? (l1 - l2) / (l1 + l2) : 0.0;
+    float stretch = mix(1.0, MFSR_KSTRETCH, coherence);
+    float shrink  = mix(1.0, MFSR_KSHRINK, coherence);
+
+    // k1 along the edge (stretched), k2 across it (shrunk). Variances, so the
+    // support scale is squared.
+    // Floor the kernel width. Samples sit one quad apart, so a sigma much below
+    // ~0.25 makes every neighbour's weight underflow and the kernel degenerates
+    // into nearest-neighbour: at kDetail 0.25 with kShrink 2 the nine weights
+    // sum to 0.013, which is numerically fragile and throws away the very
+    // multi-frame information MFSR exists to gather.
+    float k1 = max(support * stretch, MFSR_MIN_SIGMA);
+    k1 = k1 * k1;
+    float k2 = max(support / shrink, MFSR_MIN_SIGMA);
+    k2 = k2 * k2;
+
+    // Omega = [e2 e1] diag(k2, k1) [e2 e1]^T, inverted analytically.
+    float a = e2.x * e2.x / k2 + e1.x * e1.x / k1;
+    float c = e2.y * e2.y / k2 + e1.y * e1.y / k1;
+    float b = e2.x * e2.y / k2 + e1.x * e1.y / k1;
+    return vec3(a, b, c);
+}
+
+// Gather over the nine closest samples, as in the paper: every output pixel is
+// processed once per frame and all nine samples share one kernel function.
+vec4 samplePackedRBF(highp sampler2D tex, vec2 pos, vec3 omegaInv) {
     ivec2 sz = textureSize(tex, 0);
     ivec2 origin = ivec2(floor(pos));
     vec2 f = fract(pos);
     vec4 sum = vec4(0.0);
     float weightSum = 0.0;
-    for (int j = -1; j <= 2; ++j) {
-        float wy = cubicWeight(float(j) - f.y);
-        for (int i = -1; i <= 2; ++i) {
-            float wxy = cubicWeight(float(i) - f.x) * wy;
-            ivec2 q = clamp(origin + ivec2(i,j), ivec2(0), sz - ivec2(1));
-            sum += texelFetch(tex, q, 0) * wxy;
-            weightSum += wxy;
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            vec2 d = vec2(float(i), float(j)) - f;
+            float q = omegaInv.x * d.x * d.x
+                    + 2.0 * omegaInv.y * d.x * d.y
+                    + omegaInv.z * d.y * d.y;
+            float w = exp(-0.5 * q);
+            ivec2 p = clamp(origin + ivec2(i, j), ivec2(0), sz - ivec2(1));
+            sum += texelFetch(tex, p, 0) * w;
+            weightSum += w;
         }
     }
-    return clamp(sum / max(weightSum, 1e-6), vec4(0.0), vec4(1.0));
+    // Weights are positive, so the normalized result cannot leave the convex
+    // hull of the samples and no clamping artefact is possible.
+    return sum / max(weightSum, 1e-6);
 }
+
 void main() {
     ivec2 xy = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outSize = imageSize(outTexture);
@@ -150,6 +269,13 @@ void main() {
     // explicit HasTilingArtifacts check and fall back when it fires; we cannot
     // read the field back on the GPU cheaply, so we apply the same idea per
     // pixel: the less the tiles agree, the less any of them is trusted.
+    // One kernel per output pixel, shared by all nine samples and all four
+    // blended alignment tiles. Only needed on the MFSR path.
+    vec3 omegaInv = vec3(1.0, 0.0, 1.0);
+    if (rawMfsr == 1) {
+        omegaInv = kernelCovarianceInv(xy);
+    }
+
     vec2 alignAvg = vec2(0.0);
     vec2 alignVecs[4];
     for (int i = 0; i < 4; i++) {
@@ -181,7 +307,7 @@ void main() {
         // several fractional hand-tremor phases this is shift-and-add RAW
         // multi-frame super-resolution on the native output grid.
         vec4 bayerAlter = rawMfsr == 1
-                ? samplePackedBicubic(alterSampler, vec2(xy) + alignF)
+                ? samplePackedRBF(alterSampler, vec2(xy) + alignF, omegaInv)
                 : imageLoad(alterTexture, aligned);
         // Robustness: how much of the aligned sample do we trust? The previous
         // form compared relative residuals through smoothstep(.., 0.48, 0.51),

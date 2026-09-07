@@ -392,6 +392,49 @@
                     android:key="@string/pref_raw_mfsr_enabled_key"
                     android:summary="@string/raw_mfsr_summary"
                     android:defaultValue="@bool/pref_raw_mfsr_enabled_default"/>
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_k_detail_key"
+                    android:title="@string/mfsr_k_detail"
+                    android:summary="@string/mfsr_k_detail_summary"
+                    android:defaultValue="0.5"
+                    app:useSimpleSummaryProvider="true"
+                    app:isPreferenceVisible="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_k_denoise_key"
+                    android:title="@string/mfsr_k_denoise"
+                    android:summary="@string/mfsr_k_denoise_summary"
+                    android:defaultValue="1.0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_k_stretch_key"
+                    android:title="@string/mfsr_k_stretch"
+                    android:summary="@string/mfsr_k_stretch_summary"
+                    android:defaultValue="4.0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_k_shrink_key"
+                    android:title="@string/mfsr_k_shrink"
+                    android:summary="@string/mfsr_k_shrink_summary"
+                    android:defaultValue="2.0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_dth_key"
+                    android:title="@string/mfsr_dth"
+                    android:summary="@string/mfsr_dth_summary"
+                    android:defaultValue="0.005"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_dtr_key"
+                    android:title="@string/mfsr_dtr"
+                    android:summary="@string/mfsr_dtr_summary"
+                    android:defaultValue="0.02"
+                    app:useSimpleSummaryProvider="true" />
             </PreferenceCategory>
             <PreferenceCategory
                 android:layout="@layout/preference_category_layout"

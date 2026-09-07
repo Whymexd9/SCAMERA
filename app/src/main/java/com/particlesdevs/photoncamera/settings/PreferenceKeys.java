@@ -735,6 +735,30 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    private static float mfsrFloat(Key key, float fallback) {
+        try {
+            String v = preferenceKeys.settingsManager.getString(
+                    "default_scope", key, String.valueOf(fallback));
+            return Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    /**
+     * RAW MFSR kernel regression parameters, after Wronski et al. 2019 section 5.1.
+     * They shape the anisotropic Gaussian kernel used to resample the aligned frame:
+     * kDetail/kDenoise set its width on detailed and on flat areas, kStretch/kShrink
+     * its anisotropy along and across an edge, and Dth/Dtr where the transition
+     * between "flat" and "detail" sits on the gradient magnitude.
+     */
+    public static float getMfsrKDetail()  { return mfsrFloat(Key.KEY_MFSR_K_DETAIL, 0.5f); }
+    public static float getMfsrKDenoise() { return mfsrFloat(Key.KEY_MFSR_K_DENOISE, 1.0f); }
+    public static float getMfsrKStretch() { return mfsrFloat(Key.KEY_MFSR_K_STRETCH, 4.0f); }
+    public static float getMfsrKShrink()  { return mfsrFloat(Key.KEY_MFSR_K_SHRINK, 2.0f); }
+    public static float getMfsrDth()      { return mfsrFloat(Key.KEY_MFSR_DTH, 0.005f); }
+    public static float getMfsrDtr()      { return mfsrFloat(Key.KEY_MFSR_DTR, 0.02f); }
+
     public static boolean isRaisrEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAISR_ENABLED, false);
     }
@@ -1121,6 +1145,12 @@ public class PreferenceKeys {
         KEY_AI_DENOISE_CHROMA(R.string.pref_ai_denoise_chroma_key),
         KEY_AI_DENOISE_MODEL(R.string.pref_ai_denoise_model_key),
         KEY_RAW_MFSR_ENABLED(R.string.pref_raw_mfsr_enabled_key),
+        KEY_MFSR_K_DETAIL(R.string.pref_mfsr_k_detail_key),
+        KEY_MFSR_K_DENOISE(R.string.pref_mfsr_k_denoise_key),
+        KEY_MFSR_K_STRETCH(R.string.pref_mfsr_k_stretch_key),
+        KEY_MFSR_K_SHRINK(R.string.pref_mfsr_k_shrink_key),
+        KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
+        KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
         KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),
         KEY_RAISR_OUTPUT_SCALE(R.string.pref_raisr_output_scale_key),

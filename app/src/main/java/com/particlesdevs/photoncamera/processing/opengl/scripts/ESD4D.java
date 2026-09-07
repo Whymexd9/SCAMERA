@@ -986,8 +986,25 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("TILING_TOLERANCE", tilingTolerance);
             float floorSigmas = PreferenceKeys.getMergeFloorSigmas();
             glProg.setDefine("FLOOR_SIGMAS", floorSigmas);
+            // RAW MFSR kernel regression shape (Wronski et al. 2019, sec. 5.1).
+            // Also compile-time, so they go in before the program is compiled.
+            float mfsrKDetail = PreferenceKeys.getMfsrKDetail();
+            float mfsrKDenoise = PreferenceKeys.getMfsrKDenoise();
+            float mfsrKStretch = PreferenceKeys.getMfsrKStretch();
+            float mfsrKShrink = PreferenceKeys.getMfsrKShrink();
+            float mfsrDth = PreferenceKeys.getMfsrDth();
+            float mfsrDtr = PreferenceKeys.getMfsrDtr();
+            glProg.setDefine("MFSR_KDETAIL", mfsrKDetail);
+            glProg.setDefine("MFSR_KDENOISE", mfsrKDenoise);
+            glProg.setDefine("MFSR_KSTRETCH", mfsrKStretch);
+            glProg.setDefine("MFSR_KSHRINK", mfsrKShrink);
+            glProg.setDefine("MFSR_DTH", mfsrDth);
+            glProg.setDefine("MFSR_DTR", mfsrDtr);
             Log.d("ESD4D", "Merge robustness=" + robustness + " clipLevel=" + clipLevel
-                    + " tilingTolerance=" + tilingTolerance + " floorSigmas=" + floorSigmas);
+                    + " tilingTolerance=" + tilingTolerance + " floorSigmas=" + floorSigmas
+                    + " | MFSR kDetail=" + mfsrKDetail + " kDenoise=" + mfsrKDenoise
+                    + " kStretch=" + mfsrKStretch + " kShrink=" + mfsrKShrink
+                    + " Dth=" + mfsrDth + " Dtr=" + mfsrDtr);
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);
