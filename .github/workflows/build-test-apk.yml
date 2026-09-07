@@ -1,0 +1,55 @@
+name: Build SCAMERA test APK
+
+on:
+  push:
+    branches: [ main, work ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # versionCode = 30000 + commit count
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute versionCode
+        id: ver
+        run: echo "code=$((30000 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug APK
+        env:
+          SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk/debug -name '*.apk' -exec cp {} out/ \;
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCAMERA-debug-${{ steps.ver.outputs.code }}
+          path: out/*.apk
+          if-no-files-found: error
+          compression-level: 0
