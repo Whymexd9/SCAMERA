@@ -139,14 +139,21 @@ public class IsoExpoSelector {
         int requestedEv = Math.max(1, Math.min(8, PreferenceKeys.getShortExposureEvValue()));
         double factor = Math.scalb(1.0, requestedEv);
         double targetExposureProduct = ((double) source.exposure * source.iso) / factor;
+        // Spend the EV on gain first and keep the shutter as close to the rest of
+        // the burst as possible. Google's own bracketed bursts do exactly this:
+        // in their capture description the ultra-short frame runs 48.3 ms at gain
+        // 4.0 while the regular frames run 66.7 ms at gain 44.4 - a 15x exposure
+        // difference produced almost entirely by gain. Matching shutter times keeps
+        // motion blur comparable across the burst, and differing motion blur is one
+        // of the three reasons Google name for bracketed frames being hard to align.
+        // Only when ISO is already at the sensor floor is the remaining EV taken
+        // from the shutter.
+        int isoFloor = getISOLOW();
+        int gainMatchedIso = (int) Math.round(source.iso / factor);
+        pair.iso = Math.max(isoFloor, Math.min(source.iso, gainMatchedIso));
         long sensorMinimum = getEXPLOW();
-        pair.exposure = Math.max(sensorMinimum,
-                Math.round(pair.exposure / factor));
-        // If shutter time reaches the sensor minimum, spend the remaining EV
-        // by lowering ISO. This makes the control effective on bright scenes
-        // instead of silently producing the same minimum-shutter frame.
-        int productMatchedIso = (int) Math.round(targetExposureProduct / pair.exposure);
-        pair.iso = Math.max(getISOLOW(), Math.min(source.iso, productMatchedIso));
+        long shutterMatched = Math.round(targetExposureProduct / Math.max(pair.iso, 1));
+        pair.exposure = Math.max(sensorMinimum, Math.min(source.exposure, shutterMatched));
         pair.curlayer = ExpoPair.exposureLayer.Low;
         pair.isHighlightFrame = true;
         pair.isLongFrame = false;
