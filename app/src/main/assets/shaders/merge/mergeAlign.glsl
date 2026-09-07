@@ -163,7 +163,12 @@ void main() {
     }
     // 1 px of disagreement is normal at a tile seam; beyond TILING_TOLERANCE the
     // field is untrustworthy and we fade back towards the unaligned frame.
-    float tilingTrust = 1.0 - smoothstep(1.0, TILING_TOLERANCE, alignSpread);
+    // smoothstep with edge0 >= edge1 is undefined in GLSL, so a tolerance of 0 used to
+    // give driver-dependent behaviour that zeroed the trust almost everywhere instead of
+    // disabling the guard. Treat anything at or below 1 px as "off".
+    float tilingTrust = (TILING_TOLERANCE <= 1.0)
+            ? 1.0
+            : 1.0 - smoothstep(1.0, TILING_TOLERANCE, alignSpread);
 
     for (int i = 0; i < 4; i++) {
         ivec2 xyT = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)),ivec2(0),alignmentSize-1);

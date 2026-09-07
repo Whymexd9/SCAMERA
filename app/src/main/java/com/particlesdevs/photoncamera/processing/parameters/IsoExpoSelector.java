@@ -149,9 +149,16 @@ public class IsoExpoSelector {
                     Math.max(0, Math.min(8, PreferenceKeys.getLongExposureEvValue())));
             double spread = factor * longFactor;
             if (spread > maxRatio) {
-                double clamped = Math.max(1.0, maxRatio / longFactor);
+                // Pull both ends in by the same proportion instead of making the short
+                // frame absorb the whole overshoot: with a long frame at +4 EV the short
+                // one was clamped all the way to 1.0 and stopped being a highlight donor
+                // at all. Splitting the correction keeps both frames useful.
+                double excess = Math.sqrt(spread / maxRatio);
+                double clamped = Math.max(1.0, factor / excess);
                 Log.i(TAG, "HDR ratio " + spread + " exceeds the ceiling " + maxRatio
-                        + ", short frame factor " + factor + " -> " + clamped);
+                        + ", short frame factor " + factor + " -> " + clamped
+                        + " (long frame factor " + longFactor + " -> "
+                        + Math.max(1.0, longFactor / excess) + ")");
                 factor = clamped;
             }
         }
@@ -216,6 +223,20 @@ public class IsoExpoSelector {
         ExpoPair pair = new ExpoPair(source);
         int requestedEv = Math.max(1, Math.min(8, PreferenceKeys.getLongExposureEvValue()));
         double factor = Math.scalb(1.0, requestedEv);
+        // Same ceiling as the short frame, applied to this end of the bracket.
+        float maxHdrRatio = PreferenceKeys.getMaxHdrRatio();
+        if (maxHdrRatio > 1.0f) {
+            double shortFactor = Math.scalb(1.0,
+                    Math.max(0, Math.min(8, PreferenceKeys.getShortExposureEvValue())));
+            double spread = factor * shortFactor;
+            if (spread > maxHdrRatio) {
+                double excess = Math.sqrt(spread / maxHdrRatio);
+                double clamped = Math.max(1.0, factor / excess);
+                Log.i(TAG, "Long frame factor " + factor + " -> " + clamped
+                        + " to fit the HDR ratio ceiling " + maxHdrRatio);
+                factor = clamped;
+            }
+        }
         double targetProduct = (double) source.exposure * source.iso * factor;
         // Cap the shutter the way GCam does with camera.shasta_zsl.max_exptime_ms
         // (66.666664 ms on this sensor, i.e. two readout periods): a long frame whose
