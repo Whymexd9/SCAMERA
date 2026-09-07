@@ -756,8 +756,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         }
 
-        @Override
-
         /**
          * Read a calibration file and store it as the active profile. Anything that does not
          * contain all four coefficient arrays is rejected rather than half-applied.
@@ -804,6 +802,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     : "Не удалось записать файл";
         }
 
+        @Override
         public boolean onPreferenceTreeClick(@NonNull Preference preference) {
             // Log which preference was clicked
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
