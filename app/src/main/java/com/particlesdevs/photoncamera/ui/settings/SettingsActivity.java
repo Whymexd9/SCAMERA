@@ -26,7 +26,9 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.preference.ListPreference;
 import androidx.preference.Preference;
+import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceScreen;
@@ -149,6 +151,35 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             setPreferencesFromResource(R.xml.preferences, rootKey);
+            seedMissingListValues(getPreferenceScreen());
+        }
+
+        /**
+         * ListPreference.SimpleSummaryProvider calls getEntry() while binding the row, and
+         * getEntry() throws NullPointerException when no value has been persisted yet.
+         * Defaults declared in XML are only written by PreferenceManager.setDefaultValues(),
+         * which is skipped for keys added after the first run, so a freshly introduced
+         * ListPreference binds with a null value and takes the whole settings screen down.
+         * Seed those entries from their first entryValue before the adapter ever sees them.
+         */
+        private void seedMissingListValues(PreferenceGroup group) {
+            if (group == null) {
+                return;
+            }
+            for (int i = 0; i < group.getPreferenceCount(); i++) {
+                Preference preference = group.getPreference(i);
+                if (preference instanceof PreferenceGroup) {
+                    seedMissingListValues((PreferenceGroup) preference);
+                } else if (preference instanceof ListPreference) {
+                    ListPreference list = (ListPreference) preference;
+                    CharSequence[] values = list.getEntryValues();
+                    if (list.getValue() == null && values != null && values.length > 0) {
+                        Log.w("SettingsActivity", "No stored value for " + list.getKey()
+                                + ", falling back to " + values[0]);
+                        list.setValueIndex(0);
+                    }
+                }
+            }
         }
 
         @Override
