@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
     android:title="@string/settings"
-    android:orderingFromXml="true"
+    android:orderingFromXml="false"
     android:key="prefscreen">
     <SwitchPreferenceCompat
+        android:order="10"
         android:key="scamera_full_debug"
         android:title="@string/full_debug_title"
         android:summary="@string/full_debug_summary"
@@ -11,25 +12,28 @@
         android:layout="@layout/preference_with_margin" />
 
     <PreferenceScreen
+        android:order="20"
         android:key="scamera_mosaic_sr_screen"
         android:title="@string/mosaic_sr_title"
         android:summary="@string/mosaic_sr_summary"
         android:layout="@layout/preference_with_margin">
         <SwitchPreferenceCompat android:key="scamera_mosaic_sr_enabled" android:title="@string/mosaic_sr_enable" android:defaultValue="false" />
         <SwitchPreferenceCompat android:key="scamera_mosaic_sr_jpeg" android:title="@string/mosaic_sr_jpeg" android:summary="@string/mosaic_sr_jpeg_summary" android:defaultValue="true" android:dependency="scamera_mosaic_sr_enabled" />
-        <ListPreference android:key="scamera_mosaic_sr_scale" android:title="@string/mosaic_sr_scale" android:entries="@array/mosaic_sr_scale_entries" android:entryValues="@array/mosaic_sr_scale_values" android:defaultValue="1.41421356" android:dependency="scamera_mosaic_sr_enabled" android:summary="%s" />
-        <ListPreference android:key="scamera_mosaic_sr_kernel" android:title="@string/mosaic_sr_kernel" android:entries="@array/mosaic_sr_kernel_entries" android:entryValues="@array/mosaic_sr_kernel_values" android:defaultValue="lanczos2" android:dependency="scamera_mosaic_sr_enabled" android:summary="%s" />
+        <ListPreference android:key="scamera_mosaic_sr_scale" android:title="@string/mosaic_sr_scale" android:entries="@array/mosaic_sr_scale_entries" android:entryValues="@array/mosaic_sr_scale_values" android:defaultValue="1.41421356" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="scamera_mosaic_sr_kernel" android:title="@string/mosaic_sr_kernel" android:entries="@array/mosaic_sr_kernel_entries" android:entryValues="@array/mosaic_sr_kernel_values" android:defaultValue="lanczos2" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
     </PreferenceScreen>
     <PreferenceScreen
+        android:order="30"
         android:key="scamera_quad_bayer_screen"
         android:title="@string/quad_bayer_title"
         android:summary="@string/quad_bayer_warning"
         android:layout="@layout/preference_with_margin">
         <SwitchPreferenceCompat android:key="scamera_quad_bayer_enabled" android:title="@string/quad_bayer_enable" android:defaultValue="false" />
-        <ListPreference android:key="scamera_quad_bayer_mode" android:title="@string/quad_bayer_mode" android:entries="@array/quad_bayer_mode_entries" android:entryValues="@array/quad_bayer_mode_values" android:defaultValue="auto" android:summary="%s" />
-        <ListPreference android:key="scamera_quad_dng_metadata" android:title="@string/quad_bayer_dng" android:entries="@array/quad_dng_metadata_entries" android:entryValues="@array/quad_dng_metadata_values" android:defaultValue="auto" android:summary="%s" />
+        <ListPreference android:key="scamera_quad_bayer_mode" android:title="@string/quad_bayer_mode" android:entries="@array/quad_bayer_mode_entries" android:entryValues="@array/quad_bayer_mode_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="scamera_quad_dng_metadata" android:title="@string/quad_bayer_dng" android:entries="@array/quad_dng_metadata_entries" android:entryValues="@array/quad_dng_metadata_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
     </PreferenceScreen>
     <PreferenceScreen
+        android:order="60"
         android:key="scamera_darktable_screen"
         android:title="@string/darktable_title"
         android:summary="@string/darktable_summary"
@@ -63,12 +67,14 @@
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_texture" android:title="@string/darktable_texture" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
     </PreferenceScreen>
     <Preference
+        android:order="90"
         android:icon="@drawable/ic_multi_lens"
         android:layout="@layout/preference_with_margin"
         android:title="@string/lens_discovery_title"
         android:key="lens_discovery"
         android:summary="@string/lens_discovery_summary"/>
     <PreferenceScreen
+        android:order="50"
         android:icon="@drawable/ic_gradient_black_24dp"
         android:title="@string/rawtherapee_group"
         android:key="rawtherapee_group_screen"
@@ -388,6 +394,7 @@
         </PreferenceScreen>
     </PreferenceScreen>
     <PreferenceScreen
+        android:order="40"
         android:icon="@drawable/ic_gradient_black_24dp"
         android:title="@string/aces_group"
         android:key="aces_group_screen"
@@ -529,6 +536,7 @@
         </PreferenceCategory>
     </PreferenceScreen>
     <PreferenceScreen
+        android:order="70"
         android:icon="@drawable/ic_tune_black_24dp"
         android:title="@string/capture_one_group"
         android:key="capture_one_group_screen"
@@ -657,6 +665,7 @@
         </PreferenceCategory>
     </PreferenceScreen>
     <PreferenceScreen
+        android:order="80"
         android:icon="@drawable/ic_grain_black_24dp"
         android:title="@string/sharp_settings"
         android:key="sharp_settings_screen"
@@ -923,6 +932,7 @@
         </PreferenceCategory>
     </PreferenceScreen>
     <PreferenceCategory
+        android:order="100"
         android:layout="@layout/preference_category_layout"
         android:title="@string/general"
         android:key="@string/pref_category_general_key">
@@ -1079,6 +1089,7 @@
             app:defaultValue="false"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="110"
         android:layout="@layout/preference_category_layout"
         android:title="@string/photo_settings"
         android:key="@string/pref_category_photo_key">
@@ -1092,6 +1103,7 @@
             app:minValue="1"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="120"
         android:layout="@layout/preference_category_layout"
         android:title="@string/video_settings"
         android:key="@string/pref_category_video_key">
@@ -1106,6 +1118,7 @@
             app:useSimpleSummaryProvider="true"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="130"
         android:layout="@layout/preference_category_layout"
         android:title="@string/raw_video_settings"
         android:key="@string/pref_category_rawvideo_key">
@@ -1132,6 +1145,7 @@
             android:defaultValue="true"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="140"
         android:layout="@layout/preference_category_layout"
         android:title="@string/jpg"
         android:key="@string/pref_category_jpg_key">
@@ -1176,6 +1190,7 @@
             android:defaultValue="@bool/pref_enhanced_processing_default"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="150"
         android:layout="@layout/preference_category_layout"
         android:title="@string/hdrx"
         android:key="@string/pref_category_hdrx_key">
@@ -1325,6 +1340,7 @@
             app:useSimpleSummaryProvider="true"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="160"
         android:layout="@layout/preference_category_layout"
         android:title="@string/theme"
         android:key="@string/pref_theme_category_key">
@@ -1355,6 +1371,7 @@
             android:defaultValue="@bool/pref_show_gradient_def_value"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="170"
         android:layout="@layout/preference_category_layout"
         android:title="@string/advanced"
         android:key="@string/pref_category_advanced_key">
@@ -1372,6 +1389,7 @@
             android:summary="@string/sensor_configurations_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="180"
         android:layout="@layout/preference_category_layout"
         android:title="@string/pref_category_device_key_title"
         android:key="@string/pref_category_device_key">
@@ -1384,6 +1402,7 @@
             android:summary="@string/fetch_configurations_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="190"
         android:layout="@layout/preference_category_layout"
         android:title="@string/backup_restore"
         android:key="@string/pref_category_backup_restore">
@@ -1404,6 +1423,7 @@
             android:key="@string/pref_reset_preferences_key"/>
     </PreferenceCategory>
     <PreferenceCategory
+        android:order="200"
         android:layout="@layout/preference_category_layout"
         android:title="@string/about"
         android:key="@string/pref_category_about_key">
