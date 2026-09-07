@@ -34,6 +34,23 @@ jobs:
         id: ver
         run: echo "code=$((30000 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch ncnn prebuilt (enables the real NcnnML, not the stub)
+        run: |
+          # CMakeLists falls back to a stub JNI library when
+          # app/src/main/cpp/ncnn/<abi>/lib/libncnn.a is missing, which silently
+          # disables FlowNet/KernelNet. The SDK is ~31 MB, so fetch it here
+          # instead of committing it.
+          curl -fsSL -o /tmp/ncnn.zip \
+            https://github.com/Tencent/ncnn/releases/download/${NCNN_VERSION}/ncnn-${NCNN_VERSION}-android-vulkan.zip
+          unzip -q /tmp/ncnn.zip -d /tmp/ncnn
+          mkdir -p app/src/main/cpp/ncnn
+          cp -r /tmp/ncnn/ncnn-${NCNN_VERSION}-android-vulkan/* app/src/main/cpp/ncnn/
+          test -f app/src/main/cpp/ncnn/arm64-v8a/lib/libncnn.a
+          echo "ncnn ${NCNN_VERSION} in place:"
+          ls app/src/main/cpp/ncnn/arm64-v8a/lib
+        env:
+          NCNN_VERSION: '20260526'
+
       - name: Build debug APK
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
