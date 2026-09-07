@@ -10,6 +10,15 @@ uniform highp sampler2D alignmentTexture;
 #ifndef ROBUSTNESS
 #define ROBUSTNESS 8.0
 #endif
+// Samples at or above this fraction of full scale are treated as clipped.
+#ifndef CLIP_LEVEL
+#define CLIP_LEVEL 0.99
+#endif
+// Disagreement between the four alignment tiles, in pixels, at which the local
+// alignment field is considered unusable.
+#ifndef TILING_TOLERANCE
+#define TILING_TOLERANCE 4.0
+#endif
 uniform highp sampler2D alterSampler;
 //layout(r16ui, binding = 0) uniform highp readonly uimage2D inTexture;
 layout(rgba16f, binding = 0) uniform highp readonly image2D avrTexture;
@@ -128,6 +137,29 @@ void main() {
     w[0] = windowxy4((TILE*xy)%TILE_AL + ivec2(TILE_AL));
     vec4 alignedSum = vec4(0.0);
     vec4 bayerNone = imageLoad(alterTexture, xy);
+
+    // Tiling guard. The four alignment tiles blended at this pixel should agree;
+    // when they disagree by more than a couple of pixels the alignment field is
+    // locally inconsistent, which is exactly the situation that shows up in the
+    // output as a rectangular patch lifted from the wrong place. Google run an
+    // explicit HasTilingArtifacts check and fall back when it fires; we cannot
+    // read the field back on the GPU cheaply, so we apply the same idea per
+    // pixel: the less the tiles agree, the less any of them is trusted.
+    vec2 alignAvg = vec2(0.0);
+    vec2 alignVecs[4];
+    for (int i = 0; i < 4; i++) {
+        ivec2 t = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)), ivec2(0), alignmentSize-1);
+        alignVecs[i] = vec4ToAlignment(texelFetch(alignmentTexture, t + shift, 0));
+        alignAvg += alignVecs[i] * 0.25;
+    }
+    float alignSpread = 0.0;
+    for (int i = 0; i < 4; i++) {
+        alignSpread = max(alignSpread, length(alignVecs[i] - alignAvg));
+    }
+    // 1 px of disagreement is normal at a tile seam; beyond TILING_TOLERANCE the
+    // field is untrustworthy and we fade back towards the unaligned frame.
+    float tilingTrust = 1.0 - smoothstep(1.0, TILING_TOLERANCE, alignSpread);
+
     for (int i = 0; i < 4; i++) {
         ivec2 xyT = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)),ivec2(0),alignmentSize-1);
         vec4 alignLoad = texelFetch(alignmentTexture, xyT + shift, 0);
@@ -159,6 +191,21 @@ void main() {
         vec4 d2 = d * d;
         vec4 n2 = ROBUSTNESS * sigma * sigma;
         vec4 trust = n2 / (d2 + n2 + 1e-9);
+
+        // Highlight mask. A clipped sample carries no information about the
+        // scene: its true value is somewhere above the white level, so any
+        // residual computed from it is meaningless and merging it drags the
+        // pixel towards the clip. Google build this as a separate
+        // GenerateHighlightClippingMask and mask their rejection map with it.
+        // Both sides matter: a clipped alternate sample must not be merged in,
+        // and where the reference itself is clipped the residual cannot decide
+        // anything either.
+        vec4 alterScaled = bayerAlter * vec4(exposure);
+        vec4 alterOk = step(alterScaled, vec4(CLIP_LEVEL));
+        vec4 baseOk  = step(bayerBase,   vec4(CLIP_LEVEL));
+        trust *= alterOk * baseOk;
+
+        trust *= vec4(tilingTrust);
         bayerAlter = mix(bayerNone, bayerAlter, trust);
         alignedSum += bayerAlter * w[i];
     }
