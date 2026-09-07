@@ -329,6 +329,13 @@ public class PyramidAlignment implements AutoCloseable {
             // Find optimal exposure using brute force histogram matching
             //float exposure = 1.0f/findOptimalExposure(histDataBase, histDataAlter);
             float exposure = 1.0f/frame.pair.layerMpy;
+            // Logged so the "Full debug" file shows how far each frame is from the
+            // reference exposure; the alignment significance gate is widened by
+            // this ratio (see align.glsl), and a large spread is the condition
+            // under which bracketed shots used to produce blocky tiles.
+            Log.d("PyramidAlignment", "frame " + f + ": layerMpy=" + frame.pair.layerMpy
+                    + " exposure=" + exposure
+                    + " gateScale=" + Math.max(1.0f, 1.0f / Math.max(exposure, 1e-4f)));
             //Log.d("PyramidAlignment", "Computed exposure: " + exposure + " reference exposure: " + 1.0f/frame.pair.layerMpy);
             
             // Use normalize script to fill alter texture with computed exposure

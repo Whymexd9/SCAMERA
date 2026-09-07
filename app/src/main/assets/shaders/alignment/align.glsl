@@ -238,7 +238,15 @@ highp vec3 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     {
         float n = float(OFFSETS * TILE * TILE);
         float expected = 1.13; // mean per-pixel cost when aligned
-        float thresh = significancy * sqrt(expected / n);
+        // The alter frame is brought to the base exposure by 1/exposure, which
+        // scales its photon noise by the same factor. noiseS/noiseO describe the
+        // base frame only, so on a bracket the cost is noisier than the model
+        // predicts and a threshold built from the base noise alone lets a random
+        // minimum through - the source of the blocky tiles on bracketed shots.
+        // Widen the gate by the exposure ratio so a darker frame has to clear a
+        // proportionally larger improvement.
+        float exposureNoiseScale = max(1.0, 1.0 / max(exposure, 1e-4));
+        float thresh = significancy * sqrt(expected / n) * exposureNoiseScale;
         float costPrev = sum[1][1];
         float improvement = (costPrev - minDiff) / n;
         if (improvement < thresh) {
