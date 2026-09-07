@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
-        <bitmap android:src="@mipmap/scamera_launcher" android:gravity="center" />
+        <!-- Must be a raster drawable: @mipmap/scamera_launcher resolves to the
+             adaptive-icon XML on API 26+, which <bitmap> cannot inflate. -->
+        <bitmap android:src="@drawable/scamera_splash_icon" android:gravity="center" />
     </item>
 </layer-list>
