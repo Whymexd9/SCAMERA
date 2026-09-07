@@ -52,15 +52,17 @@ android {
         }
     }
 
+    // CI supplies SCAMERA_VERSION_CODE = 30000 + commit count; local builds keep
+    // the auto-incremented value from version.properties.
+    def ciVersionCode = (System.getenv('SCAMERA_VERSION_CODE') ?: versionBuild.toString()).toInteger()
+
     defaultConfig {
         compileSdk 36
         ndkVersion "27.2.12479018"
         applicationId 'com.hdrplus.ultra'
         minSdkVersion 26
         targetSdkVersion 35
-        // CI supplies SCAMERA_VERSION_CODE = 30000 + commit count; local builds keep
-        // the auto-incremented value from version.properties.
-        versionCode (System.getenv('SCAMERA_VERSION_CODE') ?: versionBuild) as Integer
+        versionCode ciVersionCode
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             //noinspection ChromeOsAbiSupport
