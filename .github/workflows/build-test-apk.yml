@@ -34,6 +34,30 @@ jobs:
         id: ver
         run: echo "code=$((30000 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch vendored ncnn from upstream PhotonCamera
+        run: |
+          # CMakeLists falls back to a stub JNI library when
+          # app/src/main/cpp/ncnn/<abi>/lib/libncnn.a is missing, which silently
+          # disables FlowNet and KernelNet. The custom FlowNet layers need a
+          # batch-capable ncnn (Mat::n / Mat::nstep / support_batch) that
+          # upstream Tencent releases do not provide, so take the exact build
+          # eszdman vendors. ~175 MB, sparse-checked-out instead of committed.
+          git clone --depth 1 --branch dev --filter=blob:none --no-checkout \
+            https://github.com/eszdman/PhotonCamera.git /tmp/upstream
+          cd /tmp/upstream
+          git fetch --depth 1 origin "$UPSTREAM_SHA"
+          git sparse-checkout set --no-cone "app/src/main/cpp/ncnn"
+          git checkout -q "$UPSTREAM_SHA"
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p app/src/main/cpp
+          cp -r /tmp/upstream/app/src/main/cpp/ncnn app/src/main/cpp/
+          test -f app/src/main/cpp/ncnn/arm64-v8a/lib/libncnn.a
+          grep -q "int n;" app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/mat.h \
+            || { echo "vendored ncnn lacks batch support"; exit 1; }
+          ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
+        env:
+          UPSTREAM_SHA: '0a5ea3df054bb8933eeedd882236670247747afc'
+
       - name: Build debug APK
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
