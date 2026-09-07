@@ -55,6 +55,15 @@ public class PreferenceKeys {
      * 1.000000", with the whole bracket spread carried by "Desired TET factor".
      * Off by default so the two behaviours can be compared on one build.
      */
+    /**
+     * Mains frequency used to snap the TET model's shutter to a whole number of flicker
+     * periods, matching GCam's apply_antibanding. 120 covers 60 Hz mains (the burst dump
+     * reports scene_flicker 120); 100 covers 50 Hz. 0 disables the snap.
+     */
+    public static int getAntibandingHz() {
+        return Integer.parseInt(getAcesString("pref_antibanding_hz_key", "120"));
+    }
+
     public static boolean isTetModelEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", "pref_tet_model_enabled_key", false);

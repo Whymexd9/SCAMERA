@@ -89,6 +89,19 @@ public final class TetModel {
      */
     public static Split solve(double targetTet, int isoLow, int isoHigh,
                               long exposureLow, long exposureCap) {
+        return solve(targetTet, isoLow, isoHigh, exposureLow, exposureCap, 0L);
+    }
+
+    /**
+     * As above, but snapping the shutter to a whole number of flicker periods.
+     *
+     * @param flickerPeriodNs one period of the mains flicker in nanoseconds
+     *                        (8333333 for 120 Hz, 10000000 for 100 Hz), or 0 to
+     *                        disable snapping
+     */
+    public static Split solve(double targetTet, int isoLow, int isoHigh,
+                              long exposureLow, long exposureCap,
+                              long flickerPeriodNs) {
         double expMs;
         double gain;
 
@@ -124,10 +137,23 @@ public final class TetModel {
         }
 
         long exposureNs = Math.round(expMs * 1e6);
+
+        // Snap to a whole number of flicker periods. GCam's tuning carries
+        // apply_antibanding, and a burst dump from this sensor shows every
+        // AE-driven frame landing on a multiple of the 8.3333 ms period of 120 Hz
+        // mains: the curve asks for 14.013 ms at 6.668x, the frame is actually
+        // captured at 16.6667 ms, and gain drops to 5.606 so the TET is unchanged.
+        // A shutter shorter than one period cannot be snapped to anything and is
+        // left alone - which is exactly what the ultra-short frame in that dump
+        // does at 3.7037 ms.
+        if (flickerPeriodNs > 0 && exposureNs >= flickerPeriodNs) {
+            long periods = Math.max(1, Math.round((double) exposureNs / flickerPeriodNs));
+            exposureNs = periods * flickerPeriodNs;
+        }
         exposureNs = Math.max(exposureLow, Math.min(exposureCap, exposureNs));
 
-        // Whatever the shutter clamp took away is returned as gain, so the
-        // product stays on target instead of the frame silently coming out dark.
+        // Whatever the shutter snap or clamp moved is returned as gain, so the TET
+        // stays on target instead of the frame coming out over- or under-exposed.
         double remainingGain = targetTet / Math.max(exposureNs / 1e6, 1e-9);
         gain = Math.max(gain, remainingGain);
 

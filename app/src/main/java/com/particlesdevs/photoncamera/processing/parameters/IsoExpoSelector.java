@@ -190,18 +190,22 @@ public class IsoExpoSelector {
         int isoFloor = getISOLOW();
         long sensorMinimum = getEXPLOW();
         if (PreferenceKeys.isTetModelEnabled()) {
-            // Shutter comes from the TET curve applied to the *base* frame's TET and is
-            // then held fixed; the bracket offset is carried entirely by gain. A GCam
-            // dump shows exactly this: one shutter for the whole burst and a TET factor
-            // of 13.33 delivered by gain alone.
-            double baseTet = TetModel.toTet(source.exposure, source.iso, isoFloor);
-            TetModel.Split baseSplit = TetModel.solve(baseTet, isoFloor, getISOHIGH(),
-                    sensorMinimum, Math.min(getEXPHIGH(), shutterCapNs(captureController)));
-            pair.exposure = baseSplit.exposureNs;
-            long tetIso = Math.round(targetExposureProduct / Math.max(pair.exposure, 1));
-            pair.iso = (int) Math.max(isoFloor, Math.min(getISOHIGH(), tetIso));
-            Log.i(TAG, "TET model (short): base TET " + baseTet + " -> shutter "
-                    + baseSplit.exposureNs + " ns, ISO " + pair.iso);
+            // The curve is applied to THIS frame's TET, not the base frame's. An earlier
+            // version pinned one shutter for the whole burst, on the strength of a dump
+            // whose "Desired exposure time factor" read 1.000000. A second dump from this
+            // sensor refutes that: its ultra-short frame runs 3.70 ms at gain 1 while the
+            // bracketed frames run 16.67 ms at gain 5.60, a 4.5x spread in shutter. The
+            // factor of 1 in the first dump was a coincidence of both TETs snapping to the
+            // same number of flicker periods, not a policy.
+            double tet = TetModel.toTet(Math.round(targetExposureProduct
+                    / Math.max(source.iso, 1)), source.iso, isoFloor);
+            TetModel.Split split = TetModel.solve(tet, isoFloor, getISOHIGH(),
+                    sensorMinimum, Math.min(getEXPHIGH(), shutterCapNs(captureController)),
+                    flickerPeriodNs());
+            pair.exposure = split.exposureNs;
+            pair.iso = split.iso;
+            Log.i(TAG, "TET model (short): TET " + tet + " -> "
+                    + split.exposureNs + " ns, ISO " + split.iso);
         } else {
             // Spend the EV on gain first and keep the shutter as close to the rest of
             // the burst as possible. Google's own bracketed bursts do exactly this:
@@ -286,18 +290,17 @@ public class IsoExpoSelector {
         // from gain instead.
         long shutterCap = shutterCapNs(captureController);
         if (PreferenceKeys.isTetModelEnabled()) {
-            // Same fixed shutter as the short frame, for the same reason: GCam's burst
-            // runs one shutter throughout and spreads the bracket with gain. This is the
-            // end of the bracket where the current heuristic disagrees with the dump -
-            // it stretches the shutter first and only gives the remainder to gain.
-            double baseTet = TetModel.toTet(source.exposure, source.iso, getISOLOW());
-            TetModel.Split baseSplit = TetModel.solve(baseTet, getISOLOW(), getISOHIGH(),
-                    getEXPLOW(), Math.min(getEXPHIGH(), shutterCap));
-            pair.exposure = baseSplit.exposureNs;
-            long tetIso = Math.round(targetProduct / Math.max(pair.exposure, 1));
-            pair.iso = (int) Math.max(getISOLOW(), Math.min(getISOHIGH(), tetIso));
-            Log.i(TAG, "TET model (long): base TET " + baseTet + " -> shutter "
-                    + baseSplit.exposureNs + " ns, ISO " + pair.iso);
+            // Per-frame, as for the short end. This is where the curve differs most from
+            // the existing heuristic, which stretches the shutter first and only gives
+            // the remainder to gain.
+            double tet = TetModel.toTet(Math.round(targetProduct
+                    / Math.max(source.iso, 1)), source.iso, getISOLOW());
+            TetModel.Split split = TetModel.solve(tet, getISOLOW(), getISOHIGH(),
+                    getEXPLOW(), Math.min(getEXPHIGH(), shutterCap), flickerPeriodNs());
+            pair.exposure = split.exposureNs;
+            pair.iso = split.iso;
+            Log.i(TAG, "TET model (long): TET " + tet + " -> "
+                    + split.exposureNs + " ns, ISO " + split.iso);
         } else {
             pair.exposure = Math.min(Math.min(getEXPHIGH(), shutterCap),
                     Math.round(pair.exposure * factor));
@@ -328,6 +331,16 @@ public class IsoExpoSelector {
      * the sensor's own ISO quantisation, so nothing is lost by not taking it.
      */
     private static final double ULTRA_SHORT_MIN_FACTOR = 1.05;
+
+    /**
+     * One period of the mains flicker, in nanoseconds, or 0 when antibanding is off.
+     * The burst dump reports scene_flicker 120, i.e. an 8.3333 ms period, and every
+     * AE-driven frame in it sits on a multiple of that.
+     */
+    private static long flickerPeriodNs() {
+        int hz = PreferenceKeys.getAntibandingHz();
+        return hz > 0 ? Math.round(1e9 / hz) : 0L;
+    }
 
     private static double mpy1 = 1.0;
     public static ExpoPair GenerateExpoPair(int step, CaptureController captureController) {

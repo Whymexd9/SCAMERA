@@ -249,6 +249,12 @@
                     android:summary="@string/max_hdr_ratio_summary"
                     android:defaultValue="9.8"
                     app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:key="pref_antibanding_hz_key"
+                    android:title="@string/antibanding_hz"
+                    android:summary="@string/antibanding_hz_summary"
+                    android:defaultValue="120"
+                    app:useSimpleSummaryProvider="true" />
                 <SwitchPreferenceCompat
                     android:key="pref_tet_model_enabled_key"
                     android:title="@string/tet_model_enabled"
