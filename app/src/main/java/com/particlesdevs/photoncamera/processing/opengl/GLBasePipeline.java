@@ -56,8 +56,8 @@ public class GLBasePipeline implements AutoCloseable {
             }
             properties.load(new FileInputStream(init));
         } catch (Exception e) {
-            Log.e("PostPipeline","Error at loading properties");
-            e.printStackTrace();
+            // Optional tuning file; absence is normal, not an error.
+            Log.d("PostPipeline", "No tuning properties, using built-in defaults (" + e + ")");
         }
         mProp = properties;
     }

@@ -61,7 +61,11 @@ public class GLOneScript implements AutoCloseable {
                 }
                 properties.load(new FileInputStream(init));
             } catch (Exception e) {
-                Log.e("GLOneScript","Error at loading properties:" + Log.getStackTraceString(e));
+                // The tuning .ini is optional: when it is absent or unreadable the
+                // script simply runs on its built-in defaults. Logging this as an
+                // error made every normal capture look like a failure.
+                Log.d("GLOneScript", "No tuning properties for " + name
+                        + ", using built-in defaults (" + e + ")");
             }
             mProp = properties;
         }
