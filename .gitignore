@@ -92,3 +92,7 @@ lint/tmp/
 # lint/reports/
 /app/google-services.json
 .idea/.name
+
+# SCAMERA: vendored prebuilts that MUST be tracked (CI has no other source for them)
+!app/libs/*.aar
+!app/src/main/cpp/deps/
