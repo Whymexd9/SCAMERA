@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="quad_bayer_title">Quad Bayer</string>
+    <string name="quad_bayer_enable">Enable Quad Bayer handling</string>
+    <string name="quad_bayer_mode">Processing mode</string>
+    <string name="quad_bayer_dng">DNG CFA metadata</string>
+    <string name="quad_bayer_warning">Direct Quad is only for an un-remosaiced 4x4 QBCFA RAW. A wrong mode can produce a grid or false colour.</string>
+    <string name="mosaic_sr_title">RAW SR Mosaic DNG</string>
+    <string name="mosaic_sr_summary">Experimental synthetic Bayer DNG for later AMaZE/RCD demosaicing. It is not untouched sensor RAW.</string>
+    <string name="mosaic_sr_enable">Save RAW SR Mosaic DNG</string>
+    <string name="mosaic_sr_jpeg">Use RAW SR Mosaic for JPEG</string>
+    <string name="mosaic_sr_jpeg_summary">Demosaic the reconstructed high-resolution CFA and save the result as JPEG too.</string>
+    <string name="mosaic_sr_scale">Output resolution scale</string>
+    <string name="mosaic_sr_kernel">CFA reconstruction kernel</string>
+    <string-array name="quad_bayer_mode_entries"><item>Auto: HAL remosaic, direct Quad fallback</item><item>Sensor remosaic (normal Bayer)</item><item>Direct Quad CFA (GPU demosaic)</item></string-array>
+    <string-array name="quad_bayer_mode_values"><item>auto</item><item>sensor_remosaic</item><item>direct_quad</item></string-array>
+    <string-array name="quad_dng_metadata_entries"><item>Auto</item><item>QBCFA 4x4</item><item>Compatible Bayer 2x2</item></string-array>
+    <string-array name="quad_dng_metadata_values"><item>auto</item><item>qbcfa_4x4</item><item>bayer_2x2</item></string-array>
+    <string-array name="mosaic_sr_scale_entries"><item>1.225× — approximately 18 MP</item><item>1.414× — approximately 24 MP</item><item>2.000× — approximately 48 MP</item></string-array>
+    <string-array name="mosaic_sr_scale_values"><item>1.22474487</item><item>1.41421356</item><item>2.0</item></string-array>
+    <string-array name="mosaic_sr_kernel_entries"><item>Bilinear — fastest</item><item>Catmull-Rom — balanced</item><item>Lanczos2 — maximum detail</item></string-array>
+    <string-array name="mosaic_sr_kernel_values"><item>bilinear</item><item>catmull_rom</item><item>lanczos2</item></string-array>
+    <string name="darktable_title">darktable</string>
+    <string name="darktable_summary">Scene-referred GPU tools grouped in one tab</string>
+    <string name="darktable_enable">Enable darktable processing</string>
+    <string name="darktable_exposure">Exposure (EV ×10)</string>
+    <string name="darktable_filmic_contrast">Filmic contrast</string>
+    <string name="darktable_shadows">Shadows</string>
+    <string name="darktable_highlights">Highlights</string>
+    <string name="darktable_local_contrast">Local contrast</string>
+    <string name="darktable_colorfulness">Colorfulness</string>
+    <string name="darktable_highlight_reconstruction">Highlight reconstruction</string>
+    <string name="darktable_diffuse_sharpen">Diffuse or Sharpen</string><string name="darktable_profiled_denoise">Denoise Profiled</string><string name="darktable_tone_shadows">Tone Equalizer: shadows</string><string name="darktable_tone_midtones">Tone Equalizer: midtones</string><string name="darktable_tone_highlights">Tone Equalizer: highlights</string><string name="darktable_balance_shadows">Color Balance RGB: shadows</string><string name="darktable_balance_midtones">Color Balance RGB: midtones</string><string name="darktable_balance_highlights">Color Balance RGB: highlights</string><string name="darktable_color_reconstruction">Color Reconstruction</string><string name="darktable_calibration_temperature">Color Calibration: temperature</string><string name="darktable_calibration_tint">Color Calibration: tint</string><string name="darktable_color_red">Color Equalizer: red</string><string name="darktable_color_green">Color Equalizer: green</string><string name="darktable_color_blue">Color Equalizer: blue</string><string name="darktable_wide_ca">Wide chromatic aberration</string><string name="darktable_vignette">Lens vignette correction</string><string name="darktable_haze">Haze Removal</string><string name="darktable_texture">Texture Equalizer</string>
+</resources>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="4dp">
+    <LinearLayout
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <TextView
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:id="@+id/lens_id"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ID: 0"/>
+        <TextView
+            android:id="@+id/lens_details"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Details: ..."/>
+        <TextView
+            android:textColor="@android:color/darker_gray"
+            android:id="@+id/physical_ids"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Physical IDs: ..."/>
+        <EditText
+            android:id="@+id/lens_custom_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/lens_custom_label"
+            android:maxLines="1"
+            android:inputType="text"/>
+        <EditText
+            android:id="@+id/lens_custom_order"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/lens_custom_order"
+            android:maxLines="1"
+            android:inputType="number"/>
+        <Button
+            android:layout_gravity="end"
+            android:id="@+id/btn_save_lens_display"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/lens_custom_save"
+            style="@style/Widget.MaterialComponents.Button.TextButton"/>
+        <Button
+            android:layout_gravity="end"
+            android:id="@+id/btn_enable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/lens_discovery_add_to_switcher"
+            style="@style/Widget.MaterialComponents.Button.TextButton"/>
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

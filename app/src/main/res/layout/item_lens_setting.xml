@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:background="?attr/selectableItemBackground"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="68dp"
+    android:paddingStart="20dp"
+    android:paddingEnd="16dp">
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1">
+        <TextView
+            android:textSize="16sp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:id="@+id/lens_setting_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+        <TextView
+            android:textSize="13sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:id="@+id/lens_setting_summary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"/>
+    </LinearLayout>
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/lens_setting_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"/>
+</LinearLayout>
