@@ -116,8 +116,16 @@ public final class FlowNetNcnnProcessor {
             nativeHandle = 0;
         }
         if (nativeHandle == 0) {
+            String nativeError;
+            try {
+                nativeError = nativeLastError();
+            } catch (Throwable t) {
+                nativeError = "<unavailable>";
+            }
             Log.w(TAG, "FlowNetNcnn: model unavailable: " + MODEL_PARAM
-                    + " (see NcnnML logcat for the native load error)");
+                    + " backend=" + requestedBackend
+                    + " reason: " + (nativeError == null || nativeError.isEmpty()
+                            ? "<native reported none>" : nativeError));
             ready = false;
             initLatch.countDown();
             return;
@@ -228,6 +236,9 @@ public final class FlowNetNcnnProcessor {
 
     private static native long nativeCreate(AssetManager assetManager, String paramPath,
                                              int requestedBackend);
+
+    /** Reason for the last native failure; empty when nothing failed. */
+    private static native String nativeLastError();
     private static native boolean nativeRun(long handle, FloatBuffer baseRgba,
                                             FloatBuffer alterRgba, int width, int height,
                                             FloatBuffer flowOut);

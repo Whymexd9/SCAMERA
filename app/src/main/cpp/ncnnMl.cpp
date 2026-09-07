@@ -46,9 +46,36 @@
 #include <omp.h>
 #endif
 
+#include <mutex>
+#include <cstdarg>
+#include <cstdio>
 #define LOG_TAG "NcnnML"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+// Last native failure reason, readable from Java. LOGE only reaches logcat,
+// which the user cannot capture on a retail device; the "Full debug" log needs
+// the actual cause of a model/backend failure, not just "model unavailable".
+static std::mutex g_lastErrorMutex;
+static std::string g_lastError;
+
+static void setLastError(const char* fmt, ...) {
+    char buf[512];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "%s", buf);
+    std::lock_guard<std::mutex> lock(g_lastErrorMutex);
+    g_lastError = buf;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_particlesdevs_photoncamera_processing_ml_FlowNetNcnnProcessor_nativeLastError(
+    JNIEnv* env, jclass) {
+    std::lock_guard<std::mutex> lock(g_lastErrorMutex);
+    return env->NewStringUTF(g_lastError.c_str());
+}
 
 // Pin the OpenMP runtime to a fixed number of threads. No CPU-count / core
 // topology probing here — the caller decides the thread count.
@@ -107,12 +134,12 @@ Java_com_particlesdevs_photoncamera_processing_ml_FlowNetNcnnProcessor_nativeCre
 
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
     if (mgr == nullptr) {
-        LOGE("AAssetManager_fromJava failed");
+        setLastError("AAssetManager_fromJava failed");
         return 0;
     }
     const char* path = env->GetStringUTFChars(paramPath, nullptr);
     if (path == nullptr) {
-        LOGE("paramPath null");
+        setLastError("paramPath null");
         return 0;
     }
     std::string paramStr = path;
@@ -120,7 +147,7 @@ Java_com_particlesdevs_photoncamera_processing_ml_FlowNetNcnnProcessor_nativeCre
 
     auto* ctx = new (std::nothrow) FlowNetCtx();
     if (ctx == nullptr) {
-        LOGE("OOM allocating FlowNetCtx");
+        setLastError("OOM allocating FlowNetCtx");
         return 0;
     }
 
@@ -168,12 +195,14 @@ Java_com_particlesdevs_photoncamera_processing_ml_FlowNetNcnnProcessor_nativeCre
     std::string binPath = paramToBinPath(paramStr);
 
     if (ctx->net.load_param(mgr, paramStr.c_str()) != 0) {
-        LOGE("flownet load_param(%s) failed", paramStr.c_str());
+        setLastError("flownet load_param(%s) failed (vulkan=%d)", paramStr.c_str(),
+                     (int)ctx->net.opt.use_vulkan_compute);
         delete ctx;
         return 0;
     }
     if (ctx->net.load_model(mgr, binPath.c_str()) != 0) {
-        LOGE("flownet load_model(%s) failed", binPath.c_str());
+        setLastError("flownet load_model(%s) failed (vulkan=%d)", binPath.c_str(),
+                     (int)ctx->net.opt.use_vulkan_compute);
         delete ctx;
         return 0;
     }
