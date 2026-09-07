@@ -78,6 +78,7 @@ jobs:
           # support (Mat::n / Mat::nstep / Layer::support_batch) that the custom
           # FlowNet layers require; stock Tencent ncnn does not compile against
           # them. ~160 MB, so it is fetched and cached rather than committed.
+          rm -rf /tmp/upstream
           git clone --filter=blob:none --no-checkout --depth 1 \
             https://github.com/eszdman/PhotonCamera.git /tmp/upstream
           cd /tmp/upstream
