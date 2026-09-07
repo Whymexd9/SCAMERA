@@ -801,4 +801,8 @@
     <string name="merge_clip_level_summary">Доля полной шкалы, выше которой отсчёт считается клипованным и не подмешивается (0.99)</string>
     <string name="merge_tiling_tolerance">Допуск рассогласования тайлов</string>
     <string name="merge_tiling_tolerance_summary">Расхождение соседних тайлов выравнивания в пикселях, при котором поле считается негодным (4.0)</string>
+    <string name="merge_floor_sigmas">Порог шумового дна</string>
+    <string name="merge_floor_sigmas_summary">Отсчёты короткого кадра ниже стольких сигм шума не подмешиваются; 0 — без проверки (2.0)</string>
+    <string name="merge_max_exposure_ratio">Предел разброса экспозиции</string>
+    <string name="merge_max_exposure_ratio_summary">Кадры с отличием от опорного больше этого не склеиваются; 0 — без предела (64)</string>
 </resources>

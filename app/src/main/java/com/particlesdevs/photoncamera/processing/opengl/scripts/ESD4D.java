@@ -919,6 +919,18 @@ public class ESD4D extends GLOneScript {
             }
             ImageFrame frame = images.get(ind);
             float exposure = 1.f/frame.pair.layerMpy;
+            // Per-frame fallback. Google gate the merge with
+            // HasHighClippingRatioOnUltrashortFrame and ShouldFallback: past a certain
+            // exposure ratio a frame carries neither usable shadows (below the noise
+            // floor) nor usable highlights (clipped), and merging it does more harm
+            // than dropping it. Their own bursts stay near 33x; ours has been reaching
+            // 256x, which is where the burst fell apart.
+            float maxRatio = PreferenceKeys.getMergeMaxExposureRatio();
+            if (maxRatio > 0.0f && frame.pair.layerMpy > maxRatio) {
+                Log.w("ESD4D", "Skipping frame " + ind + ": exposure ratio "
+                        + frame.pair.layerMpy + " exceeds the limit " + maxRatio);
+                continue;
+            }
             Point shift = PyramidAlignment.alignmentShift(parameters, ind);
             //int f = 1;
             Log.d("ESD4D", "load:"+frame.pair.curlayer.name() + " " + frame.pair.layerMpy);
@@ -956,8 +968,10 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("ROBUSTNESS", robustness);
             glProg.setDefine("CLIP_LEVEL", clipLevel);
             glProg.setDefine("TILING_TOLERANCE", tilingTolerance);
+            float floorSigmas = PreferenceKeys.getMergeFloorSigmas();
+            glProg.setDefine("FLOOR_SIGMAS", floorSigmas);
             Log.d("ESD4D", "Merge robustness=" + robustness + " clipLevel=" + clipLevel
-                    + " tilingTolerance=" + tilingTolerance);
+                    + " tilingTolerance=" + tilingTolerance + " floorSigmas=" + floorSigmas);
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);

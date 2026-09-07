@@ -19,6 +19,11 @@ uniform highp sampler2D alignmentTexture;
 #ifndef TILING_TOLERANCE
 #define TILING_TOLERANCE 4.0
 #endif
+// A sample of the alternate frame below this many noise sigmas carries no usable
+// signal and is not merged. 0 disables the check.
+#ifndef FLOOR_SIGMAS
+#define FLOOR_SIGMAS 2.0
+#endif
 uniform highp sampler2D alterSampler;
 //layout(r16ui, binding = 0) uniform highp readonly uimage2D inTexture;
 layout(rgba16f, binding = 0) uniform highp readonly image2D avrTexture;
@@ -204,6 +209,21 @@ void main() {
         vec4 alterOk = step(alterScaled, vec4(CLIP_LEVEL));
         vec4 baseOk  = step(bayerBase,   vec4(CLIP_LEVEL));
         trust *= alterOk * baseOk;
+
+        // Invalid-pixel mask, the mirror image of the highlight mask. In a much
+        // shorter frame the darker parts of the scene fall below the sensor's
+        // noise and quantisation floor: the sample is not a measurement of the
+        // scene at all, and its difference from the reference is not explained
+        // by the noise model either, so merging it corrupts the pixel. Google
+        // run this as DetectInvalidPixelsfromUltraShortFrame; without it a burst
+        // whose only bracket member is the ultra-short frame falls apart.
+        //
+        // Validity is judged before exposure scaling, on the raw level of the
+        // alternate frame, and faded in over one noise sigma so the mask itself
+        // does not become a hard edge.
+        vec4 floorLevel = vec4(FLOOR_SIGMAS) * noise;
+        vec4 alterValid = smoothstep(vec4(0.0), max(floorLevel, vec4(1e-5)), bayerAlter);
+        trust *= alterValid;
 
         trust *= vec4(tilingTrust);
         bayerAlter = mix(bayerNone, bayerAlter, trust);

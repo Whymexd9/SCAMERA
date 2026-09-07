@@ -61,6 +61,23 @@ public class PreferenceKeys {
         return Float.parseFloat(getAcesString("pref_merge_robustness_key", "8.0"));
     }
 
+    /**
+     * A sample of the alternate frame below this many noise sigmas carries no usable signal
+     * (it is under the sensor's noise and quantisation floor) and is not merged. 0 disables
+     * the check. This is the counterpart of the highlight mask for very short frames.
+     */
+    public static float getMergeFloorSigmas() {
+        return Float.parseFloat(getAcesString("pref_merge_floor_sigmas_key", "2.0"));
+    }
+
+    /**
+     * Frames whose exposure ratio to the reference exceeds this are dropped from the merge
+     * entirely; 0 disables the limit. Google's own bursts stay around 33x.
+     */
+    public static float getMergeMaxExposureRatio() {
+        return Float.parseFloat(getAcesString("pref_merge_max_exposure_ratio_key", "64.0"));
+    }
+
     /** Samples at or above this fraction of full scale are treated as clipped and not merged. */
     public static float getMergeClipLevel() {
         return Float.parseFloat(getAcesString("pref_merge_clip_level_key", "0.99"));
