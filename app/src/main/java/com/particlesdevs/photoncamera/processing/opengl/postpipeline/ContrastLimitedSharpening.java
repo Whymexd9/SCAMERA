@@ -23,7 +23,7 @@ public class ContrastLimitedSharpening extends Node {
     @Override
     public void Run() {
         sharpSize = getTuning("SharpSize", sharpSize);
-        glProg.useAssetProgram("lsharpening");
+        glProg.useAssetProgram("sharpening/lsharpening");
         float sharpnessLevel = (float) Math.sqrt((CaptureController.mCaptureResult.get(CaptureResult.SENSOR_SENSITIVITY)) * IsoExpoSelector.getMPY() - 50.) / 14.2f;
         sharpnessLevel = Math.max(0.5f, sharpnessLevel);
         sharpnessLevel = Math.min(1.5f, sharpnessLevel);

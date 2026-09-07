@@ -34,11 +34,14 @@ public class AssetLoader {
         return context.getAssets().open(name, AssetManager.ACCESS_BUFFER);
     }
     public String getString(String name) {
-        InputStream initialStream = null;
+        InputStream initialStream;
         try {
             initialStream = context.getAssets().open(name, AssetManager.ACCESS_BUFFER);
         } catch (IOException e) {
-            e.printStackTrace();
+            // Swallowing this left initialStream null and the NullPointerException
+            // surfaced two frames later inside InputStreamReader, which hid the real
+            // problem (a wrong asset path) behind an unrelated stack trace.
+            throw new IllegalArgumentException("Asset not found: " + name, e);
         }
         BufferedReader br = new BufferedReader(new InputStreamReader(initialStream, StandardCharsets.UTF_8 ));
         String str = null;

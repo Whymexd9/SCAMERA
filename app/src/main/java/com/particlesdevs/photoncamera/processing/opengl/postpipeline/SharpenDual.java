@@ -48,7 +48,7 @@ public class SharpenDual extends Node {
         glProg.setDefine("SHARPMAX",sharpMax);
         glProg.setDefine("NOISES",basePipeline.noiseS);
         glProg.setDefine("NOISEO",basePipeline.noiseO);
-        glProg.useAssetProgram("lsharpening");
+        glProg.useAssetProgram("sharpening/lsharpening");
         Log.d("PostNode:" + Name, "sharpnessLevel:" + sharpnessLevel + " iso:" + CaptureController.mCaptureResult.get(CaptureResult.SENSOR_SENSITIVITY));
         glProg.setVar("size", sharpSize);
         glProg.setVar("strength", PreferenceKeys.getSharpnessValue());
