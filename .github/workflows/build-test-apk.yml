@@ -58,26 +58,6 @@ jobs:
         env:
           UPSTREAM_SHA: '0a5ea3df054bb8933eeedd882236670247747afc'
 
-      - name: Fetch forked ncnn from upstream PhotonCamera
-        run: |
-          # CMakeLists silently falls back to a stub JNI library when
-          # app/src/main/cpp/ncnn/<abi>/lib/libncnn.a is missing, which disables
-          # FlowNet/KernelNet entirely. Upstream ncnn does NOT work here: the
-          # custom FlowNet layers need the batch-aware fork (Mat::n, Mat::nstep,
-          # Layer::support_batch), which eszdman/PhotonCamera ships in-tree.
-          # ~185 MB of .a files, so sparse-checkout them instead of vendoring.
-          git clone --depth 1 --filter=blob:none --sparse \
-            --branch dev https://github.com/eszdman/PhotonCamera.git /tmp/upstream-pc
-          cd /tmp/upstream-pc
-          git sparse-checkout set app/src/main/cpp/ncnn
-          cd "$GITHUB_WORKSPACE"
-          mkdir -p app/src/main/cpp/ncnn
-          cp -r /tmp/upstream-pc/app/src/main/cpp/ncnn/. app/src/main/cpp/ncnn/
-          test -f app/src/main/cpp/ncnn/arm64-v8a/lib/libncnn.a
-          grep -q 'size_t nstep' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/mat.h \
-            || { echo "ncnn headers lack batch support; FlowNet layers will not compile"; exit 1; }
-          du -sh app/src/main/cpp/ncnn
-
       - name: Build debug APK
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}

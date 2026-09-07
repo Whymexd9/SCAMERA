@@ -162,7 +162,11 @@ if(EXISTS "${NCNN_LIB_DIR}/libncnn.a")
         log
     )
 
+    # Java does System.loadLibrary("ncnnMl"), so the CMake target must emit
+    # libncnnMl.so. Without this it produced libncnnMlSource.so and the app
+    # silently fell back to the stale prebuilt in jniLibs (now removed).
     set_target_properties(ncnnMlSource PROPERTIES
+        OUTPUT_NAME ncnnMl
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
         CXX_EXTENSIONS OFF
@@ -194,6 +198,7 @@ else()
     add_library(ncnnMlSource SHARED
         "${CMAKE_CURRENT_BINARY_DIR}/ncnnMl_stub.cpp"
     )
+    set_target_properties(ncnnMlSource PROPERTIES OUTPUT_NAME ncnnMl)
     target_link_libraries(ncnnMlSource PRIVATE
         log
     )
