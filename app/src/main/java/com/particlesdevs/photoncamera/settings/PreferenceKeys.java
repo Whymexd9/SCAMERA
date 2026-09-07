@@ -53,6 +53,27 @@ public class PreferenceKeys {
                 "default_scope", "pref_noise_disable_digital_gain_key", false);
     }
 
+    /**
+     * Tuning factor on the noise variance in the merge shrinkage operator. Larger accepts
+     * more of the aligned frame (more denoising, less robustness). HDR+ fixes this to 8.
+     */
+    public static float getMergeRobustness() {
+        return Float.parseFloat(getAcesString("pref_merge_robustness_key", "8.0"));
+    }
+
+    /** Samples at or above this fraction of full scale are treated as clipped and not merged. */
+    public static float getMergeClipLevel() {
+        return Float.parseFloat(getAcesString("pref_merge_clip_level_key", "0.99"));
+    }
+
+    /**
+     * Disagreement between the four alignment tiles blended at a pixel, in pixels, at which
+     * the local alignment field is considered unusable and the unaligned frame is used.
+     */
+    public static float getMergeTilingTolerance() {
+        return Float.parseFloat(getAcesString("pref_merge_tiling_tolerance_key", "4.0"));
+    }
+
     /** Noise ISO curve: off, soft, medium or strong compression of the model's ISO response. */
     public static String getNoiseIsoCurve() {
         return getAcesString("pref_noise_iso_curve_key", "off");

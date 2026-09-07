@@ -948,6 +948,16 @@ public class ESD4D extends GLOneScript {
             correctHotPixelsInAlter(hotPixelBuffer, hotPixelCount);
             //alignmentTex.loadData(alignment.position((ind-1)*(aSize.x*aSize.y*4*2)));
             glProg.setDefine("TILE_AL", parameters.tile);
+            // Merge robustness tuning. These are compile-time defines in the shader,
+            // so they have to be set before useAssetProgram compiles it.
+            float robustness = PreferenceKeys.getMergeRobustness();
+            float clipLevel = PreferenceKeys.getMergeClipLevel();
+            float tilingTolerance = PreferenceKeys.getMergeTilingTolerance();
+            glProg.setDefine("ROBUSTNESS", robustness);
+            glProg.setDefine("CLIP_LEVEL", clipLevel);
+            glProg.setDefine("TILING_TOLERANCE", tilingTolerance);
+            Log.d("ESD4D", "Merge robustness=" + robustness + " clipLevel=" + clipLevel
+                    + " tilingTolerance=" + tilingTolerance);
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);

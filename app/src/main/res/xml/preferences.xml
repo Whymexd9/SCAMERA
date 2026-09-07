@@ -230,6 +230,28 @@
             </PreferenceCategory>
             <PreferenceCategory
                 android:layout="@layout/preference_category_layout"
+                android:title="@string/merge_robustness_category">
+                <EditTextPreference
+                    android:key="pref_merge_robustness_key"
+                    android:title="@string/merge_robustness"
+                    android:summary="@string/merge_robustness_summary"
+                    android:defaultValue="8.0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:key="pref_merge_clip_level_key"
+                    android:title="@string/merge_clip_level"
+                    android:summary="@string/merge_clip_level_summary"
+                    android:defaultValue="0.99"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:key="pref_merge_tiling_tolerance_key"
+                    android:title="@string/merge_tiling_tolerance"
+                    android:summary="@string/merge_tiling_tolerance_summary"
+                    android:defaultValue="4.0"
+                    app:useSimpleSummaryProvider="true" />
+            </PreferenceCategory>
+            <PreferenceCategory
+                android:layout="@layout/preference_category_layout"
                 android:title="@string/merge_algorithm">
                 <ListPreference
                     android:entries="@array/merge_algorithm_entries"

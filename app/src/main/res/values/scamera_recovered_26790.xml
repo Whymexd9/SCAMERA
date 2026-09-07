@@ -794,4 +794,11 @@
     </string-array>
     <string name="noise_iso_curve">Кривая Noise ISO</string>
     <string name="noise_iso_curve_summary">Сжатие роста модели шума на высоких ISO</string>
+    <string name="merge_robustness_category">Устойчивость склейки</string>
+    <string name="merge_robustness">Робастность склейки</string>
+    <string name="merge_robustness_summary">Допуск по шумовой модели; больше — сильнее шумодав, меньше — меньше призраков (HDR+ = 8)</string>
+    <string name="merge_clip_level">Порог выбитых светов</string>
+    <string name="merge_clip_level_summary">Доля полной шкалы, выше которой отсчёт считается клипованным и не подмешивается (0.99)</string>
+    <string name="merge_tiling_tolerance">Допуск рассогласования тайлов</string>
+    <string name="merge_tiling_tolerance_summary">Расхождение соседних тайлов выравнивания в пикселях, при котором поле считается негодным (4.0)</string>
 </resources>
