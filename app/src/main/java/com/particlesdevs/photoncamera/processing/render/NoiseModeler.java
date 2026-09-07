@@ -17,6 +17,17 @@ public class NoiseModeler {
         SensivityISO = ISO;
         baseModel = new Pair[3];
         computeModel = new Pair[3];
+        // A selected profile replaces whatever the sensor reported, so it reaches every
+        // consumer of computeModel at once: the denoise nodes and the alignment
+        // significance gate in align.glsl.
+        NoiseModelProfile profile = NoiseModelProfile.byId(
+                com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseModelProfileId());
+        if (profile != null) {
+            inModel = profile.evaluate(ISO, analogISO);
+            Log.d(TAG, "Noise model profile: " + profile.name + " at ISO " + ISO
+                    + " -> R(S,O)=" + inModel[0] + " Gr=" + inModel[1]
+                    + " Gb=" + inModel[2] + " B=" + inModel[3]);
+        }
         //inModel = null;
         if (inModel == null || inModel.length == 0 || inModel[0].first == 0.0 || (specificSettingSensor != null && specificSettingSensor.ModelerExists)) {
             Pair<Double, Double> CustomGeneratorS;

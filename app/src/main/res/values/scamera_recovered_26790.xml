@@ -753,4 +753,20 @@
     <integer name="preferences_header_pane_weight">0</integer>
     <integer name="show_password_duration">200</integer>
     <integer name="status_bar_notification_info_maxnum">999</integer>
+    <string-array name="noise_model_profile_entries">
+        <item>Авто (профиль сенсора Camera2)</item>
+        <item>IMX363_0 (LG V50)</item>
+        <item>Импортированный файл</item>
+    </string-array>
+    <string-array name="noise_model_profile_values">
+        <item>auto</item>
+        <item>lgv50_imx363_0</item>
+        <item>imported</item>
+    </string-array>
+    <string name="noise_model_category">Модель шума</string>
+    <string name="noise_model_profile">Профиль модели шума</string>
+    <string name="noise_model_import">Импорт модели шума</string>
+    <string name="noise_model_import_summary">Загрузить файл калибровки (.c) с коэффициентами A/B/C/D</string>
+    <string name="noise_model_export">Экспорт модели шума</string>
+    <string name="noise_model_export_summary">Сохранить активный профиль в Download/SCAMERA</string>
 </resources>

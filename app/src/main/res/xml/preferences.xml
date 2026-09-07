@@ -169,6 +169,25 @@
             android:summary="@string/detail_noise_summary">
             <PreferenceCategory
                 android:layout="@layout/preference_category_layout"
+                android:title="@string/noise_model_category">
+                <ListPreference
+                    android:entries="@array/noise_model_profile_entries"
+                    android:entryValues="@array/noise_model_profile_values"
+                    android:key="pref_noise_model_profile_key"
+                    android:title="@string/noise_model_profile"
+                    android:defaultValue="auto"
+                    app:useSimpleSummaryProvider="true" />
+                <Preference
+                    android:key="pref_noise_model_import_key"
+                    android:title="@string/noise_model_import"
+                    android:summary="@string/noise_model_import_summary" />
+                <Preference
+                    android:key="pref_noise_model_export_key"
+                    android:title="@string/noise_model_export"
+                    android:summary="@string/noise_model_export_summary" />
+            </PreferenceCategory>
+            <PreferenceCategory
+                android:layout="@layout/preference_category_layout"
                 android:title="@string/merge_algorithm">
                 <ListPreference
                     android:entries="@array/merge_algorithm_entries"

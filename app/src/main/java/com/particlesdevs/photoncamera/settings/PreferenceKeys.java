@@ -28,6 +28,14 @@ public class PreferenceKeys {
     private static PreferenceKeys preferenceKeys;
     private final SettingsManager settingsManager;
 
+    /**
+     * Id of the selected noise-model profile, or {@code "auto"} to keep the
+     * SENSOR_NOISE_PROFILE reported by Camera2.
+     */
+    public static String getNoiseModelProfileId() {
+        return getAcesString("pref_noise_model_profile_key", "auto");
+    }
+
     public static float getAcesCustomGamma() {
         return getAcesFloat("pref_aces_custom_gamma_key", "2.2");
     }

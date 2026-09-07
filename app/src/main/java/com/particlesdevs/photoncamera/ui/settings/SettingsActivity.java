@@ -40,6 +40,7 @@ import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.app.base.BaseActivity;
 import com.particlesdevs.photoncamera.pro.SupportedDevice;
 import com.particlesdevs.photoncamera.settings.BackupRestoreUtil;
+import com.particlesdevs.photoncamera.processing.render.NoiseModelProfile;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.settings.TunablePreferenceGenerator;
@@ -147,6 +148,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private boolean tunablePreferencesGenerated = false;
         private boolean sensorConfigPreferencesGenerated = false;
         private ActivityResultLauncher<String[]> lutImportLauncher;
+        private ActivityResultLauncher<String[]> noiseModelImportLauncher;
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
@@ -209,6 +211,19 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     }
             );
             TunablePngPreference.setImportLauncher(lutImportLauncher);
+
+            // Noise-model calibration files are read as data: the coefficient arrays are
+            // matched textually, nothing in the file is compiled or executed.
+            noiseModelImportLauncher = registerForActivityResult(
+                    new ActivityResultContracts.OpenDocument(),
+                    uri -> {
+                        if (uri == null) {
+                            return;
+                        }
+                        String result = importNoiseModel(uri);
+                        PhotonCamera.showToast(result);
+                    }
+            );
             
             // Check if we're opening the tunable submenu specifically
             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
@@ -742,11 +757,68 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         @Override
+
+        /**
+         * Read a calibration file and store it as the active profile. Anything that does not
+         * contain all four coefficient arrays is rejected rather than half-applied.
+         */
+        private String importNoiseModel(android.net.Uri uri) {
+            try (java.io.InputStream in = requireContext().getContentResolver().openInputStream(uri)) {
+                if (in == null) {
+                    return "Не удалось открыть файл";
+                }
+                java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[8192];
+                int read;
+                while ((read = in.read(chunk)) > 0) {
+                    buffer.write(chunk, 0, read);
+                }
+                String source = buffer.toString("UTF-8");
+                NoiseModelProfile profile = NoiseModelProfile.parse(source, "imported", "Импортированный");
+                if (profile == null) {
+                    return "Файл не содержит noise_model_A/B/C/D";
+                }
+                NoiseModelProfile.setImported(profile);
+                mSettingsManager.set(PreferenceKeys.SCOPE_GLOBAL,
+                        "pref_noise_model_profile_key", NoiseModelProfile.IMPORTED_ID);
+                return "Модель шума импортирована";
+            } catch (Exception e) {
+                Log.e("SettingsFragment", "Noise model import failed", e);
+                return "Ошибка импорта: " + e;
+            }
+        }
+
+        /** Write the active profile back out in the calibration-file format. */
+        private String exportNoiseModel() {
+            NoiseModelProfile profile =
+                    NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId());
+            if (profile == null) {
+                return "Активен автоматический профиль, экспортировать нечего";
+            }
+            java.io.File dir = new java.io.File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "SCAMERA");
+            java.io.File written = profile.exportTo(dir);
+            return written != null
+                    ? "Сохранено: " + written.getName()
+                    : "Не удалось записать файл";
+        }
+
         public boolean onPreferenceTreeClick(@NonNull Preference preference) {
             // Log which preference was clicked
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
             if ("lens_discovery".equals(preference.getKey())) {
                 startActivity(new Intent(requireContext(), LensDiscoveryActivity.class));
+                return true;
+            }
+            if ("pref_noise_model_import_key".equals(preference.getKey())) {
+                if (noiseModelImportLauncher != null) {
+                    noiseModelImportLauncher.launch(new String[]{"*/*"});
+                }
+                return true;
+            }
+            if ("pref_noise_model_export_key".equals(preference.getKey())) {
+                PhotonCamera.showToast(exportNoiseModel());
                 return true;
             }
             
