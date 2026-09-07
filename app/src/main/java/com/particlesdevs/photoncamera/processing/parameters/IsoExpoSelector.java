@@ -158,6 +158,7 @@ public class IsoExpoSelector {
                 Log.i(TAG, "HDR ratio " + spread + " exceeds the ceiling " + maxRatio
                         + ", short frame factor " + factor + " -> " + clamped
                         + " (long frame factor " + longFactor + " -> "
+                        + Math.max(1.0, longFactor / excess) + ")");
                 factor = clamped;
             }
         }
