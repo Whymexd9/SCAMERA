@@ -174,8 +174,14 @@ highp vec2 getPrevOffset(ivec2 tile_xy) {
     return prevOffset;
 }
 
-// Compute alignment between base and alter textures
-highp vec3 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
+// Compute alignment between base and alter textures.
+// Returns xy = integer offset, zw = subpixel residual in [-0.5, 0.5].
+// The residual is returned separately rather than folded into xy so that a
+// second refinement pass can be fed a clean integer offset: the cost grid is
+// only ever evaluated at integer positions, so feeding a fractional offset
+// back in would shift the search window without changing what is sampled and
+// the residual would be counted twice.
+highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     // Fill inputDifferences array with 4 calls to getSharedDifferences
     ivec2 localOffsets[OFFSETS];
     localOffsets[0] = ivec2(0, 0);
@@ -192,6 +198,14 @@ highp vec3 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     // Local thread ID within work group
     ivec2 localID = ivec2(gl_LocalInvocationID.xy) - ivec2(TILE/2, TILE/2); // 0 - TILE-1
     int localIndex = int(gl_LocalInvocationIndex); // 0 - TILE*TILE-1
+    // The cost grid below is sampled at integer positions only (getSharedDifferences
+    // floors it), so the search has to be anchored to an integer offset. A coarse
+    // level's doubled fractional residual arriving here would ride along in
+    // bestOffset while the costs that chose it were evaluated up to a pixel away,
+    // and the mismatch would be stored as if it had been measured. Drop it: the
+    // parabola at the end of this level re-derives the residual against this
+    // level's own costs.
+    prevOffset = floor(prevOffset);
     // split to 4 calls to increase scan window size and sum calls
     mat4 temp = mat4(0.0);
     for (int i = 0; i < OFFSETS; i++) {
@@ -215,12 +229,14 @@ highp vec3 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     // Use mat4 sum to find the best offset from (-1,-1) to (1,1)
     highp vec2 bestOffset = prevOffset;
     float minDiff = sum[0][0];
+    ivec2 bestIdx = ivec2(0, 0);
 
     for (int j = 0; j < 4; j++) {
         for (int i = 0; i < 4; i++) {
             if (sum[i][j] < minDiff) {
                 minDiff = sum[i][j];
                 bestOffset = prevOffset + vec2(i-1, j-1);
+                bestIdx = ivec2(i, j);
             }
         }
     }
@@ -252,9 +268,52 @@ highp vec3 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
         if (improvement < thresh) {
             bestOffset = prevOffset;
             minDiff = costPrev;
+            bestIdx = ivec2(1, 1);
         }
     }
-    return vec3(bestOffset.x, bestOffset.y, minDiff);
+
+    // Subpixel refinement. The integer minimum found above is the argmin of a
+    // sampled cost surface; the true minimum almost never sits exactly on a
+    // texel. Neighbouring tiles rounding the same underlying fractional shift
+    // in opposite directions differ by a whole pixel, which is invisible on
+    // flat surfaces but shows up as a step where a high-contrast edge crosses
+    // the tile seam.
+    //
+    // Fit a parabola through the winning cost and its two neighbours on each
+    // axis and take its vertex. This is the standard quadratic interpolation
+    // used for correlation-peak localisation and costs three already-computed
+    // values per axis.
+    //
+    // Only indices 1..2 have both neighbours inside the 4x4 grid (index 0 is
+    // the -1 edge and index 3 is the reserved candidate, whose cost belongs to
+    // a different offset entirely and must never enter the fit). On an axis
+    // where the winner sits at the edge the residual is left at zero: the
+    // minimum is outside the search window, the parabola would extrapolate
+    // rather than interpolate, and the next pyramid level re-centres on it
+    // anyway.
+    highp vec2 sub = vec2(0.0);
+    if (bestIdx.x >= 1 && bestIdx.x <= 2 && bestIdx.y <= 2) {
+        float cm = sum[bestIdx.x - 1][bestIdx.y];
+        float cc = sum[bestIdx.x    ][bestIdx.y];
+        float cp = sum[bestIdx.x + 1][bestIdx.y];
+        float denom = cm - 2.0 * cc + cp;
+        // denom > 0 means the three samples are genuinely convex, i.e. a real
+        // minimum. A flat or concave triple is noise and gets no shift.
+        if (denom > 1e-9) {
+            sub.x = clamp(0.5 * (cm - cp) / denom, -0.5, 0.5);
+        }
+    }
+    if (bestIdx.y >= 1 && bestIdx.y <= 2 && bestIdx.x <= 2) {
+        float cm = sum[bestIdx.x][bestIdx.y - 1];
+        float cc = sum[bestIdx.x][bestIdx.y    ];
+        float cp = sum[bestIdx.x][bestIdx.y + 1];
+        float denom = cm - 2.0 * cc + cp;
+        if (denom > 1e-9) {
+            sub.y = clamp(0.5 * (cm - cp) / denom, -0.5, 0.5);
+        }
+    }
+
+    return vec4(bestOffset.x, bestOffset.y, sub.x, sub.y);
 }
 
 void main() {
@@ -267,11 +326,15 @@ void main() {
         prevOffset = getPrevOffset(tile_xy);
     }
 
-    // Compute alignment vector
-    vec3 bestOffset = computeAlignment(tile_xy, prevOffset);
+    // Compute alignment vector. Both passes are fed the integer offset only
+    // (.xy); the subpixel residual (.zw) of the first pass is discarded because
+    // the second pass re-derives it from its own cost grid.
+    vec4 bestOffset = computeAlignment(tile_xy, prevOffset);
     bestOffset = computeAlignment(tile_xy, bestOffset.xy);
     if (localIndex == 0) {
-        // Store the best offset in the output texture
-        imageStore(outTexture, tile_xy, alignmentToVec4(bestOffset.xy));
+        // Store integer offset plus subpixel residual. alignmentToVec4 splits
+        // the sum back into floor/fract, and the fract channels are read by
+        // mergeAlign.glsl's bicubic sampler (RAW MFSR path).
+        imageStore(outTexture, tile_xy, alignmentToVec4(bestOffset.xy + bestOffset.zw));
     }
 }
