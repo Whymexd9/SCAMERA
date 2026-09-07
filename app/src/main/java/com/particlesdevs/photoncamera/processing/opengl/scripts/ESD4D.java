@@ -788,6 +788,12 @@ public class ESD4D extends GLOneScript {
                 Log.d("DynamicNoise", "Adaptive Mpy (fallback): " + adaptiveNMpy + " (insufficient points=" + points + ")");
             }
         }
+        if (!PreferenceKeys.isDynamicNoiseModelEnabled()) {
+            // Fall back to the calibrated model alone; the observed-sigma correction is what
+            // the "Dynamic ISO noise model" switch turns off.
+            Log.d("DynamicNoise", "Dynamic model disabled, ignoring adaptive mpy " + adaptiveNMpy);
+            adaptiveNMpy = 1.0;
+        }
         parameters.noiseModeler.setAdaptiveMpy(adaptiveNMpy);
         double noisempy = PreferenceKeys.isHdrPlusMergeEnabled()
                 ? 1.0 : Math.pow(2.0, PhotonCamera.getSettings().mergeStrength);

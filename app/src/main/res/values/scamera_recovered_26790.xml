@@ -769,4 +769,15 @@
     <string name="noise_model_import_summary">Загрузить файл калибровки (.c) с коэффициентами A/B/C/D</string>
     <string name="noise_model_export">Экспорт модели шума</string>
     <string name="noise_model_export_summary">Сохранить активный профиль в Download/SCAMERA</string>
+    <string name="noise_dynamic_enabled">Динамическая ISO-модель шума</string>
+    <string name="noise_dynamic_enabled_summary">Корректировать модель по измеренной сигме кадра</string>
+    <string name="noise_disable_digital_gain">Отключить цифровой ISO gain</string>
+    <string name="noise_disable_digital_gain_summary">Считать член O без усиления выше аналогового ISO</string>
+    <string name="noise_model_coefficient">Коэффициент модели шума</string>
+    <string name="noise_model_coefficient_summary">Множитель всей модели; 1.0 — калибровка без изменений</string>
+    <string name="noise_iso_min">Мин. ISO шума</string>
+    <string name="noise_iso_max">Макс. ISO шума</string>
+    <string name="noise_iso_clamp_summary">Ограничение ISO для расчёта модели; 0 — без ограничения</string>
+    <string name="noise_iso_manual">Ручной ISO шума</string>
+    <string name="noise_iso_manual_summary">Фиксированное ISO для модели; 0 — реальное значение кадра</string>
 </resources>

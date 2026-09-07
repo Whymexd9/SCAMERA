@@ -12,6 +12,8 @@ public class NoiseModeler {
     public int AnalogueISO;
     public int SensivityISO;
     double adaptiveMpy = 1.0;
+    /** ISO actually fed to the model after the manual/min/max overrides. */
+    private int modelIso1;
     public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer, SpecificSettingSensor specificSettingSensor) {
         AnalogueISO = analogISO;
         SensivityISO = ISO;
@@ -20,6 +22,29 @@ public class NoiseModeler {
         // A selected profile replaces whatever the sensor reported, so it reaches every
         // consumer of computeModel at once: the denoise nodes and the alignment
         // significance gate in align.glsl.
+        // Fine tuning applies to whichever model is in use - sensor profile or a selected
+        // calibration - so it lives here rather than inside NoiseModelProfile.
+        int modelIso = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoManual();
+        if (modelIso <= 0) {
+            modelIso = ISO;
+        }
+        int isoMin = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoMin();
+        int isoMax = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoMax();
+        if (isoMin > 0) {
+            modelIso = Math.max(modelIso, isoMin);
+        }
+        if (isoMax > 0) {
+            modelIso = Math.min(modelIso, isoMax);
+        }
+        modelIso1 = modelIso;
+        if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isNoiseDigitalGainDisabled()) {
+            // Pin the analogue ISO at or above the model ISO so digitalGain resolves to 1.
+            AnalogueISO = Math.max(AnalogueISO, modelIso);
+        }
+        if (modelIso != ISO) {
+            Log.d(TAG, "Noise model ISO override: capture " + ISO + " -> " + modelIso);
+        }
+
         NoiseModelProfile profile = null;
         try {
             profile = NoiseModelProfile.byId(
@@ -29,7 +54,7 @@ public class NoiseModeler {
             Log.e(TAG, "Noise model profile unavailable, falling back to the sensor profile", t);
         }
         if (profile != null) {
-            inModel = profile.evaluate(ISO, analogISO);
+            inModel = profile.evaluate(modelIso1, AnalogueISO);
             Log.d(TAG, "Noise model profile: " + profile.name + " at ISO " + ISO
                     + " -> R(S,O)=" + inModel[0] + " Gr=" + inModel[1]
                     + " Gb=" + inModel[2] + " B=" + inModel[3]);
@@ -103,9 +128,16 @@ public class NoiseModeler {
         computeStackingNoiseModel(FrameNumberSelector.frameCount);
     }
     public void computeStackingNoiseModel(int FrameCnt){
-        computeModel[0] = new Pair<>(adaptiveMpy * baseModel[0].first/ (FrameCnt*0.9),adaptiveMpy * baseModel[0].second/ (FrameCnt*0.9));
-        computeModel[1] = new Pair<>(adaptiveMpy * baseModel[1].first/ (FrameCnt*0.9),adaptiveMpy * baseModel[1].second/ (FrameCnt*0.9));
-        computeModel[2] = new Pair<>(adaptiveMpy * baseModel[2].first/ (FrameCnt*0.9),adaptiveMpy * baseModel[2].second/ (FrameCnt*0.9));
+        // User coefficient scales the final model, so it affects the denoise nodes and the
+        // alignment significance gate together instead of one of them in isolation.
+        double coefficient = com.particlesdevs.photoncamera.settings.PreferenceKeys
+                .getNoiseModelCoefficient();
+        double mpy = adaptiveMpy * coefficient;
+        computeModel[0] = new Pair<>(mpy * baseModel[0].first/ (FrameCnt*0.9),mpy * baseModel[0].second/ (FrameCnt*0.9));
+        computeModel[1] = new Pair<>(mpy * baseModel[1].first/ (FrameCnt*0.9),mpy * baseModel[1].second/ (FrameCnt*0.9));
+        computeModel[2] = new Pair<>(mpy * baseModel[2].first/ (FrameCnt*0.9),mpy * baseModel[2].second/ (FrameCnt*0.9));
+        Log.d(TAG, "Noise model multipliers: adaptive=" + adaptiveMpy
+                + " coefficient=" + coefficient + " frames=" + FrameCnt);
     }
     private double computeNoiseModelS(double Sensitivity,Pair<Double,Double> sGenerator) {
         double returning = sGenerator.first * Sensitivity + sGenerator.second;

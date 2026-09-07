@@ -36,6 +36,38 @@ public class PreferenceKeys {
         return getAcesString("pref_noise_model_profile_key", "auto");
     }
 
+    /** Master switch for the observed-sigma multiplier computed in ESD4D (tag DynamicNoise). */
+    public static boolean isDynamicNoiseModelEnabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", "pref_noise_dynamic_enabled_key", true);
+    }
+
+    /** Scales the whole noise model. 1.0 leaves the calibration untouched. */
+    public static float getNoiseModelCoefficient() {
+        return Float.parseFloat(getAcesString("pref_noise_model_coefficient_key", "1.0"));
+    }
+
+    /** Clamp the O term's digital gain to 1, i.e. ignore gain applied above the analogue ISO. */
+    public static boolean isNoiseDigitalGainDisabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", "pref_noise_disable_digital_gain_key", false);
+    }
+
+    /** Lower clamp for the ISO fed to the noise model; 0 disables the clamp. */
+    public static int getNoiseIsoMin() {
+        return Integer.parseInt(getAcesString("pref_noise_iso_min_key", "0"));
+    }
+
+    /** Upper clamp for the ISO fed to the noise model; 0 disables the clamp. */
+    public static int getNoiseIsoMax() {
+        return Integer.parseInt(getAcesString("pref_noise_iso_max_key", "0"));
+    }
+
+    /** Fixed ISO for the noise model regardless of the capture; 0 uses the real sensitivity. */
+    public static int getNoiseIsoManual() {
+        return Integer.parseInt(getAcesString("pref_noise_iso_manual_key", "0"));
+    }
+
     public static float getAcesCustomGamma() {
         return getAcesFloat("pref_aces_custom_gamma_key", "2.2");
     }

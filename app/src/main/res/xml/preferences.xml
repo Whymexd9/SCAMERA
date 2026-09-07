@@ -181,6 +181,40 @@
                     android:key="pref_noise_model_import_key"
                     android:title="@string/noise_model_import"
                     android:summary="@string/noise_model_import_summary" />
+                <SwitchPreferenceCompat
+                    android:key="pref_noise_dynamic_enabled_key"
+                    android:title="@string/noise_dynamic_enabled"
+                    android:summary="@string/noise_dynamic_enabled_summary"
+                    android:defaultValue="true" />
+                <SwitchPreferenceCompat
+                    android:key="pref_noise_disable_digital_gain_key"
+                    android:title="@string/noise_disable_digital_gain"
+                    android:summary="@string/noise_disable_digital_gain_summary"
+                    android:defaultValue="false" />
+                <EditTextPreference
+                    android:key="pref_noise_model_coefficient_key"
+                    android:title="@string/noise_model_coefficient"
+                    android:summary="@string/noise_model_coefficient_summary"
+                    android:defaultValue="1.0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:key="pref_noise_iso_min_key"
+                    android:title="@string/noise_iso_min"
+                    android:summary="@string/noise_iso_clamp_summary"
+                    android:defaultValue="0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:key="pref_noise_iso_max_key"
+                    android:title="@string/noise_iso_max"
+                    android:summary="@string/noise_iso_clamp_summary"
+                    android:defaultValue="0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:key="pref_noise_iso_manual_key"
+                    android:title="@string/noise_iso_manual"
+                    android:summary="@string/noise_iso_manual_summary"
+                    android:defaultValue="0"
+                    app:useSimpleSummaryProvider="true" />
                 <Preference
                     android:key="pref_noise_model_export_key"
                     android:title="@string/noise_model_export"
