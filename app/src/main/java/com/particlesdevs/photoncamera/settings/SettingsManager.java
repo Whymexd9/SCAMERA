@@ -399,9 +399,26 @@ public class SettingsManager {
     }
 
     public boolean getBoolean(String scope, String key, boolean defaultValue) {
-        String defaultValueString = defaultValue ? "1" : "0";
-        String value = getString(scope, key, defaultValueString);
-        return (Integer.parseInt(value) != 0);
+        // Historically every setting here is stored as a "0"/"1" string, but a
+        // SwitchPreferenceCompat writes a real Boolean. Reading such a key through
+        // getString() throws ClassCastException, which aborted the whole capture.
+        // Accept both representations instead of assuming one.
+        SharedPreferences preferences = getPreferencesFromScope(scope);
+        Object raw = preferences.getAll().get(key);
+        if (raw instanceof Boolean) {
+            return (Boolean) raw;
+        }
+        if (raw instanceof String) {
+            try {
+                return Integer.parseInt((String) raw) != 0;
+            } catch (NumberFormatException e) {
+                return Boolean.parseBoolean((String) raw);
+            }
+        }
+        if (raw instanceof Integer) {
+            return ((Integer) raw) != 0;
+        }
+        return defaultValue;
     }
 
     /**
