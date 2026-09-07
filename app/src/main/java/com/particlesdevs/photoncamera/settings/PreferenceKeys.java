@@ -53,6 +53,11 @@ public class PreferenceKeys {
                 "default_scope", "pref_noise_disable_digital_gain_key", false);
     }
 
+    /** Noise ISO curve: off, soft, medium or strong compression of the model's ISO response. */
+    public static String getNoiseIsoCurve() {
+        return getAcesString("pref_noise_iso_curve_key", "off");
+    }
+
     /** Lower clamp for the ISO fed to the noise model; 0 disables the clamp. */
     public static int getNoiseIsoMin() {
         return Integer.parseInt(getAcesString("pref_noise_iso_min_key", "0"));

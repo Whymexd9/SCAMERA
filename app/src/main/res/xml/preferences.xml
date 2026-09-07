@@ -197,6 +197,14 @@
                     android:summary="@string/noise_model_coefficient_summary"
                     android:defaultValue="1.0"
                     app:useSimpleSummaryProvider="true" />
+                <ListPreference
+                    android:entries="@array/noise_iso_curve_entries"
+                    android:entryValues="@array/noise_iso_curve_values"
+                    android:key="pref_noise_iso_curve_key"
+                    android:title="@string/noise_iso_curve"
+                    android:summary="@string/noise_iso_curve_summary"
+                    android:defaultValue="off"
+                    app:useSimpleSummaryProvider="true" />
                 <EditTextPreference
                     android:key="pref_noise_iso_min_key"
                     android:title="@string/noise_iso_min"

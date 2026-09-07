@@ -780,4 +780,18 @@
     <string name="noise_iso_clamp_summary">Ограничение ISO для расчёта модели; 0 — без ограничения</string>
     <string name="noise_iso_manual">Ручной ISO шума</string>
     <string name="noise_iso_manual_summary">Фиксированное ISO для модели; 0 — реальное значение кадра</string>
+    <string-array name="noise_iso_curve_entries">
+        <item>Off</item>
+        <item>Soft</item>
+        <item>Medium</item>
+        <item>Strong</item>
+    </string-array>
+    <string-array name="noise_iso_curve_values">
+        <item>off</item>
+        <item>soft</item>
+        <item>medium</item>
+        <item>strong</item>
+    </string-array>
+    <string name="noise_iso_curve">Кривая Noise ISO</string>
+    <string name="noise_iso_curve_summary">Сжатие роста модели шума на высоких ISO</string>
 </resources>
