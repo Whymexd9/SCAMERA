@@ -38,6 +38,7 @@ import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.SplashActivity;
 import com.particlesdevs.photoncamera.util.AssetLoader;
 import com.particlesdevs.photoncamera.util.Log;
+import com.particlesdevs.photoncamera.util.ScameraCrashReporter;
 import com.particlesdevs.photoncamera.util.SimpleStorageHelper;
 import com.particlesdevs.photoncamera.util.ObjectLoader;
 import com.particlesdevs.photoncamera.util.log.ActivityLifecycleMonitor;
@@ -214,6 +215,9 @@ public class PhotonCamera extends Application {
 
     @Override
     public void onCreate() {
+        // First thing of all: a crash during initModules() leaves no logcat for the user,
+        // so make sure it always lands in a file we can ask for.
+        ScameraCrashReporter.install(this);
         registerActivityLifecycleCallbacks(new ActivityLifecycleMonitor());
         sPhotonCamera = this;
         Log.d("PhotonCamera", "Initializing PhotonCamera Modules");
