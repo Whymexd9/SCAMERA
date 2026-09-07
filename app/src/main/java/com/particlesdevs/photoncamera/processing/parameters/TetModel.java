@@ -146,11 +146,18 @@ public final class TetModel {
         // A shutter shorter than one period cannot be snapped to anything and is
         // left alone - which is exactly what the ultra-short frame in that dump
         // does at 3.7037 ms.
-        if (flickerPeriodNs > 0 && exposureNs >= flickerPeriodNs) {
-            long periods = Math.max(1, Math.round((double) exposureNs / flickerPeriodNs));
-            exposureNs = periods * flickerPeriodNs;
-        }
         exposureNs = Math.max(exposureLow, Math.min(exposureCap, exposureNs));
+        if (flickerPeriodNs > 0 && exposureNs >= flickerPeriodNs) {
+            // Snap AFTER clamping, and downwards, so the cap cannot undo the snap.
+            // Rounding to the nearest period and then clamping produced 66666666 ns
+            // in the first test run - a value that is a multiple of neither the
+            // 8.3333 ms nor the 10 ms period, i.e. banding suppression silently lost.
+            long periods = Math.max(1, exposureNs / flickerPeriodNs);
+            long snapped = periods * flickerPeriodNs;
+            if (snapped >= exposureLow) {
+                exposureNs = snapped;
+            }
+        }
 
         // Whatever the shutter snap or clamp moved is returned as gain, so the TET
         // stays on target instead of the frame coming out over- or under-exposed.

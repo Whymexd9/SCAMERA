@@ -251,6 +251,7 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     // (k = 1.5, measured on real ProRAW bursts in tools/alignment-bench).
     // 'sum' comes from shared memory and is identical on every thread, so
     // the gate keeps the returned offset uniform.
+    bool frozen = false;
     {
         float n = float(OFFSETS * TILE * TILE);
         float expected = 1.13; // mean per-pixel cost when aligned
@@ -269,6 +270,7 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
             bestOffset = prevOffset;
             minDiff = costPrev;
             bestIdx = ivec2(1, 1);
+            frozen = true;
         }
     }
 
@@ -291,24 +293,35 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     // minimum is outside the search window, the parabola would extrapolate
     // rather than interpolate, and the next pyramid level re-centres on it
     // anyway.
+    // A frozen tile has no measured minimum at all - the gate fired precisely
+    // because the cost surface is indistinguishable from noise. Fitting a
+    // parabola to that noise hands the tile a random shift of up to half a
+    // pixel, which is what covered the smooth bright areas of the first test
+    // shots in blocky colour patches. Textureless tiles keep the coarse field,
+    // integer and unrefined.
     highp vec2 sub = vec2(0.0);
-    if (bestIdx.x >= 1 && bestIdx.x <= 2 && bestIdx.y <= 2) {
+    // Curvature has to be large enough to be a real minimum rather than the
+    // noise floor of the summed cost. The summed cost of an aligned tile is
+    // ~1.13*n with a standard deviation of ~sqrt(1.13*n), so anything below a
+    // fraction of that is noise. 1e-9 accepted essentially everything.
+    float curvatureFloor = 0.25 * sqrt(1.13 * float(OFFSETS * TILE * TILE));
+    if (!frozen && bestIdx.x >= 1 && bestIdx.x <= 2 && bestIdx.y <= 2) {
         float cm = sum[bestIdx.x - 1][bestIdx.y];
         float cc = sum[bestIdx.x    ][bestIdx.y];
         float cp = sum[bestIdx.x + 1][bestIdx.y];
         float denom = cm - 2.0 * cc + cp;
         // denom > 0 means the three samples are genuinely convex, i.e. a real
         // minimum. A flat or concave triple is noise and gets no shift.
-        if (denom > 1e-9) {
+        if (denom > curvatureFloor) {
             sub.x = clamp(0.5 * (cm - cp) / denom, -0.5, 0.5);
         }
     }
-    if (bestIdx.y >= 1 && bestIdx.y <= 2 && bestIdx.x <= 2) {
+    if (!frozen && bestIdx.y >= 1 && bestIdx.y <= 2 && bestIdx.x <= 2) {
         float cm = sum[bestIdx.x][bestIdx.y - 1];
         float cc = sum[bestIdx.x][bestIdx.y    ];
         float cp = sum[bestIdx.x][bestIdx.y + 1];
         float denom = cm - 2.0 * cc + cp;
-        if (denom > 1e-9) {
+        if (denom > curvatureFloor) {
             sub.y = clamp(0.5 * (cm - cp) / denom, -0.5, 0.5);
         }
     }
