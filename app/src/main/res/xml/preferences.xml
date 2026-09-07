@@ -244,6 +244,12 @@
                     android:defaultValue="0.99"
                     app:useSimpleSummaryProvider="true" />
                 <EditTextPreference
+                    android:key="pref_long_frame_shutter_cap_key"
+                    android:title="@string/long_frame_shutter_cap"
+                    android:summary="@string/long_frame_shutter_cap_summary"
+                    android:defaultValue="2.0"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
                     android:key="pref_merge_max_exposure_ratio_key"
                     android:title="@string/merge_max_exposure_ratio"
                     android:summary="@string/merge_max_exposure_ratio_summary"

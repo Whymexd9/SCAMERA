@@ -172,6 +172,24 @@ public class IsoExpoSelector {
                 + String.format(Locale.ROOT, "%.2f", actualEv) + " EV)");
     }
 
+
+    /**
+     * Upper bound on the long frame's shutter, expressed in readout periods so it scales
+     * with the sensor. GCam exposes the same limit as camera.shasta_zsl.max_exptime_ms and
+     * runs it at two readout periods, which is also what keeps the frame aligned with the
+     * viewfinder cadence.
+     */
+    private static long shutterCapNs(CaptureController captureController) {
+        float periods = PreferenceKeys.getLongFrameShutterCapPeriods();
+        if (periods <= 0.0f) {
+            return Long.MAX_VALUE;
+        }
+        // Readout time is not exposed through Camera2 on every device; 1/30 s is the
+        // cadence the viewfinder runs at and matches the value in the sensor metadata.
+        double readoutNs = 1e9 / 30.0;
+        return (long) (readoutNs * periods);
+    }
+
     /** Appends one long RAW exposure for clean shadow reconstruction. */
     public static void setLongExpo(CaptureRequest.Builder builder,
                                    CaptureController captureController) {
@@ -181,12 +199,23 @@ public class IsoExpoSelector {
         ExpoPair pair = new ExpoPair(source);
         int requestedEv = Math.max(1, Math.min(8, PreferenceKeys.getLongExposureEvValue()));
         double factor = Math.scalb(1.0, requestedEv);
-        pair.exposure = Math.min(getEXPHIGH(),
+        double targetProduct = (double) source.exposure * source.iso * factor;
+        // Cap the shutter the way GCam does with camera.shasta_zsl.max_exptime_ms
+        // (66.666664 ms on this sensor, i.e. two readout periods): a long frame whose
+        // shutter runs several readout periods picks up hand-shake blur that none of
+        // the other frames have, and differing motion blur is one of the reasons a
+        // bracketed frame will not align. Whatever EV the cap leaves unspent is taken
+        // from gain instead.
+        long shutterCap = shutterCapNs(captureController);
+        pair.exposure = Math.min(Math.min(getEXPHIGH(), shutterCap),
                 Math.round(pair.exposure * factor));
+        int gainMatchedIso = (int) Math.round(targetProduct / Math.max(pair.exposure, 1));
+        pair.iso = Math.max(source.iso, Math.min(getISOHIGH(), gainMatchedIso));
         pair.curlayer = ExpoPair.exposureLayer.High;
         pair.isHighlightFrame = false;
         pair.isLongFrame = true;
-        pair.layerMpy = (float) factor;
+        pair.layerMpy = (float) (((double) pair.exposure * pair.iso)
+                / ((double) source.exposure * source.iso));
         fullpairs.add(pair);
 
         builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);

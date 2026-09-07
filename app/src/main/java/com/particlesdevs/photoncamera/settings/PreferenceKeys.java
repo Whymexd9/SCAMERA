@@ -78,6 +78,15 @@ public class PreferenceKeys {
         return Float.parseFloat(getAcesString("pref_merge_max_exposure_ratio_key", "64.0"));
     }
 
+    /**
+     * Upper bound on the long frame's shutter, in sensor readout periods (1/30 s each).
+     * GCam's equivalent, camera.shasta_zsl.max_exptime_ms, runs at two periods. 0 removes
+     * the cap; any EV the cap leaves unspent is taken from gain instead.
+     */
+    public static float getLongFrameShutterCapPeriods() {
+        return Float.parseFloat(getAcesString("pref_long_frame_shutter_cap_key", "2.0"));
+    }
+
     /** Samples at or above this fraction of full scale are treated as clipped and not merged. */
     public static float getMergeClipLevel() {
         return Float.parseFloat(getAcesString("pref_merge_clip_level_key", "0.99"));

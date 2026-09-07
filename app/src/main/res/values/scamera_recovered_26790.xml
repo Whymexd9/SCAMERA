@@ -805,4 +805,6 @@
     <string name="merge_floor_sigmas_summary">Отсчёты короткого кадра ниже стольких сигм шума не подмешиваются; 0 — без проверки (2.0)</string>
     <string name="merge_max_exposure_ratio">Предел разброса экспозиции</string>
     <string name="merge_max_exposure_ratio_summary">Кадры с отличием от опорного больше этого не склеиваются; 0 — без предела (64)</string>
+    <string name="long_frame_shutter_cap">Потолок выдержки длинного кадра</string>
+    <string name="long_frame_shutter_cap_summary">В периодах считывания сенсора (1/30 c); остаток EV уходит в усиление. 0 — без потолка (2.0)</string>
 </resources>

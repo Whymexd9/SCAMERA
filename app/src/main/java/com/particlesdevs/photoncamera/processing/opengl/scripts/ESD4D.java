@@ -480,11 +480,27 @@ public class ESD4D extends GLOneScript {
             if(exposure < 0.95f) {
                 lowCnt++;
             }
-            if(exposure < minExp) {
+            if(exposure < minExp && !frame.pair.isHighlightFrame) {
+                // The ultra-short highlight frame must never become the reference.
+                // It is a donor for clipped highlights, not a basis for comparison:
+                // most of the scene in it sits under the sensor's noise floor, so
+                // every other frame ends up judged against the emptiest frame of the
+                // burst. GCam picks its base frame from the constant-exposure ZSL
+                // stack and treats the ultra-short frame separately, running explicit
+                // validity checks on it.
                 minExpIdx = i;
                 minExp = exposure;
             }
         }
+        if (images.get(minExpIdx).pair.isHighlightFrame) {
+            // Only highlight frames were available - fall back to the first frame
+            // rather than referencing a frame with no usable shadow detail.
+            Log.w("ESD4D", "Reference would be a highlight frame, falling back to frame 0");
+            minExpIdx = 0;
+            minExp = 1.f / images.get(0).pair.layerMpy;
+        }
+        Log.d("ESD4D", "Reference frame: " + minExpIdx + " exposure=" + minExp
+                + " highlightFrame=" + images.get(minExpIdx).pair.isHighlightFrame);
 
         if (parameters.tile != 16) {
             // Custom tile sizes (set upstream) keep their own alignmentSize.
