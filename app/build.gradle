@@ -58,7 +58,9 @@ android {
         applicationId 'com.hdrplus.ultra'
         minSdkVersion 26
         targetSdkVersion 35
-        versionCode versionBuild
+        // CI supplies SCAMERA_VERSION_CODE = 30000 + commit count; local builds keep
+        // the auto-incremented value from version.properties.
+        versionCode (System.getenv('SCAMERA_VERSION_CODE') ?: versionBuild) as Integer
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             //noinspection ChromeOsAbiSupport
@@ -160,7 +162,6 @@ dependencies {
     //For Testing
     testImplementation 'org.mockito:mockito-core:5.23.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
-    implementation 'androidx.test.ext:junit:1.3.0'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'org.testng:testng:7.12.0'
     androidTestImplementation 'androidx.test:runner:1.6.2'
