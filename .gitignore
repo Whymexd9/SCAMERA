@@ -96,6 +96,3 @@ lint/tmp/
 # SCAMERA: vendored prebuilts that MUST be tracked (CI has no other source for them)
 !app/libs/*.aar
 !app/src/main/cpp/deps/
-
-# ncnn prebuilt SDK, fetched by CI (see build-test-apk.yml)
-app/src/main/cpp/ncnn/
