@@ -75,10 +75,16 @@ public final class ScameraDebugLog {
      * Safe to call repeatedly; only the first enabling call opens the file.
      */
     public static void init(Context context) {
-        if (context == null) return;
-        appContext = context.getApplicationContext();
+        attach(context);
+        if (appContext == null) return;
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(appContext);
         setEnabled(prefs.getBoolean(PREF_KEY, false));
+    }
+
+    /** Bind the context without touching the enabled state. */
+    public static void attach(Context context) {
+        if (context == null) return;
+        appContext = context.getApplicationContext();
     }
 
     public static void setEnabled(boolean value) {
@@ -461,6 +467,7 @@ public final class ScameraDebugLog {
             OutputStream os = resolver.openOutputStream(mediaStoreUri, "wa");
             if (os == null) return false;
             writer = new BufferedWriter(new OutputStreamWriter(os), 8192);
+            android.util.Log.i("ScameraDebugLog", "opened " + getPath());
             return true;
         } catch (Exception e) {
             android.util.Log.e("ScameraDebugLog", "cannot open " + getPath(), e);

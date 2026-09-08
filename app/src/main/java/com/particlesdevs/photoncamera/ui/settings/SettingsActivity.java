@@ -593,7 +593,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
             if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
                 boolean on = sharedPreferences.getBoolean(key, false);
-                com.particlesdevs.photoncamera.util.ScameraDebugLog.init(mContext);
+                // Only bind the context here. Calling init() would itself call
+                // setEnabled() with the freshly stored value, and the setEnabled()
+                // below would then hit its own "value == enabled" early return -
+                // so the writer was never opened and no file appeared.
+                com.particlesdevs.photoncamera.util.ScameraDebugLog.attach(mContext);
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.setEnabled(on);
                 if (on) {
                     PhotonCamera.showToast(
