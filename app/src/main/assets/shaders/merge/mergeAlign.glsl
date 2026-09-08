@@ -439,6 +439,19 @@ void main() {
         vec4 baseOk  = step(bayerBase,   vec4(CLIP_LEVEL));
         trust *= alterOk * baseOk;
 
+        // One weight for all four packed CFA channels, after Liba et al.
+        // (Night Sight, 2019, sec. 3.2): instead of a per-channel weight they
+        // take the minimum across colour channels and merge every channel with
+        // it, because in hard conditions the per-channel weights diverge and
+        // the divergence shows up as colour artefacts.
+        //
+        // The bracket is the worst case for this - the frames differ in
+        // exposure, so the channels clip and saturate at different points, and
+        // the window frames in the test shots came out with magenta and green
+        // fringing exactly where one channel was trusted and another was not.
+        float trustMin = min(min(trust.x, trust.y), min(trust.z, trust.w));
+        trust = vec4(trustMin);
+
         // Invalid-pixel mask, the mirror image of the highlight mask. In a much
         // shorter frame the darker parts of the scene fall below the sensor's
         // noise and quantisation floor: the sample is not a measurement of the
