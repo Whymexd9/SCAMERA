@@ -18,6 +18,16 @@ uniform float exposure;
 uniform float integralNorm;
 uniform float significancy;
 
+// A tile whose base samples sit at or above this level carries no gradient.
+#ifndef ALIGN_CLIP_LEVEL
+#define ALIGN_CLIP_LEVEL 0.95
+#endif
+// Fraction of the sampled positions that must be clipped for the tile to count
+// as degenerate.
+#ifndef ALIGN_CLIP_FRACTION
+#define ALIGN_CLIP_FRACTION 0.75
+#endif
+
 #define TILE_AL 16
 #define TILE (TILE_AL/2)
 #define M_PI 3.1415926535897932384626433832795
@@ -251,7 +261,34 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     // (k = 1.5, measured on real ProRAW bursts in tools/alignment-bench).
     // 'sum' comes from shared memory and is identical on every thread, so
     // the gate keeps the returned offset uniform.
-    bool frozen = false;
+    // Clipped tiles cannot be refined. Where the base frame is saturated the
+    // luminance is flat at the white level, so both spatial gradients vanish
+    // and the alignment problem is degenerate - the structure tensor (or the
+    // Lucas-Kanade Hessian, same thing) is singular and any minimum found is
+    // noise. Coarse levels still resolve such a tile because the block reaches
+    // surrounding texture, but at the finest level a tile can sit entirely
+    // inside the blown-out area, and then neighbouring tiles receive unrelated
+    // vectors and the boundary breaks into blocks.
+    //
+    // That is the fringing seen along window frames once the bracket is on: the
+    // long frame blows the highlights, so exactly those tiles get random
+    // vectors. Detect the condition directly and inherit the coarse vector
+    // instead of refining.
+    float clipFrac = 0.0;
+    {
+        for (int j = -1; j <= 1; ++j) {
+            for (int i = -1; i <= 1; ++i) {
+                ivec2 p = tile_xy * TILE + ivec2(i, j) * (TILE / 2);
+                float v = texelFetch(baseTexture, clamp(p, ivec2(0),
+                        textureSize(baseTexture, 0) - ivec2(1)), 0).x;
+                clipFrac += step(ALIGN_CLIP_LEVEL, v);
+            }
+        }
+        clipFrac /= 9.0;
+    }
+    bool clipped = clipFrac >= ALIGN_CLIP_FRACTION;
+
+    bool frozen = clipped;
     {
         float n = float(OFFSETS * TILE * TILE);
         float expected = 1.13; // mean per-pixel cost when aligned
@@ -266,7 +303,11 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
         float thresh = significancy * sqrt(expected / n) * exposureNoiseScale;
         float costPrev = sum[1][1];
         float improvement = (costPrev - minDiff) / n;
-        if (improvement < thresh) {
+        if (clipped) {
+            // Degenerate tile: keep the coarse vector untouched.
+            bestOffset = prevOffset;
+            bestIdx = ivec2(1, 1);
+        } else if (improvement < thresh) {
             bestOffset = prevOffset;
             minDiff = costPrev;
             bestIdx = ivec2(1, 1);

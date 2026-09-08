@@ -378,6 +378,26 @@ void main() {
         alignVecs[i] = vec4ToAlignment(texelFetch(alignmentTexture, t + shift, 0));
         alignAvg += alignVecs[i] * 0.25;
     }
+    // Local flow variation over a 3x3 tile neighbourhood, after Wronski et al.
+    // eq. 7 (and the same quantity GCam stores alongside its flow vectors):
+    // M = sqrt(Mx^2 + My^2) where Mx, My are the max-min spans of the
+    // displacement components. Camera motion alone produces a smooth flow
+    // field, so a large local span means local motion or a failed match.
+    //
+    // Wider than the four blended tiles below: those share a tile boundary by
+    // construction and agree even when the field around them is falling apart.
+    float mx = -1e9, mxn = 1e9, my = -1e9, myn = 1e9;
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            ivec2 p = clamp(ivec2((TILE*xy)/TILE_AL) + ivec2(i, j),
+                            ivec2(0), alignmentSize - 1);
+            vec2 v = vec4ToAlignment(texelFetch(alignmentTexture, p + shift, 0));
+            mx = max(mx, v.x); mxn = min(mxn, v.x);
+            my = max(my, v.y); myn = min(myn, v.y);
+        }
+    }
+    float flowVariation = length(vec2(mx - mxn, my - myn));
+
     float alignSpread = 0.0;
     for (int i = 0; i < 4; i++) {
         alignSpread = max(alignSpread, length(alignVecs[i] - alignAvg));
@@ -387,6 +407,10 @@ void main() {
     // smoothstep with edge0 >= edge1 is undefined in GLSL, so a tolerance of 0 used to
     // give driver-dependent behaviour that zeroed the trust almost everywhere instead of
     // disabling the guard. Treat anything at or below 1 px as "off".
+    // Take the worse of the two measures: the four-tile disagreement and the
+    // 3x3 flow variation.
+    alignSpread = max(alignSpread, flowVariation);
+
     float tilingTrust = (TILING_TOLERANCE <= 1.0)
             ? 1.0
             : 1.0 - smoothstep(1.0, TILING_TOLERANCE, alignSpread);
