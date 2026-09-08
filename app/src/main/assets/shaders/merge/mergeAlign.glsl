@@ -278,6 +278,39 @@ vec3 kernelCovarianceInv(ivec2 xy, float sigmaLuma) {
     return vec3(om.z / det, -om.y / det, om.x / det);
 }
 
+// The same kernel applied to the base frame, at zero shift.
+//
+// Needed because the residual that drives the robustness weight compares the
+// alternate sample against the base one. On the MFSR path the alternate sample
+// is a nine-tap weighted mean while the base was a single texel, so the two
+// sides of the comparison had different noise bandwidth. Read noise present in
+// the base texel is averaged away in the alternate, which inflates the residual
+// exactly on the rows where read noise is strongest; those rows lose trust,
+// merge less, and keep their noise while their neighbours are denoised. The
+// result is horizontal streaking - visible even at ISO 73, and independent of
+// the kernel anisotropy, which is what the test shots showed.
+//
+// Comparing like with like removes the bias. The merged output still uses the
+// resampled alternate; only the residual changes.
+vec4 baseRBF(ivec2 xy, vec3 omegaInv) {
+    ivec2 sz = imageSize(baseTexture);
+    vec4 sum = vec4(0.0);
+    float weightSum = 0.0;
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            vec2 d = vec2(float(i), float(j));
+            float q = omegaInv.x * d.x * d.x
+                    + 2.0 * omegaInv.y * d.x * d.y
+                    + omegaInv.z * d.y * d.y;
+            float w = exp(-0.5 * q);
+            ivec2 p = clamp(xy + ivec2(i, j), ivec2(0), sz - ivec2(1));
+            sum += imageLoad(baseTexture, p) * w;
+            weightSum += w;
+        }
+    }
+    return sum / max(weightSum, 1e-6);
+}
+
 // Gather over the nine closest samples, as in the paper: every output pixel is
 // processed once per frame and all nine samples share one kernel function.
 vec4 samplePackedRBF(highp sampler2D tex, vec2 pos, vec3 omegaInv) {
@@ -384,7 +417,10 @@ void main() {
         // level, and its noise scales with it, so the tolerance has to grow the
         // same way - otherwise a darker bracketed frame is judged against the
         // reference frame's noise and rejected almost everywhere.
-        vec4 d = bayerAlter * vec4(exposure) - bayerBase;
+        // Compare like with like: on the MFSR path both sides go through the
+        // kernel, otherwise both are raw texels.
+        vec4 baseForResidual = rawMfsr == 1 ? baseRBF(xy, omegaInv) : bayerBase;
+        vec4 d = bayerAlter * vec4(exposure) - baseForResidual;
         vec4 sigma = noise * vec4(max(exposure, 1.0));
         vec4 d2 = d * d;
         vec4 n2 = ROBUSTNESS * sigma * sigma;

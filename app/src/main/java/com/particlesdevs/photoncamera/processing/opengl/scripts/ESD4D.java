@@ -1049,6 +1049,14 @@ public class ESD4D extends GLOneScript {
             glProg.setTexture("inTexture", inputBase);
             glProg.setTextureCompute("baseTexture",base, false);
             glProg.setTextureCompute("alterTexture", alter, false);
+            // The MFSR path reads the alternate frame through alterSampler, not
+            // through the image binding: the RBF gather needs filtered texel
+            // fetches. That sampler was declared in the shader but never bound,
+            // so kernel regression was sampling an unbound unit - which is what
+            // put horizontal streaks across every MFSR frame regardless of
+            // kStretch, in bright areas as much as in shadow, and left the
+            // non-MFSR path clean.
+            glProg.setTexture("alterSampler", alter);
             glProg.setTextureCompute("outTexture", baseDiff, true);
             glProg.computeAuto(baseDiff.mSize, 1);
 
