@@ -21,9 +21,9 @@
                     android:summary="@string/mosaic_sr_enabled_desc" android:title="@string/mosaic_sr_enable" android:defaultValue="false" />
         <SwitchPreferenceCompat android:key="scamera_mosaic_sr_jpeg" android:title="@string/mosaic_sr_jpeg" android:summary="@string/mosaic_sr_jpeg_summary" android:defaultValue="true" android:dependency="scamera_mosaic_sr_enabled" />
         <ListPreference android:key="scamera_mosaic_sr_scale"
-                    android:summary="@string/mosaic_sr_scale_desc" android:title="@string/mosaic_sr_scale" android:entries="@array/mosaic_sr_scale_entries" android:entryValues="@array/mosaic_sr_scale_values" android:defaultValue="1.41421356" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
+                    android:summary="@string/mosaic_sr_scale_desc" android:title="@string/mosaic_sr_scale" android:entries="@array/mosaic_sr_scale_entries" android:entryValues="@array/mosaic_sr_scale_values" android:defaultValue="1.41421356" android:dependency="scamera_mosaic_sr_enabled" />
         <ListPreference android:key="scamera_mosaic_sr_kernel"
-                    android:summary="@string/mosaic_sr_kernel_desc" android:title="@string/mosaic_sr_kernel" android:entries="@array/mosaic_sr_kernel_entries" android:entryValues="@array/mosaic_sr_kernel_values" android:defaultValue="lanczos2" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
+                    android:summary="@string/mosaic_sr_kernel_desc" android:title="@string/mosaic_sr_kernel" android:entries="@array/mosaic_sr_kernel_entries" android:entryValues="@array/mosaic_sr_kernel_values" android:defaultValue="lanczos2" android:dependency="scamera_mosaic_sr_enabled" />
     </PreferenceScreen>
     <PreferenceScreen
         android:order="30"
@@ -34,9 +34,9 @@
         <SwitchPreferenceCompat android:key="scamera_quad_bayer_enabled"
                     android:summary="@string/quad_bayer_enabled_desc" android:title="@string/quad_bayer_enable" android:defaultValue="false" />
         <ListPreference android:key="scamera_quad_bayer_mode"
-                    android:summary="@string/quad_bayer_mode_desc" android:title="@string/quad_bayer_mode" android:entries="@array/quad_bayer_mode_entries" android:entryValues="@array/quad_bayer_mode_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
+                    android:summary="@string/quad_bayer_mode_desc" android:title="@string/quad_bayer_mode" android:entries="@array/quad_bayer_mode_entries" android:entryValues="@array/quad_bayer_mode_values" android:defaultValue="auto" />
         <ListPreference android:key="scamera_quad_dng_metadata"
-                    android:summary="@string/quad_dng_metadata_desc" android:title="@string/quad_bayer_dng" android:entries="@array/quad_dng_metadata_entries" android:entryValues="@array/quad_dng_metadata_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
+                    android:summary="@string/quad_dng_metadata_desc" android:title="@string/quad_bayer_dng" android:entries="@array/quad_dng_metadata_entries" android:entryValues="@array/quad_dng_metadata_values" android:defaultValue="auto" />
     </PreferenceScreen>
     <PreferenceScreen
         android:order="60"
@@ -216,8 +216,7 @@
                     android:key="pref_noise_model_profile_key"
                     android:summary="@string/noise_model_profile_desc"
                     android:title="@string/noise_model_profile"
-                    android:defaultValue="auto"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="auto" />
                 <Preference
                     android:key="pref_noise_model_import_key"
                     android:title="@string/noise_model_import"
@@ -236,34 +235,29 @@
                     android:key="pref_noise_model_coefficient_key"
                     android:title="@string/noise_model_coefficient"
                     android:summary="@string/noise_model_coefficient_summary"
-                    android:defaultValue="1.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="1.0" />
                 <ListPreference
                     android:entries="@array/noise_iso_curve_entries"
                     android:entryValues="@array/noise_iso_curve_values"
                     android:key="pref_noise_iso_curve_key"
                     android:title="@string/noise_iso_curve"
                     android:summary="@string/noise_iso_curve_summary"
-                    android:defaultValue="off"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="off" />
                 <EditTextPreference
                     android:key="pref_noise_iso_min_key"
                     android:title="@string/noise_iso_min"
                     android:summary="@string/noise_iso_clamp_summary"
-                    android:defaultValue="0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0" />
                 <EditTextPreference
                     android:key="pref_noise_iso_max_key"
                     android:title="@string/noise_iso_max"
                     android:summary="@string/noise_iso_clamp_summary"
-                    android:defaultValue="0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0" />
                 <EditTextPreference
                     android:key="pref_noise_iso_manual_key"
                     android:title="@string/noise_iso_manual"
                     android:summary="@string/noise_iso_manual_summary"
-                    android:defaultValue="0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0" />
                 <Preference
                     android:key="pref_noise_model_export_key"
                     android:title="@string/noise_model_export"
@@ -276,26 +270,22 @@
                     android:key="pref_merge_robustness_key"
                     android:title="@string/merge_robustness"
                     android:summary="@string/merge_robustness_summary"
-                    android:defaultValue="8.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="8.0" />
                 <EditTextPreference
                     android:key="pref_merge_clip_level_key"
                     android:title="@string/merge_clip_level"
                     android:summary="@string/merge_clip_level_summary"
-                    android:defaultValue="0.99"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0.99" />
                 <EditTextPreference
                     android:key="pref_max_hdr_ratio_key"
                     android:title="@string/max_hdr_ratio"
                     android:summary="@string/max_hdr_ratio_summary"
-                    android:defaultValue="9.8"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="9.8" />
                 <EditTextPreference
                     android:key="pref_antibanding_hz_key"
                     android:title="@string/antibanding_hz"
                     android:summary="@string/antibanding_hz_summary"
-                    android:defaultValue="120"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="120" />
                 <SwitchPreferenceCompat
                     android:key="pref_tet_model_enabled_key"
                     android:title="@string/tet_model_enabled"
@@ -305,26 +295,22 @@
                     android:key="pref_long_frame_shutter_cap_key"
                     android:title="@string/long_frame_shutter_cap"
                     android:summary="@string/long_frame_shutter_cap_summary"
-                    android:defaultValue="2.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="2.0" />
                 <EditTextPreference
                     android:key="pref_merge_max_exposure_ratio_key"
                     android:title="@string/merge_max_exposure_ratio"
                     android:summary="@string/merge_max_exposure_ratio_summary"
-                    android:defaultValue="64.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="64.0" />
                 <EditTextPreference
                     android:key="pref_merge_floor_sigmas_key"
                     android:title="@string/merge_floor_sigmas"
                     android:summary="@string/merge_floor_sigmas_summary"
-                    android:defaultValue="2.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="2.0" />
                 <EditTextPreference
                     android:key="pref_merge_tiling_tolerance_key"
                     android:title="@string/merge_tiling_tolerance"
                     android:summary="@string/merge_tiling_tolerance_summary"
-                    android:defaultValue="4.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="4.0" />
             </PreferenceCategory>
             <PreferenceCategory
                 android:layout="@layout/preference_category_layout"
@@ -336,8 +322,7 @@
                     android:key="@string/pref_zsl_merge_algorithm_key"
                     android:summary="@string/zsl_merge_algorithm_desc"
                     android:defaultValue="legacy"
-                    android:entryValues="@array/merge_algorithm_values"
-                    app:useSimpleSummaryProvider="true"/>
+                    android:entryValues="@array/merge_algorithm_values"/>
                 <ListPreference
                     android:entries="@array/merge_algorithm_entries"
                     android:layout="@layout/preference_with_margin"
@@ -345,8 +330,7 @@
                     android:key="@string/pref_night_merge_algorithm_key"
                     android:summary="@string/night_merge_algorithm_desc"
                     android:defaultValue="legacy"
-                    android:entryValues="@array/merge_algorithm_values"
-                    app:useSimpleSummaryProvider="true"/>
+                    android:entryValues="@array/merge_algorithm_values"/>
                 <Preference
                     android:selectable="false"
                     android:summary="@string/hdrplus_denoise_summary"/>
@@ -391,8 +375,7 @@
                     android:key="@string/pref_raisr_filter_scale_key"
                     android:summary="@string/raisr_filter_scale_desc"
                     android:defaultValue="@string/pref_raisr_filter_scale_default"
-                    android:entryValues="@array/raisr_filter_scale_values"
-                    app:useSimpleSummaryProvider="true"/>
+                    android:entryValues="@array/raisr_filter_scale_values"/>
                 <ListPreference
                     android:entries="@array/raisr_output_scale_entries"
                     android:layout="@layout/preference_with_margin"
@@ -400,8 +383,7 @@
                     android:key="@string/pref_raisr_output_scale_key"
                     android:summary="@string/raisr_output_scale_desc"
                     android:defaultValue="@string/pref_raisr_output_scale_default"
-                    android:entryValues="@array/raisr_output_scale_values"
-                    app:useSimpleSummaryProvider="true"/>
+                    android:entryValues="@array/raisr_output_scale_values"/>
                 <ListPreference
                     android:entries="@array/raisr_mode_entries"
                     android:layout="@layout/preference_with_margin"
@@ -409,8 +391,7 @@
                     android:key="@string/pref_raisr_mode_key"
                     android:summary="@string/raisr_mode_desc"
                     android:defaultValue="@string/pref_raisr_mode_default"
-                    android:entryValues="@array/raisr_mode_values"
-                    app:useSimpleSummaryProvider="true"/>
+                    android:entryValues="@array/raisr_mode_values"/>
                 <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/raisr_strength"
@@ -452,8 +433,7 @@
                     android:key="@string/pref_highlight_recovery_min_ok_key"
                     android:title="@string/highlight_recovery_min_ok"
                     android:summary="@string/highlight_recovery_min_ok_summary"
-                    android:defaultValue="2"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="2" />
                 <SwitchPreferenceCompat
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_highlight_protection_key"
@@ -465,72 +445,62 @@
                     android:key="@string/pref_highlight_protection_knee_key"
                     android:title="@string/highlight_protection_knee"
                     android:summary="@string/highlight_protection_knee_summary"
-                    android:defaultValue="0.8"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0.8" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_highlight_protection_strength_key"
                     android:title="@string/highlight_protection_strength"
                     android:summary="@string/highlight_protection_strength_summary"
-                    android:defaultValue="1.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="1.0" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_k_detail_key"
                     android:title="@string/mfsr_k_detail"
                     android:summary="@string/mfsr_k_detail_summary"
                     android:defaultValue="0.5"
-                    app:useSimpleSummaryProvider="true"
                     app:isPreferenceVisible="true" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_k_denoise_key"
                     android:title="@string/mfsr_k_denoise"
                     android:summary="@string/mfsr_k_denoise_summary"
-                    android:defaultValue="1.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="1.0" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_k_stretch_key"
                     android:title="@string/mfsr_k_stretch"
                     android:summary="@string/mfsr_k_stretch_summary"
-                    android:defaultValue="4.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="4.0" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_k_shrink_key"
                     android:title="@string/mfsr_k_shrink"
                     android:summary="@string/mfsr_k_shrink_summary"
-                    android:defaultValue="2.0"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="2.0" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_dth_key"
                     android:title="@string/mfsr_dth"
                     android:summary="@string/mfsr_dth_summary"
-                    android:defaultValue="0.005"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0.005" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_tensor_stride_key"
                     android:title="@string/mfsr_tensor_stride"
                     android:summary="@string/mfsr_tensor_stride_summary"
-                    android:defaultValue="8"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="8" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_grad_k_key"
                     android:title="@string/mfsr_grad_k"
                     android:summary="@string/mfsr_grad_k_summary"
-                    android:defaultValue="2.5"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="2.5" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_dtr_key"
                     android:title="@string/mfsr_dtr"
                     android:summary="@string/mfsr_dtr_summary"
-                    android:defaultValue="0.02"
-                    app:useSimpleSummaryProvider="true" />
+                    android:defaultValue="0.02" />
             </PreferenceCategory>
             <PreferenceCategory
                 android:layout="@layout/preference_category_layout"
@@ -548,8 +518,7 @@
                     android:key="@string/pref_ai_denoise_model_key"
                     android:summary="@string/ai_denoise_model_desc"
                     android:defaultValue="@string/pref_ai_denoise_model_default"
-                    android:entryValues="@array/ai_denoise_model_values"
-                    app:useSimpleSummaryProvider="true"/>
+                    android:entryValues="@array/ai_denoise_model_values"/>
                 <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/ai_denoise_strength"
@@ -685,8 +654,7 @@
                 android:key="pref_aces_tone_curve_key"
                     android:summary="@string/aces_tone_curve_desc"
                 android:defaultValue="0"
-                android:entryValues="@array/aces_tone_curve_values"
-                app:useSimpleSummaryProvider="true"/>
+                android:entryValues="@array/aces_tone_curve_values"/>
             <ListPreference
                 android:entries="@array/aces_gamma_curve_entries"
                 android:layout="@layout/preference_with_margin"
@@ -694,8 +662,7 @@
                 android:key="pref_aces_gamma_curve_key"
                 android:summary="@string/aces_gamma_curve_summary"
                 android:defaultValue="0"
-                android:entryValues="@array/aces_gamma_curve_values"
-                app:useSimpleSummaryProvider="true"/>
+                android:entryValues="@array/aces_gamma_curve_values"/>
             <ListPreference
                 android:entries="@array/aces_output_entries"
                 android:layout="@layout/preference_with_margin"
@@ -703,8 +670,7 @@
                 android:key="pref_aces_output_key"
                 android:summary="@string/aces_output_summary"
                 android:defaultValue="0"
-                android:entryValues="@array/aces_output_values"
-                app:useSimpleSummaryProvider="true"/>
+                android:entryValues="@array/aces_output_values"/>
             <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference
                 android:layout="@layout/preference_numeric"
                 android:title="@string/aces_exposure"
@@ -976,8 +942,7 @@
                 android:key="@string/pref_sharpening_enabled_key"
                 android:summary="@string/sharpening_enabled_summary"
                 android:defaultValue="@string/pref_sharpening_enabled_default"
-                android:entryValues="@array/sharpening_mode_values"
-                app:useSimpleSummaryProvider="true"/>
+                android:entryValues="@array/sharpening_mode_values"/>
         </PreferenceCategory>
         <PreferenceCategory
             android:layout="@layout/preference_category_layout"
@@ -1324,8 +1289,7 @@
             android:key="@string/pref_processing_backend_key"
             android:summary="@string/processing_backend_summary"
             android:defaultValue="@string/pref_processing_backend_default"
-            android:entryValues="@array/processing_backend_entry_values"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/processing_backend_entry_values"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_burst_mode_black_24dp"
             android:layout="@layout/preference_with_margin"
@@ -1362,8 +1326,7 @@
             android:key="@string/pref_show_grid_key"
             android:summary="@string/show_grid_desc"
             android:defaultValue="@string/pref_show_grid_default"
-            android:entryValues="@array/vf_grid_entryvalues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/vf_grid_entryvalues"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_rounded_corner"
             android:layout="@layout/preference_with_margin"
@@ -1386,8 +1349,7 @@
             android:key="@string/pref_af_mode_key"
                     android:summary="@string/af_mode_desc"
             android:defaultValue="@string/pref_af_mode_default_value"
-            android:entryValues="@array/af_mode_entryvalues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/af_mode_entryvalues"/>
         <ListPreference
             android:icon="@drawable/ic_focus"
             android:entries="@array/focuspeakset_entries"
@@ -1396,8 +1358,7 @@
             android:key="@string/pref_peak_method_key"
                     android:summary="@string/peak_method_desc"
             android:defaultValue="2"
-            android:entryValues="@array/focuspeakset_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/focuspeakset_entryValues"/>
         <ListPreference
             android:icon="@drawable/ic_developer"
             android:entries="@array/afdata_entries"
@@ -1406,8 +1367,7 @@
             android:key="@string/pref_show_afdata_key"
                     android:summary="@string/show_afdata_desc"
             android:defaultValue="0"
-            android:entryValues="@array/afdata_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/afdata_entryValues"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_multi_lens"
             android:layout="@layout/preference_with_margin"
@@ -1444,8 +1404,7 @@
             android:key="@string/pref_video_resolution_key"
                     android:summary="@string/video_resolution_desc"
             android:defaultValue="@string/pref_video_resolution_default"
-            android:entryValues="@array/video_resolution_entryvalues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/video_resolution_entryvalues"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:order="130"
@@ -1532,8 +1491,7 @@
             android:key="@string/pref_save_raw_key"
             android:summary="@string/save_raw_desc"
             android:defaultValue="@string/pref_raw_mode_default_value"
-            android:entryValues="@array/raw_mode_entryvalues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/raw_mode_entryvalues"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_gradient_black_24dp"
             android:layout="@layout/preference_with_margin"
@@ -1633,8 +1591,7 @@
             android:key="@string/pref_cfa_key"
                     android:summary="@string/cfa_desc"
             android:defaultValue="@string/pref_cfa_default_value"
-            android:entryValues="@array/cfapat_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/cfapat_entryValues"/>
         <ListPreference
             android:icon="@drawable/ic_burst_mode_black_24dp"
             android:entries="@array/alignset_entries"
@@ -1643,8 +1600,7 @@
             android:key="@string/pref_align_method_key"
                     android:summary="@string/align_method_desc"
             android:defaultValue="@string/pref_align_method_default"
-            android:entryValues="@array/alignset_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/alignset_entryValues"/>
         <ListPreference
             android:icon="@drawable/ic_saturation"
             android:entries="@array/colorset_entries"
@@ -1653,8 +1609,7 @@
             android:key="@string/pref_color_method_key"
                     android:summary="@string/color_method_desc"
             android:defaultValue="@string/pref_align_method_default"
-            android:entryValues="@array/colorset_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/colorset_entryValues"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_tune_black_24dp"
             android:layout="@layout/preference_with_margin"
@@ -1670,8 +1625,7 @@
             android:key="@string/pref_preview_format_key"
                     android:summary="@string/preview_format_desc"
             android:defaultValue="@string/pref_preview_format_default"
-            android:entryValues="@array/preview_format_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/preview_format_entryValues"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:order="160"
@@ -1686,8 +1640,7 @@
             android:key="@string/pref_theme_key"
                     android:summary="@string/theme_desc"
             android:defaultValue="@string/pref_theme_default_value"
-            android:entryValues="@array/theme_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/theme_entryValues"/>
         <ListPreference
             android:icon="@drawable/ic_saturation"
             android:entries="@array/theme_accent_entries"
@@ -1696,8 +1649,7 @@
             android:key="@string/pref_theme_accent_key"
                     android:summary="@string/theme_accent_desc"
             android:defaultValue="@string/pref_theme_accent_default_value"
-            android:entryValues="@array/theme_accent_entryValues"
-            app:useSimpleSummaryProvider="true"/>
+            android:entryValues="@array/theme_accent_entryValues"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_gradient_black_24dp"
             android:layout="@layout/preference_with_margin"
