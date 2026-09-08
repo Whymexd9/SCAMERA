@@ -67,6 +67,13 @@ public class PostPipeline extends GLBasePipeline {
      * the scene-anchored gain-map pass can measure pre-local-tone-map scene
      * energy.
      */
+    /**
+     * Highest scene-referred value the raw can now reach. Opposed-colour highlight
+     * inpainting reconstructs clipped photosites above 1.0, and downstream stages
+     * need to know that instead of assuming 1.0. Ported with the inpainting group
+     * from upstream PhotonCamera.
+     */
+    public float rawClipLevel = 1.0f;
     public boolean captureDemosaic = false;
     private boolean mCaptured = false;
     /**
@@ -164,6 +171,7 @@ public class PostPipeline extends GLBasePipeline {
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         exposureCurve = null;
+        rawClipLevel = 1.0f;
         Point rawSliced = parameters.rawSize;
         cropSize = new Point(parameters.rawSize);
         if (PhotonCamera.getSettings().aspect169) {
