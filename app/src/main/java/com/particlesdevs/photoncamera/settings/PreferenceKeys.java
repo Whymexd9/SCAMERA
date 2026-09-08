@@ -759,6 +759,14 @@ public class PreferenceKeys {
     public static float getMfsrDth()      { return mfsrFloat(Key.KEY_MFSR_DTH, 0.005f); }
     public static float getMfsrDtr()      { return mfsrFloat(Key.KEY_MFSR_DTR, 0.02f); }
 
+    /** Coarse-grid spacing for the kernel field, in packed quads (Jiang et al. 2022). */
+    public static int getMfsrTensorStride() {
+        return Math.max(1, Math.round(mfsrFloat(Key.KEY_MFSR_TENSOR_STRIDE, 8f)));
+    }
+
+    /** Gradient noise gate in sigmas for the structure tensor (Liba et al. 2019). */
+    public static float getMfsrGradK() { return mfsrFloat(Key.KEY_MFSR_GRAD_K, 2.5f); }
+
     public static boolean isRaisrEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAISR_ENABLED, false);
     }
@@ -1151,6 +1159,8 @@ public class PreferenceKeys {
         KEY_MFSR_K_SHRINK(R.string.pref_mfsr_k_shrink_key),
         KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
         KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
+        KEY_MFSR_TENSOR_STRIDE(R.string.pref_mfsr_tensor_stride_key),
+        KEY_MFSR_GRAD_K(R.string.pref_mfsr_grad_k_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
         KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),
         KEY_RAISR_OUTPUT_SCALE(R.string.pref_raisr_output_scale_key),

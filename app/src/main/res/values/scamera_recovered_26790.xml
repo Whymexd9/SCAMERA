@@ -313,6 +313,8 @@
     <string name="pref_mfsr_k_shrink_key">pref_mfsr_k_shrink_key</string>
     <string name="pref_mfsr_dth_key">pref_mfsr_dth_key</string>
     <string name="pref_mfsr_dtr_key">pref_mfsr_dtr_key</string>
+    <string name="pref_mfsr_tensor_stride_key">pref_mfsr_tensor_stride_key</string>
+    <string name="pref_mfsr_grad_k_key">pref_mfsr_grad_k_key</string>
     <string name="pref_real_esrgan_enabled_key">pref_real_esrgan_enabled_key</string>
     <string name="pref_real_esrgan_model_default">fast</string>
     <string name="pref_real_esrgan_model_key">pref_real_esrgan_model_key</string>
@@ -684,6 +686,10 @@
     <string name="mfsr_dth_summary">Порог градиента, с которого пиксель считается деталью, а не ровным участком</string>
     <string name="mfsr_dtr">MFSR: Dtr</string>
     <string name="mfsr_dtr_summary">Ширина перехода от ровного участка к детали. Больше — плавнее смена ядра</string>
+    <string name="mfsr_tensor_stride">MFSR: шаг сетки ядер</string>
+    <string name="mfsr_tensor_stride_summary">Ядро считается на сетке с таким шагом (в квадах) и интерполируется между узлами. Больше — шире охват и устойчивее к шуму в тенях. 1 — считать в каждом пикселе, как было. Jiang et al. 2022</string>
+    <string name="mfsr_grad_k">MFSR: порог градиента, сигм</string>
+    <string name="mfsr_grad_k_summary">Градиенты слабее этого числа шумовых сигм не учитываются при построении ядра. 2.5 — как в Night Sight. 0 — учитывать все, включая шум</string>
     <bool name="pref_real_esrgan_enabled_default">false</bool>
     <integer name="abc_config_activityDefaultDur">220</integer>
     <integer name="abc_config_activityShortDur">150</integer>

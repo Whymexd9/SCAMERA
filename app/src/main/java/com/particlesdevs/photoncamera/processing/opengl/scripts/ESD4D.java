@@ -1000,11 +1000,16 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("MFSR_KSHRINK", mfsrKShrink);
             glProg.setDefine("MFSR_DTH", mfsrDth);
             glProg.setDefine("MFSR_DTR", mfsrDtr);
+            int mfsrStride = PreferenceKeys.getMfsrTensorStride();
+            float mfsrGradK = PreferenceKeys.getMfsrGradK();
+            glProg.setDefine("MFSR_TENSOR_STRIDE", mfsrStride);
+            glProg.setDefine("MFSR_GRAD_K", mfsrGradK);
             Log.d("ESD4D", "Merge robustness=" + robustness + " clipLevel=" + clipLevel
                     + " tilingTolerance=" + tilingTolerance + " floorSigmas=" + floorSigmas
                     + " | MFSR kDetail=" + mfsrKDetail + " kDenoise=" + mfsrKDenoise
                     + " kStretch=" + mfsrKStretch + " kShrink=" + mfsrKShrink
-                    + " Dth=" + mfsrDth + " Dtr=" + mfsrDtr);
+                    + " Dth=" + mfsrDth + " Dtr=" + mfsrDtr
+                    + " stride=" + mfsrStride + " gradK=" + mfsrGradK);
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);

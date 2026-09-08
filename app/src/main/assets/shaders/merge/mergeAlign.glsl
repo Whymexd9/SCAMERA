@@ -51,6 +51,15 @@ uniform highp sampler2D alignmentTexture;
 #ifndef MFSR_MIN_SIGMA
 #define MFSR_MIN_SIGMA 0.3
 #endif
+// Spacing of the coarse grid on which the kernel field is evaluated, in packed
+// quads. 1 reproduces the old per-pixel behaviour.
+#ifndef MFSR_TENSOR_STRIDE
+#define MFSR_TENSOR_STRIDE 8
+#endif
+// Gradients below this many noise sigmas are treated as unmeasured.
+#ifndef MFSR_GRAD_K
+#define MFSR_GRAD_K 2.5
+#endif
 uniform highp sampler2D alterSampler;
 //layout(r16ui, binding = 0) uniform highp readonly uimage2D inTexture;
 layout(rgba16f, binding = 0) uniform highp readonly image2D avrTexture;
@@ -157,16 +166,43 @@ float quadLuma(ivec2 p) {
     return dot(imageLoad(baseTexture, q), vec4(0.25));
 }
 
-// Inverse kernel covariance at this pixel, packed as (a, b, c) of the
-// symmetric matrix [[a, b], [b, c]].
-vec3 kernelCovarianceInv(ivec2 xy) {
-    // Gradients by finite forward differencing over a 3x3 window (eq. 3).
+// Kernel covariance on a coarse grid, packed as (a, b, c) of the symmetric
+// matrix [[a, b], [b, c]]. Note this returns Omega itself, not its inverse:
+// Wronski et al. upsample the covariance values and only then compute the
+// kernel weights, and interpolating an inverse is not the same operation as
+// inverting an interpolant.
+//
+// Two departures from the per-pixel version this replaces, both aimed at the
+// same failure. The structure tensor was previously estimated from a 3x3 window
+// at every output pixel. In deep shadow the gradients in such a window are
+// almost entirely noise, so the eigenvalues are noise, so the edge direction
+// and the coherence are noise - and an anisotropic kernel steered by noise
+// smears along a random direction, producing elongated structure rather than
+// even grain.
+//
+//  - The tensor is evaluated on a grid of spacing MFSR_TENSOR_STRIDE and
+//    bilinearly interpolated between nodes, after the malleable-convolution
+//    idea of Jiang et al. (ECCV 2022): predict a small field of spatially
+//    varying kernels and slice it into full resolution, rather than deriving a
+//    kernel per pixel. Their ablation shows this raising quality, not only
+//    speed - a coarser field carries a larger receptive field.
+//  - Gradients below the noise floor are discarded, after the "Bounded Flow"
+//    masking of Liba et al. (Night Sight, 2019), which rejects gradients where
+//    ||g|| < K*sigma with K = 2.5 for exactly this reason.
+vec3 kernelCovarianceAt(ivec2 node, float sigmaLuma) {
+    int st = MFSR_TENSOR_STRIDE;
     float ixx = 0.0, iyy = 0.0, ixy = 0.0;
+    // Gradient magnitude below which a difference is indistinguishable from
+    // noise. Differencing two samples adds their variances, hence the sqrt(2).
+    float gateSq = MFSR_GRAD_K * MFSR_GRAD_K * 2.0 * sigmaLuma * sigmaLuma;
     for (int j = -1; j <= 1; ++j) {
         for (int i = -1; i <= 1; ++i) {
-            ivec2 p = xy + ivec2(i, j);
-            float gx = quadLuma(p + ivec2(1, 0)) - quadLuma(p);
-            float gy = quadLuma(p + ivec2(0, 1)) - quadLuma(p);
+            ivec2 p = node + ivec2(i, j) * st;
+            float gx = quadLuma(p + ivec2(st, 0)) - quadLuma(p);
+            float gy = quadLuma(p + ivec2(0, st)) - quadLuma(p);
+            if (gx * gx + gy * gy < gateSq) {
+                continue;
+            }
             ixx += gx * gx;
             iyy += gy * gy;
             ixy += gx * gy;
@@ -174,49 +210,60 @@ vec3 kernelCovarianceInv(ivec2 xy) {
     }
     ixx /= 9.0; iyy /= 9.0; ixy /= 9.0;
 
-    // Closed-form eigenanalysis of the 2x2 symmetric tensor.
     float tr = ixx + iyy;
     float det = ixx * iyy - ixy * ixy;
     float disc = sqrt(max(tr * tr * 0.25 - det, 0.0));
-    float l1 = tr * 0.5 + disc;   // dominant
+    float l1 = tr * 0.5 + disc;
     float l2 = max(tr * 0.5 - disc, 0.0);
 
-    // Dominant eigenvector; falls back to the x axis on a degenerate tensor.
     vec2 e1 = vec2(ixy, l1 - ixx);
     float e1len = length(e1);
     e1 = e1len > 1e-12 ? e1 / e1len : vec2(1.0, 0.0);
     vec2 e2 = vec2(-e1.y, e1.x);
 
-    // A = "presence of a sharp feature", driven by the dominant eigenvalue and
-    // the Dth/Dtr thresholds of the paper's supplemental material. High
-    // curvature -> narrow kernel (resolution), flat -> wide kernel (denoise).
+    // Every gradient gated away leaves l1 at zero, so a textureless tile lands
+    // on feature = 0 and coherence = 0: the widest, roundest kernel there is.
+    // That is the correct behaviour - denoise, do not sharpen along a direction
+    // we could not measure.
     float feature = clamp((sqrt(l1) - MFSR_DTH) / max(MFSR_DTR, 1e-6), 0.0, 1.0);
     float support = mix(MFSR_KDENOISE, MFSR_KDETAIL, feature);
 
-    // Anisotropy from the eigenvalue ratio. The paper's own text uses l1/l2,
-    // which is unbounded; the normalized coherence measure below is the
-    // standard bounded form and is what makes the stretch factor well defined.
     float coherence = (l1 + l2) > 1e-12 ? (l1 - l2) / (l1 + l2) : 0.0;
     float stretch = mix(1.0, MFSR_KSTRETCH, coherence);
     float shrink  = mix(1.0, MFSR_KSHRINK, coherence);
 
-    // k1 along the edge (stretched), k2 across it (shrunk). Variances, so the
-    // support scale is squared.
-    // Floor the kernel width. Samples sit one quad apart, so a sigma much below
-    // ~0.25 makes every neighbour's weight underflow and the kernel degenerates
-    // into nearest-neighbour: at kDetail 0.25 with kShrink 2 the nine weights
-    // sum to 0.013, which is numerically fragile and throws away the very
-    // multi-frame information MFSR exists to gather.
     float k1 = max(support * stretch, MFSR_MIN_SIGMA);
     k1 = k1 * k1;
     float k2 = max(support / shrink, MFSR_MIN_SIGMA);
     k2 = k2 * k2;
 
-    // Omega = [e2 e1] diag(k2, k1) [e2 e1]^T, inverted analytically.
-    float a = e2.x * e2.x / k2 + e1.x * e1.x / k1;
-    float c = e2.y * e2.y / k2 + e1.y * e1.y / k1;
-    float b = e2.x * e2.y / k2 + e1.x * e1.y / k1;
+    // Omega = [e2 e1] diag(k2, k1) [e2 e1]^T.
+    float a = e2.x * e2.x * k2 + e1.x * e1.x * k1;
+    float c = e2.y * e2.y * k2 + e1.y * e1.y * k1;
+    float b = e2.x * e2.y * k2 + e1.x * e1.y * k1;
     return vec3(a, b, c);
+}
+
+// Slice the coarse covariance field at this pixel and invert once.
+vec3 kernelCovarianceInv(ivec2 xy, float sigmaLuma) {
+    int st = MFSR_TENSOR_STRIDE;
+    ivec2 n0 = (xy / st) * st;
+    vec2 f = vec2(xy - n0) / float(st);
+    vec3 c00 = kernelCovarianceAt(n0, sigmaLuma);
+    vec3 c10 = kernelCovarianceAt(n0 + ivec2(st, 0), sigmaLuma);
+    vec3 c01 = kernelCovarianceAt(n0 + ivec2(0, st), sigmaLuma);
+    vec3 c11 = kernelCovarianceAt(n0 + ivec2(st, st), sigmaLuma);
+    vec3 om = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+
+    float det = om.x * om.z - om.y * om.y;
+    if (det < 1e-12) {
+        // Degenerate after interpolation: fall back to an isotropic kernel of
+        // the denoising width rather than dividing by nothing.
+        float k = max(MFSR_KDENOISE, MFSR_MIN_SIGMA);
+        k = k * k;
+        return vec3(1.0 / k, 0.0, 1.0 / k);
+    }
+    return vec3(om.z / det, -om.y / det, om.x / det);
 }
 
 // Gather over the nine closest samples, as in the paper: every output pixel is
@@ -273,7 +320,10 @@ void main() {
     // blended alignment tiles. Only needed on the MFSR path.
     vec3 omegaInv = vec3(1.0, 0.0, 1.0);
     if (rawMfsr == 1) {
-        omegaInv = kernelCovarianceInv(xy);
+        // Luma-scale sigma for the gradient gate: the packed quad's luma is the
+        // mean of four channels, so its noise is the channel noise over two.
+        float sigmaLuma = dot(noise, vec4(0.25)) * 0.5;
+        omegaInv = kernelCovarianceInv(xy, sigmaLuma);
     }
 
     vec2 alignAvg = vec2(0.0);

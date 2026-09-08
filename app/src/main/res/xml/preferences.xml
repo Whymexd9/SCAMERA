@@ -430,6 +430,20 @@
                     app:useSimpleSummaryProvider="true" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_tensor_stride_key"
+                    android:title="@string/mfsr_tensor_stride"
+                    android:summary="@string/mfsr_tensor_stride_summary"
+                    android:defaultValue="8"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_mfsr_grad_k_key"
+                    android:title="@string/mfsr_grad_k"
+                    android:summary="@string/mfsr_grad_k_summary"
+                    android:defaultValue="2.5"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_dtr_key"
                     android:title="@string/mfsr_dtr"
                     android:summary="@string/mfsr_dtr_summary"
