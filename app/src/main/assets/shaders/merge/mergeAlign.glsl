@@ -232,9 +232,21 @@ vec3 kernelCovarianceAt(ivec2 node, float sigmaLuma) {
     float stretch = mix(1.0, MFSR_KSTRETCH, coherence);
     float shrink  = mix(1.0, MFSR_KSHRINK, coherence);
 
-    float k1 = max(support * stretch, MFSR_MIN_SIGMA);
+    // Area-preserving normalisation. Applying stretch and shrink directly to
+    // the support inflates the kernel instead of only reshaping it: at
+    // kDetail 0.5 with kStretch 4 the sigma along the edge reached 2.0 quads,
+    // four pixels, while the across-edge sigma hit the floor - a 6.7:1 kernel
+    // with twice the area of the isotropic one. Test shots at kStretch 4 came
+    // out visibly softer than at 1.
+    //
+    // Split the anisotropy symmetrically about the requested support instead,
+    // so the geometric mean of the two sigmas stays at `support` whatever the
+    // coherence. kStretch/kShrink then control the shape only, which is what
+    // figure 7 of Wronski et al. is about.
+    float aspect = sqrt(max(stretch * shrink, 1e-6));
+    float k1 = max(support * aspect, MFSR_MIN_SIGMA);
     k1 = k1 * k1;
-    float k2 = max(support / shrink, MFSR_MIN_SIGMA);
+    float k2 = max(support / aspect, MFSR_MIN_SIGMA);
     k2 = k2 * k2;
 
     // Omega = [e2 e1] diag(k2, k1) [e2 e1]^T.
