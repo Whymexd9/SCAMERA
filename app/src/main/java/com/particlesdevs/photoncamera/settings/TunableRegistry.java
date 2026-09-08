@@ -20,6 +20,7 @@ public final class TunableRegistry {
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.LinearExposure.class,
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.HeadroomRender.class,
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.Amaze.class,
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.Bayer2Float.class,
         com.particlesdevs.photoncamera.processing.opengl.scripts.PyramidAlignment.class,
         com.particlesdevs.photoncamera.processing.opengl.scripts.ESD4D.class,
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ABLC.class,
