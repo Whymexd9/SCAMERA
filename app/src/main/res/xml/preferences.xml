@@ -17,10 +17,13 @@
         android:title="@string/mosaic_sr_title"
         android:summary="@string/mosaic_sr_summary"
         android:layout="@layout/preference_with_margin">
-        <SwitchPreferenceCompat android:key="scamera_mosaic_sr_enabled" android:title="@string/mosaic_sr_enable" android:defaultValue="false" />
+        <SwitchPreferenceCompat android:key="scamera_mosaic_sr_enabled"
+                    android:summary="@string/mosaic_sr_enabled_desc" android:title="@string/mosaic_sr_enable" android:defaultValue="false" />
         <SwitchPreferenceCompat android:key="scamera_mosaic_sr_jpeg" android:title="@string/mosaic_sr_jpeg" android:summary="@string/mosaic_sr_jpeg_summary" android:defaultValue="true" android:dependency="scamera_mosaic_sr_enabled" />
-        <ListPreference android:key="scamera_mosaic_sr_scale" android:title="@string/mosaic_sr_scale" android:entries="@array/mosaic_sr_scale_entries" android:entryValues="@array/mosaic_sr_scale_values" android:defaultValue="1.41421356" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
-        <ListPreference android:key="scamera_mosaic_sr_kernel" android:title="@string/mosaic_sr_kernel" android:entries="@array/mosaic_sr_kernel_entries" android:entryValues="@array/mosaic_sr_kernel_values" android:defaultValue="lanczos2" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="scamera_mosaic_sr_scale"
+                    android:summary="@string/mosaic_sr_scale_desc" android:title="@string/mosaic_sr_scale" android:entries="@array/mosaic_sr_scale_entries" android:entryValues="@array/mosaic_sr_scale_values" android:defaultValue="1.41421356" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="scamera_mosaic_sr_kernel"
+                    android:summary="@string/mosaic_sr_kernel_desc" android:title="@string/mosaic_sr_kernel" android:entries="@array/mosaic_sr_kernel_entries" android:entryValues="@array/mosaic_sr_kernel_values" android:defaultValue="lanczos2" android:dependency="scamera_mosaic_sr_enabled" app:useSimpleSummaryProvider="true" />
     </PreferenceScreen>
     <PreferenceScreen
         android:order="30"
@@ -28,9 +31,12 @@
         android:title="@string/quad_bayer_title"
         android:summary="@string/quad_bayer_warning"
         android:layout="@layout/preference_with_margin">
-        <SwitchPreferenceCompat android:key="scamera_quad_bayer_enabled" android:title="@string/quad_bayer_enable" android:defaultValue="false" />
-        <ListPreference android:key="scamera_quad_bayer_mode" android:title="@string/quad_bayer_mode" android:entries="@array/quad_bayer_mode_entries" android:entryValues="@array/quad_bayer_mode_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
-        <ListPreference android:key="scamera_quad_dng_metadata" android:title="@string/quad_bayer_dng" android:entries="@array/quad_dng_metadata_entries" android:entryValues="@array/quad_dng_metadata_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
+        <SwitchPreferenceCompat android:key="scamera_quad_bayer_enabled"
+                    android:summary="@string/quad_bayer_enabled_desc" android:title="@string/quad_bayer_enable" android:defaultValue="false" />
+        <ListPreference android:key="scamera_quad_bayer_mode"
+                    android:summary="@string/quad_bayer_mode_desc" android:title="@string/quad_bayer_mode" android:entries="@array/quad_bayer_mode_entries" android:entryValues="@array/quad_bayer_mode_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="scamera_quad_dng_metadata"
+                    android:summary="@string/quad_dng_metadata_desc" android:title="@string/quad_bayer_dng" android:entries="@array/quad_dng_metadata_entries" android:entryValues="@array/quad_dng_metadata_values" android:defaultValue="auto" app:useSimpleSummaryProvider="true" />
     </PreferenceScreen>
     <PreferenceScreen
         android:order="60"
@@ -39,32 +45,58 @@
         android:summary="@string/darktable_summary"
         android:icon="@drawable/ic_tune_black_24dp"
         android:layout="@layout/preference_with_margin">
-        <SwitchPreferenceCompat android:key="scamera_darktable_enabled" android:title="@string/darktable_enable" android:defaultValue="false" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_exposure" android:title="@string/darktable_exposure" android:defaultValue="0" app:minValue="-40" app:maxValue="40" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_filmic_contrast" android:title="@string/darktable_filmic_contrast" android:defaultValue="100" app:minValue="50" app:maxValue="200" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_shadows" android:title="@string/darktable_shadows" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_highlights" android:title="@string/darktable_highlights" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_local_contrast" android:title="@string/darktable_local_contrast" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_colorfulness" android:title="@string/darktable_colorfulness" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_highlight_reconstruction" android:title="@string/darktable_highlight_reconstruction" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_diffuse_sharpen" android:title="@string/darktable_diffuse_sharpen" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_profiled_denoise" android:title="@string/darktable_profiled_denoise" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_tone_shadows" android:title="@string/darktable_tone_shadows" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_tone_midtones" android:title="@string/darktable_tone_midtones" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_tone_highlights" android:title="@string/darktable_tone_highlights" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_balance_shadows" android:title="@string/darktable_balance_shadows" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_balance_midtones" android:title="@string/darktable_balance_midtones" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_balance_highlights" android:title="@string/darktable_balance_highlights" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_reconstruction" android:title="@string/darktable_color_reconstruction" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_calibration_temperature" android:title="@string/darktable_calibration_temperature" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_calibration_tint" android:title="@string/darktable_calibration_tint" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_red" android:title="@string/darktable_color_red" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_green" android:title="@string/darktable_color_green" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_blue" android:title="@string/darktable_color_blue" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_wide_ca" android:title="@string/darktable_wide_ca" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_vignette" android:title="@string/darktable_vignette" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_haze" android:title="@string/darktable_haze" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_texture" android:title="@string/darktable_texture" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <SwitchPreferenceCompat android:key="scamera_darktable_enabled"
+                    android:summary="@string/darktable_enabled_desc" android:title="@string/darktable_enable" android:defaultValue="false" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_exposure"
+                    android:summary="@string/darktable_exposure_desc" android:title="@string/darktable_exposure" android:defaultValue="0" app:minValue="-40" app:maxValue="40" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_filmic_contrast"
+                    android:summary="@string/darktable_filmic_contrast_desc" android:title="@string/darktable_filmic_contrast" android:defaultValue="100" app:minValue="50" app:maxValue="200" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_shadows"
+                    android:summary="@string/darktable_shadows_desc" android:title="@string/darktable_shadows" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_highlights"
+                    android:summary="@string/darktable_highlights_desc" android:title="@string/darktable_highlights" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_local_contrast"
+                    android:summary="@string/darktable_local_contrast_desc" android:title="@string/darktable_local_contrast" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_colorfulness"
+                    android:summary="@string/darktable_colorfulness_desc" android:title="@string/darktable_colorfulness" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_highlight_reconstruction"
+                    android:summary="@string/darktable_highlight_reconstruction_desc" android:title="@string/darktable_highlight_reconstruction" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_diffuse_sharpen"
+                    android:summary="@string/darktable_diffuse_sharpen_desc" android:title="@string/darktable_diffuse_sharpen" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_profiled_denoise"
+                    android:summary="@string/darktable_profiled_denoise_desc" android:title="@string/darktable_profiled_denoise" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_tone_shadows"
+                    android:summary="@string/darktable_tone_shadows_desc" android:title="@string/darktable_tone_shadows" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_tone_midtones"
+                    android:summary="@string/darktable_tone_midtones_desc" android:title="@string/darktable_tone_midtones" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_tone_highlights"
+                    android:summary="@string/darktable_tone_highlights_desc" android:title="@string/darktable_tone_highlights" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_balance_shadows"
+                    android:summary="@string/darktable_balance_shadows_desc" android:title="@string/darktable_balance_shadows" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_balance_midtones"
+                    android:summary="@string/darktable_balance_midtones_desc" android:title="@string/darktable_balance_midtones" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_balance_highlights"
+                    android:summary="@string/darktable_balance_highlights_desc" android:title="@string/darktable_balance_highlights" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_reconstruction"
+                    android:summary="@string/darktable_color_reconstruction_desc" android:title="@string/darktable_color_reconstruction" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_calibration_temperature"
+                    android:summary="@string/darktable_calibration_temperature_desc" android:title="@string/darktable_calibration_temperature" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_calibration_tint"
+                    android:summary="@string/darktable_calibration_tint_desc" android:title="@string/darktable_calibration_tint" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_red"
+                    android:summary="@string/darktable_color_red_desc" android:title="@string/darktable_color_red" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_green"
+                    android:summary="@string/darktable_color_green_desc" android:title="@string/darktable_color_green" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_color_blue"
+                    android:summary="@string/darktable_color_blue_desc" android:title="@string/darktable_color_blue" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_wide_ca"
+                    android:summary="@string/darktable_wide_ca_desc" android:title="@string/darktable_wide_ca" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_vignette"
+                    android:summary="@string/darktable_vignette_desc" android:title="@string/darktable_vignette" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_haze"
+                    android:summary="@string/darktable_haze_desc" android:title="@string/darktable_haze" android:defaultValue="0" app:minValue="0" app:maxValue="100" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_seekbar" android:key="scamera_darktable_texture"
+                    android:summary="@string/darktable_texture_desc" android:title="@string/darktable_texture" android:defaultValue="0" app:minValue="-100" app:maxValue="100" />
     </PreferenceScreen>
     <Preference
         android:order="90"
@@ -94,6 +126,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_base_exposure"
                     android:key="@string/pref_tone_base_exposure_key"
+                    android:summary="@string/tone_base_exposure_desc"
                     android:defaultValue="@string/pref_tone_base_exposure_default"
                     app:isFloat="true"
                     app:maxValue="5"
@@ -103,6 +136,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_target_luma"
                     android:key="@string/pref_tone_target_luma_key"
+                    android:summary="@string/tone_target_luma_desc"
                     android:defaultValue="@string/pref_tone_target_luma_default"
                     app:isFloat="true"
                     app:maxValue="1"
@@ -112,6 +146,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_exposure_sigma"
                     android:key="@string/pref_tone_exposure_sigma_key"
+                    android:summary="@string/tone_exposure_sigma_desc"
                     android:defaultValue="@string/pref_tone_exposure_sigma_default"
                     app:isFloat="true"
                     app:maxValue="1"
@@ -121,6 +156,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_contrast_weight"
                     android:key="@string/pref_tone_contrast_weight_key"
+                    android:summary="@string/tone_contrast_weight_desc"
                     android:defaultValue="@string/pref_tone_contrast_weight_default"
                     app:isFloat="true"
                     app:maxValue="2"
@@ -130,6 +166,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_resolution_divisor"
                     android:key="@string/pref_tone_resolution_divisor_key"
+                    android:summary="@string/tone_resolution_divisor_desc"
                     android:defaultValue="@string/pref_tone_resolution_divisor_default"
                     app:maxValue="4"
                     app:minValue="1"/>
@@ -137,6 +174,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_exposure_low"
                     android:key="@string/pref_tone_exposure_low_key"
+                    android:summary="@string/tone_exposure_low_desc"
                     android:defaultValue="@string/pref_tone_exposure_low_default"
                     app:isFloat="true"
                     app:maxValue="1"
@@ -146,6 +184,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_exposure_high"
                     android:key="@string/pref_tone_exposure_high_key"
+                    android:summary="@string/tone_exposure_high_desc"
                     android:defaultValue="@string/pref_tone_exposure_high_default"
                     app:isFloat="true"
                     app:maxValue="100"
@@ -155,6 +194,7 @@
                     android:layout="@layout/preference_numeric"
                     android:title="@string/tone_highlight_limit"
                     android:key="@string/pref_tone_highlight_limit_key"
+                    android:summary="@string/tone_highlight_limit_desc"
                     android:defaultValue="@string/pref_tone_highlight_limit_default"
                     app:isFloat="true"
                     app:maxValue="2"
@@ -174,6 +214,7 @@
                     android:entries="@array/noise_model_profile_entries"
                     android:entryValues="@array/noise_model_profile_values"
                     android:key="pref_noise_model_profile_key"
+                    android:summary="@string/noise_model_profile_desc"
                     android:title="@string/noise_model_profile"
                     android:defaultValue="auto"
                     app:useSimpleSummaryProvider="true" />
@@ -293,6 +334,7 @@
                     android:layout="@layout/preference_with_margin"
                     android:title="@string/zsl_merge_algorithm"
                     android:key="@string/pref_zsl_merge_algorithm_key"
+                    android:summary="@string/zsl_merge_algorithm_desc"
                     android:defaultValue="legacy"
                     android:entryValues="@array/merge_algorithm_values"
                     app:useSimpleSummaryProvider="true"/>
@@ -301,6 +343,7 @@
                     android:layout="@layout/preference_with_margin"
                     android:title="@string/night_merge_algorithm"
                     android:key="@string/pref_night_merge_algorithm_key"
+                    android:summary="@string/night_merge_algorithm_desc"
                     android:defaultValue="legacy"
                     android:entryValues="@array/merge_algorithm_values"
                     app:useSimpleSummaryProvider="true"/>
@@ -346,6 +389,7 @@
                     android:layout="@layout/preference_with_margin"
                     android:title="@string/raisr_filter_scale"
                     android:key="@string/pref_raisr_filter_scale_key"
+                    android:summary="@string/raisr_filter_scale_desc"
                     android:defaultValue="@string/pref_raisr_filter_scale_default"
                     android:entryValues="@array/raisr_filter_scale_values"
                     app:useSimpleSummaryProvider="true"/>
@@ -354,6 +398,7 @@
                     android:layout="@layout/preference_with_margin"
                     android:title="@string/raisr_output_scale"
                     android:key="@string/pref_raisr_output_scale_key"
+                    android:summary="@string/raisr_output_scale_desc"
                     android:defaultValue="@string/pref_raisr_output_scale_default"
                     android:entryValues="@array/raisr_output_scale_values"
                     app:useSimpleSummaryProvider="true"/>
@@ -362,6 +407,7 @@
                     android:layout="@layout/preference_with_margin"
                     android:title="@string/raisr_mode"
                     android:key="@string/pref_raisr_mode_key"
+                    android:summary="@string/raisr_mode_desc"
                     android:defaultValue="@string/pref_raisr_mode_default"
                     android:entryValues="@array/raisr_mode_values"
                     app:useSimpleSummaryProvider="true"/>
@@ -369,6 +415,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/raisr_strength"
                     android:key="@string/pref_raisr_strength_key"
+                    android:summary="@string/raisr_strength_desc"
                     android:defaultValue="@string/pref_raisr_strength_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -376,6 +423,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/raisr_halo"
                     android:key="@string/pref_raisr_halo_key"
+                    android:summary="@string/raisr_halo_desc"
                     android:defaultValue="@string/pref_raisr_halo_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -383,6 +431,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/raisr_aliasing"
                     android:key="@string/pref_raisr_aliasing_key"
+                    android:summary="@string/raisr_aliasing_desc"
                     android:defaultValue="@string/pref_raisr_aliasing_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -497,6 +546,7 @@
                     android:layout="@layout/preference_with_margin"
                     android:title="@string/ai_denoise_model"
                     android:key="@string/pref_ai_denoise_model_key"
+                    android:summary="@string/ai_denoise_model_desc"
                     android:defaultValue="@string/pref_ai_denoise_model_default"
                     android:entryValues="@array/ai_denoise_model_values"
                     app:useSimpleSummaryProvider="true"/>
@@ -504,6 +554,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/ai_denoise_strength"
                     android:key="@string/pref_ai_denoise_strength_key"
+                    android:summary="@string/ai_denoise_strength_desc"
                     android:defaultValue="@string/pref_ai_denoise_strength_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -511,6 +562,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/ai_denoise_luma"
                     android:key="@string/pref_ai_denoise_luma_key"
+                    android:summary="@string/ai_denoise_luma_desc"
                     android:defaultValue="@string/pref_ai_denoise_luma_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -518,6 +570,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/ai_denoise_chroma"
                     android:key="@string/pref_ai_denoise_chroma_key"
+                    android:summary="@string/ai_denoise_chroma_desc"
                     android:defaultValue="@string/pref_ai_denoise_chroma_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -529,6 +582,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/rt_nr_luma"
                     android:key="@string/pref_rt_nr_luma_key"
+                    android:summary="@string/rt_nr_luma_desc"
                     android:defaultValue="@string/pref_rt_nr_luma_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -536,6 +590,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/rt_nr_chroma"
                     android:key="@string/pref_rt_nr_chroma_key"
+                    android:summary="@string/rt_nr_chroma_desc"
                     android:defaultValue="@string/pref_rt_nr_chroma_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -543,6 +598,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/rt_nr_detail"
                     android:key="@string/pref_rt_nr_detail_key"
+                    android:summary="@string/rt_nr_detail_desc"
                     android:defaultValue="@string/pref_rt_nr_detail_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -550,6 +606,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/rt_nr_moire"
                     android:key="@string/pref_rt_nr_moire_key"
+                    android:summary="@string/rt_nr_moire_desc"
                     android:defaultValue="@string/pref_rt_nr_moire_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -567,6 +624,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/false_color_strength"
                     android:key="@string/pref_false_color_strength_key"
+                    android:summary="@string/false_color_strength_desc"
                     android:defaultValue="@string/pref_false_color_strength_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -574,6 +632,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/defringe_purple"
                     android:key="@string/pref_defringe_purple_key"
+                    android:summary="@string/defringe_purple_desc"
                     android:defaultValue="@string/pref_defringe_purple_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -581,6 +640,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/defringe_green"
                     android:key="@string/pref_defringe_green_key"
+                    android:summary="@string/defringe_green_desc"
                     android:defaultValue="@string/pref_defringe_green_default"
                     app:maxValue="100"
                     app:minValue="0"/>
@@ -588,6 +648,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/ca_red"
                     android:key="@string/pref_ca_red_key"
+                    android:summary="@string/ca_red_desc"
                     android:defaultValue="@string/pref_ca_red_default"
                     app:maxValue="100"
                     app:minValue="-100"/>
@@ -595,6 +656,7 @@
                     android:layout="@layout/preference_seekbar"
                     android:title="@string/ca_blue"
                     android:key="@string/pref_ca_blue_key"
+                    android:summary="@string/ca_blue_desc"
                     android:defaultValue="@string/pref_ca_blue_default"
                     app:maxValue="100"
                     app:minValue="-100"/>
@@ -621,6 +683,7 @@
                 android:layout="@layout/preference_with_margin"
                 android:title="@string/aces_tone_curve"
                 android:key="pref_aces_tone_curve_key"
+                    android:summary="@string/aces_tone_curve_desc"
                 android:defaultValue="0"
                 android:entryValues="@array/aces_tone_curve_values"
                 app:useSimpleSummaryProvider="true"/>
@@ -646,6 +709,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/aces_exposure"
                 android:key="pref_aces_exposure_key"
+                    android:summary="@string/aces_exposure_desc"
                 android:defaultValue="0"
                 app:isFloat="true"
                 app:maxValue="4"
@@ -655,6 +719,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/aces_tone_mix"
                 android:key="pref_aces_tone_mix_key"
+                    android:summary="@string/aces_tone_mix_desc"
                 android:defaultValue="100"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -662,6 +727,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/aces_mid_gray"
                 android:key="pref_aces_mid_gray_key"
+                    android:summary="@string/aces_mid_gray_desc"
                 android:defaultValue="0.18"
                 app:isFloat="true"
                 app:maxValue="0.3"
@@ -671,6 +737,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/aces_tone_contrast"
                 android:key="pref_aces_tone_contrast_key"
+                    android:summary="@string/aces_tone_contrast_desc"
                 android:defaultValue="1"
                 app:isFloat="true"
                 app:maxValue="2"
@@ -680,6 +747,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/aces_toe"
                 android:key="pref_aces_toe_key"
+                    android:summary="@string/aces_toe_desc"
                 android:defaultValue="50"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -687,6 +755,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/aces_shoulder"
                 android:key="pref_aces_shoulder_key"
+                    android:summary="@string/aces_shoulder_desc"
                 android:defaultValue="50"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -712,6 +781,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/aces_highlight_desat"
                 android:key="pref_aces_highlight_desat_key"
+                    android:summary="@string/aces_highlight_desat_desc"
                 android:defaultValue="100"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -719,6 +789,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/aces_hue_protection"
                 android:key="pref_aces_hue_protection_key"
+                    android:summary="@string/aces_hue_protection_desc"
                 android:defaultValue="100"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -736,6 +807,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/aces_custom_gamma"
                 android:key="pref_aces_custom_gamma_key"
+                    android:summary="@string/aces_custom_gamma_desc"
                 android:defaultValue="2.2"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -756,11 +828,13 @@
                 android:layout="@layout/preference_with_margin"
                 android:title="@string/capture_one_enabled"
                 android:key="@string/pref_capture_one_enabled_key"
+                    android:summary="@string/capture_one_enabled_desc"
                 android:defaultValue="@bool/pref_capture_one_enabled_default"/>
             <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_lcc"
                 android:key="@string/pref_c1_lcc_key"
+                    android:summary="@string/c1_lcc_desc"
                 android:defaultValue="@string/pref_c1_lcc_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -768,6 +842,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_lcc_red"
                 android:key="@string/pref_c1_lcc_red_key"
+                    android:summary="@string/c1_lcc_red_desc"
                 android:defaultValue="@string/pref_c1_lcc_red_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -775,6 +850,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_lcc_blue"
                 android:key="@string/pref_c1_lcc_blue_key"
+                    android:summary="@string/c1_lcc_blue_desc"
                 android:defaultValue="@string/pref_c1_lcc_blue_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -782,6 +858,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_clarity"
                 android:key="@string/pref_c1_clarity_key"
+                    android:summary="@string/c1_clarity_desc"
                 android:defaultValue="@string/pref_c1_clarity_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -789,6 +866,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_structure"
                 android:key="@string/pref_c1_structure_key"
+                    android:summary="@string/c1_structure_desc"
                 android:defaultValue="@string/pref_c1_structure_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -796,6 +874,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_moire"
                 android:key="@string/pref_c1_moire_key"
+                    android:summary="@string/c1_moire_desc"
                 android:defaultValue="@string/pref_c1_moire_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -803,6 +882,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_single_pixel"
                 android:key="@string/pref_c1_single_pixel_key"
+                    android:summary="@string/c1_single_pixel_desc"
                 android:defaultValue="@string/pref_c1_single_pixel_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -810,6 +890,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_skin"
                 android:key="@string/pref_c1_skin_key"
+                    android:summary="@string/c1_skin_desc"
                 android:defaultValue="@string/pref_c1_skin_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -821,6 +902,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_color_hue"
                 android:key="@string/pref_c1_color_hue_key"
+                    android:summary="@string/c1_color_hue_desc"
                 android:defaultValue="@string/pref_c1_color_hue_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -828,6 +910,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_color_range"
                 android:key="@string/pref_c1_color_range_key"
+                    android:summary="@string/c1_color_range_desc"
                 android:defaultValue="@string/pref_c1_color_range_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -835,6 +918,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_color_shift"
                 android:key="@string/pref_c1_color_shift_key"
+                    android:summary="@string/c1_color_shift_desc"
                 android:defaultValue="@string/pref_c1_color_shift_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -842,6 +926,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_color_saturation"
                 android:key="@string/pref_c1_color_saturation_key"
+                    android:summary="@string/c1_color_saturation_desc"
                 android:defaultValue="@string/pref_c1_color_saturation_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -853,6 +938,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_shadows"
                 android:key="@string/pref_c1_shadows_key"
+                    android:summary="@string/c1_shadows_desc"
                 android:defaultValue="@string/pref_c1_shadows_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -860,6 +946,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_midtones"
                 android:key="@string/pref_c1_midtones_key"
+                    android:summary="@string/c1_midtones_desc"
                 android:defaultValue="@string/pref_c1_midtones_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -867,6 +954,7 @@
                 android:layout="@layout/preference_seekbar"
                 android:title="@string/c1_highlights"
                 android:key="@string/pref_c1_highlights_key"
+                    android:summary="@string/c1_highlights_desc"
                 android:defaultValue="@string/pref_c1_highlights_default"
                 app:maxValue="100"
                 app:minValue="-100"/>
@@ -901,6 +989,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_radius"
                 android:key="@string/pref_sharp_radius_key"
+                    android:summary="@string/sharp_radius_desc"
                 android:defaultValue="@string/pref_sharp_radius_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -910,6 +999,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_lens_strength"
                 android:key="@string/pref_sharp_lens_strength_key"
+                    android:summary="@string/sharp_lens_strength_desc"
                 android:defaultValue="@string/pref_sharp_lens_strength_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -919,6 +1009,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_lens_iterations"
                 android:key="@string/pref_sharp_lens_iterations_key"
+                    android:summary="@string/sharp_lens_iterations_desc"
                 android:defaultValue="@string/pref_sharp_lens_iterations_default"
                 app:maxValue="10"
                 app:minValue="0"/>
@@ -933,6 +1024,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_radius"
                 android:key="@string/pref_sharp_gaussian_radius_key"
+                    android:summary="@string/sharp_gaussian_radius_desc"
                 android:defaultValue="@string/pref_sharp_gaussian_radius_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -942,6 +1034,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_effect_amount"
                 android:key="@string/pref_sharp_gaussian_amount_key"
+                    android:summary="@string/sharp_gaussian_amount_desc"
                 android:defaultValue="@string/pref_sharp_gaussian_amount_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -951,6 +1044,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_threshold"
                 android:key="@string/pref_sharp_threshold_key"
+                    android:summary="@string/sharp_threshold_desc"
                 android:defaultValue="@string/pref_sharp_threshold_default"
                 app:maxValue="255"
                 app:minValue="0"/>
@@ -965,6 +1059,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_threshold"
                 android:key="@string/pref_sharp_smart_threshold_key"
+                    android:summary="@string/sharp_smart_threshold_desc"
                 android:defaultValue="@string/pref_sharp_smart_threshold_default"
                 app:maxValue="255"
                 app:minValue="0"/>
@@ -972,6 +1067,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_effect_amount"
                 android:key="@string/pref_sharp_edge_key"
+                    android:summary="@string/sharp_edge_desc"
                 android:defaultValue="@string/pref_sharp_edge_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -988,6 +1084,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_radius"
                 android:key="@string/pref_sharp_bilateral_radius_key"
+                    android:summary="@string/sharp_bilateral_radius_desc"
                 android:defaultValue="@string/pref_sharp_bilateral_radius_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -997,6 +1094,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_bilateral"
                 android:key="@string/pref_sharp_bilateral_key"
+                    android:summary="@string/sharp_bilateral_desc"
                 android:defaultValue="@string/pref_sharp_bilateral_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -1006,6 +1104,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_tolerance"
                 android:key="@string/pref_sharp_tolerance_key"
+                    android:summary="@string/sharp_tolerance_desc"
                 android:defaultValue="@string/pref_sharp_tolerance_default"
                 app:maxValue="255"
                 app:minValue="0"/>
@@ -1020,6 +1119,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_guided_radius"
                 android:key="@string/pref_sharp_guided_radius_key"
+                    android:summary="@string/sharp_guided_radius_desc"
                 android:defaultValue="@string/pref_sharp_guided_radius_default"
                 app:isFloat="true"
                 app:maxValue="64"
@@ -1029,6 +1129,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_guided"
                 android:key="@string/pref_sharp_local_contrast_key"
+                    android:summary="@string/sharp_local_contrast_desc"
                 android:defaultValue="@string/pref_sharp_local_contrast_default"
                 app:isFloat="true"
                 app:maxValue="2"
@@ -1038,6 +1139,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_epsilon"
                 android:key="@string/pref_sharp_epsilon_key"
+                    android:summary="@string/sharp_epsilon_desc"
                 android:defaultValue="@string/pref_sharp_epsilon_default"
                 app:isFloat="true"
                 app:maxValue="0.1"
@@ -1054,6 +1156,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_texture"
                 android:key="@string/pref_sharp_texture_key"
+                    android:summary="@string/sharp_texture_desc"
                 android:defaultValue="@string/pref_sharp_texture_default"
                 app:isFloat="true"
                 app:maxValue="2"
@@ -1063,6 +1166,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_grain"
                 android:key="@string/pref_sharp_grain_key"
+                    android:summary="@string/sharp_grain_desc"
                 android:defaultValue="@string/pref_sharp_grain_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -1079,6 +1183,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_rl_radius"
                 android:key="@string/pref_sharp_rl_radius_key"
+                    android:summary="@string/sharp_rl_radius_desc"
                 android:defaultValue="@string/pref_sharp_rl_radius_default"
                 app:isFloat="true"
                 app:maxValue="3"
@@ -1088,6 +1193,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_rl_amount"
                 android:key="@string/pref_sharp_rl_amount_key"
+                    android:summary="@string/sharp_rl_amount_desc"
                 android:defaultValue="@string/pref_sharp_rl_amount_default"
                 app:isFloat="true"
                 app:maxValue="2"
@@ -1097,6 +1203,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_rl_iterations"
                 android:key="@string/pref_sharp_rl_iterations_key"
+                    android:summary="@string/sharp_rl_iterations_desc"
                 android:defaultValue="@string/pref_sharp_rl_iterations_default"
                 app:maxValue="10"
                 app:minValue="0"/>
@@ -1104,6 +1211,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_damping"
                 android:key="@string/pref_sharp_damping_key"
+                    android:summary="@string/sharp_damping_desc"
                 android:defaultValue="@string/pref_sharp_damping_default"
                 app:isFloat="true"
                 app:maxValue="1"
@@ -1120,6 +1228,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_shadow_protection"
                 android:key="@string/pref_sharp_shadow_protection_key"
+                    android:summary="@string/sharp_shadow_protection_desc"
                 android:defaultValue="@string/pref_sharp_shadow_protection_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -1127,6 +1236,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_highlight_protection"
                 android:key="@string/pref_sharp_highlight_protection_key"
+                    android:summary="@string/sharp_highlight_protection_desc"
                 android:defaultValue="@string/pref_sharp_highlight_protection_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -1134,6 +1244,7 @@
                 android:layout="@layout/preference_numeric"
                 android:title="@string/sharp_halo_control"
                 android:key="@string/pref_sharp_halo_control_key"
+                    android:summary="@string/sharp_halo_control_desc"
                 android:defaultValue="@string/pref_sharp_halo_control_default"
                 app:maxValue="100"
                 app:minValue="0"/>
@@ -1149,7 +1260,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/wide169"
             android:key="@string/pref_wide169_key"
-            android:summary=""
+            android:summary="@string/wide169_desc"
             android:defaultValue="@bool/pref_wide169_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference
             android:icon="@drawable/ic_burst_mode_black_24dp"
@@ -1165,6 +1276,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/short_frame_count"
             android:key="@string/pref_short_frame_count_key"
+                    android:summary="@string/short_frame_count_desc"
             android:defaultValue="@string/pref_short_framecount_default"
             app:maxValue="8"
             app:minValue="0"/>
@@ -1173,6 +1285,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/short_exposure_ev"
             android:key="@string/pref_short_exposure_ev_key"
+                    android:summary="@string/short_exposure_ev_desc"
             android:defaultValue="@string/pref_short_exposure_ev_default"
             app:maxValue="8"
             app:minValue="1"/>
@@ -1181,6 +1294,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/long_frame_count"
             android:key="@string/pref_long_frame_count_key"
+                    android:summary="@string/long_frame_count_desc"
             android:defaultValue="@string/pref_long_framecount_default"
             app:maxValue="8"
             app:minValue="0"/>
@@ -1189,6 +1303,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/long_exposure_ev"
             android:key="@string/pref_long_exposure_ev_key"
+                    android:summary="@string/long_exposure_ev_desc"
             android:defaultValue="@string/pref_long_exposure_ev_default"
             app:maxValue="8"
             app:minValue="1"/>
@@ -1197,6 +1312,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/highlight_suppression"
             android:key="@string/pref_highlight_suppression_key"
+                    android:summary="@string/highlight_suppression_desc"
             android:defaultValue="@string/pref_highlight_suppression_default"
             app:maxValue="200"
             app:minValue="0"/>
@@ -1215,28 +1331,28 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/binning"
             android:key="@string/pref_binning_key"
-            android:summary=""
+            android:summary="@string/binning_desc"
             android:defaultValue="@bool/pref_binning_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/leaf_icon_15"
             android:layout="@layout/preference_with_margin"
             android:title="@string/energy_saving"
             android:key="@string/pref_energy_safe_key"
-            android:summary=""
+            android:summary="@string/energy_safe_desc"
             android:defaultValue="@bool/pref_energy_safe_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_camera_sounds"
             android:layout="@layout/preference_with_margin"
             android:title="@string/camera_sounds"
             android:key="@string/pref_camera_sounds_key"
-            android:summary=""
+            android:summary="@string/camera_sounds_desc"
             android:defaultValue="@bool/pref_camera_sounds_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_watermark"
             android:layout="@layout/preference_with_margin"
             android:title="@string/hide_gallery_icon"
             android:key="@string/pref_hide_gallery_icon_key"
-            android:summary=""
+            android:summary="@string/hide_gallery_icon_desc"
             android:defaultValue="@bool/pref_hide_gallery_icon_default"/>
         <ListPreference
             android:icon="@drawable/ic_settings_grid"
@@ -1244,7 +1360,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/turn_on_grid"
             android:key="@string/pref_show_grid_key"
-            android:summary=""
+            android:summary="@string/show_grid_desc"
             android:defaultValue="@string/pref_show_grid_default"
             android:entryValues="@array/vf_grid_entryvalues"
             app:useSimpleSummaryProvider="true"/>
@@ -1253,14 +1369,14 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/turn_on_round_edges"
             android:key="@string/pref_show_roundedge_key"
-            android:summary=""
+            android:summary="@string/show_roundedge_desc"
             android:defaultValue="@bool/pref_show_roundedge_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_watermark"
             android:layout="@layout/preference_with_margin"
             android:title="@string/turn_on_watermark"
             android:key="@string/pref_show_watermark_key"
-            android:summary=""
+            android:summary="@string/show_watermark_desc"
             android:defaultValue="@bool/pref_show_watermark_default"/>
         <ListPreference
             android:icon="@drawable/ic_focus"
@@ -1268,6 +1384,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/af_mode"
             android:key="@string/pref_af_mode_key"
+                    android:summary="@string/af_mode_desc"
             android:defaultValue="@string/pref_af_mode_default_value"
             android:entryValues="@array/af_mode_entryvalues"
             app:useSimpleSummaryProvider="true"/>
@@ -1277,6 +1394,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/focus_peaking"
             android:key="@string/pref_peak_method_key"
+                    android:summary="@string/peak_method_desc"
             android:defaultValue="2"
             android:entryValues="@array/focuspeakset_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1286,6 +1404,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/turn_on_afdata"
             android:key="@string/pref_show_afdata_key"
+                    android:summary="@string/show_afdata_desc"
             android:defaultValue="0"
             android:entryValues="@array/afdata_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1294,6 +1413,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/pref_save_per_lens_string"
             android:key="@string/pref_save_per_lens_settings"
+                    android:summary="@string/save_per_lens_settings_desc"
             app:defaultValue="false"/>
     </PreferenceCategory>
     <PreferenceCategory
@@ -1306,6 +1426,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/frame_count"
             android:key="@string/pref_frame_count_key"
+                    android:summary="@string/frame_count_desc"
             android:defaultValue="@string/pref_framecount_default"
             app:maxValue="200"
             app:minValue="1"/>
@@ -1321,6 +1442,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/video_resolution"
             android:key="@string/pref_video_resolution_key"
+                    android:summary="@string/video_resolution_desc"
             android:defaultValue="@string/pref_video_resolution_default"
             android:entryValues="@array/video_resolution_entryvalues"
             app:useSimpleSummaryProvider="true"/>
@@ -1335,21 +1457,21 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/rawvideo_downscale_4x"
             android:key="@string/pref_rawvideo_downscale_4x_key"
-            android:summary=""
+            android:summary="@string/rawvideo_downscale_4x_desc"
             android:defaultValue="false"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_save"
             android:layout="@layout/preference_with_margin"
             android:title="@string/rawvideo_write_zip"
             android:key="@string/pref_rawvideo_write_zip_key"
-            android:summary=""
+            android:summary="@string/rawvideo_write_zip_desc"
             android:defaultValue="true"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_burst_mode_black_24dp"
             android:layout="@layout/preference_with_margin"
             android:title="@string/rawvideo_crop_169"
             android:key="@string/pref_rawvideo_crop_169_key"
-            android:summary=""
+            android:summary="@string/rawvideo_crop_169_desc"
             android:defaultValue="true"/>
     </PreferenceCategory>
     <PreferenceCategory
@@ -1362,21 +1484,21 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/turn_on_system_nr"
             android:key="@string/pref_enable_system_nr_key"
-            android:summary=""
+            android:summary="@string/enable_system_nr_desc"
             android:defaultValue="@bool/pref_system_nr_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_format_align_justify_black_24dp"
             android:layout="@layout/preference_with_margin"
             android:title="@string/disable_aligning"
             android:key="@string/pref_disable_aligning_key"
-            android:summary=""
+            android:summary="@string/disable_aligning_desc"
             android:defaultValue="@bool/pref_disable_align_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference
             android:icon="@drawable/ic_burst_mode_black_24dp"
             android:layout="@layout/preference_seekbar"
             android:title="@string/chroma_nr_count"
             android:key="@string/pref_chroma_nr_seekbar_key"
-            android:summary=""
+            android:summary="@string/chroma_nr_seekbar_desc"
             android:defaultValue="@string/pref_chroma_seekbar_default"
             app:maxValue="65"
             app:minValue="1"/>
@@ -1385,7 +1507,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/luma_nr_count"
             android:key="@string/pref_luma_nr_seekbar_key"
-            android:summary=""
+            android:summary="@string/luma_nr_seekbar_desc"
             android:defaultValue="@string/pref_luma_seekbar_default"
             app:maxValue="65"
             app:minValue="1"/>
@@ -1394,7 +1516,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/enhanced_processing"
             android:key="@string/pref_enhanced_processing_key"
-            android:summary=""
+            android:summary="@string/enhanced_processing_desc"
             android:defaultValue="@bool/pref_enhanced_processing_default"/>
     </PreferenceCategory>
     <PreferenceCategory
@@ -1408,7 +1530,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/raw"
             android:key="@string/pref_save_raw_key"
-            android:summary=""
+            android:summary="@string/save_raw_desc"
             android:defaultValue="@string/pref_raw_mode_default_value"
             android:entryValues="@array/raw_mode_entryvalues"
             app:useSimpleSummaryProvider="true"/>
@@ -1417,7 +1539,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/hdrxNR"
             android:key="@string/pref_hdrx_nr_key"
-            android:summary=""
+            android:summary="@string/hdrx_nr_desc"
             android:defaultValue="@bool/pref_hdrx_nr_default"/>
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference
             android:icon="@drawable/ic_uhdr_black_24dp"
@@ -1431,7 +1553,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/saturation"
             android:key="@string/pref_saturation_seekbar_key"
-            android:summary=""
+            android:summary="@string/saturation_seekbar_desc"
             android:defaultValue="@string/pref_saturation_seekbar_default"
             app:isFloat="true"
             app:maxValue="3"
@@ -1442,7 +1564,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/contrast"
             android:key="@string/pref_contrast_seekbar_key"
-            android:summary=""
+            android:summary="@string/contrast_seekbar_desc"
             android:defaultValue="@string/pref_contrast_seekbar_default"
             app:isFloat="true"
             app:maxValue="3"
@@ -1453,7 +1575,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/expocompensation"
             android:key="@string/pref_expocompensation_seekbar_key"
-            android:summary=""
+            android:summary="@string/expocompensation_seekbar_desc"
             android:defaultValue="@string/pref_expocompensation_seekbar_default"
             app:isFloat="true"
             app:maxValue="4"
@@ -1464,7 +1586,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/noise_reduction_str"
             android:key="@string/pref_noise_seekbar_key"
-            android:summary=""
+            android:summary="@string/noise_seekbar_desc"
             android:defaultValue="@string/pref_noise_seekbar_default"
             app:isFloat="true"
             app:maxValue="4"
@@ -1475,7 +1597,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/noise_merge_str"
             android:key="@string/pref_merge_seekbar_key"
-            android:summary=""
+            android:summary="@string/merge_seekbar_desc"
             android:defaultValue="@string/pref_noise_merge_seekbar_default"
             app:isFloat="true"
             app:maxValue="8"
@@ -1486,7 +1608,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/shadows"
             android:key="@string/pref_shadows_seekbar_key"
-            android:summary=""
+            android:summary="@string/shadows_seekbar_desc"
             android:defaultValue="@string/pref_gain_seekbar_default"
             app:isFloat="true"
             app:maxValue="2"
@@ -1497,7 +1619,7 @@
             android:layout="@layout/preference_seekbar"
             android:title="@string/compressor"
             android:key="@string/pref_compressor_seekbar_key"
-            android:summary=""
+            android:summary="@string/compressor_seekbar_desc"
             android:defaultValue="@string/pref_compressor_seekbar_default"
             app:isFloat="true"
             app:maxValue="8"
@@ -1509,6 +1631,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/cfa"
             android:key="@string/pref_cfa_key"
+                    android:summary="@string/cfa_desc"
             android:defaultValue="@string/pref_cfa_default_value"
             android:entryValues="@array/cfapat_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1518,6 +1641,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/align_method"
             android:key="@string/pref_align_method_key"
+                    android:summary="@string/align_method_desc"
             android:defaultValue="@string/pref_align_method_default"
             android:entryValues="@array/alignset_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1527,6 +1651,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/color_method"
             android:key="@string/pref_color_method_key"
+                    android:summary="@string/color_method_desc"
             android:defaultValue="@string/pref_align_method_default"
             android:entryValues="@array/colorset_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1535,7 +1660,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/show_horizon_on_preview"
             android:key="@string/pref_horizon"
-            android:summary=""
+            android:summary="@string/horizon_desc"
             android:defaultValue="false"/>
         <ListPreference
             android:icon="@drawable/ic_saturation"
@@ -1543,6 +1668,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/preview_format"
             android:key="@string/pref_preview_format_key"
+                    android:summary="@string/preview_format_desc"
             android:defaultValue="@string/pref_preview_format_default"
             android:entryValues="@array/preview_format_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1558,6 +1684,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/theme"
             android:key="@string/pref_theme_key"
+                    android:summary="@string/theme_desc"
             android:defaultValue="@string/pref_theme_default_value"
             android:entryValues="@array/theme_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1567,6 +1694,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/theme_accent"
             android:key="@string/pref_theme_accent_key"
+                    android:summary="@string/theme_accent_desc"
             android:defaultValue="@string/pref_theme_accent_default_value"
             android:entryValues="@array/theme_accent_entryValues"
             app:useSimpleSummaryProvider="true"/>
@@ -1575,7 +1703,7 @@
             android:layout="@layout/preference_with_margin"
             android:title="@string/show_gradient"
             android:key="@string/pref_show_gradient_key"
-            android:summary=""
+            android:summary="@string/show_gradient_desc"
             android:defaultValue="@bool/pref_show_gradient_def_value"/>
     </PreferenceCategory>
     <PreferenceCategory
