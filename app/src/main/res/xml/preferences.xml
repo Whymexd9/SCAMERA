@@ -392,6 +392,39 @@
                     android:key="@string/pref_raw_mfsr_enabled_key"
                     android:summary="@string/raw_mfsr_summary"
                     android:defaultValue="@bool/pref_raw_mfsr_enabled_default"/>
+                <SwitchPreferenceCompat
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_highlight_recovery_key"
+                    android:title="@string/highlight_recovery"
+                    android:summary="@string/highlight_recovery_summary"
+                    android:defaultValue="false" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_highlight_recovery_min_ok_key"
+                    android:title="@string/highlight_recovery_min_ok"
+                    android:summary="@string/highlight_recovery_min_ok_summary"
+                    android:defaultValue="2"
+                    app:useSimpleSummaryProvider="true" />
+                <SwitchPreferenceCompat
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_highlight_protection_key"
+                    android:title="@string/highlight_protection"
+                    android:summary="@string/highlight_protection_summary"
+                    android:defaultValue="false" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_highlight_protection_knee_key"
+                    android:title="@string/highlight_protection_knee"
+                    android:summary="@string/highlight_protection_knee_summary"
+                    android:defaultValue="0.8"
+                    app:useSimpleSummaryProvider="true" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="@string/pref_highlight_protection_strength_key"
+                    android:title="@string/highlight_protection_strength"
+                    android:summary="@string/highlight_protection_strength_summary"
+                    android:defaultValue="1.0"
+                    app:useSimpleSummaryProvider="true" />
                 <EditTextPreference
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_mfsr_k_detail_key"

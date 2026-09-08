@@ -1000,6 +1000,16 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("MFSR_KSHRINK", mfsrKShrink);
             glProg.setDefine("MFSR_DTH", mfsrDth);
             glProg.setDefine("MFSR_DTR", mfsrDtr);
+            int hlRecovery = PreferenceKeys.isHighlightRecoveryEnabled() ? 1 : 0;
+            int hlRecoveryMinOk = PreferenceKeys.getHighlightRecoveryMinOk();
+            int hlProtection = PreferenceKeys.isHighlightProtectionEnabled() ? 1 : 0;
+            float hlKnee = PreferenceKeys.getHighlightProtectionKnee();
+            float hlStrength = PreferenceKeys.getHighlightProtectionStrength();
+            glProg.setDefine("HIGHLIGHT_RECOVERY", hlRecovery);
+            glProg.setDefine("MFSR_RECOVERY_MIN_OK", hlRecoveryMinOk);
+            glProg.setDefine("HIGHLIGHT_PROTECTION", hlProtection);
+            glProg.setDefine("HIGHLIGHT_PROTECTION_KNEE", hlKnee);
+            glProg.setDefine("HIGHLIGHT_PROTECTION_STRENGTH", hlStrength);
             int mfsrStride = PreferenceKeys.getMfsrTensorStride();
             float mfsrGradK = PreferenceKeys.getMfsrGradK();
             glProg.setDefine("MFSR_TENSOR_STRIDE", mfsrStride);
@@ -1009,7 +1019,10 @@ public class ESD4D extends GLOneScript {
                     + " | MFSR kDetail=" + mfsrKDetail + " kDenoise=" + mfsrKDenoise
                     + " kStretch=" + mfsrKStretch + " kShrink=" + mfsrKShrink
                     + " Dth=" + mfsrDth + " Dtr=" + mfsrDtr
-                    + " stride=" + mfsrStride + " gradK=" + mfsrGradK);
+                    + " stride=" + mfsrStride + " gradK=" + mfsrGradK
+                    + " | HL recovery=" + hlRecovery + " minOk=" + hlRecoveryMinOk
+                    + " protection=" + hlProtection + " knee=" + hlKnee
+                    + " strength=" + hlStrength);
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);

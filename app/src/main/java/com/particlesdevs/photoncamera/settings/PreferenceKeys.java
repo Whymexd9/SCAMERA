@@ -759,6 +759,34 @@ public class PreferenceKeys {
     public static float getMfsrDth()      { return mfsrFloat(Key.KEY_MFSR_DTH, 0.005f); }
     public static float getMfsrDtr()      { return mfsrFloat(Key.KEY_MFSR_DTR, 0.02f); }
 
+    /**
+     * Highlight handling. Recovery merges from the unclipped channels of a partly
+     * saturated quad instead of rejecting it; protection desaturates towards the
+     * quad mean near the clip so the differing per-channel saturation points do
+     * not tint blown areas.
+     */
+    public static boolean isHighlightRecoveryEnabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", Key.KEY_HIGHLIGHT_RECOVERY, false);
+    }
+
+    public static int getHighlightRecoveryMinOk() {
+        return Math.max(1, Math.min(4, (int) mfsrFloat(Key.KEY_HIGHLIGHT_RECOVERY_MIN_OK, 2f)));
+    }
+
+    public static boolean isHighlightProtectionEnabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", Key.KEY_HIGHLIGHT_PROTECTION, false);
+    }
+
+    public static float getHighlightProtectionKnee() {
+        return Math.max(0f, Math.min(0.99f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_KNEE, 0.8f)));
+    }
+
+    public static float getHighlightProtectionStrength() {
+        return Math.max(0f, Math.min(1f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_STRENGTH, 1.0f)));
+    }
+
     /** Coarse-grid spacing for the kernel field, in packed quads (Jiang et al. 2022). */
     public static int getMfsrTensorStride() {
         return Math.max(1, Math.round(mfsrFloat(Key.KEY_MFSR_TENSOR_STRIDE, 8f)));
@@ -1159,6 +1187,11 @@ public class PreferenceKeys {
         KEY_MFSR_K_SHRINK(R.string.pref_mfsr_k_shrink_key),
         KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
         KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
+        KEY_HIGHLIGHT_RECOVERY(R.string.pref_highlight_recovery_key),
+        KEY_HIGHLIGHT_RECOVERY_MIN_OK(R.string.pref_highlight_recovery_min_ok_key),
+        KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),
+        KEY_HIGHLIGHT_PROTECTION_KNEE(R.string.pref_highlight_protection_knee_key),
+        KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
         KEY_MFSR_TENSOR_STRIDE(R.string.pref_mfsr_tensor_stride_key),
         KEY_MFSR_GRAD_K(R.string.pref_mfsr_grad_k_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),

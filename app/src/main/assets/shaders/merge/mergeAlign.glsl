@@ -53,6 +53,28 @@ uniform highp sampler2D alignmentTexture;
 #endif
 // Spacing of the coarse grid on which the kernel field is evaluated, in packed
 // quads. 1 reproduces the old per-pixel behaviour.
+// --- Highlight handling ---
+// Reconstruct from unclipped channels instead of rejecting the whole quad.
+#ifndef HIGHLIGHT_RECOVERY
+#define HIGHLIGHT_RECOVERY 0
+#endif
+// How many of the four packed channels must still be valid to recover from.
+#ifndef MFSR_RECOVERY_MIN_OK
+#define MFSR_RECOVERY_MIN_OK 2
+#endif
+// Desaturate towards the quad mean as it approaches the clip.
+#ifndef HIGHLIGHT_PROTECTION
+#define HIGHLIGHT_PROTECTION 0
+#endif
+// Fraction of CLIP_LEVEL where desaturation starts.
+#ifndef HIGHLIGHT_PROTECTION_KNEE
+#define HIGHLIGHT_PROTECTION_KNEE 0.8
+#endif
+// Full-strength desaturation amount at the clip.
+#ifndef HIGHLIGHT_PROTECTION_STRENGTH
+#define HIGHLIGHT_PROTECTION_STRENGTH 1.0
+#endif
+
 #ifndef MFSR_TENSOR_STRIDE
 #define MFSR_TENSOR_STRIDE 8
 #endif
@@ -459,6 +481,21 @@ void main() {
         // and where the reference itself is clipped the residual cannot decide
         // anything either.
         vec4 alterScaled = bayerAlter * vec4(exposure);
+
+        // Highlight protection: desaturate as a quad approaches the clip. When
+        // the channels saturate at different points the surviving ones drift the
+        // hue, which is what tints blown highlights magenta or green. Pulling
+        // the quad towards its own mean removes the cast without touching
+        // anything below the knee.
+        if (HIGHLIGHT_PROTECTION == 1) {
+            float peak = max(max(alterScaled.x, alterScaled.y),
+                             max(alterScaled.z, alterScaled.w));
+            float t = smoothstep(HIGHLIGHT_PROTECTION_KNEE * CLIP_LEVEL,
+                                 CLIP_LEVEL, peak);
+            float mean = dot(alterScaled, vec4(0.25));
+            alterScaled = mix(alterScaled, vec4(mean), t * HIGHLIGHT_PROTECTION_STRENGTH);
+            bayerAlter = alterScaled / max(exposure, 1e-6);
+        }
         vec4 alterOk = step(alterScaled, vec4(CLIP_LEVEL));
         vec4 baseOk  = step(bayerBase,   vec4(CLIP_LEVEL));
         trust *= alterOk * baseOk;
@@ -473,8 +510,44 @@ void main() {
         // exposure, so the channels clip and saturate at different points, and
         // the window frames in the test shots came out with magenta and green
         // fringing exactly where one channel was trusted and another was not.
-        float trustMin = min(min(trust.x, trust.y), min(trust.z, trust.w));
-        trust = vec4(trustMin);
+        // Highlight recovery. A pixel where one channel is saturated still
+        // carries real information in the others: the sensor's green sites take
+        // roughly half the area and receive the most light, so green clips first
+        // while red and blue are still measuring. Rejecting the whole quad on a
+        // single clipped channel throws that away - and with the shared weight
+        // below, one clipped channel would otherwise veto all four.
+        //
+        // With recovery on, the shared weight is taken over the unclipped
+        // channels only, provided at least MFSR_RECOVERY_MIN_OK of them are
+        // still valid. Below that the quad carries too little to reconstruct
+        // from and is rejected as before.
+        //
+        // Two independent sources describe this trick, and both report their own
+        // implementations as not yet behaving as intended, so treat the result
+        // with suspicion until it has been looked at on real shots.
+        bool recovered = false;
+        if (HIGHLIGHT_RECOVERY == 1) {
+            vec4 ok = alterOk * baseOk;
+            float okCount = ok.x + ok.y + ok.z + ok.w;
+            if (okCount >= float(MFSR_RECOVERY_MIN_OK) && okCount < 4.0) {
+                // Share the weight across the surviving channels only: clipped
+                // ones are lifted to 1.0 so they cannot win the minimum, then
+                // masked back to zero so they contribute nothing.
+                vec4 masked = mix(vec4(1.0), trust, ok);
+                float m = min(min(masked.x, masked.y), min(masked.z, masked.w));
+                trust = vec4(m) * ok;
+                recovered = true;
+            }
+        }
+
+        // One weight for all four packed CFA channels (Night Sight sec. 3.2).
+        // Skipped when recovery has already assigned per-channel weights,
+        // otherwise the zeros it set for the clipped channels would drag every
+        // channel to zero and undo the recovery.
+        if (!recovered) {
+            float trustMin = min(min(trust.x, trust.y), min(trust.z, trust.w));
+            trust = vec4(trustMin);
+        }
 
         // Invalid-pixel mask, the mirror image of the highlight mask. In a much
         // shorter frame the darker parts of the scene fall below the sensor's
