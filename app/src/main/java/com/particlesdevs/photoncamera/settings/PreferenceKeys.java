@@ -765,6 +765,16 @@ public class PreferenceKeys {
      * quad mean near the clip so the differing per-channel saturation points do
      * not tint blown areas.
      */
+    /**
+     * Replay the last shot's tone curve on the viewfinder. Shows the tonemapping
+     * and shadow/highlight placement of the result; cannot show detail that needs
+     * a burst.
+     */
+    public static boolean isLiveViewfinderLookEnabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", Key.KEY_LIVE_VIEWFINDER_LOOK, false);
+    }
+
     public static boolean isHighlightRecoveryEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", Key.KEY_HIGHLIGHT_RECOVERY, false);
@@ -1187,6 +1197,7 @@ public class PreferenceKeys {
         KEY_MFSR_K_SHRINK(R.string.pref_mfsr_k_shrink_key),
         KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
         KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
+        KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_HIGHLIGHT_RECOVERY(R.string.pref_highlight_recovery_key),
         KEY_HIGHLIGHT_RECOVERY_MIN_OK(R.string.pref_highlight_recovery_min_ok_key),
         KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),

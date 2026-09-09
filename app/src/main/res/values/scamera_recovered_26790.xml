@@ -314,6 +314,7 @@
     <string name="pref_mfsr_dth_key">pref_mfsr_dth_key</string>
     <string name="pref_mfsr_dtr_key">pref_mfsr_dtr_key</string>
     <string name="pref_mfsr_tensor_stride_key">pref_mfsr_tensor_stride_key</string>
+    <string name="pref_live_viewfinder_look_key">pref_live_viewfinder_look_key</string>
     <string name="pref_highlight_recovery_key">pref_highlight_recovery_key</string>
     <string name="pref_highlight_recovery_min_ok_key">pref_highlight_recovery_min_ok_key</string>
     <string name="pref_highlight_protection_key">pref_highlight_protection_key</string>
@@ -679,6 +680,8 @@
     <bool name="pref_false_color_enabled_default">true</bool>
     <bool name="pref_raisr_enabled_default">false</bool>
     <bool name="pref_raw_mfsr_enabled_default">false</bool>
+    <string name="live_viewfinder_look">Живой видоискатель</string>
+    <string name="live_viewfinder_look_summary">Видоискатель показывает тональную кривую последнего снимка: тени, света и общий тон как в итоге. Детализация от склейки и MFSR в превью не появится — итог будет чище</string>
     <string name="highlight_recovery">Восстановление светов</string>
     <string name="highlight_recovery_summary">Если выбит не весь квад, слияние идёт по уцелевшим каналам, а не отбраковывается целиком. Зелёные пиксели клиппятся раньше красных и синих</string>
     <string name="highlight_recovery_min_ok">Восстановление: минимум каналов</string>

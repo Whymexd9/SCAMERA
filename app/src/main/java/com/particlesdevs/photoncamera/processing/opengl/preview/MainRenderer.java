@@ -32,13 +32,27 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                     "uniform samplerExternalOES sTexture;\n" +
                     //"uniform ivec2 outSize;" +
                     "uniform int yOffset;" +
+                    "uniform sampler2D uToneCurve;" +
+                    "uniform int uLookEnabled;" +
                     "out vec4 Output;" +
                     "void main() {\n" +
                     "  vec2 texSize = vec2(textureSize(sTexture, 0));" +
                     "  vec2 posScaled = (vec2(gl_FragCoord.xy)+vec2(0,yOffset));" +
                     "  vec2 pos = posScaled/texSize;" +
                     "  pos.y = 1.0-pos.y;" +
-                    "  Output = texture(sTexture,pos);\n" +
+                    "  vec4 c = texture(sTexture,pos);\n" +
+                    // Live look: replay the tone curve of the last processed shot
+                    // so the viewfinder shows the tonemapping, shadow and
+                    // highlight placement the saved photo will get. Per channel,
+                    // so a curve that lifts shadows lifts them here too.
+                    // Detail is another matter: merged denoise and MFSR need a
+                    // burst and cannot appear in a live frame.
+                    "  if (uLookEnabled == 1) {\n" +
+                    "    c.r = texture(uToneCurve, vec2(clamp(c.r, 0.0, 1.0), 0.5)).r;\n" +
+                    "    c.g = texture(uToneCurve, vec2(clamp(c.g, 0.0, 1.0), 0.5)).r;\n" +
+                    "    c.b = texture(uToneCurve, vec2(clamp(c.b, 0.0, 1.0), 0.5)).r;\n" +
+                    "  }\n" +
+                    "  Output = c;\n" +
                     //"  if(pos.x > 1.0 || pos.x < 0.0) Output = vec4(0.0);" +
                     //"  if(pos.y > 1.0 || pos.y < 0.0) Output = vec4(0.0);" +
                     "}";
@@ -56,6 +70,11 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private boolean mGLInit = false;
     private boolean mUpdateST = false;
 
+    /** 1D tone curve of the last processed shot, uploaded lazily on the GL thread. */
+    private final int[] mCurveTex = new int[1];
+    private int mCurveVersion = -1;
+    private boolean mCurveReady = false;
+
     private final GLPreview mView;
 
     MainRenderer(GLPreview view) {
@@ -71,6 +90,40 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     }
 
 
+    /**
+     * Upload the published tone curve if it has changed. Runs on the GL thread;
+     * the version check keeps this to a cheap integer compare on most frames.
+     */
+    private void updateToneCurve() {
+        int v = com.particlesdevs.photoncamera.processing.PreviewLook.getVersion();
+        if (v == mCurveVersion) return;
+        float[] curve = com.particlesdevs.photoncamera.processing.PreviewLook.getToneCurve();
+        mCurveVersion = v;
+        if (curve == null || curve.length == 0) {
+            mCurveReady = false;
+            return;
+        }
+        if (mCurveTex[0] == 0) {
+            GLES20.glGenTextures(1, mCurveTex, 0);
+        }
+        java.nio.FloatBuffer buf = ByteBuffer.allocateDirect(curve.length * 4)
+                .order(ByteOrder.nativeOrder()).asFloatBuffer();
+        buf.put(curve);
+        buf.position(0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
+        // R32F: one channel is all a tone curve needs, and linear filtering
+        // between the 1024 samples hides the quantisation.
+        GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES30.GL_R32F,
+                curve.length, 1, 0, GLES30.GL_RED, GLES20.GL_FLOAT, buf);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        mCurveReady = true;
+    }
+
     public void onDrawFrame(GL10 unused) {
         if (!mGLInit) return;
         //GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
@@ -81,6 +134,18 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 mUpdateST = false;
             }
         }
+
+        updateToneCurve();
+        boolean lookOn = mCurveReady
+                && com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(hProgram, "uLookEnabled"), lookOn ? 1 : 0);
+        if (lookOn) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(hProgram, "uToneCurve"), 1);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        }
+
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
         //GLES20.glFlush();
     }

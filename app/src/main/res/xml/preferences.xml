@@ -1318,6 +1318,12 @@
             android:key="@string/pref_hide_gallery_icon_key"
             android:summary="@string/hide_gallery_icon_desc"
             android:defaultValue="@bool/pref_hide_gallery_icon_default"/>
+        <SwitchPreferenceCompat
+            android:layout="@layout/preference_with_margin"
+            android:key="@string/pref_live_viewfinder_look_key"
+            android:title="@string/live_viewfinder_look"
+            android:summary="@string/live_viewfinder_look_summary"
+            android:defaultValue="false" />
         <ListPreference
             android:icon="@drawable/ic_settings_grid"
             android:entries="@array/vf_grid_entries"

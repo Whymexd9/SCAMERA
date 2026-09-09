@@ -241,6 +241,10 @@
                 curve[i] = Math.min(Math.max(o, 0.0f), 1.0f);
             }
 
+            // Hand the same curve to the viewfinder so the live stream can be
+            // shown with the tone mapping the saved photo will get.
+            com.particlesdevs.photoncamera.processing.PreviewLook.setToneCurve(curve);
+
             ((PostPipeline) basePipeline).exposureCurve = new GLTexture(new Point(CURVE_SIZE, 1),
                     new GLFormat(GLFormat.DataType.FLOAT_16), BufferUtils.getFrom(curve),
                     GL_LINEAR, GL_CLAMP_TO_EDGE);
