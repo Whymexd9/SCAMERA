@@ -198,7 +198,11 @@ public class PostPipeline extends GLBasePipeline {
         // Inject tunable values for PostPipeline (since it doesn't extend Node)
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
 
-        BuildDefaultPipeline();
+        if (previewMode) {
+            BuildPreviewPipeline();
+        } else {
+            BuildDefaultPipeline();
+        }
         GLImage resImg = runAll();
         Bitmap res = resImg.getBufferedImage();
         // Ownership of the Direct malloc is transferred to this scope.
@@ -511,6 +515,37 @@ public class PostPipeline extends GLBasePipeline {
             this.down = down;
             this.scale = scale;
         }
+    }
+
+    /**
+     * When true, {@link #Run} assembles the short preview pipeline instead of the
+     * full one. Set by {@link com.particlesdevs.photoncamera.processing.PreviewProcessor}
+     * before each preview frame.
+     */
+    public boolean previewMode = false;
+
+    /**
+     * The live viewfinder pipeline: enough to show what the colour and tone
+     * processing will do, and nothing that needs a burst.
+     *
+     * Deliberately excluded, because they are either impossible or too slow at
+     * viewfinder rates: alignment and merging (need several frames), MFSR, the
+     * AMaZE demosaic (replaced by the binned one, which is a quarter of the
+     * pixels), all sharpening, and local laplacian tonemapping.
+     *
+     * So the viewfinder will always be noisier and softer than the saved photo -
+     * it shows the look, not the final detail. That is the same trade GCam makes:
+     * its own postview runs a downsampled single frame and lands at about 28 ms
+     * of raw processing, against seconds for the merged shot.
+     */
+    private void BuildPreviewPipeline() {
+        add(new Bayer2Float());
+        add(new BinnedDemosaic());
+        add(new ABLC());
+        add(new LinearExposure());
+        add(new AutoExposureCurve());
+        add(new Initial());
+        add(new ColorD());
     }
 
     private void BuildDefaultPipeline() {
