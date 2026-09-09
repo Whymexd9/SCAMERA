@@ -545,7 +545,9 @@ public class PostPipeline extends GLBasePipeline {
         add(new LinearExposure());
         add(new AutoExposureCurve());
         add(new Initial());
-        add(new ColorD());
+        // No ColorD here: it takes a transpose/size/name/original set that only
+        // makes sense inside the full pipeline, and is unused elsewhere in the
+        // tree. Initial already applies the colour matrix.
     }
 
     private void BuildDefaultPipeline() {
