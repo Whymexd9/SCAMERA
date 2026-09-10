@@ -38,7 +38,7 @@
             <ImageButton
                     android:layout_gravity="center"
                     android:id="@+id/flip_camera_button"
-                    android:background="#00000000"
+                    android:background="@drawable/circle_control_button"
                     android:clickable="true"
                     android:onClick="@{bottom_bar_click_listener}"
                     android:contentDescription="Lens Switch Button"

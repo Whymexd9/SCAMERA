@@ -261,6 +261,7 @@ public class HorizontalPicker extends View {
 
     private final RectF background = new RectF();
     private final Rect canvasClipBounds = new Rect();
+    private static final int SELECTED_PILL_COLOR = 0xFFFFC400;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -333,7 +334,12 @@ public class HorizontalPicker extends View {
                     background.left = itemClipBounds.left + margin;
                     background.right = itemClipBounds.right - margin;
 
-                    paint.setColor(Color.WHITE);
+                    // Amber pill behind the selected mode. White read as a
+                    // second shutter button sitting just under the real one;
+                    // amber separates "this is the current mode" from "this
+                    // takes the picture", which is the distinction the control
+                    // exists to make.
+                    paint.setColor(SELECTED_PILL_COLOR);
                     canvas.drawRoundRect(background, 100, 100, paint);
                 }
                 canvas.clipRect(clipBounds);

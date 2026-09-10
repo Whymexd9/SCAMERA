@@ -39,22 +39,57 @@
 
         </layer-list>
     </item>
+    <!-- Idle, pressed and activated all draw the same two-part shutter: a thin
+         outer ring with a gap, and a solid disc inside it. Only the disc colour
+         changes with state, so the button never changes size or shape under the
+         finger - the ring stays put and gives the press something to read
+         against. -->
     <item android:state_activated="true" android:state_pressed="false">
-        <shape android:shape="oval">
-            <solid android:color="@android:color/darker_gray"/>
-            <size android:width="80dp" android:height="80dp"/>
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <stroke android:width="3dp" android:color="#FFFFFF"/>
+                    <solid android:color="#00000000"/>
+                    <size android:width="80dp" android:height="80dp"/>
+                </shape>
+            </item>
+            <item android:top="7dp" android:bottom="7dp" android:left="7dp" android:right="7dp">
+                <shape android:shape="oval">
+                    <solid android:color="#B0B0B0"/>
+                </shape>
+            </item>
+        </layer-list>
     </item>
     <item android:state_pressed="true">
-        <shape android:shape="oval">
-            <solid android:color="?colorControlActivated"/>
-            <size android:width="80dp" android:height="80dp"/>
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <stroke android:width="3dp" android:color="#FFFFFF"/>
+                    <solid android:color="#00000000"/>
+                    <size android:width="80dp" android:height="80dp"/>
+                </shape>
+            </item>
+            <item android:top="9dp" android:bottom="9dp" android:left="9dp" android:right="9dp">
+                <shape android:shape="oval">
+                    <solid android:color="#E0E0E0"/>
+                </shape>
+            </item>
+        </layer-list>
     </item>
     <item android:state_activated="false">
-        <shape android:shape="oval">
-            <solid android:color="@color/GreyDis"/>
-            <size android:width="80dp" android:height="80dp"/>
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <stroke android:width="3dp" android:color="#FFFFFF"/>
+                    <solid android:color="#00000000"/>
+                    <size android:width="80dp" android:height="80dp"/>
+                </shape>
+            </item>
+            <item android:top="7dp" android:bottom="7dp" android:left="7dp" android:right="7dp">
+                <shape android:shape="oval">
+                    <solid android:color="#FFFFFF"/>
+                </shape>
+            </item>
+        </layer-list>
     </item>
 </selector>
