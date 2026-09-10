@@ -393,9 +393,12 @@ public class SettingsManager {
      * a default value.
      */
     public boolean getBoolean(String scope, PreferenceKeys.Key key, boolean defaultValue) {
-        String defaultValueString = defaultValue ? "1" : "0";
-        String value = getString(scope, key, defaultValueString);
-        return (Integer.parseInt(value) != 0);
+        // Delegate to the String overload, which already accepts both the "0"/"1"
+        // strings this class has always written and the real Boolean a
+        // SwitchPreferenceCompat writes. This one still assumed a string and threw
+        // ClassCastException on any switch-backed key, taking the camera down on
+        // launch.
+        return getBoolean(scope, key.mValue, defaultValue);
     }
 
     public boolean getBoolean(String scope, String key, boolean defaultValue) {
