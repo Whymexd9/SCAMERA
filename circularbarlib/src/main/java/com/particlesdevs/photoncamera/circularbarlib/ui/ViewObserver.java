@@ -26,6 +26,9 @@ public class ViewObserver implements Observer {
     private final Activity activity;
     private final RelativeLayout manualMode;
     private final KnobView knobView;
+    private final com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView linearScaleView;
+    /** True while the linear scale replaces the wheel. */
+    private final boolean useLinearScale;
     private final TextView isoOption;
     private final TextView expOption;
     private final TextView evOption;
@@ -34,6 +37,8 @@ public class ViewObserver implements Observer {
     private final OrientationEventListener orientationEventListener;
     private final LinearLayout buttonsContainer;
     private int rotation = 0;
+    /** Model backing whichever parameter is on screen, shared by both controls. */
+    private com.particlesdevs.photoncamera.circularbarlib.control.models.ManualModel<?> currentModel;
 
 
     public ViewObserver(Activity activity) {
@@ -41,6 +46,35 @@ public class ViewObserver implements Observer {
         manualMode = findViewById(R.id.manual_mode);
         buttonsContainer = findViewById(R.id.buttons_container);
         knobView = findViewById(R.id.knobView);
+        linearScaleView = findViewById(R.id.linearScaleView);
+        useLinearScale = android.preference.PreferenceManager
+                .getDefaultSharedPreferences(activity.getApplicationContext())
+                .getBoolean("pref_linear_manual_scale_key", true);
+        if (linearScaleView != null) {
+            linearScaleView.setListener(
+                    new com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView.OnValueChangedListener() {
+                        @Override
+                        public void onValueChanged(
+                                com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo item,
+                                boolean fromUser) {
+                            // Reuse the wheel's own callback so both controls
+                            // drive the model through one path: whatever the
+                            // wheel does on a rotation, the scale does on a drag.
+                            if (currentModel != null && item != null && fromUser) {
+                                currentModel.onSelectedKnobItemChanged(knobView, item, item);
+                            }
+                        }
+
+                        @Override
+                        public void onDragStateChanged(boolean dragging) {
+                            if (currentModel != null) {
+                                currentModel.onRotationStateChanged(knobView,
+                                        dragging ? KnobView.RotationState.ROTATING
+                                                 : KnobView.RotationState.IDLE);
+                            }
+                        }
+                    });
+        }
         isoOption = findViewById(R.id.iso_option_tv);
         expOption = findViewById(R.id.exposure_option_tv);
         evOption = findViewById(R.id.ev_option_tv);
@@ -109,10 +143,25 @@ public class ViewObserver implements Observer {
                         Binding.resetKnob(knobView, knobModel.isKnobResetCalled());
                         break;
                     case VISIBILITY:
-                        Binding.setKnobVisibility(knobView, knobModel.isKnobVisible());
+                        // Only one control is ever visible. The wheel keeps its
+                        // own visibility logic; the scale mirrors it.
+                        Binding.setKnobVisibility(knobView, !useLinearScale && knobModel.isKnobVisible());
+                        if (linearScaleView != null) {
+                            linearScaleView.setVisibility(
+                                    useLinearScale && Boolean.TRUE.equals(knobModel.isKnobVisible())
+                                            ? android.view.View.VISIBLE : android.view.View.GONE);
+                        }
                         break;
                     case MANUAL_MODEL:
-                        Binding.setModelToKnob(knobView, knobModel.getManualModel());
+                        currentModel = knobModel.getManualModel();
+                        Binding.setModelToKnob(knobView, currentModel);
+                        if (linearScaleView != null && currentModel != null) {
+                            java.util.List<com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo>
+                                    items = currentModel.getKnobInfoList();
+                            int selected = items == null ? 0
+                                    : Math.max(0, items.indexOf(currentModel.getCurrentInfo()));
+                            linearScaleView.setItems(items, selected);
+                        }
                         break;
                 }
             }

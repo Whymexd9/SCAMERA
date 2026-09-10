@@ -18,6 +18,18 @@
                 android:layout_width="match_parent"
                 tools:visibility="gone"
                 android:layout_height="96dp" />
+
+        <!-- Linear alternative to the wheel. Both live in the same container and
+             only one is ever visible: the wheel hides values behind the arc, so
+             the ends of the range and the distance to them are never on screen
+             at once, which is exactly what a linear scale shows. Kept side by
+             side rather than replacing the wheel outright so the two can be
+             compared on device and the old one is one setting away. -->
+        <com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView
+                android:id="@+id/linearScaleView"
+                android:layout_width="match_parent"
+                android:layout_height="96dp"
+                android:visibility="gone" />
     </FrameLayout>
 
 
