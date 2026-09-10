@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pill behind the viewfinder aid badge. Amber because the badge marks a
+     non-photographic overlay drawn over the scene: it has to read as "this is
+     the tool talking", not as part of the image. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFC400" />
+    <corners android:radius="4dp" />
+</shape>
