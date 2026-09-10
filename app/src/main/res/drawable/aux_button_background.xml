@@ -4,7 +4,9 @@
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <corners android:radius="20dp"/>
-            <solid android:color="?android:colorControlActivated"/>
+            <!-- Light wash, not a colour: the shutter is the only white element,
+                 and a coloured pill here would compete with it. -->
+            <solid android:color="#38FFFFFF"/>
             <size android:height="@dimen/aux_button_size"/>
         </shape>
     </item>

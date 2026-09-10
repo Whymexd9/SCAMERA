@@ -38,7 +38,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/knobViewContainer"
-        android:background="@color/panel_transparency"
+        android:background="@drawable/glass_pill"
         android:paddingBottom="8dp"
         android:orientation="horizontal">
 

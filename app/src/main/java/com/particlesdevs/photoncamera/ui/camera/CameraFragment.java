@@ -158,7 +158,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private ManualModeConsole manualModeConsole;
     public float displayAspectRatio;
     private HorizonIndicatorView mHorizonIndicatorView;
-    private android.widget.TextView mAidBadge;
 
     public CameraFragment() {
         Log.v(TAG, "fragment created");
@@ -284,8 +283,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         PhotonCamera.setCaptureController(captureController);
         captureController.isDualSession = supportedDevice.specific.specificSetting.isDualSessionSupported;
         mHorizonIndicatorView = cameraFragmentBinding.layoutViewfinder.horizonIndicatorView;
-        mAidBadge = cameraFragmentBinding.layoutViewfinder.viewfinderAidBadge;
-        updateAidBadge();
         this.mSwipe = new Swipe(this);
         var gyro = PhotonCamera.getGyro();
         if ((mHorizonIndicatorView != null) && (gyro != null)) {
@@ -343,7 +340,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     public void onResume() {
         super.onResume();
         updateSettingsBar();
-        updateAidBadge();
         mSwipe.init();
         this.mCameraUIView.refresh(CaptureController.isProcessing);
         AsyncTask.execute(() -> {
@@ -1225,29 +1221,5 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
 
 
-    /**
-     * Show which viewfinder aids are drawn over the scene right now.
-     *
-     * An overlay that alters what the user sees must say so: focus peaking paints
-     * edges, the live look replaces the tone curve. Without a label a peaked edge
-     * or a lifted shadow can be read as a property of the scene. The badge hides
-     * itself when nothing is active, so it costs nothing in the normal case.
-     */
-    public void updateAidBadge() {
-        if (mAidBadge == null) return;
-        java.util.List<String> on = new java.util.ArrayList<>();
-        if (PhotonCamera.getSettings().focusPeak != 0) {
-            on.add("ФОКУС-ПИКИНГ");
-        }
-        if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled()) {
-            on.add("ЖИВОЙ ТОН");
-        }
-        if (on.isEmpty()) {
-            mAidBadge.setVisibility(android.view.View.GONE);
-        } else {
-            mAidBadge.setText(android.text.TextUtils.join(" · ", on));
-            mAidBadge.setVisibility(android.view.View.VISIBLE);
-        }
-    }
 
 }

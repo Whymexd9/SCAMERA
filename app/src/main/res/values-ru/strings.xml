@@ -123,7 +123,7 @@
     <string name="mode_video">Видео</string>
     <string name="mode_unlimited">Бесконечный</string>
     <string name="mode_rawvideo">RAW Видео</string>
-    <string name="mode_motion">ZSL</string>
+    <string name="mode_motion">Фото</string>
     <string name="mode_photo">Фото</string>
     <string name="mode_night">Ночь</string>
     <string name="sync_on">Синхр. вкл.</string>
