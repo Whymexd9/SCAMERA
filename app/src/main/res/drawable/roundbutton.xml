@@ -1,95 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_hovered="true">
-        <layer-list>
-            <item>
-                <shape android:shape="oval">
-                    <solid android:color="@android:color/darker_gray"/>
-                    <size android:width="80dp" android:height="80dp"/>
-                </shape>
-            </item>
-            <item android:bottom="20dp"
-                  android:top="20dp"
-                  android:left="20dp"
-                  android:right="20dp">
-                <rotate
-                        android:fromDegrees="135"
-                        android:pivotX="50%"
-                        android:pivotY="50%"
-                        android:toDegrees="135">
-                    <shape android:shape="line">
-                        <stroke android:width="4dp" android:color="@color/GreyDis"/>
-                    </shape>
-                </rotate>
-            </item>
-            <item android:bottom="20dp"
-                  android:top="20dp"
-                  android:left="20dp"
-                  android:right="20dp">
-                <rotate
-                        android:fromDegrees="45"
-                        android:pivotX="50%"
-                        android:pivotY="50%"
-                        android:toDegrees="45">
-                    <shape android:shape="line">
-                        <stroke android:width="4dp" android:color="@color/GreyDis"/>
-                    </shape>
-                </rotate>
-            </item>
-
-        </layer-list>
-    </item>
-    <!-- Idle, pressed and activated all draw the same two-part shutter: a thin
-         outer ring with a gap, and a solid disc inside it. Only the disc colour
-         changes with state, so the button never changes size or shape under the
-         finger - the ring stays put and gives the press something to read
-         against. -->
-    <item android:state_activated="true" android:state_pressed="false">
-        <layer-list>
-            <item>
-                <shape android:shape="oval">
-                    <stroke android:width="3dp" android:color="#FFFFFF"/>
-                    <solid android:color="#00000000"/>
-                    <size android:width="80dp" android:height="80dp"/>
-                </shape>
-            </item>
-            <item android:top="7dp" android:bottom="7dp" android:left="7dp" android:right="7dp">
-                <shape android:shape="oval">
-                    <solid android:color="#B0B0B0"/>
-                </shape>
-            </item>
-        </layer-list>
-    </item>
+    <!-- Solid white disc. The shutter is the only fully opaque white element on
+         screen, which is what makes it findable without looking; nothing else
+         competes for that weight. Only the shade moves between states, so the
+         target never changes size under the finger. -->
     <item android:state_pressed="true">
-        <layer-list>
-            <item>
-                <shape android:shape="oval">
-                    <stroke android:width="3dp" android:color="#FFFFFF"/>
-                    <solid android:color="#00000000"/>
-                    <size android:width="80dp" android:height="80dp"/>
-                </shape>
-            </item>
-            <item android:top="9dp" android:bottom="9dp" android:left="9dp" android:right="9dp">
-                <shape android:shape="oval">
-                    <solid android:color="#E0E0E0"/>
-                </shape>
-            </item>
-        </layer-list>
+        <shape android:shape="oval">
+            <solid android:color="#D9D9D9"/>
+            <size android:width="80dp" android:height="80dp"/>
+        </shape>
     </item>
-    <item android:state_activated="false">
-        <layer-list>
-            <item>
-                <shape android:shape="oval">
-                    <stroke android:width="3dp" android:color="#FFFFFF"/>
-                    <solid android:color="#00000000"/>
-                    <size android:width="80dp" android:height="80dp"/>
-                </shape>
-            </item>
-            <item android:top="7dp" android:bottom="7dp" android:left="7dp" android:right="7dp">
-                <shape android:shape="oval">
-                    <solid android:color="#FFFFFF"/>
-                </shape>
-            </item>
-        </layer-list>
+    <item android:state_activated="true">
+        <shape android:shape="oval">
+            <solid android:color="#B0B0B0"/>
+            <size android:width="80dp" android:height="80dp"/>
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#FFFFFF"/>
+            <size android:width="80dp" android:height="80dp"/>
+        </shape>
     </item>
 </selector>

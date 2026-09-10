@@ -261,7 +261,9 @@ public class HorizontalPicker extends View {
 
     private final RectF background = new RectF();
     private final Rect canvasClipBounds = new Rect();
-    private static final int SELECTED_PILL_COLOR = 0xFFFFC400;
+    // Light wash, not a colour: amber is reserved for the value marker on the
+    // manual scales, so selection and measurement never read as the same thing.
+    private static final int SELECTED_PILL_COLOR = 0x38FFFFFF;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     @RequiresApi(api = Build.VERSION_CODES.Q)

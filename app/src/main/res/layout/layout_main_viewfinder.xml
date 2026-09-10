@@ -65,6 +65,21 @@
                     android:background="#00000000"
                     tools:visibility="visible" />
 
+            <!-- Outline of the live area. Border only, no fill: the preview has to
+                 show through. Not clickable, so it never eats a tap meant for
+                 focus. -->
+            <View
+                android:id="@+id/viewfinder_frame"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@drawable/viewfinder_frame"
+                android:clickable="false"
+                android:focusable="false"
+                app:layout_constraintTop_toTopOf="@+id/texture"
+                app:layout_constraintBottom_toBottomOf="@+id/texture"
+                app:layout_constraintStart_toStartOf="@+id/texture"
+                app:layout_constraintEnd_toEndOf="@+id/texture" />
+
             <com.particlesdevs.photoncamera.ui.camera.views.viewfinder.HorizonIndicatorView
                 android:id="@+id/horizon_indicator_view"
                 android:layout_width="420dp"

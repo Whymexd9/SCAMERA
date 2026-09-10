@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Selected item inside a glass pill: a light wash rather than a colour.
+     Colour is reserved for the value marker on the manual scales, so selection
+     and measurement never compete. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#38FFFFFF" />
+    <corners android:radius="999dp" />
+</shape>
