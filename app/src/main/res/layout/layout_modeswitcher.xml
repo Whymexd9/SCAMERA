@@ -13,12 +13,19 @@
             android:clipChildren="false"
             >
 
+        <!-- Glass pill behind the modes, wrapping the labels rather than spanning
+             the screen, and white for the selected label: the selected item is
+             already marked by the light wash the picker paints behind it, and a
+             coloured label on top of that marks the same thing twice. -->
         <com.particlesdevs.photoncamera.ui.camera.views.modeswitcher.wefika.horizontalpicker.HorizontalPicker
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
+                android:background="@drawable/glass_pill"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:padding="@dimen/mode_switcher_padding"
                 android:layout_height="wrap_content"
                 android:textColor="@color/White"
-                app:selectedColor="?attr/modeSelectedTextColor"
+                app:selectedColor="@color/White"
                 android:textSize="@dimen/mode_chip_text_size"
                 app:sideItems="2"
                 android:marqueeRepeatLimit="-1"

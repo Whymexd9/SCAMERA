@@ -47,10 +47,18 @@
             tools:visibility="visible"
             >
 
+        <!-- One glass pill instead of a full-width bar: only three controls are
+             ever visible here, and a bar spanning the screen for three icons
+             reads as chrome rather than as a control. Width wraps the content
+             and the pill is centred. -->
         <androidx.constraintlayout.widget.ConstraintLayout
-                android:background="@drawable/rectangle"
-                android:layout_width="0dp"
+                android:background="@drawable/glass_pill"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="10dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
                 android:paddingTop="@dimen/topbar_padding"
                 android:paddingBottom="@dimen/topbar_padding"
                 android:visibility="visible"

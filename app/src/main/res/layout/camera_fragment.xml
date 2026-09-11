@@ -80,7 +80,7 @@
                     setActiveId="@{auxmodel.currentCameraId}"
                     bindViewGroupChildrenRotate="@{uimodel}"
                     hideAuxButtons="@{uimodel.settingsBarVisibility}"
-                    android:layout_marginBottom="6dp"
+                    android:layout_marginBottom="14dp"
                     android:elevation="4dp" />
 
             <!--    Block 1.4-->
