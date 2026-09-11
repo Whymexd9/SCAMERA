@@ -38,7 +38,7 @@
             <ImageButton
                     android:layout_gravity="center"
                     android:id="@+id/flip_camera_button"
-                    android:background="@drawable/glass_pill"
+                    android:background="@drawable/glass_circle"
                     android:clickable="true"
                     android:onClick="@{bottom_bar_click_listener}"
                     android:contentDescription="Lens Switch Button"
@@ -71,8 +71,6 @@
                     android:clickable="true"
                     android:contentDescription="Shutter Button"
                     android:onClick="@{bottom_bar_click_listener}"
-                    android:scaleX="0.75"
-                    android:scaleY="0.75"
                     android:textAppearance="@style/TextAppearance.AppCompat"
                     android:visibility="visible"
                     tools:ignore="HardcodedText"
