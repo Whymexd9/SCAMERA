@@ -39,6 +39,8 @@ public class ViewObserver implements Observer {
     private int rotation = 0;
     /** Model backing whichever parameter is on screen, shared by both controls. */
     private com.particlesdevs.photoncamera.circularbarlib.control.models.ManualModel<?> currentModel;
+    /** Last item the scale reported, so the model receives a real previous value. */
+    private com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo lastScaleItem;
 
 
     public ViewObserver(Activity activity) {
@@ -60,8 +62,14 @@ public class ViewObserver implements Observer {
                             // Reuse the wheel's own callback so both controls
                             // drive the model through one path: whatever the
                             // wheel does on a rotation, the scale does on a drag.
-                            if (currentModel != null && item != null && fromUser) {
-                                currentModel.onSelectedKnobItemChanged(knobView, item, item);
+                            // Pass the previous item as the first argument: the model
+                            // returns immediately when both are the same object, so
+                            // sending (item, item) silently dropped every change -
+                            // the scale moved and nothing was applied.
+                            if (currentModel != null && item != null && fromUser
+                                    && item != lastScaleItem) {
+                                currentModel.onSelectedKnobItemChanged(knobView, lastScaleItem, item);
+                                lastScaleItem = item;
                             }
                         }
 
@@ -161,6 +169,10 @@ public class ViewObserver implements Observer {
                             int selected = items == null ? 0
                                     : Math.max(0, items.indexOf(currentModel.getCurrentInfo()));
                             linearScaleView.setItems(items, selected);
+                            // New parameter, new baseline: otherwise the first drag
+                            // on the next parameter is compared against the previous
+                            // parameter's item and discarded.
+                            lastScaleItem = currentModel.getCurrentInfo();
                         }
                         break;
                 }

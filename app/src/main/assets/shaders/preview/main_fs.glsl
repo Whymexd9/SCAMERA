@@ -4,6 +4,12 @@ uniform samplerExternalOES sTexture;
 uniform vec2 resolution;
 uniform bool enablePeak;
 uniform bool mirror;
+// Tone curve of the last processed shot, replayed on the live stream so the
+// viewfinder shows the tonemapping and shadow/highlight placement the saved
+// photo will get. Detail is another matter: merged denoise and MFSR need a
+// burst and cannot appear in a live frame.
+uniform sampler2D uToneCurve;
+uniform bool uLookEnabled;
 out vec4 Output;
 in vec2 texCoord;
 void main() {
@@ -27,5 +33,10 @@ void main() {
     vec4 dc = vec4(1.0,0.0,1.0,0.0);
     if(enablePeak)
         color = color + dc*32.0*diff*w;
+    if (uLookEnabled) {
+        color.r = texture(uToneCurve, vec2(clamp(color.r, 0.0, 1.0), 0.5)).r;
+        color.g = texture(uToneCurve, vec2(clamp(color.g, 0.0, 1.0), 0.5)).r;
+        color.b = texture(uToneCurve, vec2(clamp(color.b, 0.0, 1.0), 0.5)).r;
+    }
     Output = color;
 }

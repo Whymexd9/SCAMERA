@@ -71,6 +71,17 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glUniform1i(enablePeak, peakEnabled);
         GLES20.glUniform1i(mirror, mMirrorPreview ? 1 : 0);
 
+        updateToneCurve();
+        boolean lookOn = mCurveReady
+                && com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        GLES20.glUniform1i(uLookEnabled, lookOn ? 1 : 0);
+        if (lookOn) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
+            GLES20.glUniform1i(uToneCurve, 1);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        }
+
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
@@ -78,6 +89,44 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     }
 
     private int uTexRotateMatrix;
+    private int uToneCurve;
+    private int uLookEnabled;
+    private final int[] mCurveTex = new int[1];
+    private int mCurveVersion = -1;
+    private boolean mCurveReady = false;
+
+    /**
+     * Upload the published tone curve when it changes. Runs on the GL thread; the
+     * version check keeps this to an integer compare on all but the first frame
+     * after a shot.
+     */
+    private void updateToneCurve() {
+        int v = com.particlesdevs.photoncamera.processing.PreviewLook.getVersion();
+        if (v == mCurveVersion) return;
+        float[] curve = com.particlesdevs.photoncamera.processing.PreviewLook.getToneCurve();
+        mCurveVersion = v;
+        if (curve == null || curve.length == 0) {
+            mCurveReady = false;
+            return;
+        }
+        if (mCurveTex[0] == 0) {
+            GLES20.glGenTextures(1, mCurveTex, 0);
+        }
+        FloatBuffer buf = ByteBuffer.allocateDirect(curve.length * 4)
+                .order(ByteOrder.nativeOrder()).asFloatBuffer();
+        buf.put(curve);
+        buf.position(0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
+        GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES30.GL_R32F,
+                curve.length, 1, 0, GLES30.GL_RED, GLES20.GL_FLOAT, buf);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        mCurveReady = true;
+    }
     private int vPosition;
     private int vTexCoord;
     private int enablePeak;
@@ -98,6 +147,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         vPosition = GLES20.glGetAttribLocation(hProgram, "vPosition");
         vTexCoord = GLES20.glGetAttribLocation(hProgram, "vTexCoord");
         enablePeak = GLES20.glGetUniformLocation(hProgram, "enablePeak");
+        uToneCurve = GLES20.glGetUniformLocation(hProgram, "uToneCurve");
+        uLookEnabled = GLES20.glGetUniformLocation(hProgram, "uLookEnabled");
         mirror = GLES20.glGetUniformLocation(hProgram, "mirror");
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
