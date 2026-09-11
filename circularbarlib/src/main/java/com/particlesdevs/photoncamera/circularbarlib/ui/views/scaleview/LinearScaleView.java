@@ -52,9 +52,29 @@ public class LinearScaleView extends View {
         void onValueChanged(KnobItemInfo item, boolean fromUser);
 
         void onDragStateChanged(boolean dragging);
+
+        /**
+         * The auto button was tapped. Handled by the caller rather than by picking
+         * an item here: which entry means "auto" is the model's business, and
+         * guessing at it from the view would break on any parameter that orders
+         * its list differently.
+         */
+        void onAutoRequested();
     }
 
     private OnValueChangedListener listener;
+
+    private float autoCx, autoCy, autoRadius;
+    private final Paint autoFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint autoStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint autoTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private boolean isInAutoButton(float x, float y) {
+        float dx = x - autoCx, dy = y - autoCy;
+        // A little slack: the drawn circle is smaller than a comfortable target.
+        float r = autoRadius + 8f * getResources().getDisplayMetrics().density;
+        return dx * dx + dy * dy <= r * r;
+    }
 
     public LinearScaleView(Context context) {
         this(context, null);
@@ -70,6 +90,15 @@ public class LinearScaleView extends View {
         textPaint.setColor(LABEL_COLOR);
         textPaint.setTextSize(10f * density);
         textPaint.setTextAlign(Paint.Align.CENTER);
+
+        autoFillPaint.setColor(0x38FFFFFF);
+        autoFillPaint.setStyle(Paint.Style.FILL);
+        autoStrokePaint.setColor(0x4DFFFFFF);
+        autoStrokePaint.setStyle(Paint.Style.STROKE);
+        autoStrokePaint.setStrokeWidth(density);
+        autoTextPaint.setColor(0xFFFFFFFF);
+        autoTextPaint.setTextSize(12f * density);
+        autoTextPaint.setTextAlign(Paint.Align.CENTER);
         valuePaint.setColor(MARKER_COLOR);
         valuePaint.setTextSize(12f * density);
         valuePaint.setFakeBoldText(true);
@@ -105,7 +134,12 @@ public class LinearScaleView extends View {
         float w = getWidth();
         float h = getHeight();
         float padding = 16f * density;
-        float left = padding;
+        // Room on the left for the auto button.
+        float autoR = 13f * density;
+        autoCx = padding + autoR;
+        autoCy = getHeight() * 0.55f;
+        autoRadius = autoR;
+        float left = autoCx + autoR + 12f * density;
         float right = w - padding;
         float span = right - left;
         if (span <= 0) return;
@@ -130,6 +164,11 @@ public class LinearScaleView extends View {
         canvas.drawText(items.get(0).text, left, ticksY - 8f * density, textPaint);
         canvas.drawText(items.get(items.size() - 1).text, right, ticksY - 8f * density, textPaint);
 
+        // Auto button: same light wash as every other selected state.
+        canvas.drawCircle(autoCx, autoCy, autoRadius, autoFillPaint);
+        canvas.drawCircle(autoCx, autoCy, autoRadius, autoStrokePaint);
+        canvas.drawText("A", autoCx, autoCy + 4.5f * density, autoTextPaint);
+
         int idx = clampIndex(selectedIndex);
         float pos = items.size() == 1 ? 0f : (float) idx / (items.size() - 1);
         float markerX = left + pos * span;
@@ -148,6 +187,10 @@ public class LinearScaleView extends View {
         if (items.isEmpty()) return false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                if (isInAutoButton(event.getX(), event.getY())) {
+                    if (listener != null) listener.onAutoRequested();
+                    return true;
+                }
                 dragging = true;
                 lastX = event.getX();
                 dragAccum = 0f;

@@ -74,6 +74,15 @@ public class ViewObserver implements Observer {
                         }
 
                         @Override
+                        public void onAutoRequested() {
+                            // The model decides what auto means for its parameter.
+                            if (currentModel != null) {
+                                currentModel.resetModel();
+                                lastScaleItem = currentModel.getCurrentInfo();
+                            }
+                        }
+
+                        @Override
                         public void onDragStateChanged(boolean dragging) {
                             if (currentModel != null) {
                                 currentModel.onRotationStateChanged(knobView,
