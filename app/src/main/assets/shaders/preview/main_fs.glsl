@@ -34,9 +34,14 @@ void main() {
     if(enablePeak)
         color = color + dc*32.0*diff*w;
     if (uLookEnabled) {
-        color.r = texture(uToneCurve, vec2(clamp(color.r, 0.0, 1.0), 0.5)).r;
-        color.g = texture(uToneCurve, vec2(clamp(color.g, 0.0, 1.0), 0.5)).r;
-        color.b = texture(uToneCurve, vec2(clamp(color.b, 0.0, 1.0), 0.5)).r;
+        // The curve maps linear sensor values to display values, but this stream
+        // has already been tonemapped by the ISP. Applying the curve straight to
+        // it tonemaps twice and blows the image out, which is what the first
+        // build did. Undo the display encoding first, then apply the curve once.
+        vec3 lin = pow(clamp(color.rgb, 0.0, 1.0), vec3(2.2));
+        color.r = texture(uToneCurve, vec2(clamp(lin.r, 0.0, 1.0), 0.5)).r;
+        color.g = texture(uToneCurve, vec2(clamp(lin.g, 0.0, 1.0), 0.5)).r;
+        color.b = texture(uToneCurve, vec2(clamp(lin.b, 0.0, 1.0), 0.5)).r;
     }
     Output = color;
 }

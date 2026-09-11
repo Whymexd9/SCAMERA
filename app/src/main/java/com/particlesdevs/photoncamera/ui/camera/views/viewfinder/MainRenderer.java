@@ -149,6 +149,13 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         vPosition = GLES20.glGetAttribLocation(hProgram, "vPosition");
         vTexCoord = GLES20.glGetAttribLocation(hProgram, "vTexCoord");
         enablePeak = GLES20.glGetUniformLocation(hProgram, "enablePeak");
+        // The GL context is recreated when the activity returns from the gallery,
+        // which invalidates every texture name. Keeping the old one bound a name
+        // that no longer exists and the viewfinder went black. Drop it and let the
+        // next frame upload the curve again.
+        mCurveTex[0] = 0;
+        mCurveVersion = -1;
+        mCurveReady = false;
         uToneCurve = GLES20.glGetUniformLocation(hProgram, "uToneCurve");
         uLookEnabled = GLES20.glGetUniformLocation(hProgram, "uLookEnabled");
         mirror = GLES20.glGetUniformLocation(hProgram, "mirror");
