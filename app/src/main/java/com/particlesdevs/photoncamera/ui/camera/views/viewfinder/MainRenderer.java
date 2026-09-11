@@ -75,12 +75,14 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         boolean lookOn = mCurveReady
                 && com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
         GLES20.glUniform1i(uLookEnabled, lookOn ? 1 : 0);
-        if (lookOn) {
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
-            GLES20.glUniform1i(uToneCurve, 1);
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        }
+        // Bind the curve to unit 1 unconditionally. An unset sampler2D defaults to
+        // unit 0, where the external OES preview texture already lives, and two
+        // samplers of different types on one unit is undefined - on this device it
+        // rendered the viewfinder black until something else rebound the units.
+        GLES20.glUniform1i(uToneCurve, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lookOn ? mCurveTex[0] : 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
 
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
