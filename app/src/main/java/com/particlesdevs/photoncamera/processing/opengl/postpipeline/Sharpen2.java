@@ -54,7 +54,12 @@ public class Sharpen2 extends Node {
         glProg.useAssetProgram("sharpening/lsharpening3");
         glProg.setVar("size", PreferenceKeys.getSharpRadius());
         glProg.setVar("strength", PreferenceKeys.getSharpLensStrength());
-        glProg.setVar("lensIterations", PreferenceKeys.getSharpLensIterations());
+        // Cast to float: the getter returns int, which picks the int... overload
+        // and emits glUniform1i against a float uniform. That is
+        // GL_INVALID_OPERATION - the value never reaches the shader and the
+        // uniform keeps whatever was there, which is what posterised the
+        // sharpened output.
+        glProg.setVar("lensIterations", (float) PreferenceKeys.getSharpLensIterations());
         glProg.setVar("gaussianRadius", PreferenceKeys.getSharpGaussianRadius());
         glProg.setVar("gaussianAmount", PreferenceKeys.getSharpGaussianAmount());
         glProg.setVar("threshold", PreferenceKeys.getSharpThreshold() / 255.0f);
@@ -70,7 +75,12 @@ public class Sharpen2 extends Node {
         glProg.setVar("lumaGrain", PreferenceKeys.getSharpGrain());
         glProg.setVar("rlAmount", PreferenceKeys.getSharpRlAmount());
         glProg.setVar("rlRadius", PreferenceKeys.getSharpRlRadius());
-        glProg.setVar("rlIterations", PreferenceKeys.getSharpRlIterations());
+        // Cast to float: the getter returns int, which picks the int... overload
+        // and emits glUniform1i against a float uniform. That is
+        // GL_INVALID_OPERATION - the value never reaches the shader and the
+        // uniform keeps whatever was there, which is what posterised the
+        // sharpened output.
+        glProg.setVar("rlIterations", (float) PreferenceKeys.getSharpRlIterations());
         glProg.setVar("damping", PreferenceKeys.getSharpDamping());
         glProg.setVar("shadowProtection", PreferenceKeys.getSharpShadowProtection() / 100.0f);
         glProg.setVar("highlightProtection", PreferenceKeys.getSharpHighlightProtection() / 100.0f);
