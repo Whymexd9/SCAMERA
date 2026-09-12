@@ -7,11 +7,13 @@
     <dimen name="viewfinder_top_padding">0dp</dimen>
     <dimen name="mode_chip_height">30dp</dimen>
     <dimen name="flip_camera_size">50dp</dimen>
-    <dimen name="gallery_button_size">60dp</dimen>
+    <dimen name="gallery_button_size">48dp</dimen>
     <dimen name="bottombar_to_modeswitcher_margin">@dimen/bottombar_padding</dimen>
     <dimen name="bottombar_padding">0dp</dimen>
     <dimen name="shutter_progress_bar_size">70dp</dimen>
-    <dimen name="shutter_button_size">80dp</dimen>
+    <!-- The shutter dominates the row in the concept: the side buttons are
+         roughly half its diameter, not two thirds. -->
+    <dimen name="shutter_button_size">84dp</dimen>
     <dimen name="mode_chip_side_margin">5dp</dimen>
     <dimen name="mode_chip_radius">100dp</dimen>
     <dimen name="arrow_size">35dp</dimen>

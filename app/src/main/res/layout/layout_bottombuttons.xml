@@ -122,8 +122,8 @@
             <de.hdodenhof.circleimageview.CircleImageView
                     android:id="@+id/gallery_image_button"
                     android:layout_gravity="center"
-                    android:layout_width="54dp"
-                    android:layout_height="54dp"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
                     android:background="@drawable/round"
                     android:onClick="@{bottom_bar_click_listener}"
                     imageFromBitmap="@{uimodel.bitmap}"
