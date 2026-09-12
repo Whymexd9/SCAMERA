@@ -18,10 +18,7 @@
              already marked by the light wash the picker paints behind it, and a
              coloured label on top of that marks the same thing twice. -->
         <com.particlesdevs.photoncamera.ui.camera.views.modeswitcher.wefika.horizontalpicker.HorizontalPicker
-                android:layout_width="wrap_content"
-                android:background="@drawable/glass_pill"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
+                android:layout_width="match_parent"
                 android:padding="@dimen/mode_switcher_padding"
                 android:layout_height="wrap_content"
                 android:textColor="@color/White"

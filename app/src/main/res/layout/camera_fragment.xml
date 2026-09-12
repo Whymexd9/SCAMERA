@@ -105,6 +105,7 @@
                     android:layout_width="@dimen/arrow_size"
                     android:layout_height="@dimen/arrow_size"
                     android:background="@drawable/chevron_up"
+                    android:elevation="8dp"
                     android:contentDescription="Arrow"
                     android:visibility="visible"
                     app:layout_constraintBottom_toTopOf="@id/layout_bottombar"

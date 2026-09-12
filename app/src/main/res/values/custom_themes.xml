@@ -5,7 +5,9 @@
         <item name="colorAccent">#9F39B9</item>
         <item name="colorPrimary">#9F39B9</item>
         <item name="colorPrimaryContainer">#7B2D8F</item>
-        <item name="cameraFragmentBackground">@drawable/updatetheme</item>
+        <!-- Black behind the viewfinder: a gradient competes with the scene and
+             tints the glass panels sitting on top of it. -->
+        <item name="cameraFragmentBackground">@android:color/black</item>
     </style>
 
 
@@ -62,6 +64,6 @@
     </style>
 
     <style name="GradientBackgroundTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
-        <item name="cameraFragmentBackground">@drawable/gradient_vector</item>
+        <item name="cameraFragmentBackground">@android:color/black</item>
     </style>
 </resources>

@@ -70,9 +70,16 @@ public class LinearScaleView extends View {
     private final Paint autoTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean isInAutoButton(float x, float y) {
+        // Anything to the left of the strip start counts as the auto button: there
+        // is nothing else there, and it turns a small circle into a comfortable
+        // edge target.
+        if (x <= autoCx + autoRadius) return true;
         float dx = x - autoCx, dy = y - autoCy;
         // A little slack: the drawn circle is smaller than a comfortable target.
-        float r = autoRadius + 8f * getResources().getDisplayMetrics().density;
+        // Generous slack: the drawn circle is 13dp and sits at the very edge of the
+        // strip, where a thumb lands imprecisely. Reported as hard to hit, and on
+        // some parameters not hittable at all.
+        float r = autoRadius + 20f * getResources().getDisplayMetrics().density;
         return dx * dx + dy * dy <= r * r;
     }
 
