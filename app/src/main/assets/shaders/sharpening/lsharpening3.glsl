@@ -94,7 +94,12 @@ void main() {
     float shock = sign(detail) * min(abs(detail), maxY-minY) * textureRestore;
     float lensGain = strength * min(lensIterations, 10.0) / 3.0;
     float sharpenLuma = detail * lensGain * wiener;
-    float gaussianGate = step(threshold, abs(unsharpDetail));
+    // Soft gate. step() switches on or off at exactly the threshold, so the
+    // unsharp term appears abruptly across whatever contour the threshold happens
+    // to fall on, and the image breaks into flat regions either side of it - the
+    // posterisation in the comparison crops. Fading in over a small band keeps the
+    // noise floor protected without drawing a contour through the picture.
+    float gaussianGate = smoothstep(threshold, threshold + max(threshold, 0.004), abs(unsharpDetail));
     sharpenLuma += unsharpDetail * gaussianAmount * gaussianGate;
     sharpenLuma += sobel * edgeStrength * edgeMask * sign(detail);
     sharpenLuma += bilateralDetail * bilateralStrength;

@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Flat white disc, as in the concept: no ring. The shutter is the only fully
+     white element on screen, which is what marks it out; a ring around it added a
+     second edge competing with the glass outlines everywhere else. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Solid white disc. The shutter is the only fully opaque white element on
-         screen, which is what makes it findable without looking; nothing else
-         competes for that weight. Only the shade moves between states, so the
-         target never changes size under the finger. -->
     <item android:state_pressed="true">
         <shape android:shape="oval">
-            <solid android:color="#D9D9D9"/>
+            <solid android:color="#D8D8D8"/>
             <size android:width="80dp" android:height="80dp"/>
         </shape>
     </item>

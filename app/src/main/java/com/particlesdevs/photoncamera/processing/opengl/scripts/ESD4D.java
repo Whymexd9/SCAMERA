@@ -1100,10 +1100,10 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
             glProg.setVar("rawMfsrStrength", rawMfsrForFrame ? 0.18f : 0.0f);
             glProg.setVar("mergeAlgorithm", PreferenceKeys.isHdrPlusMergeEnabled() ? 1 : 0);
-            glProg.setVar("hdrPlusDenoise", PreferenceKeys.getHdrPlusDenoiseStrength() / 100.0f);
-            glProg.setVar("hdrPlusLowDenoise", PreferenceKeys.getHdrPlusLowDenoise() / 100.0f);
-            glProg.setVar("hdrPlusHighDenoise", PreferenceKeys.getHdrPlusHighDenoise() / 100.0f);
-            glProg.setVar("hdrPlusChromaDenoise", PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f);
+            glProg.setVar("hdrPlusDenoise", (float) PreferenceKeys.getHdrPlusDenoiseStrength() / 100.0f);
+            glProg.setVar("hdrPlusLowDenoise", (float) PreferenceKeys.getHdrPlusLowDenoise() / 100.0f);
+            glProg.setVar("hdrPlusHighDenoise", (float) PreferenceKeys.getHdrPlusHighDenoise() / 100.0f);
+            glProg.setVar("hdrPlusChromaDenoise", (float) PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f);
             glProg.setVar("flowNoiseS", rawNoiseS);
             glProg.setVar("flowNoiseO", rawNoiseO);
             glProg.setTextureCompute("inTexture", base, false);

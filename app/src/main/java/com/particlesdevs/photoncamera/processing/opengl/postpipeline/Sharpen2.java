@@ -62,8 +62,8 @@ public class Sharpen2 extends Node {
         glProg.setVar("lensIterations", (float) PreferenceKeys.getSharpLensIterations());
         glProg.setVar("gaussianRadius", PreferenceKeys.getSharpGaussianRadius());
         glProg.setVar("gaussianAmount", PreferenceKeys.getSharpGaussianAmount());
-        glProg.setVar("threshold", PreferenceKeys.getSharpThreshold() / 255.0f);
-        glProg.setVar("smartThreshold", PreferenceKeys.getSharpSmartThreshold() / 255.0f);
+        glProg.setVar("threshold", (float) PreferenceKeys.getSharpThreshold() / 255.0f);
+        glProg.setVar("smartThreshold", (float) PreferenceKeys.getSharpSmartThreshold() / 255.0f);
         glProg.setVar("edgeStrength", PreferenceKeys.getSharpEdge());
         glProg.setVar("bilateralRadius", PreferenceKeys.getSharpBilateralRadius());
         glProg.setVar("bilateralStrength", PreferenceKeys.getSharpBilateral());
@@ -82,9 +82,9 @@ public class Sharpen2 extends Node {
         // sharpened output.
         glProg.setVar("rlIterations", (float) PreferenceKeys.getSharpRlIterations());
         glProg.setVar("damping", PreferenceKeys.getSharpDamping());
-        glProg.setVar("shadowProtection", PreferenceKeys.getSharpShadowProtection() / 100.0f);
-        glProg.setVar("highlightProtection", PreferenceKeys.getSharpHighlightProtection() / 100.0f);
-        glProg.setVar("haloControl", PreferenceKeys.getSharpHaloControl() / 100.0f);
+        glProg.setVar("shadowProtection", (float) PreferenceKeys.getSharpShadowProtection() / 100.0f);
+        glProg.setVar("highlightProtection", (float) PreferenceKeys.getSharpHighlightProtection() / 100.0f);
+        glProg.setVar("haloControl", (float) PreferenceKeys.getSharpHaloControl() / 100.0f);
         glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
         glProg.setTexture("BlurBuffer",previousNode.WorkingTexture);
         WorkingTexture = basePipeline.getMain();
