@@ -1140,7 +1140,7 @@ public class ESD4D extends GLOneScript {
             // with gain, so the denoise strength that suits the frame rises with
             // it; a single fixed strength either smears base ISO or leaves colour
             // speckle at high gain.
-            float isoLow = Math.max(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.getISOLOW(), 1);
+            float isoLow = Math.max(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.getISOLOWExt(), 1);
             float gainStops = (float) (Math.log(Math.max(parameters.iso / isoLow, 1.0)) / Math.log(2.0));
             glProg.setVar("gainStops", gainStops);
             glProg.setVar("lumaGainSlope", PreferenceKeys.getHdrPlusLumaGainSlope());
