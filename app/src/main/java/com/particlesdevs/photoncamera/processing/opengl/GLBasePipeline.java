@@ -136,6 +136,43 @@ public class GLBasePipeline implements AutoCloseable {
     private final java.util.List<String> nodeNames = new java.util.ArrayList<>();
 
     /**
+     * Dump one table of where the time went, in the order the nodes ran, with a
+     * total and the slowest few called out.
+     *
+     * <p>Per-node lines already go to the log as the pipeline runs, but scattered
+     * through everything else they are near useless for answering "why did this
+     * shot take four seconds". GCam prints exactly such a table at the end of a
+     * shot, which is what made its timings readable in the dumps we compared
+     * against.
+     */
+    public void dumpTimings(String label) {
+        if (nodeTimings.isEmpty()) return;
+        long total = 0;
+        for (long[] t : nodeTimings) total += t[0];
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n===== ").append(label).append(" timings =====\n");
+        for (int i = 0; i < nodeTimings.size(); i++) {
+            long ms = nodeTimings.get(i)[0];
+            double pct = total > 0 ? (100.0 * ms / total) : 0.0;
+            sb.append(String.format(java.util.Locale.ROOT,
+                    "  %-38s %7d ms  %5.1f%%%n", nodeNames.get(i), ms, pct));
+        }
+        sb.append(String.format(java.util.Locale.ROOT,
+                "  %-38s %7d ms%n", "TOTAL", total));
+
+        java.util.List<Integer> order = new java.util.ArrayList<>();
+        for (int i = 0; i < nodeTimings.size(); i++) order.add(i);
+        order.sort((x, y) -> Long.compare(nodeTimings.get(y)[0], nodeTimings.get(x)[0]));
+        sb.append("  slowest: ");
+        for (int i = 0; i < Math.min(5, order.size()); i++) {
+            int idx = order.get(i);
+            if (i > 0) sb.append(", ");
+            sb.append(nodeNames.get(idx)).append(' ').append(nodeTimings.get(idx)[0]).append("ms");
+        }
+        Log.d("Timings", sb.toString());
+    }
+
+    /**
      * Summary of where the time went, written once at the end of the pipeline.
      *
      * The per-node lines are already logged as they happen, but scattered through
@@ -229,6 +266,7 @@ public class GLBasePipeline implements AutoCloseable {
         }
         if (main3 != null) main3.close();
         glint.glProgram.close();
+        dumpTimings("runAll");
         Nodes.clear();
         logTimeSummary(getClass().getSimpleName());
         return glint.glProcessing.mOut;
@@ -277,6 +315,7 @@ public class GLBasePipeline implements AutoCloseable {
         }
         if (main3 != null) main3.close();
         glint.glProgram.close();
+        dumpTimings("runAllRaw");
         Nodes.clear();
         return glint.glProcessing.mOutBuffer;
     }

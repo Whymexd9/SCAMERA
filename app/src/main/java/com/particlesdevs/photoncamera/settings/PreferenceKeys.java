@@ -786,6 +786,30 @@ public class PreferenceKeys {
         return Float.parseFloat(getAcesString("pref_hdrplus_chroma_gain_slope_key", "0.30"));
     }
 
+    /**
+     * Signal-to-noise ratio the merged frame is aimed at. Denoise strength is
+     * scaled by how far this shot falls short of it, so a clean frame is denoised
+     * less than a noisy one without touching the sliders. GCam's dumps show a
+     * merged estimate around 110 on a well-lit shot.
+     */
+    public static float getHdrPlusSnrTarget() {
+        return Float.parseFloat(getAcesString("pref_hdrplus_snr_target_key", "110"));
+    }
+
+    /**
+     * How hard the SNR scale bites on luma and on chroma. 0 pins that channel to
+     * the slider and ignores SNR; 1 follows it fully. Chroma defaults higher
+     * because colour noise survives frame averaging better than luma noise and is
+     * the more objectionable of the two.
+     */
+    public static float getHdrPlusSnrLumaExp() {
+        return Float.parseFloat(getAcesString("pref_hdrplus_snr_luma_exp_key", "0.6"));
+    }
+
+    public static float getHdrPlusSnrChromaExp() {
+        return Float.parseFloat(getAcesString("pref_hdrplus_snr_chroma_exp_key", "1.0"));
+    }
+
     public static boolean isLiveViewfinderLookEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_LOOK, false);

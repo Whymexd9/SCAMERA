@@ -432,6 +432,24 @@
                     android:key="@string/pref_raw_mfsr_enabled_key"
                     android:summary="@string/raw_mfsr_summary"
                     android:defaultValue="@bool/pref_raw_mfsr_enabled_default"/>
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="pref_hdrplus_snr_target_key"
+                    android:title="@string/hdrplus_snr_target"
+                    android:summary="@string/hdrplus_snr_target_summary"
+                    android:defaultValue="110" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="pref_hdrplus_snr_luma_exp_key"
+                    android:title="@string/hdrplus_snr_luma_exp"
+                    android:summary="@string/hdrplus_snr_luma_exp_summary"
+                    android:defaultValue="0.6" />
+                <EditTextPreference
+                    android:layout="@layout/preference_with_margin"
+                    android:key="pref_hdrplus_snr_chroma_exp_key"
+                    android:title="@string/hdrplus_snr_chroma_exp"
+                    android:summary="@string/hdrplus_snr_chroma_exp_summary"
+                    android:defaultValue="1.0" />
                 <SwitchPreferenceCompat
                     android:layout="@layout/preference_with_margin"
                     android:key="@string/pref_highlight_recovery_key"

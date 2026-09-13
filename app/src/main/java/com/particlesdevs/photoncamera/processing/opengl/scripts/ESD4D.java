@@ -1100,10 +1100,42 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
             glProg.setVar("rawMfsrStrength", rawMfsrForFrame ? 0.18f : 0.0f);
             glProg.setVar("mergeAlgorithm", PreferenceKeys.isHdrPlusMergeEnabled() ? 1 : 0);
-            glProg.setVar("hdrPlusDenoise", (float) PreferenceKeys.getHdrPlusDenoiseStrength() / 100.0f);
-            glProg.setVar("hdrPlusLowDenoise", (float) PreferenceKeys.getHdrPlusLowDenoise() / 100.0f);
-            glProg.setVar("hdrPlusHighDenoise", (float) PreferenceKeys.getHdrPlusHighDenoise() / 100.0f);
-            glProg.setVar("hdrPlusChromaDenoise", (float) PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f);
+            // Denoise strength from the frame's signal-to-noise ratio, not from a
+            // fixed number. GCam's own dump prints "Base frame SNR: 21.70" and
+            // "Merged frame SNR (estimate): 112.75" right beside the strengths it
+            // then uses ("SLS: raw_str 0.028, chroma 0.005, luma 0.000"), so those
+            // strengths are derived rather than tuned per shot.
+            //
+            // Base SNR is evaluated at mid grey against the calibrated noise
+            // model: signal / sqrt(noiseS * signal + noiseO). Merging n frames
+            // averages independent noise, so the estimate after the merge goes up
+            // as sqrt(n) - the same relation Hasinoff et al. rely on.
+            //
+            // The ratio of a target SNR to what this shot actually has is the
+            // amount of denoising it needs: a clean frame gets a scale below one
+            // and keeps its detail, a noisy one gets more than the slider asked
+            // for. Luma and chroma are scaled separately because chroma noise
+            // survives averaging better and is the more objectionable of the two.
+            float midGrey = 0.18f;
+            float baseSnr = (float) (midGrey / Math.sqrt(Math.max(noiseS * midGrey + noiseO, 1e-9)));
+            int mergedFrames = Math.max(1, PhotonCamera.getSettings().frameCount);
+            float mergedSnr = (float) (baseSnr * Math.sqrt(mergedFrames));
+            float snrTarget = Math.max(PreferenceKeys.getHdrPlusSnrTarget(), 1f);
+            float snrScale = snrTarget / Math.max(mergedSnr, 1e-3f);
+
+            float lumaScale = clampScale((float) Math.pow(snrScale, PreferenceKeys.getHdrPlusSnrLumaExp()));
+            float chromaScale = clampScale((float) Math.pow(snrScale, PreferenceKeys.getHdrPlusSnrChromaExp()));
+
+            Log.d("ESD4D", "SNR base=" + String.format(java.util.Locale.ROOT, "%.2f", baseSnr)
+                    + " merged(est)=" + String.format(java.util.Locale.ROOT, "%.2f", mergedSnr)
+                    + " over " + mergedFrames + " frames"
+                    + " | scale luma=" + String.format(java.util.Locale.ROOT, "%.3f", lumaScale)
+                    + " chroma=" + String.format(java.util.Locale.ROOT, "%.3f", chromaScale));
+
+            glProg.setVar("hdrPlusDenoise", (float) PreferenceKeys.getHdrPlusDenoiseStrength() / 100.0f * lumaScale);
+            glProg.setVar("hdrPlusLowDenoise", (float) PreferenceKeys.getHdrPlusLowDenoise() / 100.0f * lumaScale);
+            glProg.setVar("hdrPlusHighDenoise", (float) PreferenceKeys.getHdrPlusHighDenoise() / 100.0f * lumaScale);
+            glProg.setVar("hdrPlusChromaDenoise", (float) PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f * chromaScale);
             // How far above base ISO this shot is, in stops. Noise variance rises
             // with gain, so the denoise strength that suits the frame rises with
             // it; a single fixed strength either smears base ISO or leaves colour
@@ -1254,4 +1286,13 @@ public class ESD4D extends GLOneScript {
         }
         GLTexture.notClosed();
     }
+    /**
+     * Keep the SNR-derived scale inside sane bounds: a very clean frame should not
+     * switch denoising off entirely, and a very noisy one should not be allowed to
+     * multiply a slider into smearing everything.
+     */
+    private static float clampScale(float v) {
+        return Math.max(0.35f, Math.min(2.5f, v));
+    }
+
 }

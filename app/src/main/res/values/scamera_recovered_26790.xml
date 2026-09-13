@@ -314,6 +314,12 @@
     <string name="pref_mfsr_dth_key">pref_mfsr_dth_key</string>
     <string name="pref_mfsr_dtr_key">pref_mfsr_dtr_key</string>
     <string name="pref_mfsr_tensor_stride_key">pref_mfsr_tensor_stride_key</string>
+    <string name="hdrplus_snr_target">HDR+: целевой SNR</string>
+    <string name="hdrplus_snr_target_summary">К какому отношению сигнал/шум стремится склейка. Сила шумодава масштабируется тем, насколько кадр до него не дотягивает. У GCam на светлой сцене оценка после склейки около 110</string>
+    <string name="hdrplus_snr_luma_exp">HDR+: влияние SNR на яркостный шумодав</string>
+    <string name="hdrplus_snr_luma_exp_summary">0 — сила берётся строго из ползунка, 1 — полностью следует за SNR</string>
+    <string name="hdrplus_snr_chroma_exp">HDR+: влияние SNR на цветовой шумодав</string>
+    <string name="hdrplus_snr_chroma_exp_summary">То же для цвета. По умолчанию выше, чем у яркости: цветной шум хуже усредняется по кадрам и заметнее</string>
     <string name="pref_live_viewfinder_look_key">pref_live_viewfinder_look_key</string>
     <string name="pref_highlight_recovery_key">pref_highlight_recovery_key</string>
     <string name="pref_highlight_recovery_min_ok_key">pref_highlight_recovery_min_ok_key</string>
