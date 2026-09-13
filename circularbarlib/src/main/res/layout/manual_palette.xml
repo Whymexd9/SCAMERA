@@ -67,7 +67,9 @@
             <TextView
                 android:id="@+id/ev_option_tv"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
+                android:gravity="bottom|center_horizontal"
+                android:paddingTop="10dp"
                 android:textAlignment="center"
                 android:textAppearance="@style/BoldTextWithShadow"
                 android:textColor="@color/manual_text_color"
@@ -77,6 +79,8 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:clickable="false"
                 android:text="EV"
                 android:textAlignment="center"
                 android:textColor="@color/manual_text_color"
@@ -94,7 +98,9 @@
             <TextView
                 android:id="@+id/exposure_option_tv"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
+                android:gravity="bottom|center_horizontal"
+                android:paddingTop="10dp"
                 android:textAlignment="center"
                 android:textAppearance="@style/BoldTextWithShadow"
                 android:textColor="@color/manual_text_color"
@@ -104,6 +110,8 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:clickable="false"
                 android:text="SS"
                 android:textAlignment="center"
                 android:textColor="@color/manual_text_color"
@@ -121,7 +129,9 @@
             <TextView
                 android:id="@+id/iso_option_tv"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
+                android:gravity="bottom|center_horizontal"
+                android:paddingTop="10dp"
                 android:textAlignment="center"
                 android:textAppearance="@style/BoldTextWithShadow"
                 android:textColor="@color/manual_text_color"
@@ -131,6 +141,8 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:clickable="false"
                 android:text="ISO"
                 android:textAlignment="center"
                 android:textColor="@color/manual_text_color"
@@ -148,7 +160,9 @@
             <TextView
                 android:id="@+id/focus_option_tv"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
+                android:gravity="bottom|center_horizontal"
+                android:paddingTop="10dp"
                 android:textAlignment="center"
                 android:textAppearance="@style/BoldTextWithShadow"
                 android:textColor="@color/manual_text_color"
@@ -158,6 +172,8 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:clickable="false"
                 android:text="AF"
                 android:textAlignment="center"
                 android:textColor="@color/manual_text_color"

@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Amber marks the parameter currently on the scale, matching the amber value
+     and marker the scale itself draws. The accent purple used before belonged to
+     the old theme and read as a different kind of state from the one the strip
+     was showing. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_selected="true" android:color="?colorControlActivated"/>
-    <item android:color="@color/White"/>
+    <item android:color="#FFC400" android:state_selected="true" />
+    <item android:color="@color/white" />
 </selector>

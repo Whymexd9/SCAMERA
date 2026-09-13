@@ -185,7 +185,16 @@ public class LinearScaleView extends View {
         // number and its position are the same fact, and splitting them makes the
         // strip harder to read at a glance.
         String label = items.get(idx).text;
-        float labelX = Math.max(left + 12f * density, Math.min(right - 12f * density, markerX));
+        // Keep the value clear of the range labels rather than only inside the
+        // strip: with the marker at either end the two collided and printed over
+        // each other, which is what the AF strip showed.
+        float half = valuePaint.measureText(label) * 0.5f;
+        float minEnd = left + textPaint.measureText(items.get(0).text) + 10f * density + half;
+        float maxEnd = right - textPaint.measureText(items.get(items.size() - 1).text) - 10f * density - half;
+        float labelX = markerX;
+        if (minEnd <= maxEnd) {
+            labelX = Math.max(minEnd, Math.min(maxEnd, markerX));
+        }
         canvas.drawText(label, labelX, ticksY - 22f * density, valuePaint);
     }
 
