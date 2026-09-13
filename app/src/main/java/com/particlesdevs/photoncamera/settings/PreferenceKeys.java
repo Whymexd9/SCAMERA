@@ -770,6 +770,22 @@ public class PreferenceKeys {
      * and shadow/highlight placement of the result; cannot show detail that needs
      * a burst.
      */
+    /**
+     * How much the HDR+ luma and chroma denoise strengths follow the gain, per
+     * stop above base ISO. 0 keeps the old fixed behaviour; 0.25 means a strength
+     * set in daylight is a quarter stronger at each doubling of ISO.
+     *
+     * Chroma defaults higher than luma: colour speckle is objectionable well
+     * before luma grain is, and smoothing chroma costs almost no detail.
+     */
+    public static float getHdrPlusLumaGainSlope() {
+        return Float.parseFloat(getAcesString("pref_hdrplus_luma_gain_slope_key", "0.15"));
+    }
+
+    public static float getHdrPlusChromaGainSlope() {
+        return Float.parseFloat(getAcesString("pref_hdrplus_chroma_gain_slope_key", "0.30"));
+    }
+
     public static boolean isLiveViewfinderLookEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_LOOK, false);

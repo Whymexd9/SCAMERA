@@ -126,7 +126,42 @@ public class GLBasePipeline implements AutoCloseable {
     }
 
     public void endTimeMeasure(String Name) {
-        Log.d("Pipeline", "Node:" + Name + " elapsed:" + (System.currentTimeMillis() - timeStart) + " ms");
+        long ms = System.currentTimeMillis() - timeStart;
+        Log.d("Pipeline", "Node:" + Name + " elapsed:" + ms + " ms");
+        nodeTimings.add(new long[]{ms, nodeTimings.size()});
+        nodeNames.add(Name);
+    }
+
+    private final java.util.List<long[]> nodeTimings = new java.util.ArrayList<>();
+    private final java.util.List<String> nodeNames = new java.util.ArrayList<>();
+
+    /**
+     * Summary of where the time went, written once at the end of the pipeline.
+     *
+     * The per-node lines are already logged as they happen, but scattered through
+     * everything else they are hard to add up - and the question when optimising
+     * is which handful of nodes dominate, not what each one cost in isolation.
+     * Sorted by cost, with each node's share of the total.
+     */
+    public void logTimeSummary(String pipelineName) {
+        long total = 0;
+        for (long[] t : nodeTimings) total += t[0];
+        if (total <= 0 || nodeTimings.isEmpty()) return;
+
+        java.util.List<long[]> sorted = new java.util.ArrayList<>(nodeTimings);
+        sorted.sort((a, b) -> Long.compare(b[0], a[0]));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== ").append(pipelineName).append(" timing: ")
+          .append(total).append(" ms over ").append(nodeTimings.size()).append(" nodes ===");
+        for (long[] t : sorted) {
+            if (t[0] <= 0) continue;
+            sb.append(String.format(java.util.Locale.ROOT, "%n  %-28s %6d ms  %5.1f%%",
+                    nodeNames.get((int) t[1]), t[0], 100.0 * t[0] / total));
+        }
+        Log.d("Pipeline", sb.toString());
+        nodeTimings.clear();
+        nodeNames.clear();
     }
 
     public void add(Node in) {
@@ -195,6 +230,7 @@ public class GLBasePipeline implements AutoCloseable {
         if (main3 != null) main3.close();
         glint.glProgram.close();
         Nodes.clear();
+        logTimeSummary(getClass().getSimpleName());
         return glint.glProcessing.mOut;
     }
 

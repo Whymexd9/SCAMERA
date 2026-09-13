@@ -1104,6 +1104,15 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("hdrPlusLowDenoise", (float) PreferenceKeys.getHdrPlusLowDenoise() / 100.0f);
             glProg.setVar("hdrPlusHighDenoise", (float) PreferenceKeys.getHdrPlusHighDenoise() / 100.0f);
             glProg.setVar("hdrPlusChromaDenoise", (float) PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f);
+            // How far above base ISO this shot is, in stops. Noise variance rises
+            // with gain, so the denoise strength that suits the frame rises with
+            // it; a single fixed strength either smears base ISO or leaves colour
+            // speckle at high gain.
+            float isoLow = Math.max(IsoExpoSelector.getISOLOW(), 1);
+            float gainStops = (float) (Math.log(Math.max(parameters.iso / isoLow, 1.0)) / Math.log(2.0));
+            glProg.setVar("gainStops", gainStops);
+            glProg.setVar("lumaGainSlope", PreferenceKeys.getHdrPlusLumaGainSlope());
+            glProg.setVar("chromaGainSlope", PreferenceKeys.getHdrPlusChromaGainSlope());
             glProg.setVar("flowNoiseS", rawNoiseS);
             glProg.setVar("flowNoiseO", rawNoiseO);
             glProg.setTextureCompute("inTexture", base, false);

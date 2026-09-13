@@ -277,6 +277,16 @@
                     android:summary="@string/merge_clip_level_summary"
                     android:defaultValue="0.99" />
                 <EditTextPreference
+                    android:key="pref_hdrplus_luma_gain_slope_key"
+                    android:title="@string/hdrplus_luma_gain_slope"
+                    android:summary="@string/hdrplus_luma_gain_slope_desc"
+                    android:defaultValue="0.15" />
+                <EditTextPreference
+                    android:key="pref_hdrplus_chroma_gain_slope_key"
+                    android:title="@string/hdrplus_chroma_gain_slope"
+                    android:summary="@string/hdrplus_chroma_gain_slope_desc"
+                    android:defaultValue="0.30" />
+                <EditTextPreference
                     android:key="pref_max_hdr_ratio_key"
                     android:title="@string/max_hdr_ratio"
                     android:summary="@string/max_hdr_ratio_summary"

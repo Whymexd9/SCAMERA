@@ -66,7 +66,11 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             //noinspection ChromeOsAbiSupport
-            abiFilters "arm64-v8a", "armeabi-v7a"
+            // 64-bit only. Android has required 64-bit support since API 30 and
+            // no device this runs on is 32-bit; the armeabi-v7a copies of ncnn,
+            // tensorflow-lite, libarchive and dngCreator were 8.1 MB of the APK
+            // and could never be loaded.
+            abiFilters "arm64-v8a"
         }
         versionName '0.98'
         versionProps['VERSION_NAME'] = versionName

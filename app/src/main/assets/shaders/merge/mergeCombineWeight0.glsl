@@ -34,6 +34,17 @@ uniform float hdrPlusDenoise;
 uniform float hdrPlusLowDenoise;
 uniform float hdrPlusHighDenoise;
 uniform float hdrPlusChromaDenoise;
+// Gain-dependent trim, in stops above base ISO, plus how much the luma and chroma
+// strengths are allowed to follow it.
+//
+// A single strength has to be a compromise: set for ISO 6400 it smears a base-ISO
+// frame, set for base ISO it leaves colour speckle in the dark. Noise variance
+// rises with gain, so the strength that suits the frame does too. These let the
+// two follow it at their own rates - chroma usually wants to climb faster,
+// because colour speckle is objectionable long before luma grain is.
+uniform float gainStops;
+uniform float lumaGainSlope;
+uniform float chromaGainSlope;
 // Optical flow refinement: per-pixel correction of the coarse alignment.
 // The diff texture packs whole 2x2 Bayer quads per texel, so fractional
 // resampling (bilinear) is illegal here - it would blend different color
@@ -237,8 +248,13 @@ void main() {
         vec4 highFiltered = denoiseConfidence(highConfidence, hdrPlusHighDenoise);
         // Independent low/high amounts control their actual contributions,
         // rather than merely scaling one master strength after the merge.
-        float lowA = clamp(hdrPlusLowDenoise, 0.0, 2.0);
-        float highA = clamp(hdrPlusHighDenoise, 0.0, 2.0);
+        // Gain scaling. 1.0 at base ISO, rising by the slope per stop, so a
+        // setting tuned in daylight keeps its meaning as the gain climbs.
+        float lumaGain = 1.0 + lumaGainSlope * max(gainStops, 0.0);
+        float chromaGain = 1.0 + chromaGainSlope * max(gainStops, 0.0);
+
+        float lowA = clamp(hdrPlusLowDenoise * lumaGain, 0.0, 2.0);
+        float highA = clamp(hdrPlusHighDenoise * lumaGain, 0.0, 2.0);
         float frequencyMix = highA / max(lowA + highA, EPS);
         comb = mix(lowFiltered, highFiltered, frequencyMix);
 
@@ -250,9 +266,9 @@ void main() {
         vec4 neutralResidual = vec4(dot(residual, vec4(0.25)));
         vec4 chromaResidual = residual - neutralResidual;
         vec4 chromaConfidence = n2 / (chromaResidual * chromaResidual + n2);
-        vec4 chromaFiltered = denoiseConfidence(chromaConfidence,
-                hdrPlusChromaDenoise);
-        float chromaA = clamp(hdrPlusChromaDenoise, 0.0, 2.0);
+        float chromaStrength = hdrPlusChromaDenoise * chromaGain;
+        vec4 chromaFiltered = denoiseConfidence(chromaConfidence, chromaStrength);
+        float chromaA = clamp(chromaStrength, 0.0, 2.0);
         comb *= mix(vec4(1.0), chromaFiltered, min(chromaA, 1.0));
         if (chromaA > 1.0) comb = mix(comb, sqrt(comb), 0.35 * (chromaA - 1.0));
     }
