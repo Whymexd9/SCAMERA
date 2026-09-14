@@ -278,6 +278,11 @@ public class HdrxProcessor extends ProcessorBase {
                 frame.frameGyro = BurstShakiness.get(ind);
             }*/
             Log.d(TAG, "Mpy:" + frame.pair.layerMpy);
+            if (!frame.pair.isHighlightFrame && !frame.pair.isLongFrame) {
+                // Only the constant-exposure frames are eligible as reference, and
+                // the measure is only comparable within that group anyway.
+                frame.computeSharpness();
+            }
             images.add(frame);
             ISO += frame.pair.iso;
         }

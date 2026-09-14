@@ -471,40 +471,46 @@ public class ESD4D extends GLOneScript {
         glUtils = new GLUtils(glOne.glProcessing);
 
         float minExp = 1.f;
-        int minExpIdx = 0;
+        int minExpIdx = -1;
+        float bestSharp = -1.f;
         int lowCnt = 0;
-        for (int i = 1; i < images.size(); i++) {
+        for (int i = 0; i < images.size(); i++) {
             ImageFrame frame = images.get(i);
             float exposure = 1.f/frame.pair.layerMpy;
-            Log.d("ESD4D", "exposure: " + exposure);
-            if(exposure < 0.95f) {
-                lowCnt++;
+            if (i > 0) {
+                Log.d("ESD4D", "exposure: " + exposure);
+                if (exposure < 0.95f) {
+                    lowCnt++;
+                }
             }
-            if(exposure < minExp && !frame.pair.isHighlightFrame && !frame.pair.isLongFrame) {
+            if (frame.pair.isHighlightFrame || frame.pair.isLongFrame) {
                 // Neither bracket frame may become the reference; only the
                 // constant-exposure ZSL frames are eligible.
                 //
-                // layerMpy normalises every frame to the SHORTEST exposure of the
-                // burst, so 1/layerMpy is smallest for the LONGEST frame. Guarding
-                // the ultra-short frame alone therefore handed the reference to the
-                // long frame instead: the brightest, most motion-blurred frame of
+                // The long frame is the brightest and most motion-blurred frame of
                 // the burst (13 ms against a 33 ms readout), with clipped highlights.
-                // Every other frame was then aligned against it, and tiles locked
-                // onto false matches - visible as doubling and rectangular blocks.
-                //
-                // The ultra-short frame is no better: it is a donor for clipped
-                // highlights, not a basis for comparison, since most of the scene in
-                // it sits under the sensor's noise floor. GCam picks its base frame
-                // from the constant-exposure ZSL stack and treats both bracket
-                // frames separately, running explicit validity checks on them.
+                // The ultra-short frame is a donor for clipped highlights, not a
+                // basis for comparison, since most of the scene in it sits under the
+                // sensor's noise floor. Aligning against either makes tiles lock onto
+                // false matches - visible as doubling and rectangular blocks. GCam
+                // picks its base frame from the constant-exposure ZSL stack and
+                // treats both bracket frames separately.
+                continue;
+            }
+            Log.d("ESD4D", "candidate " + i + " sharpness=" + frame.sharpness);
+            if (Float.isNaN(frame.sharpness)) continue;
+            if (frame.sharpness > bestSharp) {
+                // Sharpest of the regular frames: both defocus and handshake blur
+                // suppress gradient energy, so the frame with the most of it carries
+                // the detail every other frame is aligned to.
+                bestSharp = frame.sharpness;
                 minExpIdx = i;
                 minExp = exposure;
             }
         }
-        if (images.get(minExpIdx).pair.isHighlightFrame || images.get(minExpIdx).pair.isLongFrame) {
-            // The loop starts at i=1 and index 0 was swapped to hold the high-exposure
-            // frame earlier, so falling back to frame 0 would reinstate a bracket
-            // frame. Take the first regular frame instead, and only then frame 0.
+        if (minExpIdx < 0) {
+            // Sharpness was never measured (missing buffer, or every frame is a
+            // bracket frame). Take the first regular frame, and only then frame 0.
             int fallback = -1;
             for (int i = 0; i < images.size(); i++) {
                 if (!images.get(i).pair.isHighlightFrame && !images.get(i).pair.isLongFrame) {
@@ -512,12 +518,13 @@ public class ESD4D extends GLOneScript {
                     break;
                 }
             }
-            Log.w("ESD4D", "Reference would be a bracket frame, falling back to frame "
+            Log.w("ESD4D", "No sharpness-ranked regular frame, falling back to frame "
                     + (fallback >= 0 ? fallback : 0));
             minExpIdx = fallback >= 0 ? fallback : 0;
             minExp = 1.f / images.get(minExpIdx).pair.layerMpy;
         }
         Log.d("ESD4D", "Reference frame: " + minExpIdx + " exposure=" + minExp
+                + " sharpness=" + images.get(minExpIdx).sharpness
                 + " highlightFrame=" + images.get(minExpIdx).pair.isHighlightFrame
                 + " longFrame=" + images.get(minExpIdx).pair.isLongFrame);
 
