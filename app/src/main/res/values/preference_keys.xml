@@ -46,22 +46,6 @@
     <string name="pref_processing_backend_key" translatable="false">pref_processing_backend_key</string>
     <string name="pref_contrast_seekbar_key" translatable="false">pref_contrast_seekbar_key</string>
     <string name="pref_sharpness_seekbar_key" translatable="false">pref_sharpness_seekbar_key</string>
-    <string name="pref_sharpening_enabled_key" translatable="false">pref_sharpening_enabled_key</string>
-    <string name="pref_sharp_radius_key" translatable="false">pref_sharp_radius_key</string>
-    <string name="pref_sharp_threshold_key" translatable="false">pref_sharp_threshold_key</string>
-    <string name="pref_sharp_edge_key" translatable="false">pref_sharp_edge_key</string>
-    <string name="pref_sharp_bilateral_key" translatable="false">pref_sharp_bilateral_key</string>
-    <string name="pref_sharp_tolerance_key" translatable="false">pref_sharp_tolerance_key</string>
-    <string name="pref_sharp_local_contrast_key" translatable="false">pref_sharp_local_contrast_key</string>
-    <string name="pref_sharp_epsilon_key" translatable="false">pref_sharp_epsilon_key</string>
-    <string name="pref_sharp_texture_key" translatable="false">pref_sharp_texture_key</string>
-    <string name="pref_sharp_grain_key" translatable="false">pref_sharp_grain_key</string>
-    <string name="pref_sharp_rl_amount_key" translatable="false">pref_sharp_rl_amount_key</string>
-    <string name="pref_sharp_rl_iterations_key" translatable="false">pref_sharp_rl_iterations_key</string>
-    <string name="pref_sharp_damping_key" translatable="false">pref_sharp_damping_key</string>
-    <string name="pref_sharp_shadow_protection_key" translatable="false">pref_sharp_shadow_protection_key</string>
-    <string name="pref_sharp_highlight_protection_key" translatable="false">pref_sharp_highlight_protection_key</string>
-    <string name="pref_sharp_halo_control_key" translatable="false">pref_sharp_halo_control_key</string>
     <string name="pref_nr_luma_enabled_key" translatable="false">pref_nr_luma_enabled_key</string>
     <string name="pref_nr_chroma_enabled_key" translatable="false">pref_nr_chroma_enabled_key</string>
     <string name="pref_nr_moire_enabled_key" translatable="false">pref_nr_moire_enabled_key</string>
@@ -122,4 +106,25 @@
     <string name="pref_hide_gallery_icon_key" translatable="false">pref_hide_gallery_icon_key</string>
     <string name="pref_category_device_key" translatable="false">pref_category_device_key</string>
     <string name="pref_fetch_configurations_key" translatable="false">pref_fetch_configurations_key</string>
+    <string name="pref_sharp_method_key" translatable="false">pref_sharp_method_key</string>
+    <string name="pref_sharp_radius_key" translatable="false">pref_sharp_radius_key</string>
+    <string name="pref_sharp_amount_key" translatable="false">pref_sharp_amount_key</string>
+    <string name="pref_sharp_contrast_key" translatable="false">pref_sharp_contrast_key</string>
+    <string name="pref_sharp_threshold_bl_key" translatable="false">pref_sharp_threshold_bl_key</string>
+    <string name="pref_sharp_threshold_tl_key" translatable="false">pref_sharp_threshold_tl_key</string>
+    <string name="pref_sharp_threshold_tr_key" translatable="false">pref_sharp_threshold_tr_key</string>
+    <string name="pref_sharp_threshold_br_key" translatable="false">pref_sharp_threshold_br_key</string>
+    <string name="pref_sharp_edges_only_key" translatable="false">pref_sharp_edges_only_key</string>
+    <string name="pref_sharp_edges_radius_key" translatable="false">pref_sharp_edges_radius_key</string>
+    <string name="pref_sharp_edges_tolerance_key" translatable="false">pref_sharp_edges_tolerance_key</string>
+    <string name="pref_sharp_halo_control_key" translatable="false">pref_sharp_halo_control_key</string>
+    <string name="pref_sharp_halo_amount_key" translatable="false">pref_sharp_halo_amount_key</string>
+    <string name="pref_sharp_deconv_radius_key" translatable="false">pref_sharp_deconv_radius_key</string>
+    <string name="pref_sharp_deconv_amount_key" translatable="false">pref_sharp_deconv_amount_key</string>
+    <string name="pref_sharp_deconv_iterations_key" translatable="false">pref_sharp_deconv_iterations_key</string>
+    <string name="pref_sharp_deconv_damping_key" translatable="false">pref_sharp_deconv_damping_key</string>
+    <string name="pref_sharp_micro_amount_key" translatable="false">pref_sharp_micro_amount_key</string>
+    <string name="pref_sharp_micro_uniformity_key" translatable="false">pref_sharp_micro_uniformity_key</string>
+    <string name="pref_sharp_micro_contrast_key" translatable="false">pref_sharp_micro_contrast_key</string>
+    <string name="pref_sharp_micro_matrix_key" translatable="false">pref_sharp_micro_matrix_key</string>
 </resources>

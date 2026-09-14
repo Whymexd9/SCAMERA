@@ -621,16 +621,11 @@ public class PostPipeline extends GLBasePipeline {
         add(new CorrectingFlow());
         add(new FalseColorSuppression());
         add(new CaptureOneProcessing());
-        if (PreferenceKeys.getSharpeningMode() == 0) {
-            add(new CaptureSharpening());
-        } else {
-            add(new ExperimentalCaptureSharpening());
-        }
-        if (PreferenceKeys.getSharpeningMode() == 0) {
-            add(new SharpenDual());
-        } else {
-            add(new Sharpen2());
-        }
+        add(new CaptureSharpening());
+        // Sharpening is RawTherapee's, selected inside the node by method:
+        // unsharp mask, RL deconvolution or microcontrast. The previous
+        // PhotonCamera/Luma switch is gone with the node it selected.
+        add(new RTSharpening());
         add(new RotateWatermark(getRotation()));
     }
 }

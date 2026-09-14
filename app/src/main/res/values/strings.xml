@@ -37,26 +37,6 @@
     <string name="sharpness">Sharpness</string>
     <string name="sharp_settings">Резкость</string>
     <string name="sharp_settings_summary">Аппаратная резкость Luma, восстановление деталей и защита тонов</string>
-    <string name="sharpening_enabled">Используемая резкость</string>
-    <string name="sharpening_enabled_summary">Выбор стандартных алгоритмов PhotonCamera или новых параметров Luma</string>
-    <string name="sharp_lens_deblur">Lens Deblur (Pillbox)</string>
-    <string name="sharp_radius">Радиус</string>
-    <string name="sharp_threshold">Порог (0–255)</string>
-    <string name="sharp_edge">Smart Edge — сила Sobel</string>
-    <string name="sharp_bilateral">Bilateral Sharpening — сила</string>
-    <string name="sharp_tolerance">Допуск цвета (0–255)</string>
-    <string name="sharp_guided">Guided Filter / локальный контраст</string>
-    <string name="sharp_epsilon">Epsilon</string>
-    <string name="sharp_texture">Shock Filter — восстановление текстуры</string>
-    <string name="sharp_grain">Luma grain</string>
-    <string name="sharp_rl">RL Deconvolution</string>
-    <string name="sharp_rl_amount">Сила RL</string>
-    <string name="sharp_rl_iterations">Итерации RL</string>
-    <string name="sharp_damping">Подавление шума</string>
-    <string name="sharp_tonal">Tonal Protection (Smart Fade)</string>
-    <string name="sharp_shadow_protection">Защита теней, %</string>
-    <string name="sharp_highlight_protection">Защита светов, %</string>
-    <string name="sharp_halo_control">Подавление ореолов, %</string>
     <string name="nr_components">Компоненты шумоподавления</string>
     <string name="nr_components_summary">Независимое отключение этапов PhotonCamera</string>
     <string name="nr_luma_enabled">Luma-шумоподавление</string>
@@ -240,4 +220,91 @@
     <string name="perm_rationale_audio_message">Microphone access is required for video recording with audio.</string>
     <string name="perm_rationale_dcim_title">DCIM Folder Access</string>
     <string name="perm_rationale_dcim_message">Access to the DCIM folder is required for saving RAW video files and reading device custom configs.</string>
+
+    <!-- Sharpening, RawTherapee algorithms -->
+    <string name="pref_sharp_method_default">1</string>
+    <string name="pref_sharp_radius_default">0.5</string>
+    <string name="pref_sharp_amount_default">200</string>
+    <string name="pref_sharp_contrast_default">20</string>
+    <string name="pref_sharp_threshold_bl_default">20</string>
+    <string name="pref_sharp_threshold_tl_default">80</string>
+    <string name="pref_sharp_threshold_tr_default">1200</string>
+    <string name="pref_sharp_threshold_br_default">2000</string>
+    <string name="pref_sharp_edges_radius_default">1.9</string>
+    <string name="pref_sharp_edges_tolerance_default">1800</string>
+    <string name="pref_sharp_halo_amount_default">85</string>
+    <string name="pref_sharp_deconv_radius_default">0.75</string>
+    <string name="pref_sharp_deconv_amount_default">100</string>
+    <string name="pref_sharp_deconv_iterations_default">10</string>
+    <string name="pref_sharp_deconv_damping_default">0</string>
+    <string name="pref_sharp_micro_amount_default">20</string>
+    <string name="pref_sharp_micro_uniformity_default">5</string>
+    <string name="pref_sharp_micro_contrast_default">20</string>
+    <bool name="pref_sharp_edges_only_default">false</bool>
+    <bool name="pref_sharp_halo_control_default">false</bool>
+    <bool name="pref_sharp_micro_matrix_default">false</bool>
+
+    <string name="sharp_method">Метод</string>
+    <string name="sharp_method_desc">Алгоритм резкости из RawTherapee</string>
+    <string-array name="sharp_method_entries">
+        <item>Выключено</item>
+        <item>Unsharp Mask</item>
+        <item>RL-деконволюция</item>
+        <item>Микроконтраст</item>
+    </string-array>
+    <string-array name="sharp_method_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+
+    <string name="sharp_usm_section">Unsharp Mask</string>
+    <string name="sharp_usm_description">Разница с размытой копией добавляется обратно. Порог задан кривой из четырёх точек: слабая разница отбрасывается как шум, сильная ограничивается, чтобы не рисовать ореолы.</string>
+    <string name="sharp_radius">Радиус</string>
+    <string name="sharp_radius_desc">Радиус размытия в пикселях. RawTherapee: 0.5</string>
+    <string name="sharp_amount">Сила, %</string>
+    <string name="sharp_amount_desc">Доля разницы, возвращаемая в изображение. RawTherapee: 200</string>
+    <string name="sharp_contrast">Порог контраста, %</string>
+    <string name="sharp_contrast_desc">Резкость гасится там, где локальный контраст ниже порога — плоские участки и шум не усиливаются. RawTherapee: 20</string>
+    <string name="sharp_threshold_section">Кривая порога</string>
+    <string name="sharp_threshold_description">Четыре узла кривой в шкале яркости RawTherapee 0–32768. Ниже первого узла резкость не применяется, между первым и вторым нарастает, между третьим и четвёртым спадает.</string>
+    <string name="sharp_threshold_bl">Узел 1 (начало нарастания)</string>
+    <string name="sharp_threshold_tl">Узел 2 (полная сила)</string>
+    <string name="sharp_threshold_tr">Узел 3 (начало спада)</string>
+    <string name="sharp_threshold_br">Узел 4 (конец спада)</string>
+    <string name="sharp_edges_section">Только края</string>
+    <string name="sharp_edges_description">Разница берётся не с исходником, а с билатерально сглаженной копией, поэтому плоский шум не попадает в резкость.</string>
+    <string name="sharp_edges_only">Включить</string>
+    <string name="sharp_edges_only_desc">RawTherapee: выключено</string>
+    <string name="sharp_edges_radius">Радиус детектора</string>
+    <string name="sharp_edges_radius_desc">RawTherapee: 1.9</string>
+    <string name="sharp_edges_tolerance">Допуск</string>
+    <string name="sharp_edges_tolerance_desc">В шкале 0–32768. RawTherapee: 1800</string>
+    <string name="sharp_halo_section">Контроль ореолов</string>
+    <string name="sharp_halo_description">Ограничивает, насколько яркость пикселя может выйти за пределы окрестности. Выход не обрезается, а ослабляется, поэтому сам предел не даёт новой кромки.</string>
+    <string name="sharp_halo_control">Включить</string>
+    <string name="sharp_halo_control_desc">RawTherapee: выключено</string>
+    <string name="sharp_halo_amount">Сила, %</string>
+    <string name="sharp_halo_amount_desc">RawTherapee: 85</string>
+    <string name="sharp_deconv_section">RL-деконволюция</string>
+    <string name="sharp_deconv_description">Итеративно восстанавливает изображение по гауссовой модели размытия. Каждая итерация — два прохода по всему кадру, время растёт линейно.</string>
+    <string name="sharp_deconv_radius">Радиус</string>
+    <string name="sharp_deconv_radius_desc">Сигма предполагаемого размытия. RawTherapee: 0.75</string>
+    <string name="sharp_deconv_amount">Сила, %</string>
+    <string name="sharp_deconv_amount_desc">Насколько результат подмешивается к исходнику. RawTherapee: 100</string>
+    <string name="sharp_deconv_iterations">Итерации</string>
+    <string name="sharp_deconv_iterations_desc">RawTherapee: 30. Здесь по умолчанию 10 — на 12 Мп каждая итерация стоит двух полноразмерных проходов</string>
+    <string name="sharp_deconv_damping">Затухание</string>
+    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом, иначе итерации усиливают его. RawTherapee: 0</string>
+    <string name="sharp_micro_section">Микроконтраст</string>
+    <string name="sharp_micro_description">Метод Manuel Llorens: подъём мелкой структуры с проверкой на перелёт по соседям, поэтому ореолы не образуются.</string>
+    <string name="sharp_micro_amount">Сила</string>
+    <string name="sharp_micro_amount_desc">RawTherapee: 20</string>
+    <string name="sharp_micro_uniformity">Однородность</string>
+    <string name="sharp_micro_uniformity_desc">Выбирает набор ограничений по яркости, 0–10. RawTherapee: 5</string>
+    <string name="sharp_micro_contrast">Порог контраста, %</string>
+    <string name="sharp_micro_contrast_desc">RawTherapee: 20</string>
+    <string name="sharp_micro_matrix">Матрица 3x3</string>
+    <string name="sharp_micro_matrix_desc">Выключено — 5x5, как в RawTherapee по умолчанию</string>
 </resources>

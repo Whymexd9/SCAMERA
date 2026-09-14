@@ -67,22 +67,6 @@
     <string name="pref_chroma_seekbar_default" translatable="false">12</string>
     <string name="pref_luma_seekbar_default" translatable="false">12</string>
     <string name="pref_sharpness_seekbar_default" translatable="false">0.20</string>
-    <string name="pref_sharpening_enabled_default" translatable="false">0</string>
-    <string name="pref_sharp_radius_default" translatable="false">1.0</string>
-    <string name="pref_sharp_threshold_default" translatable="false">8</string>
-    <string name="pref_sharp_edge_default" translatable="false">0.25</string>
-    <string name="pref_sharp_bilateral_default" translatable="false">0.20</string>
-    <string name="pref_sharp_tolerance_default" translatable="false">32</string>
-    <string name="pref_sharp_local_contrast_default" translatable="false">0.10</string>
-    <string name="pref_sharp_epsilon_default" translatable="false">0.02</string>
-    <string name="pref_sharp_texture_default" translatable="false">0.10</string>
-    <string name="pref_sharp_grain_default" translatable="false">0.0</string>
-    <string name="pref_sharp_rl_amount_default" translatable="false">0.15</string>
-    <string name="pref_sharp_rl_iterations_default" translatable="false">2</string>
-    <string name="pref_sharp_damping_default" translatable="false">0.20</string>
-    <string name="pref_sharp_shadow_protection_default" translatable="false">35</string>
-    <string name="pref_sharp_highlight_protection_default" translatable="false">60</string>
-    <string name="pref_sharp_halo_control_default" translatable="false">50</string>
     <bool name="pref_nr_luma_enabled_default">true</bool>
     <bool name="pref_nr_chroma_enabled_default">true</bool>
     <bool name="pref_nr_moire_enabled_default">true</bool>

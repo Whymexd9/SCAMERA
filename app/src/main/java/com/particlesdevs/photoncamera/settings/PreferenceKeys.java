@@ -527,10 +527,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_SHARPNESS_SEEKBAR).floatValue();
     }
 
-    public static int getSharpeningMode() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SHARPENING_ENABLED).intValue();
-    }
-
     private static float sharpFloat(Key key) {
         return preferenceKeys.settingsManager.getFloat("default_scope", key).floatValue();
     }
@@ -539,96 +535,89 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", key).intValue();
     }
 
+    /** 0 off, 1 unsharp mask, 2 RL deconvolution, 3 microcontrast. */
+    public static int getSharpMethod() {
+        return sharpInt(Key.KEY_SHARP_METHOD);
+    }
+
     public static float getSharpRadius() {
         return sharpFloat(Key.KEY_SHARP_RADIUS);
     }
 
-    public static float getSharpLensStrength() {
-        return sharpFloat(Key.KEY_SHARP_LENS_STRENGTH);
+    public static float getSharpAmount() {
+        return sharpFloat(Key.KEY_SHARP_AMOUNT);
     }
 
-    public static int getSharpLensIterations() {
-        return sharpInt(Key.KEY_SHARP_LENS_ITERATIONS);
+    public static float getSharpContrast() {
+        return sharpFloat(Key.KEY_SHARP_CONTRAST);
     }
 
-    public static float getSharpGaussianRadius() {
-        return sharpFloat(Key.KEY_SHARP_GAUSSIAN_RADIUS);
+    public static int getSharpThresholdBottomLeft() {
+        return sharpInt(Key.KEY_SHARP_THRESHOLD_BOTTOM_LEFT);
     }
 
-    public static float getSharpGaussianAmount() {
-        return sharpFloat(Key.KEY_SHARP_GAUSSIAN_AMOUNT);
+    public static int getSharpThresholdTopLeft() {
+        return sharpInt(Key.KEY_SHARP_THRESHOLD_TOP_LEFT);
     }
 
-    public static int getSharpSmartThreshold() {
-        return sharpInt(Key.KEY_SHARP_SMART_THRESHOLD);
+    public static int getSharpThresholdTopRight() {
+        return sharpInt(Key.KEY_SHARP_THRESHOLD_TOP_RIGHT);
     }
 
-    public static float getSharpBilateralRadius() {
-        return sharpFloat(Key.KEY_SHARP_BILATERAL_RADIUS);
+    public static int getSharpThresholdBottomRight() {
+        return sharpInt(Key.KEY_SHARP_THRESHOLD_BOTTOM_RIGHT);
     }
 
-    public static float getSharpGuidedRadius() {
-        return sharpFloat(Key.KEY_SHARP_GUIDED_RADIUS);
+    public static boolean isSharpEdgesOnly() {
+        return getBool(Key.KEY_SHARP_EDGES_ONLY);
     }
 
-    public static float getSharpRlRadius() {
-        return sharpFloat(Key.KEY_SHARP_RL_RADIUS);
+    public static float getSharpEdgesRadius() {
+        return sharpFloat(Key.KEY_SHARP_EDGES_RADIUS);
     }
 
-    public static int getSharpThreshold() {
-        return sharpInt(Key.KEY_SHARP_THRESHOLD);
+    public static int getSharpEdgesTolerance() {
+        return sharpInt(Key.KEY_SHARP_EDGES_TOLERANCE);
     }
 
-    public static float getSharpEdge() {
-        return sharpFloat(Key.KEY_SHARP_EDGE);
+    public static boolean isSharpHaloControl() {
+        return getBool(Key.KEY_SHARP_HALO_CONTROL);
     }
 
-    public static float getSharpBilateral() {
-        return sharpFloat(Key.KEY_SHARP_BILATERAL);
+    public static float getSharpHaloAmount() {
+        return sharpFloat(Key.KEY_SHARP_HALO_AMOUNT);
     }
 
-    public static int getSharpTolerance() {
-        return sharpInt(Key.KEY_SHARP_TOLERANCE);
+    public static float getSharpDeconvRadius() {
+        return sharpFloat(Key.KEY_SHARP_DECONV_RADIUS);
     }
 
-    public static float getSharpLocalContrast() {
-        return sharpFloat(Key.KEY_SHARP_LOCAL_CONTRAST);
+    public static float getSharpDeconvAmount() {
+        return sharpFloat(Key.KEY_SHARP_DECONV_AMOUNT);
     }
 
-    public static float getSharpEpsilon() {
-        return sharpFloat(Key.KEY_SHARP_EPSILON);
+    public static int getSharpDeconvIterations() {
+        return sharpInt(Key.KEY_SHARP_DECONV_ITERATIONS);
     }
 
-    public static float getSharpTexture() {
-        return sharpFloat(Key.KEY_SHARP_TEXTURE);
+    public static float getSharpDeconvDamping() {
+        return sharpFloat(Key.KEY_SHARP_DECONV_DAMPING);
     }
 
-    public static float getSharpGrain() {
-        return sharpFloat(Key.KEY_SHARP_GRAIN);
+    public static float getSharpMicroAmount() {
+        return sharpFloat(Key.KEY_SHARP_MICRO_AMOUNT);
     }
 
-    public static float getSharpRlAmount() {
-        return sharpFloat(Key.KEY_SHARP_RL_AMOUNT);
+    public static int getSharpMicroUniformity() {
+        return sharpInt(Key.KEY_SHARP_MICRO_UNIFORMITY);
     }
 
-    public static int getSharpRlIterations() {
-        return sharpInt(Key.KEY_SHARP_RL_ITERATIONS);
+    public static float getSharpMicroContrast() {
+        return sharpFloat(Key.KEY_SHARP_MICRO_CONTRAST);
     }
 
-    public static float getSharpDamping() {
-        return sharpFloat(Key.KEY_SHARP_DAMPING);
-    }
-
-    public static int getSharpShadowProtection() {
-        return sharpInt(Key.KEY_SHARP_SHADOW_PROTECTION);
-    }
-
-    public static int getSharpHighlightProtection() {
-        return sharpInt(Key.KEY_SHARP_HIGHLIGHT_PROTECTION);
-    }
-
-    public static int getSharpHaloControl() {
-        return sharpInt(Key.KEY_SHARP_HALO_CONTROL);
+    public static boolean isSharpMicroMatrix3x3() {
+        return getBool(Key.KEY_SHARP_MICRO_MATRIX_3X3);
     }
 
     public static boolean isFalseColorCorrectionEnabled() {
@@ -1234,30 +1223,27 @@ public class PreferenceKeys {
         KEY_PROCESSING_BACKEND(R.string.pref_processing_backend_key),
         KEY_CONTRAST_SEEKBAR(R.string.pref_contrast_seekbar_key),
         KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
-        KEY_SHARPENING_ENABLED(R.string.pref_sharpening_enabled_key),
+        KEY_SHARP_METHOD(R.string.pref_sharp_method_key),
         KEY_SHARP_RADIUS(R.string.pref_sharp_radius_key),
-        KEY_SHARP_LENS_STRENGTH(R.string.pref_sharp_lens_strength_key),
-        KEY_SHARP_LENS_ITERATIONS(R.string.pref_sharp_lens_iterations_key),
-        KEY_SHARP_GAUSSIAN_RADIUS(R.string.pref_sharp_gaussian_radius_key),
-        KEY_SHARP_GAUSSIAN_AMOUNT(R.string.pref_sharp_gaussian_amount_key),
-        KEY_SHARP_SMART_THRESHOLD(R.string.pref_sharp_smart_threshold_key),
-        KEY_SHARP_BILATERAL_RADIUS(R.string.pref_sharp_bilateral_radius_key),
-        KEY_SHARP_GUIDED_RADIUS(R.string.pref_sharp_guided_radius_key),
-        KEY_SHARP_RL_RADIUS(R.string.pref_sharp_rl_radius_key),
-        KEY_SHARP_THRESHOLD(R.string.pref_sharp_threshold_key),
-        KEY_SHARP_EDGE(R.string.pref_sharp_edge_key),
-        KEY_SHARP_BILATERAL(R.string.pref_sharp_bilateral_key),
-        KEY_SHARP_TOLERANCE(R.string.pref_sharp_tolerance_key),
-        KEY_SHARP_LOCAL_CONTRAST(R.string.pref_sharp_local_contrast_key),
-        KEY_SHARP_EPSILON(R.string.pref_sharp_epsilon_key),
-        KEY_SHARP_TEXTURE(R.string.pref_sharp_texture_key),
-        KEY_SHARP_GRAIN(R.string.pref_sharp_grain_key),
-        KEY_SHARP_RL_AMOUNT(R.string.pref_sharp_rl_amount_key),
-        KEY_SHARP_RL_ITERATIONS(R.string.pref_sharp_rl_iterations_key),
-        KEY_SHARP_DAMPING(R.string.pref_sharp_damping_key),
-        KEY_SHARP_SHADOW_PROTECTION(R.string.pref_sharp_shadow_protection_key),
-        KEY_SHARP_HIGHLIGHT_PROTECTION(R.string.pref_sharp_highlight_protection_key),
+        KEY_SHARP_AMOUNT(R.string.pref_sharp_amount_key),
+        KEY_SHARP_CONTRAST(R.string.pref_sharp_contrast_key),
+        KEY_SHARP_THRESHOLD_BOTTOM_LEFT(R.string.pref_sharp_threshold_bl_key),
+        KEY_SHARP_THRESHOLD_TOP_LEFT(R.string.pref_sharp_threshold_tl_key),
+        KEY_SHARP_THRESHOLD_TOP_RIGHT(R.string.pref_sharp_threshold_tr_key),
+        KEY_SHARP_THRESHOLD_BOTTOM_RIGHT(R.string.pref_sharp_threshold_br_key),
+        KEY_SHARP_EDGES_ONLY(R.string.pref_sharp_edges_only_key),
+        KEY_SHARP_EDGES_RADIUS(R.string.pref_sharp_edges_radius_key),
+        KEY_SHARP_EDGES_TOLERANCE(R.string.pref_sharp_edges_tolerance_key),
         KEY_SHARP_HALO_CONTROL(R.string.pref_sharp_halo_control_key),
+        KEY_SHARP_HALO_AMOUNT(R.string.pref_sharp_halo_amount_key),
+        KEY_SHARP_DECONV_RADIUS(R.string.pref_sharp_deconv_radius_key),
+        KEY_SHARP_DECONV_AMOUNT(R.string.pref_sharp_deconv_amount_key),
+        KEY_SHARP_DECONV_ITERATIONS(R.string.pref_sharp_deconv_iterations_key),
+        KEY_SHARP_DECONV_DAMPING(R.string.pref_sharp_deconv_damping_key),
+        KEY_SHARP_MICRO_AMOUNT(R.string.pref_sharp_micro_amount_key),
+        KEY_SHARP_MICRO_UNIFORMITY(R.string.pref_sharp_micro_uniformity_key),
+        KEY_SHARP_MICRO_CONTRAST(R.string.pref_sharp_micro_contrast_key),
+        KEY_SHARP_MICRO_MATRIX_3X3(R.string.pref_sharp_micro_matrix_key),
         KEY_FALSE_COLOR_ENABLED(R.string.pref_false_color_enabled_key),
         KEY_FALSE_COLOR_STRENGTH(R.string.pref_false_color_strength_key),
         KEY_DEFRINGE_PURPLE(R.string.pref_defringe_purple_key),
