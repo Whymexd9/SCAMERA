@@ -952,6 +952,14 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_CHROMA_DENOISE, 100).intValue();
     }
 
+    public static String getZslMergeAlgorithm() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_ZSL_MERGE_ALGORITHM, "legacy");
+    }
+
+    public static String getNightMergeAlgorithm() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_NIGHT_MERGE_ALGORITHM, "legacy");
+    }
+
     public static boolean isHdrPlusMergeEnabled() {
         CameraMode mode = CameraMode.valueOf(getCameraModeOrdinal());
         return "hdrplus".equals(mode == CameraMode.NIGHT ? getNightMergeAlgorithm() : getZslMergeAlgorithm());
@@ -1213,6 +1221,9 @@ public class PreferenceKeys {
         KEY_RT_NR_LUMA(R.string.pref_rt_nr_luma_key),
         KEY_RT_NR_CHROMA(R.string.pref_rt_nr_chroma_key),
         KEY_RT_NR_DETAIL(R.string.pref_rt_nr_detail_key),
+        KEY_WIDE169(R.string.pref_wide169_key),
+        KEY_ZSL_MERGE_ALGORITHM(R.string.pref_zsl_merge_algorithm_key),
+        KEY_NIGHT_MERGE_ALGORITHM(R.string.pref_night_merge_algorithm_key),
         KEY_RT_NR_MOIRE(R.string.pref_rt_nr_moire_key),
         KEY_CAPTURE_ONE_ENABLED(R.string.pref_capture_one_enabled_key),
         KEY_C1_LCC(R.string.pref_c1_lcc_key),

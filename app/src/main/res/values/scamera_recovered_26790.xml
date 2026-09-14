@@ -967,4 +967,8 @@
     <string name="theme_desc">Оформление приложения</string>
     <string name="theme_accent_desc">Акцентный цвет интерфейса</string>
     <string name="show_gradient_desc">Градиентная подложка в интерфейсе</string>
+    <string name="pref_zsl_merge_algorithm_key">pref_zsl_merge_algorithm_key</string>
+    <string name="zsl_merge_algorithm">ZSL merge algorithm</string>
+    <string name="pref_night_merge_algorithm_key">pref_night_merge_algorithm_key</string>
+    <string name="night_merge_algorithm">Night merge algorithm</string>
 </resources>

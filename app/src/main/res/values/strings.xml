@@ -305,4 +305,5 @@
     <string name="sharp_micro_contrast_desc">RawTherapee: 20</string>
     <string name="sharp_micro_matrix">Матрица 3x3</string>
     <string name="sharp_micro_matrix_desc">Выключено — 5x5, как в RawTherapee по умолчанию</string>
+    <string name="wide169" translatable="false">16:9</string>
 </resources>
