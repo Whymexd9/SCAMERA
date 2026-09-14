@@ -974,7 +974,10 @@ public class ESD4D extends GLOneScript {
         //counter.put(1.0f,1.0f);
         float cnt1 = 2.0f;
 
-        float cnt2 = 1.0f;
+        // Starts at 2.0, matching cnt1: at 1.0 the first frame taking this branch
+        // was blended at weight 1.0 and replaced the accumulated reference outright
+        // instead of averaging with it.
+        float cnt2 = 2.0f;
         //Log.d("ESD4D", "alignment size: " + aSize.x + " " + aSize.y);
         Log.d("ESD4D", "alignment size: " + parameters.alignmentSize.x + " " + parameters.alignmentSize.y);
         float maxBlack = Math.max(blackLevel[0], Math.max(blackLevel[1], Math.max(blackLevel[2], blackLevel[3])));

@@ -278,7 +278,29 @@ void main() {
     comb = robustWeight(comb);
 
     float hs = clamp(highlightStrength, 0.0, 2.0);
-    vec4 fused = mix(base, diff, weight * comb);
+    // A bracket member carries information the reference does not have in exactly
+    // one zone: the long frame separates the shadows from the read floor, the
+    // ultra-short frame keeps highlights below clipping. Everywhere else it is
+    // just a differently exposed copy, and blending it at full weight pulls the
+    // whole frame's brightness toward its own exposure - the reason enabling the
+    // bracket changed overall exposure rather than only shadows and highlights.
+    //
+    // Restrict each bracket frame to its own zone, measured on the accumulated
+    // reference so the mask does not follow the bracket frame's own errors.
+    // Equally exposed frames (exposure ~= 1.0) are unaffected.
+    float zone = 1.0;
+    float refLuma = dot(base, vec4(0.25));
+    if (exposure < 0.95) {
+        // Longer than the reference: useful where the reference sits near its
+        // noise floor. sigmaR is the reference's own noise sigma, so the fade
+        // follows the sensor rather than a fixed level.
+        float floorL = dot(sigmaR, vec4(0.25));
+        zone = 1.0 - smoothstep(4.0 * floorL, 24.0 * floorL, refLuma);
+    } else if (exposure > 1.05) {
+        // Shorter than the reference: useful only as clipping is approached.
+        zone = smoothstep(0.70, 0.95, refLuma);
+    }
+    vec4 fused = mix(base, diff, weight * comb * zone);
     if (rawMfsr == 1) {
         // CFA-safe multi-frame detail reconstruction.  A detail coefficient is
         // accepted only when the accumulated reference and the independently

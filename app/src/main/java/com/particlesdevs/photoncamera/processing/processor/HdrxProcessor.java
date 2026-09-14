@@ -248,6 +248,7 @@ public class HdrxProcessor extends ProcessorBase {
         Log.d(TAG, "Wrapper.init");
         ArrayList<ImageFrame> images = new ArrayList<>();
         int ISO = 0;
+        int isoFrames = 0;
         int normalFrames = 0;
         if(BurstShakiness.size() < mImageFramesToProcess.size()){
             Log.d(TAG,"Warning: Gyro data size:"+BurstShakiness.size()+" is less than image size:"+mImageFramesToProcess.size());
@@ -284,9 +285,17 @@ public class HdrxProcessor extends ProcessorBase {
                 frame.computeSharpness();
             }
             images.add(frame);
-            ISO += frame.pair.iso;
+            // Bracket members shoot at their own ISO (72 for the ultra-short, 166
+            // for the long one here), so averaging all frames moved the burst's ISO
+            // away from the regular frames the result is actually built from, and
+            // with it the noise model and the EXIF value. They contribute highlights
+            // and shadows, not exposure.
+            if (!frame.pair.isHighlightFrame && !frame.pair.isLongFrame) {
+                ISO += frame.pair.iso;
+                isoFrames++;
+            }
         }
-        ISO /= images.size();
+        ISO = isoFrames > 0 ? ISO / isoFrames : ISO / images.size();
 
         processingParameters.FillDynamicParameters(captureResult, captureRequest,ISO);
         processingParameters.cameraRotation = cameraRotation;
