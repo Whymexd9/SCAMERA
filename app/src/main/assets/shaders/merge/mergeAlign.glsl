@@ -188,6 +188,22 @@ float quadLuma(ivec2 p) {
     return dot(imageLoad(baseTexture, q), vec4(0.25));
 }
 
+// SCAMERA_VST_STABILISED_QUAD_LUMA
+// Generalised Anscombe transform, applied before anything looks at gradients.
+//
+// Raw samples carry signal-dependent noise: variance rises with brightness, so
+// a structure tensor built on them is dominated by the bright parts of the frame
+// and is pure noise in the dark parts. That is why the earlier version needed a
+// coarse grid and a gradient gate to behave in shadows - it was compensating for
+// a scale it never removed. This maps the signal into a space where the noise
+// variance is constant, so one threshold means the same thing at every
+// brightness.
+float vstLuma(float x) {
+    float a = max(noiseS, 1e-7);
+    float b = max(noiseO, 0.0);
+    return 2.0 / a * sqrt(max(a * x + 0.375 * a * a + b, 0.0));
+}
+
 // Kernel covariance on a coarse grid, packed as (a, b, c) of the symmetric
 // matrix [[a, b], [b, c]]. Note this returns Omega itself, not its inverse:
 // Wronski et al. upsample the covariance values and only then compute the
@@ -220,8 +236,8 @@ vec3 kernelCovarianceAt(ivec2 node, float sigmaLuma) {
     for (int j = -1; j <= 1; ++j) {
         for (int i = -1; i <= 1; ++i) {
             ivec2 p = node + ivec2(i, j) * st;
-            float gx = quadLuma(p + ivec2(st, 0)) - quadLuma(p);
-            float gy = quadLuma(p + ivec2(0, st)) - quadLuma(p);
+            float gx = vstLuma(quadLuma(p + ivec2(st, 0))) - vstLuma(quadLuma(p));
+            float gy = vstLuma(quadLuma(p + ivec2(0, st))) - vstLuma(quadLuma(p));
             if (gx * gx + gy * gy < gateSq) {
                 continue;
             }
@@ -238,37 +254,43 @@ vec3 kernelCovarianceAt(ivec2 node, float sigmaLuma) {
     float l1 = tr * 0.5 + disc;
     float l2 = max(tr * 0.5 - disc, 0.0);
 
-    vec2 e1 = vec2(ixy, l1 - ixx);
-    float e1len = length(e1);
-    e1 = e1len > 1e-12 ? e1 / e1len : vec2(1.0, 0.0);
+    // SCAMERA_STABLE_SYMMETRIC_TENSOR_EIGENVECTOR
+    // (ixy, l1-ixx) collapses on a diagonal edge, where both components tend to
+    // zero together and the normalised direction becomes arbitrary. The two
+    // forms below are the same eigenvector algebraically; taking whichever has
+    // the larger norm removes the degeneracy without touching the eigenvalues.
+    vec2 va = vec2(ixy, l1 - ixx);
+    vec2 vb = vec2(l1 - iyy, ixy);
+    float na = dot(va, va);
+    float nb = dot(vb, vb);
+    vec2 e1;
+    if (max(na, nb) > 1e-20) {
+        e1 = normalize(na >= nb ? va : vb);
+    } else {
+        e1 = ixx >= iyy ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    }
     vec2 e2 = vec2(-e1.y, e1.x);
 
     // Every gradient gated away leaves l1 at zero, so a textureless tile lands
     // on feature = 0 and coherence = 0: the widest, roundest kernel there is.
     // That is the correct behaviour - denoise, do not sharpen along a direction
     // we could not measure.
-    float feature = clamp((sqrt(l1) - MFSR_DTH) / max(MFSR_DTR, 1e-6), 0.0, 1.0);
-    float support = mix(MFSR_KDENOISE, MFSR_KDETAIL, feature);
-
-    float coherence = (l1 + l2) > 1e-12 ? (l1 - l2) / (l1 + l2) : 0.0;
-    float stretch = mix(1.0, MFSR_KSTRETCH, coherence);
-    float shrink  = mix(1.0, MFSR_KSHRINK, coherence);
-
-    // Area-preserving normalisation. Applying stretch and shrink directly to
-    // the support inflates the kernel instead of only reshaping it: at
-    // kDetail 0.5 with kStretch 4 the sigma along the edge reached 2.0 quads,
-    // four pixels, while the across-edge sigma hit the floor - a 6.7:1 kernel
-    // with twice the area of the isotropic one. Test shots at kStretch 4 came
-    // out visibly softer than at 1.
+    // SCAMERA_KERNEL_SELECTION_LAW
+    // Blend between the anisotropic kernel and the denoising one instead of
+    // multiplying a support by a stretch factor. D is how far this neighbourhood
+    // is from being a measurable feature: at D=1 both axes collapse onto
+    // kDenoise and the kernel is round; at D=0 they separate by the anisotropy A.
     //
-    // Split the anisotropy symmetrically about the requested support instead,
-    // so the geometric mean of the two sigmas stays at `support` whatever the
-    // coherence. kStretch/kShrink then control the shape only, which is what
-    // figure 7 of Wronski et al. is about.
-    float aspect = sqrt(max(stretch * shrink, 1e-6));
-    float k1 = max(support * aspect, MFSR_MIN_SIGMA);
+    // Both axes are built from the same kDetail scale, so the kernel reshapes
+    // without inflating - which is what the area-preserving normalisation added
+    // earlier was patching around by hand.
+    float A = 1.0 + sqrt(max((l1 - l2) / max(l1 + l2, 1e-20), 0.0));
+    float D = clamp(1.0 - sqrt(max(l1, 0.0)) / max(MFSR_DTR, 1e-8) + MFSR_DTH, 0.0, 1.0);
+    float sk1 = 1.0 + 0.5 * A * (1.0 / MFSR_KSHRINK - 1.0);
+    float sk2 = 1.0 + 0.5 * A * (MFSR_KSTRETCH - 1.0);
+    float k1 = max(MFSR_KDETAIL * ((1.0 - D) * sk1 + D * MFSR_KDENOISE), MFSR_MIN_SIGMA);
+    float k2 = max(MFSR_KDETAIL * ((1.0 - D) * sk2 + D * MFSR_KDENOISE), MFSR_MIN_SIGMA);
     k1 = k1 * k1;
-    float k2 = max(support / aspect, MFSR_MIN_SIGMA);
     k2 = k2 * k2;
 
     // Omega = [e2 e1] diag(k2, k1) [e2 e1]^T.
