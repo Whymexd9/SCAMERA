@@ -1123,19 +1123,25 @@ public class ESD4D extends GLOneScript {
             float snrTarget = Math.max(PreferenceKeys.getHdrPlusSnrTarget(), 1f);
             float snrScale = snrTarget / Math.max(mergedSnr, 1e-3f);
 
-            float lumaScale = clampScale((float) Math.pow(snrScale, PreferenceKeys.getHdrPlusSnrLumaExp()));
-            float chromaScale = clampScale((float) Math.pow(snrScale, PreferenceKeys.getHdrPlusSnrChromaExp()));
+            // Pick the band this shot falls into and take its three multipliers.
+            // Low and high frequency are scaled independently: the shader mixes
+            // them by their ratio, so a single shared scale cancels out entirely -
+            // which is why scaling both by one SNR factor changed nothing.
+            int band = PreferenceKeys.snrBandOf(mergedSnr);
+            float lowMul = PreferenceKeys.getSnrBandLow(band);
+            float highMul = PreferenceKeys.getSnrBandHigh(band);
+            float chromaMul = PreferenceKeys.getSnrBandChroma(band);
 
             Log.d("ESD4D", "SNR base=" + String.format(java.util.Locale.ROOT, "%.2f", baseSnr)
                     + " merged(est)=" + String.format(java.util.Locale.ROOT, "%.2f", mergedSnr)
                     + " over " + mergedFrames + " frames"
-                    + " | scale luma=" + String.format(java.util.Locale.ROOT, "%.3f", lumaScale)
-                    + " chroma=" + String.format(java.util.Locale.ROOT, "%.3f", chromaScale));
+                    + " | band=" + PreferenceKeys.snrBandName(band)
+                    + " low=" + lowMul + " high=" + highMul + " chroma=" + chromaMul);
 
-            glProg.setVar("hdrPlusDenoise", (float) PreferenceKeys.getHdrPlusDenoiseStrength() / 100.0f * lumaScale);
-            glProg.setVar("hdrPlusLowDenoise", (float) PreferenceKeys.getHdrPlusLowDenoise() / 100.0f * lumaScale);
-            glProg.setVar("hdrPlusHighDenoise", (float) PreferenceKeys.getHdrPlusHighDenoise() / 100.0f * lumaScale);
-            glProg.setVar("hdrPlusChromaDenoise", (float) PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f * chromaScale);
+            glProg.setVar("hdrPlusDenoise", (float) PreferenceKeys.getHdrPlusDenoiseStrength() / 100.0f);
+            glProg.setVar("hdrPlusLowDenoise", (float) PreferenceKeys.getHdrPlusLowDenoise() / 100.0f * lowMul);
+            glProg.setVar("hdrPlusHighDenoise", (float) PreferenceKeys.getHdrPlusHighDenoise() / 100.0f * highMul);
+            glProg.setVar("hdrPlusChromaDenoise", (float) PreferenceKeys.getHdrPlusChromaDenoise() / 100.0f * chromaMul);
             // How far above base ISO this shot is, in stops. Noise variance rises
             // with gain, so the denoise strength that suits the frame rises with
             // it; a single fixed strength either smears base ISO or leaves colour

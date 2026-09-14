@@ -792,6 +792,59 @@ public class PreferenceKeys {
      * less than a noisy one without touching the sliders. GCam's dumps show a
      * merged estimate around 110 on a well-lit shot.
      */
+    /**
+     * Denoise multipliers per SNR band. GCam's tuning is laid out the same way -
+     * a separate set of levels for Very Low, Low, Med, High and Very High - rather
+     * than one number scaled continuously, because what a frame needs at SNR 5 is
+     * not a scaled version of what it needs at SNR 100.
+     *
+     * <p>Each band carries three multipliers: low frequency, high frequency and
+     * chroma. Low and high are separate on purpose: the merge shader mixes the two
+     * by their ratio, so scaling both by the same amount cancels out and changes
+     * nothing - which is why the earlier single-scale attempt had no visible
+     * effect.
+     */
+    public static int snrBandOf(float snr) {
+        if (snr < 8f) return 0;      // Very Low
+        if (snr < 20f) return 1;     // Low
+        if (snr < 45f) return 2;     // Med
+        if (snr < 90f) return 3;     // High
+        return 4;                    // Very High
+    }
+
+    public static String snrBandName(int band) {
+        switch (band) {
+            case 0: return "VeryLow";
+            case 1: return "Low";
+            case 2: return "Med";
+            case 3: return "High";
+            default: return "VeryHigh";
+        }
+    }
+
+    private static final String[] SNR_BANDS = {"verylow", "low", "med", "high", "veryhigh"};
+    // Defaults fall from heavy at low SNR to light at high SNR. Chroma stays
+    // higher than luma throughout: colour noise survives frame averaging better
+    // and is the more objectionable of the two.
+    private static final float[] DEF_LOW    = {1.60f, 1.30f, 1.00f, 0.80f, 0.60f};
+    private static final float[] DEF_HIGH   = {0.70f, 0.85f, 1.00f, 1.10f, 1.20f};
+    private static final float[] DEF_CHROMA = {2.00f, 1.60f, 1.20f, 0.90f, 0.70f};
+
+    public static float getSnrBandLow(int band) {
+        return Float.parseFloat(getAcesString(
+                "pref_snr_" + SNR_BANDS[band] + "_low_key", String.valueOf(DEF_LOW[band])));
+    }
+
+    public static float getSnrBandHigh(int band) {
+        return Float.parseFloat(getAcesString(
+                "pref_snr_" + SNR_BANDS[band] + "_high_key", String.valueOf(DEF_HIGH[band])));
+    }
+
+    public static float getSnrBandChroma(int band) {
+        return Float.parseFloat(getAcesString(
+                "pref_snr_" + SNR_BANDS[band] + "_chroma_key", String.valueOf(DEF_CHROMA[band])));
+    }
+
     public static float getHdrPlusSnrTarget() {
         return Float.parseFloat(getAcesString("pref_hdrplus_snr_target_key", "110"));
     }
