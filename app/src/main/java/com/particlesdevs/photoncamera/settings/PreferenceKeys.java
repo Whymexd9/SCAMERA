@@ -437,10 +437,6 @@ public class PreferenceKeys {
         return getBool(Key.KEY_ENERGY_SAVING);
     }
 
-    public static boolean isAspect169On() {
-        return getBool(Key.KEY_WIDE169);
-    }
-
     public static boolean isBinningOn() {
         return getBool(Key.KEY_BINNING);
     }
@@ -479,13 +475,6 @@ public class PreferenceKeys {
 
     public static int getFrameCountValue() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FRAME_COUNT).intValue();
-    }
-
-    public static int getZslBufferCountValue() {
-        if (preferenceKeys == null || preferenceKeys.settingsManager == null) {
-            return 8;
-        }
-        return Math.max(0, Math.min(100, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT).intValue()));
     }
 
     public static int getShortFrameCountValue() {
@@ -644,60 +633,12 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_CA_BLUE);
     }
 
-    public static float getToneBaseExposure() {
-        return sharpFloat(Key.KEY_TONE_BASE_EXPOSURE);
-    }
-
-    public static float getToneTargetLuma() {
-        return sharpFloat(Key.KEY_TONE_TARGET_LUMA);
-    }
-
-    public static float getToneExposureSigma() {
-        return sharpFloat(Key.KEY_TONE_EXPOSURE_SIGMA);
-    }
-
-    public static float getToneContrastWeight() {
-        return sharpFloat(Key.KEY_TONE_CONTRAST_WEIGHT);
-    }
-
-    public static int getTonePyramidLevels() {
-        return sharpInt(Key.KEY_TONE_PYRAMID_LEVELS);
-    }
-
-    public static int getToneResolutionDivisor() {
-        return sharpInt(Key.KEY_TONE_RESOLUTION_DIVISOR);
-    }
-
-    public static float getToneLocalContrast() {
-        return sharpFloat(Key.KEY_TONE_LOCAL_CONTRAST);
-    }
-
-    public static float getToneExposureLowLimit() {
-        return sharpFloat(Key.KEY_TONE_EXPOSURE_LOW);
-    }
-
-    public static float getToneExposureHighLimit() {
-        return sharpFloat(Key.KEY_TONE_EXPOSURE_HIGH);
-    }
-
-    public static float getToneLaplaceFloor() {
-        return sharpFloat(Key.KEY_TONE_LAPLACE_FLOOR);
-    }
-
-    public static float getToneHighlightLimit() {
-        return sharpFloat(Key.KEY_TONE_HIGHLIGHT_LIMIT);
-    }
-
     public static boolean isNrLumaEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_NR_LUMA_ENABLED, true);
     }
 
     public static boolean isNrChromaEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_NR_CHROMA_ENABLED, true);
-    }
-
-    public static boolean isNrMoireEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_NR_MOIRE_ENABLED, true);
     }
 
     public static boolean isAiDenoiseEnabled() {
@@ -995,14 +936,6 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_C1_HIGHLIGHTS);
     }
 
-    public static String getZslMergeAlgorithm() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_ZSL_MERGE_ALGORITHM, "legacy");
-    }
-
-    public static String getNightMergeAlgorithm() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_NIGHT_MERGE_ALGORITHM, "legacy");
-    }
-
     public static int getHdrPlusDenoiseStrength() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_DENOISE_STRENGTH, 100).intValue();
     }
@@ -1199,7 +1132,6 @@ public class PreferenceKeys {
         KEY_DISABLE_ALIGNINIG(R.string.pref_disable_aligning_key),
         KEY_SHOW_WATERMARK(R.string.pref_show_watermark_key),
         KEY_ENERGY_SAVING(R.string.pref_energy_safe_key),
-        KEY_WIDE169(R.string.pref_wide169_key),
         KEY_BINNING(R.string.pref_binning_key),
         KEY_ENHANCED_PROCESSING(R.string.pref_enhanced_processing_key),
         KEY_HDRX_NR(R.string.pref_hdrx_nr_key),
@@ -1214,7 +1146,6 @@ public class PreferenceKeys {
         KEY_GAIN_SEEKBAR(R.string.pref_gain_seekbar_key),
         KEY_SHADOWS_SEEKBAR(R.string.pref_shadows_seekbar_key),
         KEY_FRAME_COUNT(R.string.pref_frame_count_key),
-        KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
         KEY_SHORT_FRAME_COUNT(R.string.pref_short_frame_count_key),
         KEY_LONG_FRAME_COUNT(R.string.pref_long_frame_count_key),
         KEY_SHORT_EXPOSURE_EV(R.string.pref_short_exposure_ev_key),
@@ -1250,20 +1181,8 @@ public class PreferenceKeys {
         KEY_DEFRINGE_GREEN(R.string.pref_defringe_green_key),
         KEY_CA_RED(R.string.pref_ca_red_key),
         KEY_CA_BLUE(R.string.pref_ca_blue_key),
-        KEY_TONE_BASE_EXPOSURE(R.string.pref_tone_base_exposure_key),
-        KEY_TONE_TARGET_LUMA(R.string.pref_tone_target_luma_key),
-        KEY_TONE_EXPOSURE_SIGMA(R.string.pref_tone_exposure_sigma_key),
-        KEY_TONE_CONTRAST_WEIGHT(R.string.pref_tone_contrast_weight_key),
-        KEY_TONE_PYRAMID_LEVELS(R.string.pref_tone_pyramid_levels_key),
-        KEY_TONE_RESOLUTION_DIVISOR(R.string.pref_tone_resolution_divisor_key),
-        KEY_TONE_LOCAL_CONTRAST(R.string.pref_tone_local_contrast_key),
-        KEY_TONE_EXPOSURE_LOW(R.string.pref_tone_exposure_low_key),
-        KEY_TONE_EXPOSURE_HIGH(R.string.pref_tone_exposure_high_key),
-        KEY_TONE_LAPLACE_FLOOR(R.string.pref_tone_laplace_floor_key),
-        KEY_TONE_HIGHLIGHT_LIMIT(R.string.pref_tone_highlight_limit_key),
         KEY_NR_LUMA_ENABLED(R.string.pref_nr_luma_enabled_key),
         KEY_NR_CHROMA_ENABLED(R.string.pref_nr_chroma_enabled_key),
-        KEY_NR_MOIRE_ENABLED(R.string.pref_nr_moire_enabled_key),
         KEY_AI_DENOISE_ENABLED(R.string.pref_ai_denoise_enabled_key),
         KEY_AI_DENOISE_STRENGTH(R.string.pref_ai_denoise_strength_key),
         KEY_AI_DENOISE_LUMA(R.string.pref_ai_denoise_luma_key),
@@ -1311,8 +1230,6 @@ public class PreferenceKeys {
         KEY_C1_SHADOWS(R.string.pref_c1_shadows_key),
         KEY_C1_MIDTONES(R.string.pref_c1_midtones_key),
         KEY_C1_HIGHLIGHTS(R.string.pref_c1_highlights_key),
-        KEY_ZSL_MERGE_ALGORITHM(R.string.pref_zsl_merge_algorithm_key),
-        KEY_NIGHT_MERGE_ALGORITHM(R.string.pref_night_merge_algorithm_key),
         KEY_HDRPLUS_DENOISE_STRENGTH(R.string.pref_hdrplus_denoise_strength_key),
         KEY_HDRPLUS_LOW_DENOISE(R.string.pref_hdrplus_low_denoise_key),
         KEY_HDRPLUS_HIGH_DENOISE(R.string.pref_hdrplus_high_denoise_key),

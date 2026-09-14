@@ -41,7 +41,6 @@
     <string name="nr_components_summary">Независимое отключение этапов PhotonCamera</string>
     <string name="nr_luma_enabled">Luma-шумоподавление</string>
     <string name="nr_chroma_enabled">Chroma-шумоподавление</string>
-    <string name="nr_moire_enabled">Подавление муара</string>
     <string name="ai_denoise">ИИ-шумоподавление Bayer</string>
     <string name="ai_denoise_unavailable">Требует совместимого Android NPU/NNAPI и адаптированной модели камеры</string>
     <string name="ai_denoise_available">UNet Fast или NAFNet Quality · NPU через NNAPI, с явным CPU fallback</string>
@@ -168,7 +167,6 @@
     <string name="four_x4" translatable="false">4x4</string>
     <string name="processing_processname">Processing %1$s...</string>
     <string name="turn_on_system_nr">System Noise Reduction</string>
-    <string name="wide169" translatable="false">16:9</string>
     <string name="binning">Process 4x lower resolution</string>
     <string name="gallery_folders">Gallery Folders</string>
     <string name="options">Options</string>

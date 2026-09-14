@@ -22,7 +22,6 @@
     <string name="pref_disable_aligning_key" translatable="false">pref_disable_aligning_key</string>
     <string name="pref_show_watermark_key" translatable="false">pref_show_watermark_key</string>
     <string name="pref_energy_safe_key" translatable="false">pref_energy_safe_key</string>
-    <string name="pref_wide169_key" translatable="false">pref_wide169_key</string>
     <string name="pref_binning_key" translatable="false">pref_binning_key</string>
     <string name="pref_enhanced_processing_key" translatable="false">pref_enhanced_processing_key</string>
     <string name="pref_hdrx_nr_key" translatable="false">pref_hdrx_nr_key</string>
@@ -48,7 +47,6 @@
     <string name="pref_sharpness_seekbar_key" translatable="false">pref_sharpness_seekbar_key</string>
     <string name="pref_nr_luma_enabled_key" translatable="false">pref_nr_luma_enabled_key</string>
     <string name="pref_nr_chroma_enabled_key" translatable="false">pref_nr_chroma_enabled_key</string>
-    <string name="pref_nr_moire_enabled_key" translatable="false">pref_nr_moire_enabled_key</string>
     <string name="pref_ai_denoise_enabled_key" translatable="false">pref_ai_denoise_enabled_key</string>
     <string name="pref_ai_denoise_strength_key" translatable="false">pref_ai_denoise_strength_key</string>
     <string name="pref_ai_denoise_luma_key" translatable="false">pref_ai_denoise_luma_key</string>
