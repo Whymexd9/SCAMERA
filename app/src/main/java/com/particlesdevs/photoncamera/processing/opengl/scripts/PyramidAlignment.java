@@ -234,14 +234,11 @@ public class PyramidAlignment implements AutoCloseable {
         glProg.setVar("blurSigma", blurSigma);
         glProg.setTexture("inTexture", inputBase);
         glProg.setTexture("gainMap", gainMap);
-        // The alter frames below are normalised by 1/layerMpy, which rescales them
-        // to the shortest exposure of the burst. The base was normalised by a fixed
-        // 1.0 instead, which only matched while the base was the shortest frame.
-        // With a regular frame as the base the two sides differed by its layerMpy
-        // (3.1x here), so the pyramid compared a frame against a version of itself
-        // three stops darker - tiles matched on noise and the merge produced
-        // rectangular blocks.
-        glProg.setVar("exposure", 1.0f / images.get(0).pair.layerMpy);
+        // The base defines the scale: it is normalised to 1.0 and every alter frame
+        // is brought to it by its own ratio below. align.glsl relies on this, using
+        // 'exposure' both as the alter frame's clipping level and as the widening
+        // factor of its significance gate.
+        glProg.setVar("exposure", 1.0f);
         glProg.setTextureCompute("outTexture", temp, true);
         glProg.computeAuto(temp.mSize, 1);
 
@@ -335,7 +332,13 @@ public class PyramidAlignment implements AutoCloseable {
             
             // Find optimal exposure using brute force histogram matching
             //float exposure = 1.0f/findOptimalExposure(histDataBase, histDataAlter);
-            float exposure = 1.0f/frame.pair.layerMpy;
+            // Ratio between this frame and the BASE, not the frame's absolute
+            // normalisation. 1/layerMpy is that ratio only when the base has
+            // layerMpy 1.0, which held while index 0 was the ultra-short frame.
+            // With a regular base it scaled every equally-exposed frame to 0.32 of
+            // the base and widened align.glsl's gate by 3.1x on top, so the pyramid
+            // matched tiles on noise - the rectangular blocks.
+            float exposure = images.get(0).pair.layerMpy / frame.pair.layerMpy;
             // Logged so the "Full debug" file shows how far each frame is from the
             // reference exposure; the alignment significance gate is widened by
             // this ratio (see align.glsl), and a large spread is the condition

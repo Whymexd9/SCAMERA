@@ -117,7 +117,7 @@ public class ESD4D extends GLOneScript {
             //glProg.setVar("whiteLevel", (float) parameters.whiteLevel);
             glProg.setVarU("whitelevel", (int) parameters.whiteLevel);
             glProg.setVar("blackLevel", blackLevel);
-            glProg.setVar("exposure", 1.0f / images.get(0).pair.layerMpy);
+            glProg.setVar("exposure", mergeExposure(images));
             glProg.setVar("createDiff", 0);
             glProg.setVar("cfaShift", cfaShift);
             glProg.setTexture("inTexture", rawSrc);
@@ -268,6 +268,22 @@ public class ESD4D extends GLOneScript {
     }
 
     GLTexture inputBase;
+
+    /**
+     * Brightness scale shared by every merge00 pass: the reciprocal of the
+     * SMALLEST layerMpy in the burst, i.e. the scale of the shortest frame.
+     *
+     * It used to be read off images.get(0), which was the shortest frame only
+     * because HdrxProcessor swapped it there. Now that index 0 holds the sharpest
+     * regular frame, reading it there would darken the whole raw path by that
+     * frame's layerMpy (3.1x on this sensor) and push the merge into the noise
+     * floor. The scale must follow the burst, not whichever frame sits first.
+     */
+    private float mergeExposure(java.util.ArrayList<ImageFrame> frames) {
+        float maxMpy = 0.f;
+        for (ImageFrame f : frames) maxMpy = Math.max(maxMpy, 1.f / f.pair.layerMpy);
+        return maxMpy > 0.f ? maxMpy : 1.f;
+    }
     GLTexture baseDiff;
     GLTexture base;
     GLTexture baseAlter;
@@ -434,7 +450,7 @@ public class ESD4D extends GLOneScript {
             //glProg.setVar("whiteLevel", (float) parameters.whiteLevel);
             glProg.setVarU("whitelevel", (int) parameters.whiteLevel);
             glProg.setVar("blackLevel", blackLevel);
-            glProg.setVar("exposure", 1.0f / images.get(0).pair.layerMpy);
+            glProg.setVar("exposure", mergeExposure(images));
             glProg.setVar("createDiff", 0);
             glProg.setVar("cfaShift", cfaShift);
             glProg.setTexture("inTexture", rawSrc);
@@ -522,6 +538,19 @@ public class ESD4D extends GLOneScript {
                     + (fallback >= 0 ? fallback : 0));
             minExpIdx = fallback >= 0 ? fallback : 0;
             minExp = 1.f / images.get(minExpIdx).pair.layerMpy;
+        }
+        if (!images.get(0).pair.isHighlightFrame && !images.get(0).pair.isLongFrame) {
+            // PyramidAlignment, FlowNetAlignment and the raw merge paths all build
+            // their base texture from images.get(0), so the reference used here has
+            // to be that same frame or alignment and merge work against different
+            // frames. HdrxProcessor already swapped the sharpest regular frame into
+            // slot 0 by the same rule used above; this only guards the case where
+            // the two fall back differently.
+            if (minExpIdx != 0) {
+                Log.w("ESD4D", "Reference " + minExpIdx + " differs from alignment base 0, using 0");
+            }
+            minExpIdx = 0;
+            minExp = 1.f / images.get(0).pair.layerMpy;
         }
         Log.d("ESD4D", "Reference frame: " + minExpIdx + " exposure=" + minExp
                 + " sharpness=" + images.get(minExpIdx).sharpness
@@ -619,7 +648,7 @@ public class ESD4D extends GLOneScript {
         //glProg.setVar("whiteLevel",(float)(parameters.whiteLevel));
         glProg.setVarU("whitelevel", (int) parameters.whiteLevel);
         glProg.setVar("blackLevel", blNorm);
-        glProg.setVar("exposure", 1.f/images.get(0).pair.layerMpy);
+        glProg.setVar("exposure", mergeExposure(images));
         glProg.setVar("createDiff", 0);
         glProg.setVar("cfaShift", cfaShift);
         glProg.setVar("analogBalance", analogBalance);
@@ -960,7 +989,16 @@ public class ESD4D extends GLOneScript {
                 ind = minExpIdx;
             }
             ImageFrame frame = images.get(ind);
-            float exposure = 1.f/frame.pair.layerMpy;
+            // mergeAlign multiplies the alter frame by 'exposure' to bring it to the
+            // reference's level, so this has to be the ratio between the two frames,
+            // not the frame's absolute normalisation. It was 1/layerMpy, which is
+            // that ratio only when the base has layerMpy 1.0 - true while index 0
+            // held the ultra-short frame. With a regular base every equally-exposed
+            // frame was scaled to 0.32 of the reference, leaving a residual of ~3x
+            // the signal; tiles failed their validity test and the merge fell back
+            // per tile, which is what the rectangular blocks are.
+            float baseMpy = images.get(0).pair.layerMpy;
+            float exposure = baseMpy / frame.pair.layerMpy;
             // Per-frame fallback. Google gate the merge with
             // HasHighClippingRatioOnUltrashortFrame and ShouldFallback: past a certain
             // exposure ratio a frame carries neither usable shadows (below the noise
@@ -968,9 +1006,14 @@ public class ESD4D extends GLOneScript {
             // than dropping it. Their own bursts stay near 33x; ours has been reaching
             // 256x, which is where the burst fell apart.
             float maxRatio = PreferenceKeys.getMergeMaxExposureRatio();
-            if (maxRatio > 0.0f && frame.pair.layerMpy > maxRatio) {
+            // The limit is about the gap between this frame and the reference, so
+            // measure it against the base rather than against the burst's shortest
+            // frame. Both directions count: a frame 3x brighter than the reference
+            // is as unmergeable as one 3x darker.
+            float ratio = Math.max(exposure, 1.f / Math.max(exposure, 1e-6f));
+            if (maxRatio > 0.0f && ratio > maxRatio) {
                 Log.w("ESD4D", "Skipping frame " + ind + ": exposure ratio "
-                        + frame.pair.layerMpy + " exceeds the limit " + maxRatio);
+                        + ratio + " exceeds the limit " + maxRatio);
                 continue;
             }
             Point shift = PyramidAlignment.alignmentShift(parameters, ind);
@@ -992,7 +1035,7 @@ public class ESD4D extends GLOneScript {
             //glProg.setVar("whiteLevel", (float)(parameters.whiteLevel));
             glProg.setVarU("whitelevel", (int) parameters.whiteLevel);
             glProg.setVar("blackLevel", blNorm);
-            glProg.setVar("exposure", 1.f/images.get(0).pair.layerMpy);
+            glProg.setVar("exposure", mergeExposure(images));
             glProg.setVar("createDiff", 0);
             glProg.setVar("cfaShift", cfaShift);
             glProg.setTexture("inTexture", inputAlter);

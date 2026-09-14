@@ -42,7 +42,13 @@ public class ImageFrame {
      */
     public void computeSharpness() {
         if (buffer == null || width <= 8 || height <= 8) return;
-        java.nio.ShortBuffer raw = buffer.asShortBuffer();
+        // Buffers from Allocator come through JNI NewDirectByteBuffer, which yields
+        // BIG_ENDIAN regardless of the platform, so asShortBuffer() would read each
+        // RAW16 sample byte-swapped. Duplicate rather than reorder in place: the
+        // buffer is uploaded to GL elsewhere and its position must not move.
+        java.nio.ShortBuffer raw = buffer.duplicate()
+                .order(java.nio.ByteOrder.nativeOrder())
+                .asShortBuffer();
         if (raw.remaining() < width * height) return;
         int x0 = (width / 5) & ~1, x1 = width - x0;
         int y0 = (height / 5) & ~1, y1 = height - y0;
