@@ -367,13 +367,30 @@ public class HdrxProcessor extends ProcessorBase {
                 }
             }
         }*/
-        int selected = 0;
+        int selected = -1;
+        float bestSharp = -1.f;
         for (int i = 0; i < images.size(); i++) {
-            if(images.get(i).pair.layerMpy == minMpy){
+            ImageFrame f = images.get(i);
+            if (f.pair.isHighlightFrame || f.pair.isLongFrame) continue;
+            if (Float.isNaN(f.sharpness)) continue;
+            if (f.sharpness > bestSharp) {
+                bestSharp = f.sharpness;
                 selected = i;
-                break;
             }
         }
+        if (selected < 0) {
+            // No measured regular frame: keep the previous behaviour and take the
+            // shortest-exposure frame.
+            selected = 0;
+            for (int i = 0; i < images.size(); i++) {
+                if (images.get(i).pair.layerMpy == minMpy) {
+                    selected = i;
+                    break;
+                }
+            }
+        }
+        Log.d(TAG, "Base frame: " + selected + " sharpness=" + images.get(selected).sharpness
+                + " layerMpy=" + images.get(selected).pair.layerMpy);
 
         // move selected image to 0 index
         if(selected != 0){

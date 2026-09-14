@@ -234,7 +234,14 @@ public class PyramidAlignment implements AutoCloseable {
         glProg.setVar("blurSigma", blurSigma);
         glProg.setTexture("inTexture", inputBase);
         glProg.setTexture("gainMap", gainMap);
-        glProg.setVar("exposure", 1.0f);
+        // The alter frames below are normalised by 1/layerMpy, which rescales them
+        // to the shortest exposure of the burst. The base was normalised by a fixed
+        // 1.0 instead, which only matched while the base was the shortest frame.
+        // With a regular frame as the base the two sides differed by its layerMpy
+        // (3.1x here), so the pyramid compared a frame against a version of itself
+        // three stops darker - tiles matched on noise and the merge produced
+        // rectangular blocks.
+        glProg.setVar("exposure", 1.0f / images.get(0).pair.layerMpy);
         glProg.setTextureCompute("outTexture", temp, true);
         glProg.computeAuto(temp.mSize, 1);
 
