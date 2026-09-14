@@ -270,6 +270,14 @@ public class ESD4D extends GLOneScript {
     GLTexture inputBase;
 
     /**
+     * How much shakier than its exposure alone explains the long frame may be
+     * before it is dropped. 2.0 is one stop of extra motion: enough slack for
+     * gyro noise and for the frame simply landing on a worse moment, while still
+     * catching the case where the long frame is the only blurred member.
+     */
+    private static final float LONG_FRAME_SHAKE_SLACK = 2.0f;
+
+    /**
      * Brightness scale shared by every merge00 pass: the reciprocal of the
      * SMALLEST layerMpy in the burst, i.e. the scale of the shortest frame.
      *
@@ -984,6 +992,20 @@ public class ESD4D extends GLOneScript {
         float minLevel = (float) (1.0/(double)(parameters.whiteLevel-maxBlack));
 
         int rawMfsrMergedFrames = 0;
+        // Expected shakiness of the long frame if it were no shakier than the
+        // regular ones. Gyro shakiness is the square of the motion integrated over
+        // that frame's own exposure window, so it scales with the square of the
+        // exposure ratio. A long frame well above this carries handshake blur the
+        // regular frames do not have, and merging it drags that blur into the
+        // shadows - where it is the only contributor under the zone mask.
+        float regularShake = 0.f;
+        int regularShakeCnt = 0;
+        for (ImageFrame f : images) {
+            if (f.pair.isHighlightFrame || f.pair.isLongFrame) continue;
+            regularShake += f.frameGyro.shakiness;
+            regularShakeCnt++;
+        }
+        regularShake = regularShakeCnt > 0 ? regularShake / regularShakeCnt : 0.f;
         for (int f = 0; f < images.size(); f++) {
             startT();
             if(f == minExpIdx) continue;
@@ -1018,6 +1040,18 @@ public class ESD4D extends GLOneScript {
                 Log.w("ESD4D", "Skipping frame " + ind + ": exposure ratio "
                         + ratio + " exceeds the limit " + maxRatio);
                 continue;
+            }
+            if (frame.pair.isLongFrame && regularShake > 0.f) {
+                float expoRatio = frame.pair.layerMpy / baseMpy;
+                float expected = regularShake * expoRatio * expoRatio;
+                Log.d("ESD4D", "Long frame shakiness=" + frame.frameGyro.shakiness
+                        + " expected<=" + (expected * LONG_FRAME_SHAKE_SLACK)
+                        + " (regular avg=" + regularShake + ", expo ratio=" + expoRatio + ")");
+                if (frame.frameGyro.shakiness > expected * LONG_FRAME_SHAKE_SLACK) {
+                    Log.w("ESD4D", "Skipping long frame " + ind + ": handshake beyond "
+                            + "what its exposure alone accounts for");
+                    continue;
+                }
             }
             Point shift = PyramidAlignment.alignmentShift(parameters, ind);
             //int f = 1;

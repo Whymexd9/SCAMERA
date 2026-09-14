@@ -279,12 +279,20 @@ public class HdrxProcessor extends ProcessorBase {
                 frame.frameGyro = BurstShakiness.get(ind);
             }*/
             Log.d(TAG, "Mpy:" + frame.pair.layerMpy);
-            if (!frame.pair.isHighlightFrame && !frame.pair.isLongFrame) {
-                // Only the constant-exposure frames are eligible as reference, and
-                // the measure is only comparable within that group anyway.
-                frame.computeSharpness();
-            }
             images.add(frame);
+            // Measured for every frame now, bracket members included. Their value is
+            // not directly comparable with a regular frame's - the measure is
+            // normalised by level, not by the noise model, and a longer exposure has
+            // a better SNR, which lowers the noise part of the gradient energy on its
+            // own - so it is logged for diagnosis and used only against the same
+            // exposure, never as a cross-exposure threshold.
+            frame.computeSharpness();
+            Log.d(TAG, "frame " + i + ": mpy=" + frame.pair.layerMpy
+                    + " iso=" + frame.pair.iso
+                    + " sharpness=" + frame.sharpness
+                    + " shakiness=" + frame.frameGyro.shakiness
+                    + " long=" + frame.pair.isLongFrame
+                    + " short=" + frame.pair.isHighlightFrame);
             // Bracket members shoot at their own ISO (72 for the ultra-short, 166
             // for the long one here), so averaging all frames moved the burst's ISO
             // away from the regular frames the result is actually built from, and
