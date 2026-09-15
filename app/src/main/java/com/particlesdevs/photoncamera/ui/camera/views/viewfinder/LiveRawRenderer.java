@@ -147,7 +147,10 @@ final class LiveRawRenderer {
         }
         if (count == 0) return;
         float gain = ToneCurveBuilder.gainFromHistogram(hist, TARGET, GAIN_MAX);
-        gain = ToneCurveBuilder.normalizeGain(gain, BINS);
+        // The Reinhard correction multiplies, so the clamp has to come after it
+        // as well - it was producing gains above GAIN_MAX (10.4 in the last log)
+        // and blowing the preview out.
+        gain = Math.min(ToneCurveBuilder.normalizeGain(gain, BINS), GAIN_MAX);
         if (!Float.isFinite(gain) || gain <= 0.0f) return;
         // Exponential smoothing: fast enough to follow a pan, slow enough not to
         // flicker on noise.

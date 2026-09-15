@@ -357,6 +357,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * window: they belong to the shot.
      */
     private volatile boolean mShotInProgress = false;
+    /**
+     * CFA pattern of the stream being previewed, resolved once per session.
+     *
+     * mCameraCharacteristics is swapped between logical and physical cameras
+     * while the session runs, so reading the pattern per frame returned BGGR on
+     * some frames and RGGB on others - the demosaic then decoded the same
+     * sensor two different ways from one frame to the next, which is the colour
+     * flickering.
+     */
+    private volatile int mLiveCfaPattern = -1;
     private volatile boolean mHybridZslCapture = false;
     private List<ImageFrame> mPendingZslNormalFrames = new ArrayList<>();
 
@@ -1678,6 +1688,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.d(TAG, "bufferSize:" + mBufferSize);
             Log.d(TAG, "previewSize:" + mPreviewSize);
             Log.d(TAG, "ID:" + PhotonCamera.getSettings().mCameraID + " deviceID:" + mCameraDevice.getId() + " logicalID:" + logicalID + " physicalID:" + physicalID);
+            // Resolve the CFA pattern here, from the physical camera actually
+            // being previewed, rather than per frame from mCameraCharacteristics
+            // - that field is swapped between logical and physical cameras while
+            // the session runs, and the pattern flipped between BGGR and RGGB
+            // from frame to frame.
+            try {
+                CameraCharacteristics live = mCameraCharacteristicsMap.get(physicalID);
+                if (live == null) live = mCameraCharacteristics;
+                Integer arr = live == null ? null
+                        : live.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                mLiveCfaPattern = arr == null ? -1 : arr;
+                Log.d(TAG, "live viewfinder CFA: " + mLiveCfaPattern + " (physical " + physicalID + ")");
+            } catch (Exception e) {
+                mLiveCfaPattern = -1;
+            }
 
             //Camera output
             texture.setDefaultBufferSize(mBufferSize.getHeight(), mBufferSize.getWidth());
@@ -2117,8 +2142,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     blp.copyTo(bl, 0);
                     for (int i = 0; i < 4; i++) black[i] = bl[i];
                 }
-                Integer arr = c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
-                if (arr != null) cfa = arr;
+                if (mLiveCfaPattern >= 0) {
+                    cfa = mLiveCfaPattern;
+                } else {
+                    Integer arr = c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                    if (arr != null) cfa = arr;
+                }
             }
             // Gains and matrix from the processing parameters when a shot has
             // been developed, so the preview follows the same colour the photo
