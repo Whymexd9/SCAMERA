@@ -52,7 +52,14 @@ public class GLPreview extends GLSurfaceView {
         handler = new Handler(Looper.getMainLooper());
         mRenderer = new MainRenderer(this);
 
-        setEGLContextClientVersion(2);
+        // ES 3.0, not 2.0. The raw viewfinder uploads the sensor plane as an
+        // R16UI integer texture and reads it with texelFetch through a
+        // usampler2D - neither exists in ES 2.0, so glTexImage2D rejected the
+        // internal format, the texture stayed undefined, and the viewfinder came
+        // out black or full of garbage colours. The shader compiled anyway,
+        // which is why the log looked healthy. ES 3.0 is backwards compatible
+        // with the existing ES 2.0 preview shaders.
+        setEGLContextClientVersion(3);
         setRenderer(mRenderer);
         setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
     }

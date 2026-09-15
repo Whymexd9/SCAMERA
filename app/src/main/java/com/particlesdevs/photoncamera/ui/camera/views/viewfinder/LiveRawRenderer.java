@@ -81,6 +81,16 @@ final class LiveRawRenderer {
                     GLES30.GL_UNSIGNED_SHORT, frame.buffer);
             GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH, 0);
             GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT, 4);
+            int err = GLES20.glGetError();
+            if (err != GLES20.GL_NO_ERROR) {
+                // An upload that fails leaves the texture undefined, and
+                // texelFetch on undefined contents is what the black and
+                // rainbow frames were. Say so rather than drawing it.
+                Log.e("LiveRawRenderer", "raw upload failed, glGetError=" + err
+                        + " (needs an ES 3.0 context for R16UI)");
+                failed = true;
+                return false;
+            }
             uploadedVersion = frame.version;
             updateExposure(frame);
         }
