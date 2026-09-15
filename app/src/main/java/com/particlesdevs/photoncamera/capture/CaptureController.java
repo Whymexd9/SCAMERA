@@ -388,7 +388,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 synchronized (mZslBufferLock) {
                     mZslRingBuffer.addLast(img);
-                    int maxFrames = Math.min(PhotonCamera.getSettings().frameCount, 37);
+                    int maxFrames = zslRingCapacity();
                     while (mZslRingBuffer.size() > maxFrames) {
                         Image old = mZslRingBuffer.pollFirst();
                         if (old != null) old.close();
@@ -1509,7 +1509,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mTargetFormat == mPreviewTargetFormat && isDualSession)
             maxjpg = PhotonCamera.getSettings().frameCount + 3;
         if (isZslMode())
-            maxjpg = Math.min(PhotonCamera.getSettings().frameCount + 3, 40);
+            // The ring buffer can hold up to zslRingCapacity() frames, and the
+            // reader has to have room for all of them plus the in-flight ones,
+            // otherwise acquireNextImage starves once the ring is full.
+            maxjpg = Math.min(zslRingCapacity() + 3, 40);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         Size aspect = getAspect(PhotonCamera.getSettings().selectedMode);
         if(preview.getWidth() > preview.getHeight())
@@ -2044,6 +2047,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean needsExposureBracket() {
         return PreferenceKeys.getShortFrameCountValue() > 0
                 || PreferenceKeys.getLongFrameCountValue() > 0;
+    }
+
+    /**
+     * How many pre-shutter RAW frames the ZSL ring keeps.
+     *
+     * The user setting wins when set; 0 means follow the burst frame count, the
+     * behaviour before the setting was wired up. Capped at 37 because the
+     * reader is created with capacity+3 and ImageReader is limited to 40 here;
+     * exceeding it starves acquireNextImage instead of buffering more.
+     */
+    public static int zslRingCapacity() {
+        int requested = PreferenceKeys.getZslBufferCountValue();
+        int frames = requested > 0 ? requested : PhotonCamera.getSettings().frameCount;
+        return Math.max(1, Math.min(frames, 37));
     }
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount) {

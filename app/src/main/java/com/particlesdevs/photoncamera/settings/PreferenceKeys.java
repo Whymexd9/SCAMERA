@@ -985,6 +985,15 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_CHROMA_DENOISE, 100).intValue();
     }
 
+    /**
+     * Pre-shutter RAW frames kept in the ZSL ring; 0 follows the burst frame
+     * count. Read by CaptureController.zslRingCapacity().
+     */
+    public static int getZslBufferCountValue() {
+        return Math.max(0, Math.min(37,
+                preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 0).intValue()));
+    }
+
     public static String getZslMergeAlgorithm() {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_ZSL_MERGE_ALGORITHM, "legacy");
     }
@@ -1271,6 +1280,7 @@ public class PreferenceKeys {
         KEY_RT_NR_CHROMA(R.string.pref_rt_nr_chroma_key),
         KEY_RT_NR_DETAIL(R.string.pref_rt_nr_detail_key),
         KEY_WIDE169(R.string.pref_wide169_key),
+        KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
         KEY_ZSL_MERGE_ALGORITHM(R.string.pref_zsl_merge_algorithm_key),
         KEY_NIGHT_MERGE_ALGORITHM(R.string.pref_night_merge_algorithm_key),
         KEY_RT_NR_MOIRE(R.string.pref_rt_nr_moire_key),
