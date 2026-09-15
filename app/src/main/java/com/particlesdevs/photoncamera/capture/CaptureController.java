@@ -351,6 +351,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private final ArrayDeque<Image> mZslRingBuffer = new ArrayDeque<>();
     private final Object mZslBufferLock = new Object();
     private volatile boolean mZslCapturing = false;
+    /**
+     * True from the shutter press until the burst's frames have been handed to
+     * processing. The raw viewfinder must not intercept frames during that
+     * window: they belong to the shot.
+     */
+    private volatile boolean mShotInProgress = false;
     private volatile boolean mHybridZslCapture = false;
     private List<ImageFrame> mPendingZslNormalFrames = new ArrayList<>();
 
@@ -377,6 +383,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 //            Message msg = new Message();
 //            msg.obj = reader;
 //            mImageSaver.processingHandler.sendMessage(msg);
+            if (!isZslMode() && LiveRawFrame.isEnabled() && !mShotInProgress) {
+                // Viewfinder frames outside ZSL: publish and release. Nothing
+                // else consumes them, so holding one would stall the reader.
+                Image vf = reader.acquireLatestImage();
+                if (vf != null) {
+                    publishLiveRawFrame(vf);
+                    vf.close();
+                }
+                return;
+            }
             if (isZslMode()) {
                 if (mHybridZslCapture) {
                     mImageSaver.initProcess(reader);
@@ -1509,6 +1525,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Size preview = getCameraOutputSize(map.getOutputSizes(mPreviewTargetFormat));
 
         int maxjpg = 3;
+        // The raw viewfinder consumes from this reader continuously, so it
+        // needs its own headroom even when ZSL is off.
+        if (PreferenceKeys.isLiveViewfinderRawEnabled()) maxjpg = 6;
         if (mTargetFormat == mPreviewTargetFormat && isDualSession)
             maxjpg = PhotonCamera.getSettings().frameCount + 3;
         if (isZslMode())
@@ -1817,7 +1836,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 while ((stale = mImageReaderRaw.acquireNextImage()) != null) stale.close();
             } catch (Exception ignored) {}
         }
-        if (isZslMode()) {
+        if (isZslMode() || PreferenceKeys.isLiveViewfinderRawEnabled()) {
+            // isZslMode() is only true in Motion, so outside it the RAW stream
+            // was never part of the repeating request and the raw viewfinder
+            // had nothing to develop. It needs the stream in every mode.
             mPreviewRequestBuilder.addTarget(mImageReaderRaw.getSurface());
         }
         mInitialMeteringAF = mPreviewRequestBuilder.get(CONTROL_AF_REGIONS);
@@ -1845,6 +1867,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Initiate a still image capture.
      */
     public void takePicture() {
+        mShotInProgress = true;
         if (mPreviewRequestBuilder == null || mCaptureSession == null) {
             Log.w(TAG, "takePicture(): camera not ready, ignoring shutter press");
             return;
@@ -1872,6 +1895,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * finished.
      */
     public void unlockFocus() {
+        // The burst is done with the reader by here, so the raw viewfinder may
+        // take frames again.
+        mShotInProgress = false;
         if (mPreviewRequestBuilder == null || mCaptureSession == null) {
             Log.d(TAG, "unlockFocus(): camera not ready (builder=" + mPreviewRequestBuilder + ", session=" + mCaptureSession + ")");
             return;
