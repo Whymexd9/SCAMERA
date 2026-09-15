@@ -40,25 +40,32 @@ public class RTSharpening extends Node {
 
     @Override
     public void Run() {
-        int method = PreferenceKeys.getSharpMethod();
-        if (method == 0) {
-            WorkingTexture = previousNode.WorkingTexture;
-            return;
+        // The three algorithms stack rather than exclude each other, in
+        // RawTherapee's own pipeline order: deconvolution recovers detail the
+        // lens and the sensor's AA filter spread, unsharp mask raises edge
+        // contrast on the result, microcontrast works the fine structure last.
+        // Each stage that runs takes the previous stage's output as its input,
+        // so any subset can be enabled.
+        GLTexture in = previousNode.WorkingTexture;
+        boolean any = false;
+
+        if (PreferenceKeys.isSharpDeconvEnabled()) {
+            in = runDeconvolution(in);
+            any = true;
         }
-        switch (method) {
-            case 2:
-                runDeconvolution();
-                break;
-            case 3:
-                runMicrocontrast();
-                break;
-            default:
-                runUnsharpMask();
-                break;
+        if (PreferenceKeys.isSharpUsmEnabled()) {
+            in = runUnsharpMask(in);
+            any = true;
         }
+        if (PreferenceKeys.isSharpMicroEnabled()) {
+            in = runMicrocontrast(in);
+            any = true;
+        }
+
+        WorkingTexture = any ? in : previousNode.WorkingTexture;
     }
 
-    private void runUnsharpMask() {
+    private GLTexture runUnsharpMask(GLTexture input) {
         float amount = PreferenceKeys.getSharpAmount() / 100.0f;
         Log.d(Name, "RT unsharp mask: radius=" + PreferenceKeys.getSharpRadius()
                 + " amount=" + amount
@@ -79,13 +86,14 @@ public class RTSharpening extends Node {
         glProg.setVar("edgesTolerance", PreferenceKeys.getSharpEdgesTolerance() / RT_L_SCALE);
         glProg.setVar("haloControl", PreferenceKeys.isSharpHaloControl() ? 1.0f : 0.0f);
         glProg.setVar("haloAmount", PreferenceKeys.getSharpHaloAmount() / 100.0f);
-        glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
-        WorkingTexture = basePipeline.getMain();
-        glProg.drawBlocks(WorkingTexture);
+        glProg.setTexture("InputBuffer", input);
+        GLTexture out = basePipeline.getMain();
+        glProg.drawBlocks(out);
         glProg.closed = true;
+        return out;
     }
 
-    private void runMicrocontrast() {
+    private GLTexture runMicrocontrast(GLTexture input) {
         boolean matrix3x3 = PreferenceKeys.isSharpMicroMatrix3x3();
         // RT: amount / 1500, times 2.7 for the 3x3 matrix so both kernels land at
         // a comparable strength for the same slider position.
@@ -100,13 +108,14 @@ public class RTSharpening extends Node {
         glProg.setVar("uniformity", (float) PreferenceKeys.getSharpMicroUniformity());
         glProg.setVar("contrastThreshold", PreferenceKeys.getSharpMicroContrast() / 100.0f);
         glProg.setVar("matrix3x3", matrix3x3 ? 1.0f : 0.0f);
-        glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
-        WorkingTexture = basePipeline.getMain();
-        glProg.drawBlocks(WorkingTexture);
+        glProg.setTexture("InputBuffer", input);
+        GLTexture out = basePipeline.getMain();
+        glProg.drawBlocks(out);
         glProg.closed = true;
+        return out;
     }
 
-    private void runDeconvolution() {
+    private GLTexture runDeconvolution(GLTexture input) {
         int iterations = Math.max(1, PreferenceKeys.getSharpDeconvIterations());
         float radius = PreferenceKeys.getSharpDeconvRadius();
         // RT: damping = deconvdamping / 5, and zero disables the damping branch.
@@ -126,9 +135,10 @@ public class RTSharpening extends Node {
                 GL_NEAREST, GL_CLAMP_TO_EDGE);
         GLTexture ratio = new GLTexture(basePipeline.mParameters.rawSize, fmt, null,
                 GL_NEAREST, GL_CLAMP_TO_EDGE);
+        GLTexture out;
         try {
             glProg.useAssetProgram("sharpening/rtluma");
-            glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
+            glProg.setTexture("InputBuffer", input);
             glProg.drawBlocks(estimate);
             glProg.closed = true;
 
@@ -138,7 +148,7 @@ public class RTSharpening extends Node {
                 glProg.setVar("radius", radius);
                 glProg.setVar("damping", damping);
                 glProg.setTexture("EstimateBuffer", estimate);
-                glProg.setTexture("OriginalBuffer", previousNode.WorkingTexture);
+                glProg.setTexture("OriginalBuffer", input);
                 glProg.drawBlocks(ratio);
                 glProg.closed = true;
 
@@ -159,15 +169,16 @@ public class RTSharpening extends Node {
             glProg.useAssetProgram("sharpening/rtdeconvblend");
             glProg.setVar("amount", amount);
             glProg.setVar("contrastThreshold", PreferenceKeys.getSharpContrast() / 100.0f);
-            glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
+            glProg.setTexture("InputBuffer", input);
             glProg.setTexture("EstimateBuffer", estimate);
-            WorkingTexture = basePipeline.getMain();
-            glProg.drawBlocks(WorkingTexture);
+            out = basePipeline.getMain();
+            glProg.drawBlocks(out);
             glProg.closed = true;
         } finally {
             estimate.close();
             estimateNext.close();
             ratio.close();
         }
+        return out;
     }
 }

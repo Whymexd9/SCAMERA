@@ -104,7 +104,9 @@
     <string name="pref_hide_gallery_icon_key" translatable="false">pref_hide_gallery_icon_key</string>
     <string name="pref_category_device_key" translatable="false">pref_category_device_key</string>
     <string name="pref_fetch_configurations_key" translatable="false">pref_fetch_configurations_key</string>
-    <string name="pref_sharp_method_key" translatable="false">pref_sharp_method_key</string>
+    <string name="pref_sharp_usm_enabled_key" translatable="false">pref_sharp_usm_enabled_key</string>
+    <string name="pref_sharp_deconv_enabled_key" translatable="false">pref_sharp_deconv_enabled_key</string>
+    <string name="pref_sharp_micro_enabled_key" translatable="false">pref_sharp_micro_enabled_key</string>
     <string name="pref_sharp_radius_key" translatable="false">pref_sharp_radius_key</string>
     <string name="pref_sharp_amount_key" translatable="false">pref_sharp_amount_key</string>
     <string name="pref_sharp_contrast_key" translatable="false">pref_sharp_contrast_key</string>

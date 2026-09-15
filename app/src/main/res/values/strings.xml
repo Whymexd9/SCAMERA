@@ -220,7 +220,6 @@
     <string name="perm_rationale_dcim_message">Access to the DCIM folder is required for saving RAW video files and reading device custom configs.</string>
 
     <!-- Sharpening, RawTherapee algorithms -->
-    <string name="pref_sharp_method_default">1</string>
     <string name="pref_sharp_radius_default">0.5</string>
     <string name="pref_sharp_amount_default">200</string>
     <string name="pref_sharp_contrast_default">20</string>
@@ -242,20 +241,6 @@
     <bool name="pref_sharp_halo_control_default">false</bool>
     <bool name="pref_sharp_micro_matrix_default">false</bool>
 
-    <string name="sharp_method">Метод</string>
-    <string name="sharp_method_desc">Алгоритм резкости из RawTherapee</string>
-    <string-array name="sharp_method_entries">
-        <item>Выключено</item>
-        <item>Unsharp Mask</item>
-        <item>RL-деконволюция</item>
-        <item>Микроконтраст</item>
-    </string-array>
-    <string-array name="sharp_method_values">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-    </string-array>
 
     <string name="sharp_usm_section">Unsharp Mask</string>
     <string name="sharp_usm_description">Разница с размытой копией добавляется обратно. Порог задан кривой из четырёх точек: слабая разница отбрасывается как шум, сильная ограничивается, чтобы не рисовать ореолы.</string>
@@ -306,4 +291,11 @@
     <string name="sharp_micro_matrix">Матрица 3x3</string>
     <string name="sharp_micro_matrix_desc">Выключено — 5x5, как в RawTherapee по умолчанию</string>
     <string name="wide169" translatable="false">16:9</string>
+    <bool name="pref_sharp_usm_enabled_default">true</bool>
+    <bool name="pref_sharp_deconv_enabled_default">false</bool>
+    <bool name="pref_sharp_micro_enabled_default">false</bool>
+    <string name="sharp_pipeline_desc">Алгоритмы применяются последовательно в порядке RawTherapee: деконволюция, затем Unsharp Mask, затем микроконтраст. Можно включить любое сочетание.</string>
+    <string name="sharp_usm_enabled">Включить Unsharp Mask</string>
+    <string name="sharp_deconv_enabled">Включить RL-деконволюцию</string>
+    <string name="sharp_micro_enabled">Включить микроконтраст</string>
 </resources>

@@ -524,9 +524,16 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", key).intValue();
     }
 
-    /** 0 off, 1 unsharp mask, 2 RL deconvolution, 3 microcontrast. */
-    public static int getSharpMethod() {
-        return sharpInt(Key.KEY_SHARP_METHOD);
+    public static boolean isSharpUsmEnabled() {
+        return getBool(Key.KEY_SHARP_USM_ENABLED);
+    }
+
+    public static boolean isSharpDeconvEnabled() {
+        return getBool(Key.KEY_SHARP_DECONV_ENABLED);
+    }
+
+    public static boolean isSharpMicroEnabled() {
+        return getBool(Key.KEY_SHARP_MICRO_ENABLED);
     }
 
     public static float getSharpRadius() {
@@ -1162,7 +1169,9 @@ public class PreferenceKeys {
         KEY_PROCESSING_BACKEND(R.string.pref_processing_backend_key),
         KEY_CONTRAST_SEEKBAR(R.string.pref_contrast_seekbar_key),
         KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
-        KEY_SHARP_METHOD(R.string.pref_sharp_method_key),
+        KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),
+        KEY_SHARP_DECONV_ENABLED(R.string.pref_sharp_deconv_enabled_key),
+        KEY_SHARP_MICRO_ENABLED(R.string.pref_sharp_micro_enabled_key),
         KEY_SHARP_RADIUS(R.string.pref_sharp_radius_key),
         KEY_SHARP_AMOUNT(R.string.pref_sharp_amount_key),
         KEY_SHARP_CONTRAST(R.string.pref_sharp_contrast_key),
