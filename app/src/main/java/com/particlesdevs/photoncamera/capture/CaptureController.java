@@ -1512,7 +1512,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // The ring buffer can hold up to zslRingCapacity() frames, and the
             // reader has to have room for all of them plus the in-flight ones,
             // otherwise acquireNextImage starves once the ring is full.
-            maxjpg = Math.min(zslRingCapacity() + 3, 40);
+            maxjpg = Math.min(zslRingCapacity() + 3, 103);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         Size aspect = getAspect(PhotonCamera.getSettings().selectedMode);
         if(preview.getWidth() > preview.getHeight())
@@ -2053,14 +2053,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * How many pre-shutter RAW frames the ZSL ring keeps.
      *
      * The user setting wins when set; 0 means follow the burst frame count, the
-     * behaviour before the setting was wired up. Capped at 37 because the
-     * reader is created with capacity+3 and ImageReader is limited to 40 here;
-     * exceeding it starves acquireNextImage instead of buffering more.
+     * behaviour before the setting was wired up.
+     *
+     * Every frame in the ring is a full-size RAW buffer - about 25 MB at 12.6 MP
+     * on this sensor - so the ring is the largest single memory consumer in the
+     * app. 100 frames is roughly 2.5 GB and will not fit; the setting allows it
+     * because it was asked for, but the practical ceiling is where the device
+     * stops allocating, and past it the reader starves rather than buffering
+     * more.
      */
     public static int zslRingCapacity() {
         int requested = PreferenceKeys.getZslBufferCountValue();
         int frames = requested > 0 ? requested : PhotonCamera.getSettings().frameCount;
-        return Math.max(1, Math.min(frames, 37));
+        return Math.max(1, Math.min(frames, 100));
     }
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount) {

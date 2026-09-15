@@ -990,7 +990,7 @@ public class PreferenceKeys {
      * count. Read by CaptureController.zslRingCapacity().
      */
     public static int getZslBufferCountValue() {
-        return Math.max(0, Math.min(37,
+        return Math.max(0, Math.min(100,
                 preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 0).intValue()));
     }
 
