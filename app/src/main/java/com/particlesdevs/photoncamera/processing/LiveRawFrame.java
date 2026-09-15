@@ -26,7 +26,14 @@ public final class LiveRawFrame {
 
     private static final Object LOCK = new Object();
 
-    private static ByteBuffer buffer;
+    /**
+     * Two buffers, not one. The capture thread writes while the GL thread is
+     * uploading the previous frame, and sharing a single buffer let the upload
+     * read bytes from two different exposures - which shows up as the
+     * viewfinder flickering between colours rather than as a clean error.
+     */
+    private static ByteBuffer front;
+    private static ByteBuffer back;
     private static int width, height, rowStride;
     private static int cfaPattern;
     private static float whiteLevel = 1023.0f;
@@ -48,7 +55,8 @@ public final class LiveRawFrame {
         enabled = value;
         if (!value) {
             synchronized (LOCK) {
-                buffer = null;
+                front = null;
+                back = null;
                 version++;
             }
         }
@@ -63,15 +71,23 @@ public final class LiveRawFrame {
                                float[] gains, float[] ccm) {
         if (!enabled || plane == null) return;
         int needed = plane.remaining();
+        ByteBuffer target;
         synchronized (LOCK) {
-            if (buffer == null || buffer.capacity() < needed) {
-                buffer = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
+            if (back == null || back.capacity() < needed) {
+                back = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
             }
-            buffer.clear();
-            int savedPos = plane.position();
-            buffer.put(plane);
-            plane.position(savedPos);
-            buffer.flip();
+            target = back;
+        }
+        // Filled outside the lock: the copy is tens of megabytes and the GL
+        // thread only needs the lock long enough to swap references.
+        target.clear();
+        int savedPos = plane.position();
+        target.put(plane);
+        plane.position(savedPos);
+        target.flip();
+        synchronized (LOCK) {
+            back = front;
+            front = target;
             width = w;
             height = h;
             rowStride = stride;
@@ -87,9 +103,9 @@ public final class LiveRawFrame {
     /** Snapshot for the GL thread; null when nothing has been published. */
     public static Frame acquire() {
         synchronized (LOCK) {
-            if (buffer == null) return null;
+            if (front == null) return null;
             Frame f = new Frame();
-            f.buffer = buffer.duplicate();
+            f.buffer = front.duplicate();
             f.buffer.position(0);
             f.width = width;
             f.height = height;

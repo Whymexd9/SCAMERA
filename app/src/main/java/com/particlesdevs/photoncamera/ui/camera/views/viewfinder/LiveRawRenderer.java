@@ -58,10 +58,17 @@ final class LiveRawRenderer {
         if (program == 0 && !init()) return false;
 
         GLES20.glUseProgram(program);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        // Unit 2, not 0. The external OES preview texture is bound to unit 0 for
+        // the main program, and two samplers of different types on one unit is
+        // undefined - the same trap that already rendered this viewfinder black
+        // once, noted at the tone curve binding in MainRenderer.
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, rawTex);
 
         if (frame.version != uploadedVersion) {
+            Log.d("LiveRawRenderer", "frame " + frame.version + " " + frame.width + "x"
+                    + frame.height + " stride=" + frame.rowStride + " cfa=" + frame.cfaPattern
+                    + " white=" + frame.whiteLevel + " gain=" + smoothedGain);
             // RAW16 as a single-channel unsigned integer texture: no filtering,
             // no normalisation, the shader sees the sensor's counts.
             frame.buffer.position(0);
@@ -77,7 +84,7 @@ final class LiveRawRenderer {
             updateExposure(frame);
         }
 
-        GLES20.glUniform1i(uRawTexture, 0);
+        GLES20.glUniform1i(uRawTexture, 2);
         GLES20.glUniform1i(uRawWidth, frame.width);
         GLES20.glUniform1i(uRawHeight, frame.height);
         GLES20.glUniform1i(uCfa, frame.cfaPattern);
@@ -101,6 +108,8 @@ final class LiveRawRenderer {
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
         GLES20.glDisableVertexAttribArray(0);
         GLES20.glDisableVertexAttribArray(1);
+        // Leave unit 0 selected: the caller's program expects it.
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         return true;
     }
 
@@ -189,12 +198,14 @@ final class LiveRawRenderer {
         int[] t = new int[1];
         GLES20.glGenTextures(1, t, 0);
         rawTex = t[0];
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, rawTex);
         // Integer textures cannot be filtered; texelFetch is used throughout.
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         Log.d("LiveRawRenderer", "raw viewfinder ready");
         return true;
     }
