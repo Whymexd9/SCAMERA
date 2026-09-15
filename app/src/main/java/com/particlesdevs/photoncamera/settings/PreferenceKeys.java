@@ -826,6 +826,12 @@ public class PreferenceKeys {
         return Float.parseFloat(getAcesString("pref_hdrplus_snr_chroma_exp_key", "1.0"));
     }
 
+    /** Develop the preview RAW stream as the viewfinder instead of showing the ISP image. */
+    public static boolean isLiveViewfinderRawEnabled() {
+        return preferenceKeys.settingsManager.getBoolean(
+                "default_scope", Key.KEY_LIVE_VIEWFINDER_RAW, false);
+    }
+
     public static boolean isLiveViewfinderLookEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_LOOK, false);
@@ -1262,6 +1268,7 @@ public class PreferenceKeys {
         KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
         KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
         KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
+        KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_HIGHLIGHT_RECOVERY(R.string.pref_highlight_recovery_key),
         KEY_HIGHLIGHT_RECOVERY_MIN_OK(R.string.pref_highlight_recovery_min_ok_key),
         KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),

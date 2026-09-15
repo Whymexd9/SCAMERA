@@ -38,6 +38,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private final GLPreview mView;
     /** Measures the live stream so the tone curve is current before the shutter. */
     private final LiveSceneMeter mSceneMeter = new LiveSceneMeter();
+    /** Develops the preview RAW stream; replaces the ISP image when it has a frame. */
+    private final LiveRawRenderer mRawRenderer = new LiveRawRenderer();
     private ManualModeConsole mManualModeConsole;
 
     public void setManualModeConsole(ManualModeConsole console) {
@@ -68,6 +70,21 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 mUpdateST = false;
             }
         }
+        // Developed RAW takes over the viewfinder when a frame is available, so
+        // what is framed is what the pipeline produces rather than the ISP's own
+        // rendering. Falls through to the ISP path whenever a frame is missing,
+        // the shaders failed, or the setting is off - the viewfinder must never
+        // go blank because of this.
+        final boolean rawLook =
+                com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled();
+        com.particlesdevs.photoncamera.processing.LiveRawFrame.setEnabled(rawLook);
+        if (rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview)) {
+            GLES20.glUseProgram(hProgramHandle);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
+            return;
+        }
+
         GLES20.glUniformMatrix4fv(uTexRotateMatrix, 1, false, mTexRotateMatrix, 0);
         int peakEnabled = getPeakEnabled();
         GLES20.glUniform1i(enablePeak, peakEnabled);

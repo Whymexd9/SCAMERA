@@ -26,6 +26,7 @@ import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
+import android.hardware.camera2.params.BlackLevelPattern;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -84,6 +85,7 @@ import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
 import com.particlesdevs.photoncamera.processing.parameters.FrameNumberSelector;
 import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
 import com.particlesdevs.photoncamera.processing.parameters.ResolutionSolution;
+import com.particlesdevs.photoncamera.processing.LiveRawFrame;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SensorConfigInjector;
 import com.particlesdevs.photoncamera.settings.annotations.SensorConfig;
@@ -386,6 +388,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     img.close();
                     return;
                 }
+                publishLiveRawFrame(img);
                 synchronized (mZslBufferLock) {
                     mZslRingBuffer.addLast(img);
                     int maxFrames = zslRingCapacity();
@@ -2062,6 +2065,47 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * stops allocating, and past it the reader starves rather than buffering
      * more.
      */
+    /**
+     * Hand the newest preview RAW frame to the viewfinder.
+     *
+     * Called from the image callback, on the frame that is about to go into the
+     * ZSL ring - the same data, so no extra stream and no extra HAL load. The
+     * copy inside LiveRawFrame is what the viewfinder develops; the Image goes
+     * on to the ring untouched.
+     */
+    private void publishLiveRawFrame(Image img) {
+        if (!LiveRawFrame.isEnabled() || img == null) return;
+        if (img.getFormat() != ImageFormat.RAW_SENSOR) return;
+        try {
+            Image.Plane plane = img.getPlanes()[0];
+            CameraCharacteristics c = mCameraCharacteristics;
+            float white = 1023.0f;
+            float[] black = new float[]{0, 0, 0, 0};
+            int cfa = 0;
+            if (c != null) {
+                Integer wl = c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+                if (wl != null) white = wl;
+                BlackLevelPattern blp = c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+                if (blp != null) {
+                    int[] bl = new int[4];
+                    blp.copyTo(bl, 0);
+                    for (int i = 0; i < 4; i++) black[i] = bl[i];
+                }
+                Integer arr = c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                if (arr != null) cfa = arr;
+            }
+            // Gains and matrix from the processing parameters when a shot has
+            // been developed, so the preview follows the same colour the photo
+            // will get; identity until then.
+            float[] gains = new float[]{1, 1, 1};
+            float[] ccm = new float[]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+            LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
+                    plane.getRowStride(), cfa, white, black, gains, ccm);
+        } catch (Exception e) {
+            Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
+        }
+    }
+
     public static int zslRingCapacity() {
         int requested = PreferenceKeys.getZslBufferCountValue();
         int frames = requested > 0 ? requested : PhotonCamera.getSettings().frameCount;
