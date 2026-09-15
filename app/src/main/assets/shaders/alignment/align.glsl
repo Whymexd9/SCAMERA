@@ -289,6 +289,7 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
     bool clipped = clipFrac >= ALIGN_CLIP_FRACTION;
 
     bool frozen = clipped;
+    float confidence = 1.0;
     {
         float n = float(OFFSETS * TILE * TILE);
         float expected = 1.13; // mean per-pixel cost when aligned
@@ -307,11 +308,27 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
             // Degenerate tile: keep the coarse vector untouched.
             bestOffset = prevOffset;
             bestIdx = ivec2(1, 1);
-        } else if (improvement < thresh) {
-            bestOffset = prevOffset;
-            minDiff = costPrev;
-            bestIdx = ivec2(1, 1);
-            frozen = true;
+            confidence = 0.0;
+        } else {
+            // Continuous confidence instead of a pass/fail gate. The threshold
+            // was a hard switch: two neighbouring tiles whose improvement fell
+            // either side of it took entirely different vectors - one the new
+            // minimum, the other the coarse vector from the level above - and
+            // the whole-pixel step between them is a tile-sized rectangle in the
+            // output. Nothing about the underlying scene changes across that
+            // seam; only which side of the threshold the tile landed on.
+            //
+            // Fade over a decade around the threshold instead, so a tile with a
+            // marginal match moves part of the way and neighbours with similar
+            // evidence end up with similar vectors. A tile with no evidence
+            // still ends up at prevOffset exactly, as before.
+            confidence = smoothstep(0.3 * thresh, 3.0 * thresh, improvement);
+            if (confidence <= 0.0) {
+                bestOffset = prevOffset;
+                minDiff = costPrev;
+                bestIdx = ivec2(1, 1);
+                frozen = true;
+            }
         }
     }
 
@@ -367,7 +384,15 @@ highp vec4 computeAlignment(ivec2 tile_xy, vec2 prevOffset) {
         }
     }
 
-    return vec4(bestOffset.x, bestOffset.y, sub.x, sub.y);
+    // Blend towards the coarse vector by confidence. A tile that barely clears
+    // the noise floor moves only part of the way, so neighbouring tiles with
+    // similar evidence stay close to each other instead of splitting across a
+    // whole pixel at the seam. Subpixel refinement scales with it too: it is a
+    // correction to a minimum we are only partly confident in.
+    vec2 total = (bestOffset + sub) - prevOffset;
+    vec2 blended = prevOffset + total * confidence;
+    return vec4(floor(blended).x, floor(blended).y,
+                (blended - floor(blended)).x, (blended - floor(blended)).y);
 }
 
 void main() {
