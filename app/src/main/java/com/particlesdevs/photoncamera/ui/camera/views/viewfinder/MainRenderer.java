@@ -36,6 +36,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private volatile boolean mMirrorPreview;
 
     private final GLPreview mView;
+    /** Measures the live stream so the tone curve is current before the shutter. */
+    private final LiveSceneMeter mSceneMeter = new LiveSceneMeter();
     private ManualModeConsole mManualModeConsole;
 
     public void setManualModeConsole(ManualModeConsole console) {
@@ -72,8 +74,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glUniform1i(mirror, mMirrorPreview ? 1 : 0);
 
         updateToneCurve();
-        boolean lookOn = mCurveReady
-                && com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        final boolean liveLook =
+                com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        final boolean lookOn = mCurveReady && liveLook;
         GLES20.glUniform1i(uLookEnabled, lookOn ? 1 : 0);
         // Bind the curve to unit 1 unconditionally. An unset sampler2D defaults to
         // unit 0, where the external OES preview texture already lives, and two
@@ -87,9 +90,23 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+
+        // Measure after drawing, so a failure here cannot leave the viewfinder
+        // blank, and re-bind this program afterwards since the meter uses its
+        // own. Only runs on one frame in eight.
+        // Driven by the setting, not by lookOn: on the first frames no curve
+        // has been published yet, and gating on one would mean never producing
+        // the first one.
+        if (liveLook) {
+            mSceneMeter.measure(pVertex, pTexCoord, hTex[0]);
+            GLES20.glUseProgram(hProgramHandle);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
+        }
         // GLES20.glFlush();
     }
 
+    private int hProgramHandle;
     private int uTexRotateMatrix;
     private int uToneCurve;
     private int uLookEnabled;
@@ -143,6 +160,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         String vss_default = PhotonCamera.getAssetLoader().getString("shaders/preview/main_vs.glsl");
         String fss_default = PhotonCamera.getAssetLoader().getString("shaders/preview/main_fs.glsl");
         int hProgram = loadShader(vss_default, fss_default);
+        hProgramHandle = hProgram;
         GLES20.glUseProgram(hProgram);
         uTexRotateMatrix = GLES20.glGetUniformLocation(hProgram, "uTexRotateMatrix");
         GLES20.glUniformMatrix4fv(uTexRotateMatrix, 1, false, mTexRotateMatrix, 0);
