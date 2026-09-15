@@ -74,7 +74,10 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         if(alloc == GLDrawParams.Allocate.None) return;
         if(alloc == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(capacity);
         else {
-            mOutBuffer = ByteBuffer.allocate(capacity);
+            // Full-frame output on the Java heap scales with resolution
+            // (~256 MB at 64 MP) and was a direct OOM source.
+            // From RealJohnGalt/PhotonCamera 6d2291eb.
+            mOutBuffer = ByteBuffer.allocateDirect(capacity);
         }
     }
     public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat,ByteBuffer output) {
@@ -83,7 +86,7 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         mglFormat = glFormat;
         mOutWidth = size.x;
         mOutHeight = size.y;
-        mBlockBuffer = ByteBuffer.allocate(mOutWidth * GLDrawParams.TileSize * mglFormat.mFormat.mSize * mglFormat.mChannels);
+        mBlockBuffer = ByteBuffer.allocateDirect(mOutWidth * GLDrawParams.TileSize * mglFormat.mFormat.mSize * mglFormat.mChannels);
         glGenFramebuffers(1,bindFB,0);
         glGenRenderbuffers(1,bindRB,0);
         glBindRenderbuffer(GL_RENDERBUFFER,bindRB[0]);
@@ -137,7 +140,7 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         allocation = alloc;
         if(alloc == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(size.x * size.y * glFormat.mFormat.mSize * glFormat.mChannels);
         else
-            mOutBuffer = ByteBuffer.allocate(size.x * size.y * glFormat.mFormat.mSize * glFormat.mChannels);
+            mOutBuffer = ByteBuffer.allocateDirect(size.x * size.y * glFormat.mFormat.mSize * glFormat.mChannels);
         return drawBlocksToOutput(size,glFormat,mOutBuffer);
     }
 

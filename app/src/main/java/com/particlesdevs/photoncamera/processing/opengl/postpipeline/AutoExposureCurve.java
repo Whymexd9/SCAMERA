@@ -128,8 +128,25 @@
                 sum += (result[0][i] + result[1][i] + result[2][i]) * mapped[i];
                 cnt += result[0][i] + result[1][i] + result[2][i];
             }
-            float avg = cnt > 0 ? sum / cnt : (bins / 256.0f) * target;
+            // An empty or degenerate histogram used to fall through to a
+            // synthesised average, which produced a multiplier built from
+            // nothing and applied it anyway. Skip the node instead and leave the
+            // frame as it came in - no exposure decision is better than one made
+            // from no samples. From RealJohnGalt/PhotonCamera ad0cbc75.
+            if (cnt <= 0 || !Float.isFinite(sum) || sum <= 0.0f) {
+                Log.d(Name, "Skipping auto exposure: histogram has no positive samples");
+                WorkingTexture = previousNode.WorkingTexture;
+                glProg.closed = true;
+                return;
+            }
+            float avg = sum / cnt;
             float mpy = (bins / 256.0f) * target / Math.max(avg, 1.0e-4f);
+            if (!Float.isFinite(mpy) || mpy <= 0.0f) {
+                Log.d(Name, "Skipping auto exposure: invalid multiplier " + mpy);
+                WorkingTexture = previousNode.WorkingTexture;
+                glProg.closed = true;
+                return;
+            }
 
             sum = 0;
             int cnt2 = 0;
@@ -187,7 +204,19 @@
                 normR += (val * (1.0f + (val / (mpy * mpy)))) / (1.0f + val);
             }
             Log.d(Name, "Reinhard normalizer:" + normR + " normL:" + normL + " base Mpy:" + mpy);
+            if (!Float.isFinite(normR) || normR <= 0.0f || !Float.isFinite(normL)) {
+                Log.d(Name, "Skipping auto exposure: invalid Reinhard normalizer");
+                WorkingTexture = previousNode.WorkingTexture;
+                glProg.closed = true;
+                return;
+            }
             mpy *= normL / normR;
+            if (!Float.isFinite(mpy) || mpy <= 0.0f) {
+                Log.d(Name, "Skipping auto exposure: invalid normalized multiplier " + mpy);
+                WorkingTexture = previousNode.WorkingTexture;
+                glProg.closed = true;
+                return;
+            }
 
             whiteMax *= mpy;
             float whiteEff = enableWP ? Math2.mix(mpy, whiteMax, whiteApply) : mpy;

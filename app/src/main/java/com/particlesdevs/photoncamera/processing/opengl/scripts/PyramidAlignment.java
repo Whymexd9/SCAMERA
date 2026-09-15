@@ -250,6 +250,10 @@ public class PyramidAlignment implements AutoCloseable {
         float overexposure = 64.f;
         hist.exposure = new float[]{overexposure, overexposure, overexposure, overexposure};
         int[][] histDataBase = hist.Compute(temp).clone();
+        // The histogram's SSBOs are only needed for the call above; without
+        // this they leak on every shot.
+        // From RealJohnGalt/PhotonCamera 6bf5ae85.
+        hist.close();
         float[] blackLevel = new float[4];
         for (int i = 0; i < 4; i++) {
             long histSum = 0;

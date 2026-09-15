@@ -146,12 +146,30 @@ public class ESD3D2 extends Node {
                 basePipeline.main4 = glUtils.gaussdown(previousNode.WorkingTexture, scale);
                 // Denoise runs at low resolution, so the intermediate has to match main4's size
                 basePipeline.main5 = new GLTexture(basePipeline.main4.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim));
-                gradLow = new GLTexture(basePipeline.main4.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim));
+                // The steered kernels only fetch GradBuffer.rg and ConvDiff's
+                // default path writes just those channels, so an RG16F plane
+                // carries everything the full WorkDim one did.
+                // From RealJohnGalt/PhotonCamera 984d09d1.
+                gradLow = new GLTexture(basePipeline.main4.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, 2));
                 glUtils.ConvDiff(basePipeline.main4, gradLow, 0.f);
                 ESD3DRun(basePipeline.main4, basePipeline.main5, gradLow, 0.0f, scaleF * 0.75f);
+                // Dead after the low-res pass; it used to survive the guided
+                // upsample and the whole full-res pass on top of it.
+                gradLow.close();
+                gradLow = null;
                 WorkingTexture = basePipeline.getMain();
                 outp = basePipeline.getMain();
                 guidedUpsample(basePipeline.main5, basePipeline.main4, previousNode.WorkingTexture, outp, scale);
+                // Both low-res planes are dead here - free them before the
+                // memory-heaviest full-res phase rather than after it.
+                if (basePipeline.main4 != null) {
+                    basePipeline.main4.close();
+                    basePipeline.main4 = null;
+                }
+                if (basePipeline.main5 != null) {
+                    basePipeline.main5.close();
+                    basePipeline.main5 = null;
+                }
             } else {
                 WorkingTexture = basePipeline.getMain();
                 grad = new GLTexture(previousNode.WorkingTexture.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim));

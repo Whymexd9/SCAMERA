@@ -194,14 +194,17 @@ public class GLTexture implements AutoCloseable {
         // buffer must hold 4 bytes/channel, not the 2-byte on-GPU storage size.
         int bytesPerCh = outputFormat.mFormat == GLFormat.DataType.FLOAT_16 ? 4 : outputFormat.mFormat.mSize;
         ByteBuffer buffer;
-        if(!direct) buffer = ByteBuffer.allocate(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
-        else buffer = ByteBuffer.allocateDirect(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
+        // Full-resolution readbacks are hundreds of MB; on the managed heap
+        // they are the GC pressure and OOM risk that shows up as a crash after
+        // a few shots in a row. Always allocate off-heap.
+        // From RealJohnGalt/PhotonCamera 919bc667.
+        buffer = ByteBuffer.allocateDirect(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
         glReadPixels(0, 0, mSize.x, mSize.y, outputFormat.getGLFormatExternal(), outputFormat.getGLType(), buffer);
         return buffer;
     }
     public ByteBuffer textureBuffer(GLFormat outputFormat) {
         int bytesPerCh = outputFormat.mFormat == GLFormat.DataType.FLOAT_16 ? 4 : outputFormat.mFormat.mSize;
-        ByteBuffer buffer = ByteBuffer.allocate(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
         glReadPixels(0, 0, mSize.x, mSize.y, outputFormat.getGLFormatExternal(), outputFormat.getGLType(), buffer);
         return buffer;
     }
