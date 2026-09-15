@@ -21,20 +21,23 @@ uniform sampler2D OriginalBuffer;
 uniform float radius;
 /** RT deconvdamping/5, zero disables damping. */
 uniform float damping;
+/** PSF shape: 0 gaussian, 1 pillbox (defocus disc), 2 Airy (diffraction). */
+uniform int kernelType;
 out vec3 Output;
 #define INSIZE 1,1
 #import coords
+#import psf
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
-    float sigma = max(radius, 0.05);
+    float r = max(radius, 0.05);
     float sum = 0.0;
     float wsum = 0.0;
     for (int i = -3; i <= 3; i++) {
         for (int j = -3; j <= 3; j++) {
-            float w = exp(-float(i * i + j * j) / (2.0 * sigma * sigma));
+            float w = psfWeight(kernelType, float(i), float(j), r);
             sum += texelFetch(EstimateBuffer, mirrorCoords2(xy + ivec2(i, j), ivec2(INSIZE)), 0).r * w;
             wsum += w;
         }

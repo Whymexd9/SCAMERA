@@ -119,13 +119,27 @@
     <string name="pref_sharp_edges_tolerance_key" translatable="false">pref_sharp_edges_tolerance_key</string>
     <string name="pref_sharp_halo_control_key" translatable="false">pref_sharp_halo_control_key</string>
     <string name="pref_sharp_halo_amount_key" translatable="false">pref_sharp_halo_amount_key</string>
-    <string name="pref_sharp_deconv_radius_key" translatable="false">pref_sharp_deconv_radius_key</string>
-    <string name="pref_sharp_deconv_amount_key" translatable="false">pref_sharp_deconv_amount_key</string>
-    <string name="pref_sharp_deconv_iterations_key" translatable="false">pref_sharp_deconv_iterations_key</string>
-    <string name="pref_sharp_deconv_damping_key" translatable="false">pref_sharp_deconv_damping_key</string>
     <string name="pref_sharp_micro_amount_key" translatable="false">pref_sharp_micro_amount_key</string>
     <string name="pref_sharp_micro_uniformity_key" translatable="false">pref_sharp_micro_uniformity_key</string>
     <string name="pref_sharp_micro_contrast_key" translatable="false">pref_sharp_micro_contrast_key</string>
     <string name="pref_sharp_micro_matrix_key" translatable="false">pref_sharp_micro_matrix_key</string>
     <string name="pref_wide169_key" translatable="false">pref_wide169_key</string>
+    <string name="pref_sharp_deconv_halo_key" translatable="false">pref_sharp_deconv_halo_key</string>
+    <string name="pref_sharp_deconv_halo_margin_key" translatable="false">pref_sharp_deconv_halo_margin_key</string>
+    <string name="pref_sharp_deconv_halo_macro_key" translatable="false">pref_sharp_deconv_halo_macro_key</string>
+    <string name="pref_sharp_deconv_kernel_1_key" translatable="false">pref_sharp_deconv_kernel_1_key</string>
+    <string name="pref_sharp_deconv_radius_1_key" translatable="false">pref_sharp_deconv_radius_1_key</string>
+    <string name="pref_sharp_deconv_amount_1_key" translatable="false">pref_sharp_deconv_amount_1_key</string>
+    <string name="pref_sharp_deconv_iterations_1_key" translatable="false">pref_sharp_deconv_iterations_1_key</string>
+    <string name="pref_sharp_deconv_damping_1_key" translatable="false">pref_sharp_deconv_damping_1_key</string>
+    <string name="pref_sharp_deconv_kernel_2_key" translatable="false">pref_sharp_deconv_kernel_2_key</string>
+    <string name="pref_sharp_deconv_radius_2_key" translatable="false">pref_sharp_deconv_radius_2_key</string>
+    <string name="pref_sharp_deconv_amount_2_key" translatable="false">pref_sharp_deconv_amount_2_key</string>
+    <string name="pref_sharp_deconv_iterations_2_key" translatable="false">pref_sharp_deconv_iterations_2_key</string>
+    <string name="pref_sharp_deconv_damping_2_key" translatable="false">pref_sharp_deconv_damping_2_key</string>
+    <string name="pref_sharp_deconv_kernel_3_key" translatable="false">pref_sharp_deconv_kernel_3_key</string>
+    <string name="pref_sharp_deconv_radius_3_key" translatable="false">pref_sharp_deconv_radius_3_key</string>
+    <string name="pref_sharp_deconv_amount_3_key" translatable="false">pref_sharp_deconv_amount_3_key</string>
+    <string name="pref_sharp_deconv_iterations_3_key" translatable="false">pref_sharp_deconv_iterations_3_key</string>
+    <string name="pref_sharp_deconv_damping_3_key" translatable="false">pref_sharp_deconv_damping_3_key</string>
 </resources>

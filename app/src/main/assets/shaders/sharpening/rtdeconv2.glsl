@@ -12,18 +12,20 @@ uniform sampler2D RatioBuffer;
 /** Current estimate, multiplied by the blurred ratio (tmpI in RT). */
 uniform sampler2D EstimateBuffer;
 uniform float radius;
+uniform int kernelType;
 out vec3 Output;
 #define INSIZE 1,1
 #import coords
+#import psf
 
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
-    float sigma = max(radius, 0.05);
+    float r = max(radius, 0.05);
     float sum = 0.0;
     float wsum = 0.0;
     for (int i = -3; i <= 3; i++) {
         for (int j = -3; j <= 3; j++) {
-            float w = exp(-float(i * i + j * j) / (2.0 * sigma * sigma));
+            float w = psfWeight(kernelType, float(i), float(j), r);
             sum += texelFetch(RatioBuffer, mirrorCoords2(xy + ivec2(i, j), ivec2(INSIZE)), 0).r * w;
             wsum += w;
         }

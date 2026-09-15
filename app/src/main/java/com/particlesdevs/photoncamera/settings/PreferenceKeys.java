@@ -584,20 +584,46 @@ public class PreferenceKeys {
         return sharpFloat(Key.KEY_SHARP_HALO_AMOUNT);
     }
 
-    public static float getSharpDeconvRadius() {
-        return sharpFloat(Key.KEY_SHARP_DECONV_RADIUS);
+    private static Key stageKey(Key k1, Key k2, Key k3, int stage) {
+        return stage == 2 ? k2 : (stage == 3 ? k3 : k1);
     }
 
-    public static float getSharpDeconvAmount() {
-        return sharpFloat(Key.KEY_SHARP_DECONV_AMOUNT);
+    /** 0 gaussian, 1 pillbox (defocus), 2 Airy (diffraction). */
+    public static int getSharpDeconvKernel(int stage) {
+        return sharpInt(stageKey(Key.KEY_SHARP_DECONV_KERNEL_1,
+                Key.KEY_SHARP_DECONV_KERNEL_2, Key.KEY_SHARP_DECONV_KERNEL_3, stage));
     }
 
-    public static int getSharpDeconvIterations() {
-        return sharpInt(Key.KEY_SHARP_DECONV_ITERATIONS);
+    public static float getSharpDeconvRadius(int stage) {
+        return sharpFloat(stageKey(Key.KEY_SHARP_DECONV_RADIUS_1,
+                Key.KEY_SHARP_DECONV_RADIUS_2, Key.KEY_SHARP_DECONV_RADIUS_3, stage));
     }
 
-    public static float getSharpDeconvDamping() {
-        return sharpFloat(Key.KEY_SHARP_DECONV_DAMPING);
+    public static float getSharpDeconvAmount(int stage) {
+        return sharpFloat(stageKey(Key.KEY_SHARP_DECONV_AMOUNT_1,
+                Key.KEY_SHARP_DECONV_AMOUNT_2, Key.KEY_SHARP_DECONV_AMOUNT_3, stage));
+    }
+
+    public static int getSharpDeconvIterations(int stage) {
+        return sharpInt(stageKey(Key.KEY_SHARP_DECONV_ITERATIONS_1,
+                Key.KEY_SHARP_DECONV_ITERATIONS_2, Key.KEY_SHARP_DECONV_ITERATIONS_3, stage));
+    }
+
+    public static float getSharpDeconvDamping(int stage) {
+        return sharpFloat(stageKey(Key.KEY_SHARP_DECONV_DAMPING_1,
+                Key.KEY_SHARP_DECONV_DAMPING_2, Key.KEY_SHARP_DECONV_DAMPING_3, stage));
+    }
+
+    public static float getSharpDeconvHalo() {
+        return sharpFloat(Key.KEY_SHARP_DECONV_HALO);
+    }
+
+    public static float getSharpDeconvHaloMargin() {
+        return sharpFloat(Key.KEY_SHARP_DECONV_HALO_MARGIN);
+    }
+
+    public static float getSharpDeconvHaloMacro() {
+        return sharpFloat(Key.KEY_SHARP_DECONV_HALO_MACRO);
     }
 
     public static float getSharpMicroAmount() {
@@ -1184,10 +1210,24 @@ public class PreferenceKeys {
         KEY_SHARP_EDGES_TOLERANCE(R.string.pref_sharp_edges_tolerance_key),
         KEY_SHARP_HALO_CONTROL(R.string.pref_sharp_halo_control_key),
         KEY_SHARP_HALO_AMOUNT(R.string.pref_sharp_halo_amount_key),
-        KEY_SHARP_DECONV_RADIUS(R.string.pref_sharp_deconv_radius_key),
-        KEY_SHARP_DECONV_AMOUNT(R.string.pref_sharp_deconv_amount_key),
-        KEY_SHARP_DECONV_ITERATIONS(R.string.pref_sharp_deconv_iterations_key),
-        KEY_SHARP_DECONV_DAMPING(R.string.pref_sharp_deconv_damping_key),
+        KEY_SHARP_DECONV_HALO(R.string.pref_sharp_deconv_halo_key),
+        KEY_SHARP_DECONV_HALO_MARGIN(R.string.pref_sharp_deconv_halo_margin_key),
+        KEY_SHARP_DECONV_HALO_MACRO(R.string.pref_sharp_deconv_halo_macro_key),
+        KEY_SHARP_DECONV_KERNEL_1(R.string.pref_sharp_deconv_kernel_1_key),
+        KEY_SHARP_DECONV_RADIUS_1(R.string.pref_sharp_deconv_radius_1_key),
+        KEY_SHARP_DECONV_AMOUNT_1(R.string.pref_sharp_deconv_amount_1_key),
+        KEY_SHARP_DECONV_ITERATIONS_1(R.string.pref_sharp_deconv_iterations_1_key),
+        KEY_SHARP_DECONV_DAMPING_1(R.string.pref_sharp_deconv_damping_1_key),
+        KEY_SHARP_DECONV_KERNEL_2(R.string.pref_sharp_deconv_kernel_2_key),
+        KEY_SHARP_DECONV_RADIUS_2(R.string.pref_sharp_deconv_radius_2_key),
+        KEY_SHARP_DECONV_AMOUNT_2(R.string.pref_sharp_deconv_amount_2_key),
+        KEY_SHARP_DECONV_ITERATIONS_2(R.string.pref_sharp_deconv_iterations_2_key),
+        KEY_SHARP_DECONV_DAMPING_2(R.string.pref_sharp_deconv_damping_2_key),
+        KEY_SHARP_DECONV_KERNEL_3(R.string.pref_sharp_deconv_kernel_3_key),
+        KEY_SHARP_DECONV_RADIUS_3(R.string.pref_sharp_deconv_radius_3_key),
+        KEY_SHARP_DECONV_AMOUNT_3(R.string.pref_sharp_deconv_amount_3_key),
+        KEY_SHARP_DECONV_ITERATIONS_3(R.string.pref_sharp_deconv_iterations_3_key),
+        KEY_SHARP_DECONV_DAMPING_3(R.string.pref_sharp_deconv_damping_3_key),
         KEY_SHARP_MICRO_AMOUNT(R.string.pref_sharp_micro_amount_key),
         KEY_SHARP_MICRO_UNIFORMITY(R.string.pref_sharp_micro_uniformity_key),
         KEY_SHARP_MICRO_CONTRAST(R.string.pref_sharp_micro_contrast_key),

@@ -116,18 +116,43 @@ public class RTSharpening extends Node {
     }
 
     private GLTexture runDeconvolution(GLTexture input) {
-        int iterations = Math.max(1, PreferenceKeys.getSharpDeconvIterations());
-        float radius = PreferenceKeys.getSharpDeconvRadius();
-        // RT: damping = deconvdamping / 5, and zero disables the damping branch.
-        float damping = PreferenceKeys.getSharpDeconvDamping() / 5.0f;
-        float amount = PreferenceKeys.getSharpDeconvAmount() / 100.0f;
-        Log.d(Name, "RT RL deconvolution: radius=" + radius + " amount=" + amount
-                + " iterations=" + iterations + " damping=" + damping);
+        // Three independent stages, each with its own PSF shape, radius,
+        // strength, iteration count and damping. Blur in a real frame has more
+        // than one cause and they have different shapes: diffraction is an Airy
+        // pattern, defocus is a uniform disc, everything residual is roughly
+        // gaussian. One kernel fitted to all three either under-corrects the
+        // structure it does not match or rings on the structure it does.
+        //
+        // A stage with amount or iterations at zero is skipped, so a single
+        // stage behaves exactly as before.
+        GLTexture cur = input;
+        boolean ran = false;
+        for (int stage = 1; stage <= 3; stage++) {
+            int iterations = PreferenceKeys.getSharpDeconvIterations(stage);
+            float amount = PreferenceKeys.getSharpDeconvAmount(stage) / 100.0f;
+            if (iterations <= 0 || amount <= 0.0f) {
+                Log.d(Name, "RL stage " + stage + ": skipped (iterations=" + iterations
+                        + " amount=" + amount + ")");
+                continue;
+            }
+            cur = runDeconvolutionStage(cur, stage, iterations, amount);
+            ran = true;
+        }
+        return ran ? cur : input;
+    }
 
-        // Two single-channel-in-a-vec3 buffers for the estimate, one for the
-        // per-iteration ratio. RT keeps three float planes for the same reason:
-        // each half of an iteration needs a neighbourhood of the other's output,
-        // so neither can be done in place.
+    private GLTexture runDeconvolutionStage(GLTexture input, int stage,
+                                            int iterations, float amount) {
+        float radius = PreferenceKeys.getSharpDeconvRadius(stage);
+        // RT: damping = deconvdamping / 5, and zero disables the damping branch.
+        float damping = PreferenceKeys.getSharpDeconvDamping(stage) / 5.0f;
+        int kernel = PreferenceKeys.getSharpDeconvKernel(stage);
+        Log.d(Name, "RL stage " + stage + ": kernel=" + kernel + " radius=" + radius
+                + " amount=" + amount + " iterations=" + iterations + " damping=" + damping);
+
+        // Two buffers for the estimate, one for the per-iteration ratio: each
+        // half of an iteration needs a neighbourhood of the other's output, so
+        // neither can be done in place.
         GLFormat fmt = new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim);
         GLTexture estimate = new GLTexture(basePipeline.mParameters.rawSize, fmt, null,
                 GL_NEAREST, GL_CLAMP_TO_EDGE);
@@ -147,6 +172,7 @@ public class RTSharpening extends Node {
                 glProg.useAssetProgram("sharpening/rtdeconv1");
                 glProg.setVar("radius", radius);
                 glProg.setVar("damping", damping);
+                glProg.setVar("kernelType", kernel);
                 glProg.setTexture("EstimateBuffer", estimate);
                 glProg.setTexture("OriginalBuffer", input);
                 glProg.drawBlocks(ratio);
@@ -155,6 +181,7 @@ public class RTSharpening extends Node {
                 glProg.setDefine("INSIZE", basePipeline.mParameters.rawSize);
                 glProg.useAssetProgram("sharpening/rtdeconv2");
                 glProg.setVar("radius", radius);
+                glProg.setVar("kernelType", kernel);
                 glProg.setTexture("RatioBuffer", ratio);
                 glProg.setTexture("EstimateBuffer", estimate);
                 glProg.drawBlocks(estimateNext);
@@ -169,6 +196,12 @@ public class RTSharpening extends Node {
             glProg.useAssetProgram("sharpening/rtdeconvblend");
             glProg.setVar("amount", amount);
             glProg.setVar("contrastThreshold", PreferenceKeys.getSharpContrast() / 100.0f);
+            // Halo suppression is shared by all three stages: it bounds the
+            // overshoot the iteration produces at edges, which is the same
+            // mechanism whatever kernel caused it.
+            glProg.setVar("haloSuppression", PreferenceKeys.getSharpDeconvHalo() / 100.0f);
+            glProg.setVar("haloTextureMargin", PreferenceKeys.getSharpDeconvHaloMargin());
+            glProg.setVar("haloMacroThreshold", PreferenceKeys.getSharpDeconvHaloMacro());
             glProg.setTexture("InputBuffer", input);
             glProg.setTexture("EstimateBuffer", estimate);
             out = basePipeline.getMain();

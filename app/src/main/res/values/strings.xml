@@ -230,10 +230,6 @@
     <string name="pref_sharp_edges_radius_default">1.9</string>
     <string name="pref_sharp_edges_tolerance_default">1800</string>
     <string name="pref_sharp_halo_amount_default">85</string>
-    <string name="pref_sharp_deconv_radius_default">0.75</string>
-    <string name="pref_sharp_deconv_amount_default">100</string>
-    <string name="pref_sharp_deconv_iterations_default">10</string>
-    <string name="pref_sharp_deconv_damping_default">0</string>
     <string name="pref_sharp_micro_amount_default">20</string>
     <string name="pref_sharp_micro_uniformity_default">5</string>
     <string name="pref_sharp_micro_contrast_default">20</string>
@@ -272,14 +268,6 @@
     <string name="sharp_halo_amount_desc">RawTherapee: 85</string>
     <string name="sharp_deconv_section">RL-деконволюция</string>
     <string name="sharp_deconv_description">Итеративно восстанавливает изображение по гауссовой модели размытия. Каждая итерация — два прохода по всему кадру, время растёт линейно.</string>
-    <string name="sharp_deconv_radius">Радиус</string>
-    <string name="sharp_deconv_radius_desc">Сигма предполагаемого размытия. RawTherapee: 0.75</string>
-    <string name="sharp_deconv_amount">Сила, %</string>
-    <string name="sharp_deconv_amount_desc">Насколько результат подмешивается к исходнику. RawTherapee: 100</string>
-    <string name="sharp_deconv_iterations">Итерации</string>
-    <string name="sharp_deconv_iterations_desc">RawTherapee: 30. Здесь по умолчанию 10 — на 12 Мп каждая итерация стоит двух полноразмерных проходов</string>
-    <string name="sharp_deconv_damping">Затухание</string>
-    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом, иначе итерации усиливают его. RawTherapee: 0</string>
     <string name="sharp_micro_section">Микроконтраст</string>
     <string name="sharp_micro_description">Метод Manuel Llorens: подъём мелкой структуры с проверкой на перелёт по соседям, поэтому ореолы не образуются.</string>
     <string name="sharp_micro_amount">Сила</string>
@@ -298,4 +286,55 @@
     <string name="sharp_usm_enabled">Включить Unsharp Mask</string>
     <string name="sharp_deconv_enabled">Включить RL-деконволюцию</string>
     <string name="sharp_micro_enabled">Включить микроконтраст</string>
+
+    <!-- Richardson-Lucy, three staged PSFs -->
+    <string name="pref_sharp_deconv_halo_default">100</string>
+    <string name="pref_sharp_deconv_halo_margin_default">0.15</string>
+    <string name="pref_sharp_deconv_halo_macro_default">0.4</string>
+    <string name="pref_sharp_deconv_kernel_1_default">2</string>
+    <string name="pref_sharp_deconv_radius_1_default">1.0</string>
+    <string name="pref_sharp_deconv_amount_1_default">100</string>
+    <string name="pref_sharp_deconv_iterations_1_default">3</string>
+    <string name="pref_sharp_deconv_damping_1_default">0</string>
+    <string name="pref_sharp_deconv_kernel_2_default">1</string>
+    <string name="pref_sharp_deconv_radius_2_default">0.0</string>
+    <string name="pref_sharp_deconv_amount_2_default">0</string>
+    <string name="pref_sharp_deconv_iterations_2_default">0</string>
+    <string name="pref_sharp_deconv_damping_2_default">0</string>
+    <string name="pref_sharp_deconv_kernel_3_default">0</string>
+    <string name="pref_sharp_deconv_radius_3_default">0.5</string>
+    <string name="pref_sharp_deconv_amount_3_default">150</string>
+    <string name="pref_sharp_deconv_iterations_3_default">3</string>
+    <string name="pref_sharp_deconv_damping_3_default">0</string>
+    <string name="sharp_deconv_halo_section">Подавление ореолов (общее)</string>
+    <string name="sharp_deconv_halo_description">Деконволюция по своей природе даёт выброс на кромках: итерация возвращает энергию, размытую оптикой, и у ступеньки возвращает больше, чем было. Результат ограничивается окрестностью, из которой он получен.</string>
+    <string name="sharp_deconv_halo">Сила, %</string>
+    <string name="sharp_deconv_halo_margin">Запас на текстуру</string>
+    <string name="sharp_deconv_halo_margin_desc">Доля локального размаха, которую разрешено пройти свободно — мелкая фактура не ограничивается</string>
+    <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
+    <string name="sharp_deconv_halo_macro_desc">Локальный контраст, выше которого подавление работает в полную силу</string>
+    <string name="sharp_deconv_kernel">Тип ядра PSF</string>
+    <string name="sharp_deconv_kernel_desc">Форма функции рассеяния точки для этой ступени</string>
+    <string-array name="sharp_deconv_kernel_entries">
+        <item>Гаусс (классика)</item>
+        <item>Оптика / линза (Pillbox)</item>
+        <item>Диск Эйри (волновая дифракция)</item>
+    </string-array>
+    <string-array name="sharp_deconv_kernel_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string name="sharp_deconv_stage1">Ступень 1 — дифракция</string>
+    <string name="sharp_deconv_stage1_desc">Дифракция на зрачке объектива: диск Эйри, широкий и слабый. Работает на всём кадре одинаково.</string>
+    <string name="sharp_deconv_stage2">Ступень 2 — расфокус</string>
+    <string name="sharp_deconv_stage2_desc">Геометрический расфокус: равномерный диск с резким краем. По умолчанию выключена — включать, когда промах фокуса виден.</string>
+    <string name="sharp_deconv_stage3">Ступень 3 — микрофактура</string>
+    <string name="sharp_deconv_stage3_desc">Остаточное размытие: АА-фильтр сенсора, демозаик, мелкое движение. Гаусс малого радиуса.</string>
+    <string name="sharp_deconv_radius">Радиус</string>
+    <string name="sharp_deconv_amount">Сила, %</string>
+    <string name="sharp_deconv_iterations">Итерации</string>
+    <string name="sharp_deconv_iterations_desc">0 отключает ступень. Каждая итерация — два полноразмерных прохода</string>
+    <string name="sharp_deconv_damping">Затухание</string>
+    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом</string>
 </resources>
