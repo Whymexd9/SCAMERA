@@ -388,7 +388,6 @@
     <string name="pref_tone_pyramid_levels_default">6</string>
     <string name="pref_tone_resolution_divisor_default">4</string>
     <string name="pref_tone_target_luma_default">0.6</string>
-    <string name="pref_zsl_buffer_count_default">8</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
     <string name="raisr">Nano RAISR — ресамплинг</string>
     <string name="raisr_aliasing">Подавление алиасинга, %</string>
@@ -439,7 +438,6 @@
     <string name="tone_mapping_summary">Simple RawTherapee-style image controls</string>
     <string name="v7_preference_off">OFF</string>
     <string name="v7_preference_on">ON</string>
-    <string name="zsl_buffer_count_summary">0 uses PSL; 1–100 keeps this many pre-shutter RAW frames (high values require substantial RAM)</string>
     <string name="aces_custom_gamma">Пользовательская гамма</string>
     <string name="aces_enabled">Включить ACES</string>
     <string name="aces_enabled_summary">Заменяет стандартный финальный tone mapping единым ACES-преобразованием</string>
