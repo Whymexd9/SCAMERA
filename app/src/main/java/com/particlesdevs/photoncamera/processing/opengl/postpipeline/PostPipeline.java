@@ -73,6 +73,14 @@ public class PostPipeline extends GLBasePipeline {
      * need to know that instead of assuming 1.0. Ported with the inpainting group
      * from upstream PhotonCamera.
      */
+    /**
+     * Scene white above display white, measured by {@link AutoExposureCurve}
+     * (>= 1.0; 1.0 when whites already sit at display white). initial.glsl
+     * divides its input by it so whites anchor at 1.0 before the SDR tone
+     * chain, whose clamps would otherwise destroy the over-range highlight
+     * detail the inpaint-opposed reconstruction produced.
+     */
+    public float adaptiveWhitePoint = 1.0f;
     public float rawClipLevel = 1.0f;
     public boolean captureDemosaic = false;
     private boolean mCaptured = false;
@@ -171,6 +179,7 @@ public class PostPipeline extends GLBasePipeline {
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         exposureCurve = null;
+        adaptiveWhitePoint = 1.0f;
         rawClipLevel = 1.0f;
         Point rawSliced = parameters.rawSize;
         cropSize = new Point(parameters.rawSize);

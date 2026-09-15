@@ -7,6 +7,7 @@ uniform sampler2D LookupTable;
 uniform sampler2D FusionMap;
 uniform sampler2D IntenseCurve;
 uniform sampler2D ExposureCurve;
+uniform float adaptiveWhitePoint;
 uniform sampler2D GainMap;
 uniform sampler2D HSVMap;
 uniform sampler2D PostLut;
@@ -948,6 +949,15 @@ void main() {
     vec4 gains = textureBicubicHardware(GainMap, vec2(xy)/vec2(textureSize(InputBuffer, 0)));
     gains.rgb = vec3(gains.r,(gains.g+gains.b)/2.0,gains.a);
     float gainsVal = dot(gains.rgb,vec3(1.0/3.0));
+    #if EXPOCURVE == 1
+    // Adaptive white point: divide by the measured scene white so whites
+    // anchor at 1.0 before the SDR tone chain. Without it the chain's clamps
+    // destroy the over-range highlight detail the inpaint-opposed
+    // reconstruction produced, before the exposure curve could fold it in.
+    // The AE estimates its curve on this same divided domain.
+    // From matthew777777/PhotonCamera f07d5e9b.
+    sRGB /= adaptiveWhitePoint;
+    #endif
     sRGB = applyColorSpace(sRGB,tonemapGain, gainsVal);
     //sRGB = vec3(tonemapGain);
     #if LUT == 1
