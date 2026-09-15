@@ -42,6 +42,7 @@ final class LiveRawRenderer {
     private final int[] hist = new int[BINS];
 
     private float smoothedGain = 1.0f;
+    private int drawCount = 0;
 
     boolean isReady() {
         return !failed;
@@ -106,10 +107,17 @@ final class LiveRawRenderer {
         GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 8, pVertex);
         GLES20.glVertexAttribPointer(1, 2, GLES20.GL_FLOAT, false, 8, pTexCoord);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
-        GLES20.glDisableVertexAttribArray(0);
-        GLES20.glDisableVertexAttribArray(1);
+        // Do NOT disable the arrays: the main program binds its own attributes
+        // once at init and leaves them enabled for the life of the renderer, and
+        // on this device they resolve to locations 0 and 1 - the same ones used
+        // here. Disabling them left the ISP path with no vertex data whenever
+        // this path had drawn once.
         // Leave unit 0 selected: the caller's program expects it.
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        if ((drawCount++ % 120) == 0) {
+            Log.d("LiveRawRenderer", "drawing developed raw, frame " + frame.version
+                    + " gain=" + smoothedGain);
+        }
         return true;
     }
 
