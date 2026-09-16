@@ -533,6 +533,11 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
+    /** 0 nearest, 1 sharp, 2 balanced, 3 smooth. */
+    public static int getRemosaicProfile() {
+        return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
+    }
+
     /** Mosaic phase; the block grid does not always start at pixel 0. */
     public static int[] getRemosaicPhase() {
         return new int[]{ sharpInt(Key.KEY_REMOSAIC_PHASE_X), sharpInt(Key.KEY_REMOSAIC_PHASE_Y) };
@@ -1226,6 +1231,7 @@ public class PreferenceKeys {
         KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
         KEY_REMOSAIC_ENABLED(R.string.pref_remosaic_enabled_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
+        KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
         KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
         KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
         KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),

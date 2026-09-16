@@ -354,4 +354,20 @@
     <string name="remosaic_phase_x">Фаза по X</string>
     <string name="remosaic_phase_y">Фаза по Y</string>
     <string name="remosaic_phase_desc">Смещение сетки блоков. Неверная фаза даёт цветную сетку — подбирается по снимку</string>
+    <string name="pref_remosaic_profile_default">2</string>
+    <string name="remosaic_profile">Характер интерполяции</string>
+    <string name="remosaic_profile_desc">Сколько сглаживания вносит ремозаик</string>
+    <string-array name="remosaic_profile_entries">
+        <item>Ближайший отсчёт — без сглаживания</item>
+        <item>Резкий — узкое ядро</item>
+        <item>Сбалансированный</item>
+        <item>Мягкий — широкое ядро и медиана</item>
+    </string-array>
+    <string-array name="remosaic_profile_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string name="remosaic_profile_note">Усреднение связывает шум соседних пикселей, а склейка нескольких кадров рассчитана на независимый шум. Широкое ядро даёт чище одиночный кадр, узкое — честнее шум для склейки. «Ближайший отсчёт» не интерполирует вовсе: блочно на вид, зато каждый пиксель несёт шум одного исходного.</string>
 </resources>

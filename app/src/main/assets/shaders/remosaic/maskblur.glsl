@@ -16,7 +16,15 @@ uniform sampler2D InputBuffer;
 uniform ivec2 size;
 /** 0 horizontal, 1 vertical. */
 uniform int axis;
-/** 5 for quad bayer, 9 for tetra squared. */
+/**
+ * Width of the flat kernel. 9 covers a tetra block, 5 a quad block, 1 means no
+ * convolution at all - the sample itself, if it exists.
+ *
+ * Smaller is not simply worse. Averaging correlates the noise between
+ * neighbouring pixels, and a multi-frame merge downstream expects noise to be
+ * independent per pixel: too much smoothing here and the merge misreads it. A
+ * narrow kernel looks blockier on its own but leaves the noise honest.
+ */
 uniform int kernelSize;
 /** Final pass divides, intermediate passes do not. */
 uniform int divide;
@@ -24,6 +32,7 @@ uniform int divide;
 out vec4 Output;
 
 float weightAt(int i, int n) {
+    if (n <= 1) return 1.0;
     // [1,2,2,2,1]/8 for n=5, [1,2,...,2,1]/16 for n=9: flat inside, half at the
     // ends. A flat kernel over exactly one block period averages each block
     // evenly; the tapered ends stop the block edges from stepping.

@@ -59,7 +59,18 @@ public class Remosaic extends Node {
         Point rawSize = basePipeline.mParameters.rawSize;
 
         int blockSize = PreferenceKeys.getRemosaicBlockSize();
-        int kernelSize = blockSize == 2 ? 5 : 9;
+        int profile = PreferenceKeys.getRemosaicProfile();
+        // Profile picks how much the interpolation smooths. The widest kernel
+        // gives the cleanest single frame; the narrowest keeps per-pixel noise
+        // independent, which matters when a merge runs after this.
+        int kernelSize;
+        boolean useMedian;
+        switch (profile) {
+            case 0: kernelSize = 1; useMedian = false; break;                  // nearest
+            case 1: kernelSize = blockSize == 2 ? 3 : 5; useMedian = false; break; // sharp
+            case 3: kernelSize = blockSize == 2 ? 5 : 9; useMedian = true;  break; // smooth
+            default: kernelSize = blockSize == 2 ? 5 : 9; useMedian = false; break; // balanced
+        }
         int[] phase = PreferenceKeys.getRemosaicPhase();
         int[] quad = quadColorsFor(basePipeline.mParameters.cfaPattern);
         float black = averageBlackLevel();
@@ -69,7 +80,8 @@ public class Remosaic extends Node {
             WorkingTexture = previousNode.WorkingTexture;
             return;
         }
-        Log.d(Name, "remosaic: block=" + blockSize + " kernel=" + kernelSize
+        Log.d(Name, "remosaic: block=" + blockSize + " profile=" + profile
+                + " kernel=" + kernelSize + " median=" + useMedian
                 + " phase=" + phase[0] + "," + phase[1]
                 + " cfa=" + basePipeline.mParameters.cfaPattern
                 + " black=" + black + " white=" + white);
@@ -100,13 +112,17 @@ public class Remosaic extends Node {
 
             maskStage(raw, green, masked, rawSize, 1, blockSize, phase, quad, black, white, gainB, gainR);
             maskBlur(masked, tmp, diffB, rawSize, kernelSize);
-            median(diffB, tmp, rawSize);
-            swapInto(tmp, diffB, rawSize);
+            if (useMedian) {
+                median(diffB, tmp, rawSize);
+                swapInto(tmp, diffB, rawSize);
+            }
 
             maskStage(raw, green, masked, rawSize, 2, blockSize, phase, quad, black, white, gainB, gainR);
             maskBlur(masked, tmp, diffR, rawSize, kernelSize);
-            median(diffR, tmp, rawSize);
-            swapInto(tmp, diffR, rawSize);
+            if (useMedian) {
+                median(diffR, tmp, rawSize);
+                swapInto(tmp, diffR, rawSize);
+            }
 
             // Assemble straight into the stack frame the rest of the pipeline reads.
             // Integer target: the assembly has its own shader declaring uvec4,
