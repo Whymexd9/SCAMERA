@@ -65,6 +65,10 @@ public class Remosaic extends Node {
         float black = averageBlackLevel();
         float white = (float) basePipeline.mParameters.whiteLevel;
 
+        if (!PreferenceKeys.isRemosaicEnabled()) {
+            WorkingTexture = previousNode.WorkingTexture;
+            return;
+        }
         Log.d(Name, "remosaic: block=" + blockSize + " kernel=" + kernelSize
                 + " phase=" + phase[0] + "," + phase[1]
                 + " cfa=" + basePipeline.mParameters.cfaPattern
@@ -84,6 +88,11 @@ public class Remosaic extends Node {
             float[] gains = measureGains(raw, rawSize, blockSize, phase, quad, black, white);
             float gainB = gains[0], gainR = gains[1];
             Log.d(Name, "white balance alignment: gainB=" + gainB + " gainR=" + gainR);
+            // Green coverage tells whether the mask actually matched the mosaic:
+            // a correct block size and phase put green on half the sites. Far
+            // from 0.5 means the pattern assumed here is not the one in the frame,
+            // and the interpolation below is working on the wrong sites.
+            Log.d(Name, "green coverage=" + gains[2] + " (0.5 expected)");
 
             // Green first: the differences below are taken against it.
             maskStage(raw, null, masked, rawSize, 0, blockSize, phase, quad, black, white, 1.f, 1.f);
@@ -115,6 +124,9 @@ public class Remosaic extends Node {
             // From here the frame is ordinary bayer: report the 2x2 pattern so
             // the demosaic and the DNG writer stop treating it as a mosaic.
             basePipeline.mSettings.cfaPattern = (byte) basePipeline.mParameters.cfaPattern;
+            // Bayer2Float builds its input from stackFrame, so hand the result
+            // over explicitly - WorkingTexture alone would be ignored.
+            pipeline.remosaicOutput = out;
             WorkingTexture = out;
             raw.close();
         } finally {
@@ -162,7 +174,7 @@ public class Remosaic extends Node {
                 sumR += f.get(i * 4 + 2);
                 cntG += f.get(i * 4 + 3);
             }
-            if (cntG <= 0) return new float[]{1.f, 1.f};
+            if (cntG <= 0) return new float[]{1.f, 1.f, 0.f};
             // Green samples are twice as many as B or R in every pattern here,
             // so their count follows from the green count.
             double cntC = cntG * 0.5;
@@ -175,7 +187,8 @@ public class Remosaic extends Node {
             // clamping keeps a pathological scene from wrecking the frame.
             gb = Math.min(Math.max(gb, 0.1f), 10.f);
             gr = Math.min(Math.max(gr, 0.1f), 10.f);
-            return new float[]{gb, gr};
+            double total = (double) rawSize.x * rawSize.y;
+            return new float[]{gb, gr, (float) (cntG / Math.max(total, 1))};
         } finally {
             grid.close();
         }

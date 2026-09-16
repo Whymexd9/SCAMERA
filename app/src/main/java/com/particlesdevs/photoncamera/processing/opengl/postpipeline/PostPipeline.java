@@ -81,6 +81,13 @@ public class PostPipeline extends GLBasePipeline {
      * detail the inpaint-opposed reconstruction produced.
      */
     public float adaptiveWhitePoint = 1.0f;
+    /**
+     * Set by Remosaic: the frame it produced, already rearranged into plain
+     * bayer. Bayer2Float builds its input from stackFrame directly, so without
+     * this the remosaic result is discarded and the mosaic reaches the demosaic
+     * untouched.
+     */
+    public GLTexture remosaicOutput = null;
     public float rawClipLevel = 1.0f;
     public boolean captureDemosaic = false;
     private boolean mCaptured = false;
@@ -179,6 +186,7 @@ public class PostPipeline extends GLBasePipeline {
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         exposureCurve = null;
+        remosaicOutput = null;
         adaptiveWhitePoint = 1.0f;
         rawClipLevel = 1.0f;
         Point rawSliced = parameters.rawSize;

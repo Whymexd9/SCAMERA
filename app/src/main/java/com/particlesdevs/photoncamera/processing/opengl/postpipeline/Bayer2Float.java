@@ -52,7 +52,13 @@ public class Bayer2Float extends Node {
         Point rawSize = basePipeline.mParameters.rawSize;
 
         GLTexture in;
-        if(basePipeline.mSettings.alignAlgorithm != 2) {
+        boolean remosaiced = postPipeline.remosaicOutput != null;
+        if (remosaiced) {
+            // Remosaic already turned the mosaic into plain bayer; taking
+            // stackFrame here would throw that away and hand the demosaic the
+            // original block pattern.
+            in = postPipeline.remosaicOutput;
+        } else if(basePipeline.mSettings.alignAlgorithm != 2) {
             in = new GLTexture(rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16),
                     ((PostPipeline) (basePipeline)).stackFrame, GL_NEAREST, GL_MIRRORED_REPEAT);
         } else {
@@ -161,7 +167,9 @@ public class Bayer2Float extends Node {
         basePipeline.main3 = new GLTexture(wsize, new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         ((PostPipeline) basePipeline).GainMap = GainMapTex;
         glProg.closed = true;
-        in.close();
+        // The remosaic output belongs to the pipeline, not to this node.
+        if (!remosaiced) in.close();
+        else postPipeline.remosaicOutput = null;
         //GainMapTex.close();
     }
 }
