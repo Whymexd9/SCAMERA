@@ -109,13 +109,20 @@ public class Remosaic extends Node {
             swapInto(tmp, diffR, rawSize);
 
             // Assemble straight into the stack frame the rest of the pipeline reads.
-            glProg.useAssetProgram("remosaic/stages");
+            // Integer target: the assembly has its own shader declaring uvec4,
+            // since writing vec4 into R16UI does not land as the float suggests.
+            glProg.useAssetProgram("remosaic/assemble");
             glProg.setTexture("RawBuffer", raw);
             glProg.setTexture("GreenBuffer", green);
             glProg.setTexture("DiffBBuffer", diffB);
             glProg.setTexture("DiffRBuffer", diffR);
-            setCommon(rawSize, blockSize, phase, quad, black, white, gainB, gainR);
-            glProg.setVar("stage", 3);
+            glProg.setVar("blockSize", blockSize);
+            glProg.setVar("phase", phase[0], phase[1]);
+            glProg.setVar("quadColors", quad[0], quad[1], quad[2], quad[3]);
+            glProg.setVar("blackLevel", black);
+            glProg.setVar("whiteLevel", white);
+            glProg.setVar("gainB", gainB);
+            glProg.setVar("gainR", gainR);
             GLTexture out = new GLTexture(rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16),
                     null, GL_NEAREST, GL_MIRRORED_REPEAT);
             glProg.drawBlocks(out);
@@ -200,8 +207,6 @@ public class Remosaic extends Node {
         glProg.useAssetProgram("remosaic/stages");
         glProg.setTexture("RawBuffer", raw);
         glProg.setTexture("GreenBuffer", green != null ? green : raw);
-        glProg.setTexture("DiffBBuffer", raw);
-        glProg.setTexture("DiffRBuffer", raw);
         setCommon(size, blockSize, phase, quad, black, white, gainB, gainR);
         glProg.setVar("stage", stage);
         glProg.drawBlocks(out);
