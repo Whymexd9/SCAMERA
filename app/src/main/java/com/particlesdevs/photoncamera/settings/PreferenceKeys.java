@@ -524,6 +524,20 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", key).intValue();
     }
 
+    public static boolean isRemosaicEnabled() {
+        return getBool(Key.KEY_REMOSAIC_ENABLED);
+    }
+
+    /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
+    public static int getRemosaicBlockSize() {
+        return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
+    }
+
+    /** Mosaic phase; the block grid does not always start at pixel 0. */
+    public static int[] getRemosaicPhase() {
+        return new int[]{ sharpInt(Key.KEY_REMOSAIC_PHASE_X), sharpInt(Key.KEY_REMOSAIC_PHASE_Y) };
+    }
+
     public static boolean isSharpUsmEnabled() {
         return getBool(Key.KEY_SHARP_USM_ENABLED);
     }
@@ -1210,6 +1224,10 @@ public class PreferenceKeys {
         KEY_PROCESSING_BACKEND(R.string.pref_processing_backend_key),
         KEY_CONTRAST_SEEKBAR(R.string.pref_contrast_seekbar_key),
         KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
+        KEY_REMOSAIC_ENABLED(R.string.pref_remosaic_enabled_key),
+        KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
+        KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
+        KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
         KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),
         KEY_SHARP_DECONV_ENABLED(R.string.pref_sharp_deconv_enabled_key),
         KEY_SHARP_MICRO_ENABLED(R.string.pref_sharp_micro_enabled_key),

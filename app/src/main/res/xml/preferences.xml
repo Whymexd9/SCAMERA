@@ -196,6 +196,13 @@
         </PreferenceCategory>
     </PreferenceScreen>
     <PreferenceScreen android:order="80" android:icon="@drawable/ic_grain_black_24dp" android:title="@string/sharp_settings" android:key="sharp_settings_screen" android:summary="@string/sharp_settings_summary">
+        <PreferenceCategory android:layout="@layout/preference_category_layout" android:title="@string/remosaic_section">
+            <Preference android:selectable="false" android:summary="@string/remosaic_description" />
+            <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:layout="@layout/preference_with_margin" android:title="@string/remosaic_enabled" android:key="@string/pref_remosaic_enabled_key" android:summary="@string/remosaic_enabled_desc" android:defaultValue="@bool/pref_remosaic_enabled_default" />
+            <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_numeric" android:title="@string/remosaic_block" android:key="@string/pref_remosaic_block_key" android:summary="@string/remosaic_block_desc" android:defaultValue="@string/pref_remosaic_block_default" app:maxValue="4" app:minValue="2" />
+            <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_numeric" android:title="@string/remosaic_phase_x" android:key="@string/pref_remosaic_phase_x_key" android:summary="@string/remosaic_phase_desc" android:defaultValue="@string/pref_remosaic_phase_default" app:maxValue="7" app:minValue="0" />
+            <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_numeric" android:title="@string/remosaic_phase_y" android:key="@string/pref_remosaic_phase_y_key" android:defaultValue="@string/pref_remosaic_phase_default" app:maxValue="7" app:minValue="0" />
+        </PreferenceCategory>
         <PreferenceCategory android:layout="@layout/preference_category_layout" android:title="@string/sharp_settings">
             <Preference android:selectable="false" android:summary="@string/sharp_pipeline_desc" />
         </PreferenceCategory>

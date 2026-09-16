@@ -561,6 +561,12 @@ public class PostPipeline extends GLBasePipeline {
 
     private void BuildDefaultPipeline() {
         boolean nightMode = PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT;
+        // Before anything reads the frame as bayer: a quad or tetra mosaic has
+        // to be rearranged first, or every stage downstream decodes it at the
+        // wrong phase.
+        if (PreferenceKeys.isRemosaicEnabled()) {
+            add(new Remosaic());
+        }
         add(new Bayer2Float());
         if ("fusion".equals(tonePipeline)) {
             add(new ExposureFusionBayer2());

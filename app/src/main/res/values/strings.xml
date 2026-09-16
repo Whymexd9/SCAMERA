@@ -342,4 +342,16 @@
     <string name="zsl_buffer_count_summary">Сколько RAW-кадров до нажатия держать в кольце. 0 — следовать общему количеству кадров серии. Больше кадров даёт серии больше материала, но каждый занимает полноразмерный буфер в памяти. Каждый кадр — полноразмерный RAW, около 25 МБ: 100 кадров это порядка 2,5 ГБ, и до такого значения устройство почти наверняка не дойдёт.</string>
     <string name="live_viewfinder_raw">Живой видоискатель из RAW</string>
     <string name="live_viewfinder_raw_summary">Видоискатель проявляет RAW-поток сам: демозаик, уровни, баланс белого, цветовая матрица и тональная компрессия одним проходом на GPU. Светотень совпадает со снимком до спуска. Детализация склейки и MFSR в превью не появится — снимок останется чище. Работает в режиме ZSL: именно он держит RAW-поток, из которого берётся кадр</string>
+    <bool name="pref_remosaic_enabled_default">false</bool>
+    <string name="pref_remosaic_block_default">4</string>
+    <string name="pref_remosaic_phase_default">0</string>
+    <string name="remosaic_section">Ремозаик Quad / Tetra</string>
+    <string name="remosaic_description">Сенсор отдаёт цвет блоками — 2x2 отсчёта одного цвета у quad bayer, 4x4 у tetra². Демозаик, рассчитанный на обычный шаблон 2x2, разбирает такой кадр не в той фазе, отсюда пурпурный оттенок. Узел перестраивает мозаику в обычный байер до основной обработки, поэтому остальной тракт о ней знать не обязан.</string>
+    <string name="remosaic_enabled">Включить ремозаик</string>
+    <string name="remosaic_enabled_desc">Только для камер, отдающих quad или tetra мозаику</string>
+    <string name="remosaic_block">Размер блока</string>
+    <string name="remosaic_block_desc">2 — quad bayer, 4 — tetra² (телевик в 4x ISZ)</string>
+    <string name="remosaic_phase_x">Фаза по X</string>
+    <string name="remosaic_phase_y">Фаза по Y</string>
+    <string name="remosaic_phase_desc">Смещение сетки блоков. Неверная фаза даёт цветную сетку — подбирается по снимку</string>
 </resources>

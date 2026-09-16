@@ -144,4 +144,8 @@
     <string name="pref_sharp_deconv_damping_3_key" translatable="false">pref_sharp_deconv_damping_3_key</string>
     <string name="pref_zsl_buffer_count_key" translatable="false">pref_zsl_buffer_count_key</string>
     <string name="pref_live_viewfinder_raw_key" translatable="false">pref_live_viewfinder_raw_key</string>
+    <string name="pref_remosaic_enabled_key" translatable="false">pref_remosaic_enabled_key</string>
+    <string name="pref_remosaic_block_key" translatable="false">pref_remosaic_block_key</string>
+    <string name="pref_remosaic_phase_x_key" translatable="false">pref_remosaic_phase_x_key</string>
+    <string name="pref_remosaic_phase_y_key" translatable="false">pref_remosaic_phase_y_key</string>
 </resources>
