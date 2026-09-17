@@ -37,6 +37,6 @@ int main() {
         assert(rejected); // Nonfinite even in unused halo is fatal.
     }
     std::cout.rdbuf(old);
-    assert(messages.str().find("capture_enabled=0")!=std::string::npos);
+    assert(messages.str().find("diagnostic_only=1")!=std::string::npos);
     std::cout<<"HexQuad chart validation and fixed-buffer checks passed\n";
 }

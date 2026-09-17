@@ -26,3 +26,7 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-vst
           g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_charts.cpp -ldl -o /tmp/check-vivo-hexquad-charts
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-charts
+      - name: Check six-frame capture transport, alignment and tile assembly
+        run: |
+          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_capture.cpp -ldl -o /tmp/check-vivo-hexquad-capture
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-capture

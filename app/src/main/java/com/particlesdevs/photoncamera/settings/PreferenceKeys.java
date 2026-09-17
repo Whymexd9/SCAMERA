@@ -562,6 +562,11 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
     }
 
+    /** Separate six-frame experimental HP9 path, before ordinary RAW fusion. */
+    public static boolean isHexQuadCaptureEnabled() {
+        return isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
+    }
+
     public static int getRemosaicProfile() {
         return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
     }
@@ -1422,3 +1427,4 @@ public class PreferenceKeys {
         }
     }
 }
+

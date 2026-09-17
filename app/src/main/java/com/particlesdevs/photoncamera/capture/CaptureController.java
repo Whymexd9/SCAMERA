@@ -2096,7 +2096,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // Motion always keeps a real rolling RAW buffer. Bracketed Motion uses
         // those buffered frames for the regular stack and captures only the
         // requested long/short tail explicitly.
-        return PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
+        return !PreferenceKeys.isHexQuadCaptureEnabled()
+                && PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
                 && !IsoExpoSelector.HDR
                 && !isDualSession;
     }
@@ -2436,6 +2437,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     ? Math.max(0, Math.min(8, PreferenceKeys.getShortFrameCountValue())) : 0;
             int longFrameCount = denoiseFrameCount > 0
                     ? Math.max(0, Math.min(8, PreferenceKeys.getLongFrameCountValue())) : 0;
+            if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
+                denoiseFrameCount = 6;
+                shortFrameCount = 0;
+                longFrameCount = 0;
+                Log.i(TAG, "HP9 HexQuad x2: six real RAWs, equal exposure, no bracket/ZSL");
+            }
             if (hybridZslRequested) {
                 // Block preview RAWs first. Do not route them into ImageSaver:
                 // queued preview images would consume the bracket frame slots.
@@ -2744,7 +2751,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 Log.e(TAG, "runRaw:"+Log.getStackTraceString(e));
                                 cameraEventsListener.onProcessingError(e.getLocalizedMessage());
                             } finally {
-                                if (hybridZslRequested) {
+                                if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
+                denoiseFrameCount = 6;
+                shortFrameCount = 0;
+                longFrameCount = 0;
+                Log.i(TAG, "HP9 HexQuad x2: six real RAWs, equal exposure, no bracket/ZSL");
+            }
+            if (hybridZslRequested) {
                                     mHybridZslCapture = false;
                                     mZslCapturing = false;
                                     mPendingZslNormalFrames = new ArrayList<>();
@@ -2771,6 +2784,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (isDualSession)
                 createCameraPreviewSession(true);
             else {
+            if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
+                denoiseFrameCount = 6;
+                shortFrameCount = 0;
+                longFrameCount = 0;
+                Log.i(TAG, "HP9 HexQuad x2: six real RAWs, equal exposure, no bracket/ZSL");
+            }
             if (hybridZslRequested) {
                 // From this exact point onward every RAW belongs to the manual
                 // long/short burst and may safely enter ImageSaver.
@@ -3193,3 +3212,4 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     }
 }
+

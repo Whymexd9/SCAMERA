@@ -1,6 +1,7 @@
 #include "vivo-neural-layout-diagnostics.h"
 #include "vivo-hexquad-runtime.h"
 #include "vivo-hexquad-check.h"
+#include "vivo-hexquad-capture.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -13,9 +14,23 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v6 (TELE + HP9 HexQuad); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v7 (HP9 HexQuad x2 real burst); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
+        }
+        if(argc==5 && std::string(argv[1])=="--hexquad-capture") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(840);
+            {
+                vivo_hexquad::MappedBurst mapped(argv[3]);
+                auto& burst=mapped.burst;
+                vivo_nn::log("HP9 HEXQUAD CAPTURE v1: actual_frames=6; Tetra4x4; ISO="+std::to_string(burst.iso)+" CFA="+std::to_string(burst.red));
+                vivo_hexquad::HexSession session(2);session.init(argv[2]);
+                if(!vivo_hexquad::checkHexCharts(session,2,burst.red))
+                    throw std::runtime_error("HexQuad x2 colour/packing gate failed; no photograph produced");
+                vivo_hexquad::captureHex(session,burst,argv[4]);
+            }
+            alarm(0);vivo_nn::log("HEXQUAD CAPTURE OK");return 0;
         }
         if(argc==3 && std::string(argv[1])=="--hexquad-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
@@ -28,7 +43,7 @@ int main(int argc,char** argv) {
             }
             alarm(0);
             vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: chart_gate=")+(passed?"PASS":"FAIL")+
-                         "; capture remains disabled pending real burst validation");
+                         "; diagnostic only; experimental capture is a separate setting");
             return 0;
         }
         if(argc!=2 && argc!=7)throw std::runtime_error("Worker argument count");

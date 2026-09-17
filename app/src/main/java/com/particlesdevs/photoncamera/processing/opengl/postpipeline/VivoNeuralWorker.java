@@ -26,8 +26,9 @@ public final class VivoNeuralWorker {
     public static void main(String[] args) {
         int exit=1;
         try {
-            boolean hex=args.length==2 && args[1].equals("--hexquad");
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            boolean capture=args.length==4 && args[1].equals("--hexquad-capture");
+            boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(capture?"HP9 HexQuad x2 capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
             if(!hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             for(String[] item:hex?HEX_FILES:FILES){
                 File file=new File(args[0],item[0]);
@@ -42,7 +43,8 @@ public final class VivoNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(hex){command.add("--hexquad-check");command.add(args[0]);}
+            if(capture){command.add("--hexquad-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
+            else if(hex){command.add("--hexquad-check");command.add(args[0]);}
             else java.util.Collections.addAll(command,args);
             System.out.println("EXEC: native worker, bundled model/runtime, no JNI namespace");
             System.out.flush();

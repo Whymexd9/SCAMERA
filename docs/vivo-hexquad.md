@@ -1,9 +1,55 @@
 # HP9 HexQuad: bundled diagnostic and stock normal VST
 
-Status: the settings check runs the HP9 x1/x2 models with their bundled runtime.
-**HexQuad is not connected to capture yet.** A successful graph call or a passing
-synthetic chart alone is insufficient to enable real-frame processing. The old
-TELE capture backend and its acceptance threshold remain unchanged.
+Status: **experimental six-frame capture is connected through `hp9_hexquad`.**
+On Vivo V2454A the x2 model passed all twelve synthetic checks (worst RMSE
+0.011506); x1 failed one ISO400 colour patch (0.056333). Capture uses **x2 only**.
+Real-scene quality, speed and motion tolerance still need phone testing.
+
+## Test capture (v7 worker)
+
+Select **Алгоритм ремозаика → HP9 HexQuad x2 — NPU, 6 кадров (тест)** and
+turn remosaic on. Use Photo mode, HP9 tele 4× ISZ, block4, phase0,0, <=16 MP.
+The controller takes six real manual equal-exposure frames, bypasses ZSL, and
+omits short/long HDR brackets for this backend. Other backends are unchanged.
+The native job runs before ESD4D, not on an already fused image. Duplicate
+frames, incomplete buffers, missing measured exposure products, variable
+exposure, unsupported phase and wrong block size are rejected.
+
+Flow: packed RAW16 transport → average black subtraction / white normalization
+→ optional conservative site-response correction → 8×8 colour-independent
+guides → global/local translation registration → source-coordinate CFA tags
+→ six sparse RGB planes with stock normal VST → bundled x2 NPU → inverse VST
+→ overlapping tile assembly → Bayer16 → existing camera colour/JPEG pipeline.
+Only measured samples populate each 3-channel group; there is no RGB demosaic
+before the network. Unreliable warp samples are holes, never copies of frame0.
+
+Registration is our first implementation, **not the stock warp**: global
+translation search ±96 raw pixels and a local guide field refined to an integer
+raw-pixel sampling offset. It does not implement stock gyro/homography/optical
+flow. It may struggle with parallax, rolling shutter, large movement or thin
+moving objects. More than 40% missing samples rejects the whole result.
+
+The x2 graph emits 576² RGB from 288² RAW. We discard a 32-input-pixel halo,
+retain 224², use stride192 (32-pixel weighted overlap), and average each 2×2
+linear RGB block before selecting the output Bayer channel. Thus JPEG stays at
+the original RAW dimensions; **this is not a 50 MP output mode**. These tile
+choices are conservative app choices, not claimed stock-exact parameters.
+WB/colour matrix/lens shading remain downstream and are not applied twice.
+
+Every capture runs the unchanged colour threshold RMSE<=0.045 on x2, with the
+selected input CFA. All output must be finite; retained values must fit the
+same [-0.05,1.25] range used in diagnostics. Synthetic tests do not prove
+real-scene quality. No silent fallback is labelled neural on failure.
+The raw file is mapped read-only; no six full RGB images are allocated.
+The root worker has an 840-second hard timeout and the client a 900-second
+wait, with tile progress in **Vivo Neural — проверка**. This is a diagnostic
+ceiling, not an expected processing time. Root, bundled QNN2.29.8 and compatible
+V79/FastRPC are still required. It is not a generic GPU/other-SoC backend.
+
+Host tests cover four Bayer orientations, colour-preserving output encoding,
+uneven image sizes, overlap coverage, halo rejection, bad-output rejection,
+fixed QNN client-buffer storage, source tagging and known image translations.
+The actual HTP inference cannot be run on the host.
 
 ## Evidence and corrected tensor contract
 
@@ -52,8 +98,7 @@ fourth LUT plane. It accepts registered tagged frames; it does not align them.
 
 `FP32_FP32_GeneralNetPostprocessCL` scales and offsets network values, clamps the
 LUT index to 0..65535, truncates to ushort, right-shifts, then applies separate
-RGB inverse LUTs. Our boundary helper implements the non-overlap branch. Stock
-weighted overlap must accumulate before final clipping and is not implemented.
+RGB inverse LUTs. Our boundary helper implements the non-overlap branch. The capture adapter implements its own conservative weighted overlap after inverse VST; it does not claim stock-exact fusion.
 Neither the TELE square() decode nor an XML quantization scale is blindly reused.
 
 ## Normal-exposure VST validated against stock
@@ -100,9 +145,9 @@ NaN/Inf/unwritten values remain fatal anywhere. A chart passes at RMSE <= 0.045
 with no interior range violations. `HEX SUMMARY` distinguishes PASS from FAIL;
 completion of diagnostics never installs or enables a capture mapping.
 
-Next gates: inspect the phone report; establish actual ISO/exposure/WB and burst
-ordering; verify spatial phase and valid x2 crop; integrate registered RAW bursts
-and overlap; check motion, seams, memory and timeouts before enabling capture.
+Remaining device checks: compare real photographs at identical exposure/focus;
+verify ISO calibration, thin detail, colour, residual CFA pattern, motion, tile
+seams, peak memory and elapsed time. Experimental capture is explicitly opt-in.
 
 ## Building and checks
 

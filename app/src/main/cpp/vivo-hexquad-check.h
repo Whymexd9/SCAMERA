@@ -40,7 +40,7 @@ inline HexScore scoreChart(const std::vector<float>& network, const IvstLuts& in
     return result;
 }
 
-template<class Network> bool checkHexCharts(Network& session,int scale) {
+template<class Network> bool checkHexCharts(Network& session,int scale,int red=0) {
     bool passed=true;double worst=0;
     for(int iso:{100,400}) {
         NormalVst transfer(iso);VstLuts forward;auto inverse=transfer.inverse();
@@ -50,11 +50,11 @@ template<class Network> bool checkHexCharts(Network& session,int scale) {
         for(auto& frame:frames)frame={raw.data(),raw.size(),288,288,288};
         for(int chart=0;chart<6;++chart) {
             vivo_nn::log("HEX CHART: x"+std::to_string(scale)+" ISO="+std::to_string(iso)+
-                         " chart="+std::to_string(chart)+" CFA=4x4 RGGB frames=6 static");
+                         " chart="+std::to_string(chart)+" CFA=4x4 red="+std::to_string(red)+" frames=6 static");
             for(int y=0;y<288;++y)for(int x=0;x<288;++x) {
-                int c=tagSource(0,x,y,0)>>14;
+                int c=tagSource(0,x,y,red)>>14;
                 auto value=uint16_t(std::lround(chartValue(chart,c,float(x),float(y))*16383.f));
-                raw[y*288+x]=tagSource(value,x,y,0);
+                raw[y*288+x]=tagSource(value,x,y,red);
             }
             // Copy into the already-bound client buffer: never replace its
             // allocation after QNN descriptors have captured input.data().
@@ -70,7 +70,7 @@ template<class Network> bool checkHexCharts(Network& session,int scale) {
         }
     }
     vivo_nn::log("HEX SUMMARY: x"+std::to_string(scale)+" worst_RMSE="+std::to_string(worst)+
-                 " chart_gate="+(passed?"PASS":"FAIL")+" capture_enabled=0");
+                 " chart_gate="+(passed?"PASS":"FAIL")+" diagnostic_only=1");
     return passed;
 }
 } // namespace vivo_hexquad

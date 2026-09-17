@@ -17,12 +17,15 @@ public final class VivoNeuralClient {
     private VivoNeuralClient() {}
     private static String quote(String s) { return "'"+s.replace("'","'\\''")+"'"; }
     public static synchronized void selfTest(Context context,Consumer<String> log) throws Exception {
-        job(context,null,0,0,0,true,log);
+        job(context,null,0,0,0,true,null,log);
     }
     public static synchronized ByteBuffer process(Context context,ByteBuffer raw,int w,int h,int redQuad) throws Exception {
-        return job(context,raw,w,h,redQuad,false,line->Log.d("VivoNeural",line));
+        return job(context,raw,w,h,redQuad,false,null,line->Log.d("VivoNeural",line));
     }
-    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,Consumer<String> observer) throws Exception {
+    static synchronized ByteBuffer processBurst(Context context,HexQuadBurst burst) throws Exception {
+        return job(context,null,burst.width,burst.height,burst.red,true,burst,line->Log.d("VivoNeural",line));
+    }
+    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,HexQuadBurst burst,Consumer<String> observer) throws Exception {
         if(raw!=null && (w<8||h<8||w%8!=0||h%8!=0||(long)w*h>16000000||raw.remaining()!=(long)w*h*4))
             throw new IOException("Неподдерживаемый размер RAW");
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
@@ -56,8 +59,9 @@ public final class VivoNeuralClient {
                 }
             }
             File input=new File(dir,"input.f32"),output=new File(dir,"output.f32");
-            if(raw!=null){
-                try(FileChannel channel=new FileOutputStream(input).getChannel()){ByteBuffer data=raw.duplicate();while(data.hasRemaining())channel.write(data);}
+            if(burst!=null)burst.write(input);
+            if(raw!=null || burst!=null){
+                if(raw!=null)try(FileChannel channel=new FileOutputStream(input).getChannel()){ByteBuffer data=raw.duplicate();while(data.hasRemaining())channel.write(data);}
                 // Create as app UID before root truncates/writes it: no chmod,
                 // chown, shared-storage input, or globally readable temp files.
                 if(!output.createNewFile())throw new IOException("Не удалось создать файл результата");
@@ -67,25 +71,29 @@ public final class VivoNeuralClient {
                     "; export ADSP_LIBRARY_PATH="+quote(dir.getAbsolutePath()+";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
                     "; exec /system/bin/app_process64 /system/bin "+VivoNeuralWorker.class.getName()+" "+quote(dir.getAbsolutePath());
             if(raw!=null)command+=" "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+redQuad;
-            if(hex)command+=" --hexquad";
+            if(burst!=null)command+=" --hexquad-capture "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath());
+            else if(hex)command+=" --hexquad";
             log.accept("ROOT: запуск отдельного процесса; разрешите запрос root");
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();
             final Process child=process;
             final boolean[] completed={false};
             Thread reader=new Thread(()->{
-                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=lines.readLine())!=null){if(hex?line.startsWith("HEXQUAD CHECK COMPLETE:"):line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
+                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=lines.readLine())!=null){if(burst!=null?line.equals("HEXQUAD CAPTURE OK"):hex?line.startsWith("HEXQUAD CHECK COMPLETE:"):line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
                 catch(IOException e){log.accept("READ: "+e);}
             },"vivo-neural-output");
             reader.setDaemon(true);reader.start();
-            if(!process.waitFor(200,TimeUnit.SECONDS)){process.destroyForcibly();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
+            if(!process.waitFor(burst!=null?900:200,TimeUnit.SECONDS)){process.destroyForcibly();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException("Нейроремозаик не прошёл проверку. Откройте Vivo Neural — проверка и скопируйте отчёт.");
-            if(raw==null)return null;
-            long expected=(long)w*h*4;
+            if(raw==null&&burst==null)return null;
+            long expected=(long)w*h*(burst!=null?2:4);
             if(output.length()!=expected)throw new IOException("Неверный размер нейрорезультата");
-            ByteBuffer result=ByteBuffer.allocateDirect((int)expected).order(ByteOrder.nativeOrder());
+            ByteBuffer result=(burst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
+            if(result==null)throw new IOException("Недостаточно памяти для результата");
+            result.order(ByteOrder.nativeOrder());
             try(FileChannel channel=new FileInputStream(output).getChannel()){while(result.hasRemaining())if(channel.read(result)<0)throw new EOFException("Неполный результат");}
+            catch(Exception e){if(burst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
             result.flip();return result;
         } catch(Exception e){log.accept("CLIENT STOP: "+e.getMessage());throw e;}
         finally {
