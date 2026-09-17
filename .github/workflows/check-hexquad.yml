@@ -34,3 +34,7 @@ jobs:
         run: |
           g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_iso.cpp -ldl -o /tmp/check-vivo-hexquad-iso
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-iso
+      - name: Check profiled capture gate and sparse packing
+        run: |
+          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_profile.cpp -ldl -o /tmp/check-vivo-hexquad-profile
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-profile

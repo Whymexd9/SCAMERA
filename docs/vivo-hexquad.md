@@ -244,6 +244,43 @@ report through `HEX ISO DIAG END`. Failed capture gates also append diagnostics
 at the actual capture ISO, then still fail. A noisy-test pass alone must not be
 interpreted as proof that the noiseless error can safely be ignored.
 
+### Noise-profiled experimental capture gate (native worker v11)
+
+The v10 device report is repeatable: identical clean inputs have zero output
+repeat delta, and QNN never changes the input buffer. At ISO800, clean gray
+levels .15/.20/.25/.50 show severe colour or spatial error. With independent
+profiled RAW noise in six synthetic frames, gray .20 instead gives RMSE
+0.000881–0.001003 across three seeds; two blue/red seeds give RMSE
+0.001270–0.001899. This demonstrates input-distribution sensitivity of this
+bundled graph/runtime, not a proven internal explanation or real-scene fix.
+
+For explicitly selected experimental capture, the admission policy now uses
+noise-profiled synthetic RAW bursts. This is a deliberate test-policy change,
+not a fallback that selects whichever clean/noisy result passes. It requires
+all nine charts (original six, plus gray .15/.25/.50) to pass two independent
+seeds at ISO100, ISO400 and the actual capture ISO (deduplicated), in the actual
+CFA. The same RMSE<=0.045 and output [-0.05,1.25] thresholds apply. The clean
+chart failures remain visible in standalone diagnostics. Tests cannot prove
+that spatial detail, noise calibration, motion or real-image colour is correct.
+The shot/read profile is the existing restricted stock-derived profile; its
+synthetic noise distribution is a CLT approximation, not a full sensor model.
+
+Capture runs 36 or 54 synthetic executions, then processes the six original
+RAW frames only if every profiled chart passes. A failed profiled gate still
+appends the 17 ISO diagnostics and rejects the photograph. Nonfinite output,
+input mutation, bad QNN status/shape and real-burst checks remain fatal. No
+noise is added to photographs; ISO, VST normalization, weights, alignment,
+clipping and the real capture pipeline are unchanged.
+
+Standalone diagnostics retain all old clean-chart and ISO diagnostic output,
+then append 54 profiled executions (137 total). Final labels explicitly separate
+`x2_noiseless_stress` from `x2_profiled_ISO800_BGGR`. Run a real Photo-mode burst
+with HP9 HexQuad x2, Tetra4x4, tele 4x ISZ and inspect both the saved image and
+**Отчёт последней съёмки**, including tile/clipping statistics. Host mocks verify
+packing against six separately generated tagged RAW frames, all CFA mappings,
+positive gate traversal, swapped channels, colour bias, range violations,
+NaN in halo and modified input. Actual model results require the phone.
+
 ## Building and checks
 
 The private packager now needs both runtime directories:

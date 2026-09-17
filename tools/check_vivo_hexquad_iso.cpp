@@ -1,4 +1,4 @@
-#include "../app/src/main/cpp/vivo-hexquad-iso-diagnostics.h"
+#include "../app/src/main/cpp/vivo-hexquad-profile-check.h"
 #include <cassert>
 using namespace vivo_hexquad;
 struct DiagnosticNetwork {
@@ -45,7 +45,7 @@ int main(){
     assert(messages.str().find("capture gate unchanged")!=std::string::npos);
     DiagnosticNetwork rejected;bool failed=false;
     try{requireHexCaptureCharts(rejected,800,3);}catch(const std::runtime_error&){failed=true;}
-    assert(failed&&rejected.calls==35); // 18 strict charts + 17 diagnostics, still rejects.
+    assert(failed&&rejected.calls==71); // 54 strict profiled charts + 17 diagnostics, still rejects.
     for(int kind:{0,1}){
         DiagnosticNetwork bad;bad.invalid=kind==0;bad.mutate=kind==1;bool caught=false;
         try{diagnoseHexIso(bad,800,3);}catch(const std::invalid_argument&){caught=true;}assert(caught);

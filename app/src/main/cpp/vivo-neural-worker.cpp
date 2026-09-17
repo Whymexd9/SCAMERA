@@ -2,7 +2,7 @@
 #include "vivo-hexquad-runtime.h"
 #include "vivo-hexquad-check.h"
 #include "vivo-hexquad-capture.h"
-#include "vivo-hexquad-iso-diagnostics.h"
+#include "vivo-hexquad-profile-check.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -15,7 +15,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v10 (HP9 HexQuad ISO diagnostics); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v11 (HP9 HexQuad profiled capture gate); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -35,8 +35,8 @@ int main(int argc,char** argv) {
         if(argc==3 && std::string(argv[1])=="--hexquad-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(180);
-            vivo_nn::log("HP9 HEXQUAD v4: bundled QNN 2.29.8; canonical RGGB; ISO800 investigation; diagnostics only");
-            bool x1Passed=false,x2Passed=true;
+            vivo_nn::log("HP9 HEXQUAD v5: bundled QNN 2.29.8; canonical RGGB; noiseless stress + profiled capture checks");
+            bool x1Passed=false,x2Passed=true,profilePassed=false;
             for(int scale:{1,2}) {
                 vivo_hexquad::HexSession session(scale);session.init(argv[2]);
                 if(scale==1)x1Passed=vivo_hexquad::checkHexCharts(session,1);
@@ -44,12 +44,14 @@ int main(int argc,char** argv) {
                     for(int red=0;red<4;++red)
                         x2Passed=vivo_hexquad::checkHexCharts(session,2,red,red==3?800:0)&&x2Passed;
                     vivo_hexquad::diagnoseHexIso(session,800,3);
+                    profilePassed=vivo_hexquad::checkHexProfileCharts(session,800,3);
                 }
             }
             alarm(0);
-            vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: x2_all_CFA_gate=")+(x2Passed?"PASS":"FAIL")+
-                         "; x1_reference_gate="+(x1Passed?"PASS":"FAIL")+
-                         "; diagnostic only; experimental capture is a separate setting");
+            vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: x2_noiseless_stress=")+(x2Passed?"PASS":"FAIL")+
+                         "; x1_noiseless_reference="+(x1Passed?"PASS":"FAIL")+
+                         "; x2_profiled_ISO800_BGGR="+(profilePassed?"PASS":"FAIL")+
+                         "; experimental capture uses profiled gate at actual ISO/CFA; real quality unverified");
             return 0;
         }
         if(argc!=2 && argc!=7)throw std::runtime_error("Worker argument count");

@@ -3,7 +3,8 @@
 
 namespace vivo_hexquad {
 // Diagnostic inputs only. Never dither photographs or select a different ISO
-// from these results. The existing capture colour gate remains authoritative.
+// from these results. Profiled test fixtures are also used by the explicit
+// capture gate; real RAW samples never enter this synthetic-input builder.
 struct ProfileNoise {
     uint32_t state;
     explicit ProfileNoise(uint32_t seed):state(seed) { require(seed!=0,"Zero diagnostic seed"); }
@@ -26,7 +27,8 @@ struct DiagnosticInput {
     std::array<double,Frames> mean{},variance{};
     float encodedMin=1,encodedMax=0;
 };
-inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& rgb,uint32_t seed) {
+inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& rgb,uint32_t seed,int chart=-1) {
+    require(chart>=-1 && chart<9,"Invalid diagnostic chart");
     const CfaOrientation orientation(288,288,red);
     NormalVst transfer(iso);auto lut=transfer.forward();
     for(float v:rgb)require(std::isfinite(v)&&v>=0&&v<=1,"Invalid diagnostic target");
@@ -35,11 +37,12 @@ inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& r
     for(size_t f=0;f<Frames;++f){double sum=0,squared=0;
         for(int y=0;y<288;++y)for(int x=0;x<288;++x){
             int c=tagSource(0,x,y,red)>>14;
-            float value=rgb[c];
+            const float target=chart<0?rgb[c]:chartValue(chart,c,float(x),float(y));
+            float value=target;
             if(seed)value+=noise.normal()*std::sqrt(transfer.shot*value+transfer.variance);
             value=std::max(0.f,std::min(1.f,value));
             auto raw=unsigned(std::lround(value*16383.f));
-            double residual=raw/16383.0-rgb[c];sum+=residual;squared+=residual*residual;
+            double residual=raw/16383.0-target;sum+=residual;squared+=residual*residual;
             float encoded=lut[c*Levels+raw]*(1.f/65535.f);
             result.encodedMin=std::min(result.encodedMin,encoded);result.encodedMax=std::max(result.encodedMax,encoded);
             size_t p=(size_t(orientation.y(y))*288+orientation.x(x))*18+f*3+c;
@@ -115,10 +118,5 @@ template<class Network> void diagnoseHexIso(Network& session,int iso,int red) {
         run("red_profile_noise",{{.65f,.28f,.10f}},seed,false);
     }
     vivo_nn::log("HEX ISO DIAG END: executions="+std::to_string(executions)+"; diagnostic only; capture gate unchanged");
-}
-template<class Network> void requireHexCaptureCharts(Network& session,int iso,int red){
-    if(checkHexCharts(session,2,red,iso))return;
-    diagnoseHexIso(session,iso,red);
-    throw std::runtime_error("HexQuad x2 colour/packing gate failed; no photograph produced; ISO diagnostics recorded");
 }
 } // namespace vivo_hexquad

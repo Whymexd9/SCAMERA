@@ -8,7 +8,9 @@ namespace vivo_hexquad {
 inline float chartValue(int chart, int c, float x, float y) {
     static const float flats[4][3] = {{.2f,.2f,.2f},{.55f,.55f,.55f},
                                      {.12f,.35f,.65f},{.65f,.28f,.10f}};
+    require(chart>=0 && chart<9,"Invalid chart index");
     if(chart<4)return flats[chart][c];
+    if(chart>=6)return chart==6?.15f:chart==7?.25f:.50f;
     if(chart==4)return .1f + .55f*(c==0?x/287.f:c==1?y/287.f:(x+y)/574.f);
     return .65f - .55f*(c==0?y/287.f:c==1?x/287.f:(x+y)/574.f);
 }
