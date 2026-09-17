@@ -503,8 +503,17 @@ public class ESD4D extends GLOneScript {
      * areas stay clean.
      */
     private static int mosaicPeriodFor(Parameters parameters) {
-        if (!parameters.quadCfa && parameters.cfaPattern >= 0) return 1;
-        return PreferenceKeys.getRemosaicBlockSize();
+        // quadCfa is not the test. It only says the app asked the sensor for a
+        // direct quad stream; this sensor delivers a tetra mosaic at 4x ISZ
+        // while the parameters still read an ordinary BGGR pattern - the logs
+        // show cfa=3 on exactly the frames that come out with colour on every
+        // edge. What does say the frame is a mosaic is the remosaic being on:
+        // that switch is the user declaring it, with the block size beside it.
+        if (parameters.quadCfa || parameters.cfaPattern < 0
+                || PreferenceKeys.isRemosaicEnabled()) {
+            return PreferenceKeys.getRemosaicBlockSize();
+        }
+        return 1;
     }
 
     @Override
@@ -1147,6 +1156,7 @@ public class ESD4D extends GLOneScript {
                     + " kStretch=" + mfsrKStretch + " kShrink=" + mfsrKShrink
                     + " Dth=" + mfsrDth + " Dtr=" + mfsrDtr
                     + " stride=" + mfsrStride + " gradK=" + mfsrGradK
+                    + " | mosaicPeriod=" + mosaicPeriod
                     + " | HL recovery=" + hlRecovery + " minOk=" + hlRecoveryMinOk
                     + " protection=" + hlProtection + " knee=" + hlKnee
                     + " strength=" + hlStrength);
