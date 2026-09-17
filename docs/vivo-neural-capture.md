@@ -16,7 +16,7 @@ network, **not a verified copy of Vivo's active 4× pipeline**.
 3. Bundled QnnSystem reads the bundled TELE576 context metadata. The helper requires
    graph `T2Q_TELE_3x_v1p9_frozen`, FLOAT32 input `[1,144,144,16]` and output
    `[1,144,144,64]`. Qualcomm HTP executes the graph through QNN Core 2.18.0.
-4. Eight real executions of flat colour charts test two input CFA hypotheses
+4. Up to eight real executions of flat colour charts test two input CFA hypotheses
    and two output CFA hypotheses. Worst chart RMSE must be <= 0.045. A failed
    gate stops the job; it never substitutes interpolation and calls it neural.
 5. CPU packs normalized RAW using square root and Morton 4×4 channel order;
@@ -129,3 +129,17 @@ variant uses 12 input channels. Their exact preprocessing and connection to
 active 4x ISZ have not been established. These are **not** substituted into
 the TELE576/QNN 2.25 path: the ABI and tensor layouts differ, and their presence
 does not make the current implementation a verified copy of stock 4x AI.
+
+## Output validation diagnostics (30156)
+
+The 30155 phone report reached the output validator after graphExecute returned
+success; it did not establish whether the rejected value was NaN, infinity,
+untouched memory or a finite value outside [-0.25, 2]. The worker now reports
+counts, min/max/mean, the first invalid value's index and bits, and centre
+channels. A distinctive NaN sentinel helps identify buffers left unwritten.
+Neutral charts run before colour charts. Invalid output rejects that input CFA
+hypothesis but allows the other hypothesis to be tested. Driver/API failures
+still abort immediately. Acceptance still requires four valid charts and the
+same RMSE threshold. No range limit is relaxed and no invalid values are clamped
+into a passing test. This is diagnostic progress, not proof of working inference
+or image quality on the device.

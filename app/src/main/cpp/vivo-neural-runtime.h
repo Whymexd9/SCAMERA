@@ -8,6 +8,8 @@
 #include <iostream>
 #include <limits>
 #include <functional>
+#include <sstream>
+#include <iomanip>
 
 // Minimal public QNN ABI prefixes, restricted to the hash-checked PD2454
 // libraries and Core 2.18.0 / System 1.1.0. Runtime files come from APK assets.
@@ -58,12 +60,52 @@ inline std::vector<uint8_t> read(const std::string& p) {
     if(!f.read(reinterpret_cast<char*>(v.data()),n)) throw std::runtime_error("Short input read");
     return v;
 }
+// A data validation failure may reject a CFA hypothesis. Runtime/driver errors
+// must still abort the entire job, never trigger a different layout silently.
+struct OutputError : std::runtime_error { using std::runtime_error::runtime_error; };
+constexpr uint32_t OUTPUT_SENTINEL = 0x7fc0a55a;
+inline void poisonOutput(std::vector<float>& output) {
+    float sentinel; std::memcpy(&sentinel,&OUTPUT_SENTINEL,sizeof(sentinel));
+    std::fill(output.begin(),output.end(),sentinel);
+}
+inline void validateOutput(const std::vector<float>& output, unsigned execution) {
+    size_t nan=0,inf=0,untouched=0,outside=0,finite=0,first=output.size();
+    double sum=0; float lo=std::numeric_limits<float>::infinity(),hi=-lo;
+    for(size_t i=0;i<output.size();++i) {
+        float v=output[i]; uint32_t bits; std::memcpy(&bits,&v,4);
+        if(bits==OUTPUT_SENTINEL)++untouched;
+        if(std::isnan(v))++nan;
+        else if(!std::isfinite(v))++inf;
+        else { ++finite;sum+=v;lo=std::min(lo,v);hi=std::max(hi,v);if(v<-.25f||v>2.f)++outside; }
+        if(first==output.size()&&(!std::isfinite(v)||v<-.25f||v>2.f))first=i;
+    }
+    const bool bad=nan||inf||outside||output.empty();
+    if(execution<=8||bad) {
+        std::ostringstream line;line<<std::setprecision(9)<<"OUTPUT #"<<execution
+            <<": count="<<output.size()<<" finite="<<finite<<" nan="<<nan
+            <<" inf="<<inf<<" sentinel="<<untouched<<" outside="<<outside;
+        if(finite)line<<" min="<<lo<<" max="<<hi<<" mean="<<sum/finite;
+        log(line.str());
+        if(first<output.size()) {
+            uint32_t bits;std::memcpy(&bits,&output[first],4);
+            std::ostringstream detail;detail<<"FIRST INVALID: index="<<first<<" value="<<output[first]
+                <<" bits=0x"<<std::hex<<bits;log(detail.str());
+        }
+        if(output.size()==144*144*64) {
+            std::ostringstream center;center<<std::setprecision(6)<<"CENTER: ";
+            for(int c=0;c<16;c++)center<<output[(72*144+72)*64+c]<<' ';
+            log(center.str());
+        }
+    }
+    if(bad)throw OutputError("Invalid neural output; frame rejected (see OUTPUT statistics)");
+}
 class Session {
     std::vector<void*> libraries;
     const Provider* api=nullptr; const SystemProvider* sys=nullptr;
     Handle backend=nullptr,device=nullptr,context=nullptr,metadata=nullptr,graph=nullptr;
     std::vector<uint8_t> model;
     Tensor in{},out{};
+    unsigned executions=0;
     template<class T> T fn(int i) { if(!api->slots[i]) throw std::runtime_error("Missing QNN function"); return reinterpret_cast<T>(api->slots[i]); }
     void* load(const char* p) {
         log(std::string("LOAD: ")+p); void* h=dlopen(p,RTLD_NOW|RTLD_LOCAL);
@@ -133,9 +175,12 @@ public:
         out.v1.memType=0;out.v1.client={output.data(),static_cast<uint32_t>(output.size()*4)};
     }
     void execute() {
-        std::fill(output.begin(),output.end(),std::numeric_limits<float>::quiet_NaN());
+        poisonOutput(output);
+        ++executions;
+        if(executions<=8)log("GRAPH EXECUTE #"+std::to_string(executions)+": begin");
         check(fn<Error(*)(Handle,const Tensor*,uint32_t,Tensor*,uint32_t,Handle,Handle)>(21)(graph,&in,1,&out,1,nullptr,nullptr),"Graph execute");
-        for(float v:output)if(!std::isfinite(v)||v < -0.25f||v>2.0f)throw std::runtime_error("Invalid neural output; frame rejected");
+        if(executions<=8)log("GRAPH EXECUTE #"+std::to_string(executions)+": status=0");
+        validateOutput(output,executions);
     }
     ~Session() {
         // The process exits after one job; do not dlclose live vendor runtime code.
@@ -153,18 +198,25 @@ inline float unpack(const std::vector<float>& out,int x,int y){float v=out[((y/8
 struct Mapping {int inputBlock=0,outputBlock=0;double error=1e9;};
 template<class Network> Mapping calibrate(Network& s) {
     Mapping best;
-    const float tests[4][3]={{.12f,.35f,.65f},{.65f,.28f,.10f},{.2f,.2f,.2f},{.55f,.55f,.55f}};
+    const float tests[4][3]={{.2f,.2f,.2f},{.55f,.55f,.55f},{.12f,.35f,.65f},{.65f,.28f,.10f}};
     for(int block:{4,2}) {
         double errors[2]={0,0};
+        bool valid=true; int chart=0;
         for(const auto& rgb:tests){
+            log("CFA INPUT: block="+std::to_string(block)+" chart="+std::to_string(++chart));
             for(int y=0;y<576;y++)for(int x=0;x<576;x++)s.input[((y/4)*144+x/4)*16+morton(x%4,y%4,2)]=std::sqrt(rgb[color(x,y,block)]);
-            s.execute();
+            try { s.execute(); }
+            catch(const OutputError& e) {
+                log("CFA REJECTED: input="+std::to_string(block)+" "+e.what());
+                valid=false;break;
+            }
             for(int ob=1;ob<=2;ob++){
                 double err=0;int count=0;
                 for(int y=256;y<896;y+=1)for(int x=256;x<896;x+=1){double d=unpack(s.output,x,y)-rgb[color(x,y,ob)];err+=d*d;count++;}
                 errors[ob-1]=std::max(errors[ob-1],std::sqrt(err/count));
             }
         }
+        if(!valid)continue;
         for(int ob=1;ob<=2;ob++){
             log("CFA TEST: input="+std::to_string(block)+" output="+std::to_string(ob)+" worst RMSE="+std::to_string(errors[ob-1]));
             if(errors[ob-1]<best.error)best={block,ob,errors[ob-1]};
@@ -213,3 +265,4 @@ template<class Network> std::vector<float> reconstruct(Network& s,const Mapping&
     return result;
 }
 }
+

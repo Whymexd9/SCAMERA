@@ -28,5 +28,24 @@ int main(){
  FlatNetwork net;auto m=calibrate(net);assert(m.inputBlock==4&&m.outputBlock==1&&m.error<1e-5);
  struct BadNetwork:FlatNetwork{void execute(){std::fill(output.begin(),output.end(),0);}} bad;
  bool rejected=false;try{calibrate(bad);}catch(const std::runtime_error&){rejected=true;}assert(rejected);
- std::cout<<"PASS: stock channel order, phase-preserving edges, tile coverage, four CFA orientations, calibration and wrong-model rejection\n";
+ // A rejected block-4 hypothesis must not prevent checking block-2.
+ struct Block2Network:FlatNetwork {
+  void execute(){
+   auto at=[&](int x,int y){return input[((y/4)*144+x/4)*16+morton(x%4,y%4,2)];};
+   float r=at(256,256),g=at(258,256),b=at(258,258);
+   if(r==g && r==b && at(260,260)!=r)throw OutputError("Fixture: wrong input CFA");
+   float rgb[3]={r,g,b};
+   for(int y=0;y<1152;y++)for(int x=0;x<1152;x++)output[((y/8)*144+x/8)*64+morton(x%8,y%8,3)]=rgb[color(x,y,1)];
+  }
+ } block2;
+ auto second=calibrate(block2);assert(second.inputBlock==2&&second.outputBlock==1&&second.error<1e-5);
+ struct RuntimeFailure:FlatNetwork {void execute(){throw std::runtime_error("driver failure");}} runtimeFailure;
+ rejected=false;try{calibrate(runtimeFailure);}catch(const OutputError&){assert(false);}catch(const std::runtime_error& e){rejected=std::string(e.what())=="driver failure";}assert(rejected);
+ std::vector<float> checkOutput={0.f,.2f,1.f};validateOutput(checkOutput,1);
+ for(float v:{-.251f,2.001f,std::numeric_limits<float>::infinity(),std::numeric_limits<float>::quiet_NaN()}) {
+  checkOutput[1]=v;rejected=false;try{validateOutput(checkOutput,1);}catch(const OutputError&){rejected=true;}assert(rejected);
+ }
+ poisonOutput(checkOutput);rejected=false;try{validateOutput(checkOutput,1);}catch(const OutputError&){rejected=true;}assert(rejected);
+ std::cout<<"PASS: stock channel order, phase-preserving edges, tile coverage, four CFA orientations, calibration, invalid-first-layout recovery, driver-error propagation and output rejection\n";
 }
+
