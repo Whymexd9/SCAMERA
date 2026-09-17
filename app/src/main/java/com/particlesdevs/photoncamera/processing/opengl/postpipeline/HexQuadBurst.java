@@ -18,6 +18,10 @@ public final class HexQuadBurst {
     private HexQuadBurst(List<ImageFrame> frames,Parameters p) throws IOException {
         this.frames=new ArrayList<>(frames);
         width=p.rawSize.x;height=p.rawSize.y;
+        if(com.particlesdevs.photoncamera.util.Allocator.binning)
+            throw new IOException("HexQuad требует исходный Tetra RAW: отключите программный биннинг");
+        if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169)
+            throw new IOException("Для теста HexQuad выберите 4:3: обрезка 16:9 меняет фазу Tetra");
         int[] phase=PreferenceKeys.getRemosaicPhase();
         if(PreferenceKeys.getRemosaicBlockSize()!=4 || Math.floorMod(phase[0],8)!=0 || Math.floorMod(phase[1],8)!=0)
             throw new IOException("Нужны Tetra 4×4 и фаза 0,0");

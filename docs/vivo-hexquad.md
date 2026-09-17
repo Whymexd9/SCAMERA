@@ -8,7 +8,8 @@ Real-scene quality, speed and motion tolerance still need phone testing.
 ## Test capture (v7 worker)
 
 Select **Алгоритм ремозаика → HP9 HexQuad x2 — NPU, 6 кадров (тест)** and
-turn remosaic on. Use Photo mode, HP9 tele 4× ISZ, block4, phase0,0, <=16 MP.
+turn remosaic on. Use Photo mode, HP9 tele 4× ISZ, 4:3, block4, phase0,0, <=16 MP.
+Software binning and 16:9 sensor-buffer cropping are rejected to preserve Tetra phase.
 The controller takes six real manual equal-exposure frames, bypasses ZSL, and
 omits short/long HDR brackets for this backend. Other backends are unchanged.
 The native job runs before ESD4D, not on an already fused image. Duplicate
