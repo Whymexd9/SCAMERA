@@ -27,7 +27,7 @@ final class RemosaicMetadataProbe {
         if (characteristics != null) probe.characteristics(characteristics);
         probe.result("result", result);
         if (Build.VERSION.SDK_INT >= 28) {
-            for (Map.Entry<String, TotalCaptureResult> entry
+            for (Map.Entry<String, CaptureResult> entry
                     : result.getPhysicalCameraResults().entrySet()) {
                 probe.result("physical=" + entry.getKey(), entry.getValue());
             }
