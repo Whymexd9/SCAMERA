@@ -65,6 +65,7 @@ public final class ScameraDebugLog {
     private static BufferedWriter writer;
     private static Uri mediaStoreUri;
     private static long sessionStartNs;
+    private static final java.util.Set<String> remosaicCameras = new java.util.HashSet<>();
 
     private ScameraDebugLog() {}
 
@@ -93,6 +94,7 @@ public final class ScameraDebugLog {
         if (value) {
             startThread();
             sessionStartNs = System.nanoTime();
+            synchronized (LOCK) { remosaicCameras.clear(); }
             handler.post(ScameraDebugLog::writeSessionHeader);
             handler.post(ScameraDebugLog::writeDeviceSection);
             handler.post(ScameraDebugLog::writeCameraSection);
@@ -180,6 +182,23 @@ public final class ScameraDebugLog {
                 + " timestamp=" + (ts == null ? "n/a" : ts)
                 + " focusDistance=" + (focus == null ? "n/a" : focus)
                 + " aperture=" + (aperture == null ? "n/a" : aperture));
+    }
+
+    /** Once per selected camera per debug session; no metadata work on the capture thread. */
+    public static void remosaicMetadata(String cameraId, CameraCharacteristics characteristics,
+                                       android.hardware.camera2.TotalCaptureResult result) {
+        if (!enabled || result == null || handler == null) return;
+        synchronized (LOCK) {
+            if (!remosaicCameras.add(cameraId)) return;
+        }
+        handler.post(() -> {
+            if (!enabled) return;
+            try {
+                rawWrite(RemosaicMetadataProbe.describe(cameraId, characteristics, result));
+            } catch (Exception e) {
+                rawWrite("remosaic-probe failed: " + e + "\n");
+            }
+        });
     }
 
     /** Current heap usage; call around heavy stages. */
