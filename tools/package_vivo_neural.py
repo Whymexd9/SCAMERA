@@ -14,12 +14,17 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'assets/vivo-neural/arm64-v8a/'
+HEX_PREFIX = 'assets/vivo-hexquad/arm64-v8a/'
 
 
-def pinned_assets():
+def pinned_assets(manifest='FILES', expected=5):
     source = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/VivoNeuralWorker.java'
-    result = dict(re.findall(r'\{"([^"/]+)","([a-f0-9]{64})"\}', source.read_text()))
-    if len(result) != 5:
+    block = re.search(r'\b' + re.escape(manifest) + r'\s*=\s*\{(.*?)\n    \};', source.read_text(), re.S)
+    if block is None:
+        raise ValueError('Missing bundled asset manifest: ' + manifest)
+    pairs = re.findall(r'\{"([^"/]+)","([a-f0-9]{64})"\}', block.group(1))
+    result = dict(pairs)
+    if len(result) != expected or len(pairs) != expected:
         raise ValueError('Unexpected bundled asset manifest')
     return result
 
@@ -48,16 +53,17 @@ def check_worker(data):
         raise ValueError('Worker is not a standalone Android executable')
 
 
-def verify_bundle(apk, assets):
+def verify_bundle(apk, assets, hex_assets):
     with zipfile.ZipFile(apk) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK entries')
         check_worker(archive.read(PREFIX + 'vivo-neural-worker'))
-        for name, sha in assets.items():
-            with archive.open(PREFIX + name) as stream:
-                if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
-                    raise ValueError('APK asset hash mismatch: ' + name)
+        for prefix, manifest in ((PREFIX, assets), (HEX_PREFIX, hex_assets)):
+            for name, sha in manifest.items():
+                with archive.open(prefix + name) as stream:
+                    if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
+                        raise ValueError('APK asset hash mismatch: ' + prefix + name)
         if archive.testzip() is not None:
             raise ValueError('Invalid APK CRC')
 
@@ -66,13 +72,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--template', type=Path, required=True)
     parser.add_argument('--bundle-dir', type=Path, required=True)
+    parser.add_argument('--hexquad-dir', type=Path, required=True)
     parser.add_argument('--apksigner', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     assets = pinned_assets()
-    for name, sha in assets.items():
-        if digest_file(args.bundle_dir / name) != sha:
-            raise ValueError('Source asset hash mismatch: ' + name)
+    hex_assets = pinned_assets('HEX_FILES', 6)
+    for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets)):
+        for name, sha in manifest.items():
+            if digest_file(directory / name) != sha:
+                raise ValueError('Source asset hash mismatch: ' + str(directory / name))
     if args.output.exists():
         raise ValueError('Output already exists; choose a new filename')
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -82,15 +91,17 @@ def main():
         shutil.copyfile(args.template, unsigned)
         with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             check_worker(archive.read(PREFIX + 'vivo-neural-worker'))
-            for name in assets:
-                if PREFIX + name in archive.namelist():
-                    raise ValueError('Template already contains ' + name)
-                archive.write(args.bundle_dir / name, PREFIX + name)
+            for directory, prefix, manifest in ((args.bundle_dir, PREFIX, assets),
+                                                (args.hexquad_dir, HEX_PREFIX, hex_assets)):
+                for name in manifest:
+                    if prefix + name in archive.namelist():
+                        raise ValueError('Template already contains ' + prefix + name)
+                    archive.write(directory / name, prefix + name)
         subprocess.run(['java', '-jar', str(args.apksigner), 'sign', '--ks', str(ROOT / 'key/PcamLeak.jks'),
                         '--ks-key-alias', 'key0', '--ks-pass', 'pass:photoncamera',
                         '--key-pass', 'pass:photoncamera', '--out', str(signed), str(unsigned)], check=True)
         subprocess.run(['java', '-jar', str(args.apksigner), 'verify', '--verbose', '--print-certs', str(signed)], check=True)
-        verify_bundle(signed, assets)
+        verify_bundle(signed, assets, hex_assets)
         signed.rename(args.output)
     print('BUNDLED APK:', args.output)
     print('SHA256:', digest_file(args.output))

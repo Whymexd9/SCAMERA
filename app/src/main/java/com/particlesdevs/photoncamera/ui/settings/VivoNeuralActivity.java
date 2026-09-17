@@ -14,7 +14,7 @@ import android.widget.TextView;
 
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralClient;
 
-/** Separate-process UI for the same root inference gate used by capture. */
+/** Separate-process HP9 HexQuad validation; does not enable capture. */
 public final class VivoNeuralActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final StringBuilder report = new StringBuilder();
@@ -32,10 +32,10 @@ public final class VivoNeuralActivity extends Activity {
         int padding = Math.round(16 * getResources().getDisplayMetrics().density);
         layout.setPadding(padding, padding, padding, padding);
         TextView note = new TextView(this);
-        note.setText("Проверка настоящего запуска сети на NPU и совместимости цветового рисунка Tetra. Нужен root. После успешного теста выберите Vivo Neural в алгоритмах ремозаика. Пока эксперимент: качество деталей нужно сравнить на снимках.");
+        note.setText("Проверка моделей HP9 HexQuad x1/x2 на NPU: Tetra 4×4, цвет и плавные переходы при двух ISO. Нужен root. Модели и QNN находятся в APK. Тест пока не включает HexQuad для съёмки; скопируйте отчёт после завершения.");
         layout.addView(note);
         start = new Button(this);
-        start.setText("Проверить Vivo Neural");
+        start.setText("Проверить HP9 HexQuad");
         start.setOnClickListener(v -> runProbe());
         layout.addView(start);
         Button copy = new Button(this);
@@ -69,13 +69,13 @@ public final class VivoNeuralActivity extends Activity {
         start.setEnabled(false);
         synchronized (report) { report.setLength(0); }
         saved.edit().putBoolean("complete", false).commit();
-        append("Vivo Neural capture v2 — bundled\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
+        append("HP9 HexQuad v1 — bundled, проверка\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
                 "\n" + android.os.Build.FINGERPRINT);
         main.postDelayed(timeout, 220000);
         new Thread(() -> {
             try {
                 VivoNeuralClient.selfTest(this, this::append);
-                append("DONE: сеть выполнила контрольные кадры. Для фото выберите Vivo Neural — NPU, root (эксперимент).");
+                append("DONE: проверка завершена. Итог цвета указан в HEX SUMMARY: PASS/FAIL. Скопируйте отчёт; HexQuad для фото ещё не включён.");
             } catch (Exception | LinkageError failure) {
                 append("STOP: " + failure);
             } finally {

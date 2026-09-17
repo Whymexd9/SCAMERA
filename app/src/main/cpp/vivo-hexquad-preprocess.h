@@ -97,7 +97,7 @@ struct OutputScale {
 // implement that branch of the stock kernel.
 inline std::vector<float> decodeTile(const std::vector<float>& rgb,
                                      const IvstLuts& luts, OutputScale scale) {
-    require(!rgb.empty() && rgb.size() % Colors == 0 && rgb.size() <= 544u * 544u * Colors,
+    require(!rgb.empty() && rgb.size() % Colors == 0 && rgb.size() <= 576u * 576u * Colors,
             "Invalid HexQuad RGB tile");
     require(scale.rightShift < 16 && std::isfinite(scale.multiplier) &&
             scale.multiplier > 0 && std::isfinite(scale.offset) &&

@@ -17,12 +17,12 @@ public final class VivoNeuralClient {
     private VivoNeuralClient() {}
     private static String quote(String s) { return "'"+s.replace("'","'\\''")+"'"; }
     public static synchronized void selfTest(Context context,Consumer<String> log) throws Exception {
-        job(context,null,0,0,0,log);
+        job(context,null,0,0,0,true,log);
     }
     public static synchronized ByteBuffer process(Context context,ByteBuffer raw,int w,int h,int redQuad) throws Exception {
-        return job(context,raw,w,h,redQuad,line->Log.d("VivoNeural",line));
+        return job(context,raw,w,h,redQuad,false,line->Log.d("VivoNeural",line));
     }
-    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,Consumer<String> observer) throws Exception {
+    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,Consumer<String> observer) throws Exception {
         if(raw!=null && (w<8||h<8||w%8!=0||h%8!=0||(long)w*h>16000000||raw.remaining()!=(long)w*h*4))
             throw new IOException("Неподдерживаемый размер RAW");
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
@@ -41,9 +41,10 @@ public final class VivoNeuralClient {
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
                 java.util.ArrayList<String> names=new java.util.ArrayList<>();
                 names.add("vivo-neural-worker");
-                for(String[] item:VivoNeuralWorker.FILES)names.add(item[0]);
+                for(String[] item:hex?VivoNeuralWorker.HEX_FILES:VivoNeuralWorker.FILES)names.add(item[0]);
                 for(String name:names){
-                    java.util.zip.ZipEntry entry=apk.getEntry("assets/vivo-neural/arm64-v8a/"+name);
+                    String prefix=hex&&!name.equals("vivo-neural-worker")?"assets/vivo-hexquad/arm64-v8a/":"assets/vivo-neural/arm64-v8a/";
+                    java.util.zip.ZipEntry entry=apk.getEntry(prefix+name);
                     if(entry==null)throw new IOException("Неполный APK: отсутствует "+name+". Установите сборку Bundled.");
                     File file=new File(dir,name);
                     try(InputStream in=apk.getInputStream(entry);FileOutputStream out=new FileOutputStream(file)){
@@ -66,13 +67,14 @@ public final class VivoNeuralClient {
                     "; export ADSP_LIBRARY_PATH="+quote(dir.getAbsolutePath()+";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
                     "; exec /system/bin/app_process64 /system/bin "+VivoNeuralWorker.class.getName()+" "+quote(dir.getAbsolutePath());
             if(raw!=null)command+=" "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+redQuad;
+            if(hex)command+=" --hexquad";
             log.accept("ROOT: запуск отдельного процесса; разрешите запрос root");
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();
             final Process child=process;
             final boolean[] completed={false};
             Thread reader=new Thread(()->{
-                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=lines.readLine())!=null){if(line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
+                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=lines.readLine())!=null){if(hex?line.startsWith("HEXQUAD CHECK COMPLETE:"):line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
                 catch(IOException e){log.accept("READ: "+e);}
             },"vivo-neural-output");
             reader.setDaemon(true);reader.start();

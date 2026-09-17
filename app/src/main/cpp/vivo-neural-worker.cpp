@@ -1,4 +1,6 @@
 #include "vivo-neural-layout-diagnostics.h"
+#include "vivo-hexquad-runtime.h"
+#include "vivo-hexquad-check.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -11,9 +13,23 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v5 (layout diagnostics); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v6 (TELE + HP9 HexQuad); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
+        }
+        if(argc==3 && std::string(argv[1])=="--hexquad-check") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(180);
+            vivo_nn::log("HP9 HEXQUAD v1: bundled QNN 2.29.8; stock normal VST; diagnostics only");
+            bool passed=true;
+            for(int scale:{1,2}) {
+                vivo_hexquad::HexSession session(scale);session.init(argv[2]);
+                passed=vivo_hexquad::checkHexCharts(session,scale)&&passed;
+            }
+            alarm(0);
+            vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: chart_gate=")+(passed?"PASS":"FAIL")+
+                         "; capture remains disabled pending real burst validation");
+            return 0;
         }
         if(argc!=2 && argc!=7)throw std::runtime_error("Worker argument count");
         const int width=argc==7?integer(argv[4]):0,height=argc==7?integer(argv[5]):0,redQuad=argc==7?integer(argv[6]):0;
@@ -48,4 +64,3 @@ int main(int argc,char** argv) {
         return 1;
     }
 }
-

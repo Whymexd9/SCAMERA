@@ -1,3 +1,7 @@
+> The settings diagnostic now runs the separately bundled HP9 HexQuad models.
+> See [vivo-hexquad.md](vivo-hexquad.md). The TELE capture implementation described
+> below is unchanged and has not passed colour calibration on the reported device.
+
 # Experimental Vivo neural capture
 
 This adds a third remosaic choice, `vivo_neural`, for HP9 telephoto 4× ISZ
@@ -214,3 +218,4 @@ Host ASan/UBSan tests cover every diagnostic output interpretation and CFA
 period, red/blue reversal rejection, within-phase variance, nonfinite output,
 the ten-chart sweep, and propagation of driver errors. These are synthetic
 transport/analysis fixtures; they do not run HTP weights on the host.
+

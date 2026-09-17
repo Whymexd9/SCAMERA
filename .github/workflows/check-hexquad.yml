@@ -2,7 +2,7 @@ name: Check HP9 HexQuad boundaries
 on:
   pull_request:
     paths:
-      - 'app/src/main/cpp/vivo-hexquad-preprocess.h'
+      - 'app/src/main/cpp/vivo-hexquad-*.h'
       - 'tools/*vivo_hexquad*'
       - '.github/workflows/check-hexquad.yml'
   workflow_dispatch:
@@ -20,3 +20,9 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad
       - name: Check malformed VDNN containers
         run: python tools/check_vivo_hexquad_container.py
+      - name: Check stock-reference normal VST and diagnostic charts
+        run: |
+          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_vst.cpp -o /tmp/check-vivo-hexquad-vst
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-vst
+          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_charts.cpp -ldl -o /tmp/check-vivo-hexquad-charts
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-charts
