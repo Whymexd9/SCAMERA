@@ -30,3 +30,7 @@ jobs:
         run: |
           g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_capture.cpp -ldl -o /tmp/check-vivo-hexquad-capture
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-capture
+      - name: Check ISO diagnostic fixtures and failed-gate preservation
+        run: |
+          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_iso.cpp -ldl -o /tmp/check-vivo-hexquad-iso
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-iso

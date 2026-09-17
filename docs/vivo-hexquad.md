@@ -3,6 +3,9 @@
 Status: **experimental six-frame capture is connected through `hp9_hexquad`.**
 On Vivo V2454A the x2 model passed all twelve synthetic checks (worst RMSE
 0.011506); x1 failed one ISO400 colour patch (0.056333). Capture uses **x2 only**.
+The subsequent ISO800 check fails a neutral patch (RMSE 0.065633), so capture
+at that profile is still blocked. Worker v10 adds diagnostics, **not a proven
+ISO800 colour fix**. No automatic ISO reduction or colour-gate bypass is used.
 Real-scene quality, speed and motion tolerance still need phone testing.
 
 ## Test capture (v9 worker)
@@ -137,9 +140,10 @@ portable GPU models or a promise of support on other Qualcomm generations.
 
 ## On-device diagnostic and remaining gates
 
-Open **Vivo Neural — проверка → Проверить HP9 HexQuad**. It performs 60 executions:
+Open **Vivo Neural — проверка → Проверить HP9 HexQuad**. It performs 83 executions:
 x1 reference in RGGB and x2 in all four sensor CFA orientations, ISO 100/400,
-four neutral/coloured flats plus two independent RGB ramps.
+four neutral/coloured flats plus two independent RGB ramps; six additional
+BGGR charts at ISO800 and 17 targeted ISO800 diagnostic executions below.
 Six identical noiseless frames represent a stationary synthetic burst only.
 They are not a substitute for real aligned frames during capture.
 
@@ -207,6 +211,38 @@ Host fixtures verify finite overshoot is clipped *before* IVST and 2x2 averaging
 all four CFA orientations, unchanged in-range pixels, edge-phase continuity,
 and NaN/Inf rejection in retained and discarded regions. HTP execution and
 real-scene overshoot statistics require the next on-device capture.
+
+### ISO800 investigation (native worker v10)
+
+The user's v9 report fails *before* real tiles: a constant gray target 0.2
+returns mean RGB (0.189681, 0.207378, 0.125218), worst RMSE 0.065633. Five other
+ISO800 charts pass the existing RMSE gate. ISO100/400 checks still pass. This
+localizes the observed failure to the synthetic ISO800 path, independently of
+actual RAW metadata or image borders. It does not yet identify the cause.
+
+Stock reinspection confirms that the FP32 preprocessing branch at 0x350600
+uses the configured range divided by 65535 (floating types take 0x350634),
+whereas quantized types also account for tensor scale. The float postprocessing
+branch at 0x3315c0 uses zero offset and the 16-bit scaling path. The XML integer
+quantization scales are therefore not justification to double the FP32 input.
+The normal VST fixtures at ISO800 already match the stock CPU LUTs exactly for
+the documented restricted profile. Full camera-specific calibration remains
+unproven; neither observation establishes why the neural output is biased.
+
+The new `HEX ISO DIAG` block executes 17 bounded synthetic cases on the phone:
+repeat the identical gray input, scan seven more gray levels, repeat gray after
+different inputs, then compare three independent noisy gray bursts and two
+seeds each of red/blue coloured bursts. Noise uses the existing shot/read
+profile and a deterministic unit-variance CLT approximation. Each of the six
+frames has independent noise. Per-frame realized noise moments, input hashes,
+input-buffer mutation, output means, RMSE and repeat deltas are logged.
+No noise is added to real photographs. These results do not change capture ISO,
+weights, VST normalization, thresholds or the gate's outcome.
+
+Run **Проверить HP9 HexQuad** without taking a photograph and copy the complete
+report through `HEX ISO DIAG END`. Failed capture gates also append diagnostics
+at the actual capture ISO, then still fail. A noisy-test pass alone must not be
+interpreted as proof that the noiseless error can safely be ignored.
 
 ## Building and checks
 

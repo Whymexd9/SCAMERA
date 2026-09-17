@@ -2,6 +2,7 @@
 #include "vivo-hexquad-runtime.h"
 #include "vivo-hexquad-check.h"
 #include "vivo-hexquad-capture.h"
+#include "vivo-hexquad-iso-diagnostics.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -14,7 +15,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v9 (HP9 HexQuad stock IVST saturation); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v10 (HP9 HexQuad ISO diagnostics); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -26,8 +27,7 @@ int main(int argc,char** argv) {
                 auto& burst=mapped.burst;
                 vivo_nn::log("HP9 HEXQUAD CAPTURE v1: actual_frames=6; Tetra4x4; ISO="+std::to_string(burst.iso)+" CFA="+std::to_string(burst.red));
                 vivo_hexquad::HexSession session(2);session.init(argv[2]);
-                if(!vivo_hexquad::checkHexCharts(session,2,burst.red,burst.iso))
-                    throw std::runtime_error("HexQuad x2 colour/packing gate failed; no photograph produced");
+                vivo_hexquad::requireHexCaptureCharts(session,burst.iso,burst.red);
                 vivo_hexquad::captureHex(session,burst,argv[4]);
             }
             alarm(0);vivo_nn::log("HEXQUAD CAPTURE OK");return 0;
@@ -35,13 +35,16 @@ int main(int argc,char** argv) {
         if(argc==3 && std::string(argv[1])=="--hexquad-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(180);
-            vivo_nn::log("HP9 HEXQUAD v3: bundled QNN 2.29.8; canonical RGGB; stock normal VST; diagnostics only");
+            vivo_nn::log("HP9 HEXQUAD v4: bundled QNN 2.29.8; canonical RGGB; ISO800 investigation; diagnostics only");
             bool x1Passed=false,x2Passed=true;
             for(int scale:{1,2}) {
                 vivo_hexquad::HexSession session(scale);session.init(argv[2]);
                 if(scale==1)x1Passed=vivo_hexquad::checkHexCharts(session,1);
-                else for(int red=0;red<4;++red)
-                    x2Passed=vivo_hexquad::checkHexCharts(session,2,red)&&x2Passed;
+                else {
+                    for(int red=0;red<4;++red)
+                        x2Passed=vivo_hexquad::checkHexCharts(session,2,red,red==3?800:0)&&x2Passed;
+                    vivo_hexquad::diagnoseHexIso(session,800,3);
+                }
             }
             alarm(0);
             vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: x2_all_CFA_gate=")+(x2Passed?"PASS":"FAIL")+

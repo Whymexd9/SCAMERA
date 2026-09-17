@@ -33,7 +33,7 @@ public final class VivoNeuralActivity extends Activity {
         int padding = Math.round(16 * getResources().getDisplayMetrics().density);
         layout.setPadding(padding, padding, padding, padding);
         TextView note = new TextView(this);
-        note.setText("Проверка моделей HP9 HexQuad x1/x2 на NPU: Tetra 4×4, цвет и плавные переходы при двух ISO. Нужен root. Модели и QNN находятся в APK. Для фото выберите на главной странице настроек «Алгоритм ремозаика → HP9 HexQuad x2». Снимайте в режиме Фото, Tetra 4×4, 4× ISZ телевика. Ниже также доступен отчёт последней съёмки.");
+        note.setText("Проверка моделей HP9 HexQuad x1/x2 на NPU: Tetra 4×4, цвет и плавные переходы, дополнительная диагностика ISO 800. Нужен root. Модели и QNN находятся в APK. Для фото выберите на главной странице настроек «Алгоритм ремозаика → HP9 HexQuad x2». Снимайте в режиме Фото, Tetra 4×4, 4× ISZ телевика. Ниже также доступен отчёт последней съёмки.");
         layout.addView(note);
         start = new Button(this);
         start.setText("Проверить HP9 HexQuad");
@@ -80,13 +80,13 @@ public final class VivoNeuralActivity extends Activity {
         captureReport.setEnabled(false);
         synchronized (report) { report.setLength(0); }
         saved.edit().putBoolean("complete", false).commit();
-        append("HP9 HexQuad v3 — bundled, проверка CFA\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
+        append("HP9 HexQuad v4 — bundled, диагностика ISO 800\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
                 "\n" + android.os.Build.FINGERPRINT);
         main.postDelayed(timeout, 220000);
         new Thread(() -> {
             try {
                 VivoNeuralClient.selfTest(this, this::append);
-                append("DONE: проверка завершена. Итог цвета указан в HEX SUMMARY: PASS/FAIL. Для тестовой съёмки отдельно выберите HP9 HexQuad x2 в алгоритмах ремозаика.");
+                append("DONE: проверка завершена. Скопируйте весь отчёт, включая HEX ISO DIAG. Это диагностика ISO 800; она не отключает проверку цвета и не исправляет её автоматически.");
             } catch (Exception | LinkageError failure) {
                 append("STOP: " + failure);
             } finally {
