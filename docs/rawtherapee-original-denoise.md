@@ -29,7 +29,7 @@ development repository. No Vivo proprietary denoise library is used.
 
 ## Pipeline and UI
 
-RawTherapee → Детализация и шумоподавление → Алгоритм шумоподавления →
+RawTherapee → Детализация и шумоподавление → Выбор шумоподавления (first section) → Алгоритм шумоподавления →
 RawTherapee 5.12 — CPU. Open the adjacent native settings screen.
 
 The stage runs after ABLC and demosaicing, before tone/color rendering. It replaces
