@@ -1,6 +1,7 @@
 #include "../app/src/main/cpp/vivo-hexquad-capture.h"
 #include <cassert>
 #include <cstdio>
+#include <set>
 using namespace vivo_hexquad;
 struct FakeNetwork {
     std::vector<float> input=std::vector<float>(288u*288u*18),output=std::vector<float>(576u*576u*3);
@@ -48,14 +49,14 @@ static void run(int red){
     std::string path="/tmp/hexquad-capture-test-"+std::to_string(getpid())+".raw";
     FakeNetwork net(b.w,b.h,red);captureHex(net,b,path);
     std::ifstream file(path,std::ios::binary);std::vector<uint16_t> result(size_t(b.w)*b.h);file.read(reinterpret_cast<char*>(result.data()),result.size()*2);assert(file.gcount()==std::streamsize(result.size()*2));
-    for(int y=0;y<b.h;++y)for(int x=0;x<b.w;++x){int c=bayerColor(x,y,red);float expected=64+FakeNetwork::truth(x,y,c)*(16383-64);assert(std::abs(result[y*b.w+x]-expected)<4);}
+    for(int y=0;y<b.h;++y)for(int x=0;x<b.w;++x){int c=bayerColor(x,y,red);float expected=FakeNetwork::truth(x,y,c)*65535;assert(std::abs(result[y*b.w+x]-expected)<12);}
     std::remove(path.c_str());
     FakeNetwork overshoot(b.w,b.h,red);overshoot.fault=4;captureHex(overshoot,b,path);
     std::ifstream clipped(path,std::ios::binary);clipped.read(reinterpret_cast<char*>(result.data()),result.size()*2);
     assert(clipped.gcount()==std::streamsize(result.size()*2));
     for(int oy:origins(b.h))for(int ox:origins(b.w)){
         int x=ox+40,y=oy+40,px=(red&1)?b.w-1-x:x,py=(red&2)?b.h-1-y:y;
-        float expected=64+.5f*(16383-64); // Stock clip -> IVST -> area2x2, not average then clip.
+        float expected=.5f*65535; // Stock clip -> IVST -> area2x2, not average then clip.
         assert(std::abs(result[py*b.w+px]-expected)<2);
     }
     std::remove(path.c_str());
@@ -74,6 +75,13 @@ static void motion(int red){
     assert(std::abs(shift.x-((red&1)?-16:16))<1.1f&&std::abs(shift.y-((red&2)?8:-8))<1.1f);
 }
 int main(){
+    // Smooth deep shadows must survive instead of being rounded to black at
+    // sensor 10-bit precision. Error is bounded to half a 16-bit code.
+    std::set<uint16_t> levels;
+    for(int i=0;i<1000;++i){float v=i*.000001f;auto q=encodeLinearBayer16(v);
+        levels.insert(q);assert(std::abs(q/65535.f-v)<=.5001f/65535.f);}
+    assert(levels.size()>60);assert(encodeLinearBayer16(.0001f)>0);
+    assert(std::lround(.0001f*(1023-64))==0);
     for(float v:{-10.f,-.051f,0.f,.123456f,.5f,1.f,1.251f,10.f})
         assert(normalizedIvstIndex(v)==unsigned(std::max(0.f,std::min(65535.f,v*65535.f))));
     assert(normalizedIvstIndex(std::numeric_limits<float>::max())==65535);

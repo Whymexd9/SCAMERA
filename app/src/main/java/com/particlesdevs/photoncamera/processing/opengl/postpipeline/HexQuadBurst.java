@@ -14,6 +14,8 @@ public final class HexQuadBurst {
     final int width,height,red,iso;
     final float black,white;
     final boolean response;
+    final boolean zsl;
+    final double exposureSeconds;
     private final List<ImageFrame> frames;
     private HexQuadBurst(List<ImageFrame> frames,Parameters p) throws IOException {
         this.frames=new ArrayList<>(frames);
@@ -31,6 +33,7 @@ public final class HexQuadBurst {
         black=(p.blackLevel[0]+p.blackLevel[1]+p.blackLevel[2]+p.blackLevel[3])*.25f;
         white=p.whiteLevel;response=PreferenceKeys.isTetraResponseCorrection();
         ImageFrame ref=frames.get(0);
+        zsl=ref.fromZsl;exposureSeconds=p.exposureTime;
         if(ref.pair==null)throw new IOException("Нет параметров экспозиции RAW");
         iso=p.iso; // Measured sensor ISO from CaptureResult, not normalized UI ISO.
         if(iso<50||iso>12800||!Float.isFinite(black)||!Float.isFinite(white)||white<=black+1)
@@ -56,10 +59,11 @@ public final class HexQuadBurst {
     public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p) throws Exception {
         HexQuadBurst burst=new HexQuadBurst(frames,p);
         ByteBuffer result=VivoNeuralClient.processBurst(context,burst);
-        // Output uses the existing backend's Bayer orientation and average BL.
+        // Native output preserves reconstruction precision in normalized Bayer16.
         // Sensor white balance and lens shading are applied once, downstream.
         p.cfaPattern=(byte)burst.red;p.quadCfa=false;p.remosaicDone=true;
-        Arrays.fill(p.blackLevel,burst.black);
+        p.whiteLevel=65535;
+        Arrays.fill(p.blackLevel,0f);
         p.iso=burst.iso; // Keep measured exposureTime from CaptureResult.
         return result;
     }

@@ -13,6 +13,7 @@ import java.nio.ByteBuffer;
 public class ImageFrame {
     public ByteBuffer buffer;
     public long timestamp;
+    public boolean fromZsl = false;
     public int width, height;
     public GyroBurst frameGyro;
     public float[][][] BlurKernels;
@@ -110,3 +111,4 @@ public class ImageFrame {
         }
     }
 }
+

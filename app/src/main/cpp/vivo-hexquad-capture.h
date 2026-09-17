@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fstream>
 #include <limits>
+#include <chrono>
 
 namespace vivo_hexquad {
 // Versioned little-endian transport. Six DISTINCT, equal-exposure RAW16 frames.
@@ -157,6 +158,22 @@ inline int reflect(int p,int size){
     cell=((cell%period)+period)%period;
     return (cell<cells?cell:period-1-cell)*8+phase;
 }
+// Output contract is always normalized linear Bayer16, black=0, white=65535.
+// Requantizing the fused result to sensor 10-bit destroys shadow precision.
+inline uint16_t encodeLinearBayer16(float value) {
+    require(std::isfinite(value),"Nonfinite linear Bayer sample");
+    return uint16_t(std::lround(std::max(0.f,std::min(1.f,value))*65535.f));
+}
+inline double hexClockMs(){return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();}
+struct SignalStats {
+    std::array<double,3> sum{{0,0,0}};
+    std::array<size_t,3> count{{0,0,0}};
+    size_t zero=0;float low=1,high=0;
+    void add(float v,int c){sum[c]+=v;++count[c];zero+=v<=0;low=std::min(low,v);high=std::max(high,v);}
+    std::string summary()const{std::ostringstream out;out<<std::setprecision(8)<<"meanRGB=";
+        for(int c=0;c<3;++c)out<<(c?",":"")<<(count[c]?sum[c]/count[c]:0);
+        out<<" min="<<low<<" max="<<high<<" zeros="<<zero;return out.str();}
+};
 constexpr int Halo=32, Core=224, Step=192;
 inline float feather(int p){return std::min(1.f,std::min((p+.5f)/32.f,(Core-p-.5f)/32.f));}
 inline std::vector<int> origins(int size){std::vector<int> r;for(int x=0;x<size;x+=Step){r.push_back(x);if(x+Core>=size)break;}return r;}
@@ -189,6 +206,7 @@ struct OutputStats {
 // A Network template makes tile coverage, halo rejection, scaling, CFA and
 // stale client-buffer bugs testable independently from proprietary HTP weights.
 template<class Network> void captureHex(Network& net,RawBurst& b,const std::string& output){
+    const double started=hexClockMs();
     const CfaOrientation orientation(b.w,b.h,b.red);
     vivo_nn::log("HEX CFA: sensor red="+std::to_string(b.red)+
         " -> canonical RGGB; flip_x="+std::to_string(bool(b.red&1))+
@@ -196,6 +214,13 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     estimateResponse(b);
     std::vector<Guide> guides;for(int f=0;f<6;++f)guides.emplace_back(b,f);
     std::vector<Flow> flows;for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f]);
+    SignalStats inputSignal;
+    // Sample complete CFA cells so the sample stride cannot alias one colour.
+    for(int y=0;y+8<=b.h;y+=64)for(int x=0;x+8<=b.w;x+=64)
+        for(int dy=0;dy<8;++dy)for(int dx=0;dx<8;++dx)
+            inputSignal.add(b.sample(0,x+dx,y+dy),b.color(x+dx,y+dy));
+    vivo_nn::log("HEX SIGNAL INPUT: black-subtracted sensor normalized; "+inputSignal.summary());
+    const double aligned=hexClockMs();double packingMs=0,npuMs=0,assemblyMs=0;
     NormalVst transfer(b.iso);auto lut=transfer.forward();auto inverse=transfer.inverse();
     vivo_nn::log("HEX RADIOMETRY: ISO="+std::to_string(b.iso)+" black="+std::to_string(b.black)+
         " white="+std::to_string(b.white)+" vst_min="+std::to_string(lut[0]/65535.f)+
@@ -205,6 +230,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     const auto xs=origins(b.w),ys=origins(b.h);size_t done=0,total=xs.size()*ys.size(),holes=0,samples=0;
     require(net.input.size()==288u*288u*18,"Unexpected HexQuad input allocation");
     for(int oy:ys)for(int ox:xs){
+        double tick=hexClockMs();
         std::fill(net.input.begin(),net.input.end(),0.f);
         for(int ty=0;ty<288;++ty)for(int tx=0;tx<288;++tx){
             int x=reflect(ox-Halo+tx,b.w),y=reflect(oy-Halo+ty,b.h);
@@ -222,7 +248,9 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                 net.input[(size_t(ty)*288+tx)*18+f*3+c]=lut[c*Levels+value]*(1.f/65535.f);
             }
         }
-        net.execute();require(net.output.size()==576u*576u*3,"Unexpected HexQuad output shape");
+        packingMs+=hexClockMs()-tick;tick=hexClockMs();
+        net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
+        require(net.output.size()==576u*576u*3,"Unexpected HexQuad output shape");
         // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
         // decoded with stock IVST index saturation, not a chart-only range gate.
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
@@ -237,6 +265,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
             float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
             sum[index]+=value*w;weight[index]+=w;
         }
+        assemblyMs+=hexClockMs()-tick;
         frameStats.merge(tileStats);++done;
         if(tileStats.outsideChart)++anomalousTiles;
         if(done==1||done%8==0||done==total||(tileStats.outsideChart&&anomalousTiles<=4))
@@ -248,13 +277,19 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     require(samples>0&&double(holes)/samples<.40,"Too much motion / unreliable HexQuad registration");
     vivo_nn::log("HEX ALIGN: missing sparse samples="+std::to_string(double(holes)/samples));
     std::ofstream file(output,std::ios::binary|std::ios::trunc);require(bool(file),"Cannot open HexQuad output");
+    SignalStats outputSignal;
     std::vector<uint16_t> row(b.w);
     for(int y=0;y<b.h;++y){for(int x=0;x<b.w;++x){
         size_t i=size_t(orientation.y(y))*b.w+orientation.x(x);
         require(weight[i]>0&&std::isfinite(sum[i]),"Hole in HexQuad tile assembly");
-        row[x]=uint16_t(std::lround(std::max(b.black,std::min(b.white,b.black+sum[i]/weight[i]*(b.white-b.black)))));
+        const float linear=sum[i]/weight[i];
+        row[x]=encodeLinearBayer16(linear);
+        outputSignal.add(row[x]/65535.f,bayerColor(x,y,b.red));
     }file.write(reinterpret_cast<const char*>(row.data()),b.w*2);}
     file.close();require(bool(file),"HexQuad output write failed");
+    vivo_nn::log("HEX SIGNAL OUTPUT: normalized Bayer16 black=0 white=65535; "+outputSignal.summary());
+    vivo_nn::log("HEX TIMING ms: response_alignment="+std::to_string(aligned-started)+" packing="+std::to_string(packingMs)+
+        " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" total="+std::to_string(hexClockMs()-started));
     vivo_nn::log("HEX FRAME COMPLETE: x2 RGB -> area2x2 -> Bayer16; "+std::to_string(b.w)+"x"+std::to_string(b.h)+" actual_frames=6 ISO="+std::to_string(b.iso));
 }
 } // namespace vivo_hexquad

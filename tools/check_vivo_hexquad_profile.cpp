@@ -2,13 +2,14 @@
 #include <cassert>
 using namespace vivo_hexquad;
 struct ProfileReference {
-    int iso,red,calls=0,fault=0;
+    int iso,red,calls=0,fault=0;bool cached=false;
     std::vector<float> input=std::vector<float>(288u*288u*18),output=std::vector<float>(576u*576u*3);
     const float* bound=input.data();
-    ProfileReference(int i,int r,int f=0):iso(i),red(r),fault(f){}
+    ProfileReference(int i,int r,int f=0,bool cache=false):iso(i),red(r),fault(f),cached(cache){}
     void execute(){
         assert(input.data()==bound);
         int sensitivity=calls<18?100:calls<36?400:iso,chart=(calls/2)%9;
+        if(cached){sensitivity=iso;chart=calls<2?0:2;}
         ++calls;
         // Independent packing oracle: six tagged RAW arrays passed through
         // the same sparse packer as preprocessing, not direct tensor indexing.
@@ -50,6 +51,8 @@ int main(){
         ProfileReference good(800,red);requireHexCaptureCharts(good,800,red);
         assert(good.calls==54);
     }
+    ProfileReference cached(800,3,0,true);requireHexCaptureCharts(cached,800,3,true);assert(cached.calls==4);
+    ProfileReference badCached(800,3,1,true);assert(!checkHexProfileCharts(badCached,800,3,true));
     ProfileReference duplicate(400,3);assert(checkHexProfileCharts(duplicate,400,3));assert(duplicate.calls==36);
     for(int fault:{1,2,3}){
         ProfileReference bad(800,3,fault);assert(!checkHexProfileCharts(bad,800,3));

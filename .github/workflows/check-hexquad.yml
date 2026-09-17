@@ -4,6 +4,8 @@ on:
     paths:
       - 'app/src/main/cpp/vivo-hexquad-*.h'
       - 'tools/*vivo_hexquad*'
+      - 'tools/java/HexQuadZslSelectorCheck.java'
+      - 'app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java'
       - '.github/workflows/check-hexquad.yml'
   workflow_dispatch:
 permissions:
@@ -38,3 +40,11 @@ jobs:
         run: |
           g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_profile.cpp -ldl -o /tmp/check-vivo-hexquad-profile
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-profile
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check HexQuad ZSL metadata selection
+        run: |
+          javac -d /tmp/hex-zsl-test app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java tools/java/HexQuadZslSelectorCheck.java
+          java -ea -cp /tmp/hex-zsl-test HexQuadZslSelectorCheck

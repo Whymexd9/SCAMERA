@@ -1,20 +1,20 @@
 # HP9 HexQuad: bundled diagnostic and stock normal VST
 
 Status: **experimental six-frame capture is connected through `hp9_hexquad`.**
-On Vivo V2454A the x2 model passed all twelve synthetic checks (worst RMSE
-0.011506); x1 failed one ISO400 colour patch (0.056333). Capture uses **x2 only**.
-The subsequent ISO800 check fails a neutral patch (RMSE 0.065633), so capture
-at that profile is still blocked. Worker v10 adds diagnostics, **not a proven
-ISO800 colour fix**. No automatic ISO reduction or colour-gate bypass is used.
-Real-scene quality, speed and motion tolerance still need phone testing.
+x2 profiled ISO100/400/800 checks pass on Vivo V2454A; a real 12.5MP capture
+completed, but the supplied photos show poor shadows/gradients. Worker v12
+corrects output precision and restores eligible ZSL capture. Overall darkness,
+real-scene colour, detail and processing time still require phone validation.
+x1 remains diagnostic only. No automatic ISO reduction is used.
 
-## Test capture (v9 worker)
+## Test capture (v12 worker)
 
 Select **Алгоритм ремозаика → HP9 HexQuad x2 — NPU, 6 кадров (тест)** and
 turn remosaic on. Use Photo mode, HP9 tele 4× ISZ, 4:3, block4, phase0,0, <=16 MP.
 Software binning and 16:9 sensor-buffer cropping are rejected to preserve Tetra phase.
-The controller takes six real manual equal-exposure frames, bypasses ZSL, and
-omits short/long HDR brackets for this backend. Other backends are unchanged.
+The controller uses six matched, equal-exposure pre-shutter RAWs in ZSL-capable
+Photo sessions, and manual equal-exposure PSL in other sessions. Short/long HDR
+brackets are omitted for this backend. Other backends are unchanged.
 The native job runs before ESD4D, not on an already fused image. Duplicate
 frames, incomplete buffers, missing measured exposure products, variable
 exposure, unsupported phase and wrong block size are rejected.
@@ -280,6 +280,51 @@ with HP9 HexQuad x2, Tetra4x4, tele 4x ISZ and inspect both the saved image and
 packing against six separately generated tagged RAW frames, all CFA mappings,
 positive gate traversal, swapped channels, colour bias, range violations,
 NaN in halo and modified input. Actual model results require the phone.
+
+### Linear16 output, ZSL and repeat-capture cost (native worker v12)
+
+The first real v11 report completes all 352 tiles at ISO800. All 54 profiled
+charts pass; retained output is finite, 0.027954..0.063171, with zero IVST index
+clipping. The supplied archive contains a JPEG only (no source RAW), and the
+other two reduced JPEGs are nearly black. The report has no stage timings.
+It therefore cannot establish whether all darkness originates before the model,
+in the model or downstream. It does establish that the old range assertion is
+no longer the failure. The saved photograph does not establish neural quality.
+
+A concrete precision bug was found: reconstructed floats were rounded back to
+the sensor's 10-bit black=64/white=1023 range. Shadows then have only a few codes;
+normalized .0001 becomes exactly black. Native output now uses linear Bayer16
+black=0/white=65535 and Java supplies that same contract downstream. Half a
+16-bit code is the maximum final quantization error. No display gain is invented,
+ISO is unchanged, and the pipeline still applies sensor WB once. Capture logs
+include input/output normalized signal statistics and individual packing/NPU/
+assembly durations, plus total client time, to localize remaining darkness and
+performance issues on the next real frame.
+
+HexQuad now participates in Photo/MOTION's existing ZSL RAW ring. Its capacity is
+at least eight frames; six distinct pre-shutter frames with equal measured ISO
+and shutter are selected. RAW Images are paired to TotalCaptureResult by
+SENSOR_TIMESTAMP (Android documents equality with generated Image timestamps:
+https://developer.android.com/reference/android/hardware/camera2/CaptureResult#SENSOR_TIMESTAMP).
+Latest metadata is not assigned indiscriminately to the burst. Results are bounded
+and cleared with preview/session reset, and the selected result/request is
+snapshotted before asynchronous processing. Missing metadata, changing exposure,
+duplicate timestamps or stale frames reject selection and ask to wait for stable
+AE; the ZSL path does not silently capture replacement PSL frames. Non-ZSL
+sessions retain the explicit six-frame PSL path and log the source.
+
+After a successful full-suite capture, the app process caches that ISO/CFA pair.
+Subsequent shots in the same process run four fresh gray/colour checks at actual
+ISO instead of 36/54 charts. Failure invalidates the entry, restart/update clears
+all entries, and every native job still verifies the same bundled asset hashes.
+This reduces repeated diagnostic work; the 352 real-image neural executions
+remain. No measured speedup is claimed before timing on the device.
+
+Host tests cover deep-shadow quantization and continuity, downstream output
+scale through actual tile assembly, all CFA orientations, cached smoke checks,
+and timestamp selection with changing/missing/stale exposure metadata. Android
+build validation remains necessary; actual NPU image quality and capture timing
+must be measured on the phone.
 
 ## Building and checks
 

@@ -15,6 +15,9 @@ import java.util.zip.ZipFile;
 /** Bounded one-job root process; vendor failures cannot crash the camera PID. */
 public final class VivoNeuralClient {
     private VivoNeuralClient() {}
+    // Process-local only: reinstall/restart clears it, and every job verifies
+    // the bundled model/runtime hashes. Never reuse between ISO/CFA pairs.
+    private static final java.util.Set<String> validatedHexProfiles = new java.util.HashSet<>();
     private static String quote(String s) { return "'"+s.replace("'","'\\''")+"'"; }
     public static synchronized void selfTest(Context context,Consumer<String> log) throws Exception {
         job(context,null,0,0,0,true,null,log);
@@ -31,6 +34,9 @@ public final class VivoNeuralClient {
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
         if(!dir.mkdir())throw new IOException("Не удалось создать папку задания");
         Process process=null;
+        final String profileKey=burst==null?"":burst.iso+":"+burst.red;
+        final boolean cachedProfile=burst!=null&&validatedHexProfiles.contains(profileKey);
+        final long startMs=android.os.SystemClock.elapsedRealtime();
         // A self-test must never overwrite the failed photograph's report.
         SharedPreferences prefs=context.getSharedPreferences(
                 raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
@@ -41,6 +47,9 @@ public final class VivoNeuralClient {
             observer.accept(line);
         };
         try {
+            if(burst!=null)log.accept("HEX SOURCE: "+(burst.zsl?"ZSL":"PSL")+" ISO="+burst.iso+
+                    " exposure_s="+burst.exposureSeconds+" black="+burst.black+" white="+burst.white+
+                    " profile_cache="+cachedProfile);
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
@@ -73,7 +82,7 @@ public final class VivoNeuralClient {
                     "; export ADSP_LIBRARY_PATH="+quote(dir.getAbsolutePath()+";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
                     "; exec /system/bin/app_process64 /system/bin "+VivoNeuralWorker.class.getName()+" "+quote(dir.getAbsolutePath());
             if(raw!=null)command+=" "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+redQuad;
-            if(burst!=null)command+=" --hexquad-capture "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath());
+            if(burst!=null)command+=(cachedProfile?" --hexquad-capture-cached ":" --hexquad-capture ")+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath());
             else if(hex)command+=" --hexquad";
             log.accept("ROOT: запуск отдельного процесса; разрешите запрос root");
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
@@ -98,8 +107,11 @@ public final class VivoNeuralClient {
             result.order(ByteOrder.nativeOrder());
             try(FileChannel channel=new FileInputStream(output).getChannel()){while(result.hasRemaining())if(channel.read(result)<0)throw new EOFException("Неполный результат");}
             catch(Exception e){if(burst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
-            result.flip();return result;
-        } catch(Exception e){log.accept("CLIENT STOP: "+e.getMessage());throw e;}
+            result.flip();
+            if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);}
+            log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));
+            return result;
+        } catch(Exception e){validatedHexProfiles.remove(profileKey);log.accept("CLIENT STOP: "+e.getMessage());throw e;}
         finally {
             if(process!=null && process.isAlive())process.destroyForcibly();
             prefs.edit().putBoolean("complete",true).commit();
