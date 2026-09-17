@@ -127,6 +127,7 @@ jobs:
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/librtDenoise.so'
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file res/xml/preferences.xml > /tmp/apk-preferences.txt
+          grep -q 'rt_denoise_screen' /tmp/apk-preferences.txt
           grep -q 'pref_rt_denoise_backend' /tmp/apk-preferences.txt
           grep -q 'rt_original_controls' /tmp/apk-preferences.txt
           grep -q 'rt512_luma' /tmp/apk-preferences.txt
