@@ -2,12 +2,56 @@
 
 Status: **experimental six-frame capture is connected through `hp9_hexquad`.**
 x2 profiled ISO100/400/800 checks pass on Vivo V2454A; a real 12.5MP capture
-completed, but the supplied photos show poor shadows/gradients. Worker v12
-corrects output precision and restores eligible ZSL capture. Overall darkness,
-real-scene colour, detail and processing time still require phone validation.
+completed. Worker v12 corrected output precision and restored eligible ZSL;
+the user reports that capture now works, but texture looks overly smoothed.
+Worker v13 adds separate luma/chroma reconstruction blending. Real-scene detail,
+colour and processing time for this new blend still require phone validation.
 x1 remains diagnostic only. No automatic ISO reduction is used.
 
-## Test capture (v12 worker)
+## Detail controls (v13 worker)
+
+The main settings page has **HP9 HexQuad — шумоподавление**, active only for
+the `hp9_hexquad` backend. Luma defaults to 50, chroma to 100. The two sliders
+are **reconstruction blend weights, not internal controls of the closed model**:
+100 retains that neural component; 0 uses an independent reconstruction of
+the first real RAW (the same exposure used as the alignment reference).
+Lower values may restore noise, CFA grid or interpolation artefacts. They
+cannot guarantee recovery of detail missing from the measured RAW.
+
+The reference adapts our Tetra Detail v2's coarse colour/energy/correlation,
+directional green and regularized colour regression to bounded native tiles.
+It uses the same black/white levels, CFA canonicalization and site correction
+as the neural input, preserving observed samples. It does not run another
+neural network or alter model ISO/VST. Coarse fields occupy about 10 MB at
+12.5 MP; no second full-resolution RGB frame is retained. This extra reference
+has a processing cost; v13 is a quality-control experiment, not a speedup.
+
+After the original per-channel IVST/2x2-area reduction, the two RGB estimates
+are temporarily divided by the capture neutral point. Luma is the camera-RGB
+proxy `(R+2G+B)/4` and chroma is RGB minus that scalar. These components are
+blended independently, then restored to the original sensor scale before
+Bayer selection/overlap. This is not sRGB or a perceptual colour space.
+Clipping at final Bayer16 encoding can couple the components in saturated
+regions. At 100/100 the existing neural assembly is retained exactly and
+reference reconstruction is skipped. The six-frame model and its gates remain.
+
+**Дополнительный шумодав после HexQuad** defaults to off. It suppresses the
+separate AI RAW, SCAMERA ESD3D2 and original RawTherapee denoisers only on a
+successfully processed HexQuad photograph. Turning it on restores those stages
+according to their existing individual settings; it does not enable all of
+them. Other capture backends, colour/moiré corrections and sharpening retain
+their own settings. This policy is frozen in the capture parameters, copied
+with them, and reported together with both blend weights.
+
+Transport v2 uses an 80-byte header with luma/chroma weights and the neutral
+point. Worker accepts old 64-byte v1 headers as 100/100 and unity neutral.
+NaN, infinity, invalid weights/neutral and truncated buffers are rejected.
+Host tests cover endpoint identity, independent component interpolation,
+measured CFA preservation in four orientations, neutral handling, borders,
+tile overlaps and actual mock-network capture. They do not validate NPU image
+quality on the device.
+
+## Test capture (v13 worker)
 
 Select **Алгоритм ремозаика → HP9 HexQuad x2 — NPU, 6 кадров (тест)** and
 turn remosaic on. Use Photo mode, HP9 tele 4× ISZ, 4:3, block4, phase0,0, <=16 MP.

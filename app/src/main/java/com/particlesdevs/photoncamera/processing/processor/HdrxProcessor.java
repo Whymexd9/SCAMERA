@@ -540,7 +540,9 @@ public class HdrxProcessor extends ProcessorBase {
 
         processingParameters.noiseModeler.computeStackingNoiseModel(images.size());
 
-        if (PreferenceKeys.isAiDenoiseEnabled() && PreferenceKeys.getAiDenoiseStrength() > 0) {
+        boolean allowPostDenoise = !processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise;
+        if (processingParameters.hexQuadProcessed) Log.i(TAG,"HEX POST DENOISE: AI/SCAMERA/RT allowed="+allowPostDenoise);
+        if (allowPostDenoise && PreferenceKeys.isAiDenoiseEnabled() && PreferenceKeys.getAiDenoiseStrength() > 0) {
             processingStage = "AI RAW denoise";
             try {
                 AiBayerDenoiseProcessor.process(PhotonCamera.getAppContext(), output,
@@ -659,4 +661,3 @@ public class HdrxProcessor extends ProcessorBase {
     }
 
 }
-

@@ -49,7 +49,8 @@ public final class VivoNeuralClient {
         try {
             if(burst!=null)log.accept("HEX SOURCE: "+(burst.zsl?"ZSL":"PSL")+" ISO="+burst.iso+
                     " exposure_s="+burst.exposureSeconds+" black="+burst.black+" white="+burst.white+
-                    " profile_cache="+cachedProfile);
+                    " profile_cache="+cachedProfile+" luma="+burst.lumaPercent+" chroma="+burst.chromaPercent+
+                    " additional_NR="+burst.postDenoise);
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){

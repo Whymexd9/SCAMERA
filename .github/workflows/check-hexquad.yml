@@ -4,6 +4,10 @@ on:
     paths:
       - 'app/src/main/cpp/vivo-hexquad-*.h'
       - 'tools/*vivo_hexquad*'
+      - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/HexQuadBurst.java'
+      - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/PostPipeline.java'
+      - 'app/src/main/java/com/particlesdevs/photoncamera/processing/processor/HdrxProcessor.java'
+      - 'app/src/main/res/xml/preferences.xml'
       - 'tools/java/HexQuadZslSelectorCheck.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java'
       - '.github/workflows/check-hexquad.yml'
@@ -36,6 +40,11 @@ jobs:
         run: |
           g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_iso.cpp -ldl -o /tmp/check-vivo-hexquad-iso
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-iso
+      - name: Check luma/chroma detail reconstruction and settings wiring
+        run: |
+          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_detail.cpp -ldl -o /tmp/check-vivo-hexquad-detail
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-detail
+          python tools/check_vivo_hexquad_controls.py
       - name: Check profiled capture gate and sparse packing
         run: |
           g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_profile.cpp -ldl -o /tmp/check-vivo-hexquad-profile

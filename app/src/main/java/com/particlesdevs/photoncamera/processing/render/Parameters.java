@@ -51,6 +51,9 @@ public class Parameters {
      * does not run over an ordinary bayer frame.
      */
     public boolean remosaicDone;
+    // Per-capture policy, not a live settings lookup during asynchronous processing.
+    public boolean hexQuadProcessed;
+    public boolean hexQuadPostDenoise;
     public Point rawSize;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
@@ -609,6 +612,8 @@ public class Parameters {
 
     protected Parameters Build() {
         Parameters params = new Parameters();
+        params.hexQuadProcessed = hexQuadProcessed;
+        params.hexQuadPostDenoise = hexQuadPostDenoise;
         params.cfaPattern = cfaPattern;
         params.baseCfaPattern = baseCfaPattern;
         params.quadCfa = quadCfa;

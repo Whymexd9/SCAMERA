@@ -156,6 +156,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             seedMissingListValues(getPreferenceScreen());
             setupRemosaicBackend();
             setupOriginalNoiseReduction();
+            updateHexQuadDenoiseControls(PreferenceKeys.getRemosaicBackend());
+        }
+
+        private void updateHexQuadDenoiseControls(String backend) {
+            for (String key : new String[]{"hexquad_luma", "hexquad_chroma", "hexquad_post_denoise"}) {
+                Preference p = findPreference(key);
+                if (p != null) p.setEnabled("hp9_hexquad".equals(backend));
+            }
         }
 
         private void setupOriginalNoiseReduction() {
@@ -281,6 +289,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void updateRemosaicControls(String backend) {
+            updateHexQuadDenoiseControls(backend);
             boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend)
                     || "hp9_hexquad".equals(backend);
             int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,

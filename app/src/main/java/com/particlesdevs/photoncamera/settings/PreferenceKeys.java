@@ -567,6 +567,19 @@ public class PreferenceKeys {
         return isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
     }
 
+    /** Hybrid reconstruction weights; not exposed parameters of the closed neural model. */
+    public static float getHexQuadLuma() {
+        return RawTherapeeSettings.number("hexquad_luma",50,0,100);
+    }
+
+    public static float getHexQuadChroma() {
+        return RawTherapeeSettings.number("hexquad_chroma",100,0,100);
+    }
+
+    public static boolean isHexQuadPostDenoiseEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_post_denoise",false);
+    }
+
     public static int getRemosaicProfile() {
         return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
     }
@@ -1427,4 +1440,3 @@ public class PreferenceKeys {
         }
     }
 }
-

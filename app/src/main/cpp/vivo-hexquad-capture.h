@@ -7,12 +7,16 @@
 #include <fstream>
 #include <limits>
 #include <chrono>
+#include <memory>
+#include "vivo-hexquad-detail.h"
 
 namespace vivo_hexquad {
 // Versioned little-endian transport. Six DISTINCT, equal-exposure RAW16 frames.
 // Output is Bayer16 at the input size, not an interpolated 4x-larger photograph.
 struct RawBurst {
     int w=0,h=0,iso=0,red=0; float black=0,white=0; bool response=false;
+    float luma=1.f,chroma=1.f;
+    Rgb neutral{{1.f,1.f,1.f}};
     std::array<const uint16_t*,Frames> raw{};
     std::array<float,64> gain;
     RawBurst() { gain.fill(1.f); }
@@ -31,12 +35,12 @@ struct MappedBurst {
         int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open HexQuad RAW burst");
         struct stat st{};
-        if(fstat(fd,&st)||st.st_size<64||st.st_size>64+16000000LL*12){close(fd);throw std::runtime_error("Invalid burst file size");}
+        if(fstat(fd,&st)||st.st_size<64||st.st_size>80+16000000LL*12){close(fd);throw std::runtime_error("Invalid burst file size");}
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map burst");
         try {
             uint32_t v[16];std::memcpy(v,address,64);
-            require(v[0]==0x32515848&&v[1]==1&&v[2]>=288&&v[3]>=288&&v[2]%8==0&&v[3]%8==0&&
+            require(v[0]==0x32515848&&(v[1]==1||v[1]==2)&&v[2]>=288&&v[3]>=288&&v[2]%8==0&&v[3]%8==0&&
                 uint64_t(v[2])*v[3]<=16000000&&v[4]>=50&&v[4]<=12800&&v[5]<=3&&v[6]==0&&v[7]==0,
                 "Unsupported HexQuad RAW header / phase");
             burst.w=int(v[2]);burst.h=int(v[3]);burst.iso=int(v[4]);burst.red=int(v[5]);
@@ -45,9 +49,18 @@ struct MappedBurst {
                     burst.white<=65535&&burst.white>burst.black+1&&v[10]<=1&&v[11]==6,
                     "Invalid HexQuad radiometry");
             burst.response=v[10]!=0;
+            const size_t header=v[1]==2?80:64;
+            if(v[1]==2){
+                require(length>=header,"Truncated HexQuad detail header");
+                float controls[5];std::memcpy(controls,static_cast<const uint8_t*>(address)+48,sizeof(controls));
+                require(std::isfinite(controls[0])&&std::isfinite(controls[1])&&controls[0]>=0&&controls[0]<=1&&controls[1]>=0&&controls[1]<=1,
+                        "Invalid HexQuad luma/chroma controls");
+                burst.luma=controls[0];burst.chroma=controls[1];
+                for(int c=0;c<3;++c){require(std::isfinite(controls[c+2])&&controls[c+2]>=.0001f&&controls[c+2]<=10000.f,"Invalid HexQuad neutral point");burst.neutral[c]=controls[c+2];}
+            }
             size_t pixels=size_t(burst.w)*burst.h;
-            require(length==64+pixels*Frames*2,"Truncated HexQuad burst");
-            const uint16_t* data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+64);
+            require(length==header+pixels*Frames*2,"Truncated HexQuad burst");
+            const uint16_t* data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+header);
             for(size_t f=0;f<Frames;++f)burst.raw[f]=data+f*pixels;
         }catch(...){munmap(address,length);address=MAP_FAILED;throw;}
     }
@@ -212,6 +225,13 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         " -> canonical RGGB; flip_x="+std::to_string(bool(b.red&1))+
         " flip_y="+std::to_string(bool(b.red&2))+"; output restored to sensor orientation/CFA");
     estimateResponse(b);
+    const bool hybrid=b.luma<1.f||b.chroma<1.f;
+    std::unique_ptr<TetraDetailReference<RawBurst>> reference;
+    double detailStart=hexClockMs();
+    if(hybrid)reference.reset(new TetraDetailReference<RawBurst>(b));
+    double detailMs=hexClockMs()-detailStart;
+    vivo_nn::log("HEX DENOISE: luma="+std::to_string(b.luma*100)+" chroma="+std::to_string(b.chroma*100)+
+        "; 100=neural 0=single-reference Tetra Detail; neutral-balanced camera RGB; model ISO/VST unchanged");
     std::vector<Guide> guides;for(int f=0;f<6;++f)guides.emplace_back(b,f);
     std::vector<Flow> flows;for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f]);
     SignalStats inputSignal;
@@ -250,18 +270,22 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         }
         packingMs+=hexClockMs()-tick;tick=hexClockMs();
         net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
+        typename TetraDetailReference<RawBurst>::Tile detailTile;
+        if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core);detailMs+=hexClockMs()-start;}
         require(net.output.size()==576u*576u*3,"Unexpected HexQuad output shape");
         // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
         // decoded with stock IVST index saturation, not a chart-only range gate.
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
         OutputStats tileStats;
         for(int ty=0;ty<Core&&oy+ty<b.h;++ty)for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
-            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;
+            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;Rgb rgb{};
             for(int dy=0;dy<2;++dy)for(int dx=0;dx<2;++dx){
                 size_t index=(size_t((ty+Halo)*2+dy)*576+(tx+Halo)*2+dx)*3;
                 for(int ch=0;ch<3;++ch)tileStats.add(net.output[index+ch],(tx+Halo)*2+dx,(ty+Halo)*2+dy,ch);
                 value+=inverse[c][normalizedIvstIndex(net.output[index+c])]*.25f;
+                if(hybrid)for(int ch=0;ch<3;++ch)rgb[ch]+=inverse[ch][normalizedIvstIndex(net.output[index+ch])]*.25f;
             }
+            if(reference)value=mixDetail(reference->rgb(detailTile,x,y),rgb,b.luma,b.chroma,b.neutral)[c];
             float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
             sum[index]+=value*w;weight[index]+=w;
         }
@@ -289,7 +313,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     file.close();require(bool(file),"HexQuad output write failed");
     vivo_nn::log("HEX SIGNAL OUTPUT: normalized Bayer16 black=0 white=65535; "+outputSignal.summary());
     vivo_nn::log("HEX TIMING ms: response_alignment="+std::to_string(aligned-started)+" packing="+std::to_string(packingMs)+
-        " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" total="+std::to_string(hexClockMs()-started));
+        " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" detail_preparation="+std::to_string(detailMs)+" total="+std::to_string(hexClockMs()-started));
     vivo_nn::log("HEX FRAME COMPLETE: x2 RGB -> area2x2 -> Bayer16; "+std::to_string(b.w)+"x"+std::to_string(b.h)+" actual_frames=6 ISO="+std::to_string(b.iso));
 }
 } // namespace vivo_hexquad
