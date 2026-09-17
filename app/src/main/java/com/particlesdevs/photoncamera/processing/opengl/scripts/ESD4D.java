@@ -494,7 +494,6 @@ public class ESD4D extends GLOneScript {
         return blendCurrent;
     }
 
-    @Override
     /**
      * A quad or tetra frame carries one colour per block, so the merge may only
      * displace it by whole blocks: in packed texels that period equals the
@@ -508,6 +507,7 @@ public class ESD4D extends GLOneScript {
         return PreferenceKeys.getRemosaicBlockSize();
     }
 
+    @Override
     public void Run() {
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
         Log.d("ESD4D", "Noise multiplier: " + noiseMpy);
