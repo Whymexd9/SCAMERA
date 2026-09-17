@@ -26,6 +26,14 @@ uniform int cfaPattern;
 // sampled at its measured sub-pixel phase in mergeAlign; here we retain the
 // statistically valid high-frequency residual instead of averaging it away.
 uniform int rawMfsr;
+/**
+ * Colour period of the mosaic in packed texels; 1 for ordinary bayer. The
+ * refinement below rounds its flow to whole texels because a packed quad
+ * cannot be sampled fractionally - on a quad or tetra frame that is not
+ * enough, since one texel of displacement already lands on a block of a
+ * different colour.
+ */
+uniform int mosaicPeriod;
 uniform float rawMfsrStrength;
 // Android port of HDR+'s robust low/high-frequency merge choice.  This is
 // selected independently for ZSL and Night by the Java pipeline.
@@ -129,6 +137,13 @@ ivec2 refineFlow(ivec2 xy) {
     }
     int m = max(1, int(flowMaxDisp + 0.5));
     ivec2 block = clamp(ivec2(round(flow)), ivec2(-m), ivec2(m));
+    if (mosaicPeriod > 1) {
+        // Whole colour periods only, for the same reason mergeAlign snaps its
+        // displacement: a finer offset swaps colours between blocks.
+        int p = mosaicPeriod;
+        block = ivec2(round(vec2(block) / float(p))) * p;
+        block = clamp(block, ivec2(-m), ivec2(m));
+    }
     if (block == ivec2(0)) return ivec2(0);
     // Block-match validation: the selected block must match the base window
     // better than the unrefined position both relatively and statistically.

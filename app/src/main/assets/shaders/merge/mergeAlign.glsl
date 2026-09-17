@@ -105,6 +105,19 @@ uniform ivec2 rawHalf;
 uniform vec4 analogBalance;
 uniform ivec2 cfaShift; // sensor red-site offset (cfa%2, cfa/2), 0..1 per axis
 uniform int rawMfsr;
+/**
+ * Colour period of the mosaic, in packed texels. 1 for ordinary bayer, where
+ * one texel holds a full RGGB quad and any integer texel shift keeps every
+ * channel on its own colour - the assumption the packing is built on.
+ *
+ * A quad or tetra sensor breaks that assumption: a texel then holds four
+ * samples of ONE colour, and the colour repeats only every 2 texels (quad,
+ * 2x2 blocks) or 4 texels (tetra, 4x4 blocks). A one-texel shift, or a
+ * fractional-offset gather, lands on a neighbouring block of a different
+ * colour and mixes them. Flat ground hides it because there is nothing to
+ * mix; over structure it comes out as colour on every edge.
+ */
+uniform int mosaicPeriod;
 #define TILE 2
 #define CONCAT 1
 #define M_PI 3.1415926535897932384626433832795
@@ -463,13 +476,26 @@ void main() {
         ivec2 xyT = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)),ivec2(0),alignmentSize-1);
         vec4 alignLoad = texelFetch(alignmentTexture, xyT + shift, 0);
         vec2 alignF = vec4ToAlignment(alignLoad);
+        if (mosaicPeriod > 1) {
+            // Snap the displacement to whole colour periods. Anything finer
+            // fetches a sample of the wrong colour, and no weighting downstream
+            // can undo that. The cost is that sub-pixel merging is gone on a
+            // mosaic frame - the samples of one colour genuinely only exist on
+            // that lattice, so there is nothing finer to merge.
+            float p = float(mosaicPeriod);
+            alignF = floor(alignF / p + vec2(0.5)) * p;
+        }
         ivec2 align = ivec2(floor(alignF));
         ivec2 aligned = clamp(xy + align, ivec2(0), outSize - ivec2(1));
         // Packed RGBA stores one Bayer colour per channel, therefore bilinear
         // interpolation across packed texels never mixes CFA colours. With
         // several fractional hand-tremor phases this is shift-and-add RAW
         // multi-frame super-resolution on the native output grid.
-        vec4 bayerAlter = rawMfsr == 1
+        // Kernel regression gathers over neighbouring texels, which on a mosaic
+        // are other colours; with the displacement already snapped there is no
+        // fractional offset left for it to resample anyway.
+        bool kernelOk = rawMfsr == 1 && mosaicPeriod <= 1;
+        vec4 bayerAlter = kernelOk
                 ? samplePackedRBF(alterSampler, vec2(xy) + alignF, omegaInv)
                 : imageLoad(alterTexture, aligned);
         // Robustness: how much of the aligned sample do we trust? The previous
@@ -487,7 +513,7 @@ void main() {
         // reference frame's noise and rejected almost everywhere.
         // Compare like with like: on the MFSR path both sides go through the
         // kernel, otherwise both are raw texels.
-        vec4 baseForResidual = rawMfsr == 1 ? baseRBF(xy, omegaInv) : bayerBase;
+        vec4 baseForResidual = kernelOk ? baseRBF(xy, omegaInv) : bayerBase;
         vec4 d = bayerAlter * vec4(exposure) - baseForResidual;
         vec4 sigma = noise * vec4(max(exposure, 1.0));
         vec4 d2 = d * d;

@@ -27,6 +27,13 @@ uniform ivec2 alignmentSize;
 uniform ivec2 rawHalf;
 uniform vec4 analogBalance;
 uniform int rawMfsr;
+/**
+ * Colour period of the mosaic in packed texels; 1 for ordinary bayer. Same
+ * reason as in mergeAlign: on a quad or tetra sensor a texel holds four
+ * samples of one colour, so a displacement finer than the period fetches a
+ * neighbouring block of a different colour.
+ */
+uniform int mosaicPeriod;
 // Dense optical-flow alignment (FlowNet): the alignment texture holds per-pixel
 // flow at the model's reduced resolution. The full frame was stretched onto the
 // model grid, so the flow vector stored at texel m already describes rawHalf
@@ -136,9 +143,13 @@ void main() {
     vec2 a = cov / (varI + 3e-4);
     vec2 b = meanP - a * meanI;
     vec2 flowOut = a * curLuma + b;
+    if (mosaicPeriod > 1) {
+        float p = float(mosaicPeriod);
+        flowOut = floor(flowOut / p + vec2(0.5)) * p;
+    }
     ivec2 align = ivec2(floor(flowOut));
     ivec2 aligned = clamp(xy + align, ivec2(0), outSize - ivec2(1));
-    vec4 bayerAlter = rawMfsr == 1
+    vec4 bayerAlter = (rawMfsr == 1 && mosaicPeriod <= 1)
             ? samplePackedBicubic(alterSampler, vec2(xy) + flowOut)
             : imageLoad(alterTexture, aligned);
     imageStore(outTexture, xy, clamp(bayerAlter*vec4(exposure), vec4(0.0), vec4(1.0)));

@@ -75,6 +75,13 @@ public class ESD4D extends GLOneScript {
     int hotPixelCount;
     /** Black levels permuted to the normalized internal RGGB packed-channel order (merge00 shifts quad origins to the red site). */
     float[] blNorm;
+    /**
+     * Colour period of the mosaic in packed texels; 1 for an ordinary bayer
+     * frame, where the packing already puts one colour per channel and any
+     * integer texel displacement is colour-preserving.
+     */
+    int mosaicPeriod = 1;
+
     /** Sensor red-site offset ((cfa%2, cfa/2)); the packed grid is rawHalf + cfaShift. */
     Point cfaShift;
     /** Packed texture size (rawSize/2 + cfaShift) shared by all quad-packed stages. */
@@ -488,6 +495,19 @@ public class ESD4D extends GLOneScript {
     }
 
     @Override
+    /**
+     * A quad or tetra frame carries one colour per block, so the merge may only
+     * displace it by whole blocks: in packed texels that period equals the
+     * block side in pixels - 2 for quad bayer, 4 for tetra squared. Anything
+     * finer fetches a neighbouring block of a different colour, which is the
+     * colour that appears on every edge of a merged mosaic frame while flat
+     * areas stay clean.
+     */
+    private static int mosaicPeriodFor(Parameters parameters) {
+        if (!parameters.quadCfa && parameters.cfaPattern >= 0) return 1;
+        return PreferenceKeys.getRemosaicBlockSize();
+    }
+
     public void Run() {
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
         Log.d("ESD4D", "Noise multiplier: " + noiseMpy);
@@ -583,6 +603,7 @@ public class ESD4D extends GLOneScript {
         // cfaShift; shifted out-of-range sites are edge duplicates, never
         // read back on unpack.
         int cfa = (int) parameters.cfaPattern;
+        mosaicPeriod = mosaicPeriodFor(parameters);
         if (cfa < 0 || cfa > 3) cfa = 0; // quad/monochrome modes: no normalization
         cfaShift = (cfa == 1 || cfa == 2) ? new Point(cfa % 2, cfa / 2) : new Point(0, 0);
         packedSize = new Point(rawHalf.x + cfaShift.x, rawHalf.y + cfaShift.y);
@@ -1143,6 +1164,7 @@ public class ESD4D extends GLOneScript {
             boolean rawMfsrForFrame = PreferenceKeys.isRawMfsrEnabled()
                     && !frame.pair.isHighlightFrame && !frame.pair.isLongFrame;
             glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
+            glProg.setVar("mosaicPeriod", mosaicPeriod);
             if (rawMfsrForFrame) rawMfsrMergedFrames++;
             glProg.setVar("analogBalance", analogBalance);
             if(exposure >= 0.95f) {
@@ -1204,6 +1226,7 @@ public class ESD4D extends GLOneScript {
             // only when it beats the zero offset beyond the shader's gates.
             glProg.setVar("enableFlow", enableFlowRefinement ? 1 : 0);
             glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
+            glProg.setVar("mosaicPeriod", mosaicPeriod);
             glProg.setVar("rawMfsrStrength", rawMfsrForFrame ? 0.18f : 0.0f);
             glProg.setVar("mergeAlgorithm", PreferenceKeys.isHdrPlusMergeEnabled() ? 1 : 0);
             // Denoise strength from the frame's signal-to-noise ratio, not from a
