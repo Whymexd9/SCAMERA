@@ -239,15 +239,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
             if (backend != null) {
                 backend.setOnPreferenceChangeListener((pref, value) -> {
-                    if ("scamera".equals(value) || "tetra_detail".equals(value) || "vivo_neural".equals(value)) {
-                        updateRemosaicControls(String.valueOf(value));
-                        return true;
-                    }
-                    new androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                            .setTitle(R.string.remosaic_backend_title)
-                            .setMessage(R.string.remosaic_vivo_unavailable)
-                            .setPositiveButton(android.R.string.ok, null).show();
-                    return false;
+                    // The displayed entryValues define the selectable backends.
+                    // A second hard-coded list previously rejected HP9 HexQuad
+                    // even though it was offered in this very dialog.
+                    String selected = String.valueOf(value);
+                    if (backend.findIndexOfValue(selected) < 0) return false;
+                    updateRemosaicControls(selected);
+                    return true;
                 });
             }
             if (backend != null) updateRemosaicControls(backend.getValue());
@@ -283,7 +281,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void updateRemosaicControls(String backend) {
-            boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend);
+            boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend)
+                    || "hp9_hexquad".equals(backend);
             int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,
                     R.string.pref_remosaic_clamp_key, R.string.pref_remosaic_flatfield_key};
             for (int key : legacy) {
