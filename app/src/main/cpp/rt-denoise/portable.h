@@ -73,7 +73,7 @@ struct DirPyrDenoiseParams {
     bool median=false, autoGain=true;
     double luma=0, chroma=15, Ldetail=0, redchro=0, bluechro=0, gamma=1.7;
     int passes=1;
-    std::string dmethod="Lab", smethod="shal", Cmethod="MAN", C2method="MAN";
+    std::string dmethod="Lab", smethod="shal", Cmethod="MAN", C2method="MANU";
     std::string methodmed="none", medmethod="soft", rgbmethod="soft";
 };
 struct ProcParams {

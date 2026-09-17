@@ -953,8 +953,9 @@ __inline float ldexpkf(float x, int q) {
     float u;
     int m;
     m = q >> 31;
-    m = (((m + q) >> 6) - m) << 4;
-    q = q - (m << 2);
+    // Android port: preserve the arithmetic without shifting negative signed integers (UB).
+    m = (((m + q) >> 6) - m) * 16;
+    q = q - m * 4;
     u = intBitsToFloat(((int32_t)(m + 0x7f)) << 23);
     u = u * u;
     x = x * u * u;

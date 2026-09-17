@@ -621,7 +621,7 @@ BENCHFUN
 
     const short int imheight = src->getHeight(), imwidth = src->getWidth();
 
-    if (dnparams.luma != 0 || dnparams.chroma != 0 || dnparams.methodmed == "Lab" || dnparams.methodmed == "Lonly") {
+    if (dnparams.luma != 0 || dnparams.chroma != 0 || dnparams.methodmed == "Lab" || dnparams.methodmed == "Lonly" || dnparams.methodmed == "ab" || dnparams.methodmed == "Lpab") {
         // gamma transform for input data
         double gam = dnparams.gamma;
         constexpr double gamthresh = 0.001;
@@ -1077,7 +1077,7 @@ BENCHFUN
                         float interm_medT = dnparams.chroma / 10.0;
                         bool execwavelet = true;
 
-                        if (!denoiseLuminance && interm_medT < 0.05f && dnparams.median && (dnparams.methodmed == "Lab" || dnparams.methodmed == "Lonly")) {
+                        if (!denoiseLuminance && interm_medT < 0.05f && dnparams.median && (dnparams.methodmed == "Lab" || dnparams.methodmed == "Lonly" || dnparams.methodmed == "ab" || dnparams.methodmed == "Lpab")) {
                             execwavelet = false;    //do not exec wavelet if sliders luminance and chroma are very small and median need
                         }
 

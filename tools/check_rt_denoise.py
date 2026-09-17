@@ -37,6 +37,8 @@ for kernel in range(6):
     assert np.max(abs(run(p)-out))>1e-6,('Median passes',kernel)
 for channels in range(1,6):
     p=defaults.copy();p[8]=channels;run(p)
+    p[:2]=0
+    assert np.max(abs(run(p)-image))>1e-6,("Median-only mode bypassed",channels)
 # Noisy curves in upstream control-point format, sampled by upstream FlatCurve.
 points=np.array([1,.05,.15,.35,.35,.55,.04,.35,.35],np.float64)
 curve=np.zeros(501,np.float32);err=C.create_string_buffer(512)
@@ -52,4 +54,8 @@ assert np.max(abs(run(p)-gain))>1e-6,'Auto gain disconnected'
 # Width crosses the native tile boundary, with an odd height.
 large=np.ones((129,1101,4),np.float32);large[:,:,:3]=.3+rng.normal(0,.01,(129,1101,3))
 run(defaults,large)
+for level in [0.,1.,3.]:
+    flat=np.full((128,128,4),level,np.float32);flat[:,:,3]=1
+    for auto in [0,1]:
+        p=defaults.copy();p[11]=auto;run(p,flat)
 print('PASS: identity, finite output, alpha, 14 controls, six median kernels, native curves, invalid-input rollback, odd/tiled sizes')

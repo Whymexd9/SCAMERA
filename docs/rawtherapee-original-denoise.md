@@ -11,12 +11,16 @@ median filters, gamma/color routines and FlatCurve sampling are retained.
 The full FTblockDN translation unit, including automatic noise estimation, is built.
 `UPSTREAM.json` records hashes of the source files before adapter changes.
 
-FTblockDN numerical bodies are unchanged; desktop includes are replaced by a
+FTblockDN filter mathematics are retained; desktop includes are replaced by a
 small adapter. The adapter supplies planar images, the fixed ProPhoto working
 space, original default noise settings, mutex/timing and parameter storage.
 Color and curve functions were extracted from upstream; unrelated desktop/ICC
 features are not linked. Automatic global chroma uses the original nine-region
 estimator and aggregation formulas; crop coordinates are clamped for small inputs.
+The dispatch also permits chroma-only and separate L+ab median filtering when
+both wavelet sliders are zero; upstream omitted these modes from the entry gate.
+Two signed left shifts of negative values in SLEEF `ldexpkf` are replaced with
+equivalent multiplication to remove undefined behavior found by UBSan.
 
 Both license texts ship in APK assets. The corresponding source, adapters and
 build instructions are in this repository. FFTW 3.3.9 is built from the pinned

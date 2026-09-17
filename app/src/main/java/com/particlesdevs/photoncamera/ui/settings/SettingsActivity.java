@@ -171,6 +171,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 if (pref != null) pref.setOnPreferenceChangeListener((p, value) -> {
                     try {
                         com.particlesdevs.photoncamera.settings.RawTherapeeSettings.curve(String.valueOf(value));
+                        updateOriginalNoiseDependencies(key, String.valueOf(value));
                         return true;
                     } catch (IllegalArgumentException e) {
                         PhotonCamera.showToast(e.getMessage()); return false;
@@ -217,6 +218,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (kernel != null && "5".equals(median) && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("rt512_kernel",0,0,5)>3) kernel.setValue("0");
             Preference exposure = findPreference("rt512_exposure");
             if(exposure!=null)exposure.setEnabled("1".equals(gain));
+            Preference luma = findPreference("rt512_luma");
+            if(luma!=null) {
+                String curve = changed.equals("rt512_lcurve") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_lcurve", "0");
+                boolean active=false;
+                try {
+                    double[] points=com.particlesdevs.photoncamera.settings.RawTherapeeSettings.curve(curve);
+                    if(points!=null)for(int i=2;i<points.length;i+=4)active |= points[i]!=0;
+                } catch(IllegalArgumentException ignored) { }
+                luma.setEnabled(!active);
+            }
         }
 
         private void setupRemosaicBackend() {
