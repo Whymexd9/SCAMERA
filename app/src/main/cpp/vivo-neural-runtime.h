@@ -235,6 +235,7 @@ inline int morton(int x,int y,int bits){int k=0;for(int b=0;b<bits;b++)k|=((x>>b
 inline int color(int x,int y,int block){int q=((y/block)&1)*2+((x/block)&1);return q==0?0:q==3?2:1;}
 inline float unpack(const std::vector<float>& out,int x,int y){float v=out[((y/8)*144+x/8)*64+morton(x%8,y%8,3)];return std::max(0.0f,std::min(1.0f,v*v));}
 struct Mapping {int inputBlock=0,outputBlock=0;double error=1e9;};
+struct MappingError : std::runtime_error { using std::runtime_error::runtime_error; };
 template<class Network> Mapping calibrate(Network& s) {
     Mapping best;
     const float tests[4][3]={{.2f,.2f,.2f},{.55f,.55f,.55f},{.12f,.35f,.65f},{.65f,.28f,.10f}};
@@ -263,7 +264,7 @@ template<class Network> Mapping calibrate(Network& s) {
     }
     // A synthetic colour gate rejects wrong CFA mappings. It cannot prove
     // real-scene detail quality or that this is Vivo's active 4x model.
-    if(best.error>.045)throw std::runtime_error("No reliable Tetra/Bayer mapping: neural capture not enabled");
+    if(best.error>.045)throw MappingError("No reliable Tetra/Bayer mapping: neural capture not enabled");
     log("CFA TEST PASSED: input="+std::to_string(best.inputBlock)+" output="+std::to_string(best.outputBlock)+" RMSE="+std::to_string(best.error));
     return best;
 }

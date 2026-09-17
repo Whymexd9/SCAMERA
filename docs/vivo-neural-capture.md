@@ -167,3 +167,50 @@ protected-boundary outliers, retain non-finite rejection, exercise both scale
 factors and CFA hypotheses around all tile edges, and pass colour calibration
 with a synthetic halo outlier. Actual colour-chart acceptance, scene quality
 and spatial alignment still need phone validation.
+
+
+## Colour-layout diagnostics (30158)
+
+The 30157 phone report confirms eight successful HTP graph executions and
+fully written finite outputs. All block-4 range outliers lie in the discarded
+halo. However, the colour gate fails (worst RMSE about 0.31), and block-2 also
+has protected-region range outliers. This is successful inference transport,
+not a validated remosaic. No colour threshold is relaxed.
+
+Fresh ARM64 emulation of bayer_preproc_hc_v3 (0x570f0) and its BGGR variant
+bayer_preproc_hc_bo3_v3 (0x5c308), with unique uint16 pixel values, reproduces
+the existing Morton4 ordering, sqrt(value / 1023) transfer, and BGGR flips.
+The library's lookup tables at 0x31804 and 0x31964 match Morton4 and Morton8.
+These are evidence about those stock functions, not proof that TELE576 uses
+that entire path in the active HP9 4x mode.
+
+Native worker v5 adds a probe-only fallback after MappingError. The capture
+path is unchanged. Runtime/driver errors are not caught as layout failures.
+The fallback performs ten additional colour-chart executions: stock Morton4
+input with CFA blocks 4, 2 and 1, and raster4 input with blocks 2 and 1. Neutral
+inputs are identical across these hypotheses and already ran in calibration.
+Bayer1 is diagnostic model identification only; no sensor-mode change or 4x4
+binning is installed. Raster4/block4 is a duplicate on these flat charts and
+is omitted.
+
+For each hypothesis it reports all 64 channel means separately for the four
+tensor-cell parities, and compares three output index interpretations:
+measured stock Morton8, raster8, and four colour planes with 4x4 raster positions.
+The latter two are hypotheses, not identified stock formats. Output CFA blocks
+1, 2, 4 and 8 and four red-quadrant orientations are ranked. Scores use squared
+network outputs without clipping, retain within-phase variance, and compare
+the central 640x640 region. A free-colour RMSE reports the error even if every
+pixel were allowed to choose its closest test-chart colour; a large value
+there cannot be fixed merely by permuting channels.
+
+A diagnostic candidate never enables capture, even if its flat-field score is
+low. A correct spatial reconstruction, colour ordering and compatibility with
+Tetra4 input still need verification before an alternative can be integrated.
+The original MappingError is rethrown after diagnostics, and the same native
+180-second timeout remains. Open Vivo Neural — проверка to collect this report;
+a normal failed capture intentionally does not run the extended sweep.
+
+Host ASan/UBSan tests cover every diagnostic output interpretation and CFA
+period, red/blue reversal rejection, within-phase variance, nonfinite output,
+the ten-chart sweep, and propagation of driver errors. These are synthetic
+transport/analysis fixtures; they do not run HTP weights on the host.

@@ -1,4 +1,4 @@
-#include "vivo-neural-runtime.h"
+#include "vivo-neural-layout-diagnostics.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -11,7 +11,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v4 (halo-aware validation); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v5 (layout diagnostics); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -23,7 +23,12 @@ int main(int argc,char** argv) {
         // Hard kernel timeout covers blocked vendor code, not just Java waits.
         signal(SIGALRM,SIG_DFL);alarm(180);
         {
-        vivo_nn::Session session;session.init(argv[1]);auto mapping=vivo_nn::calibrate(session);
+        vivo_nn::Session session;session.init(argv[1]);vivo_nn::Mapping mapping;
+        try {mapping=vivo_nn::calibrate(session);}
+        catch(const vivo_nn::MappingError&) {
+            if(argc==2)vivo_nn::diagnoseLayouts(session);
+            throw;
+        }
         if(argc==7){
             const std::string ip(argv[2]),op(argv[3]);
             auto bytes=vivo_nn::read(ip);

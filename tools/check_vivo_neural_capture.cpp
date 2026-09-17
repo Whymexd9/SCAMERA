@@ -1,4 +1,4 @@
-#include "../app/src/main/cpp/vivo-neural-runtime.h"
+#include "../app/src/main/cpp/vivo-neural-layout-diagnostics.h"
 #include <cassert>
 using namespace vivo_nn;
 struct FlatNetwork {
@@ -79,6 +79,27 @@ int main(){
   void execute(){FlatNetwork::execute();output[1318007]=-.401123047f;validateOutput(output,9);}
  } halo;
  auto haloMapping=calibrate(halo);assert(haloMapping.inputBlock==4&&haloMapping.outputBlock==1);
- std::cout<<"PASS: stock channel order, phase-preserving edges, tile coverage, four CFA orientations, calibration, invalid-first-layout recovery, driver-error propagation output rejection and discarded-halo coverage\n";
+ // Diagnostics must retain within-phase variance: an alternating error may
+ // have the correct mean but must not be mistaken for a correct reconstruction.
+ for(int order=0;order<3;++order)for(int block:{1,2,4,8}) {
+  std::fill(tile.begin(),tile.end(),0);
+  for(int y=0;y<1152;++y)for(int x=0;x<1152;++x)
+   tile[((y/8)*144+x/8)*64+LayoutEvidence::channel(x%8,y%8,order)]=std::sqrt(rgb[color(x,y,block)]);
+  LayoutEvidence ev(tile,rgb);assert(ev.finite);assert(ev.rmse(rgb,order,block,0)<1e-6);
+  assert(ev.rmse(rgb,order,block,3)>.1); // Red/blue swap must not pass.
+ }
+ for(int y=0;y<1152;++y)for(int x=0;x<1152;++x)
+  tile[index(x,y)]=std::sqrt(rgb[color(x,y,1)]+(((x/16)&1)? .05f:-.05f));
+ LayoutEvidence variance(tile,rgb);assert(std::abs(variance.rmse(rgb,0,1,0)-.05)<1e-6);
+ tile[index(576,576)]=std::numeric_limits<float>::quiet_NaN();
+ LayoutEvidence nanEvidence(tile,rgb);assert(!nanEvidence.finite);assert(std::isinf(nanEvidence.rmse(rgb,0,1,0)));
+ // A failed diagnostic sweep never returns or installs a capture Mapping.
+ // It runs ten colour charts and still rejects runtime/driver failures.
+ struct DiagnosticBad:BadNetwork { void execute(){++calls;BadNetwork::execute();} } diagnosticBad;std::ostringstream captured;auto* old=std::cout.rdbuf(captured.rdbuf());
+ diagnoseLayouts(diagnosticBad);std::cout.rdbuf(old);assert(diagnosticBad.calls==10);
+ assert(captured.str().find("no capture mapping installed")!=std::string::npos);
+ assert(captured.str().find("LAYOUT RANK 1")!=std::string::npos);
+ rejected=false;try{diagnoseLayouts(runtimeFailure);}catch(const std::runtime_error& e){rejected=std::string(e.what())=="driver failure";}assert(rejected);
+ std::cout<<"PASS: stock channel order, phase-preserving edges, tile coverage, four CFA orientations, calibration, invalid-first-layout recovery, driver-error propagation, output rejection, discarded-halo coverage and layout diagnostics\n";
 }
 
