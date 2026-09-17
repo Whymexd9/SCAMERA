@@ -1,5 +1,8 @@
 # Tetra Detail: independent stock-inspired remosaic
 
+**Current version: [Tetra Detail v2](tetra-detail-v2.md).** The description and
+benchmarks below document the original v1 implementation.
+
 This is a working second GPU backend, not a loader, a renamed SCAMERA
 profile, or a reproduction of Samsung/Vivo's proprietary neural network.
 Target: HP9 telephoto 4x ISZ RAW, same-colour 4x4 blocks, complete 8x8 CFA
