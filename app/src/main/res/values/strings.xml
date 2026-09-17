@@ -383,8 +383,8 @@
     <string name="remosaic_flatfield">Плоское поле блока</string>
     <string name="remosaic_flatfield_desc">Фотосайты внутри блока отличаются откликом — на этом сенсоре до 12 %, и по-своему для каждого цвета. Профиль снимается с самого кадра и делится обратно, иначе он входит в зелёное поле и с обратным знаком в цветовые разности: цветной налёт на мелкой структуре. Эталонное приложение этого не делает, поэтому по умолчанию выключено — включать как эксперимент</string>
     <string name="remosaic_backend_title">Алгоритм ремозаика</string>
-    <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — по мотивам Vivo</item></string-array>
-    <string-array name="remosaic_backend_values"><item>scamera</item><item>tetra_detail</item></string-array>
+    <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — по мотивам Vivo</item><item>Vivo Neural — NPU, root (эксперимент)</item></string-array>
+    <string-array name="remosaic_backend_values"><item>scamera</item><item>tetra_detail</item><item>vivo_neural</item></string-array>
     <string name="remosaic_vivo_unavailable">Стоковый Vivo ещё не подключён: нужны проверенная калибровка HP9 и режим 4× ISZ. Активен SCAMERA.</string>
     <string name="remosaic_vivo_probe">Проверить библиотеку Vivo</string>
     <string name="remosaic_vivo_probe_desc">Проверка совместимости на этом телефоне. Обработка снимков не запускается.</string>

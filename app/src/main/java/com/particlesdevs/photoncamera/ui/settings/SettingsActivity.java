@@ -239,7 +239,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
             if (backend != null) {
                 backend.setOnPreferenceChangeListener((pref, value) -> {
-                    if ("scamera".equals(value) || "tetra_detail".equals(value)) {
+                    if ("scamera".equals(value) || "tetra_detail".equals(value) || "vivo_neural".equals(value)) {
                         updateRemosaicControls(String.valueOf(value));
                         return true;
                     }
@@ -283,7 +283,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void updateRemosaicControls(String backend) {
-            boolean detail = "tetra_detail".equals(backend);
+            boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend);
             int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,
                     R.string.pref_remosaic_clamp_key, R.string.pref_remosaic_flatfield_key};
             for (int key : legacy) {

@@ -75,6 +75,15 @@ def checks():
               {'blockSize':4,'phase':(0,0),'quadColors':(2,1,1,0),'blackLevel':64.,'whiteLevel':1023.,
                'gainB':1.,'gainR':1.,'blockGain':tuple([1.2]*64)}, integer=True)
     assert np.max(np.abs(got[:,:,0].astype(int)-304)) <= 1
+    # Neural output keeps sensor-space values and restores black/white levels.
+    linear = np.linspace(-.1, 1.1, h*w, dtype='f4').reshape(h,w,1)
+    for quad in ((0,1,1,2), (1,0,2,1), (1,2,0,1), (2,1,1,0)):
+        encoded = run('tetra/neuralfinish', {'NeuralBuffer':linear},
+                      {'quadColors':quad, 'blackLevel':64., 'whiteLevel':1023.,
+                       'gainR':1., 'gainB':1.}, integer=True)[:,:,0]
+        expected = np.floor(np.clip(linear[:,:,0],0,1)*959+64+.5).astype('u2')
+        assert np.max(np.abs(encoded.astype(int)-expected.astype(int))) <= 1
+    print('PASS: neural Bayer encoding, four CFA orientations, sensor range/clipping')
     print(f'PASS: green ramps across all 2x2/4x4 phases, max error {worst:.3g}; constant chroma; impulse copy; corrected assembly')
 
 if __name__ == '__main__':
