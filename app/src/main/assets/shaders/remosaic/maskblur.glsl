@@ -54,9 +54,9 @@ void main() {
     }
 
     if (divide == 1) {
-        // 1e-3 matches the reference: large enough that a pixel with almost no
-        // samples nearby fades to zero instead of exploding.
-        Output = vec4(acc.x / (acc.y + 1e-3), acc.y, 0.0, 1.0);
+        // A positive mask must preserve a constant channel exactly.
+        // Adding an epsilon to every weight creates a phase-dependent bias.
+        Output = vec4((acc.y > 0.0 ? acc.x / acc.y : 0.0), acc.y, 0.0, 1.0);
     } else {
         Output = vec4(acc.x, acc.y, 0.0, 1.0);
     }

@@ -173,6 +173,7 @@ public class RemosaicCore {
             glProg.setVar("whiteLevel", white);
             glProg.setVar("gainB", gainB);
             glProg.setVar("gainR", gainR);
+            glProg.setVarFloats("blockGain", blockGain);
             GLTexture out = new GLTexture(rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16),
                     null, GL_NEAREST, GL_MIRRORED_REPEAT);
             glProg.drawBlocks(out);
@@ -331,9 +332,8 @@ public class RemosaicCore {
 
     /** Copy back, since median cannot read and write the same texture. */
     private void swapInto(GLTexture from, GLTexture to, Point size) {
-        glProg.useAssetProgram("remosaic/median3");
+        glProg.useAssetProgram("remosaic/copyfloat");
         glProg.setTexture("InputBuffer", from);
-        glProg.setVar("size", size.x, size.y);
         glProg.drawBlocks(to);
         glProg.closed = true;
     }
