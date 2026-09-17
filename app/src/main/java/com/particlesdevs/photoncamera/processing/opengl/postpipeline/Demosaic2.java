@@ -51,7 +51,7 @@ public class Demosaic2 extends Node {
         glProg.useAssetProgram("demosaic/demosaicp12b");
         glProg.setTexture("RawBuffer",previousNode.WorkingTexture);
         glProg.setTexture("GradBuffer",basePipeline.main3);
-        if(basePipeline.mSettings.cfaPattern == -2) glProg.setDefine("QUAD","1");
+        if(basePipeline.mSettings.cfaPattern == -2 && !basePipeline.remosaicApplied) glProg.setDefine("QUAD","1");
         GLTexture prev = previousNode.WorkingTexture;
         outp = basePipeline.getMain();
         /*if(basePipeline.main1 == previousNode.WorkingTexture){

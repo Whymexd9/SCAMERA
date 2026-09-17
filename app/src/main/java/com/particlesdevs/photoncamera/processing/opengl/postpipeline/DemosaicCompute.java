@@ -50,7 +50,7 @@ public class DemosaicCompute extends Node {
         glProg.setTextureCompute("inTexture",previousNode.WorkingTexture,false);
         glProg.setTextureCompute("gradTexture",basePipeline.main3,false);
 
-        if(basePipeline.mSettings.cfaPattern == -2) glProg.setDefine("QUAD","1");
+        if(basePipeline.mSettings.cfaPattern == -2 && !basePipeline.remosaicApplied) glProg.setDefine("QUAD","1");
         GLTexture prev = previousNode.WorkingTexture;
         outp = basePipeline.main1;
         if(basePipeline.main1 == previousNode.WorkingTexture){

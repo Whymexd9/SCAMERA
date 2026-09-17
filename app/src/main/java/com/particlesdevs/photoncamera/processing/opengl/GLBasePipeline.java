@@ -29,6 +29,13 @@ public class GLBasePipeline implements AutoCloseable {
     private final int[] bind = new int[1];
     public GLTexture main1,main2,main3,main4, main5;
     public Settings mSettings;
+    /**
+     * Set once the remosaic has rearranged the mosaic into plain bayer. The
+     * quad paths downstream key off the settings value, which still says quad
+     * because that is what the sensor delivers; after the node it no longer
+     * describes the frame in flight.
+     */
+    public boolean remosaicApplied = false;
     public Parameters mParameters;
     public Properties mProp;
     private final boolean loggedTuning = false;

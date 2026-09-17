@@ -110,7 +110,7 @@ public class Bayer2Float extends Node {
         glProg.setDefine("BLR", BL[0]);
         glProg.setDefine("BLG", BL[1]);
         glProg.setDefine("BLB", BL[2]);
-        glProg.setDefine("QUAD", basePipeline.mSettings.cfaPattern == -2);
+        glProg.setDefine("QUAD", basePipeline.mSettings.cfaPattern == -2 && !basePipeline.remosaicApplied);
         glProg.setDefine("RGBLAYOUT",basePipeline.mSettings.alignAlgorithm == 2);
         glProg.setDefine("TESTPATTERN",testPattern);
         glProg.setDefine("TP", testPatternIndex);

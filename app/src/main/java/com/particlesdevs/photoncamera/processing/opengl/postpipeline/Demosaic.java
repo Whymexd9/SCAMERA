@@ -19,7 +19,7 @@ public class Demosaic extends Node {
         glProg.useAssetProgram("demosaic/demosaicp1");
         glProg.setTexture("RawBuffer", glTexture);
         glProg.setVar("CfaPattern", basePipeline.mParameters.cfaPattern);
-        if(basePipeline.mSettings.cfaPattern == -2) glProg.setDefine("QUAD","1");
+        if(basePipeline.mSettings.cfaPattern == -2 && !basePipeline.remosaicApplied) glProg.setDefine("QUAD","1");
         glProg.drawBlocks(basePipeline.main1);
         GLTexture outp = previousNode.WorkingTexture;
 

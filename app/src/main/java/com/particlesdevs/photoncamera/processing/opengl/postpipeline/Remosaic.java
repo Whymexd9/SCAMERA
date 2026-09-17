@@ -180,9 +180,14 @@ public class Remosaic extends Node {
             glProg.drawBlocks(out);
             glProg.closed = true;
 
-            // From here the frame is ordinary bayer: report the 2x2 pattern so
-            // the demosaic and the DNG writer stop treating it as a mosaic.
-            basePipeline.mSettings.cfaPattern = (byte) basePipeline.mParameters.cfaPattern;
+            // From here the frame is ordinary bayer: report the 2x2 pattern the
+            // assembly wrote, so nothing downstream keeps decoding it as a
+            // mosaic. The old line copied mParameters into mSettings, which
+            // meant copying -2 onto -2 - the quad paths never switched off, and
+            // a demosaic written for a 2x2 mosaic ran over a frame that no
+            // longer had one. Flat areas survived that; fine structure did not.
+            basePipeline.mParameters.cfaPattern = (byte) cfaPatternFor(quad);
+            basePipeline.remosaicApplied = true;
             // Bayer2Float builds its input from stackFrame, so hand the result
             // over explicitly - WorkingTexture alone would be ignored.
             pipeline.remosaicOutput = out;
@@ -423,6 +428,24 @@ public class Remosaic extends Node {
         } finally {
             grid.close();
         }
+    }
+
+    /**
+     * The plain bayer layout the assembly writes, as a cfaPattern index.
+     *
+     * <p>The target grid is the same quadColors mapping laid on a 2x2, so what
+     * leaves this node carries the layout the quadrants describe. Downstream
+     * has to be told: it arrived holding -2, the quad bayer marker, and would
+     * otherwise keep decoding an ordinary bayer frame as a mosaic - and
+     * baseCfaPattern is no help, since it falls back to RGGB for any pattern
+     * outside 0..3, which is exactly the -2 case.
+     */
+    private static int cfaPatternFor(int[] quad) {
+        for (int p = 0; p <= 3; p++) {
+            int[] q = quadColorsFor(p);
+            if (q[0] == quad[0] && q[1] == quad[1] && q[2] == quad[2] && q[3] == quad[3]) return p;
+        }
+        return 3;
     }
 
     private static int[] quadColorsFor(int cfaPattern) {

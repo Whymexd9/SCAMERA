@@ -579,7 +579,12 @@ public class PostPipeline extends GLBasePipeline {
         if ("fusion".equals(tonePipeline)) {
             add(new ExposureFusionBayer2());
         }
-        switch (PhotonCamera.getSettings().cfaPattern) {
+        // A remosaiced frame is plain bayer, so it takes the ordinary demosaic
+        // even though the sensor is a quad one.
+        int demosaicPattern = PreferenceKeys.isRemosaicEnabled()
+                ? Math.max(PhotonCamera.getSettings().cfaPattern, 0)
+                : PhotonCamera.getSettings().cfaPattern;
+        switch (demosaicPattern) {
             case -2: {
                 add(new DemosaicQUAD());
                 break;
