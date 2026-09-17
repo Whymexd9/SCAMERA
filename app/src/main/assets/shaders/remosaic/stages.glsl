@@ -26,25 +26,48 @@ uniform float blackLevel;
 uniform float whiteLevel;
 uniform float gainB;
 uniform float gainR;
+/**
+ * Per-site gains inside a colour block, quadrant-major: blockGain[q * 16 + sy *
+ * blockSize + sx]. The 16 sites of a tetra block differ by up to 12%, and
+ * differently for each colour; left uncorrected that fixed pattern rides into
+ * the interpolated green and into the differences taken against it. All ones
+ * when the correction is off.
+ */
+uniform float blockGain[64];
 /** 0 mask green, 1 mask B difference, 2 mask R difference. Assembly is in assemble.glsl. */
 uniform int stage;
 
 out vec4 Output;
 
-int colorAt(ivec2 xy) {
+/** Which of the 2x2 blocks the site falls in, in reading order. */
+int quadIndexAt(ivec2 xy) {
     int period = blockSize * 2;
     int ry = (xy.y + phase.y) % period;
     int rx = (xy.x + phase.x) % period;
-    int idx = (ry < blockSize)
+    return (ry < blockSize)
             ? ((rx < blockSize) ? 0 : 1)
             : ((rx < blockSize) ? 2 : 3);
+}
+
+int colorAt(ivec2 xy) {
+    int idx = quadIndexAt(xy);
     return (idx == 0) ? quadColors.x : (idx == 1) ? quadColors.y
          : (idx == 2) ? quadColors.z : quadColors.w;
+}
+
+/** The site's gain within its block; the profile is measured per quadrant. */
+float blockGainAt(ivec2 xy) {
+    int sx = (xy.x + phase.x) % blockSize;
+    int sy = (xy.y + phase.y) % blockSize;
+    return blockGain[quadIndexAt(xy) * 16 + sy * blockSize + sx];
 }
 
 float alignedAt(ivec2 xy) {
     float range = max(whiteLevel - blackLevel, 1.0);
     float v = (float(texelFetch(RawBuffer, xy, 0).r) - blackLevel) / range;
+    // The non-uniformity is multiplicative on the signal above black, so it is
+    // divided out here, after the black level has gone and before the clamp.
+    v *= blockGainAt(xy);
     v = clamp(v, 0.0, 1.0);
     int c = colorAt(xy);
     if (c == 2) v *= gainB;

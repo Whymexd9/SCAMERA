@@ -45,6 +45,9 @@ public class Remosaic extends Node {
     /** Reduction tile for the channel means; 32x32 keeps the grid small enough to read back. */
     private static final int MEAN_TILE = 32;
 
+    /** Per-site gains inside a block, quadrant-major; all ones until measured. */
+    private float[] blockGain = flatProfile();
+
     public Remosaic() {
         super("", "Remosaic");
     }
@@ -72,6 +75,7 @@ public class Remosaic extends Node {
         // smoothing only costs accuracy at edges.
         boolean steered = PreferenceKeys.isRemosaicSteered();
         boolean clampDiffs = PreferenceKeys.isRemosaicClampDiffs();
+        boolean flatField = PreferenceKeys.isRemosaicFlatField();
         switch (profile) {
             case 0: kernelSize = 1; useMedian = false; break;                  // nearest
             case 1: kernelSize = blockSize == 2 ? 3 : 5; useMedian = false; break; // sharp
@@ -90,6 +94,7 @@ public class Remosaic extends Node {
         Log.d(Name, "remosaic: block=" + blockSize + " profile=" + profile
                 + " kernel=" + kernelSize + " median=" + useMedian
                 + " steered=" + steered + " clampDiffs=" + clampDiffs
+                + " flatField=" + flatField
                 + " phase=" + phase[0] + "," + phase[1]
                 + " cfa=" + basePipeline.mParameters.cfaPattern
                 + " black=" + black + " white=" + white);
@@ -113,6 +118,16 @@ public class Remosaic extends Node {
             // from 0.5 means the pattern assumed here is not the one in the frame,
             // and the interpolation below is working on the wrong sites.
             Log.d(Name, "green coverage=" + gains[2] + " (0.5 expected)");
+
+            // The sites of a block are not interchangeable: each colour has its
+            // own fixed response profile across the block, up to 12% on this
+            // sensor. Measuring it over the whole frame averages the scene out
+            // and leaves the pattern; without this the profile rides into the
+            // green estimate and, with the opposite sign, into the differences.
+            blockGain = flatProfile();
+            if (flatField) {
+                blockGain = measureBlockProfile(raw, rawSize, blockSize, phase, black, white);
+            }
 
             // Green first: the differences below are taken against it, so an
             // error here becomes a colour error there.
@@ -261,6 +276,7 @@ public class Remosaic extends Node {
         glProg.setVar("whiteLevel", white);
         glProg.setVar("gainB", gainB);
         glProg.setVar("gainR", gainR);
+        glProg.setVarFloats("blockGain", blockGain);
     }
 
     /** Separable blur, then the divide on the second axis. */
@@ -328,6 +344,87 @@ public class Remosaic extends Node {
      * CFA order as quadrant colours, 0=R 1=G 2=B.
      * Android's pattern values: 0 RGGB, 1 GRBG, 2 GBRG, 3 BGGR.
      */
+    /** No correction: every site of every block weighs the same. */
+    private static float[] flatProfile() {
+        float[] g = new float[64];
+        java.util.Arrays.fill(g, 1.f);
+        return g;
+    }
+
+    /**
+     * Measures the per-site response profile inside a colour block.
+     *
+     * <p>Averaged over every block of the frame the scene cancels and what
+     * remains is the fixed pattern: crosstalk and microlens geometry, different
+     * for each of the four quadrants. The gains returned divide it out, so the
+     * interpolation downstream sees sites that really are interchangeable.
+     *
+     * <p>The reduction keeps the sample count equal across sub-positions within
+     * a tile, so normalising each quadrant by its own mean needs no counts at
+     * all - whatever a partial tile contributes, it contributes to all sites of
+     * that quadrant alike.
+     */
+    private float[] measureBlockProfile(GLTexture raw, Point rawSize, int blockSize, int[] phase,
+                                        float black, float white) {
+        int sites = blockSize * blockSize;
+        Point tiles = new Point(
+                (rawSize.x + MEAN_TILE - 1) / MEAN_TILE,
+                (rawSize.y + MEAN_TILE - 1) / MEAN_TILE);
+        Point gridSize = new Point(tiles.x * blockSize, tiles.y * blockSize);
+        GLTexture grid = new GLTexture(gridSize, new GLFormat(GLFormat.DataType.FLOAT_32, 4),
+                null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        try {
+            glProg.useAssetProgram("remosaic/blockprofile");
+            glProg.setTexture("RawBuffer", raw);
+            glProg.setVar("rawWidth", rawSize.x);
+            glProg.setVar("rawHeight", rawSize.y);
+            glProg.setVar("blockSize", blockSize);
+            glProg.setVar("phase", phase[0], phase[1]);
+            glProg.setVar("blackLevel", black);
+            glProg.setVar("whiteLevel", white);
+            glProg.setVar("tileSize", MEAN_TILE);
+            glProg.drawBlocks(grid);
+            glProg.closed = true;
+
+            ByteBuffer buf = grid.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32, 4));
+            FloatBuffer f = buf.order(ByteOrder.nativeOrder()).asFloatBuffer();
+            double[][] sums = new double[4][sites];
+            for (int y = 0; y < gridSize.y; y++) {
+                int sy = y % blockSize;
+                for (int x = 0; x < gridSize.x; x++) {
+                    int sx = x % blockSize;
+                    int site = sy * blockSize + sx;
+                    int base = (y * gridSize.x + x) * 4;
+                    for (int q = 0; q < 4; q++) sums[q][site] += f.get(base + q);
+                }
+            }
+
+            float[] gains = flatProfile();
+            float spread = 0.f;
+            for (int q = 0; q < 4; q++) {
+                double mean = 0;
+                for (int k = 0; k < sites; k++) mean += sums[q][k];
+                mean /= sites;
+                // A frame too dark to measure carries no profile to divide out.
+                if (mean <= 1e-6) return flatProfile();
+                for (int k = 0; k < sites; k++) {
+                    double g = mean / Math.max(sums[q][k], 1e-6);
+                    // The real spread is a few percent; anything beyond this is
+                    // a scene that defeated the averaging, not a sensor trait.
+                    g = Math.min(Math.max(g, 0.75), 1.35);
+                    gains[q * 16 + k] = (float) g;
+                    spread = Math.max(spread, (float) Math.abs(g - 1.0));
+                }
+            }
+            Log.d(Name, "block profile: max deviation=" + String.format("%.3f", spread)
+                    + " gains(q0)=" + java.util.Arrays.toString(
+                            java.util.Arrays.copyOfRange(gains, 0, sites)));
+            return gains;
+        } finally {
+            grid.close();
+        }
+    }
+
     private static int[] quadColorsFor(int cfaPattern) {
         switch (cfaPattern) {
             case 0:  return new int[]{0, 1, 1, 2}; // RGGB
