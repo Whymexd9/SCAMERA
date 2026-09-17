@@ -49,7 +49,12 @@ public class Remosaic extends Node {
                 Log.d(Name, "already rearranged before the merge, nothing to do here");
                 basePipeline.remosaicApplied = true;
             }
-            WorkingTexture = previousNode.WorkingTexture;
+            // First in the pipeline there is no previous node to inherit from,
+            // so hand on the stack frame itself rather than a null texture.
+            WorkingTexture = previousNode != null
+                    ? previousNode.WorkingTexture
+                    : new GLTexture(rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16),
+                            pipeline.stackFrame, GL_NEAREST, GL_MIRRORED_REPEAT);
             return;
         }
 

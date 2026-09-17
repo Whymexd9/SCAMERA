@@ -573,7 +573,16 @@ public class PostPipeline extends GLBasePipeline {
         // to be rearranged first, or every stage downstream decodes it at the
         // wrong phase.
         if (PreferenceKeys.isRemosaicEnabled()) {
-            add(new Remosaic());
+            if (mParameters.remosaicDone) {
+                // The merge rearranged every frame as it loaded them, so the
+                // stack is already plain bayer. Adding the node would leave it
+                // first in the pipeline with nothing before it to take a
+                // texture from, which is the IllegalStateException a capture
+                // died on; and there is nothing for it to do either.
+                remosaicApplied = true;
+            } else {
+                add(new Remosaic());
+            }
         }
         add(new Bayer2Float());
         if ("fusion".equals(tonePipeline)) {
