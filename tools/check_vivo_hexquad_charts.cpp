@@ -2,13 +2,13 @@
 #include <cassert>
 using namespace vivo_hexquad;
 struct ReferenceNetwork {
-    int scale, red, calls=0;
+    int scale, red, calls=0, captureIso;
     std::vector<float> input=std::vector<float>(288*288*18), output;
     const float* bound;
-    ReferenceNetwork(int s,int r):scale(s),red(r),output(size_t(288*s)*288*s*3),bound(input.data()){}
+    ReferenceNetwork(int s,int r,int iso=0):scale(s),red(r),captureIso(iso),output(size_t(288*s)*288*s*3),bound(input.data()){}
     void execute() {
         assert(input.data()==bound);
-        int chart=calls%6,iso=calls<6?100:400,side=288*scale;
+        int chart=calls%6,iso=calls<6?100:calls<12?400:captureIso,side=288*scale;
         auto lut=NormalVst(iso).forward();
         for(size_t p=0;p<input.size();p+=18) {
             int count=0;for(size_t c=0;c<18;++c)if(input[p+c]>0)++count;
@@ -42,6 +42,10 @@ int main() {
         network.output[0]=std::numeric_limits<float>::quiet_NaN();
         bool rejected=false;try{scoreChart(network.output,inverse,scale,2);}catch(const std::invalid_argument&){rejected=true;}
         assert(rejected); // Nonfinite even in unused halo is fatal.
+    }
+    for(int iso:{400,800}){
+        ReferenceNetwork network(2,3,iso);assert(checkHexCharts(network,2,3,iso));
+        assert(network.calls==(iso==400?12:18));
     }
     std::cout.rdbuf(old);
     assert(messages.str().find("diagnostic_only=1")!=std::string::npos);

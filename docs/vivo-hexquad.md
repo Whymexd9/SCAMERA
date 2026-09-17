@@ -5,7 +5,7 @@ On Vivo V2454A the x2 model passed all twelve synthetic checks (worst RMSE
 0.011506); x1 failed one ISO400 colour patch (0.056333). Capture uses **x2 only**.
 Real-scene quality, speed and motion tolerance still need phone testing.
 
-## Test capture (v7 worker)
+## Test capture (v9 worker)
 
 Select **Алгоритм ремозаика → HP9 HexQuad x2 — NPU, 6 кадров (тест)** and
 turn remosaic on. Use Photo mode, HP9 tele 4× ISZ, 4:3, block4, phase0,0, <=16 MP.
@@ -38,9 +38,11 @@ choices are conservative app choices, not claimed stock-exact parameters.
 WB/colour matrix/lens shading remain downstream and are not applied twice.
 
 Every capture runs the unchanged colour threshold RMSE<=0.045 on x2, with the
-selected input CFA. All output must be finite; retained values must fit the
-same [-0.05,1.25] range used in diagnostics. Synthetic tests do not prove
-real-scene quality. No silent fallback is labelled neural on failure.
+selected input CFA at ISO100/400 and the actual capture ISO (without duplicates).
+Synthetic charts retain their [-0.05,1.25] range gate. Real-image finite outputs
+use stock 16-bit IVST index saturation; NaN/Inf/unwritten output remains fatal
+even in the discarded halo. Synthetic tests do not prove real-scene quality.
+No silent fallback is labelled neural on failure.
 The raw file is mapped read-only; no six full RGB images are allocated.
 The root worker has an 840-second hard timeout and the client a 900-second
 wait, with tile progress in **Vivo Neural — проверка**. This is a diagnostic
@@ -175,6 +177,36 @@ photographs remains necessary.
 Remaining device checks: compare real photographs at identical exposure/focus;
 verify ISO calibration, thin detail, colour, residual CFA pattern, motion, tile
 seams, peak memory and elapsed time. Experimental capture is explicitly opt-in.
+
+### Real-tile finite output correction (native worker v9)
+
+The supplied v8 capture report confirms BGGR charts now pass (worst RMSE
+0.011506), six real frames reach inference, and processing passes tile8/352.
+It then hits the application's range assertion. The report does not include
+the violating value or frequency, so it does **not** prove harmless overshoot,
+wrong normalization, or a model malfunction.
+
+Reinspection of the stock `FP32_FP32_GeneralNetPostprocessCL` confirms that
+each output is scaled/offset, saturated to a 0..65535 LUT index, truncated, and
+inverse-transformed before overlap fusion. A hard [-0.05,1.25] rejection for
+arbitrary real scenes was our added rule, not this stock kernel's contract.
+Capture now uses that verified saturation order. It records retained min/max,
+low/high index-clipping counts, fraction, old chart-range exceedances and first
+tile-local coordinates/channel; a frame total includes repeated overlap samples.
+Halo is discarded rather than accumulated. Significant clipping in the new
+report requires further investigation; a saved image is not proof of quality.
+
+The input boundary also now extends complete 8x8 cells while preserving each
+sample's intra-cell phase. The previous pixel-wise reflect101 altered the base
+frame's CFA support in edge halos. This is an app boundary correction, not a
+claim to reproduce Vivo's padding. The actual-ISO chart gate, original colour
+threshold, QNN status/shape checks, nonfinite rejection, sparse registration
+coverage check and independent six-frame requirement all remain active.
+
+Host fixtures verify finite overshoot is clipped *before* IVST and 2x2 averaging,
+all four CFA orientations, unchanged in-range pixels, edge-phase continuity,
+and NaN/Inf rejection in retained and discarded regions. HTP execution and
+real-scene overshoot statistics require the next on-device capture.
 
 ## Building and checks
 

@@ -149,12 +149,42 @@ struct Flow {
         return s;
     }
 };
-// reflect101 keeps physical source coordinates available for CFA tagging.
-inline int reflect(int p,int size){int period=2*(size-1);p=((p%period)+period)%period;return p<size?p:period-p;}
+// Extend whole 8x8 CFA cells, retaining the phase inside each cell. Pixel-wise
+// reflect101 changes the reference CFA support in the halo at image edges.
+inline int reflect(int p,int size){
+    require(size>=8&&size%8==0,"Invalid CFA padding size");
+    int phase=((p%8)+8)%8,cell=(p-phase)/8,cells=size/8,period=2*cells;
+    cell=((cell%period)+period)%period;
+    return (cell<cells?cell:period-1-cell)*8+phase;
+}
 constexpr int Halo=32, Core=224, Step=192;
 inline float feather(int p){return std::min(1.f,std::min((p+.5f)/32.f,(Core-p-.5f)/32.f));}
 inline std::vector<int> origins(int size){std::vector<int> r;for(int x=0;x<size;x+=Step){r.push_back(x);if(x+Core>=size)break;}return r;}
 inline int bayerColor(int x,int y,int red){int q=(y&1)*2+(x&1);return q==red?0:q==(red^3)?2:1;}
+
+struct OutputStats {
+    size_t count=0,below=0,above=0,outsideChart=0;
+    float min=std::numeric_limits<float>::infinity(),max=-std::numeric_limits<float>::infinity();
+    int firstX=-1,firstY=-1,firstChannel=-1;float firstValue=0;
+    void add(float v,int x,int y,int c){
+        require(std::isfinite(v),"Nonfinite HexQuad output");
+        ++count;min=std::min(min,v);max=std::max(max,v);below+=v<0;above+=v>1;
+        if(v<-.05f||v>1.25f){
+            ++outsideChart;if(firstX<0){firstX=x;firstY=y;firstChannel=c;firstValue=v;}
+        }
+    }
+    void merge(const OutputStats& s){
+        count+=s.count;below+=s.below;above+=s.above;outsideChart+=s.outsideChart;
+        min=std::min(min,s.min);max=std::max(max,s.max);
+    }
+    std::string summary()const{
+        std::ostringstream s;s<<std::setprecision(8)<<"count="<<count<<" min="<<min<<" max="<<max
+            <<" ivst_clip_low="<<below<<" ivst_clip_high="<<above<<" outside_chart_range="<<outsideChart
+            <<" clip_fraction="<<(count?double(below+above)/count:0);
+        if(firstX>=0)s<<" first_xy="<<firstX<<','<<firstY<<" channel="<<firstChannel<<" value="<<firstValue;
+        return s.str();
+    }
+};
 
 // A Network template makes tile coverage, halo rejection, scaling, CFA and
 // stale client-buffer bugs testable independently from proprietary HTP weights.
@@ -167,7 +197,11 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     std::vector<Guide> guides;for(int f=0;f<6;++f)guides.emplace_back(b,f);
     std::vector<Flow> flows;for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f]);
     NormalVst transfer(b.iso);auto lut=transfer.forward();auto inverse=transfer.inverse();
+    vivo_nn::log("HEX RADIOMETRY: ISO="+std::to_string(b.iso)+" black="+std::to_string(b.black)+
+        " white="+std::to_string(b.white)+" vst_min="+std::to_string(lut[0]/65535.f)+
+        " vst_max="+std::to_string(lut[Levels-1]/65535.f)+"; postprocess=stock IVST index saturation");
     std::vector<float> sum(size_t(b.w)*b.h,0),weight(sum.size(),0);
+    OutputStats frameStats;size_t anomalousTiles=0;
     const auto xs=origins(b.w),ys=origins(b.h);size_t done=0,total=xs.size()*ys.size(),holes=0,samples=0;
     require(net.input.size()==288u*288u*18,"Unexpected HexQuad input allocation");
     for(int oy:ys)for(int ox:xs){
@@ -189,22 +223,28 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
             }
         }
         net.execute();require(net.output.size()==576u*576u*3,"Unexpected HexQuad output shape");
-        // Nonfinite anywhere means an invalid execution. Range overshoot is
-        // evaluated ONLY in the retained area; halo is discarded, not clamped in.
+        // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
+        // decoded with stock IVST index saturation, not a chart-only range gate.
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
+        OutputStats tileStats;
         for(int ty=0;ty<Core&&oy+ty<b.h;++ty)for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
             int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;
             for(int dy=0;dy<2;++dy)for(int dx=0;dx<2;++dx){
                 size_t index=(size_t((ty+Halo)*2+dy)*576+(tx+Halo)*2+dx)*3;
-                for(int ch=0;ch<3;++ch)require(net.output[index+ch]>=-.05f&&net.output[index+ch]<=1.25f,"HexQuad range failure in retained image");
-                float raw=std::max(0.f,std::min(65535.f,net.output[index+c]*65535.f));
-                value+=inverse[c][unsigned(raw)]*.25f;
+                for(int ch=0;ch<3;++ch)tileStats.add(net.output[index+ch],(tx+Halo)*2+dx,(ty+Halo)*2+dy,ch);
+                value+=inverse[c][normalizedIvstIndex(net.output[index+c])]*.25f;
             }
             float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
             sum[index]+=value*w;weight[index]+=w;
         }
-        ++done;if(done==1||done%8==0||done==total)vivo_nn::log("HEX TILE: "+std::to_string(done)+"/"+std::to_string(total));
+        frameStats.merge(tileStats);++done;
+        if(tileStats.outsideChart)++anomalousTiles;
+        if(done==1||done%8==0||done==total||(tileStats.outsideChart&&anomalousTiles<=4))
+            vivo_nn::log("HEX OUTPUT: tile="+std::to_string(done)+"/"+std::to_string(total)+
+                " origin="+std::to_string(ox)+","+std::to_string(oy)+" "+tileStats.summary());
     }
+    vivo_nn::log("HEX OUTPUT TOTAL: retained RGB samples incl overlap; "+frameStats.summary()+
+        " anomalous_tiles="+std::to_string(anomalousTiles));
     require(samples>0&&double(holes)/samples<.40,"Too much motion / unreliable HexQuad registration");
     vivo_nn::log("HEX ALIGN: missing sparse samples="+std::to_string(double(holes)/samples));
     std::ofstream file(output,std::ios::binary|std::ios::trunc);require(bool(file),"Cannot open HexQuad output");

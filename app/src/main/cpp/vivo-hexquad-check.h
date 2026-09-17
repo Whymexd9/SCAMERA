@@ -42,10 +42,12 @@ inline HexScore scoreChart(const std::vector<float>& network, const IvstLuts& in
     return result;
 }
 
-template<class Network> bool checkHexCharts(Network& session,int scale,int red=0) {
+template<class Network> bool checkHexCharts(Network& session,int scale,int red=0,int captureIso=0) {
     const CfaOrientation orientation(288,288,red);
     bool passed=true;double worst=0;
-    for(int iso:{100,400}) {
+    std::vector<int> sensitivities{100,400};
+    if(captureIso && captureIso!=100 && captureIso!=400)sensitivities.push_back(captureIso);
+    for(int iso:sensitivities) {
         NormalVst transfer(iso);VstLuts forward;auto inverse=transfer.inverse();
         for(auto& lut:forward)lut=transfer.forward();
         std::vector<uint16_t> raw(288*288);

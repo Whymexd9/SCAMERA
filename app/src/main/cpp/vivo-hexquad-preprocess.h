@@ -98,6 +98,13 @@ inline std::vector<float> packTile(const std::array<TaggedFrame, Frames>& frames
 }
 
 using IvstLuts = std::array<std::vector<float>, Colors>;
+// Stock FP32 postprocess saturates the 16-bit IVST index before truncation.
+// A finite network output is not promised to lie in [0,1]. Clamp before
+// multiplication here to avoid float overflow for a large finite value.
+inline unsigned normalizedIvstIndex(float value) {
+    require(std::isfinite(value), "Nonfinite neural output");
+    return value<=0.f?0u:value>=1.f?65535u:unsigned(value*65535.f);
+}
 struct OutputScale {
     float multiplier, offset, minimum, maximum;
     unsigned rightShift;
