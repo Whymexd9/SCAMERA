@@ -161,7 +161,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
             if (backend != null) {
                 backend.setOnPreferenceChangeListener((pref, value) -> {
-                    if ("scamera".equals(value)) return true;
+                    if ("scamera".equals(value) || "tetra_detail".equals(value)) {
+                        updateRemosaicControls(String.valueOf(value));
+                        return true;
+                    }
                     new androidx.appcompat.app.AlertDialog.Builder(requireContext())
                             .setTitle(R.string.remosaic_backend_title)
                             .setMessage(R.string.remosaic_vivo_unavailable)
@@ -169,6 +172,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     return false;
                 });
             }
+            if (backend != null) updateRemosaicControls(backend.getValue());
             Preference probe = findPreference("remosaic_vivo_probe");
             if (probe == null) return;
             probe.setOnPreferenceClickListener(pref -> {
@@ -198,6 +202,18 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }, "VivoRemosaicProbe").start();
                 return true;
             });
+        }
+
+        private void updateRemosaicControls(String backend) {
+            boolean detail = "tetra_detail".equals(backend);
+            int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,
+                    R.string.pref_remosaic_clamp_key, R.string.pref_remosaic_flatfield_key};
+            for (int key : legacy) {
+                Preference p = findPreference(getString(key));
+                if (p != null) p.setEnabled(!detail);
+            }
+            Preference response = findPreference("pref_tetra_response_key");
+            if (response != null) response.setEnabled(detail);
         }
 
         /**

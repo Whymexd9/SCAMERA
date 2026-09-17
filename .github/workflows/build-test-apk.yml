@@ -102,6 +102,12 @@ jobs:
           grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
+      - name: Check Tetra response estimator
+        run: |
+          mkdir -p build/tetra-profile-check
+          javac -d build/tetra-profile-check app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/TetraResponseProfile.java tools/TetraResponseProfileCheck.java
+          java -cp build/tetra-profile-check TetraResponseProfileCheck
+
       - name: Build debug APK
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
