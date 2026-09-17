@@ -155,6 +155,68 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             setPreferencesFromResource(R.xml.preferences, rootKey);
             seedMissingListValues(getPreferenceScreen());
             setupRemosaicBackend();
+            setupOriginalNoiseReduction();
+        }
+
+        private void setupOriginalNoiseReduction() {
+            ListPreference backend = findPreference("pref_rt_denoise_backend");
+            if (backend != null) backend.setOnPreferenceChangeListener((pref, value) -> {
+                updateOriginalNoiseControls("rt512".equals(String.valueOf(value)));
+                return true;
+            });
+            updateOriginalNoiseControls(com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original());
+            String[] curves = {"rt512_lcurve", "rt512_ccurve"};
+            for (String key : curves) {
+                Preference pref = findPreference(key);
+                if (pref != null) pref.setOnPreferenceChangeListener((p, value) -> {
+                    try {
+                        com.particlesdevs.photoncamera.settings.RawTherapeeSettings.curve(String.valueOf(value));
+                        return true;
+                    } catch (IllegalArgumentException e) {
+                        PhotonCamera.showToast(e.getMessage()); return false;
+                    }
+                });
+            }
+            for (String key : new String[]{"rt512_auto", "rt512_median", "rt512_gain"}) {
+                Preference pref = findPreference(key);
+                if (pref != null) pref.setOnPreferenceChangeListener((p, value) -> {
+                    updateOriginalNoiseDependencies(key, String.valueOf(value)); return true;
+                });
+            }
+            Preference kernel = findPreference("rt512_kernel");
+            if (kernel != null) kernel.setOnPreferenceChangeListener((p, value) -> {
+                if ("5".equals(com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_median", "0"))
+                        && Integer.parseInt(String.valueOf(value)) > 3) {
+                    PhotonCamera.showToast("Для RGB доступны медианные фильтры 3×3 и 5×5"); return false;
+                }
+                return true;
+            });
+            updateOriginalNoiseDependencies("", "");
+        }
+
+        private void updateOriginalNoiseControls(boolean original) {
+            Preference controls = findPreference("rt_original_controls");
+            if (controls != null) controls.setEnabled(original);
+            for (String key : new String[]{"pref_rt_nr_luma_key", "pref_rt_nr_chroma_key", "pref_rt_nr_detail_key", "pref_rt_nr_moire_key"}) {
+                Preference pref = findPreference(key);
+                if (pref != null) pref.setEnabled(!original && !PreferenceKeys.isHdrPlusMergeEnabled());
+            }
+        }
+
+        private void updateOriginalNoiseDependencies(String changed, String value) {
+            String auto = changed.equals("rt512_auto") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_auto", "0");
+            String median = changed.equals("rt512_median") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_median", "0");
+            String gain = changed.equals("rt512_gain") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_gain", "1");
+            for (String key : new String[]{"rt512_chroma", "rt512_red", "rt512_blue"}) {
+                Preference p = findPreference(key); if(p!=null)p.setEnabled("0".equals(auto));
+            }
+            for (String key : new String[]{"rt512_kernel", "rt512_passes"}) {
+                Preference p = findPreference(key); if(p!=null)p.setEnabled(!"0".equals(median));
+            }
+            ListPreference kernel = findPreference("rt512_kernel");
+            if (kernel != null && "5".equals(median) && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("rt512_kernel",0,0,5)>3) kernel.setValue("0");
+            Preference exposure = findPreference("rt512_exposure");
+            if(exposure!=null)exposure.setEnabled("1".equals(gain));
         }
 
         private void setupRemosaicBackend() {

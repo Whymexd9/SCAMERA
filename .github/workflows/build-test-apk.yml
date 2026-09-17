@@ -109,11 +109,22 @@ jobs:
           java -cp build/tetra-profile-check TetraResponseProfileCheck
 
       - name: Build debug APK
+        # The APK build only starts after the native denoise behavior checks pass.
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libfftw3-dev python3-numpy
+          /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
+          /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
           ./gradlew :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify native denoise packaging
+        env:
+          SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/librtDenoise.so'
 
       - name: Collect APK
         run: |
