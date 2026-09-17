@@ -2751,13 +2751,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 Log.e(TAG, "runRaw:"+Log.getStackTraceString(e));
                                 cameraEventsListener.onProcessingError(e.getLocalizedMessage());
                             } finally {
-                                if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
-                denoiseFrameCount = 6;
-                shortFrameCount = 0;
-                longFrameCount = 0;
-                Log.i(TAG, "HP9 HexQuad x2: six real RAWs, equal exposure, no bracket/ZSL");
-            }
-            if (hybridZslRequested) {
+                                if (hybridZslRequested) {
                                     mHybridZslCapture = false;
                                     mZslCapturing = false;
                                     mPendingZslNormalFrames = new ArrayList<>();
@@ -2784,12 +2778,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (isDualSession)
                 createCameraPreviewSession(true);
             else {
-            if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
-                denoiseFrameCount = 6;
-                shortFrameCount = 0;
-                longFrameCount = 0;
-                Log.i(TAG, "HP9 HexQuad x2: six real RAWs, equal exposure, no bracket/ZSL");
-            }
             if (hybridZslRequested) {
                 // From this exact point onward every RAW belongs to the manual
                 // long/short burst and may safely enter ImageSaver.
