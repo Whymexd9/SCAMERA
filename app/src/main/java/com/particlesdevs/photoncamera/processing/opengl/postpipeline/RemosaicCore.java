@@ -70,6 +70,9 @@ public class RemosaicCore {
      */
     public GLTexture run(GLTexture raw, Point rawSize, int cfaPattern, float black, float white,
                          boolean verbose) {
+        if (!"scamera".equals(PreferenceKeys.getRemosaicBackend())) {
+            throw new IllegalStateException("Selected remosaic backend is unavailable; select SCAMERA in settings");
+        }
         int blockSize = PreferenceKeys.getRemosaicBlockSize();
         int profile = PreferenceKeys.getRemosaicProfile();
         // Profile picks how much the interpolation smooths. The widest kernel
