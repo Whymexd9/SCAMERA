@@ -113,6 +113,8 @@ jobs:
         run: |
           g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_vivo_neural_capture.cpp -ldl -o /tmp/check-vivo-neural-capture
           /tmp/check-vivo-neural-capture
+          g++ -std=c++14 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -o /tmp/vivo-neural-worker
+          /tmp/vivo-neural-worker --transport-check
 
       - name: Build debug APK
         # The APK build only starts after the native denoise behavior checks pass.
@@ -136,10 +138,13 @@ jobs:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/librtDenoise.so'
-          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libvivoNeuralWorker.so'
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/vivo-neural/arm64-v8a/vivo-neural-worker'
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
-          unzip -p "$APK" lib/arm64-v8a/libvivoNeuralWorker.so > /tmp/libvivoNeuralWorker.so
-          readelf -d /tmp/libvivoNeuralWorker.so > /tmp/neural-deps.txt
+          unzip -p "$APK" assets/vivo-neural/arm64-v8a/vivo-neural-worker > /tmp/vivo-neural-worker-android
+          readelf -h /tmp/vivo-neural-worker-android | grep AArch64
+          readelf -l /tmp/vivo-neural-worker-android | grep /system/bin/linker64
+          readelf -d /tmp/vivo-neural-worker-android > /tmp/neural-deps.txt
+          grep -q PIE /tmp/neural-deps.txt
           cat /tmp/neural-deps.txt
           if grep -q 'libc++_shared.so' /tmp/neural-deps.txt; then
             echo "Root helper must have a static C++ runtime"
@@ -153,15 +158,18 @@ jobs:
           grep -q 'rt512_ccurve' /tmp/apk-preferences.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -1
 
-      - name: Collect APK
+      # CI emits a template; private model/runtime assets are added and signed
+      # with tools/package_vivo_neural.py before delivering a Bundled APK.
+      - name: Collect APK template
         run: |
           mkdir -p out
           find app/build/outputs/apk/debug -name '*.apk' -exec cp {} out/ \;
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/
           ls -l out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SCAMERA-debug-${{ steps.ver.outputs.code }}
-          path: out/*.apk
+          name: SCAMERA-template-${{ steps.ver.outputs.code }}
+          path: out/*
           if-no-files-found: error
           compression-level: 0

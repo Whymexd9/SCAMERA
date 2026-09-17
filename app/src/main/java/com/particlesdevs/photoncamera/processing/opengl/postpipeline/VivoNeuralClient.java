@@ -36,15 +36,22 @@ public final class VivoNeuralClient {
             observer.accept(line);
         };
         try {
-            // Works with either extracted or APK-resident native libraries.
-            // Copy only our own compiled helper, never vendor model binaries.
-            File library=new File(dir,"libvivoNeuralWorker.so");
+            // Extract only the assets in this APK. Missing bundles fail before
+            // requesting root; no fallback to Vivo firmware model files.
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
-                java.util.zip.ZipEntry entry=apk.getEntry("lib/arm64-v8a/libvivoNeuralWorker.so");
-                if(entry==null)throw new IOException("В APK отсутствует нейромодуль ARM64");
-                try(InputStream in=apk.getInputStream(entry);FileOutputStream out=new FileOutputStream(library)){
-                    if(!library.setReadOnly())throw new IOException("Не удалось защитить нейромодуль");
-                    byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);
+                java.util.ArrayList<String> names=new java.util.ArrayList<>();
+                names.add("vivo-neural-worker");
+                for(String[] item:VivoNeuralWorker.FILES)names.add(item[0]);
+                for(String name:names){
+                    java.util.zip.ZipEntry entry=apk.getEntry("assets/vivo-neural/arm64-v8a/"+name);
+                    if(entry==null)throw new IOException("Неполный APK: отсутствует "+name+". Установите сборку Bundled.");
+                    File file=new File(dir,name);
+                    try(InputStream in=apk.getInputStream(entry);FileOutputStream out=new FileOutputStream(file)){
+                        if(!file.setReadOnly())throw new IOException("Не удалось защитить "+name);
+                        byte[] buf=new byte[65536];int n;long total=0;
+                        while((n=in.read(buf))!=-1){total+=n;if(total>128L*1024*1024)throw new IOException("Слишком большой ресурс");out.write(buf,0,n);}
+                    }
+                    if(name.equals("vivo-neural-worker")&&!file.setExecutable(true,true))throw new IOException("Не удалось разрешить запуск нейромодуля");
                 }
             }
             File input=new File(dir,"input.f32"),output=new File(dir,"output.f32");
@@ -55,8 +62,8 @@ public final class VivoNeuralClient {
                 if(!output.createNewFile())throw new IOException("Не удалось создать файл результата");
             }
             String command="export CLASSPATH="+quote(context.getApplicationInfo().sourceDir)+
-                    "; export LD_LIBRARY_PATH="+quote("/system/lib64:/system_ext/lib64:/vendor/lib64/hw:/vendor/lib64")+
-                    "; export ADSP_LIBRARY_PATH="+quote("/vendor/lib64/hw;/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
+                    "; export LD_LIBRARY_PATH="+quote("/system/lib64:/system_ext/lib64:"+dir.getAbsolutePath()+":/vendor/lib64")+
+                    "; export ADSP_LIBRARY_PATH="+quote(dir.getAbsolutePath()+";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
                     "; exec /system/bin/app_process64 /system/bin "+VivoNeuralWorker.class.getName()+" "+quote(dir.getAbsolutePath());
             if(raw!=null)command+=" "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+redQuad;
             log.accept("ROOT: запуск отдельного процесса; разрешите запрос root");

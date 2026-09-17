@@ -69,7 +69,7 @@ public final class VivoNeuralActivity extends Activity {
         start.setEnabled(false);
         synchronized (report) { report.setLength(0); }
         saved.edit().putBoolean("complete", false).commit();
-        append("Vivo Neural capture v1\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
+        append("Vivo Neural capture v2 — bundled\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
                 "\n" + android.os.Build.FINGERPRINT);
         main.postDelayed(timeout, 220000);
         new Thread(() -> {

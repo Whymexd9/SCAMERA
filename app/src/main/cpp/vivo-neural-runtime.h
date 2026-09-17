@@ -10,7 +10,7 @@
 #include <functional>
 
 // Minimal public QNN ABI prefixes, restricted to the hash-checked PD2454
-// libraries and Core 2.18.0 / System 1.1.0. No SDK binary is redistributed.
+// libraries and Core 2.18.0 / System 1.1.0. Runtime files come from APK assets.
 // See docs/vivo-neural-capture.md for source declarations and validation limits.
 namespace vivo_nn {
 using Error=uint64_t; using Handle=void*; using Fn=void(*)();
@@ -85,11 +85,10 @@ class Session {
 public:
     std::vector<float> input,output;
     Session() : input(144*144*16),output(144*144*64) {}
-    void init() {
-        { auto source=read("/vendor/lib64/libremosaiclib_s5khp3.so");
-          model=vivo_neural::extractModel(source.data(),source.size(),"T2Q_TELE_3x_v1p9_240628_576_576_v79_O3_2251_bin"); }
+    void init(const std::string& directory) {
+        model=read(directory+"/tele576-v79.bin");
         if(model.size()!=5720680) throw std::runtime_error("Unexpected embedded model length");
-        auto system=load("/vendor/lib64/hw/libQnnSystem.so");
+        auto system=load((directory+"/libQnnSystem.so").c_str());
         auto getSystem=reinterpret_cast<Error(*)(const SystemProvider***,uint32_t*)>(dlsym(system,"QnnSystemInterface_getProviders"));
         if(!getSystem) throw std::runtime_error("No System provider entry");
         const SystemProvider** systems=nullptr;uint32_t n=0;check(getSystem(&systems,&n),"System providers");
@@ -111,11 +110,12 @@ public:
             throw std::runtime_error("Unexpected graph metadata");
         if(std::strcmp(g->name,"T2Q_TELE_3x_v1p9_frozen"))throw std::runtime_error("Wrong graph name");
         in=tensor(g->input,16,0);out=tensor(g->output,64,1);
-        // Ensure the exact symbol that failed with mixed system/vendor Binder resolves.
-        auto binder=load("/system/lib64/libbinder.so");
-        if(!dlsym(binder,"_ZN7android6binder2os22get_trace_enabled_tagsEv"))throw std::runtime_error("Platform Binder mismatch");
-        load("/system/lib64/libbinder_ndk.so");load("/vendor/lib64/libcdsprpc.so");load("/vendor/lib64/hw/libQnnHtpV79Stub.so");
-        auto htp=load("/vendor/lib64/hw/libQnnHtp.so");
+        // FastRPC is the device driver interface, not a Vivo algorithm. It
+        // must match the running phone; never ship another phone's driver.
+        log("DRIVER: platform FastRPC (device compatibility required)");
+        load("libcdsprpc.so");
+        load((directory+"/libQnnHtpV79Stub.so").c_str());
+        auto htp=load((directory+"/libQnnHtp.so").c_str());
         auto get=reinterpret_cast<Error(*)(const Provider***,uint32_t*)>(dlsym(htp,"QnnInterface_getProviders"));
         if(!get)throw std::runtime_error("No HTP providers");
         const Provider** providers=nullptr;n=0;check(get(&providers,&n),"HTP providers");

@@ -9,10 +9,11 @@ network, **not a verified copy of Vivo's active 4× pipeline**.
 
 1. Existing GPU sensor-response correction and black/white normalization.
    No white balance is applied before inference; normal downstream WB remains.
-2. The installed APK starts its own Java/JNI helper with `su` and
-   `app_process64`. No Termux installation is needed. Firmware SHA-256 checks
-   pin the exact supplied PD2454 libraries before loading native code.
-3. QnnSystem reads the embedded TELE576 context metadata. The helper requires
+2. The Bundled APK extracts its own model, four QNN libraries and an ARM64
+   executable into a private per-job folder. A Java verifier started with `su`
+   checks the asset hashes, then **execs the native executable**. QNN no longer
+   runs through JNI or ART's `clns-1` linker namespace. No Termux is needed.
+3. Bundled QnnSystem reads the bundled TELE576 context metadata. The helper requires
    graph `T2Q_TELE_3x_v1p9_frozen`, FLOAT32 input `[1,144,144,16]` and output
    `[1,144,144,64]`. Qualcomm HTP executes the graph through QNN Core 2.18.0.
 4. Eight real executions of flat colour charts test two input CFA hypotheses
@@ -30,11 +31,17 @@ network, **not a verified copy of Vivo's active 4× pipeline**.
 
 ## Runtime restrictions
 
-Root is required in this version. Models are read from the user's installed
-firmware; no vendor binary or weight is included in the repository or APK.
-Only ARM64, the pinned firmware, zero Tetra phase, dimensions divisible by 8,
-and frames up to 16 MP are accepted. Four CFA orientations are handled by
-phase-preserving flips. Other phones/firmwares fail explicitly.
+Root is required in this version. The **Bundled APK** contains TELE576 weights,
+QnnSystem, QnnHtp, V79Stub and V79Skel, all pinned by SHA-256. It does not read
+Vivo model or algorithm libraries from firmware. The platform FastRPC driver
+(`libcdsprpc.so`) and its Android/Qualcomm dependencies still come from the
+phone, like GPU drivers. They must match the device and cannot be made portable
+by copying Vivo's driver into an APK. V79 is targeted; compatibility with other
+Qualcomm devices is not established and no GPU fallback is claimed.
+
+Only ARM64, zero Tetra phase, dimensions divisible by 8 and frames up to 16 MP
+are accepted. Four CFA orientations are handled by phase-preserving flips.
+Unsupported runtimes or layouts stop with a report.
 
 The root helper is separate from the camera PID. Native execution and cleanup
 have a 180-second alarm; Java waits at most 200 seconds. A native crash fails
@@ -81,7 +88,7 @@ existing backend selected for normal shooting until this validation passes.
 
 ## ABI references
 
-Minimal declarations are restricted to hash-checked firmware, not advertised
+Minimal declarations are restricted to hash-checked bundled QNN libraries, not advertised
 as a general QNN SDK replacement. Public layouts and function order:
 
 - [Qualcomm QnnInterface.h](https://docs.qualcomm.com/doc/80-63442-10/topic/api-rst_program_listing_file_include_QNN_QnnInterface_h.html)
@@ -92,3 +99,33 @@ The stock library SHA-256 is
 The selected embedded symbol is
 `T2Q_TELE_3x_v1p9_240628_576_576_v79_O3_2251_bin` (5,720,680 bytes), SHA-256
 `32983328ace406ffbfb165a09b1bfd69015e5da224a6d4b3e1f7f0cac74d1c9b`.
+
+## Building a Bundled APK
+
+CI emits `SCAMERA-template-*` containing the app and native worker, plus
+`apksigner.jar`. The template intentionally lacks proprietary model/runtime
+assets and reports an incomplete APK before requesting root. For a private
+build, place the five assets listed in `VivoNeuralWorker.FILES` in a local
+directory (`tele576-v79.bin` is the extracted TELE576 context), then run:
+
+```sh
+python3 tools/package_vivo_neural.py --template template.apk \
+  --bundle-dir /absolute/path/to/assets --apksigner /absolute/path/to/apksigner.jar \
+  --output SCAMERA-Bundled.apk
+```
+
+Python 3.11+ and Java 17 are required. The packager verifies exact hashes, checks
+that the worker is a real Android ARM64 executable, signs with the project's
+existing test key, and verifies the final signature, CRCs and embedded hashes.
+Vendor assets are not committed to the public source repository. App source
+and packaging remain reproducible with the supplied local assets.
+
+## Additional HP9 archive
+
+`NiceCREConfigHexQuad.xml` and the `nice_ldr_hp9_general_hex_big_x1/x2.vdnn`
+files identify another candidate stock path: 18-channel 288x288 input,
+3-channel outputs, VST/IVST and QNN 2.28 compiled payloads. The ROI Quad
+variant uses 12 input channels. Their exact preprocessing and connection to
+active 4x ISZ have not been established. These are **not** substituted into
+the TELE576/QNN 2.25 path: the ABI and tensor layouts differ, and their presence
+does not make the current implementation a verified copy of stock 4x AI.
