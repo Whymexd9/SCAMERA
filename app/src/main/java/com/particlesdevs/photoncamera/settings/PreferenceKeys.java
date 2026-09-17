@@ -554,6 +554,10 @@ public class PreferenceKeys {
     }
 
     /** 0 nearest, 1 sharp, 2 balanced, 3 smooth. */
+    public static String getRemosaicBackend() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
+    }
+
     public static int getRemosaicProfile() {
         return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
     }
@@ -1252,6 +1256,7 @@ public class PreferenceKeys {
         KEY_REMOSAIC_ENABLED(R.string.pref_remosaic_enabled_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
         KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
+        KEY_REMOSAIC_BACKEND(R.string.pref_remosaic_backend_key),
         KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
         KEY_REMOSAIC_CLAMP(R.string.pref_remosaic_clamp_key),
         KEY_REMOSAIC_FLATFIELD(R.string.pref_remosaic_flatfield_key),

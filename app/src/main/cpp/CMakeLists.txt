@@ -239,3 +239,7 @@ target_link_libraries(
         camera2native
         log
 )
+
+# Isolated read-only loader probe; no vendor process ABI is assumed.
+add_library(vivoRemosaicProbe SHARED vivo-remosaic-probe.cpp)
+target_link_libraries(vivoRemosaicProbe PRIVATE dl)
