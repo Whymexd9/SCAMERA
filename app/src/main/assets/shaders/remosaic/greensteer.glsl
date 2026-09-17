@@ -29,30 +29,31 @@ uniform float steer;
 
 out vec4 Output;
 
-/** Mask-normalised mean along one axis, plus the gradient seen along it. */
-vec2 axisEstimate(ivec2 xy, ivec2 dir) {
-    float sum = 0.0, wsum = 0.0;
-    float prev = -1.0;
-    float grad = 0.0;
-    int gradN = 0;
-
-    for (int i = -reach; i <= reach; i++) {
-        ivec2 p = clamp(xy + dir * i, ivec2(0), size - 1);
-        vec2 s = texelFetch(InputBuffer, p, 0).xy;
-        if (s.y <= 0.0) continue;
-        // Flat weights: over one block period a flat kernel averages every
-        // block evenly, which is what keeps block edges from stepping.
-        sum += s.x;
-        wsum += 1.0;
-        if (prev >= 0.0) {
-            grad += abs(s.x - prev);
-            gradN++;
+// Nearest measured samples on either side bracket the missing site.
+// Distance weighting reproduces affine ramps in the image interior instead
+// of moving the effective sample position with the phase of the colour block.
+// z is availability: an empty direction must not contribute a black estimate.
+vec3 axisEstimate(ivec2 xy, ivec2 dir) {
+    float a = 0.0, b = 0.0;
+    int da = 0, db = 0;
+    for (int d = 1; d <= reach; d++) {
+        ivec2 pa = xy - dir * d;
+        ivec2 pb = xy + dir * d;
+        if (da == 0 && all(greaterThanEqual(pa, ivec2(0))) && all(lessThan(pa, size))) {
+            vec2 s = texelFetch(InputBuffer, pa, 0).xy;
+            if (s.y > 0.0) { a = s.x; da = d; }
         }
-        prev = s.x;
+        if (db == 0 && all(greaterThanEqual(pb, ivec2(0))) && all(lessThan(pb, size))) {
+            vec2 s = texelFetch(InputBuffer, pb, 0).xy;
+            if (s.y > 0.0) { b = s.x; db = d; }
+        }
     }
-    float mean = wsum > 0.0 ? sum / wsum : 0.0;
-    float g = gradN > 0 ? grad / float(gradN) : 0.0;
-    return vec2(mean, g);
+    if (da == 0 && db == 0) return vec3(0.0);
+    if (da == 0) return vec3(b, 0.0, 0.5);
+    if (db == 0) return vec3(a, 0.0, 0.5);
+    float span = float(da + db);
+    return vec3((a * float(db) + b * float(da)) / span,
+                abs(b - a) / span, 1.0);
 }
 
 void main() {
@@ -64,13 +65,13 @@ void main() {
         return;
     }
 
-    vec2 h = axisEstimate(xy, ivec2(1, 0));
-    vec2 v = axisEstimate(xy, ivec2(0, 1));
+    vec3 h = axisEstimate(xy, ivec2(1, 0));
+    vec3 v = axisEstimate(xy, ivec2(0, 1));
 
     // Weight each direction by how flat it is. 1e-4 keeps a perfectly flat
     // direction from taking the whole weight on noise alone.
-    float wh = 1.0 / (1.0 + steer * h.y + 1e-4);
-    float wv = 1.0 / (1.0 + steer * v.y + 1e-4);
+    float wh = h.z / (1.0 + steer * h.y + 1e-4);
+    float wv = v.z / (1.0 + steer * v.y + 1e-4);
     float total = wh + wv;
 
     float value = total > 0.0 ? (h.x * wh + v.x * wv) / total : 0.0;
