@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:title="@string/settings" android:orderingFromXml="false" android:key="prefscreen">
+    <Preference android:order="12" android:key="vivo_neural_probe" android:title="Vivo Neural — проверка" android:summary="Проверить загрузку модели на нейроускоритель и скопировать отчёт" android:layout="@layout/preference_with_margin" />
     <SwitchPreferenceCompat android:order="10" android:key="scamera_full_debug" android:title="@string/full_debug_title" android:summary="@string/full_debug_summary" android:defaultValue="false" android:layout="@layout/preference_with_margin" />
 
     <PreferenceScreen android:order="11" android:key="rt_denoise_screen" android:title="Шумоподавление RawTherapee 5.12" android:summary="Выбор алгоритма и настройки яркостного, цветового и медианного фильтров" android:layout="@layout/preference_with_margin">
@@ -22,7 +23,7 @@
 <EditTextPreference android:layout="@layout/preference_with_margin" android:key="rt512_lcurve" android:title="Кривая яркостного шумоподавления" android:defaultValue="0" android:summary="0 — выключена. Формат кривой RawTherapee: 1; x; y; левая касательная; правая касательная; … Точки от 0 до 1, x по возрастанию. Яркостная кривая заменяет ползунок яркости." />
 <EditTextPreference android:layout="@layout/preference_with_margin" android:key="rt512_ccurve" android:title="Кривая цветового шумоподавления" android:defaultValue="0" android:summary="0 — выключена. Формат кривой RawTherapee: 1; x; y; левая касательная; правая касательная; … Точки от 0 до 1, x по возрастанию. Яркостная кривая заменяет ползунок яркости." />
 </PreferenceScreen>
-            
+
     </PreferenceScreen>
 
     <PreferenceScreen android:key="processing_group_screen" android:title="@string/group_processing" android:summary="@string/group_processing_summary"><PreferenceScreen android:order="20" android:key="scamera_mosaic_sr_screen" android:title="@string/mosaic_sr_title" android:summary="@string/mosaic_sr_summary" android:layout="@layout/preference_with_margin">
