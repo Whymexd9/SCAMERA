@@ -623,7 +623,8 @@ public class PostPipeline extends GLBasePipeline {
                 // The user-facing component switches are authoritative.  The
                 // old hdrxNR flag is device/profile dependent and made these
                 // controls no-ops on profiles where it was false.
-                if (!PreferenceKeys.isHdrPlusMergeEnabled()
+                if (!com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()
+                        && !PreferenceKeys.isHdrPlusMergeEnabled()
                         && (PreferenceKeys.isNrLumaEnabled()
                         || PreferenceKeys.isNrChromaEnabled())) {
                     add(new ESD3D2(true));
@@ -632,6 +633,9 @@ public class PostPipeline extends GLBasePipeline {
             }
         }
         add(new ABLC());
+        if (com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {
+            add(new RawTherapeeDenoise());
+        }
         if ("off".equals(tonePipeline)) {
             // No tone/color stage: the linear camera RGB passes through
             // untouched. LinearExposure draws nothing but keeps the Ultra HDR
