@@ -207,7 +207,7 @@ public class Remosaic extends Node {
                     boolean saved = ImageSaver.Util.saveSingleRaw(
                             dumpPath, dump, basePipeline.mParameters);
                     Log.d(Name, "remosaic dump " + (saved ? "saved: " : "failed: ") + dumpPath);
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     Log.e(Name, "remosaic dump failed: " + Log.getStackTraceString(t));
                 }
             }
