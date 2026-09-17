@@ -554,6 +554,10 @@ public class PreferenceKeys {
     }
 
     /** 0 nearest, 1 sharp, 2 balanced, 3 smooth. */
+    public static boolean isTetraResponseCorrection() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_tetra_response_key", true);
+    }
+
     public static String getRemosaicBackend() {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
     }

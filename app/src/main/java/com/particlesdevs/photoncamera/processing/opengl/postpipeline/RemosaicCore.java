@@ -53,6 +53,9 @@ public class RemosaicCore {
      */
     private float[] sharedGains;
     private boolean profileMeasured;
+    private float[] detailProfile;
+    private float[] detailTrust;
+    private String activeBackend;
 
     public RemosaicCore(GLProg glProg) {
         this.glProg = glProg;
@@ -70,7 +73,26 @@ public class RemosaicCore {
      */
     public GLTexture run(GLTexture raw, Point rawSize, int cfaPattern, float black, float white,
                          boolean verbose) {
-        if (!"scamera".equals(PreferenceKeys.getRemosaicBackend())) {
+        if (activeBackend == null) activeBackend = PreferenceKeys.getRemosaicBackend();
+        if ("tetra_detail".equals(activeBackend)) {
+            int[] phase = PreferenceKeys.getRemosaicPhase();
+            if (PreferenceKeys.getRemosaicBlockSize() != 4 || rawSize.x < 8 || rawSize.y < 8
+                    || rawSize.x % 8 != 0 || rawSize.y % 8 != 0) {
+                throw new IllegalArgumentException("Tetra Detail requires 4x4 colour blocks and dimensions divisible by 8");
+            }
+            // Normalize phase for signed/imported values as well as UI values.
+            phase[0] = Math.floorMod(phase[0], 8);
+            phase[1] = Math.floorMod(phase[1], 8);
+            int[] quad = quadColorsFor(cfaPattern);
+            if (sharedGains == null) sharedGains = measureGains(raw, rawSize, 4, phase, quad, black, white);
+            if (detailTrust == null) detailTrust = measureDetailTrust(raw, rawSize, phase, quad, black, white);
+            if (detailProfile == null) detailProfile = PreferenceKeys.isTetraResponseCorrection()
+                    ? measureBlockProfile(raw, rawSize, 4, phase, black, white, true) : flatProfile();
+            if (verbose) Log.d(Name, "backend=Tetra Detail block=4 phase=" + phase[0] + "," + phase[1]
+                    + " response=" + java.util.Arrays.toString(detailProfile));
+            return TetraDetailRemosaic.run(glProg, raw, rawSize, phase, quad, black, white, sharedGains, detailProfile, detailTrust);
+        }
+        if (!"scamera".equals(activeBackend)) {
             throw new IllegalStateException("Selected remosaic backend is unavailable; select SCAMERA in settings");
         }
         int blockSize = PreferenceKeys.getRemosaicBlockSize();
@@ -126,7 +148,7 @@ public class RemosaicCore {
 
             if (!profileMeasured) {
                 blockGain = flatField
-                        ? measureBlockProfile(raw, rawSize, blockSize, phase, black, white)
+                        ? measureBlockProfile(raw, rawSize, blockSize, phase, black, white, false)
                         : flatProfile();
                 profileMeasured = true;
             }
@@ -228,7 +250,7 @@ public class RemosaicCore {
                 sumR += f.get(i * 4 + 2);
                 cntG += f.get(i * 4 + 3);
             }
-            if (cntG <= 0) return new float[]{1.f, 1.f, 0.f};
+            if (cntG <= 0) return new float[]{1.f, 1.f, 0.f, 0.f};
             // Green samples are twice as many as B or R in every pattern here,
             // so their count follows from the green count.
             double cntC = cntG * 0.5;
@@ -242,12 +264,45 @@ public class RemosaicCore {
             gb = Math.min(Math.max(gb, 0.1f), 10.f);
             gr = Math.min(Math.max(gr, 0.1f), 10.f);
             double total = (double) rawSize.x * rawSize.y;
-            return new float[]{gb, gr, (float) (cntG / Math.max(total, 1))};
+            return new float[]{gb, gr, (float) (cntG / Math.max(total, 1)), (float) meanG};
         } finally {
             grid.close();
         }
     }
 
+
+    /** Limit detail borrowing when aligned channel contrast is inconsistent. */
+    private float[] measureDetailTrust(GLTexture raw, Point size, int[] phase, int[] quad,
+                                      float black, float white) {
+        Point tiles = new Point((size.x + 31) / 32, (size.y + 31) / 32);
+        GLTexture grid = new GLTexture(tiles, new GLFormat(GLFormat.DataType.FLOAT_32, 4),
+                null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        try {
+            glProg.useAssetProgram("remosaic/tetra/moments");
+            glProg.setTexture("RawBuffer", raw);
+            glProg.setVar("size", size.x, size.y);
+            glProg.setVar("phase", phase[0], phase[1]);
+            glProg.setVar("quadColors", quad[0], quad[1], quad[2], quad[3]);
+            glProg.setVar("blackLevel", black); glProg.setVar("whiteLevel", white);
+            glProg.setVar("gainB", sharedGains[0]); glProg.setVar("gainR", sharedGains[1]);
+            glProg.drawBlocks(grid); glProg.closed = true;
+            FloatBuffer f = grid.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32, 4))
+                    .order(ByteOrder.nativeOrder()).asFloatBuffer();
+            double[] sums = new double[4];
+            for (int i = 0; i < tiles.x * tiles.y; i++)
+                for (int k = 0; k < 4; k++) sums[k] += f.get(i * 4 + k);
+            double mean2 = sharedGains[3] * (double) sharedGains[3];
+            double vg = Math.max(sums[0] / Math.max(sums[3], 1) - mean2, 0);
+            float[] trust = new float[2];
+            if (vg > 1e-6) for (int k = 0; k < 2; k++) {
+                double vc = Math.max(sums[k + 1] / Math.max(sums[3] * 0.5, 1) - mean2, 0);
+                double ratio = Math.sqrt(vc / vg);
+                trust[k] = (float) Math.max(0, 1 - Math.abs(Math.log(Math.max(ratio, 1e-6))) / Math.log(1.5));
+            }
+            Log.d(Name, "Tetra detail trust B/R=" + java.util.Arrays.toString(trust));
+            return trust;
+        } finally { grid.close(); }
+    }
 
     private void maskStage(GLTexture raw, GLTexture green, GLTexture out, Point size, int stage,
                            int blockSize, int[] phase, int[] quad, float black, float white,
@@ -368,7 +423,7 @@ public class RemosaicCore {
      * that quadrant alike.
      */
     private float[] measureBlockProfile(GLTexture raw, Point rawSize, int blockSize, int[] phase,
-                                        float black, float white) {
+                                        float black, float white, boolean robust) {
         int sites = blockSize * blockSize;
         Point tiles = new Point(
                 (rawSize.x + MEAN_TILE - 1) / MEAN_TILE,
@@ -391,6 +446,7 @@ public class RemosaicCore {
 
             ByteBuffer buf = grid.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32, 4));
             FloatBuffer f = buf.order(ByteOrder.nativeOrder()).asFloatBuffer();
+            if (robust) return TetraResponseProfile.estimate(f, gridSize.x, gridSize.y);
             double[][] sums = new double[4][sites];
             for (int y = 0; y < gridSize.y; y++) {
                 int sy = y % blockSize;

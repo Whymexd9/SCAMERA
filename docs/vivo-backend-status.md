@@ -1,4 +1,8 @@
-# Vivo backend status
+# Original Vivo binary backend status
+
+The independent working **Tetra Detail** backend is now available; see
+[tetra-detail.md](tetra-detail.md). The notes below describe the earlier
+native-loader experiment, not the current list of executable algorithms.
 
 This change adds the backend selection UI and an on-device native loader
 probe. It does NOT yet implement stock remosaic processing. SCAMERA is the

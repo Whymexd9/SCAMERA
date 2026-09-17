@@ -16,6 +16,8 @@
         <SwitchPreferenceCompat android:key="@string/pref_remosaic_enabled_key" android:title="@string/remosaic_enabled" android:summary="@string/remosaic_enabled_desc" android:defaultValue="false" />
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:layout="@layout/preference_numeric" android:title="@string/remosaic_block" android:key="@string/pref_remosaic_block_key" android:summary="@string/remosaic_block_desc" android:defaultValue="@string/pref_remosaic_block_default" app:maxValue="4" app:minValue="2" />
         <ListPreference android:key="@string/pref_remosaic_backend_key" android:title="@string/remosaic_backend_title" android:entries="@array/remosaic_backend_entries" android:entryValues="@array/remosaic_backend_values" android:defaultValue="scamera" app:useSimpleSummaryProvider="true" />
+        <SwitchPreferenceCompat android:key="pref_tetra_response_key" android:title="@string/tetra_response_title" android:summary="@string/tetra_response_summary" android:defaultValue="true" />
+        <Preference android:selectable="false" android:summary="@string/tetra_backend_note" />
         <Preference android:key="remosaic_vivo_probe" android:title="@string/remosaic_vivo_probe" android:summary="@string/remosaic_vivo_probe_desc" />
         <ListPreference android:key="@string/pref_remosaic_profile_key" android:title="@string/remosaic_profile" android:summary="@string/remosaic_profile_desc" android:entries="@array/remosaic_profile_entries" android:entryValues="@array/remosaic_profile_values" android:defaultValue="@string/pref_remosaic_profile_default" />
         <Preference android:selectable="false" android:summary="@string/remosaic_profile_note" />

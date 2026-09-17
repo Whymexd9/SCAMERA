@@ -14,7 +14,7 @@ void main() {
  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }'''
 
-def run(name, inputs, uniforms, integer=False):
+def run(name, inputs, uniforms, integer=False, output_size=None, half=False):
     src = (ROOT / (name + '.glsl')).read_text().replace('#version 300 es', '#version 330')
     src = re.sub(r'precision \w+ \w+;', '', src)
     prog = CTX.program(vertex_shader=VERT, fragment_shader=src)
@@ -22,19 +22,20 @@ def run(name, inputs, uniforms, integer=False):
     textures = []
     for i, (key, data) in enumerate(inputs.items()):
         data = np.ascontiguousarray(data)
-        texture = CTX.texture((w, h), data.shape[2], data.tobytes(),
+        texture = CTX.texture((data.shape[1], data.shape[0]), data.shape[2], data.tobytes(),
                               dtype='u2' if data.dtype == np.uint16 else 'f4')
         texture.use(i); textures.append(texture)
         if key in prog: prog[key].value = i
     for key, value in uniforms.items():
         if key in prog: prog[key].value = value
-    target = CTX.texture((w, h), 4, dtype='u2' if integer else 'f4')
+    if output_size is not None: w, h = output_size
+    target = CTX.texture((w, h), 4, dtype='u2' if integer else 'f2' if half else 'f4')
     fb = CTX.framebuffer([target]); fb.use(); CTX.viewport = (0, 0, w, h)
     vao = CTX.vertex_array(prog, []); vao.render(vertices=3)
-    result = np.frombuffer(target.read(), dtype=np.uint16 if integer else np.float32).reshape(h, w, 4).copy()
+    result = np.frombuffer(target.read(), dtype=np.uint16 if integer else np.float16 if half else np.float32).reshape(h, w, 4).copy()
     vao.release(); fb.release(); target.release(); prog.release()
     for t in textures: t.release()
-    return result
+    return result if integer else result.astype(np.float32)
 
 
 def checks():
