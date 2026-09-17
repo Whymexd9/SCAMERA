@@ -2,21 +2,18 @@
 import numpy as np
 from check_remosaic_shaders import run
 
-def tetra(raw,quad=(2,1,1,0),phase=(0,0),block_gain=None,gains=(1.,1.),half=True):
+def tetra(raw,quad=(2,1,1,0),phase=(0,0),block_gain=None,gains=(1.,1.),half=True,prepared=None,gain_map=None):
  h,w=raw.shape[:2]
  u={'size':(w,h),'phase':phase,'quadColors':quad,'blackLevel':64.,'whiteLevel':1023.,'gainB':gains[0],'gainR':gains[1],'blockGain':tuple(np.ones(64) if block_gain is None else block_gain)}
- # Match the first-frame GPU moment reduction used by the Java dispatcher.
- y,x=np.mgrid[:h,:w];c=np.array(quad)[((y+phase[1])%8)//4*2+((x+phase[0])%8)//4]
- signal=np.clip((raw[:,:,0].astype(float)-64)/959,0,1)
- mean=signal[c==1].mean();vg=max(np.mean(signal[c==1]**2)-mean**2,0)
- trust=[]
- for color,gain in [(2,gains[0]),(0,gains[1])]:
-  vc=max(np.mean((signal[c==color]*gain)**2)-mean**2,0)
-  ratio=np.sqrt(vc/max(vg,1e-12));trust.append(max(0,1-abs(np.log(max(ratio,1e-6)))/np.log(1.5)) if vg>1e-6 else 0)
- u['detailTrust']=tuple(trust)
- coarse=run('tetra/coarse',{'RawBuffer':raw},u,output_size=((w+phase[0]+7)//8,(h+phase[1]+7)//8),half=half)
+ profile=(np.asarray(np.ones(64) if block_gain is None else block_gain).reshape(4,4,4).transpose(1,2,0).astype('f4') if gain_map is None else gain_map)
+ if prepared is None:prepared=run('tetra/prepare',{'RawBuffer':raw,'GainMap':profile},u,half=half)
+ coarse=run('tetra/coarse',{'RawBuffer':prepared},u,output_size=((w+phase[0]+7)//8,(h+phase[1]+7)//8),half=half)
  coarse=run('tetra/chroma',{'InputBuffer':coarse},u,half=half)
- guide=run('tetra/guide',{'RawBuffer':raw,'CoarseBuffer':coarse},u,half=half)
+ energy=run('tetra/energy',{'RawBuffer':prepared},u,output_size=((w+phase[0]+7)//8,(h+phase[1]+7)//8),half=half)
+ energy=run('tetra/chroma',{'InputBuffer':energy},u,half=half)
+ corr=run('tetra/correlation',{'RawBuffer':prepared},u,output_size=((w+phase[0]+7)//8,(h+phase[1]+7)//8),half=half)
+ corr=run('tetra/chroma',{'InputBuffer':corr},u,half=half)
+ guide=run('tetra/guide',{'RawBuffer':prepared,'CoarseBuffer':coarse,'EnergyBuffer':energy,'CorrelationBuffer':corr},u,half=half)
  return run('tetra/reconstruct',{'GuideBuffer':guide},u,integer=True)[:,:,0]
 
 def original(raw,quad=(2,1,1,0),phase=(0,0),block_gain=None,gains=(1.,1.),half=True):
@@ -71,5 +68,27 @@ def checks():
   print(name,'old/new RAW RMSE:',*[round(e,3) for e in errors])
   assert errors[1]<errors[0],(name,errors)
   if name=='gray texture':assert errors[1]<errors[0]*.65
- print('PASS: colour orders, all Tetra phases, borders, half-float output, detail recovery')
+ # Neutral detail embedded in a strongly coloured scene must not be disabled
+ # by whole-frame colour statistics. Opposite-sign colour detail must not be
+ # treated as luminance. Thresholds refer to sensor-domain ground truth.
+ h,w=192,256;y,x=np.mgrid[:h,:w]
+ fixtures={
+  'mixed scene':(np.where((x<w/2)[:,:,None],np.repeat((.4+.09*np.sin(.7*x))[:,:,None],3,2),[.7,.13,.2]),8.0),
+  'opposite chroma':(np.stack([.4+.08*np.sin(.4*x),.4-.08*np.sin(.4*x),.4+.08*np.sin(.4*x)],2),17.0),
+  'slanted edge':(np.repeat(np.where(y+x*.4<110,.2,.65)[:,:,None],3,2),2.0)
+ }
+ for name,(rgb,limit) in fixtures.items():
+  raw,truth=mosaic(rgb);c=np.array([2,1,1,0])[y%8//4*2+x%8//4];a=raw[:,:,0].astype(float)-64
+  means=[a[c==k].mean() for k in range(3)];gains=(means[1]/means[2],means[1]/means[0]);out=tetra(raw,gains=gains)
+  error=np.sqrt(np.mean((out[40:-40,40:-40]-truth[40:-40,40:-40])**2))
+  assert error<limit,(name,error);print(name,'RMSE',round(error,3))
+ # Correct spatial/phase addressing, with each photosite carrying its own gain.
+ for phase in [(0,0),(1,3),(7,7)]:
+  q=(2,1,1,0);rgb=np.full((h,w,3),.35);raw,truth=mosaic(rgb,q,phase)
+  response=1+np.linspace(-.08,.08,64);quad=np.array(q)[((y+phase[1])%8)//4*2+((x+phase[0])%8)//4]
+  index=(((y+phase[1])%8)//4*2+((x+phase[0])%8)//4)*16+((y+phase[1])%4)*4+(x+phase[0])%4
+  raw=np.rint(64+(raw.astype(float)-64)*response[index,None]).astype('u2')
+  out=tetra(raw,q,phase,block_gain=1/response)
+  assert np.max(abs(out.astype(float)-truth))<=2
+ print('PASS: CFA phases, borders, half precision, local detail, chroma rejection and response addressing')
 if __name__=='__main__':checks()

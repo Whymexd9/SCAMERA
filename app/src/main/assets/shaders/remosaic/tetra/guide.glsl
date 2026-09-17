@@ -1,9 +1,10 @@
 #version 300 es
 precision highp float;
 precision highp int;
-precision highp usampler2D;
-uniform usampler2D RawBuffer;
+uniform sampler2D RawBuffer;
 uniform sampler2D CoarseBuffer;
+uniform sampler2D EnergyBuffer;
+uniform sampler2D CorrelationBuffer;
 uniform ivec2 size;
 uniform ivec2 phase;
 uniform ivec4 quadColors;
@@ -11,17 +12,11 @@ uniform float blackLevel;
 uniform float whiteLevel;
 uniform float gainB;
 uniform float gainR;
-uniform float blockGain[64];
-uniform vec2 detailTrust;
+
 out vec4 Output;
 int quadrant(ivec2 p) { ivec2 r=(p+phase)%8; return (r.y/4)*2+r.x/4; }
-float sampleAt(ivec2 p) {
-    int q=quadrant(p); ivec2 sub=(p+phase)%4;
-    float v=(float(texelFetch(RawBuffer,p,0).r)-blackLevel)/max(whiteLevel-blackLevel,1.0);
-    v=clamp(v*blockGain[q*16+sub.y*4+sub.x],0.0,1.0);
-    int c=quadColors[q]; return v*(c==0?gainR:c==2?gainB:1.0);
-}
-float coarseAt(ivec2 xy,int q) {
+float sampleAt(ivec2 p) { return texelFetch(RawBuffer,p,0).r; }
+float fieldAt(sampler2D field,ivec2 xy,int q) {
     ivec2 offset=ivec2(q%2,q/2)*4;
     vec2 t=(vec2(xy+phase-offset)-vec2(1.5))/8.0;
     ivec2 lo=ivec2(floor(t)); vec2 f=fract(t);
@@ -29,10 +24,10 @@ float coarseAt(ivec2 xy,int q) {
     ivec2 first=max(ivec2(0),(phase-offset+ivec2(4))/8);
     ivec2 last=(size-1+phase-offset)/8;
     last=max(last,first);
-    float a=texelFetch(CoarseBuffer,clamp(lo,first,last),0)[q];
-    float b=texelFetch(CoarseBuffer,clamp(lo+ivec2(1,0),first,last),0)[q];
-    float c=texelFetch(CoarseBuffer,clamp(lo+ivec2(0,1),first,last),0)[q];
-    float d=texelFetch(CoarseBuffer,clamp(lo+ivec2(1,1),first,last),0)[q];
+    float a=texelFetch(field,clamp(lo,first,last),0)[q];
+    float b=texelFetch(field,clamp(lo+ivec2(1,0),first,last),0)[q];
+    float c=texelFetch(field,clamp(lo+ivec2(0,1),first,last),0)[q];
+    float d=texelFetch(field,clamp(lo+ivec2(1,1),first,last),0)[q];
     return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
 }
 vec2 chroma(ivec2 cell) {
@@ -64,11 +59,13 @@ void main() {
     int q=quadrant(xy),c=quadColors[q]; float raw=sampleAt(xy);
     if(c==1) {Output=vec4(raw,raw,0.0,1.0);return;}
     vec3 h=axisGreen(xy,ivec2(1,0)),v=axisGreen(xy,ivec2(0,1));
-    float wh=h.z/(0.01+h.y),wv=v.z/(0.01+v.y);
-    float directional=(h.x*wh+v.x*wv)/max(wh+wv,1e-6);
+    vec3 d1=axisGreen(xy,ivec2(1,1)),d2=axisGreen(xy,ivec2(1,-1));
+    float wh=h.z/pow(0.005+h.y,2.0),wv=v.z/pow(0.005+v.y,2.0);
+    float w1=d1.z/pow(0.005+d1.y,2.0),w2=d2.z/pow(0.005+d2.y,2.0);
+    float directional=(h.x*wh+v.x*wv+d1.x*w1+d2.x*w2)/max(wh+wv+w1+w2,1e-6);
     float baseG=0.0;
-    for(int k=0;k<4;++k)if(quadColors[k]==1)baseG+=0.5*coarseAt(xy,k);
-    float baseC=coarseAt(xy,q);
+    for(int k=0;k<4;++k)if(quadColors[k]==1)baseG+=0.5*fieldAt(CoarseBuffer,xy,k);
+    float baseC=fieldAt(CoarseBuffer,xy,q);
     // Transfer measured high-frequency luminance with a local colour ratio.
     // Use less transfer when the supporting colour is dark or saturated.
     float floorSignal=4.0/max(whiteLevel-blackLevel,1.0);
@@ -80,7 +77,18 @@ void main() {
     float edge=max(max(dh.x,dh.y),max(dv.x,dv.y));
     confidence*=1.0/(1.0+pow(edge/0.12,4.0));
     confidence*=smoothstep(floorSignal,4.0*floorSignal,min(baseC,baseG));
-    float detail=raw*clamp(ratio,0.25,4.0);
-    float green=mix(directional,detail,0.85*confidence*(c==2?detailTrust.x:detailTrust.y));
+    float eg=0.0;
+    for(int k=0;k<4;++k)if(quadColors[k]==1)eg+=0.5*fieldAt(EnergyBuffer,xy,k);
+    float ec=fieldAt(EnergyBuffer,xy,q);
+    float noiseFloor=2.0/pow(max(whiteLevel-blackLevel,1.0),2.0);
+    float contrast=sqrt(max(eg-noiseFloor,0.0)/max(ec-noiseFloor,noiseFloor));
+    float support=smoothstep(noiseFloor,16.0*noiseFloor,max(eg,ec));
+    float consistency=clamp(1.0-abs(log(max(contrast/max(ratio,0.001),0.001)))/log(1.5),0.0,1.0);
+    confidence*=mix(1.0,consistency,support);
+    float slope=clamp(ratio,0.25,4.0);
+    float detail=baseG+(raw-baseC)*slope;
+    float correlation=fieldAt(CorrelationBuffer,xy,q)/max(sqrt(eg*ec),noiseFloor);
+    confidence*=smoothstep(-0.2,0.05,correlation);
+    float green=mix(directional,detail,confidence);
     Output=vec4(clamp(green,0.0,1.0),raw,0.0,1.0);
 }

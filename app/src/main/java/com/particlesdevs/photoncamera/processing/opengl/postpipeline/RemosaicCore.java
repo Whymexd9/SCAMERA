@@ -53,8 +53,7 @@ public class RemosaicCore {
      */
     private float[] sharedGains;
     private boolean profileMeasured;
-    private float[] detailProfile;
-    private float[] detailTrust;
+    private TetraResponseProfile.GainMap detailMap;
     private String activeBackend;
 
     public RemosaicCore(GLProg glProg) {
@@ -85,12 +84,11 @@ public class RemosaicCore {
             phase[1] = Math.floorMod(phase[1], 8);
             int[] quad = quadColorsFor(cfaPattern);
             if (sharedGains == null) sharedGains = measureGains(raw, rawSize, 4, phase, quad, black, white);
-            if (detailTrust == null) detailTrust = measureDetailTrust(raw, rawSize, phase, quad, black, white);
-            if (detailProfile == null) detailProfile = PreferenceKeys.isTetraResponseCorrection()
-                    ? measureBlockProfile(raw, rawSize, 4, phase, black, white, true) : flatProfile();
-            if (verbose) Log.d(Name, "backend=Tetra Detail block=4 phase=" + phase[0] + "," + phase[1]
-                    + " response=" + java.util.Arrays.toString(detailProfile));
-            return TetraDetailRemosaic.run(glProg, raw, rawSize, phase, quad, black, white, sharedGains, detailProfile, detailTrust);
+            if (detailMap == null) detailMap = PreferenceKeys.isTetraResponseCorrection()
+                    ? measureDetailMap(raw, rawSize, phase, black, white) : new TetraResponseProfile.GainMap();
+            if (verbose) Log.d(Name, "backend=Tetra Detail v2 block=4 phase=" + phase[0] + "," + phase[1]
+                    + " spatial response=" + java.util.Arrays.toString(detailMap.spatial));
+            return TetraDetailRemosaic.run(glProg, raw, rawSize, phase, quad, black, white, sharedGains, detailMap);
         }
         if (!"scamera".equals(activeBackend)) {
             throw new IllegalStateException("Selected remosaic backend is unavailable; select SCAMERA in settings");
@@ -271,36 +269,26 @@ public class RemosaicCore {
     }
 
 
-    /** Limit detail borrowing when aligned channel contrast is inconsistent. */
-    private float[] measureDetailTrust(GLTexture raw, Point size, int[] phase, int[] quad,
-                                      float black, float white) {
-        Point tiles = new Point((size.x + 31) / 32, (size.y + 31) / 32);
-        GLTexture grid = new GLTexture(tiles, new GLFormat(GLFormat.DataType.FLOAT_32, 4),
+    /** The response map is measured once and frozen across the entire RAW burst. */
+    private TetraResponseProfile.GainMap measureDetailMap(GLTexture raw, Point size, int[] phase,
+                                                        float black, float white) {
+        Point tiles = new Point((size.x + MEAN_TILE - 1) / MEAN_TILE, (size.y + MEAN_TILE - 1) / MEAN_TILE);
+        Point gridSize = new Point(tiles.x * 4, tiles.y * 4);
+        GLTexture grid = new GLTexture(gridSize, new GLFormat(GLFormat.DataType.FLOAT_32, 4),
                 null, GL_NEAREST, GL_CLAMP_TO_EDGE);
         try {
-            glProg.useAssetProgram("remosaic/tetra/moments");
-            glProg.setTexture("RawBuffer", raw);
-            glProg.setVar("size", size.x, size.y);
-            glProg.setVar("phase", phase[0], phase[1]);
-            glProg.setVar("quadColors", quad[0], quad[1], quad[2], quad[3]);
-            glProg.setVar("blackLevel", black); glProg.setVar("whiteLevel", white);
-            glProg.setVar("gainB", sharedGains[0]); glProg.setVar("gainR", sharedGains[1]);
-            glProg.drawBlocks(grid); glProg.closed = true;
-            FloatBuffer f = grid.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32, 4))
+            glProg.useAssetProgram("remosaic/blockprofile");
+            glProg.setTexture("RawBuffer",raw);
+            glProg.setVar("rawWidth",size.x); glProg.setVar("rawHeight",size.y);
+            glProg.setVar("blockSize",4); glProg.setVar("phase",phase[0],phase[1]);
+            glProg.setVar("blackLevel",black); glProg.setVar("whiteLevel",white);
+            glProg.setVar("tileSize",MEAN_TILE);
+            glProg.drawBlocks(grid); glProg.closed=true;
+            FloatBuffer f=grid.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32,4))
                     .order(ByteOrder.nativeOrder()).asFloatBuffer();
-            double[] sums = new double[4];
-            for (int i = 0; i < tiles.x * tiles.y; i++)
-                for (int k = 0; k < 4; k++) sums[k] += f.get(i * 4 + k);
-            double mean2 = sharedGains[3] * (double) sharedGains[3];
-            double vg = Math.max(sums[0] / Math.max(sums[3], 1) - mean2, 0);
-            float[] trust = new float[2];
-            if (vg > 1e-6) for (int k = 0; k < 2; k++) {
-                double vc = Math.max(sums[k + 1] / Math.max(sums[3] * 0.5, 1) - mean2, 0);
-                double ratio = Math.sqrt(vc / vg);
-                trust[k] = (float) Math.max(0, 1 - Math.abs(Math.log(Math.max(ratio, 1e-6))) / Math.log(1.5));
-            }
-            Log.d(Name, "Tetra detail trust B/R=" + java.util.Arrays.toString(trust));
-            return trust;
+            TetraResponseProfile.GainMap map=TetraResponseProfile.estimateMap(f,gridSize.x,gridSize.y);
+            Log.d(Name,"Tetra v2 spatial response quadrant support="+java.util.Arrays.toString(map.spatial));
+            return map;
         } finally { grid.close(); }
     }
 
