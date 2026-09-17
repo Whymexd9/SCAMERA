@@ -244,3 +244,8 @@ target_link_libraries(
 # Isolated read-only loader probe; no vendor process ABI is assumed.
 add_library(vivoRemosaicProbe SHARED vivo-remosaic-probe.cpp)
 target_link_libraries(vivoRemosaicProbe PRIVATE dl)
+
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    add_library(vivoNeuralProbe SHARED vivo-neural-probe.cpp)
+    target_link_libraries(vivoNeuralProbe PRIVATE dl)
+endif()

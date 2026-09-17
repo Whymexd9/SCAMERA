@@ -231,6 +231,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void setupRemosaicBackend() {
+            Preference neural = findPreference("vivo_neural_probe");
+            if (neural != null) neural.setOnPreferenceClickListener(pref -> {
+                startActivity(new android.content.Intent(requireContext(), VivoNeuralActivity.class));
+                return true;
+            });
             ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
             if (backend != null) {
                 backend.setOnPreferenceChangeListener((pref, value) -> {
