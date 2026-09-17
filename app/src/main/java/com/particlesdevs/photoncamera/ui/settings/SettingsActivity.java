@@ -160,9 +160,18 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void updateHexQuadDenoiseControls(String backend) {
-            for (String key : new String[]{"hexquad_luma", "hexquad_chroma", "hexquad_post_denoise"}) {
-                Preference p = findPreference(key);
-                if (p != null) p.setEnabled("hp9_hexquad".equals(backend));
+            boolean active="hp9_hexquad".equals(backend);
+            boolean auto=PreferenceKeys.isHexQuadAutoIso();
+            for(String key:new String[]{"hexquad_model","hexquad_full_resolution","hexquad_noise_overall",
+                    "hexquad_noise_photon","hexquad_noise_readout","hexquad_auto_iso","hexquad_luma","hexquad_chroma",
+                    "hexquad_iso_low_luma","hexquad_iso_low_chroma","hexquad_iso_high_luma","hexquad_iso_high_chroma",
+                    "hexquad_texture","hexquad_post_denoise"}){
+                Preference p=findPreference(key);if(p==null)continue;
+                boolean enabled=active;
+                if(key.equals("hexquad_full_resolution"))enabled &= PreferenceKeys.getHexQuadModelScale()==2;
+                if(key.equals("hexquad_luma")||key.equals("hexquad_chroma"))enabled &= !auto;
+                if(key.startsWith("hexquad_iso_"))enabled &= auto;
+                p.setEnabled(enabled);
             }
         }
 
@@ -736,6 +745,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             
             Log.d("SettingsFragment", "onSharedPreferenceChanged: key=" + key);
+            if(key.startsWith("hexquad_"))updateHexQuadDenoiseControls(PreferenceKeys.getRemosaicBackend());
 
             if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
                 boolean on = sharedPreferences.getBoolean(key, false);

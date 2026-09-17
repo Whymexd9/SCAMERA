@@ -108,10 +108,25 @@ public:
         float detail=bg+(v-bc)*detailClamp(ratio,.25f,4.f);
         return detailClamp(directional+(detail-directional)*confidence,0.f,1.f/b.neutral[1]);
     }
+    // Average same-colour G differences over the existing coarse support.
+    // Independent noise contributes 2*sigma^2 to squared neighbour differences.
+    // Use the physical ISO profile, never the user's experimental VST multiplier:
+    // turning that knob down must not relabel sensor noise as real texture.
+    float textureConfidence(int x,int y,float shot,float variance)const{
+        const float wp=b.neutral[1];
+        const float mean=.5f*(at(x,y,1,0)+at(x,y,2,0));
+        const float energy=.5f*(at(x,y,1,1)+at(x,y,2,1));
+        const float quant=1.f/((b.white-b.black)*(b.white-b.black)*12.f);
+        const float noise=2.f*(shot*std::max(0.f,mean*wp)+variance+quant)/(wp*wp);
+        const float snr=std::max(0.f,energy-noise)/std::max(energy+noise,1.e-10f);
+        const float signal=mean*wp;
+        return detailSmooth(.15f,.65f,snr)*detailSmooth(.005f,.025f,signal)*
+               (1.f-detailSmooth(.85f,.98f,signal));
+    }
     struct Tile{int x,y,w,h;std::vector<float> guide;};
-    Tile tile(int ox,int oy,int core)const{
-        Tile t{std::max(0,ox-4),std::max(0,oy-4),0,0,{}};
-        t.w=std::min(b.w,ox+core+4)-t.x;t.h=std::min(b.h,oy+core+4)-t.y;t.guide.resize(size_t(t.w)*t.h);
+    Tile tile(int ox,int oy,int core,int pad=4)const{
+        Tile t{std::max(0,ox-pad),std::max(0,oy-pad),0,0,{}};
+        t.w=std::min(b.w,ox+core+pad)-t.x;t.h=std::min(b.h,oy+core+pad)-t.y;t.guide.resize(size_t(t.w)*t.h);
         for(int y=0;y<t.h;++y)for(int x=0;x<t.w;++x)t.guide[size_t(y)*t.w+x]=green(t.x+x,t.y+y);
         return t;
     }

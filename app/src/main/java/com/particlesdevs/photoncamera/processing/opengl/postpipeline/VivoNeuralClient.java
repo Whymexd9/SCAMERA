@@ -34,7 +34,7 @@ public final class VivoNeuralClient {
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
         if(!dir.mkdir())throw new IOException("Не удалось создать папку задания");
         Process process=null;
-        final String profileKey=burst==null?"":burst.iso+":"+burst.red;
+        final String profileKey=burst==null?"":burst.options.profileKey(burst.iso,burst.red);
         final boolean cachedProfile=burst!=null&&validatedHexProfiles.contains(profileKey);
         final long startMs=android.os.SystemClock.elapsedRealtime();
         // A self-test must never overwrite the failed photograph's report.
@@ -50,7 +50,10 @@ public final class VivoNeuralClient {
             if(burst!=null)log.accept("HEX SOURCE: "+(burst.zsl?"ZSL":"PSL")+" ISO="+burst.iso+
                     " exposure_s="+burst.exposureSeconds+" black="+burst.black+" white="+burst.white+
                     " profile_cache="+cachedProfile+" luma="+burst.lumaPercent+" chroma="+burst.chromaPercent+
-                    " additional_NR="+burst.postDenoise);
+                    " additional_NR="+burst.postDenoise+" model=x"+burst.options.modelScale+
+                    " full_resolution="+burst.options.fullResolution+" auto_ISO="+burst.options.autoIso+
+                    " noise_variance_factors="+burst.options.noiseOverall+","+burst.options.noisePhoton+","+burst.options.noiseReadout+
+                    " texture="+(burst.options.texture*100));
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
@@ -101,7 +104,8 @@ public final class VivoNeuralClient {
                     "Нейроремозаик не завершён. Откройте Vivo Neural — проверка → "+
                     (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
             if(raw==null&&burst==null)return null;
-            long expected=(long)w*h*(burst!=null?2:4);
+            long expected=burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
+            if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
             if(output.length()!=expected)throw new IOException("Неверный размер нейрорезультата");
             ByteBuffer result=(burst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException("Недостаточно памяти для результата");

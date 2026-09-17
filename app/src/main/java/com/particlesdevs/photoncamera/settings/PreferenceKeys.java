@@ -576,6 +576,28 @@ public class PreferenceKeys {
         return RawTherapeeSettings.number("hexquad_chroma",100,0,100);
     }
 
+    public static int getHexQuadModelScale() {
+        return "1".equals(preferenceKeys.settingsManager.getString("default_scope","hexquad_model","2"))?1:2;
+    }
+
+    public static boolean isHexQuadAutoIso() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_auto_iso",false);
+    }
+
+    public static HexQuadOptions getHexQuadOptions(int iso) {
+        return new HexQuadOptions(iso,getHexQuadModelScale(),
+                preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_full_resolution",false),
+                RawTherapeeSettings.number("hexquad_noise_overall",1,.5f,2),
+                RawTherapeeSettings.number("hexquad_noise_photon",1,.5f,2),
+                RawTherapeeSettings.number("hexquad_noise_readout",1,.5f,2),
+                getHexQuadLuma(),getHexQuadChroma(),isHexQuadAutoIso(),
+                RawTherapeeSettings.number("hexquad_iso_low_luma",35,0,100),
+                RawTherapeeSettings.number("hexquad_iso_low_chroma",85,0,100),
+                RawTherapeeSettings.number("hexquad_iso_high_luma",70,0,100),
+                RawTherapeeSettings.number("hexquad_iso_high_chroma",100,0,100),
+                RawTherapeeSettings.number("hexquad_texture",0,0,100));
+    }
+
     public static boolean isHexQuadPostDenoiseEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_post_denoise",false);
     }

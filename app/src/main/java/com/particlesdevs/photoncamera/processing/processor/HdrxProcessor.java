@@ -332,11 +332,12 @@ public class HdrxProcessor extends ProcessorBase {
         boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
         ByteBuffer hexOutput = null;
         if (hexCapture) {
-            processingStage = "HP9 HexQuad x2: six-frame NPU remosaic";
+            processingStage = "HP9 HexQuad: six-frame NPU remosaic";
             try {
                 hexOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.HexQuadBurst.process(
                         PhotonCamera.getAppContext(), images, processingParameters);
                 hexOwnedOutput = hexOutput;
+                width=processingParameters.rawSize.x;height=processingParameters.rawSize.y;
                 ParseExif.syncWithParameters(exifData, processingParameters);
             } catch (Exception e) {
                 throw new IllegalStateException("HP9 HexQuad: " + e.getMessage(), e);

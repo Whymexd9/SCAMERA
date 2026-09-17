@@ -16,6 +16,10 @@ namespace vivo_hexquad {
 struct RawBurst {
     int w=0,h=0,iso=0,red=0; float black=0,white=0; bool response=false;
     float luma=1.f,chroma=1.f;
+    int scale=2;
+    bool fullResolution=false;
+    NoiseScale noise;
+    float texture=0.f;
     Rgb neutral{{1.f,1.f,1.f}};
     std::array<const uint16_t*,Frames> raw{};
     std::array<float,64> gain;
@@ -35,12 +39,12 @@ struct MappedBurst {
         int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open HexQuad RAW burst");
         struct stat st{};
-        if(fstat(fd,&st)||st.st_size<64||st.st_size>80+16000000LL*12){close(fd);throw std::runtime_error("Invalid burst file size");}
+        if(fstat(fd,&st)||st.st_size<64||st.st_size>112+16000000LL*12){close(fd);throw std::runtime_error("Invalid burst file size");}
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map burst");
         try {
             uint32_t v[16];std::memcpy(v,address,64);
-            require(v[0]==0x32515848&&(v[1]==1||v[1]==2)&&v[2]>=288&&v[3]>=288&&v[2]%8==0&&v[3]%8==0&&
+            require(v[0]==0x32515848&&(v[1]>=1&&v[1]<=3)&&v[2]>=288&&v[3]>=288&&v[2]%8==0&&v[3]%8==0&&
                 uint64_t(v[2])*v[3]<=16000000&&v[4]>=50&&v[4]<=12800&&v[5]<=3&&v[6]==0&&v[7]==0,
                 "Unsupported HexQuad RAW header / phase");
             burst.w=int(v[2]);burst.h=int(v[3]);burst.iso=int(v[4]);burst.red=int(v[5]);
@@ -49,14 +53,28 @@ struct MappedBurst {
                     burst.white<=65535&&burst.white>burst.black+1&&v[10]<=1&&v[11]==6,
                     "Invalid HexQuad radiometry");
             burst.response=v[10]!=0;
-            const size_t header=v[1]==2?80:64;
-            if(v[1]==2){
+            const size_t header=v[1]==3?112:v[1]==2?80:64;
+            if(v[1]>=2){
                 require(length>=header,"Truncated HexQuad detail header");
                 float controls[5];std::memcpy(controls,static_cast<const uint8_t*>(address)+48,sizeof(controls));
                 require(std::isfinite(controls[0])&&std::isfinite(controls[1])&&controls[0]>=0&&controls[0]<=1&&controls[1]>=0&&controls[1]<=1,
                         "Invalid HexQuad luma/chroma controls");
                 burst.luma=controls[0];burst.chroma=controls[1];
                 for(int c=0;c<3;++c){require(std::isfinite(controls[c+2])&&controls[c+2]>=.0001f&&controls[c+2]<=10000.f,"Invalid HexQuad neutral point");burst.neutral[c]=controls[c+2];}
+            }
+            if(v[1]==3){
+                uint32_t scale;float controls[4];
+                std::memcpy(&scale,static_cast<const uint8_t*>(address)+80,4);
+                std::memcpy(controls,static_cast<const uint8_t*>(address)+84,sizeof(controls));
+                require(scale==1||scale==2,"Invalid HexQuad model scale");burst.scale=int(scale);
+                burst.noise={controls[0],controls[1],controls[2]};burst.noise.validate();
+                burst.texture=controls[3];
+                require(std::isfinite(burst.texture)&&burst.texture>=0&&burst.texture<=1,"Invalid texture strength");
+                const auto* bytes=static_cast<const uint8_t*>(address);
+                for(size_t i=68;i<80;++i)require(bytes[i]==0,"Invalid reserved header bytes");
+                uint32_t full;std::memcpy(&full,bytes+100,4);
+                require(full<=1&&(!full||burst.scale==2),"Full output requires x2 model");burst.fullResolution=full!=0;
+                for(size_t i=104;i<112;++i)require(bytes[i]==0,"Invalid reserved header bytes");
             }
             size_t pixels=size_t(burst.w)*burst.h;
             require(length==header+pixels*Frames*2,"Truncated HexQuad burst");
@@ -188,7 +206,7 @@ struct SignalStats {
         out<<" min="<<low<<" max="<<high<<" zeros="<<zero;return out.str();}
 };
 constexpr int Halo=32, Core=224, Step=192;
-inline float feather(int p){return std::min(1.f,std::min((p+.5f)/32.f,(Core-p-.5f)/32.f));}
+inline float feather(float p){return std::min(1.f,std::min((p+.5f)/32.f,(Core-p-.5f)/32.f));}
 inline std::vector<int> origins(int size){std::vector<int> r;for(int x=0;x<size;x+=Step){r.push_back(x);if(x+Core>=size)break;}return r;}
 inline int bayerColor(int x,int y,int red){int q=(y&1)*2+(x&1);return q==red?0:q==(red^3)?2:1;}
 
@@ -225,13 +243,19 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         " -> canonical RGGB; flip_x="+std::to_string(bool(b.red&1))+
         " flip_y="+std::to_string(bool(b.red&2))+"; output restored to sensor orientation/CFA");
     estimateResponse(b);
-    const bool hybrid=b.luma<1.f||b.chroma<1.f;
+    require(b.scale==1||b.scale==2,"Invalid capture model scale");b.noise.validate();
+    require(!b.fullResolution||b.scale==2,"Full output requires x2 model");
+    const int outputScale=b.fullResolution?2:1,ow=b.w*outputScale,oh=b.h*outputScale;
+    const CfaOrientation outputOrientation(ow,oh,b.red);
+    require(std::isfinite(b.texture)&&b.texture>=0&&b.texture<=1,"Invalid capture texture strength");
+    const bool hybrid=b.luma<1.f||b.chroma<1.f||b.texture>0.f;
     std::unique_ptr<TetraDetailReference<RawBurst>> reference;
     double detailStart=hexClockMs();
     if(hybrid)reference.reset(new TetraDetailReference<RawBurst>(b));
     double detailMs=hexClockMs()-detailStart;
     vivo_nn::log("HEX DENOISE: luma="+std::to_string(b.luma*100)+" chroma="+std::to_string(b.chroma*100)+
-        "; 100=neural 0=single-reference Tetra Detail; neutral-balanced camera RGB; model ISO/VST unchanged");
+        " texture="+std::to_string(b.texture*100)+
+        "; 100=neural 0=single-reference Tetra Detail; texture reduces only local luma weight; neutral-balanced camera RGB");
     std::vector<Guide> guides;for(int f=0;f<6;++f)guides.emplace_back(b,f);
     std::vector<Flow> flows;for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f]);
     SignalStats inputSignal;
@@ -241,11 +265,14 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
             inputSignal.add(b.sample(0,x+dx,y+dy),b.color(x+dx,y+dy));
     vivo_nn::log("HEX SIGNAL INPUT: black-subtracted sensor normalized; "+inputSignal.summary());
     const double aligned=hexClockMs();double packingMs=0,npuMs=0,assemblyMs=0;
-    NormalVst transfer(b.iso);auto lut=transfer.forward();auto inverse=transfer.inverse();
+    NormalVst transfer(b.iso,b.noise),physicalNoise(b.iso);auto lut=transfer.forward();auto inverse=transfer.inverse();
     vivo_nn::log("HEX RADIOMETRY: ISO="+std::to_string(b.iso)+" black="+std::to_string(b.black)+
         " white="+std::to_string(b.white)+" vst_min="+std::to_string(lut[0]/65535.f)+
-        " vst_max="+std::to_string(lut[Levels-1]/65535.f)+"; postprocess=stock IVST index saturation");
-    std::vector<float> sum(size_t(b.w)*b.h,0),weight(sum.size(),0);
+        " vst_max="+std::to_string(lut[Levels-1]/65535.f)+
+        " noise_variance_factors="+std::to_string(b.noise.overall)+","+std::to_string(b.noise.photon)+","+std::to_string(b.noise.readout)+
+        " shot="+std::to_string(transfer.shot)+" read_variance="+std::to_string(transfer.variance)+
+        "; matched VST/IVST; measured ISO unchanged; fixed ISO50 normalization");
+    std::vector<float> sum(size_t(ow)*oh,0),weight(sum.size(),0);
     OutputStats frameStats;size_t anomalousTiles=0;
     const auto xs=origins(b.w),ys=origins(b.h);size_t done=0,total=xs.size()*ys.size(),holes=0,samples=0;
     require(net.input.size()==288u*288u*18,"Unexpected HexQuad input allocation");
@@ -271,21 +298,61 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         packingMs+=hexClockMs()-tick;tick=hexClockMs();
         net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
         typename TetraDetailReference<RawBurst>::Tile detailTile;
-        if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core);detailMs+=hexClockMs()-start;}
-        require(net.output.size()==576u*576u*3,"Unexpected HexQuad output shape");
+        if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core,b.fullResolution?5:4);detailMs+=hexClockMs()-start;}
+        const int scale=b.scale,side=288*scale;
+        require(net.output.size()==size_t(side)*side*3,"Unexpected HexQuad output shape");
         // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
         // decoded with stock IVST index saturation, not a chart-only range gate.
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
         OutputStats tileStats;
-        for(int ty=0;ty<Core&&oy+ty<b.h;++ty)for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
-            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;Rgb rgb{};
-            for(int dy=0;dy<2;++dy)for(int dx=0;dx<2;++dx){
-                size_t index=(size_t((ty+Halo)*2+dy)*576+(tx+Halo)*2+dx)*3;
-                for(int ch=0;ch<3;++ch)tileStats.add(net.output[index+ch],(tx+Halo)*2+dx,(ty+Halo)*2+dy,ch);
-                value+=inverse[c][normalizedIvstIndex(net.output[index+c])]*.25f;
-                if(hybrid)for(int ch=0;ch<3;++ch)rgb[ch]+=inverse[ch][normalizedIvstIndex(net.output[index+ch])]*.25f;
+        if(b.fullResolution){
+            // Build the single-RAW reference once at input resolution. Only the
+            // reference is bilinearly sampled; every neural output pixel is kept.
+            constexpr int refSide=Core+2;
+            std::vector<Rgb> refRgb;std::vector<float> confidence;
+            if(reference){
+                refRgb.resize(refSide*refSide);confidence.resize(refRgb.size());
+                for(int y=0;y<refSide;++y)for(int x=0;x<refSide;++x){
+                    int px=std::max(0,std::min(b.w-1,ox+x-1)),py=std::max(0,std::min(b.h-1,oy+y-1));
+                    refRgb[y*refSide+x]=reference->rgb(detailTile,px,py);
+                    confidence[y*refSide+x]=b.texture>0?reference->textureConfidence(px,py,physicalNoise.shot,physicalNoise.variance):0;
+                }
             }
-            if(reference)value=mixDetail(reference->rgb(detailTile,x,y),rgb,b.luma,b.chroma,b.neutral)[c];
+            for(int ty=0;ty<Core*2&&oy*2+ty<oh;++ty)for(int tx=0;tx<Core*2&&ox*2+tx<ow;++tx){
+                int x=ox*2+tx,y=oy*2+ty,c=bayerColor(x,y,0);
+                size_t ni=(size_t(ty+Halo*2)*side+tx+Halo*2)*3;
+                Rgb rgb{};for(int ch=0;ch<3;++ch){
+                    tileStats.add(net.output[ni+ch],tx+Halo*2,ty+Halo*2,ch);
+                    rgb[ch]=inverse[ch][normalizedIvstIndex(net.output[ni+ch])];
+                }
+                float value=rgb[c];
+                if(reference){
+                    float sx=(tx+.5f)*.5f+.5f,sy=(ty+.5f)*.5f+.5f;
+                    int ix=int(sx),iy=int(sy);float fx=sx-ix,fy=sy-iy;
+                    Rgb ref{};float mask=0;
+                    for(int j=0;j<2;++j)for(int i=0;i<2;++i){
+                        float w=(i?fx:1-fx)*(j?fy:1-fy);size_t at=size_t(iy+j)*refSide+ix+i;
+                        for(int ch=0;ch<3;++ch)ref[ch]+=refRgb[at][ch]*w;
+                        mask+=confidence[at]*w;
+                    }
+                    value=mixDetail(ref,rgb,b.luma*(1-b.texture*mask),b.chroma,b.neutral)[c];
+                }
+                float w=feather((tx+.5f)*.5f-.5f)*feather((ty+.5f)*.5f-.5f);
+                size_t at=size_t(y)*ow+x;sum[at]+=value*w;weight[at]+=w;
+            }
+        } else for(int ty=0;ty<Core&&oy+ty<b.h;++ty)for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
+            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;Rgb rgb{};
+            const float area=1.f/(scale*scale);
+            for(int dy=0;dy<scale;++dy)for(int dx=0;dx<scale;++dx){
+                size_t index=(size_t((ty+Halo)*scale+dy)*side+(tx+Halo)*scale+dx)*3;
+                for(int ch=0;ch<3;++ch)tileStats.add(net.output[index+ch],(tx+Halo)*scale+dx,(ty+Halo)*scale+dy,ch);
+                value+=inverse[c][normalizedIvstIndex(net.output[index+c])]*area;
+                if(hybrid)for(int ch=0;ch<3;++ch)rgb[ch]+=inverse[ch][normalizedIvstIndex(net.output[index+ch])]*area;
+            }
+            if(reference){
+                const float confidence=b.texture>0?reference->textureConfidence(x,y,physicalNoise.shot,physicalNoise.variance):0.f;
+                value=mixDetail(reference->rgb(detailTile,x,y),rgb,b.luma*(1.f-b.texture*confidence),b.chroma,b.neutral)[c];
+            }
             float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
             sum[index]+=value*w;weight[index]+=w;
         }
@@ -302,18 +369,18 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     vivo_nn::log("HEX ALIGN: missing sparse samples="+std::to_string(double(holes)/samples));
     std::ofstream file(output,std::ios::binary|std::ios::trunc);require(bool(file),"Cannot open HexQuad output");
     SignalStats outputSignal;
-    std::vector<uint16_t> row(b.w);
-    for(int y=0;y<b.h;++y){for(int x=0;x<b.w;++x){
-        size_t i=size_t(orientation.y(y))*b.w+orientation.x(x);
+    std::vector<uint16_t> row(ow);
+    for(int y=0;y<oh;++y){for(int x=0;x<ow;++x){
+        size_t i=size_t(outputOrientation.y(y))*ow+outputOrientation.x(x);
         require(weight[i]>0&&std::isfinite(sum[i]),"Hole in HexQuad tile assembly");
         const float linear=sum[i]/weight[i];
         row[x]=encodeLinearBayer16(linear);
         outputSignal.add(row[x]/65535.f,bayerColor(x,y,b.red));
-    }file.write(reinterpret_cast<const char*>(row.data()),b.w*2);}
+    }file.write(reinterpret_cast<const char*>(row.data()),ow*2);}
     file.close();require(bool(file),"HexQuad output write failed");
     vivo_nn::log("HEX SIGNAL OUTPUT: normalized Bayer16 black=0 white=65535; "+outputSignal.summary());
     vivo_nn::log("HEX TIMING ms: response_alignment="+std::to_string(aligned-started)+" packing="+std::to_string(packingMs)+
         " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" detail_preparation="+std::to_string(detailMs)+" total="+std::to_string(hexClockMs()-started));
-    vivo_nn::log("HEX FRAME COMPLETE: x2 RGB -> area2x2 -> Bayer16; "+std::to_string(b.w)+"x"+std::to_string(b.h)+" actual_frames=6 ISO="+std::to_string(b.iso));
+    vivo_nn::log("HEX FRAME COMPLETE: x"+std::to_string(b.scale)+" RGB -> "+(b.fullResolution?std::string("full native output"):"area"+std::to_string(b.scale))+" -> Bayer16; "+std::to_string(ow)+"x"+std::to_string(oh)+" actual_frames=6 ISO="+std::to_string(b.iso));
 }
 } // namespace vivo_hexquad

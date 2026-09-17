@@ -27,10 +27,10 @@ struct DiagnosticInput {
     std::array<double,Frames> mean{},variance{};
     float encodedMin=1,encodedMax=0;
 };
-inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& rgb,uint32_t seed,int chart=-1) {
+inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& rgb,uint32_t seed,int chart=-1,NoiseScale profile={}) {
     require(chart>=-1 && chart<9,"Invalid diagnostic chart");
     const CfaOrientation orientation(288,288,red);
-    NormalVst transfer(iso);auto lut=transfer.forward();
+    NormalVst transfer(iso,profile),physical(iso);auto lut=transfer.forward();
     for(float v:rgb)require(std::isfinite(v)&&v>=0&&v<=1,"Invalid diagnostic target");
     ProfileNoise noise(seed?seed:1);
     DiagnosticInput result;result.packed.assign(288u*288u*18,0);
@@ -39,7 +39,7 @@ inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& r
             int c=tagSource(0,x,y,red)>>14;
             const float target=chart<0?rgb[c]:chartValue(chart,c,float(x),float(y));
             float value=target;
-            if(seed)value+=noise.normal()*std::sqrt(transfer.shot*value+transfer.variance);
+            if(seed)value+=noise.normal()*std::sqrt(physical.shot*value+physical.variance);
             value=std::max(0.f,std::min(1.f,value));
             auto raw=unsigned(std::lround(value*16383.f));
             double residual=raw/16383.0-target;sum+=residual;squared+=residual*residual;
@@ -53,12 +53,14 @@ inline DiagnosticInput makeIsoInput(int iso,int red,const std::array<float,3>& r
     return result;
 }
 inline HexScore scoreIsoFlat(const std::vector<float>& network,const IvstLuts& inverse,
-                            const std::array<float,3>& rgb) {
-    require(network.size()==576u*576u*3,"Unexpected diagnostic output shape");
+                            const std::array<float,3>& rgb,int scale=2) {
+    require(scale==1||scale==2,"Invalid diagnostic scale");
+    const int side=288*scale,margin=32*scale;
+    require(network.size()==size_t(side)*side*3,"Unexpected diagnostic output shape");
     auto decoded=decodeTile(network,inverse,{65535.f,0,0,1,0});
     HexScore score;size_t count=0;
-    for(int y=64;y<512;++y)for(int x=64;x<512;++x)for(int c=0;c<3;++c){
-        size_t i=(size_t(y)*576+x)*3+c;
+    for(int y=margin;y<side-margin;++y)for(int x=margin;x<side-margin;++x)for(int c=0;c<3;++c){
+        size_t i=(size_t(y)*side+x)*3+c;
         score.badRange+=network[i]<-.05f||network[i]>1.25f;
         double error=decoded[i]-rgb[c];score.rmse+=error*error;
         score.maxError=std::max(score.maxError,std::abs(error));score.mean[c]+=decoded[i];++count;
@@ -70,20 +72,22 @@ inline HexScore scoreIsoFlat(const std::vector<float>& network,const IvstLuts& i
 // 17 bounded executions: identical-input repeat, gray sweep, history repeat,
 // three independent noisy gray bursts, and two seeds for each coloured flat.
 // Only synthetic inputs are used. No model weights or runtime are changed.
-template<class Network> void diagnoseHexIso(Network& session,int iso,int red) {
+template<class Network> void diagnoseHexIso(Network& session,int iso,int red,int scale=2,NoiseScale profile={}) {
+    require(scale==1||scale==2,"Invalid diagnostic scale");
+    const int side=288*scale,margin=32*scale;
     vivo_nn::log("HEX ISO DIAG BEGIN: ISO="+std::to_string(iso)+" red="+std::to_string(red)+
         "; synthetic only; no gate override; no ISO substitution");
-    NormalVst transfer(iso);auto inverse=transfer.inverse();
+    NormalVst transfer(iso,profile);auto inverse=transfer.inverse();
     std::vector<float> baseline;uint64_t baselineInput=0;
     int executions=0;
     auto run=[&](const char* name,std::array<float,3> rgb,uint32_t seed,bool repeat){
-        auto fixture=makeIsoInput(iso,red,rgb,seed);
+        auto fixture=makeIsoInput(iso,red,rgb,seed,-1,profile);
         require(session.input.size()==fixture.packed.size(),"Diagnostic input shape mismatch");
         std::copy(fixture.packed.begin(),fixture.packed.end(),session.input.begin());
         uint64_t before=diagnosticHash(session.input);
         session.execute();++executions;
         uint64_t after=diagnosticHash(session.input);
-        auto score=scoreIsoFlat(session.output,inverse,rgb);
+        auto score=scoreIsoFlat(session.output,inverse,rgb,scale);
         std::ostringstream line;line<<std::setprecision(8)<<"HEX ISO DIAG: "<<name<<" ISO="<<iso
             <<" target="<<rgb[0]<<','<<rgb[1]<<','<<rgb[2]<<" seed="<<seed
             <<" meanRGB="<<score.mean[0]<<','<<score.mean[1]<<','<<score.mean[2]
@@ -94,8 +98,8 @@ template<class Network> void diagnoseHexIso(Network& session,int iso,int red) {
         else if(repeat){
             require(before==baselineInput,"Repeat diagnostic input changed");
             double delta=0,square=0;size_t count=0;
-            for(int y=64;y<512;++y)for(int x=64;x<512;++x)for(int c=0;c<3;++c){
-                size_t i=(size_t(y)*576+x)*3+c;double d=double(session.output[i])-baseline[i];
+            for(int y=margin;y<side-margin;++y)for(int x=margin;x<side-margin;++x)for(int c=0;c<3;++c){
+                size_t i=(size_t(y)*side+x)*3+c;double d=double(session.output[i])-baseline[i];
                 delta=std::max(delta,std::abs(d));square+=d*d;++count;
             }
             line<<" repeat_max="<<delta<<" repeat_RMSE="<<std::sqrt(square/count);

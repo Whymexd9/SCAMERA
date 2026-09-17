@@ -28,7 +28,7 @@ public final class VivoNeuralWorker {
         try {
             boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(capture?"HP9 HexQuad x2 capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
             if(!hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             for(String[] item:hex?HEX_FILES:FILES){
                 File file=new File(args[0],item[0]);

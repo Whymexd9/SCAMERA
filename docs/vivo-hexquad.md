@@ -1,3 +1,65 @@
+# HP9 HexQuad v14: model, noise profile, ISO blending and full x2 output
+
+The existing top-level `hexquad_denoise_screen` key is retained and renamed
+**Нейроремозаик HP9**. The selected remosaic backend remains `hp9_hexquad`.
+Controls are captured once per shot, so edits during processing cannot change a running job.
+
+* `hexquad_model`: x2 (default) or experimental x1, both six real RAW frames.
+  The model output is respectively 576² RGB or 288² RGB per 288² input tile.
+* `hexquad_full_resolution`: x2 only, off by default. On retains every output
+  RGB position before Bayer sampling, producing twice the input width/height
+  (12.5MP input -> approximately 50MP). Off preserves the original IVST then
+  2x2 area reduction. It is not JPEG interpolation, sensor zoom, or proof of
+  four times as much captured detail. The hybrid reference is necessarily
+  bilinearly sampled at output pixel centres; the neural output is not resized.
+  Native output length, Java allocation, RAW dimensions, active-area geometry,
+  processing dimensions and DNG/JPEG consumers follow the selected output size.
+  Extra memory and postprocessing time are expected; phone testing is required.
+* `hexquad_noise_overall`, `hexquad_noise_photon`, `hexquad_noise_readout`:
+  0.5..2.0 each, defaults 1. They multiply VARIANCE coefficients, not sigma:
+  `a' = a * overall * photon`, `b' = b * overall * readout`.
+  Physical capture ISO is unchanged. The ISO50 normalization stays fixed;
+  forward and inverse LUTs use the same modified a'/b'. These are experimental
+  conditioning controls, not exposed internal network denoise inputs or
+  `vstNormCoeff`. Some combinations can clip VST or fail colour validation.
+  The default factors preserve the old VST/IVST exactly.
+* `hexquad_auto_iso`: off by default. When enabled, luma/chroma blend values
+  interpolate linearly in log2 ISO between ISO100 (35/85 by default) and
+  ISO3200 (70/100), and clamp to the nearest endpoint outside that interval.
+  Both endpoint pairs are editable 0..100; these are starting values, not
+  measured optimal sensor calibration. Existing manual values 50/100 (or the
+  user's saved values) are retained and used when auto is off.
+* `hexquad_texture`: 0..100, default 0. Same-colour green neighbour energy
+  minus expected two-sample physical sensor noise yields a smooth confidence
+  mask. Expected noise uses the ORIGINAL HP9 ISO profile, regardless of the
+  experimental noise multipliers. On supported texture, the local neural luma
+  weight becomes `luma * (1 - texture * confidence)`; chroma is unchanged.
+  It reuses the first-RAW Tetra Detail reference without sharpening. Noise and
+  grid may still return; it is not a perfect texture/noise classifier.
+
+Transport version 3 has a 112-byte little-endian header. Bytes 0..67 retain
+v2 fields; 68..79 are zero. At 80: uint32 model scale; at 84/88/92: float
+noise overall/photon/readout; at 96: float texture in 0..1; at 100: uint32
+full output flag (only x2); 104..111 zero. Six unchanged RAW16 planes follow.
+v1/v2 headers still select x2/reduced output, noise factors1, texture0.
+
+Both x1 and x2 capture use the existing strict profiled chart gate, now with
+selected model and modified VST. Synthetic physical noise stays unchanged,
+so the test measures a noise-profile mismatch instead of modifying the noise
+and the assumed profile together. No limits are relaxed. Failed settings do
+not produce photographs or silently select another model. Process-local cache
+keys include v14, ISO, CFA, model and every noise factor. Standalone historical
+checks still report the baseline x1/x2 models; capture reports identify the
+actual settings. A clean synthetic pass never proves real-scene image quality.
+
+Host checks cover default VST identity, bounded roundtrips, independent profile
+terms, unchanged diagnostic noise, all four CFA orientations, x1/x2/reduced/full
+assembly including edge/seam pixels, reference halo, texture/noise fixtures,
+old/new header rejection, exact Java->native bytes, ISO interpolation and cache
+separation. Android CI builds the same native worker. No NPU is present on host.
+
+## Previous v13 baseline and implementation history
+
 # HP9 HexQuad: bundled diagnostic and stock normal VST
 
 Status: **experimental six-frame capture is connected through `hp9_hexquad`.**
