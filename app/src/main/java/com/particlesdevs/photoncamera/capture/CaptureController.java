@@ -2494,7 +2494,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 denoiseFrameCount = 6;
                 shortFrameCount = 0;
                 longFrameCount = 0;
-                Log.i(TAG, "HP9 HexQuad x2: six real RAWs, equal exposure, PSL session (ZSL unavailable)");
+                Log.i(TAG, "HP9 HexQuad: six real RAWs, equal exposure, PSL session (ZSL unavailable)");
             }
             if (hybridZslRequested) {
                 // Block preview RAWs first. Do not route them into ImageSaver:

@@ -33,7 +33,7 @@ public final class VivoNeuralActivity extends Activity {
         int padding = Math.round(16 * getResources().getDisplayMetrics().density);
         layout.setPadding(padding, padding, padding, padding);
         TextView note = new TextView(this);
-        note.setText("Проверка моделей HP9 HexQuad x1/x2 на NPU: Tetra 4×4, цвет и плавные переходы, сравнение мишеней без шума и с шумовым профилем RAW при ISO 800. Нужен root. Модели и QNN находятся в APK. Для фото выберите на главной странице настроек «Алгоритм ремозаика → HP9 HexQuad x2». Снимайте в режиме Фото, Tetra 4×4, 4× ISZ телевика. Ниже также доступен отчёт последней съёмки.");
+        note.setText("Проверка моделей HP9 HexQuad x1/x2 на NPU: Tetra 4×4, цвет и плавные переходы, сравнение мишеней без шума и с шумовым профилем RAW при ISO 800. Нужен root. Модели и QNN находятся в APK. Для фото выберите «Алгоритм ремозаика → HP9 HexQuad», затем модель и параметры в разделе «Нейроремозаик HP9». Эта проверка использует исходный профиль; выбранные множители проверяются отдельно при съёмке. Снимайте в режиме Фото, Tetra 4×4, 4× ISZ телевика. Ниже также доступен отчёт последней съёмки.");
         layout.addView(note);
         start = new Button(this);
         start.setText("Проверить HP9 HexQuad");
@@ -80,13 +80,13 @@ public final class VivoNeuralActivity extends Activity {
         captureReport.setEnabled(false);
         synchronized (report) { report.setLength(0); }
         saved.edit().putBoolean("complete", false).commit();
-        append("HP9 HexQuad v5 — bundled, проверка шумового профиля\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
+        append("HP9 HexQuad v14 — bundled, проверка исходного профиля\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
                 "\n" + android.os.Build.FINGERPRINT);
         main.postDelayed(timeout, 220000);
         new Thread(() -> {
             try {
                 VivoNeuralClient.selfTest(this, this::append);
-                append("DONE: проверка завершена. HEX PROFILE SUMMARY показывает допуск к экспериментальной съёмке; результаты мишеней без шума указаны отдельно. Для фото выберите HP9 HexQuad x2. При ошибке скопируйте отчёт последней съёмки. Качество реальных фото ещё требует проверки.");
+                append("DONE: проверка завершена. HEX PROFILE SUMMARY относится к исходному профилю x2; выбранные настройки проверяются при съёмке; результаты мишеней без шума указаны отдельно. Для фото выберите HP9 HexQuad; модель x1/x2 находится в разделе «Нейроремозаик HP9». При ошибке скопируйте отчёт последней съёмки. Качество реальных фото ещё требует проверки.");
             } catch (Exception | LinkageError failure) {
                 append("STOP: " + failure);
             } finally {
