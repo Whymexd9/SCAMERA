@@ -21,6 +21,7 @@ public final class VivoNeuralActivity extends Activity {
     private SharedPreferences saved;
     private TextView output;
     private Button start;
+    private Button captureReport;
     private volatile boolean running;
     private boolean attempted;
     @Override public void onCreate(Bundle state) {
@@ -38,6 +39,15 @@ public final class VivoNeuralActivity extends Activity {
         start.setText("Проверить HP9 HexQuad");
         start.setOnClickListener(v -> runProbe());
         layout.addView(start);
+        captureReport = new Button(this);
+        captureReport.setText("Отчёт последней съёмки");
+        captureReport.setOnClickListener(v -> {
+            SharedPreferences capture = getSharedPreferences("vivo_neural_capture_report", MODE_PRIVATE);
+            String text = capture.getString("report", "");
+            output.setText(text.isEmpty() ? "Отчёта съёмки пока нет." :
+                    (capture.getBoolean("complete", false) ? "" : "Съёмка не завершена. Последний этап:\n") + text);
+        });
+        layout.addView(captureReport);
         Button copy = new Button(this);
         copy.setText("Скопировать отчёт");
         copy.setOnClickListener(v -> ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
@@ -67,9 +77,10 @@ public final class VivoNeuralActivity extends Activity {
         if (running || attempted) return;
         running = attempted = true;
         start.setEnabled(false);
+        captureReport.setEnabled(false);
         synchronized (report) { report.setLength(0); }
         saved.edit().putBoolean("complete", false).commit();
-        append("HP9 HexQuad v2 — bundled, проверка\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
+        append("HP9 HexQuad v3 — bundled, проверка CFA\n" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL +
                 "\n" + android.os.Build.FINGERPRINT);
         main.postDelayed(timeout, 220000);
         new Thread(() -> {
@@ -82,7 +93,10 @@ public final class VivoNeuralActivity extends Activity {
                 running = false;
                 saved.edit().putBoolean("complete", true).commit();
                 main.removeCallbacks(timeout);
-                main.post(() -> start.setText("Проверка завершена. Скопируйте отчёт"));
+                main.post(() -> {
+                    start.setText("Проверка завершена. Скопируйте отчёт");
+                    captureReport.setEnabled(true);
+                });
             }
         }, "vivo-neural-probe").start();
     }

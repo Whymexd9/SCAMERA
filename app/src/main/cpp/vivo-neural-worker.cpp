@@ -14,7 +14,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v7 (HP9 HexQuad x2 real burst); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v8 (HP9 HexQuad canonical CFA); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -35,14 +35,17 @@ int main(int argc,char** argv) {
         if(argc==3 && std::string(argv[1])=="--hexquad-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(180);
-            vivo_nn::log("HP9 HEXQUAD v1: bundled QNN 2.29.8; stock normal VST; diagnostics only");
-            bool passed=true;
+            vivo_nn::log("HP9 HEXQUAD v3: bundled QNN 2.29.8; canonical RGGB; stock normal VST; diagnostics only");
+            bool x1Passed=false,x2Passed=true;
             for(int scale:{1,2}) {
                 vivo_hexquad::HexSession session(scale);session.init(argv[2]);
-                passed=vivo_hexquad::checkHexCharts(session,scale)&&passed;
+                if(scale==1)x1Passed=vivo_hexquad::checkHexCharts(session,1);
+                else for(int red=0;red<4;++red)
+                    x2Passed=vivo_hexquad::checkHexCharts(session,2,red)&&x2Passed;
             }
             alarm(0);
-            vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: chart_gate=")+(passed?"PASS":"FAIL")+
+            vivo_nn::log(std::string("HEXQUAD CHECK COMPLETE: x2_all_CFA_gate=")+(x2Passed?"PASS":"FAIL")+
+                         "; x1_reference_gate="+(x1Passed?"PASS":"FAIL")+
                          "; diagnostic only; experimental capture is a separate setting");
             return 0;
         }

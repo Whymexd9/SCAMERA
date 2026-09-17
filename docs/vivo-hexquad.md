@@ -135,8 +135,9 @@ portable GPU models or a promise of support on other Qualcomm generations.
 
 ## On-device diagnostic and remaining gates
 
-Open **Vivo Neural — проверка → Проверить HP9 HexQuad**. It performs 24 executions:
-x1/x2, ISO 100/400, four neutral/coloured flats plus two independent RGB ramps.
+Open **Vivo Neural — проверка → Проверить HP9 HexQuad**. It performs 60 executions:
+x1 reference in RGGB and x2 in all four sensor CFA orientations, ISO 100/400,
+four neutral/coloured flats plus two independent RGB ramps.
 Six identical noiseless frames represent a stationary synthetic burst only.
 They are not a substitute for real aligned frames during capture.
 
@@ -145,6 +146,31 @@ range violations. A conservative 32-input-pixel border is excluded from scores;
 NaN/Inf/unwritten values remain fatal anywhere. A chart passes at RMSE <= 0.045
 with no interior range violations. `HEX SUMMARY` distinguishes PASS from FAIL;
 completion of diagnostics never installs or enables a capture mapping.
+
+### BGGR capture correction (native worker v8)
+
+The supplied v7 capture log identified sensor CFA=3 (BGGR), unlike the standalone
+RGGB diagnostic. Coloured chart 2 returned approximately (0.680, 0.351, 0.118)
+instead of (0.120, 0.350, 0.650), and the capture gate correctly rejected it
+(worst RMSE 0.445817). NPU execution itself succeeded. The x1 ISO400 diagnostic
+failure was unrelated: capture uses only x2.
+
+Sparse RGB channel labels alone do not make the fixed weights CFA-independent.
+The new input boundary reflects complete, zero-phase 8x8-period images into
+canonical RGGB support: X for GRBG, Y for GBRG, both for BGGR. Registration,
+site-response estimation and tile assembly operate in those coordinates.
+Output Bayer16 is reflected back to the physical sensor coordinates before
+returning to Java, retaining the original CFA metadata and image orientation.
+This involves no RAW interpolation, channel swapping or dropped edge pixels.
+
+The capture chart gate uses the same orientation conversion as capture and
+scores the inverse-mapped output. Limits are unchanged. Standalone diagnostics
+report `x2_all_CFA_gate` separately from `x1_reference_gate`. **Отчёт последней
+съёмки** preserves capture diagnostics independently of subsequent self-tests.
+Host tests check canonical colour support and values, asymmetric image/ramp
+orientation, translated-frame motion and Bayer output for all four CFAs. These
+use mock network outputs; on-device validation of the new mapping and real
+photographs remains necessary.
 
 Remaining device checks: compare real photographs at identical exposure/focus;
 verify ISO calibration, thin detail, colour, residual CFA pattern, motion, tile

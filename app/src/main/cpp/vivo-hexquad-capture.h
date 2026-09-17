@@ -15,10 +15,13 @@ struct RawBurst {
     std::array<const uint16_t*,Frames> raw{};
     std::array<float,64> gain;
     RawBurst() { gain.fill(1.f); }
-    int color(int x,int y) const { return tagSource(0,x,y,red)>>14; }
+    // Sampling, site gains, guides, registration and tiles use canonical RGGB
+    // coordinates. red is retained for the physical sensor/output orientation.
+    int color(int x,int y) const { return tagSource(0,x,y,0)>>14; }
     float sample(int f,int x,int y) const {
         const int k=(y&7)*8+(x&7);
-        return std::max(0.f,std::min(1.f,(float(raw[f][size_t(y)*w+x])-black)/(white-black)*gain[k]));
+        const CfaOrientation orientation(w,h,red);
+        return std::max(0.f,std::min(1.f,(float(raw[f][size_t(orientation.y(y))*w+orientation.x(x)])-black)/(white-black)*gain[k]));
     }
 };
 struct MappedBurst {
@@ -156,6 +159,10 @@ inline int bayerColor(int x,int y,int red){int q=(y&1)*2+(x&1);return q==red?0:q
 // A Network template makes tile coverage, halo rejection, scaling, CFA and
 // stale client-buffer bugs testable independently from proprietary HTP weights.
 template<class Network> void captureHex(Network& net,RawBurst& b,const std::string& output){
+    const CfaOrientation orientation(b.w,b.h,b.red);
+    vivo_nn::log("HEX CFA: sensor red="+std::to_string(b.red)+
+        " -> canonical RGGB; flip_x="+std::to_string(bool(b.red&1))+
+        " flip_y="+std::to_string(bool(b.red&2))+"; output restored to sensor orientation/CFA");
     estimateResponse(b);
     std::vector<Guide> guides;for(int f=0;f<6;++f)guides.emplace_back(b,f);
     std::vector<Flow> flows;for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f]);
@@ -186,7 +193,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         // evaluated ONLY in the retained area; halo is discarded, not clamped in.
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
         for(int ty=0;ty<Core&&oy+ty<b.h;++ty)for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
-            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,b.red);float value=0;
+            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;
             for(int dy=0;dy<2;++dy)for(int dx=0;dx<2;++dx){
                 size_t index=(size_t((ty+Halo)*2+dy)*576+(tx+Halo)*2+dx)*3;
                 for(int ch=0;ch<3;++ch)require(net.output[index+ch]>=-.05f&&net.output[index+ch]<=1.25f,"HexQuad range failure in retained image");
@@ -202,7 +209,8 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     vivo_nn::log("HEX ALIGN: missing sparse samples="+std::to_string(double(holes)/samples));
     std::ofstream file(output,std::ios::binary|std::ios::trunc);require(bool(file),"Cannot open HexQuad output");
     std::vector<uint16_t> row(b.w);
-    for(int y=0;y<b.h;++y){for(int x=0;x<b.w;++x){size_t i=size_t(y)*b.w+x;
+    for(int y=0;y<b.h;++y){for(int x=0;x<b.w;++x){
+        size_t i=size_t(orientation.y(y))*b.w+orientation.x(x);
         require(weight[i]>0&&std::isfinite(sum[i]),"Hole in HexQuad tile assembly");
         row[x]=uint16_t(std::lround(std::max(b.black,std::min(b.white,b.black+sum[i]/weight[i]*(b.white-b.black)))));
     }file.write(reinterpret_cast<const char*>(row.data()),b.w*2);}

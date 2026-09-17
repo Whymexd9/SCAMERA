@@ -19,6 +19,19 @@ inline void require(bool ok, const char* message) {
     if (!ok) throw std::invalid_argument(message);
 }
 
+// The weights expect RGGB spatial support, not just correctly named RGB slots.
+// For zero-phase, whole 8x8 periods, reflections convert all four sensor CFAs
+// to RGGB without interpolation or pixel loss. The same map restores the output.
+struct CfaOrientation {
+    int width, height, red;
+    CfaOrientation(int w, int h, int r):width(w),height(h),red(r) {
+        require(w>0 && h>0 && w%8==0 && h%8==0 && r>=0 && r<4,
+                "Unsupported HexQuad CFA orientation / phase");
+    }
+    int x(int coordinate) const { return (red&1)?width-1-coordinate:coordinate; }
+    int y(int coordinate) const { return (red&2)?height-1-coordinate:coordinate; }
+};
+
 // Colour belongs to the sampled SOURCE coordinate, not its destination after
 // registration. redCorner: 0 RGGB, 1 GRBG, 2 GBRG, 3 BGGR, in 4x4 blocks.
 inline uint16_t tagSource(uint16_t raw, int sourceX, int sourceY, int redCorner) {

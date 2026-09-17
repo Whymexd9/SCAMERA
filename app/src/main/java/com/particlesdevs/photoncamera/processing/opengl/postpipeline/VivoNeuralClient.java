@@ -31,7 +31,9 @@ public final class VivoNeuralClient {
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
         if(!dir.mkdir())throw new IOException("Не удалось создать папку задания");
         Process process=null;
-        SharedPreferences prefs=context.getSharedPreferences("vivo_neural_report",Context.MODE_PRIVATE);
+        // A self-test must never overwrite the failed photograph's report.
+        SharedPreferences prefs=context.getSharedPreferences(
+                raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
         StringBuilder report=new StringBuilder("SCAMERA: root neural inference job\n");
         prefs.edit().putString("report",report.toString()).putBoolean("complete",false).commit();
         Consumer<String> log=line->{
@@ -85,7 +87,9 @@ public final class VivoNeuralClient {
             reader.setDaemon(true);reader.start();
             if(!process.waitFor(burst!=null?900:200,TimeUnit.SECONDS)){process.destroyForcibly();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
-            if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException("Нейроремозаик не прошёл проверку. Откройте Vivo Neural — проверка и скопируйте отчёт.");
+            if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
+                    "Нейроремозаик не завершён. Откройте Vivo Neural — проверка → "+
+                    (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
             if(raw==null&&burst==null)return null;
             long expected=(long)w*h*(burst!=null?2:4);
             if(output.length()!=expected)throw new IOException("Неверный размер нейрорезультата");
