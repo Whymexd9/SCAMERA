@@ -47,19 +47,20 @@ void main() {
     float range = max(whiteLevel - blackLevel, 1.0);
 
     int tc = targetColorAt(xy);
-    int sc = colorAt(xy);
     float g = texelFetch(GreenBuffer, xy, 0).x;
     float outv;
 
     if (tc == 1) {
-        if (sc == 1) {
-            // Measured green stays measured: interpolating a site that was
-            // sampled would only soften it.
-            float v = (float(texelFetch(RawBuffer, xy, 0).r) - blackLevel) / range;
-            outv = clamp(v, 0.0, 1.0);
-        } else {
-            outv = g;
-        }
+        // Every green site takes the interpolated field, including the ones
+        // that were measured. Passing the measured value through looks like a
+        // free gain in sharpness, but it puts two different green estimates in
+        // the same 2x2: the measured one, and the smoothed one that R and B
+        // inherit through g + diff. Inside a dark letter the smoothed green is
+        // too bright, so R and B come out bright against a dark measured green
+        // - the pink fringe. Sharing one estimate makes the difference cancel,
+        // which is the whole point of interpolating differences; it is also
+        // what the reference implementation does.
+        outv = g;
     } else if (tc == 2) {
         outv = (g + texelFetch(DiffBBuffer, xy, 0).x) / max(gainB, 1e-6);
     } else {
