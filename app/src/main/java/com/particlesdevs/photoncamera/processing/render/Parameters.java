@@ -44,6 +44,13 @@ public class Parameters {
     /** Physical 2x2 CFA reported by Camera2; cfaPattern may be -2 for direct Quad CFA. */
     public byte baseCfaPattern;
     public boolean quadCfa;
+    /**
+     * Set once a mosaic frame has been rearranged into plain bayer - by the
+     * merge, which does it per frame as it loads them, or by the post-pipeline
+     * node for a single frame. Whoever gets there first claims it so the other
+     * does not run over an ordinary bayer frame.
+     */
+    public boolean remosaicDone;
     public Point rawSize;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];

@@ -18,6 +18,7 @@ import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLOneScript;
 import com.particlesdevs.photoncamera.processing.opengl.GLProg;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.RemosaicCore;
 import com.particlesdevs.photoncamera.processing.opengl.GLUtils;
 import com.particlesdevs.photoncamera.processing.render.NoiseModeler;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
@@ -82,6 +83,10 @@ public class ESD4D extends GLOneScript {
      */
     int mosaicPeriod = 1;
 
+    /** Shared across frames so the whole-frame statistics are measured once. */
+    private RemosaicCore remosaicCore;
+    private boolean remosaicReported;
+
     /** Sensor red-site offset ((cfa%2, cfa/2)); the packed grid is rawHalf + cfaShift. */
     Point cfaShift;
     /** Packed texture size (rawSize/2 + cfaShift) shared by all quad-packed stages. */
@@ -115,7 +120,7 @@ public class ESD4D extends GLOneScript {
         for (int i = 0; i < maxFrames; i++) {
             GLTexture rawSrc = (i == 0) ? inputBase : tempRaw;
             if (i > 0) {
-                tempRaw.loadData(images.get(i).buffer);
+                loadFrameRaw(tempRaw, images.get(i));
             }
 
             // Convert raw Bayer -> normalized rgba16f vec4 (one texel per 2x2 Bayer quad)
@@ -457,7 +462,7 @@ public class ESD4D extends GLOneScript {
             int idx = frameCnt == 1 ? 0
                     : (int) Math.round((double) k * (images.size() - 1) / (frameCnt - 1));
             GLTexture rawSrc = (idx == 0) ? inputBase : tempRaw;
-            if (idx > 0) tempRaw.loadData(images.get(idx).buffer);
+            if (idx > 0) loadFrameRaw(tempRaw, images.get(idx));
 
             // Convert raw Bayer -> normalized rgba16f vec4 (one texel per 2x2 quad)
             glProg.setLayout(tile, tile, 1);
@@ -502,6 +507,68 @@ public class ESD4D extends GLOneScript {
      * colour that appears on every edge of a merged mosaic frame while flat
      * areas stay clean.
      */
+    /**
+     * Uploads one frame's raw and, when the sensor delivers a mosaic, rearranges
+     * it into plain bayer before anything else touches it.
+     *
+     * <p>This is the whole point of doing it here rather than after the merge:
+     * the merge packs one bayer quad per texel and its alignment, its kernel
+     * regression and its robustness test all assume a texel therefore holds one
+     * sample of each colour. On a quad or tetra frame a texel holds four samples
+     * of ONE colour, so any displacement finer than a colour block crosses into
+     * a block of a different colour. Measured on a merged frame, 10.6% of blocks
+     * came out magenta against 0.02% on a single frame - with no interpolation
+     * involved in the measurement at all, so it was the merged data itself.
+     * Handing the merge ordinary bayer removes the mismatch instead of working
+     * around it, and it keeps sub-pixel alignment and MFSR on these frames.
+     */
+    private void loadFrameRaw(GLTexture dst, ImageFrame frame) {
+        dst.loadData(frame.buffer);
+        remosaicInPlace(dst);
+    }
+
+    /** Rearranges a just-uploaded mosaic frame, in the texture it arrived in. */
+    private void remosaicInPlace(GLTexture dst) {
+        if (!PreferenceKeys.isRemosaicEnabled()) return;
+        if (remosaicCore == null) remosaicCore = new RemosaicCore(glProg);
+        float black = averageBlackLevel();
+        GLTexture out = remosaicCore.run(dst, parameters.rawSize, parameters.cfaPattern,
+                black, (float) parameters.whiteLevel, !remosaicReported);
+        try {
+            // A shader cannot read and write one texture, so the result comes
+            // back through a copy; every upload site keeps its own texture.
+            glProg.useAssetProgram("remosaic/copyraw");
+            glProg.setTexture("RawBuffer", out);
+            glProg.drawBlocks(dst);
+            glProg.closed = true;
+        } finally {
+            out.close();
+        }
+        if (!remosaicReported) {
+            Log.d("ESD4D", "remosaic before merge: frames arrive as plain bayer, cfa "
+                    + parameters.cfaPattern + " -> "
+                    + RemosaicCore.emittedCfaPattern(parameters.cfaPattern));
+            remosaicReported = true;
+        }
+    }
+
+    private float averageBlackLevel() {
+        float[] bl = parameters.blackLevel;
+        if (bl == null || bl.length < 4) return 0.f;
+        return (bl[0] + bl[1] + bl[2] + bl[3]) * 0.25f;
+    }
+
+    /**
+     * Once every frame carries plain bayer the parameters have to say so, or the
+     * demosaic and the DNG writer keep treating the result as a mosaic.
+     */
+    private void reportRemosaicDone() {
+        if (!PreferenceKeys.isRemosaicEnabled() || parameters.remosaicDone) return;
+        parameters.cfaPattern = (byte) RemosaicCore.emittedCfaPattern(parameters.cfaPattern);
+        parameters.quadCfa = false;
+        parameters.remosaicDone = true;
+    }
+
     private static int mosaicPeriodFor(Parameters parameters) {
         // quadCfa is not the test. It only says the app asked the sensor for a
         // direct quad stream; this sensor delivers a tetra mosaic at 4x ISZ
@@ -509,8 +576,12 @@ public class ESD4D extends GLOneScript {
         // show cfa=3 on exactly the frames that come out with colour on every
         // edge. What does say the frame is a mosaic is the remosaic being on:
         // that switch is the user declaring it, with the block size beside it.
-        if (parameters.quadCfa || parameters.cfaPattern < 0
-                || PreferenceKeys.isRemosaicEnabled()) {
+        // With the remosaic on, the frames were rearranged as they were loaded
+        // and the merge sees ordinary bayer - it may use its full sub-pixel
+        // displacement again. The guard is for a mosaic that reaches the merge
+        // unrearranged, which is the quad stream the app asked the sensor for.
+        if (PreferenceKeys.isRemosaicEnabled()) return 1;
+        if (parameters.quadCfa || parameters.cfaPattern < 0) {
             return PreferenceKeys.getRemosaicBlockSize();
         }
         return 1;
@@ -618,6 +689,11 @@ public class ESD4D extends GLOneScript {
         packedSize = new Point(rawHalf.x + cfaShift.x, rawHalf.y + cfaShift.y);
         result = new GLTexture(raw,new GLFormat(GLFormat.DataType.UNSIGNED_16,1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
         inputBase = new GLTexture(parameters.rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16,1),images.get(0).buffer, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        // The reference frame takes the same route as every other frame; from
+        // here on nothing in this class sees a mosaic.
+        remosaicInPlace(inputBase);
+        reportRemosaicDone();
+        mosaicPeriod = mosaicPeriodFor(parameters);
         // Pyramid diff
         baseDiff = new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
         // Temporal result
@@ -1086,7 +1162,7 @@ public class ESD4D extends GLOneScript {
             Point shift = PyramidAlignment.alignmentShift(parameters, ind);
             //int f = 1;
             Log.d("ESD4D", "load:"+frame.pair.curlayer.name() + " " + frame.pair.layerMpy);
-            inputAlter.loadData(frame.buffer);
+            loadFrameRaw(inputAlter, frame);
 
             GLTexture flowTex = null;
             if(useNcnnFlow) {
