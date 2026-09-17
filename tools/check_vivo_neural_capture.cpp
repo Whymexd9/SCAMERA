@@ -46,6 +46,39 @@ int main(){
   checkOutput[1]=v;rejected=false;try{validateOutput(checkOutput,1);}catch(const OutputError&){rejected=true;}assert(rejected);
  }
  poisonOutput(checkOutput);rejected=false;try{validateOutput(checkOutput,1);}catch(const OutputError&){rejected=true;}assert(rejected);
- std::cout<<"PASS: stock channel order, phase-preserving edges, tile coverage, four CFA orientations, calibration, invalid-first-layout recovery, driver-error propagation and output rejection\n";
+ // Reproduce the real phone report: finite overshoot at (15,1149),
+ // outside the retained tile, must not reject a good interior.
+ auto xy=outputPixel(1318007);assert(xy[0]==15&&xy[1]==1149);
+ auto index=[](int x,int y){return ((y/8)*144+x/8)*64+morton(x%8,y%8,3);};
+ std::vector<float> tile(1152*1152,std::sqrt(.2f));
+ tile[1318007]=-.401123047f;tile[index(1151,0)]=3.f;
+ validateOutput(tile,9);
+ // Range violations on every boundary of the protected area remain fatal.
+ for(auto p:std::vector<std::array<int,2>>{{{USED_BEGIN,576}},{{USED_END-1,576}},{{576,USED_BEGIN}},{{576,USED_END-1}},{{576,576}}}) {
+  auto i=index(p[0],p[1]);float old=tile[i];tile[i]=2.01f;
+  rejected=false;try{validateOutput(tile,9);}catch(const OutputError&){rejected=true;}assert(rejected);tile[i]=old;
+ }
+ for(auto p:std::vector<std::array<int,2>>{{{USED_BEGIN-1,576}},{{USED_END,576}},{{576,USED_BEGIN-1}},{{576,USED_END}}}) {
+  auto i=index(p[0],p[1]);float old=tile[i];tile[i]=-3.f;validateOutput(tile,9);tile[i]=old;
+ }
+ tile[1318007]=std::numeric_limits<float>::quiet_NaN();
+ rejected=false;try{validateOutput(tile,9);}catch(const OutputError&){rejected=true;}assert(rejected);
+ // Check the actual sampler across the full tile span for both scale factors,
+ // both output CFA hypotheses, all colours and the four tile edges.
+ std::fill(tile.begin(),tile.end(),std::sqrt(.2f));
+ for(int scale:{1,2})for(int block:{1,2})for(int c=0;c<3;c++) {
+  int span=(INPUT_TILE-2*INPUT_HALO)*scale;
+  for(int p=0;p<span;p++)for(int edge:{0,span-1}) {
+   float f=((p+.5f)/scale+INPUT_HALO)*2-.5f;
+   float g=((edge+.5f)/scale+INPUT_HALO)*2-.5f;
+   assert(std::abs(sample(tile,f,g,c,block)-.2f)<1e-5);
+   assert(std::abs(sample(tile,g,f,c,block)-.2f)<1e-5);
+  }
+ }
+ struct HaloNetwork:FlatNetwork {
+  void execute(){FlatNetwork::execute();output[1318007]=-.401123047f;validateOutput(output,9);}
+ } halo;
+ auto haloMapping=calibrate(halo);assert(haloMapping.inputBlock==4&&haloMapping.outputBlock==1);
+ std::cout<<"PASS: stock channel order, phase-preserving edges, tile coverage, four CFA orientations, calibration, invalid-first-layout recovery, driver-error propagation output rejection and discarded-halo coverage\n";
 }
 

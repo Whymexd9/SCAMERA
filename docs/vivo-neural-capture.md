@@ -143,3 +143,27 @@ still abort immediately. Acceptance still requires four valid charts and the
 same RMSE threshold. No range limit is relaxed and no invalid values are clamped
 into a passing test. This is diagnostic progress, not proof of working inference
 or image quality on the device.
+
+## Discarded-halo validation (30157)
+
+The 30156 phone report has 1,327,104 finite outputs, no NaN/Inf or sentinel,
+and a centre near sqrt(0.2), matching its neutral input. Eleven values exceed
+the range gate. The first reported index 1,318,007 decodes through Morton8 to
+pixel (15,1149), in the discarded output halo. The other ten locations were
+not recorded, so their exclusion must still be confirmed by the next phone run.
+
+The old gate tested the entire convolution tile even though reconstruction
+uses only the interior. Finite range outliers now reject only when inside
+[123,1028) on both axes. This conservative region includes the retained core
+plus every neighbour visited by the sampler, for both input scale factors
+and output CFA block sizes. The sampler itself refuses to read outside that
+validated region. Shared tile/halo constants keep these bounds in sync.
+NaN/Inf/unwritten output remains fatal anywhere; the four-chart RMSE acceptance
+threshold and interior range limits are unchanged. Reports distinguish
+outside_used from outside_halo and include the first outlier's coordinates.
+
+Host ASan/UBSan tests reproduce the reported edge value, reject interior and
+protected-boundary outliers, retain non-finite rejection, exercise both scale
+factors and CFA hypotheses around all tile edges, and pass colour calibration
+with a synthetic halo outlier. Actual colour-chart acceptance, scene quality
+and spatial alignment still need phone validation.

@@ -64,34 +64,73 @@ inline std::vector<uint8_t> read(const std::string& p) {
 // must still abort the entire job, never trigger a different layout silently.
 struct OutputError : std::runtime_error { using std::runtime_error::runtime_error; };
 constexpr uint32_t OUTPUT_SENTINEL = 0x7fc0a55a;
+constexpr int INPUT_TILE=576, INPUT_HALO=64, OUTPUT_SCALE=2;
+constexpr int OUTPUT_TILE=INPUT_TILE*OUTPUT_SCALE, OUTPUT_GRID=OUTPUT_TILE/8;
+constexpr int MAX_OUTPUT_CFA_BLOCK=2, SAMPLE_RADIUS=2*MAX_OUTPUT_CFA_BLOCK;
+// Include every neighbour visited by sample(), for both input scale factors.
+// The half-pixel reprojection can floor one pixel before the retained core.
+constexpr int USED_BEGIN=INPUT_HALO*OUTPUT_SCALE-SAMPLE_RADIUS-1;
+constexpr int USED_END=OUTPUT_TILE-INPUT_HALO*OUTPUT_SCALE+SAMPLE_RADIUS;
+inline bool usedOutputPixel(int x,int y) {
+    return x>=USED_BEGIN&&y>=USED_BEGIN&&x<USED_END&&y<USED_END;
+}
+inline std::array<int,2> outputPixel(size_t index) {
+    size_t cell=index/64; int channel=index%64,dx=0,dy=0;
+    for(int bit=0;bit<3;++bit) {
+        dx|=((channel>>(2*bit))&1)<<bit;
+        dy|=((channel>>(2*bit+1))&1)<<bit;
+    }
+    return {{int(cell%OUTPUT_GRID)*8+dx,int(cell/OUTPUT_GRID)*8+dy}};
+}
 inline void poisonOutput(std::vector<float>& output) {
     float sentinel; std::memcpy(&sentinel,&OUTPUT_SENTINEL,sizeof(sentinel));
     std::fill(output.begin(),output.end(),sentinel);
 }
 inline void validateOutput(const std::vector<float>& output, unsigned execution) {
-    size_t nan=0,inf=0,untouched=0,outside=0,finite=0,first=output.size();
+    size_t nan=0,inf=0,untouched=0,outside=0,outsideUsed=0,finite=0,first=output.size(),firstUsed=output.size();
+    const bool tiled=output.size()==size_t(OUTPUT_TILE)*OUTPUT_TILE;
     double sum=0; float lo=std::numeric_limits<float>::infinity(),hi=-lo;
     for(size_t i=0;i<output.size();++i) {
         float v=output[i]; uint32_t bits; std::memcpy(&bits,&v,4);
         if(bits==OUTPUT_SENTINEL)++untouched;
         if(std::isnan(v))++nan;
         else if(!std::isfinite(v))++inf;
-        else { ++finite;sum+=v;lo=std::min(lo,v);hi=std::max(hi,v);if(v<-.25f||v>2.f)++outside; }
+        else {
+            ++finite;sum+=v;lo=std::min(lo,v);hi=std::max(hi,v);
+            if(v<-.25f||v>2.f) {
+                ++outside;
+                auto pixel=outputPixel(i);
+                if(!tiled||usedOutputPixel(pixel[0],pixel[1])) {
+                    ++outsideUsed;if(firstUsed==output.size())firstUsed=i;
+                }
+            }
+        }
         if(first==output.size()&&(!std::isfinite(v)||v<-.25f||v>2.f))first=i;
     }
-    const bool bad=nan||inf||outside||output.empty();
+    // Non-finite/unwritten values remain fatal anywhere in the output. Only
+    // finite overshoot in the discarded convolution halo is ignored.
+    const bool bad=nan||inf||outsideUsed||output.empty();
     if(execution<=8||bad) {
         std::ostringstream line;line<<std::setprecision(9)<<"OUTPUT #"<<execution
             <<": count="<<output.size()<<" finite="<<finite<<" nan="<<nan
-            <<" inf="<<inf<<" sentinel="<<untouched<<" outside="<<outside;
+            <<" inf="<<inf<<" sentinel="<<untouched<<" outside="<<outside
+            <<" outside_used="<<outsideUsed<<" outside_halo="<<outside-outsideUsed;
         if(finite)line<<" min="<<lo<<" max="<<hi<<" mean="<<sum/finite;
         log(line.str());
         if(first<output.size()) {
             uint32_t bits;std::memcpy(&bits,&output[first],4);
             std::ostringstream detail;detail<<"FIRST INVALID: index="<<first<<" value="<<output[first]
-                <<" bits=0x"<<std::hex<<bits;log(detail.str());
+                <<" bits=0x"<<std::hex<<bits;
+            if(tiled){auto pixel=outputPixel(first);detail<<std::dec<<" xy="<<pixel[0]<<','<<pixel[1]
+                <<" region="<<(usedOutputPixel(pixel[0],pixel[1])?"used":"discarded_halo");}
+            log(detail.str());
         }
-        if(output.size()==144*144*64) {
+        if(firstUsed<output.size()) {
+            auto pixel=outputPixel(firstUsed);
+            log("FIRST INVALID USED: index="+std::to_string(firstUsed)+" xy="+
+                std::to_string(pixel[0])+","+std::to_string(pixel[1])+" value="+std::to_string(output[firstUsed]));
+        }
+        if(tiled) {
             std::ostringstream center;center<<std::setprecision(6)<<"CENTER: ";
             for(int c=0;c<16;c++)center<<output[(72*144+72)*64+c]<<' ';
             log(center.str());
@@ -232,9 +271,11 @@ inline int phaseClamp(int x,int n){int p=((x%8)+8)%8;return std::max(p,std::min(
 // Select the closest output sample of the requested colour. No cross-colour
 // averaging and no synthetic sharpening; equal-distance candidates are averaged.
 inline float sample(const std::vector<float>& v,float fx,float fy,int c,int block){
+    if(block<1||block>MAX_OUTPUT_CFA_BLOCK)throw std::runtime_error("Unsupported output CFA block");
     int cx=static_cast<int>(std::floor(fx)),cy=static_cast<int>(std::floor(fy));float best=1e9f,total=0;int count=0;
     for(int y=cy-2*block;y<=cy+2*block;y++)for(int x=cx-2*block;x<=cx+2*block;x++){
-        if(x<0||y<0||x>=1152||y>=1152||color(x,y,block)!=c)continue;
+        if(x<0||y<0||x>=OUTPUT_TILE||y>=OUTPUT_TILE||color(x,y,block)!=c)continue;
+        if(!usedOutputPixel(x,y))throw std::runtime_error("Sampler reached unvalidated output halo");
         float d=(x-fx)*(x-fx)+(y-fy)*(y-fy);
         if(d<best-1e-4f){best=d;total=unpack(v,x,y);count=1;}
         else if(std::abs(d-best)<1e-4f){total+=unpack(v,x,y);count++;}
@@ -244,7 +285,7 @@ inline float sample(const std::vector<float>& v,float fx,float fy,int c,int bloc
 }
 template<class Network> std::vector<float> reconstruct(Network& s,const Mapping& mapping,const float* raw,int w,int h,int redQuad){
     if(!raw||w<8||h<8||w%8||h%8||static_cast<int64_t>(w)*h>16000000||redQuad<0||redQuad>3)throw std::runtime_error("Unsupported Tetra frame");
-    const int scale=4/mapping.inputBlock,margin=64,step=576-2*margin,span=step*scale;
+    const int scale=4/mapping.inputBlock,margin=INPUT_HALO,step=INPUT_TILE-2*margin,span=step*scale;
     const bool flipX=redQuad%2,flipY=redQuad/2;
     std::vector<float> result(static_cast<size_t>(w)*h);
     auto at=[&](int x,int y){x=phaseClamp(x,w);y=phaseClamp(y,h);if(flipX)x=w-1-x;if(flipY)y=h-1-y;return std::max(0.f,std::min(1.f,raw[y*w+x]));};
