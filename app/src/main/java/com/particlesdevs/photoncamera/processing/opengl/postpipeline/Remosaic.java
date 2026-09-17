@@ -65,6 +65,13 @@ public class Remosaic extends Node {
         // independent, which matters when a merge runs after this.
         int kernelSize;
         boolean useMedian;
+        // Both defences against coloured fringes at edges. The reference
+        // implementation had neither: it was written for a single raw frame,
+        // where a wide isotropic kernel was needed to beat the noise. Here the
+        // remosaic runs after the merge, so the noise is already down and the
+        // smoothing only costs accuracy at edges.
+        boolean steered = PreferenceKeys.isRemosaicSteered();
+        boolean clampDiffs = PreferenceKeys.isRemosaicClampDiffs();
         switch (profile) {
             case 0: kernelSize = 1; useMedian = false; break;                  // nearest
             case 1: kernelSize = blockSize == 2 ? 3 : 5; useMedian = false; break; // sharp
@@ -82,6 +89,7 @@ public class Remosaic extends Node {
         }
         Log.d(Name, "remosaic: block=" + blockSize + " profile=" + profile
                 + " kernel=" + kernelSize + " median=" + useMedian
+                + " steered=" + steered + " clampDiffs=" + clampDiffs
                 + " phase=" + phase[0] + "," + phase[1]
                 + " cfa=" + basePipeline.mParameters.cfaPattern
                 + " black=" + black + " white=" + white);
@@ -106,12 +114,21 @@ public class Remosaic extends Node {
             // and the interpolation below is working on the wrong sites.
             Log.d(Name, "green coverage=" + gains[2] + " (0.5 expected)");
 
-            // Green first: the differences below are taken against it.
+            // Green first: the differences below are taken against it, so an
+            // error here becomes a colour error there.
             maskStage(raw, null, masked, rawSize, 0, blockSize, phase, quad, black, white, 1.f, 1.f);
-            maskBlur(masked, tmp, green, rawSize, kernelSize);
+            if (steered) {
+                greenSteer(masked, green, rawSize, blockSize * 2);
+            } else {
+                maskBlur(masked, tmp, green, rawSize, kernelSize);
+            }
 
             maskStage(raw, green, masked, rawSize, 1, blockSize, phase, quad, black, white, gainB, gainR);
             maskBlur(masked, tmp, diffB, rawSize, kernelSize);
+            if (clampDiffs) {
+                clampDiff(diffB, masked, tmp, rawSize, blockSize * 2);
+                swapInto(tmp, diffB, rawSize);
+            }
             if (useMedian) {
                 median(diffB, tmp, rawSize);
                 swapInto(tmp, diffB, rawSize);
@@ -119,6 +136,10 @@ public class Remosaic extends Node {
 
             maskStage(raw, green, masked, rawSize, 2, blockSize, phase, quad, black, white, gainB, gainR);
             maskBlur(masked, tmp, diffR, rawSize, kernelSize);
+            if (clampDiffs) {
+                clampDiff(diffR, masked, tmp, rawSize, blockSize * 2);
+                swapInto(tmp, diffR, rawSize);
+            }
             if (useMedian) {
                 median(diffR, tmp, rawSize);
                 swapInto(tmp, diffR, rawSize);
@@ -259,6 +280,29 @@ public class Remosaic extends Node {
         glProg.setVar("axis", 1);
         glProg.setVar("kernelSize", kernelSize);
         glProg.setVar("divide", 1);
+        glProg.drawBlocks(out);
+        glProg.closed = true;
+    }
+
+    /** Gradient-steered green, in place of the isotropic blur. */
+    private void greenSteer(GLTexture in, GLTexture out, Point size, int reach) {
+        glProg.useAssetProgram("remosaic/greensteer");
+        glProg.setTexture("InputBuffer", in);
+        glProg.setVar("size", size.x, size.y);
+        glProg.setVar("reach", reach);
+        glProg.setVar("steer", 8.0f);
+        glProg.drawBlocks(out);
+        glProg.closed = true;
+    }
+
+    /** Bound an interpolated difference by the measured ones around it. */
+    private void clampDiff(GLTexture interp, GLTexture masked, GLTexture out,
+                           Point size, int reach) {
+        glProg.useAssetProgram("remosaic/clampdiff");
+        glProg.setTexture("InterpBuffer", interp);
+        glProg.setTexture("MaskedBuffer", masked);
+        glProg.setVar("size", size.x, size.y);
+        glProg.setVar("reach", reach);
         glProg.drawBlocks(out);
         glProg.closed = true;
     }

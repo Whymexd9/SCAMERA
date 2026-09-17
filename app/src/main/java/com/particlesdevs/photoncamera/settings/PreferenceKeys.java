@@ -533,6 +533,16 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
+    /** Interpolate green along edges instead of across them. */
+    public static boolean isRemosaicSteered() {
+        return getBool(Key.KEY_REMOSAIC_STEERED);
+    }
+
+    /** Bound interpolated colour differences by the measured ones nearby. */
+    public static boolean isRemosaicClampDiffs() {
+        return getBool(Key.KEY_REMOSAIC_CLAMP);
+    }
+
     /** 0 nearest, 1 sharp, 2 balanced, 3 smooth. */
     public static int getRemosaicProfile() {
         return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
@@ -1232,6 +1242,8 @@ public class PreferenceKeys {
         KEY_REMOSAIC_ENABLED(R.string.pref_remosaic_enabled_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
         KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
+        KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
+        KEY_REMOSAIC_CLAMP(R.string.pref_remosaic_clamp_key),
         KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
         KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
         KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),
