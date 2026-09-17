@@ -118,6 +118,7 @@ jobs:
           sudo apt-get install -y libfftw3-dev python3-numpy libegl1 libgl1-mesa-dri
           python3 -m venv /tmp/tetra-gpu-check
           /tmp/tetra-gpu-check/bin/pip install moderngl==5.12.0 numpy==2.3.5
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_gles.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_detail.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so

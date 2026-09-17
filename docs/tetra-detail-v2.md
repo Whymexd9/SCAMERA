@@ -43,6 +43,12 @@ neither Vivo's trained reconstruction nor identical stock output is claimed.
   boundary-gradient products. Contrast mismatch and anticorrelated colour detail
   reduce transfer locally. Supported neutral detail can use the full measured
   residual; v1 capped it at 85% before applying the global veto.
+* **Texture precision:** all floating-point texture samplers explicitly use highp.
+  GLSL ES has a separate sampler precision default; highp float alone does not
+  guarantee high-precision texture reads. See sections 4.5.4 and 8 of the
+  [Khronos ES 3.00 specification](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf).
+  This removes a driver-dependent precision risk; it does not prove that the
+  user's earlier grid was caused by reduced precision.
 * **Four directions:** estimate green along horizontal, vertical and both
   diagonals, with squared inverse-gradient weights. Missing directions carry
   zero weight; all measured green samples and matching output-colour samples
@@ -61,7 +67,9 @@ performed; phone timing and driver behaviour still need device testing.
 half-float intermediate targets. It covers four CFA orders, all 64 phases,
 borders, known phase-dependent response, diagonal edges, mixed-colour scenes,
 and rejection of opposite-sign colour detail. The original shader regressions
-and both Java response-estimator checks pass. CI runs these before APK assembly.
+and both Java response-estimator checks pass. `check_tetra_gles.py` additionally
+compiles and links the eight original, untranslated shader programs in Mesa GLES
+3.2. CI runs these before APK assembly.
 
 Selected 192x256 synthetic sensor-domain RMSE (10-bit signal, 40-pixel margins):
 
