@@ -543,6 +543,11 @@ public class PreferenceKeys {
         return getBool(Key.KEY_REMOSAIC_CLAMP);
     }
 
+    /** Save the node's own output as a DNG, for isolating it from later stages. */
+    public static boolean isRemosaicDump() {
+        return getBool(Key.KEY_REMOSAIC_DUMP);
+    }
+
     /** Divide out the per-site response profile inside a colour block. */
     public static boolean isRemosaicFlatField() {
         return getBool(Key.KEY_REMOSAIC_FLATFIELD);
@@ -1250,6 +1255,7 @@ public class PreferenceKeys {
         KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
         KEY_REMOSAIC_CLAMP(R.string.pref_remosaic_clamp_key),
         KEY_REMOSAIC_FLATFIELD(R.string.pref_remosaic_flatfield_key),
+        KEY_REMOSAIC_DUMP(R.string.pref_remosaic_dump_key),
         KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
         KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
         KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),

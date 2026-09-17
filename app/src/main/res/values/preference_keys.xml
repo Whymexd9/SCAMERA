@@ -152,4 +152,5 @@
     <string name="pref_remosaic_steered_key" translatable="false">pref_remosaic_steered_key</string>
     <string name="pref_remosaic_clamp_key" translatable="false">pref_remosaic_clamp_key</string>
     <string name="pref_remosaic_flatfield_key" translatable="false">pref_remosaic_flatfield_key</string>
+    <string name="pref_remosaic_dump_key" translatable="false">pref_remosaic_dump_key</string>
 </resources>

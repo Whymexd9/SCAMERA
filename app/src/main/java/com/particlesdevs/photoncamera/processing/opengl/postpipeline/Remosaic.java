@@ -9,12 +9,15 @@ import android.graphics.Point;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
+import com.particlesdevs.photoncamera.processing.ImagePath;
+import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.file.Path;
 
 /**
  * Turns a quad-bayer or tetra-squared mosaic into a plain 2x2 bayer frame.
@@ -187,7 +190,27 @@ public class Remosaic extends Node {
             // a demosaic written for a 2x2 mosaic ran over a frame that no
             // longer had one. Flat areas survived that; fine structure did not.
             basePipeline.mParameters.cfaPattern = (byte) cfaPatternFor(quad);
+            // The DNG writer keys its quad metadata off this, and what leaves
+            // here is no longer a mosaic.
+            basePipeline.mParameters.quadCfa = false;
             basePipeline.remosaicApplied = true;
+
+            // A dump of exactly what the node produced, for comparing the
+            // device against a model of the same chain: the frame can be read
+            // back and rendered elsewhere, which is the only way to tell a
+            // fault in this node from one in the stages that consume it.
+            if (PreferenceKeys.isRemosaicDump()) {
+                try {
+                    ByteBuffer dump = out.textureBuffer(
+                            new GLFormat(GLFormat.DataType.UNSIGNED_16));
+                    Path dumpPath = ImagePath.newDNGFilePath();
+                    boolean saved = ImageSaver.Util.saveSingleRaw(
+                            dumpPath, dump, basePipeline.mParameters);
+                    Log.d(Name, "remosaic dump " + (saved ? "saved: " : "failed: ") + dumpPath);
+                } catch (Throwable t) {
+                    Log.e(Name, "remosaic dump failed: " + Log.getStackTraceString(t));
+                }
+            }
             // Bayer2Float builds its input from stackFrame, so hand the result
             // over explicitly - WorkingTexture alone would be ignored.
             pipeline.remosaicOutput = out;
