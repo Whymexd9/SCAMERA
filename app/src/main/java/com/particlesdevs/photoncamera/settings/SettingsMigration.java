@@ -14,9 +14,9 @@ public final class SettingsMigration {
     public static void prepare(Context context, SharedPreferences preferences) {
         Map<String, ?> values = preferences.getAll();
         SharedPreferences.Editor editor = preferences.edit();
+        Object old = values.get("pref_tunable_esd4d_enableadaptivenoise");
+        boolean migrateDisabledNoise = !values.containsKey("settings_audit_schema") && old != null && !PreferenceNumber.bool(old,true);
         if (!values.containsKey("settings_audit_schema")) {
-            Object old = values.get("pref_tunable_esd4d_enableadaptivenoise");
-            if (old != null && !PreferenceNumber.bool(old, true)) editor.putBoolean("pref_noise_dynamic_enabled_key",false);
             if (!values.containsKey("pref_tunable_esd4d_usencnnflow")
                     && PreferenceNumber.read(values.get("pref_processing_backend_key"),0)!=0)
                 editor.putInt("pref_tunable_esd4d_usencnnflow",1); // preserve the old implicit default
@@ -50,6 +50,8 @@ public final class SettingsMigration {
         } catch (Exception e) {
             throw new IllegalStateException("Cannot normalize settings schema",e);
         }
+        // Apply semantic migration after type normalization, which uses the original snapshot.
+        if (migrateDisabledNoise) editor.putBoolean("pref_noise_dynamic_enabled_key",false);
         editor.apply();
     }
     private static String attribute(Context context, XmlResourceParser parser, String name) {
