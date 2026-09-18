@@ -73,7 +73,7 @@
             <ToggleButton
                     android:id="@+id/hdrx_toggle_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     android:background="@drawable/raw_button"
                     android:checked="@{PreferenceKeys.isHdrXOn()}"
@@ -91,7 +91,7 @@
             <ToggleButton
                     android:id="@+id/eis_toggle_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
                     android:background="@drawable/eis_button"
@@ -110,7 +110,7 @@
             <com.particlesdevs.photoncamera.ui.camera.views.TimerButton
                     android:id="@+id/countdown_timer_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
                     android:background="@drawable/ic_timer"
@@ -129,7 +129,7 @@
             <ToggleButton
                     android:id="@+id/quad_res_toggle_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
                     android:checked="@{PreferenceKeys.isQuadBayerOn()}"
@@ -148,7 +148,7 @@
             <ToggleButton
                     android:id="@+id/fps_toggle_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
                     android:background="@drawable/fps_button"
@@ -167,7 +167,7 @@
             <Button
                     android:id="@+id/grid_toggle_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
                     android:background="@drawable/ic_grid_toggle"
@@ -186,7 +186,7 @@
             <com.particlesdevs.photoncamera.ui.camera.views.FlashButton
                     android:id="@+id/flash_button"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
                     android:background="@drawable/ic_flash"
@@ -206,7 +206,7 @@
                     android:id="@+id/settings_button"
                     style="@style/Widget.AppCompat.ImageButton"
                     android:layout_width="48dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     android:onClick="@{top_bar_click_listener}"
                     android:background="@drawable/ic_settings"

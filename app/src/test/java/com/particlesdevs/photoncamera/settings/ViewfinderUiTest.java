@@ -45,7 +45,7 @@ public class ViewfinderUiTest {
         View top=LayoutInflater.from(context).inflate(R.layout.layout_main_topbar,screen,false);
         com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding tb=com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding.bind(top);
         tb.setTimerVisible(true);tb.setFlashVisible(true);tb.executePendingBindings();
-        screen.addView(top,new LinearLayout.LayoutParams(-1,56));
+        screen.addView(top,new LinearLayout.LayoutParams(-1,64));
         FrameLayout preview=new FrameLayout(context);preview.setBackgroundColor(0xFF45525B);
         screen.addView(preview,new LinearLayout.LayoutParams(-1,500));
         View manual=LayoutInflater.from(context).inflate(R.layout.manual_palette,preview,false);
@@ -71,6 +71,7 @@ public class ViewfinderUiTest {
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
         int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(760,exact));screen.layout(0,0,400,760);
         assertTrue(manual.getHeight()<=120);assertEquals(40,manual.findViewById(R.id.buttons_container).getHeight());
+        assertEquals(top.findViewById(R.id.countdown_timer_button).getWidth(),top.findViewById(R.id.countdown_timer_button).getHeight());
         assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
         Bitmap image=Bitmap.createBitmap(400,760,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));

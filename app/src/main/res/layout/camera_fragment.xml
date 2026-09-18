@@ -155,7 +155,7 @@
                 android:id="@+id/layout_topbar"
                 layout="@layout/layout_main_topbar"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="56dp"
                 app:adjustTopBar="@{uimodel.screenAspectRatio}"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
