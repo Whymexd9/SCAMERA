@@ -37,7 +37,7 @@ public final class VivoUpscaleActivity extends Activity {
         int padding = Math.round(16 * getResources().getDisplayMetrics().density);
         layout.setPadding(padding, padding, padding, padding);
         TextView note = new TextView(this);
-        note.setText("Диагностика моделей апскейлинга Vivo softpqe (2x/4x) на NPU. Проверяет только загрузку модели и графа в Qualcomm HTP; граф НЕ выполняется, снимки не обрабатываются. Квантование входа/выхода пока не расшифровано — см. docs/vivo-softpqe-upscale.md. Нужен root. Модели и QNN находятся в отдельной сборке Bundled APK.");
+        note.setText("Диагностика моделей апскейлинга Vivo softpqe (2x/4x) на NPU. Загружает модель и граф в Qualcomm HTP и один раз выполняет граф с нейтральным заглушечным входом (плоское значение) — это проверяет механику выполнения, а НЕ обрабатывает реальный снимок. Отчёт покажет реальные параметры квантования входа/выхода, которые Qualcomm сам разрешает в процессе — до этого их нельзя было прочитать. Реальная обработка фото ещё не подключена. Нужен root. Модели и QNN находятся в отдельной сборке Bundled APK. Подробности — docs/vivo-softpqe-upscale.md.");
         layout.addView(note);
         start = new Button(this);
         start.setText("Проверить softpqe 2x/4x");
@@ -79,7 +79,7 @@ public final class VivoUpscaleActivity extends Activity {
         new Thread(() -> {
             try {
                 VivoSoftpqeClient.selfTest(this, this::append);
-                append("DONE: проверка завершена. Успех означает только загрузку модели и создание графа, не корректность вывода.");
+                append("DONE: проверка завершена. Успех означает, что граф выполнился на заглушечном входе без ошибок, и в отчёте есть реальные параметры квантования. Это НЕ проверка качества апскейлинга на настоящем фото — для этого параметры квантования входа нужно применить перед следующим шагом.");
             } catch (Exception | LinkageError failure) {
                 append("STOP: " + failure);
             } finally {

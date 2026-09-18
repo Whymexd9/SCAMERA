@@ -1,12 +1,26 @@
 # Experimental Vivo neural upscale (softpqe)
 
-This is **not a working upscaler**. It adds a diagnostic-only probe, `Vivo
-Upscale — проверка`, that loads a bundled Vivo still-photo enhancement model
-into Qualcomm HTP and reports the tensor descriptors QNN itself resolves. It
-does not execute the graph and does not process a photograph. It follows the
-same discipline as [vivo-neural-capture.md](vivo-neural-capture.md) and
+This is **not a working upscaler yet**. `Vivo Upscale — проверка` loads a
+bundled Vivo still-photo enhancement model into Qualcomm HTP, executes the
+graph once with a flat placeholder input, and reports both the tensor
+descriptors and the real, QNN-resolved quantization parameters. It proves the
+execution mechanics (buffer sizes, HTP dispatch, no crash) and gives the one
+missing piece of information needed for real processing; it does not process
+a photograph, because a flat placeholder is not a real photograph's
+quantized input. It follows the same discipline as
+[vivo-neural-capture.md](vivo-neural-capture.md) and
 [vivo-hexquad.md](vivo-hexquad.md): no guessed process structs are passed into
 proprietary code, and a capability is only claimed once it has run.
+
+**Why RAISR has not been removed yet.** The plan is to replace RAISR with
+this once it demonstrably produces correct output on-device; ripping RAISR
+out first would leave the app with no working upscaler if the softpqe path
+turns out not to. The blocking gap, precisely: the graph's *input*
+quantization (scale/offset or block table) is still unknown, so a real photo
+cannot yet be encoded into the bytes this graph expects. The next phone
+report from this probe is expected to supply it (see **Quantization** below)
+- at that point tiling, real-photo encoding, and the settings swap are the
+remaining work, not open unknowns.
 
 ## What this is, in the vendor's own terms
 
@@ -50,9 +64,11 @@ graph names and I/O tensor shapes:
 | `softpqe_uv_0_7_0.vdnn` | `uv_0_7_0_a08_quant_8w8a32b` | `1×560×560×5` | `1×560×560×2` |
 | `softpqe_uv_0_8_0.vdnn` | `uv_0_8_0_a08_nr24_qnn_quant_8w8a32b` | `1×560×560×5` | `1×560×560×2` |
 
-All ten declare raw `dataType=0x408`, distinct from the TELE576 remosaic
-model's `0x232` (confirmed FLOAT32 there by successful end-to-end execution).
-See **Quantization is unresolved** below.
+All ten declare raw `dataType=0x408` = `QNN_DATATYPE_UFIXED_POINT_8` (per
+Qualcomm's published `QNN_QnnTypes.h`), distinct from the TELE576 remosaic
+model's `0x232` = `QNN_DATATYPE_FLOAT_32`. These are genuinely 8-bit
+unsigned fixed-point tensors on the wire - one byte per element, not four.
+See **Quantization** below.
 
 A separate, unrelated `VSR`/`videosr*` family (`sr1x_m4`, `sr1x_m5`,
 `sr2x_m24`, `sr4x_m24`, `videosr2x/4x*`) was also supplied. These use a
@@ -105,41 +121,63 @@ sharpening is a conventional two-radius unsharp mask
 an equivalent (Sharpening: unsharp mask with radius/amount/contrast/halo
 controls), so this does not need a dedicated port.
 
-## Quantization is unresolved
+## Quantization
 
 The graph name suffix `_quant_8w8a32b` (8-bit weights, 8-bit activations,
-32-bit bias) and the config's per-model `...FakeQuantScale`/`...FakeQuantOffset`
-pairs both point at the input/output tensors being genuinely fixed-point on
-the wire, not float32 carrying a training-time simulation like the name
-"fake quant" might suggest in isolation.
+32-bit bias) confirms these are genuinely fixed-point on the wire. What was
+established, against Qualcomm's own published `QNN_QnnTypes.h` (fetched and
+cross-checked directly, not recalled from memory):
 
-Each tensor's inline `Quant` struct (`{definition, encoding, payload[32]}`,
-same ABI already used by the working TELE576 session) was read directly from
-the `softpqe_y_2x_0_2_0.vdnn` graph metadata:
+- `dataType=0x408` = `QNN_DATATYPE_UFIXED_POINT_8`: **one byte per element**,
+  settled. This alone fixes the client-buffer size regardless of the
+  quantization scheme layered on top of it.
+- Each tensor's inline `Qnn_QuantizeParams_t` (`{encodingDefinition,
+  quantizationEncoding, union{...}}`, the same 32-byte payload the working
+  TELE576 session already reserves but never inspects) reads, from the
+  `softpqe_y_2x_0_2_0.vdnn` graph metadata:
 
-```
-INPUT  quant: definition=1 encoding=4
-OUTPUT quant: definition=1 encoding=4
-```
+  ```
+  INPUT  quant: definition=1 encoding=4
+  OUTPUT quant: definition=1 encoding=4
+  ```
 
-`encoding=4` does not match a plain per-tensor `{float scale; int32 offset}`
-pair - the 32-byte payload decodes as small integers, not a scale-shaped
-float, consistent with an **indirect** encoding (most likely per-axis
-scale/offset, itself another table reached through the payload) rather than
-the simple per-tensor case the TELE576 float32 path never needed to
-handle. Decoding a QNN axis-scale-offset record correctly needs either the
-real QNN SDK headers or ARM64 emulation of the vendor's own parser (as was
-done for the HC preprocessing kernel); neither is available in this session.
+  `definition=1` = `QNN_DEFINITION_DEFINED` (explicit params are provided).
+  `encoding=4` = `QNN_QUANTIZATION_ENCODING_BLOCK`, whose union member
+  `Qnn_BlockEncoding_t = { uint32_t* blockSize; Qnn_ScaleOffset_t* scaleOffset; }`
+  is **two pointers**, not inline floats - per-block quantization, a step up
+  in complexity from the plain per-tensor case the TELE576 float32 path never
+  needed to handle at all.
 
-Consequently: **the client-buffer byte width, and the exact dequantization
-of both input and output, are not established.** Guessing 1 byte vs. 4 bytes
-per element, or applying the config's output-side scale/offset as if it were
-the tensor's own encoding, would mean feeding an unverified buffer layout
-into proprietary code - exactly what this project's own rules forbid. This
-blocks real graph execution until either the encoding is decoded from a
-`libQnnSystem.so`/`libQnnHtp.so` parser (host emulation, not attempted here)
-or a phone report from `graphExecute` itself reveals the required sizing
-through its own error/success behaviour.
+The earlier attempt to interpret the 32 raw payload bytes read directly from
+the `.vdnn` file as this union was wrong on its face: those bytes came from a
+static file, so pointer-shaped fields in them cannot be real addresses - the
+small integers observed there are not scale/offset values, they are neither
+meaningful nor safely dereferenceable. The **live** union, with real heap
+pointers, only exists after `QnnSystemContext_getBinaryInfo()` (`sys->info()`
+in the existing session code) runs for real and resolves it. The native probe
+was corrected to decode that live union instead, with bounds-checked,
+switch-on-`encoding` printing (blockSize array, or axis/scale-offset arrays
+for the other four documented encodings, guarded against implausible counts
+before dereferencing) - see `vivo-softpqe-runtime.h`'s `describeQuant()`.
+This can only run meaningfully inside the real process, after a real device
+call; it is not something a static container read can recover, and the
+earlier doc revision was explicit about that limit rather than guessing past
+it.
+
+**What is still not known: the actual scale/offset/block values**, and
+separately, the *input* tensor's quantization is not covered by the vendor
+config files at all (they document `...FakeQuantScale`/`...FakeQuantOffset`
+for model **outputs** only - `0.002362848026677966`/`-126` for `y_2x`,
+`0.0024741345550864935`/`-123` for the auxiliary `y_4x`, both real numbers
+already in hand). Without the input side, a real photograph cannot yet be
+correctly encoded into the bytes this graph expects. The probe now executes
+the graph once with a flat, mid-scale placeholder (`0x80` in every input
+byte) specifically to (a) prove `graphExecute()` itself works - buffer
+sizing, HTP dispatch, no crash - and (b) have the live quantizeParams union
+logged in a real phone report for the first time. The placeholder's output is
+explicitly not claimed to be a correct upscaled image; a flat neutral input
+was chosen precisely because its result is not something a viewer could
+mistake for real detail.
 
 ## What the diagnostic probe actually does
 
@@ -152,17 +190,22 @@ through its own error/success behaviour.
 2. Loads `libQnnSystem.so`, calls `getBinaryInfo` on the bundled
    `softpqe_y_2x_0_2_0`/`softpqe_y_4x_0_2_0` context, parses the graph
    metadata with the same narrow FlatBuffers reader already proven against
-   TELE576, and **logs** each input/output tensor's id, raw dataType, shape
-   and raw `Quant{definition,encoding,payload}` bytes.
+   TELE576, and **logs** each input/output tensor's id, raw dataType, shape,
+   and the live quantizeParams union decoded per its `encoding` (scale/offset,
+   axis, block-width, block-axis, or block - all five documented encodings,
+   bounds-checked before any array is dereferenced).
 3. Loads HTP, creates backend/device/context, retrieves the named graph.
    Every discovered HTP provider's core version is logged (the correct one is
    not yet known for these graphs, unlike TELE576's confirmed Core 2.18.0 or
    HexQuad's confirmed 2.28/2.29.8; any `major==2` provider is accepted so
    the report can establish this by observation instead of by requiring a
    version to be guessed correctly in advance).
-4. Stops. **`graphExecute` is never called.** Success here proves the model
-   and runtime load and the graph is retrievable; it proves nothing about
-   inference, quantization, or image quality.
+4. Binds a flat placeholder input (`0x80` in every byte, sized exactly to the
+   real `560×560×4` / `2240×2240×1`-class shapes recovered above) and calls
+   `graphExecute` once. Logs success/failure and the raw output byte range.
+   This proves the transport end to end - it does **not** prove the output is
+   a correct upscaled image; that needs the real input quantization, still
+   pending the values this same run's quant log now surfaces.
 
 ## Runtime assets
 
@@ -194,18 +237,27 @@ repository; a private Bundled APK is produced locally with
 
 ## Next steps, in order
 
-1. Run the diagnostic on the phone; record which HTP core version actually
-   accepts these graphs and whether context/graph creation succeeds at all.
-2. Decode the tensor quantization encoding, either by ARM64-emulating the
-   bundled `libQnnSystem.so`'s own metadata parser against a real tensor
-   record, or from `graphExecute`'s own error behaviour once a first client
-   buffer size is attempted.
-3. Only after (2): implement tiling (560×560 input, `modelBlockDelta`-sized
-   margin, matching TELE576's halo-discard pattern) and a calibration gate -
-   for a single luma channel, flat charts cannot disambiguate a channel/axis
-   ordering error the way TELE576's four-colour charts did, so the gate needs
-   a spatially patterned chart (e.g. a quadrant-coded tile) checked for
-   geometric consistency, not just colour RMSE.
-4. Wire an actual capture path only once (2) and (3) pass on-device, exactly
-   as `vivo_neural`/HP9 HexQuad were gated before being offered as capture
-   backends.
+1. Run the diagnostic on the phone. Read back: which HTP core version accepts
+   these graphs, whether `graphExecute` on the flat placeholder succeeds, and
+   critically, the logged live quantizeParams for both tensors - `encoding=4`
+   (BLOCK) means `blockSize`/`scaleOffset` array contents, not a single
+   number, so the report needs to actually show array values, not just
+   confirm the pointers are non-null.
+2. Use the input tensor's real quantization from (1) to correctly encode a
+   real prepared luma tile into uint8 bytes. The 4-channel input's packing
+   (a space-to-depth of some pre-upsampled base, an edge-mask channel mixed
+   in per `yModelEdgeMaskMode`, or something else) is still an open question
+   this repo has not tested - the config only names the edge-mask *mode*,
+   not its exact channel position. Use the output tensor's already-known
+   config scale/offset to dequantize the result back to a real pixel value.
+3. Implement tiling (560×560 input, `modelBlockDelta`-sized margin, matching
+   TELE576's halo-discard pattern) and a calibration gate - for a single luma
+   channel, flat charts cannot disambiguate a channel/axis ordering error the
+   way TELE576's four-colour charts did, so the gate needs a spatially
+   patterned chart (e.g. a quadrant-coded tile) checked for geometric
+   consistency, not just colour RMSE.
+4. Wire an actual capture/post-processing path, replacing RAISR, only once
+   (1)-(3) pass on-device and produce a verifiably correct upscaled image on
+   a real photograph - exactly as `vivo_neural`/HP9 HexQuad were gated before
+   being offered as capture backends. RAISR stays in place and selectable
+   until that point, so the app is never left with zero working upscaler.
