@@ -55,7 +55,7 @@ public final class VivoRaisrProcessor {
             writeNv21(source,input);
             String command="/system/bin/sha256sum -c "+quote(checks.getAbsolutePath())+
                     " && exec /system/bin/env LD_LIBRARY_PATH=/vendor/lib64:/vendor/lib64/hw:/system/lib64:/system_ext/lib64 "+
-                    "ADSP_LIBRARY_PATH="+quote("/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+" "+
+                    "ADSP_LIBRARY_PATH="+quote("/vendor/lib64/hw;/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+" "+
                     quote(worker.getAbsolutePath())+(soft?
                     " --softpqe /vendor/lib64/libvivo_softpqe.so /vendor/camera3rd/nti/softpqe/config/ui_normal_shot/aigc_24M ":
                     " --raisr /vendor/lib64/libvivo_raisr.so /vendor/camera3rd/nti/raisr ")+
