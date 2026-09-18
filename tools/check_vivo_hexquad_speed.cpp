@@ -18,6 +18,9 @@ struct SpeedNetwork {
     explicit SpeedNetwork(int scale):output(size_t(288*scale)*288*scale*3){}
     void execute(){
         assert(std::this_thread::get_id()==owner);++calls;
+#ifdef HEXQUAD_TEST_INPUT_IMMUTABLE
+        const std::vector<float> originalInput=input;
+#endif
         for(float v:input){uint32_t bits;std::memcpy(&bits,&v,4);for(int i=0;i<4;++i){hash^=(bits>>(i*8))&255;hash*=1099511628211ull;}}
         // Includes finite overshoot, channel variation and spatial detail.
         // Entire-frame packing hash above detects input regressions independently.
@@ -25,6 +28,9 @@ struct SpeedNetwork {
             float v=.1f+float((i*17+calls*13)%1001)*(1.f/2000.f);
             output[i]=i%4093==0?-.01f:i%4099==0?1.01f:v;
         }
+#ifdef HEXQUAD_TEST_INPUT_IMMUTABLE
+        assert(input==originalInput); // producer may only touch the other buffer
+#endif
 #ifdef HEXQUAD_TEST_EXECUTED
         HEXQUAD_TEST_EXECUTED(calls);
 #endif

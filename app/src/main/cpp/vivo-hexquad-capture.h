@@ -10,6 +10,7 @@
 #include <memory>
 #include "vivo-hexquad-detail.h"
 #include "vivo-hexquad-gpu.h"
+#include "vivo-hexquad-prefetch.h"
 
 namespace vivo_hexquad {
 // Versioned little-endian transport. Six DISTINCT, equal-exposure RAW16 frames.
@@ -293,9 +294,10 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     OutputStats frameStats;size_t anomalousTiles=0;
     const auto xs=origins(b.w),ys=origins(b.h);size_t done=0,total=xs.size()*ys.size(),holes=0,samples=0;
     require(net.input.size()==288u*288u*18,"Unexpected HexQuad input allocation");
-    for(int oy:ys)for(int ox:xs){
-        double tick=hexClockMs();
-        std::fill(net.input.begin(),net.input.end(),0.f);
+    struct PackInfo { size_t holes=0,samples=0;double ms=0; };
+    auto pack=[&](std::vector<float>& input,int ox,int oy){
+        const double begin=hexClockMs();PackInfo info;
+        std::fill(input.begin(),input.end(),0.f);
         std::array<size_t,288> rowHoles{},rowSamples{};
         team.run(288,[&](int ty){for(int tx=0;tx<288;++tx){
             int x=reflect(ox-Halo+tx,b.w),y=reflect(oy-Halo+ty,b.h);
@@ -310,11 +312,33 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                 if(tx>=Halo&&tx<288-Halo&&ty>=Halo&&ty<288-Halo){++rowSamples[ty];if(!valid)++rowHoles[ty];}
                 if(!valid)continue; // sparse hole, never duplicate the base frame
                 int c=b.color(sx,sy);unsigned value=unsigned(std::lround(b.sample(f,sx,sy)*16383.f));
-                net.input[(size_t(ty)*288+tx)*18+f*3+c]=lut[c*Levels+value]*(1.f/65535.f);
+                input[(size_t(ty)*288+tx)*18+f*3+c]=lut[c*Levels+value]*(1.f/65535.f);
             }
         }});
-        for(int ty=0;ty<288;++ty){holes+=rowHoles[ty];samples+=rowSamples[ty];}
-        packingMs+=hexClockMs()-tick;tick=hexClockMs();
+        for(int ty=0;ty<288;++ty){info.holes+=rowHoles[ty];info.samples+=rowSamples[ty];}
+        info.ms=hexClockMs()-begin;return info;
+    };
+    // An extra 5.7 MiB tile, not six extra RAW frames. The inactive input is
+    // never shared with QNN; completed vector storage is swapped, not copied.
+    std::vector<float> preparedInput;PackInfo currentPack,nextPack;
+    if(b.useGpu)try{preparedInput.resize(net.input.size());}
+        catch(const std::bad_alloc&){vivo_nn::log("HEX HYBRID: preparation buffer unavailable; serial CPU packing");}
+    // Declared last so an exception joins the job before destroying captures.
+    TilePreparation preparation(b.useGpu&&!preparedInput.empty());
+    const bool pipelined=preparation.enabled();double packingWaitMs=0,firstPackingMs=0;
+    auto finishPreparation=[&]{const double begin=hexClockMs();preparation.wait();packingWaitMs+=hexClockMs()-begin;};
+    vivo_nn::log("HEX HYBRID: CPU=alignment+input+overlap; NPU=model; GPU=detail+IVST+blend; input_prefetch="+
+        std::to_string(pipelined)+"; one serial NPU call; bounded double buffer");
+    for(int oy:ys)for(int ox:xs){
+        if(pipelined&&done){net.input.swap(preparedInput);currentPack=nextPack;}
+        else currentPack=pack(net.input,ox,oy);
+        if(!done)firstPackingMs=currentPack.ms;
+        packingMs+=currentPack.ms;holes+=currentPack.holes;samples+=currentPack.samples;
+        if(pipelined&&done+1<total){
+            const int nx=xs[(done+1)%xs.size()],ny=ys[(done+1)/xs.size()];
+            preparation.submit([&,nx,ny]{nextPack=pack(preparedInput,nx,ny);});
+        }
+        double tick=hexClockMs();
         net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
         typename TetraDetailReference<RawBurst>::Tile detailTile;
 
@@ -333,6 +357,9 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
             catch(const std::exception& e){vivo_nn::log(std::string("HEX GPU FALLBACK: ")+e.what()+"; current and remaining tiles use CPU + NPU");gpu.reset();gpuVerified=false;}
             gpuMs+=hexClockMs()-start;
         }
+        // GPU dispatch may also overlap preparation. CPU postprocessing uses
+        // the same row team, so it cannot start until this job has completed.
+        if(pipelined)finishPreparation();
         const bool checkGpu=gpu&&!gpuVerified;
         if(checkGpu)cpuCheck.resize(size_t(tileSide)*tileSide);
         if(gpu&&gpuVerified){
@@ -452,7 +479,10 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         " registration="+std::to_string(flowsDone-guidesDone)+" output_write="+std::to_string(hexClockMs()-writeStart));
     vivo_nn::log("HEX TIMING ms: response_alignment="+std::to_string(aligned-started)+" packing="+std::to_string(packingMs)+
         " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" detail_preparation="+std::to_string(detailMs)+" total="+std::to_string(hexClockMs()-started));
-    vivo_nn::log("HEX COMPUTE: requested="+std::string(b.useGpu?"GPU + NPU":"CPU + NPU")+" gpu_tiles="+std::to_string(gpuTiles)+" cpu_tiles="+std::to_string(total-gpuTiles)+" gpu_post_ms="+std::to_string(gpuMs));
+    vivo_nn::log("HEX COMPUTE: requested="+std::string(b.useGpu?"HYBRID CPU + GPU + NPU":"CPU + NPU")+" gpu_tiles="+std::to_string(gpuTiles)+" cpu_tiles="+std::to_string(total-gpuTiles)+" gpu_post_ms="+std::to_string(gpuMs));
+    vivo_nn::log("HEX PIPELINE TIMING ms: packing_work="+std::to_string(packingMs)+" first_packing="+
+        std::to_string(firstPackingMs)+" exposed_packing_wait="+
+        std::to_string(packingWaitMs)+"; work overlaps NPU/GPU when input_prefetch=1; stage sums are not wall time");
     vivo_nn::log("HEX FRAME COMPLETE: x"+std::to_string(b.scale)+" RGB -> "+(b.fullResolution?std::string("full native output"):"area"+std::to_string(b.scale))+" -> Bayer16; "+std::to_string(ow)+"x"+std::to_string(oh)+" actual_frames=6 ISO="+std::to_string(b.iso));
 }
 } // namespace vivo_hexquad

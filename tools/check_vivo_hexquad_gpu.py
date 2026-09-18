@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='hex-gpu-') as temp:
     result=subprocess.run([sys.argv[1],str(cpu),str(gpu),*(str(p) for p in faults)],env=env,text=True,capture_output=True)
     if result.returncode:
         print(result.stdout[-8000:]);print(result.stderr);raise SystemExit(result.returncode)
-    reports=re.findall(r'HEX COMPUTE: requested=GPU \+ NPU gpu_tiles=(\d+)',result.stdout)
+    reports=re.findall(r'HEX COMPUTE: requested=HYBRID CPU \+ GPU \+ NPU gpu_tiles=(\d+)',result.stdout)
     if len(reports)!=26 or any(int(n)!=3 for n in reports[:24]) or reports[24:]!=['0','0']:
         print(result.stdout);raise AssertionError('GPU did not process all three tiles following the CPU check')
     assert 'GL error=' in result.stdout and 'precision check failed' in result.stdout

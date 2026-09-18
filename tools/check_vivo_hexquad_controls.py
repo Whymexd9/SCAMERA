@@ -51,8 +51,8 @@ for key in ['hexquad_noise_overall','hexquad_noise_photon','hexquad_noise_readou
     assert float(e.get(app+'maxValue'))-float(e.get(app+'minValue'))==1.5
 
 es=[e for e in xml.iter() if e.get(a+'key')=='hexquad_compute']
-assert len(es)==1 and es[0] in list(screen.iter()) and es[0].get(a+'defaultValue')=='cpu'
-assert '"hexquad_compute","cpu"' in settings
-assert '"gpu".equals(' in settings and 'hexquad_compute' in activity
+assert len(es)==1 and es[0] in list(screen.iter()) and es[0].get(a+'selectable')=='false' and es[0].tag=='Preference'
+assert 'true /* Unified hybrid;' in settings
+assert 'getString("default_scope","hexquad_compute"' not in settings and 'hexquad_compute' in activity
 assert 'gpu?4:3' in options and 'putInt(gpu?1:0)' in options
-print('HexQuad GPU: opt-in selector, captured transport and CPU default PASS')
+print('HexQuad unified hybrid: automatic mode, legacy selector ignored, captured transport PASS')

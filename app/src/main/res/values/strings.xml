@@ -393,8 +393,6 @@
     <string name="tetra_response_title">Tetra Detail v2: коррекция сетки</string>
     <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
     <string name="tetra_backend_note">Tetra Detail v2 — самостоятельный экспериментальный алгоритм для блоков 4×4, без библиотек Vivo. Настройки интерполяции ниже относятся к SCAMERA.</string>
-    <string-array name="hexquad_compute_entries"><item>CPU + NPU — текущий</item><item>GPU + NPU — тестовый</item></string-array>
-    <string-array name="hexquad_compute_values"><item>cpu</item><item>gpu</item></string-array>
     <string-array name="hexquad_model_entries"><item>x2 — текущая модель</item><item>x1 — экспериментальная</item></string-array>
     <string-array name="hexquad_model_values"><item>2</item><item>1</item></string-array>
 </resources>

@@ -596,7 +596,7 @@ public class PreferenceKeys {
                 RawTherapeeSettings.number("hexquad_iso_high_luma",70,0,100),
                 RawTherapeeSettings.number("hexquad_iso_high_chroma",100,0,100),
                 RawTherapeeSettings.number("hexquad_texture",0,0,100),
-                "gpu".equals(preferenceKeys.settingsManager.getString("default_scope","hexquad_compute","cpu")));
+                true /* Unified hybrid; legacy hexquad_compute selection is no longer used. */);
     }
 
     public static boolean isHexQuadPostDenoiseEnabled() {

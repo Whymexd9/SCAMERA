@@ -84,6 +84,12 @@ public:
         out.v1.memType=0;out.v1.client={output.data(),static_cast<uint32_t>(output.size()*4)};
     }
     void execute() {
+        // captureHex swaps only COMPLETED input storage, between synchronous
+        // calls. Refresh public client descriptors before each graphExecute.
+        if(input.size()!=288u*288u*18||output.size()!=size_t(288)*288*3*scale_*scale_)
+            throw std::runtime_error("HexQuad client buffer shape changed");
+        in.v1.client={input.data(),static_cast<uint32_t>(input.size()*sizeof(float))};
+        out.v1.client={output.data(),static_cast<uint32_t>(output.size()*sizeof(float))};
         poisonOutput(output);
         ++executions;
         if(executions<=8)log("GRAPH EXECUTE #"+std::to_string(executions)+": begin");

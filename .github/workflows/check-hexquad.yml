@@ -81,3 +81,11 @@ jobs:
           sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev
           g++ -pthread -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_gpu.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hex-gpu
           python tools/check_vivo_hexquad_gpu.py /tmp/check-hex-gpu
+      - name: Check hybrid prefetch ownership and failure barriers
+        run: |
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_hybrid.cpp -ldl -o /tmp/check-hex-hybrid
+          ASAN_OPTIONS=detect_leaks=0 python tools/check_vivo_hexquad_hybrid.py /tmp/check-hex-hybrid
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=thread tools/check_vivo_hexquad_prefetch.cpp -o /tmp/check-hex-prefetch
+          /tmp/check-hex-prefetch
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=thread tools/check_vivo_hexquad_hybrid.cpp -ldl -o /tmp/check-hex-hybrid-tsan
+          python tools/check_vivo_hexquad_hybrid.py /tmp/check-hex-hybrid-tsan --race

@@ -1,3 +1,48 @@
+# HP9 HexQuad v17: unified hybrid with CPU input prefetch
+
+The application now selects one hybrid automatically. **Нейроремозаик HP9**
+shows **Гибрид CPU + GPU + NPU** as a status preference. Saved v16 CPU/GPU
+choices no longer override this policy. Model x1/x2, output size, all noise and
+texture settings remain independent and retain their saved values. Legacy
+native CPU transport still works for regression checks and automatic fallback.
+
+This distribution follows the user's V2454A x1/ISO800 logs: output assembly
+took 2.39 s with GPU versus 4.76 s with CPU; NPU calls took about 9.35 s in both.
+Input preparation was already on CPU in both runs. Its 1.72/2.87 s timings do
+not demonstrate two different packing algorithms or prove GPU contention.
+Profile-cache state and the photographed scene also differed between runs.
+
+CPU retains response correction, alignment, exact sparse packing and ordered
+tile accumulation. GPU retains the tested detail reconstruction, IVST and
+channel mixing. NPU retains exactly the same model and synchronous calls.
+One preparation thread now uses the existing bounded CPU row team to prepare
+the NEXT tile while the owner processes the current tile on NPU/GPU. A barrier
+prevents concurrent reuse of the row team by CPU postprocessing. NPU and EGL
+calls stay on the owner thread; overlapping tiles still accumulate in raster
+order. No model weights, precision, crop, halo or noise controls change.
+
+The producer owns one extra 288x288x18 FLOAT32 buffer (about 5.7 MiB). It only
+writes inactive storage. After completion, vectors swap without a tensor copy;
+HexSession refreshes the QNN client-buffer descriptors immediately before each
+synchronous graph execution. A missing buffer/thread uses serial packing.
+The preparation destructor joins a pending job before buffers, RAW mappings,
+guides or the row team can be destroyed, including on inference exceptions.
+Packing exceptions propagate after the producer barrier. Existing GPU
+precision/error fallback remains effective with prefetch enabled.
+
+Reports identify `input_prefetch`, actual GPU/CPU tile counts, total packing
+work, first-tile packing and exposed preparation waits. Packing work now
+overlaps inference/GPU time, so stage timings must not be summed into wall time.
+Both the full and cached profile checks remain unchanged. This change targets
+idle intervals; its actual phone speedup still requires a new capture report.
+
+Host checks compare all packed input bytes and final RAW16 in 24 captures
+(all CFA orientations, x1/x2/full output, moving inputs and noise/detail
+settings), exercise immutable inference input and CPU fallback, and run the
+real GLES shader/fallback suite. Preparation tests cover overlap rendezvous,
+shared-row-team barriers, repeated jobs, errors and owner-exception cleanup.
+ASan/UBSan and TSan CI checks cover memory and thread ownership respectively.
+
 # HP9 HexQuad v16: experimental GPU postprocessing with NPU inference
 
 The top-level **Нейроремозаик HP9** screen adds **Обработка вокруг нейросети**:
