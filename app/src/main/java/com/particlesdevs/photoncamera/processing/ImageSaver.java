@@ -67,36 +67,22 @@ public class ImageSaver {
         TunableInjector.inject(SETTINGS);
     }
 
-    public void initProcess(ImageReader mReader) {
-        Log.v(TAG, "initProcess()");
-        if((frameCounter < desiredFrameCount) || desiredFrameCount == -1) {
-            Log.v(TAG, "initProcess() : called from \"" + Thread.currentThread().getName() + "\" Thread");
-            Image mImage;
-            try {
-                mImage = mReader.acquireNextImage();
-            } catch (Exception ignored) {
-                return;
-            }
-            if (mImage == null)
-                return;
-            int format = mImage.getFormat();
-            imageFormat = mReader.getImageFormat();
-            implementation = getImageSaver(format, implementation);
-            Log.d(TAG,"Implementation:" + implementation);
+    public void initProcess(ImageReader reader) {
+        Image image;
+        try { image = reader.acquireNextImage(); } catch (Exception ignored) { return; }
+        initProcess(image);
+    }
+
+    /** Accepts an owned image after preview/still routing by sensor timestamp. */
+    public void initProcess(Image image) {
+        if (image == null) return;
+        if (frameCounter < desiredFrameCount || desiredFrameCount == -1) {
+            imageFormat = image.getFormat();
+            implementation = getImageSaver(imageFormat, implementation);
             implementation.frameCount = desiredFrameCount;
             implementation.newBurst = newBurst;
-            implementation.addImage(mImage);
-        } else {
-            Image mImage;
-            try {
-                mImage = mReader.acquireNextImage();
-            } catch (Exception ignored) {
-                return;
-            }
-            if (mImage == null)
-                return;
-            mImage.close();
-        }
+            implementation.addImage(image);
+        } else image.close();
         frameCounter++;
     }
 

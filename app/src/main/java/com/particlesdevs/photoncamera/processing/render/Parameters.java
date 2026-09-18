@@ -588,6 +588,13 @@ public class Parameters {
                 //Log.d(TAG, "Read1:" + proPhotoToSRGB[i]);
             }*/
         }
+        float[] dcpXyz = com.particlesdevs.photoncamera.processing.color.DcpProfiles.activeToXyz(whitePoint);
+        if (dcpXyz != null) {
+            Converter.multiply(Converter.sXYZtoProPhoto, dcpXyz, sensorToProPhoto);
+            Converter.multiply(Converter.sXYZtoSRGB, Converter.sProPhotoToXYZ, proPhotoToSRGB);
+            CCT = new ColorCorrectionTransform();
+            CCT.matrix = proPhotoToSRGB;
+        }
         customTonemap = new float[]{
                 -2f + 2f * tonemapStrength,
                 3f - 3f * tonemapStrength,

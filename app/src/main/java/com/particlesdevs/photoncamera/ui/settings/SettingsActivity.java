@@ -77,7 +77,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         
         if (savedInstanceState == null) getSupportFragmentManager()
                 .beginTransaction()
-                .replace(R.id.settings_container, new SettingsFragment())
+                .replace(R.id.settings_container, getIntent().getBooleanExtra("open_favorites",false) ? new FavoritesSettingsFragment() : new SettingsFragment())
                 .commit();
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
@@ -648,7 +648,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (target != null && findPreference(target) != null) {
                 Preference found = findPreference(target);
                 android.text.SpannableString highlighted = new android.text.SpannableString(found.getTitle());
-                highlighted.setSpan(new android.text.style.ForegroundColorSpan(0xFFCAA4FF), 0,
+                highlighted.setSpan(new android.text.style.ForegroundColorSpan(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext())), 0,
                         highlighted.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 found.setTitle(highlighted);
                 scrollToPreference(target);
@@ -1089,6 +1089,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
             if (PreferenceKeys.Key.KEY_THEME_ACCENT.mValue.equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new AccentSettingsFragment()).addToBackStack("accent").commit();return true;
+            }
+            if ("pref_dcp_profile_key".equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
+            }
+            if ("settings_favorites".equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new FavoritesSettingsFragment()).addToBackStack("favorites").commit();return true;
             }
             if ("module_copy_settings".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();

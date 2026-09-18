@@ -918,9 +918,10 @@ public class PreferenceKeys {
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_RAW, false);
     }
 
+    /** Retired ISP tone approximation. Old backups must not enable a second preview path. */
+    @Deprecated
     public static boolean isLiveViewfinderLookEnabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", Key.KEY_LIVE_VIEWFINDER_LOOK, false);
+        return false;
     }
 
     public static boolean isHighlightRecoveryEnabled() {

@@ -87,24 +87,13 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
     @Override public void onStartTrackingTouch(SeekBar bar) {}
     @Override public void onStopTrackingTouch(SeekBar bar) {}
 
+    public float minimum(){return mMin;}
+    public float maximum(){return mMax;}
+    public boolean decimal(){return isFloat;}
+    public float defaultNumber(){return mDefaultValue;}
     private void showPreciseValueDialog() {
         if (!isEnabled()) return;
-        EditText input = new EditText(getContext());
-        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
-                | (isFloat ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0));
-        input.setText(PreferenceNumber.format(getFloatValue(), isFloat));
-        input.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(getContext()).setTitle(getTitle())
-                .setMessage("Диапазон: " + PreferenceNumber.format(mMin, isFloat) + " … "
-                        + PreferenceNumber.format(mMax, isFloat) + "\nПо умолчанию: "
-                        + PreferenceNumber.format(mDefaultValue, isFloat))
-                .setView(input)
-                .setPositiveButton("Применить", (dialog, which) -> {
-                    double value = PreferenceNumber.read(input.getText(), Double.NaN);
-                    if (!Double.isFinite(value)) { PhotonCamera.showToast("Введите конечное число"); return; }
-                    save((float) Math.max(mMin, Math.min(mMax, value)), false);
-                })
-                .setNeutralButton("Сбросить", (dialog, which) -> save(mDefaultValue, true))
-                .setNegativeButton(android.R.string.cancel, null).show();
+        com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),String.valueOf(getTitle()),
+            mMin,mMax,getFloatValue(),mDefaultValue,isFloat,value->save(value,false));
     }
 }

@@ -46,6 +46,9 @@ public class CustomBinding {
     public static void rotateAuxButtons(ViewGroup viewGroup, CameraFragmentModel model) {
         if (model != null) {
             int orientation = model.getOrientation();
+            if(viewGroup instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout){
+                ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)viewGroup).rotateLabels(orientation,model.getDuration());return;
+            }
             for (int i = 0; i < viewGroup.getChildCount(); i++) {
                 viewGroup.getChildAt(i).animate().rotation(orientation).setDuration(model.getDuration()).start();
             }

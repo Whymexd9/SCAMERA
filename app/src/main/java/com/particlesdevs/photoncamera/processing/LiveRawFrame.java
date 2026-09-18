@@ -38,7 +38,9 @@ public final class LiveRawFrame {
     private static ByteBuffer consumer;
     private static int consumerVersion = -1;
     private static int width, height, rowStride;
-    private static int cfaPattern;
+    private static float[] crop = {0,0,1,1};
+    private static int cfaPattern, cfaBlock=1, iso=100, maxAnalogIso=6400;
+    private static boolean autoExposure=true;
     private static float whiteLevel = 1023.0f;
     private static final float[] blackLevel = new float[] {0, 0, 0, 0};
     private static final float[] wbGains = new float[] {1, 1, 1};
@@ -56,13 +58,16 @@ public final class LiveRawFrame {
         return enabled;
     }
 
+    private static int session;
+    private static long publishedNanos;
+
     public static void setEnabled(boolean value) {
-        enabled = value;
-        if (!value) {
-            synchronized (LOCK) {
-                front = null;
-                back = null;
-                consumer = null;
+        synchronized (LOCK) {
+            if (enabled == value) return;
+            enabled = value;
+            session++;
+            if (!value) {
+                front = back = consumer = null;
                 consumerVersion = -1;
                 version++;
             }
@@ -79,10 +84,37 @@ public final class LiveRawFrame {
         publish(plane,w,h,stride,cfa,white,black,gains,ccm,null,1,1);
     }
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh){
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,null);
+    }
+    public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect){
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,1,100,6400,true);
+    }
+    public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic){
         if (!enabled || plane == null) return;
-        int needed = plane.remaining();
+        if (w < 2 || h < 2 || cfa < 0 || cfa > 3 || stride < w * 2L || (stride & 1) != 0
+                || (long)(h-1)*stride+w*2L > plane.remaining() || !Float.isFinite(white) || white <= 0) return;
+        if ((long)w*h*2 > Integer.MAX_VALUE) return;
+        block = block==2 || block==4 ? block : 1;
+        if (w < 2*block || h < 2*block) return;
+        if (black!=null) { if(black.length<4)return; for(float v:black)if(!Float.isFinite(v)||v<0||v>=white)return; }
+        if (gains!=null) { if(gains.length<3)return; for(float v:gains)if(!Float.isFinite(v)||v<=0)return; }
+        if (ccm!=null) { if(ccm.length<9)return; for(float v:ccm)if(!Float.isFinite(v))return; }
+        if (cropRect!=null) {
+            if(cropRect.length!=4)return;
+            for(float v:cropRect)if(!Float.isFinite(v))return;
+            if(cropRect[0]<0||cropRect[1]<0||cropRect[2]<=0||cropRect[3]<=0||cropRect[0]+cropRect[2]>1.001f||cropRect[1]+cropRect[3]>1.001f)return;
+        }
+        if(lensShading!=null) {
+            boolean valid=sw>0&&sh>0&&(long)sw*sh*3==lensShading.length;
+            for(float v:lensShading)valid &= Float.isFinite(v)&&v>0;
+            if(!valid)lensShading=null;
+        }
+        int needed = w*h*2;
+        final int generation;
         ByteBuffer target;
         synchronized (LOCK) {
+            if (!enabled) return;
+            generation = session;
             if (back == null || back.capacity() < needed) {
                 back = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
             }
@@ -91,18 +123,32 @@ public final class LiveRawFrame {
         // Filled outside the lock: the copy is tens of megabytes and the GL
         // thread only needs the lock long enough to swap references.
         target.clear();
-        int savedPos = plane.position();
-        target.put(plane);
-        plane.position(savedPos);
+        ByteBuffer src = plane.duplicate();
+        int start = src.position();
+        for (int y=0;y<h;y++) {
+            src.limit(start+y*stride+w*2);
+            src.position(start+y*stride);
+            target.put(src);
+        }
         target.flip();
         synchronized (LOCK) {
+            if (!enabled || session != generation) return;
+            publishedNanos = System.nanoTime();
             back = front;
             front = target;
             width = w;
             height = h;
-            rowStride = stride;
+            rowStride = w*2;
+            cfaBlock = block==2 || block==4 ? block : 1;
+            iso = sensorIso==null ? 100 : Math.max(1,sensorIso);
+            maxAnalogIso = analogIso==null ? 6400 : Math.max(101,analogIso);
+            autoExposure = automatic;
             cfaPattern = cfa;
+            crop = cropRect == null ? new float[]{0,0,1,1} : cropRect.clone();
             whiteLevel = white;
+            java.util.Arrays.fill(blackLevel,0);
+            java.util.Arrays.fill(wbGains,1);
+            java.util.Arrays.fill(colorTransform,0);colorTransform[0]=colorTransform[4]=colorTransform[8]=1;
             if (black != null && black.length >= 4) System.arraycopy(black, 0, blackLevel, 0, 4);
             if (gains != null && gains.length >= 3) System.arraycopy(gains, 0, wbGains, 0, 3);
             if (ccm != null && ccm.length >= 9) System.arraycopy(ccm, 0, colorTransform, 0, 9);
@@ -124,16 +170,21 @@ public final class LiveRawFrame {
             if(consumerVersion != version){consumer.clear();consumer.put(front.duplicate());consumer.flip();consumerVersion=version;}
             f.buffer = consumer.duplicate().order(ByteOrder.nativeOrder());
             f.buffer.position(0);
+            f.crop = crop.clone();
             f.width = width;
             f.height = height;
             f.rowStride = rowStride;
             f.cfaPattern = cfaPattern;
+            f.cfaBlock = cfaBlock;
+            f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
             f.whiteLevel = whiteLevel;
             f.blackLevel = blackLevel.clone();
             f.wbGains = wbGains.clone();
             f.colorTransform = colorTransform.clone();
             f.shading=shading;f.shadingWidth=shadingWidth;f.shadingHeight=shadingHeight;
             f.version = version;
+            f.session = session;
+            f.publishedNanos = publishedNanos;
             return f;
         }
     }
@@ -146,9 +197,12 @@ public final class LiveRawFrame {
 
     public static final class Frame {
         public ByteBuffer buffer;
-        public int width, height, rowStride, cfaPattern, version;
+        public int width, height, rowStride, cfaPattern, version, session;
+        public int cfaBlock=1, iso=100, maxAnalogIso=6400;
+        public boolean autoExposure=true;
+        public long publishedNanos;
         public int shadingWidth,shadingHeight;
-        public float[] shading;
+        public float[] shading, crop;
         public float whiteLevel;
         public float[] blackLevel, wbGains, colorTransform;
     }

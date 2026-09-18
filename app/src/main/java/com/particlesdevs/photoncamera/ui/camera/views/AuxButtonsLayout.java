@@ -61,6 +61,9 @@ public class AuxButtonsLayout extends LinearLayout {
     private AuxButtonsModel auxButtonsModel;
     private boolean hiddenBySettings;
     private long lastSwitch = -500;
+    private int labelRotation;
+    private final List<String> displayedSlots = new ArrayList<>();
+    private final List<String> displayedLabels = new ArrayList<>();
 
 public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -111,8 +114,6 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     }
 
     private void setAuxButtons(List<CameraLensData> cameraLensDataList, String activeId) {
-        removeAllViews();
-        auxButtonsMap.clear();
         SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
         List<CameraLensData> ordered = new ArrayList<>(cameraLensDataList);
         ordered.sort(Comparator.comparingInt(data -> lensOrder(manager, data.getCameraId())));
@@ -124,7 +125,14 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         String currentSlot=ModuleRegistry.active();
         if(!slots.contains(currentSlot)||!ModuleRegistry.camera(currentSlot).equals(activeId))
             for(String slot:slots)if(ModuleRegistry.visible(slot)&&ModuleRegistry.camera(slot).equals(activeId)){ModuleRegistry.select(slot);break;}
-        for (String slot : slots) if (ModuleRegistry.visible(slot)) addNewButton(slot, ModuleRegistry.label(slot));
+        List<String> visible = new ArrayList<>(), labels = new ArrayList<>();
+        for (String slot : slots) if (ModuleRegistry.visible(slot)) {visible.add(slot);labels.add(ModuleRegistry.label(slot));}
+        if (!visible.equals(displayedSlots) || !labels.equals(displayedLabels)) {
+            removeAllViews();auxButtonsMap.clear();
+            displayedSlots.clear();displayedSlots.addAll(visible);
+            displayedLabels.clear();displayedLabels.addAll(labels);
+            for(int i=0;i<visible.size();i++)addNewButton(visible.get(i),labels.get(i));
+        }
         setListenerAndSelected(activeId);
         updateVisibility();
     }
@@ -144,9 +152,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         for (int i = 0; i < getChildCount(); i++) {
             View button = getChildAt(i);
             button.setOnClickListener(auxButtonListener);
-            if (ModuleRegistry.active().equals(auxButtonsMap.get(button.getId())) ||
-                    (!ModuleRegistry.slots().contains(ModuleRegistry.active()) && activeId.equals(ModuleRegistry.camera(auxButtonsMap.get(button.getId())))))
-                button.setSelected(true);
+            button.setSelected(ModuleRegistry.active().equals(auxButtonsMap.get(button.getId())) ||
+                    (!ModuleRegistry.slots().contains(ModuleRegistry.active()) && activeId.equals(ModuleRegistry.camera(auxButtonsMap.get(button.getId())))));
         }
     }
 
@@ -166,7 +173,14 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     }
 
     private void onAuxButtonClick(View view) {
-        if (auxButtonsModel.isEnabled() && android.os.SystemClock.elapsedRealtime()-lastSwitch>=500) {
+        if (view.isSelected()) return;
+        if (auxButtonsModel != null && auxButtonsModel.isEnabled() && android.os.SystemClock.elapsedRealtime()-lastSwitch>=500) {
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            // Property animators are independent of rotation and layout. Final scale remains 1.
+            android.animation.PropertyValuesHolder x=android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, .90f, 1.06f, 1f);
+            android.animation.PropertyValuesHolder y=android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, .90f, 1.06f, 1f);
+            android.animation.ObjectAnimator pulse=android.animation.ObjectAnimator.ofPropertyValuesHolder(view,x,y);
+            pulse.setDuration(220);pulse.setInterpolator(new android.view.animation.DecelerateInterpolator());pulse.start();
             lastSwitch=android.os.SystemClock.elapsedRealtime();
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
@@ -195,6 +209,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setMaxLines(1);
         b.setHorizontallyScrolling(false);
         b.setText(buttonText);
+        b.setRotation(labelRotation);
+        b.setContentDescription("Объектив " + buttonText);
         b.setTextSize(13);
         b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext()),0xFFFFFFFF}));
         android.graphics.drawable.Drawable selected = new android.graphics.drawable.Drawable() {
@@ -214,6 +230,15 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setId(buttonId);
         this.auxButtonsMap.put(buttonId, cameraId);
         addView(b);
+    }
+
+    public void rotateLabels(int orientation, long duration) {
+        labelRotation=orientation;
+        for(int i=0;i<getChildCount();i++){
+            View child=getChildAt(i);
+            float start=child.getRotation(),delta=((orientation-start+540)%360)-180;
+            child.animate().rotation(start+delta).setDuration(duration).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
     }
 
     private float touchX,touchY;

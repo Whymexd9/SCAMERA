@@ -279,79 +279,13 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         return seekBar;
     }
 
+    public float minimum(){return mMin;}
+    public float maximum(){return mMax;}
+    public boolean decimal(){return isFloat;}
+    public float defaultNumber(){return parseValue(fallback_value,mMin);}
     private void showPreciseValueDialog() {
-        Context context = getContext();
-        if (context == null || !isEnabled()) return;
-
-        float currentValue = clamp(parseValue(readStoredString(fallback_value), parseValue(fallback_value, mMin)));
-        String currentValueText = formatExactValue(currentValue);
-        float defaultValue = clamp(parseValue(fallback_value, mMin));
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle(getTitle());
-        builder.setMessage("Enter precise value (" +
-                formatExactValue(mMin) + " - " + formatExactValue(mMax) +
-                ")\nDefault: " + formatExactValue(defaultValue));
-        // Create input field
-        final EditText input = new EditText(context);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER | 
-            (isFloat ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0) | 
-            InputType.TYPE_NUMBER_FLAG_SIGNED);
-        
-        input.setText(currentValueText);
-        input.setSelectAllOnFocus(true);
-        
-        // Add padding
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(50, 20, 50, 20);
-        input.setLayoutParams(lp);
-        
-        LinearLayout container = new LinearLayout(context);
-        container.setOrientation(LinearLayout.VERTICAL);
-        container.addView(input);
-        builder.setView(container);
-        
-        builder.setPositiveButton("Set", (dialog, which) -> {
-            try {
-                String valueStr = input.getText().toString();
-                float value = Float.parseFloat(valueStr.trim().replace(',', '.'));
-                if (!Float.isFinite(value)) throw new NumberFormatException();
-
-                // Clamp to min/max
-                if (value < mMin) {
-                    value = mMin;
-                    PhotonCamera.showToast("Value clamped to minimum: " + formatExactValue(mMin));
-                } else if (value > mMax) {
-                    value = mMax;
-                    PhotonCamera.showToast("Value clamped to maximum: " + formatExactValue(mMax));
-                }
-                
-                // Set the exact value directly - bypasses step quantization
-                setDirectValue(value);
-                
-                Log.d(TAG, "Set precise value: " + value + " for " + getKey());
-            } catch (NumberFormatException e) {
-                PhotonCamera.showToast("Invalid number format");
-                Log.w(TAG, "Invalid input: " + input.getText().toString());
-            }
-        });
-        
-        builder.setNeutralButton("Reset", (dialog, which) -> {
-            // Reset to exact default value - preserves precision
-            setDirectValue(defaultValue);
-            PhotonCamera.showToast("Reset to default: " + formatExactValue(defaultValue));
-            Log.d(TAG, "Reset to default: " + defaultValue + " for " + getKey());
-        });
-        
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
-        
-        AlertDialog dialog = builder.create();
-        dialog.show();
-        
-        // Request keyboard
-        input.requestFocus();
+        if (!isEnabled()) return;
+        com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),String.valueOf(getTitle()),
+            mMin,mMax,clamp(parseValue(getValue(),defaultNumber())),defaultNumber(),isFloat,this::setDirectValue);
     }
-
 }

@@ -340,8 +340,8 @@
     <string name="pref_zsl_buffer_count_default">0</string>
     <string name="zsl_buffer_count">Кадров в буфере ZSL</string>
     <string name="zsl_buffer_count_summary">Сколько RAW-кадров до нажатия держать в кольце. 0 — следовать общему количеству кадров серии. Больше кадров даёт серии больше материала, но каждый занимает полноразмерный буфер в памяти. Каждый кадр — полноразмерный RAW, около 25 МБ: 100 кадров это порядка 2,5 ГБ, и до такого значения устройство почти наверняка не дойдёт.</string>
-    <string name="live_viewfinder_raw">Живой видоискатель из RAW</string>
-    <string name="live_viewfinder_raw_summary">Видоискатель проявляет RAW-поток сам: демозаик, уровни, баланс белого, цветовая матрица и тональная компрессия одним проходом на GPU. Светотень совпадает со снимком до спуска. Детализация склейки и MFSR в превью не появится — снимок останется чище. Работает в режиме ZSL: именно он держит RAW-поток, из которого берётся кадр</string>
+    <string name="live_viewfinder_raw">Живой видоискатель</string>
+    <string name="live_viewfinder_raw_summary">Предпросмотр с проявлением RAW. При выключении или недоступности RAW — стандартное превью камеры. Полная обработка снимка выполняется после съёмки.</string>
     <bool name="pref_remosaic_enabled_default">false</bool>
     <string name="pref_remosaic_block_default">4</string>
     <string name="pref_remosaic_phase_default">0</string>

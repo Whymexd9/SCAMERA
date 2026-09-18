@@ -45,7 +45,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
     @Override public void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);b.putString("source",source);b.putStringArrayList("selected",new ArrayList<>(selected));b.putStringArrayList("targets",new ArrayList<>(targets));b.putStringArrayList("path",new ArrayList<>(path));}
     private void collect(Preference p,Set<String> keys){
         if(p instanceof PreferenceGroup){PreferenceGroup g=(PreferenceGroup)p;for(int i=0;i<g.getPreferenceCount();i++)collect(g.getPreference(i),keys);}
-        else if(p instanceof TwoStatePreference||p instanceof DialogPreference||p.getClass().getSimpleName().contains("SeekBar")){if(ModuleProfiles.isLocal(p.getKey()))keys.add(p.getKey());}
+        else if("pref_dcp_profile_key".equals(p.getKey()) || p instanceof TwoStatePreference||p instanceof DialogPreference||p.getClass().getSimpleName().contains("SeekBar")){if(ModuleProfiles.isLocal(p.getKey()))keys.add(p.getKey());}
     }
     private PreferenceGroup current(){Preference p=tree;for(String key:path)p=((PreferenceGroup)p).getPreference(Integer.parseInt(key));return (PreferenceGroup)p;}
     private String label(String id){return ModuleRegistry.label(id)+" · ID "+ModuleRegistry.camera(id);}
@@ -96,7 +96,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         for(int i=0;i<group.getPreferenceCount();i++){Preference p=group.getPreference(i);if(p instanceof PreferenceGroup)section(card,(PreferenceGroup)p);else leaf(card,p);}
     }
     private void leaf(LinearLayout c,Preference p){
-        if(!(p instanceof TwoStatePreference||p instanceof DialogPreference||p.getClass().getSimpleName().contains("SeekBar")))return;
+        if(!("pref_dcp_profile_key".equals(p.getKey()) || p instanceof TwoStatePreference||p instanceof DialogPreference||p.getClass().getSimpleName().contains("SeekBar")))return;
         boolean local=ModuleProfiles.isLocal(p.getKey());Runnable change=()->{if(selected.contains(p.getKey()))selected.remove(p.getKey());else selected.add(p.getKey());render();};
         LinearLayout r=row();r.setMinimumHeight(dp(44));View box=mark(selected.contains(p.getKey())?2:0,String.valueOf(p.getTitle()),change);box.setEnabled(local);box.setAlpha(local?1:.35f);r.addView(box,new LinearLayout.LayoutParams(dp(46),dp(44)));
         TextView title=text(p.getTitle()+(local?"":" · общее"),14,local?TEXT:MUTED);title.setPadding(dp(4),dp(10),dp(12),dp(10));r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.setTag("parameter_"+p.getKey());r.setOnClickListener(v->{if(local)change.run();});if(c.getChildCount()>0)divider(c);c.addView(r);

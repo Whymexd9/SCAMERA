@@ -358,6 +358,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * window: they belong to the shot.
      */
     private volatile boolean mShotInProgress = false;
+    private volatile boolean mLiveRawSession;
+    private boolean mLiveRawRejected;
+    private final PreviewFrameMatcher<Image, TotalCaptureResult> mLiveMetadata =
+            new PreviewFrameMatcher<>(this::onMatchedLiveRaw, Image::close);
+    private final TimestampFrameRouter<Image> mLiveRawRouter = new TimestampFrameRouter<>((image, still) -> {
+        if (still) mImageSaver.initProcess(image);
+        else mLiveMetadata.image(image.getTimestamp(), image);
+    }, Image::close);
     /**
      * CFA pattern of the stream being previewed, resolved once per session.
      *
@@ -389,19 +397,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onImageAvailable(ImageReader reader) {
+            if (reader != mImageReaderRaw) {
+                try { Image stale=reader.acquireLatestImage(); if(stale!=null)stale.close(); }
+                catch (IllegalStateException ignored) { }
+                return;
+            }
+
             //dequeueAndSaveImage(mRawResultQueue, mRawImageReader);
             //mImageSaver.mImage = reader.acquireNextImage();
 //            Message msg = new Message();
 //            msg.obj = reader;
 //            mImageSaver.processingHandler.sendMessage(msg);
-            if (!isZslMode() && LiveRawFrame.isEnabled() && !mShotInProgress) {
-                // Viewfinder frames outside ZSL: publish and release. Nothing
-                // else consumes them, so holding one would stall the reader.
-                Image vf = reader.acquireLatestImage();
-                if (vf != null) {
-                    publishLiveRawFrame(vf);
-                    vf.close();
-                }
+            if (!isZslMode() && mLiveRawSession) {
+                // A shutter press is not a frame boundary: old preview images can arrive during AF.
+                // Route by the matching capture-start timestamp, never by the current UI state.
+                Image image;
+                try { image = reader.acquireNextImage(); } catch (IllegalStateException ex) { return; }
+                if (image != null) mLiveRawRouter.image(image.getTimestamp(), image);
                 return;
             }
             if (isZslMode()) {
@@ -415,7 +427,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     img.close();
                     return;
                 }
-                publishLiveRawFrame(img);
+                if (mLiveRawSession) {
+                    mLiveMetadata.image(img.getTimestamp(), img);
+                    return;
+                }
                 synchronized (mZslBufferLock) {
                     mZslRingBuffer.addLast(img);
                     int maxFrames = zslRingCapacity();
@@ -509,6 +524,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     public ProcessCallbacks debugCallback = new ProcessCallbacks();
     private final CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
+        @Override public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
+            if (mLiveRawSession && !isZslMode()) mLiveRawRouter.request(timestamp, false);
+        }
+
 
         private void process(CaptureResult result) {
             debugCallback.process();
@@ -619,6 +638,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mHexZslResults.put(timestamp, result);
                     while (mHexZslResults.size() > zslRingCapacity()+16)
                         mHexZslResults.remove(mHexZslResults.keySet().iterator().next());
+                }
+            }
+            if (mLiveRawSession && session == mCaptureSession) {
+                Long rawTimestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                if (rawTimestamp != null) mLiveMetadata.result(rawTimestamp, result);
+                if (Build.VERSION.SDK_INT >= 28) {
+                    CaptureResult physicalResult = result.getPhysicalCameraResults().get(physicalID);
+                    Long physicalTimestamp = physicalResult == null ? null : physicalResult.get(CaptureResult.SENSOR_TIMESTAMP);
+                    if (physicalTimestamp != null && !physicalTimestamp.equals(rawTimestamp))
+                        mLiveMetadata.result(physicalTimestamp, result);
                 }
             }
             mPreviewCaptureResult = result;
@@ -1013,6 +1042,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Closes the current {@link CameraDevice}.
      */
     public void closeCamera() {
+        LiveRawFrame.setEnabled(false);
+        mLiveRawSession = false;
+        mLiveRawRouter.clear();
+        mLiveMetadata.clear();
         mCameraOpening.set(false);
         isCameraResumed = false;
         try {
@@ -1271,7 +1304,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             stopBackgroundThread();
             mPreviewCaptureResult=null;
-            if(LiveRawFrame.isEnabled()){LiveRawFrame.setEnabled(false);LiveRawFrame.setEnabled(true);}
+            mLiveRawRejected = false;
+            mLiveRawRouter.clear();
+            mLiveMetadata.clear();
+            LiveRawFrame.setEnabled(false);
+            com.particlesdevs.photoncamera.processing.PreviewLook.clear();
             cameraEventsListener.onCameraRestarted();
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
@@ -1722,6 +1759,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if(surface == null)
                 surface = new Surface(texture);
             // We set up a CaptureRequest.Builder with the output Surface.
+            mLiveRawRouter.clear();
+            mLiveMetadata.clear();
+            boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
+                    || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
+                    || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
+            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
+                    && mTargetFormat == ImageFormat.RAW_SENSOR && PreferenceKeys.isLiveViewfinderRawEnabled();
+            LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
+            LiveRawFrame.setEnabled(mLiveRawSession);
             setCaptureRequestBuilder();
 
             // Here, we create a CameraCaptureSession for camera preview.
@@ -1790,6 +1836,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                     } catch (Exception e) {
                         Log.e(TAG, Log.getStackTraceString(e));
+                        if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                     }
                     if (mIsRecordingVideo)
                         activity.runOnUiThread(() -> {
@@ -1801,6 +1848,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 @Override
                 public void onConfigureFailed(
                         @NonNull CameraCaptureSession cameraCaptureSession) {
+                    if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                     showToast(activity.getString(R.string.session_on_configure_failed));
                     Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
                 }
@@ -1819,6 +1867,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
+    }
+
+    private boolean retryWithoutLiveRaw(CameraCaptureSession session) {
+        if (!mLiveRawSession || mLiveRawRejected || mCameraDevice == null || isZslMode()) return false;
+        mLiveRawRejected = true;
+        mLiveRawSession = false;
+        LiveRawFrame.setEnabled(false);
+        mLiveRawRouter.clear();
+        mLiveMetadata.clear();
+        session.close();
+        showToast("RAW-превью недоступно с текущими потоками. Переключаемся на обычный видоискатель.");
+        createCameraPreviewSession(false);
+        return true;
     }
 
     @NotNull
@@ -1840,6 +1901,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
            if(PhotonCamera.getSettings().previewFormat == 0) {
                 surfaces = Arrays.asList(surface, mImageReaderRaw.getSurface());
            }
+        }
+        if (mLiveRawSession && !surfaces.contains(mImageReaderRaw.getSurface())) {
+            surfaces = new ArrayList<>(surfaces);
+            surfaces.add(mImageReaderRaw.getSurface());
         }
         if (mIsRecordingVideo) {
             setUpMediaRecorder();
@@ -1873,7 +1938,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 while ((stale = mImageReaderRaw.acquireNextImage()) != null) stale.close();
             } catch (Exception ignored) {}
         }
-        if (isZslMode() || PreferenceKeys.isLiveViewfinderRawEnabled()) {
+        if (isZslMode() || mLiveRawSession) {
             // isZslMode() is only true in Motion, so outside it the RAW stream
             // was never part of the repeating request and the raw viewfinder
             // had nothing to develop. It needs the stream in every mode.
@@ -1904,11 +1969,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Initiate a still image capture.
      */
     public void takePicture() {
-        mShotInProgress = true;
         if (mPreviewRequestBuilder == null || mCaptureSession == null) {
             Log.w(TAG, "takePicture(): camera not ready, ignoring shutter press");
             return;
         }
+        mShotInProgress = true;
         if (isZslMode()) {
             captureStillPicture();
             return;
@@ -2022,6 +2087,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                              @NonNull CaptureRequest request,
                                              long timestamp,
                                              long frameNumber) {
+                    if (mLiveRawSession && !isZslMode()) mLiveRawRouter.request(timestamp, true);
 
                     if (baseFrameNumber[0] == 0) {
                         baseFrameNumber[0] = frameNumber - 1L;
@@ -2139,12 +2205,29 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * copy inside LiveRawFrame is what the viewfinder develops; the Image goes
      * on to the ring untouched.
      */
-    private void publishLiveRawFrame(Image img) {
+    private void onMatchedLiveRaw(Image img, TotalCaptureResult result) {
+        boolean retained = false;
+        try {
+            if (!mLiveRawSession || mZslCapturing || mHybridZslCapture) return;
+            publishLiveRawFrame(img, result);
+            if (isZslMode()) synchronized (mZslBufferLock) {
+                mZslRingBuffer.addLast(img);
+                retained = true;
+                while (mZslRingBuffer.size() > zslRingCapacity()) {
+                    Image old = mZslRingBuffer.pollFirst();
+                    if (old != null) old.close();
+                }
+            }
+        } finally { if (!retained) img.close(); }
+    }
+
+    private void publishLiveRawFrame(Image img, TotalCaptureResult matchedResult) {
         if (!LiveRawFrame.isEnabled() || img == null) return;
         if (img.getFormat() != ImageFormat.RAW_SENSOR) return;
         try {
             Image.Plane plane = img.getPlanes()[0];
-            CameraCharacteristics c = mCameraCharacteristics;
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+            if (c == null) c = mCameraCharacteristics;
             float white = 1023.0f;
             float[] black = new float[]{0, 0, 0, 0};
             int cfa = 0;
@@ -2164,10 +2247,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (arr != null) cfa = arr;
                 }
             }
-            // Camera2 colour metadata, refreshed continuously by preview results.
+            // Exact CaptureResult paired with this image timestamp, never the latest result from another frame.
             float[] gains = new float[]{1, 1, 1};
             float[] ccm = new float[]{1, 0, 0, 0, 1, 0, 0, 0, 1};
-            CaptureResult colorResult=mPreviewCaptureResult;
+            CaptureResult colorResult=matchedResult;
             if(android.os.Build.VERSION.SDK_INT>=28 && colorResult instanceof TotalCaptureResult){
                 CaptureResult physical=((TotalCaptureResult)colorResult).getPhysicalCameraResults().get(physicalID);
                 if(physical!=null)colorResult=physical;
@@ -2182,12 +2265,33 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Integer dynamicWhite=colorResult.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
                 if(dynamicWhite!=null)white=dynamicWhite;
             }
+            float[] dcpMatrix = com.particlesdevs.photoncamera.processing.color.DcpProfiles.previewMatrix(gains);
+            if (dcpMatrix != null) ccm = dcpMatrix;
             float[] shading=null;int sw=1,sh=1;
             android.hardware.camera2.params.LensShadingMap map=colorResult==null?null:colorResult.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
             if(map!=null){sw=map.getColumnCount();sh=map.getRowCount();shading=new float[sw*sh*3];
                 for(int y=0;y<sh;y++)for(int x=0;x<sw;x++){int i=(y*sw+x)*3;shading[i]=map.getGainFactor(0,x,y);shading[i+1]=(map.getGainFactor(1,x,y)+map.getGainFactor(2,x,y))*.5f;shading[i+2]=map.getGainFactor(3,x,y);}}
+            Rect imageCrop = img.getCropRect();
+            float[] crop = {imageCrop.left/(float)img.getWidth(), imageCrop.top/(float)img.getHeight(),
+                    imageCrop.width()/(float)img.getWidth(), imageCrop.height()/(float)img.getHeight()};
+            // Camera2 crop coordinates are in the active sensor array, not in the RAW buffer.
+            Rect active = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            Rect sensorCrop = colorResult == null ? null : colorResult.get(CaptureResult.SCALER_CROP_REGION);
+            if (active != null && sensorCrop != null && active.width()>0 && active.height()>0) {
+                Rect clipped = new Rect(sensorCrop);
+                if (clipped.intersect(active)) {
+                    crop = new float[]{(clipped.left-active.left)/(float)active.width(),
+                        (clipped.top-active.top)/(float)active.height(), clipped.width()/(float)active.width(),
+                        clipped.height()/(float)active.height()};
+                }
+            }
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                    plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh);
+                    plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh,crop,
+                    PreferenceKeys.isRemosaicEnabled() ? PreferenceKeys.getRemosaicBlockSize() : 1,
+                    colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
+                    c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
+                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)));
+            if (mTextureView != null) mTextureView.requestRender();
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
         }
@@ -2692,6 +2796,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                              @NonNull CaptureRequest request,
                                              long timestamp,
                                              long frameNumber) {
+                    if (mLiveRawSession && !isZslMode()) mLiveRawRouter.request(timestamp, true);
 
                     if (baseFrameNumber[0] == 0) {
                         baseFrameNumber[0] = frameNumber;

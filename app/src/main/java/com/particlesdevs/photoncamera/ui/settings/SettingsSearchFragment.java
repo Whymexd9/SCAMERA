@@ -95,7 +95,7 @@ public class SettingsSearchFragment extends Fragment {
         input.setHintTextColor(0xFFACA8BC);input.setTextSize(18);input.setHint("Поиск настройки");
         input.setContentDescription("Поиск настройки");input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         search.addView(input,new LinearLayout.LayoutParams(0,dp(56),1));
-        TextView clear=label("×",28,0xFFD3C9F4);clear.setGravity(android.view.Gravity.CENTER);
+        TextView clear=label("×",28,com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext()));clear.setGravity(android.view.Gravity.CENTER);
         clear.setContentDescription("Очистить поиск");clear.setOnClickListener(v->input.setText(""));
         search.addView(clear,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(search);
         count=label("",13,0xFFACA8BC);count.setPadding(0,dp(14),0,dp(12));root.addView(count);
@@ -128,7 +128,7 @@ public class SettingsSearchFragment extends Fragment {
         for(String word:normalize(query).trim().split("\\s+")) {
             if(word.isEmpty())continue;
             for(int at=normalized.indexOf(word);at>=0;at=normalized.indexOf(word,at+word.length()))
-                s.setSpan(new ForegroundColorSpan(0xFFCAA4FF),at,at+word.length(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                s.setSpan(new ForegroundColorSpan(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext())),at,at+word.length(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return s;
     }

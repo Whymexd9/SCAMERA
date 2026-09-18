@@ -293,6 +293,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
         }
         initSettingsBar();
+        com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton favorites = view.findViewWithTag("favorite_settings");
+        favorites.setOnApplied(() -> {
+            PhotonCamera.getSettings().loadCache();
+            captureController.restartCamera();
+        });
     }
 
     private void initSettingsBar() {

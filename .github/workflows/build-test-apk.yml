@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # versionCode = 30002 + commit count
+          fetch-depth: 0        # Versioning uses the documented source baseline below.
 
       - uses: actions/setup-java@v4
         with:
@@ -42,7 +42,8 @@ jobs:
 
       - name: Compute versionCode
         id: ver
-        run: echo "code=$((30002 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
+        # Reserve versions delivered locally; increment from the last published source baseline.
+        run: echo "code=$((30196 + $(git rev-list --count c2d9e9bc4bf3d13467e48d86faad6a748e33ddcb..HEAD)))" >> "$GITHUB_OUTPUT"
 
       - name: Fetch vendored ncnn from upstream PhotonCamera
         run: |
@@ -131,10 +132,11 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_gles.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_detail.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
+          LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/preview_gl.py
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()
