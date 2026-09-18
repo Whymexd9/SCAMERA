@@ -9,6 +9,7 @@
 #include <chrono>
 #include <memory>
 #include "vivo-hexquad-detail.h"
+#include "vivo-hexquad-gpu.h"
 
 namespace vivo_hexquad {
 // Versioned little-endian transport. Six DISTINCT, equal-exposure RAW16 frames.
@@ -17,7 +18,7 @@ struct RawBurst {
     int w=0,h=0,iso=0,red=0; float black=0,white=0; bool response=false;
     float luma=1.f,chroma=1.f;
     int scale=2;
-    bool fullResolution=false;
+    bool fullResolution=false,useGpu=false;
     NoiseScale noise;
     float texture=0.f;
     Rgb neutral{{1.f,1.f,1.f}};
@@ -44,7 +45,7 @@ struct MappedBurst {
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map burst");
         try {
             uint32_t v[16];std::memcpy(v,address,64);
-            require(v[0]==0x32515848&&(v[1]>=1&&v[1]<=3)&&v[2]>=288&&v[3]>=288&&v[2]%8==0&&v[3]%8==0&&
+            require(v[0]==0x32515848&&(v[1]>=1&&v[1]<=4)&&v[2]>=288&&v[3]>=288&&v[2]%8==0&&v[3]%8==0&&
                 uint64_t(v[2])*v[3]<=16000000&&v[4]>=50&&v[4]<=12800&&v[5]<=3&&v[6]==0&&v[7]==0,
                 "Unsupported HexQuad RAW header / phase");
             burst.w=int(v[2]);burst.h=int(v[3]);burst.iso=int(v[4]);burst.red=int(v[5]);
@@ -53,7 +54,7 @@ struct MappedBurst {
                     burst.white<=65535&&burst.white>burst.black+1&&v[10]<=1&&v[11]==6,
                     "Invalid HexQuad radiometry");
             burst.response=v[10]!=0;
-            const size_t header=v[1]==3?112:v[1]==2?80:64;
+            const size_t header=v[1]>=3?112:v[1]==2?80:64;
             if(v[1]>=2){
                 require(length>=header,"Truncated HexQuad detail header");
                 float controls[5];std::memcpy(controls,static_cast<const uint8_t*>(address)+48,sizeof(controls));
@@ -62,7 +63,7 @@ struct MappedBurst {
                 burst.luma=controls[0];burst.chroma=controls[1];
                 for(int c=0;c<3;++c){require(std::isfinite(controls[c+2])&&controls[c+2]>=.0001f&&controls[c+2]<=10000.f,"Invalid HexQuad neutral point");burst.neutral[c]=controls[c+2];}
             }
-            if(v[1]==3){
+            if(v[1]>=3){
                 uint32_t scale;float controls[4];
                 std::memcpy(&scale,static_cast<const uint8_t*>(address)+80,4);
                 std::memcpy(controls,static_cast<const uint8_t*>(address)+84,sizeof(controls));
@@ -74,7 +75,8 @@ struct MappedBurst {
                 for(size_t i=68;i<80;++i)require(bytes[i]==0,"Invalid reserved header bytes");
                 uint32_t full;std::memcpy(&full,bytes+100,4);
                 require(full<=1&&(!full||burst.scale==2),"Full output requires x2 model");burst.fullResolution=full!=0;
-                for(size_t i=104;i<112;++i)require(bytes[i]==0,"Invalid reserved header bytes");
+                if(v[1]==4){uint32_t gpu;std::memcpy(&gpu,bytes+104,4);require(gpu<=1,"Invalid GPU mode");burst.useGpu=gpu!=0;}
+                for(size_t i=v[1]==4?108:104;i<112;++i)require(bytes[i]==0,"Invalid reserved header bytes");
             }
             size_t pixels=size_t(burst.w)*burst.h;
             require(length==header+pixels*Frames*2,"Truncated HexQuad burst");
@@ -279,6 +281,14 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         " noise_variance_factors="+std::to_string(b.noise.overall)+","+std::to_string(b.noise.photon)+","+std::to_string(b.noise.readout)+
         " shot="+std::to_string(transfer.shot)+" read_variance="+std::to_string(transfer.variance)+
         "; matched VST/IVST; measured ISO unchanged; fixed ISO50 normalization");
+    std::unique_ptr<GpuPost<RawBurst>> gpu;
+    bool gpuVerified=false;size_t gpuTiles=0;double gpuMs=0;
+    if(b.useGpu){
+        const double start=hexClockMs();
+        try{gpu.reset(new GpuPost<RawBurst>(b,reference.get(),inverse));vivo_nn::log("HEX GPU: renderer="+gpu->renderer+"; first tile must match CPU");}
+        catch(const std::exception& e){vivo_nn::log(std::string("HEX GPU FALLBACK: ")+e.what()+"; using CPU + NPU");}
+        vivo_nn::log("HEX TIMING ms: gpu_init="+std::to_string(hexClockMs()-start));
+    }
     std::vector<float> sum(size_t(ow)*oh,0),weight(sum.size(),0);
     OutputStats frameStats;size_t anomalousTiles=0;
     const auto xs=origins(b.w),ys=origins(b.h);size_t done=0,total=xs.size()*ys.size(),holes=0,samples=0;
@@ -307,7 +317,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         packingMs+=hexClockMs()-tick;tick=hexClockMs();
         net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
         typename TetraDetailReference<RawBurst>::Tile detailTile;
-        if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core,b.fullResolution?5:4);detailMs+=hexClockMs()-start;}
+
         const int scale=b.scale,side=288*scale;
         require(net.output.size()==size_t(side)*side*3,"Unexpected HexQuad output shape");
         // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
@@ -315,6 +325,31 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
         OutputStats tileStats;
         std::array<OutputStats,Core*2> rowStats;
+        const int tileSide=Core*outputScale;
+        std::vector<float> gpuValues,cpuCheck;
+        if(gpu){
+            const double start=hexClockMs();
+            try{gpuValues=gpu->render(net.output,ox,oy);}
+            catch(const std::exception& e){vivo_nn::log(std::string("HEX GPU FALLBACK: ")+e.what()+"; current and remaining tiles use CPU + NPU");gpu.reset();gpuVerified=false;}
+            gpuMs+=hexClockMs()-start;
+        }
+        const bool checkGpu=gpu&&!gpuVerified;
+        if(checkGpu)cpuCheck.resize(size_t(tileSide)*tileSide);
+        if(gpu&&gpuVerified){
+            team.run(std::min(tileSide,oh-oy*outputScale),[&](int ty){for(int tx=0;tx<tileSide&&ox*outputScale+tx<ow;++tx){
+                // Diagnostic extrema/counters retain the original sample support.
+                const int area=b.fullResolution?1:scale;
+                const int nx=b.fullResolution?tx+64:(tx+Halo)*scale,ny=b.fullResolution?ty+64:(ty+Halo)*scale;
+                for(int dy=0;dy<area;++dy)for(int dx=0;dx<area;++dx)for(int c=0;c<3;++c)
+                    rowStats[ty].add(net.output[(size_t(ny+dy)*side+nx+dx)*3+c],nx+dx,ny+dy,c);
+                const float value=gpuValues[size_t(ty)*tileSide+tx];
+                const float w=feather((tx+.5f)/outputScale-.5f)*feather((ty+.5f)/outputScale-.5f);
+                const size_t at=size_t(oy*outputScale+ty)*ow+ox*outputScale+tx;
+                sum[at]+=value*w;weight[at]+=w;
+            }});
+            ++gpuTiles;
+        }else{
+        if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core,b.fullResolution?5:4);detailMs+=hexClockMs()-start;}
         if(b.fullResolution){
             // Build the single-RAW reference once at input resolution. Only the
             // reference is bilinearly sampled; every neural output pixel is kept.
@@ -347,6 +382,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                     }
                     value=mixDetail(ref,rgb,b.luma*(1-b.texture*mask),b.chroma,b.neutral)[c];
                 }
+                if(checkGpu)cpuCheck[size_t(ty)*tileSide+tx]=value;
                 float w=feather((tx+.5f)*.5f-.5f)*feather((ty+.5f)*.5f-.5f);
                 size_t at=size_t(y)*ow+x;sum[at]+=value*w;weight[at]+=w;
             }
@@ -364,9 +400,22 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                 const float confidence=b.texture>0?reference->textureConfidence(x,y,physicalNoise.shot,physicalNoise.variance):0.f;
                 value=mixDetail(reference->rgb(detailTile,x,y),rgb,b.luma*(1.f-b.texture*confidence),b.chroma,b.neutral)[c];
             }
+            if(checkGpu)cpuCheck[size_t(ty)*tileSide+tx]=value;
             float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
             sum[index]+=value*w;weight[index]+=w;
         }});
+        }
+        if(checkGpu){
+            double squared=0;float worst=0;size_t count=0;
+            for(int y=0;y<tileSide&&oy*outputScale+y<oh;++y)for(int x=0;x<tileSide&&ox*outputScale+x<ow;++x){
+                const size_t i=size_t(y)*tileSide+x;float error=std::abs(cpuCheck[i]-gpuValues[i]);
+                squared+=double(error)*error;worst=std::max(worst,error);++count;
+            }
+            const double rmse=std::sqrt(squared/std::max(size_t(1),count));
+            gpuVerified=count&&worst<=.0002f&&rmse<=.00002;
+            vivo_nn::log("HEX GPU CHECK: max="+std::to_string(worst)+" RMSE="+std::to_string(rmse)+" pass="+std::to_string(gpuVerified)+"; first tile kept from CPU");
+            if(!gpuVerified){gpu.reset();vivo_nn::log("HEX GPU FALLBACK: precision check failed; using CPU + NPU");}
+        }
         // Combine integer/extrema diagnostics in raster order; never reduce
         // floating-point pixel accumulators across threads.
         for(const auto& stats:rowStats){
@@ -403,6 +452,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         " registration="+std::to_string(flowsDone-guidesDone)+" output_write="+std::to_string(hexClockMs()-writeStart));
     vivo_nn::log("HEX TIMING ms: response_alignment="+std::to_string(aligned-started)+" packing="+std::to_string(packingMs)+
         " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" detail_preparation="+std::to_string(detailMs)+" total="+std::to_string(hexClockMs()-started));
+    vivo_nn::log("HEX COMPUTE: requested="+std::string(b.useGpu?"GPU + NPU":"CPU + NPU")+" gpu_tiles="+std::to_string(gpuTiles)+" cpu_tiles="+std::to_string(total-gpuTiles)+" gpu_post_ms="+std::to_string(gpuMs));
     vivo_nn::log("HEX FRAME COMPLETE: x"+std::to_string(b.scale)+" RGB -> "+(b.fullResolution?std::string("full native output"):"area"+std::to_string(b.scale))+" -> Bayer16; "+std::to_string(ow)+"x"+std::to_string(oh)+" actual_frames=6 ISO="+std::to_string(b.iso));
 }
 } // namespace vivo_hexquad

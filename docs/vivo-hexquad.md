@@ -1,3 +1,49 @@
+# HP9 HexQuad v16: experimental GPU postprocessing with NPU inference
+
+The top-level **Нейроремозаик HP9** screen adds **Обработка вокруг нейросети**:
+**CPU + NPU — текущий** (default) or **GPU + NPU — тестовый**. The selected
+mode is captured once per shot. Neural weights, QNN runtime, six-frame input,
+packing, validation gates and NPU call count are unchanged.
+
+The GPU mode uses GLES 3.1 compute for the first-RAW detail/green reference,
+texture confidence, inverse VST, optional x2 area reduction, independent
+luma/chroma blending and Bayer sampling. CPU code still builds coarse fields,
+aligns frames, packs the network input, accumulates overlapping tiles and
+writes the result. The neural network still executes on the NPU. This is not
+a transfer of the network to the GPU or a zero-copy QNN implementation.
+
+One EGL context and three compute programs are reused throughout a capture.
+The first RAW and coarse fields are uploaded once; each neural output tile is
+uploaded and its reconstructed Bayer tile read back. Buffers are bounded by
+one RAW, coarse fields and fixed tile dimensions, with no full-frame RGB image.
+The platform EGL/GLES drivers are used; no vendor GPU driver is redistributed.
+An unsupported context or catchable GPU error selects the existing CPU path
+for that tile and the rest of the shot, reusing the same NPU result.
+
+The first tile is computed both ways and the CPU version is retained. GPU
+processing of subsequent tiles requires maximum absolute difference <=0.0002
+and RMSE <=0.00002 in normalized Bayer values. Every readback must be finite.
+A precision mismatch falls back to CPU. These checks accommodate floating
+point rounding; they are not a promise of bitwise equality or full-frame
+equivalence on every GPU. Reports show the renderer, comparison, fallback
+reason, actual GPU/CPU tile counts and GPU postprocessing time.
+
+GPU shots use transport version 4, retaining the 112-byte v3 header and adding
+a uint32 GPU flag at offset 104 (0 or 1); bytes 108..111 must remain zero.
+Default CPU shots still write identical v3 headers. Model/profile cache keys
+are unchanged because the inference and VST profile are unchanged; the GPU
+precision check runs separately on every capture.
+
+Real GLES shader execution on Mesa covers 24 mock-network captures: all four
+CFA orientations, x1, reduced/full x2, channel/texture controls, borders and
+overlaps. Packed network inputs and call counts remain identical. Maximum
+final Bayer16 difference was 3/65535. Deliberate GL errors and first-tile
+precision failures produce bitwise CPU output without repeated inference.
+The existing 24 CPU golden fixtures remain identical. These tests validate
+code and fallback behaviour; Adreno performance, resource availability in the
+root worker and actual capture speed still require a phone test. Upload and
+readback overhead may outweigh the saved CPU work on some devices.
+
 # HP9 HexQuad v15: deterministic CPU acceleration
 
 The working v14 model, six-frame selection, all noise/detail settings, VST/IVST,

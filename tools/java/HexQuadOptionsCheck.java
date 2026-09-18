@@ -30,7 +30,11 @@ public class HexQuadOptionsCheck {
         for(float bad:new float[]{0,Float.NaN,Float.POSITIVE_INFINITY,2.01f}){
             boolean failed=false;try{options(800,2,false,false,bad,1,1);}catch(IllegalArgumentException e){failed=true;}assert failed;
         }
-        if(args.length==1){byte[] burst=new byte[112+288*288*6*2];h.get(burst,0,112);Files.write(Paths.get(args[0]),burst);}
+        HexQuadOptions gpu=new HexQuadOptions(800,2,true,.75f,1.25f,1.5f,50,100,true,35,85,70,100,40,true);
+        ByteBuffer gh=gpu.header(288,288,800,3,64,1023,true,new float[]{.5f,1,.7f});
+        assert gpu.gpu&&!full.gpu;assert gh.getInt(4)==4&&gh.getInt(104)==1&&gh.getInt(108)==0;
+        assert full.profileKey(800,3).equals(gpu.profileKey(800,3)); // GPU does not change model conditioning
+        if(args.length==1){byte[] gpuBurst=new byte[112+288*288*6*2];gh.get(gpuBurst,0,112);Files.write(Paths.get(args[0]+".gpu"),gpuBurst);byte[] burst=new byte[112+288*288*6*2];h.get(burst,0,112);Files.write(Paths.get(args[0]),burst);}
         System.out.println("HexQuad options: ISO stops/endpoints, manual policy, model/profile cache separation and v3 little-endian bytes PASS");
     }
 }

@@ -162,7 +162,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void updateHexQuadDenoiseControls(String backend) {
             boolean active="hp9_hexquad".equals(backend);
             boolean auto=PreferenceKeys.isHexQuadAutoIso();
-            for(String key:new String[]{"hexquad_model","hexquad_full_resolution","hexquad_noise_overall",
+            for(String key:new String[]{"hexquad_compute","hexquad_model","hexquad_full_resolution","hexquad_noise_overall",
                     "hexquad_noise_photon","hexquad_noise_readout","hexquad_auto_iso","hexquad_luma","hexquad_chroma",
                     "hexquad_iso_low_luma","hexquad_iso_low_chroma","hexquad_iso_high_luma","hexquad_iso_high_chroma",
                     "hexquad_texture","hexquad_post_denoise"}){

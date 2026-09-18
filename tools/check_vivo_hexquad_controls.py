@@ -18,7 +18,7 @@ for key, default, method in [('hexquad_luma', '50', 'getHexQuadLuma'), ('hexquad
 assert next(e for e in screen.iter() if e.get(a+'key') == 'hexquad_post_denoise').get(a+'defaultValue') == 'false'
 burst = (java/'processing/opengl/postpipeline/HexQuadBurst.java').read_text()
 options=(java/'settings/HexQuadOptions.java').read_text()
-assert 'HEADER_BYTES=112' in options and 'putInt(0x32515848).putInt(3)' in options
+assert 'HEADER_BYTES=112' in options and 'putInt(0x32515848).putInt(gpu?4:3)' in options
 assert 'options.header(width,height,iso,red,black,white,response,neutral)' in burst
 assert '.putFloat(lumaPercent/100f).putFloat(chromaPercent/100f)' in options
 assert 'p.hexQuadProcessed=true;p.hexQuadPostDenoise=burst.postDenoise' in burst
@@ -49,3 +49,10 @@ for key in ['hexquad_noise_overall','hexquad_noise_photon','hexquad_noise_readou
     app='{http://schemas.android.com/apk/res-auto}'
     assert e.get(app+'stepPerUnit')=='20' and e.get(app+'isFloat')=='true'
     assert float(e.get(app+'maxValue'))-float(e.get(app+'minValue'))==1.5
+
+es=[e for e in xml.iter() if e.get(a+'key')=='hexquad_compute']
+assert len(es)==1 and es[0] in list(screen.iter()) and es[0].get(a+'defaultValue')=='cpu'
+assert '"hexquad_compute","cpu"' in settings
+assert '"gpu".equals(' in settings and 'hexquad_compute' in activity
+assert 'gpu?4:3' in options and 'putInt(gpu?1:0)' in options
+print('HexQuad GPU: opt-in selector, captured transport and CPU default PASS')

@@ -60,6 +60,8 @@ template<class Source> class TetraDetailReference {
         float span=float(da+db);return {{(a*db+bv*da)/span,std::abs(a-bv)/span,1}};
     }
 public:
+    const float* coarseData()const{return field.front().data();}
+    size_t coarseBytes()const{static_assert(sizeof(Fields)==12*sizeof(float),"Unexpected coarse layout");return field.size()*sizeof(Fields);}
     explicit TetraDetailReference(const Source& source,RowExecutor* executor=nullptr):b(source),team(executor),cw(b.w/8),ch(b.h/8),field(size_t(cw)*ch){
         independentRows(team,ch,[&](int cy){for(int cx=0;cx<cw;++cx)for(int q=0;q<4;++q){
             auto& dst=field[size_t(cy)*cw+cx];int ox=cx*8+(q%2)*4,oy=cy*8+(q/2)*4;

@@ -143,7 +143,7 @@ def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
         output.parentFile.mkdirs()
         commandLine clang.absolutePath, '-std=c++14', '-O2', '-Wall', '-Wextra',
                 '-pthread', '-fPIE', '-pie', '-static-libstdc++', '-Wl,-z,max-page-size=16384',
-                file('src/main/cpp/vivo-neural-worker.cpp').absolutePath, '-ldl', '-o', output.absolutePath
+                file('src/main/cpp/vivo-neural-worker.cpp').absolutePath, '-ldl', '-lEGL', '-lGLESv2', '-o', output.absolutePath
     }
 }
 android.sourceSets.main.assets.srcDir(neuralAssets)

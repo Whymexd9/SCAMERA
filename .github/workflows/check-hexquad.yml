@@ -68,9 +68,16 @@ jobs:
           javac -d /tmp/hex-options-test app/src/main/java/com/particlesdevs/photoncamera/settings/HexQuadOptions.java tools/java/HexQuadOptionsCheck.java
           java -ea -cp /tmp/hex-options-test HexQuadOptionsCheck /tmp/hex-java-header.bin
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hex-options /tmp/hex-java-header.bin
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-hex-options /tmp/hex-java-header.bin.gpu
       - name: Check deterministic CPU acceleration and thread synchronization
         run: |
           g++ -pthread -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_speed.cpp -ldl -o /tmp/check-hex-speed
           python tools/check_vivo_hexquad_speed.py /tmp/check-hex-speed
           g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=thread tools/check_vivo_hexquad_parallel.cpp -o /tmp/check-hex-threads
           /tmp/check-hex-threads
+      - name: Check GLES compute against CPU and exercise fallback
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev
+          g++ -pthread -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_gpu.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hex-gpu
+          python tools/check_vivo_hexquad_gpu.py /tmp/check-hex-gpu

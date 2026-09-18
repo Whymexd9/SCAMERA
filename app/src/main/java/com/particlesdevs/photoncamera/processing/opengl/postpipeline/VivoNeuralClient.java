@@ -62,7 +62,7 @@ public final class VivoNeuralClient {
                     " additional_NR="+burst.postDenoise+" model=x"+burst.options.modelScale+
                     " full_resolution="+burst.options.fullResolution+" auto_ISO="+burst.options.autoIso+
                     " noise_variance_factors="+burst.options.noiseOverall+","+burst.options.noisePhoton+","+burst.options.noiseReadout+
-                    " texture="+(burst.options.texture*100));
+                    " texture="+(burst.options.texture*100)+" compute="+(burst.options.gpu?"GPU + NPU":"CPU + NPU"));
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){

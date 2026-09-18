@@ -84,8 +84,12 @@ static void header(){
     auto write=[&](int bytes=112){std::ofstream o(path,std::ios::binary);o.write(reinterpret_cast<char*>(h.data()),bytes);std::vector<uint16_t> d(288*288*6,64);o.write(reinterpret_cast<char*>(d.data()),d.size()*2);};
     write();{MappedBurst m(path);assert(m.burst.scale==2&&m.burst.fullResolution);near(m.burst.noise.photon,1.25f);near(m.burst.texture,.4f);assert(m.burst.raw[5][0]==64);}
     auto original=h;
+    h[1]=4;h[26]=1;write();{MappedBurst m(path);assert(m.burst.useGpu);}
+    h[26]=2;write();{bool failed=false;try{MappedBurst m(path);}catch(const std::exception&){failed=true;}assert(failed);}
+    h[26]=1;h[27]=1;write();{bool failed=false;try{MappedBurst m(path);}catch(const std::exception&){failed=true;}assert(failed);}
+    h=original;
     for(int bad=0;bad<7;++bad){h=original;if(bad==0)h[20]=3;if(bad==1)h[20]=1;if(bad==2)set(21,NAN);if(bad==3)set(24,2);if(bad==4)h[26]=1;if(bad==5)h[25]=2;
         write(bad==6?100:112);bool rejected=false;try{MappedBurst m(path);}catch(const std::exception&){rejected=true;}assert(rejected);}
     std::remove(path.c_str());
 }
-int main(int argc,char** argv){if(argc==2){MappedBurst m(argv[1]);assert(m.burst.scale==2&&m.burst.fullResolution&&m.burst.response);near(m.burst.luma,.56f);near(m.burst.chroma,.94f);near(m.burst.noise.overall,.75f);near(m.burst.noise.photon,1.25f);near(m.burst.noise.readout,1.5f);near(m.burst.texture,.4f);std::puts("Java -> native v3 capture header PASS");return 0;}std::ostringstream quiet;auto* old=std::cout.rdbuf(quiet.rdbuf());profiles();header();textures();assembly();std::cout.rdbuf(old);std::puts("HexQuad options: VST identity/roundtrip, fixed physical noise, texture/noise separation, x1/x2/full CFA/seams and v3 transport PASS");}
+int main(int argc,char** argv){if(argc==2){MappedBurst m(argv[1]);assert(m.burst.useGpu==(std::string(argv[1]).find(".gpu")!=std::string::npos));assert(m.burst.scale==2&&m.burst.fullResolution&&m.burst.response);near(m.burst.luma,.56f);near(m.burst.chroma,.94f);near(m.burst.noise.overall,.75f);near(m.burst.noise.photon,1.25f);near(m.burst.noise.readout,1.5f);near(m.burst.texture,.4f);std::puts("Java -> native v3 capture header PASS");return 0;}std::ostringstream quiet;auto* old=std::cout.rdbuf(quiet.rdbuf());profiles();header();textures();assembly();std::cout.rdbuf(old);std::puts("HexQuad options: VST identity/roundtrip, fixed physical noise, texture/noise separation, x1/x2/full CFA/seams and v3 transport PASS");}

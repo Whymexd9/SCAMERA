@@ -25,10 +25,13 @@ struct SpeedNetwork {
             float v=.1f+float((i*17+calls*13)%1001)*(1.f/2000.f);
             output[i]=i%4093==0?-.01f:i%4099==0?1.01f:v;
         }
+#ifdef HEXQUAD_TEST_EXECUTED
+        HEXQUAD_TEST_EXECUTED(calls);
+#endif
     }
 };
-static void fixture(const std::string& folder,int red,int mode,bool blend,int width=296,int height=304){
-    RawBurst b;b.w=width;b.h=height;b.red=red;b.black=64;b.white=1023;b.iso=800;
+static void fixture(const std::string& folder,int red,int mode,bool blend,int width=296,int height=304,bool gpu=false){
+    RawBurst b;b.useGpu=gpu;b.w=width;b.h=height;b.red=red;b.black=64;b.white=1023;b.iso=800;
     b.scale=mode==0?1:2;b.fullResolution=mode==2;b.response=red==1;
     b.noise={.85f,1.15f,.75f};b.neutral={{.57f,1.f,.73f}};
     if(blend){b.luma=std::array<float,4>{{0.f,.37f,.6f,1.f}}[red];b.chroma=std::array<float,4>{{1.f,.2f,0.f,.65f}}[red];b.texture=.63f;}
@@ -59,5 +62,5 @@ int main(int argc,char** argv){
     std::ostringstream quiet;auto* old=std::cout.rdbuf(quiet.rdbuf());
     for(int red=0;red<4;++red)for(int mode=0;mode<3;++mode)for(bool blend:{false,true})fixture(argv[1],red,mode,blend);
     std::cout.rdbuf(old);
-    std::puts("24 speed regression fixtures: x1/x2/full, all CFA, six moving inputs, texture and independent L/C completed");
+    std::puts("24 speed regression fixtures: x1/x2/full, all CFA, six moving inputs, texture and independent L/C completed");return 0;
 }
