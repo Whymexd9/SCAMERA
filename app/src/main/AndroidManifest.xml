@@ -180,9 +180,6 @@
         <activity android:name=".ui.settings.VivoNeuralActivity"
             android:exported="false" android:process=":vivo_neural"
             android:configChanges="orientation|screenSize|keyboardHidden" />
-        <activity android:name=".ui.settings.VivoUpscaleActivity"
-            android:exported="false" android:process=":vivo_neural"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
     </application>
 </manifest>

@@ -291,11 +291,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 startActivity(new android.content.Intent(requireContext(), VivoNeuralActivity.class));
                 return true;
             });
-            Preference upscale = findPreference("vivo_upscale_probe");
-            if (upscale != null) upscale.setOnPreferenceClickListener(pref -> {
-                startActivity(new android.content.Intent(requireContext(), VivoUpscaleActivity.class));
-                return true;
-            });
             ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
             if (backend != null) {
                 backend.setOnPreferenceChangeListener((pref, value) -> {
