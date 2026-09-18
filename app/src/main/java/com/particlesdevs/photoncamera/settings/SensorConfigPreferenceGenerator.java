@@ -343,7 +343,7 @@ public class SensorConfigPreferenceGenerator {
         }
 
         SensorConfig annotation = info.annotation;
-        String prefKey = "pref_sensorconfig_" + sensorId + "_" + info.fieldName.toLowerCase();
+        String prefKey = "pref_sensorconfig_" + sensorId + "_" + info.fieldName.toLowerCase(java.util.Locale.ROOT);
 
         // Heal preference type in background if corrupted by config import
         ensureStringPreference(context, prefKey);
@@ -370,11 +370,11 @@ public class SensorConfigPreferenceGenerator {
         seekBar.setMaxValue(annotation.max());
 
         float step = annotation.step();
-        boolean isFloat = (step != Math.floor(step));
+        boolean isFloat = PreferenceNumber.floating(info.fieldType);
         seekBar.setIsFloat(isFloat);
 
-        int stepsPerUnit = (int) (1.0f / step);
-        seekBar.setStepPerUnit(Math.max(1, stepsPerUnit));
+        float stepsPerUnit = 1.0f / step;
+        seekBar.setStepPerUnit(stepsPerUnit);
 
         float defaultValue = getFieldDefaultValue(info);
         seekBar.setDefaultValue(defaultValue);
@@ -423,6 +423,15 @@ public class SensorConfigPreferenceGenerator {
             if (editText.getText() == null) {
                 edit.setText(formatDefault(defaultValue, fieldType));
             }
+        });
+
+        editText.setOnPreferenceChangeListener((preference, input) -> {
+            if (fieldType == String.class) return true;
+            double number = PreferenceNumber.read(input, Double.NaN);
+            boolean valid = Double.isFinite(number) && number >= annotation.min() && number <= annotation.max()
+                    && (PreferenceNumber.floating(fieldType) || number == Math.rint(number));
+            if (!valid) android.widget.Toast.makeText(context, "Число от " + annotation.min() + " до " + annotation.max(), android.widget.Toast.LENGTH_LONG).show();
+            return valid;
         });
 
         String description = annotation.description();

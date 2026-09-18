@@ -36,7 +36,7 @@ public class Swipe {
         manualModeConsole = cameraFragment.getManualModeConsole();
         cameraFragmentViewModel = cameraFragment.getCameraFragmentViewModel();
         ocManual = cameraFragment.findViewById(R.id.open_close_manual);
-        manualModeConsole.setPanelVisibility(false);
+        manualModeConsole.setPanelVisibility(true);
         ocManual.animate().rotation(0).setDuration(250).start();
         ocManual.setOnClickListener((v) -> {
             if (!manualModeConsole.isPanelVisible()) {
@@ -130,16 +130,10 @@ public class Swipe {
     }
 
     public void SwipeDown() {
-        if (manualModeConsole.isPanelVisible()) {
-            ocManual.animate().rotation(0).setDuration(250).start();
-            cameraFragment.getTouchFocus().resetFocusCircle();
-            captureController.reset3Aparams();
-            manualModeConsole.setPanelVisibility(false);
-            manualModeConsole.retractAllKnobs();
-        } else {
-            cameraFragmentViewModel.setSettingsBarVisible(true);
-        }
+        cameraFragmentViewModel.setSettingsBarVisible(true);
+        // Hide chrome without resetting manual values. Closing settings restores it.
     }
+
 
     public void SwipeRight() {
 

@@ -904,8 +904,8 @@ void main() {
     ivec2 caShift = ivec2(round(radial * DT_WIDE_CA * 6.0));
     vec3 caR = texelFetch(InputBuffer,clamp(xy-caShift,ivec2(0),imax),0).rgb;
     vec3 caB = texelFetch(InputBuffer,clamp(xy+caShift,ivec2(0),imax),0).rgb;
-    sRGB.r = caR.r;
-    sRGB.b = caB.b;
+    vec3 original = texelFetch(InputBuffer, xy, 0).rgb;
+    sRGB.rb = max(sRGB.rb + vec2(caR.r, caB.b) - original.rb, vec2(0.0));
     #endif
     vec3 t;
     //float tonemapGain = textureBicubic(FusionMap, vec2(gl_FragCoord.xy)/vec2(textureSize(InputBuffer, 0))).r*50.0;

@@ -21,6 +21,7 @@ import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.Vibration;
 
 import java.util.Locale;
+import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 
 /**
  * Created by vibhorSrv on 12/09/2020
@@ -106,8 +107,8 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
 
     @Override
     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-        if (fromUser) vibration.Tick();
-        if (fromUser) {
+        if (fromUser && isEnabled() && vibration != null) vibration.Tick();
+        if (fromUser && isEnabled()) {
             set(progress);
         }
     }
@@ -129,8 +130,8 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         }
         // First run only: seed the store so backups/exports contain the key.
         // Afterwards this is a pure refresh, so an off-grid value is preserved.
-        if (NOT_PERSISTED.equals(getPersistedString(NOT_PERSISTED))) {
-            float seed = clamp(parseValue(defaultValue.toString(), mMin));
+        if (NOT_PERSISTED.equals(readStoredString(NOT_PERSISTED))) {
+            float seed = clamp(parseValue((defaultValue == null ? Float.toString(mMin) : defaultValue.toString()), mMin));
             String seedText = isFloat ? formatGridValue(seed) : formatExactValue(seed);
             seekBarProgress = valueToProgress(seed);
             updateLabel(seedText);
@@ -154,12 +155,12 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
      * Out-of-range leftovers are the one exception: those are clamped and rewritten.
      */
     private void showStoredValue() {
-        String stored = getPersistedString(fallback_value == null ? "0" : fallback_value);
+        String stored = readStoredString(fallback_value == null ? "0" : fallback_value);
         float raw = parseValue(stored, parseValue(fallback_value, mMin));
         float clamped = clamp(raw);
         seekBarProgress = valueToProgress(clamped);
         updateSeekbar(seekBarProgress);
-        if (clamped != raw) {
+        if (clamped != raw || !Double.isFinite(PreferenceNumber.read(stored, Double.NaN))) {
             String fixed = formatExactValue(clamped);
             updateLabel(fixed);
             persistString(fixed);
@@ -173,8 +174,10 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
 
     /** User dragged the bar: the value snaps to the step grid and is persisted. */
     private void set(int progress) {
+        if (!isEnabled()) return;
         seekBarProgress = clampProgress(progress);
         String valueToPersist = convertToValue(seekBarProgress);
+        if (!callChangeListener(valueToPersist)) { showStoredValue(); return; }
         updateLabel(valueToPersist);
         updateSeekbar(seekBarProgress);
         persistString(valueToPersist);
@@ -183,8 +186,10 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
 
     /** Manual input: keeps the exact value, the bar only shows the nearest step. */
     private void setDirectValue(float value) {
+        if (!isEnabled() || !Float.isFinite(value)) return;
         float clamped = clamp(value);
         String valueToPersist = formatExactValue(clamped);
+        if (!callChangeListener(valueToPersist)) { showStoredValue(); return; }
         seekBarProgress = valueToProgress(clamped);
 
         updateLabel(valueToPersist);
@@ -222,7 +227,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     private float parseValue(String text, float fallback) {
         if (text == null) return fallback;
         try {
-            return Float.parseFloat(text.trim());
+            return (float) PreferenceNumber.read(text, fallback);
         } catch (NumberFormatException e) {
             Log.w(TAG, "Unparsable stored value '" + text + "' for " + getKey());
             return fallback;
@@ -248,16 +253,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
 
     /** Trimmed representation used for off-grid values and for dialog hints. */
     private String formatExactValue(float value) {
-        if (!isFloat)
-            return String.valueOf(Math.round(value));
-        String s = String.format(Locale.ROOT, "%.6f", value);
-        if (s.indexOf('.') >= 0) {
-            int end = s.length();
-            while (end > 0 && s.charAt(end - 1) == '0') end--;
-            if (end > 0 && s.charAt(end - 1) == '.') end--;
-            s = s.substring(0, end);
-        }
-        return s.isEmpty() ? "0" : s;
+        return PreferenceNumber.format(value, isFloat);
     }
 
     /** Grid representation, identical to what dragging the bar produces. */
@@ -265,8 +261,14 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         return isFloat ? String.format(Locale.ROOT, "%.2f", value) : String.valueOf(Math.round(value));
     }
 
+    private String readStoredString(String fallback) {
+        android.content.SharedPreferences prefs = getSharedPreferences();
+        Object value = prefs == null ? null : prefs.getAll().get(getKey());
+        return value == null ? fallback : value.toString();
+    }
+
     public String getValue() {
-        return getPersistedString(fallback_value);
+        return readStoredString(fallback_value);
     }
 
     public int getSeekBarProgress() {
@@ -279,9 +281,9 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
 
     private void showPreciseValueDialog() {
         Context context = getContext();
-        if (context == null) return;
+        if (context == null || !isEnabled()) return;
 
-        float currentValue = clamp(parseValue(getPersistedString(fallback_value), parseValue(fallback_value, mMin)));
+        float currentValue = clamp(parseValue(readStoredString(fallback_value), parseValue(fallback_value, mMin)));
         String currentValueText = formatExactValue(currentValue);
         float defaultValue = clamp(parseValue(fallback_value, mMin));
 
@@ -314,7 +316,8 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         builder.setPositiveButton("Set", (dialog, which) -> {
             try {
                 String valueStr = input.getText().toString();
-                float value = Float.parseFloat(valueStr.trim());
+                float value = Float.parseFloat(valueStr.trim().replace(',', '.'));
+                if (!Float.isFinite(value)) throw new NumberFormatException();
 
                 // Clamp to min/max
                 if (value < mMin) {

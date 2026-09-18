@@ -323,12 +323,15 @@ public class SettingsManager {
      */
     public String getString(String scope, PreferenceKeys.Key key, String defaultValue) {
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        return preferences.getString(key.mValue, defaultValue);
+        return getString(scope, key.mValue, defaultValue);
     }
 
     public String getString(String scope, String key, String defaultValue) {
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        return preferences.getString(key, defaultValue);
+        Object value = preferences.getAll().get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof Boolean) return (Boolean)value ? "1" : "0";
+        return value.toString();
     }
 
     public Set<String> getStringSet(String scope, PreferenceKeys.Key key, Set<String> defaultValue) {
@@ -359,7 +362,7 @@ public class SettingsManager {
     public Integer getInteger(String scope, PreferenceKeys.Key key, Integer defaultValue) {
         String defaultValueString = Integer.toString(defaultValue);
         String value = getString(scope, key, defaultValueString);
-        return Integer.parseInt(value);
+        return (int) PreferenceNumber.read(value, defaultValue);
     }
 
     /**
@@ -377,7 +380,7 @@ public class SettingsManager {
     public Float getFloat(String scope, PreferenceKeys.Key key, Float defaultValue) {
         String defaultValueString = Float.toString(defaultValue);
         String value = getString(scope, key, defaultValueString);
-        return Float.parseFloat(value);
+        return (float) PreferenceNumber.read(value, defaultValue);
     }
 
     /**
@@ -407,21 +410,7 @@ public class SettingsManager {
         // getString() throws ClassCastException, which aborted the whole capture.
         // Accept both representations instead of assuming one.
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        Object raw = preferences.getAll().get(key);
-        if (raw instanceof Boolean) {
-            return (Boolean) raw;
-        }
-        if (raw instanceof String) {
-            try {
-                return Integer.parseInt((String) raw) != 0;
-            } catch (NumberFormatException e) {
-                return Boolean.parseBoolean((String) raw);
-            }
-        }
-        if (raw instanceof Integer) {
-            return ((Integer) raw) != 0;
-        }
-        return defaultValue;
+        return PreferenceNumber.bool(preferences.getAll().get(key), defaultValue);
     }
 
     /**

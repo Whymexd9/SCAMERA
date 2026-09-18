@@ -58,7 +58,7 @@ public abstract class ManualModel<T extends Comparable<? super T>> implements Kn
     }
 
     public void setAutoTxt() {
-        fireValueChangedEvent(autoModel.text);
+        fireValueChangedEvent(autoModel == null ? context.getString(R.string.manual_mode_auto) : autoModel.text);
     }
 
     private void fireValueChangedEvent(final String txt) {
@@ -116,7 +116,7 @@ public abstract class ManualModel<T extends Comparable<? super T>> implements Kn
     @Override
     public void onSelectedKnobItemChanged(KnobView knobView, KnobItemInfo knobItemInfo, final KnobItemInfo knobItemInfo2) {
         Log.d(ManualModel.class.getSimpleName(), "onSelectedKnobItemChanged");
-        vibrator.vibrate(tick);
+        if (vibrator != null) vibrator.vibrate(tick);
         //vibrator.cancel();
         if (knobItemInfo == knobItemInfo2)
             return;
@@ -129,7 +129,7 @@ public abstract class ManualModel<T extends Comparable<? super T>> implements Kn
     }
 
     public void resetModel() {
-        onSelectedKnobItemChanged(null, null, autoModel);
+        if (autoModel != null) onSelectedKnobItemChanged(null, null, autoModel);
     }
 
     public abstract void onSelectedKnobItemChanged(KnobItemInfo knobItemInfo2);

@@ -199,7 +199,7 @@ public class PreferenceKeys {
     }
 
     private static String getAcesString(String str, String str2) {
-        return preferenceKeys.settingsManager.getString("default_scope", str, str2);
+        return SettingsNumericRules.normalized(str, preferenceKeys.settingsManager.getString("default_scope", str, str2), str2);
     }
 
     public static float getAcesSurround() {
@@ -229,6 +229,8 @@ public class PreferenceKeys {
     static {
         COMMON_KEYS.add(Key.CAMERA_ID.mValue);
         COMMON_KEYS.add(Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
+        COMMON_KEYS.add("settings_audit_schema");
+        COMMON_KEYS.add(Key.FOLDERS_LIST.mValue);
         COMMON_KEYS.add(Key.KEY_SHOW_AF_DATA.mValue);
         COMMON_KEYS.add(Key.KEY_THEME_ACCENT.mValue);
         COMMON_KEYS.add(Key.KEY_THEME.mValue);
@@ -349,16 +351,17 @@ public class PreferenceKeys {
         if (alreadySavedJSON == null || (map = (HashMap) GSON.fromJson(alreadySavedJSON, HashMap.class)) == null) {
             return;
         }
+        android.content.SharedPreferences.Editor editor = settingsManager.getDefaultPreferences().edit();
         for (Map.Entry<String, ?> e : map.entrySet()) {
             String key = e.getKey();
-            if (key == null || (!key.startsWith("pref_tunable_") && !key.startsWith("pref_sensorconfig_"))) {
-                Object value = e.getValue();
-                if (value instanceof Boolean) {
-                    value = ((Boolean) value).booleanValue() ? "1" : "0";
-                }
-                settingsManager.set("default_scope", key, value.toString());
-            }
+            Object value = e.getValue();
+            if (key == null || value == null || COMMON_KEYS.contains(key)
+                    || key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_")) continue;
+            // Android switches require a Boolean; numeric readers also accept legacy strings.
+            if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
+            else if (value instanceof String || value instanceof Number) editor.putString(key, value.toString());
         }
+        editor.apply();
     }
 
     public static void setActivityTheme(Activity activity) {
@@ -562,6 +565,51 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
     }
 
+    /** Separate six-frame experimental HP9 path, before ordinary RAW fusion. */
+    public static boolean isHexQuadCaptureEnabled() {
+        return isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
+    }
+
+    /** Hybrid reconstruction weights; not exposed parameters of the closed neural model. */
+    public static float getHexQuadLuma() {
+        return RawTherapeeSettings.number("hexquad_luma",50,0,100);
+    }
+
+    public static float getHexQuadChroma() {
+        return RawTherapeeSettings.number("hexquad_chroma",100,0,100);
+    }
+
+    public static float getHexQuadExposureEv() {
+        return RawTherapeeSettings.number("hexquad_exposure_ev",0,-2,2);
+    }
+
+    public static int getHexQuadModelScale() {
+        return "1".equals(preferenceKeys.settingsManager.getString("default_scope","hexquad_model","2"))?1:2;
+    }
+
+    public static boolean isHexQuadAutoIso() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_auto_iso",false);
+    }
+
+    public static HexQuadOptions getHexQuadOptions(int iso) {
+        return new HexQuadOptions(iso,getHexQuadModelScale(),
+                preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_full_resolution",false),
+                RawTherapeeSettings.number("hexquad_noise_overall",1,.5f,2),
+                RawTherapeeSettings.number("hexquad_noise_photon",1,.5f,2),
+                RawTherapeeSettings.number("hexquad_noise_readout",1,.5f,2),
+                getHexQuadLuma(),getHexQuadChroma(),isHexQuadAutoIso(),
+                RawTherapeeSettings.number("hexquad_iso_low_luma",35,0,100),
+                RawTherapeeSettings.number("hexquad_iso_low_chroma",85,0,100),
+                RawTherapeeSettings.number("hexquad_iso_high_luma",70,0,100),
+                RawTherapeeSettings.number("hexquad_iso_high_chroma",100,0,100),
+                RawTherapeeSettings.number("hexquad_texture",0,0,100),
+                true /* Unified hybrid; legacy hexquad_compute selection is no longer used. */);
+    }
+
+    public static boolean isHexQuadPostDenoiseEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_post_denoise",false);
+    }
+
     public static int getRemosaicProfile() {
         return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
     }
@@ -745,11 +793,15 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    public static boolean isSensorSharpeningEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_sensor_sharpening_enabled", true);
+    }
+
     private static float mfsrFloat(Key key, float fallback) {
         try {
             String v = preferenceKeys.settingsManager.getString(
                     "default_scope", key, String.valueOf(fallback));
-            return Float.parseFloat(v.trim());
+            return (float) SettingsNumericRules.value(key.mValue, v, fallback);
         } catch (Exception e) {
             return fallback;
         }
@@ -1077,7 +1129,7 @@ public class PreferenceKeys {
     }
 
     public static int getAlignMethodValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ALIGN_METHOD).intValue();
+        return 1; // ESD4D produces Bayer RAW; the removed legacy RGB-layout mode is unsupported.
     }
 
     public static int getColorMethodValue() {

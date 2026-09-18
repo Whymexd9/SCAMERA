@@ -68,7 +68,7 @@ public class TunableSettingsManager {
                     Tunable annotation = field.getAnnotation(Tunable.class);
                     if (annotation == null) continue;
                     
-                    String prefKey = "pref_tunable_" + className.toLowerCase() + "_" + field.getName().toLowerCase();
+                    String prefKey = "pref_tunable_" + className.toLowerCase(java.util.Locale.ROOT) + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
                     
                     // Remove the persisted value instead of setting to default
                     // This ensures the annotation's current default is always used
@@ -116,7 +116,7 @@ public class TunableSettingsManager {
                     Tunable annotation = field.getAnnotation(Tunable.class);
                     if (annotation == null) continue;
                     
-                    String prefKey = "pref_tunable_" + className.toLowerCase() + "_" + field.getName().toLowerCase();
+                    String prefKey = "pref_tunable_" + className.toLowerCase(java.util.Locale.ROOT) + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
                     String settingKey = className + "." + field.getName();
                     
                     // Get default value from annotation
@@ -144,21 +144,21 @@ public class TunableSettingsManager {
                     } else {
                         // Auto-detect if float based on step value
                         float step = annotation.step();
-                        boolean isFloat = (step != Math.floor(step));
+                        boolean isFloat = PreferenceNumber.floating(fieldType);
 
                         // Get current value as native type
                         float currentValue;
                         boolean hasValue;
                         if (isFloat) {
                             hasValue = prefs.contains(prefKey);
-                            currentValue = prefs.getFloat(prefKey, defaultValue);
+                            currentValue = (float) PreferenceNumber.read(prefs.getAll().get(prefKey), defaultValue);
                         } else {
                             hasValue = prefs.contains(prefKey);
-                            currentValue = (float) prefs.getInt(prefKey, (int) defaultValue);
+                            currentValue = (float) PreferenceNumber.read(prefs.getAll().get(prefKey), defaultValue);
                         }
 
                         // Only export if value differs from default
-                        if (hasValue && Math.abs(currentValue - defaultValue) > 0.0001f) {
+                        if (hasValue && Float.compare(currentValue, defaultValue) != 0) {
                             tunableSettings.put(settingKey, currentValue);
                             Log.d(TAG, "Exporting tunable: " + settingKey + " = " + currentValue +
                                 " (default: " + defaultValue + ")");
@@ -204,7 +204,7 @@ public class TunableSettingsManager {
             
             String className = parts[0];
             String fieldName = parts[1];
-            String prefKey = "pref_tunable_" + className.toLowerCase() + "_" + fieldName.toLowerCase();
+            String prefKey = "pref_tunable_" + className.toLowerCase(java.util.Locale.ROOT) + "_" + fieldName.toLowerCase(java.util.Locale.ROOT);
             
             // Find the field to determine if it's float or int
             Class<?> targetClass = findRegisteredClass(className);
@@ -229,13 +229,13 @@ public class TunableSettingsManager {
                             }
                         } else {
                             float step = annotation.step();
-                            boolean isFloat = (step != Math.floor(step));
+                            boolean isFloat = PreferenceNumber.floating(fieldType);
 
                             // Store as native type
                             if (isFloat) {
-                                editor.putFloat(prefKey, ((Number) value).floatValue());
+                                editor.putFloat(prefKey, (float) PreferenceNumber.read(value, annotation.defaultValue()));
                             } else {
-                                editor.putInt(prefKey, ((Number) value).intValue());
+                                editor.putInt(prefKey, (int) PreferenceNumber.read(value, annotation.defaultValue()));
                             }
                         }
                         importedCount++;

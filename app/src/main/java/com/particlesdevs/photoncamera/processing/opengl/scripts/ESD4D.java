@@ -331,8 +331,6 @@ public class ESD4D extends GLOneScript {
     FlowNetAlignment flowNetAlignment;
     @Tunable(title = "HotPixels detect threshold", category = "Merge", description = "Higher multiplier detects less hotpixels", min = 0.5f, max = 5.0f, step = 0.1f, defaultValue = 1.5f)
     double detectThr;
-
-    @Tunable(title = "Enable Adaptive Noise Model", category = "Merge", description = "Creates noise multiplier based on stdev", min = 0, max = 1, step = 1, defaultValue = 1)
     boolean enableAdaptiveNoise;
 
     @Tunable(title = "Enable Alignment", category = "Merge", description = "Disable to test merging motion filtering without alignment", min = 0, max = 1, step = 1, defaultValue = 1)
@@ -341,10 +339,10 @@ public class ESD4D extends GLOneScript {
     @Tunable(title = "FlowNet optical flow alignment", category = "Merge", description = "Align burst frames with the FlowNet dense optical flow model (ncnn) instead of the block pyramid", min = 0, max = 1, step = 1, defaultValue = 0)
     boolean useNcnnFlow;
 
-    @Tunable(title = "Optical flow refinement", category = "Merge", description = "Brute-force half-texel diagonal refinement on the green quincunx in the merge combine pass (exact sample pairs, no interpolation, immune to brightness offsets between frames); the winning sub-texel offset warps the final mix tap - greens exact on the quincunx, R/B phase-dithered so the accumulator averages their chroma alias (moire) away across frames; comb weights stay full vec4 over exact whole-texel taps so the dither never modulates them (no temporal blink, chroma excess still steers the weight for demosaicing)", min = 0, max = 1, step = 1, defaultValue = 1)
+    @Tunable(title = "Optical flow refinement", category = "Merge", description = "Discrete Lucas–Kanade refinement with noise and matching gates; whole colour periods only", min = 0, max = 1, step = 1, defaultValue = 1)
     boolean enableFlowRefinement;
 
-    @Tunable(title = "Flow refinement max shift", category = "Merge", description = "Unused by the brute-force diagonal refinement (candidates are fixed at half a texel); kept for settings compatibility", min = 1.0f, max = 4.0f, step = 1.0f, defaultValue = 2.0f)
+    @Tunable(title = "Flow refinement max shift", category = "Merge", description = "Maximum refinement offset in packed Bayer texels; 0 disables refinement. Mosaic colour phase is preserved.", min = 0.0f, max = 4.0f, step = 1.0f, defaultValue = 2.0f)
     float flowRefineMaxDisp;
 
     @Tunable(title = "Enable Adaptive Noise Storage", category = "Merge", description = "Persist fitted noise model into the dynamic multisample store", min = 0, max = 1, step = 1, defaultValue = 1)
@@ -367,8 +365,7 @@ public class ESD4D extends GLOneScript {
 
     @Tunable(title = "Noise fit gate", category = "Merge", description = "Adaptive per-brightness gate: pass 2 keeps only histogram bins whose implied variance is within this multiple of the pass-1 fitted noise (the per-brightness lower part; rejects texture and saturated bins). 0 disables", min = 0.0f, max = 5.0f, step = 0.25f, defaultValue = 2.0f)
     float noiseFitGateMpy;
-
-    @Tunable(title = "Read noise floor multiplier", category = "Merge", description = "Multiplier on the analytic OPlace read-noise floor applied to fitted O; the legacy 3.0 compensated texture leakage that the noise blend now removes", min = 0.5f, max = 4.0f, step = 0.25f, defaultValue = 1.0f)
+    // Internal value; the user-facing control is defined at its actual consumer.
     float noiseOFloorMpy;
 
     @Tunable(title = "Fit O correction", category = "Merge", description = "Legacy fitO += 3/8*fitS^2 correction that compensated the under-rescaled fit; keep off with the calibrated blend", min = 0, max = 1, step = 1, defaultValue = 0)
@@ -781,7 +778,7 @@ public class ESD4D extends GLOneScript {
         //glUtils.Result(base.mSize, "noiseInput", buff.byteBuffer);
 
         double adaptiveNMpy = 1.0;
-        if (enableAdaptiveNoise) {
+        if (PreferenceKeys.isDynamicNoiseModelEnabled()) {
             // 2D histogram: (brightness_bin * NUM_VARIANCE_BINS + variance_bin) -> count
             // Model: variance = NoiseS * brightness + NoiseO  =>  sigma = sqrt(NoiseS*b + NoiseO)
             final int numBrightnessBins = 64;
@@ -1028,12 +1025,9 @@ public class ESD4D extends GLOneScript {
         Log.d("Alignment", "alignment pipeline size: " + alignmentOutputSize.x + " " + alignmentOutputSize.y);
         int requestedBackend = Math.max(0, Math.min(3,
                 PreferenceKeys.getProcessingBackendValue()));
-        // An explicit accelerator selection must exercise the same ML path;
-        // previously FlowNet remained disabled by its hidden tunable, so only
-        // the tiny KernelNet changed backend and total processing time looked
-        // identical. Auto keeps the tuned/default behavior.
-        boolean explicitMlBackend = requestedBackend != 0;
-        useNcnnFlow = enableAlignment && (useNcnnFlow || explicitMlBackend);
+        // Algorithm and accelerator are independent settings. A selected device
+        // must not silently override the explicit FlowNet switch.
+        useNcnnFlow = enableAlignment && useNcnnFlow;
         // FlowNet was trained for similarly exposed pairs. On a strong HDR
         // bracket its low-resolution field can jump by whole model tiles,
         // producing the visible rectangular fragments reported by users.
@@ -1310,7 +1304,8 @@ public class ESD4D extends GLOneScript {
             glProg.setTexture("kernelsMap", kernelsMap);
             // Optical flow refinement: brute-force diagonal candidate wins
             // only when it beats the zero offset beyond the shader's gates.
-            glProg.setVar("enableFlow", enableFlowRefinement ? 1 : 0);
+            glProg.setVar("enableFlow", enableFlowRefinement && flowRefineMaxDisp > 0f ? 1 : 0);
+            glProg.setVar("flowMaxDisp", flowRefineMaxDisp);
             glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
             glProg.setVar("mosaicPeriod", mosaicPeriod);
             glProg.setVar("rawMfsrStrength", rawMfsrForFrame ? 0.18f : 0.0f);

@@ -125,11 +125,39 @@ android {
     }
     testOptions {
         unitTests.returnDefaultValues = true
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            testLogging { exceptionFormat = "full" }
+            jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED', '--add-opens=java.base/java.util=ALL-UNNAMED',
+                    '--add-opens=java.base/java.io=ALL-UNNAMED', '--add-opens=java.base/java.net=ALL-UNNAMED',
+                    '--add-opens=java.base/java.security=ALL-UNNAMED', '--add-opens=java.base/java.text=ALL-UNNAMED',
+                    '--add-opens=java.base/jdk.internal.access=ALL-UNNAMED', '--add-opens=java.desktop/java.awt.font=ALL-UNNAMED'
+        }
     }
 }
-
-
-
+// This must be an executable launched with exec(), never a JNI shared object:
+// app_process/System.load creates an ART namespace that excludes FastRPC deps.
+def neuralAssets = layout.buildDirectory.dir('generated/vivoNeuralAssets')
+def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
+    inputs.files(fileTree('src/main/cpp') { include 'vivo-neural-*', 'vivo-hexquad-*' })
+    inputs.property('ndkVersion', '27.2.12479018')
+    outputs.file(neuralAssets.map { it.file('vivo-neural/arm64-v8a/vivo-neural-worker') })
+    doFirst {
+        def host = System.getProperty('os.name').toLowerCase()
+        def tag = host.contains('mac') ? 'darwin-x86_64' : 'linux-x86_64'
+        if (host.contains('windows')) throw new GradleException('Native worker build requires Linux or macOS')
+        def clang = new File(android.sdkDirectory, "ndk/27.2.12479018/toolchains/llvm/prebuilt/${tag}/bin/aarch64-linux-android26-clang++")
+        def output = neuralAssets.get().file('vivo-neural/arm64-v8a/vivo-neural-worker').asFile
+        output.parentFile.mkdirs()
+        commandLine clang.absolutePath, '-std=c++14', '-O2', '-Wall', '-Wextra',
+                '-pthread', '-fPIE', '-pie', '-static-libstdc++', '-Wl,-z,max-page-size=16384',
+                file('src/main/cpp/vivo-neural-worker.cpp').absolutePath, '-ldl', '-lEGL', '-lGLESv3', '-o', output.absolutePath
+    }
+}
+android.sourceSets.main.assets.srcDir(neuralAssets)
+tasks.configureEach {
+    if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn(buildVivoNeuralWorker)
+}
 
 dependencies {
 
@@ -169,6 +197,7 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.23.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
     androidTestImplementation 'org.testng:testng:7.12.0'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test:core:1.7.0'

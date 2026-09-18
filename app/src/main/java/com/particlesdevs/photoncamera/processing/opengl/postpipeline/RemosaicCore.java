@@ -73,7 +73,7 @@ public class RemosaicCore {
     public GLTexture run(GLTexture raw, Point rawSize, int cfaPattern, float black, float white,
                          boolean verbose) {
         if (activeBackend == null) activeBackend = PreferenceKeys.getRemosaicBackend();
-        if ("tetra_detail".equals(activeBackend)) {
+        if ("tetra_detail".equals(activeBackend) || "vivo_neural".equals(activeBackend)) {
             int[] phase = PreferenceKeys.getRemosaicPhase();
             if (PreferenceKeys.getRemosaicBlockSize() != 4 || rawSize.x < 8 || rawSize.y < 8
                     || rawSize.x % 8 != 0 || rawSize.y % 8 != 0) {
@@ -86,8 +86,11 @@ public class RemosaicCore {
             if (sharedGains == null) sharedGains = measureGains(raw, rawSize, 4, phase, quad, black, white);
             if (detailMap == null) detailMap = PreferenceKeys.isTetraResponseCorrection()
                     ? measureDetailMap(raw, rawSize, phase, black, white) : new TetraResponseProfile.GainMap();
-            if (verbose) Log.d(Name, "backend=Tetra Detail v2 block=4 phase=" + phase[0] + "," + phase[1]
+            if (verbose) Log.d(Name, "backend=" + activeBackend + " block=4 phase=" + phase[0] + "," + phase[1]
                     + " spatial response=" + java.util.Arrays.toString(detailMap.spatial));
+            if ("vivo_neural".equals(activeBackend)) {
+                return VivoNeuralRemosaic.run(glProg, raw, rawSize, phase, quad, black, white, sharedGains, detailMap);
+            }
             return TetraDetailRemosaic.run(glProg, raw, rawSize, phase, quad, black, white, sharedGains, detailMap);
         }
         if (!"scamera".equals(activeBackend)) {

@@ -33,6 +33,8 @@ public class ViewObserver implements Observer {
     private final TextView expOption;
     private final TextView evOption;
     private final TextView focusOption;
+    private final TextView wbOption;
+    private final View knobContainer;
     private final List<TextView> textViews;
     private final OrientationEventListener orientationEventListener;
     private final LinearLayout buttonsContainer;
@@ -48,6 +50,7 @@ public class ViewObserver implements Observer {
         manualMode = findViewById(R.id.manual_mode);
         buttonsContainer = findViewById(R.id.buttons_container);
         knobView = findViewById(R.id.knobView);
+        knobContainer = findViewById(R.id.knobViewContainer);
         linearScaleView = findViewById(R.id.linearScaleView);
         useLinearScale = android.preference.PreferenceManager
                 .getDefaultSharedPreferences(activity.getApplicationContext())
@@ -79,6 +82,7 @@ public class ViewObserver implements Observer {
                             if (currentModel != null) {
                                 currentModel.resetModel();
                                 lastScaleItem = currentModel.getCurrentInfo();
+                                syncScale();
                             }
                         }
 
@@ -96,7 +100,8 @@ public class ViewObserver implements Observer {
         expOption = findViewById(R.id.exposure_option_tv);
         evOption = findViewById(R.id.ev_option_tv);
         focusOption = findViewById(R.id.focus_option_tv);
-        textViews = Arrays.asList(isoOption, evOption, expOption, focusOption);
+        wbOption = findViewById(R.id.wb_option_tv);
+        textViews = Arrays.asList(isoOption, evOption, expOption, wbOption, focusOption);
         orientationEventListener = new OrientationEventListener(activity.getBaseContext()) {
             private static final int ROT_DUR = 350;
             private int prevOrientation = OrientationEventListener.ORIENTATION_UNKNOWN;
@@ -133,6 +138,17 @@ public class ViewObserver implements Observer {
         };
     }
 
+    private void syncScale() {
+        if (currentModel != null && linearScaleView != null) {
+            lastScaleItem = currentModel.getCurrentInfo();
+            linearScaleView.setSelectedItem(lastScaleItem);
+        }
+    }
+    public void setWhiteBalanceSupported(boolean supported) {
+        wbOption.setEnabled(supported);
+        wbOption.setContentDescription(supported ? "Баланс белого" : "Ручной баланс белого недоступен для этой камеры");
+    }
+
     public void enableOrientationListener() {
         if (orientationEventListener != null && orientationEventListener.canDetectOrientation()) {
             orientationEventListener.enable();
@@ -160,6 +176,7 @@ public class ViewObserver implements Observer {
                         Binding.resetKnob(knobView, knobModel.isKnobResetCalled());
                         break;
                     case VISIBILITY:
+                        knobContainer.setVisibility(knobModel.isKnobVisible() ? View.VISIBLE : View.GONE);
                         // Only one control is ever visible. The wheel keeps its
                         // own visibility logic; the scale mirrors it.
                         Binding.setKnobVisibility(knobView, !useLinearScale && knobModel.isKnobVisible());
@@ -177,6 +194,7 @@ public class ViewObserver implements Observer {
                                     items = currentModel.getKnobInfoList();
                             int selected = items == null ? 0
                                     : Math.max(0, items.indexOf(currentModel.getCurrentInfo()));
+                            linearScaleView.setTemperatureMode(currentModel instanceof com.particlesdevs.photoncamera.circularbarlib.control.models.WhiteBalanceModel);
                             linearScaleView.setItems(items, selected);
                             // New parameter, new baseline: otherwise the first drag
                             // on the next parameter is compared against the previous
@@ -190,17 +208,26 @@ public class ViewObserver implements Observer {
                 ManualModeModel manualModeModel = (ManualModeModel) o;
                 switch ((ManualModeModel.ManualModelFields) arg) {
                     case EV_TEXT:
-                        evOption.setText(manualModeModel.getEvText());
+                        evOption.setContentDescription(evOption.getText() + ": " + manualModeModel.getEvText());
+                        syncScale();
                         break;
                     case EXP_TEXT:
-                        expOption.setText(manualModeModel.getExposureText());
+                        expOption.setContentDescription(expOption.getText() + ": " + manualModeModel.getExposureText());
+                        syncScale();
                         break;
                     case ISO_TEXT:
-                        isoOption.setText(manualModeModel.getIsoText());
+                        isoOption.setContentDescription(isoOption.getText() + ": " + manualModeModel.getIsoText());
+                        syncScale();
                         break;
                     case FOCUS_TEXT:
-                        focusOption.setText(manualModeModel.getFocusText());
+                        focusOption.setContentDescription(focusOption.getText() + ": " + manualModeModel.getFocusText());
+                        syncScale();
                         break;
+                    case WB_TEXT:
+                        wbOption.setContentDescription("Баланс белого: " + manualModeModel.getWbText());
+                        syncScale(); break;
+                    case WB_LISTENER:
+                        wbOption.setOnClickListener(manualModeModel.getWbTextClicked()); break;
                     case EV_LISTENER:
                         evOption.setOnClickListener(manualModeModel.getEvTextClicked());
                         break;

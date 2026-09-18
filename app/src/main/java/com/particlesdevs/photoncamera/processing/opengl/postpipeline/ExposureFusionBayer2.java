@@ -358,10 +358,6 @@ public class ExposureFusionBayer2 extends Node {
     GLTexture interpolatedCurve;
     GLTexture shadowMap;
     
-    @Tunable(title = "Enable", category = "Exposure Fusion", defaultValue = 0, min = 0, max = 1, step = 1,
-            description = "Enable Exposure Fusion Post Processing")
-    boolean enable;
-    
     @Tunable(
         title = "Use Symmetric Exposure Fork",
         description = "Use symmetric exposure fork calculation",
@@ -386,11 +382,10 @@ public class ExposureFusionBayer2 extends Node {
     
     @Override
     public void Run() {
-        if (!enable) {
-            WorkingTexture = previousNode.WorkingTexture;
-            glProg.closed = true;
-            return;
-        }
+        // PostPipeline only schedules this node when Tone Pipeline is Fusion.
+        // A second, default-false tunable used to silently override that choice.
+        // Ignore any persisted value of the removed enable key.
+        Log.d(Name, "Exposure Fusion active: selected by Tone Pipeline");
         toneCurveX = new float[curvePointsCount];
         toneCurveY = new float[curvePointsCount];
         shadowCurveX = new float[curvePointsCount];

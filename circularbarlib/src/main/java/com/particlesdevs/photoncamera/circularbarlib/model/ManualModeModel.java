@@ -15,6 +15,12 @@ import java.util.Observable;
  * Authors - Vibhor, KillerInk
  */
 public class ManualModeModel extends Observable {
+    private String wbText;
+    private View.OnClickListener wbTextClicked;
+    public String getWbText(){return wbText;}
+    public void setWbText(String text){wbText=text;notifyObservers(ManualModelFields.WB_TEXT);}
+    public View.OnClickListener getWbTextClicked(){return wbTextClicked;}
+    public void setWbTextClicked(View.OnClickListener listener){wbTextClicked=listener;notifyObservers(ManualModelFields.WB_LISTENER);}
     private String focusText;
     private String exposureText;
     private String isoText;
@@ -124,6 +130,6 @@ public class ManualModeModel extends Observable {
     }
 
     public enum ManualModelFields {
-        FOCUS_TEXT, EXP_TEXT, ISO_TEXT, EV_TEXT, PANEL_VISIBILITY, SELECTED_TV, FOCUS_LISTENER, EXP_LISTENER, EV_LISTENER, ISO_LISTENER
+        WB_TEXT, WB_LISTENER, FOCUS_TEXT, EXP_TEXT, ISO_TEXT, EV_TEXT, PANEL_VISIBILITY, SELECTED_TV, FOCUS_LISTENER, EXP_LISTENER, EV_LISTENER, ISO_LISTENER
     }
 }

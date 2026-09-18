@@ -288,9 +288,24 @@ public class CameraActivity extends BaseActivity {
             super.onBackPressed();
     }
 
+    private String appliedThemeSignature;
+    private String themeSignature() {
+        com.particlesdevs.photoncamera.settings.SettingsManager sm=PhotonCamera.getSettingsManagerStatic();
+        return sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME)+"/"+
+                sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME_ACCENT)+"/"+
+                sm.getBoolean("default_scope",PreferenceKeys.Key.KEY_SHOW_GRADIENT);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        String signature=themeSignature();
+        if(appliedThemeSignature!=null && !appliedThemeSignature.equals(signature)) {
+            appliedThemeSignature=signature;
+            recreate();
+            return;
+        }
+        appliedThemeSignature=signature;
         // Apply hideSystemUI in onResume to prevent flickering when returning to the camera
         hideSystemUI();
         // Ensure portrait orientation is enforced every time activity resumes
