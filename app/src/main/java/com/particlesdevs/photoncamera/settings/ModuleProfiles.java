@@ -74,6 +74,7 @@ public final class ModuleProfiles {
     }
     public synchronized void activate(String id){if(!PreferenceKeys.isPerLensSettingsOn()||id.equals(active))return;save(active);active=id;restore(snapshotStored(id));save(id);meta.edit().putString("active",id).apply();}
     public synchronized void copy(String source, Collection<String> targets, Set<String> keys){
+        ModuleSensorSettings.copy(source,targets,keys);
         Map<String,?> src=snapshot(source);
         for(String target:targets){if(target.equals(source))continue;Map<String,Object> dst=new HashMap<>(snapshot(target));
             for(String key:keys)if(isLocal(key)){if(src.containsKey(key))dst.put(key,src.get(key));else dst.remove(key);}

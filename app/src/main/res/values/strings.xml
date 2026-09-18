@@ -138,8 +138,8 @@
     <string name="fetch_configurations">Fetch Configurations</string>
     <string name="fetch_configurations_summary">Download device-specific tuning from the network and update cached settings</string>
     <string name="advanced">Advanced</string>
-    <string name="sensor_configurations">Sensor Configurations</string>
-    <string name="sensor_configurations_summary">Per-sensor tuning parameters (physical camera id)</string>
+    <string name="sensor_configurations">Настройки сенсоров по модулям</string>
+    <string name="sensor_configurations_summary">Уровни RAW, экспозиция, стабилизация и сессия каждого модуля</string>
     <string name="pref_category_device_key_title">Device</string>
     <string name="this_device">Your Device - %1$s</string>
     <string name="sync_on">Sync. On</string>

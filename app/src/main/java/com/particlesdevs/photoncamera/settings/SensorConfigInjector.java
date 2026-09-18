@@ -46,7 +46,7 @@ public class SensorConfigInjector {
             if (annotation == null) continue;
 
             field.setAccessible(true);
-            String prefKey = "pref_sensorconfig_" + sensorId + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
+            String prefKey = ModuleSensorSettings.prefix(ModuleSensorSettings.runtimeScope(sensorId)) + field.getName().toLowerCase(java.util.Locale.ROOT);
             String sensorKey = className + "." + field.getName() + " [" + sensorId + "]";
 
             try {

@@ -261,4 +261,49 @@ public class SettingsMenuTest {
         }
     }
 
+
+    @Test public void sensorOverridesMigrateToIndependentSlotsAndResetDoesNotRestoreLegacy(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","3")
+            .putString("module_active","back0").putString("pref_sensorconfig_3_blackleveloverride","64").commit();
+        ModuleSensorSettings.ensure("back0");ModuleSensorSettings.ensure("back1");
+        assertEquals("64",prefs.getString("pref_sensorconfig_back0_blackleveloverride",""));
+        prefs.edit().putString("pref_sensorconfig_back0_blackleveloverride","80").commit();
+        assertEquals("64",prefs.getString("pref_sensorconfig_back1_blackleveloverride",""));
+        assertEquals("back0",ModuleSensorSettings.runtimeScope("3"));
+        assertEquals("4",ModuleSensorSettings.runtimeScope("4"));
+        ModuleSensorSettings.reset("back0");ModuleSensorSettings.ensure("back0");
+        assertFalse(prefs.contains("pref_sensorconfig_back0_blackleveloverride"));
+        assertEquals("64",prefs.getString("pref_sensorconfig_back1_blackleveloverride",""));
+    }
+    @Test public void sensorCopyMapsSelectedFieldsToTargetModule(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5").commit();
+        ModuleSensorSettings.ensure("back0");ModuleSensorSettings.ensure("back1");
+        prefs.edit().putString("pref_sensorconfig_back0_blackleveloverride","70")
+            .putString("pref_sensorconfig_back1_blackleveloverride","10")
+            .putString("pref_sensorconfig_back1_sessiontype","20").commit();
+        ModuleSensorSettings.copy("back0",Arrays.asList("back1"),new HashSet<>(Arrays.asList("sensor_copy_blackleveloverride")));
+        assertEquals("70",prefs.getString("pref_sensorconfig_back1_blackleveloverride",""));
+        assertEquals("20",prefs.getString("pref_sensorconfig_back1_sessiontype",""));
+    }
+    @Test public void sensorEditorStartsAtActiveModuleAndDoesNotSwitchCamera(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
+            .putString("module_active","back1").commit();
+        PreferenceScreen screen=inflate();SensorConfigPreferenceGenerator.generatePreferences(context,screen);
+        ListPreference selector=screen.findPreference("pref_sensor_config_selector");
+        assertEquals("back1",selector.getValue());
+        selector.getOnPreferenceChangeListener().onPreferenceChange(selector,"back0");
+        assertEquals("back1",ModuleRegistry.active());
+        assertTrue(screen.findPreference("pref_category_sensor_back0").isVisible());
+        assertFalse(screen.findPreference("pref_category_sensor_back1").isVisible());
+    }
+    @Test public void sharedPhotoExposureCurveIsFiniteAndRespondsToTarget(){
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve model=new com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve();
+        int[][] hist=new int[3][256];for(int c=0;c<3;c++){hist[c][20]=900;hist[c][240]=100;}
+        TunableInjector.inject(model);
+        float[] first=model.calculateCurve(hist,new float[]{1,1,1},0,0);
+        assertNotNull(first);for(float v:first)assertTrue(Float.isFinite(v)&&v>=0&&v<=1);
+        prefs.edit().putFloat("pref_tunable_autoexposurecurve_target",180).commit();TunableInjector.inject(model);
+        float[] brighter=model.calculateCurve(hist,new float[]{1,1,1},0,0);
+        assertTrue(brighter[200]>first[200]);
+    }
 }

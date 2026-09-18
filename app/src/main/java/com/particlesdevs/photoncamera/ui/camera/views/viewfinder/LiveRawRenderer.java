@@ -14,7 +14,18 @@ import java.util.HashMap;
 /** RAW development adapted from libvf_demosaic, using the preview's own GL context.
  * One context owns upload and draw: no cross-context HardwareBuffer race or readback. */
 final class LiveRawRenderer {
-    private int program, rawTex, shadingTex, lutTex, width, height;
+    private int program, rawTex, shadingTex, lutTex, curveTex, width, height;
+    private String photoDefines;
+    private long settingsCheck;
+    private final com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve photoMeter=new com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve();
+    private FloatBuffer curveBuffer;
+    private float[] response;
+    private float whitePoint=1;
+    private void deleteResources(){
+        if(program!=0)GLES20.glDeleteProgram(program);
+        GLES20.glDeleteTextures(4,new int[]{rawTex,shadingTex,lutTex,curveTex},0);
+        program=rawTex=shadingTex=lutTex=curveTex=width=height=0;uploadedVersion=-1;uniforms.clear();
+    }
     private int uploadedVersion=-1, frameSession=-1, draws;
     private boolean failed;
     private final int[] viewport=new int[4];
@@ -22,7 +33,7 @@ final class LiveRawRenderer {
     private final HashMap<String,Integer> uniforms=new HashMap<>();
     private final LiveRawMeter meter=new LiveRawMeter();
     void onContextCreated() {
-        program=rawTex=shadingTex=lutTex=width=height=0;
+        program=rawTex=shadingTex=lutTex=curveTex=width=height=0;photoDefines=null;response=null;
         uploadedVersion=frameSession=-1; failed=false; uniforms.clear(); meter.reset();
     }
     private int loc(String name) {return uniforms.computeIfAbsent(name,n->GLES20.glGetUniformLocation(program,n));}
@@ -31,9 +42,15 @@ final class LiveRawRenderer {
     boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking) {
         LiveRawFrame.Frame f=LiveRawFrame.acquire();
         if(f==null || System.nanoTime()-f.publishedNanos>500_000_000L)return false;
-        if(frameSession!=f.session){frameSession=f.session;failed=false;uploadedVersion=-1;meter.reset();}
+        if(frameSession!=f.session){frameSession=f.session;failed=false;uploadedVersion=-1;meter.reset();response=null;settingsCheck=0;}
         if(failed)return false;
         try {
+            long now=System.nanoTime();
+            if(photoDefines==null || now-settingsCheck>500_000_000L){
+                String next=PreviewPhotoLook.defines();settingsCheck=now;
+                if(!next.equals(photoDefines)){deleteResources();photoDefines=next;response=null;}
+                com.particlesdevs.photoncamera.settings.TunableInjector.inject(photoMeter);
+            }
             if(program==0 && !init())return false;
             GLES20.glUseProgram(program);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE2);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,rawTex);
@@ -52,10 +69,24 @@ final class LiveRawRenderer {
                 shadingBuffer.clear();shadingBuffer.put(f.shading).flip();
                 GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_RGB16F,f.shadingWidth,f.shadingHeight,0,GLES20.GL_RGB,GLES20.GL_FLOAT,shadingBuffer);
                 if(!check("upload"))return false;
-                meter.update(f); uploadedVersion=f.version;
+                meter.update(f);
+                float[] curve=photoMeter.calculateCurve(meter.photoHistogram,meter.photoExtent,f.noiseS,f.noiseO);
+                if(curve==null){curve=new float[1024];for(int i=0;i<curve.length;i++)curve[i]=i/1023f;}
+                // Temporal smoothing affects preview only; first frame of a module is immediate.
+                if(response==null || !f.autoExposure){response=curve;whitePoint=photoMeter.previewWhitePoint;}
+                else{for(int i=0;i<curve.length;i++)response[i]+=.2f*(curve[i]-response[i]);whitePoint+=.2f*(photoMeter.previewWhitePoint-whitePoint);}
+                if(!f.autoExposure){whitePoint=1;for(int i=0;i<response.length;i++)response[i]=i/1023f;}
+                if(curveBuffer==null)curveBuffer=ByteBuffer.allocateDirect(1024*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+                curveBuffer.clear();curveBuffer.put(response).flip();
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE5);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,curveTex);
+                GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_R16F,1024,1,0,GLES30.GL_RED,GLES20.GL_FLOAT,curveBuffer);
+                if(!check("photo tone response"))return false;
+                uploadedVersion=f.version;
             }
             GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_3D,lutTex);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE5);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,curveTex);
+            integer("photoExposureCurve",5);number("photoWhitePoint",whitePoint);
             integer("sTexture16",2);integer("u_lsc_map",3);integer("u_lut_tex",4);
             integer("width",f.width);integer("height",f.height);integer("bayer_pattern",f.cfaPattern);
             integer("cfa_mode",f.cfaBlock==1?1:0);integer("cfa_block_size",f.cfaBlock);
@@ -65,6 +96,7 @@ final class LiveRawRenderer {
             int ch=Math.min(f.height-top,(int)(f.crop[3]*f.height))/period*period;
             // RAW is in sensor coordinates; match the visible preview aspect without stretching.
             GLES20.glGetIntegerv(GLES20.GL_VIEWPORT,viewport,0);
+            GLES20.glUniform2f(loc("photoViewport"),Math.max(1,viewport[2]),Math.max(1,viewport[3]));
             if(viewport[2]>0 && viewport[3]>0) {
                 boolean quarterTurn=Math.abs(rotation[1])>Math.abs(rotation[0]);
                 float aspect=quarterTurn ? viewport[2]/(float)viewport[3] : viewport[3]/(float)viewport[2];
@@ -116,12 +148,13 @@ final class LiveRawRenderer {
     }
     private boolean init() {
         int v=compile(GLES20.GL_VERTEX_SHADER,PhotonCamera.getAssetLoader().getString("shaders/preview/rawdevelop_vs.glsl"));
-        int f=compile(GLES20.GL_FRAGMENT_SHADER,PhotonCamera.getAssetLoader().getString("shaders/preview/rawdevelop_fs.glsl"));
+        int f=compile(GLES20.GL_FRAGMENT_SHADER,PreviewPhotoLook.shader(photoDefines));
         if(v==0 || f==0){if(v!=0)GLES20.glDeleteShader(v);if(f!=0)GLES20.glDeleteShader(f);failed=true;return false;}
         program=GLES20.glCreateProgram();GLES20.glAttachShader(program,v);GLES20.glAttachShader(program,f);GLES20.glLinkProgram(program);
         GLES20.glDeleteShader(v);GLES20.glDeleteShader(f);int[] ok=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,ok,0);
         if(ok[0]==0){Log.e("LiveRawRenderer",GLES20.glGetProgramInfoLog(program));GLES20.glDeleteProgram(program);program=0;failed=true;return false;}
         uniforms.clear();GLES20.glUseProgram(program);
+        curveTex=texture(GLES20.GL_TEXTURE5,GLES20.GL_TEXTURE_2D,GLES20.GL_LINEAR);
         rawTex=texture(GLES20.GL_TEXTURE2,GLES20.GL_TEXTURE_2D,GLES20.GL_NEAREST);
         shadingTex=texture(GLES20.GL_TEXTURE3,GLES20.GL_TEXTURE_2D,GLES20.GL_LINEAR);
         lutTex=texture(GLES20.GL_TEXTURE4,GLES30.GL_TEXTURE_3D,GLES20.GL_LINEAR);

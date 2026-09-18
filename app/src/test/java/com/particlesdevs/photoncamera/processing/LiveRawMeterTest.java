@@ -8,6 +8,7 @@ public class LiveRawMeterTest {
         LiveRawFrame.Frame f=new LiveRawFrame.Frame();f.width=f.height=16;f.rowStride=32;
         f.buffer=ByteBuffer.allocateDirect(512).order(ByteOrder.nativeOrder());
         for(int i=0;i<256;i++)f.buffer.putShort((short)sample);f.buffer.flip();
+        f.wbGains=new float[]{1,1,1};f.shading=new float[]{1,1,1};f.shadingWidth=f.shadingHeight=1;
         f.whiteLevel=1023;f.blackLevel=new float[]{64,64,64,64};f.crop=new float[]{0,0,1,1};f.autoExposure=automatic;return f;
     }
     @Test public void darkSceneBrightensAndManualExposureRemainsUnderUserControl() {

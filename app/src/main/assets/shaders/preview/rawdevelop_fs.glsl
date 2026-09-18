@@ -282,7 +282,11 @@ float compute_ef_multiplier(float lin_Y, vec4 exp_mults, vec4 layer_weights, flo
     }
     return mult;
 }
+/*PHOTO_LOOK*/
 vec3 processPipeline(vec3 color, float corner_gain) {
+#ifdef PHOTO_LOOK_ENABLED
+    return applyPhotoLook(color_transform * color);
+#endif
     color = color_transform * color;
     color = color * u_auto_exposure;
 

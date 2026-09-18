@@ -2265,6 +2265,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Integer dynamicWhite=colorResult.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
                 if(dynamicWhite!=null)white=dynamicWhite;
             }
+            String sensorPrefix=com.particlesdevs.photoncamera.settings.ModuleSensorSettings.prefix(
+                    com.particlesdevs.photoncamera.settings.ModuleSensorSettings.runtimeScope(physicalID));
+            java.util.Map<String,?> sensorValues=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getAll();
+            float overrideBlack=(float)com.particlesdevs.photoncamera.settings.PreferenceNumber.read(sensorValues.get(sensorPrefix+"blackleveloverride"),-1);
+            float overrideWhite=(float)com.particlesdevs.photoncamera.settings.PreferenceNumber.read(sensorValues.get(sensorPrefix+"whiteleveloverride"),-1);
+            if(overrideWhite>0)white=overrideWhite;
+            if(overrideBlack>=0&&overrideBlack<white)java.util.Arrays.fill(black,overrideBlack);
             float[] dcpMatrix = com.particlesdevs.photoncamera.processing.color.DcpProfiles.previewMatrix(gains);
             if (dcpMatrix != null) ccm = dcpMatrix;
             float[] shading=null;int sw=1,sh=1;
@@ -2285,12 +2292,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         clipped.height()/(float)active.height()};
                 }
             }
+            double shotNoise=0,readNoise=0;
+            android.util.Pair<Double,Double>[] noiseProfile=colorResult.get(CaptureResult.SENSOR_NOISE_PROFILE);
+            if(noiseProfile!=null&&noiseProfile.length>0){
+                int count=0;for(android.util.Pair<Double,Double> n:noiseProfile)if(n!=null&&n.first!=null&&n.second!=null){shotNoise+=n.first;readNoise+=n.second;count++;}
+                if(count>0){shotNoise/=count;readNoise/=count;}
+            }
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
                     plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh,crop,
                     PreferenceKeys.isRemosaicEnabled() ? PreferenceKeys.getRemosaicBlockSize() : 1,
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
-                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)));
+                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise);
             if (mTextureView != null) mTextureView.requestRender();
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());

@@ -533,26 +533,22 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
                 Preference resetButton = new Preference(mContext);
                 resetButton.setKey("pref_reset_sensor_config_settings");
-                resetButton.setTitle("Reset All to Defaults");
-                resetButton.setSummary("Reset all sensor configuration parameters to their default values");
+                resetButton.setTitle("Сбросить настройки выбранного модуля");
+                resetButton.setSummary("Остальные модули сохранят свои значения");
                 resetButton.setIcon(android.R.drawable.ic_menu_revert);
                 resetButton.setOrder(9999); // Force to the end
 
                 resetButton.setOnPreferenceClickListener(preference -> {
-                    SharedPreferences prefs = mSettingsManager.getDefaultPreferences();
-                    SharedPreferences.Editor editor = prefs.edit();
-                    int resetCount = 0;
-                    for (String key : prefs.getAll().keySet()) {
-                        if (key != null && key.startsWith("pref_sensorconfig_")) {
-                            editor.remove(key);
-                            resetCount++;
-                        }
-                    }
-                    editor.apply();
-                    if (getActivity() != null) {
-                        getActivity().recreate();
-                    }
-                    PhotonCamera.showToast("Sensor config settings reset to defaults (" + resetCount + ")");
+                    androidx.preference.ListPreference selector=submenu.findPreference("pref_sensor_config_selector");
+                    String slot=selector!=null?selector.getValue():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+                    new androidx.appcompat.app.AlertDialog.Builder(mContext)
+                        .setTitle("Сбросить настройки модуля?")
+                        .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
+                        .setNegativeButton("Отмена",null)
+                        .setPositiveButton("Сбросить",(d,w)->{
+                            com.particlesdevs.photoncamera.settings.ModuleSensorSettings.reset(slot);
+                            if(getActivity()!=null)getActivity().recreate();
+                        }).show();
                     return true;
                 });
 

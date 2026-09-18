@@ -41,6 +41,7 @@ public final class LiveRawFrame {
     private static float[] crop = {0,0,1,1};
     private static int cfaPattern, cfaBlock=1, iso=100, maxAnalogIso=6400;
     private static boolean autoExposure=true;
+    private static double noiseS,noiseO;
     private static float whiteLevel = 1023.0f;
     private static final float[] blackLevel = new float[] {0, 0, 0, 0};
     private static final float[] wbGains = new float[] {1, 1, 1};
@@ -90,6 +91,9 @@ public final class LiveRawFrame {
         publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,1,100,6400,true);
     }
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic){
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,0,0);
+    }
+    public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise){
         if (!enabled || plane == null) return;
         if (w < 2 || h < 2 || cfa < 0 || cfa > 3 || stride < w * 2L || (stride & 1) != 0
                 || (long)(h-1)*stride+w*2L > plane.remaining() || !Float.isFinite(white) || white <= 0) return;
@@ -143,6 +147,7 @@ public final class LiveRawFrame {
             iso = sensorIso==null ? 100 : Math.max(1,sensorIso);
             maxAnalogIso = analogIso==null ? 6400 : Math.max(101,analogIso);
             autoExposure = automatic;
+            noiseS=Double.isFinite(shotNoise)?Math.max(0,shotNoise):0;noiseO=Double.isFinite(readNoise)?Math.max(0,readNoise):0;
             cfaPattern = cfa;
             crop = cropRect == null ? new float[]{0,0,1,1} : cropRect.clone();
             whiteLevel = white;
@@ -177,6 +182,7 @@ public final class LiveRawFrame {
             f.cfaPattern = cfaPattern;
             f.cfaBlock = cfaBlock;
             f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
+            f.noiseS=noiseS;f.noiseO=noiseO;
             f.whiteLevel = whiteLevel;
             f.blackLevel = blackLevel.clone();
             f.wbGains = wbGains.clone();
@@ -200,6 +206,7 @@ public final class LiveRawFrame {
         public int width, height, rowStride, cfaPattern, version, session;
         public int cfaBlock=1, iso=100, maxAnalogIso=6400;
         public boolean autoExposure=true;
+        public double noiseS,noiseO;
         public long publishedNanos;
         public int shadingWidth,shadingHeight;
         public float[] shading, crop;

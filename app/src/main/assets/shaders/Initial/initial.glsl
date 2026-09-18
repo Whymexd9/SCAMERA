@@ -360,18 +360,7 @@ vec3 brightnessContrast(vec3 value, float brightness, float contrast)
     return (value - 0.5) * contrast + 0.5 + brightness;
 }
 // Source: https://lolengine.net/blog/2013/07/27/rgb-to-hsv-in-glsl
-vec3 rgb2hsv(vec3 c) {
-    vec4 K = vec4(0.f, -1.f / 3.f, 2.f / 3.f, -1.f);
-    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-    float d = q.x - min(q.w, q.y);
-    return vec3(abs(q.z + (q.w - q.y) / (6.f * d + 1.0e-10)), d / (q.x + 1.0e-10), q.x);
-}
-vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1., 2. / 3., 1. / 3., 3.);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6. - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0., 1.), c.y);
-}
+#import photohsv
 vec3 hsv2rgb_smooth( in vec3 c ) {
     vec3 rgb = clamp( abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0 );
     rgb = rgb*rgb*(3.0-2.0*rgb); // cubic smoothing
@@ -393,34 +382,7 @@ vec3 rgb2hsl( vec3 col ){
     (minc+maxc)*0.5 );                           // L
 }
 
-float reinhard_mono(float v, float max_white) {
-    float numerator = v * (float(1.0f) + (v / float(max_white * max_white)));
-    return numerator / (float(1.0f) + v);
-}
-
-vec3 saturate(vec3 rgb, float sat2, float sat) {
-    float r = rgb.r;
-    float g = rgb.g;
-    float b = rgb.b;
-    float br = (r+g+b)/3.0;
-    float dfsat = mix(sat2,sat,br*br);
-    vec3 hsv = rgb2hsv(vec3(rgb.r,rgb.g,rgb.b));
-    /*if(hsv.g < 0.5-0.0){
-        hsv.g *= mix(1.0,dfsat,hsv.g/(0.5-0.0));
-    } else
-    if(hsv.g > 0.5+0.0){
-        hsv.g *= mix(dfsat,1.0,(0.7-hsv.g)/(0.5-0.0));
-    }
-    else
-    //hsv.g *= mix(dfsat,1.0,abs(hsv.g-0.5)/0.1);
-    hsv.g *= dfsat;*/
-    //hsv.g *= dfsat;
-    hsv.g = reinhard_mono(hsv.g*dfsat, max(1.0,dfsat*0.7));
-    //hsv.g *= SATURATIONC+unscaledGaussian(abs(hsv.g),SATURATIONGAUSS)*(dfsat*1.07-1.0);
-    rgb = hsv2rgb(hsv);
-    rgb.r = mix((rgb.r+br)/2.0,rgb.r,SATURATIONRED);
-    return rgb;
-}
+#import photosaturation
 #define TONEMAPSWITCH (0.05)
 #define TONEMAPAMP (1.0)
 
@@ -438,94 +400,7 @@ float reinhard_extended(float v, float max_white){
     return numerator / (float(1.0f) + v);
 }
 
-float acesHable(float x) {
-    float A=.15, B=.50, C=.10, D=.20, E=.02, F=.30;
-    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
-}
-float acesLottes(float x) {
-    const float a=1.6, d=0.977, hdrMax=8.0, midIn=0.18, midOut=0.267;
-    float ha=pow(hdrMax,a), had=pow(hdrMax,a*d);
-    float ma=pow(midIn,a), mad=pow(midIn,a*d);
-    float b=(-ma+ha*midOut)/((had-mad)*midOut);
-    float c=(had*ma-ha*mad*midOut)/((had-mad)*midOut);
-    return pow(x,a)/(pow(x,a*d)*b+c);
-}
-float acesUchimura(float x) {
-    const float P=1.0, a=1.0, m=0.22, l=0.4, c=1.33, b=0.0;
-    float l0=((P-m)*l)/a, L0=m-m/a, L1=m+(1.0-m)/a;
-    float S0=m+l0, S1=m+a*l0, C2=(a*P)/(P-S1), CP=-C2/P;
-    float w0=1.0-smoothstep(0.0,m,x);
-    float w2=step(m+l0,x);
-    float w1=1.0-w0-w2;
-    float T=m*pow(max(x,0.0)/m,c)+b;
-    float S=P-(P-S1)*exp(CP*(x-S0));
-    float L=m+a*(x-m);
-    return T*w0+L*w1+S*w2;
-}
-float acesTone(float x, float peakScale) {
-    x=max(x,0.0);
-    #if ACES_TONE_CURVE == 1
-      return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.0,1.0);
-    #elif ACES_TONE_CURVE == 2
-      return max(0.0,(x-0.004))/(max(0.0,x-0.004)*6.2+1.0);
-    #elif ACES_TONE_CURVE == 3
-      return x/(1.0+x);
-    #elif ACES_TONE_CURVE == 4
-      return acesHable(x*2.0)/max(acesHable(11.2),1e-6);
-    #elif ACES_TONE_CURVE == 5
-      float lx=clamp((log2(max(x,1e-6))+10.0)/16.5,0.0,1.0);
-      return lx*lx*(3.0-2.0*lx);
-    #elif ACES_TONE_CURVE == 6
-      float c=1.15*ACES_TONE_CONTRAST;
-      return pow(x/(x+0.18+ACES_SHOULDER*0.5),1.0/max(c,0.1));
-    #elif ACES_TONE_CURVE == 7
-      float p=max(0.25,ACES_TONE_CONTRAST*1.5);
-      float xp=pow(x,p);
-      return xp/(xp+pow(max(ACES_MID_GRAY,0.01),p));
-    #elif ACES_TONE_CURVE == 8
-      return x;
-    #elif ACES_TONE_CURVE == 9
-      float toe=0.02+0.35*ACES_TOE;
-      float sh=0.35+2.5*(1.0-ACES_SHOULDER);
-      float z=pow(x,ACES_TONE_CONTRAST);
-      return (z*z/(z+toe))/(1.0+z/sh);
-    #elif ACES_TONE_CURVE == 10
-      return acesLottes(x);
-    #elif ACES_TONE_CURVE == 11
-      return acesUchimura(x);
-    #else
-      float shoulder=(0.65+0.70*ACES_SHOULDER)+0.35*log2(peakScale);
-      return (x*(1.0+x/shoulder))/(1.0+x+0.25*ACES_TOE);
-    #endif
-}
-vec3 acesEncode(vec3 x) {
-    x=max(x,vec3(0.0));
-    #if ACES_GAMMA_CURVE == 1
-      return pow(x,vec3(1.0/2.2));
-    #elif ACES_GAMMA_CURVE == 2
-      return pow(x,vec3(1.0/2.4));
-    #elif ACES_GAMMA_CURVE == 3
-      return x;
-    #elif ACES_GAMMA_CURVE == 4
-      vec3 lo=x*4.5;
-      vec3 hi=1.099*pow(x,vec3(0.45))-0.099;
-      return mix(hi,lo,lessThan(x,vec3(0.018)));
-    #elif ACES_GAMMA_CURVE == 6
-      const float m1=0.1593017578, m2=78.84375, c1=0.8359375, c2=18.8515625, c3=18.6875;
-      vec3 p=pow(clamp(x,0.0,1.0),vec3(m1));
-      return pow((c1+c2*p)/(1.0+c3*p),vec3(m2));
-    #elif ACES_GAMMA_CURVE == 7
-      vec3 lo=sqrt(3.0*x);
-      vec3 hi=0.17883277*log(12.0*x-0.28466892)+0.55991073;
-      return mix(hi,lo,lessThanEqual(x,vec3(1.0/12.0)));
-    #elif ACES_GAMMA_CURVE == 8
-      return pow(x,vec3(1.0/max(ACES_CUSTOM_GAMMA,0.1)));
-    #else
-      vec3 lo=x*12.92;
-      vec3 hi=1.055*pow(x,vec3(1.0/2.4))-0.055;
-      return mix(hi,lo,lessThanEqual(x,vec3(0.0031308)));
-    #endif
-}
+#import photoaces
 float acesDither(ivec2 p) {
     // Stable triangular-ish blue-noise substitute. It is deliberately below
     // one 8-bit code value and only active where display quantisation is
@@ -661,57 +536,8 @@ vec3 contrastSin(vec3 value, float contrast)
 
 // Compact GPU implementations inspired by darktable's scene-referred workflow.
 // These are independent clean-room equations; no darktable source is embedded.
-vec3 applyDarktableLook(vec3 rgb) {
-    rgb = max(rgb * exp2(DT_EXPOSURE), vec3(0.0));
-    float y = max(luminocity(rgb), 1e-6);
-    float shadowMask = 1.0 - smoothstep(0.0, 0.45, y);
-    float highlightMask = smoothstep(0.45, 1.0, y);
-    rgb *= max(0.05, 1.0 + DT_SHADOWS * shadowMask - DT_HIGHLIGHTS * highlightMask);
-    float peak = max(rgb.r, max(rgb.g, rgb.b));
-    vec3 reconstructed = rgb / max(1.0, peak);
-    rgb = mix(rgb, reconstructed, smoothstep(0.85, 1.25, peak) * clamp(DT_HIGHLIGHT_RECON, 0.0, 1.0));
-    rgb = (rgb - 0.18) * max(DT_FILMIC_CONTRAST, 0.1) + 0.18;
-    float local = (y - y * y) * DT_LOCAL_CONTRAST;
-    rgb += vec3(local);
-    float outY = luminocity(rgb);
-    rgb = mix(vec3(outY), rgb, max(0.0, 1.0 + DT_COLORFULNESS));
+#import photodarktable
 
-    // Tone Equalizer: broad, overlapping luminance masks avoid hard zone edges.
-    float sMask = 1.0 - smoothstep(0.08, 0.45, outY);
-    float hMask = smoothstep(0.45, 0.92, outY);
-    float mMask = clamp(1.0 - sMask - hMask, 0.0, 1.0);
-    rgb *= exp2(DT_TONE_SHADOWS*sMask + DT_TONE_MIDTONES*mMask + DT_TONE_HIGHLIGHTS*hMask);
-
-    // Color Balance RGB with luminance-preserving opponent-axis shifts.
-    vec3 warm = vec3(1.0, 0.22, -0.65);
-    rgb += warm * (DT_BALANCE_SHADOWS*sMask + DT_BALANCE_MIDTONES*mMask + DT_BALANCE_HIGHLIGHTS*hMask) * 0.12;
-
-    // Color calibration and three broad hue sectors for Color Equalizer.
-    rgb *= vec3(1.0 + 0.12*DT_CALIB_TEMP, 1.0 + 0.08*DT_CALIB_TINT,
-                1.0 - 0.12*DT_CALIB_TEMP);
-    rgb *= vec3(1.0 + 0.25*DT_COLOR_RED, 1.0 + 0.25*DT_COLOR_GREEN,
-                1.0 + 0.25*DT_COLOR_BLUE);
-
-    // Color reconstruction: preserve highlight luminance while borrowing
-    // chromaticity from the non-clipped channels.
-    float hiPeak = max(rgb.r, max(rgb.g, rgb.b));
-    float hiMin = min(rgb.r, min(rgb.g, rgb.b));
-    float clipped = smoothstep(0.82, 1.05, hiPeak);
-    vec3 neutralHi = vec3((hiPeak + hiMin) * 0.5);
-    rgb = mix(rgb, mix(neutralHi, rgb, 0.45), clipped * clamp(DT_COLOR_RECON,0.0,1.0));
-
-    // Haze removal with a bounded black-point estimate.
-    float airlight = min(rgb.r, min(rgb.g, rgb.b));
-    rgb = max((rgb - airlight*DT_HAZE*0.35) /
-              max(0.35, 1.0-airlight*DT_HAZE*0.35), vec3(0.0));
-
-    // Lens vignette correction. Wide-CA strength is intentionally bounded;
-    // the spatial channel shift is performed in the sampling section.
-    vec2 centered = gl_FragCoord.xy / vec2(INSIZE) - 0.5;
-    float r2 = dot(centered, centered);
-    rgb *= 1.0 + DT_VIGNETTE * r2 * 1.6;
-    return max(rgb, vec3(0.0));
-}
 
 float aces(float x) {
     const float a = 2.51;

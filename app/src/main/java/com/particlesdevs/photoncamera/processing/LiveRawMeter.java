@@ -8,6 +8,8 @@ import java.util.Arrays;
  * No burst fusion or sensor-exposure changes. State belongs to one camera session. */
 public final class LiveRawMeter {
     private final int[] luminance = new int[4096], highlights = new int[4096];
+    public final int[][] photoHistogram=new int[3][256];
+    public final float[] photoExtent={1,1,1};
     private float p10=-1,p50,p98;
     public float exposure=1, contrast;
     public final float[] multipliers={1,1,1,1};
@@ -22,6 +24,9 @@ public final class LiveRawMeter {
     }
     public void update(LiveRawFrame.Frame f) {
         Arrays.fill(luminance,0); Arrays.fill(highlights,0);
+        for(int c=0;c<3;c++){Arrays.fill(photoHistogram[c],0);photoExtent[c]=Math.max(1,f.wbGains[c]);}
+        float maxLsc=1;for(float gain:f.shading)maxLsc=Math.max(maxLsc,gain);
+        for(int c=0;c<3;c++)photoExtent[c]*=maxLsc;
         ShortBuffer raw=f.buffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
         int block=Math.max(1,f.cfaBlock), period=2*block;
         int left=Math.max(0,(int)(f.crop[0]*f.width)/period*period);
@@ -42,6 +47,13 @@ public final class LiveRawMeter {
                 sites[site]=Math.max(0,(sum/(block*block)-f.blackLevel[site])/Math.max(1,f.whiteLevel-f.blackLevel[site]));
             }
             float r=sites[order[0]],g=(sites[order[1]]+sites[order[2]])*.5f,b=sites[order[3]];
+            // A sparse WB/LSC histogram feeds exactly the photo AutoExposureCurve response.
+            float[] channels={r,g,b};
+            int sx=Math.min(f.shadingWidth-1,x*f.shadingWidth/f.width),sy=Math.min(f.shadingHeight-1,y*f.shadingHeight/f.height);
+            for(int c=0;c<3;c++){
+                float balanced=channels[c]*f.wbGains[c]*f.shading[(sy*f.shadingWidth+sx)*3+c];
+                photoHistogram[c][(int)(clamp(balanced/photoExtent[c],0,1)*255)]++;
+            }
             // Meter in the sensor domain, as the library does; never meter a tone-mapped readback.
             float l=.2126f*r+.7152f*g+.0722f*b;
             luminance[(int)(clamp(l,0,1)*4095)]++;

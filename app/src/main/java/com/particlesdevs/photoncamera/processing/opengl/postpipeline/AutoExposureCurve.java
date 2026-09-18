@@ -141,6 +141,23 @@
                 histogram.close();
             }
 
+            float[] curve=calculateCurve(result,extent,basePipeline.noiseS,basePipeline.noiseO);
+            if(curve==null){WorkingTexture=previousNode.WorkingTexture;glProg.closed=true;return;}
+            ((PostPipeline)basePipeline).adaptiveWhitePoint=previewWhitePoint;
+            ((PostPipeline) basePipeline).exposureCurve = new GLTexture(new Point(CURVE_SIZE, 1),
+                    new GLFormat(GLFormat.DataType.FLOAT_16), BufferUtils.getFrom(curve),
+                    GL_LINEAR, GL_CLAMP_TO_EDGE);
+
+            WorkingTexture = previousNode.WorkingTexture;
+            glProg.closed = true;
+        }
+
+        public float previewWhitePoint=1f;
+        private double meteringNoiseS,meteringNoiseO;
+        /** Shared CPU response for still capture and sampled RAW preview; no GL operations. */
+        public float[] calculateCurve(int[][] result,float[] extent,double noiseS,double noiseO){
+            int bins=result[0].length;
+            meteringNoiseS=noiseS;meteringNoiseO=noiseO;previewWhitePoint=1f;
             // Map the linear bins to the display domain (bin units) so the
             // gain math below estimates the display-referred exposure. Bin i
             // of channel c covers linear i/(bins-1)*extent[c], evaluated at
@@ -170,16 +187,12 @@
             // From RealJohnGalt/PhotonCamera ad0cbc75.
             if (!Float.isFinite(avg) || avg <= 0.0f) {
                 Log.d(Name, "Skipping auto exposure: histogram has no positive samples");
-                WorkingTexture = previousNode.WorkingTexture;
-                glProg.closed = true;
-                return;
+                return null;
             }
             float mpy = clampGain((bins / 256.0f) * target / Math.max(avg, 1.0e-4f));
             if (!Float.isFinite(mpy) || mpy <= 0.0f) {
                 Log.d(Name, "Skipping auto exposure: invalid multiplier " + mpy);
-                WorkingTexture = previousNode.WorkingTexture;
-                glProg.closed = true;
-                return;
+                return null;
             }
             float sceneWhite = searchWhite(result, mapped, bins, histNormR, histNormG, histNormB, mpy);
 
@@ -211,7 +224,7 @@
                 Log.d(Name, "Adaptive white point:" + adaptiveWhitePoint
                         + " scene white after division:" + sceneWhite);
             }
-            ((PostPipeline) basePipeline).adaptiveWhitePoint = adaptiveWhitePoint;
+            this.previewWhitePoint = adaptiveWhitePoint;
 
             float normL = 0.0f;
             float normR = 0.0f;
@@ -223,9 +236,7 @@
             Log.d(Name, "Reinhard normalizer:" + normR + " normL:" + normL + " base Mpy:" + mpy);
             if (!Float.isFinite(normR) || normR <= 0.0f || !Float.isFinite(normL)) {
                 Log.d(Name, "Skipping auto exposure: invalid Reinhard normalizer");
-                WorkingTexture = previousNode.WorkingTexture;
-                glProg.closed = true;
-                return;
+                return null;
             }
             mpy *= normL / normR;
 
@@ -278,12 +289,7 @@
             }
             Log.d(Name, "Exposure curve: " + (CURVE_SIZE - 1) + " -> " + curve[CURVE_SIZE - 1]);
 
-            ((PostPipeline) basePipeline).exposureCurve = new GLTexture(new Point(CURVE_SIZE, 1),
-                    new GLFormat(GLFormat.DataType.FLOAT_16), BufferUtils.getFrom(curve),
-                    GL_LINEAR, GL_CLAMP_TO_EDGE);
-
-            WorkingTexture = previousNode.WorkingTexture;
-            glProg.closed = true;
+            return curve;
         }
 
         /**
@@ -360,7 +366,7 @@
 
         /** Applies the noise and max gain clamps to the estimated multiplier. */
         private float clampGain(float mpy) {
-            float gainNoiseMax = (float) (noiseMax / Math.sqrt(basePipeline.noiseS * 0.5 + basePipeline.noiseO));
+            float gainNoiseMax = (float) (noiseMax / Math.sqrt(meteringNoiseS * 0.5 + meteringNoiseO));
             gainNoiseMax = Math.max(gainNoiseMax, 1.0f);
             if (mpy > gainNoiseMax) {
                 Log.d(Name, "Clamping gain by noise from " + mpy + " to " + gainNoiseMax);

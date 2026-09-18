@@ -59,9 +59,10 @@ public class TunableKeyManager {
         Context context = PhotonCamera.getSettingsManagerStatic() != null
                 ? PhotonCamera.getSettingsManagerStatic().getContext() : null;
         if (context == null || builder == null || physicalId == null || physicalId.isEmpty()) return;
-        List<VendorTagUtils.TunableKey> keys = loadKeys(context, physicalId);
+        String scope = ModuleSensorSettings.runtimeScope(physicalId);
+        List<VendorTagUtils.TunableKey> keys = loadKeys(context, scope);
         if (keys.isEmpty()) return;
         VendorTagUtils.applyTunableKeys(builder, keys, physicalId);
-        saveKeys(context, physicalId, keys);
+        saveKeys(context, scope, keys);
     }
 }
