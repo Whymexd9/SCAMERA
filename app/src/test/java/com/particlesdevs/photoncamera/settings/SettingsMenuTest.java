@@ -31,13 +31,16 @@ public class SettingsMenuTest {
     @Before public void setUp(){
         context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
         manager=new SettingsManager(context); prefs=manager.getDefaultPreferences();prefs.edit().clear().commit();
-        PreferenceKeys.initialise(manager);
         camera=mockStatic(PhotonCamera.class);
+        camera.when(PhotonCamera::getAppContext).thenReturn(context);
+        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(()->PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv->context.getString(inv.getArgument(0)));
+        PreferenceKeys.initialise(manager);
         camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
         PhotonCamera app=mock(PhotonCamera.class);when(app.getSettingsManager()).thenReturn(manager);
         camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
     }
-    @After public void tearDown(){camera.close();}
+    @After public void tearDown(){if(camera!=null)camera.close();}
     private PreferenceScreen inflate(){
         SettingsMigration.prepare(context,prefs);
         PreferenceManager pm=new PreferenceManager(context);
