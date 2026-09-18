@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
+apply from: rootProject.file('gradle/verify-apk.gradle')
 //apply plugin: "io.github.wurensen.android-aspectjx"
 Properties versionProps = new Properties()
 android {
@@ -121,6 +122,11 @@ android {
     applicationVariants.all {
         variant -> variant.outputs.all {
             outputFileName = "SCAMERA-${versionName}-${variant.versionCode}-${variant.name}.apk"
+        }
+        variant.assembleProvider.configure {
+            doLast {
+                variant.outputs.each { output -> verifyApkCode(output.outputFile) }
+            }
         }
     }
     testOptions {
