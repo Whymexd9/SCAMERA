@@ -1,3 +1,39 @@
+# HP9 HexQuad v15: deterministic CPU acceleration
+
+The working v14 model, six-frame selection, all noise/detail settings, VST/IVST,
+registration search, pixel arithmetic, halo/overlap and validation thresholds
+are retained. QNN 2.29.8, its binaries and both model weights are unchanged.
+
+A capture now creates one bounded C++ row team (up to four threads including
+its owner). Independent guide/coarse-field rows, local-flow rows, sparse input
+rows and output/reference reconstruction rows run concurrently. Each pixel
+keeps the same arithmetic and neighbourhood accumulation order. Tiles and NPU
+calls stay sequential, preserving overlap addition order and QNN buffer lifetime.
+Threads sleep between CPU stages, including while NPU inference runs. No extra
+full-resolution image or additional simultaneous network is allocated. If a
+thread cannot be created, the team uses fewer threads; processing is unchanged.
+Exceptions return to the owner after all running row tasks reach the barrier.
+
+Nearest-green searches stop once both neighbours have been found; later loop
+iterations could not change either neighbour. This is an exact early exit.
+Report disk commits are batched at most once per 500 ms during normal progress;
+errors and job completion synchronously persist the accumulated bounded report.
+The report still forwards every log line immediately to the app logger.
+
+Additional timings report asset extraction, input transport, model/runtime init,
+guide creation, registration, detail setup and result write/read separately.
+The existing packing/NPU/assembly/total timings remain. Timers include wall time;
+detail tile preparation is a subset of assembly, not an additional total.
+The native-worker Gradle task now tracks HexQuad headers as build inputs too.
+
+Regression fixtures hash every packed tensor byte and compare final Bayer16
+against pre-optimization commit `00769cd858405905634b4946e89da5fbb4a736cd`:
+24 captures cover x1, reduced x2, full x2, all CFA orientations, six moving
+inputs, channel blends, noise-profile factors, response and texture controls.
+Tests also check thread barriers/exceptions and retain existing sanitizer gates.
+The desktop mock-network timing improves CPU work; it is not a phone/NPU speed
+measurement. Device timing and thermal behaviour still require user validation.
+
 # HP9 HexQuad v14: model, noise profile, ISO blending and full x2 output
 
 The existing top-level `hexquad_denoise_screen` key is retained and renamed

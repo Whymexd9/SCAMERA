@@ -131,7 +131,7 @@ android {
 // app_process/System.load creates an ART namespace that excludes FastRPC deps.
 def neuralAssets = layout.buildDirectory.dir('generated/vivoNeuralAssets')
 def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
-    inputs.files(fileTree('src/main/cpp') { include 'vivo-neural-*' })
+    inputs.files(fileTree('src/main/cpp') { include 'vivo-neural-*', 'vivo-hexquad-*' })
     inputs.property('ndkVersion', '27.2.12479018')
     outputs.file(neuralAssets.map { it.file('vivo-neural/arm64-v8a/vivo-neural-worker') })
     doFirst {
@@ -142,7 +142,7 @@ def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
         def output = neuralAssets.get().file('vivo-neural/arm64-v8a/vivo-neural-worker').asFile
         output.parentFile.mkdirs()
         commandLine clang.absolutePath, '-std=c++14', '-O2', '-Wall', '-Wextra',
-                '-fPIE', '-pie', '-static-libstdc++', '-Wl,-z,max-page-size=16384',
+                '-pthread', '-fPIE', '-pie', '-static-libstdc++', '-Wl,-z,max-page-size=16384',
                 file('src/main/cpp/vivo-neural-worker.cpp').absolutePath, '-ldl', '-o', output.absolutePath
     }
 }

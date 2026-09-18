@@ -12,7 +12,7 @@
 
 namespace vivo_hexquad {
 // Versioned little-endian transport. Six DISTINCT, equal-exposure RAW16 frames.
-// Output is Bayer16 at the input size, not an interpolated 4x-larger photograph.
+// Output is Bayer16, optionally keeping every native x2 output position.
 struct RawBurst {
     int w=0,h=0,iso=0,red=0; float black=0,white=0; bool response=false;
     float luma=1.f,chroma=1.f;
@@ -123,11 +123,11 @@ inline void estimateResponse(RawBurst& b) {
 }
 struct Guide {
     int w,h;std::vector<float> data;
-    Guide(const RawBurst& b,int f):w(b.w/8),h(b.h/8),data(size_t(w)*h){
-        for(int y=0;y<h;++y)for(int x=0;x<w;++x){float sum=0;
+    Guide(const RawBurst& b,int f,RowExecutor* team=nullptr):w(b.w/8),h(b.h/8),data(size_t(w)*h){
+        independentRows(team,h,[&](int y){for(int x=0;x<w;++x){float sum=0;
             for(int ky=0;ky<8;++ky)for(int kx=0;kx<8;++kx)sum+=b.sample(f,x*8+kx,y*8+ky);
             data[y*w+x]=sum/64;
-        }
+        }});
     }
     float at(float x,float y)const{
         x=std::max(0.f,std::min(float(w-1),x));y=std::max(0.f,std::min(float(h-1),y));
@@ -147,14 +147,14 @@ inline float matchCost(const Guide& a,const Guide& b,int cx,int cy,int radius,fl
 }
 struct Flow {
     int nx,ny;std::vector<Shift> field;
-    Flow(const Guide& ref,const Guide& src):nx((ref.w+15)/16+1),ny((ref.h+15)/16+1),field(size_t(nx)*ny){
+    Flow(const Guide& ref,const Guide& src,RowExecutor* team=nullptr):nx((ref.w+15)/16+1),ny((ref.h+15)/16+1),field(size_t(nx)*ny){
         Shift global;global.error=matchCost(ref,src,ref.w/2,ref.h/2,std::max(ref.w,ref.h),0,0,8);
         for(int dy=-12;dy<=12;++dy)for(int dx=-12;dx<=12;++dx){
             float cost=matchCost(ref,src,ref.w/2,ref.h/2,std::max(ref.w,ref.h),dx,dy,8);
             // Mild preference for smaller displacement in flat/repeated patterns.
             if(cost+.00001f*(dx*dx+dy*dy)<global.error+.00001f*(global.x*global.x+global.y*global.y))global={float(dx),float(dy),cost};
         }
-        for(int gy=0;gy<ny;++gy)for(int gx=0;gx<nx;++gx){
+        independentRows(team,ny,[&](int gy){for(int gx=0;gx<nx;++gx){
             int cx=std::min(gx*16,ref.w-1),cy=std::min(gy*16,ref.h-1);
             Shift best=global;best.error=matchCost(ref,src,cx,cy,12,best.x,best.y);
             for(int dy=-2;dy<=2;++dy)for(int dx=-2;dx<=2;++dx){
@@ -170,7 +170,7 @@ struct Flow {
                 }
             }
             field[gy*nx+gx]=best;
-        }
+        }});
         vivo_nn::log("HEX ALIGN: global RAW shift="+std::to_string(global.x*8)+","+std::to_string(global.y*8)+" guide_error="+std::to_string(global.error));
     }
     Shift at(int x,int y)const{
@@ -236,13 +236,16 @@ struct OutputStats {
 
 // A Network template makes tile coverage, halo rejection, scaling, CFA and
 // stale client-buffer bugs testable independently from proprietary HTP weights.
-template<class Network> void captureHex(Network& net,RawBurst& b,const std::string& output){
+template<class Network> void captureHex(Network& net,RawBurst& b,const std::string& output,unsigned cpuThreads=0){
     const double started=hexClockMs();
     const CfaOrientation orientation(b.w,b.h,b.red);
     vivo_nn::log("HEX CFA: sensor red="+std::to_string(b.red)+
         " -> canonical RGGB; flip_x="+std::to_string(bool(b.red&1))+
         " flip_y="+std::to_string(bool(b.red&2))+"; output restored to sensor orientation/CFA");
+    RowExecutor team(cpuThreads);
+    vivo_nn::log("HEX CPU: row_workers="+std::to_string(team.size())+"; serial NPU and tile overlap order");
     estimateResponse(b);
+    const double responseDone=hexClockMs();
     require(b.scale==1||b.scale==2,"Invalid capture model scale");b.noise.validate();
     require(!b.fullResolution||b.scale==2,"Full output requires x2 model");
     const int outputScale=b.fullResolution?2:1,ow=b.w*outputScale,oh=b.h*outputScale;
@@ -251,13 +254,17 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     const bool hybrid=b.luma<1.f||b.chroma<1.f||b.texture>0.f;
     std::unique_ptr<TetraDetailReference<RawBurst>> reference;
     double detailStart=hexClockMs();
-    if(hybrid)reference.reset(new TetraDetailReference<RawBurst>(b));
+    if(hybrid)reference.reset(new TetraDetailReference<RawBurst>(b,&team));
     double detailMs=hexClockMs()-detailStart;
+    const double detailInitMs=detailMs;
     vivo_nn::log("HEX DENOISE: luma="+std::to_string(b.luma*100)+" chroma="+std::to_string(b.chroma*100)+
         " texture="+std::to_string(b.texture*100)+
         "; 100=neural 0=single-reference Tetra Detail; texture reduces only local luma weight; neutral-balanced camera RGB");
-    std::vector<Guide> guides;for(int f=0;f<6;++f)guides.emplace_back(b,f);
-    std::vector<Flow> flows;for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f]);
+    const double guideStart=hexClockMs();
+    std::vector<Guide> guides;guides.reserve(6);for(int f=0;f<6;++f)guides.emplace_back(b,f,&team);
+    const double guidesDone=hexClockMs();
+    std::vector<Flow> flows;flows.reserve(5);for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f],&team);
+    const double flowsDone=hexClockMs();
     SignalStats inputSignal;
     // Sample complete CFA cells so the sample stride cannot alias one colour.
     for(int y=0;y+8<=b.h;y+=64)for(int x=0;x+8<=b.w;x+=64)
@@ -279,7 +286,8 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     for(int oy:ys)for(int ox:xs){
         double tick=hexClockMs();
         std::fill(net.input.begin(),net.input.end(),0.f);
-        for(int ty=0;ty<288;++ty)for(int tx=0;tx<288;++tx){
+        std::array<size_t,288> rowHoles{},rowSamples{};
+        team.run(288,[&](int ty){for(int tx=0;tx<288;++tx){
             int x=reflect(ox-Halo+tx,b.w),y=reflect(oy-Halo+ty,b.h);
             for(int f=0;f<6;++f){
                 Shift shift=f?flows[f-1].at(x,y):Shift{};
@@ -289,12 +297,13 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                     float a=guides[0].at((x-3.5f)/8,(y-3.5f)/8),v=guides[f].at((sx-3.5f)/8,(sy-3.5f)/8);
                     valid=std::abs(a-v)<.08f;
                 }
-                if(tx>=Halo&&tx<288-Halo&&ty>=Halo&&ty<288-Halo){++samples;if(!valid)++holes;}
+                if(tx>=Halo&&tx<288-Halo&&ty>=Halo&&ty<288-Halo){++rowSamples[ty];if(!valid)++rowHoles[ty];}
                 if(!valid)continue; // sparse hole, never duplicate the base frame
                 int c=b.color(sx,sy);unsigned value=unsigned(std::lround(b.sample(f,sx,sy)*16383.f));
                 net.input[(size_t(ty)*288+tx)*18+f*3+c]=lut[c*Levels+value]*(1.f/65535.f);
             }
-        }
+        }});
+        for(int ty=0;ty<288;++ty){holes+=rowHoles[ty];samples+=rowSamples[ty];}
         packingMs+=hexClockMs()-tick;tick=hexClockMs();
         net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
         typename TetraDetailReference<RawBurst>::Tile detailTile;
@@ -305,6 +314,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         // decoded with stock IVST index saturation, not a chart-only range gate.
         for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
         OutputStats tileStats;
+        std::array<OutputStats,Core*2> rowStats;
         if(b.fullResolution){
             // Build the single-RAW reference once at input resolution. Only the
             // reference is bilinearly sampled; every neural output pixel is kept.
@@ -312,17 +322,17 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
             std::vector<Rgb> refRgb;std::vector<float> confidence;
             if(reference){
                 refRgb.resize(refSide*refSide);confidence.resize(refRgb.size());
-                for(int y=0;y<refSide;++y)for(int x=0;x<refSide;++x){
+                team.run(refSide,[&](int y){for(int x=0;x<refSide;++x){
                     int px=std::max(0,std::min(b.w-1,ox+x-1)),py=std::max(0,std::min(b.h-1,oy+y-1));
                     refRgb[y*refSide+x]=reference->rgb(detailTile,px,py);
                     confidence[y*refSide+x]=b.texture>0?reference->textureConfidence(px,py,physicalNoise.shot,physicalNoise.variance):0;
-                }
+                }});
             }
-            for(int ty=0;ty<Core*2&&oy*2+ty<oh;++ty)for(int tx=0;tx<Core*2&&ox*2+tx<ow;++tx){
+            team.run(std::min(Core*2,oh-oy*2),[&](int ty){for(int tx=0;tx<Core*2&&ox*2+tx<ow;++tx){
                 int x=ox*2+tx,y=oy*2+ty,c=bayerColor(x,y,0);
                 size_t ni=(size_t(ty+Halo*2)*side+tx+Halo*2)*3;
                 Rgb rgb{};for(int ch=0;ch<3;++ch){
-                    tileStats.add(net.output[ni+ch],tx+Halo*2,ty+Halo*2,ch);
+                    rowStats[ty].add(net.output[ni+ch],tx+Halo*2,ty+Halo*2,ch);
                     rgb[ch]=inverse[ch][normalizedIvstIndex(net.output[ni+ch])];
                 }
                 float value=rgb[c];
@@ -340,12 +350,13 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                 float w=feather((tx+.5f)*.5f-.5f)*feather((ty+.5f)*.5f-.5f);
                 size_t at=size_t(y)*ow+x;sum[at]+=value*w;weight[at]+=w;
             }
-        } else for(int ty=0;ty<Core&&oy+ty<b.h;++ty)for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
+            });
+        } else team.run(std::min(Core,b.h-oy),[&](int ty){for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
             int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;Rgb rgb{};
             const float area=1.f/(scale*scale);
             for(int dy=0;dy<scale;++dy)for(int dx=0;dx<scale;++dx){
                 size_t index=(size_t((ty+Halo)*scale+dy)*side+(tx+Halo)*scale+dx)*3;
-                for(int ch=0;ch<3;++ch)tileStats.add(net.output[index+ch],(tx+Halo)*scale+dx,(ty+Halo)*scale+dy,ch);
+                for(int ch=0;ch<3;++ch)rowStats[ty].add(net.output[index+ch],(tx+Halo)*scale+dx,(ty+Halo)*scale+dy,ch);
                 value+=inverse[c][normalizedIvstIndex(net.output[index+c])]*area;
                 if(hybrid)for(int ch=0;ch<3;++ch)rgb[ch]+=inverse[ch][normalizedIvstIndex(net.output[index+ch])]*area;
             }
@@ -355,6 +366,13 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
             }
             float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
             sum[index]+=value*w;weight[index]+=w;
+        }});
+        // Combine integer/extrema diagnostics in raster order; never reduce
+        // floating-point pixel accumulators across threads.
+        for(const auto& stats:rowStats){
+            if(!stats.count)continue;
+            if(tileStats.firstX<0&&stats.firstX>=0){tileStats.firstX=stats.firstX;tileStats.firstY=stats.firstY;tileStats.firstChannel=stats.firstChannel;tileStats.firstValue=stats.firstValue;}
+            tileStats.merge(stats);
         }
         assemblyMs+=hexClockMs()-tick;
         frameStats.merge(tileStats);++done;
@@ -367,6 +385,7 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
         " anomalous_tiles="+std::to_string(anomalousTiles));
     require(samples>0&&double(holes)/samples<.40,"Too much motion / unreliable HexQuad registration");
     vivo_nn::log("HEX ALIGN: missing sparse samples="+std::to_string(double(holes)/samples));
+    const double writeStart=hexClockMs();
     std::ofstream file(output,std::ios::binary|std::ios::trunc);require(bool(file),"Cannot open HexQuad output");
     SignalStats outputSignal;
     std::vector<uint16_t> row(ow);
@@ -379,6 +398,9 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     }file.write(reinterpret_cast<const char*>(row.data()),ow*2);}
     file.close();require(bool(file),"HexQuad output write failed");
     vivo_nn::log("HEX SIGNAL OUTPUT: normalized Bayer16 black=0 white=65535; "+outputSignal.summary());
+    vivo_nn::log("HEX CPU TIMING ms: response="+std::to_string(responseDone-started)+
+        " detail_init="+std::to_string(detailInitMs)+" guides="+std::to_string(guidesDone-guideStart)+
+        " registration="+std::to_string(flowsDone-guidesDone)+" output_write="+std::to_string(hexClockMs()-writeStart));
     vivo_nn::log("HEX TIMING ms: response_alignment="+std::to_string(aligned-started)+" packing="+std::to_string(packingMs)+
         " npu="+std::to_string(npuMs)+" assembly="+std::to_string(assemblyMs)+" detail_preparation="+std::to_string(detailMs)+" total="+std::to_string(hexClockMs()-started));
     vivo_nn::log("HEX FRAME COMPLETE: x"+std::to_string(b.scale)+" RGB -> "+(b.fullResolution?std::string("full native output"):"area"+std::to_string(b.scale))+" -> Bayer16; "+std::to_string(ow)+"x"+std::to_string(oh)+" actual_frames=6 ISO="+std::to_string(b.iso));

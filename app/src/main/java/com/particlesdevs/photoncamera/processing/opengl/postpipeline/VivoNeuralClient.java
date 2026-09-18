@@ -42,8 +42,17 @@ public final class VivoNeuralClient {
                 raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
         StringBuilder report=new StringBuilder("SCAMERA: root neural inference job\n");
         prefs.edit().putString("report",report.toString()).putBoolean("complete",false).commit();
+        final long[] lastReportWriteMs={startMs};
         Consumer<String> log=line->{
-            synchronized(report){if(report.length()<128000)report.append(line).append('\n');prefs.edit().putString("report",report.toString()).commit();}
+            synchronized(report){
+                if(report.length()<128000)report.append(line).append('\n');
+                long now=android.os.SystemClock.elapsedRealtime();
+                // Keep every line in memory; batch disk commits so the reader
+                // cannot stall the native stdout pipe on frequent progress logs.
+                if(now-lastReportWriteMs[0]>=500||line.startsWith("STOP:")||line.startsWith("CLIENT STOP:")){
+                    prefs.edit().putString("report",report.toString()).commit();lastReportWriteMs[0]=now;
+                }
+            }
             observer.accept(line);
         };
         try {
@@ -73,6 +82,7 @@ public final class VivoNeuralClient {
                     if(name.equals("vivo-neural-worker")&&!file.setExecutable(true,true))throw new IOException("Не удалось разрешить запуск нейромодуля");
                 }
             }
+            final long assetsDone=android.os.SystemClock.elapsedRealtime();
             File input=new File(dir,"input.f32"),output=new File(dir,"output.f32");
             if(burst!=null)burst.write(input);
             if(raw!=null || burst!=null){
@@ -81,6 +91,8 @@ public final class VivoNeuralClient {
                 // chown, shared-storage input, or globally readable temp files.
                 if(!output.createNewFile())throw new IOException("Не удалось создать файл результата");
             }
+            final long inputDone=android.os.SystemClock.elapsedRealtime();
+            log.accept("HEX CLIENT PREP ms: assets="+(assetsDone-startMs)+" raw_write="+(inputDone-assetsDone));
             String command="export CLASSPATH="+quote(context.getApplicationInfo().sourceDir)+
                     "; export LD_LIBRARY_PATH="+quote("/system/lib64:/system_ext/lib64:"+dir.getAbsolutePath()+":/vendor/lib64")+
                     "; export ADSP_LIBRARY_PATH="+quote(dir.getAbsolutePath()+";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
@@ -107,6 +119,7 @@ public final class VivoNeuralClient {
             long expected=burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
             if(output.length()!=expected)throw new IOException("Неверный размер нейрорезультата");
+            final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException("Недостаточно памяти для результата");
             result.order(ByteOrder.nativeOrder());
@@ -114,12 +127,15 @@ public final class VivoNeuralClient {
             catch(Exception e){if(burst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
             result.flip();
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);}
+            log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
             log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));
             return result;
         } catch(Exception e){validatedHexProfiles.remove(profileKey);log.accept("CLIENT STOP: "+e.getMessage());throw e;}
         finally {
             if(process!=null && process.isAlive())process.destroyForcibly();
-            prefs.edit().putBoolean("complete",true).commit();
+            synchronized(report){
+                prefs.edit().putString("report",report.toString()).putBoolean("complete",true).commit();
+            }
             File[] files=dir.listFiles();if(files!=null)for(File f:files)f.delete();dir.delete();
         }
     }

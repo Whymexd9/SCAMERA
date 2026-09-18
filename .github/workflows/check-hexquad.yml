@@ -26,32 +26,32 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check sparse RAW packing and inverse LUTs
         run: |
-          g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad.cpp -o /tmp/check-vivo-hexquad
+          g++ -pthread -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad.cpp -o /tmp/check-vivo-hexquad
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad
       - name: Check malformed VDNN containers
         run: python tools/check_vivo_hexquad_container.py
       - name: Check stock-reference normal VST and diagnostic charts
         run: |
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_vst.cpp -o /tmp/check-vivo-hexquad-vst
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_vst.cpp -o /tmp/check-vivo-hexquad-vst
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-vst
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_charts.cpp -ldl -o /tmp/check-vivo-hexquad-charts
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_charts.cpp -ldl -o /tmp/check-vivo-hexquad-charts
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-charts
       - name: Check six-frame capture transport, alignment and tile assembly
         run: |
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_capture.cpp -ldl -o /tmp/check-vivo-hexquad-capture
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_capture.cpp -ldl -o /tmp/check-vivo-hexquad-capture
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-capture
       - name: Check ISO diagnostic fixtures and failed-gate preservation
         run: |
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_iso.cpp -ldl -o /tmp/check-vivo-hexquad-iso
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_iso.cpp -ldl -o /tmp/check-vivo-hexquad-iso
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-iso
       - name: Check luma/chroma detail reconstruction and settings wiring
         run: |
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_detail.cpp -ldl -o /tmp/check-vivo-hexquad-detail
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_detail.cpp -ldl -o /tmp/check-vivo-hexquad-detail
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-detail
           python tools/check_vivo_hexquad_controls.py
       - name: Check profiled capture gate and sparse packing
         run: |
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_profile.cpp -ldl -o /tmp/check-vivo-hexquad-profile
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_profile.cpp -ldl -o /tmp/check-vivo-hexquad-profile
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-vivo-hexquad-profile
       - uses: actions/setup-java@v4
         with:
@@ -63,8 +63,14 @@ jobs:
           java -ea -cp /tmp/hex-zsl-test HexQuadZslSelectorCheck
       - name: Check model selection, noise controls, texture and native full output
         run: |
-          g++ -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_options.cpp -ldl -o /tmp/check-hex-options
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_options.cpp -ldl -o /tmp/check-hex-options
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hex-options
           javac -d /tmp/hex-options-test app/src/main/java/com/particlesdevs/photoncamera/settings/HexQuadOptions.java tools/java/HexQuadOptionsCheck.java
           java -ea -cp /tmp/hex-options-test HexQuadOptionsCheck /tmp/hex-java-header.bin
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hex-options /tmp/hex-java-header.bin
+      - name: Check deterministic CPU acceleration and thread synchronization
+        run: |
+          g++ -pthread -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_speed.cpp -ldl -o /tmp/check-hex-speed
+          python tools/check_vivo_hexquad_speed.py /tmp/check-hex-speed
+          g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=thread tools/check_vivo_hexquad_parallel.cpp -o /tmp/check-hex-threads
+          /tmp/check-hex-threads

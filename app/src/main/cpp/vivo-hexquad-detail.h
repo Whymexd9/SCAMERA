@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include "vivo-hexquad-parallel.h"
 
 namespace vivo_hexquad {
 using Rgb = std::array<float,3>;
@@ -28,6 +29,7 @@ inline Rgb mixDetail(const Rgb& reference,const Rgb& neural,float luma,float chr
 // Coarse colour/energy/correlation are small (1/64 area), the guide is tile-local.
 template<class Source> class TetraDetailReference {
     const Source& b;
+    RowExecutor* team;
     int cw,ch;
     using Fields=std::array<float,12>;
     std::vector<Fields> field;
@@ -50,6 +52,7 @@ template<class Source> class TetraDetailReference {
             int ax=x-dx*d,ay=y-dy*d,bx=x+dx*d,by=y+dy*d;
             if(!da&&inside(ax,ay)&&b.color(ax,ay)==1){a=raw(ax,ay);da=d;}
             if(!db&&inside(bx,by)&&b.color(bx,by)==1){bv=raw(bx,by);db=d;}
+            if(da&&db)break; // later samples cannot change either nearest neighbour
         }
         if(!da&&!db)return {{0,0,0}};
         if(!da)return {{bv,0,.5f}};
@@ -57,8 +60,8 @@ template<class Source> class TetraDetailReference {
         float span=float(da+db);return {{(a*db+bv*da)/span,std::abs(a-bv)/span,1}};
     }
 public:
-    explicit TetraDetailReference(const Source& source):b(source),cw(b.w/8),ch(b.h/8),field(size_t(cw)*ch){
-        for(int cy=0;cy<ch;++cy)for(int cx=0;cx<cw;++cx)for(int q=0;q<4;++q){
+    explicit TetraDetailReference(const Source& source,RowExecutor* executor=nullptr):b(source),team(executor),cw(b.w/8),ch(b.h/8),field(size_t(cw)*ch){
+        independentRows(team,ch,[&](int cy){for(int cx=0;cx<cw;++cx)for(int q=0;q<4;++q){
             auto& dst=field[size_t(cy)*cw+cx];int ox=cx*8+(q%2)*4,oy=cy*8+(q/2)*4;
             float mean=0,energy=0,correlation=0;int count=0;
             for(int y=0;y<4;++y)for(int x=0;x<4;++x){float v=raw(ox+x,oy+y);mean+=v/16.f;
@@ -74,16 +77,16 @@ public:
                 correlation+=(raw(x+tx,y+ty)-c0)*(raw(gx+tx,gy+ty)-g0);count+=2;
             }
             dst[q]=mean;dst[4+q]=energy;dst[8+q]=count?correlation/count:0;
-        }
+        }});
         // Separable 7x7 box, matching the existing coarse support (no full-res blur).
         std::vector<Fields> temp(field.size());
-        for(int y=0;y<ch;++y)for(int x=0;x<cw;++x)for(int k=0;k<12;++k){float v=0;
+        independentRows(team,ch,[&](int y){for(int x=0;x<cw;++x)for(int k=0;k<12;++k){float v=0;
             for(int d=-3;d<=3;++d)v+=cell(x+d,y)[k];
-            temp[size_t(y)*cw+x][k]=v/7.f;}
+            temp[size_t(y)*cw+x][k]=v/7.f;}});
         field.swap(temp);
-        for(int y=0;y<ch;++y)for(int x=0;x<cw;++x)for(int k=0;k<12;++k){float v=0;
+        independentRows(team,ch,[&](int y){for(int x=0;x<cw;++x)for(int k=0;k<12;++k){float v=0;
             for(int d=-3;d<=3;++d)v+=cell(x,y+d)[k];
-            temp[size_t(y)*cw+x][k]=v/7.f;}
+            temp[size_t(y)*cw+x][k]=v/7.f;}});
         field.swap(temp);
     }
     float green(int x,int y)const{
@@ -127,7 +130,7 @@ public:
     Tile tile(int ox,int oy,int core,int pad=4)const{
         Tile t{std::max(0,ox-pad),std::max(0,oy-pad),0,0,{}};
         t.w=std::min(b.w,ox+core+pad)-t.x;t.h=std::min(b.h,oy+core+pad)-t.y;t.guide.resize(size_t(t.w)*t.h);
-        for(int y=0;y<t.h;++y)for(int x=0;x<t.w;++x)t.guide[size_t(y)*t.w+x]=green(t.x+x,t.y+y);
+        independentRows(team,t.h,[&](int y){for(int x=0;x<t.w;++x)t.guide[size_t(y)*t.w+x]=green(t.x+x,t.y+y);});
         return t;
     }
     Rgb rgb(const Tile& t,int x,int y)const{
