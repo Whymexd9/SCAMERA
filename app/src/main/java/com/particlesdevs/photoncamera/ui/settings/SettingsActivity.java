@@ -114,6 +114,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                                            PreferenceScreen preferenceScreen) {
         Log.d("SettingsActivity", "onPreferenceStartScreen called for key: " + preferenceScreen.getKey());
         
+        if("camera_settings_screen".equals(preferenceScreen.getKey())){
+            getSupportFragmentManager().beginTransaction().replace(R.id.settings_container,new ModuleSettingsFragment()).addToBackStack("modules").commit();return true;
+        }
         // Note: Tunable preferences are already generated in onPreferenceTreeClick before reaching here
         
         FragmentTransaction ft = getSupportFragmentManager().beginTransaction()
@@ -911,7 +914,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void checkEszdTheme() {
             Preference p = findPreference(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue);
             if (p != null)
-                p.setEnabled(!mSettingsManager.getString(SCOPE_GLOBAL, PreferenceKeys.Key.KEY_THEME_ACCENT).equalsIgnoreCase("eszdman"));
+                p.setEnabled(!"eszdman".equalsIgnoreCase(mSettingsManager.getString(SCOPE_GLOBAL, PreferenceKeys.Key.KEY_THEME_ACCENT)));
         }
 
         private void setHdrxTitle() {
@@ -1084,6 +1087,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         public boolean onPreferenceTreeClick(@NonNull Preference preference) {
             // Log which preference was clicked
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
+            if (PreferenceKeys.Key.KEY_THEME_ACCENT.mValue.equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new AccentSettingsFragment()).addToBackStack("accent").commit();return true;
+            }
             if ("module_copy_settings".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();
                 return true;

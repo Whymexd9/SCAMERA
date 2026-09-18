@@ -78,7 +78,7 @@ public class LinearScaleView extends View {
         float density = getResources().getDisplayMetrics().density;
         tickPaint.setColor(TICK_COLOR);
         tickPaint.setStrokeWidth(density);
-        markerPaint.setColor(MARKER_COLOR);
+        markerPaint.setColor(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(context));
         markerPaint.setStrokeWidth(2.5f * density);
         textPaint.setColor(LABEL_COLOR);
         textPaint.setTextSize(10f * density);
@@ -92,7 +92,7 @@ public class LinearScaleView extends View {
         autoTextPaint.setColor(0xFFFFFFFF);
         autoTextPaint.setTextSize(12f * density);
         autoTextPaint.setTextAlign(Paint.Align.CENTER);
-        valuePaint.setColor(MARKER_COLOR);
+        valuePaint.setColor(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(context));
         valuePaint.setTextSize(12f * density);
         valuePaint.setFakeBoldText(true);
         valuePaint.setTextAlign(Paint.Align.CENTER);
@@ -123,6 +123,8 @@ public class LinearScaleView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        int accent=com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext());
+        markerPaint.setColor(accent);valuePaint.setColor(accent);
         super.onDraw(canvas);
         if (items.isEmpty()) return;
         if (photographicMode) { drawPhotographicRuler(canvas); return; }

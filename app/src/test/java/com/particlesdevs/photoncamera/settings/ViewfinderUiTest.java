@@ -100,6 +100,25 @@ public class ViewfinderUiTest {
         int[] calls={0};modes.setOnItemSelectedListener(i->calls[0]++);modes.getChildAt(1).performClick();
         assertEquals(1,modes.getSelectedItem());assertEquals(1,calls[0]);modes.setEnabled(false);modes.getChildAt(0).performClick();assertEquals(1,calls[0]);
     }
+    @Test public void animatedManualControlsRemainVisibleAndReceiveTouchesAfterReversal(){
+        try(var controller=Robolectric.buildActivity(android.app.Activity.class)){
+            controller.setup();var activity=controller.get();
+            var panel=(com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel)LayoutInflater.from(context).inflate(R.layout.manual_palette,null,false);
+            activity.setContentView(panel);panel.measure(View.MeasureSpec.makeMeasureSpec(356,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(160,View.MeasureSpec.AT_MOST));panel.layout(0,0,356,panel.getMeasuredHeight());
+            View tabs=panel.findViewById(R.id.buttons_container);int[] clicks={0};
+            int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
+            for(int id:ids)panel.findViewById(id).setOnClickListener(v->clicks[0]++);
+            panel.setExpanded(true,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400));
+            assertEquals(View.VISIBLE,tabs.getVisibility());assertEquals(1f,tabs.getAlpha(),.001f);assertNull(tabs.getClipBounds());
+            for(int id:ids){View tab=panel.findViewById(id);int[] at=new int[2];tab.getLocationInWindow(at);int[] base=new int[2];panel.getLocationInWindow(base);float x=at[0]-base[0]+tab.getWidth()/2f,y=at[1]-base[1]+tab.getHeight()/2f;long now=android.os.SystemClock.uptimeMillis();
+                assertTrue("Touch down must reach a manual control",panel.dispatchTouchEvent(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,x,y,0)));panel.dispatchTouchEvent(MotionEvent.obtain(now,now+10,MotionEvent.ACTION_UP,x,y,0));Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();}
+            assertEquals(5,clicks[0]);
+            panel.setExpanded(false,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(80));
+            panel.setExpanded(true,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400));
+            assertEquals(View.VISIBLE,tabs.getVisibility());assertEquals(1f,tabs.getAlpha(),.001f);
+            panel.setExpanded(false,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300));assertEquals(View.INVISIBLE,tabs.getVisibility());
+        }
+    }
     @Test public void whiteBalanceUsesFiniteSensorGainsAndSupportsAuto(){
         android.hardware.camera2.CameraCharacteristics c=mock(android.hardware.camera2.CameraCharacteristics.class);
         android.hardware.camera2.params.ColorSpaceTransform identity=new android.hardware.camera2.params.ColorSpaceTransform(new int[]{1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1});

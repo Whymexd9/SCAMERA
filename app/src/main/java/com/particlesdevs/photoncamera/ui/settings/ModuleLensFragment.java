@@ -2,31 +2,39 @@ package com.particlesdevs.photoncamera.ui.settings;
 import android.os.Bundle;
 import android.content.Context;
 import android.hardware.camera2.*;
-import android.widget.EditText;
-import androidx.preference.*;
+import android.widget.*;
 import androidx.appcompat.app.AlertDialog;
 import com.particlesdevs.photoncamera.settings.*;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import java.util.*;
 
-/** Independent slots with automatic, discovered and manually entered camera IDs. */
-public class ModuleLensFragment extends PreferenceFragmentCompat {
+public class ModuleLensFragment extends ModuleConceptFragment {
     private String page;
-    @Override public void onCreatePreferences(Bundle b,String root){page=getArguments()==null?null:getArguments().getString("slot");render();}
-    private void render(){
-        setPreferenceScreen(getPreferenceManager().createPreferenceScreen(requireContext()));
-        if(page==null){
-            for(String slot:ModuleRegistry.slots()){
-                Preference p=new Preference(requireContext());p.setTitle(ModuleRegistry.label(slot)+" · "+slot);p.setSummary("ID "+ModuleRegistry.camera(slot)+(ModuleRegistry.visible(slot)?" · отображается":" · скрыт"));
-                p.setOnPreferenceClickListener(v->{ModuleLensFragment next=new ModuleLensFragment();Bundle args=new Bundle();args.putString("slot",slot);next.setArguments(args);getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,next).addToBackStack(slot).commit();return true;});getPreferenceScreen().addPreference(p);
-            }
-            return;
+    public static ModuleLensFragment create(String mode){ModuleLensFragment f=new ModuleLensFragment();Bundle b=new Bundle();b.putString("mode",mode);f.setArguments(b);return f;}
+    @Override protected void render(){
+        String mode=getArguments()==null?"id":getArguments().getString("mode","id");
+        page(mode.equals("names")?"Названия модулей":mode.equals("order")?"Отображение и порядок":"Назначение Camera ID",null);
+        List<String> slots=ModuleRegistry.slots();slots.sort(Comparator.comparing((String id)->id.startsWith("front")).thenComparingInt(ModuleRegistry::order));
+        String side="";
+        for(String slot:slots){
+            String next=slot.startsWith("front")?"Фронтальная камера":"Задние камеры";if(!side.equals(next)){caption(next);side=next;}
+            String label=ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot);
+            if(mode.equals("order")){
+                LinearLayout c=card(),r=row();Runnable visible=()->{var prefs=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();prefs.edit().putBoolean("module_visible_"+slot,!ModuleRegistry.visible(slot)).apply();render();};
+                r.addView(mark(ModuleRegistry.visible(slot)?2:0,label,visible),new LinearLayout.LayoutParams(dp(44),dp(52)));r.addView(text(label,14,TEXT),new LinearLayout.LayoutParams(0,-2,1));
+                for(int direction:new int[]{-1,1}){TextView move=button(direction<0?"↑":"↓",false,()->move(slots,slot,direction));move.setContentDescription(direction<0?"Переместить выше":"Переместить ниже");r.addView(move,new LinearLayout.LayoutParams(dp(44),dp(44)));}c.addView(r);
+            }else navigation(mode.equals("names")?"◇":"▣",label,ModuleRegistry.visible(slot)?"Кнопка отображается":"Кнопка скрыта",()->{
+                page=slot;
+                if(mode.equals("names")){EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));new AlertDialog.Builder(requireContext()).setTitle("Название модуля").setView(input).setPositiveButton("Сохранить",(d,w)->{PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putString("module_name_"+slot,input.getText().toString().trim()).apply();render();}).setNegativeButton("Отмена",null).show();}
+                else choose();
+            });
         }
-        SwitchPreferenceCompat visible=new SwitchPreferenceCompat(requireContext());visible.setKey("module_visible_"+page);visible.setTitle("Показывать кнопку объектива");getPreferenceScreen().addPreference(visible);
-        EditTextPreference name=new EditTextPreference(requireContext());name.setKey("module_name_"+page);name.setTitle("Название");name.setSummaryProvider(EditTextPreference.SimpleSummaryProvider.getInstance());getPreferenceScreen().addPreference(name);
-        EditTextPreference order=new EditTextPreference(requireContext());order.setKey("module_order_"+page);order.setTitle("Порядок кнопки");order.setDefaultValue(page.substring(page.length()-1));order.setOnBindEditTextListener(e->e.setInputType(2));order.setSummaryProvider(EditTextPreference.SimpleSummaryProvider.getInstance());getPreferenceScreen().addPreference(order);
-        Preference id=new Preference(requireContext());id.setTitle("Назначение Camera ID");id.setSummary("Сейчас: "+ModuleRegistry.camera(page));id.setOnPreferenceClickListener(v->{choose();return true;});getPreferenceScreen().addPreference(id);
-        Preference note=new Preference(requireContext());note.setSelectable(false);note.setTitle("Профиль привязан к кнопке");note.setSummary("Разные кнопки могут использовать один Camera ID с разными настройками. Для нового ID может потребоваться повторное открытие камеры.");getPreferenceScreen().addPreference(note);
+        if(slots.isEmpty())note("Откройте видоискатель, чтобы определить доступные модули камеры.");
+    }
+    private void move(List<String> slots,String slot,int direction){
+        int i=slots.indexOf(slot),j=i+direction;if(j<0||j>=slots.size()||slots.get(j).startsWith("front")!=slot.startsWith("front"))return;
+        Collections.swap(slots,i,j);var e=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit();int back=0,front=0;
+        for(String id:slots)e.putString("module_order_"+id,String.valueOf(id.startsWith("front")?front++:back++));e.apply();render();
     }
     private void choose(){
         List<String> values=new ArrayList<>(),labels=new ArrayList<>();values.add("");labels.add("Авто");values.add("manual");labels.add("Ввести Camera ID вручную");

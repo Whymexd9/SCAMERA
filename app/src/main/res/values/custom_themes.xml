@@ -14,15 +14,17 @@
 
     <style name="BlueTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_blue_600</item>
-        <item name="colorPrimary">@color/md_blue_400</item>
-        <item name="colorAccent">@color/md_blue_400</item>
-    </style>
+        <item name="colorPrimary">#90C7FF</item>
+        <item name="colorAccent">#90C7FF</item>
+            <item name="colorSecondary">#90C7FF</item><item name="colorControlActivated">#90C7FF</item><item name="android:colorAccent">#90C7FF</item>
+</style>
 
     <style name="RedTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_red_400_dark</item>
-        <item name="colorPrimary">@color/md_red_400</item>
-        <item name="colorAccent">@color/md_red_400</item>
-    </style>
+        <item name="colorPrimary">#FFA99E</item>
+        <item name="colorAccent">#FFA99E</item>
+            <item name="colorSecondary">#FFA99E</item><item name="colorControlActivated">#FFA99E</item><item name="android:colorAccent">#FFA99E</item>
+</style>
 
     <style name="OrangeTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_orange_400_dark</item>
@@ -32,38 +34,49 @@
 
     <style name="GreenTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_light_green_500_dark</item>
-        <item name="colorPrimary">@color/md_light_green_500</item>
-        <item name="colorAccent">@color/md_light_green_500</item>
-    </style>
+        <item name="colorPrimary">#ABE0BA</item>
+        <item name="colorAccent">#ABE0BA</item>
+            <item name="colorSecondary">#ABE0BA</item><item name="colorControlActivated">#ABE0BA</item><item name="android:colorAccent">#ABE0BA</item>
+</style>
 
     <style name="PinkTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_pink_400_dark</item>
-        <item name="colorPrimary">@color/md_pink_400</item>
-        <item name="colorAccent">@color/md_pink_400</item>
-    </style>
+        <item name="colorPrimary">#F1ACD8</item>
+        <item name="colorAccent">#F1ACD8</item>
+            <item name="colorSecondary">#F1ACD8</item><item name="colorControlActivated">#F1ACD8</item><item name="android:colorAccent">#F1ACD8</item>
+</style>
 
     <style name="CyanTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_cyan_400_dark</item>
-        <item name="colorPrimary">@color/md_cyan_400</item>
-        <item name="colorAccent">@color/md_cyan_400</item>
-    </style>
+        <item name="colorPrimary">#93DEDF</item>
+        <item name="colorAccent">#93DEDF</item>
+            <item name="colorSecondary">#93DEDF</item><item name="colorControlActivated">#93DEDF</item><item name="android:colorAccent">#93DEDF</item>
+</style>
 
     <style name="TealTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_teal_400_dark</item>
-        <item name="colorPrimary">@color/md_teal_400</item>
-        <item name="colorAccent">@color/md_teal_400</item>
-    </style>
+        <item name="colorPrimary">#93DEDF</item>
+        <item name="colorAccent">#93DEDF</item>
+            <item name="colorSecondary">#93DEDF</item><item name="colorControlActivated">#93DEDF</item><item name="android:colorAccent">#93DEDF</item>
+</style>
 
     <style name="WhiteTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/white_theme_background</item>
-        <item name="colorPrimary">@color/white_theme_background</item>
-        <item name="colorAccent">@color/white_theme_background</item>
+        <item name="colorPrimary">#E7E9F0</item>
+        <item name="colorAccent">#E7E9F0</item>
         <item name="colorOnPrimary">@android:color/black</item>
         <item name="processingProgressColor">@android:color/black</item>
         <item name="modeSelectedTextColor">@android:color/black</item>
-    </style>
+            <item name="colorSecondary">#E7E9F0</item><item name="colorControlActivated">#E7E9F0</item><item name="android:colorAccent">#E7E9F0</item>
+</style>
 
     <style name="GradientBackgroundTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="cameraFragmentBackground">@android:color/black</item>
+    </style>
+    <style name="LavenderAccentTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
+        <item name="colorPrimary">#C7B5FF</item><item name="colorAccent">#C7B5FF</item><item name="colorSecondary">#C7B5FF</item><item name="colorControlActivated">#C7B5FF</item><item name="android:colorAccent">#C7B5FF</item><item name="colorPrimaryContainer">#413555</item><item name="colorOnPrimary">#18131F</item><item name="colorOnSecondary">#18131F</item>
+    </style>
+    <style name="AmberAccentTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
+        <item name="colorPrimary">#FFD47E</item><item name="colorAccent">#FFD47E</item><item name="colorSecondary">#FFD47E</item><item name="colorControlActivated">#FFD47E</item><item name="android:colorAccent">#FFD47E</item><item name="colorPrimaryContainer">#594720</item><item name="colorOnPrimary">#18131F</item><item name="colorOnSecondary">#18131F</item>
     </style>
 </resources>

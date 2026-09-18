@@ -22,7 +22,8 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk=35, application=Application.class)
+@Config(sdk=35, application=Application.class, qualifiers="w400dp-h880dp-mdpi")
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 public class SettingsMenuTest {
     private Context context;
     private SettingsManager manager;
@@ -135,13 +136,52 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var copy=new com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
-            PreferenceScreen root=copy.getPreferenceScreen();
-            Preference noise=null;
-            for(int i=0;i<root.getPreferenceCount();i++){Preference p=root.getPreference(i);if(p.getTitle().toString().contains("Шумоподавление"))noise=p;}
-            assertNotNull(noise);assertTrue(noise.getOnPreferenceClickListener().onPreferenceClick(noise));
-            assertTrue(copy.getPreferenceScreen().getPreferenceCount()>3);
+            android.view.View noise=copy.requireView().findViewWithTag("group_rt_denoise_screen");
+            assertNotNull(noise);assertTrue(noise.performClick());
+            assertNotNull(copy.requireView().findViewWithTag("parameter_rt512_luma"));
             activity.getOnBackPressedDispatcher().onBackPressed();
-            assertEquals(root.getPreferenceCount(),copy.getPreferenceScreen().getPreferenceCount());
+            assertNotNull(copy.requireView().findViewWithTag("group_rt_denoise_screen"));
+        }
+    }
+
+    private void renderPage(android.view.View view,String name) throws Exception {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        int exact=android.view.View.MeasureSpec.EXACTLY;
+        view.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,exact),android.view.View.MeasureSpec.makeMeasureSpec(880,exact));view.layout(0,0,400,880);
+        android.view.ViewGroup header=(android.view.ViewGroup)((android.view.ViewGroup)view).getChildAt(0);
+        android.view.ViewGroup titles=(android.view.ViewGroup)header.getChildAt(0);
+        assertTrue("Header must reserve space for branding and title",header.getHeight()>=60);
+        assertEquals(android.view.View.VISIBLE,header.getChildAt(1).getVisibility());
+        assertTrue(titles.getChildAt(1).getTop()>=titles.getChildAt(0).getBottom());
+        android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(400,880,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+        java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+        try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+    }
+    @Test public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch() throws Exception {
+        for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
+        prefs.edit().putString("module_active","back0").putFloat("rt512_luma",42f).putFloat("rt512_chroma",14f).commit();
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
+            var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules");
+            assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
+            modules.requireView().findViewWithTag("Копировать настройки").performClick();fm.executePendingTransactions();
+            var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy");
+            copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
+            copy.requireView().findViewWithTag("group_rt_denoise_screen").performClick();
+            copy.requireView().findViewWithTag("parameter_rt512_luma").performClick();renderPage(copy.requireView(),"noise");
+            copy.requireView().findViewWithTag("primary_action").performClick();
+            var check=copy.requireView().findViewWithTag("group_check_rt_denoise_screen");assertTrue(check.getContentDescription().toString().contains("частично"));
+            copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
+            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("rt512_luma"),0),0);
+            assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
+            var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestDialog();if(dialog!=null)dialog.dismiss();
+            var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent");
+            accent.requireView().findViewWithTag("accent_blue").performClick();
+            assertEquals("blue",prefs.getString(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.KEY,""));
+            assertFalse(ModuleProfiles.isLocal(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.KEY));
+            prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();PreferenceKeys.profiles().changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
+            PreferenceKeys.profiles().activate("back1");
+            assertEquals(0xFF90C7FF,com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(context));
         }
     }
 

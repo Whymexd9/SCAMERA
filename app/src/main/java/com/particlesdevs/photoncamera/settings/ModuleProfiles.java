@@ -21,7 +21,7 @@ public final class ModuleProfiles {
         if(key.equals(PreferenceKeys.Key.CAMERA_ID.mValue)||key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue))return false;
         if(key.startsWith("lens_")||key.startsWith("module_")||key.startsWith("pref_sensorconfig_")||key.startsWith("settings_")||key.startsWith("pref_theme")||key.contains("debug")||key.contains("folder")||key.contains("config_file"))return false;
         if(key.equals("user_camera_ids")||key.equals("hidden_camera_ids")||key.equals(PreferenceKeys.Key.CAMERA_MODE.mValue))return false;
-        return key.startsWith("pref_") || key.startsWith("hexquad_") || key.startsWith("scamera_");
+        return key.startsWith("pref_") || key.startsWith("hexquad_") || key.startsWith("rt512_") || key.startsWith("scamera_");
     }
     private SharedPreferences file(String id){return manager.getContext().getSharedPreferences("module_profile_v2_"+id,0);}
     public static void put(SharedPreferences.Editor e,String k,Object v){

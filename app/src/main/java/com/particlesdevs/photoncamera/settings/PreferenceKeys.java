@@ -351,7 +351,9 @@ public class PreferenceKeys {
 
     public static void setActivityTheme(Activity activity) {
         Map<String, Integer> map = new HashMap<>();
-        map.put("default", 0);
+        map.put("default", R.style.LavenderAccentTheme);
+        map.put("lavender", R.style.LavenderAccentTheme);
+        map.put("amber", R.style.AmberAccentTheme);
         map.put("red", Integer.valueOf(R.style.RedTheme));
         map.put("blue", Integer.valueOf(R.style.BlueTheme));
         map.put("orange", Integer.valueOf(R.style.OrangeTheme));

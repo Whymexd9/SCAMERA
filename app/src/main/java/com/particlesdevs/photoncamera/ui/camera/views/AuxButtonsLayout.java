@@ -196,7 +196,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setHorizontallyScrolling(false);
         b.setText(buttonText);
         b.setTextSize(13);
-        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{0xFFFFD447,0xFFFFFFFF}));
+        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext()),0xFFFFFFFF}));
         android.graphics.drawable.Drawable selected = new android.graphics.drawable.Drawable() {
             final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
             @Override public void draw(android.graphics.Canvas c){p.setColor(0x99000000);android.graphics.Rect r=getBounds();c.drawCircle(r.exactCenterX(),r.exactCenterY(),Math.min(r.width(),r.height())/2f,p);}

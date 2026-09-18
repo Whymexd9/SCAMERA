@@ -13,7 +13,7 @@
 
 ## Storage and migration
 
-`ModuleProfiles` keeps typed snapshots (including string sets) and a separate common baseline. Disabling per-module settings restores the baseline and retains saved profiles. Camera IDs, module mappings, sensor configuration, theme and diagnostic/infrastructure preferences remain shared. Legacy per-camera JSON snapshots are read when first opening a new profile. Dynamic `pref_tunable_*`, `hexquad_*`, and `scamera_*` processing controls are included. Copying updates only explicitly selected local keys.
+`ModuleProfiles` keeps typed snapshots (including string sets) and a separate common baseline. Disabling per-module settings restores the baseline and retains saved profiles. Camera IDs, module mappings, sensor configuration, theme and diagnostic/infrastructure preferences remain shared. Legacy per-camera JSON snapshots are read when first opening a new profile. Dynamic `pref_tunable_*`, `hexquad_*`, `rt512_*`, and `scamera_*` processing controls are included. Copying updates only explicitly selected local keys.
 
 The stable identity is the button slot (`back0..7`, `front0..7`), not its display name or physical Camera ID. Physical-only cameras discovered under a logical camera use SCAMERA's existing `logical-physical` route. Manually entered vendor IDs still depend on what the device Camera HAL exposes to the app.
 
@@ -28,3 +28,13 @@ The GL consumer owns a separate reusable snapshot buffer so a faster producer ca
 ## Validation scope
 
 Automated checks cover typed profile isolation, selected-only copying, common-profile restoration, legacy migration, copy-menu traversal, existing settings/scale controls and RAW buffer ownership. Device checks remain necessary for vendor camera IDs, lens-specific RAW metadata, visual motion smoothness, capture behaviour and thermal/performance characteristics.
+
+## Concept parity and fixes (30192)
+
+The module, copy and parameter-selection pages now use native rounded cards matching the approved concept: SCAMERA header, left-side tri-state checkboxes, compact source/destination selection, paired selection buttons and a fixed primary action. The catalogue still comes from production preferences, so real parameter names and longer groups remain scrollable. Camera ID mapping, order and naming have separate pages.
+
+The first animated frame previously hid manual tabs at zero progress without restoring their visibility on later frames. Visibility now follows the expanded state and animation progress, and the final clip is cleared. A regression check plays the actual animator, dispatches touches to all five controls, reverses an in-progress transition and checks the final collapsed state.
+
+Eight persistent accent choices are available from camera/module settings and Viewfinder & interface. The chosen colour applies to settings, the selected module and the ruler marker/value. Theme preferences remain global and are excluded from module profiles and copying. Existing default users retain the yellow camera accent until choosing a colour.
+
+Validation includes rendered production views, opening groups, partial selection, selected-destination copying, accent persistence across module switches and the existing settings/RAW regression suite. Hardware animation smoothness and sensor operation still require device checks.

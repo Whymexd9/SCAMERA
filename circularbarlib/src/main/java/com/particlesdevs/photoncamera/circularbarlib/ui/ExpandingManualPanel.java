@@ -55,7 +55,9 @@ public class ExpandingManualPanel extends RelativeLayout {
         tabs.setAlpha(Math.max(0,(p-.18f)/.82f));
         tabs.setTranslationX(-dp(12)*(1-p));
         tabs.setClipBounds(new Rect(0,0,Math.round(tabs.getWidth()*p),tabs.getHeight()));
-        if(p==0)tabs.setVisibility(INVISIBLE);
+        // The first animation frame has p=0. Later frames must restore visibility.
+        tabs.setVisibility(expanded || p>0 ? VISIBLE : INVISIBLE);
+        if(p>=1)tabs.setClipBounds(null);
         invalidate();
     }
     @Override protected void onLayout(boolean changed,int l,int t,int r,int b){super.onLayout(changed,l,t,r,b);if(tabs!=null)updateFrame();}

@@ -144,6 +144,7 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest
             app/build/reports/viewfinder
+            app/build/reports/module-concept
           if-no-files-found: ignore
 
       - name: Verify native denoise packaging
