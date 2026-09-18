@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.processing.ml;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 import java.io.*;
 import java.util.UUID;
@@ -31,6 +32,9 @@ public final class VivoRaisrProcessor {
         final boolean soft="softpqe".equals(backend);
         if(!soft && !"raisr".equals(backend))throw new IOException("Unknown Vivo backend");
         final String name=soft?"SOFTPQE":"RAISR";
+        final int strength=percent(PreferenceKeys.getRaisrStrength());
+        final int texture=percent(PreferenceKeys.getRaisrAliasingSuppression());
+        final int halo=percent(PreferenceKeys.getRaisrHaloProtection());
         if(soft && !"3".equals(cameraId))throw new IOException("SoftPQE: доступен только профиль основной камеры");
         // Roles are Vivo SAT roles, never Camera2 IDs. Recovered jump table: 2 master, 8 tele-3x.
         if(!"3".equals(cameraId) && !"5".equals(cameraId))
@@ -63,7 +67,8 @@ public final class VivoRaisrProcessor {
                     " --softpqe /vendor/lib64/libvivo_softpqe.so /vendor/camera3rd/nti/softpqe/config/ui_normal_shot/aigc_24M ":
                     " --raisr /vendor/lib64/libvivo_raisr.so /vendor/camera3rd/nti/raisr ")+
                     quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+ow+" "+oh+
-                    " 17 "+Math.max(1,Math.min(1000000,iso))+" "+("5".equals(cameraId)?8:2);
+                    " 17 "+Math.max(1,Math.min(1000000,iso))+" "+("5".equals(cameraId)?8:2)+
+                    (soft?"":" "+strength+" "+texture+" "+halo);
             String launch="START "+name+" camera="+cameraId+" "+w+"x"+h+" -> "+ow+"x"+oh+
                     " ISO="+iso+" LD_LIBRARY_PATH="+LIBRARY_PATH;
             report.append(launch).append('\n');Log.d("VivoUpscale",launch);
@@ -94,6 +99,7 @@ public final class VivoRaisrProcessor {
         }
     }
     private static int gcd(int a,int b){while(b!=0){int c=a%b;a=b;b=c;}return a;}
+    private static int percent(int n){return Math.max(0,Math.min(100,n));}
     private static int clamp(int n){return Math.max(0,Math.min(255,n));}
     // BT.601 limited-range NV21. Conversion uses two rows, not a full RGB int[] copy.
     static void writeNv21(Bitmap bitmap, File file) throws IOException {

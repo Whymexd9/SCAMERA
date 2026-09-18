@@ -167,7 +167,7 @@ tasks.configureEach {
 
 // Isolated vendor upscale process; generated with the next build, no vendor blobs in Git.
 def buildVivoUpscaleWorker = tasks.register('buildVivoUpscaleWorker', Exec) {
-    inputs.files('src/main/cpp/vivo-upscale-worker.cpp', 'src/main/cpp/vivo-softpqe-abi.h')
+    inputs.files('src/main/cpp/vivo-upscale-worker.cpp', 'src/main/cpp/vivo-softpqe-abi.h', 'src/main/cpp/vivo-raisr-abi.h', 'src/main/cpp/vivo-raisr-controls.h')
     outputs.file(neuralAssets.map { it.file('vivo-upscale/arm64-v8a/vivo-upscale-worker') })
     doFirst {
         def host = System.getProperty('os.name').toLowerCase()

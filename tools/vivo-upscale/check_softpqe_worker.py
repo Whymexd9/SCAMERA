@@ -11,11 +11,19 @@ with tempfile.TemporaryDirectory() as tmp:
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+static bool ready=false;
 extern "C" {
+int vdnnPlatformInitV2(void** out,const std::string& config){
+ if(config!="PLATFORM:SM8750_2_28 APK:1")return 9;
+ if(strcmp(getenv("TEST_FAULT"),"platform")==0)return 8;
+ ready=true;*out=&ready;return 0;
+}
 int vivoSoftPQEInit(void** out,const void* init){
  const auto* p=static_cast<const unsigned char*>(init);uint32_t width,height;
  memcpy(&height,p+4,4);memcpy(&width,p+8,4);
- if(width!=32 || height!=32)return 5;
+ float gain;memcpy(&gain,p+0x64,4);
+ if(!ready || gain!=2.f || width!=32 || height!=32)return 5;
  *out=calloc(1,0x5dd0);return *out?0:6;
 }
 int vivoSoftPQEGetMode(void*){return strcmp(getenv("TEST_FAULT"),"bypass")==0?1:0;}
@@ -28,15 +36,16 @@ int vivoSoftPQEProcess(void*,const void* input,void* output){
  memset(plane,128,64*64*3/2);
  if(strcmp(mode,"overrun")==0)plane[64*64*3/2]=0;
  if(strcmp(mode,"descriptor")==0)memset(out+4,0,4);
+ if(strcmp(mode,"stride")==0)memset(out+0x30,0,4);
  return 0;
 }
 int vivoSoftPQEUninit(void* p){free(p);return 0;}
 }
 ''')
-    subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror',str(root/'app/src/main/cpp/vivo-upscale-worker.cpp'),'-ldl','-o',str(worker)],check=True)
+    subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-DVIVO_VDNN_LIBRARY="'+str(lib)+'"',str(root/'app/src/main/cpp/vivo-upscale-worker.cpp'),'-ldl','-o',str(worker)],check=True)
     subprocess.run(['c++','-shared','-fPIC',str(cpp),'-o',str(lib)],check=True)
     inp=d/'input';out=d/'output';inp.write_bytes(bytes([128])*(32*32*3//2))
-    for fault in ['none','bypass','error','overrun','descriptor']:
+    for fault in ['none','platform','bypass','error','overrun','descriptor','stride']:
         out.write_bytes(b'')
         p=subprocess.run([str(worker),'--softpqe',str(lib),'/unused',str(inp),str(out),'32','32','64','64','17','100','2'],env={**os.environ,'TEST_FAULT':fault},capture_output=True,text=True,timeout=10)
         if fault=='none':

@@ -291,7 +291,7 @@
     <string name="pref_hdrplus_low_denoise_key">pref_hdrplus_low_denoise_key</string>
     <string name="pref_portrait_blur_strength_key">pref_portrait_blur_strength_key</string>
     <string name="pref_portrait_edge_softness_key">pref_portrait_edge_softness_key</string>
-    <string name="pref_raisr_aliasing_default">35</string>
+    <string name="pref_raisr_aliasing_default">60</string>
     <string name="pref_raisr_aliasing_key">pref_raisr_aliasing_key</string>
     <string name="pref_raisr_enabled_key">pref_raisr_enabled_key</string>
     <string name="pref_raisr_filter_scale_default">2</string>
@@ -302,7 +302,7 @@
     <string name="pref_raisr_mode_key">pref_raisr_mode_key</string>
     <string name="pref_raisr_output_scale_default">10</string>
     <string name="pref_raisr_output_scale_key">pref_raisr_output_scale_key</string>
-    <string name="pref_raisr_strength_default">70</string>
+    <string name="pref_raisr_strength_default">50</string>
     <string name="pref_raisr_strength_key">pref_raisr_strength_key</string>
     <string name="pref_raw_mfsr_enabled_key">pref_raw_mfsr_enabled_key</string>
     <string name="pref_mfsr_k_detail_key">pref_mfsr_k_detail_key</string>
@@ -390,7 +390,7 @@
     <string name="pref_tone_target_luma_default">0.6</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
     <string name="raisr">Апскейл Vivo — экспериментальный</string>
-    <string name="raisr_aliasing">Подавление алиасинга, %</string>
+    <string name="raisr_aliasing">Подавление мелких артефактов, %</string>
     <string name="raisr_filter_scale">Банк фильтров RAISR</string>
     <string name="raisr_halo">Защита от ореолов, %</string>
     <string name="raisr_mode">Режим RAISR</string>
@@ -879,9 +879,9 @@
     <string name="raisr_filter_scale_desc">Масштаб обученных фильтров RAISR. Должен соответствовать сцене и выходному масштабу</string>
     <string name="raisr_output_scale_desc">Во сколько раз RAISR увеличивает изображение</string>
     <string name="raisr_mode_desc">Режим RAISR: только резкость или полноценный апскейл</string>
-    <string name="raisr_strength_desc">Сила эффекта RAISR. Избыток даёт неестественные кромки</string>
-    <string name="raisr_halo_desc">Подавление ореолов вокруг контрастных кромок после RAISR</string>
-    <string name="raisr_aliasing_desc">Подавление ступенчатости на диагональных линиях после RAISR</string>
+    <string name="raisr_strength_desc">Доля результата Vivo: 0 — обычная интерполяция; 100 — полный эффект с выбранной защитой</string>
+    <string name="raisr_halo_desc">Ограничивает светлые и тёмные ореолы. 0 — без защиты; 100 — без новых локальных перепадов</string>
+    <string name="raisr_aliasing_desc">Смягчает мелкие «червивые» детали, добавленные RAISR. Высокие значения уменьшают и мелкую детализацию</string>
     <string name="ai_denoise_model_desc">Нейросетевая модель шумоподавления. Более крупные чище, но медленнее</string>
     <string name="ai_denoise_strength_desc">Общая сила ИИ-шумодава. Избыток стирает фактуру</string>
     <string name="ai_denoise_luma_desc">Сила ИИ-шумодава по яркости: зерно</string>

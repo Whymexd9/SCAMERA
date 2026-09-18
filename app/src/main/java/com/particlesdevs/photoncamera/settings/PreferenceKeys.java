@@ -971,7 +971,7 @@ public class PreferenceKeys {
     }
 
     public static int getRaisrStrength() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_STRENGTH, 70).intValue();
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_STRENGTH, 50).intValue();
     }
 
     public static int getRaisrHaloProtection() {
@@ -979,7 +979,7 @@ public class PreferenceKeys {
     }
 
     public static int getRaisrAliasingSuppression() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_ALIASING, 35).intValue();
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_ALIASING, 60).intValue();
     }
 
     public static String getRaisrMode() {
