@@ -126,8 +126,22 @@ public abstract class ManualModel<T extends Comparable<? super T>> implements Kn
         }
         knobItemInfo2.drawable.setState(new int[]{android.R.attr.state_selected});
         fireValueChangedEvent(knobItemInfo2.text);
+        if(persistValues)android.preference.PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext())
+            .edit().putString("pref_manual_"+getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT),Double.toString(knobItemInfo2.value)).apply();
     }
 
+    private boolean persistValues;
+    public void restoreModuleValue() {
+        android.content.SharedPreferences prefs=android.preference.PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext());
+        String key="pref_manual_"+getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
+        if(prefs.contains(key))try{
+            double desired=Double.parseDouble(prefs.getString(key,"0"));
+            KnobItemInfo best=null;
+            for(KnobItemInfo item:knobInfoList)if(best==null||Math.abs(item.value-desired)<Math.abs(best.value-desired))best=item;
+            if(best!=null)onSelectedKnobItemChanged(null,null,best);
+        }catch(NumberFormatException ignored){}
+        persistValues=true;
+    }
     public void resetModel() {
         if (autoModel != null) onSelectedKnobItemChanged(null, null, autoModel);
     }

@@ -34,6 +34,9 @@ public final class LiveRawFrame {
      */
     private static ByteBuffer front;
     private static ByteBuffer back;
+    // Owned exclusively by the single GL consumer, never reused by the producer.
+    private static ByteBuffer consumer;
+    private static int consumerVersion = -1;
     private static int width, height, rowStride;
     private static int cfaPattern;
     private static float whiteLevel = 1023.0f;
@@ -42,6 +45,8 @@ public final class LiveRawFrame {
     private static final float[] colorTransform = new float[] {1, 0, 0, 0, 1, 0, 0, 0, 1};
     /** Bumped on every published frame so the renderer can skip re-uploading. */
     private static int version = 0;
+    private static float[] shading = {1,1,1};
+    private static int shadingWidth=1,shadingHeight=1;
     private static volatile boolean enabled = false;
 
     private LiveRawFrame() {}
@@ -57,6 +62,8 @@ public final class LiveRawFrame {
             synchronized (LOCK) {
                 front = null;
                 back = null;
+                consumer = null;
+                consumerVersion = -1;
                 version++;
             }
         }
@@ -69,6 +76,9 @@ public final class LiveRawFrame {
     public static void publish(ByteBuffer plane, int w, int h, int stride,
                                int cfa, float white, float[] black,
                                float[] gains, float[] ccm) {
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,null,1,1);
+    }
+    public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh){
         if (!enabled || plane == null) return;
         int needed = plane.remaining();
         ByteBuffer target;
@@ -96,6 +106,8 @@ public final class LiveRawFrame {
             if (black != null && black.length >= 4) System.arraycopy(black, 0, blackLevel, 0, 4);
             if (gains != null && gains.length >= 3) System.arraycopy(gains, 0, wbGains, 0, 3);
             if (ccm != null && ccm.length >= 9) System.arraycopy(ccm, 0, colorTransform, 0, 9);
+            shading=lensShading==null?new float[]{1,1,1}:lensShading.clone();
+            shadingWidth=lensShading==null?1:sw;shadingHeight=lensShading==null?1:sh;
             version++;
         }
     }
@@ -105,7 +117,12 @@ public final class LiveRawFrame {
         synchronized (LOCK) {
             if (front == null) return null;
             Frame f = new Frame();
-            f.buffer = front.duplicate();
+            if(consumer == null || consumer.capacity() < front.limit()) {
+                consumer = ByteBuffer.allocateDirect(front.limit()).order(ByteOrder.nativeOrder());
+                consumerVersion = -1;
+            }
+            if(consumerVersion != version){consumer.clear();consumer.put(front.duplicate());consumer.flip();consumerVersion=version;}
+            f.buffer = consumer.duplicate().order(ByteOrder.nativeOrder());
             f.buffer.position(0);
             f.width = width;
             f.height = height;
@@ -115,6 +132,7 @@ public final class LiveRawFrame {
             f.blackLevel = blackLevel.clone();
             f.wbGains = wbGains.clone();
             f.colorTransform = colorTransform.clone();
+            f.shading=shading;f.shadingWidth=shadingWidth;f.shadingHeight=shadingHeight;
             f.version = version;
             return f;
         }
@@ -129,6 +147,8 @@ public final class LiveRawFrame {
     public static final class Frame {
         public ByteBuffer buffer;
         public int width, height, rowStride, cfaPattern, version;
+        public int shadingWidth,shadingHeight;
+        public float[] shading;
         public float whiteLevel;
         public float[] blackLevel, wbGains, colorTransform;
     }

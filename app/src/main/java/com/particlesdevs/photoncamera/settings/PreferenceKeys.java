@@ -252,6 +252,13 @@ public class PreferenceKeys {
 
     public static void initialise(SettingsManager settingsManager) {
         preferenceKeys = new PreferenceKeys(settingsManager);
+        moduleProfiles = null;
+    }
+
+    private static ModuleProfiles moduleProfiles;
+    public static ModuleProfiles profiles() {
+        if (moduleProfiles == null) moduleProfiles = new ModuleProfiles(preferenceKeys.settingsManager);
+        return moduleProfiles;
     }
 
     public static void setDefaults(Context context) {
@@ -288,14 +295,8 @@ public class PreferenceKeys {
         if (key == null) {
             return;
         }
-        if (isPerLensSettingsOn()) {
-            if (key.equals(Key.CAMERA_ID.mValue)) {
-                loadSettingsForCamera(getCameraID());
-            }
-            if (!COMMON_KEYS.contains(key)) {
-                saveJsonForCamera(getCameraID());
-            }
-        }
+        if(profiles().isApplying())return;
+        profiles().changed(key);
         PhotonCamera.getSettings().loadCache();
     }
 
@@ -345,23 +346,7 @@ public class PreferenceKeys {
     }
 
     public static void loadSettingsForCamera(String cameraID) {
-        HashMap<String, ?> map;
-        SettingsManager settingsManager = preferenceKeys.settingsManager;
-        String alreadySavedJSON = settingsManager.getString(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraID, (String) null);
-        if (alreadySavedJSON == null || (map = (HashMap) GSON.fromJson(alreadySavedJSON, HashMap.class)) == null) {
-            return;
-        }
-        android.content.SharedPreferences.Editor editor = settingsManager.getDefaultPreferences().edit();
-        for (Map.Entry<String, ?> e : map.entrySet()) {
-            String key = e.getKey();
-            Object value = e.getValue();
-            if (key == null || value == null || COMMON_KEYS.contains(key)
-                    || key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_")) continue;
-            // Android switches require a Boolean; numeric readers also accept legacy strings.
-            if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
-            else if (value instanceof String || value instanceof Number) editor.putString(key, value.toString());
-        }
-        editor.apply();
+        profiles().activate(cameraID);
     }
 
     public static void setActivityTheme(Activity activity) {

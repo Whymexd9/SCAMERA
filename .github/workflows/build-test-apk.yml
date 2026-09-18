@@ -134,7 +134,7 @@ jobs:
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()

@@ -16,7 +16,7 @@
             android:id="@+id/textureHolder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#101316"
+            android:background="#000000"
             android:animateLayoutChanges="true">
 
         <!--    Block 1-->
@@ -73,7 +73,7 @@
                     android:background="@drawable/aux_container_background"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    app:layout_constraintWidth_percent="0.68"
+                    app:layout_constraintWidth_percent="0.546"
                     app:layout_constraintBottom_toBottomOf="@id/dummy_reference_view"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"

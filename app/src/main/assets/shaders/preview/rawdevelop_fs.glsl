@@ -22,6 +22,7 @@ uniform int rawHeight;
 uniform int cfaPattern;
 uniform vec4 blackLevel;
 uniform float whiteLevel;
+uniform sampler2D lensShading;
 uniform vec3 wbGains;
 uniform mat3 colorTransform;
 /** Exposure gain measured from the scene, before tone mapping. */
@@ -53,16 +54,8 @@ float normalized(int x, int y, float bl) {
     return max(0.0, (rawAt(x, y) - bl) / max(1.0, whiteLevel - bl));
 }
 
-/**
- * Which black level belongs to this site, given the CFA phase.
- * Order in blackLevel is R, Gr, Gb, B.
- */
-vec4 phaseLevels() {
-    if (cfaPattern == 0) return blackLevel;                                  // RGGB
-    if (cfaPattern == 1) return vec4(blackLevel.y, blackLevel.x, blackLevel.w, blackLevel.z); // GRBG
-    if (cfaPattern == 2) return vec4(blackLevel.z, blackLevel.w, blackLevel.x, blackLevel.y); // GBRG
-    return vec4(blackLevel.w, blackLevel.z, blackLevel.y, blackLevel.x);     // BGGR
-}
+// Camera2 BlackLevelPattern is already in raster-site order (TL, TR, BL, BR).
+vec4 phaseLevels() { return blackLevel; }
 
 /**
  * Macropixel demosaic: one RGB sample per 2x2 CFA cell.
@@ -121,7 +114,7 @@ void main() {
 
     // White balance before the matrix, as in the shot path: the matrix is
     // defined for balanced input.
-    rgb *= wbGains;
+    rgb *= texture(lensShading, uv).rgb * wbGains;
     rgb = colorTransform * rgb;
     rgb = max(rgb, vec3(0.0));
 

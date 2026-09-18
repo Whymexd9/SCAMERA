@@ -876,7 +876,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)) {
                 setHdrxTitle();
                 if (PreferenceKeys.isPerLensSettingsOn()) {
-                    PreferenceKeys.loadSettingsForCamera(PreferenceKeys.getCameraID());
+
                     restartActivity();
                 }
             }
@@ -919,7 +919,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (p != null) {
                 p.setTitle("Активная камера: " + PreferenceKeys.getCameraID());
                 p.setSummary(PreferenceKeys.isPerLensSettingsOn()
-                        ? "Обычные настройки — для этой линзы. Дополнительные — общие. Параметры сенсора — по физическому ID."
+                        ? "Настройки съёмки и обработки — для активного модуля. Аппаратные параметры сенсора — по физическому ID."
                         : "Общие настройки обработки. Отдельные профили включаются в разделе «Камеры и сенсоры»." );
             }
     }
@@ -1084,8 +1084,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         public boolean onPreferenceTreeClick(@NonNull Preference preference) {
             // Log which preference was clicked
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
+            if ("module_copy_settings".equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();
+                return true;
+            }
             if ("lens_discovery".equals(preference.getKey())) {
-                startActivity(new Intent(requireContext(), LensDiscoveryActivity.class));
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleLensFragment()).addToBackStack("modules").commit();
                 return true;
             }
             if ("pref_noise_model_import_key".equals(preference.getKey())) {

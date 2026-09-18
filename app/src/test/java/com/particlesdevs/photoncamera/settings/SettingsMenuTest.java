@@ -100,11 +100,49 @@ public class SettingsMenuTest {
         prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").commit();
         manager.set(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_audit",
                 "{\"scamera_darktable_enabled\":true,\"pref_remosaic_block_key\":4,\"hexquad_luma\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
+        prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         PreferenceKeys.loadSettingsForCamera("audit");
         assertTrue(prefs.getBoolean("scamera_darktable_enabled",false));
         assertEquals(4.0,PreferenceNumber.read(manager.getString("default_scope","pref_remosaic_block_key","2"),2),0.0);
         assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","hexquad_luma","0"),0),0.0);
         assertFalse(prefs.contains("ignored_null"));assertEquals("keep",prefs.getString(PreferenceKeys.Key.KEY_THEME.mValue,""));
+    }
+
+    @Test public void moduleProfilesKeepTypedValuesAndCopyOnlySelection(){
+        prefs.edit().putFloat("hexquad_luma",37.125f).putBoolean("scamera_darktable_enabled",true)
+                .putString("pref_tunable_test","1.234567").putString("pref_sensorconfig_test","hardware").commit();
+        ModuleProfiles profiles=PreferenceKeys.profiles();
+        prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
+        profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
+        profiles.activate("back0");
+        prefs.edit().putFloat("hexquad_luma",12.25f).putBoolean("scamera_darktable_enabled",false).commit();
+        profiles.activate("back1");
+        assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
+        prefs.edit().putString("pref_tunable_test","destination").commit();
+        profiles.copy("back0",Arrays.asList("back1"),new HashSet<>(Arrays.asList("hexquad_luma","pref_sensorconfig_test")));
+        assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
+        assertEquals("destination",prefs.getString("pref_tunable_test",""));
+        assertTrue(prefs.getBoolean("scamera_darktable_enabled",false));
+        assertEquals("hardware",prefs.getString("pref_sensorconfig_test",""));
+        profiles.activate("back0");assertFalse(prefs.getBoolean("scamera_darktable_enabled",true));
+        prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,false).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
+        assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
+        prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
+        profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
+    }
+    @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
+            var copy=new com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment();
+            fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
+            PreferenceScreen root=copy.getPreferenceScreen();
+            Preference noise=null;
+            for(int i=0;i<root.getPreferenceCount();i++){Preference p=root.getPreference(i);if(p.getTitle().toString().contains("Шумоподавление"))noise=p;}
+            assertNotNull(noise);assertTrue(noise.getOnPreferenceClickListener().onPreferenceClick(noise));
+            assertTrue(copy.getPreferenceScreen().getPreferenceCount()>3);
+            activity.getOnBackPressedDispatcher().onBackPressed();
+            assertEquals(root.getPreferenceCount(),copy.getPreferenceScreen().getPreferenceCount());
+        }
     }
 
     @Test public void openingPagesDoesNotRewriteGalleryOrThemeSwitches(){

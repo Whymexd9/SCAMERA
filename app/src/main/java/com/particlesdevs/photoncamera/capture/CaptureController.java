@@ -218,7 +218,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public static CaptureResult mCaptureResult;
     public static CaptureRequest mCaptureRequest;
 
-    public static CaptureResult mPreviewCaptureResult;
+    public static volatile CaptureResult mPreviewCaptureResult;
     public static CaptureRequest mPreviewCaptureRequest;
     public static int mPreviewTargetFormat = ImageFormat.JPEG;
     public boolean isDualSession = false;
@@ -1270,6 +1270,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 surface = null;
             }
             stopBackgroundThread();
+            mPreviewCaptureResult=null;
+            if(LiveRawFrame.isEnabled()){LiveRawFrame.setEnabled(false);LiveRawFrame.setEnabled(true);}
             cameraEventsListener.onCameraRestarted();
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
@@ -2162,13 +2164,30 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (arr != null) cfa = arr;
                 }
             }
-            // Gains and matrix from the processing parameters when a shot has
-            // been developed, so the preview follows the same colour the photo
-            // will get; identity until then.
+            // Camera2 colour metadata, refreshed continuously by preview results.
             float[] gains = new float[]{1, 1, 1};
             float[] ccm = new float[]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+            CaptureResult colorResult=mPreviewCaptureResult;
+            if(android.os.Build.VERSION.SDK_INT>=28 && colorResult instanceof TotalCaptureResult){
+                CaptureResult physical=((TotalCaptureResult)colorResult).getPhysicalCameraResults().get(physicalID);
+                if(physical!=null)colorResult=physical;
+            }
+            if(colorResult != null){
+                android.hardware.camera2.params.RggbChannelVector wb=colorResult.get(CaptureResult.COLOR_CORRECTION_GAINS);
+                if(wb!=null){gains[0]=wb.getRed();gains[1]=(wb.getGreenEven()+wb.getGreenOdd())*.5f;gains[2]=wb.getBlue();}
+                android.hardware.camera2.params.ColorSpaceTransform matrix=colorResult.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+                if(matrix!=null)for(int col=0;col<3;col++)for(int row=0;row<3;row++)ccm[col*3+row]=matrix.getElement(col,row).floatValue();
+                float[] dynamicBlack=colorResult.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
+                if(dynamicBlack!=null&&dynamicBlack.length==4)black=dynamicBlack;
+                Integer dynamicWhite=colorResult.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
+                if(dynamicWhite!=null)white=dynamicWhite;
+            }
+            float[] shading=null;int sw=1,sh=1;
+            android.hardware.camera2.params.LensShadingMap map=colorResult==null?null:colorResult.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
+            if(map!=null){sw=map.getColumnCount();sh=map.getRowCount();shading=new float[sw*sh*3];
+                for(int y=0;y<sh;y++)for(int x=0;x<sw;x++){int i=(y*sw+x)*3;shading[i]=map.getGainFactor(0,x,y);shading[i+1]=(map.getGainFactor(1,x,y)+map.getGainFactor(2,x,y))*.5f;shading[i+2]=map.getGainFactor(3,x,y);}}
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                    plane.getRowStride(), cfa, white, black, gains, ccm);
+                    plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh);
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
         }

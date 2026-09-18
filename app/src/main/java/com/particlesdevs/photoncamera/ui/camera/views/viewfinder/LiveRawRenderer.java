@@ -28,7 +28,7 @@ import java.nio.FloatBuffer;
 final class LiveRawRenderer {
 
     private int program = 0;
-    private int rawTex = 0;
+    private int rawTex = 0, shadingTex = 0, uShading;
     private boolean failed = false;
     private int uploadedVersion = -1;
 
@@ -91,10 +91,16 @@ final class LiveRawRenderer {
                 failed = true;
                 return false;
             }
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE3);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
+            java.nio.FloatBuffer shadingBuffer=java.nio.ByteBuffer.allocateDirect(frame.shading.length*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            shadingBuffer.put(frame.shading).position(0);
+            GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_RGB16F,frame.shadingWidth,frame.shadingHeight,0,GLES20.GL_RGB,GLES20.GL_FLOAT,shadingBuffer);
             uploadedVersion = frame.version;
             updateExposure(frame);
         }
 
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);GLES20.glUniform1i(uShading,3);
         GLES20.glUniform1i(uRawTexture, 2);
         GLES20.glUniform1i(uRawWidth, frame.width);
         GLES20.glUniform1i(uRawHeight, frame.height);
@@ -216,6 +222,13 @@ final class LiveRawRenderer {
         uMirror = GLES20.glGetUniformLocation(program, "mirror");
         uTexRotate = GLES20.glGetUniformLocation(program, "texRotate");
 
+        uShading=GLES20.glGetUniformLocation(program,"lensShading");
+        int[] shade=new int[1];GLES20.glGenTextures(1,shade,0);shadingTex=shade[0];
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_CLAMP_TO_EDGE);
         int[] t = new int[1];
         GLES20.glGenTextures(1, t, 0);
         rawTex = t[0];
