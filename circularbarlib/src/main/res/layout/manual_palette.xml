@@ -1,19 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/manual_mode" android:layout_width="match_parent" android:layout_height="wrap_content">
-    <LinearLayout android:id="@+id/knobViewContainer" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:orientation="horizontal" android:visibility="gone"
-        android:layout_marginBottom="8dp" android:weightSum="1">
-        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="0.15" />
-        <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="0.70" android:background="@drawable/glass_pill">
+    <FrameLayout android:id="@+id/knobViewContainer" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:visibility="gone" android:layout_marginBottom="8dp"
+        android:background="@drawable/glass_pill">
         <com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobView
-            android:id="@+id/knobView" android:layout_width="match_parent" android:layout_height="96dp" android:visibility="gone" />
+            android:id="@+id/knobView" android:layout_width="match_parent" android:layout_height="67.2dp" android:visibility="gone" />
         <com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView
-            android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="88dp" android:visibility="gone" />
-        </FrameLayout>
-        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="0.15" />
-    </LinearLayout>
+            android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="61.6dp" android:visibility="gone" />
+    </FrameLayout>
     <LinearLayout android:id="@+id/buttons_container" android:layout_width="match_parent"
         android:layout_height="48dp" android:layout_below="@id/knobViewContainer" android:padding="3dp"
         android:orientation="horizontal" android:background="@drawable/glass_pill">

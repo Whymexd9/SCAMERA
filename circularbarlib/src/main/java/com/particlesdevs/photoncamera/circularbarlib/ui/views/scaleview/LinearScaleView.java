@@ -199,6 +199,7 @@ public class LinearScaleView extends View {
 
     private void drawPhotographicRuler(Canvas canvas) {
         float d = getResources().getDisplayMetrics().density;
+        float y = getHeight() / 88f; // Fit the vertical layout without distorting text or the Auto button.
         float left = 58 * d, right = getWidth() - 10 * d;
         if (right <= left) return;
         float center = (left + right) / 2;
@@ -206,32 +207,32 @@ public class LinearScaleView extends View {
         int first = items.get(0).value <= 0 ? 1 : 0;
         boolean auto = selectedIndex < first;
         int index = Math.max(first, selectedIndex);
-        autoCx = 27 * d; autoCy = 53 * d; autoRadius = 16 * d;
+        autoCx = 27 * d; autoCy = 53 * y; autoRadius = 16 * d;
         autoFillPaint.setColor(auto ? 0x66FFFFFF : 0x18FFFFFF);
         canvas.drawCircle(autoCx, autoCy, autoRadius, autoFillPaint);
         canvas.drawCircle(autoCx, autoCy, autoRadius, autoStrokePaint);
         canvas.drawText("A", autoCx, autoCy + 4.5f * d, autoTextPaint);
         canvas.save();
-        canvas.clipRect(left, 25*d, right, getHeight());
+        canvas.clipRect(left, 25*y, right, getHeight());
         float lastLabelEnd = -Float.MAX_VALUE;
         for (int i = first; i < items.size(); i++) {
             float x = center + (i - index) * step;
             if (x < left - 50*d || x > right + 50*d) continue;
             KnobItemInfo item = items.get(i);
-            canvas.drawLine(x, 53*d, x, (item.majorTick ? 72 : 62)*d, tickPaint);
+            canvas.drawLine(x, 53*y, x, (item.majorTick ? 72 : 62)*y, tickPaint);
             if (item.majorTick) {
                 String label = item.text.replace(" s", "");
                 float half = textPaint.measureText(label)/2;
                 if (x-half >= left && x+half <= right && x-half > lastLabelEnd+8*d) {
-                    canvas.drawText(label, x, 42*d, textPaint);
+                    canvas.drawText(label, x, 42*y, textPaint);
                     lastLabelEnd=x+half;
                 }
             }
         }
         canvas.restore();
-        canvas.drawLine(center, 51*d, center, 74*d, markerPaint);
+        canvas.drawLine(center, 51*y, center, 74*y, markerPaint);
         valuePaint.setTextSize(15*d);
-        canvas.drawText(auto ? "A" : valuePrefix + items.get(selectedIndex).text, center, 21*d, valuePaint);
+        canvas.drawText(auto ? "A" : valuePrefix + items.get(selectedIndex).text, center, 21*y, valuePaint);
     }
 
     @Override
