@@ -1,16 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string-array name="processing_backend_entries">
         <item>Auto</item>
         <item>CPU (AI models)</item>
         <item>GPU (Vulkan + OpenGL)</item>
         <item>NPU (experimental, reported fallback)</item>
+        <item>GPU — включая RAISR</item>
     </string-array>
     <string-array name="processing_backend_entry_values">
         <item>0</item>
         <item>1</item>
         <item>2</item>
         <item>3</item>
+        <item>4</item>
     </string-array>
     <string-array name="ai_denoise_model_entries">
         <item>Быстродействие — UNet Bayer Fast</item>
@@ -46,7 +48,6 @@
         <item>Characteristics</item>
         <item>Capture</item>
     </string-array>
-
     <string-array name="focuspeakset_entries">
         <item>Off</item>
         <item>On</item>

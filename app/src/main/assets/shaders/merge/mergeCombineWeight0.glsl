@@ -142,7 +142,8 @@ ivec2 refineFlow(ivec2 xy) {
         // displacement: a finer offset swaps colours between blocks.
         int p = mosaicPeriod;
         block = ivec2(round(vec2(block) / float(p))) * p;
-        block = clamp(block, ivec2(-m), ivec2(m));
+        int phaseLimit = (m / p) * p;
+        block = clamp(block, ivec2(-phaseLimit), ivec2(phaseLimit));
     }
     if (block == ivec2(0)) return ivec2(0);
     // Block-match validation: the selected block must match the base window

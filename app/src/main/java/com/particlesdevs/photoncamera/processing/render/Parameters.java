@@ -171,7 +171,8 @@ public class Parameters {
         }
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
-                && !VendorTagUtils.wasRemosaicApplied();
+                && !VendorTagUtils.wasRemosaicApplied()
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRemosaicEnabled();
         if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         if (flen == null || flen.length <= 0) {

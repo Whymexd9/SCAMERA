@@ -102,6 +102,9 @@ jobs:
           grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
+      - name: Check settings precision and algorithm availability
+        run: python3 tools/check_settings_model.py
+
       - name: Check Tetra response estimator
         run: |
           mkdir -p build/tetra-profile-check
@@ -131,7 +134,15 @@ jobs:
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Upload settings test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-test-reports
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
 
       - name: Verify native denoise packaging
         env:

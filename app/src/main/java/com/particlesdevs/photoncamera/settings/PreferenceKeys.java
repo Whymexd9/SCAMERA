@@ -199,7 +199,7 @@ public class PreferenceKeys {
     }
 
     private static String getAcesString(String str, String str2) {
-        return preferenceKeys.settingsManager.getString("default_scope", str, str2);
+        return SettingsNumericRules.normalized(str, preferenceKeys.settingsManager.getString("default_scope", str, str2), str2);
     }
 
     public static float getAcesSurround() {
@@ -229,6 +229,7 @@ public class PreferenceKeys {
     static {
         COMMON_KEYS.add(Key.CAMERA_ID.mValue);
         COMMON_KEYS.add(Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
+        COMMON_KEYS.add("settings_audit_schema");
         COMMON_KEYS.add(Key.KEY_SHOW_AF_DATA.mValue);
         COMMON_KEYS.add(Key.KEY_THEME_ACCENT.mValue);
         COMMON_KEYS.add(Key.KEY_THEME.mValue);
@@ -790,11 +791,15 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    public static boolean isSensorSharpeningEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_sensor_sharpening_enabled", true);
+    }
+
     private static float mfsrFloat(Key key, float fallback) {
         try {
             String v = preferenceKeys.settingsManager.getString(
                     "default_scope", key, String.valueOf(fallback));
-            return Float.parseFloat(v.trim());
+            return (float) SettingsNumericRules.value(key.mValue, v, fallback);
         } catch (Exception e) {
             return fallback;
         }
@@ -1122,7 +1127,7 @@ public class PreferenceKeys {
     }
 
     public static int getAlignMethodValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ALIGN_METHOD).intValue();
+        return 1; // ESD4D produces Bayer RAW; the removed legacy RGB-layout mode is unsupported.
     }
 
     public static int getColorMethodValue() {

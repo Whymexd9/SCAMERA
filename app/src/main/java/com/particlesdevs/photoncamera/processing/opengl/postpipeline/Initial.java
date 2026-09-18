@@ -81,17 +81,14 @@ import static com.particlesdevs.photoncamera.util.Math2.mix;
     
     @Tunable(title = "Tonemap X3", category = "Color & Tone", min = -5.0f, max = 5.0f, defaultValue = -1.6f)
     float tonemapx3 = -1.6f;
-    
-    @Tunable(title = "Saturation Const", category = "Color & Tone", max = 3.0f, defaultValue = 1.0f)
+    // Internal value; the user-facing control is defined at its actual consumer.
     float saturationConst = 1.f;
-    
-    @Tunable(title = "Saturation Gauss", category = "Color & Tone", max = 3.0f, defaultValue = 1.5f)
+    // Internal value; the user-facing control is defined at its actual consumer.
     float saturationGauss = 1.5f;
     
     @Tunable(title = "Saturation Red", category = "Color & Tone", max = 3.0f, defaultValue = 1.0f)
     float saturationRed = 1.0f;
     
-    @Tunable(title = "Highlight Softness", category = "Color & Tone", min = 0.5f, max = 1.0f, defaultValue = 0.8f, step = 0.01f, description = "Soft clamp knee for highlights; lower value rolls highlights off sooner")
     float highlightSoftness = 0.8f;
     
     //@Tunable(title = "Curve Points Count", category = "Color & Tone", min = 4.0f, max = 10.0f, defaultValue = 6.0f, step = 1.0f)

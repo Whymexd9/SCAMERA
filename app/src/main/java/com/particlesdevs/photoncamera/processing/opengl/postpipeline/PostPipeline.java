@@ -626,8 +626,8 @@ public class PostPipeline extends GLBasePipeline {
                 if ((!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
                         && !com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()
                         && !PreferenceKeys.isHdrPlusMergeEnabled()
-                        && (PreferenceKeys.isNrLumaEnabled()
-                        || PreferenceKeys.isNrChromaEnabled())) {
+                        && (PreferenceKeys.getRtLumaDenoise() > 0
+                        || PreferenceKeys.getRtChromaDenoise() > 0 || PreferenceKeys.getRtMoireDenoise() > 0)) {
                     add(new ESD3D2(true));
                 }
                 break;
@@ -669,7 +669,7 @@ public class PostPipeline extends GLBasePipeline {
         if (mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f) {
             add(new HexQuadExposure("off".equals(tonePipeline)));
         }
-        add(new CaptureSharpening());
+        if (PreferenceKeys.isSensorSharpeningEnabled()) add(new CaptureSharpening());
         // Sharpening is RawTherapee's, selected inside the node by method:
         // unsharp mask, RL deconvolution or microcontrast. The previous
         // PhotonCamera/Luma switch is gone with the node it selected.
