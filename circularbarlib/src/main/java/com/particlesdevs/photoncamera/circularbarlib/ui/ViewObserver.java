@@ -102,6 +102,19 @@ public class ViewObserver implements Observer {
         focusOption = findViewById(R.id.focus_option_tv);
         wbOption = findViewById(R.id.wb_option_tv);
         textViews = Arrays.asList(isoOption, evOption, expOption, wbOption, focusOption);
+        int[] icons = {R.drawable.concept_manual_iso, R.drawable.concept_manual_ev,
+                R.drawable.concept_manual_exposure, R.drawable.concept_manual_wb, R.drawable.concept_manual_focus};
+        String[] names = {"ISO", "Экспокоррекция", "Выдержка", "Баланс белого", "Фокус"};
+        for (int i = 0; i < textViews.size(); i++) {
+            TextView tab = textViews.get(i);
+            tab.setText("");
+            tab.setContentDescription(names[i]);
+            tab.setTag(names[i]);
+            tab.setCompoundDrawables(null, null, null, null);
+            tab.setForeground(activity.getDrawable(icons[i]));
+            tab.setForegroundGravity(android.view.Gravity.CENTER);
+        }
+
         orientationEventListener = new OrientationEventListener(activity.getBaseContext()) {
             private static final int ROT_DUR = 350;
             private int prevOrientation = OrientationEventListener.ORIENTATION_UNKNOWN;
@@ -194,6 +207,9 @@ public class ViewObserver implements Observer {
                                     items = currentModel.getKnobInfoList();
                             int selected = items == null ? 0
                                     : Math.max(0, items.indexOf(currentModel.getCurrentInfo()));
+                            linearScaleView.setPhotographicMode(currentModel instanceof com.particlesdevs.photoncamera.circularbarlib.control.models.IsoModel
+                                    || currentModel instanceof com.particlesdevs.photoncamera.circularbarlib.control.models.ShutterModel);
+                            linearScaleView.setValuePrefix(currentModel instanceof com.particlesdevs.photoncamera.circularbarlib.control.models.IsoModel ? "ISO " : "");
                             linearScaleView.setTemperatureMode(currentModel instanceof com.particlesdevs.photoncamera.circularbarlib.control.models.WhiteBalanceModel);
                             linearScaleView.setItems(items, selected);
                             // New parameter, new baseline: otherwise the first drag
@@ -208,19 +224,19 @@ public class ViewObserver implements Observer {
                 ManualModeModel manualModeModel = (ManualModeModel) o;
                 switch ((ManualModeModel.ManualModelFields) arg) {
                     case EV_TEXT:
-                        evOption.setContentDescription(evOption.getText() + ": " + manualModeModel.getEvText());
+                        evOption.setContentDescription(evOption.getTag() + ": " + manualModeModel.getEvText());
                         syncScale();
                         break;
                     case EXP_TEXT:
-                        expOption.setContentDescription(expOption.getText() + ": " + manualModeModel.getExposureText());
+                        expOption.setContentDescription(expOption.getTag() + ": " + manualModeModel.getExposureText());
                         syncScale();
                         break;
                     case ISO_TEXT:
-                        isoOption.setContentDescription(isoOption.getText() + ": " + manualModeModel.getIsoText());
+                        isoOption.setContentDescription(isoOption.getTag() + ": " + manualModeModel.getIsoText());
                         syncScale();
                         break;
                     case FOCUS_TEXT:
-                        focusOption.setContentDescription(focusOption.getText() + ": " + manualModeModel.getFocusText());
+                        focusOption.setContentDescription(focusOption.getTag() + ": " + manualModeModel.getFocusText());
                         syncScale();
                         break;
                     case WB_TEXT:

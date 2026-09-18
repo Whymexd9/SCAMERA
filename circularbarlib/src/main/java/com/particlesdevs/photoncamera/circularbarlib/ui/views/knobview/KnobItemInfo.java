@@ -11,6 +11,7 @@ public class KnobItemInfo implements Comparable<KnobItemInfo> {
     public final int tick;
     public final double value;
     public boolean isSelected;
+    public boolean majorTick;
     public double rotationCenter;
     public double rotationLeft;
     public double rotationRight;

@@ -147,4 +147,40 @@ public class SettingsMenuTest {
         }
     }
 
+    private static <T extends android.view.View> T descendant(android.view.View view, Class<T> type) {
+        if (type.isInstance(view)) return type.cast(view);
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group=(android.view.ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++) {
+                T found=descendant(group.getChildAt(i),type);if(found!=null)return found;
+            }
+        }
+        return null;
+    }
+    @Test public void searchOpensRealSettingAndRetainsQueryOnBack() {
+        try(org.robolectric.android.controller.ActivityController<com.particlesdevs.photoncamera.ui.settings.SettingsActivity> controller=
+                org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
+            controller.setup();
+            var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            androidx.appcompat.widget.Toolbar toolbar=activity.findViewById(R.id.settings_toolbar);
+            android.view.MenuItem item=toolbar.getMenu().getItem(0);
+            toolbar.getMenu().performIdentifierAction(item.getItemId(),0);fm.executePendingTransactions();
+            var search=fm.findFragmentById(R.id.settings_container);
+            assertTrue(search instanceof com.particlesdevs.photoncamera.ui.settings.SettingsSearchFragment);
+            android.widget.EditText input=descendant(search.requireView(),android.widget.EditText.class);
+            input.setText("hexquad_luma");
+            var list=descendant(search.requireView(),androidx.recyclerview.widget.RecyclerView.class);
+            assertEquals(1,list.getAdapter().getItemCount());
+            list.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,1073741824),android.view.View.MeasureSpec.makeMeasureSpec(600,1073741824));list.layout(0,0,400,600);
+            assertNotNull(list.findViewHolderForAdapterPosition(0));
+            list.findViewHolderForAdapterPosition(0).itemView.performClick();fm.executePendingTransactions();
+            var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            assertNotNull(page.findPreference("hexquad_luma"));
+            activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
+            input=descendant(fm.findFragmentById(R.id.settings_container).requireView(),android.widget.EditText.class);
+            assertEquals("hexquad_luma",input.getText().toString());
+            camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
+        }
+    }
+
 }

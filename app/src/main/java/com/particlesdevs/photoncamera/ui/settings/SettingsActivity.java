@@ -65,7 +65,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        getDelegate().setLocalNightMode(PreferenceKeys.getThemeValue());
+        getDelegate().setLocalNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
         
@@ -129,6 +129,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
+    void openSearchResult(SettingsSearchFragment.Entry entry) {
+        SettingsFragment page = new SettingsFragment();
+        Bundle args = new Bundle();
+        if (!"prefscreen".equals(entry.page)) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, entry.page);
+        args.putString("search_target", entry.key);
+        page.setArguments(args);
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, page)
+                .addToBackStack("search_result").commit();
+    }
+
     @Override
     public void onBackPressed() {
         super.onBackPressed();
@@ -140,6 +150,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private SettingsManager mSettingsManager;
         private Context mContext;
         private View mRootView;
+        private PreferenceScreen fullPreferenceScreen;
         private SupportedDevice supportedDevice;
         private boolean tunablePreferencesGenerated = false;
         private boolean sensorConfigPreferencesGenerated = false;
@@ -153,12 +164,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
+            generateSensorConfigPreferences();
+            fullPreferenceScreen = getPreferenceScreen();
             if (rootKey != null) {
                 PreferenceScreen selected = findPreference(rootKey);
                 if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
                 setPreferenceScreen(selected);
             }
-            seedMissingListValues(getPreferenceScreen());
+            seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
             setupRemosaicBackend();
             setupOriginalNoiseReduction();
@@ -509,7 +522,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private void addSensorConfigResetButton() {
             try {
-                PreferenceScreen submenu = getPreferenceScreen();
+                PreferenceScreen submenu = findPreference("pref_sensor_config_submenu");
                 if (submenu == null) {
                     Log.w("SettingsActivity", "PreferenceScreen is null, cannot add sensor config reset button");
                     return;
@@ -627,6 +640,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             super.onViewCreated(view, savedInstanceState);
             mRootView = view;
             setupToolbar();
+            setDivider(null);
+            String target = getArguments() == null ? null : getArguments().getString("search_target");
+            if (target != null && findPreference(target) != null) {
+                Preference found = findPreference(target);
+                android.text.SpannableString highlighted = new android.text.SpannableString(found.getTitle());
+                highlighted.setSpan(new android.text.style.ForegroundColorSpan(0xFFCAA4FF), 0,
+                        highlighted.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                found.setTitle(highlighted);
+                scrollToPreference(target);
+            }
         }
 
         private void setupToolbar() {
@@ -639,6 +662,21 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         title = "Settings";
                     }
                     toolbar.setTitle(title);
+                    toolbar.setSubtitle(KEY_MAIN_PARENT_SCREEN.equals(getPreferenceScreen().getKey())
+                            ? "Активная камера: " + PreferenceKeys.getCameraID() : null);
+                    toolbar.setSubtitleTextColor(0xFFACA8BC);
+                    toolbar.setNavigationOnClickListener(v -> activity.onBackPressed());
+                    toolbar.getMenu().clear();
+                    android.view.MenuItem search = toolbar.getMenu().add("Поиск настройки");
+                    search.setIcon(R.drawable.settings_concept_search);
+                    search.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+                    search.setOnMenuItemClickListener(item -> {
+                        SettingsSearchFragment fragment = SettingsSearchFragment.create(
+                                SettingsSearchFragment.index(fullPreferenceScreen));
+                        getParentFragmentManager().beginTransaction()
+                                .replace(R.id.settings_container, fragment).addToBackStack("settings_search").commit();
+                        return true;
+                    });
                 }
             }
         }

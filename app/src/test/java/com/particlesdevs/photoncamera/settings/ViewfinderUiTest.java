@@ -59,8 +59,8 @@ public class ViewfinderUiTest {
         scale.setTemperatureMode(true);scale.setItems(items,17);
         scale.setSelectedItem(items.get(17));assertEquals("3600K",scale.getSelected().text);
         ((TextView)manual.findViewById(R.id.wb_option_tv)).setSelected(true);
-        String[] labels={"EV","Tv","ISO","ББ","AF"};int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
-        for(int i=0;i<ids.length;i++)assertEquals(labels[i],((TextView)manual.findViewById(ids[i])).getText().toString());
+        String[] labels={"Экспокоррекция","Выдержка","ISO","Баланс белого","Фокус"};int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
+        for(int i=0;i<ids.length;i++)assertEquals(labels[i],manual.findViewById(ids[i]).getContentDescription().toString());
         LinearLayout lenses=new LinearLayout(context);lenses.setPadding(3,3,3,3);lenses.setBackgroundResource(R.drawable.glass_pill);
         for(String label:new String[]{"2.4×","1×","0.7×","0.4×"}){
             TextView t=new TextView(context);t.setText(label);t.setTextColor(Color.WHITE);t.setGravity(Gravity.CENTER);t.setTextSize(13);t.setBackgroundResource(R.drawable.manual_tab_background);t.setSelected(label.equals("1×"));lenses.addView(t,new LinearLayout.LayoutParams(0,34,1));
@@ -70,7 +70,7 @@ public class ViewfinderUiTest {
         ModeTabsView modes=bottom.findViewById(R.id.mode_picker_view);modes.setValues(new String[]{"Фото","Ночь"});modes.setSelectedItem(0);
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
         int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(760,exact));screen.layout(0,0,400,760);
-        assertTrue(manual.getHeight()<=120);assertEquals(40,manual.findViewById(R.id.buttons_container).getHeight());
+        assertTrue(manual.getHeight()<=152);assertEquals(48,manual.findViewById(R.id.buttons_container).getHeight());
         assertEquals(top.findViewById(R.id.countdown_timer_button).getWidth(),top.findViewById(R.id.countdown_timer_button).getHeight());
         assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
@@ -85,7 +85,10 @@ public class ViewfinderUiTest {
         scale.onTouchEvent(MotionEvent.obtain(0,0,MotionEvent.ACTION_DOWN,20,30,0));
         scale.onTouchEvent(MotionEvent.obtain(0,1,MotionEvent.ACTION_MOVE,150,30,0));
         scale.onTouchEvent(MotionEvent.obtain(0,2,MotionEvent.ACTION_UP,150,30,0));
-        assertEquals(0,scale.getSelected().value,0);assertFalse(scale.isDragging());
+        assertEquals(3600,scale.getSelected().value,0);assertFalse(scale.isDragging());
+        scale.onTouchEvent(MotionEvent.obtain(0,3,MotionEvent.ACTION_DOWN,20,30,0));
+        scale.onTouchEvent(MotionEvent.obtain(0,4,MotionEvent.ACTION_UP,20,30,0));
+        assertEquals(0,scale.getSelected().value,0);
         int[] calls={0};modes.setOnItemSelectedListener(i->calls[0]++);modes.getChildAt(1).performClick();
         assertEquals(1,modes.getSelectedItem());assertEquals(1,calls[0]);modes.setEnabled(false);modes.getChildAt(0).performClick();assertEquals(1,calls[0]);
     }
