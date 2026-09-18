@@ -40,7 +40,7 @@ int main(int argc,char** argv) {
         if(argc==3 && std::string(argv[1])=="--softpqe-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(180);
-            vivo_nn::log("Vivo softpqe upscale check: loads the model, executes once with a flat placeholder input, reports the resolved quantization; NOT a real photograph");
+            vivo_nn::log("Vivo softpqe upscale check: diagnostic only, no graph execution");
             for(const auto* spec:{&vivo_softpqe::Y2X,&vivo_softpqe::Y4X}) {
                 vivo_nn::log(std::string("MODEL: ")+spec->file+" graph="+spec->graph);
                 try {

@@ -9,15 +9,11 @@ import java.util.function.Consumer;
 import java.util.zip.ZipFile;
 
 /**
- * Diagnostic probe for the Vivo softpqe upscale models: loads the bundled
- * 2x/4x context binaries into QNN HTP, executes each graph once with a flat
- * placeholder input, and reports their tensor descriptors and the real
- * QNN-resolved quantization parameters. Proves execution mechanics; the
- * output is not a real photograph, since the real input quantization is
- * exactly what the report is for establishing. See
- * docs/vivo-softpqe-upscale.md. Modelled on {@link VivoNeuralClient}'s
- * self-test path; kept separate so this experiment cannot regress the
- * working remosaic transport.
+ * Diagnostic-only probe for the Vivo softpqe upscale models: loads the
+ * bundled 2x/4x context binaries into QNN HTP and reports their tensor
+ * descriptors. Never executes the graph. See docs/vivo-softpqe-upscale.md.
+ * Modelled on {@link VivoNeuralClient}'s self-test path; kept separate so
+ * this experiment cannot regress the working remosaic transport.
  */
 public final class VivoSoftpqeClient {
     private VivoSoftpqeClient() {}
