@@ -1,6 +1,7 @@
 package com.particlesdevs.photoncamera.ui.settings.custompreferences;
 
 import android.content.Context;
+import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.util.AttributeSet;
@@ -58,13 +59,14 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
 
     @Override
     public void onBindViewHolder(@NonNull PreferenceViewHolder holder) {
+        isUserInteraction = false;
         super.onBindViewHolder(holder);
         
         // Get reference to title view for color indication
         mTitleView = (TextView) holder.findViewById(android.R.id.title);
         
         // Ensure checkbox state is correct based on persisted int value
-        int currentValue = getPersistedInt(mDefaultValue);
+        int currentValue = (PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), mDefaultValue != 0) ? 1 : 0);
         setChecked(currentValue != 0);
         
         // Update color based on whether value is default or customized
@@ -108,7 +110,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
             Log.d(TAG, "First init - using default (NOT persisting yet): " + currentValue + " (from mDefaultValue: " + mDefaultValue + ")");
         } else {
             // Load existing persisted value
-            currentValue = getPersistedInt(mDefaultValue);
+            currentValue = (PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), mDefaultValue != 0) ? 1 : 0);
             Log.d(TAG, "Loading persisted: " + currentValue);
         }
         
@@ -144,7 +146,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
         } else {
             // User set it to differ from current default - persist it
             // This makes it green (customized) and it will stay green even if default changes later
-            result = persistInt(intValue);
+            if (prefs != null) prefs.edit().putInt(getKey(), intValue).apply();
             Log.d(TAG, "User set to non-default - persisted: " + intValue + " (default: " + mDefaultValue + ") for " + getKey());
         }
         
@@ -158,7 +160,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
     protected boolean getPersistedBoolean(boolean defaultReturnValue) {
         // Get persisted int value and convert to boolean
         int intDefault = defaultReturnValue ? 1 : 0;
-        int persistedValue = getPersistedInt(intDefault);
+        int persistedValue = PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), defaultReturnValue) ? 1 : 0;
         return persistedValue != 0;
     }
 
@@ -166,7 +168,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
      * Get the current value as int (0 or 1)
      */
     public int getIntValue() {
-        return getPersistedInt(mDefaultValue);
+        return (PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), mDefaultValue != 0) ? 1 : 0);
     }
     
     /**
@@ -200,6 +202,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
      * This allows the annotation default to be used.
      */
     private void resetToDefault() {
+        if (!isEnabled() || !callChangeListener(mDefaultValue != 0)) return;
         // Temporarily disable user interaction flag to prevent re-persistence during setChecked
         boolean wasUserInteraction = isUserInteraction;
         isUserInteraction = false;

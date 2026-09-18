@@ -14,15 +14,15 @@ public final class ScameraPreferences {
     }
 
     public static boolean quadBayerEnabled() {
-        return prefs().getBoolean("scamera_quad_bayer_enabled", false);
+        return PreferenceNumber.bool(prefs().getAll().get("scamera_quad_bayer_enabled"), false);
     }
 
     public static String quadBayerMode() {
-        return prefs().getString("scamera_quad_bayer_mode", "auto");
+        return text("scamera_quad_bayer_mode", "auto");
     }
 
     public static String quadDngMetadata() {
-        return prefs().getString("scamera_quad_dng_metadata", "auto");
+        return text("scamera_quad_dng_metadata", "auto");
     }
 
     public static boolean quadBayerDirectRequested() {
@@ -36,29 +36,29 @@ public final class ScameraPreferences {
     }
 
     public static boolean mosaicSrEnabled() {
-        return prefs().getBoolean("scamera_mosaic_sr_enabled", false);
+        return PreferenceNumber.bool(prefs().getAll().get("scamera_mosaic_sr_enabled"), false);
     }
 
     public static boolean mosaicSrUseForJpeg() {
-        return prefs().getBoolean("scamera_mosaic_sr_jpeg", true);
+        return PreferenceNumber.bool(prefs().getAll().get("scamera_mosaic_sr_jpeg"), true);
     }
 
     public static float mosaicSrScale() {
         try {
-            return Float.parseFloat(prefs().getString("scamera_mosaic_sr_scale", "1.41421356"));
+            return PreferenceNumber.bounded(prefs().getAll().get("scamera_mosaic_sr_scale"),1.41421356f,1f,2f);
         } catch (NumberFormatException ignored) {
             return 1.41421356f;
         }
     }
 
     public static int mosaicSrKernel() {
-        String value = prefs().getString("scamera_mosaic_sr_kernel", "lanczos2");
+        String value = text("scamera_mosaic_sr_kernel", "lanczos2");
         if ("bilinear".equals(value)) return 0;
         if ("catmull_rom".equals(value)) return 1;
         return 2;
     }
 
-    public static boolean darktableEnabled() { return prefs().getBoolean("scamera_darktable_enabled", false); }
+    public static boolean darktableEnabled() { return PreferenceNumber.bool(prefs().getAll().get("scamera_darktable_enabled"), false); }
     public static float darktableExposure() { return intValue("scamera_darktable_exposure", 0) / 10.0f; }
     public static float darktableFilmicContrast() { return intValue("scamera_darktable_filmic_contrast", 100) / 100.0f; }
     public static float darktableShadows() { return intValue("scamera_darktable_shadows", 0) / 100.0f; }
@@ -84,6 +84,10 @@ public final class ScameraPreferences {
     public static float darktableVignette() { return intValue("scamera_darktable_vignette", 0) / 100.0f; }
     public static float darktableHazeRemoval() { return intValue("scamera_darktable_haze", 0) / 100.0f; }
     public static float darktableTexture() { return intValue("scamera_darktable_texture", 0) / 100.0f; }
+
+    private static String text(String key, String fallback) {
+        Object value = prefs().getAll().get(key); return value == null ? fallback : value.toString();
+    }
 
     private static int intValue(String key, int fallback) {
         try {

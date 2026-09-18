@@ -215,6 +215,13 @@ public class PhotonCamera extends Application {
 
     @Override
     public void onCreate() {
+        // The firmware test has its own process. Do not open cameras, initialize
+        // GPU pipelines or start background modules inside that process.
+        if (android.os.Build.VERSION.SDK_INT >= 28 &&
+                android.app.Application.getProcessName().endsWith(":vivo_neural")) {
+            super.onCreate();
+            return;
+        }
         // First thing of all: a crash during initModules() leaves no logcat for the user,
         // so make sure it always lands in a file we can ask for.
         ScameraCrashReporter.install(this);
@@ -279,7 +286,7 @@ public class PhotonCamera extends Application {
             String packageName = getPackageName();
             ComponentName galleryLauncher = new ComponentName(
                     packageName,
-                    packageName + ".gallery.ui.GalleryActivityLauncher"
+                    "com.particlesdevs.photoncamera.gallery.ui.GalleryActivityLauncher"
             );
             
             // Set the component enabled state based on the preference
@@ -317,3 +324,4 @@ public class PhotonCamera extends Application {
         sPhotonCamera = null;
     }
 }
+

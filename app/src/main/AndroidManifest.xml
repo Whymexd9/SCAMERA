@@ -177,5 +177,9 @@
         <meta-data
             android:name="firebase_performance_logcat_enabled"
             android:value="false" />
+        <activity android:name=".ui.settings.VivoNeuralActivity"
+            android:exported="false" android:process=":vivo_neural"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
     </application>
 </manifest>

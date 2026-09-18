@@ -64,8 +64,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
 
         int margin = (int) context.getResources().getDimension(R.dimen.aux_button_internal_margin);
-        int size = (int) context.getResources().getDimension(R.dimen.aux_button_size);
-        buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, size);
+        int size = (int) context.getResources().getDimension(R.dimen.vf_lens_height);
+        buttonParams = new LinearLayout.LayoutParams(0, size, 1f);
         buttonParams.setMargins(margin, margin, margin, margin);
 
         // The layout editor runs this constructor but not the data-binding adapters,
@@ -172,7 +172,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     private void addNewButton(String cameraId, String buttonText) {
         Button b = new Button(getContext());
         b.setLayoutParams(buttonParams);
-        b.setMinimumWidth((int) getResources().getDimension(R.dimen.aux_button_min_width));
+        b.setMinimumWidth(0);
+        b.setMinWidth(0);
         b.setMinHeight(0);
         b.setMinimumHeight(0);
         int padding = Math.round(getResources().getDisplayMetrics().density * 6f);
@@ -181,9 +182,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setIncludeFontPadding(false);
         b.setSingleLine(true);
         b.setText(buttonText);
-        b.setTextAppearance(R.style.AuxButtonText);
+        b.setTextSize(13);
+        b.setTextColor(getResources().getColorStateList(R.color.manual_text_color, getContext().getTheme()));
         b.setBackgroundResource(R.drawable.aux_button_background);
         b.setStateListAnimator(null);
+        b.setBackgroundTintList(null);
         b.setTransformationMethod(null);
         int buttonId = View.generateViewId();
         b.setId(buttonId);

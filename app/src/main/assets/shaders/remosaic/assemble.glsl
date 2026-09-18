@@ -22,6 +22,7 @@ uniform float blackLevel;
 uniform float whiteLevel;
 uniform float gainB;
 uniform float gainR;
+uniform float blockGain[64];
 
 out uvec4 Output;
 
@@ -53,7 +54,8 @@ void main() {
     if (tc == 1) {
         int sc = colorAt(xy);
         if (sc == 1) {
-            // Measured green stays measured. Taking the interpolated field here
+            // Measured green uses the same response correction as stages.glsl.
+            // With unit gains, measured green stays measured. Taking the interpolated field here
             // instead was tried, on the reasoning that one estimate per 2x2
             // cancels in g + diff; checked against the reference app's output on
             // the same raw, it is not what that does - green passes through bit
@@ -61,7 +63,11 @@ void main() {
             // matches the reference four times closer on average, seventeen
             // times closer at the 99th percentile.
             float v = (float(texelFetch(RawBuffer, xy, 0).r) - blackLevel) / range;
-            outv = clamp(v, 0.0, 1.0);
+            int rx = (xy.x + phase.x) % (2 * blockSize);
+            int ry = (xy.y + phase.y) % (2 * blockSize);
+            int q = (ry / blockSize) * 2 + rx / blockSize;
+            int site = (ry % blockSize) * blockSize + rx % blockSize;
+            outv = clamp(v * blockGain[q * 16 + site], 0.0, 1.0);
         } else {
             outv = g;
         }

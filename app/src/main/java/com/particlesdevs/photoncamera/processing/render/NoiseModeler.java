@@ -61,7 +61,7 @@ public class NoiseModeler {
                     + " Gb=" + inModel[2] + " B=" + inModel[3]);
         }
         //inModel = null;
-        if (inModel == null || inModel.length == 0 || inModel[0].first == 0.0 || (specificSettingSensor != null && specificSettingSensor.ModelerExists)) {
+        if (inModel == null || inModel.length == 0 || inModel[0].first == 0.0 || (profile == null && specificSettingSensor != null && specificSettingSensor.ModelerExists)) {
             Pair<Double, Double> CustomGeneratorS;
             Pair<Double, Double> CustomGeneratorO;
             if(specificSettingSensor != null) {
@@ -85,7 +85,7 @@ public class NoiseModeler {
                 CustomGeneratorS = new Pair<>(0.0000025720647, 0.000028855721);
                 CustomGeneratorO = new Pair<>(0.000000000039798506, 0.000000046578279);
             }
-            Pair<Double,Double> computedModel = new Pair<>(computeNoiseModelS(ISO,CustomGeneratorS),computeNoiseModelO(ISO,CustomGeneratorO));
+            Pair<Double,Double> computedModel = new Pair<>(computeNoiseModelS(modelIso1,CustomGeneratorS),computeNoiseModelO(modelIso1,CustomGeneratorO));
             //Test
             /*
             Pair<Double, Double> TestsGenerator = new Pair<>(1.0798706869238175e-06, -8.618818353621416e-06);
@@ -160,6 +160,7 @@ public class NoiseModeler {
         computeStackingNoiseModel(FrameNumberSelector.frameCount);
     }
     public void computeStackingNoiseModel(int FrameCnt){
+        FrameCnt = Math.max(1, FrameCnt);
         // User coefficient scales the final model, so it affects the denoise nodes and the
         // alignment significance gate together instead of one of them in isolation.
         double coefficient = com.particlesdevs.photoncamera.settings.PreferenceKeys

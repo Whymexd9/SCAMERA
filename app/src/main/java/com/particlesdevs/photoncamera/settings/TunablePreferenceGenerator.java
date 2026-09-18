@@ -67,12 +67,12 @@ public class TunablePreferenceGenerator {
             }
             
             // Group preferences by category
-            Map<String, List<TunableFieldInfo>> categorizedFields = new HashMap<>();
+            Map<String, List<TunableFieldInfo>> categorizedFields = new java.util.LinkedHashMap<>();
             
             // Scan all registered classes
             for (Class<?> clazz : TUNABLE_CLASSES) {
                 Log.d(TAG, "About to scan class: " + clazz.getName());
-                scanClass(clazz, categorizedFields);
+                if (!"PostPipeline".equals(clazz.getSimpleName())) scanClass(clazz, categorizedFields);
             }
             
             Log.d(TAG, "Found " + categorizedFields.size() + " categories");
@@ -85,14 +85,17 @@ public class TunablePreferenceGenerator {
                 Log.d(TAG, "Processing category: " + categoryName + " with " + fields.size() + " fields");
                 
                 // Sort by order
-                fields.sort((a, b) -> Integer.compare(a.order, b.order));
+                // Registry and declaration order are stable; do not interleave unrelated classes.
                 
                 // Find or create category in the tunable submenu
-                PreferenceCategory category = findOrCreateCategory(context, tunableSubmenu, categoryName);
+                PreferenceScreen destination = preferenceScreen.findPreference(destination(fields.get(0).className));
+                if (destination == null) throw new IllegalStateException("Missing settings destination: " + categoryName);
+                PreferenceCategory category = findOrCreateCategory(context, destination, categoryName);
                 Log.d(TAG, "Category created/found: " + categoryName);
                 
                 // Add preferences for each field
                 for (TunableFieldInfo fieldInfo : fields) {
+                    if ("PostPipeline".equals(fieldInfo.className)) continue; // explicit XML selectors
                     //Log.d(TAG, "Adding preference for: " + fieldInfo.fieldName);
                     addPreference(context, category, fieldInfo);
                 }
@@ -105,6 +108,19 @@ public class TunablePreferenceGenerator {
         }
     }
     
+    private static String destination(String className) {
+        switch (className) {
+            case "ESD3D2": case "ABLC": return "expert_noise_screen";
+            case "ESD4D": case "PyramidAlignment": return "expert_merge_screen";
+            case "LocalLaplacian": return "expert_detail_screen";
+            case "Bayer2Float": case "Amaze": return "expert_raw_screen";
+            case "Parameters": return "expert_sensor_screen";
+            case "ImageSaverSettings": return "expert_output_screen";
+            case "CameraUIViewImpl": return "expert_viewfinder_screen";
+            default: return "expert_tone_screen";
+        }
+    }
+
     private static void scanClass(Class<?> clazz, Map<String, List<TunableFieldInfo>> categorizedFields) {
         String className = clazz.getSimpleName();
         Log.d(TAG, "Scanning class: " + className);
@@ -144,7 +160,7 @@ public class TunablePreferenceGenerator {
     
     private static PreferenceCategory findOrCreateCategory(Context context, PreferenceScreen screen, String categoryName) {
         // Try to find existing category
-        String categoryKey = "pref_category_tunable_" + categoryName.toLowerCase().replace(" ", "_");
+        String categoryKey = "pref_category_tunable_" + categoryName.toLowerCase(java.util.Locale.ROOT).replace(" ", "_");
         
         for (int i = 0; i < screen.getPreferenceCount(); i++) {
             if (screen.getPreference(i) instanceof PreferenceCategory) {
@@ -158,7 +174,7 @@ public class TunablePreferenceGenerator {
         // Create new category
         PreferenceCategory category = new PreferenceCategory(context);
         category.setKey(categoryKey);
-        category.setTitle("Tunable - " + categoryName);
+        category.setTitle(categoryName.isEmpty() ? "Чёрный уровень — ABLC" : categoryName);
         screen.addPreference(category);
         
         return category;
@@ -166,7 +182,7 @@ public class TunablePreferenceGenerator {
     
     private static void addPreference(Context context, PreferenceCategory category, TunableFieldInfo info) {
         Tunable annotation = info.annotation;
-        String prefKey = "pref_tunable_" + info.className.toLowerCase() + "_" + info.fieldName.toLowerCase();
+        String prefKey = "pref_tunable_" + info.className.toLowerCase(java.util.Locale.ROOT) + "_" + info.fieldName.toLowerCase(java.util.Locale.ROOT);
 
         // String fields with entries/entryValues become a list selector
         if (info.fieldType == String.class
@@ -228,15 +244,15 @@ public class TunablePreferenceGenerator {
 
                 // Auto-detect if float based on step value
                 // If step has decimals (not a whole number), treat as float
-                boolean isFloat = (step != Math.floor(step));
+                boolean isFloat = PreferenceNumber.floating(info.fieldType);
 
                 // IMPORTANT: Set isFloat BEFORE setDefaultValue so precision is calculated correctly
                 seekBar.setIsFloat(isFloat);
 
                 // Calculate step per unit (for seekbar)
                 float range = annotation.max() - annotation.min();
-                int stepsPerUnit = (int) (1.0f / step);
-                seekBar.setStepPerUnit(Math.max(1, stepsPerUnit));
+                float stepsPerUnit = 1.0f / step;
+                seekBar.setStepPerUnit(stepsPerUnit);
 
                 //Log.d(TAG, "Field " + info.fieldName + " - step: " + step + ", isFloat: " + isFloat + ", stepsPerUnit: " + stepsPerUnit);
 
@@ -305,6 +321,15 @@ public class TunablePreferenceGenerator {
             if (editText.getText() == null) {
                 edit.setText(formatDefault(defaultValue, fieldType));
             }
+        });
+
+        editText.setOnPreferenceChangeListener((preference, input) -> {
+            if (fieldType == String.class) return true;
+            double number = PreferenceNumber.read(input, Double.NaN);
+            boolean valid = Double.isFinite(number) && number >= annotation.min() && number <= annotation.max()
+                    && (PreferenceNumber.floating(fieldType) || number == Math.rint(number));
+            if (!valid) android.widget.Toast.makeText(context, "Число от " + annotation.min() + " до " + annotation.max(), android.widget.Toast.LENGTH_LONG).show();
+            return valid;
         });
 
         String description = annotation.description();

@@ -51,6 +51,11 @@ public class Parameters {
      * does not run over an ordinary bayer frame.
      */
     public boolean remosaicDone;
+    // Per-capture policy, not a live settings lookup during asynchronous processing.
+    public boolean hexQuadProcessed;
+    public boolean hexQuadPostDenoise;
+    /** Per-shot display correction; never changes sensor exposure, VST or Bayer DNG. */
+    public float hexQuadExposureEv;
     public Point rawSize;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
@@ -166,7 +171,8 @@ public class Parameters {
         }
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
-                && !VendorTagUtils.wasRemosaicApplied();
+                && !VendorTagUtils.wasRemosaicApplied()
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRemosaicEnabled();
         if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         if (flen == null || flen.length <= 0) {
@@ -361,6 +367,13 @@ public class Parameters {
             }
         else {
             whitePoint = customNeutral;
+        }
+        Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE);
+        android.hardware.camera2.params.RggbChannelVector manualGains = result.get(CaptureResult.COLOR_CORRECTION_GAINS);
+        if (!customNeutr && awb != null && awb == CaptureRequest.CONTROL_AWB_MODE_OFF && manualGains != null) {
+            float green=(manualGains.getGreenEven()+manualGains.getGreenOdd())*.5f;
+            if(green>0 && manualGains.getRed()>0 && manualGains.getBlue()>0)
+                whitePoint=new float[]{green/manualGains.getRed(),1,green/manualGains.getBlue()};
         }
         int ref1 = characteristics.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1);
         int ref2;
@@ -609,6 +622,9 @@ public class Parameters {
 
     protected Parameters Build() {
         Parameters params = new Parameters();
+        params.hexQuadProcessed = hexQuadProcessed;
+        params.hexQuadPostDenoise = hexQuadPostDenoise;
+        params.hexQuadExposureEv = hexQuadExposureEv;
         params.cfaPattern = cfaPattern;
         params.baseCfaPattern = baseCfaPattern;
         params.quadCfa = quadCfa;

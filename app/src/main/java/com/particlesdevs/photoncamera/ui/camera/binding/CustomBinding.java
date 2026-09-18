@@ -131,14 +131,11 @@ public class CustomBinding {
 
     @BindingAdapter("adjustTopBar")
     public static void adjustTopBar(View topbar, float displayAspectRatio) {
-        if (displayAspectRatio > 16f / 9) {
-            ConstraintLayout.LayoutParams params = (ConstraintLayout.LayoutParams) topbar.getLayoutParams();
-            DisplayMetrics displayMetrics = topbar.getResources().getDisplayMetrics();
-            float dpHeight = displayMetrics.heightPixels / displayMetrics.density;
-            float dpWidth = displayMetrics.widthPixels / displayMetrics.density;
-            float dpmargin = (dpHeight - (dpWidth / 9f * 16f));
-            params.topMargin = (int) dpmargin;
-        }
+        ConstraintLayout.LayoutParams params = (ConstraintLayout.LayoutParams) topbar.getLayoutParams();
+        float density = topbar.getResources().getDisplayMetrics().density;
+        // dp and pixels must not be mixed. Keep a modest gap on tall displays.
+        params.topMargin = Math.round((displayAspectRatio > 1.9f ? 12 : 4) * density);
+        topbar.setLayoutParams(params);
     }
     
     @BindingAdapter("setAspectRatio")

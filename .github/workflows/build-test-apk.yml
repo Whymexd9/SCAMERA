@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # versionCode = 30000 + commit count
+          fetch-depth: 0        # versionCode = 30002 + commit count
 
       - uses: actions/setup-java@v4
         with:
@@ -42,7 +42,7 @@ jobs:
 
       - name: Compute versionCode
         id: ver
-        run: echo "code=$((30000 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
+        run: echo "code=$((30002 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
 
       - name: Fetch vendored ncnn from upstream PhotonCamera
         run: |
@@ -102,22 +102,87 @@ jobs:
           grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
+      - name: Check settings precision and algorithm availability
+        run: python3 tools/check_settings_model.py
+
+      - name: Check Tetra response estimator
+        run: |
+          mkdir -p build/tetra-profile-check
+          javac -d build/tetra-profile-check app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/TetraResponseProfile.java tools/TetraResponseProfileCheck.java tools/TetraResponseMapCheck.java
+          java -cp build/tetra-profile-check TetraResponseProfileCheck
+          java -cp build/tetra-profile-check TetraResponseMapCheck
+
+      - name: Check neural packing and CFA gate
+        run: |
+          g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_vivo_neural_capture.cpp -ldl -o /tmp/check-vivo-neural-capture
+          /tmp/check-vivo-neural-capture
+          g++ -pthread -std=c++14 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -o /tmp/vivo-neural-worker
+          /tmp/vivo-neural-worker --transport-check
+
       - name: Build debug APK
+        # The APK build only starts after the native denoise behavior checks pass.
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libfftw3-dev python3-numpy libegl1 libgl1-mesa-dri
+          python3 -m venv /tmp/tetra-gpu-check
+          /tmp/tetra-gpu-check/bin/pip install moderngl==5.12.0 numpy==2.3.5
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_gles.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_detail.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
+          /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
+          /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Collect APK
+      - name: Upload settings test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/reports/viewfinder
+          if-no-files-found: ignore
+
+      - name: Verify native denoise packaging
+        env:
+          SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/librtDenoise.so'
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/vivo-neural/arm64-v8a/vivo-neural-worker'
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          unzip -p "$APK" assets/vivo-neural/arm64-v8a/vivo-neural-worker > /tmp/vivo-neural-worker-android
+          readelf -h /tmp/vivo-neural-worker-android | grep AArch64
+          readelf -l /tmp/vivo-neural-worker-android | grep /system/bin/linker64
+          readelf -d /tmp/vivo-neural-worker-android > /tmp/neural-deps.txt
+          grep -q PIE /tmp/neural-deps.txt
+          cat /tmp/neural-deps.txt
+          if grep -q 'libc++_shared.so' /tmp/neural-deps.txt; then
+            echo "Root helper must have a static C++ runtime"
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file res/xml/preferences.xml > /tmp/apk-preferences.txt
+          grep -q 'rt_denoise_screen' /tmp/apk-preferences.txt
+          grep -q 'pref_rt_denoise_backend' /tmp/apk-preferences.txt
+          grep -q 'rt_original_controls' /tmp/apk-preferences.txt
+          grep -q 'rt512_luma' /tmp/apk-preferences.txt
+          grep -q 'rt512_ccurve' /tmp/apk-preferences.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -1
+
+      # CI emits a template; private model/runtime assets are added and signed
+      # with tools/package_vivo_neural.py before delivering a Bundled APK.
+      - name: Collect APK template
         run: |
           mkdir -p out
           find app/build/outputs/apk/debug -name '*.apk' -exec cp {} out/ \;
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/
           ls -l out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SCAMERA-debug-${{ steps.ver.outputs.code }}
-          path: out/*.apk
+          name: SCAMERA-template-${{ steps.ver.outputs.code }}
+          path: out/*
           if-no-files-found: error
           compression-level: 0

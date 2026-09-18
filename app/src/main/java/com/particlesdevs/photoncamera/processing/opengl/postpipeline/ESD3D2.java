@@ -26,18 +26,14 @@ public class ESD3D2 extends Node {
     }
     @Tunable(title = "Enable", category = "Denoise", defaultValue = 1, min = 0, max = 1, step = 1, description = "Enable ESD3D Denoising")
     boolean enable;
-
-    @Tunable(title = "Noise To Kernel Size", category = "Denoise", max = 50.0f, defaultValue = 24.0f)
+    // Internal value; the user-facing control is defined at its actual consumer.
     float noiseToKernelSize = 24.0f;
 
     @Tunable(title = "Noise Target", category = "Denoise", max = 0.1f, defaultValue = 0.00390625f, step = 0.0001f,
             description = "Target noise level to map to minimum kernel size (1/256 = 0.00390625)"
     )
     float noiseTarget = 1.0f/256.f;
-
-    @Tunable(title = "Luma", category = "Denoise", max = 2.0f, defaultValue = 0.8f,
-            description = "Luma strength multiplier for denoising"
-    )
+    // Internal value; the user-facing control is defined at its actual consumer.
     float luma = 0.8f;
 
     @Tunable(title = "Max Kernel", category = "Denoise", min = 1.0f, max = 51.0f, defaultValue = 21.0f, step = 1.0f,
@@ -49,15 +45,9 @@ public class ESD3D2 extends Node {
             description = "Minimum kernel size for denoising"
     )
     int minSize = 7;
-
-    @Tunable(title = "Moire Reduction", category = "Denoise", max = 5.0f, defaultValue = 1.5f, step = 0.1f,
-            description = "Moire reduction strength"
-    )
+    // Internal value; the user-facing control is defined at its actual consumer.
     float moire = 1.5f;
-
-    @Tunable(title = "Use Color Denoising", category = "Denoise", defaultValue = 1, min = 0, max = 1, step = 1,
-            description = "Whether to apply subsampling denoising to color channels (in addition to luma)"
-    )
+    // Internal value; the user-facing control is defined at its actual consumer.
     boolean useColorDenoising;
 
     @Tunable(title = "ESD3D Version", category = "Denoise", defaultValue = 0,
@@ -87,7 +77,7 @@ public class ESD3D2 extends Node {
             glProg.setDefine("INSIZE", basePipeline.mParameters.rawSize);
             //float ks = 1.0f + Math.min((basePipeline.noiseS+basePipeline.noiseO) * 3.0f * noiseToKernelSize, 34.f);
             //int msize = 7 + (int)ks - (int)ks%2;
-            double noiseMpy = Math.max((NoiseS+NoiseO)/noiseTarget, 0.0000001);
+            double noiseMpy = Math.max((NoiseS+NoiseO)/Math.max(noiseTarget, 0.0000001f), 0.0000001);
             double kernelSize = 1.0f + Math.sqrt(noiseMpy) * noiseToKernelSize;
             int msize = Math.min(minSize + (int)kernelSize - (int)kernelSize%2, maxSize);
             Log.d("ESD3D", "KernelSize: "+kernelSize+" MSIZE: "+msize);
@@ -131,7 +121,7 @@ public class ESD3D2 extends Node {
         noiseToKernelSize = (rtChroma / 100.0f) * 32.0f + 8.0f;
         moire = (rtMoire / 100.0f) * 5.0f;
         float N = (float) Math.sqrt(0.5 * basePipeline.noiseS + basePipeline.noiseO);
-        float targetN = noiseTarget;
+        float targetN = Math.max(noiseTarget, 0.0000001f);
         float scaleF = Math2.clamp(N/targetN, 1.0f, 4.0f);
         int scale = (int)(scaleF + 0.5f);
         GLTexture outp;

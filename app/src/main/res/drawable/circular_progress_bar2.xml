@@ -24,7 +24,7 @@
             <shape
                     android:shape="ring"
                     android:useLevel="true"
-                    android:innerRadiusRatio="3.02"
+                    android:innerRadiusRatio="2.15"
                     android:thicknessRatio="30">
                 <solid android:color="?attr/processingProgressColor"/>
             </shape>

@@ -139,7 +139,7 @@ public class PostPipeline extends GLBasePipeline {
 
     @Tunable(
         title = "Tone Pipeline",
-        description = "Exposure Fusion: Wronski/Mertens; OpenDRT: scene-linear display transform; Curve: legacy PhotonCamera; Sky: headroom renderer; Off: linear passthrough",
+        description = "Выбранный режим применяется при сохранении фото. Exposure Fusion включается этим списком. Настройки Sky и гаммы находятся в отдельных группах.",
         category = "Color & Tone",
         entries = {"Exposure Fusion (Wronski)", "OpenDRT Standard", "PhotonCamera Curve (legacy)", "Sky (Headroom)", "Off (linear passthrough)"},
         entryValues = {"fusion", "opendrt", "curve", "sky", "off"}
@@ -623,15 +623,21 @@ public class PostPipeline extends GLBasePipeline {
                 // The user-facing component switches are authoritative.  The
                 // old hdrxNR flag is device/profile dependent and made these
                 // controls no-ops on profiles where it was false.
-                if (!PreferenceKeys.isHdrPlusMergeEnabled()
-                        && (PreferenceKeys.isNrLumaEnabled()
-                        || PreferenceKeys.isNrChromaEnabled())) {
+                if ((!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
+                        && !com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()
+                        && !PreferenceKeys.isHdrPlusMergeEnabled()
+                        && (PreferenceKeys.getRtLumaDenoise() > 0
+                        || PreferenceKeys.getRtChromaDenoise() > 0 || PreferenceKeys.getRtMoireDenoise() > 0)) {
                     add(new ESD3D2(true));
                 }
                 break;
             }
         }
         add(new ABLC());
+        if ((!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
+                && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {
+            add(new RawTherapeeDenoise());
+        }
         if ("off".equals(tonePipeline)) {
             // No tone/color stage: the linear camera RGB passes through
             // untouched. LinearExposure draws nothing but keeps the Ultra HDR
@@ -658,7 +664,12 @@ public class PostPipeline extends GLBasePipeline {
         add(new CorrectingFlow());
         add(new FalseColorSuppression());
         add(new CaptureOneProcessing());
-        add(new CaptureSharpening());
+        // Apply the saved per-shot correction after tone/AE and before sharpening/watermark.
+        // Zero EV adds no pass, preserving the previous rendering exactly.
+        if (mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f) {
+            add(new HexQuadExposure("off".equals(tonePipeline)));
+        }
+        if (PreferenceKeys.isSensorSharpeningEnabled()) add(new CaptureSharpening());
         // Sharpening is RawTherapee's, selected inside the node by method:
         // unsharp mask, RL deconvolution or microcontrast. The previous
         // PhotonCamera/Luma switch is gone with the node it selected.

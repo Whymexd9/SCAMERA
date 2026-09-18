@@ -13,7 +13,7 @@ public class SettingsManagerExtensions {
     public static Float getFloat(SettingsManager manager, String scope, String key, Float defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            return preferences.getFloat(key, defaultValue);
+            return (float) PreferenceNumber.read(preferences.getAll().get(key), defaultValue);
         }
         return defaultValue;
     }
@@ -34,7 +34,7 @@ public class SettingsManagerExtensions {
     public static Integer getInteger(SettingsManager manager, String scope, String key, Integer defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            return preferences.getInt(key, defaultValue);
+            return (int) PreferenceNumber.read(preferences.getAll().get(key), defaultValue);
         }
         return defaultValue;
     }
@@ -55,7 +55,7 @@ public class SettingsManagerExtensions {
     public static boolean getBoolean(SettingsManager manager, String scope, String key, boolean defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            return preferences.getBoolean(key, defaultValue);
+            return PreferenceNumber.bool(preferences.getAll().get(key), defaultValue);
         }
         return defaultValue;
     }
@@ -81,7 +81,7 @@ public class SettingsManagerExtensions {
             Object value = preferences.getAll().get(key);
             if (value instanceof String) {
                 return (String) value;
-            } else if (value instanceof Number) {
+            } else if (value instanceof Number || value instanceof Boolean) {
                 return String.valueOf(value);
             }
             return defaultValue;

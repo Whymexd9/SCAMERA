@@ -51,6 +51,7 @@ public class HdrxProcessor extends ProcessorBase {
     private CameraMode cameraMode;
     private ArrayList<GyroBurst> BurstShakiness;
     private String processingStage = "initialization";
+    private ByteBuffer hexOwnedOutput;
 
 
     public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
@@ -122,6 +123,13 @@ public class HdrxProcessor extends ProcessorBase {
             }
             processingEventsListener.onProcessingError("HDRX failed at "
                     + processingStage + " — " + detail);
+         } finally {
+            if (hexOwnedOutput != null) {
+                Allocator.free(hexOwnedOutput);
+                hexOwnedOutput = null;
+            }
+            if (PreferenceKeys.isHexQuadCaptureEnabled() && mImageFramesToProcess != null)
+                for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
         }
     }
 
@@ -164,6 +172,17 @@ public class HdrxProcessor extends ProcessorBase {
             fallback.isLongFrame = false;
             IsoExpoSelector.fullpairs.add(fallback);
             Log.w(TAG, "No exposure roles supplied; inserted safe normal role");
+        }
+        if (PreferenceKeys.isHexQuadCaptureEnabled()) {
+            double reference = -1;
+            for (ImageFrame frame : mImageFramesToProcess) {
+                Double measured = exposures.get(frame.getTimestamp());
+                if (measured == null || !Double.isFinite(measured) || measured <= 0)
+                    throw new IllegalStateException("HP9 HexQuad: нет измеренной экспозиции RAW");
+                if (reference < 0) reference = measured;
+                if (Math.abs(measured / reference - 1.0) > 0.02)
+                    throw new IllegalStateException("HP9 HexQuad: экспозиция кадров различается");
+            }
         }
         double safeExposure = IsoExpoSelector.fullpairs.get(0).Exposure();
         for (ImageFrame frame : mImageFramesToProcess) {
@@ -310,6 +329,23 @@ public class HdrxProcessor extends ProcessorBase {
         processingStage = "frame selection";
 
         ParseExif.syncWithParameters(exifData, processingParameters);
+        boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
+        ByteBuffer hexOutput = null;
+        if (hexCapture) {
+            processingStage = "HP9 HexQuad: six-frame NPU remosaic";
+            try {
+                hexOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.HexQuadBurst.process(
+                        PhotonCamera.getAppContext(), images, processingParameters);
+                hexOwnedOutput = hexOutput;
+                width=processingParameters.rawSize.x;height=processingParameters.rawSize.y;
+                ParseExif.syncWithParameters(exifData, processingParameters);
+            } catch (Exception e) {
+                throw new IllegalStateException("HP9 HexQuad: " + e.getMessage(), e);
+            } finally {
+                for (ImageFrame frame : images) frame.close();
+            }
+        }
+        if (!hexCapture) {
         ImageFrameDeblur imageFrameDeblur = new ImageFrameDeblur(processingParameters);
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
@@ -424,12 +460,15 @@ public class HdrxProcessor extends ProcessorBase {
         //float noiseLevel = (float) Math.sqrt((CaptureController.mCaptureResult.get(CaptureResult.SENSOR_SENSITIVITY)) *
         //        IsoExpoSelector.getMPY() - 40.)*6400.f / (6.2f*IsoExpoSelector.getISOAnalog());
 
-        ByteBuffer output = null;
+        } // Ordinary frame selection; HexQuad owns its six-frame burst.
+        ByteBuffer output = hexOutput;
         Log.d(TAG, "Packing");
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");
         ESD4D esd4d = null;
-        if(images.size() > 1) {
+        if (hexCapture) {
+            processingParameters.highlightSuppressionStrength = 0f;
+        } else if(images.size() > 1) {
             processingStage = "RAW alignment/fusion";
             try {
                 esd4d = new ESD4D(new Point(width, height), images);
@@ -469,6 +508,7 @@ public class HdrxProcessor extends ProcessorBase {
                 processingEventsListener.onProcessingFinished("HdrX RAW Processing Finished");
                 callback.onFinished();
                 Allocator.free(output);
+                if (hexOwnedOutput == output) hexOwnedOutput = null;
                 Allocator.getMemoryCount();
                 return;
             }
@@ -501,7 +541,9 @@ public class HdrxProcessor extends ProcessorBase {
 
         processingParameters.noiseModeler.computeStackingNoiseModel(images.size());
 
-        if (PreferenceKeys.isAiDenoiseEnabled() && PreferenceKeys.getAiDenoiseStrength() > 0) {
+        boolean allowPostDenoise = !processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise;
+        if (processingParameters.hexQuadProcessed) Log.i(TAG,"HEX POST DENOISE: AI/SCAMERA/RT allowed="+allowPostDenoise);
+        if (allowPostDenoise && PreferenceKeys.isAiDenoiseEnabled() && PreferenceKeys.getAiDenoiseStrength() > 0) {
             processingStage = "AI RAW denoise";
             try {
                 AiBayerDenoiseProcessor.process(PhotonCamera.getAppContext(), output,
@@ -564,6 +606,7 @@ public class HdrxProcessor extends ProcessorBase {
 
         Allocator.free(jpegInput);
         if (jpegInput != output) Allocator.free(output);
+        if (hexOwnedOutput == output) hexOwnedOutput = null;
 
         img = overlay(img, pipeline.debugData.toArray(new Bitmap[0]));
         try {

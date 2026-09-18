@@ -42,6 +42,36 @@ public class ParamController implements Observer {
     public int EV = 0;
     public long SHUTTER = -1;
     public float FOCUS = -1;
+    private int whiteBalanceKelvin;
+    private android.hardware.camera2.params.ColorSpaceTransform manualColorTransform;
+    public void applyWhiteBalance(CaptureRequest.Builder builder) {
+        if(builder==null)return;
+        if(whiteBalanceKelvin==0) {
+            builder.set(CaptureRequest.CONTROL_AWB_MODE,CaptureRequest.CONTROL_AWB_MODE_AUTO);
+            builder.set(CaptureRequest.COLOR_CORRECTION_MODE,CaptureRequest.COLOR_CORRECTION_MODE_FAST);
+            return;
+        }
+        if(manualColorTransform==null)manualColorTransform=captureController.mColorSpaceTransform;
+        if(manualColorTransform==null)return; // Wait for the first valid preview result.
+        try {
+            android.hardware.camera2.params.RggbChannelVector gains =
+                com.particlesdevs.photoncamera.circularbarlib.camera.ManualWhiteBalance.gains(CaptureController.mCameraCharacteristics,whiteBalanceKelvin);
+            builder.set(CaptureRequest.CONTROL_AWB_LOCK,false);
+            builder.set(CaptureRequest.CONTROL_AWB_MODE,CaptureRequest.CONTROL_AWB_MODE_OFF);
+            builder.set(CaptureRequest.COLOR_CORRECTION_MODE,CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
+            builder.set(CaptureRequest.COLOR_CORRECTION_GAINS,gains);
+            builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM,manualColorTransform);
+        } catch(IllegalArgumentException e) {
+            Log.e(TAG,"Manual WB unavailable: " + e.getMessage());
+        }
+    }
+    public void setWhiteBalance(int kelvin) {
+        if(whiteBalanceKelvin==0)manualColorTransform=captureController.mColorSpaceTransform;
+        whiteBalanceKelvin=kelvin;
+        applyWhiteBalance(captureController.mPreviewRequestBuilder);
+        captureController.rebuildPreviewBuilder();
+    }
+
     private static final String TAG = "ParamController";
     private final CaptureController captureController;
     private ManualParamModel manualParamModel;
@@ -124,6 +154,7 @@ public class ParamController implements Observer {
         if (observable != null && object != null) {
             ManualParamModel model = (ManualParamModel) observable;
             manualParamModel = model;
+            if (object.equals(ManualParamModel.ID_WB)) setWhiteBalance(model.getWhiteBalanceKelvin());
             if (object.equals(ManualParamModel.ID_ISO)) {
                 ISO = (int) model.getCurrentISOValue();
                 setISO((int) model.getCurrentISOValue(), model.getCurrentExposureValue());
@@ -146,12 +177,15 @@ public class ParamController implements Observer {
                 EV = 0;
                 SHUTTER = -1;
                 FOCUS = -1;
+                whiteBalanceKelvin=0;
+                applyWhiteBalance(captureController.mPreviewRequestBuilder);
                 captureController.unlockFocus();
             }
         }
     }
 
     public void setupPreview() {
+        applyWhiteBalance(captureController.mPreviewRequestBuilder);
         if (manualParamModel != null) {
             if(ISO != -1)
                 setISO(ISO, manualParamModel.getCurrentExposureValue());

@@ -1,0 +1,42 @@
+import com.particlesdevs.photoncamera.settings.*;
+import java.util.*;
+
+public class SettingsModelCheck {
+    static void eq(double a,double b){if(Math.abs(a-b)>1e-7)throw new AssertionError(a+" != "+b);}
+    static void active(Map<String,Object> p,String key){if(new SettingsAvailability(p).reason(key)!=null)throw new AssertionError("Inactive: "+key+" "+new SettingsAvailability(p).reason(key));}
+    static void inactive(Map<String,Object> p,String key){if(new SettingsAvailability(p).reason(key)==null)throw new AssertionError("Unexpectedly active: "+key);}
+    public static void main(String[] args){
+        eq(PreferenceNumber.read("0.00390625",9),1.0/256); eq(PreferenceNumber.read("0,125",9),.125);
+        eq(PreferenceNumber.read(2.5f,9),2.5);eq(PreferenceNumber.read("NaN",7),7);eq(PreferenceNumber.read("Infinity",7),7);
+        if(!PreferenceNumber.bool("1.0",false)||PreferenceNumber.bool("0",true))throw new AssertionError("mixed boolean storage");
+        if(!PreferenceNumber.floating(float.class))throw new AssertionError("float step=1 still float");
+        if(!PreferenceNumber.format(.00390625f,true).equals("0.00390625"))throw new AssertionError("precision lost");
+        eq(PreferenceNumber.progress(.30f,.10f,100,100),20);
+        if(SettingsNumericRules.error("pref_noise_iso_manual_key","300.5")==null)throw new AssertionError("integer validation");
+        if(SettingsNumericRules.error("pref_mfsr_dtr_key","0")==null)throw new AssertionError("zero denominator accepted");
+        eq(Double.parseDouble(SettingsNumericRules.normalized("pref_aces_gamut_key","98.25","100")),98.25);
+        eq(Double.parseDouble(SettingsNumericRules.normalized("pref_noise_model_coefficient_key","NaN","1.0")),1);
+        Map<String,Object> p=new HashMap<>();
+        inactive(p,"hexquad_luma");active(p,"pref_remosaic_enabled_key");
+        p.put("pref_remosaic_enabled_key",true);p.put("pref_remosaic_backend_key","hp9_hexquad");
+        active(p,"hexquad_luma"); inactive(p,"pref_frame_count_key");inactive(p,"rt512_luma");
+        p.put("hexquad_auto_iso",true);inactive(p,"hexquad_luma");active(p,"hexquad_iso_low_luma");
+        p.put("hexquad_model","1");inactive(p,"hexquad_full_resolution");p.put("hexquad_model","2");active(p,"hexquad_full_resolution");
+        p.put("hexquad_post_denoise",true);p.put("pref_rt_denoise_backend","rt512");active(p,"rt512_luma");inactive(p,"pref_rt_nr_luma_key");
+        p.put("rt512_auto","1");inactive(p,"rt512_chroma");p.put("rt512_auto","0");active(p,"rt512_chroma");
+        p.put("pref_remosaic_enabled_key",false);p.put("pref_rt_denoise_backend","legacy");
+        p.put("pref_camera_mode_key","4");p.put("pref_night_merge_algorithm_key","hdrplus");inactive(p,"pref_rt_nr_luma_key");
+        p.put("pref_camera_mode_key","2");active(p,"pref_rt_nr_luma_key");
+        for(String tone:new String[]{"fusion","curve","opendrt","sky","off"}){
+            p.put("pref_tunable_postpipeline_tonepipeline",tone);
+            if(tone.equals("sky"))active(p,"pref_tunable_headroomrender_outputexposurescale");else inactive(p,"pref_tunable_headroomrender_outputexposurescale");
+            if(tone.equals("fusion")||tone.equals("curve"))active(p,"pref_tunable_initial_gammax1");else inactive(p,"pref_tunable_initial_gammax1");
+        }
+        p.put("pref_tunable_postpipeline_tonepipeline","fusion");p.put("pref_aces_enabled_key",true);
+        inactive(p,"pref_tunable_initial_gammax1");active(p,"pref_aces_gamma_curve_key");
+        inactive(p,"pref_noise_iso_manual_key");p.put("pref_noise_model_profile_key","hp9");active(p,"pref_noise_iso_manual_key");
+        p.put("pref_noise_dynamic_enabled_key",false);inactive(p,"pref_tunable_esd4d_enablenoisestore");
+        p.put("pref_sharp_usm_enabled_key",false);inactive(p,"pref_sharp_amount_key");active(p,"pref_sharp_usm_enabled_key");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability");
+    }
+}

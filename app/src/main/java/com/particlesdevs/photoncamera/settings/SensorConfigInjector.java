@@ -46,7 +46,7 @@ public class SensorConfigInjector {
             if (annotation == null) continue;
 
             field.setAccessible(true);
-            String prefKey = "pref_sensorconfig_" + sensorId + "_" + field.getName().toLowerCase();
+            String prefKey = "pref_sensorconfig_" + sensorId + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
             String sensorKey = className + "." + field.getName() + " [" + sensorId + "]";
 
             try {
@@ -55,7 +55,7 @@ public class SensorConfigInjector {
                     annotationDefault = annotation.min();
                 }
                 float step = annotation.step();
-                boolean isStoredAsFloat = (step != Math.floor(step));
+                boolean isStoredAsFloat = true; // reader accepts legacy int/float/string storage
                 boolean isFreeText = (step == 0f);
                 boolean isList = (annotation.entries().length > 0 && annotation.entryValues().length > 0);
                 String stringValue = (isFreeText || isList)
@@ -66,33 +66,39 @@ public class SensorConfigInjector {
                 if (fieldType == float.class || fieldType == Float.class) {
                     float value;
                     if (isFreeText || isList) {
-                        value = (stringValue == null || stringValue.trim().isEmpty()) ? annotationDefault : Float.parseFloat(stringValue);
+                        value = (stringValue == null || stringValue.trim().isEmpty()) ? annotationDefault : (float) PreferenceNumber.read(stringValue, annotationDefault);
                     } else if (isStoredAsFloat) {
                         value = SettingsManagerExtensions.getFloat(settingsManager, SCOPE_GLOBAL, prefKey, annotationDefault);
                     } else {
                         value = (float) SettingsManagerExtensions.getInteger(settingsManager, SCOPE_GLOBAL, prefKey, (int) annotationDefault);
                     }
-                    field.setFloat(target, value);
+                    if (!isList) value = (float) Math.max(annotation.min(), Math.min(annotation.max(),
+                                PreferenceNumber.read(value, annotationDefault)));
+                        field.setFloat(target, value);
                     Log.d(TAG, "Injected " + sensorKey + " = " + value);
                 } else if (fieldType == int.class || fieldType == Integer.class) {
                     int value;
                     if (isFreeText || isList) {
-                        value = (stringValue == null || stringValue.trim().isEmpty()) ? (int) annotationDefault : Integer.parseInt(stringValue);
+                        value = (stringValue == null || stringValue.trim().isEmpty()) ? (int) annotationDefault : (int) PreferenceNumber.read(stringValue, annotationDefault);
                     } else {
                         value = SettingsManagerExtensions.getInteger(settingsManager, SCOPE_GLOBAL, prefKey, (int) annotationDefault);
                     }
-                    field.setInt(target, value);
+                    if (!isList) value = (int) Math.max(annotation.min(), Math.min(annotation.max(),
+                                PreferenceNumber.read(value, annotationDefault)));
+                        field.setInt(target, value);
                     Log.d(TAG, "Injected " + sensorKey + " = " + value);
                 } else if (fieldType == double.class || fieldType == Double.class) {
                     double value;
                     if (isFreeText || isList) {
-                        value = (stringValue == null || stringValue.trim().isEmpty()) ? annotationDefault : Double.parseDouble(stringValue);
+                        value = (stringValue == null || stringValue.trim().isEmpty()) ? annotationDefault : (double) PreferenceNumber.read(stringValue, annotationDefault);
                     } else if (isStoredAsFloat) {
                         value = (double) SettingsManagerExtensions.getFloat(settingsManager, SCOPE_GLOBAL, prefKey, annotationDefault);
                     } else {
                         value = (double) SettingsManagerExtensions.getInteger(settingsManager, SCOPE_GLOBAL, prefKey, (int) annotationDefault);
                     }
-                    field.setDouble(target, value);
+                    if (!isList) value = (double) Math.max(annotation.min(), Math.min(annotation.max(),
+                                PreferenceNumber.read(value, annotationDefault)));
+                        field.setDouble(target, value);
                     Log.d(TAG, "Injected " + sensorKey + " = " + value);
                 } else if (fieldType == boolean.class || fieldType == Boolean.class) {
                     boolean defVal = (annotationDefault != 0.0f);

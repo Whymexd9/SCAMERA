@@ -350,6 +350,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     private final ArrayDeque<Image> mZslRingBuffer = new ArrayDeque<>();
     private final Object mZslBufferLock = new Object();
+    private final java.util.LinkedHashMap<Long, TotalCaptureResult> mHexZslResults = new java.util.LinkedHashMap<>();
     private volatile boolean mZslCapturing = false;
     /**
      * True from the shutter press until the burst's frames have been handed to
@@ -612,6 +613,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
             Integer state = result.get(CaptureResult.FLASH_STATE);
             mFlashed = state != null && state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED;
+            if (isZslMode() && PreferenceKeys.isHexQuadCaptureEnabled()) {
+                Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                if (timestamp != null) synchronized (mZslBufferLock) {
+                    mHexZslResults.put(timestamp, result);
+                    while (mHexZslResults.size() > zslRingCapacity()+16)
+                        mHexZslResults.remove(mHexZslResults.keySet().iterator().next());
+                }
+            }
             mPreviewCaptureResult = result;
             mPreviewCaptureRequest = request;
             process(result);
@@ -1848,6 +1857,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         mPreviewRequestBuilder.addTarget(surface);
         synchronized (mZslBufferLock) {
+            mHexZslResults.clear();
             while (!mZslRingBuffer.isEmpty()) {
                 Image img = mZslRingBuffer.pollFirst();
                 if (img != null) img.close();
@@ -2034,6 +2044,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
+                            session.getDevice().getId() + "/" + physicalID,
+                            mCameraCharacteristics, result);
                     long frametime = 100;
                     Object time = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                     if(time != null) frametime = (long)time;
@@ -2094,13 +2107,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // those buffered frames for the regular stack and captures only the
         // requested long/short tail explicitly.
         return PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
-                && !IsoExpoSelector.HDR
+                && (!IsoExpoSelector.HDR || PreferenceKeys.isHexQuadCaptureEnabled())
                 && !isDualSession;
     }
 
     private boolean needsExposureBracket() {
-        return PreferenceKeys.getShortFrameCountValue() > 0
-                || PreferenceKeys.getLongFrameCountValue() > 0;
+        return !PreferenceKeys.isHexQuadCaptureEnabled() && (PreferenceKeys.getShortFrameCountValue() > 0
+                || PreferenceKeys.getLongFrameCountValue() > 0);
     }
 
     /**
@@ -2164,7 +2177,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public static int zslRingCapacity() {
         int requested = PreferenceKeys.getZslBufferCountValue();
         int frames = requested > 0 ? requested : PhotonCamera.getSettings().frameCount;
-        return Math.max(1, Math.min(frames, 100));
+        return Math.max(PreferenceKeys.isHexQuadCaptureEnabled()?8:1, Math.min(frames, 100));
     }
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount) {
@@ -2224,18 +2237,54 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mZslCapturing = true;
         burst = false;
 
-        int frameCount = FrameNumberSelector.getFrames();
+        final boolean hex = PreferenceKeys.isHexQuadCaptureEnabled();
+        int frameCount = hex ? 6 : FrameNumberSelector.getFrames();
         cameraRotation = PhotonCamera.getGravity().getCameraRotation(mSensorOrientation);
         BurstShakiness = new ArrayList<>();
         mExposures = new HashMap<>();
 
         // Drain raw Image objects from the ring buffer (no copy yet)
         List<Image> rawImages;
+        java.util.Map<Long, TotalCaptureResult> results;
         synchronized (mZslBufferLock) {
             rawImages = new ArrayList<>(mZslRingBuffer);
             mZslRingBuffer.clear();
+            results = new HashMap<>(mHexZslResults);
+            mHexZslResults.clear();
         }
 
+        rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
+        CaptureResult selectedResult = mPreviewCaptureResult;
+        CaptureRequest selectedRequest = mPreviewCaptureRequest;
+        if (hex) {
+            java.util.List<HexQuadZslSelector.Sample> candidates = new ArrayList<>();
+            for (Image image : rawImages) {
+                TotalCaptureResult result = results.get(image.getTimestamp());
+                Long exp = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
+                candidates.add(new HexQuadZslSelector.Sample(image.getTimestamp(),exp==null?0:exp,iso==null?0:iso));
+            }
+            int[] keep = HexQuadZslSelector.select(candidates);
+            if (keep.length != 6) {
+                for (Image image : rawImages) image.close();
+                mZslCapturing=false;mShotInProgress=false;
+                Log.w(TAG,"HP9 HexQuad ZSL: no six matched equal-exposure RAWs; no PSL substitution");
+                cameraEventsListener.onProcessingError("ZSL: дождитесь 6 кадров со стабильной экспозицией и повторите снимок");
+                mBackgroundHandler.post(this::unlockFocus);
+                return;
+            }
+            List<Image> chosen = new ArrayList<>();
+            for (int i=0;i<rawImages.size();++i) {
+                if (i>=keep[0] && i<=keep[5]) chosen.add(rawImages.get(i));
+                else rawImages.get(i).close();
+            }
+            rawImages=chosen;
+            TotalCaptureResult reference=results.get(rawImages.get(0).getTimestamp());
+            selectedResult=reference;selectedRequest=reference.getRequest();
+            Log.i(TAG,"HP9 HexQuad ZSL: six timestamp-matched pre-shutter frames");
+        }
+        final CaptureResult capturedResult=selectedResult;
+        final CaptureRequest capturedRequest=selectedRequest;
         int take = Math.min(rawImages.size(), frameCount);
         int skip = rawImages.size() - take;
         for (int i = 0; i < skip; i++) {
@@ -2246,9 +2295,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         double previewExpTime = 1.0;
         double previewISO = 100.0;
         long exposureTimeNs = 0;
-        if (mPreviewCaptureResult != null) {
-            Long expTimeNs = mPreviewCaptureResult.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-            Integer isoVal = mPreviewCaptureResult.get(CaptureResult.SENSOR_SENSITIVITY);
+        if (capturedResult != null) {
+            Long expTimeNs = capturedResult.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            Integer isoVal = capturedResult.get(CaptureResult.SENSOR_SENSITIVITY);
             if (expTimeNs != null) {
                 exposureTimeNs = expTimeNs;
                 previewExpTime = expTimeNs / 1_000_000_000.0;
@@ -2280,6 +2329,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             ImageFrame frame = new ImageFrame(img.getPlanes()[0].getBuffer(), img.getFormat(),
                     width, rowStride, offset, bufCapacity);
             frame.timestamp = img.getTimestamp();
+            frame.fromZsl = true;
 
             frame.width = width;
             frame.height = height;
@@ -2302,7 +2352,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         SaverImplementation.IMAGE_BUFFER.clear();
         SaverImplementation.IMAGE_BUFFER.addAll(selected);
 
-        mCaptureResult = mPreviewCaptureResult;
+        mCaptureResult = capturedResult;
+        mCaptureRequest = capturedRequest;
         mMeasuredFrameCnt = actualCount;
 
         cameraEventsListener.onFrameCountSet(actualCount);
@@ -2325,7 +2376,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // Populate fullpairs the same way setExpo() does for a normal burst
         IsoExpoSelector.fullpairs.clear();
         for (int i = 0; i < actualCount; i++) {
-            IsoExpoSelector.fullpairs.add(IsoExpoSelector.GenerateExpoPair(i, this));
+            if(hex) {
+                // Selection already verified exact measured exposure/ISO for each frame.
+                IsoExpoSelector.ExpoPair pair = new IsoExpoSelector.ExpoPair(exposureTimeNs,
+                        exposureTimeNs,exposureTimeNs,(int)previewISO,(int)previewISO,(int)previewISO,(int)previewISO);
+                pair.isHighlightFrame=false;pair.isLongFrame=false;pair.layerMpy=1f;
+                IsoExpoSelector.fullpairs.add(pair);
+            } else IsoExpoSelector.fullpairs.add(IsoExpoSelector.GenerateExpoPair(i, this));
         }
 
         final int capturedCount = actualCount;
@@ -2340,7 +2397,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 mImageSaver.implementation.bufferLock = false;
                 mImageSaver.updateFrameCount(capturedCount);
-                mImageSaver.runRaw(mCameraCharacteristics, mPreviewCaptureResult, mPreviewCaptureRequest,
+                mImageSaver.runRaw(mCameraCharacteristics, capturedResult, capturedRequest,
                         new ArrayList<>(BurstShakiness), cameraRotation, mExposures);
             } catch (Exception e) {
                 Log.e(TAG, "ZSL runRaw: " + Log.getStackTraceString(e));
@@ -2433,6 +2490,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     ? Math.max(0, Math.min(8, PreferenceKeys.getShortFrameCountValue())) : 0;
             int longFrameCount = denoiseFrameCount > 0
                     ? Math.max(0, Math.min(8, PreferenceKeys.getLongFrameCountValue())) : 0;
+            if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
+                denoiseFrameCount = 6;
+                shortFrameCount = 0;
+                longFrameCount = 0;
+                Log.i(TAG, "HP9 HexQuad: six real RAWs, equal exposure, PSL session (ZSL unavailable)");
+            }
             if (hybridZslRequested) {
                 // Block preview RAWs first. Do not route them into ImageSaver:
                 // queued preview images would consume the bracket frame slots.
@@ -2522,6 +2585,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewRequestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus);
             rebuildPreviewBuilder();*/
 
+            paramController.applyWhiteBalance(captureBuilder);
             IsoExpoSelector.useTripod = PhotonCamera.getGyro().getTripod();
             if (frameCount == -1) {
                 for (int i = 0; i < 1; i++) {
@@ -2639,6 +2703,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
+                            session.getDevice().getId() + "/" + physicalID,
+                            mCameraCharacteristics, result);
                     Object time = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     Log.d(TAG, "Timestamp:" + time);
                     if (time != null) {
@@ -3187,3 +3254,4 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     }
 }
+

@@ -61,12 +61,11 @@ import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.ALL_DEV
 import static com.particlesdevs.photoncamera.settings.PreferenceKeys.SCOPE_GLOBAL;
 
 public class SettingsActivity extends BaseActivity implements PreferenceFragmentCompat.OnPreferenceStartScreenCallback {
-    public static boolean toRestartApp;
     private static int sCameraMode = -1;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        getDelegate().setLocalNightMode(PreferenceKeys.getThemeValue());
+        getDelegate().setLocalNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
         
@@ -76,7 +75,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         // Setup window insets to handle navigation bar
         setupWindowInsets();
         
-        getSupportFragmentManager()
+        if (savedInstanceState == null) getSupportFragmentManager()
                 .beginTransaction()
                 .replace(R.id.settings_container, new SettingsFragment())
                 .commit();
@@ -130,11 +129,18 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
+    void openSearchResult(SettingsSearchFragment.Entry entry) {
+        SettingsFragment page = new SettingsFragment();
+        Bundle args = new Bundle();
+        if (!"prefscreen".equals(entry.page)) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, entry.page);
+        args.putString("search_target", entry.key);
+        page.setArguments(args);
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, page)
+                .addToBackStack("search_result").commit();
+    }
+
     @Override
     public void onBackPressed() {
-        if (toRestartApp) {
-            PhotonCamera.restartApp(this);
-        }
         super.onBackPressed();
     }
 
@@ -144,6 +150,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private SettingsManager mSettingsManager;
         private Context mContext;
         private View mRootView;
+        private PreferenceScreen fullPreferenceScreen;
         private SupportedDevice supportedDevice;
         private boolean tunablePreferencesGenerated = false;
         private boolean sensorConfigPreferencesGenerated = false;
@@ -152,8 +159,194 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
-            setPreferencesFromResource(R.xml.preferences, rootKey);
-            seedMissingListValues(getPreferenceScreen());
+            mContext = requireContext();
+            mSettingsManager = PhotonCamera.getSettingsManagerStatic();
+            com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
+            setPreferencesFromResource(R.xml.preferences, null);
+            generateTunablePreferences();
+            generateSensorConfigPreferences();
+            fullPreferenceScreen = getPreferenceScreen();
+            if (rootKey != null) {
+                PreferenceScreen selected = findPreference(rootKey);
+                if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
+                setPreferenceScreen(selected);
+            }
+            seedMissingListValues(fullPreferenceScreen);
+            setupScalarInputs(getPreferenceScreen());
+            setupRemosaicBackend();
+            setupOriginalNoiseReduction();
+            updateHexQuadDenoiseControls(PreferenceKeys.getRemosaicBackend());
+        }
+
+        private void setupScalarInputs(PreferenceGroup group) {
+            for (int i=0; i<group.getPreferenceCount(); i++) {
+                Preference p=group.getPreference(i);
+                if (p instanceof PreferenceGroup) { setupScalarInputs((PreferenceGroup)p); continue; }
+                if (!(p instanceof androidx.preference.EditTextPreference) || p.getKey()==null) continue;
+                double[] bounds=com.particlesdevs.photoncamera.settings.SettingsNumericRules.bounds(p.getKey());
+                if (bounds==null) continue;
+                androidx.preference.EditTextPreference edit=(androidx.preference.EditTextPreference)p;
+                edit.setOnBindEditTextListener(input -> input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                        | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                        | (bounds[2]==1 ? 0 : android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL)));
+                edit.setOnPreferenceChangeListener((preference,value) -> {
+                    String error=com.particlesdevs.photoncamera.settings.SettingsNumericRules.error(p.getKey(),value);
+                    if(error!=null) PhotonCamera.showToast(error);
+                    return error==null;
+                });
+            }
+        }
+
+        private void updateHexQuadDenoiseControls(String backend) {
+            boolean active=PreferenceKeys.isRemosaicEnabled() && "hp9_hexquad".equals(backend);
+            boolean auto=PreferenceKeys.isHexQuadAutoIso();
+            for(String key:new String[]{"hexquad_compute","hexquad_exposure_ev","hexquad_model","hexquad_full_resolution","hexquad_noise_overall",
+                    "hexquad_noise_photon","hexquad_noise_readout","hexquad_auto_iso","hexquad_luma","hexquad_chroma",
+                    "hexquad_iso_low_luma","hexquad_iso_low_chroma","hexquad_iso_high_luma","hexquad_iso_high_chroma",
+                    "hexquad_texture","hexquad_post_denoise"}){
+                Preference p=findPreference(key);if(p==null)continue;
+                boolean enabled=active;
+                if(key.equals("hexquad_full_resolution"))enabled &= PreferenceKeys.getHexQuadModelScale()==2;
+                if(key.equals("hexquad_luma")||key.equals("hexquad_chroma"))enabled &= !auto;
+                if(key.startsWith("hexquad_iso_"))enabled &= auto;
+                p.setEnabled(enabled);
+            }
+        }
+
+        private void setupOriginalNoiseReduction() {
+            ListPreference backend = findPreference("pref_rt_denoise_backend");
+            if (backend != null) backend.setOnPreferenceChangeListener((pref, value) -> {
+                updateOriginalNoiseControls("rt512".equals(String.valueOf(value)));
+                return true;
+            });
+            updateOriginalNoiseControls(com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original());
+            String[] curves = {"rt512_lcurve", "rt512_ccurve"};
+            for (String key : curves) {
+                Preference pref = findPreference(key);
+                if (pref != null) pref.setOnPreferenceChangeListener((p, value) -> {
+                    try {
+                        com.particlesdevs.photoncamera.settings.RawTherapeeSettings.curve(String.valueOf(value));
+                        updateOriginalNoiseDependencies(key, String.valueOf(value));
+                        return true;
+                    } catch (IllegalArgumentException e) {
+                        PhotonCamera.showToast(e.getMessage()); return false;
+                    }
+                });
+            }
+            for (String key : new String[]{"rt512_auto", "rt512_median", "rt512_gain"}) {
+                Preference pref = findPreference(key);
+                if (pref != null) pref.setOnPreferenceChangeListener((p, value) -> {
+                    updateOriginalNoiseDependencies(key, String.valueOf(value)); return true;
+                });
+            }
+            Preference kernel = findPreference("rt512_kernel");
+            if (kernel != null) kernel.setOnPreferenceChangeListener((p, value) -> {
+                if ("5".equals(com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_median", "0"))
+                        && Integer.parseInt(String.valueOf(value)) > 3) {
+                    PhotonCamera.showToast("Для RGB доступны медианные фильтры 3×3 и 5×5"); return false;
+                }
+                return true;
+            });
+            updateOriginalNoiseDependencies("", "");
+        }
+
+        private void updateOriginalNoiseControls(boolean original) {
+            Preference controls = findPreference("rt_original_controls");
+            if (controls != null) controls.setEnabled(original);
+            for (String key : new String[]{"pref_rt_nr_luma_key", "pref_rt_nr_chroma_key", "pref_rt_nr_detail_key", "pref_rt_nr_moire_key"}) {
+                Preference pref = findPreference(key);
+                if (pref != null) pref.setEnabled(!original && !PreferenceKeys.isHdrPlusMergeEnabled());
+            }
+        }
+
+        private void updateOriginalNoiseDependencies(String changed, String value) {
+            String auto = changed.equals("rt512_auto") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_auto", "0");
+            String median = changed.equals("rt512_median") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_median", "0");
+            String gain = changed.equals("rt512_gain") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_gain", "1");
+            for (String key : new String[]{"rt512_chroma", "rt512_red", "rt512_blue"}) {
+                Preference p = findPreference(key); if(p!=null)p.setEnabled("0".equals(auto));
+            }
+            for (String key : new String[]{"rt512_kernel", "rt512_passes"}) {
+                Preference p = findPreference(key); if(p!=null)p.setEnabled(!"0".equals(median));
+            }
+            ListPreference kernel = findPreference("rt512_kernel");
+            if (kernel != null && "5".equals(median) && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("rt512_kernel",0,0,5)>3) kernel.setValue("0");
+            Preference exposure = findPreference("rt512_exposure");
+            if(exposure!=null)exposure.setEnabled("1".equals(gain));
+            Preference luma = findPreference("rt512_luma");
+            if(luma!=null) {
+                String curve = changed.equals("rt512_lcurve") ? value : com.particlesdevs.photoncamera.settings.RawTherapeeSettings.text("rt512_lcurve", "0");
+                boolean active=false;
+                try {
+                    double[] points=com.particlesdevs.photoncamera.settings.RawTherapeeSettings.curve(curve);
+                    if(points!=null)for(int i=2;i<points.length;i+=4)active |= points[i]!=0;
+                } catch(IllegalArgumentException ignored) { }
+                luma.setEnabled(!active);
+            }
+        }
+
+        private void setupRemosaicBackend() {
+            Preference neural = findPreference("vivo_neural_probe");
+            if (neural != null) neural.setOnPreferenceClickListener(pref -> {
+                startActivity(new android.content.Intent(requireContext(), VivoNeuralActivity.class));
+                return true;
+            });
+            ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
+            if (backend != null) {
+                backend.setOnPreferenceChangeListener((pref, value) -> {
+                    // The displayed entryValues define the selectable backends.
+                    // A second hard-coded list previously rejected HP9 HexQuad
+                    // even though it was offered in this very dialog.
+                    String selected = String.valueOf(value);
+                    if (backend.findIndexOfValue(selected) < 0) return false;
+                    updateRemosaicControls(selected);
+                    return true;
+                });
+            }
+            if (backend != null) updateRemosaicControls(backend.getValue());
+            Preference probe = findPreference("remosaic_vivo_probe");
+            if (probe == null) return;
+            probe.setOnPreferenceClickListener(pref -> {
+                pref.setEnabled(false);
+                pref.setSummary(R.string.remosaic_vivo_checking);
+                android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+                new Thread(() -> {
+                    String report = com.particlesdevs.photoncamera.processing.opengl.postpipeline
+                            .VivoRemosaicAvailability.probe();
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.log("vivo-remosaic", report);
+                    main.post(() -> {
+                        if (!isAdded()) return;
+                        pref.setEnabled(true);
+                        pref.setSummary(R.string.remosaic_vivo_probe_desc);
+                        new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                                .setTitle(R.string.remosaic_vivo_result)
+                                .setMessage(report)
+                                .setPositiveButton(android.R.string.ok, null)
+                                .setNeutralButton(android.R.string.copy, (dialog, which) -> {
+                                    android.content.ClipboardManager clipboard =
+                                            (android.content.ClipboardManager) requireContext()
+                                                    .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                                    if (clipboard != null) clipboard.setPrimaryClip(
+                                            android.content.ClipData.newPlainText("Vivo remosaic", report));
+                                }).show();
+                    });
+                }, "VivoRemosaicProbe").start();
+                return true;
+            });
+        }
+
+        private void updateRemosaicControls(String backend) {
+            updateHexQuadDenoiseControls(backend);
+            boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend)
+                    || "hp9_hexquad".equals(backend);
+            int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,
+                    R.string.pref_remosaic_clamp_key, R.string.pref_remosaic_flatfield_key};
+            for (int key : legacy) {
+                Preference p = findPreference(getString(key));
+                if (p != null) p.setEnabled(!detail);
+            }
+            Preference response = findPreference("pref_tetra_response_key");
+            if (response != null) response.setEnabled(detail);
         }
 
         /**
@@ -191,8 +384,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             mContext = getContext();
             mSettingsManager = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSettingsManager();
             supportedDevice = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSupportedDevice();
-            Objects.requireNonNull(getPreferenceScreen().getSharedPreferences())
-                    .registerOnSharedPreferenceChangeListener(this);
 
             // Register PNG import launcher for TunablePngPreference
             // Uses OpenDocument to show the system file picker instead of gallery
@@ -243,8 +434,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // guard over whatever the tree looks like now.
             seedMissingListValues(getPreferenceScreen());
 
-            filterPreferencesByMode();
-            showHideHdrxSettings();
+            // Keep every category reachable regardless of the last camera mode.
             setFramesSummary();
             setVersionDetails();
             setHdrxTitle();
@@ -257,6 +447,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             setProTitle();
             setThisDevice();
             setFetchConfigurationsPref();
+            updateSettingsAvailability();
         }
         
         private void generateTunablePreferences() {
@@ -331,7 +522,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private void addSensorConfigResetButton() {
             try {
-                PreferenceScreen submenu = getPreferenceScreen();
+                PreferenceScreen submenu = findPreference("pref_sensor_config_submenu");
                 if (submenu == null) {
                     Log.w("SettingsActivity", "PreferenceScreen is null, cannot add sensor config reset button");
                     return;
@@ -372,7 +563,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void addTunableResetButton() {
             try {
                 // When we're inside the tunable submenu fragment, getPreferenceScreen() IS the tunable submenu
-                androidx.preference.PreferenceScreen tunableSubmenu = getPreferenceScreen();
+                androidx.preference.PreferenceScreen tunableSubmenu = findPreference("pref_tunable_submenu");
                 
                 if (tunableSubmenu != null) {
                     Log.d("SettingsActivity", "Adding reset button to tunable submenu (preferenceCount before: " + tunableSubmenu.getPreferenceCount() + ")");
@@ -449,6 +640,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             super.onViewCreated(view, savedInstanceState);
             mRootView = view;
             setupToolbar();
+            setDivider(null);
+            String target = getArguments() == null ? null : getArguments().getString("search_target");
+            if (target != null && findPreference(target) != null) {
+                Preference found = findPreference(target);
+                android.text.SpannableString highlighted = new android.text.SpannableString(found.getTitle());
+                highlighted.setSpan(new android.text.style.ForegroundColorSpan(0xFFCAA4FF), 0,
+                        highlighted.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                found.setTitle(highlighted);
+                scrollToPreference(target);
+            }
         }
 
         private void setupToolbar() {
@@ -461,6 +662,21 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         title = "Settings";
                     }
                     toolbar.setTitle(title);
+                    toolbar.setSubtitle(KEY_MAIN_PARENT_SCREEN.equals(getPreferenceScreen().getKey())
+                            ? "Активная камера: " + PreferenceKeys.getCameraID() : null);
+                    toolbar.setSubtitleTextColor(0xFFACA8BC);
+                    toolbar.setNavigationOnClickListener(v -> activity.onBackPressed());
+                    toolbar.getMenu().clear();
+                    android.view.MenuItem search = toolbar.getMenu().add("Поиск настройки");
+                    search.setIcon(R.drawable.settings_concept_search);
+                    search.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+                    search.setOnMenuItemClickListener(item -> {
+                        SettingsSearchFragment fragment = SettingsSearchFragment.create(
+                                SettingsSearchFragment.index(fullPreferenceScreen));
+                        getParentFragmentManager().beginTransaction()
+                                .replace(R.id.settings_container, fragment).addToBackStack("settings_search").commit();
+                        return true;
+                    });
                 }
             }
         }
@@ -470,8 +686,64 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             super.onResume();
             // Update toolbar title when fragment resumes (e.g., after navigating back)
             setupToolbar();
+            updateSettingsAvailability();
+            mSettingsManager.getDefaultPreferences().registerOnSharedPreferenceChangeListener(this);
         }
 
+        @Override public void onPause() {
+            mSettingsManager.getDefaultPreferences().unregisterOnSharedPreferenceChangeListener(this);
+            super.onPause();
+        }
+
+        @Override public void onDestroy() {
+            if (mSettingsManager != null) mSettingsManager.getDefaultPreferences()
+                    .unregisterOnSharedPreferenceChangeListener(this);
+            super.onDestroy();
+        }
+
+        private final java.util.Map<String, Preference.SummaryProvider> originalProviders = new java.util.HashMap<>();
+        private final java.util.Map<String, CharSequence> originalSummaries = new java.util.HashMap<>();
+        private void updateSettingsAvailability() {
+            if (!isAdded() || mSettingsManager == null) return;
+            com.particlesdevs.photoncamera.settings.SettingsAvailability state =
+                    new com.particlesdevs.photoncamera.settings.SettingsAvailability(mSettingsManager.getDefaultPreferences().getAll(),
+                            PhotonCamera.getSpecificSensor() != null && PhotonCamera.getSpecificSensor().selectedSensorSpecifics != null
+                                    && PhotonCamera.getSpecificSensor().selectedSensorSpecifics.ModelerExists);
+            applyAvailability(getPreferenceScreen(), state);
+        }
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private void applyAvailability(PreferenceGroup group, com.particlesdevs.photoncamera.settings.SettingsAvailability state) {
+            if (group == null) return;
+            for (int i = 0; i < group.getPreferenceCount(); i++) {
+                Preference p = group.getPreference(i);
+                if (p instanceof PreferenceGroup) {
+                    if (p instanceof PreferenceScreen) p.setEnabled(true); // the page explains inactive controls
+                    applyAvailability((PreferenceGroup) p, state);
+                    continue;
+                }
+                String key = p.getKey();
+                if (key == null) continue;
+                String reason = state.reason(key);
+                if (p.getClass() != Preference.class) p.setEnabled(reason == null);
+                if (reason != null) {
+                    if (!originalSummaries.containsKey(key)) {
+                        originalSummaries.put(key, p.getSummary());
+                        originalProviders.put(key, p.getSummaryProvider());
+                    }
+                    p.setEnabled(false);
+                    Preference.SummaryProvider provider = originalProviders.get(key);
+                    p.setSummaryProvider(pref -> {
+                        CharSequence base = provider == null ? originalSummaries.get(key) : provider.provideSummary(pref);
+                        return base == null || base.length() == 0 ? reason : base + "\n" + reason;
+                    });
+                } else if (originalSummaries.containsKey(key)) {
+                    p.setEnabled(true);
+                    p.setSummaryProvider(originalProviders.remove(key));
+                    CharSequence summary = originalSummaries.remove(key);
+                    if (p.getSummaryProvider() == null) p.setSummary(summary);
+                }
+            }
+        }
 
         private void setTelegramPref() {
             activity.runOnUiThread(()-> {
@@ -575,22 +847,18 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void removePreferenceFromScreen(String preferenceKey) {
-            PreferenceScreen parentScreen = findPreference(SettingsFragment.KEY_MAIN_PARENT_SCREEN);
-            if (parentScreen != null)
-                if (parentScreen.findPreference(preferenceKey) != null) {
-                    parentScreen.removePreference(Objects.requireNonNull(parentScreen.findPreference(preferenceKey)));
-                }
-        }
+            Preference preference = findPreference(preferenceKey);
+            if (preference != null && preference.getParent() != null) preference.getParent().removePreference(preference);
+    }
 
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             // Guard against null key (can happen during preference restore)
-            if (key == null) {
+            if (key == null || !isResumed()) {
                 return;
             }
             
             Log.d("SettingsFragment", "onSharedPreferenceChanged: key=" + key);
-
             if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
                 boolean on = sharedPreferences.getBoolean(key, false);
                 // Only bind the context here. Calling init() would itself call
@@ -618,10 +886,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_THEME_ACCENT.mValue)) {
                 checkEszdTheme();
                 restartActivity();
-                toRestartApp = true;
+
             }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue)) {
-                toRestartApp = true;
+                restartActivity();
             }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_FRAME_COUNT.mValue)) {
                 setFramesSummary();
@@ -637,6 +905,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     e.printStackTrace();
                 }
             }
+            updateSettingsAvailability();
         }
 
         private void checkEszdTheme() {
@@ -646,23 +915,27 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         private void setHdrxTitle() {
-            Preference p = findPreference(mContext.getString(R.string.pref_category_hdrx_key));
+            Preference p = findPreference("settings_scope_info");
             if (p != null) {
-                if (PreferenceKeys.isPerLensSettingsOn()) {
-                    p.setTitle(mContext.getString(R.string.hdrx) + "\t(Lens: " + PreferenceKeys.getCameraID() + ')');
-                } else {
-                    p.setTitle(mContext.getString(R.string.hdrx));
-                }
+                p.setTitle("Активная камера: " + PreferenceKeys.getCameraID());
+                p.setSummary(PreferenceKeys.isPerLensSettingsOn()
+                        ? "Обычные настройки — для этой линзы. Дополнительные — общие. Параметры сенсора — по физическому ID."
+                        : "Общие настройки обработки. Отдельные профили включаются в разделе «Камеры и сенсоры»." );
             }
+    }
+
+        private void setBaseSummary(Preference preference, CharSequence summary) {
+            if (originalSummaries.containsKey(preference.getKey())) originalSummaries.put(preference.getKey(), summary);
+            else preference.setSummary(summary);
         }
 
         private void setFramesSummary() {
             Preference frameCountPreference = findPreference(PreferenceKeys.Key.KEY_FRAME_COUNT.mValue);
             if (frameCountPreference != null) {
                 if (mSettingsManager.getInteger(PreferenceKeys.SCOPE_GLOBAL, PreferenceKeys.Key.KEY_FRAME_COUNT) == 1) {
-                    frameCountPreference.setSummary(mContext.getString(R.string.unprocessed_raw));
+                    setBaseSummary(frameCountPreference, mContext.getString(R.string.unprocessed_raw));
                 } else {
-                    frameCountPreference.setSummary(mContext.getString(R.string.frame_count_summary));
+                    setBaseSummary(frameCountPreference, mContext.getString(R.string.frame_count_summary));
                 }
             }
         }
@@ -673,7 +946,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 String packageName = mContext.getPackageName();
                 ComponentName galleryLauncher = new ComponentName(
                         packageName,
-                        packageName + ".gallery.ui.GalleryActivityLauncher"
+                        "com.particlesdevs.photoncamera.gallery.ui.GalleryActivityLauncher"
                 );
                 
                 // Get the package manager
@@ -690,6 +963,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 Log.d("SettingsFragment", "  newState=" + newState);
                 Log.d("SettingsFragment", "  component=" + galleryLauncher);
                 
+                int currentState = pm.getComponentEnabledSetting(galleryLauncher);
+                if (currentState == newState || (currentState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && !hideIcon)) return;
                 pm.setComponentEnabledSetting(
                         galleryLauncher,
                         newState,
@@ -729,10 +1004,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private void restartActivity() {
             if (getActivity() != null) {
-                Intent intent = new Intent(mContext, getActivity().getClass());
-                intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(intent,
-                        ActivityOptions.makeCustomAnimation(mContext, R.anim.fade_in, R.anim.fade_out).toBundle());
+                // Recreate this activity only for a real theme/scope change.
+                // FragmentManager restores the nested page and its back stack.
+                getActivity().recreate();
             }
         }
 

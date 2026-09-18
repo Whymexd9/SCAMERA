@@ -18,7 +18,7 @@ import com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.TunableInjector;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
-import com.particlesdevs.photoncamera.ui.camera.views.modeswitcher.wefika.horizontalpicker.HorizontalPicker;
+import com.particlesdevs.photoncamera.ui.camera.views.ModeTabsView;
 import com.particlesdevs.photoncamera.util.Utilities;
 
 import java.util.Arrays;
@@ -48,7 +48,7 @@ public class CameraUIViewImpl implements CameraUIView {
     private final ProgressBar mCaptureProgressBar;
     private final ImageButton mShutterButton;
     private final ProgressBar mProcessingProgressBar;
-    private final HorizontalPicker mModePicker;
+    private final ModeTabsView mModePicker;
     private final TextView mVideoRecordingInfo;
     private LayoutMainTopbarBinding topbar;
     private LayoutBottombuttonsBinding bottombuttons;
@@ -186,7 +186,10 @@ public class CameraUIViewImpl implements CameraUIView {
 
     @Override
     public void setProcessingProgressBarIndeterminate(boolean indeterminate) {
-        this.mProcessingProgressBar.post(() -> this.mProcessingProgressBar.setIndeterminate(indeterminate));
+        this.mProcessingProgressBar.post(() -> {
+            this.mProcessingProgressBar.setIndeterminate(indeterminate);
+            this.mProcessingProgressBar.setVisibility(indeterminate ? View.VISIBLE : View.INVISIBLE);
+        });
     }
 
     @Override

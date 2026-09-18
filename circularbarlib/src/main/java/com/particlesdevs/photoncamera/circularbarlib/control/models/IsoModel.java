@@ -31,49 +31,28 @@ public class IsoModel extends ManualModel<Integer> {
         KnobItemInfo auto = getNewAutoItem(ManualParamModel.ISO_AUTO, null);
         getKnobInfoList().add(auto);
         currentInfo = auto;
-
-        ArrayList<String> candidates = new ArrayList<>();
-        ArrayList<Integer> values = new ArrayList<>();
-        Object isolow = range.getLower();
-        Object isohigh = range.getUpper();
-        int miniso = (int) isolow;
-        int maxiso = (int) isohigh;
-        Log.v("IsoModel", "Max iso:" + maxiso);
-        Log.v("IsoModel", "Max iso cnt:" + Math.log10((double) maxiso / miniso) / Math.log10(2));
-        for (double isoCnt = Math.log10(1) / Math.log10(2); isoCnt < Math.log10((double) maxiso / miniso) / Math.log10(2); isoCnt += 1.0 / 4.0) {
-            int val = (int) (Math.pow(2.0, isoCnt) * miniso);
-            candidates.add(String.valueOf(val));
-            values.add((int) (val / IsoExpoSelector.getMPY(cameraCharacteristics)));
-        }
-        candidates.add(String.valueOf(isohigh));
-        values.add((int)((int)isohigh / IsoExpoSelector.getMPY(cameraCharacteristics)));
-        int indicatorCount = 0;
+        if (range == null) return;
+        java.util.List<Long> values = com.particlesdevs.photoncamera.circularbarlib.camera.ManualStops.iso(
+                range.getLower().longValue(), range.getUpper().longValue());
         int tick = 0;
-        int preferredIntervalCount = 4;
-        while (tick < candidates.size()) {
-            boolean isLastItem = tick == candidates.size() + -1;
-            ShadowTextDrawable drawable = new ShadowTextDrawable();
-            drawable.setTextAppearance(context, R.style.ManualModeKnobText);
-            ShadowTextDrawable drawableSelected = new ShadowTextDrawable();
-            drawableSelected.setTextAppearance(context, R.style.ManualModeKnobTextSelected);
-            if (tick % preferredIntervalCount == 0 || isLastItem) {
-                drawable.setText(candidates.get(tick));
-                drawableSelected.setText(candidates.get(tick));
-                indicatorCount++;
-            }
-            StateListDrawable stateDrawable = new StateListDrawable();
-            stateDrawable.addState(new int[]{-android.R.attr.state_selected}, drawable);
-            stateDrawable.addState(new int[]{android.R.attr.state_selected}, drawableSelected);
-//            getKnobInfoList().add(new KnobItemInfo(stateDrawable, candidates.get(tick), tick - candidates.size(), values.get(tick)));
-            getKnobInfoList().add(new KnobItemInfo(stateDrawable, candidates.get(tick), tick + 1, values.get(tick)));
-            tick++;
+        for (long value : values) {
+            String label = String.valueOf(value);
+            ShadowTextDrawable normal = new ShadowTextDrawable();
+            normal.setTextAppearance(context, R.style.ManualModeKnobText);
+            normal.setText(label);
+            ShadowTextDrawable selected = new ShadowTextDrawable();
+            selected.setTextAppearance(context, R.style.ManualModeKnobTextSelected);
+            selected.setText(label);
+            StateListDrawable drawable = new StateListDrawable();
+            drawable.addState(new int[]{-android.R.attr.state_selected}, normal);
+            drawable.addState(new int[]{android.R.attr.state_selected}, selected);
+            KnobItemInfo item = new KnobItemInfo(drawable, label, ++tick, value);
+            item.majorTick = tick == 1 || tick == values.size()
+                    || com.particlesdevs.photoncamera.circularbarlib.camera.ManualStops.majorIso(value);
+            getKnobInfoList().add(item);
         }
-        int angle = findPreferredKnobViewAngle(indicatorCount);
-        int angleMax = context.getResources().getInteger(R.integer.manual_iso_knob_view_angle_half);
-        if (angle > angleMax) {
-            angle = angleMax;
-        }
-        knobInfo = new KnobInfo(0, angle, 0, candidates.size(), context.getResources().getInteger(R.integer.manual_iso_knob_view_auto_angle));
+        knobInfo = new KnobInfo(0, context.getResources().getInteger(R.integer.manual_iso_knob_view_angle_half),
+                0, values.size(), context.getResources().getInteger(R.integer.manual_iso_knob_view_auto_angle));
     }
 
     @Override

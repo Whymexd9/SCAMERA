@@ -45,7 +45,7 @@ public class TunableInjector {
                 field.setAccessible(true);
                 
                 // Generate preference key
-                String prefKey = "pref_tunable_" + className.toLowerCase() + "_" + field.getName().toLowerCase();
+                String prefKey = "pref_tunable_" + className.toLowerCase(java.util.Locale.ROOT) + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
                 
                 try {
                     Class<?> fieldType = field.getType();
@@ -58,7 +58,7 @@ public class TunableInjector {
                     
                     // Determine if stored as float or int based on step (same logic as TunablePreferenceGenerator)
                     float step = annotation.step();
-                    boolean isStoredAsFloat = (step != Math.floor(step));
+                    boolean isStoredAsFloat = true; // reader accepts legacy int/float/string storage
                     boolean isFreeText = (step == 0f);
                     boolean isList = (annotation.entries().length > 0 && annotation.entryValues().length > 0);
                     String freeText = (isFreeText || isList)
@@ -69,7 +69,7 @@ public class TunableInjector {
                     if (fieldType == float.class || fieldType == Float.class) {
                         float value;
                         if (isFreeText) {
-                            value = (freeText == null || freeText.trim().isEmpty()) ? annotationDefault : Float.parseFloat(freeText);
+                            value = (freeText == null || freeText.trim().isEmpty()) ? annotationDefault : (float) PreferenceNumber.read(freeText, annotationDefault);
                         } else if (isStoredAsFloat) {
                             value = SettingsManagerExtensions.getFloat(settingsManager, 
                                 PreferenceKeys.SCOPE_GLOBAL, prefKey, annotationDefault);
@@ -78,24 +78,28 @@ public class TunableInjector {
                             value = (float) SettingsManagerExtensions.getInteger(settingsManager, 
                                 PreferenceKeys.SCOPE_GLOBAL, prefKey, (int) annotationDefault);
                         }
+                        if (!isList) value = (float) Math.max(annotation.min(), Math.min(annotation.max(),
+                                PreferenceNumber.read(value, annotationDefault)));
                         field.setFloat(target, value);
                         Log.d(TAG, "Injected " + prefKey + " = " + value + " (default: " + annotationDefault + ")");
                         
                     } else if (fieldType == int.class || fieldType == Integer.class) {
                         int value;
                         if (isFreeText) {
-                            value = (freeText == null || freeText.trim().isEmpty()) ? (int) annotationDefault : Integer.parseInt(freeText);
+                            value = (freeText == null || freeText.trim().isEmpty()) ? (int) annotationDefault : (int) PreferenceNumber.read(freeText, annotationDefault);
                         } else {
                             value = SettingsManagerExtensions.getInteger(settingsManager, 
                                 PreferenceKeys.SCOPE_GLOBAL, prefKey, (int) annotationDefault);
                         }
+                        if (!isList) value = (int) Math.max(annotation.min(), Math.min(annotation.max(),
+                                PreferenceNumber.read(value, annotationDefault)));
                         field.setInt(target, value);
                         Log.d(TAG, "Injected " + prefKey + " = " + value + " (default: " + (int) annotationDefault + ")");
                         
                     } else if (fieldType == double.class || fieldType == Double.class) {
                         double value;
                         if (isFreeText) {
-                            value = (freeText == null || freeText.trim().isEmpty()) ? annotationDefault : Double.parseDouble(freeText);
+                            value = (freeText == null || freeText.trim().isEmpty()) ? annotationDefault : (double) PreferenceNumber.read(freeText, annotationDefault);
                         } else if (isStoredAsFloat) {
                             // Stored as float
                             value = (double) SettingsManagerExtensions.getFloat(settingsManager, 
@@ -105,6 +109,8 @@ public class TunableInjector {
                             value = (double) SettingsManagerExtensions.getInteger(settingsManager, 
                                 PreferenceKeys.SCOPE_GLOBAL, prefKey, (int) annotationDefault);
                         }
+                        if (!isList) value = (double) Math.max(annotation.min(), Math.min(annotation.max(),
+                                PreferenceNumber.read(value, annotationDefault)));
                         field.setDouble(target, value);
                         Log.d(TAG, "Injected " + prefKey + " = " + value + " (default: " + annotationDefault + ")");
                         

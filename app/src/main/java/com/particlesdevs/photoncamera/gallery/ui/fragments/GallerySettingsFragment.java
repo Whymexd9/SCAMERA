@@ -17,11 +17,9 @@ import com.particlesdevs.photoncamera.gallery.files.GalleryFileOperations;
 import com.particlesdevs.photoncamera.gallery.viewmodel.GalleryViewModel;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.TreeSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class GallerySettingsFragment extends PreferenceFragmentCompat {
@@ -43,32 +41,32 @@ public class GallerySettingsFragment extends PreferenceFragmentCompat {
             CharSequence[] folderIds = folders.stream().map(imagesFolder -> String.valueOf(imagesFolder.getFolderId())).collect(Collectors.toList()).toArray(new String[]{});
             foldersList.setEntries(folderNames);
             foldersList.setEntryValues(folderIds);
-            HashMap<Long, String> entrymap = new HashMap<>();
-            folders.forEach(f -> entrymap.put(f.getFolderId(), f.getFolderName()));
+            HashMap<String, String> entrymap = new HashMap<>();
+            folders.forEach(f -> entrymap.put(String.valueOf(f.getFolderId()), f.getFolderName()));
 
             foldersList.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
                 @Override
                 public boolean onPreferenceChange(@NonNull Preference preference, Object newValue) {
-                    foldersList.setSummary(updateValuesAndGetSummaryText((MultiSelectListPreference) preference,(HashSet<String>) newValue, entrymap));
+                    foldersList.setSummary(updateValuesAndGetSummaryText((MultiSelectListPreference) preference,(Set<String>) newValue, entrymap));
                     viewModel.setUpdatePending(true);
                     return true;
                 }
             });
-            foldersList.setSummary(updateValuesAndGetSummaryText(foldersList,(HashSet<String>) foldersList.getValues(), entrymap));
+            foldersList.setSummary(updateValuesAndGetSummaryText(foldersList,foldersList.getValues(), entrymap));
         }
         return super.onCreateView(inflater, container, savedInstanceState);
 
     }
-    private String updateValuesAndGetSummaryText(MultiSelectListPreference pref, HashSet<String> values, HashMap<Long, String> entrymap) {
+    private String updateValuesAndGetSummaryText(MultiSelectListPreference pref, Set<String> values, HashMap<String, String> entrymap) {
         ArrayList<String> l = new ArrayList<>();
         HashSet<String> newVals = new HashSet<>();
         values.forEach(val -> {
-            String name = entrymap.get(Long.valueOf(val));
+            String name = entrymap.get(val);
             if (name != null) newVals.add(val);
             else viewModel.setUpdatePending(true);
         });
         pref.setValues(newVals);
-        newVals.forEach(v -> l.add(entrymap.get(Long.valueOf(v))));
+        newVals.forEach(v -> l.add(entrymap.get(v)));
         l.sort(String::compareTo);
         return String.join(", ", l);
     }
