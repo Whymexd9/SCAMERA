@@ -43,7 +43,7 @@ public class ViewfinderUiTest {
         LinearLayout screen=new LinearLayout(context);screen.setOrientation(LinearLayout.VERTICAL);
         screen.setBackgroundColor(0xFF101316);screen.setPadding(12,12,12,12);
         View top=LayoutInflater.from(context).inflate(R.layout.layout_main_topbar,screen,false);
-        com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding tb=androidx.databinding.DataBindingUtil.getBinding(top);
+        com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding tb=com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding.bind(top);
         tb.setTimerVisible(true);tb.setFlashVisible(true);tb.executePendingBindings();
         screen.addView(top,new LinearLayout.LayoutParams(-1,56));
         FrameLayout preview=new FrameLayout(context);preview.setBackgroundColor(0xFF45525B);

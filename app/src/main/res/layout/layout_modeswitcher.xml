@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout xmlns:android="http://schemas.android.com/apk/res/android">
-<com.particlesdevs.photoncamera.ui.camera.views.ModeTabsView android:id="@+id/mode_picker_view"
-    android:layout_width="168dp" android:layout_height="40dp" android:padding="3dp"
-    android:background="@drawable/glass_pill" />
+<FrameLayout android:layout_width="168dp" android:layout_height="40dp">
+    <com.particlesdevs.photoncamera.ui.camera.views.ModeTabsView android:id="@+id/mode_picker_view"
+        android:layout_width="match_parent" android:layout_height="match_parent" android:padding="3dp"
+        android:background="@drawable/glass_pill" />
+</FrameLayout>
 </layout>
