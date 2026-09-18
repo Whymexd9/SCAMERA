@@ -54,6 +54,8 @@ public class Parameters {
     // Per-capture policy, not a live settings lookup during asynchronous processing.
     public boolean hexQuadProcessed;
     public boolean hexQuadPostDenoise;
+    /** Per-shot display correction; never changes sensor exposure, VST or Bayer DNG. */
+    public float hexQuadExposureEv;
     public Point rawSize;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
@@ -614,6 +616,7 @@ public class Parameters {
         Parameters params = new Parameters();
         params.hexQuadProcessed = hexQuadProcessed;
         params.hexQuadPostDenoise = hexQuadPostDenoise;
+        params.hexQuadExposureEv = hexQuadExposureEv;
         params.cfaPattern = cfaPattern;
         params.baseCfaPattern = baseCfaPattern;
         params.quadCfa = quadCfa;

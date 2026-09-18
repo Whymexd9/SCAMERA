@@ -576,6 +576,10 @@ public class PreferenceKeys {
         return RawTherapeeSettings.number("hexquad_chroma",100,0,100);
     }
 
+    public static float getHexQuadExposureEv() {
+        return RawTherapeeSettings.number("hexquad_exposure_ev",0,-2,2);
+    }
+
     public static int getHexQuadModelScale() {
         return "1".equals(preferenceKeys.settingsManager.getString("default_scope","hexquad_model","2"))?1:2;
     }

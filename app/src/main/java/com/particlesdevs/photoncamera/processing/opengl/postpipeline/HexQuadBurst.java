@@ -17,6 +17,7 @@ public final class HexQuadBurst {
     final boolean zsl;
     final double exposureSeconds;
     final float lumaPercent,chromaPercent;
+    final float exposureEv;
     final boolean postDenoise;
     final com.particlesdevs.photoncamera.settings.HexQuadOptions options;
     final float[] neutral;
@@ -48,6 +49,7 @@ public final class HexQuadBurst {
         if(iso<50||iso>12800||!Float.isFinite(black)||!Float.isFinite(white)||white<=black+1)
             throw new IOException("Неподдерживаемые ISO/уровни RAW");
         options=PreferenceKeys.getHexQuadOptions(iso);
+        exposureEv=PreferenceKeys.getHexQuadExposureEv();
         lumaPercent=options.lumaPercent;chromaPercent=options.chromaPercent;
         Set<Long> timestamps=new HashSet<>();
         for(ImageFrame frame:frames){
@@ -81,6 +83,7 @@ public final class HexQuadBurst {
         }
         p.cfaPattern=(byte)burst.red;p.quadCfa=false;p.remosaicDone=true;
         p.hexQuadProcessed=true;p.hexQuadPostDenoise=burst.postDenoise;
+        p.hexQuadExposureEv=burst.exposureEv;
         p.whiteLevel=65535;
         Arrays.fill(p.blackLevel,0f);
         p.iso=burst.iso; // Keep measured exposureTime from CaptureResult.

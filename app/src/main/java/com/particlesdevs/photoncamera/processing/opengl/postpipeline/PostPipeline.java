@@ -664,6 +664,11 @@ public class PostPipeline extends GLBasePipeline {
         add(new CorrectingFlow());
         add(new FalseColorSuppression());
         add(new CaptureOneProcessing());
+        // Apply the saved per-shot correction after tone/AE and before sharpening/watermark.
+        // Zero EV adds no pass, preserving the previous rendering exactly.
+        if (mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f) {
+            add(new HexQuadExposure("off".equals(tonePipeline)));
+        }
         add(new CaptureSharpening());
         // Sharpening is RawTherapee's, selected inside the node by method:
         // unsharp mask, RL deconvolution or microcontrast. The previous

@@ -32,6 +32,24 @@ assert 'if (allowPostDenoise && PreferenceKeys.isAiDenoiseEnabled()' in hdr
 assert 'params.hexQuadPostDenoise = hexQuadPostDenoise;' in (java/'processing/render/Parameters.java').read_text()
 print('HexQuad controls: visible screen, matching defaults, versioned header, captured policy, three NR consumers PASS')
 
+# Display EV is a per-shot control, applied after AE; it is not sent into VST/NPU.
+ev = [e for e in screen.iter() if e.get(a+'key') == 'hexquad_exposure_ev']
+app = '{http://schemas.android.com/apk/res-auto}'
+assert len(ev) == 1 and ev[0].get(a+'defaultValue') == '0'
+assert ev[0].get(app+'minValue') == '-2' and ev[0].get(app+'maxValue') == '2'
+assert 'RawTherapeeSettings.number("hexquad_exposure_ev",0,-2,2)' in settings
+assert 'exposureEv=PreferenceKeys.getHexQuadExposureEv()' in burst
+assert 'p.hexQuadExposureEv=burst.exposureEv' in burst
+params=(java/'processing/render/Parameters.java').read_text()
+assert 'params.hexQuadExposureEv = hexQuadExposureEv;' in params
+assert 'mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f' in pipeline
+assert pipeline.index('add(new Initial())',pipeline.index('private void BuildDefaultPipeline')) < pipeline.index('add(new HexQuadExposure')
+assert pipeline.index('add(new CaptureOneProcessing())') < pipeline.index('add(new HexQuadExposure') < pipeline.index('add(new CaptureSharpening())')
+exposure=(java/'processing/opengl/postpipeline/HexQuadExposure.java').read_text()
+assert 'basePipeline.mParameters.hexQuadExposureEv' in exposure and 'PreferenceKeys' not in exposure
+assert 'display_exposure_ev=' in (java/'processing/opengl/postpipeline/VivoNeuralClient.java').read_text()
+print('HexQuad display exposure: bounded UI, shot snapshot, post-AE placement, zero bypass PASS')
+
 expected={'hexquad_model':'2','hexquad_full_resolution':'false','hexquad_noise_overall':'1','hexquad_noise_photon':'1','hexquad_noise_readout':'1','hexquad_auto_iso':'false','hexquad_texture':'0','hexquad_iso_low_luma':'35','hexquad_iso_low_chroma':'85','hexquad_iso_high_luma':'70','hexquad_iso_high_chroma':'100'}
 activity=(java/'ui/settings/SettingsActivity.java').read_text()
 for key,default in expected.items():

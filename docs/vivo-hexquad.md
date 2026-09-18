@@ -585,3 +585,49 @@ g++ -std=c++14 -O2 tools/check_vivo_hexquad_vst.cpp -o /tmp/check-vst
 ```
 
 Host checks do not emulate HTP weights or prove camera image quality.
+
+## Display exposure trim (30177)
+
+The supplied 2026-09-18 logs do not show a large global signal loss in the
+neural reconstruction. At 08:52 the sampled input/output camera RGB means are
+`0.08435,0.16986,0.09905` / `0.08521,0.17353,0.10224`; at 09:07 they are
+`0.07053,0.14914,0.09226` / `0.07036,0.14860,0.09236`. These are differently
+sampled image statistics, not a pixelwise radiometric calibration. Both captures
+complete without IVST clipping. The JPEG from 08:52 used measured ISO 523 and
+19.999998 ms, while the later test used ISO 50 and 3.238504 ms. Do not confuse them.
+
+The 08:52 JPEG pipeline uses the curve-based auto exposure (gain 1.1846954),
+ABLC (about 0.0013 per channel), then the existing Initial color/tone rendering.
+Although `tonepipeline=fusion`, `exposurefusionbayer2_enable=false`, so the fusion
+node passes through. No adaptive-white-point division or noise gain clamp is
+reported on this capture. Its stock comparison lacks EXIF; the stock shutter,
+ISO, tone rendering and exact white balance are not established.
+
+`Settings > Нейроремозаик HP9 > Яркость снимка, EV` provides a manual display
+trim from -2 to +2 EV in steps of 0.1, default 0. This is compensation for the
+rendered brightness difference, **not** a claimed fix to an identified sensor
+exposure or white-balance bug. It does not attempt to remove the blue cast.
+
+The control is snapshotted with the six-frame burst and carried in `Parameters`;
+editing the setting during NPU inference cannot change the in-flight photo.
+It is applied by one GPU fragment pass after tone mapping / auto exposure and
+Capture One, before sharpening and the watermark. Zero adds no pass. The RAW,
+QNN tensors, VST/IVST, noise controls, sensor ISO and shutter remain unchanged.
+The native v17 CPU/GPU/NPU hybrid stays intact.
+
+For encoded SDR/P3 output the pass decodes the sRGB transfer, applies a shared
+scalar to all three linear channels, then re-encodes. With the tone stage off it
+operates directly on linear values. Transfer reference:
+https://www.w3.org/TR/WCAG22/relative-luminance.html
+For `g=2^EV`, positive gain is `g/(1+(g-1)*max(R,G,B))`, preserving display white
+and smoothly reducing the gain toward highlights. Negative EV applies the
+linear multiplier directly. Consequently the positive EV label gives the shadow
+gain, not a uniform exposure shift through highlights. Linear RGB ratios and
+neutral gray stay unchanged; the input tone renderer's transfer/look is retained.
+
+`HEX SOURCE` now reports `display_exposure_ev` and the neutral RGB point.
+`SCAMERA-debug.log` records the actual `HEX DISPLAY EXPOSURE` pass. The real GLES
+shader test covers 442,368 channel samples: both input domains, -2..+2 EV,
+shadow and highlight ramps, saturated colors, monotonicity, white anchoring,
+finite range and exact zero identity. Host tests cannot establish stock matching
+on the handset; compare the same scene at 0 and a positive setting.
