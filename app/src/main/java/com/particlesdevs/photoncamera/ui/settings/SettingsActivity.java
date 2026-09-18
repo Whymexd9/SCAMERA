@@ -61,7 +61,6 @@ import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.ALL_DEV
 import static com.particlesdevs.photoncamera.settings.PreferenceKeys.SCOPE_GLOBAL;
 
 public class SettingsActivity extends BaseActivity implements PreferenceFragmentCompat.OnPreferenceStartScreenCallback {
-    public static boolean toRestartApp;
     private static int sCameraMode = -1;
     
     @Override
@@ -132,9 +131,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     @Override
     public void onBackPressed() {
-        if (toRestartApp) {
-            PhotonCamera.restartApp(this);
-        }
         super.onBackPressed();
     }
 
@@ -375,8 +371,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             mContext = getContext();
             mSettingsManager = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSettingsManager();
             supportedDevice = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSupportedDevice();
-            Objects.requireNonNull(getPreferenceScreen().getSharedPreferences())
-                    .registerOnSharedPreferenceChangeListener(this);
 
             // Register PNG import launcher for TunablePngPreference
             // Uses OpenDocument to show the system file picker instead of gallery
@@ -655,8 +649,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // Update toolbar title when fragment resumes (e.g., after navigating back)
             setupToolbar();
             updateSettingsAvailability();
+            mSettingsManager.getDefaultPreferences().registerOnSharedPreferenceChangeListener(this);
         }
 
+        @Override public void onPause() {
+            mSettingsManager.getDefaultPreferences().unregisterOnSharedPreferenceChangeListener(this);
+            super.onPause();
+        }
 
         @Override public void onDestroy() {
             if (mSettingsManager != null) mSettingsManager.getDefaultPreferences()
@@ -817,7 +816,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             // Guard against null key (can happen during preference restore)
-            if (key == null) {
+            if (key == null || !isResumed()) {
                 return;
             }
             
@@ -849,10 +848,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_THEME_ACCENT.mValue)) {
                 checkEszdTheme();
                 restartActivity();
-                toRestartApp = true;
+
             }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue)) {
-                toRestartApp = true;
+                restartActivity();
             }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_FRAME_COUNT.mValue)) {
                 setFramesSummary();
@@ -926,6 +925,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 Log.d("SettingsFragment", "  newState=" + newState);
                 Log.d("SettingsFragment", "  component=" + galleryLauncher);
                 
+                int currentState = pm.getComponentEnabledSetting(galleryLauncher);
+                if (currentState == newState || (currentState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && !hideIcon)) return;
                 pm.setComponentEnabledSetting(
                         galleryLauncher,
                         newState,
@@ -965,10 +966,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private void restartActivity() {
             if (getActivity() != null) {
-                Intent intent = new Intent(mContext, getActivity().getClass());
-                intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(intent,
-                        ActivityOptions.makeCustomAnimation(mContext, R.anim.fade_in, R.anim.fade_out).toBundle());
+                // Recreate this activity only for a real theme/scope change.
+                // FragmentManager restores the nested page and its back stack.
+                getActivity().recreate();
             }
         }
 

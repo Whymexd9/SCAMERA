@@ -44,4 +44,7 @@
     <dimen name="gallery_viewer_button_size">25dp</dimen>
     <dimen name="gallery_viewer_button_conainer_size">60dp</dimen>
     <dimen name="topbar_button_inset">11dp</dimen>
+    <dimen name="vf_shutter_size">72dp</dimen>
+    <dimen name="vf_side_button_size">52dp</dimen>
+    <dimen name="vf_lens_height">36dp</dimen>
 </resources>

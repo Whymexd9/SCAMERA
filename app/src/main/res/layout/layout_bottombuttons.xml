@@ -27,7 +27,7 @@
 
         <FrameLayout
                 android:id="@+id/camera_switch_container"
-                android:layout_width="@dimen/camera_switch_button_size"
+                android:layout_width="@dimen/vf_side_button_size"
                 android:layout_height="0dp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintDimensionRatio="1.0"
@@ -43,7 +43,8 @@
                     android:onClick="@{bottom_bar_click_listener}"
                     android:contentDescription="Lens Switch Button"
                     android:scaleType="centerInside"
-                    android:src="@drawable/ic_flip_camera"
+                    android:src="@drawable/vf_flip_camera"
+                    android:padding="12dp"
                     android:textAppearance="@style/TextAppearance.AppCompat"
                     android:visibility="visible"
                     tools:ignore="HardcodedText"
@@ -53,7 +54,7 @@
         </FrameLayout>
 
         <FrameLayout
-                android:layout_width="@dimen/shutter_button_size"
+                android:layout_width="@dimen/vf_shutter_size"
                 android:layout_height="0dp"
                 app:layout_constraintDimensionRatio="1.0"
                 android:id="@+id/shutter_button_container"
@@ -68,6 +69,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/roundbutton"
+                    android:backgroundTint="@null"
                     android:clickable="true"
                     android:contentDescription="Shutter Button"
                     android:onClick="@{bottom_bar_click_listener}"
@@ -76,31 +78,14 @@
                     tools:ignore="HardcodedText"
                     tools:text="Shot"/>
 
-            <ProgressBar
-                    android:id="@+id/processing_progress_bar"
-                    style="@style/Widget.AppCompat.ProgressBar.Horizontal"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:indeterminate="false"
-                    android:max="100"
-                    tools:progress="50"
-                    android:progressDrawable="@drawable/circular_progress_bar2"
-                    android:indeterminateBehavior="cycle"
-                    android:indeterminateDuration="2000"
-                    android:indeterminateDrawable="@drawable/circular_progress_bar2"
-                    android:interpolator="@android:anim/accelerate_decelerate_interpolator"
-                    android:scaleX="1.35"
-                    android:scaleY="1.35"
-                    />
-
             <TextView
                     android:id="@+id/frameCount"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     tools:text="25"
                     android:text="@{timermodel.frameCount}"
-                    android:textColor="@android:color/white"
-                    android:textSize="34sp"
+                    android:textColor="#303438"
+                    android:textSize="22sp"
                     android:textAlignment="center"
                     android:typeface="normal"
                     android:visibility="visible"
@@ -108,7 +93,7 @@
         </FrameLayout>
 
         <FrameLayout
-                android:layout_width="@dimen/gallery_button_size"
+                android:layout_width="@dimen/vf_side_button_size"
                 android:layout_height="0dp"
                 app:layout_constraintDimensionRatio="1.0"
                 android:id="@+id/galery_button_container"
@@ -130,11 +115,28 @@
                     bindRotate="@{uimodel}"
                     />
 
+            <ProgressBar
+                    android:id="@+id/processing_progress_bar"
+                    style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:indeterminate="false"
+                    android:max="100"
+                    tools:progress="50"
+                    android:progressDrawable="@drawable/circular_progress_bar2"
+                    android:indeterminateBehavior="cycle"
+                    android:indeterminateDuration="2000"
+                    android:indeterminateDrawable="@drawable/circular_progress_bar2"
+                    android:interpolator="@android:anim/accelerate_decelerate_interpolator"
+                    android:scaleX="1"
+                    android:scaleY="1"
+                    />
+
             <ImageView
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:layout_gravity="center"
-                    android:visibility="gone"
+                    android:visibility="visible"
                     android:src="@drawable/ic_gallery_ring"
                     android:clickable="false"
                     android:focusable="false"

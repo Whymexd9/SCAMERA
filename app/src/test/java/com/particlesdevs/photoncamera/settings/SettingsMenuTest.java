@@ -37,7 +37,7 @@ public class SettingsMenuTest {
         camera.when(()->PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv->context.getString(inv.getArgument(0)));
         PreferenceKeys.initialise(manager);
         camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        PhotonCamera app=mock(PhotonCamera.class);when(app.getSettingsManager()).thenReturn(manager);
+        PhotonCamera app=mock(PhotonCamera.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
         camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
     }
     @After public void tearDown(){if(camera!=null)camera.close();}
@@ -105,6 +105,46 @@ public class SettingsMenuTest {
         assertEquals(4.0,PreferenceNumber.read(manager.getString("default_scope","pref_remosaic_block_key","2"),2),0.0);
         assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","hexquad_luma","0"),0),0.0);
         assertFalse(prefs.contains("ignored_null"));assertEquals("keep",prefs.getString(PreferenceKeys.Key.KEY_THEME.mValue,""));
+    }
+
+    @Test public void openingPagesDoesNotRewriteGalleryOrThemeSwitches(){
+        prefs.edit().putString(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue,"0")
+                .putString(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue,"0").commit();
+        inflate(); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        Map<String,?> before=prefs.getAll();
+        java.util.List<String> changed=new ArrayList<>();
+        SharedPreferences.OnSharedPreferenceChangeListener observer=(p,k)->changed.add(k);
+        prefs.registerOnSharedPreferenceChangeListener(observer);
+        for(int i=0;i<5;i++)inflate();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        prefs.unregisterOnSharedPreferenceChangeListener(observer);
+        assertFalse(changed.toString(),changed.contains(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue));
+        assertFalse(changed.toString(),changed.contains(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue));
+        assertEquals(before.get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue),prefs.getAll().get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue));
+    }
+
+    @Test public void settingsBackPopsOnePageWithoutRestart(){
+        try(org.robolectric.android.controller.ActivityController<com.particlesdevs.photoncamera.ui.settings.SettingsActivity> controller=
+                org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
+            controller.setup();
+            com.particlesdevs.photoncamera.ui.settings.SettingsActivity activity=controller.get();
+            androidx.fragment.app.FragmentManager fm=activity.getSupportFragmentManager();
+            fm.executePendingTransactions();
+            com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment root=
+                    (com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            PreferenceScreen first=null;
+            for(int i=0;i<root.getPreferenceScreen().getPreferenceCount();i++) {
+                Preference p=root.getPreferenceScreen().getPreference(i);
+                if(p instanceof PreferenceScreen){first=(PreferenceScreen)p;break;}
+            }
+            assertNotNull(first);activity.onPreferenceStartScreen(root,first);fm.executePendingTransactions();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals(1,fm.getBackStackEntryCount());
+            activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
+            assertEquals(0,fm.getBackStackEntryCount());assertFalse(activity.isFinishing());
+            assertSame(root,fm.findFragmentById(R.id.settings_container));
+            camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
+        }
     }
 
 }

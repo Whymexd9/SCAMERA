@@ -16,7 +16,7 @@
             android:id="@+id/textureHolder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="?cameraFragmentBackground"
+            android:background="#101316"
             android:animateLayoutChanges="true">
 
         <!--    Block 1-->
@@ -71,16 +71,17 @@
                     android:orientation="horizontal"
                     android:gravity="center"
                     android:background="@drawable/aux_container_background"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    app:layout_constraintTop_toTopOf="@id/layout_bottombar"
+                    app:layout_constraintWidth_percent="0.68"
+                    app:layout_constraintBottom_toBottomOf="@id/dummy_reference_view"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     setAuxButtonModel="@{auxmodel}"
                     setActiveId="@{auxmodel.currentCameraId}"
                     bindViewGroupChildrenRotate="@{uimodel}"
                     hideAuxButtons="@{uimodel.settingsBarVisibility}"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="6dp"
                     android:elevation="4dp" />
 
             <!--    Block 1.4-->
@@ -88,11 +89,15 @@
             <include
                     android:id="@+id/manual_mode"
                     layout="@layout/manual_palette"
+                    android:visibility="@{uimodel.settingsBarVisibility ? View.INVISIBLE : View.VISIBLE}"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     app:layout_constraintBottom_toTopOf="@+id/aux_buttons_container"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
+                    android:layout_marginStart="20dp"
+                    android:layout_marginEnd="20dp"
+                    android:layout_marginBottom="8dp"
                     tools:visibility="visible"
                     app:layout_constraintHorizontal_bias="0.0"
                     app:layout_constraintVertical_bias="1.0" />
@@ -107,7 +112,7 @@
                     android:background="@drawable/chevron_up"
                     android:elevation="8dp"
                     android:contentDescription="Arrow"
-                    android:visibility="visible"
+                    android:visibility="gone"
                     app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
@@ -159,14 +164,15 @@
                 app:layout_constraintTop_toTopOf="parent" />
 
         <ImageButton
-                android:layout_width="60dp"
-                android:layout_height="wrap_content"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:id="@+id/arrow_top"
                 android:src="@drawable/chevron_up"
                 android:background="@null"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="0dp"
+                android:padding="10dp"
                 android:rotation="180"
                 android:clickable="true"
                 android:onClick="@{()-> uimodel.setSettingsBarVisibility(!uimodel.settingsBarVisibility)}"

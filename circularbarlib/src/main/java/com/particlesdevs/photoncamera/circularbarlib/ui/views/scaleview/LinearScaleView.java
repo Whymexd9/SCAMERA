@@ -44,6 +44,8 @@ public class LinearScaleView extends View {
 
     /** Set while the finger is down, so the caller can hold auto-exposure off. */
     private boolean dragging = false;
+    private boolean autoPressed;
+    private boolean temperatureMode;
     private float lastX;
     /** Leftover drag distance not yet worth a whole step. */
     private float dragAccum = 0f;
@@ -70,18 +72,10 @@ public class LinearScaleView extends View {
     private final Paint autoTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean isInAutoButton(float x, float y) {
-        // Anything to the left of the strip start counts as the auto button: there
-        // is nothing else there, and it turns a small circle into a comfortable
-        // edge target.
-        if (x <= autoCx + autoRadius) return true;
-        float dx = x - autoCx, dy = y - autoCy;
-        // A little slack: the drawn circle is smaller than a comfortable target.
-        // Generous slack: the drawn circle is 13dp and sits at the very edge of the
-        // strip, where a thumb lands imprecisely. Reported as hard to hit, and on
-        // some parameters not hittable at all.
-        float r = autoRadius + 20f * getResources().getDisplayMetrics().density;
-        return dx * dx + dy * dy <= r * r;
+        return x >= 0 && x <= 52f * getResources().getDisplayMetrics().density && y >= 0 && y <= getHeight();
     }
+    public void setTemperatureMode(boolean value){temperatureMode=value;invalidate();}
+    public void setSelectedItem(KnobItemInfo item){int index=items.indexOf(item);if(index>=0){selectedIndex=index;invalidate();}}
 
     public LinearScaleView(Context context) {
         this(context, null);
@@ -117,7 +111,10 @@ public class LinearScaleView extends View {
     }
 
     public void setItems(List<KnobItemInfo> newItems, int selected) {
-        this.items = newItems == null ? new ArrayList<>() : newItems;
+        KnobItemInfo chosen = newItems == null || newItems.isEmpty() ? null : newItems.get(Math.max(0,Math.min(selected,newItems.size()-1)));
+        this.items = newItems == null ? new ArrayList<>() : new ArrayList<>(newItems);
+        this.items.sort(java.util.Comparator.comparingDouble(item -> item.value));
+        if(chosen!=null)selected=this.items.indexOf(chosen);
         this.selectedIndex = clampIndex(selected);
         invalidate();
     }
@@ -166,10 +163,19 @@ public class LinearScaleView extends View {
             canvas.drawLine(x, ticksY, x, ticksY + len, tickPaint);
         }
 
+        if (temperatureMode) {
+            Paint gradient = new Paint(Paint.ANTI_ALIAS_FLAG);
+            gradient.setShader(new android.graphics.LinearGradient(left,0,right,0,0xFFD79A5F,0xFF739CD6,android.graphics.Shader.TileMode.CLAMP));
+            canvas.drawRoundRect(left,ticksY-5*density,right,ticksY-2*density,density,density,gradient);
+        }
         // Range ends, so the strip says what the sensor can do, not just where
         // the value happens to be.
-        canvas.drawText(items.get(0).text, left, ticksY - 8f * density, textPaint);
-        canvas.drawText(items.get(items.size() - 1).text, right, ticksY - 8f * density, textPaint);
+        int firstNumeric=items.get(0).value==0 && items.size()>1 ? 1 : 0;
+        textPaint.setTextAlign(Paint.Align.LEFT);
+        canvas.drawText(items.get(firstNumeric).text, left, 19f*density, textPaint);
+        textPaint.setTextAlign(Paint.Align.RIGHT);
+        canvas.drawText(items.get(items.size() - 1).text, right, 19f*density, textPaint);
+        textPaint.setTextAlign(Paint.Align.CENTER);
 
         // Auto button: same light wash as every other selected state.
         canvas.drawCircle(autoCx, autoCy, autoRadius, autoFillPaint);
@@ -189,22 +195,24 @@ public class LinearScaleView extends View {
         // strip: with the marker at either end the two collided and printed over
         // each other, which is what the AF strip showed.
         float half = valuePaint.measureText(label) * 0.5f;
-        float minEnd = left + textPaint.measureText(items.get(0).text) + 10f * density + half;
+        float minEnd = left + textPaint.measureText(items.get(firstNumeric).text) + 8f * density + half;
         float maxEnd = right - textPaint.measureText(items.get(items.size() - 1).text) - 10f * density - half;
         float labelX = markerX;
         if (minEnd <= maxEnd) {
             labelX = Math.max(minEnd, Math.min(maxEnd, markerX));
         }
-        canvas.drawText(label, labelX, ticksY - 22f * density, valuePaint);
+        canvas.drawText(label, labelX, 19f*density, valuePaint);
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (items.isEmpty()) return false;
+        if (!isEnabled() || items.isEmpty()) return false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                if (isInAutoButton(event.getX(), event.getY())) {
+                autoPressed = isInAutoButton(event.getX(), event.getY());
+                if (autoPressed) {
                     if (listener != null) listener.onAutoRequested();
+                    performClick();
                     return true;
                 }
                 dragging = true;
@@ -214,6 +222,7 @@ public class LinearScaleView extends View {
                 if (listener != null) listener.onDragStateChanged(true);
                 return true;
             case MotionEvent.ACTION_MOVE: {
+                if (!dragging || autoPressed) return true;
                 float dx = event.getX() - lastX;
                 lastX = event.getX();
                 float density = getResources().getDisplayMetrics().density;
@@ -237,11 +246,15 @@ public class LinearScaleView extends View {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 dragging = false;
+                autoPressed = false;
+                getParent().requestDisallowInterceptTouchEvent(false);
                 if (listener != null) listener.onDragStateChanged(false);
                 return true;
         }
         return super.onTouchEvent(event);
     }
+
+    @Override public boolean performClick(){super.performClick();return true;}
 
     public boolean isDragging() {
         return dragging;

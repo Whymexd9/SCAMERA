@@ -68,7 +68,12 @@ public class ManagedSwitchPreference extends SwitchPreferenceCompat {
         else {
             SettingsManager settingsManager = photonCamera.getSettingsManager();
             if (settingsManager != null) {
-                settingsManager.set(SettingsManager.SCOPE_GLOBAL, getKey(), value);
+                // Opening a screen is read-only. Keep the Boolean representation
+                // used by Android preferences/migration, and notify only on changes.
+                android.content.SharedPreferences prefs = settingsManager.getDefaultPreferences();
+                Object stored = prefs.getAll().get(getKey());
+                if (stored == null || com.particlesdevs.photoncamera.settings.PreferenceNumber.bool(stored, !value) != value)
+                    prefs.edit().putBoolean(getKey(), value).apply();
                 return true;
             } else
                 return false;
@@ -77,7 +82,6 @@ public class ManagedSwitchPreference extends SwitchPreferenceCompat {
 
     private void set(boolean value) {
         setChecked(value);
-        persistBoolean(value);
     }
 
     @Override

@@ -368,6 +368,13 @@ public class Parameters {
         else {
             whitePoint = customNeutral;
         }
+        Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE);
+        android.hardware.camera2.params.RggbChannelVector manualGains = result.get(CaptureResult.COLOR_CORRECTION_GAINS);
+        if (!customNeutr && awb != null && awb == CaptureRequest.CONTROL_AWB_MODE_OFF && manualGains != null) {
+            float green=(manualGains.getGreenEven()+manualGains.getGreenOdd())*.5f;
+            if(green>0 && manualGains.getRed()>0 && manualGains.getBlue()>0)
+                whitePoint=new float[]{green/manualGains.getRed(),1,green/manualGains.getBlue()};
+        }
         int ref1 = characteristics.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1);
         int ref2;
         Object ref2obj = characteristics.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT2);

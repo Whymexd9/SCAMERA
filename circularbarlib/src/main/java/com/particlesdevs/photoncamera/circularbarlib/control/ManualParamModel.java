@@ -16,6 +16,11 @@ public class ManualParamModel extends Observable {
     public static final String ID_EV = "ev";
     public static final String ID_SHUTTER = "shutter";
     public static final String ID_ISO = "iso";
+    public static final String ID_WB = "wb";
+    private int whiteBalanceKelvin;
+    public int getWhiteBalanceKelvin() { return whiteBalanceKelvin; }
+    public void setWhiteBalanceKelvin(int kelvin) { whiteBalanceKelvin=kelvin; notifyObservers(ID_WB); }
+
 
     public static final String PANEL_INVISIBILITY = "panel_invisibility";
     private double currentFocusValue;
@@ -66,7 +71,7 @@ public class ManualParamModel extends Observable {
         return !(getCurrentExposureValue() == EXPOSURE_AUTO
                 && getCurrentFocusValue() == FOCUS_AUTO
                 && getCurrentISOValue() == ISO_AUTO
-                && getCurrentEvValue() == EV_AUTO);
+                && getCurrentEvValue() == EV_AUTO && whiteBalanceKelvin == 0);
     }
 
     public void reset() {
@@ -74,6 +79,7 @@ public class ManualParamModel extends Observable {
         currentEvValue = EV_AUTO;
         currentExposureValue = EXPOSURE_AUTO;
         currentISOValue = ISO_AUTO;
+        whiteBalanceKelvin = 0;
         notifyObservers(PANEL_INVISIBILITY);
     }
 

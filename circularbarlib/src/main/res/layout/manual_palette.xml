@@ -1,184 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/manual_mode"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:visibility="gone"
-    tools:visibility="visible">
-
-    <FrameLayout
-        android:id="@+id/knobViewContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:background="@drawable/glass_pill"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="8dp">
-
+    android:id="@+id/manual_mode" android:layout_width="match_parent" android:layout_height="wrap_content">
+    <FrameLayout android:id="@+id/knobViewContainer" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:visibility="gone" android:layout_marginBottom="8dp"
+        android:background="@drawable/glass_pill">
         <com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobView
-                android:id="@+id/knobView"
-                android:layout_width="match_parent"
-                tools:visibility="gone"
-                android:layout_height="96dp" />
-
-        <!-- Linear alternative to the wheel. Both live in the same container and
-             only one is ever visible: the wheel hides values behind the arc, so
-             the ends of the range and the distance to them are never on screen
-             at once, which is exactly what a linear scale shows. Kept side by
-             side rather than replacing the wheel outright so the two can be
-             compared on device and the old one is one setting away. -->
+            android:id="@+id/knobView" android:layout_width="match_parent" android:layout_height="96dp" android:visibility="gone" />
         <com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView
-                android:id="@+id/linearScaleView"
-                android:layout_width="match_parent"
-                android:layout_height="64dp"
-                android:visibility="gone" />
+            android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="64dp" android:visibility="gone" />
     </FrameLayout>
-
-
-    <!-- Parameter tabs. The value sits above a fixed label rather than above an
-         icon: an icon has to be learned, and with five parameters the labels are
-         what the user is looking for. Order matches the concept - exposure
-         compensation, shutter, sensitivity, focus. White balance is absent because
-         there is no manual white balance control in the capture path yet; adding a
-         tab without one would be a button that does nothing. -->
-    <LinearLayout
-        android:id="@+id/buttons_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/knobViewContainer"
-        android:background="@drawable/glass_pill"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="8dp"
-        android:orientation="horizontal">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-
-            <TextView
-                android:id="@+id/ev_option_tv"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:gravity="bottom|center_horizontal"
-                android:paddingTop="10dp"
-                android:textAlignment="center"
-                android:textAppearance="@style/BoldTextWithShadow"
-                android:textColor="@color/manual_text_color"
-                android:textSize="13sp"
-                tools:text="Auto" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:duplicateParentState="true"
-                android:clickable="false"
-                android:text="EV"
-                android:textAlignment="center"
-                android:textColor="@color/manual_text_color"
-                android:alpha="0.65"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-
-            <TextView
-                android:id="@+id/exposure_option_tv"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:gravity="bottom|center_horizontal"
-                android:paddingTop="10dp"
-                android:textAlignment="center"
-                android:textAppearance="@style/BoldTextWithShadow"
-                android:textColor="@color/manual_text_color"
-                android:textSize="13sp"
-                tools:text="Auto" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:duplicateParentState="true"
-                android:clickable="false"
-                android:text="SS"
-                android:textAlignment="center"
-                android:textColor="@color/manual_text_color"
-                android:alpha="0.65"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-
-            <TextView
-                android:id="@+id/iso_option_tv"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:gravity="bottom|center_horizontal"
-                android:paddingTop="10dp"
-                android:textAlignment="center"
-                android:textAppearance="@style/BoldTextWithShadow"
-                android:textColor="@color/manual_text_color"
-                android:textSize="13sp"
-                tools:text="Auto" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:duplicateParentState="true"
-                android:clickable="false"
-                android:text="ISO"
-                android:textAlignment="center"
-                android:textColor="@color/manual_text_color"
-                android:alpha="0.65"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-
-            <TextView
-                android:id="@+id/focus_option_tv"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:gravity="bottom|center_horizontal"
-                android:paddingTop="10dp"
-                android:textAlignment="center"
-                android:textAppearance="@style/BoldTextWithShadow"
-                android:textColor="@color/manual_text_color"
-                android:textSize="13sp"
-                tools:text="Auto" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:duplicateParentState="true"
-                android:clickable="false"
-                android:text="AF"
-                android:textAlignment="center"
-                android:textColor="@color/manual_text_color"
-                android:alpha="0.65"
-                android:textSize="11sp" />
-        </LinearLayout>
+    <LinearLayout android:id="@+id/buttons_container" android:layout_width="match_parent"
+        android:layout_height="40dp" android:layout_below="@id/knobViewContainer" android:padding="3dp"
+        android:orientation="horizontal" android:background="@drawable/glass_pill">
+        <TextView android:id="@+id/ev_option_tv" android:layout_width="0dp"
+            android:layout_height="match_parent" android:layout_weight="1" android:text="EV"
+            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
+            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
+            android:clickable="true" android:focusable="true" />
+        <TextView android:id="@+id/exposure_option_tv" android:layout_width="0dp"
+            android:layout_height="match_parent" android:layout_weight="1" android:text="Tv"
+            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
+            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
+            android:clickable="true" android:focusable="true" />
+        <TextView android:id="@+id/iso_option_tv" android:layout_width="0dp"
+            android:layout_height="match_parent" android:layout_weight="1" android:text="ISO"
+            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
+            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
+            android:clickable="true" android:focusable="true" />
+        <TextView android:id="@+id/wb_option_tv" android:layout_width="0dp"
+            android:layout_height="match_parent" android:layout_weight="1" android:text="ББ"
+            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
+            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
+            android:clickable="true" android:focusable="true" />
+        <TextView android:id="@+id/focus_option_tv" android:layout_width="0dp"
+            android:layout_height="match_parent" android:layout_weight="1" android:text="AF"
+            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
+            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
+            android:clickable="true" android:focusable="true" />
     </LinearLayout>
 </RelativeLayout>

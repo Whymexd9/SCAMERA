@@ -2585,6 +2585,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewRequestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus);
             rebuildPreviewBuilder();*/
 
+            paramController.applyWhiteBalance(captureBuilder);
             IsoExpoSelector.useTripod = PhotonCamera.getGyro().getTripod();
             if (frameCount == -1) {
                 for (int i = 0; i < 1; i++) {
