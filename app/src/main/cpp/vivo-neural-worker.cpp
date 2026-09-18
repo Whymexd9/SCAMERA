@@ -3,6 +3,7 @@
 #include "vivo-hexquad-check.h"
 #include "vivo-hexquad-capture.h"
 #include "vivo-hexquad-profile-check.h"
+#include "vivo-softpqe-runtime.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -35,6 +36,21 @@ int main(int argc,char** argv) {
                 vivo_hexquad::captureHex(session,burst,argv[4]);
             }
             alarm(0);vivo_nn::log("HEXQUAD CAPTURE OK");return 0;
+        }
+        if(argc==3 && std::string(argv[1])=="--softpqe-check") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(180);
+            vivo_nn::log("Vivo softpqe upscale check: diagnostic only, no graph execution");
+            for(const auto* spec:{&vivo_softpqe::Y2X,&vivo_softpqe::Y4X}) {
+                vivo_nn::log(std::string("MODEL: ")+spec->file+" graph="+spec->graph);
+                try {
+                    vivo_softpqe::Session session;session.init(argv[2],*spec);
+                    vivo_nn::log(std::string("SOFTPQE CHECK OK: ")+spec->file);
+                } catch(const std::exception& e) {
+                    vivo_nn::log(std::string("SOFTPQE CHECK FAILED: ")+spec->file+": "+e.what());
+                }
+            }
+            alarm(0);vivo_nn::log("SOFTPQE CHECK COMPLETE");return 0;
         }
         if(argc==3 && std::string(argv[1])=="--hexquad-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");

@@ -31,9 +31,13 @@ class Metadata:
     def __init__(self, data):
         if data[:16] != ENVELOPE:
             raise ValueError('not a QNN context envelope')
-        metadata_size, context_offset, _ = struct.unpack_from('<QQQ', data, 16)
+        metadata_size, context_offset, blob_size = struct.unpack_from('<QQQ', data, 16)
         if context_offset != 40 + metadata_size:
             raise ValueError('inconsistent metadata length')
+        # The third header field tracks the compiled graph blob that follows
+        # the metadata; envelope + metadata + blob is the whole context, and
+        # nothing beyond it belongs to the QNN binary (see --extract).
+        self.blob_length = context_offset + blob_size
         # Everything past the metadata is the compiled graph; it is not read.
         self.data = data[:context_offset]
 
@@ -165,7 +169,7 @@ def dump(meta, table, label, depth=0):
         print(line)
 
 
-def describe(path, structure=False, table=None):
+def describe(path, structure=False, table=None, extract_dir=None):
     data = Path(path).read_bytes()
     start = data.find(ENVELOPE)
     if start < 0:
@@ -188,6 +192,18 @@ def describe(path, structure=False, table=None):
             for tensor in graph[kind]:
                 print(f'    {kind[:-1]:6s} {tensor["name"]:28s} '
                       f'{tensor["shape"]} dtype={tensor["datatype"]}')
+    if extract_dir is not None:
+        end = start + meta.blob_length
+        if end > len(data):
+            raise ValueError('blob length runs past end of file')
+        blob = data[start:end]
+        trailer = len(data) - end
+        out = Path(extract_dir) / (Path(path).stem + '.bin')
+        out.write_bytes(blob)
+        import hashlib
+        sha = hashlib.sha256(blob).hexdigest()
+        print(f'  EXTRACT: {out} ({len(blob)} bytes, {trailer} trailing bytes dropped)')
+        print(f'  SHA256: {sha}')
 
 
 def main():
@@ -195,10 +211,19 @@ def main():
     parser.add_argument('models', nargs='+', type=Path)
     parser.add_argument('--structure', action='store_true',
                         help='report the metadata table layout instead of the graphs')
+    parser.add_argument('--table', type=lambda x: int(x, 0), default=None,
+                        help='dump one metadata table by byte offset, for layout debugging')
+    parser.add_argument('--extract', type=Path, default=None, metavar='DIR',
+                        help='write the trimmed QNN context blob (metadata + compiled '
+                             'graph, vendor wrapper and trailer stripped) as DIR/<name>.bin, '
+                             'for bundling as a pinned runtime asset. Keep the output outside git.')
     args = parser.parse_args()
+    if args.extract is not None:
+        args.extract.mkdir(parents=True, exist_ok=True)
+    failures = 0
     for model in args.models:
         try:
-            describe(model, args.structure, args.table)
+            describe(model, args.structure, args.table, args.extract)
         except (ValueError, OSError, struct.error) as error:
             failures += 1
             print(f'{model.name}: {error}')
