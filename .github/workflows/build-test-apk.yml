@@ -104,7 +104,9 @@ jobs:
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
       - name: Check Vivo upscale failure handling
-        run: python3 tools/vivo-upscale/check_softpqe_worker.py
+        run: |
+          python3 tools/vivo-upscale/check_softpqe_worker.py
+          python3 tools/vivo-upscale/check_loader_order.py
 
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py

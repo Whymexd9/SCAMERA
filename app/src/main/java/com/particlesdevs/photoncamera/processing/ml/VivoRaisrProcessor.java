@@ -11,6 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Experimental Vivo RAISR and SoftPQE, isolated from ART. Original firmware is hash-checked before loading. */
 public final class VivoRaisrProcessor {
     private VivoRaisrProcessor() {}
+    // System EGL/graphicsenv must resolve against system libbase/libutils, not
+    // same-soname vendor copies. Vendor entry libraries are opened by absolute path.
+    static final String LIBRARY_PATH = "/system/lib64:/system_ext/lib64:/vendor/lib64:/vendor/lib64/hw";
     private static String quote(String s) { return "'" + s.replace("'", "'\\''") + "'"; }
     private static void asset(Context c, String name, File target) throws IOException {
         try (InputStream in=c.getAssets().open("vivo-upscale/"+name);
@@ -54,13 +57,16 @@ public final class VivoRaisrProcessor {
             if(!worker.setExecutable(true,true) || !output.createNewFile())throw new IOException("Не удалось подготовить апскейл");
             writeNv21(source,input);
             String command="/system/bin/sha256sum -c "+quote(checks.getAbsolutePath())+
-                    " && exec /system/bin/env LD_LIBRARY_PATH=/vendor/lib64:/vendor/lib64/hw:/system/lib64:/system_ext/lib64 "+
+                    " && exec /system/bin/env LD_LIBRARY_PATH="+quote(LIBRARY_PATH)+" "+
                     "ADSP_LIBRARY_PATH="+quote("/vendor/lib64/hw;/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+" "+
                     quote(worker.getAbsolutePath())+(soft?
                     " --softpqe /vendor/lib64/libvivo_softpqe.so /vendor/camera3rd/nti/softpqe/config/ui_normal_shot/aigc_24M ":
                     " --raisr /vendor/lib64/libvivo_raisr.so /vendor/camera3rd/nti/raisr ")+
                     quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+ow+" "+oh+
                     " 17 "+Math.max(1,Math.min(1000000,iso))+" "+("5".equals(cameraId)?8:2);
+            String launch="START "+name+" camera="+cameraId+" "+w+"x"+h+" -> "+ow+"x"+oh+
+                    " ISO="+iso+" LD_LIBRARY_PATH="+LIBRARY_PATH;
+            report.append(launch).append('\n');Log.d("VivoUpscale",launch);
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();final Process child=process;
             reader=new Thread(()->{
@@ -74,7 +80,9 @@ public final class VivoRaisrProcessor {
             },"vivo-upscale-log");reader.setDaemon(true);reader.start();
             if(!process.waitFor(200,TimeUnit.SECONDS))throw new IOException("Vivo "+name+": тайм-аут");
             reader.join(3000);
-            if(reader.isAlive() || process.exitValue()!=0 || !complete.get())throw new IOException("Vivo "+name+" не завершён; исходный снимок сохранён");
+            if(reader.isAlive() || process.exitValue()!=0 || !complete.get())throw new IOException(
+                    "Vivo "+name+" не завершён (exit="+process.exitValue()+", marker="+complete.get()+
+                    ", logPending="+reader.isAlive()+"); исходный снимок сохранён");
             if(output.length()!=(long)ow*oh*3/2)throw new IOException("Неверный размер результата Vivo "+name);
             return readNv21(output,ow,oh);
         } catch(Exception e) {

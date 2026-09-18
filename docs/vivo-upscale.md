@@ -63,3 +63,9 @@ The earlier supplied camera archives also contain the full 6,255,512-byte `com.q
 - XML parse and all 21 SoftPQE firmware hash checks.
 
 For the next APK: test main and tele with a color chart and fine texture, scale 1x/2x, low/high ISO. Verify root denial and firmware mismatch preserve the original photograph. Verify wide reports unsupported instead of applying a wrong profile. For SoftPQE test only main ×2 first; verify normal mode, actual output dimensions, channel order/range, texture, edges, memory/time and failure fallback. Do not mark SoftPQE functional until phone inference tests pass. MFSR requires the missing capture integration before a device inference test.
+
+## 30202 device report: graphics dependency loading failure
+
+The supplied September 19 logs contain three attempts where all 21 firmware hashes pass, followed by `dlopen` failure: system `libgraphicsenv.so` cannot resolve `android::base::Join`. No SoftPQE Init/Process is reached. The launcher incorrectly put vendor directories before system directories in LD_LIBRARY_PATH. Changed to system → system_ext → vendor → vendor/hw, matching the established neural worker's system-first policy. Vendor entry points remain absolute paths and the SHA gates remain intact.
+
+A host dynamic-loader regression reproduces this class of failure using two same-SONAME libraries and confirms resolution with the actual Java launcher's new directory order. Java compilation also checks the launcher. Launch dimensions, backend, library order and exit status now appear in diagnostics. These checks do not establish successful device inference; the repaired APK needs a new phone run.
