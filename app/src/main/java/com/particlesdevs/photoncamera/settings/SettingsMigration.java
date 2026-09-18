@@ -54,6 +54,9 @@ public final class SettingsMigration {
     }
     private static String attribute(Context context, XmlResourceParser parser, String name) {
         int id=parser.getAttributeResourceValue(ANDROID,name,0);
-        return id==0 ? parser.getAttributeValue(ANDROID,name) : context.getString(id);
+        if(id==0) return parser.getAttributeValue(ANDROID,name);
+        android.util.TypedValue value=new android.util.TypedValue();
+        context.getResources().getValue(id,value,true);
+        CharSequence text=value.coerceToString();return text==null ? null : text.toString();
     }
 }

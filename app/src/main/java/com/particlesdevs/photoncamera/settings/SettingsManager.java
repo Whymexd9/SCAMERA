@@ -323,12 +323,15 @@ public class SettingsManager {
      */
     public String getString(String scope, PreferenceKeys.Key key, String defaultValue) {
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        return preferences.getString(key.mValue, defaultValue);
+        return getString(scope, key.mValue, defaultValue);
     }
 
     public String getString(String scope, String key, String defaultValue) {
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        return preferences.getString(key, defaultValue);
+        Object value = preferences.getAll().get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof Boolean) return (Boolean)value ? "1" : "0";
+        return value.toString();
     }
 
     public Set<String> getStringSet(String scope, PreferenceKeys.Key key, Set<String> defaultValue) {
