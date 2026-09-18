@@ -7,7 +7,7 @@ root = Path(__file__).resolve().parents[1]
 java = root / 'app/src/main/java/com/particlesdevs/photoncamera'
 xml = ET.parse(root / 'app/src/main/res/xml/preferences.xml').getroot()
 a = '{http://schemas.android.com/apk/res/android}'
-screen = next(e for e in xml if e.get(a+'key') == 'hexquad_denoise_screen')
+screen = next(e for e in xml.iter() if e.get(a+'key') == 'hexquad_denoise_screen')
 settings = (java/'settings/PreferenceKeys.java').read_text()
 for key, default, method in [('hexquad_luma', '50', 'getHexQuadLuma'), ('hexquad_chroma', '100', 'getHexQuadChroma')]:
     elements = [e for e in xml.iter() if e.get(a+'key') == key]

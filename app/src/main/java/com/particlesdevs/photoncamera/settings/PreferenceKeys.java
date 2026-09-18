@@ -230,6 +230,7 @@ public class PreferenceKeys {
         COMMON_KEYS.add(Key.CAMERA_ID.mValue);
         COMMON_KEYS.add(Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         COMMON_KEYS.add("settings_audit_schema");
+        COMMON_KEYS.add(Key.FOLDERS_LIST.mValue);
         COMMON_KEYS.add(Key.KEY_SHOW_AF_DATA.mValue);
         COMMON_KEYS.add(Key.KEY_THEME_ACCENT.mValue);
         COMMON_KEYS.add(Key.KEY_THEME.mValue);
@@ -350,16 +351,17 @@ public class PreferenceKeys {
         if (alreadySavedJSON == null || (map = (HashMap) GSON.fromJson(alreadySavedJSON, HashMap.class)) == null) {
             return;
         }
+        android.content.SharedPreferences.Editor editor = settingsManager.getDefaultPreferences().edit();
         for (Map.Entry<String, ?> e : map.entrySet()) {
             String key = e.getKey();
-            if (key == null || (!key.startsWith("pref_tunable_") && !key.startsWith("pref_sensorconfig_"))) {
-                Object value = e.getValue();
-                if (value instanceof Boolean) {
-                    value = ((Boolean) value).booleanValue() ? "1" : "0";
-                }
-                settingsManager.set("default_scope", key, value.toString());
-            }
+            Object value = e.getValue();
+            if (key == null || value == null || COMMON_KEYS.contains(key)
+                    || key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_")) continue;
+            // Android switches require a Boolean; numeric readers also accept legacy strings.
+            if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
+            else if (value instanceof String || value instanceof Number) editor.putString(key, value.toString());
         }
+        editor.apply();
     }
 
     public static void setActivityTheme(Activity activity) {

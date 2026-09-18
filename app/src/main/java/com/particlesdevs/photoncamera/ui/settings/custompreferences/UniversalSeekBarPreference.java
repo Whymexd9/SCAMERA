@@ -160,7 +160,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         float clamped = clamp(raw);
         seekBarProgress = valueToProgress(clamped);
         updateSeekbar(seekBarProgress);
-        if (clamped != raw) {
+        if (clamped != raw || !Double.isFinite(PreferenceNumber.read(stored, Double.NaN))) {
             String fixed = formatExactValue(clamped);
             updateLabel(fixed);
             persistString(fixed);

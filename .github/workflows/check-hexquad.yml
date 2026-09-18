@@ -4,6 +4,9 @@ on:
     paths:
       - 'app/src/main/cpp/vivo-hexquad-*.h'
       - 'tools/*vivo_hexquad*'
+      - 'tools/check_settings_shaders.cpp'
+      - 'app/src/main/assets/shaders/Initial/*.glsl'
+      - 'app/src/main/assets/shaders/ESD3D/flow.glsl'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/HexQuadBurst.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/HexQuadExposure.java'
       - 'app/src/main/assets/shaders/HexQuad/*.glsl'
@@ -92,6 +95,8 @@ jobs:
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/check-hex-exposure
           g++ -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_fusion.cpp -lEGL -lGLESv2 -o /tmp/check-hex-fusion
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/check-hex-fusion
+          g++ -std=c++14 -O2 -Wall -Wextra -Werror tools/check_settings_shaders.cpp -lEGL -lGLESv2 -o /tmp/check-settings-shaders
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/check-settings-shaders
       - name: Check hybrid prefetch ownership and failure barriers
         run: |
           g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_hybrid.cpp -ldl -o /tmp/check-hex-hybrid
