@@ -631,3 +631,39 @@ shader test covers 442,368 channel samples: both input domains, -2..+2 EV,
 shadow and highlight ramps, saturated colors, monotonicity, white anchoring,
 finite range and exact zero identity. Host tests cannot establish stock matching
 on the handset; compare the same scene at 0 and a positive setting.
+
+
+### Tone selector wiring (30178)
+
+The 08:52 and 09:07 logs had `tonePipeline=fusion` but the separate
+`ExposureFusionBayer2.enable` tunable was false by default. The node silently
+returned its input, so the selected fusion path never produced a gain map.
+This was a selector/activation bug, not evidence that every tone control was
+unused or that HexQuad itself lost exposure.
+
+Tone Pipeline now solely selects Exposure Fusion. The obsolete enable field
+is removed, so an old saved false value cannot override the selector. The
+postpipeline logs `Exposure Fusion active: selected by Tone Pipeline`. Other tone
+modes still omit this node; the neural inference and noise controls are unchanged.
+
+The controls in the reported screenshot were also audited:
+
+| Control | Actual consumer | Change |
+| --- | --- | --- |
+| Tone Pipeline | PostPipeline node selection | Fusion now runs when selected |
+| Headroom Scale / Max, Output Exposure | HeadroomRender, Sky only | Separate Sky category and explicit descriptions; existing keys/values kept |
+| Gamma Coefficient, Gamma Model X1/X2/X3 | Initial gamma LUT / shadow polynomial in Fusion and legacy Curve, with ACES disabled | Separate gamma category and scope descriptions |
+| Epsilon | No active shader use; only commented expressions mentioned EPS | Remove nonfunctional UI field and unused define upload |
+
+In particular, `Output Exposure=0.80` did **not** darken a Fusion-mode photo;
+that multiplier is consumed only by Sky. This is a targeted audit of these
+controls, not a certification of all expert tunables.
+
+The GLES regression renders the production exposure packing, fusion and gain
+map shaders in FP16 on 32 flat-field fixtures, including black and white. It
+checks unity for identical exposures, finite bounded gains, spatial uniformity,
+and response to changed exposure-selection weights. It does not replace a
+full Android pipeline test or a real scene comparison. Android CI also builds
+the changed Java code. Start the first device comparison with the new HP9
+brightness correction at 0 EV: activating Fusion itself changes tone, and its
+pyramid adds work to the postprocessing stage.

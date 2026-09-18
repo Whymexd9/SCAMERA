@@ -139,7 +139,7 @@ public class PostPipeline extends GLBasePipeline {
 
     @Tunable(
         title = "Tone Pipeline",
-        description = "Exposure Fusion: Wronski/Mertens; OpenDRT: scene-linear display transform; Curve: legacy PhotonCamera; Sky: headroom renderer; Off: linear passthrough",
+        description = "Выбранный режим применяется при сохранении фото. Exposure Fusion включается этим списком. Настройки Sky и гаммы находятся в отдельных группах.",
         category = "Color & Tone",
         entries = {"Exposure Fusion (Wronski)", "OpenDRT Standard", "PhotonCamera Curve (legacy)", "Sky (Headroom)", "Off (linear passthrough)"},
         entryValues = {"fusion", "opendrt", "curve", "sky", "off"}

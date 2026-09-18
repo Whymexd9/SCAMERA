@@ -61,16 +61,16 @@ import static com.particlesdevs.photoncamera.util.Math2.mix;
     GLTexture LookupTexture;
     GLImage lutbm;
     float highersatmpy = 1.0f;
-    @Tunable(title = "Gamma Coefficient", category = "Color & Tone", min = 1.0f, max = 3.0f, defaultValue = 2.2f)
+    @Tunable(title = "Gamma Coefficient", category = "Gamma (Fusion / PhotonCurve)", min = 1.0f, max = 3.0f, defaultValue = 2.2f, description = "Fusion и PhotonCamera Curve: гамма средних и светлых тонов. При включённом ACES не применяется.")
     float gammaKoefficientGenerator = 2.2f;
     
-    @Tunable(title = "Gamma Model X1", category = "Color & Tone", min = -20.0f, max = 20.0f, defaultValue = 7.1896f)
+    @Tunable(title = "Gamma Model X1", category = "Gamma (Fusion / PhotonCurve)", min = -20.0f, max = 20.0f, defaultValue = 7.1896f, description = "Fusion и PhotonCamera Curve: линейный коэффициент гаммы теней. При включённом ACES не применяется.")
     float gammax1 = 7.1896f;
     
-    @Tunable(title = "Gamma Model X2", category = "Color & Tone", min = -100.0f, max = 100.0f, defaultValue = -50.8195f)
+    @Tunable(title = "Gamma Model X2", category = "Gamma (Fusion / PhotonCurve)", min = -100.0f, max = 100.0f, defaultValue = -50.8195f, description = "Fusion и PhotonCamera Curve: квадратичный коэффициент гаммы теней. При включённом ACES не применяется.")
     float gammax2 = -50.8195f;
     
-    @Tunable(title = "Gamma Model X3", category = "Color & Tone", min = -200.0f, max = 200.0f, defaultValue = 129.3564f)
+    @Tunable(title = "Gamma Model X3", category = "Gamma (Fusion / PhotonCurve)", min = -200.0f, max = 200.0f, defaultValue = 129.3564f, description = "Fusion и PhotonCamera Curve: кубический коэффициент гаммы теней. При включённом ACES не применяется.")
     float gammax3 = 129.3564f;
     
     @Tunable(title = "Tonemap X1", category = "Color & Tone", min = -2.0f, max = 2.0f, defaultValue = -0.15f)
@@ -90,9 +90,6 @@ import static com.particlesdevs.photoncamera.util.Math2.mix;
     
     @Tunable(title = "Saturation Red", category = "Color & Tone", max = 3.0f, defaultValue = 1.0f)
     float saturationRed = 1.0f;
-    
-    @Tunable(title = "Epsilon", category = "Color & Tone", max = 0.01f, defaultValue = 0.0008f, step = 0.0001f)
-    float eps = 0.0008f;
     
     @Tunable(title = "Highlight Softness", category = "Color & Tone", min = 0.5f, max = 1.0f, defaultValue = 0.8f, step = 0.01f, description = "Soft clamp knee for highlights; lower value rolls highlights off sooner")
     float highlightSoftness = 0.8f;
@@ -217,7 +214,6 @@ import static com.particlesdevs.photoncamera.util.Math2.mix;
         glProg.setDefine("SATURATIONRED",  saturationRed);
         glProg.setDefine("NOISEO",  basePipeline.noiseO);
         glProg.setDefine("NOISES",  basePipeline.noiseS);
-        glProg.setDefine("EPS", eps);
         glProg.setDefine("SOFTKNEE", highlightSoftness);
         glProg.setDefine("ACES_ENABLED", PreferenceKeys.isAcesEnabled());
         glProg.setDefine("ACES_OUTPUT_P3", PreferenceKeys.getAcesOutput() != 0);

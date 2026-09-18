@@ -25,13 +25,13 @@ import static android.opengl.GLES20.GL_LINEAR;
  * sceneWhite = clamp(headroomScale*displayGain, 1, sceneWhiteMax).
  */
 public class HeadroomRender extends Node {
-    @Tunable(title = "Output Exposure", category = "Color & Tone", min = 0.50f, max = 1.20f, defaultValue = 0.80f, step = 0.01f, description = "Global linear output scale (~-0.32 EV at 0.80)")
+    @Tunable(title = "Output Exposure", category = "Sky (Headroom)", min = 0.50f, max = 1.20f, defaultValue = 0.80f, step = 0.01f, description = "Только Sky: линейный множитель яркости на выходе (0.80 ≈ −0.32 EV). На Exposure Fusion не влияет.")
     float outputExposureScale = 0.80f;
 
-    @Tunable(title = "Headroom Scale", category = "Color & Tone", min = 0.50f, max = 1.20f, defaultValue = 0.90f, step = 0.01f, description = "Fraction of the display gain treated as scene white headroom")
+    @Tunable(title = "Headroom Scale", category = "Sky (Headroom)", min = 0.50f, max = 1.20f, defaultValue = 0.90f, step = 0.01f, description = "Только Sky: доля усиления, определяющая запас в светах. На Exposure Fusion не влияет.")
     float headroomScale = 0.90f;
 
-    @Tunable(title = "Headroom Max", category = "Color & Tone", min = 1.0f, max = 20.0f, defaultValue = 14.5f, step = 0.5f, description = "Upper clamp of the scene white headroom; keep above 0.9*Gain Max (14.4 at Gain Max 16) or high-gain scenes clip highlights flat")
+    @Tunable(title = "Headroom Max", category = "Sky (Headroom)", min = 1.0f, max = 20.0f, defaultValue = 14.5f, step = 0.5f, description = "Только Sky: предел запаса в светах. Держите выше Headroom Scale × Gain Max, чтобы сохранить переходы в светах.")
     float sceneWhiteMax = 14.5f;
 
     private GLTexture fallbackGainMap;
