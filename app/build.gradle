@@ -165,6 +165,26 @@ tasks.configureEach {
     if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn(buildVivoNeuralWorker)
 }
 
+// Isolated vendor upscale process; generated with the next build, no vendor blobs in Git.
+def buildVivoUpscaleWorker = tasks.register('buildVivoUpscaleWorker', Exec) {
+    inputs.files('src/main/cpp/vivo-upscale-worker.cpp', 'src/main/cpp/vivo-softpqe-abi.h')
+    outputs.file(neuralAssets.map { it.file('vivo-upscale/arm64-v8a/vivo-upscale-worker') })
+    doFirst {
+        def host = System.getProperty('os.name').toLowerCase()
+        def tag = host.contains('mac') ? 'darwin-x86_64' : 'linux-x86_64'
+        if (host.contains('windows')) throw new GradleException('Native worker build requires Linux or macOS')
+        def clang = new File(android.sdkDirectory, "ndk/27.2.12479018/toolchains/llvm/prebuilt/${tag}/bin/aarch64-linux-android26-clang++")
+        def output = neuralAssets.get().file('vivo-upscale/arm64-v8a/vivo-upscale-worker').asFile
+        output.parentFile.mkdirs()
+        commandLine clang.absolutePath, '-std=c++17', '-O2', '-Wall', '-Wextra',
+                '-fPIE', '-pie', '-static-libstdc++', '-Wl,--exclude-libs,ALL', '-Wl,-z,max-page-size=16384',
+                file('src/main/cpp/vivo-upscale-worker.cpp').absolutePath, '-ldl', '-o', output.absolutePath
+    }
+}
+tasks.configureEach {
+    if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn(buildVivoUpscaleWorker)
+}
+
 dependencies {
 
     implementation fileTree(dir: 'libs', include: ['*.jar'])

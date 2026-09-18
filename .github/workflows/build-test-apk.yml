@@ -103,6 +103,9 @@ jobs:
           grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
+      - name: Check Vivo upscale failure handling
+        run: python3 tools/vivo-upscale/check_softpqe_worker.py
+
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py
 
@@ -166,6 +169,16 @@ jobs:
             echo "Root helper must have a static C++ runtime"
             exit 1
           fi
+          unzip -p "$APK" assets/vivo-upscale/arm64-v8a/vivo-upscale-worker > /tmp/vivo-upscale-worker-android
+          readelf -h /tmp/vivo-upscale-worker-android | grep AArch64
+          readelf -l /tmp/vivo-upscale-worker-android | grep /system/bin/linker64
+          readelf -d /tmp/vivo-upscale-worker-android > /tmp/upscale-deps.txt
+          grep -q PIE /tmp/upscale-deps.txt
+          if grep -q 'libc++_shared.so' /tmp/upscale-deps.txt; then
+            echo "Upscale helper must have a static C++ runtime"
+            exit 1
+          fi
+          unzip -p "$APK" assets/vivo-upscale/softpqe-master.sha256 | grep -q libvivo_softpqe.so
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file res/xml/preferences.xml > /tmp/apk-preferences.txt
           grep -q 'rt_denoise_screen' /tmp/apk-preferences.txt
           grep -q 'pref_rt_denoise_backend' /tmp/apk-preferences.txt

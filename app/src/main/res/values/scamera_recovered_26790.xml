@@ -389,14 +389,14 @@
     <string name="pref_tone_resolution_divisor_default">4</string>
     <string name="pref_tone_target_luma_default">0.6</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
-    <string name="raisr">Nano RAISR — ресамплинг</string>
+    <string name="raisr">Апскейл Vivo — экспериментальный</string>
     <string name="raisr_aliasing">Подавление алиасинга, %</string>
     <string name="raisr_filter_scale">Банк фильтров RAISR</string>
     <string name="raisr_halo">Защита от ореолов, %</string>
     <string name="raisr_mode">Режим RAISR</string>
     <string name="raisr_output_scale">Конечный масштаб</string>
     <string name="raisr_strength">Сила эффекта, %</string>
-    <string name="raisr_summary">Адаптивные обученные фильтры ×2/×3/×4 после RAW-обработки</string>
+    <string name="raisr_summary">Фирменный апскейл Vivo X200 Ultra. Требуется root; качество ещё проверяется. При ошибке сохраняется исходный снимок.</string>
     <string name="raw_mfsr">RAW Multi-Frame Super-Resolution</string>
     <string name="raw_mfsr_summary">Субпиксельное объединение обычных ZSL-кадров; брекетинг использует безопасную целочисленную склейку</string>
     <string name="rawtherapee_group">RawTherapee</string>

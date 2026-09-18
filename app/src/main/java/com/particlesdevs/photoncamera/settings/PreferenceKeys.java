@@ -958,6 +958,10 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAISR_ENABLED, false);
     }
 
+    public static String getVivoUpscaleBackend() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_UPSCALE_BACKEND, "raisr");
+    }
+
     public static int getRaisrFilterScale() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_FILTER_SCALE, 2).intValue();
     }
@@ -1373,6 +1377,7 @@ public class PreferenceKeys {
         KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
         KEY_MFSR_TENSOR_STRIDE(R.string.pref_mfsr_tensor_stride_key),
         KEY_MFSR_GRAD_K(R.string.pref_mfsr_grad_k_key),
+        KEY_VIVO_UPSCALE_BACKEND(R.string.pref_vivo_upscale_backend_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
         KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),
         KEY_RAISR_OUTPUT_SCALE(R.string.pref_raisr_output_scale_key),

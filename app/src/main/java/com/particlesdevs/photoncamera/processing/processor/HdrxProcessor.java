@@ -19,8 +19,7 @@ import com.particlesdevs.photoncamera.processing.ImageFrame;
 import com.particlesdevs.photoncamera.processing.ImageFrameDeblur;
 import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ml.AiBayerDenoiseProcessor;
-import com.particlesdevs.photoncamera.processing.ml.GpuRaisrProcessor;
-import com.particlesdevs.photoncamera.processing.ml.RaisrProcessor;
+import com.particlesdevs.photoncamera.processing.ml.VivoRaisrProcessor;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostPipeline;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
@@ -576,19 +575,17 @@ public class HdrxProcessor extends ProcessorBase {
         pipeline.kernelParamsSize = mosaicSrForJpeg == null && esd4d != null ? esd4d.kernelsMapCPUSize : null;
 
         Bitmap img = pipeline.Run(jpegInput, processingParameters);
-        if (PreferenceKeys.isRaisrEnabled() && PreferenceKeys.getRaisrStrength() > 0) {
-            processingStage = PreferenceKeys.isFullGpuProcessing()
-                    ? "GPU Nano RAISR resampling" : "Nano RAISR resampling";
+        if (PreferenceKeys.isRaisrEnabled()) {
+            processingStage = "softpqe".equals(PreferenceKeys.getVivoUpscaleBackend()) ? "Vivo SoftPQE" : "Vivo RAISR";
             try {
-                Bitmap enhanced = PreferenceKeys.isFullGpuProcessing()
-                        ? GpuRaisrProcessor.process(PhotonCamera.getAppContext(), img)
-                        : RaisrProcessor.process(PhotonCamera.getAppContext(), img);
+                Bitmap enhanced = VivoRaisrProcessor.process(PhotonCamera.getAppContext(), img,
+                        processingParameters.cameraID, processingParameters.iso, PreferenceKeys.getRaisrOutputScale(), PreferenceKeys.getVivoUpscaleBackend());
                 if (enhanced != img) {
                     img.recycle();
                     img = enhanced;
                 }
             } catch (Throwable raisrError) {
-                Log.e(TAG, "Optional Nano RAISR failed; preserving original image", raisrError);
+                Log.e(TAG, "Vivo upscale failed; preserving original image", raisrError);
             }
         }
         processingStage = "image encoding";
