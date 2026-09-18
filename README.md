@@ -86,17 +86,12 @@ Unsharp mask with radius, amount, contrast and a four-corner threshold map;
 edge-only masking; halo control; and Richardson-Lucy deconvolution with kernel,
 radius, amount, iterations, damping and its own halo margins.
 
-## Tooling
+## Debug output
 
-- A unified debug log written to `Download/SCAMERA/SCAMERA-debug.log`.
-- `tools/` holds headless checks that run the actual shaders against numpy
-  references, plus readers for the model containers this work needed to
-  understand.
-- `docs/` records what was established about the hardware and what was not -
-  including which questions remain open. Claims there are separated from
-  evidence on purpose.
-- CI builds a debug APK on every push and verifies that the settings the build
-  claims to ship are present inside the APK.
+A unified debug log is written to `Download/SCAMERA/SCAMERA-debug.log` when the
+full-debug switch is on; it carries the per-node timings and the parameters each
+stage actually used, which is what makes a bad frame diagnosable after the fact
+rather than by guesswork. CI builds a debug APK on every push.
 
 ## Building
 
