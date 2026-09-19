@@ -116,6 +116,12 @@ jobs:
           /tmp/multiframe-check/bin/pip install unicorn==2.1.4 pyelftools==0.32
           /tmp/multiframe-check/bin/python tools/multiframe/check_native.py
 
+      - name: Check ZSL gyro exposure windows
+        run: |
+          mkdir -p /tmp/gyro-check
+          javac -d /tmp/gyro-check app/src/main/java/com/particlesdevs/photoncamera/control/GyroBurst.java app/src/main/java/com/particlesdevs/photoncamera/control/GyroExposureWindow.java tools/java/GyroExposureWindowCheck.java
+          java -cp /tmp/gyro-check GyroExposureWindowCheck
+
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py
 

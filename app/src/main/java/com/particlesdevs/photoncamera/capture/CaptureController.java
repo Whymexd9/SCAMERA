@@ -2377,6 +2377,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return selected;
     }
 
+    private boolean isGyroClockComparable() {
+        Integer source = mCameraCharacteristics == null ? null
+                : mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE);
+        return source != null && source == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME;
+    }
+
     private double zslFrameQuality(Image image) {
         if (!PreferenceKeys.isZslQualitySelectionEnabled() || image.getFormat() != ImageFormat.RAW_SENSOR)
             return Double.NaN;
@@ -2539,7 +2545,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         for (int i = 0; i < actualCount; i++) {
             frameTimestamps[i] = selected.get(i).timestamp;
         }
-        PhotonCamera.getGyro().buildZslBurstShakiness(frameTimestamps, exposureTimeNs, BurstShakiness);
+        PhotonCamera.getGyro().buildZslBurstShakiness(frameTimestamps, exposureTimeNs, BurstShakiness, isGyroClockComparable());
 
         // Populate fullpairs the same way setExpo() does for a normal burst
         IsoExpoSelector.fullpairs.clear();
@@ -2710,7 +2716,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     CaptureResult gyroBase=mNativeZslBase!=null?mNativeZslBase:mPreviewCaptureResult;
                     Long previewExposure = gyroBase != null ? gyroBase.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
                     PhotonCamera.getGyro().buildZslBurstShakiness(zslTimestamps,
-                            previewExposure != null ? previewExposure : 1L, BurstShakiness);
+                            previewExposure != null ? previewExposure : 0L, BurstShakiness, isGyroClockComparable());
                 } else {
                     // Camera was just opened and the ring has not filled yet:
                     // safely fall back to the complete manual burst this once.

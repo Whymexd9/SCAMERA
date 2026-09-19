@@ -1100,7 +1100,7 @@ public class ESD4D extends GLOneScript {
         float regularShake = 0.f;
         int regularShakeCnt = 0;
         for (ImageFrame f : images) {
-            if (f.pair.isHighlightFrame || f.pair.isLongFrame) continue;
+            if (f.pair.isHighlightFrame || f.pair.isLongFrame || f.frameGyro.samples == 0) continue;
             regularShake += f.frameGyro.shakiness;
             regularShakeCnt++;
         }
@@ -1140,7 +1140,7 @@ public class ESD4D extends GLOneScript {
                         + ratio + " exceeds the limit " + maxRatio);
                 continue;
             }
-            if (frame.pair.isLongFrame && regularShake > 0.f) {
+            if (frame.pair.isLongFrame && frame.frameGyro.samples > 0 && regularShake > 0.f) {
                 float expoRatio = frame.pair.layerMpy / baseMpy;
                 float expected = regularShake * expoRatio * expoRatio;
                 Log.d("ESD4D", "Long frame shakiness=" + frame.frameGyro.shakiness

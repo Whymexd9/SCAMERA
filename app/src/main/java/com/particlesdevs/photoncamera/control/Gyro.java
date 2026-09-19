@@ -98,6 +98,8 @@ public class Gyro {
     int tripodCounter = 0;
     public int gyroCircle = 1024;
     public GyroBurst circleBurst = new GyroBurst(gyroCircle);
+    private final Object circleLock = new Object();
+    private final long[] circleIntervalStarts = new long[gyroCircle];
     public int circleCount = 0;
     long temp = 0;
     public static final float NS2S = 1.0f / 1000000000.0f;
@@ -161,14 +163,17 @@ public class Gyro {
 
 
             } else {
+                synchronized (circleLock) {
                 circleCount%=gyroCircle;
                 circleBurst.movementss[0][circleCount] = anglex;
                 circleBurst.movementss[1][circleCount] = angley;
                 circleBurst.movementss[2][circleCount] = anglez;
                 circleBurst.timestampss[circleCount] = sensorEvent.timestamp;
+                circleIntervalStarts[circleCount] = prevStamp;
+                circleCount++;
+                }
                 getShakiness();//For filtering
                 if(gyroburst) CompleteGyroBurst();
-                circleCount++;
             }
             prevStamp = sensorEvent.timestamp;
         }
@@ -267,24 +272,17 @@ public class Gyro {
      * @param exposureTimeNs  exposure duration (nanoseconds) to define each frame's time window
      * @param result          list to receive one GyroBurst entry per frame
      */
-    public void buildZslBurstShakiness(long[] frameTimestamps, long exposureTimeNs, ArrayList<GyroBurst> result) {
+    public void buildZslBurstShakiness(long[] frameTimestamps, long exposureTimeNs, ArrayList<GyroBurst> result,
+                                      boolean comparableClock) {
         this.BurstShakiness = result;
+        synchronized (circleLock) {
         for (long frameTs : frameTimestamps) {
-            long windowStart = frameTs - Math.max(exposureTimeNs, 1);
-            long windowEnd = frameTs;
-            GyroBurst burst = new GyroBurst(gyroCircle);
-            int sampleCount = 0;
-            for (int i = 0; i < gyroCircle; i++) {
-                long ts = circleBurst.timestampss[i];
-                if (ts >= windowStart && ts <= windowEnd && sampleCount < gyroCircle) {
-                    burst.movementss[0][sampleCount] = circleBurst.movementss[0][i];
-                    burst.movementss[1][sampleCount] = circleBurst.movementss[1][i];
-                    burst.movementss[2][sampleCount] = circleBurst.movementss[2][i];
-                    sampleCount++;
-                }
-            }
-            burst.samples = sampleCount;
+            GyroBurst burst = GyroExposureWindow.extract(circleIntervalStarts, circleBurst,
+                    circleCount, frameTs, exposureTimeNs, comparableClock);
             result.add(burst);
+            Log.d(TAG, "ZSL gyro: start="+frameTs+" exposure="+exposureTimeNs
+                    +" comparableClock="+comparableClock+" samples="+burst.samples+" shake="+burst.shakiness);
+        }
         }
     }
 
@@ -294,49 +292,12 @@ public class Gyro {
         delayUs = delayPreview;
         unregister();
         register();
-        int avgSize = 0;
-        for (GyroBurst burst : BurstShakiness) {
-            avgSize += burst.samples;
-        }
-        if (!BurstShakiness.isEmpty()) {
-            avgSize/=BurstShakiness.size();
-        }
-        for(int i =0; i<BurstShakiness.size();i++) {
-            int shakeInteg = BurstShakiness.get(i).samples;
-            if(BurstShakiness.get(i).samples > avgSize*2){
-                shakeInteg = Math.min(avgSize,shakeInteg);
-            }
-            float shakiness = 0;
-            for (int j = 0; j < shakeInteg; j++) {
-                shakiness += Math.abs(BurstShakiness.get(i).movementss[0][j]);
-                shakiness += Math.abs(BurstShakiness.get(i).movementss[1][j]);
-                shakiness += Math.abs(BurstShakiness.get(i).movementss[2][j]);
-            }
-            BurstShakiness.get(i).shakiness = shakiness;
-            BurstShakiness.get(i).samples = shakeInteg;
-        }
-        for(int i =0; i<BurstShakiness.size();i++){
-            float shakinessP = 0.f;
-            float shakinessA = 0.f;
-            int sizeP = 0;
-            int sizeA = 0;
-            if(i > 0) {
-                shakinessP = BurstShakiness.get(i - 1).shakiness;
-                sizeP = BurstShakiness.get(i - 1).samples;
-            }
-            if(i < BurstShakiness.size()-1) {
-                shakinessA = BurstShakiness.get(i + 1).shakiness;
-                sizeA = BurstShakiness.get(i + 1).samples;
-            }
-            float shakiness = BurstShakiness.get(i).shakiness;
-            int size = BurstShakiness.get(i).samples;
-            if(size < (sizeP+sizeA)/3){
-                size = Math.max(size,1);
-                sizeP = Math.max(sizeP,1);
-                sizeA = Math.max(sizeA,1);
-                BurstShakiness.get(i).shakiness = (shakinessP*sizeP + shakinessA*sizeA + shakiness*size)/(sizeP+size+sizeA);
-            }
-            Log.d(TAG, "GyroBurst Shakiness["+i+"]:" + BurstShakiness.get(i).shakiness+" sampleCount:"+ BurstShakiness.get(i).samples);
+        // A long exposure naturally contains more samples. Never truncate it
+        // to the burst average or interpolate unknown motion from other frames.
+        for (int i=0; i<BurstShakiness.size(); i++) {
+            GyroBurst burst = BurstShakiness.get(i);
+            burst.recalculateShakiness();
+            Log.d(TAG, "GyroBurst Shakiness["+i+"]:"+burst.shakiness+" sampleCount:"+burst.samples);
         }
     }
 

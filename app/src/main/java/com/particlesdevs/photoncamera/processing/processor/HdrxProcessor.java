@@ -391,7 +391,9 @@ public class HdrxProcessor extends ProcessorBase {
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
             imageFrameDeblur.processDeblurPosition(images.get(i));
-        if (mImageFramesToProcess.size() >= 3)
+        boolean allGyroKnown = true;
+        for (ImageFrame image : images) allGyroKnown &= image.frameGyro.samples > 0;
+        if (allGyroKnown && mImageFramesToProcess.size() >= 3)
             images.sort((img1, img2) -> Float.compare(img1.frameGyro.shakiness, img2.frameGyro.shakiness));
         double unluckypickiness = 1.05;
         float unluckyavr = 0;
@@ -419,7 +421,7 @@ public class HdrxProcessor extends ProcessorBase {
             images.set(highind, frame);
         }
 
-        if (images.size() > 10) {
+        if (allGyroKnown && images.size() > 10) {
             int size = (int) (images.size() - FrameNumberSelector.throwCount);
             Log.d(TAG, "Throw Count:" + size);
             Log.d(TAG, "Image Count:" + images.size());
