@@ -122,6 +122,12 @@ jobs:
           javac -d /tmp/gyro-check app/src/main/java/com/particlesdevs/photoncamera/control/GyroBurst.java app/src/main/java/com/particlesdevs/photoncamera/control/GyroExposureWindow.java tools/java/GyroExposureWindowCheck.java
           java -cp /tmp/gyro-check GyroExposureWindowCheck
 
+      - name: Check exposure factorization against GCam native results
+        run: |
+          mkdir -p /tmp/tet-check
+          javac -d /tmp/tet-check app/src/main/java/com/particlesdevs/photoncamera/processing/parameters/TetModel.java tools/java/TetModelCheck.java
+          java -cp /tmp/tet-check com.particlesdevs.photoncamera.processing.parameters.TetModelCheck tools/fixtures/gcam-tet.csv
+
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py
 
