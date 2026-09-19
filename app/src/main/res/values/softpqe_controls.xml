@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="softpqe_settings">Настройки SoftPQE</string>
+    <string name="softpqe_settings_desc">Яркостный и цветовой шум, резкость и сила эффекта</string>
+    <string name="pref_softpqe_luma_key" translatable="false">pref_softpqe_luma_key</string>
+    <string name="pref_softpqe_chroma_key" translatable="false">pref_softpqe_chroma_key</string>
+    <string name="pref_softpqe_sharpen_key" translatable="false">pref_softpqe_sharpen_key</string>
+    <string name="pref_softpqe_strength_key" translatable="false">pref_softpqe_strength_key</string>
+    <string name="softpqe_luma">Яркостное шумоподавление, %</string>
+    <string name="softpqe_luma_desc">100 — профиль Vivo, ниже — меньше сглаживания текстуры. 0 — минимальные параметры шума; встроенное сглаживание нейросети может остаться</string>
+    <string name="softpqe_chroma">Цветовое шумоподавление, %</string>
+    <string name="softpqe_chroma_desc">100 — профиль Vivo. Снижает параметры цветового шума; при низком ISO они могут уже быть нулевыми</string>
+    <string name="softpqe_sharpen">Дополнительная резкость Vivo, %</string>
+    <string name="softpqe_sharpen_desc">100 — штатная резкость после нейросети, 0 — выключена. Восстановление деталей самой нейросетью сохраняется</string>
+    <string name="softpqe_strength">Общая сила SoftPQE, %</string>
+    <string name="softpqe_strength_desc">100 — полный результат нейросети. Ниже — больше исходной текстуры и шума; 0 — обычное увеличение без нейросетевых деталей. Размер остаётся ×2</string>
+</resources>

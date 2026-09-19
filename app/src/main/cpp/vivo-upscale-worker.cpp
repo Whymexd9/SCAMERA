@@ -22,6 +22,7 @@
 #include <android/log.h>
 #endif
 #include "vivo-softpqe-abi.h"
+#include "vivo-softpqe-controls.h"
 #include "vivo-raisr-abi.h"
 #include "vivo-raisr-controls.h"
 #ifndef VIVO_VDNN_LIBRARY
@@ -115,6 +116,33 @@ void softRuntime() {
     std::cout<<"SOFTPQE QNN Core 2.22.0 SDK="<<build<<std::endl;
 #endif
 }
+std::string softConfig(const std::string& source,const std::string& output,vivo_softpqe::Controls c) {
+    if(c.luma==100 && c.chroma==100 && c.sharpen==100)return source;
+    const auto slash=output.rfind('/');
+    if(slash==std::string::npos)throw std::runtime_error("SoftPQE requires an absolute job path");
+    const std::string target=output.substr(0,slash);
+    if(target==source)throw std::runtime_error("SoftPQE config must be a private copy");
+    for(const char* name:{"softpqe_configs.xml","softpqe_configs_master_2x.xml",
+            "softpqe_configs_master_2x_portrait.xml","softpqe_configs_master_2x_skin.xml"}) {
+        std::ifstream in(source+"/"+name,std::ios::binary|std::ios::ate);
+        if(!in || in.tellg()<0 || in.tellg()>1024*1024)throw std::runtime_error("Cannot read SoftPQE config");
+        std::string xml(static_cast<size_t>(in.tellg()),'\0');in.seekg(0);
+        if(!in.read(xml.data(),xml.size()))throw std::runtime_error("SoftPQE config read failed");
+        xml=std::string(name)=="softpqe_configs.xml"?vivo_softpqe::tuneMain(xml,c):vivo_softpqe::tuneProfile(xml,c);
+        // The app owns the parent job directory and unlinks these temporary files.
+        int fd=open((target+"/"+name).c_str(),O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+        if(fd<0)throw std::runtime_error("Cannot create private SoftPQE config");
+        size_t done=0;
+        while(done<xml.size()) {
+            ssize_t n=write(fd,xml.data()+done,xml.size()-done);
+            if(n<0 && errno==EINTR)continue;
+            if(n<=0){close(fd);throw std::runtime_error("SoftPQE config write failed");}
+            done+=size_t(n);
+        }
+        if(close(fd))throw std::runtime_error("SoftPQE config close failed");
+    }
+    return target;
+}
 }
 int run(int argc,char** argv) {
     try {
@@ -151,16 +179,21 @@ int run(int argc,char** argv) {
             return 0;
         }
         // library, model directory, input YUV, pre-created EMPTY output path, w,h,ow,oh,format,ISO,role
-        if((argc!=13 && argc!=16) || (std::string(argv[1])!="--raisr" && std::string(argv[1])!="--softpqe"))throw std::runtime_error(
-            "Usage: --probe library | --raisr|--softpqe library profile-dir input output w h ow oh format-code ISO role [strength texture halo]");
+        if((argc!=13 && argc!=16 && argc!=17) || (std::string(argv[1])!="--raisr" && std::string(argv[1])!="--softpqe"))throw std::runtime_error(
+            "Usage: --raisr|--softpqe library profile-dir input output w h ow oh format ISO role [RAISR: strength texture halo | SoftPQE: luma chroma sharpen strength]");
         const bool soft=std::string(argv[1])=="--softpqe";
         const std::string backend=soft?"SOFTPQE":"RAISR";
         const auto w=integer(argv[6]),h=integer(argv[7]),ow=integer(argv[8]),oh=integer(argv[9]);
         const auto format=integer(argv[10]),iso=integer(argv[11]),role=integer(argv[12]);
         vivo_raisr::Controls controls;
-        if(argc==16)controls={integer(argv[13]),integer(argv[14]),integer(argv[15])};
-        if(controls.strength>100 || controls.texture>100 || controls.halo>100 || (soft && argc!=13))
+        vivo_softpqe::Controls softControls;
+        if((soft && argc!=13 && argc!=17) || (!soft && argc!=13 && argc!=16))throw std::runtime_error("Wrong backend controls");
+        if(!soft && argc==16)controls={integer(argv[13]),integer(argv[14]),integer(argv[15])};
+        if(soft && argc==17)softControls={integer(argv[13]),integer(argv[14]),integer(argv[15]),integer(argv[16])};
+        if(controls.strength>100 || controls.texture>100 || controls.halo>100)
             throw std::runtime_error("Invalid RAISR controls");
+        if(softControls.luma>100 || softControls.chroma>100 || softControls.sharpen>100 || softControls.strength>100)
+            throw std::runtime_error("Invalid SoftPQE controls");
         if(format!=0x11 && format!=0x12)throw std::runtime_error("RAISR accepts only format codes 17/18; verify UV order with a chart");
         if(ow<w || oh<h || uint64_t(ow)*h!=uint64_t(oh)*w || ow>uint64_t(w)*4)
             throw std::runtime_error("Only isotropic 1x-4x enlargement is allowed");
@@ -201,7 +234,11 @@ int run(int argc,char** argv) {
             auto destroy=library.symbol<int(*)(void*)>("vivoSoftPQEUninit");
             auto mode=library.symbol<int(*)(void*)>("vivoSoftPQEGetMode");
             // Core 0x90e84/0x90e94 multiplies gain by 50, not 100.
-            auto params=vivo_softpqe::makeInit(w,h,float(iso)/50.f,argv[3],
+            const std::string configPath=softConfig(argv[3],argv[5],softControls);
+            std::cout<<"SOFTPQE controls luma="<<softControls.luma<<" chroma="<<softControls.chroma
+                     <<" sharpen="<<softControls.sharpen<<" strength="<<softControls.strength
+                     <<" config="<<configPath<<std::endl;
+            auto params=vivo_softpqe::makeInit(w,h,float(iso)/50.f,configPath.c_str(),
                 "/vendor/camera3rd/nti/softpqe/model");
             vivo_softpqe::Process frame{};frame.input=&in;
             void* handle=nullptr;int rc=create(&handle,&params);
@@ -246,6 +283,8 @@ int run(int argc,char** argv) {
             std::cout<<"RAISR controls strength="<<controls.strength<<" texture="<<controls.texture
                      <<" halo="<<controls.halo<<" ISO="<<iso<<" role="<<role<<" scale="<<init.zoom<<"\n";
             vivo_raisr::finish(input.data(),output.data(),w,h,ow,oh,controls);
+        } else {
+            vivo_softpqe::mix(input.data(),output.data(),w,h,ow,oh,softControls.strength);
         }
         int fd=open(argv[5],O_WRONLY|O_NOFOLLOW|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open output");

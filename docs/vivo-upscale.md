@@ -195,3 +195,42 @@ checks pass under ASan/UBSan. Original VDNN parser and version-selector emulatio
 worker fault injection and both backend loader-order checks pass. These are not
 phone inference or proof of stock-camera equivalence. SoftPQE still needs an
 on-device test of model sessions, actual output and performance.
+
+## Device-confirmed SoftPQE and adjustable processing
+
+`SCAMERA-debug.log(6).txt` supplied after 30206 confirms a complete main-camera
+run at ISO 73: QNN Y/UV graph execution, `mode=0 -> 0 process=0`, populated output,
+completion marker and JPEG saved. Dimensions are 3072x4096 -> 6144x8192. The user
+reports better detail but excessive smoothing. This establishes successful device
+execution for that run, not quality equivalence to the stock camera.
+
+Four independent SoftPQE preferences now default to 100 (the verified 30206 look):
+
+| Control | Operation |
+| --- | --- |
+| Luma denoise | Scale `noise1Level`, `noise2Level`, `maxNoise1Level` in Y and auxiliary-Y parameter tables across every ISO/DRC level and main/portrait/skin config. At zero, keep maximum at least 1e-6 to satisfy the strict max > minimum constraint. |
+| Chroma denoise | Scale UV shot-noise min/anchor/max and read-noise values; preserve noise size and downsampling. Some low-ISO rows already have zero chroma-noise settings. |
+| Additional sharpening | Scale post-sharpen weights and floating-point `usmStrength`; at zero disable USM in the main config. The pinned profile already disables the other post-sharpen functions. |
+| Overall strength | Mix processed Y/UV with the bilinearly enlarged input. 100 keeps native output byte-for-byte; zero is ordinary interpolation at the same 2x dimensions. |
+
+These noise settings condition the native algorithm; zero does not guarantee
+removal of smoothing learned by the network. Overall strength provides a separate
+way to reintroduce original texture/noise, at the cost of neural detail.
+`blurScale`/`minBlurScale` stay at 1 as explicitly required by the supplied SR
+profiles. Model weights, quantization, ISO selection and output geometry stay
+unchanged. No invented metadata or runtime offsets are used for tuning.
+
+After the existing firmware SHA checks, the worker creates four exclusive,
+non-symlink config files in the app-owned per-shot job directory. Only numeric
+leaves within the named sections are changed. Init receives this private path;
+firmware files are never written. All-100 native controls use the original path.
+The app cleans up the copies with the other job files. Diagnostics print all four
+controls and the selected config path. Preferences participate in existing module
+profiles/copy selection and are disabled when RAISR is selected or upscale is off.
+
+Validation includes all original supplied XML templates at stock, reduced and
+zero settings; source byte identity at stock; Y/UV separation, auxiliary-Y and
+ISO/blur preservation; mix endpoints/chroma order/buffer guards under ASan/UBSan;
+a fake-library full worker run verifying private Init path, untouched source
+configs and final mixed output; and Android settings defaults/availability.
+The new tuning ranges still require visual evaluation on the phone.

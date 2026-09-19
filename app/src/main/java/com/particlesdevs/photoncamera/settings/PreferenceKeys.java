@@ -962,6 +962,22 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_UPSCALE_BACKEND, "raisr");
     }
 
+    public static int getSoftPqeLuma() {
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SOFTPQE_LUMA, 100).intValue();
+    }
+
+    public static int getSoftPqeChroma() {
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SOFTPQE_CHROMA, 100).intValue();
+    }
+
+    public static int getSoftPqeSharpen() {
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SOFTPQE_SHARPEN, 100).intValue();
+    }
+
+    public static int getSoftPqeStrength() {
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SOFTPQE_STRENGTH, 100).intValue();
+    }
+
     public static int getRaisrFilterScale() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_FILTER_SCALE, 2).intValue();
     }
@@ -1377,6 +1393,10 @@ public class PreferenceKeys {
         KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
         KEY_MFSR_TENSOR_STRIDE(R.string.pref_mfsr_tensor_stride_key),
         KEY_MFSR_GRAD_K(R.string.pref_mfsr_grad_k_key),
+        KEY_SOFTPQE_LUMA(R.string.pref_softpqe_luma_key),
+        KEY_SOFTPQE_CHROMA(R.string.pref_softpqe_chroma_key),
+        KEY_SOFTPQE_SHARPEN(R.string.pref_softpqe_sharpen_key),
+        KEY_SOFTPQE_STRENGTH(R.string.pref_softpqe_strength_key),
         KEY_VIVO_UPSCALE_BACKEND(R.string.pref_vivo_upscale_backend_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
         KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),

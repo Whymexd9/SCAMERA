@@ -131,6 +131,24 @@ public class SettingsMenuTest {
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
     }
+    @Test public void softPqeControlsHaveStockDefaultsAndBackendAvailability(){
+        PreferenceScreen screen=inflate();
+        assertNotNull(screen.findPreference("softpqe_settings_screen"));
+        Map<String,Object> values=new HashMap<>();
+        for(String name:Arrays.asList("luma","chroma","sharpen","strength")){
+            String key="pref_softpqe_"+name+"_key";
+            assertNotNull(screen.findPreference(key));assertTrue(ModuleProfiles.isLocal(key));
+            assertEquals(100.0,PreferenceNumber.read(prefs.getAll().get(key),-1),0.0);
+            assertNotNull(new SettingsAvailability(values).reason(key));
+            values.put("pref_raisr_enabled_key",true);values.put("pref_vivo_upscale_backend_key","raisr");
+            assertNotNull(new SettingsAvailability(values).reason(key));
+            values.put("pref_vivo_upscale_backend_key","softpqe");
+            assertNull(new SettingsAvailability(values).reason(key));values.clear();
+        }
+        assertEquals(100,PreferenceKeys.getSoftPqeLuma());
+        prefs.edit().putInt("pref_softpqe_luma_key",25).commit();
+        assertEquals(25,PreferenceKeys.getSoftPqeLuma());
+    }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
