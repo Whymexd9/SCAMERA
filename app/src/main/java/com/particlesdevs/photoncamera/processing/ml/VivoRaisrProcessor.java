@@ -41,9 +41,10 @@ public final class VivoRaisrProcessor {
         final int halo=percent(PreferenceKeys.getRaisrHaloProtection());
         final int softLuma=percent(PreferenceKeys.getSoftPqeLuma()), softChroma=percent(PreferenceKeys.getSoftPqeChroma());
         final int softSharpen=percent(PreferenceKeys.getSoftPqeSharpen()), softStrength=percent(PreferenceKeys.getSoftPqeStrength());
-        if(soft && !"3".equals(cameraId))throw new IOException("SoftPQE: доступен только профиль основной камеры");
-        // Roles are Vivo SAT roles, never Camera2 IDs. Recovered jump table: 2 master, 8 tele-3x.
-        if(!"3".equals(cameraId) && !"5".equals(cameraId))
+        // SoftPQE processes the completed Bitmap from any module with the same
+        // verified 2x profile. Role 2 selects that profile, not a Camera2 ID.
+        // RAISR keeps its distinct pinned main/tele configurations.
+        if(!soft && !"3".equals(cameraId) && !"5".equals(cameraId))
             throw new IOException("Vivo "+name+": нет проверенного профиля для модуля "+cameraId);
         int w=source.getWidth(),h=source.getHeight();
         if(w%2!=0 || h%2!=0 || w<32 || h<32)throw new IOException("Vivo "+name+": неподдерживаемый размер");
@@ -73,10 +74,10 @@ public final class VivoRaisrProcessor {
                     " --softpqe /vendor/lib64/libvivo_softpqe.so /vendor/camera3rd/nti/softpqe/config/ui_normal_shot/aigc_24M ":
                     " --raisr /vendor/lib64/libvivo_raisr.so /vendor/camera3rd/nti/raisr ")+
                     quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+ow+" "+oh+
-                    " 17 "+Math.max(1,Math.min(1000000,iso))+" "+("5".equals(cameraId)?8:2)+
+                    " 17 "+Math.max(1,Math.min(1000000,iso))+" "+(soft?2:("5".equals(cameraId)?8:2))+
                     (soft?" "+softLuma+" "+softChroma+" "+softSharpen+" "+softStrength:" "+strength+" "+texture+" "+halo);
             String launch="START "+name+" camera="+cameraId+" "+w+"x"+h+" -> "+ow+"x"+oh+
-                    " ISO="+iso+" LD_LIBRARY_PATH="+libraryPath;
+                    " ISO="+iso+(soft?" profile=shared_master_2x":"")+" LD_LIBRARY_PATH="+libraryPath;
             report.append(launch).append('\n');Log.d("VivoUpscale",launch);
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();final Process child=process;

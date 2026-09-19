@@ -234,3 +234,17 @@ ISO/blur preservation; mix endpoints/chroma order/buffer guards under ASan/UBSan
 a fake-library full worker run verifying private Init path, untouched source
 configs and final mixed output; and Android settings defaults/availability.
 The new tuning ranges still require visual evaluation on the phone.
+
+## User-requested SoftPQE availability on every module
+
+The user explicitly requests the working upscaler on every camera module. Remove
+only the SoftPQE Camera2-ID restriction: all completed input Bitmaps can now use
+the verified master-2x model/config profile. Pass profile role 2 consistently,
+including tele and wide; keep the real camera ID and actual capture ISO in the
+log. RAISR retains its separate, role-specific restrictions/configurations.
+The UI identifies SoftPQE as a **shared** 2x profile, not stock per-sensor tuning.
+The supplied tele/default and ultrawide/cnrsharp profiles have super-resolution
+disabled and 1x Y models, so substituting those would not provide the requested
+2x upscaling. Models/runtime, dimensions/memory limits and fallback stay intact.
+Visual results on non-main modules require a phone test. Per-module preference
+storage and selective copying apply to the four new controls as usual.

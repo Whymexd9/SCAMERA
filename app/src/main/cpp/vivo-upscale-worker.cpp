@@ -202,7 +202,7 @@ int run(int argc,char** argv) {
             throw std::runtime_error("Output must be a pre-created empty regular file");
         if(role!=2 && role!=8)throw std::runtime_error("Only pinned master (2) and tele-3x (8) profiles are supported");
         if(soft && (role!=2 || ow!=uint64_t(w)*2 || oh!=uint64_t(h)*2))
-            throw std::runtime_error("SoftPQE experimental profile requires master and exact 2x");
+            throw std::runtime_error("SoftPQE shared profile requires profile role 2 and exact 2x");
         const auto bytes=size(ow,oh);auto input=read(argv[4],size(w,h));
         std::vector<uint8_t> output(bytes+4096,0xa5);
         std::string models(argv[3]);
