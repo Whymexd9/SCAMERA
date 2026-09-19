@@ -724,6 +724,14 @@ public class PreferenceKeys {
         return getBool(Key.KEY_SHARP_MICRO_MATRIX_3X3);
     }
 
+    public static boolean isZslQualitySelectionEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_zsl_quality_selection_key", false);
+    }
+
+    public static boolean isSaliencyProtectionEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_saliency_protection_key", false);
+    }
+
     public static boolean isFalseColorCorrectionEnabled() {
         return getBool(Key.KEY_FALSE_COLOR_ENABLED);
     }

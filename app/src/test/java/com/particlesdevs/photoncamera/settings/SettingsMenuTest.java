@@ -41,6 +41,16 @@ public class SettingsMenuTest {
         PhotonCamera app=mock(PhotonCamera.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
         camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
     }
+    @Test public void researchOptionsAreOptInAndModuleLocal() {
+        assertFalse(PreferenceKeys.isZslQualitySelectionEnabled());
+        assertFalse(PreferenceKeys.isSaliencyProtectionEnabled());
+        assertTrue(ModuleProfiles.isLocal("pref_zsl_quality_selection_key"));
+        assertTrue(ModuleProfiles.isLocal("pref_saliency_protection_key"));
+        prefs.edit().putBoolean("pref_zsl_quality_selection_key",true)
+                .putBoolean("pref_saliency_protection_key",true).commit();
+        assertTrue(PreferenceKeys.isZslQualitySelectionEnabled());
+        assertTrue(PreferenceKeys.isSaliencyProtectionEnabled());
+    }
     @After public void tearDown(){if(camera!=null)camera.close();}
     private PreferenceScreen inflate(){
         SettingsMigration.prepare(context,prefs);

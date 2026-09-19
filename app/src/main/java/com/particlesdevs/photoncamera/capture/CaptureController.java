@@ -646,7 +646,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
                 Integer state = result.get(CaptureResult.FLASH_STATE);
                 mFlashed = state != null && (state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED);
-                if (isZslMode() && (PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled())) {
+                if (isZslMode() && (PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
+                        || PreferenceKeys.isZslQualitySelectionEnabled())) {
                     Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     if (timestamp != null) synchronized (mZslBufferLock) {
                         mHexZslResults.put(timestamp, result);
@@ -2319,9 +2320,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 TotalCaptureResult result=results.get(image.getTimestamp());
                 Long e=result==null?null:result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer iso=result==null?null:result.get(CaptureResult.SENSOR_SENSITIVITY);
-                samples.add(new HexQuadZslSelector.Sample(image.getTimestamp(),e==null?0:e,iso==null?0:iso));
+                samples.add(new HexQuadZslSelector.Sample(image.getTimestamp(),e==null?0:e,iso==null?0:iso, zslFrameQuality(image)));
             }
-            int[] keep=HexQuadZslSelector.select(samples,requestedCount);
+            int[] keep=HexQuadZslSelector.select(samples,requestedCount,PreferenceKeys.isZslQualitySelectionEnabled());
             if(keep.length!=requestedCount) {
                 for(Image image:rawImages)image.close();
                 throw new IllegalStateException("MFSR ZSL: дождитесь стабильной экспозиции и заполнения буфера");
@@ -2376,6 +2377,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return selected;
     }
 
+    private double zslFrameQuality(Image image) {
+        if (!PreferenceKeys.isZslQualitySelectionEnabled() || image.getFormat() != ImageFormat.RAW_SENSOR)
+            return Double.NaN;
+        int block = PreferenceKeys.isRawMfsrEnabled() ? PreferenceKeys.getMultiFrameBlock()
+                : PreferenceKeys.isRemosaicEnabled() ? PreferenceKeys.getRemosaicBlockSize() : 1;
+        Image.Plane plane = image.getPlanes()[0];
+        return RawFrameQuality.score(plane.getBuffer(), image.getWidth(), image.getHeight(),
+                plane.getRowStride(), plane.getPixelStride(), block);
+    }
+
     private void triggerZslCapture() {
         if (mZslCapturing || CaptureController.isProcessing) {
             Log.w(TAG, "ZSL: capture already in progress, ignoring");
@@ -2404,16 +2415,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
         CaptureResult selectedResult = mPreviewCaptureResult;
         CaptureRequest selectedRequest = mPreviewCaptureRequest;
-        if (hex || multi) {
+        if (hex || multi || (PreferenceKeys.isZslQualitySelectionEnabled() && frameCount >= 3 && frameCount <= 40)) {
             java.util.List<HexQuadZslSelector.Sample> candidates = new ArrayList<>();
             for (Image image : rawImages) {
                 TotalCaptureResult result = results.get(image.getTimestamp());
                 Long exp = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
-                candidates.add(new HexQuadZslSelector.Sample(image.getTimestamp(),exp==null?0:exp,iso==null?0:iso));
+                candidates.add(new HexQuadZslSelector.Sample(image.getTimestamp(),exp==null?0:exp,iso==null?0:iso, zslFrameQuality(image)));
             }
-            int[] keep = HexQuadZslSelector.select(candidates,frameCount);
-            if (keep.length != frameCount) {
+            int[] keep = HexQuadZslSelector.select(candidates,frameCount,PreferenceKeys.isZslQualitySelectionEnabled());
+            if (keep.length != frameCount && (hex || multi)) {
                 for (Image image : rawImages) image.close();
                 mZslCapturing=false;mShotInProgress=false;
                 Log.w(TAG,"Native RAW burst ZSL: no matched equal-exposure RAWs; no PSL substitution");
@@ -2421,15 +2432,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mBackgroundHandler.post(this::unlockFocus);
                 return;
             }
-            List<Image> chosen = new ArrayList<>();
-            for (int i=0;i<rawImages.size();++i) {
-                if (i>=keep[0] && i<=keep[keep.length-1]) chosen.add(rawImages.get(i));
-                else rawImages.get(i).close();
+            if (keep.length == frameCount) {
+                List<Image> chosen = new ArrayList<>();
+                for (int i=0;i<rawImages.size();++i) {
+                    if (i>=keep[0] && i<=keep[keep.length-1]) chosen.add(rawImages.get(i));
+                    else rawImages.get(i).close();
+                }
+                rawImages=chosen;
+                TotalCaptureResult reference=results.get(rawImages.get(rawImages.size()/2).getTimestamp());
+                selectedResult=reference;selectedRequest=reference.getRequest();
+                Log.i(TAG,"RAW ZSL: "+frameCount+" timestamp-matched pre-shutter frames; quality="+PreferenceKeys.isZslQualitySelectionEnabled());
             }
-            rawImages=chosen;
-            TotalCaptureResult reference=results.get(rawImages.get(rawImages.size()/2).getTimestamp());
-            selectedResult=reference;selectedRequest=reference.getRequest();
-            Log.i(TAG,"Native RAW burst ZSL: "+frameCount+" timestamp-matched pre-shutter frames");
         }
         final CaptureResult capturedResult=selectedResult;
         final CaptureRequest capturedRequest=selectedRequest;
@@ -3520,4 +3533,3 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     }
 }
-

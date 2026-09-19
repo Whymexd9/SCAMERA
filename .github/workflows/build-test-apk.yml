@@ -142,6 +142,13 @@ jobs:
           sudo apt-get install -y libfftw3-dev python3-numpy libegl1 libgl1-mesa-dri
           python3 -m venv /tmp/tetra-gpu-check
           /tmp/tetra-gpu-check/bin/pip install moderngl==5.12.0 numpy==2.3.5
+          /tmp/tetra-gpu-check/bin/pip install ai-edge-litert==2.2.0
+          /tmp/tetra-gpu-check/bin/python tools/check_saliency_model.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_arkcam_color.py
+          mkdir -p /tmp/zsl-quality-check
+          javac -d /tmp/zsl-quality-check app/src/main/java/com/particlesdevs/photoncamera/capture/RawFrameQuality.java app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java tools/java/RawFrameQualityCheck.java tools/java/HexQuadZslSelectorCheck.java
+          java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck
+          java -ea -cp /tmp/zsl-quality-check HexQuadZslSelectorCheck
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_gles.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_detail.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
