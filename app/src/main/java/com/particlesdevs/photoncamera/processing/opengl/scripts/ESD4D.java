@@ -329,6 +329,15 @@ public class ESD4D extends GLOneScript {
     @Tunable(title = "FlowNet optical flow alignment", category = "Merge", description = "Align burst frames with the FlowNet dense optical flow model (ncnn) instead of the block pyramid", min = 0, max = 1, step = 1, defaultValue = 0)
     boolean useNcnnFlow;
 
+    @Tunable(title = "GCam Cyclops occlusion mask", category = "Merge", description = "Run reverse FlowNet and reject donor pixels whose forward/backward motion is inconsistent; applies the recovered 3x box cleanup and Gaussian mask smoothing", min = 0, max = 1, step = 1, defaultValue = 1)
+    boolean enableCyclopsOcclusion;
+
+    @Tunable(title = "Cyclops flow tolerance", category = "Merge", description = "Forward/backward consistency tolerance on the FlowNet grid; higher accepts more motion disagreement", min = 0.25f, max = 8.0f, step = 0.25f, defaultValue = 1.0f)
+    float cyclopsFlowTolerance;
+
+    @Tunable(title = "Cyclops mask sigma", category = "Merge", description = "Gaussian sigma used after the three recovered 3x3 mask-cleanup passes", min = 0.34f, max = 4.0f, step = 0.1f, defaultValue = 1.0f)
+    float cyclopsMaskSigma;
+
     @Tunable(title = "Optical flow refinement", category = "Merge", description = "Brute-force half-texel diagonal refinement on the green quincunx in the merge combine pass (exact sample pairs, no interpolation, immune to brightness offsets between frames); the winning sub-texel offset warps the final mix tap - greens exact on the quincunx, R/B phase-dithered so the accumulator averages their chroma alias (moire) away across frames; comb weights stay full vec4 over exact whole-texel taps so the dither never modulates them (no temporal blink, chroma excess still steers the weight for demosaicing)", min = 0, max = 1, step = 1, defaultValue = 1)
     boolean enableFlowRefinement;
 
@@ -1063,7 +1072,8 @@ public class ESD4D extends GLOneScript {
                 // Dense FlowNet optical flow for THIS alter frame, computed just
                 // in time (one pair at a time, no stored flow fields). Must run
                 // before the mergeAlign program is bound below.
-                flowTex = flowNetAlignment.computeFlow(ind);
+                flowTex = flowNetAlignment.computeFlow(ind, enableCyclopsOcclusion,
+                        cyclopsFlowTolerance, cyclopsMaskSigma);
             }
 
             // Convert inputAlter to alter (vec4 format)
@@ -1264,6 +1274,12 @@ public class ESD4D extends GLOneScript {
             // HDR+ reference value used elsewhere in this pipeline) maps to a
             // Sabre boost of 1.0.
             glProg.setVar("sabreRobustness", Math.max(robustness / 8.0f, 0.0f));
+            boolean cyclopsMaskReady = useNcnnFlow && enableCyclopsOcclusion
+                    && flowNetAlignment != null && flowNetAlignment.occlusionTex != null;
+            glProg.setVar("cyclopsOcclusion", cyclopsMaskReady ? 1 : 0);
+            if (cyclopsMaskReady) {
+                glProg.setTexture("occlusionTexture", flowNetAlignment.occlusionTex);
+            }
             glProg.setTextureCompute("inTexture", base, false);
             glProg.setTextureCompute("diffTexture", baseDiff, false);
             base = getBase();
