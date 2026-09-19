@@ -32,5 +32,8 @@ void main() {
     float total=state.r+w, squares=state.g+w*w;
     vec4 result=total>1e-8?(a*state.r+b*w)/total:ref;
     imageStore(outputTexture,p,max(result,vec4(0)));
-    imageStore(newMassTexture,p,vec4(total,squares,max(1.0,total*total/max(squares,1e-8)),1));
+    // Keep confidence independent of inverse-variance weights. A tiny accepted
+    // weight must not imply a fully trustworthy replacement of a clipped base.
+    float coverage=w>0.0 ? clamp(imageLoad(confidenceTexture,p).r,0.0,1.0)*validAlt : 0.0;
+    imageStore(newMassTexture,p,vec4(total,squares,max(1.0,total*total/max(squares,1e-8)),max(state.a,coverage)));
 }

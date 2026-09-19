@@ -1461,6 +1461,22 @@ public class ESD4D extends GLOneScript {
         }
 
 
+        if (parameters.vivoHdrMode && sabreMerged > 0) {
+            GLTexture merged = base;
+            base = getBase();
+            glProg.setLayout(tile,tile,1);
+            glProg.useAssetProgram("vivohdr/finalize",true);
+            glProg.setTextureCompute("referenceTexture",vivoReference,false);
+            glProg.setTextureCompute("mergedTexture",merged,false);
+            glProg.setTextureCompute("massTexture",sabreMassA,false);
+            glProg.setTextureCompute("outputTexture",base,true);
+            glProg.setVar("referenceScale",parameters.vivoHdrRawScale);
+            float[] wp=parameters.whitePoint;
+            glProg.setVar("whitePoint",wp[0],wp[1],wp[1],wp[2]);
+            glProg.computeAuto(base.mSize,1);
+            Log.i("VIVO_HDR","Highlight fallback: confidence feathering and neutral clipped fallback");
+        }
+
         if(sabreMassA!=null && sabreMerged>0) {
             // Conservative scalar for downstream denoisers: lower occupied
             // histogram bin of per-pixel (sum w)^2/sum(w^2), not frame count.

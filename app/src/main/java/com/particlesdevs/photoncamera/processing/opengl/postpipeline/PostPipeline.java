@@ -681,7 +681,10 @@ public class PostPipeline extends GLBasePipeline {
         if (mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f) {
             add(new HexQuadExposure("off".equals(tonePipeline)));
         }
-        if (PreferenceKeys.isSensorSharpeningEnabled()) add(new CaptureSharpening());
+        boolean rtSharpening = PreferenceKeys.isSharpDeconvEnabled()
+                || PreferenceKeys.isSharpUsmEnabled() || PreferenceKeys.isSharpMicroEnabled();
+        if (PreferenceKeys.isSensorSharpeningEnabled() && !(mParameters.vivoHdrMode && rtSharpening))
+            add(new CaptureSharpening());
         // Sharpening is RawTherapee's, selected inside the node by method:
         // unsharp mask, RL deconvolution or microcontrast. The previous
         // PhotonCamera/Luma switch is gone with the node it selected.

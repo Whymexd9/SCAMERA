@@ -9,8 +9,8 @@ def compute(name,es=False):
  s=(root/(name+'.glsl')).read_text().replace('#define LAYOUT //\nLAYOUT','#version '+('310 es' if es else '430')+'\nlayout(local_size_x=8,local_size_y=8) in;')
  s=s.replace('#define VIVO_HDR 0','#define VIVO_HDR 1').replace('#define SABRE_RECONSTRUCTION 0','#define SABRE_RECONSTRUCTION 1')
  return ctx.compute_shader(s)
-for name in ['merge/mergeAlign','vivohdr/mask','vivohdr/combine']:compute(name,True).release()
-align=compute('merge/mergeAlign');mask=compute('vivohdr/mask');combine=compute('vivohdr/combine')
+for name in ['merge/mergeAlign','vivohdr/mask','vivohdr/combine','vivohdr/finalize']:compute(name,True).release()
+align=compute('merge/mergeAlign');mask=compute('vivohdr/mask');combine=compute('vivohdr/combine');finish=compute('vivohdr/finalize')
 w,h=35,27
 owned=[]
 def tex(a,dtype='f2'):
@@ -40,7 +40,11 @@ def merge(ref,donors,scale=1.0,noise=(.0001,.00001),flow=(0,0)):
   for binding,t in enumerate([r,a,aligned,clean,state,dst,newstate]):t.bind_to_image(binding,read=binding<5,write=binding>=5)
   uniforms(combine,{'first':int(index==0),'referenceScale':scale,'donorScale':scale*gain,'noiseRef':noise,'noiseAlt':(noise[0]*gain,noise[1]*gain*gain)})
   dispatch(combine);a=dst;state=newstate;outmask=read(clean)
- return read(a),read(state),outmask
+ final=tex(np.zeros_like(ref))
+ for binding,t in enumerate([r,a,state,final]):t.bind_to_image(binding,read=binding<3,write=binding==3)
+ uniforms(finish,{'referenceScale':scale,'whitePoint':(1,1,1,1)})
+ dispatch(finish)
+ return read(final),read(state),outmask
 
 ref=np.empty((h,w,4),np.float32);ref[:]=[.06,.10,.12,.18]
 for gain in [.25,.5,1,2,4,8]:
@@ -79,9 +83,9 @@ vs='#version 430\nvoid main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_P
 s=(root/'vivohdr/denoise.glsl').read_text()
 ctx.program(vertex_shader=vs.replace('430','310 es'),fragment_shader='#version 310 es\n'+s).release()
 nr=ctx.program(vertex_shader=vs,fragment_shader='#version 430\n'+s)
-def denoise(a,luma,chroma):
- inp=tex(a);out=tex(np.zeros_like(a));fb=ctx.framebuffer([out]);fb.use();ctx.viewport=(0,0,w,h);inp.use(0)
- uniforms(nr,{'InputBuffer':0,'noiseModel':(0,.0001),'lumaAmount':luma,'chromaAmount':chroma,'radiusStep':1})
+def denoise(a,luma,chroma,wp=(1,1,1),lsc=(1,1,1,1)):
+ inp=tex(a);out=tex(np.zeros_like(a));fb=ctx.framebuffer([out]);fb.use();ctx.viewport=(0,0,w,h);inp.use(0);tex(np.array(lsc,np.float32).reshape(1,1,4)).use(1)
+ uniforms(nr,{'InputBuffer':0,'GainMap':1,'whitePoint':wp,'noiseSlope':(0,0,0),'noiseOffset':(.0001,.0001,.0001),'lumaAmount':luma,'chromaAmount':chroma,'radiusStep':1})
  ctx.vertex_array(nr,[]).render(vertices=3);v=read(out);fb.release();return v
 assert np.max(abs(denoise(nref,0,0)[:,:,:3]-nref[:,:,:3]))<.001
 filtered=denoise(nref,1,1)
@@ -120,3 +124,51 @@ for raw_scale in [0.5,0.25,0.0625,1/256]:
  compressed=render_tone(1,raw_scale=raw_scale,display_gain=1)
  assert np.max(abs(compressed[:,:w//2,:3]-normal[:,:w//2,:3]))<.002
 print('HDR radiometry PASS: reference midtones invariant across 1, 2, 4 and 8 EV packing.')
+
+# Regression: zero -> tiny confidence must not switch a clipped pixel from
+# the reference to a fully bright donor. Exercise production combine+finalize.
+def clipped_confidence(confidence,wp=(1,1,1,1),donor=.7):
+ ref=np.full((h,w,4),.25,np.float32);z=np.zeros_like(ref)
+ r=tex(ref);d=tex(np.full_like(ref,donor));a=tex(z);state=tex(z)
+ for i,t in enumerate([r,r,d,tex(np.full_like(ref,confidence)),tex(z),a,state]):
+  t.bind_to_image(i,read=i<5,write=i>=5)
+ uniforms(combine,{'first':1,'referenceScale':.25,'donorScale':1.,'noiseRef':(.0001,.00001),'noiseAlt':(.0004,.00016)})
+ dispatch(combine)
+ out=tex(z)
+ for i,t in enumerate([r,a,state,out]):t.bind_to_image(i,read=i<3,write=i==3)
+ uniforms(finish,{'referenceScale':.25,'whitePoint':wp});dispatch(finish)
+ return read(out)
+zero=clipped_confidence(0);tiny=clipped_confidence(.0001);full=clipped_confidence(1)
+assert np.max(abs(tiny-zero))<.001
+assert np.max(abs(full-.7))<.002
+values=[clipped_confidence(c)[h//2,w//2,0] for c in np.linspace(0,1,101)]
+assert np.min(np.diff(values))>=-.001
+assert np.max(np.diff(values))<.03
+# No donor -> clipped fallback must be neutral after white balance; reliable
+# coloured donor remains coloured (no desaturation of valid recovered detail).
+wp=np.array([.37,1,1,.64],np.float32)
+fallback=clipped_confidence(0,tuple(wp))/wp
+assert np.max(np.ptp(fallback,axis=2))<.003
+assert np.max(abs(clipped_confidence(1,tuple(wp))-.7))<.002
+print('Highlight seam regression PASS: continuous 101-step confidence sweep, zero/tiny confidence, full replacement, neutral fallback.')
+# WB + chromatic LSC must transform both signal and variance equally. With
+# luma=chroma=1 the bilateral RGB result is invariant in sensor units.
+wp=np.array([.37,1,.64],np.float32);lsc=np.array([1.6,1.,1.,.8],np.float32)
+g=lsc[[0,1,3]];g=g/g.mean()/wp
+scaled=nref.copy();scaled[:,:,:3]*=g
+expected=denoise(nref,1,1)[:,:,:3]
+actual=denoise(scaled,1,1,tuple(wp),tuple(lsc))[:,:,:3]/g
+assert np.max(abs(actual-expected))<.001
+print('Denoise variance regression PASS: red/green/blue WB and lens-shading gain covariance.')
+
+# A hard tile-validity edge is feathered INWARD over packed CFA quads;
+# the rejected side remains the reference and never receives donor pixels.
+z=np.zeros((h,w,4),np.float32);r=tex(z+.25);a=tex(z+.7);mass=z.copy()
+mass[:,:,0]=1;mass[:,w//2:,3]=1;out=tex(z)
+for i,t in enumerate([r,a,tex(mass),out]):t.bind_to_image(i,read=i<3,write=i==3)
+uniforms(finish,{'referenceScale':.25,'whitePoint':(1,1,1,1)});dispatch(finish)
+seam=read(out)[h//2,:,0]
+assert np.max(abs(seam[:w//2]-.25))<.001
+assert np.max(np.diff(seam))<.16
+assert abs(seam[-1]-.7)<.002
+print('Tile boundary regression PASS: rejected side unchanged, inward-only feather, bounded adjacent-pixel jump.')

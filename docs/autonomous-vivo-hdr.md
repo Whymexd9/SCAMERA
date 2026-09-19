@@ -76,3 +76,32 @@ weighted stack noise reduction, spatial NR bypass/edges, tone monotonicity and
 independent tone/shadow/local controls. Existing Sabre and GCam shader checks
 protect the disabled-mode paths. APK compilation and physical phone testing are
 separate gates; Mesa is not an Adreno device test.
+
+
+## Artifact corrections after 30225
+
+The two 2026-09-20 test JPEGs showed stepped highlight boundaries, magenta
+clipping fringes and chromatic shadow noise. The production merge shader could
+jump from 0.25 to 0.7002 when confidence increased from zero to only 0.0001:
+normalizing a clipped-reference replacement cancelled the confidence weight.
+A separate final pass now uses retained donor confidence and inward feathering;
+softened output never feeds back into the radiance accumulator. A clipped,
+unrecoverable reference is neutralized in sensor WB ratios. Trusted short-frame
+colour remains unchanged. This does not recover detail absent from all frames.
+
+The bracket ceiling now budgets only active short/long members, with symmetric
+stop reduction bounded at the base exposure. At ceiling 9.8, short-only -4 EV
+can target a 9.8x ratio (-3.29 EV), instead of sqrt(9.8) (-1.65 EV). Actual sensor
+ISO/shutter limits may still reduce that ratio.
+
+RGB denoising retains three noise profiles and transforms slope and offset by
+Bayer2Float's WB and normalized chromatic LSC gains before measuring residuals.
+Demosaic correlations remain an approximation, not a calibrated neural model.
+Vivo HDR skips sensor CaptureSharpening when any RT sharpening method is enabled;
+saved sharpening settings and processing outside Vivo HDR are preserved.
+
+Regression fixtures cover a 101-step highlight confidence sweep, a hard tile
+boundary, neutral fallback versus trusted donor colour, WB/LSC noise covariance,
+and asymmetric/short-only/disabled bracket ceilings. Mesa tests do not prove the
+uploaded JPEG artifacts are fully eliminated on Adreno; a new matching phone
+capture is required. The unified Vivo settings section is included in this build.
