@@ -18,6 +18,10 @@ uniform float exposure;
 uniform float highlightStrength;
 uniform float noiseS;
 uniform float noiseO;
+// GCam/Sabre rejection boost. 1.0 corresponds to the recovered native
+// weight = 2^(-Dnormalized * boost) shape; the user-facing merge robustness
+// is normalised to this scale by ESD4D.
+uniform float sabreRobustness;
 uniform uint whitelevel;
 uniform vec4 blackLevel;
 uniform vec4 analogBalance;
@@ -176,20 +180,26 @@ void main() {
     vec4 localDiff2 = vec4(0.0);
     //vec4 exposure1 = vec4(0.0);
     vec4 exposure2 = vec4(0.0);
+    vec4 exposureDiff = vec4(0.0);
     for(int i = -5; i <= 5; i++) {
         for(int j = -5; j <= 5; j++) {
             ivec2 offset = ivec2(i, j);
             ///vec4 neighborDiff = imageLoad(diffTexture, xy + offset);
             //vec4 neighborBayer = getBayerVec((xy + offset) * 2, inTex);
             vec4 neighborBayer = imageLoad(inTexture, xy + offset);
+            vec4 neighborDiff = imageLoad(diffTexture, xy + offset + flow);
             //exposure1 += neighborDiff;
             exposure2 += neighborBayer;
+            exposureDiff += neighborDiff;
         }
     }
     //exposure1 /= 121.0;
     exposure2 /= 121.0;
+    exposureDiff /= 121.0;
     vec4 meanMain = exposure2;
+    vec4 meanCurrent = exposureDiff;
     vec4 variance = vec4(0.0001);
+    vec4 varianceCurrent = vec4(0.0001);
     for(float i = -5.0; i <= 5.0; i+=1.0) {
         float qi = c * i * i;
         for(float j = -5.0; j <= 5.0; j+=1.0) {
@@ -202,6 +212,7 @@ void main() {
             //variance = max(((neighborBayer-meanMain)*(neighborBayer-meanMain)), variance);
 
             variance += ((neighborBayer-meanMain)*(neighborBayer-meanMain));
+            varianceCurrent += ((neighborDiff-meanCurrent)*(neighborDiff-meanCurrent));
             //if(any(greaterThan(neighborDiff, vec4(exposure*0.99)))) {
             //    continue; // skip overexposed pixels
             //}
@@ -216,6 +227,7 @@ void main() {
         }
     }
     variance /= 120.0;
+    varianceCurrent /= 120.0;
     localDiff /= Z;
     vec4 localSigned = abs(localDiffSigned) / Z;
     //float br = dot(base, vec4(0.25));
@@ -235,6 +247,32 @@ void main() {
     vec4 excess = max(max(localDiff - absFloor, localSigned - signedFloor), vec4(0.0));
     vec4 N = sigmaR;
     vec4 comb = (N * N) / (excess * excess + N * N);
+
+    // GCam/Sabre frame rejection, recovered from kRejectionFunctions.
+    // Both noise models are evaluated from the REFERENCE brightness. The alter
+    // has already been photometrically scaled into the reference domain by
+    // mergeAlign, therefore its post-scale shot/read variance is:
+    //   exposure*S*reference + exposure^2*O.
+    // Texture variance is the measured local variance after subtracting the
+    // expected sensor noise. Sabre compares disagreement against the larger of
+    // shared texture variance and total noise, then converts that distance into
+    // a power-of-two confidence. We use it as an upper bound on the existing
+    // Wiener confidence: this ports GCam's rejection without weakening any of
+    // SCAMERA's current anti-ghost safeguards.
+    float exposure2Noise = exposure * exposure;
+    vec4 noiseReference = max(meanMain * noiseS + vec4(noiseO), vec4(EPS));
+    vec4 noiseCurrent = max(meanMain * (noiseS * exposure)
+            + vec4(noiseO * exposure2Noise), vec4(EPS));
+    vec4 textureReference = max(variance - noiseReference, vec4(0.0));
+    vec4 textureCurrent = max(varianceCurrent - noiseCurrent, vec4(0.0));
+    vec4 vTexture = 2.0 * min(textureReference, textureCurrent);
+    vec4 sabreResidual = diff - base;
+    vec4 totalNoise = noiseReference + noiseCurrent;
+    vec4 d2 = max(sabreResidual * sabreResidual - totalNoise, vec4(0.0));
+    vec4 dNormalized = d2 / max(max(vTexture, totalNoise), vec4(EPS));
+    vec4 sabreWeight = exp2(-dNormalized * max(sabreRobustness, 0.0));
+    comb = min(comb, sabreWeight);
+
     if (mergeAlgorithm == 1) {
         // Split the aligned residual into a slowly varying component and a
         // detail component.  Their robust Wiener confidences stop ghosting in
