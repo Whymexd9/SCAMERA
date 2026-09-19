@@ -109,6 +109,11 @@ public final class SettingsAvailability {
         if (key.equals("pref_vivo_upscale_backend_key") && !on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
         if (key.equals("pref_raisr_output_scale_key") && "softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "SoftPQE использует увеличение ×2.";
         if ((key.equals("pref_raisr_strength_key") || key.equals("pref_raisr_aliasing_key") || key.equals("pref_raisr_halo_key")) && "softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "Настройка применяется только к RAISR.";
+        if (key.startsWith("pref_vivo_downscale_")) {
+            if (!on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
+            if (key.equals("pref_vivo_downscale_size_key") && text("pref_vivo_downscale_kernel_key","0").equals("0"))
+                return "Выберите Lanczos 2–5.";
+        }
         if (key.startsWith("pref_softpqe_")) {
             if (!on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
             if (!"softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "Выберите алгоритм SoftPQE.";

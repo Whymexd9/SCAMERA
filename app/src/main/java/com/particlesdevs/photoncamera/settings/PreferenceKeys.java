@@ -962,6 +962,15 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_UPSCALE_BACKEND, "raisr");
     }
 
+    public static int getVivoDownscaleKernel() {
+        int value = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_VIVO_DOWNSCALE_KERNEL, 0);
+        return value >= 2 && value <= 5 ? value : 0;
+    }
+
+    public static String getVivoDownscaleSize() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_DOWNSCALE_SIZE, "original");
+    }
+
     public static int getSoftPqeLuma() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SOFTPQE_LUMA, 100).intValue();
     }
@@ -1397,6 +1406,8 @@ public class PreferenceKeys {
         KEY_SOFTPQE_CHROMA(R.string.pref_softpqe_chroma_key),
         KEY_SOFTPQE_SHARPEN(R.string.pref_softpqe_sharpen_key),
         KEY_SOFTPQE_STRENGTH(R.string.pref_softpqe_strength_key),
+        KEY_VIVO_DOWNSCALE_KERNEL(R.string.pref_vivo_downscale_kernel_key),
+        KEY_VIVO_DOWNSCALE_SIZE(R.string.pref_vivo_downscale_size_key),
         KEY_VIVO_UPSCALE_BACKEND(R.string.pref_vivo_upscale_backend_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
         KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),

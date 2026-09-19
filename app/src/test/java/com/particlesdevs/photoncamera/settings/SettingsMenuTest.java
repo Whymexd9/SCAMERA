@@ -131,6 +131,33 @@ public class SettingsMenuTest {
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
     }
+    @Test public void vivoLanczosChoicesPersistPerModuleAndHaveCorrectSizes() {
+        PreferenceScreen screen=inflate();
+        ListPreference kernel=screen.findPreference("pref_vivo_downscale_kernel_key");
+        ListPreference size=screen.findPreference("pref_vivo_downscale_size_key");
+        assertNotNull(kernel);assertNotNull(size);
+        assertEquals(0,PreferenceKeys.getVivoDownscaleKernel());
+        assertEquals("original",PreferenceKeys.getVivoDownscaleSize());
+        assertTrue(ModuleProfiles.isLocal(kernel.getKey()));assertTrue(ModuleProfiles.isLocal(size.getKey()));
+        Map<String,Object> values=new HashMap<>();
+        assertNotNull(new SettingsAvailability(values).reason(kernel.getKey()));
+        values.put("pref_raisr_enabled_key",true);
+        assertNull(new SettingsAvailability(values).reason(kernel.getKey()));
+        assertNotNull(new SettingsAvailability(values).reason(size.getKey()));
+        for (int a=2;a<=5;a++) {
+            kernel.setValue(Integer.toString(a));
+            assertEquals(a,PreferenceKeys.getVivoDownscaleKernel());
+            values.put(kernel.getKey(),Integer.toString(a));
+            assertNull(new SettingsAvailability(values).reason(size.getKey()));
+        }
+        for (String option:new String[]{"original","75","67","50","33","25"}) {
+            size.setValue(option);assertEquals(option,PreferenceKeys.getVivoDownscaleSize());
+        }
+        assertArrayEquals(new int[]{4096,3072},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"original"));
+        assertArrayEquals(new int[]{4096,3072},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"50"));
+        assertArrayEquals(new int[]{6144,4608},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"75"));
+        assertArrayEquals(new int[]{13,10},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(49,37,49,37,"25"));
+    }
     @Test public void softPqeControlsHaveStockDefaultsAndBackendAvailability(){
         PreferenceScreen screen=inflate();
         assertNotNull(screen.findPreference("softpqe_settings_screen"));

@@ -20,6 +20,7 @@ import com.particlesdevs.photoncamera.processing.ImageFrameDeblur;
 import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ml.AiBayerDenoiseProcessor;
 import com.particlesdevs.photoncamera.processing.ml.VivoRaisrProcessor;
+import com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostPipeline;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
@@ -575,6 +576,10 @@ public class HdrxProcessor extends ProcessorBase {
         pipeline.kernelParamsSize = mosaicSrForJpeg == null && esd4d != null ? esd4d.kernelsMapCPUSize : null;
 
         Bitmap img = pipeline.Run(jpegInput, processingParameters);
+        final int beforeVivoWidth = img.getWidth(), beforeVivoHeight = img.getHeight();
+        final int downscaleKernel = PreferenceKeys.getVivoDownscaleKernel();
+        final String downscaleSize = PreferenceKeys.getVivoDownscaleSize();
+        boolean vivoSucceeded = false;
         if (PreferenceKeys.isRaisrEnabled()) {
             processingStage = "softpqe".equals(PreferenceKeys.getVivoUpscaleBackend()) ? "Vivo SoftPQE" : "Vivo RAISR";
             try {
@@ -584,8 +589,21 @@ public class HdrxProcessor extends ProcessorBase {
                     img.recycle();
                     img = enhanced;
                 }
+                vivoSucceeded = true;
             } catch (Throwable raisrError) {
                 Log.e(TAG, "Vivo upscale failed; preserving original image", raisrError);
+            }
+        }
+        if (vivoSucceeded && downscaleKernel != 0) {
+            processingStage = "Lanczos " + downscaleKernel + " after Vivo";
+            try {
+                Bitmap reduced = VivoPostDownscale.process(img, beforeVivoWidth, beforeVivoHeight, downscaleKernel, downscaleSize);
+                if (reduced != img) {
+                    img.recycle();
+                    img = reduced;
+                }
+            } catch (Throwable downscaleError) {
+                Log.e(TAG, "Lanczos failed; preserving successful Vivo result", downscaleError);
             }
         }
         processingStage = "image encoding";
