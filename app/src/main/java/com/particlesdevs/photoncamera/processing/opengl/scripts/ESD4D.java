@@ -595,6 +595,8 @@ public class ESD4D extends GLOneScript {
         Log.d("ESD4D", "Noise multiplier: " + noiseMpy);
         Log.d("ESD4D", "Optical flow refinement: " + enableFlowRefinement + " maxShift: " + flowRefineMaxDisp);
         glUtils = new GLUtils(glOne.glProcessing);
+        if(parameters.vivoHdrMode) Log.i("VIVO_HDR","Autonomous HDR: frames="+images.size()
+                +" pyramid alignment, radiance fusion; no vendor runtime");
 
         float minExp = 1.f;
         int minExpIdx = -1;

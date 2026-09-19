@@ -51,6 +51,43 @@ public class SettingsMenuTest {
         assertTrue(PreferenceKeys.isZslQualitySelectionEnabled());
         assertTrue(PreferenceKeys.isSaliencyProtectionEnabled());
     }
+    @Test public void autonomousHdrControlsPersistAndRestorePreviousPipeline() {
+        PreferenceScreen screen=inflate();
+        assertNotNull(screen.findPreference("vivo_hdr_screen"));
+        assertFalse(PreferenceKeys.isVivoHdrEnabled());
+        manager.set("default_scope","pref_frame_count_key","1");
+        manager.set("default_scope","pref_short_frame_count_key","0");
+        manager.set("default_scope","pref_zsl_merge_algorithm_key","hdrplus");
+        manager.set("default_scope","pref_vivo_hdr_enabled",true);
+        assertTrue(PreferenceKeys.isVivoHdrEnabled());
+        assertFalse(PreferenceKeys.isHdrPlusMergeEnabled());
+        assertEquals(3,PreferenceKeys.getFrameCountValue());
+        assertEquals(1,PreferenceKeys.getShortFrameCountValue());
+        for(String control:new String[]{"luma","chroma","tone","shadows","local","sharpen"}) {
+            String key="pref_vivo_hdr_"+control;
+            assertNotNull(screen.findPreference(key));
+            assertTrue(ModuleProfiles.isLocal(key));
+            manager.set("default_scope",key,"0");
+            assertEquals(0f,PreferenceKeys.vivoHdrValue(control,1f),0f);
+            manager.set("default_scope",key,"9");
+            assertEquals(2f,PreferenceKeys.vivoHdrValue(control,1f),0f);
+            manager.set("default_scope",key,"NaN");
+            assertEquals(1f,PreferenceKeys.vivoHdrValue(control,1f),0f);
+        }
+        manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
+        assertFalse(PreferenceKeys.isVivoHdrEnabled());
+        manager.set("default_scope","pref_raw_mfsr_enabled_key",false);
+        manager.set("default_scope","pref_remosaic_enabled_key",true);
+        manager.set("default_scope","pref_remosaic_backend_key","hp9_hexquad");
+        assertFalse(PreferenceKeys.isVivoHdrEnabled());
+        manager.set("default_scope","pref_remosaic_backend_key","scamera");
+        assertTrue(PreferenceKeys.isVivoHdrEnabled());
+        manager.set("default_scope","pref_vivo_hdr_enabled",false);
+        assertFalse(PreferenceKeys.isVivoHdrEnabled());
+        assertTrue(PreferenceKeys.isHdrPlusMergeEnabled());
+        assertEquals(1,PreferenceKeys.getFrameCountValue());
+        assertEquals(0,PreferenceKeys.getShortFrameCountValue());
+    }
     @After public void tearDown(){if(camera!=null)camera.close();}
     private PreferenceScreen inflate(){
         SettingsMigration.prepare(context,prefs);
