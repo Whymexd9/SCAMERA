@@ -67,6 +67,7 @@
             <Preference android:key="softpqe_sr_only_info" android:title="SoftPQE: апскейл без дополнительных шумодавов и шарпа" android:summary="Нейросеть увеличивает яркость ×2, Lanczos 2 — цвет. Отдельные проходы резкости выключены. Встроенное сглаживание нейросети может сохраниться." android:selectable="false" app:iconSpaceReserved="false" />
         </PreferenceScreen>
         <PreferenceScreen android:key="vivo_diagnostics_screen" android:title="Диагностика Vivo" android:summary="Проверка нейроремозаика, системной библиотеки и отчёты" app:iconSpaceReserved="false">
+            <Preference android:key="vivo_nice_probe" android:title="NICE HDR — проверка запуска" android:summary="Проверить оригинальную HDR-модель внутри приложения и скопировать отчёт" android:layout="@layout/preference_with_margin" />
             <Preference android:order="12" android:key="vivo_neural_probe" android:title="Нейроремозаик — проверка и отчёты" android:summary="Проверить загрузку модели на нейроускоритель и скопировать отчёт" android:layout="@layout/preference_with_margin" />
             <Preference android:key="remosaic_vivo_probe" android:title="Системная библиотека Vivo — диагностика" android:summary="Отдельная проверка старого системного пути. Не требуется для встроенного HP9 HexQuad." />
         </PreferenceScreen>

@@ -92,3 +92,4 @@
 # which are accessed by native code.
 -keep class ai.onnxruntime.** { *; }
 -dontwarn ai.onnxruntime.**
+-keep class com.particlesdevs.photoncamera.ui.settings.VivoNiceActivity { *; }

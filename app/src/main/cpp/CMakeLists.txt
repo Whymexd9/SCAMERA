@@ -248,6 +248,8 @@ target_link_libraries(vivoRemosaicProbe PRIVATE dl)
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_library(vivoNeuralProbe SHARED vivo-neural-probe.cpp)
     target_link_libraries(vivoNeuralProbe PRIVATE dl)
+    add_library(vivoNiceProbe SHARED vivo-nice-probe.cpp)
+    target_link_libraries(vivoNiceProbe PRIVATE dl)
 endif()
 
 # Final, memory-bounded resampling of successful Vivo RGB output.

@@ -15,6 +15,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'assets/vivo-neural/arm64-v8a/'
 HEX_PREFIX = 'assets/vivo-hexquad/arm64-v8a/'
+NICE_PREFIX = 'assets/vivo-nice/arm64-v8a/'
 
 
 def pinned_assets(manifest='FILES', expected=5):
@@ -53,13 +54,13 @@ def check_worker(data):
         raise ValueError('Worker is not a standalone Android executable')
 
 
-def verify_bundle(apk, assets, hex_assets):
+def verify_bundle(apk, assets, hex_assets, nice_assets):
     with zipfile.ZipFile(apk) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK entries')
         check_worker(archive.read(PREFIX + 'vivo-neural-worker'))
-        for prefix, manifest in ((PREFIX, assets), (HEX_PREFIX, hex_assets)):
+        for prefix, manifest in ((PREFIX, assets), (HEX_PREFIX, hex_assets), (NICE_PREFIX, nice_assets)):
             for name, sha in manifest.items():
                 with archive.open(prefix + name) as stream:
                     if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
@@ -73,12 +74,14 @@ def main():
     parser.add_argument('--template', type=Path, required=True)
     parser.add_argument('--bundle-dir', type=Path, required=True)
     parser.add_argument('--hexquad-dir', type=Path, required=True)
+    parser.add_argument('--nice-dir', type=Path, required=True)
     parser.add_argument('--apksigner', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     assets = pinned_assets()
     hex_assets = pinned_assets('HEX_FILES', 6)
-    for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets)):
+    nice_assets = pinned_assets('NICE_FILES', 1)
+    for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets)):
         for name, sha in manifest.items():
             if digest_file(directory / name) != sha:
                 raise ValueError('Source asset hash mismatch: ' + str(directory / name))
@@ -92,7 +95,8 @@ def main():
         with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             check_worker(archive.read(PREFIX + 'vivo-neural-worker'))
             for directory, prefix, manifest in ((args.bundle_dir, PREFIX, assets),
-                                                (args.hexquad_dir, HEX_PREFIX, hex_assets)):
+                                                (args.hexquad_dir, HEX_PREFIX, hex_assets),
+                                                (args.nice_dir, NICE_PREFIX, nice_assets)):
                 for name in manifest:
                     if prefix + name in archive.namelist():
                         raise ValueError('Template already contains ' + prefix + name)
@@ -101,7 +105,7 @@ def main():
                         '--ks-key-alias', 'key0', '--ks-pass', 'pass:photoncamera',
                         '--key-pass', 'pass:photoncamera', '--out', str(signed), str(unsigned)], check=True)
         subprocess.run(['java', '-jar', str(args.apksigner), 'verify', '--verbose', '--print-certs', str(signed)], check=True)
-        verify_bundle(signed, assets, hex_assets)
+        verify_bundle(signed, assets, hex_assets, nice_assets)
         signed.rename(args.output)
     print('BUNDLED APK:', args.output)
     print('SHA256:', digest_file(args.output))

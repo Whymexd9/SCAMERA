@@ -15,7 +15,10 @@ public final class VivoNeuralWorker {
         {"libQnnHtp.so","73683f1dabfafe1199ff922b43cf748198bbc793783d50585aeeb22e0e14caa2"},
         {"libQnnHtpV79Skel.so","3353856643575df6ff215ca430e0d9274e5c8ba62a172907b7bc5a5c716f6494"}
     };
-    static final String[][] HEX_FILES = {
+    public static final String[][] NICE_FILES = {
+        {"nice-main-forward-v79.bin","a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c"}
+    };
+    public static final String[][] HEX_FILES = {
         {"hexquad-x1-v79.bin","e4519b2b8ee4ff1684c10d0e3006c6ab613972d107ed8f05c58543b833e17e22"},
         {"hexquad-x2-v79.bin","70e0a1c4e5c1316505a562badb85a8910cb6860106894b1d137077f2af357218"},
         {"libQnnSystem.so","4250e5366a7f7b3c692a184649929e4d763a979c47691bfec49e8511af993842"},
