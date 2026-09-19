@@ -57,6 +57,12 @@ public class LinearExposure extends Node {
         histogram.Gc = true;
         histogram.Bc = true;
         histogram.Ac = false;
+        // HDR RAW is stored at the shortest exposure. Meter at the reference
+        // exposure so changing bracket EV neither darkens the picture nor
+        // collapses the histogram into its first few bins.
+        float rawScale=basePipeline.mParameters.vivoHdrMode
+                ? Math.max(1e-6f,basePipeline.mParameters.vivoHdrRawScale) : 1f;
+        for(int c=0;c<3;c++) histogram.exposure[c]=1f/rawScale;
         int[][] result;
         try {
             result = histogram.Compute(previousNode.WorkingTexture);
@@ -86,7 +92,7 @@ public class LinearExposure extends Node {
         } else {
             Log.d(Name, "Empty histogram, displayGain:" + gain);
         }
-        pipeline.linearDisplayGain = gain;
+        pipeline.linearDisplayGain = gain/rawScale;
 
         WorkingTexture = previousNode.WorkingTexture;
         glProg.closed = true;

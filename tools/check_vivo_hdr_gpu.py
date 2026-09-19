@@ -95,11 +95,12 @@ s=(root/'headroom/render.glsl').read_text().replace('#define NEUTRALPOINT 0.0,0.
 for imp in ['coords','interpolation']:s=s.replace('#import '+imp,(root/('utils/import_'+imp+'.glsl')).read_text())
 ctx.program(vertex_shader=vs.replace('430','310 es'),fragment_shader='#version 310 es\n'+s).release()
 tone=ctx.program(vertex_shader=vs,fragment_shader='#version 430\n'+s)
-def render_tone(amount,shadows=0,local=0):
+def render_tone(amount,shadows=0,local=0,raw_scale=1.0,display_gain=4.0):
  a=np.ones((h,w,4),np.float32);a[:,:,:3]=np.linspace(.001,.99,w)[None,:,None]
+ a[:,:,:3]*=raw_scale
  inp=tex(a);gain=tex(np.ones((1,1,4)));out=tex(np.zeros_like(a));fb=ctx.framebuffer([out]);fb.use();ctx.viewport=(0,0,w,h)
  inp.use(0);gain.use(1)
- uniforms(tone,{'InputBuffer':0,'GainMap':1,'displayGain':4.0,'sceneWhite':4.0,'outputExposureScale':1.0,'toneAmount':amount,'localContrast':local,'shadowLift':shadows,'activeSize':(0,0,w-1,h-1)})
+ uniforms(tone,{'InputBuffer':0,'GainMap':1,'displayGain':display_gain/raw_scale,'sceneWhite':display_gain/raw_scale,'outputExposureScale':1.0,'toneAmount':amount,'localContrast':local,'shadowLift':shadows,'activeSize':(0,0,w-1,h-1)})
  for k in ['sensorToIntermediate','intermediateToSRGB']:tone[k].write(np.eye(3,dtype='float32').tobytes())
  ctx.vertex_array(tone,[]).render(vertices=3);v=read(out);fb.release();return v
 mapped=render_tone(1);linear=render_tone(0)
@@ -110,3 +111,12 @@ assert np.max(abs(mapped-linear))>.05
 assert np.max(abs(render_tone(1,1)-mapped))>.01
 assert np.max(abs(render_tone(1,0,1)-mapped))>.0001
 print('HDR tone PASS: production GLES/desktop shaders, monotonic bounded output, highlight detail, independent tone/shadow/local controls.')
+
+# Packing at the shortest exposure must not change reference midtones, even at
+# 8 EV. The production Java histogram meters with 1/rawScale, then restores
+# this scale in linearDisplayGain. Check the real renderer at that boundary.
+normal=render_tone(1,display_gain=1)
+for raw_scale in [0.5,0.25,0.0625,1/256]:
+ compressed=render_tone(1,raw_scale=raw_scale,display_gain=1)
+ assert np.max(abs(compressed[:,:w//2,:3]-normal[:,:w//2,:3]))<.002
+print('HDR radiometry PASS: reference midtones invariant across 1, 2, 4 and 8 EV packing.')

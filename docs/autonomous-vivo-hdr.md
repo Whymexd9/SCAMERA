@@ -29,7 +29,8 @@ Bayer or SCAMERA remosaic first. Their stored settings are retained.
 6. Demosaic and black correction; separate noise-aware luma/chroma spatial filtering
    at two scales, using the scaled stack noise model. Both controls at zero bypass
    this stage. Temporal fusion still reduces noise independently.
-7. Histogram exposure, SCAMERA lens shading/white balance/colour matrix, logarithmic
+7. Histogram exposure metered in reference-exposure units (including wide
+   brackets), SCAMERA lens shading/white balance/colour matrix, logarithmic
    highlight shoulder, bounded shadow lift and local contrast, sRGB output. This
    replaces the selected tone path rather than stacking another full curve on it.
    The existing linear scene snapshot remains available for Ultra HDR encoding.
