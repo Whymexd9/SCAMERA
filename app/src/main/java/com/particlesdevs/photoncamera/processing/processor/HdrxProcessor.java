@@ -161,6 +161,8 @@ public class HdrxProcessor extends ProcessorBase {
         }
         // sort by timestamp first
         mImageFramesToProcess.sort(Comparator.comparingLong(ImageFrame::getTimestamp));
+        if(PhotonCamera.getCaptureController()!=null) for(ImageFrame frame:mImageFramesToProcess)
+            frame.setCaptureMetadata(PhotonCamera.getCaptureController().takeRawMetadata(frame.timestamp));
 
         // A few camera HALs occasionally omit one result callback in a mixed
         // ZSL + manual bracket even though the RAW image is delivered. HDRX

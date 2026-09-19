@@ -347,6 +347,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     public ImageSaver mImageSaver;
     public HashMap<Long, Double> mExposures = new HashMap<>();
+    private final java.util.concurrent.ConcurrentSkipListMap<Long,CaptureResult> rawMetadata =
+            new java.util.concurrent.ConcurrentSkipListMap<>();
+    private void rememberRawMetadata(CaptureResult result) {
+        Long timestamp=result.get(CaptureResult.SENSOR_TIMESTAMP);
+        if(timestamp==null || timestamp<=0) return;
+        rawMetadata.put(timestamp,result);
+        while(rawMetadata.size()>128) rawMetadata.pollFirstEntry();
+    }
+    public CaptureResult takeRawMetadata(long timestamp) { return rawMetadata.remove(timestamp); }
+
 
     private final ArrayDeque<Image> mZslRingBuffer = new ArrayDeque<>();
     private final Object mZslBufferLock = new Object();
@@ -2942,6 +2952,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
                             session.getDevice().getId() + "/" + physicalID,
                             mCameraCharacteristics, result);
+                    rememberRawMetadata(result);
                     Object time = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     Log.d(TAG, "Timestamp:" + time);
                     if (time != null) {
