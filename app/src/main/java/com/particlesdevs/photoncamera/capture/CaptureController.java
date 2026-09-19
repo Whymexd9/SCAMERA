@@ -359,7 +359,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private volatile boolean mShotInProgress = false;
     private volatile boolean mLiveRawSession;
-    private volatile boolean mCalibrationCapture;
+    private volatile boolean mNativeRawPslCapture;
     private boolean mLiveRawRejected;
     private final PreviewFrameMatcher<Image, TotalCaptureResult> mLiveMetadata =
             new PreviewFrameMatcher<>(this::onMatchedLiveRaw, Image::close);
@@ -409,7 +409,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 //            Message msg = new Message();
 //            msg.obj = reader;
 //            mImageSaver.processingHandler.sendMessage(msg);
-            if (mCalibrationCapture || (!isZslMode() && mLiveRawSession)) {
+            if (mNativeRawPslCapture || (!isZslMode() && mLiveRawSession)) {
                 // A shutter press is not a frame boundary: old preview images can arrive during AF.
                 // Route by the matching capture-start timestamp, never by the current UI state.
                 Image image;
@@ -532,7 +532,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
-                if (mCalibrationCapture || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, false);
+                if (mNativeRawPslCapture || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, false);
             }
         }
 
@@ -1084,7 +1084,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         clearZslPreviewFrames();
         LiveRawFrame.setEnabled(false);
         mLiveRawSession = false;
-        mCalibrationCapture = false;
+        mNativeRawPslCapture = false;
         mLiveRawRouter.clear();
         mLiveMetadata.clear();
         mCameraOpening.set(false);
@@ -2064,7 +2064,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                              @NonNull CaptureRequest request,
                                              long timestamp,
                                              long frameNumber) {
-                    if (mCalibrationCapture || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
+                    if (mNativeRawPslCapture || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
 
                     if (baseFrameNumber[0] == 0) {
                         baseFrameNumber[0] = frameNumber - 1L;
@@ -2157,7 +2157,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private boolean needsExposureBracket() {
-        return !PreferenceKeys.isRawMfsrEnabled() && !PreferenceKeys.isHexQuadCaptureEnabled() && (PreferenceKeys.getShortFrameCountValue() > 0
+        return !PreferenceKeys.isMultiFrameCalibration() && !PreferenceKeys.isHexQuadCaptureEnabled() && (PreferenceKeys.getShortFrameCountValue() > 0
                 || PreferenceKeys.getLongFrameCountValue() > 0);
     }
 
@@ -2557,15 +2557,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 triggerZslCapture();
                 return;
             }
-            final boolean calibrationPsl=PreferenceKeys.isMultiFrameCalibration();
-            if(calibrationPsl) {
-                mCalibrationCapture=true;mZslCapturing=true;
+            final boolean nativePsl=PreferenceKeys.isRawMfsrEnabled();
+            if(nativePsl) {
+                mNativeRawPslCapture=true;mZslCapturing=true;
                 synchronized(mZslBufferLock) {
                     for(Image image:mZslRingBuffer)image.close();
                     mZslRingBuffer.clear();mHexZslResults.clear();
                 }
             }
-            final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
+            final boolean hybridZslRequested = isZslMode() && needsExposureBracket() && !PreferenceKeys.isRawMfsrEnabled();
             // This is the CaptureRequest.Builder that we use to take a picture.
             final CaptureRequest.Builder captureBuilder;
             if(PhotonCamera.getSettings().selectedMode.equals(CameraMode.RAWVIDEO)) {
@@ -2644,7 +2644,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Log.i(TAG, "HP9 HexQuad: six real RAWs, equal exposure, PSL session (ZSL unavailable)");
             }
             if (PreferenceKeys.isRawMfsrEnabled() && selectedFrameMode > 0) {
-                denoiseFrameCount=multiFrameCaptureCount();shortFrameCount=0;longFrameCount=0;
+                if(PreferenceKeys.isMultiFrameCalibration()) {
+                    denoiseFrameCount=multiFrameCaptureCount();shortFrameCount=0;longFrameCount=0;
+                } else {
+                    denoiseFrameCount=com.particlesdevs.photoncamera.remosaic.BurstPolicy.bracketBaseCount(
+                            PreferenceKeys.getMultiFrameCount(),shortFrameCount,longFrameCount,
+                            mImageReaderRaw.getWidth(),mImageReaderRaw.getHeight());
+                }
             }
             if (hybridZslRequested) {
                 // Block preview RAWs first. Do not route them into ImageSaver:
@@ -2817,6 +2823,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             final long[] baseFrameNumber = {0};
             final int[] maxFrameCount = {hybridZsl ? captures.size() : frameCount};
+            final int nativeBaseIndex=denoiseFrameCount/2;
+            final TotalCaptureResult[] nativeBaseResult={null};
 
             cameraEventsListener.onCaptureStillPictureStarted("CaptureStarted!");
             mMeasuredFrameCnt = 0;
@@ -2829,7 +2837,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                              @NonNull CaptureRequest request,
                                              long timestamp,
                                              long frameNumber) {
-                    if (mCalibrationCapture || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
+                    if (mNativeRawPslCapture || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
 
                     if (baseFrameNumber[0] == 0) {
                         baseFrameNumber[0] = frameNumber;
@@ -2858,6 +2866,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                @NonNull TotalCaptureResult result) {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
+                    if(nativePsl && frameCount==nativeBaseIndex)nativeBaseResult[0]=result;
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
@@ -2898,10 +2907,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                 @Override
                 public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
-                    if (calibrationPsl) {
-                        mCalibrationCapture=false;mZslCapturing=false;mShotInProgress=false;
+                    if (nativePsl) {
+                        mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;
                         mLiveRawRouter.clear();burst=false;
-                        cameraEventsListener.onProcessingError("Тёмная калибровка прервана; повторите съёмку");
+                        cameraEventsListener.onProcessingError("Серия Multi-frame RAW прервана; повторите съёмку");
                     }
                 }
 
@@ -2965,14 +2974,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 return;
                             }
                             mImageSaver.updateFrameCount(mImageSaver.bufferSize());
-                            if (mImageSaver.bufferSize() != 0)
-                                mImageSaver.runRaw(mCameraCharacteristics, mCaptureResult, mCaptureRequest, new ArrayList<>(BurstShakiness), cameraRotation, mExposures);
+                            if (mImageSaver.bufferSize() != 0) {
+                                if(nativePsl && nativeBaseResult[0]==null)
+                                    throw new IllegalStateException("MFSR: отсутствуют метаданные основного кадра");
+                                mImageSaver.runRaw(mCameraCharacteristics,
+                                        nativePsl ? nativeBaseResult[0] : mCaptureResult,
+                                        nativePsl ? nativeBaseResult[0].getRequest() : mCaptureRequest,
+                                        new ArrayList<>(BurstShakiness), cameraRotation, mExposures);
+                            }
                             } catch (Exception e){
                                 Log.e(TAG, "runRaw:"+Log.getStackTraceString(e));
                                 cameraEventsListener.onProcessingError(e.getLocalizedMessage());
                             } finally {
-                                if (calibrationPsl) {
-                                    mCalibrationCapture=false;mZslCapturing=false;mLiveRawRouter.clear();
+                                if (nativePsl) {
+                                    mNativeRawPslCapture=false;mZslCapturing=false;mLiveRawRouter.clear();
                                 }
                                 if (hybridZslRequested) {
                                     mHybridZslCapture = false;
@@ -3023,7 +3038,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             }
         } catch (CameraAccessException | RuntimeException e) {
-            mCalibrationCapture=false;mZslCapturing=false;mShotInProgress=false;
+            mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;
             cameraEventsListener.onProcessingError(e.getMessage());
             Log.e(TAG, Log.getStackTraceString(e));
         }

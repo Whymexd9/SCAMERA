@@ -35,6 +35,35 @@ public class BurstPolicyTest {
         Map<String,Object> m=new HashMap<>();m.put("pref_raw_mfsr_enabled_key",true);m.put("pref_remosaic_enabled_key",true);m.put("pref_remosaic_backend_key","hp9_hexquad");
         SettingsAvailability a=new SettingsAvailability(m);
         assertNull(a.reason("pref_mfsr_source_key"));assertNotNull(a.reason("pref_remosaic_backend_key"));
-        assertNotNull(a.reason("pref_short_frame_count_key"));assertNotNull(a.reason("hexquad_luma"));
+        assertNull(a.reason("pref_short_frame_count_key"));assertNotNull(a.reason("pref_frame_count_key"));assertNotNull(a.reason("hexquad_luma"));
+    }
+    @Test public void bracketsReserveSpaceWithoutUsingGeneralFrameCount() {
+        assertEquals(15,BurstPolicy.bracketBaseCount(15,1,1,4096,3072));
+        assertEquals(3,BurstPolicy.bracketBaseCount(15,1,1,8192,6144));
+        assertThrows(IllegalArgumentException.class,()->BurstPolicy.bracketBaseCount(15,8,8,8192,6144));
+        Map<String,Object> settings=new HashMap<>();settings.put("pref_raw_mfsr_enabled_key",true);
+        settings.put("pref_short_frame_count_key","1");
+        assertNull(new SettingsAvailability(settings).reason("pref_short_exposure_ev_key"));
+        assertNotNull(new SettingsAvailability(settings).reason("pref_frame_count_key"));
+        settings.put("pref_mfsr_calibrate_key",true);
+        assertNotNull(new SettingsAvailability(settings).reason("pref_short_frame_count_key"));
+    }
+    @Test public void bracketGroupsSeparateExposureAndRejectIncompleteBase() {
+        List<ExposureGroups.Sample> f=Arrays.asList(
+                new ExposureGroups.Sample(1,100,100,1),
+                new ExposureGroups.Sample(2,400,100,0),
+                new ExposureGroups.Sample(3,400,100,0),
+                new ExposureGroups.Sample(4,400,100,0),
+                new ExposureGroups.Sample(5,800,100,2),
+                new ExposureGroups.Sample(6,800,200,2));
+        List<List<Integer>> groups=ExposureGroups.split(f);
+        assertEquals(Arrays.asList(1,2,3),groups.get(0));
+        assertEquals(4,groups.size()); // Even two long donors with different ISO stay separate.
+        assertThrows(IllegalArgumentException.class,()->ExposureGroups.split(f.subList(0,3)));
+        List<ExposureGroups.Sample> mixed=new ArrayList<>(f);
+        mixed.set(2,new ExposureGroups.Sample(3,500,100,0));
+        assertThrows(IllegalArgumentException.class,()->ExposureGroups.split(mixed));
+        mixed.set(2,f.get(1));
+        assertThrows(IllegalArgumentException.class,()->ExposureGroups.split(mixed));
     }
 }

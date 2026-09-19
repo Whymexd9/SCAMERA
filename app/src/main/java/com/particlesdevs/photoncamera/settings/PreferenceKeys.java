@@ -1113,6 +1113,7 @@ public class PreferenceKeys {
     }
 
     public static boolean isHdrPlusMergeEnabled() {
+        if (isRawMfsrEnabled()) return false; // Native base + exposure-aware bracket merge, no second HDR+ denoise.
         CameraMode mode = CameraMode.valueOf(getCameraModeOrdinal());
         return "hdrplus".equals(mode == CameraMode.NIGHT ? getNightMergeAlgorithm() : getZslMergeAlgorithm());
     }

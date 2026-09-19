@@ -39,6 +39,7 @@ public class Parameters {
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;
+    public int multiFrameCount; // Actual equal-exposure RAWs merged by the native backend.
     public double exposureTime = 1.0/30.0; // Default to 1/30s if not available
     public byte cfaPattern;
     /** Physical 2x2 CFA reported by Camera2; cfaPattern may be -2 for direct Quad CFA. */
@@ -630,6 +631,8 @@ public class Parameters {
 
     protected Parameters Build() {
         Parameters params = new Parameters();
+        params.multiFrameCount = multiFrameCount;
+        params.remosaicDone = remosaicDone;
         params.hexQuadProcessed = hexQuadProcessed;
         params.hexQuadPostDenoise = hexQuadPostDenoise;
         params.hexQuadExposureEv = hexQuadExposureEv;
@@ -661,7 +664,7 @@ public class Parameters {
     public String toString() {
         return "parameters:\n" +
                 "\n hasGainMap=" + hasGainMap +
-                "\n FrameCount=" + FrameNumberSelector.frameCount +
+                "\n FrameCount=" + (multiFrameCount>0 ? multiFrameCount : FrameNumberSelector.frameCount) +
                 "\n CameraID=" + cameraID +
                 "\n DenoiseOn=" + PhotonCamera.getSettings().hdrxNR +
                 "\n Sharp=" + FltFormat(PreferenceKeys.getSharpnessValue()) +

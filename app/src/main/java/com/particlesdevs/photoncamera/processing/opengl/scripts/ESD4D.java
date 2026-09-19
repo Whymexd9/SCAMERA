@@ -977,7 +977,7 @@ public class ESD4D extends GLOneScript {
             adaptiveNMpy = 1.0;
         }
         parameters.noiseModeler.setAdaptiveMpy(adaptiveNMpy);
-        double noisempy = PreferenceKeys.isHdrPlusMergeEnabled()
+        double noisempy = (parameters.multiFrameCount>0 || PreferenceKeys.isHdrPlusMergeEnabled())
                 ? 1.0 : Math.pow(2.0, PhotonCamera.getSettings().mergeStrength);
         //double noiseMin = 1.0/(double)parameters.whiteLevel;
         double noiseMin = 1e-6;
@@ -1296,7 +1296,7 @@ public class ESD4D extends GLOneScript {
             // survives averaging better and is the more objectionable of the two.
             float midGrey = 0.18f;
             float baseSnr = (float) (midGrey / Math.sqrt(Math.max(noiseS * midGrey + noiseO, 1e-9)));
-            int mergedFrames = Math.max(1, PhotonCamera.getSettings().frameCount);
+            int mergedFrames = parameters.multiFrameCount>0 ? parameters.multiFrameCount : Math.max(1, PhotonCamera.getSettings().frameCount);
             float mergedSnr = (float) (baseSnr * Math.sqrt(mergedFrames));
             float snrTarget = Math.max(PreferenceKeys.getHdrPlusSnrTarget(), 1f);
             float snrScale = snrTarget / Math.max(mergedSnr, 1e-3f);

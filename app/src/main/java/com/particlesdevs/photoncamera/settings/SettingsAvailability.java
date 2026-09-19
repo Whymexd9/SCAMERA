@@ -29,10 +29,21 @@ public final class SettingsAvailability {
         boolean hdr = text("pref_camera_mode_key", "2").equals("4")
                 ? text("pref_night_merge_algorithm_key", "legacy").equals("hdrplus")
                 : text("pref_zsl_merge_algorithm_key", "legacy").equals("hdrplus");
+        if (multi && any(key,"pref_short_frame_count_key","pref_long_frame_count_key",
+                "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
+                "pref_highlight_recovery_key","pref_highlight_protection_key"))
+            return on("pref_mfsr_calibrate_key",false) ? "При тёмной калибровке брекетинг отключён." : null;
+        boolean multiBracket=multi && !on("pref_mfsr_calibrate_key",false)
+                && (PreferenceNumber.read(values.get("pref_short_frame_count_key"),0)>0
+                || PreferenceNumber.read(values.get("pref_long_frame_count_key"),0)>0);
+        if(multiBracket && ((key.startsWith("pref_merge_") && !key.equals("pref_merge_seekbar_key"))
+                || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")))
+            return null; // These now align/fuse the native base with exposure donors.
+        if(multi)hdr=false;
         if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_")
                 || key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
                 || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
-                || any(key,"pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
+                || any(key,"pref_frame_count_key","pref_zsl_buffer_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
                 "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
                 "pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key","pref_highlight_recovery_key",
                 "pref_highlight_protection_key","scamera_quad_bayer_enabled")))

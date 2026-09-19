@@ -173,7 +173,7 @@ public class HdrxProcessor extends ProcessorBase {
             IsoExpoSelector.fullpairs.add(fallback);
             Log.w(TAG, "No exposure roles supplied; inserted safe normal role");
         }
-        if (PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()) {
+        if (PreferenceKeys.isHexQuadCaptureEnabled()) {
             double reference = -1;
             for (ImageFrame frame : mImageFramesToProcess) {
                 Double measured = exposures.get(frame.getTimestamp());
@@ -182,6 +182,18 @@ public class HdrxProcessor extends ProcessorBase {
                 if (reference < 0) reference = measured;
                 if (Math.abs(measured / reference - 1.0) > 0.02)
                     throw new IllegalStateException("HP9 HexQuad: экспозиция кадров различается");
+            }
+        }
+        if(PreferenceKeys.isRawMfsrEnabled()) {
+            if(IsoExpoSelector.fullpairs.size()!=mImageFramesToProcess.size())
+                throw new IllegalStateException("MFSR: число метаданных не совпадает с серией RAW");
+            for(int i=0;i<mImageFramesToProcess.size();i++) {
+                ImageFrame f=mImageFramesToProcess.get(i);
+                IsoExpoSelector.ExpoPair requested=IsoExpoSelector.fullpairs.get(i);
+                Double actual=exposures.get(f.timestamp);
+                double expected=requested.exposure/1e9*requested.iso;
+                if(actual==null || !Double.isFinite(actual) || actual<=0 || Math.abs(actual/expected-1)>0.02)
+                    throw new IllegalStateException("MFSR: камера не выполнила заданную экспозицию кадра "+i);
             }
         }
         double safeExposure = IsoExpoSelector.fullpairs.get(0).Exposure();
@@ -332,6 +344,7 @@ public class HdrxProcessor extends ProcessorBase {
         boolean multiCapture = PreferenceKeys.isRawMfsrEnabled();
         boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
         ByteBuffer hexOutput = null;
+        boolean multiBracket=multiCapture && images.stream().anyMatch(f->f.pair.isHighlightFrame || f.pair.isLongFrame);
         if (multiCapture) {
             processingStage = "Multi-frame Remosaic";
             try {
@@ -340,10 +353,19 @@ public class HdrxProcessor extends ProcessorBase {
                     processingEventsListener.onProcessingFinished("Тёмная калибровка текущего модуля сохранена");
                     callback.onFinished();return;
                 }
-                hexOutput=com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.process(images,processingParameters);
-                hexOwnedOutput=hexOutput;
+                if(multiBracket) {
+                    images=com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.prepareBracket(images,processingParameters);
+                    ImageFrameDeblur bracketDeblur=new ImageFrameDeblur(processingParameters);
+                    bracketDeblur.firstFrameGyro=images.get(0).frameGyro.clone();
+                    for(ImageFrame f:images)bracketDeblur.processDeblurPosition(f);
+                } else {
+                    hexOutput=com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.process(images,processingParameters);
+                    hexOwnedOutput=hexOutput;
+                    processingParameters.multiFrameCount=images.size();
+                }
+                ParseExif.syncWithParameters(exifData,processingParameters);
             } catch(Exception e) {throw new IllegalStateException("Multi-frame Remosaic: "+e.getMessage(),e);}
-            finally {for(ImageFrame frame:images)frame.close();}
+            finally {if(!multiBracket)for(ImageFrame frame:images)frame.close();}
         } else if (hexCapture) {
             processingStage = "HP9 HexQuad: six-frame NPU remosaic";
             try {
@@ -479,7 +501,7 @@ public class HdrxProcessor extends ProcessorBase {
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");
         ESD4D esd4d = null;
-        if (hexCapture || multiCapture) {
+        if (hexCapture || (multiCapture && !multiBracket)) {
             processingParameters.highlightSuppressionStrength = 0f;
         } else if(images.size() > 1) {
             processingStage = "RAW alignment/fusion";
@@ -552,7 +574,8 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
 
-        processingParameters.noiseModeler.computeStackingNoiseModel(images.size());
+        processingParameters.noiseModeler.computeStackingNoiseModel(
+                processingParameters.multiFrameCount>0 ? processingParameters.multiFrameCount : images.size());
 
         boolean allowPostDenoise = !processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise;
         if (processingParameters.hexQuadProcessed) Log.i(TAG,"HEX POST DENOISE: AI/SCAMERA/RT allowed="+allowPostDenoise);

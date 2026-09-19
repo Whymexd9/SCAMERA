@@ -78,6 +78,13 @@ if __name__=='__main__':
    expected=[values[cfa[(y%2)*2+x%2]] for y in range(h) for x in range(w)]
    assert max(abs(a-b) for a,b in zip(out,expected))<=1,(block,cfa)
   print('CFA preservation: block',block,'all 4 layouts passed',flush=True)
+ # Single donors are real one-frame reconstructions, not duplicated fake bursts.
+ for block in [1,2,4]:
+  for signal in [400,1600,3200]:
+   frame=[signal]*(w*h)
+   out=Engine().process([frame],w,h,block,'BGGR')
+   assert max(abs(v-signal) for v in out)<=1,(block,signal)
+ print('Single-frame bracket donors: Bayer/Quad/Tetra and 3 exposure levels passed',flush=True)
  rng=random.Random(193)
  frames=[[2000+rng.randrange(-15,16) for _ in range(w*h)] for f in range(7)]
  out=Engine().process(frames,w,h,1,'RGGB')

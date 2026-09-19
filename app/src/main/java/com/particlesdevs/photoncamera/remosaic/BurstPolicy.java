@@ -19,6 +19,12 @@ public final class BurstPolicy {
         if (limit < 3) throw new IllegalArgumentException("MFSR: недостаточно памяти для серии");
         return Math.max(3, Math.min(Math.min(40, requested), limit));
     }
+    public static int bracketBaseCount(int requested,int shortFrames,int longFrames,int width,int height) {
+        int extra=Math.max(0,Math.min(8,shortFrames))+Math.max(0,Math.min(8,longFrames));
+        int totalLimit=frameCount(40,width,height);
+        if(totalLimit-extra<3)throw new IllegalArgumentException("MFSR: уменьшите число кадров брекетинга или размер RAW");
+        return Math.min(frameCount(requested,width,height),totalLimit-extra);
+    }
     public static String cfa(String selected, int sensor) {
         for (String s : new String[]{"RGGB", "GRBG", "GBRG", "BGGR"})
             if (s.equals(selected)) return s;

@@ -66,3 +66,34 @@ profile migration, reconstruction exclusivity, memory limits and measured-frame 
 CI verifies native execution, unit tests, APK compilation and library packaging.
 Phone testing is still required for each module's RAW mode, moving subjects, dark calibration,
 first capture after changing settings, performance and comparison against ordinary merging.
+
+## 30214: Bracketing alongside native MFSR
+
+Requested after the 30213 build started. The delivered build is30214.
+The normal-frame count remains local to MFSR; existing short/long counts and EV controls are enabled.
+The general normal-frame and ZSL-ring controls remain inactive. Auxiliary counts are added to the
+normal count within the same40-frame/memory budget. Normal frames can be reduced to3; if the
+requested donors would leave fewer than3, capture reports that counts/resolution must be reduced.
+
+With bracketing enabled the whole burst is captured after the shutter (PSL), at a fixed focus and
+fixed exposure/ISO within each group. This avoids assigning fabricated metadata to ZSL donors.
+The capture timestamps route preview/still RAW independently. Processing requires the metadata
+of the middle normal frame and checks each measured exposure product against the corresponding
+requested role before calling native code. DNG/JPEG exposure and noise metadata use the normal frame.
+
+The native processor is invoked separately for each exposure/ISO/role group: the normal group
+must contain at least3 real frames; donor groups can contain1. Every Quad/Tetra group is converted
+to ordinary Bayer before HDR merging. No repeated copies of a single frame are manufactured.
+Each output inherits the native reference (floor(N/2)) timestamp and gyro. The normal output stays
+the HDR reference; the existing exposure-aware ESD4D alignment/fusion adds the long/short outputs
+with its clipping, noise-floor, movement and highlight-strength gates. Native MFSR is never asked
+to fuse different exposures, and the old MFSR kernel branch remains disabled. A second HDR+ denoise
+pass is not selected for the native route. Final noise scaling uses the actual native normal count.
+Calibration continues to use only equal-exposure dark frames, without bracket donors.
+
+Additional checks: three mosaic types × three signal levels through the original one-frame native
+function; grouping keeps different ISO/exposure/roles separate, rejects duplicate timestamps and
+incomplete/variable normal groups; capture-budget tests cover normal+short+long at12 and50MP;
+menu tests confirm independent counts and calibration restrictions. Phone tests must compare
+bracketing off/on, 1 short, 1 long and both together, with a bright window and dark interior.
+The existing HDR fusion's real-world highlight recovery and movement rejection still require testing.
