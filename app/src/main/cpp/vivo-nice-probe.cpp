@@ -6,7 +6,7 @@
 
 // Execution prerequisite only. The 22 input channels are NOT interpreted as
 // camera pixels until the original NICE preprocessing contract is recovered.
-namespace {
+namespace vivo_nice {
 using namespace vivo_nn;
 using Reporter=std::function<void(const std::string&)>;
 struct Session {
@@ -144,7 +144,7 @@ Java_com_particlesdevs_photoncamera_ui_settings_VivoNiceActivity_nativeProbe(JNI
     };
     const char* chars=env->GetStringUTFChars(path,nullptr);if(!chars)return;
     std::string directory(chars);env->ReleaseStringUTFChars(path,chars);
-    try{probe(directory,report);}
+    try{vivo_nice::probe(directory,report);}
     catch(const std::exception& e){if(!env->ExceptionCheck())report(std::string("STOP: ")+e.what());}
 }
 #endif

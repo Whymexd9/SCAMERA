@@ -34,9 +34,12 @@ tone/TCE and motion/IC paths; this probe covers one CRE graph only.
 ## App-contained execution prerequisite
 
 Settings -> Vivo -> Diagnostics -> NICE HDR runs in a dedicated :vivo_nice
-process at the ordinary application UID. Camera initialization is skipped.
-No root request, firmware model reads, property writes, namespace modifications
-or SELinux changes are made. The model and the hash-pinned QNN 2.29.8 runtime
+process. Camera initialization is skipped. There are two explicit buttons:
+ordinary app-UID execution, and root execution using the existing
+VivoNeuralClient -> VivoNeuralWorker -> native worker mechanism proven for HTP
+remosaic. The root worker verifies the same bundled hashes and executes the
+same NICE probe; it has a 150-second native alarm and a 200-second client bound.
+No firmware model reads, property writes or SELinux changes are made. The model and the hash-pinned QNN 2.29.8 runtime
 are read from APK assets. The existing public FastRPC driver is a platform
 dependency; it is not a bundled Vivo image-processing algorithm.
 
@@ -48,7 +51,7 @@ they do not assert valid photographic preprocessing, quality or stock parity.
 QNN 2.28 model compatibility with the bundled 2.29.8 runtime on this phone is
 specifically part of the device test, not assumed from matching tensor sizes.
 
-Every stage is saved before the next native call. A native crash or a 180-second
+Every stage is saved before the next native call. A native crash or the bounded
 timeout leaves the last report; reopening the entry allows copying it. Closing
 the activity terminates only its dedicated process. Library handles remain
 resident until exit; QNN context is destroyed before model/client memory.
@@ -75,3 +78,14 @@ helper now accepts `--nice-dir`, containing `nice-main-forward-v79.bin`.
 `tools/check_vivo_nice_probe.cpp` uses a mocked QNN backend under ASan/UBSan to
 check argument layout, tensor validation, dispatch, poisoned output, resource
 cleanup on failure and binary lifetime. This is explicitly not device inference.
+
+
+## Additional static boundary
+
+`niceKernels.bin` is a compiled OpenCL cache. CRE's cache reader at 0x3a67e0
+explicitly falls back to source compilation on missing, illegal-size/hash or
+old-source cache entries. Its absence is not evidence that original kernel
+sources are missing. The embedded-source decoding/build path still needs to
+be recovered. CPU function 0x2da2c0 generates a three-plane VST LUT for selected
+integer input types; it is not yet a confirmed replacement for the actual
+forward-HDR floating-point preprocessing path.

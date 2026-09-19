@@ -29,11 +29,17 @@ public final class VivoNeuralWorker {
     public static void main(String[] args) {
         int exit=1;
         try {
+            boolean nice=args.length==2 && args[1].equals("--nice");
             boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
-            if(!hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
-            for(String[] item:hex?HEX_FILES:FILES){
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            if(!nice && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
+            java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
+            if(nice){
+                java.util.Collections.addAll(required,NICE_FILES);
+                for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
+            } else java.util.Collections.addAll(required,hex?HEX_FILES:FILES);
+            for(String[] item:required){
                 File file=new File(args[0],item[0]);
                 System.out.println("VERIFY APK ASSET: "+item[0]);
                 if(file.length()<=0||file.length()>128L*1024*1024)throw new IllegalStateException("Unavailable bundled asset: "+file);
@@ -46,7 +52,8 @@ public final class VivoNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
+            if(nice){command.add("--nice-check");command.add(args[0]);}
+            else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(hex){command.add("--hexquad-check");command.add(args[0]);}
             else java.util.Collections.addAll(command,args);
             System.out.println("EXEC: native worker, bundled model/runtime, no JNI namespace");

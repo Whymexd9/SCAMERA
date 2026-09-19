@@ -17,13 +17,13 @@ import java.io.InputStream;
 import java.security.MessageDigest;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralWorker;
 
-/** App-UID prerequisite test, in :vivo_nice; never processes camera frames. */
+/** App-UID/root execution prerequisite, in :vivo_nice; no camera frames. */
 public final class VivoNiceActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private final StringBuilder report=new StringBuilder();
     private SharedPreferences saved;
     private TextView output;
-    private Button start;
+    private Button start,rootStart;
     private volatile boolean running;
     private native void nativeProbe(String directory);
 
@@ -33,9 +33,10 @@ public final class VivoNiceActivity extends Activity {
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
         int pad=Math.round(16*getResources().getDisplayMetrics().density);layout.setPadding(pad,pad,pad,pad);
         TextView note=new TextView(this);
-        note.setText("Запуск оригинальной HDR-модели основной камеры Vivo. Модель и QNN находятся в APK. Проверка не запрашивает root и пока не обрабатывает фотографии. Она нужна, чтобы проверить доступ к нейроускорителю из приложения. После завершения скопируйте отчёт.");
+        note.setText("Запуск оригинальной HDR-модели основной камеры Vivo. Модель и QNN находятся в APK. Проверка пока не обрабатывает фотографии. Root использует тот же механизм запуска HTP, что нейроремозаик. Обычный запуск проверяет доступ без root. После завершения скопируйте отчёт.");
         layout.addView(note);
-        start=new Button(this);start.setText("Проверить NICE HDR");start.setOnClickListener(v->runProbe());layout.addView(start);
+        start=new Button(this);start.setText("Проверить без root");start.setOnClickListener(v->runProbe(false));layout.addView(start);
+        rootStart=new Button(this);rootStart.setText("Проверить NICE через root");rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
         Button copy=new Button(this);copy.setText("Скопировать отчёт");
         copy.setOnClickListener(v->((ClipboardManager)getSystemService(CLIPBOARD_SERVICE))
                 .setPrimaryClip(ClipData.newPlainText("NICE HDR",output.getText())));layout.addView(copy);
@@ -63,19 +64,23 @@ public final class VivoNiceActivity extends Activity {
         if(!hash.toString().equals(item[1])){target.delete();throw new java.io.IOException("SHA-256 mismatch: "+item[0]);}
         onNativeProgress("VERIFIED APK: "+item[0]);
     }
-    private void runProbe() {
-        if(running)return;running=true;start.setEnabled(false);
+    private void runProbe(boolean root) {
+        if(running)return;running=true;start.setEnabled(false);rootStart.setEnabled(false);
         synchronized(report){report.setLength(0);}
         saved.edit().putBoolean("complete",false).commit();
-        onNativeProgress("SCAMERA NICE prerequisite v1; uid="+android.os.Process.myUid()+"\n"+android.os.Build.FINGERPRINT);
-        main.postDelayed(timeout,180000);
+        onNativeProgress("SCAMERA NICE prerequisite v2; root_path="+root+" uid="+android.os.Process.myUid()+"\n"+android.os.Build.FINGERPRINT);
+        main.postDelayed(timeout,240000);
         new Thread(()-> {
             try {
+                if(root) {
+                    com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralClient.selfTestNice(this,this::onNativeProgress);
+                } else {
                 File dir=new File(getFilesDir(),"nice-bundled-v1");
                 if(!dir.isDirectory()&&!dir.mkdirs())throw new java.io.IOException("Cannot create NICE directory");
                 for(String[] item:VivoNeuralWorker.NICE_FILES)copyVerified(dir,"vivo-nice/arm64-v8a/",item);
                 for(String[] item:VivoNeuralWorker.HEX_FILES)if(item[0].endsWith(".so"))copyVerified(dir,"vivo-hexquad/arm64-v8a/",item);
                 System.loadLibrary("vivoNiceProbe");nativeProbe(dir.getAbsolutePath());
+                }
                 onNativeProgress("CHECK FINISHED: результат указан выше. Это ещё не проверка обработки фото.");
             } catch(Exception|LinkageError e){onNativeProgress("STOP: "+e);}
             finally{running=false;main.removeCallbacks(timeout);saved.edit().putBoolean("complete",true).commit();

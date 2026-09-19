@@ -1487,7 +1487,15 @@ public class ESD4D extends GLOneScript {
                 for(int i=0;i<bins.length;i++) if(bins[i]>0) {
                     parameters.effectiveStackSamples=Math.max(1,i*64.0/(bins.length-1));break;
                 }
-                Log.i("SABRE","Conservative effective samples="+parameters.effectiveStackSamples);
+                long pixels=0, singlePixels=0;double totalSamples=0;
+                for(int i=0;i<bins.length;i++) {
+                    double samples=i*64.0/(bins.length-1);
+                    pixels+=bins[i];totalSamples+=bins[i]*samples;
+                    if(samples<1.5)singlePixels+=bins[i];
+                }
+                Log.i("SABRE","Conservative effective samples="+parameters.effectiveStackSamples
+                        +" mean="+(pixels>0?totalSamples/pixels:0)
+                        +" single_frame_fraction="+(pixels>0?(double)singlePixels/pixels:0));
             }
         }
 

@@ -20,15 +20,18 @@ public final class VivoNeuralClient {
     private static final java.util.Set<String> validatedHexProfiles = new java.util.HashSet<>();
     private static String quote(String s) { return "'"+s.replace("'","'\\''")+"'"; }
     public static synchronized void selfTest(Context context,Consumer<String> log) throws Exception {
-        job(context,null,0,0,0,true,null,log);
+        job(context,null,0,0,0,true,false,null,log);
     }
     public static synchronized ByteBuffer process(Context context,ByteBuffer raw,int w,int h,int redQuad) throws Exception {
-        return job(context,raw,w,h,redQuad,false,null,line->Log.d("VivoNeural",line));
+        return job(context,raw,w,h,redQuad,false,false,null,line->Log.d("VivoNeural",line));
     }
     static synchronized ByteBuffer processBurst(Context context,HexQuadBurst burst) throws Exception {
-        return job(context,null,burst.width,burst.height,burst.red,true,burst,line->Log.d("VivoNeural",line));
+        return job(context,null,burst.width,burst.height,burst.red,true,false,burst,line->Log.d("VivoNeural",line));
     }
-    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,HexQuadBurst burst,Consumer<String> observer) throws Exception {
+    public static synchronized void selfTestNice(Context context,Consumer<String> log) throws Exception {
+        job(context,null,0,0,0,true,true,null,log);
+    }
+    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,boolean nice,HexQuadBurst burst,Consumer<String> observer) throws Exception {
         if(raw!=null && (w<8||h<8||w%8!=0||h%8!=0||(long)w*h>16000000||raw.remaining()!=(long)w*h*4))
             throw new IOException("Неподдерживаемый размер RAW");
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
@@ -39,7 +42,7 @@ public final class VivoNeuralClient {
         final long startMs=android.os.SystemClock.elapsedRealtime();
         // A self-test must never overwrite the failed photograph's report.
         SharedPreferences prefs=context.getSharedPreferences(
-                raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
+                nice?"vivo_nice_root_report":raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
         StringBuilder report=new StringBuilder("SCAMERA: root neural inference job\n");
         prefs.edit().putString("report",report.toString()).putBoolean("complete",false).commit();
         final long[] lastReportWriteMs={startMs};
@@ -69,9 +72,11 @@ public final class VivoNeuralClient {
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
                 java.util.ArrayList<String> names=new java.util.ArrayList<>();
                 names.add("vivo-neural-worker");
-                for(String[] item:hex?VivoNeuralWorker.HEX_FILES:VivoNeuralWorker.FILES)names.add(item[0]);
+                if(nice)for(String[] item:VivoNeuralWorker.NICE_FILES)names.add(item[0]);
+                for(String[] item:hex?VivoNeuralWorker.HEX_FILES:VivoNeuralWorker.FILES)
+                    if(!nice || item[0].endsWith(".so"))names.add(item[0]);
                 for(String name:names){
-                    String prefix=hex&&!name.equals("vivo-neural-worker")?"assets/vivo-hexquad/arm64-v8a/":"assets/vivo-neural/arm64-v8a/";
+                    String prefix=nice&&name.equals("nice-main-forward-v79.bin")?"assets/vivo-nice/arm64-v8a/":hex&&!name.equals("vivo-neural-worker")?"assets/vivo-hexquad/arm64-v8a/":"assets/vivo-neural/arm64-v8a/";
                     java.util.zip.ZipEntry entry=apk.getEntry(prefix+name);
                     if(entry==null)throw new IOException("Неполный APK: отсутствует "+name+". Установите сборку Bundled.");
                     File file=new File(dir,name);
@@ -100,6 +105,7 @@ public final class VivoNeuralClient {
                     "; exec /system/bin/app_process64 /system/bin "+VivoNeuralWorker.class.getName()+" "+quote(dir.getAbsolutePath());
             if(raw!=null)command+=" "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+redQuad;
             if(burst!=null)command+=(cachedProfile?" --hexquad-capture-cached ":" --hexquad-capture ")+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath());
+            else if(nice)command+=" --nice";
             else if(hex)command+=" --hexquad";
             log.accept("ROOT: запуск отдельного процесса; разрешите запрос root");
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
@@ -107,14 +113,14 @@ public final class VivoNeuralClient {
             final Process child=process;
             final boolean[] completed={false};
             Thread reader=new Thread(()->{
-                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=lines.readLine())!=null){if(burst!=null?line.equals("HEXQUAD CAPTURE OK"):hex?line.startsWith("HEXQUAD CHECK COMPLETE:"):line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
+                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=lines.readLine())!=null){if(nice?line.equals("NICE RUNTIME CHECK COMPLETE"):burst!=null?line.equals("HEXQUAD CAPTURE OK"):hex?line.startsWith("HEXQUAD CHECK COMPLETE:"):line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
                 catch(IOException e){log.accept("READ: "+e);}
             },"vivo-neural-output");
             reader.setDaemon(true);reader.start();
             if(!process.waitFor(burst!=null?900:200,TimeUnit.SECONDS)){process.destroyForcibly();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
-                    "Нейроремозаик не завершён. Откройте Vivo Neural — проверка → "+
+                    (nice?"Проверка NICE не завершена. Скопируйте этот отчёт. ":"Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ")+
                     (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
             if(raw==null&&burst==null)return null;
             long expected=burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;

@@ -23,12 +23,12 @@ def uniforms(prog,values):
 
 def dispatch(prog):prog.run((w+7)//8,(h+7)//8);ctx.memory_barrier()
 def read(t):return np.frombuffer(t.read(),np.float16).astype(np.float32).reshape(h,w,4)
-def merge(ref,donors,scale=1.0,noise=(.0001,.00001),flow=(0,0)):
+def merge(ref,donors,scale=1.0,noise=(.0001,.00001),flow=(0,0),field_override=None):
  for t in owned:t.release()
  owned.clear()
  r=tex(ref);a=r;state=tex(np.zeros_like(ref));outmask=None
  raw=tex(np.repeat(np.repeat(ref/scale,2,0),2,1)[:,:,:1]*65535,'u2')
- field=np.zeros((5,5,4),np.float32);field[:,:,:2]=[flow[0]/w,flow[1]/h];f=tex(field)
+ field=np.zeros((5,5,4),np.float32);field[:,:,:2]=[flow[0]/w,flow[1]/h];f=tex(field if field_override is None else field_override)
  for index,(values,gain) in enumerate(donors):
   d=tex(values);aligned=tex(np.zeros_like(ref));confidence=tex(np.zeros_like(ref));clean=tex(np.zeros_like(ref))
   raw.use(0);f.use(1);d.use(2)
@@ -172,3 +172,20 @@ assert np.max(abs(seam[:w//2]-.25))<.001
 assert np.max(np.diff(seam))<.16
 assert abs(seam[-1]-.7)<.002
 print('Tile boundary regression PASS: rejected side unchanged, inward-only feather, bounded adjacent-pixel jump.')
+
+# Flat noisy shadows cannot resolve displacement. An alternating tile field
+# must not stamp a rectangular pattern of denoised/raw reference pixels.
+truth=np.full((h,w,4),.08,np.float32)
+nref=truth+rng.normal(0,.006,truth.shape).astype('float32')
+donors=[(truth+rng.normal(0,.006,truth.shape).astype('float32'),1) for _ in range(7)]
+field=np.zeros((5,5,4),np.float32);field[::2,:,0]=4/w
+result,state,conf=merge(nref,donors,noise=(0,.000036),field_override=field)
+core=(slice(6,-6),slice(6,-6),slice(None))
+ratio=np.mean((result[core]-truth[core])**2)/np.mean((nref[core]-truth[core])**2)
+print('Flat noisy tile field MSE ratio:',float(ratio),'effective samples:',float(state[core][:,:,2].mean()))
+assert ratio<.55, ('tile guard rejected flat static shadows',ratio)
+# The same unreliable field at a displaced, visible object must still reject it.
+d=truth.copy();d[6:22,8:29]+=.4
+result,_,_=merge(truth,[(d,1)],noise=(0,.000036),field_override=field)
+assert np.max(abs(result-truth))<.001
+print('Noisy tile regression PASS: flat shadows merge; visibly different object stays rejected.')

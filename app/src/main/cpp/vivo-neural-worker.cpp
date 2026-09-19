@@ -3,6 +3,9 @@
 #include "vivo-hexquad-check.h"
 #include "vivo-hexquad-capture.h"
 #include "vivo-hexquad-profile-check.h"
+#define NICE_HOST_TEST 1
+#include "vivo-nice-probe.cpp"
+#undef NICE_HOST_TEST
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -18,6 +21,12 @@ int main(int argc,char** argv) {
         vivo_nn::log("Vivo Neural native executable v17 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
+        }
+        if(argc==3 && std::string(argv[1])=="--nice-check") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(150);
+            vivo_nice::probe(argv[2],[](const std::string& line){vivo_nn::log(line);});
+            alarm(0);vivo_nn::log("NICE RUNTIME CHECK COMPLETE");return 0;
         }
         if(argc==5 && (std::string(argv[1])=="--hexquad-capture" || std::string(argv[1])=="--hexquad-capture-cached")) {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");

@@ -512,6 +512,26 @@ void main() {
             ? 1.0
             : 1.0 - smoothstep(1.0, TILING_TOLERANCE, alignSpread);
 
+#if VIVO_HDR
+    // In flat, noisy shadows there is no measurable geometric displacement.
+    // Let the per-donor radiometric motion test decide there; a hard tile veto
+    // otherwise stamps single-frame noise beside multi-frame denoising. Retain
+    // the geometric veto at visible structure and saturated reference pixels.
+    vec4 localMean=vec4(0), localSquare=vec4(0);
+    for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++) {
+        ivec2 p=clamp(xy+ivec2(x,y)*max(mosaicPeriod,1),ivec2(0),outSize-1);
+        vec4 v=imageLoad(baseTexture,p);
+        localMean+=v;localSquare+=v*v;
+    }
+    localMean/=25.0;
+    vec4 localVariance=max(localSquare/25.0-localMean*localMean,vec4(0));
+    vec4 expectedVariance=max(localMean*sabreNoiseRef.x+sabreNoiseRef.y,vec4(1e-10));
+    vec4 excess=max(localVariance/expectedVariance-vec4(1),vec4(0));
+    float structure=smoothstep(1.0,4.0,max(max(excess.r,excess.g),max(excess.b,excess.a)));
+    float clippedReference=step(0.90*packedScale,max(max(bayerBase.r,bayerBase.g),max(bayerBase.b,bayerBase.a)));
+    tilingTrust=mix(1.0,tilingTrust,max(structure,clippedReference));
+#endif
+
     for (int i = 0; i < 4; i++) {
         ivec2 xyT = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)),ivec2(0),alignmentSize-1);
         vec4 alignLoad = texelFetch(alignmentTexture, xyT + shift, 0);

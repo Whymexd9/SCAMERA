@@ -10,6 +10,7 @@
 #include <cassert>
 #include <filesystem>
 
+using namespace vivo_nice;
 namespace {
 Provider provider{};SystemProvider systemProvider{};
 uint32_t inputShape[]={1,544,544,22},outputShape[]={1,544,544,3};
