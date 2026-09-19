@@ -79,6 +79,7 @@ public class Parameters {
     public float aperture;
     public int cameraRotation;
     public NoiseModeler noiseModeler;
+    public double effectiveStackSamples=Double.NaN;
     public ColorCorrectionTransform CCT;
     public SizeF sensorSize;
     public double angleX;

@@ -515,12 +515,13 @@ public class PreferenceKeys {
     }
 
     public static boolean isRemosaicEnabled() {
-        return !isRawMfsrEnabled() && getBool(Key.KEY_REMOSAIC_ENABLED);
+        return isSabreEnabled() ? getMultiFrameBlock() > 1
+                : !isRawMfsrEnabled() && getBool(Key.KEY_REMOSAIC_ENABLED);
     }
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
     public static int getRemosaicBlockSize() {
-        return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
+        return isSabreEnabled() ? getMultiFrameBlock() : sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
     /** Interpolate green along edges instead of across them. */
@@ -549,6 +550,7 @@ public class PreferenceKeys {
     }
 
     public static String getRemosaicBackend() {
+        if(isSabreEnabled()) return "scamera";
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
     }
 
@@ -788,6 +790,20 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    public static boolean isGcamStageEnabled(String key) {
+        return preferenceKeys.settingsManager.getBoolean("default_scope",key,false);
+    }
+    public static float gcamValue(String key,float fallback,float min,float max) {
+        try {
+            float value=Float.parseFloat(preferenceKeys.settingsManager.getString("default_scope",key,String.valueOf(fallback)));
+            return Float.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
+        } catch(RuntimeException error) { return fallback; }
+    }
+
+    public static boolean isSabreEnabled() {
+        return isRawMfsrEnabled() && "sabre".equals(multiFrameText("pref_mfsr_engine_key", "native"));
+    }
+
     private static String multiFrameText(String key, String fallback) {
         return preferenceKeys.settingsManager.getString("default_scope", key, fallback);
     }
@@ -802,7 +818,7 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_fpn_key",true);
     }
     public static boolean isMultiFrameCalibration() {
-        return isRawMfsrEnabled() && preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_calibrate_key",false);
+        return isRawMfsrEnabled() && !isSabreEnabled() && preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_calibrate_key",false);
     }
     public static void finishMultiFrameCalibration() {
         preferenceKeys.settingsManager.set("default_scope","pref_mfsr_calibrate_key",false);

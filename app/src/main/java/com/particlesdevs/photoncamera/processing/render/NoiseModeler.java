@@ -160,17 +160,14 @@ public class NoiseModeler {
         computeStackingNoiseModel(FrameNumberSelector.frameCount);
     }
     public void computeStackingNoiseModel(int FrameCnt){
-        FrameCnt = Math.max(1, FrameCnt);
-        // User coefficient scales the final model, so it affects the denoise nodes and the
-        // alignment significance gate together instead of one of them in isolation.
-        double coefficient = com.particlesdevs.photoncamera.settings.PreferenceKeys
-                .getNoiseModelCoefficient();
-        double mpy = adaptiveMpy * coefficient;
-        computeModel[0] = new Pair<>(mpy * baseModel[0].first/ (FrameCnt*0.9),mpy * baseModel[0].second/ (FrameCnt*0.9));
-        computeModel[1] = new Pair<>(mpy * baseModel[1].first/ (FrameCnt*0.9),mpy * baseModel[1].second/ (FrameCnt*0.9));
-        computeModel[2] = new Pair<>(mpy * baseModel[2].first/ (FrameCnt*0.9),mpy * baseModel[2].second/ (FrameCnt*0.9));
-        Log.d(TAG, "Noise model multipliers: adaptive=" + adaptiveMpy
-                + " coefficient=" + coefficient + " frames=" + FrameCnt);
+        computeStackingNoiseModel((double)Math.max(1,FrameCnt),1);
+    }
+    public void computeStackingNoiseModel(double effectiveSamples,double spatialSamples) {
+        double coefficient=com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseModelCoefficient();
+        double scale=com.particlesdevs.photoncamera.processing.parameters.GcamFinishMath.varianceScale(
+                effectiveSamples,spatialSamples)*adaptiveMpy*coefficient;
+        for(int i=0;i<3;i++)computeModel[i]=new Pair<>(baseModel[i].first*scale,baseModel[i].second*scale);
+        Log.d(TAG,"Noise rescale: effective="+effectiveSamples+" spatial="+spatialSamples+" scale="+scale);
     }
     private double computeNoiseModelS(double Sensitivity,Pair<Double,Double> sGenerator) {
         double returning = sGenerator.first * Sensitivity + sGenerator.second;

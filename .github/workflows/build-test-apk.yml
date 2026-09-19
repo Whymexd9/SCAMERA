@@ -116,6 +116,30 @@ jobs:
           /tmp/multiframe-check/bin/pip install unicorn==2.1.4 pyelftools==0.32
           /tmp/multiframe-check/bin/python tools/multiframe/check_native.py
 
+      - name: Check ZSL gyro exposure windows
+        run: |
+          mkdir -p /tmp/gyro-check
+          javac -d /tmp/gyro-check app/src/main/java/com/particlesdevs/photoncamera/control/GyroBurst.java app/src/main/java/com/particlesdevs/photoncamera/control/GyroExposureWindow.java tools/java/GyroExposureWindowCheck.java
+          java -cp /tmp/gyro-check GyroExposureWindowCheck
+
+      - name: Check burst reference, focus and gyro blur
+        run: |
+          mkdir -p /tmp/burst-check
+          javac -d /tmp/burst-check app/src/main/java/com/particlesdevs/photoncamera/capture/BurstFrameSelector.java app/src/main/java/com/particlesdevs/photoncamera/control/GyroBurst.java app/src/main/java/com/particlesdevs/photoncamera/control/GyroBlurEstimate.java tools/java/BurstFrameSelectorCheck.java
+          java -cp /tmp/burst-check BurstFrameSelectorCheck
+
+      - name: Check finish gain, noise and histogram AE
+        run: |
+          mkdir -p /tmp/finish-check
+          javac -d /tmp/finish-check app/src/main/java/com/particlesdevs/photoncamera/processing/parameters/GcamFinishMath.java app/src/main/java/com/particlesdevs/photoncamera/capture/SceneDistributionMeter.java tools/java/GcamFinishCheck.java
+          java -cp /tmp/finish-check GcamFinishCheck
+
+      - name: Check exposure factorization against GCam native results
+        run: |
+          mkdir -p /tmp/tet-check
+          javac -d /tmp/tet-check app/src/main/java/com/particlesdevs/photoncamera/processing/parameters/TetModel.java tools/java/TetModelCheck.java
+          java -cp /tmp/tet-check com.particlesdevs.photoncamera.processing.parameters.TetModelCheck tools/fixtures/gcam-tet.csv
+
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py
 
@@ -145,6 +169,8 @@ jobs:
           /tmp/tetra-gpu-check/bin/pip install ai-edge-litert==2.2.0
           /tmp/tetra-gpu-check/bin/python tools/check_saliency_model.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_arkcam_color.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_sabre_gpu.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_gcam_finish_gpu.py
           mkdir -p /tmp/zsl-quality-check
           javac -d /tmp/zsl-quality-check app/src/main/java/com/particlesdevs/photoncamera/capture/RawFrameQuality.java app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java tools/java/RawFrameQualityCheck.java tools/java/HexQuadZslSelectorCheck.java
           java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck

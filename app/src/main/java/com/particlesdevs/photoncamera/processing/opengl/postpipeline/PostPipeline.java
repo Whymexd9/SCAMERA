@@ -559,6 +559,7 @@ public class PostPipeline extends GLBasePipeline {
         add(new Bayer2Float());
         add(new BinnedDemosaic());
         add(new ABLC());
+        add(new GcamFinish());
         add(new LinearExposure());
         add(new AutoExposureCurve());
         add(new Initial());
@@ -635,6 +636,7 @@ public class PostPipeline extends GLBasePipeline {
             }
         }
         add(new ABLC());
+        add(new GcamFinish());
         if ((!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
                 && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {
             add(new RawTherapeeDenoise());

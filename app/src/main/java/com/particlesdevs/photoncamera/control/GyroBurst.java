@@ -1,9 +1,5 @@
 package com.particlesdevs.photoncamera.control;
 
-import androidx.annotation.NonNull;
-
-import java.util.ArrayList;
-
 public class GyroBurst {
     public float shakiness;
     public int samples;
@@ -19,11 +15,21 @@ public class GyroBurst {
         samples = 0;
     }
 
-    @NonNull
+    /** Squared angular path, consistent across ZSL and post-shutter captures. */
+    public void recalculateShakiness() {
+        double motion = 0;
+        for (int i=0;i<samples;i++) for (int axis=0;axis<3;axis++) {
+            float v = movementss[axis][i];
+            if (!Float.isFinite(v)) { samples=0; shakiness=0; return; }
+            motion += Math.abs(v);
+        }
+        shakiness = (float)Math.min(motion*motion, Float.MAX_VALUE);
+    }
+
     @Override
     public GyroBurst clone() {
         GyroBurst out = new GyroBurst(maxSamples);
-        out.movementss = movementss.clone();
+        for (int axis = 0; axis < 3; axis++) out.movementss[axis] = movementss[axis].clone();
         out.timestampss = timestampss.clone();
         out.integrated = integrated.clone();
         out.shakiness = shakiness;

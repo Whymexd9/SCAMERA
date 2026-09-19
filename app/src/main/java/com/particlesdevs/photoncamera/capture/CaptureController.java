@@ -347,6 +347,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     public ImageSaver mImageSaver;
     public HashMap<Long, Double> mExposures = new HashMap<>();
+    private final java.util.concurrent.ConcurrentSkipListMap<Long,CaptureResult> rawMetadata =
+            new java.util.concurrent.ConcurrentSkipListMap<>();
+    private void rememberRawMetadata(CaptureResult result) {
+        Long timestamp=result.get(CaptureResult.SENSOR_TIMESTAMP);
+        if(timestamp==null || timestamp<=0) return;
+        rawMetadata.put(timestamp,result);
+        while(rawMetadata.size()>128) rawMetadata.pollFirstEntry();
+    }
+    public CaptureResult takeRawMetadata(long timestamp) { return rawMetadata.remove(timestamp); }
+
 
     private final ArrayDeque<Image> mZslRingBuffer = new ArrayDeque<>();
     private final Object mZslBufferLock = new Object();
@@ -437,6 +447,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
+                    updateDistributionAe(img,mHexZslResults.get(img.getTimestamp()));
                     mZslRingBuffer.addLast(img);
                     int maxFrames = zslRingCapacity();
                     while (mZslRingBuffer.size() > maxFrames) {
@@ -646,8 +657,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
                 Integer state = result.get(CaptureResult.FLASH_STATE);
                 mFlashed = state != null && (state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED);
-                if (isZslMode() && (PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
-                        || PreferenceKeys.isZslQualitySelectionEnabled())) {
+                if (isZslMode()) {
                     Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     if (timestamp != null) synchronized (mZslBufferLock) {
                         mHexZslResults.put(timestamp, result);
@@ -2182,10 +2192,58 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * copy inside LiveRawFrame is what the viewfinder develops; the Image goes
      * on to the ring untouched.
      */
+    private long distributionAeTime;
+    private boolean distributionAeOwned;
+    private CaptureRequest.Builder distributionAeBuilder;
+    private int distributionAeLast;
+    private void updateDistributionAe(Image image,CaptureResult result) {
+        if(mPreviewRequestBuilder==null || mCameraCharacteristics==null || burst || mZslCapturing || mHybridZslCapture)return;
+        int baseline=paramController==null?0:paramController.EV;
+        boolean enabled=PreferenceKeys.isGcamStageEnabled("pref_gcam_scene_ae");
+        if(distributionAeBuilder!=mPreviewRequestBuilder){distributionAeOwned=false;distributionAeBuilder=mPreviewRequestBuilder;}
+        if(!enabled){
+            Integer current=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+            if(distributionAeOwned && current!=null && current==distributionAeLast){
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,baseline);rebuildPreviewBuilder();
+            }
+            distributionAeOwned=false;return;
+        }
+        if(result==null || image.getFormat()!=ImageFormat.RAW_SENSOR || image.getPlanes()[0].getPixelStride()!=2)return;
+        if(paramController!=null && (paramController.ISO!=-1 || paramController.SHUTTER!=-1))return;
+        Integer mode=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_MODE);
+        Boolean locked=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_LOCK);
+        Integer state=result.get(CaptureResult.CONTROL_AE_STATE);
+        if(mode==null || mode!=CaptureRequest.CONTROL_AE_MODE_ON || Boolean.TRUE.equals(locked)
+                || state==null || state!=CaptureResult.CONTROL_AE_STATE_CONVERGED)return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(now-distributionAeTime<1000)return;
+        distributionAeTime=now;
+        Integer white=mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+        android.hardware.camera2.params.BlackLevelPattern black=mCameraCharacteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        if(white==null || black==null)return;
+        double level=0;for(int y=0;y<2;y++)for(int x=0;x<2;x++)level+=black.getOffsetForIndex(x,y)*.25;
+        int block=PreferenceKeys.isRawMfsrEnabled()?PreferenceKeys.getMultiFrameBlock()
+                :PreferenceKeys.isRemosaicEnabled()?PreferenceKeys.getRemosaicBlockSize():1;
+        double[] stats=SceneDistributionMeter.measure(image.getPlanes()[0].getBuffer(),image.getWidth(),image.getHeight(),
+                image.getPlanes()[0].getRowStride(),block,level,white);
+        Range<Integer> range=mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+        Rational step=mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+        if(stats==null || range==null || step==null)return;
+        Integer value=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+        int current=value==null?baseline:value;
+        int next=SceneDistributionMeter.nextSteps(stats[0],stats[1],current,baseline,step.doubleValue(),range.getLower(),range.getUpper());
+        if(next!=current){
+            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,next);
+            distributionAeOwned=true;distributionAeLast=next;rebuildPreviewBuilder();
+            Log.i("SCENE_AE","p50="+stats[0]+" p99="+stats[1]+" compensation="+next);
+        }
+    }
+
     private void onMatchedLiveRaw(Image img, TotalCaptureResult result) {
         boolean retained = false;
         try {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture) return;
+            updateDistributionAe(img,result);
             publishLiveRawFrame(img, result);
             if (isZslMode()) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
@@ -2311,10 +2369,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mZslRingBuffer.clear();
         }
         mNativeZslBase=null;
+        java.util.Map<Long,TotalCaptureResult> selectedMetadata;
+        synchronized(mZslBufferLock) {selectedMetadata=new HashMap<>(mHexZslResults);mHexZslResults.clear();}
         if(PreferenceKeys.isRawMfsrEnabled()) {
             rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
-            java.util.Map<Long,TotalCaptureResult> results;
-            synchronized(mZslBufferLock) {results=new HashMap<>(mHexZslResults);mHexZslResults.clear();}
+            java.util.Map<Long,TotalCaptureResult> results=selectedMetadata;
             List<HexQuadZslSelector.Sample> samples=new ArrayList<>();
             for(Image image:rawImages) {
                 TotalCaptureResult result=results.get(image.getTimestamp());
@@ -2368,13 +2427,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             ImageFrame frame = new ImageFrame(img.getPlanes()[0].getBuffer(), img.getFormat(),
                     width, rowStride, offset, capacity);
             frame.timestamp = img.getTimestamp();frame.fromZsl=true;
+            frame.setCaptureMetadata(selectedMetadata.get(frame.timestamp));
             frame.width = PhotonCamera.getSettings().binning ? width / 2 : width;
             frame.height = PhotonCamera.getSettings().binning ? height / 2 : height;
             img.close();
-            mExposures.put(frame.timestamp, exposureProduct);
+            mExposures.put(frame.timestamp, frame.measuredExposure > 0 && frame.measuredIso > 0
+                    ? frame.measuredExposure / 1e9 * frame.measuredIso : exposureProduct);
             selected.add(frame);
         }
         return selected;
+    }
+
+    private boolean isGyroClockComparable() {
+        Integer source = mCameraCharacteristics == null ? null
+                : mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE);
+        return source != null && source == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME;
     }
 
     private double zslFrameQuality(Image image) {
@@ -2498,6 +2565,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     width, rowStride, offset, bufCapacity);
             frame.timestamp = img.getTimestamp();
             frame.fromZsl = true;
+            frame.setCaptureMetadata(results.get(frame.timestamp));
 
             frame.width = width;
             frame.height = height;
@@ -2506,7 +2574,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 frame.height/= 2;
             }
             img.close();
-            mExposures.put(frame.timestamp, exposureVal);
+            mExposures.put(frame.timestamp, frame.measuredExposure > 0 && frame.measuredIso > 0
+                    ? frame.measuredExposure / 1e9 * frame.measuredIso : exposureVal);
             selected.add(frame);
         }
         int actualCount = selected.size();
@@ -2539,7 +2608,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         for (int i = 0; i < actualCount; i++) {
             frameTimestamps[i] = selected.get(i).timestamp;
         }
-        PhotonCamera.getGyro().buildZslBurstShakiness(frameTimestamps, exposureTimeNs, BurstShakiness);
+        PhotonCamera.getGyro().buildZslBurstShakiness(frameTimestamps, exposureTimeNs, BurstShakiness, isGyroClockComparable());
 
         // Populate fullpairs the same way setExpo() does for a normal burst
         IsoExpoSelector.fullpairs.clear();
@@ -2710,7 +2779,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     CaptureResult gyroBase=mNativeZslBase!=null?mNativeZslBase:mPreviewCaptureResult;
                     Long previewExposure = gyroBase != null ? gyroBase.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
                     PhotonCamera.getGyro().buildZslBurstShakiness(zslTimestamps,
-                            previewExposure != null ? previewExposure : 1L, BurstShakiness);
+                            previewExposure != null ? previewExposure : 0L, BurstShakiness, isGyroClockComparable());
                 } else {
                     // Camera was just opened and the ring has not filled yet:
                     // safely fall back to the complete manual burst this once.
@@ -2932,6 +3001,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
                             session.getDevice().getId() + "/" + physicalID,
                             mCameraCharacteristics, result);
+                    rememberRawMetadata(result);
                     Object time = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     Log.d(TAG, "Timestamp:" + time);
                     if (time != null) {
