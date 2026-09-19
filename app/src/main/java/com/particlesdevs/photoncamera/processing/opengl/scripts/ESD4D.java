@@ -1259,6 +1259,11 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("chromaGainSlope", PreferenceKeys.getHdrPlusChromaGainSlope());
             glProg.setVar("flowNoiseS", rawNoiseS);
             glProg.setVar("flowNoiseO", rawNoiseO);
+            // GCam/Sabre uses an exponential rejection boost. Keep the existing
+            // merge robustness preference as the single user control; 8.0 (the
+            // HDR+ reference value used elsewhere in this pipeline) maps to a
+            // Sabre boost of 1.0.
+            glProg.setVar("sabreRobustness", Math.max(robustness / 8.0f, 0.0f));
             glProg.setTextureCompute("inTexture", base, false);
             glProg.setTextureCompute("diffTexture", baseDiff, false);
             base = getBase();
