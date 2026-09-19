@@ -2,9 +2,6 @@
 #include "vivo-raisr-controls.h"
 #include <cctype>
 #include <functional>
-#include <iomanip>
-#include <locale>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -29,53 +26,75 @@ inline unsigned editElement(std::string& xml,const std::string& tag,
     }
     return count;
 }
-inline std::string scaleNumbers(const std::string& text,unsigned percent,bool positive=false) {
-    std::string values=text;std::replace(values.begin(),values.end(),',',' ');
-    std::istringstream in(values);in.imbue(std::locale::classic());
-    std::ostringstream out;out.imbue(std::locale::classic());out<<std::setprecision(9);
-    double v;unsigned count=0;
-    while(in>>v) {
-        if(!std::isfinite(v) || v<0 || v>10)throw std::runtime_error("Invalid SoftPQE coefficient");
-        v*=percent*.01;if(positive)v=std::max(v,1.e-6);
-        if(count++)out<<',';
-        out<<v;
-    }
-    if(!in.eof() || !count)throw std::runtime_error("Invalid SoftPQE numeric table");
-    return out.str();
-}
-inline void scaleTag(std::string& xml,const std::string& tag,unsigned amount,bool positive=false) {
-    if(!editElement(xml,tag,[&](const std::string& value){return scaleNumbers(value,amount,positive);}))
-        throw std::runtime_error("Missing SoftPQE coefficient: "+tag);
-}
-inline std::string tuneProfile(std::string xml,Controls c) {
-    if(c.luma>100 || c.chroma>100 || c.sharpen>100 || c.strength>100)
-        throw std::runtime_error("SoftPQE controls must be 0..100");
-    if(c.luma!=100)for(const char* section:{"yModelParameters","auxYModelParameters"}) {
-        unsigned n=editElement(xml,section,[&](std::string block){
-            scaleTag(block,"noise1Level",c.luma);scaleTag(block,"noise2Level",c.luma);
-            // The native config requires maxNoise1Level > noise1Level, even at zero.
-            scaleTag(block,"maxNoise1Level",c.luma,true);return block;
-        });
-        // Portrait/skin overrides do not contain an auxiliary-model section.
-        if(!n && std::string(section)=="yModelParameters")throw std::runtime_error("Missing SoftPQE Y settings");
-    }
-    if(c.chroma!=100 && !editElement(xml,"uvModelParameters",[&](std::string block){
-        scaleTag(block,"minLevel",c.chroma);scaleTag(block,"anchorLevel",c.chroma);
-        scaleTag(block,"maxLevel",c.chroma);scaleTag(block,"noise2Level",c.chroma);return block;
-    }))throw std::runtime_error("Missing SoftPQE UV settings");
-    if(c.sharpen!=100)editElement(xml,"postSharpeningParameters",[&](std::string block){
-        // Scale USM and conventional sharpening once each. BlurScale must stay
-        // fixed at 1 for these SR models, as required by the original config.
-        for(const char* tag:{"weight1O","weight1U","weight2O","weight2U","usmStrength"})
-            scaleTag(block,tag,c.sharpen);
-        return block;
-    });
+// SR models keep their pinned noise/blur conditioning. These values cannot
+// undo learned smoothing (and low-ISO UV coefficients are already zero).
+inline std::string tuneMain(std::string xml,Controls) {
+    for(const char* tag:{"enableUsm","enableSharpen","enablePartialSharpen"})
+        if(!editElement(xml,tag,[](const std::string&){return "0";}))
+            throw std::runtime_error("Missing SoftPQE sharpening switch");
     return xml;
 }
-inline std::string tuneMain(std::string xml,Controls c) {
-    if(c.sharpen==0 && !editElement(xml,"enableUsm",[](const std::string&){return "0";}))
-        throw std::runtime_error("Missing SoftPQE USM switch");
-    return xml;
+struct Changes { double luma=0, chroma=0, sharpen=0; };
+// Restore the input-minus-reduced-output residual separately in Y and V/U.
+// Retains the network's new subpixel detail instead of mixing the whole image
+// back to interpolation. At zero NR this also restores source noise. This is
+// output compensation, not a claim to disable denoising inside the neural net.
+// Two cached input-resolution rows make in-place processing O(width) memory.
+inline double restorePlane(const uint8_t* input,uint8_t* output,int w,int h,
+                           int channels,unsigned denoise) {
+    if(denoise==100)return 0;
+    const int ow=w*2, oh=h*2, stride=ow*channels;
+    std::vector<float> residual[2];int cached[2]={-1,-1};
+    for(auto& row:residual)row.resize(size_t(w)*channels);
+    auto cache=[&](int y) {
+        const int slot=y%2;if(cached[slot]==y)return;
+        for(int x=0;x<w;++x)for(int c=0;c<channels;++c) {
+            size_t o=size_t(y*2)*stride+x*2*channels+c;
+            float reduced=(output[o]+output[o+channels]+output[o+stride]+output[o+stride+channels])*.25f;
+            residual[slot][x*channels+c]=input[(size_t(y)*w+x)*channels+c]-reduced;
+        }
+        cached[slot]=y;
+    };
+    double change=0;const float amount=(100-denoise)*.01f;
+    for(int y=0;y<oh;++y) {
+        float sy=std::clamp((y+.5f)*.5f-.5f,0.f,float(h-1));
+        int y0=int(sy),y1=std::min(y0+1,h-1);float fy=sy-y0;
+        cache(y0);cache(y1); // Read future native rows before overwriting output.
+        for(int x=0;x<ow;++x) {
+            float sx=std::clamp((x+.5f)*.5f-.5f,0.f,float(w-1));
+            int x0=int(sx),x1=std::min(x0+1,w-1);float fx=sx-x0;
+            for(int c=0;c<channels;++c) {
+                float a=residual[y0%2][x0*channels+c]*(1-fx)+residual[y0%2][x1*channels+c]*fx;
+                float b=residual[y1%2][x0*channels+c]*(1-fx)+residual[y1%2][x1*channels+c]*fx;
+                size_t i=size_t(y)*stride+x*channels+c;
+                uint8_t v=uint8_t(std::clamp(std::lround(output[i]+amount*(a*(1-fy)+b*fy)),0l,255l));
+                change+=std::abs(int(v)-output[i]);output[i]=v;
+            }
+        }
+    }
+    return change/(size_t(ow)*oh*channels);
+}
+// Explicit luminance-only USM, not an undocumented model parameter. Threshold
+// suppresses tiny quantization/noise residuals; cap prevents large edge halos.
+inline double sharpenPlane(uint8_t* output,int w,int h,unsigned percent) {
+    if(!percent)return 0;
+    std::vector<uint8_t> rows[3];for(auto& row:rows)row.resize(w);
+    auto cache=[&](int y){std::copy_n(output+size_t(y)*w,w,rows[y%3].begin());};
+    cache(0);if(h>1)cache(1);
+    double change=0;const float amount=percent*.01f;
+    for(int y=0;y<h;++y) {
+        if(y>0 && y+1<h)cache(y+1);
+        auto& prev=rows[std::max(0,y-1)%3];auto& row=rows[y%3];auto& next=rows[std::min(h-1,y+1)%3];
+        for(int x=0;x<w;++x) {
+            int l=std::max(0,x-1),r=std::min(w-1,x+1);
+            float blur=(prev[l]+2*prev[x]+prev[r]+2*row[l]+4*row[x]+2*row[r]+next[l]+2*next[x]+next[r])/16.f;
+            float detail=row[x]-blur;
+            detail=std::copysign(std::max(0.f,std::abs(detail)-1.f),detail);
+            uint8_t v=uint8_t(std::clamp(std::lround(row[x]+amount*std::clamp(detail,-12.f,12.f)),0l,255l));
+            change+=std::abs(int(v)-row[x]);output[size_t(y)*w+x]=v;
+        }
+    }
+    return change/(size_t(w)*h);
 }
 // Output mix is separate from the native noise-conditioning controls. 100 is
 // bit-exact Vivo output; 0 is ordinary interpolation, with unchanged dimensions.
@@ -96,4 +115,19 @@ inline void mix(const uint8_t* input,uint8_t* output,int w,int h,int ow,int oh,u
         }
     }
 }
+inline Changes finish(const uint8_t* input,uint8_t* output,int w,int h,int ow,int oh,Controls c) {
+    if(c.luma>100 || c.chroma>100 || c.sharpen>100 || c.strength>100 ||
+       w<2 || h<2 || w%2 || h%2 || ow!=w*2 || oh!=h*2)
+        throw std::runtime_error("Invalid SoftPQE output controls or geometry");
+    Changes changes;
+    // Zero overall strength has an exact, independent interpolation endpoint.
+    if(c.strength) {
+        changes.luma=restorePlane(input,output,w,h,1,c.luma);
+        changes.chroma=restorePlane(input+size_t(w)*h,output+size_t(ow)*oh,w/2,h/2,2,c.chroma);
+        changes.sharpen=sharpenPlane(output,ow,oh,c.sharpen);
+    }
+    mix(input,output,w,h,ow,oh,c.strength);
+    return changes;
+}
+
 }

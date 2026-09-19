@@ -145,6 +145,22 @@ public class SettingsMenuTest {
             values.put("pref_vivo_upscale_backend_key","softpqe");
             assertNull(new SettingsAvailability(values).reason(key));values.clear();
         }
+        // Exercise the actual slider persistence (String), not an artificial
+        // direct integer write. Rebinding must not restore the default.
+        for(String name:Arrays.asList("luma","chroma","sharpen","strength")){
+            String key="pref_softpqe_"+name+"_key";
+            var slider=(com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)screen.findPreference(key);
+            var row=LayoutInflater.from(context).inflate(slider.getLayoutResource(),null,false);
+            slider.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+            for(int value:new int[]{0,100}){
+                slider.onProgressChanged(slider.getSeekBar(),value,true);
+                slider.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+                assertEquals(Integer.toString(value),prefs.getString(key,"missing"));
+                assertEquals(value,slider.getSeekBarProgress());
+                int actual=name.equals("luma")?PreferenceKeys.getSoftPqeLuma():name.equals("chroma")?PreferenceKeys.getSoftPqeChroma():name.equals("sharpen")?PreferenceKeys.getSoftPqeSharpen():PreferenceKeys.getSoftPqeStrength();
+                assertEquals(value,actual);
+            }
+        }
         assertEquals(100,PreferenceKeys.getSoftPqeLuma());
         prefs.edit().putInt("pref_softpqe_luma_key",25).commit();
         assertEquals(25,PreferenceKeys.getSoftPqeLuma());

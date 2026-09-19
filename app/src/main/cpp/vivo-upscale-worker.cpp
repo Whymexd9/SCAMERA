@@ -117,7 +117,6 @@ void softRuntime() {
 #endif
 }
 std::string softConfig(const std::string& source,const std::string& output,vivo_softpqe::Controls c) {
-    if(c.luma==100 && c.chroma==100 && c.sharpen==100)return source;
     const auto slash=output.rfind('/');
     if(slash==std::string::npos)throw std::runtime_error("SoftPQE requires an absolute job path");
     const std::string target=output.substr(0,slash);
@@ -128,7 +127,7 @@ std::string softConfig(const std::string& source,const std::string& output,vivo_
         if(!in || in.tellg()<0 || in.tellg()>1024*1024)throw std::runtime_error("Cannot read SoftPQE config");
         std::string xml(static_cast<size_t>(in.tellg()),'\0');in.seekg(0);
         if(!in.read(xml.data(),xml.size()))throw std::runtime_error("SoftPQE config read failed");
-        xml=std::string(name)=="softpqe_configs.xml"?vivo_softpqe::tuneMain(xml,c):vivo_softpqe::tuneProfile(xml,c);
+        xml=std::string(name)=="softpqe_configs.xml"?vivo_softpqe::tuneMain(xml,c):xml;
         // The app owns the parent job directory and unlinks these temporary files.
         int fd=open((target+"/"+name).c_str(),O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
         if(fd<0)throw std::runtime_error("Cannot create private SoftPQE config");
@@ -235,7 +234,7 @@ int run(int argc,char** argv) {
             auto mode=library.symbol<int(*)(void*)>("vivoSoftPQEGetMode");
             // Core 0x90e84/0x90e94 multiplies gain by 50, not 100.
             const std::string configPath=softConfig(argv[3],argv[5],softControls);
-            std::cout<<"SOFTPQE controls luma="<<softControls.luma<<" chroma="<<softControls.chroma
+            std::cout<<"SOFTPQE controls v2 luma="<<softControls.luma<<" chroma="<<softControls.chroma
                      <<" sharpen="<<softControls.sharpen<<" strength="<<softControls.strength
                      <<" config="<<configPath<<std::endl;
             auto params=vivo_softpqe::makeInit(w,h,float(iso)/50.f,configPath.c_str(),
@@ -245,6 +244,13 @@ int run(int argc,char** argv) {
             if(rc || !handle) {
                 if(handle)destroy(handle);
                 throw std::runtime_error("SoftPQE Init failed: "+std::to_string(rc));
+            }
+            // Pinned parser writes these main-config flags at 0x270 + 0x48.
+            // Read back to catch a wrong config path or unexpected vendor reset.
+            uint32_t nativeSharp[3];std::memcpy(nativeSharp,static_cast<const uint8_t*>(handle)+0x2b8,sizeof(nativeSharp));
+            std::cout<<"SOFTPQE native sharpening="<<nativeSharp[0]<<","<<nativeSharp[1]<<","<<nativeSharp[2]<<std::endl;
+            if(nativeSharp[0] || nativeSharp[1] || nativeSharp[2]) {
+                destroy(handle);throw std::runtime_error("SoftPQE did not load private sharpening config");
             }
             // Core sometimes returns success while deliberately bypassing inference.
             const int before=mode(handle);
@@ -284,7 +290,10 @@ int run(int argc,char** argv) {
                      <<" halo="<<controls.halo<<" ISO="<<iso<<" role="<<role<<" scale="<<init.zoom<<"\n";
             vivo_raisr::finish(input.data(),output.data(),w,h,ow,oh,controls);
         } else {
-            vivo_softpqe::mix(input.data(),output.data(),w,h,ow,oh,softControls.strength);
+            const auto changed=vivo_softpqe::finish(input.data(),output.data(),w,h,ow,oh,softControls);
+            std::cout<<"SOFTPQE output controls v2 mean_abs_delta Y="<<changed.luma
+                     <<" UV="<<changed.chroma<<" sharpen="<<changed.sharpen
+                     <<" mix="<<softControls.strength<<std::endl;
         }
         int fd=open(argv[5],O_WRONLY|O_NOFOLLOW|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open output");

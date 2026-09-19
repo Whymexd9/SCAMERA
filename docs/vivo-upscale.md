@@ -248,3 +248,59 @@ disabled and 1x Y models, so substituting those would not provide the requested
 2x upscaling. Models/runtime, dimensions/memory limits and fallback stay intact.
 Visual results on non-main modules require a phone test. Per-module preference
 storage and selective copying apply to the four new controls as usual.
+
+
+## SoftPQE output controls v2 (30209)
+
+The user reports no visible effect at 0/100 NR/sharpen in 30208. No 30208
+worker log accompanied the comparison, so the specific device run cannot be
+reconstructed. Rechecking the pinned XML and original ARM64 code establishes:
+
+- At ISO 73, the master-2x UV shot/read noise tables are already zero. Multiplying
+  those entries cannot change conditioning. The successful 30206 log confirms
+  these zero values; it is not a log of the newly reported 30208 failure.
+- Original Init at 0x75b80/0x75c18 forwards the requested config path to both
+  parsers. The ordinary Y post-sharpen branch at 0xe42f8..0xe4338 skips when
+  handle+0x2d8 (SR mode) is 2. Other SR paths have their own sharpening calls;
+  an XML coefficient change alone does not prove the final pixels changed.
+- The actual Android sliders persist Strings, and an added interaction test
+  exercises both 0 and 100 through onProgressChanged, rebind and all four getters.
+
+Replace XML noise coefficient scaling with explicit post-inference controls.
+Keep the pinned Y/aux-Y/UV model conditioning, geometry and model weights intact.
+The worker always copies the four configuration files into the per-shot private
+folder, disables all three native post-sharpen switches, and verifies those
+switches from the pinned handle after Init (0x2b8/0x2bc/0x2c0). Firmware files
+remain unchanged. A mismatch fails clearly rather than silently double-sharpening.
+
+For each plane independently, reduce the native 2x result by a 2x2 area average,
+subtract it from the original input, and add a bilinearly enlarged fraction of
+that residual back to the native result. NR=100 adds nothing; NR=0 restores the
+full source-resolution residual, including original noise. This is compensation
+for removed texture/noise, **not** direct control over learned network denoising
+and not a guarantee of a noise-free image. Unlike mixing the whole output with
+interpolation, the network's within-block fine detail is retained before clipping.
+The two-row streaming cache is O(width) extra memory. UV restoration never edits
+Y, and Y restoration never edits UV.
+
+Additional sharpening is now explicit SCAMERA luminance-only 3x3 Gaussian USM,
+with a 1-code-value threshold and a 12-code-value maximum correction at 100%.
+Zero disables it. It is not described as native Vivo sharpening. This changes
+the old all-100 look: it now includes this controlled sharpening stage. Overall
+strength applies last; at zero it bypasses these controls and returns exact
+bilinear interpolation at the same 2x dimensions.
+
+Both launcher and worker log control version v2 and requested values. The worker
+also logs read-back native sharpening flags and mean absolute pixel changes for
+Y restoration, UV restoration and sharpening, before the final overall mix.
+Zero changes can be valid on a constant image and must not be treated as failure.
+
+Validation: ASan/UBSan pixel tests compare the streaming compensation against a
+separate full-image reference on rectangular/random images and minimum geometry;
+exercise low-ISO-equivalent zero-conditioning cases, 0/50/100 effects, Y/UV
+isolation, sharpen-off/flat-field/edge behavior, mix-zero, clipping and guards.
+Worker tests cover wrong native config read-back, errors/bypass/descriptor guards,
+private config selection, untouched firmware and final saved pixel values.
+These host tests do not execute QNN or establish phone image quality. Device
+comparison is still required on each module; shared master-2x availability is
+unchanged.

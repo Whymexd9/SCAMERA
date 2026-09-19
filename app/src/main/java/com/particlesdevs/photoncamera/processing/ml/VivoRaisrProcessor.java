@@ -77,7 +77,7 @@ public final class VivoRaisrProcessor {
                     " 17 "+Math.max(1,Math.min(1000000,iso))+" "+(soft?2:("5".equals(cameraId)?8:2))+
                     (soft?" "+softLuma+" "+softChroma+" "+softSharpen+" "+softStrength:" "+strength+" "+texture+" "+halo);
             String launch="START "+name+" camera="+cameraId+" "+w+"x"+h+" -> "+ow+"x"+oh+
-                    " ISO="+iso+(soft?" profile=shared_master_2x":"")+" LD_LIBRARY_PATH="+libraryPath;
+                    " ISO="+iso+(soft?" profile=shared_master_2x controls=v2 luma="+softLuma+" chroma="+softChroma+" sharpen="+softSharpen+" strength="+softStrength:"")+" LD_LIBRARY_PATH="+libraryPath;
             report.append(launch).append('\n');Log.d("VivoUpscale",launch);
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();final Process child=process;

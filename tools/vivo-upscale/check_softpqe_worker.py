@@ -26,7 +26,9 @@ int vivoSoftPQEInit(void** out,const void* init){
  if(!ready || gain!=2.f || width!=32 || height!=32)return 5;
  const char* path;memcpy(&path,p+0x100,sizeof(path));
  if(getenv("TEST_PROFILE") && strcmp(path,getenv("TEST_PROFILE")))return 11;
- *out=calloc(1,0x5dd0);return *out?0:6;
+ *out=calloc(1,0x5dd0);
+ if(*out && strcmp(getenv("TEST_FAULT"),"config")==0)static_cast<unsigned char*>(*out)[0x2b8]=1;
+ return *out?0:6;
 }
 int vivoSoftPQEGetMode(void*){return strcmp(getenv("TEST_FAULT"),"bypass")==0?1:0;}
 int vivoSoftPQEProcess(void*,const void* input,void* output){
@@ -47,9 +49,16 @@ int vivoSoftPQEUninit(void* p){free(p);return 0;}
     subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-DVIVO_VDNN_LIBRARY="'+str(lib)+'"',str(root/'app/src/main/cpp/vivo-upscale-worker.cpp'),'-ldl','-o',str(worker)],check=True)
     subprocess.run(['c++','-shared','-fPIC',str(cpp),'-o',str(lib)],check=True)
     inp=d/'input';out=d/'output';inp.write_bytes(bytes([128])*(32*32*3//2))
-    for fault in ['none','platform','bypass','error','overrun','descriptor','stride']:
-        out.write_bytes(b'')
-        p=subprocess.run([str(worker),'--softpqe',str(lib),'/unused',str(inp),str(out),'32','32','64','64','17','100','2'],env={**os.environ,'TEST_FAULT':fault},capture_output=True,text=True,timeout=10)
+    config=d/'stock';config.mkdir();job=d/'job';job.mkdir()
+    y='<noise1Level>0.4</noise1Level><maxNoise1Level>0.8</maxNoise1Level><noise2Level>0.2</noise2Level>'
+    uv='<minLevel>0.1</minLevel><anchorLevel>0.2</anchorLevel><maxLevel>0.8</maxLevel><noise2Level>0.2</noise2Level>'
+    sharp=''.join(f'<{t}>0.5</{t}>' for t in ['weight1O','weight1U','weight2O','weight2U','usmStrength'])
+    profile=f'<swispConfig><yModelParameters>{y}</yModelParameters><uvModelParameters>{uv}</uvModelParameters><postSharpeningParameters>{sharp}</postSharpeningParameters></swispConfig>'
+    (config/'softpqe_configs.xml').write_text('<softpqeConfig><enableUsm>1</enableUsm><enableSharpen>0</enableSharpen><enablePartialSharpen>0</enablePartialSharpen></softpqeConfig>')
+    for suffix in ['', '_portrait', '_skin']:(config/f'softpqe_configs_master_2x{suffix}.xml').write_text(profile)
+    for fault in ['none','platform','bypass','error','overrun','descriptor','stride','config']:
+        case=d/fault;case.mkdir();out=case/'output';out.write_bytes(b'')
+        p=subprocess.run([str(worker),'--softpqe',str(lib),str(config),str(inp),str(out),'32','32','64','64','17','100','2'],env={**os.environ,'TEST_FAULT':fault},capture_output=True,text=True,timeout=10)
         if fault=='none':
             assert p.returncode==0 and 'SOFTPQE EXPERIMENT COMPLETE' in p.stdout,(p.stdout,p.stderr)
             assert out.stat().st_size==64*64*3//2
@@ -58,21 +67,15 @@ int vivoSoftPQEUninit(void* p){free(p);return 0;}
         print('PASS worker boundary:',fault)
     # Full launcher contract: temporary native tuning is passed to Init, stock
     # templates stay unchanged, and the selected mix reaches the saved bytes.
-    config=d/'stock';config.mkdir();job=d/'job';job.mkdir()
-    y='<noise1Level>0.4</noise1Level><maxNoise1Level>0.8</maxNoise1Level><noise2Level>0.2</noise2Level>'
-    uv='<minLevel>0.1</minLevel><anchorLevel>0.2</anchorLevel><maxLevel>0.8</maxLevel><noise2Level>0.2</noise2Level>'
-    sharp=''.join(f'<{t}>0.5</{t}>' for t in ['weight1O','weight1U','weight2O','weight2U','usmStrength'])
-    profile=f'<swispConfig><yModelParameters>{y}</yModelParameters><uvModelParameters>{uv}</uvModelParameters><postSharpeningParameters>{sharp}</postSharpeningParameters></swispConfig>'
-    (config/'softpqe_configs.xml').write_text('<softpqeConfig><enableUsm>1</enableUsm></softpqeConfig>')
-    for suffix in ['', '_portrait', '_skin']:(config/f'softpqe_configs_master_2x{suffix}.xml').write_text(profile)
     before={p.name:p.read_bytes() for p in config.iterdir()}
     inp.write_bytes(bytes([64])*(32*32*3//2));out=job/'output';out.write_bytes(b'')
     p=subprocess.run([str(worker),'--softpqe',str(lib),str(config),str(inp),str(out),'32','32','64','64','17','100','2','25','50','0','50'],
         env={**os.environ,'TEST_FAULT':'none','TEST_PROFILE':str(job)},capture_output=True,text=True,timeout=10)
     assert p.returncode==0,(p.stdout,p.stderr)
-    assert out.read_bytes()==bytes([96])*(64*64*3//2)
+    assert out.read_bytes()==bytes([72])*(64*64)+bytes([80])*(64*64//2)
     assert before=={p.name:p.read_bytes() for p in config.iterdir()}
     assert ET.parse(job/'softpqe_configs.xml').findtext('enableUsm')=='0'
-    assert ET.parse(job/'softpqe_configs_master_2x.xml').findtext('yModelParameters/noise1Level')=='0.1'
+    assert ET.parse(job/'softpqe_configs_master_2x.xml').findtext('yModelParameters/noise1Level')=='0.4'
+    assert 'output controls v2' in p.stdout
     print('PASS worker tuning: private configs -> native Init, output mix, unchanged firmware templates')
 print('Fake library only; device inference and quality are untested.')
