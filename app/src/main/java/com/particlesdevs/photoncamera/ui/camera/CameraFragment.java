@@ -387,9 +387,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         PhotonCamera.getGravity().unregister();
         PhotonCamera.getGyro().unregister();
         PhotonCamera.getSettings().saveID();
+        // Stop camera outputs before GLSurfaceView destroys their SurfaceTexture.
+        captureController.closeCamera();
         textureView.onPause();
         surfaceView.clear();
-        captureController.closeCamera();
 //        stopBackgroundThread();
         cameraFragmentViewModel.onPause();
         mCameraUIEventsListener.onPause();

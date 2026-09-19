@@ -324,9 +324,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public Handler mBackgroundHandler;
     /*An {@link ImageReader} that handles still image capture.*/
     public ImageReader mImageReaderPreview;
-    public ImageReader mImageReaderRaw;
+    public volatile ImageReader mImageReaderRaw;
     /*{@link CaptureRequest.Builder} for the camera preview*/
-    public CaptureRequest.Builder mPreviewRequestBuilder;
+    public volatile CaptureRequest.Builder mPreviewRequestBuilder;
     public CaptureRequest mPreviewInputRequest;
     /**
      * The current state of camera state for taking pictures.
@@ -397,7 +397,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onImageAvailable(ImageReader reader) {
-            if (reader != mImageReaderRaw) {
+            if (!isCameraResumed || reader != mImageReaderRaw) {
                 try { Image stale=reader.acquireLatestImage(); if(stale!=null)stale.close(); }
                 catch (IllegalStateException ignored) { }
                 return;
@@ -421,7 +421,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mImageSaver.initProcess(reader);
                     return;
                 }
-                Image img = reader.acquireNextImage();
+                Image img;
+                try { img = reader.acquireNextImage(); } catch (IllegalStateException closed) { return; }
                 if (img == null) return;
                 if (mZslCapturing) {
                     img.close();
@@ -432,6 +433,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     return;
                 }
                 synchronized (mZslBufferLock) {
+                    if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
                     mZslRingBuffer.addLast(img);
                     int maxFrames = zslRingCapacity();
                     while (mZslRingBuffer.size() > maxFrames) {
@@ -482,7 +484,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /**
      * A {@link CameraCaptureSession } for camera preview.
      */
-    private CameraCaptureSession mCaptureSession;
+    private volatile CameraCaptureSession mCaptureSession;
+    private final Object mPreviewStateLock = new Object();
+    private final java.util.concurrent.atomic.AtomicInteger mSessionGeneration = new java.util.concurrent.atomic.AtomicInteger();
     /**
      * MediaRecorder
      */
@@ -525,7 +529,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public ProcessCallbacks debugCallback = new ProcessCallbacks();
     private final CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
         @Override public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
-            if (mLiveRawSession && !isZslMode()) mLiveRawRouter.request(timestamp, false);
+            synchronized (mPreviewStateLock) {
+                if (!isCurrentPreviewSession(session)) return;
+                if (mLiveRawSession && !isZslMode()) mLiveRawRouter.request(timestamp, false);
+            }
         }
 
 
@@ -605,10 +612,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         public void onCaptureProgressed(@NonNull CameraCaptureSession session,
                                         @NonNull CaptureRequest request,
                                         @NonNull CaptureResult partialResult) {
-
-            process(partialResult);
-            if (mTouchFocus != null) {
-                mTouchFocus.onCaptureResult(partialResult);
+            synchronized (mPreviewStateLock) {
+                if (!isCurrentPreviewSession(session)) return;
+                process(partialResult);
+                if (mTouchFocus != null) {
+                    mTouchFocus.onCaptureResult(partialResult);
+                }
             }
         }
 
@@ -616,50 +625,56 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         public void onCaptureCompleted(@NonNull CameraCaptureSession session,
                                        @NonNull CaptureRequest request,
                                        @NonNull TotalCaptureResult result) {
-            Object exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-            Object iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-            Object focus = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
-            Rational[] mTemp = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
-            if (exposure != null) mPreviewExposureTime = (long) exposure;
-            if (iso != null) mPreviewIso = (int) iso;
-            if (focus != null) mFocus = (float) focus;
-            if (mTemp != null) mPreviewTemp = mTemp;
-            if (mPreviewTemp == null) {
-                mPreviewTemp = new Rational[3];
-                for (int i = 0; i < mPreviewTemp.length; i++)
-                    mPreviewTemp[i] = new Rational(101, 100);
-            }
-            mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
-            Integer state = result.get(CaptureResult.FLASH_STATE);
-            mFlashed = state != null && state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED;
-            if (isZslMode() && PreferenceKeys.isHexQuadCaptureEnabled()) {
-                Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
-                if (timestamp != null) synchronized (mZslBufferLock) {
-                    mHexZslResults.put(timestamp, result);
-                    while (mHexZslResults.size() > zslRingCapacity()+16)
-                        mHexZslResults.remove(mHexZslResults.keySet().iterator().next());
+            synchronized (mPreviewStateLock) {
+                if (!isCurrentPreviewSession(session)) return;
+                Object exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                Object iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+                Object focus = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+                Rational[] mTemp = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+                if (exposure != null) mPreviewExposureTime = (long) exposure;
+                if (iso != null) mPreviewIso = (int) iso;
+                if (focus != null) mFocus = (float) focus;
+                if (mTemp != null) mPreviewTemp = mTemp;
+                if (mPreviewTemp == null) {
+                    mPreviewTemp = new Rational[3];
+                    for (int i = 0; i < mPreviewTemp.length; i++)
+                        mPreviewTemp[i] = new Rational(101, 100);
                 }
-            }
-            if (mLiveRawSession && session == mCaptureSession) {
-                Long rawTimestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
-                if (rawTimestamp != null) mLiveMetadata.result(rawTimestamp, result);
-                if (Build.VERSION.SDK_INT >= 28) {
-                    CaptureResult physicalResult = result.getPhysicalCameraResults().get(physicalID);
-                    Long physicalTimestamp = physicalResult == null ? null : physicalResult.get(CaptureResult.SENSOR_TIMESTAMP);
-                    if (physicalTimestamp != null && !physicalTimestamp.equals(rawTimestamp))
-                        mLiveMetadata.result(physicalTimestamp, result);
+                mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+                Integer state = result.get(CaptureResult.FLASH_STATE);
+                mFlashed = state != null && (state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED);
+                if (isZslMode() && PreferenceKeys.isHexQuadCaptureEnabled()) {
+                    Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                    if (timestamp != null) synchronized (mZslBufferLock) {
+                        mHexZslResults.put(timestamp, result);
+                        while (mHexZslResults.size() > zslRingCapacity()+16)
+                            mHexZslResults.remove(mHexZslResults.keySet().iterator().next());
+                    }
                 }
-            }
-            mPreviewCaptureResult = result;
-            mPreviewCaptureRequest = request;
-            process(result);
-            if (mTouchFocus != null) {
-                mTouchFocus.onCaptureResult(result);
-            }
-            cameraEventsListener.onPreviewCaptureCompleted(result);
-            if(PreferenceKeys.getAfMode() == CaptureRequest.CONTROL_AF_MODE_AUTO && !burst && (mTouchFocus == null || !mTouchFocus.isTouchFocus)) {
-                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
-                rebuildPreviewBuilderOneShot();
+                if (mLiveRawSession && session == mCaptureSession) {
+                    Long rawTimestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                    if (rawTimestamp != null) mLiveMetadata.result(rawTimestamp, result);
+                    if (Build.VERSION.SDK_INT >= 28) {
+                        CaptureResult physicalResult = result.getPhysicalCameraResults().get(physicalID);
+                        Long physicalTimestamp = physicalResult == null ? null : physicalResult.get(CaptureResult.SENSOR_TIMESTAMP);
+                        if (physicalTimestamp != null && !physicalTimestamp.equals(rawTimestamp))
+                            mLiveMetadata.result(physicalTimestamp, result);
+                    }
+                }
+                mPreviewCaptureRequest = request;
+                mPreviewCaptureResult = result;
+                process(result);
+                if (mTouchFocus != null) {
+                    mTouchFocus.onCaptureResult(result);
+                }
+                cameraEventsListener.onPreviewCaptureCompleted(result);
+                if(PreferenceKeys.getAfMode() == CaptureRequest.CONTROL_AF_MODE_AUTO && !burst && (mTouchFocus == null || !mTouchFocus.isTouchFocus)) {
+                    CaptureRequest.Builder builder = mPreviewRequestBuilder;
+                    if (builder != null && isCurrentPreviewSession(session)) {
+                        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+                        rebuildPreviewBuilderOneShot();
+                    }
+                }
             }
         }
 
@@ -671,19 +686,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onOpened(@NonNull CameraDevice cameraDevice) {
-            // This method is called when the camera is opened.  We start camera preview here.
-            mCameraOpenCloseLock.release();
-            mCameraOpening.set(false);
-            if (!isCameraResumed) {
-                // The app was backgrounded while the open was in flight; a
-                // hidden activity must not hold the camera device.
-                Log.d(TAG, "onOpened(): fragment already paused, closing device");
-                cameraDevice.close();
-                return;
+            synchronized (mPreviewStateLock) {
+                // This method is called when the camera is opened.  We start camera preview here.
+                mCameraOpenCloseLock.release();
+                mCameraOpening.set(false);
+                if (!isCameraResumed) {
+                    // The app was backgrounded while the open was in flight; a
+                    // hidden activity must not hold the camera device.
+                    Log.d(TAG, "onOpened(): fragment already paused, closing device");
+                    cameraDevice.close();
+                    return;
+                }
+                mCameraDevice = cameraDevice;
+                mImageSaver = new ImageSaver(cameraEventsListener);
+                createCameraPreviewSession(false);
             }
-            mCameraDevice = cameraDevice;
-            mImageSaver = new ImageSaver(cameraEventsListener);
-            createCameraPreviewSession(false);
         }
 
         @Override
@@ -1041,32 +1058,51 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /**
      * Closes the current {@link CameraDevice}.
      */
+    private boolean isCurrentPreviewSession(CameraCaptureSession session) {
+        return isCameraResumed && session != null && session == mCaptureSession && mPreviewRequestBuilder != null;
+    }
+
+    private void clearZslPreviewFrames() {
+        synchronized (mZslBufferLock) {
+            mHexZslResults.clear();
+            while (!mZslRingBuffer.isEmpty()) mZslRingBuffer.removeFirst().close();
+        }
+    }
+
     public void closeCamera() {
+        // Invalidate callbacks before releasing their resources. onConfigured and
+        // capture results can still arrive after returning from Settings.
+        synchronized (mPreviewStateLock) {
+            isCameraResumed = false;
+            mSessionGeneration.incrementAndGet();
+            mPreviewRequestBuilder = null;
+            mPreviewCaptureResult = null;
+            mPreviewCaptureRequest = null;
+            mShotInProgress = false;
+        }
+        clearZslPreviewFrames();
         LiveRawFrame.setEnabled(false);
         mLiveRawSession = false;
         mLiveRawRouter.clear();
         mLiveMetadata.clear();
         mCameraOpening.set(false);
-        isCameraResumed = false;
         try {
             mCameraOpenCloseLock.acquire();
-            if (null != mCaptureSession) {
-                mCaptureSession.close();
-                mCaptureSession = null;
-            }
+            CameraCaptureSession closingSession = mCaptureSession;
+            mCaptureSession = null;
+            if (closingSession != null) closingSession.close();
             if (null != mCameraDevice) {
                 mCameraDevice.close();
                 mCameraDevice = null;
             }
-            if (null != mImageReaderPreview) {
-                if (!isProcessing) {
+            if (!isProcessing) {
+                if (mImageReaderPreview != null) {
                     mImageReaderPreview.close();
                     mImageReaderPreview = null;
                 }
-                if (!isProcessing) {
-                    mImageReaderRaw.close();
-                    mImageReaderRaw = null;
-                }
+                ImageReader closingRaw = mImageReaderRaw;
+                mImageReaderRaw = null;
+                if (closingRaw != null) closingRaw.close();
             }
             if (null != mMediaRecorder) {
                 mMediaRecorder.release();
@@ -1265,98 +1301,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     @SuppressLint("MissingPermission")
     public void restartCamera() {
         Log.d(TAG, "restartCamera() called from \"" + Thread.currentThread().getName() + "\" Thread");
-        CameraFragment.mSelectedMode = PhotonCamera.getSettings().selectedMode;
-        mCameraOpening.set(false); // the device is closed below before reopening
-        try {
-            mCameraOpenCloseLock.acquire();
-            if (mIsRecordingVideo) {
-                this.VideoEnd();
-            }
-
-            if (mCaptureSession != null) {
-                mCaptureSession.close();
-                mCaptureSession = null;
-            }
-            if (null != mCameraDevice) {
-                mCameraDevice.close();
-                mCameraDevice = null;
-            }
-            if (null != mImageReaderPreview) {
-                if (!isProcessing) {
-                    mImageReaderPreview.close();
-                    mImageReaderPreview = null;
-                }
-                if (!isProcessing) {
-                    mImageReaderRaw.close();
-                    mImageReaderRaw = null;
-                }
-            }
-            if (null != mMediaRecorder) {
-                mMediaRecorder.release();
-                mMediaRecorder = null;
-            }
-            if (null != mPreviewRequestBuilder) {
-                mPreviewRequestBuilder = null;
-            }
-            if (surface != null) {
-                surface.release();
-                surface = null;
-            }
-            stopBackgroundThread();
-            mPreviewCaptureResult=null;
-            mLiveRawRejected = false;
-            mLiveRawRouter.clear();
-            mLiveMetadata.clear();
-            LiveRawFrame.setEnabled(false);
-            com.particlesdevs.photoncamera.processing.PreviewLook.clear();
-            cameraEventsListener.onCameraRestarted();
-        } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-            throw new RuntimeException("Interrupted while trying to lock camera restarting.", e);
-        } finally {
-            try {
-                mCameraOpenCloseLock.release();
-            } catch (Exception ignored) {
-                showToast("Failed to release camera");
-            }
-        }
-        String curID = PhotonCamera.getSettings().mCameraID;
-        if(curID.contains("-")) {
-            logicalID = curID.split("-")[0];
-            physicalID = curID.split("-")[1];
-        } else {
-            logicalID = curID;
-            physicalID = logicalID;
-        }
-        
-        try {
-            if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
-                throw new RuntimeException("Time out waiting to lock camera opening.");
-            }
-            mCameraOpening.set(true);
-            this.mCameraManager.openCamera(logicalID, mStateCallback, mBackgroundHandler);
-        } catch (CameraAccessException e) {
-            mCameraOpening.set(false);
-            Log.e(TAG, Log.getStackTraceString(e));
-        } catch (InterruptedException e) {
-            mCameraOpening.set(false);
-            throw new RuntimeException("Interrupted while trying to restart camera.", e);
-        }
-        //stopBackgroundThread();
-        //UpdateCameraCharacteristics(physicalID);
+        // Reuse the normal resume path: it prepares readers/outputs before
+        // opening the device on a live handler. The old restart opened first,
+        // with a null handler, racing onOpened against reader replacement.
+        if (mIsRecordingVideo) VideoEnd();
+        closeCamera();
+        mLiveRawRejected = false;
+        com.particlesdevs.photoncamera.processing.PreviewLook.clear();
+        cameraEventsListener.onCameraRestarted();
         startBackgroundThread();
-
-        if (mCameraCharacteristics == null) {
-            if (mCameraCharacteristicsMap == null || mCameraCharacteristicsMap.isEmpty()) {
-                fillInCameraCharacteristics();
-            }
-            mCameraCharacteristics = mCameraCharacteristicsMap.get(physicalID);
-        }
-
-        Size optimal = getPreviewOutputSize(getSafeDisplay(), mCameraCharacteristics, CameraFragment.mSelectedMode);
-
-        setUpCameraOutputs(optimal.getWidth(), optimal.getHeight());
-        configureTransform(optimal.getWidth(), optimal.getHeight());
+        resumeCamera();
     }
     private Size getAspect(CameraMode targetMode){
         Size aspectRatio;
@@ -1508,7 +1462,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // Both the SurfaceTexture listener and resumeCamera() can request an
         // open for the same surface lifecycle event; a second open while one is
         // in flight fails with CAMERA_IN_USE and kills the preview.
-        if (!mCameraOpening.compareAndSet(false, true)) {
+        if (mCameraDevice != null || !mCameraOpening.compareAndSet(false, true)) {
             Log.d(TAG, "openCamera(): an open is already in flight, skipping");
             return;
         }
@@ -1607,6 +1561,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mImageReaderPreview.setOnImageAvailableListener(mOnYuvImageAvailableListener, mBackgroundHandler);
             mBufferSize = getPreviewOutputSize(getSafeDisplay(),characteristics,PhotonCamera.getSettings().selectedMode);
 
+        clearZslPreviewFrames();
         if(mImageReaderRaw != null)
             mImageReaderRaw.close();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && (PhotonCamera.getSettings().QuadBayer
@@ -1722,6 +1677,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
     Surface surface;
     public void createCameraPreviewSession(boolean isBurstSession) {
+        final int generation = mSessionGeneration.incrementAndGet();
+        final CameraDevice sessionDevice = mCameraDevice;
+        if (!isCameraResumed || sessionDevice == null) return;
         try {
             SensorConfigInjector.applyToSensor(physicalID, this);
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
@@ -1786,71 +1744,82 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    Log.d(TAG, "CameraCaptureSession onConfigured():" + cameraCaptureSession);
-                    // The camera is already closed
-                    if (null == mCameraDevice) {
-                        return;
-                    }
-                    // When the session is ready, we start displaying the preview.
-                    mCaptureSession = cameraCaptureSession;
-                    try {
-                        // Auto focus should be continuous for camera preview.
-                        //mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                        // Flash is automatically enabled when necessary.
-                        resetPreviewAEMode();
-                        applyAeMeteringRegions(mPreviewRequestBuilder);
-                        Camera2ApiAutoFix.applyPrev(mPreviewRequestBuilder);
-                        VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
-                        //if(isZslMode()){
-                            try {
-                                mPreviewRequestBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
-                            } catch (Exception e) {
-                                Log.d(TAG, "Failed to set LENS_SHADING_MAP_MODE_ON for ZSL mode:" + Log.getStackTraceString(e));
-                            }
-                        //}
-
-                        // Apply dynamic OIS for preview stream
-                        applyOisMode(mPreviewRequestBuilder, false);
-
-                        // Finally, we start displaying the camera preview.
-                        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                                getSelectedFpsRange());
-                        mPreviewInputRequest = mPreviewRequestBuilder.build();
-                        if (isBurstSession && isDualSession) {
-                            switch (CameraFragment.mSelectedMode) {
-                                case NIGHT:
-                                case PHOTO:
-                                case MOTION:
-                                    mCaptureSession.captureBurst(captures, CaptureCallback, mBackgroundHandler);
-                                    break;
-                                case UNLIMITED:
-                                case RAWVIDEO:
-                                    mCaptureSession.setRepeatingBurst(captures, CaptureCallback, mBackgroundHandler);
-                                    break;
-                            }
-                        } else {
-                            //if(mSelectedMode != CameraMode.VIDEO)
-                            mCaptureSession.setRepeatingRequest(mPreviewInputRequest,
-                                    mCaptureCallback, mBackgroundHandler);
-                            unlockFocus();
+                    synchronized (mPreviewStateLock) {
+                        Log.d(TAG, "CameraCaptureSession onConfigured():" + cameraCaptureSession);
+                        // The camera is already closed
+                        if (!isCameraResumed || sessionDevice != mCameraDevice ||
+                                generation != mSessionGeneration.get()) {
+                            cameraCaptureSession.close();
+                            return;
                         }
-                    } catch (Exception e) {
-                        Log.e(TAG, Log.getStackTraceString(e));
-                        if (retryWithoutLiveRaw(cameraCaptureSession)) return;
+                        // When the session is ready, we start displaying the preview.
+                        mCaptureSession = cameraCaptureSession;
+                        try {
+                            // Auto focus should be continuous for camera preview.
+                            //mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                            // Flash is automatically enabled when necessary.
+                            resetPreviewAEMode();
+                            applyAeMeteringRegions(mPreviewRequestBuilder);
+                            Camera2ApiAutoFix.applyPrev(mPreviewRequestBuilder);
+                            VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
+                            //if(isZslMode()){
+                                try {
+                                    mPreviewRequestBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+                                } catch (Exception e) {
+                                    Log.d(TAG, "Failed to set LENS_SHADING_MAP_MODE_ON for ZSL mode:" + Log.getStackTraceString(e));
+                                }
+                            //}
+
+                            // Apply dynamic OIS for preview stream
+                            applyOisMode(mPreviewRequestBuilder, false);
+
+                            // Finally, we start displaying the camera preview.
+                            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                                    getSelectedFpsRange());
+                            mPreviewInputRequest = mPreviewRequestBuilder.build();
+                            if (isBurstSession && isDualSession) {
+                                switch (CameraFragment.mSelectedMode) {
+                                    case NIGHT:
+                                    case PHOTO:
+                                    case MOTION:
+                                        mCaptureSession.captureBurst(captures, CaptureCallback, mBackgroundHandler);
+                                        break;
+                                    case UNLIMITED:
+                                    case RAWVIDEO:
+                                        mCaptureSession.setRepeatingBurst(captures, CaptureCallback, mBackgroundHandler);
+                                        break;
+                                }
+                            } else {
+                                //if(mSelectedMode != CameraMode.VIDEO)
+                                mCaptureSession.setRepeatingRequest(mPreviewInputRequest,
+                                        mCaptureCallback, mBackgroundHandler);
+                                unlockFocus();
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, Log.getStackTraceString(e));
+                            if (retryWithoutLiveRaw(cameraCaptureSession)) return;
+                        }
+                        if (mIsRecordingVideo)
+                            activity.runOnUiThread(() -> {
+                                // Start recording
+                                mMediaRecorder.start();
+                            });
                     }
-                    if (mIsRecordingVideo)
-                        activity.runOnUiThread(() -> {
-                            // Start recording
-                            mMediaRecorder.start();
-                        });
                 }
 
                 @Override
                 public void onConfigureFailed(
                         @NonNull CameraCaptureSession cameraCaptureSession) {
-                    if (retryWithoutLiveRaw(cameraCaptureSession)) return;
-                    showToast(activity.getString(R.string.session_on_configure_failed));
-                    Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                    synchronized (mPreviewStateLock) {
+                        if (!isCameraResumed || sessionDevice != mCameraDevice ||
+                                generation != mSessionGeneration.get()) {
+                            cameraCaptureSession.close();
+                            return;
+                        }
+                        if (retryWithoutLiveRaw(cameraCaptureSession)) return;
+                        showToast(activity.getString(R.string.session_on_configure_failed));
+                        Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                    }
                 }
             };
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -1969,25 +1938,29 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Initiate a still image capture.
      */
     public void takePicture() {
-        if (mPreviewRequestBuilder == null || mCaptureSession == null) {
-            Log.w(TAG, "takePicture(): camera not ready, ignoring shutter press");
-            return;
-        }
-        mShotInProgress = true;
-        if (isZslMode()) {
-            captureStillPicture();
-            return;
-        }
-        if (mCameraAfModes.length > 1) lockFocus();
-        else {
-            try {
-                mState = STATE_WAITING_NON_PRECAPTURE;
-                mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
-                        mBackgroundHandler);
-            } catch (CameraAccessException e) {
-                Log.e(TAG, "Failed to start camera preview because it couldn't access camera", e);
-            } catch (IllegalStateException e) {
-                Log.e(TAG, "Failed to start camera preview.", e);
+        synchronized (mPreviewStateLock) {
+            if (!isCameraResumed || mPreviewRequestBuilder == null || mCaptureSession == null ||
+                    mCameraDevice == null || mPreviewCaptureResult == null) {
+                Log.w(TAG, "takePicture(): waiting for current-session preview after resume");
+                cameraEventsListener.onProcessingError("Камера ещё готовится. Повторите снимок.");
+                return;
+            }
+            mShotInProgress = true;
+            if (isZslMode()) {
+                captureStillPicture();
+                return;
+            }
+            if (mCameraAfModes.length > 1) lockFocus();
+            else {
+                try {
+                    mState = STATE_WAITING_NON_PRECAPTURE;
+                    mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
+                            mBackgroundHandler);
+                } catch (CameraAccessException e) {
+                    Log.e(TAG, "Failed to start camera preview because it couldn't access camera", e);
+                } catch (IllegalStateException e) {
+                    Log.e(TAG, "Failed to start camera preview.", e);
+                }
             }
         }
     }
@@ -2208,9 +2181,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void onMatchedLiveRaw(Image img, TotalCaptureResult result) {
         boolean retained = false;
         try {
-            if (!mLiveRawSession || mZslCapturing || mHybridZslCapture) return;
+            if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture) return;
             publishLiveRawFrame(img, result);
             if (isZslMode()) synchronized (mZslBufferLock) {
+                if (!isCameraResumed || !mLiveRawSession) return;
                 mZslRingBuffer.addLast(img);
                 retained = true;
                 while (mZslRingBuffer.size() > zslRingCapacity()) {
@@ -2421,6 +2395,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         final CaptureResult capturedResult=selectedResult;
         final CaptureRequest capturedRequest=selectedRequest;
+        if (rawImages.isEmpty() || capturedResult == null || capturedRequest == null) {
+            for (Image image : rawImages) image.close();
+            mZslCapturing = false;
+            mShotInProgress = false;
+            cameraEventsListener.onProcessingError("Камера готовит новые кадры после возврата. Повторите снимок.");
+            return;
+        }
         int take = Math.min(rawImages.size(), frameCount);
         int skip = rawImages.size() - take;
         for (int i = 0; i < skip; i++) {
