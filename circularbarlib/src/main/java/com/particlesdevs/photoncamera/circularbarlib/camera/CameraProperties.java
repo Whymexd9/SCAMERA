@@ -22,7 +22,8 @@ public class CameraProperties {
         this.maxFocal = 0.0f;
         this.focusRange = (!(minFocal == null || maxFocal == null || minFocal == 0.0f)) ? new Range<>(Math.min(minFocal, maxFocal), Math.max(minFocal, maxFocal)) : null;
         float evStep = cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP).floatValue();
-        this.isoRange = new Range<>(IsoExpoSelector.getISOLOWExt(cameraCharacteristics), IsoExpoSelector.getISOHIGHExt(cameraCharacteristics));
+        this.isoRange = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+        if (this.isoRange == null) this.isoRange = new Range<>(100, 3200);
         this.expRange = new Range<>(IsoExpoSelector.getEXPLOW(cameraCharacteristics), IsoExpoSelector.getEXPHIGH(cameraCharacteristics));
         this.evRange = new Range<>((cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE).getLower() * evStep),
                 (cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE).getUpper() * evStep));

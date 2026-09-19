@@ -87,6 +87,7 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
         addKnobs(activity, cameraCharacteristics);
         setupOnClickListeners();
         setAutoText();
+        for(ManualModel<?> model:new ManualModel<?>[]{mfModel,evModel,isoModel,expoTimeModel,wbModel})if(model!=null)model.restoreModuleValue();
     }
 
     @Override

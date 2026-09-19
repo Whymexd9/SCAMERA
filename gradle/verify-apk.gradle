@@ -1,0 +1,28 @@
+// Signing and zipalign do not detect missing primary DEX files. A stale
+// incremental packager once emitted classes23.dex..classes44.dex only.
+ext.verifyApkCode = { File apk ->
+    if (!apk.isFile()) throw new GradleException("APK missing: ${apk}")
+    new java.util.zip.ZipFile(apk).withCloseable { zip ->
+        def names = java.util.Collections.list(zip.entries()).collect { it.name }
+        if (names.size() != names.toSet().size()) {
+            throw new GradleException("Duplicate ZIP entries in ${apk.name}")
+        }
+        if (!names.contains('AndroidManifest.xml') || !names.contains('classes.dex')) {
+            throw new GradleException("Invalid APK ${apk.name}: missing manifest or primary classes.dex; clean packaging outputs and rebuild")
+        }
+        def dex = names.findAll { it ==~ /classes(?:[0-9]+)?\.dex/ }.toSet()
+        def expected = (1..dex.size()).collect { it == 1 ? 'classes.dex' : "classes${it}.dex".toString() }.toSet()
+        if (dex != expected) {
+            throw new GradleException("Invalid APK ${apk.name}: non-contiguous DEX numbering: ${dex}")
+        }
+        dex.each { name ->
+            zip.getInputStream(zip.getEntry(name)).withCloseable { stream ->
+                byte[] magic = stream.readNBytes(8)
+                if (magic.length != 8 || new String(magic, 0, 4, 'US-ASCII') != 'dex\n' || magic[7] != 0) {
+                    throw new GradleException("Invalid DEX header: ${name} in ${apk.name}")
+                }
+            }
+        }
+        logger.lifecycle("Verified APK code: ${apk.name} (${dex.size()} contiguous DEX files)")
+    }
+}

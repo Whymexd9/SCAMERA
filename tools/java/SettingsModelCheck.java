@@ -13,7 +13,7 @@ public class SettingsModelCheck {
         if(!PreferenceNumber.format(.00390625f,true).equals("0.00390625"))throw new AssertionError("precision lost");
         eq(PreferenceNumber.progress(.30f,.10f,100,100),20);
         if(SettingsNumericRules.error("pref_noise_iso_manual_key","300.5")==null)throw new AssertionError("integer validation");
-        if(SettingsNumericRules.error("pref_mfsr_dtr_key","0")==null)throw new AssertionError("zero denominator accepted");
+        if(SettingsNumericRules.error("pref_mfsr_frames_key","2")==null)throw new AssertionError("short burst accepted");
         eq(Double.parseDouble(SettingsNumericRules.normalized("pref_aces_gamut_key","98.25","100")),98.25);
         eq(Double.parseDouble(SettingsNumericRules.normalized("pref_noise_model_coefficient_key","NaN","1.0")),1);
         Map<String,Object> p=new HashMap<>();

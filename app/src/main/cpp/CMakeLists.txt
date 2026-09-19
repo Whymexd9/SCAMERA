@@ -249,3 +249,8 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_library(vivoNeuralProbe SHARED vivo-neural-probe.cpp)
     target_link_libraries(vivoNeuralProbe PRIVATE dl)
 endif()
+
+# Final, memory-bounded resampling of successful Vivo RGB output.
+add_library(lanczosDownscale SHARED lanczos-downscale-jni.cpp)
+target_compile_options(lanczosDownscale PRIVATE -O3)
+target_link_libraries(lanczosDownscale PRIVATE jnigraphics)

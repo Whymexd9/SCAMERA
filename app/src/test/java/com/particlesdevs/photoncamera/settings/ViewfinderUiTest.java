@@ -51,6 +51,9 @@ public class ViewfinderUiTest {
         View manual=LayoutInflater.from(context).inflate(R.layout.manual_palette,preview,false);
         FrameLayout.LayoutParams mp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);mp.setMargins(16,0,16,52);
         preview.addView(manual,mp);
+        var panel=(com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel)manual;
+        assertFalse(panel.isExpanded());assertEquals(View.INVISIBLE,manual.findViewById(R.id.buttons_container).getVisibility());
+        panel.setExpanded(true,false);
         View container=manual.findViewById(R.id.knobViewContainer);container.setVisibility(View.VISIBLE);
         LinearScaleView scale=manual.findViewById(R.id.linearScaleView);scale.setVisibility(View.VISIBLE);
         List<KnobItemInfo> items=new ArrayList<>();
@@ -59,21 +62,24 @@ public class ViewfinderUiTest {
         scale.setTemperatureMode(true);scale.setItems(items,17);
         scale.setSelectedItem(items.get(17));assertEquals("3600K",scale.getSelected().text);
         ((TextView)manual.findViewById(R.id.wb_option_tv)).setSelected(true);
-        String[] labels={"EV","Tv","ISO","ББ","AF"};int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
-        for(int i=0;i<ids.length;i++)assertEquals(labels[i],((TextView)manual.findViewById(ids[i])).getText().toString());
-        LinearLayout lenses=new LinearLayout(context);lenses.setPadding(3,3,3,3);lenses.setBackgroundResource(R.drawable.glass_pill);
-        for(String label:new String[]{"2.4×","1×","0.7×","0.4×"}){
-            TextView t=new TextView(context);t.setText(label);t.setTextColor(Color.WHITE);t.setGravity(Gravity.CENTER);t.setTextSize(13);t.setBackgroundResource(R.drawable.manual_tab_background);t.setSelected(label.equals("1×"));lenses.addView(t,new LinearLayout.LayoutParams(0,34,1));
-        }
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(264,40,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);lp.bottomMargin=6;preview.addView(lenses,lp);
+        String[] labels={"Экспокоррекция","Выдержка","ISO","Баланс белого","Фокус"};int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
+        for(int i=0;i<ids.length;i++)assertEquals(labels[i],manual.findViewById(ids[i]).getContentDescription().toString());
+        var lenses=new com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout(context,null);
+        lenses.setBackgroundResource(R.drawable.aux_container_background);lenses.setGravity(Gravity.CENTER);
+        var lensModel=new com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel();
+        java.util.List<com.particlesdevs.photoncamera.ui.camera.data.CameraLensData> cameraData=new ArrayList<>();
+        float[] zoom={2.4f,1f,.4f};for(int i=0;i<zoom.length;i++){var lens=new com.particlesdevs.photoncamera.ui.camera.data.CameraLensData(""+i);lens.setZoomFactor(zoom[i]);cameraData.add(lens);}
+        lensModel.setBackCameras(cameraData);lensModel.setFrontCameras(new ArrayList<>());lenses.setAuxButtonsModel(lensModel);lenses.setActiveId("1");
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(218,35,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);lp.bottomMargin=6;preview.addView(lenses,lp);
         View bottom=LayoutInflater.from(context).inflate(R.layout.layout_main_bottombar,screen,false);screen.addView(bottom,new LinearLayout.LayoutParams(-1,172));
         ModeTabsView modes=bottom.findViewById(R.id.mode_picker_view);modes.setValues(new String[]{"Фото","Ночь"});modes.setSelectedItem(0);
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
         int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(760,exact));screen.layout(0,0,400,760);
-        assertTrue(manual.getHeight()<=120);assertEquals(40,manual.findViewById(R.id.buttons_container).getHeight());
+        assertTrue(manual.getHeight()<=152);assertEquals(48,manual.findViewById(R.id.buttons_container).getHeight());
         assertEquals(top.findViewById(R.id.countdown_timer_button).getWidth(),top.findViewById(R.id.countdown_timer_button).getHeight());
         assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
+        for(int i=0;i<lenses.getChildCount();i++){TextView t=(TextView)lenses.getChildAt(i);assertFalse(t.getText().toString().isEmpty());assertTrue("Lens label must stay within its button",t.getLayout().getWidth()<=t.getWidth());}
         Bitmap image=Bitmap.createBitmap(400,760,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));
         java.io.File dir=new java.io.File("build/reports/viewfinder");dir.mkdirs();
         try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls.png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}
@@ -85,9 +91,33 @@ public class ViewfinderUiTest {
         scale.onTouchEvent(MotionEvent.obtain(0,0,MotionEvent.ACTION_DOWN,20,30,0));
         scale.onTouchEvent(MotionEvent.obtain(0,1,MotionEvent.ACTION_MOVE,150,30,0));
         scale.onTouchEvent(MotionEvent.obtain(0,2,MotionEvent.ACTION_UP,150,30,0));
-        assertEquals(0,scale.getSelected().value,0);assertFalse(scale.isDragging());
+        assertEquals(3600,scale.getSelected().value,0);assertFalse(scale.isDragging());
+        scale.onTouchEvent(MotionEvent.obtain(0,3,MotionEvent.ACTION_DOWN,20,30,0));
+        scale.onTouchEvent(MotionEvent.obtain(0,4,MotionEvent.ACTION_UP,20,30,0));
+        assertEquals(0,scale.getSelected().value,0);
+        panel.setExpanded(false,false);assertEquals(View.GONE,container.getVisibility());assertEquals(0,scale.getSelected().value,0);
+        panel.setExpanded(true,false);assertEquals(View.VISIBLE,container.getVisibility());
         int[] calls={0};modes.setOnItemSelectedListener(i->calls[0]++);modes.getChildAt(1).performClick();
         assertEquals(1,modes.getSelectedItem());assertEquals(1,calls[0]);modes.setEnabled(false);modes.getChildAt(0).performClick();assertEquals(1,calls[0]);
+    }
+    @Test public void animatedManualControlsRemainVisibleAndReceiveTouchesAfterReversal(){
+        try(var controller=Robolectric.buildActivity(android.app.Activity.class)){
+            controller.setup();var activity=controller.get();
+            var panel=(com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel)LayoutInflater.from(context).inflate(R.layout.manual_palette,null,false);
+            activity.setContentView(panel);panel.measure(View.MeasureSpec.makeMeasureSpec(356,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(160,View.MeasureSpec.AT_MOST));panel.layout(0,0,356,panel.getMeasuredHeight());
+            View tabs=panel.findViewById(R.id.buttons_container);int[] clicks={0};
+            int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
+            for(int id:ids)panel.findViewById(id).setOnClickListener(v->clicks[0]++);
+            panel.setExpanded(true,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400));
+            assertEquals(View.VISIBLE,tabs.getVisibility());assertEquals(1f,tabs.getAlpha(),.001f);assertNull(tabs.getClipBounds());
+            for(int id:ids){View tab=panel.findViewById(id);int[] at=new int[2];tab.getLocationInWindow(at);int[] base=new int[2];panel.getLocationInWindow(base);float x=at[0]-base[0]+tab.getWidth()/2f,y=at[1]-base[1]+tab.getHeight()/2f;long now=android.os.SystemClock.uptimeMillis();
+                assertTrue("Touch down must reach a manual control",panel.dispatchTouchEvent(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,x,y,0)));panel.dispatchTouchEvent(MotionEvent.obtain(now,now+10,MotionEvent.ACTION_UP,x,y,0));Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();}
+            assertEquals(5,clicks[0]);
+            panel.setExpanded(false,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(80));
+            panel.setExpanded(true,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400));
+            assertEquals(View.VISIBLE,tabs.getVisibility());assertEquals(1f,tabs.getAlpha(),.001f);
+            panel.setExpanded(false,true);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300));assertEquals(View.INVISIBLE,tabs.getVisibility());
+        }
     }
     @Test public void whiteBalanceUsesFiniteSensorGainsAndSupportsAuto(){
         android.hardware.camera2.CameraCharacteristics c=mock(android.hardware.camera2.CameraCharacteristics.class);

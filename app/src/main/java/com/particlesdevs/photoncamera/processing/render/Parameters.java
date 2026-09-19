@@ -39,6 +39,7 @@ public class Parameters {
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;
+    public int multiFrameCount; // Actual equal-exposure RAWs merged by the native backend.
     public double exposureTime = 1.0/30.0; // Default to 1/30s if not available
     public byte cfaPattern;
     /** Physical 2x2 CFA reported by Camera2; cfaPattern may be -2 for direct Quad CFA. */
@@ -172,7 +173,8 @@ public class Parameters {
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
                 && !VendorTagUtils.wasRemosaicApplied()
-                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRemosaicEnabled();
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRemosaicEnabled()
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRawMfsrEnabled();
         if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         if (flen == null || flen.length <= 0) {
@@ -588,6 +590,13 @@ public class Parameters {
                 //Log.d(TAG, "Read1:" + proPhotoToSRGB[i]);
             }*/
         }
+        float[] dcpXyz = com.particlesdevs.photoncamera.processing.color.DcpProfiles.activeToXyz(whitePoint);
+        if (dcpXyz != null) {
+            Converter.multiply(Converter.sXYZtoProPhoto, dcpXyz, sensorToProPhoto);
+            Converter.multiply(Converter.sXYZtoSRGB, Converter.sProPhotoToXYZ, proPhotoToSRGB);
+            CCT = new ColorCorrectionTransform();
+            CCT.matrix = proPhotoToSRGB;
+        }
         customTonemap = new float[]{
                 -2f + 2f * tonemapStrength,
                 3f - 3f * tonemapStrength,
@@ -622,6 +631,8 @@ public class Parameters {
 
     protected Parameters Build() {
         Parameters params = new Parameters();
+        params.multiFrameCount = multiFrameCount;
+        params.remosaicDone = remosaicDone;
         params.hexQuadProcessed = hexQuadProcessed;
         params.hexQuadPostDenoise = hexQuadPostDenoise;
         params.hexQuadExposureEv = hexQuadExposureEv;
@@ -653,7 +664,7 @@ public class Parameters {
     public String toString() {
         return "parameters:\n" +
                 "\n hasGainMap=" + hasGainMap +
-                "\n FrameCount=" + FrameNumberSelector.frameCount +
+                "\n FrameCount=" + (multiFrameCount>0 ? multiFrameCount : FrameNumberSelector.frameCount) +
                 "\n CameraID=" + cameraID +
                 "\n DenoiseOn=" + PhotonCamera.getSettings().hdrxNR +
                 "\n Sharp=" + FltFormat(PreferenceKeys.getSharpnessValue()) +

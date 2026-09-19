@@ -47,12 +47,9 @@
             tools:visibility="visible"
             >
 
-        <!-- One glass pill instead of a full-width bar: only three controls are
-             ever visible here, and a bar spanning the screen for three icons
-             reads as chrome rather than as a control. Width wraps the content
-             and the pill is centred. -->
+        <!-- Three independent controls with original line icons. -->
         <androidx.constraintlayout.widget.ConstraintLayout
-                android:background="@drawable/glass_pill"
+                android:background="@null"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
@@ -113,8 +110,10 @@
                     android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/ic_timer"
-                    android:backgroundTint="@android:color/white"
+                    android:background="@drawable/top_control_background"
+                    android:foreground="@drawable/ic_timer"
+                    android:layout_marginHorizontal="6dp"
+                    android:backgroundTint="@null"
                     android:textOff=""
                     android:textOn=""
                     android:onClick="@{top_bar_click_listener}"
@@ -170,9 +169,11 @@
                     android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/ic_grid_toggle"
+                    android:background="@drawable/top_control_background"
+                    android:foreground="@drawable/ic_grid_toggle"
+                    android:layout_marginHorizontal="6dp"
                     android:selected="@{PreferenceKeys.getGridValue() != 0}"
-                    app:backgroundTint="@android:color/white"
+                    app:backgroundTint="@null"
                     android:textOff=""
                     android:textOn=""
                     android:onClick="@{top_bar_click_listener}"
@@ -189,8 +190,10 @@
                     android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
                     app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/ic_flash"
-                    android:backgroundTint="@android:color/white"
+                    android:background="@drawable/top_control_background"
+                    android:foreground="@drawable/ic_flash"
+                    android:layout_marginHorizontal="6dp"
+                    android:backgroundTint="@null"
                     android:textOff=""
                     android:textOn=""
                     android:onClick="@{top_bar_click_listener}"

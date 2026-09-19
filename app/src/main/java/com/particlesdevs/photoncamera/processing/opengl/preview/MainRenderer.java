@@ -135,10 +135,12 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
             }
         }
 
-        updateToneCurve();
-        boolean lookOn = mCurveReady
-                && com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        boolean liveLook = com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        if (liveLook) updateToneCurve();
+        boolean lookOn = mCurveReady && liveLook;
         GLES20.glUniform1i(GLES20.glGetUniformLocation(hProgram, "uLookEnabled"), lookOn ? 1 : 0);
+        // Keep sampler types on distinct units even when the retired look is disabled.
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(hProgram, "uToneCurve"), 1);
         if (lookOn) {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);

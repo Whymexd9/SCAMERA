@@ -65,7 +65,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        getDelegate().setLocalNightMode(PreferenceKeys.getThemeValue());
+        getDelegate().setLocalNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
         
@@ -77,7 +77,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         
         if (savedInstanceState == null) getSupportFragmentManager()
                 .beginTransaction()
-                .replace(R.id.settings_container, new SettingsFragment())
+                .replace(R.id.settings_container, getIntent().getBooleanExtra("open_favorites",false) ? new FavoritesSettingsFragment() : new SettingsFragment())
                 .commit();
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
@@ -114,6 +114,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                                            PreferenceScreen preferenceScreen) {
         Log.d("SettingsActivity", "onPreferenceStartScreen called for key: " + preferenceScreen.getKey());
         
+        if("camera_settings_screen".equals(preferenceScreen.getKey())){
+            getSupportFragmentManager().beginTransaction().replace(R.id.settings_container,new ModuleSettingsFragment()).addToBackStack("modules").commit();return true;
+        }
         // Note: Tunable preferences are already generated in onPreferenceTreeClick before reaching here
         
         FragmentTransaction ft = getSupportFragmentManager().beginTransaction()
@@ -129,6 +132,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
+    void openSearchResult(SettingsSearchFragment.Entry entry) {
+        SettingsFragment page = new SettingsFragment();
+        Bundle args = new Bundle();
+        if (!"prefscreen".equals(entry.page)) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, entry.page);
+        args.putString("search_target", entry.key);
+        page.setArguments(args);
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, page)
+                .addToBackStack("search_result").commit();
+    }
+
     @Override
     public void onBackPressed() {
         super.onBackPressed();
@@ -140,6 +153,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private SettingsManager mSettingsManager;
         private Context mContext;
         private View mRootView;
+        private PreferenceScreen fullPreferenceScreen;
         private SupportedDevice supportedDevice;
         private boolean tunablePreferencesGenerated = false;
         private boolean sensorConfigPreferencesGenerated = false;
@@ -153,12 +167,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
+            generateSensorConfigPreferences();
+            fullPreferenceScreen = getPreferenceScreen();
             if (rootKey != null) {
                 PreferenceScreen selected = findPreference(rootKey);
                 if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
                 setPreferenceScreen(selected);
             }
-            seedMissingListValues(getPreferenceScreen());
+            seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
             setupRemosaicBackend();
             setupOriginalNoiseReduction();
@@ -509,7 +525,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private void addSensorConfigResetButton() {
             try {
-                PreferenceScreen submenu = getPreferenceScreen();
+                PreferenceScreen submenu = findPreference("pref_sensor_config_submenu");
                 if (submenu == null) {
                     Log.w("SettingsActivity", "PreferenceScreen is null, cannot add sensor config reset button");
                     return;
@@ -517,26 +533,22 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
                 Preference resetButton = new Preference(mContext);
                 resetButton.setKey("pref_reset_sensor_config_settings");
-                resetButton.setTitle("Reset All to Defaults");
-                resetButton.setSummary("Reset all sensor configuration parameters to their default values");
+                resetButton.setTitle("Сбросить настройки выбранного модуля");
+                resetButton.setSummary("Остальные модули сохранят свои значения");
                 resetButton.setIcon(android.R.drawable.ic_menu_revert);
                 resetButton.setOrder(9999); // Force to the end
 
                 resetButton.setOnPreferenceClickListener(preference -> {
-                    SharedPreferences prefs = mSettingsManager.getDefaultPreferences();
-                    SharedPreferences.Editor editor = prefs.edit();
-                    int resetCount = 0;
-                    for (String key : prefs.getAll().keySet()) {
-                        if (key != null && key.startsWith("pref_sensorconfig_")) {
-                            editor.remove(key);
-                            resetCount++;
-                        }
-                    }
-                    editor.apply();
-                    if (getActivity() != null) {
-                        getActivity().recreate();
-                    }
-                    PhotonCamera.showToast("Sensor config settings reset to defaults (" + resetCount + ")");
+                    androidx.preference.ListPreference selector=submenu.findPreference("pref_sensor_config_selector");
+                    String slot=selector!=null?selector.getValue():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+                    new androidx.appcompat.app.AlertDialog.Builder(mContext)
+                        .setTitle("Сбросить настройки модуля?")
+                        .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
+                        .setNegativeButton("Отмена",null)
+                        .setPositiveButton("Сбросить",(d,w)->{
+                            com.particlesdevs.photoncamera.settings.ModuleSensorSettings.reset(slot);
+                            if(getActivity()!=null)getActivity().recreate();
+                        }).show();
                     return true;
                 });
 
@@ -627,6 +639,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             super.onViewCreated(view, savedInstanceState);
             mRootView = view;
             setupToolbar();
+            setDivider(null);
+            String target = getArguments() == null ? null : getArguments().getString("search_target");
+            if (target != null && findPreference(target) != null) {
+                Preference found = findPreference(target);
+                android.text.SpannableString highlighted = new android.text.SpannableString(found.getTitle());
+                highlighted.setSpan(new android.text.style.ForegroundColorSpan(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext())), 0,
+                        highlighted.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                found.setTitle(highlighted);
+                scrollToPreference(target);
+            }
         }
 
         private void setupToolbar() {
@@ -639,6 +661,21 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         title = "Settings";
                     }
                     toolbar.setTitle(title);
+                    toolbar.setSubtitle(KEY_MAIN_PARENT_SCREEN.equals(getPreferenceScreen().getKey())
+                            ? "Активная камера: " + PreferenceKeys.getCameraID() : null);
+                    toolbar.setSubtitleTextColor(0xFFACA8BC);
+                    toolbar.setNavigationOnClickListener(v -> activity.onBackPressed());
+                    toolbar.getMenu().clear();
+                    android.view.MenuItem search = toolbar.getMenu().add("Поиск настройки");
+                    search.setIcon(R.drawable.settings_concept_search);
+                    search.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+                    search.setOnMenuItemClickListener(item -> {
+                        SettingsSearchFragment fragment = SettingsSearchFragment.create(
+                                SettingsSearchFragment.index(fullPreferenceScreen));
+                        getParentFragmentManager().beginTransaction()
+                                .replace(R.id.settings_container, fragment).addToBackStack("settings_search").commit();
+                        return true;
+                    });
                 }
             }
         }
@@ -838,7 +875,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)) {
                 setHdrxTitle();
                 if (PreferenceKeys.isPerLensSettingsOn()) {
-                    PreferenceKeys.loadSettingsForCamera(PreferenceKeys.getCameraID());
+
                     restartActivity();
                 }
             }
@@ -873,7 +910,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void checkEszdTheme() {
             Preference p = findPreference(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue);
             if (p != null)
-                p.setEnabled(!mSettingsManager.getString(SCOPE_GLOBAL, PreferenceKeys.Key.KEY_THEME_ACCENT).equalsIgnoreCase("eszdman"));
+                p.setEnabled(!"eszdman".equalsIgnoreCase(mSettingsManager.getString(SCOPE_GLOBAL, PreferenceKeys.Key.KEY_THEME_ACCENT)));
         }
 
         private void setHdrxTitle() {
@@ -881,7 +918,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (p != null) {
                 p.setTitle("Активная камера: " + PreferenceKeys.getCameraID());
                 p.setSummary(PreferenceKeys.isPerLensSettingsOn()
-                        ? "Обычные настройки — для этой линзы. Дополнительные — общие. Параметры сенсора — по физическому ID."
+                        ? "Настройки съёмки и обработки — для активного модуля. Аппаратные параметры сенсора — по физическому ID."
                         : "Общие настройки обработки. Отдельные профили включаются в разделе «Камеры и сенсоры»." );
             }
     }
@@ -1046,8 +1083,21 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         public boolean onPreferenceTreeClick(@NonNull Preference preference) {
             // Log which preference was clicked
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
+            if (PreferenceKeys.Key.KEY_THEME_ACCENT.mValue.equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new AccentSettingsFragment()).addToBackStack("accent").commit();return true;
+            }
+            if ("pref_dcp_profile_key".equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
+            }
+            if ("settings_favorites".equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new FavoritesSettingsFragment()).addToBackStack("favorites").commit();return true;
+            }
+            if ("module_copy_settings".equals(preference.getKey())) {
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();
+                return true;
+            }
             if ("lens_discovery".equals(preference.getKey())) {
-                startActivity(new Intent(requireContext(), LensDiscoveryActivity.class));
+                getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleLensFragment()).addToBackStack("modules").commit();
                 return true;
             }
             if ("pref_noise_model_import_key".equals(preference.getKey())) {

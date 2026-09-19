@@ -252,6 +252,13 @@ public class PreferenceKeys {
 
     public static void initialise(SettingsManager settingsManager) {
         preferenceKeys = new PreferenceKeys(settingsManager);
+        moduleProfiles = null;
+    }
+
+    private static ModuleProfiles moduleProfiles;
+    public static ModuleProfiles profiles() {
+        if (moduleProfiles == null) moduleProfiles = new ModuleProfiles(preferenceKeys.settingsManager);
+        return moduleProfiles;
     }
 
     public static void setDefaults(Context context) {
@@ -288,14 +295,8 @@ public class PreferenceKeys {
         if (key == null) {
             return;
         }
-        if (isPerLensSettingsOn()) {
-            if (key.equals(Key.CAMERA_ID.mValue)) {
-                loadSettingsForCamera(getCameraID());
-            }
-            if (!COMMON_KEYS.contains(key)) {
-                saveJsonForCamera(getCameraID());
-            }
-        }
+        if(profiles().isApplying())return;
+        profiles().changed(key);
         PhotonCamera.getSettings().loadCache();
     }
 
@@ -345,28 +346,14 @@ public class PreferenceKeys {
     }
 
     public static void loadSettingsForCamera(String cameraID) {
-        HashMap<String, ?> map;
-        SettingsManager settingsManager = preferenceKeys.settingsManager;
-        String alreadySavedJSON = settingsManager.getString(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraID, (String) null);
-        if (alreadySavedJSON == null || (map = (HashMap) GSON.fromJson(alreadySavedJSON, HashMap.class)) == null) {
-            return;
-        }
-        android.content.SharedPreferences.Editor editor = settingsManager.getDefaultPreferences().edit();
-        for (Map.Entry<String, ?> e : map.entrySet()) {
-            String key = e.getKey();
-            Object value = e.getValue();
-            if (key == null || value == null || COMMON_KEYS.contains(key)
-                    || key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_")) continue;
-            // Android switches require a Boolean; numeric readers also accept legacy strings.
-            if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
-            else if (value instanceof String || value instanceof Number) editor.putString(key, value.toString());
-        }
-        editor.apply();
+        profiles().activate(cameraID);
     }
 
     public static void setActivityTheme(Activity activity) {
         Map<String, Integer> map = new HashMap<>();
-        map.put("default", 0);
+        map.put("default", R.style.LavenderAccentTheme);
+        map.put("lavender", R.style.LavenderAccentTheme);
+        map.put("amber", R.style.AmberAccentTheme);
         map.put("red", Integer.valueOf(R.style.RedTheme));
         map.put("blue", Integer.valueOf(R.style.BlueTheme));
         map.put("orange", Integer.valueOf(R.style.OrangeTheme));
@@ -528,7 +515,7 @@ public class PreferenceKeys {
     }
 
     public static boolean isRemosaicEnabled() {
-        return getBool(Key.KEY_REMOSAIC_ENABLED);
+        return !isRawMfsrEnabled() && getBool(Key.KEY_REMOSAIC_ENABLED);
     }
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
@@ -737,6 +724,14 @@ public class PreferenceKeys {
         return getBool(Key.KEY_SHARP_MICRO_MATRIX_3X3);
     }
 
+    public static boolean isZslQualitySelectionEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_zsl_quality_selection_key", false);
+    }
+
+    public static boolean isSaliencyProtectionEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_saliency_protection_key", false);
+    }
+
     public static boolean isFalseColorCorrectionEnabled() {
         return getBool(Key.KEY_FALSE_COLOR_ENABLED);
     }
@@ -793,6 +788,32 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    private static String multiFrameText(String key, String fallback) {
+        return preferenceKeys.settingsManager.getString("default_scope", key, fallback);
+    }
+    public static int getMultiFrameBlock() {
+        return com.particlesdevs.photoncamera.remosaic.BurstPolicy.block(multiFrameText("pref_mfsr_source_key","1"));
+    }
+    public static String getMultiFrameCfa() { return multiFrameText("pref_mfsr_cfa_key","auto"); }
+    public static int getMultiFrameCount() {
+        return (int)SettingsNumericRules.value("pref_mfsr_frames_key",multiFrameText("pref_mfsr_frames_key","15"),15);
+    }
+    public static boolean isMultiFrameFpnEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_fpn_key",true);
+    }
+    public static boolean isMultiFrameCalibration() {
+        return isRawMfsrEnabled() && preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_calibrate_key",false);
+    }
+    public static void finishMultiFrameCalibration() {
+        preferenceKeys.settingsManager.set("default_scope","pref_mfsr_calibrate_key",false);
+    }
+    public static float getMultiFrameRedCa() {
+        return (float)SettingsNumericRules.value("pref_mfsr_red_ca_key",multiFrameText("pref_mfsr_red_ca_key","1"),1);
+    }
+    public static float getMultiFrameBlueCa() {
+        return (float)SettingsNumericRules.value("pref_mfsr_blue_ca_key",multiFrameText("pref_mfsr_blue_ca_key","1"),1);
+    }
+
     public static boolean isSensorSharpeningEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_sensor_sharpening_enabled", true);
     }
@@ -806,20 +827,6 @@ public class PreferenceKeys {
             return fallback;
         }
     }
-
-    /**
-     * RAW MFSR kernel regression parameters, after Wronski et al. 2019 section 5.1.
-     * They shape the anisotropic Gaussian kernel used to resample the aligned frame:
-     * kDetail/kDenoise set its width on detailed and on flat areas, kStretch/kShrink
-     * its anisotropy along and across an edge, and Dth/Dtr where the transition
-     * between "flat" and "detail" sits on the gradient magnitude.
-     */
-    public static float getMfsrKDetail()  { return mfsrFloat(Key.KEY_MFSR_K_DETAIL, 0.5f); }
-    public static float getMfsrKDenoise() { return mfsrFloat(Key.KEY_MFSR_K_DENOISE, 1.0f); }
-    public static float getMfsrKStretch() { return mfsrFloat(Key.KEY_MFSR_K_STRETCH, 4.0f); }
-    public static float getMfsrKShrink()  { return mfsrFloat(Key.KEY_MFSR_K_SHRINK, 2.0f); }
-    public static float getMfsrDth()      { return mfsrFloat(Key.KEY_MFSR_DTH, 0.005f); }
-    public static float getMfsrDtr()      { return mfsrFloat(Key.KEY_MFSR_DTR, 0.02f); }
 
     /**
      * Highlight handling. Recovery merges from the unclipped channels of a partly
@@ -931,9 +938,10 @@ public class PreferenceKeys {
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_RAW, false);
     }
 
+    /** Retired ISP tone approximation. Old backups must not enable a second preview path. */
+    @Deprecated
     public static boolean isLiveViewfinderLookEnabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", Key.KEY_LIVE_VIEWFINDER_LOOK, false);
+        return false;
     }
 
     public static boolean isHighlightRecoveryEnabled() {
@@ -958,16 +966,21 @@ public class PreferenceKeys {
         return Math.max(0f, Math.min(1f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_STRENGTH, 1.0f)));
     }
 
-    /** Coarse-grid spacing for the kernel field, in packed quads (Jiang et al. 2022). */
-    public static int getMfsrTensorStride() {
-        return Math.max(1, Math.round(mfsrFloat(Key.KEY_MFSR_TENSOR_STRIDE, 8f)));
-    }
-
-    /** Gradient noise gate in sigmas for the structure tensor (Liba et al. 2019). */
-    public static float getMfsrGradK() { return mfsrFloat(Key.KEY_MFSR_GRAD_K, 2.5f); }
-
     public static boolean isRaisrEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAISR_ENABLED, false);
+    }
+
+    public static String getVivoUpscaleBackend() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_UPSCALE_BACKEND, "raisr");
+    }
+
+    public static int getVivoDownscaleKernel() {
+        int value = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_VIVO_DOWNSCALE_KERNEL, 0);
+        return value >= 2 && value <= 5 ? value : 0;
+    }
+
+    public static String getVivoDownscaleSize() {
+        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_DOWNSCALE_SIZE, "original");
     }
 
     public static int getRaisrFilterScale() {
@@ -979,7 +992,7 @@ public class PreferenceKeys {
     }
 
     public static int getRaisrStrength() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_STRENGTH, 70).intValue();
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_STRENGTH, 50).intValue();
     }
 
     public static int getRaisrHaloProtection() {
@@ -987,7 +1000,7 @@ public class PreferenceKeys {
     }
 
     public static int getRaisrAliasingSuppression() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_ALIASING, 35).intValue();
+        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_ALIASING, 60).intValue();
     }
 
     public static String getRaisrMode() {
@@ -1091,12 +1104,11 @@ public class PreferenceKeys {
     }
 
     /**
-     * Pre-shutter RAW frames kept in the ZSL ring; 0 follows the burst frame
-     * count. Read by CaptureController.zslRingCapacity().
+     * Global pre-shutter RAW capacity, independent of mode, lens and merge count.
      */
     public static int getZslBufferCountValue() {
-        return Math.max(0, Math.min(100,
-                preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 0).intValue()));
+        return Math.max(1, Math.min(100,
+                preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 50).intValue()));
     }
 
     public static String getZslMergeAlgorithm() {
@@ -1108,6 +1120,7 @@ public class PreferenceKeys {
     }
 
     public static boolean isHdrPlusMergeEnabled() {
+        if (isRawMfsrEnabled()) return false; // Native base + exposure-aware bracket merge, no second HDR+ denoise.
         CameraMode mode = CameraMode.valueOf(getCameraModeOrdinal());
         return "hdrplus".equals(mode == CameraMode.NIGHT ? getNightMergeAlgorithm() : getZslMergeAlgorithm());
     }
@@ -1370,12 +1383,6 @@ public class PreferenceKeys {
         KEY_AI_DENOISE_CHROMA(R.string.pref_ai_denoise_chroma_key),
         KEY_AI_DENOISE_MODEL(R.string.pref_ai_denoise_model_key),
         KEY_RAW_MFSR_ENABLED(R.string.pref_raw_mfsr_enabled_key),
-        KEY_MFSR_K_DETAIL(R.string.pref_mfsr_k_detail_key),
-        KEY_MFSR_K_DENOISE(R.string.pref_mfsr_k_denoise_key),
-        KEY_MFSR_K_STRETCH(R.string.pref_mfsr_k_stretch_key),
-        KEY_MFSR_K_SHRINK(R.string.pref_mfsr_k_shrink_key),
-        KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
-        KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
         KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_HIGHLIGHT_RECOVERY(R.string.pref_highlight_recovery_key),
@@ -1383,8 +1390,9 @@ public class PreferenceKeys {
         KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),
         KEY_HIGHLIGHT_PROTECTION_KNEE(R.string.pref_highlight_protection_knee_key),
         KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
-        KEY_MFSR_TENSOR_STRIDE(R.string.pref_mfsr_tensor_stride_key),
-        KEY_MFSR_GRAD_K(R.string.pref_mfsr_grad_k_key),
+        KEY_VIVO_DOWNSCALE_KERNEL(R.string.pref_vivo_downscale_kernel_key),
+        KEY_VIVO_DOWNSCALE_SIZE(R.string.pref_vivo_downscale_size_key),
+        KEY_VIVO_UPSCALE_BACKEND(R.string.pref_vivo_upscale_backend_key),
         KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
         KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),
         KEY_RAISR_OUTPUT_SCALE(R.string.pref_raisr_output_scale_key),

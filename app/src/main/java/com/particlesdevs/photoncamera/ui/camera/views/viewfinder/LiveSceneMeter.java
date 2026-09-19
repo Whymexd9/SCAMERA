@@ -116,8 +116,7 @@ final class LiveSceneMeter {
         GLES20.glVertexAttribPointer(aPosition, 2, GLES20.GL_FLOAT, false, 8, pVertex);
         GLES20.glVertexAttribPointer(aTexCoord, 2, GLES20.GL_FLOAT, false, 8, pTexCoord);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
-        GLES20.glDisableVertexAttribArray(aPosition);
-        GLES20.glDisableVertexAttribArray(aTexCoord);
+        // MainRenderer rebinds and enables its own attributes before the next draw.
 
         readback.position(0);
         GLES20.glReadPixels(0, 0, TILE, TILE, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, readback);
@@ -126,6 +125,13 @@ final class LiveSceneMeter {
         GLES20.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
         publish();
+    }
+
+    void onContextCreated() {
+        program = fbo = tex = 0;
+        failed = false;
+        frameCounter = 0;
+        PreviewLook.clear();
     }
 
     private void publish() {
@@ -158,6 +164,8 @@ final class LiveSceneMeter {
         GLES20.glBindAttribLocation(program, 0, "vPosition");
         GLES20.glBindAttribLocation(program, 1, "vTexCoord");
         GLES20.glLinkProgram(program);
+        GLES20.glDeleteShader(vs);
+        GLES20.glDeleteShader(fs);
         int[] linked = new int[1];
         GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linked, 0);
         if (linked[0] == 0) {

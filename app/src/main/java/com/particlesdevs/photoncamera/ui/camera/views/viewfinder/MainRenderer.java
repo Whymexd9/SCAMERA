@@ -33,6 +33,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     private boolean mGLInit = false;
     private boolean mUpdateST = false;
+    private Boolean mLastRawActive;
     private volatile boolean mMirrorPreview;
 
     private final GLPreview mView;
@@ -77,22 +78,34 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // go blank because of this.
         final boolean rawLook =
                 com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled();
-        com.particlesdevs.photoncamera.processing.LiveRawFrame.setEnabled(rawLook);
-        if (rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview)) {
+        boolean rawActive = rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
+        if (mLastRawActive == null || mLastRawActive != rawActive) {
+            Log.d("MainRenderer", "viewfinder requestedRAW="+rawLook+" displaying="+(rawActive?"developed RAW":"ISP (RAW disabled, waiting, stale or unavailable)"));
+            mLastRawActive = rawActive;
+        }
+        if (rawActive) {
             GLES20.glUseProgram(hProgramHandle);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
             return;
         }
 
+        // Every pass owns its GL state: RAW and histogram passes use other programs/attributes.
+        GLES20.glUseProgram(hProgramHandle);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
+        GLES20.glEnableVertexAttribArray(vPosition);
+        GLES20.glEnableVertexAttribArray(vTexCoord);
+        pVertex.position(0);
+        pTexCoord.position(0);
         GLES20.glUniformMatrix4fv(uTexRotateMatrix, 1, false, mTexRotateMatrix, 0);
         int peakEnabled = getPeakEnabled();
         GLES20.glUniform1i(enablePeak, peakEnabled);
         GLES20.glUniform1i(mirror, mMirrorPreview ? 1 : 0);
 
-        updateToneCurve();
         final boolean liveLook =
                 com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
+        if (liveLook) updateToneCurve();
         final boolean lookOn = mCurveReady && liveLook;
         GLES20.glUniform1i(uLookEnabled, lookOn ? 1 : 0);
         // Bind the curve to unit 1 unconditionally. An unset sampler2D defaults to
@@ -154,7 +167,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         buf.position(0);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
-        GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES30.GL_R32F,
+        GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES30.GL_R16F,
                 curve.length, 1, 0, GLES30.GL_RED, GLES20.GL_FLOAT, buf);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
@@ -170,6 +183,10 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+        mGLInit = false;
+        mUpdateST = false;
+        mRawRenderer.onContextCreated();
+        mSceneMeter.onContextCreated();
         initTex();
         mSTexture = new SurfaceTexture(hTex[0]);
         mSTexture.setOnFrameAvailableListener(this);
@@ -199,7 +216,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glEnableVertexAttribArray(vPosition);
         GLES20.glEnableVertexAttribArray(vTexCoord);
         GLES20.glUniform2f(GLES20.glGetUniformLocation(hProgram, "resolution"), mView.getWidth(), mView.getHeight());
-        mGLInit = true;
+        mGLInit = hProgram != 0;
         mView.fireOnSurfaceTextureAvailable(mSTexture, 0, 0);
     }
 
@@ -215,10 +232,10 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         hTex = new int[1];
         GLES20.glGenTextures(1, hTex, 0);
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
-        GLES20.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
     }
 
     public synchronized void onFrameAvailable(SurfaceTexture st) {
@@ -261,7 +278,15 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glAttachShader(program, vshader);
         GLES20.glAttachShader(program, fshader);
         GLES20.glLinkProgram(program);
-
+        GLES20.glDeleteShader(vshader);
+        GLES20.glDeleteShader(fshader);
+        int[] linked = new int[1];
+        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linked, 0);
+        if (linked[0] == 0) {
+            Log.e("MainRenderer", GLES20.glGetProgramInfoLog(program));
+            GLES20.glDeleteProgram(program);
+            return 0;
+        }
         return program;
     }
 

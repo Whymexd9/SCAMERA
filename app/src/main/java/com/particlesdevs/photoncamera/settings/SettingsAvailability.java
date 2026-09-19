@@ -17,7 +17,8 @@ public final class SettingsAvailability {
         return false;
     }
     public String reason(String key) {
-        boolean remosaic = on("pref_remosaic_enabled_key", false);
+        boolean multi = on("pref_raw_mfsr_enabled_key", false);
+        boolean remosaic = !multi && on("pref_remosaic_enabled_key", false);
         String backend = text("pref_remosaic_backend_key", "scamera");
         boolean hex = remosaic && backend.equals("hp9_hexquad");
         boolean post = !hex || on("hexquad_post_denoise", false);
@@ -28,6 +29,25 @@ public final class SettingsAvailability {
         boolean hdr = text("pref_camera_mode_key", "2").equals("4")
                 ? text("pref_night_merge_algorithm_key", "legacy").equals("hdrplus")
                 : text("pref_zsl_merge_algorithm_key", "legacy").equals("hdrplus");
+        if (multi && any(key,"pref_short_frame_count_key","pref_long_frame_count_key",
+                "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
+                "pref_highlight_recovery_key","pref_highlight_protection_key"))
+            return on("pref_mfsr_calibrate_key",false) ? "При тёмной калибровке брекетинг отключён." : null;
+        boolean multiBracket=multi && !on("pref_mfsr_calibrate_key",false)
+                && (PreferenceNumber.read(values.get("pref_short_frame_count_key"),0)>0
+                || PreferenceNumber.read(values.get("pref_long_frame_count_key"),0)>0);
+        if(multiBracket && ((key.startsWith("pref_merge_") && !key.equals("pref_merge_seekbar_key"))
+                || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")))
+            return null; // These now align/fuse the native base with exposure donors.
+        if(multi)hdr=false;
+        if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_")
+                || key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
+                || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
+                || any(key,"pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
+                "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
+                "pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key","pref_highlight_recovery_key",
+                "pref_highlight_protection_key","scamera_quad_bayer_enabled")))
+            return "Multi-frame Remosaic использует свою склейку и выбранный в его меню тип мозаики.";
         // Both per-mode selectors remain editable even while a different mode is open.
         if (key.startsWith("hexquad_") && !key.endsWith("screen")) {
             if (!hex) return "Доступно: включите ремозаик и выберите HP9 HexQuad.";
@@ -106,7 +126,15 @@ public final class SettingsAvailability {
         }
         if (key.equals("pref_compressor_seekbar_key") && !tone.equals("fusion")) return "Доступно только с Exposure Fusion.";
         if (key.equals("pref_false_color_strength_key") && !on("pref_false_color_enabled_key",true)) return "Включите автокоррекцию цветных граней.";
-        if (key.startsWith("pref_raisr_") && !key.equals("pref_raisr_enabled_key") && !on("pref_raisr_enabled_key",false)) return "Включите RAISR.";
+        if (key.equals("pref_vivo_upscale_backend_key") && !on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
+        if (key.equals("pref_raisr_output_scale_key") && "softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "SoftPQE использует увеличение ×2.";
+        if ((key.equals("pref_raisr_strength_key") || key.equals("pref_raisr_aliasing_key") || key.equals("pref_raisr_halo_key")) && "softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "Настройка применяется только к RAISR.";
+        if (key.startsWith("pref_vivo_downscale_")) {
+            if (!on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
+            if (key.equals("pref_vivo_downscale_size_key") && text("pref_vivo_downscale_kernel_key","0").equals("0"))
+                return "Выберите Lanczos 2–5.";
+        }
+        if (key.startsWith("pref_raisr_") && !key.equals("pref_raisr_enabled_key") && !on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
         if (key.startsWith("pref_mfsr_") && !on("pref_raw_mfsr_enabled_key",false)) return "Включите RAW MFSR.";
         if (hex && (key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
                 || key.startsWith("pref_mfsr_") || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")

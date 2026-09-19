@@ -19,8 +19,8 @@ import com.particlesdevs.photoncamera.processing.ImageFrame;
 import com.particlesdevs.photoncamera.processing.ImageFrameDeblur;
 import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ml.AiBayerDenoiseProcessor;
-import com.particlesdevs.photoncamera.processing.ml.GpuRaisrProcessor;
-import com.particlesdevs.photoncamera.processing.ml.RaisrProcessor;
+import com.particlesdevs.photoncamera.processing.ml.VivoRaisrProcessor;
+import com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostPipeline;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
@@ -128,7 +128,9 @@ public class HdrxProcessor extends ProcessorBase {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
             }
-            if (PreferenceKeys.isHexQuadCaptureEnabled() && mImageFramesToProcess != null)
+            if ((PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
+                    || (captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession))
+                    && mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
         }
     }
@@ -182,6 +184,18 @@ public class HdrxProcessor extends ProcessorBase {
                 if (reference < 0) reference = measured;
                 if (Math.abs(measured / reference - 1.0) > 0.02)
                     throw new IllegalStateException("HP9 HexQuad: экспозиция кадров различается");
+            }
+        }
+        if(PreferenceKeys.isRawMfsrEnabled()) {
+            if(IsoExpoSelector.fullpairs.size()!=mImageFramesToProcess.size())
+                throw new IllegalStateException("MFSR: число метаданных не совпадает с серией RAW");
+            for(int i=0;i<mImageFramesToProcess.size();i++) {
+                ImageFrame f=mImageFramesToProcess.get(i);
+                IsoExpoSelector.ExpoPair requested=IsoExpoSelector.fullpairs.get(i);
+                Double actual=exposures.get(f.timestamp);
+                double expected=requested.exposure/1e9*requested.iso;
+                if(actual==null || !Double.isFinite(actual) || actual<=0 || Math.abs(actual/expected-1)>0.02)
+                    throw new IllegalStateException("MFSR: камера не выполнила заданную экспозицию кадра "+i);
             }
         }
         double safeExposure = IsoExpoSelector.fullpairs.get(0).Exposure();
@@ -329,9 +343,36 @@ public class HdrxProcessor extends ProcessorBase {
         processingStage = "frame selection";
 
         ParseExif.syncWithParameters(exifData, processingParameters);
+        // Bind CAL to the submitted request, not a preference that can change during close/switch.
+        com.particlesdevs.photoncamera.remosaic.CalibrationSession calibrationSession=
+                captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession
+                ? (com.particlesdevs.photoncamera.remosaic.CalibrationSession)captureRequest.getTag() : null;
+        boolean multiCapture = calibrationSession!=null || PreferenceKeys.isRawMfsrEnabled();
         boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
         ByteBuffer hexOutput = null;
-        if (hexCapture) {
+        boolean multiBracket=multiCapture && images.stream().anyMatch(f->f.pair.isHighlightFrame || f.pair.isLongFrame);
+        if (multiCapture) {
+            processingStage = "Multi-frame Remosaic";
+            try {
+                if(calibrationSession!=null) {
+                    com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.calibrate(images,processingParameters,calibrationSession);
+                    Log.i("RAW_MFSR","CAL group saved; controller continues the bank");
+                    callback.onFinished();return;
+                }
+                if(multiBracket) {
+                    images=com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.prepareBracket(images,processingParameters);
+                    ImageFrameDeblur bracketDeblur=new ImageFrameDeblur(processingParameters);
+                    bracketDeblur.firstFrameGyro=images.get(0).frameGyro.clone();
+                    for(ImageFrame f:images)bracketDeblur.processDeblurPosition(f);
+                } else {
+                    hexOutput=com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.process(images,processingParameters);
+                    hexOwnedOutput=hexOutput;
+                    processingParameters.multiFrameCount=images.size();
+                }
+                ParseExif.syncWithParameters(exifData,processingParameters);
+            } catch(Exception e) {throw new IllegalStateException("Multi-frame Remosaic: "+e.getMessage(),e);}
+            finally {if(!multiBracket)for(ImageFrame frame:images)frame.close();}
+        } else if (hexCapture) {
             processingStage = "HP9 HexQuad: six-frame NPU remosaic";
             try {
                 hexOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.HexQuadBurst.process(
@@ -345,7 +386,7 @@ public class HdrxProcessor extends ProcessorBase {
                 for (ImageFrame frame : images) frame.close();
             }
         }
-        if (!hexCapture) {
+        if (!hexCapture && !multiCapture) {
         ImageFrameDeblur imageFrameDeblur = new ImageFrameDeblur(processingParameters);
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
@@ -466,7 +507,7 @@ public class HdrxProcessor extends ProcessorBase {
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");
         ESD4D esd4d = null;
-        if (hexCapture) {
+        if (hexCapture || (multiCapture && !multiBracket)) {
             processingParameters.highlightSuppressionStrength = 0f;
         } else if(images.size() > 1) {
             processingStage = "RAW alignment/fusion";
@@ -500,7 +541,7 @@ public class HdrxProcessor extends ProcessorBase {
             images.get(0).buffer = null;
         }
         Log.d(TAG, "HDRX Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
-        if ((saveRAW >= 1) && alignAlgorithm != 2) {
+        if ((saveRAW >= 1) && (alignAlgorithm != 2 || multiCapture)) {
             boolean imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
                     processingParameters);
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
@@ -539,7 +580,8 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
 
-        processingParameters.noiseModeler.computeStackingNoiseModel(images.size());
+        processingParameters.noiseModeler.computeStackingNoiseModel(
+                processingParameters.multiFrameCount>0 ? processingParameters.multiFrameCount : images.size());
 
         boolean allowPostDenoise = !processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise;
         if (processingParameters.hexQuadProcessed) Log.i(TAG,"HEX POST DENOISE: AI/SCAMERA/RT allowed="+allowPostDenoise);
@@ -576,19 +618,34 @@ public class HdrxProcessor extends ProcessorBase {
         pipeline.kernelParamsSize = mosaicSrForJpeg == null && esd4d != null ? esd4d.kernelsMapCPUSize : null;
 
         Bitmap img = pipeline.Run(jpegInput, processingParameters);
-        if (PreferenceKeys.isRaisrEnabled() && PreferenceKeys.getRaisrStrength() > 0) {
-            processingStage = PreferenceKeys.isFullGpuProcessing()
-                    ? "GPU Nano RAISR resampling" : "Nano RAISR resampling";
+        final int beforeVivoWidth = img.getWidth(), beforeVivoHeight = img.getHeight();
+        final int downscaleKernel = PreferenceKeys.getVivoDownscaleKernel();
+        final String downscaleSize = PreferenceKeys.getVivoDownscaleSize();
+        boolean vivoSucceeded = false;
+        if (PreferenceKeys.isRaisrEnabled()) {
+            processingStage = "softpqe".equals(PreferenceKeys.getVivoUpscaleBackend()) ? "Vivo SoftPQE" : "Vivo RAISR";
             try {
-                Bitmap enhanced = PreferenceKeys.isFullGpuProcessing()
-                        ? GpuRaisrProcessor.process(PhotonCamera.getAppContext(), img)
-                        : RaisrProcessor.process(PhotonCamera.getAppContext(), img);
+                Bitmap enhanced = VivoRaisrProcessor.process(PhotonCamera.getAppContext(), img,
+                        processingParameters.cameraID, processingParameters.iso, PreferenceKeys.getRaisrOutputScale(), PreferenceKeys.getVivoUpscaleBackend());
                 if (enhanced != img) {
                     img.recycle();
                     img = enhanced;
                 }
+                vivoSucceeded = true;
             } catch (Throwable raisrError) {
-                Log.e(TAG, "Optional Nano RAISR failed; preserving original image", raisrError);
+                Log.e(TAG, "Vivo upscale failed; preserving original image", raisrError);
+            }
+        }
+        if (vivoSucceeded && downscaleKernel != 0) {
+            processingStage = "Lanczos " + downscaleKernel + " after Vivo";
+            try {
+                Bitmap reduced = VivoPostDownscale.process(img, beforeVivoWidth, beforeVivoHeight, downscaleKernel, downscaleSize);
+                if (reduced != img) {
+                    img.recycle();
+                    img = reduced;
+                }
+            } catch (Throwable downscaleError) {
+                Log.e(TAG, "Lanczos failed; preserving successful Vivo result", downscaleError);
             }
         }
         processingStage = "image encoding";

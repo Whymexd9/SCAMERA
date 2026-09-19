@@ -138,8 +138,8 @@
     <string name="fetch_configurations">Fetch Configurations</string>
     <string name="fetch_configurations_summary">Download device-specific tuning from the network and update cached settings</string>
     <string name="advanced">Advanced</string>
-    <string name="sensor_configurations">Sensor Configurations</string>
-    <string name="sensor_configurations_summary">Per-sensor tuning parameters (physical camera id)</string>
+    <string name="sensor_configurations">Настройки сенсоров по модулям</string>
+    <string name="sensor_configurations_summary">Уровни RAW, экспозиция, стабилизация и сессия каждого модуля</string>
     <string name="pref_category_device_key_title">Device</string>
     <string name="this_device">Your Device - %1$s</string>
     <string name="sync_on">Sync. On</string>
@@ -337,11 +337,11 @@
     <string name="sharp_deconv_iterations_desc">0 отключает ступень. Каждая итерация — два полноразмерных прохода</string>
     <string name="sharp_deconv_damping">Затухание</string>
     <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом</string>
-    <string name="pref_zsl_buffer_count_default">0</string>
+    <string name="pref_zsl_buffer_count_default">50</string>
     <string name="zsl_buffer_count">Кадров в буфере ZSL</string>
-    <string name="zsl_buffer_count_summary">Сколько RAW-кадров до нажатия держать в кольце. 0 — следовать общему количеству кадров серии. Больше кадров даёт серии больше материала, но каждый занимает полноразмерный буфер в памяти. Каждый кадр — полноразмерный RAW, около 25 МБ: 100 кадров это порядка 2,5 ГБ, и до такого значения устройство почти наверняка не дойдёт.</string>
-    <string name="live_viewfinder_raw">Живой видоискатель из RAW</string>
-    <string name="live_viewfinder_raw_summary">Видоискатель проявляет RAW-поток сам: демозаик, уровни, баланс белого, цветовая матрица и тональная компрессия одним проходом на GPU. Светотень совпадает со снимком до спуска. Детализация склейки и MFSR в превью не появится — снимок останется чище. Работает в режиме ZSL: именно он держит RAW-поток, из которого берётся кадр</string>
+    <string name="zsl_buffer_count_summary">Размер RAW-буфера до нажатия: 1–100 кадров, по умолчанию 50. Один размер для всех модулей и режимов фото/ночь, включая MFSR. Число кадров склейки задаётся отдельно.</string>
+    <string name="live_viewfinder_raw">Живой видоискатель</string>
+    <string name="live_viewfinder_raw_summary">Предпросмотр с проявлением RAW. При выключении или недоступности RAW — стандартное превью камеры. Полная обработка снимка выполняется после съёмки.</string>
     <bool name="pref_remosaic_enabled_default">false</bool>
     <string name="pref_remosaic_block_default">4</string>
     <string name="pref_remosaic_phase_default">0</string>

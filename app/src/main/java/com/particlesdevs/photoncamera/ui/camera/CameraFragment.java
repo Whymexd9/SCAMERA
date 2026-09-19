@@ -293,6 +293,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
         }
         initSettingsBar();
+        com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton favorites = view.findViewWithTag("favorite_settings");
+        favorites.setOnApplied(() -> {
+            PhotonCamera.getSettings().loadCache();
+            captureController.restartCamera();
+        });
     }
 
     private void initSettingsBar() {
@@ -382,9 +387,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         PhotonCamera.getGravity().unregister();
         PhotonCamera.getGyro().unregister();
         PhotonCamera.getSettings().saveID();
+        // Stop camera outputs before GLSurfaceView destroys their SurfaceTexture.
+        captureController.closeCamera();
         textureView.onPause();
         surfaceView.clear();
-        captureController.closeCamera();
 //        stopBackgroundThread();
         cameraFragmentViewModel.onPause();
         mCameraUIEventsListener.onPause();

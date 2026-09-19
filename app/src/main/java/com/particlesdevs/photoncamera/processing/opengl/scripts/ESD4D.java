@@ -977,7 +977,7 @@ public class ESD4D extends GLOneScript {
             adaptiveNMpy = 1.0;
         }
         parameters.noiseModeler.setAdaptiveMpy(adaptiveNMpy);
-        double noisempy = PreferenceKeys.isHdrPlusMergeEnabled()
+        double noisempy = (parameters.multiFrameCount>0 || PreferenceKeys.isHdrPlusMergeEnabled())
                 ? 1.0 : Math.pow(2.0, PhotonCamera.getSettings().mergeStrength);
         //double noiseMin = 1.0/(double)parameters.whiteLevel;
         double noiseMin = 1e-6;
@@ -1091,7 +1091,6 @@ public class ESD4D extends GLOneScript {
         float maxBlack = Math.max(blackLevel[0], Math.max(blackLevel[1], Math.max(blackLevel[2], blackLevel[3])));
         float minLevel = (float) (1.0/(double)(parameters.whiteLevel-maxBlack));
 
-        int rawMfsrMergedFrames = 0;
         // Expected shakiness of the long frame if it were no shakier than the
         // regular ones. Gyro shakiness is the square of the motion integrated over
         // that frame's own exposure window, so it scales with the square of the
@@ -1192,20 +1191,6 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("TILING_TOLERANCE", tilingTolerance);
             float floorSigmas = PreferenceKeys.getMergeFloorSigmas();
             glProg.setDefine("FLOOR_SIGMAS", floorSigmas);
-            // RAW MFSR kernel regression shape (Wronski et al. 2019, sec. 5.1).
-            // Also compile-time, so they go in before the program is compiled.
-            float mfsrKDetail = PreferenceKeys.getMfsrKDetail();
-            float mfsrKDenoise = PreferenceKeys.getMfsrKDenoise();
-            float mfsrKStretch = PreferenceKeys.getMfsrKStretch();
-            float mfsrKShrink = PreferenceKeys.getMfsrKShrink();
-            float mfsrDth = PreferenceKeys.getMfsrDth();
-            float mfsrDtr = PreferenceKeys.getMfsrDtr();
-            glProg.setDefine("MFSR_KDETAIL", mfsrKDetail);
-            glProg.setDefine("MFSR_KDENOISE", mfsrKDenoise);
-            glProg.setDefine("MFSR_KSTRETCH", mfsrKStretch);
-            glProg.setDefine("MFSR_KSHRINK", mfsrKShrink);
-            glProg.setDefine("MFSR_DTH", mfsrDth);
-            glProg.setDefine("MFSR_DTR", mfsrDtr);
             int hlRecovery = PreferenceKeys.isHighlightRecoveryEnabled() ? 1 : 0;
             int hlRecoveryMinOk = PreferenceKeys.getHighlightRecoveryMinOk();
             int hlProtection = PreferenceKeys.isHighlightProtectionEnabled() ? 1 : 0;
@@ -1216,20 +1201,6 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("HIGHLIGHT_PROTECTION", hlProtection);
             glProg.setDefine("HIGHLIGHT_PROTECTION_KNEE", hlKnee);
             glProg.setDefine("HIGHLIGHT_PROTECTION_STRENGTH", hlStrength);
-            int mfsrStride = PreferenceKeys.getMfsrTensorStride();
-            float mfsrGradK = PreferenceKeys.getMfsrGradK();
-            glProg.setDefine("MFSR_TENSOR_STRIDE", mfsrStride);
-            glProg.setDefine("MFSR_GRAD_K", mfsrGradK);
-            Log.d("ESD4D", "Merge robustness=" + robustness + " clipLevel=" + clipLevel
-                    + " tilingTolerance=" + tilingTolerance + " floorSigmas=" + floorSigmas
-                    + " | MFSR kDetail=" + mfsrKDetail + " kDenoise=" + mfsrKDenoise
-                    + " kStretch=" + mfsrKStretch + " kShrink=" + mfsrKShrink
-                    + " Dth=" + mfsrDth + " Dtr=" + mfsrDtr
-                    + " stride=" + mfsrStride + " gradK=" + mfsrGradK
-                    + " | mosaicPeriod=" + mosaicPeriod
-                    + " | HL recovery=" + hlRecovery + " minOk=" + hlRecoveryMinOk
-                    + " protection=" + hlProtection + " knee=" + hlKnee
-                    + " strength=" + hlStrength);
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);
@@ -1241,11 +1212,8 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("cfaShift", cfaShift);
             glProg.setVar("minLevel",minLevel);
             glProg.setVar("exposure", exposure);
-            boolean rawMfsrForFrame = PreferenceKeys.isRawMfsrEnabled()
-                    && !frame.pair.isHighlightFrame && !frame.pair.isLongFrame;
-            glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
+            glProg.setVar("rawMfsr", 0);
             glProg.setVar("mosaicPeriod", mosaicPeriod);
-            if (rawMfsrForFrame) rawMfsrMergedFrames++;
             glProg.setVar("analogBalance", analogBalance);
             if(exposure >= 0.95f) {
                 if(lowCnt > 1)
@@ -1306,9 +1274,9 @@ public class ESD4D extends GLOneScript {
             // only when it beats the zero offset beyond the shader's gates.
             glProg.setVar("enableFlow", enableFlowRefinement && flowRefineMaxDisp > 0f ? 1 : 0);
             glProg.setVar("flowMaxDisp", flowRefineMaxDisp);
-            glProg.setVar("rawMfsr", rawMfsrForFrame ? 1 : 0);
+            glProg.setVar("rawMfsr", 0);
             glProg.setVar("mosaicPeriod", mosaicPeriod);
-            glProg.setVar("rawMfsrStrength", rawMfsrForFrame ? 0.18f : 0.0f);
+            glProg.setVar("rawMfsrStrength", 0.0f);
             glProg.setVar("mergeAlgorithm", PreferenceKeys.isHdrPlusMergeEnabled() ? 1 : 0);
             // Denoise strength from the frame's signal-to-noise ratio, not from a
             // fixed number. GCam's own dump prints "Base frame SNR: 21.70" and
@@ -1328,7 +1296,7 @@ public class ESD4D extends GLOneScript {
             // survives averaging better and is the more objectionable of the two.
             float midGrey = 0.18f;
             float baseSnr = (float) (midGrey / Math.sqrt(Math.max(noiseS * midGrey + noiseO, 1e-9)));
-            int mergedFrames = Math.max(1, PhotonCamera.getSettings().frameCount);
+            int mergedFrames = parameters.multiFrameCount>0 ? parameters.multiFrameCount : Math.max(1, PhotonCamera.getSettings().frameCount);
             float mergedSnr = (float) (baseSnr * Math.sqrt(mergedFrames));
             float snrTarget = Math.max(PreferenceKeys.getHdrPlusSnrTarget(), 1f);
             float snrScale = snrTarget / Math.max(mergedSnr, 1e-3f);
@@ -1389,9 +1357,6 @@ public class ESD4D extends GLOneScript {
             endT();
         }
 
-        Log.i("RAW_MFSR", "enabled=" + PreferenceKeys.isRawMfsrEnabled()
-                + ", reconstructed ordinary frames=" + rawMfsrMergedFrames
-                + ", kernel=packed Catmull-Rom 4x4");
 
         float[] bl2 = new float[4];
         for (int i = 0; i < 4; i++) {

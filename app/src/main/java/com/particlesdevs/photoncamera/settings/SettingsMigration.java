@@ -54,6 +54,24 @@ public final class SettingsMigration {
         if (migrateDisabledNoise) editor.putBoolean("pref_noise_dynamic_enabled_key",false);
         editor.apply();
     }
+    /** Upgrade obsolete MFSR controls once for each restored module snapshot. */
+    public static void migrateMultiFrame(SharedPreferences preferences) {
+        Map<String, ?> values=preferences.getAll();
+        SharedPreferences.Editor e=preferences.edit();
+        if(!values.containsKey("settings_zsl_capacity_v2")) {
+            e.putString("pref_zsl_buffer_count_key","50");
+            e.putBoolean("settings_zsl_capacity_v2",true);
+        }
+        if(!values.containsKey("pref_mfsr_source_key")) {
+            boolean clustered=PreferenceNumber.bool(values.get("pref_remosaic_enabled_key"),false);
+            int block=clustered ? (PreferenceNumber.read(values.get("pref_remosaic_block_key"),4)==2 ? 2 : 4) : 1;
+            e.putString("pref_mfsr_source_key",String.valueOf(block));
+        }
+        for(String old:new String[]{"k_detail","k_denoise","k_stretch","k_shrink","dth","dtr","tensor_stride","grad_k"})
+            e.remove("pref_mfsr_"+old+"_key");
+        // Calibration is a one-shot action, never a saved or copied camera profile.
+        e.remove("pref_mfsr_calibrate_key");e.commit();
+    }
     private static String attribute(Context context, XmlResourceParser parser, String name) {
         int id=parser.getAttributeResourceValue(ANDROID,name,0);
         if(id==0) return parser.getAttributeValue(ANDROID,name);

@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # versionCode = 30000 + commit count
+          fetch-depth: 0        # Versioning uses the documented source baseline below.
 
       - uses: actions/setup-java@v4
         with:
@@ -42,7 +42,8 @@ jobs:
 
       - name: Compute versionCode
         id: ver
-        run: echo "code=$((30000 + $(git rev-list --count HEAD)))" >> "$GITHUB_OUTPUT"
+        # Reserve versions delivered locally; increment from the last published source baseline.
+        run: echo "code=$((30196 + $(git rev-list --count c2d9e9bc4bf3d13467e48d86faad6a748e33ddcb..HEAD)))" >> "$GITHUB_OUTPUT"
 
       - name: Fetch vendored ncnn from upstream PhotonCamera
         run: |
@@ -102,6 +103,19 @@ jobs:
           grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
+      - name: Check Vivo upscale failure handling
+        run: |
+          python3 tools/vivo-upscale/check_softpqe_worker.py
+          python3 tools/vivo-upscale/check_softpqe_controls.py
+          python3 tools/vivo-upscale/check_raisr_controls.py
+          python3 tools/vivo-upscale/check_loader_order.py
+
+      - name: Check original Multi-frame Remosaic binary
+        run: |
+          python3 -m venv /tmp/multiframe-check
+          /tmp/multiframe-check/bin/pip install unicorn==2.1.4 pyelftools==0.32
+          /tmp/multiframe-check/bin/python tools/multiframe/check_native.py
+
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py
 
@@ -128,13 +142,22 @@ jobs:
           sudo apt-get install -y libfftw3-dev python3-numpy libegl1 libgl1-mesa-dri
           python3 -m venv /tmp/tetra-gpu-check
           /tmp/tetra-gpu-check/bin/pip install moderngl==5.12.0 numpy==2.3.5
+          /tmp/tetra-gpu-check/bin/pip install ai-edge-litert==2.2.0
+          /tmp/tetra-gpu-check/bin/python tools/check_saliency_model.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_arkcam_color.py
+          mkdir -p /tmp/zsl-quality-check
+          javac -d /tmp/zsl-quality-check app/src/main/java/com/particlesdevs/photoncamera/capture/RawFrameQuality.java app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java tools/java/RawFrameQualityCheck.java tools/java/HexQuadZslSelectorCheck.java
+          java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck
+          java -ea -cp /tmp/zsl-quality-check HexQuadZslSelectorCheck
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_gles.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_detail.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
+          /usr/bin/python3 tools/check_lanczos_downscale.py
+          LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/photo_look_gl.py
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()
@@ -144,13 +167,16 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest
             app/build/reports/viewfinder
+            app/build/reports/module-concept
           if-no-files-found: ignore
 
       - name: Verify native denoise packaging
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libmobileRemosaic.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/librtDenoise.so'
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/liblanczosDownscale.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/vivo-neural/arm64-v8a/vivo-neural-worker'
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
           unzip -p "$APK" assets/vivo-neural/arm64-v8a/vivo-neural-worker > /tmp/vivo-neural-worker-android
@@ -163,6 +189,16 @@ jobs:
             echo "Root helper must have a static C++ runtime"
             exit 1
           fi
+          unzip -p "$APK" assets/vivo-upscale/arm64-v8a/vivo-upscale-worker > /tmp/vivo-upscale-worker-android
+          readelf -h /tmp/vivo-upscale-worker-android | grep AArch64
+          readelf -l /tmp/vivo-upscale-worker-android | grep /system/bin/linker64
+          readelf -d /tmp/vivo-upscale-worker-android > /tmp/upscale-deps.txt
+          grep -q PIE /tmp/upscale-deps.txt
+          if grep -q 'libc++_shared.so' /tmp/upscale-deps.txt; then
+            echo "Upscale helper must have a static C++ runtime"
+            exit 1
+          fi
+          unzip -p "$APK" assets/vivo-upscale/softpqe-master.sha256 | grep -q libvivo_softpqe.so
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file res/xml/preferences.xml > /tmp/apk-preferences.txt
           grep -q 'rt_denoise_screen' /tmp/apk-preferences.txt
           grep -q 'pref_rt_denoise_backend' /tmp/apk-preferences.txt

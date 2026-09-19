@@ -11,9 +11,8 @@ public class ViewfinderFrame extends View {
     public ViewfinderFrame(Context context,AttributeSet attrs){super(context,attrs);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
     @Override protected void onDraw(Canvas canvas){
         float d=getResources().getDisplayMetrics().density;
-        frame.set(5*d,d,getWidth()-5*d,getHeight()-d);
+        frame.set(0,0,getWidth(),getHeight());
         mask.reset();mask.setFillType(Path.FillType.EVEN_ODD);mask.addRect(0,0,getWidth(),getHeight(),Path.Direction.CW);mask.addRoundRect(frame,24*d,24*d,Path.Direction.CW);
-        paint.setStyle(Paint.Style.FILL);paint.setColor(0xFF101316);canvas.drawPath(mask,paint);
-        paint.setStyle(Paint.Style.STROKE);paint.setColor(0x668F9A9F);paint.setStrokeWidth(d);canvas.drawRoundRect(frame,24*d,24*d,paint);
+        paint.setStyle(Paint.Style.FILL);paint.setColor(0xFF000000);canvas.drawPath(mask,paint);
     }
 }

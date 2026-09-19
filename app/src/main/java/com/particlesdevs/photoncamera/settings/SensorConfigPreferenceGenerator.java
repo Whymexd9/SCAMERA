@@ -52,7 +52,12 @@ public class SensorConfigPreferenceGenerator {
         }
 
         try {
-            List<String> physicalIds = getSortedPhysicalIds();
+            List<String> physicalIds = new ArrayList<>(ModuleRegistry.slots());
+            physicalIds.sort(java.util.Comparator.comparingInt(ModuleRegistry::order));
+            if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
+            for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
+            submenu.setTitle("Настройки сенсоров по модулям");
+            submenu.setSummary("Уровни RAW, экспозиция, стабилизация и сессия каждого модуля");
             if (physicalIds.isEmpty()) {
                 Log.w(TAG, "No camera ids found, cannot generate sensor config preferences.");
                 addNoSensorsPreference(context, submenu);
@@ -71,10 +76,12 @@ public class SensorConfigPreferenceGenerator {
             Map<String, PreferenceCategory> categories = createCategories(context, submenu, physicalIds, lensMap, fields);
 
             String selected = resolveSelected(context, selector, physicalIds);
+            selector.setValue(selected);
             updateVisibility(selector, categories, selected);
 
             selector.setOnPreferenceChangeListener((preference, newValue) -> {
                 String sel = newValue != null ? newValue.toString() : null;
+                selector.setValue(sel);
                 updateVisibility(selector, categories, sel);
                 return true;
             });
@@ -88,8 +95,8 @@ public class SensorConfigPreferenceGenerator {
     private static ListPreference createSelector(Context context, PreferenceScreen submenu, List<String> physicalIds, Map<String, CameraLensData> lensMap) {
         ListPreference selector = new ListPreference(context);
         selector.setKey(SELECTOR_KEY);
-        selector.setTitle("Sensor");
-        selector.setDialogTitle("Select Sensor");
+        selector.setTitle("Модуль камеры");
+        selector.setDialogTitle("Выберите модуль");
 
         CharSequence[] entries = new CharSequence[physicalIds.size()];
         CharSequence[] entryValues = new CharSequence[physicalIds.size()];
@@ -100,7 +107,8 @@ public class SensorConfigPreferenceGenerator {
         }
         selector.setEntries(entries);
         selector.setEntryValues(entryValues);
-        selector.setDefaultValue(physicalIds.get(0));
+        selector.setPersistent(false);
+        selector.setDefaultValue(ModuleRegistry.active());
         submenu.addPreference(selector);
         return selector;
     }
@@ -133,8 +141,8 @@ public class SensorConfigPreferenceGenerator {
         androidx.preference.Preference addButton = new androidx.preference.Preference(context);
         addButton.setKey("pref_sensorconfig_" + physicalId + "_add_tunablekey");
         addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_with_margin);
-        addButton.setTitle("+ Add Tunable Key");
-        addButton.setSummary("Add a custom vendor tag for this sensor (type, name, value)");
+        addButton.setTitle("Добавить vendor tag");
+        addButton.setSummary("Параметр сессии выбранного модуля: тип, имя и значение");
         addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.ic_add);
         addButton.setOrder(10000);
         addButton.setOnPreferenceClickListener(preference -> {
@@ -160,7 +168,7 @@ public class SensorConfigPreferenceGenerator {
 
     private static String resolveSelected(Context context, ListPreference selector, List<String> physicalIds) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        String selected = prefs.getString(selector.getKey(), physicalIds.get(0));
+        String selected = ModuleRegistry.active();
         if (!physicalIds.contains(selected)) {
             selected = physicalIds.get(0);
         }
@@ -298,7 +306,8 @@ public class SensorConfigPreferenceGenerator {
     }
 
     private static String buildCategoryTitle(String physicalId, CameraLensData lens) {
-        StringBuilder title = new StringBuilder("Sensor ").append(physicalId);
+        if(ModuleRegistry.slots().contains(physicalId))return ModuleRegistry.label(physicalId)+" · ID "+ModuleRegistry.camera(physicalId)+(ModuleRegistry.visible(physicalId)?"":" · скрыт");
+        StringBuilder title = new StringBuilder("Сенсор ").append(physicalId);
         if (lens != null) {
             if (lens.getCameraId() != null) {
                 title.append(" \u00b7 ID ").append(lens.getCameraId());
@@ -338,7 +347,7 @@ public class SensorConfigPreferenceGenerator {
 
     private static void addPreference(Context context, PreferenceCategory category, String sensorId, TunableFieldInfo info) {
         // Skip OIS configuration for sensors that do not physically support hardware OIS
-        if ("oisMode".equalsIgnoreCase(info.fieldName) && !isOisSupported(context, sensorId)) {
+        if ("oisMode".equalsIgnoreCase(info.fieldName) && !isOisSupported(context, ModuleSensorSettings.physical(sensorId))) {
             return;
         }
 
@@ -360,7 +369,7 @@ public class SensorConfigPreferenceGenerator {
 
         TunableSeekBarPreference seekBar = new TunableSeekBarPreference(context);
         seekBar.setKey(prefKey);
-        seekBar.setTitle(annotation.title());
+        seekBar.setTitle(ModuleSensorSettings.title(annotation.title()));
 
         if (!annotation.description().isEmpty()) {
             seekBar.setSummary(annotation.description());
@@ -401,8 +410,8 @@ public class SensorConfigPreferenceGenerator {
 
         EditTextPreference editText = new EditTextPreference(context);
         editText.setKey(prefKey);
-        editText.setTitle(annotation.title());
-        editText.setDialogTitle(annotation.title());
+        editText.setTitle(ModuleSensorSettings.title(annotation.title()));
+        editText.setDialogTitle(ModuleSensorSettings.title(annotation.title()));
         editText.setIconSpaceReserved(false);
 
         int inputType;
@@ -451,8 +460,8 @@ public class SensorConfigPreferenceGenerator {
         SensorConfig annotation = info.annotation;
         ListPreference listPref = new ListPreference(context);
         listPref.setKey(prefKey);
-        listPref.setTitle(annotation.title());
-        listPref.setDialogTitle(annotation.title());
+        listPref.setTitle(ModuleSensorSettings.title(annotation.title()));
+        listPref.setDialogTitle(ModuleSensorSettings.title(annotation.title()));
 
         listPref.setEntries(annotation.entries());
         listPref.setEntryValues(annotation.entryValues());

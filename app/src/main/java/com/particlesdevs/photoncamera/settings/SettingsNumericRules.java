@@ -18,11 +18,8 @@ public final class SettingsNumericRules {
             case "pref_highlight_recovery_min_ok_key": return new double[]{1,4,1};
             case "pref_highlight_protection_knee_key": return new double[]{0,0.99,0};
             case "pref_highlight_protection_strength_key": return new double[]{0,1,0};
-            case "pref_mfsr_k_detail_key": case "pref_mfsr_k_denoise_key": case "pref_mfsr_k_stretch_key": case "pref_mfsr_k_shrink_key": return new double[]{0.001,100,0};
-            case "pref_mfsr_dth_key": return new double[]{0,10,0};
-            case "pref_mfsr_dtr_key": return new double[]{0.000001,10,0};
-            case "pref_mfsr_grad_k_key": return new double[]{0.000001,100,0};
-            case "pref_mfsr_tensor_stride_key": return new double[]{1,64,1};
+            case "pref_mfsr_frames_key": return new double[]{3,40,1};
+            case "pref_mfsr_red_ca_key": case "pref_mfsr_blue_ca_key": return new double[]{0.99,1.01,0};
             default: return key.startsWith("pref_snr_") ? new double[]{0,100,0} : null;
         }
     }

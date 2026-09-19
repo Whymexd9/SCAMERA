@@ -21,6 +21,7 @@
 package com.particlesdevs.photoncamera.ui.camera.views;
 
 import android.content.Context;
+import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import android.util.AttributeSet;
 import android.view.View;
 import android.widget.Button;
@@ -59,9 +60,14 @@ public class AuxButtonsLayout extends LinearLayout {
     private AuxButtonListener auxButtonListener;
     private AuxButtonsModel auxButtonsModel;
     private boolean hiddenBySettings;
+    private long lastSwitch = -500;
+    private int labelRotation;
+    private final List<String> displayedSlots = new ArrayList<>();
+    private final List<String> displayedLabels = new ArrayList<>();
 
 public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
+        setWillNotDraw(false);
 
         int margin = (int) context.getResources().getDimension(R.dimen.aux_button_internal_margin);
         int size = (int) context.getResources().getDimension(R.dimen.vf_lens_height);
@@ -108,17 +114,25 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     }
 
     private void setAuxButtons(List<CameraLensData> cameraLensDataList, String activeId) {
-        removeAllViews();
-        auxButtonsMap.clear();
         SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
         List<CameraLensData> ordered = new ArrayList<>(cameraLensDataList);
         ordered.sort(Comparator.comparingInt(data -> lensOrder(manager, data.getCameraId())));
-        ordered.forEach(data -> {
-            String automatic = getAuxButtonName(data.getZoomFactor());
-            String custom = manager == null ? "" : manager.getString(
-                    "default_scope", "lens_name_" + data.getCameraId(), "").trim();
-            addNewButton(data.getCameraId(), custom.isEmpty() ? automatic : custom);
-        });
+        ModuleRegistry.initialize("front", auxButtonsModel.getFrontCameras());
+        ModuleRegistry.initialize("back", auxButtonsModel.getBackCameras());
+        String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";
+        List<String> slots = ModuleRegistry.initialize(side, ordered);
+        slots.sort(Comparator.comparingInt(ModuleRegistry::order));
+        String currentSlot=ModuleRegistry.active();
+        if(!slots.contains(currentSlot)||!ModuleRegistry.camera(currentSlot).equals(activeId))
+            for(String slot:slots)if(ModuleRegistry.visible(slot)&&ModuleRegistry.camera(slot).equals(activeId)){ModuleRegistry.select(slot);break;}
+        List<String> visible = new ArrayList<>(), labels = new ArrayList<>();
+        for (String slot : slots) if (ModuleRegistry.visible(slot)) {visible.add(slot);labels.add(ModuleRegistry.label(slot));}
+        if (!visible.equals(displayedSlots) || !labels.equals(displayedLabels)) {
+            removeAllViews();auxButtonsMap.clear();
+            displayedSlots.clear();displayedSlots.addAll(visible);
+            displayedLabels.clear();displayedLabels.addAll(labels);
+            for(int i=0;i<visible.size();i++)addNewButton(visible.get(i),labels.get(i));
+        }
         setListenerAndSelected(activeId);
         updateVisibility();
     }
@@ -138,8 +152,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         for (int i = 0; i < getChildCount(); i++) {
             View button = getChildAt(i);
             button.setOnClickListener(auxButtonListener);
-            if (activeId.equals(auxButtonsMap.get(button.getId())))
-                button.setSelected(true);
+            button.setSelected(ModuleRegistry.active().equals(auxButtonsMap.get(button.getId())) ||
+                    (!ModuleRegistry.slots().contains(ModuleRegistry.active()) && activeId.equals(ModuleRegistry.camera(auxButtonsMap.get(button.getId())))));
         }
     }
 
@@ -159,13 +173,25 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     }
 
     private void onAuxButtonClick(View view) {
-        if (auxButtonsModel.isEnabled()) {
+        if (view.isSelected()) return;
+        if (auxButtonsModel != null && auxButtonsModel.isEnabled() && android.os.SystemClock.elapsedRealtime()-lastSwitch>=500) {
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            // Property animators are independent of rotation and layout. Final scale remains 1.
+            android.animation.PropertyValuesHolder x=android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, .90f, 1.06f, 1f);
+            android.animation.PropertyValuesHolder y=android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, .90f, 1.06f, 1f);
+            android.animation.ObjectAnimator pulse=android.animation.ObjectAnimator.ofPropertyValuesHolder(view,x,y);
+            pulse.setDuration(220);pulse.setInterpolator(new android.view.animation.DecelerateInterpolator());pulse.start();
+            lastSwitch=android.os.SystemClock.elapsedRealtime();
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
                 child.setSelected(view.equals(child));
             }
             if (auxButtonListener != null)
-                auxButtonListener.onAuxButtonClicked(auxButtonsMap.get(view.getId()));
+            {
+                String slot=auxButtonsMap.get(view.getId());
+                ModuleRegistry.select(slot);
+                auxButtonListener.onAuxButtonClicked(ModuleRegistry.camera(slot));
+            }
         }
     }
 
@@ -180,11 +206,23 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setPadding(padding, 0, padding, 0);
         b.setGravity(android.view.Gravity.CENTER);
         b.setIncludeFontPadding(false);
-        b.setSingleLine(true);
+        b.setMaxLines(1);
+        b.setHorizontallyScrolling(false);
         b.setText(buttonText);
+        b.setRotation(labelRotation);
+        b.setContentDescription("Объектив " + buttonText);
         b.setTextSize(13);
-        b.setTextColor(getResources().getColorStateList(R.color.manual_text_color, getContext().getTheme()));
-        b.setBackgroundResource(R.drawable.aux_button_background);
+        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext()),0xFFFFFFFF}));
+        android.graphics.drawable.Drawable selected = new android.graphics.drawable.Drawable() {
+            final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            @Override public void draw(android.graphics.Canvas c){p.setColor(0x99000000);android.graphics.Rect r=getBounds();c.drawCircle(r.exactCenterX(),r.exactCenterY(),Math.min(r.width(),r.height())/2f,p);}
+            @Override public void setAlpha(int a){} @Override public void setColorFilter(android.graphics.ColorFilter f){}
+            @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
+        };
+        android.graphics.drawable.StateListDrawable states=new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_selected},selected);
+        states.addState(new int[]{},new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+        b.setBackground(states);
         b.setStateListAnimator(null);
         b.setBackgroundTintList(null);
         b.setTransformationMethod(null);
@@ -194,6 +232,47 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         addView(b);
     }
 
+    public void rotateLabels(int orientation, long duration) {
+        labelRotation=orientation;
+        for(int i=0;i<getChildCount();i++){
+            View child=getChildAt(i);
+            float start=child.getRotation(),delta=((orientation-start+540)%360)-180;
+            child.animate().rotation(start+delta).setDuration(duration).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
+    }
+
+    private float touchX,touchY;
+    @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
+        if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){touchX=e.getX();touchY=e.getY();}
+        if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE&&Math.abs(e.getX()-touchX)>android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop()&&Math.abs(e.getX()-touchX)>Math.abs(e.getY()-touchY))return true;
+        return super.onInterceptTouchEvent(e);
+    }
+    @Override public boolean onTouchEvent(android.view.MotionEvent e){
+        if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
+            float dx=e.getX()-touchX;
+            if(Math.abs(dx)>getResources().getDisplayMetrics().density*24)for(int i=0;i<getChildCount();i++)if(getChildAt(i).isSelected()){
+                int next=i+(dx<0?1:-1);if(next>=0&&next<getChildCount())onAuxButtonClick(getChildAt(next));break;
+            }
+        }
+        return true;
+    }
+    @Override protected void onMeasure(int widthSpec,int heightSpec) {
+        int screen=getResources().getDisplayMetrics().widthPixels;
+        int height=Math.round(screen * .088f);
+        for(int i=0;i<getChildCount();i++){
+            View v=getChildAt(i);LinearLayout.LayoutParams lp=(LinearLayout.LayoutParams)v.getLayoutParams();
+            lp.height=Math.round(screen*.077f);v.setLayoutParams(lp);
+            if(v instanceof Button)((Button)v).setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,screen*.028f);
+        }
+        super.onMeasure(widthSpec,MeasureSpec.makeMeasureSpec(height,MeasureSpec.EXACTLY));
+    }
+
+    @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
+        super.dispatchDraw(canvas);
+        android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);p.setColor(0x99FFFFFF);
+        float d=getResources().getDisplayMetrics().density;
+        for(int i=1;i<getChildCount();i++) {float x=getChildAt(i).getLeft();for(int t=-1;t<=1;t++)canvas.drawCircle(x+t*3*d,getHeight()/2f,.6f*d,p);}
+    }
     public interface AuxButtonListener {
         void onAuxButtonClicked(String cameraId);
     }
