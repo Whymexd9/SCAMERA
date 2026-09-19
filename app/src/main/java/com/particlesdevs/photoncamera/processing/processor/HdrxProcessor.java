@@ -128,7 +128,9 @@ public class HdrxProcessor extends ProcessorBase {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
             }
-            if ((PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()) && mImageFramesToProcess != null)
+            if ((PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
+                    || (captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession))
+                    && mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
         }
     }
@@ -341,15 +343,19 @@ public class HdrxProcessor extends ProcessorBase {
         processingStage = "frame selection";
 
         ParseExif.syncWithParameters(exifData, processingParameters);
-        boolean multiCapture = PreferenceKeys.isRawMfsrEnabled();
+        // Bind CAL to the submitted request, not a preference that can change during close/switch.
+        com.particlesdevs.photoncamera.remosaic.CalibrationSession calibrationSession=
+                captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession
+                ? (com.particlesdevs.photoncamera.remosaic.CalibrationSession)captureRequest.getTag() : null;
+        boolean multiCapture = calibrationSession!=null || PreferenceKeys.isRawMfsrEnabled();
         boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
         ByteBuffer hexOutput = null;
         boolean multiBracket=multiCapture && images.stream().anyMatch(f->f.pair.isHighlightFrame || f.pair.isLongFrame);
         if (multiCapture) {
             processingStage = "Multi-frame Remosaic";
             try {
-                if(PreferenceKeys.isMultiFrameCalibration()) {
-                    com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.calibrate(images,processingParameters);
+                if(calibrationSession!=null) {
+                    com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.calibrate(images,processingParameters,calibrationSession);
                     Log.i("RAW_MFSR","CAL group saved; controller continues the bank");
                     callback.onFinished();return;
                 }

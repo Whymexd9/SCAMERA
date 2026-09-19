@@ -2603,6 +2603,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             } else {
                 captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             }
+            if(calibration)captureBuilder.setTag(calSession);
             float focus = mFocus;
             double frametime = ExposureIndex.time2sec(IsoExpoSelector.GenerateExpoPair(-1, this).exposure);
             //this.mCaptureSession.stopRepeating();

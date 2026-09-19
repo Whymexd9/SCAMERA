@@ -95,11 +95,10 @@ public final class MobileRemosaicProcessor {
         Log.i("RAW_MFSR","HDR donors="+(result.size()-1)+" normalFrames="+p.multiFrameCount);
         return result;
     }
-    public static void calibrate(List<ImageFrame> frames, Parameters p) throws Exception {
+    public static void calibrate(List<ImageFrame> frames, Parameters p, CalibrationSession session) throws Exception {
         int block=PreferenceKeys.getMultiFrameBlock();
         String cfa=BurstPolicy.cfa(PreferenceKeys.getMultiFrameCfa(),p.baseCfaPattern);
         ByteBuffer[] inputs=validate(frames,p,block,3);load();
-        CalibrationSession session=CalibrationSession.active;
         if(session==null || !session.camera.equals(p.cameraID))throw new IllegalStateException("Отсутствует план CAL для этого модуля");
         session.save(RemosaicCalibrationStore.key(p.cameraID,block,cfa,p.rawSize.x,p.rawSize.y),
                 inputs,p.rawSize.x,p.rawSize.y,frames.get(0).pair.iso,frames.get(0).pair.exposure);

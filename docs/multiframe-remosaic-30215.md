@@ -51,3 +51,10 @@ ZSL mode/capacity independence, settings migration and camera resume. ARM64
 emulation executes the original library for all CFA/mosaic modes, single-exposure
 donors and signed FPN calibration. No physical Vivo is connected: successful CAL
 capture, HAL scheduling, real memory use and HDR image quality require phone testing.
+
+## 30216 cancellation guard
+
+CAL requests carry the immutable calibration session as their Camera2 request tag.
+Processing uses that tag even if closing the camera clears the one-shot setting.
+Cancelled dark frames are rejected and freed; they cannot become ordinary photos.
+All 30215 CAL/ZSL/buffer changes are included in 30216.
