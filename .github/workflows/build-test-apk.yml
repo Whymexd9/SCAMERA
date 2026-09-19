@@ -110,6 +110,12 @@ jobs:
           python3 tools/vivo-upscale/check_raisr_controls.py
           python3 tools/vivo-upscale/check_loader_order.py
 
+      - name: Check original Multi-frame Remosaic binary
+        run: |
+          python3 -m venv /tmp/multiframe-check
+          /tmp/multiframe-check/bin/pip install unicorn==2.1.4 pyelftools==0.32
+          /tmp/multiframe-check/bin/python tools/multiframe/check_native.py
+
       - name: Check settings precision and algorithm availability
         run: python3 tools/check_settings_model.py
 
@@ -144,7 +150,7 @@ jobs:
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()
@@ -161,6 +167,7 @@ jobs:
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libmobileRemosaic.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/librtDenoise.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/liblanczosDownscale.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/vivo-neural/arm64-v8a/vivo-neural-worker'

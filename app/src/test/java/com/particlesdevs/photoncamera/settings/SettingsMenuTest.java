@@ -50,6 +50,39 @@ public class SettingsMenuTest {
         TunablePreferenceGenerator.generatePreferences(context,screen);
         return screen;
     }
+    @Test public void multiFrameReplacesLegacyControlsAndPersistsSource() {
+        PreferenceScreen root=inflate();
+        assertNotNull(root.findPreference("pref_raw_mfsr_enabled_key"));
+        for(String old:new String[]{"k_detail","k_denoise","k_stretch","k_shrink","dth","dtr","tensor_stride","grad_k"})
+            assertNull(root.findPreference("pref_mfsr_"+old+"_key"));
+        ListPreference source=root.findPreference("pref_mfsr_source_key");
+        assertArrayEquals(new CharSequence[]{"1","2","4"},source.getEntryValues());
+        for(String v:new String[]{"1","2","4"}) {
+            manager.set("default_scope","pref_mfsr_source_key",v);
+            assertEquals(Integer.parseInt(v),PreferenceKeys.getMultiFrameBlock());
+        }
+        manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
+        manager.set("default_scope","pref_remosaic_enabled_key",true);
+        manager.set("default_scope","pref_remosaic_backend_key","hp9_hexquad");
+        assertFalse(PreferenceKeys.isHexQuadCaptureEnabled());
+        manager.set("default_scope","pref_mfsr_calibrate_key",true);
+        assertTrue(PreferenceKeys.isMultiFrameCalibration());PreferenceKeys.finishMultiFrameCalibration();
+        assertFalse(PreferenceKeys.isMultiFrameCalibration());
+    }
+    @Test public void multiFrameUpgradePreservesMosaicButNeverCopiesCalibrationAction() {
+        prefs.edit().clear().putBoolean("pref_remosaic_enabled_key",true)
+                .putString("pref_remosaic_block_key","4").putString("pref_mfsr_k_detail_key","0.8")
+                .putBoolean("pref_mfsr_calibrate_key",true).commit();
+        SettingsMigration.migrateMultiFrame(prefs);
+        assertEquals("4",prefs.getString("pref_mfsr_source_key",""));
+        assertFalse(prefs.contains("pref_mfsr_k_detail_key"));
+        assertFalse(prefs.contains("pref_mfsr_calibrate_key"));
+        assertFalse(ModuleProfiles.isLocal("pref_mfsr_calibrate_key"));
+        assertTrue(ModuleProfiles.isLocal("pref_mfsr_source_key"));
+        prefs.edit().putString("pref_mfsr_source_key","2").commit();
+        SettingsMigration.migrateMultiFrame(prefs);
+        assertEquals("2",prefs.getString("pref_mfsr_source_key",""));
+    }
     private void visit(PreferenceGroup group,Set<String> seen,List<String> pages){
         for(int i=0;i<group.getPreferenceCount();i++){
             Preference p=group.getPreference(i);

@@ -515,7 +515,7 @@ public class PreferenceKeys {
     }
 
     public static boolean isRemosaicEnabled() {
-        return getBool(Key.KEY_REMOSAIC_ENABLED);
+        return !isRawMfsrEnabled() && getBool(Key.KEY_REMOSAIC_ENABLED);
     }
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
@@ -780,6 +780,32 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    private static String multiFrameText(String key, String fallback) {
+        return preferenceKeys.settingsManager.getString("default_scope", key, fallback);
+    }
+    public static int getMultiFrameBlock() {
+        return com.particlesdevs.photoncamera.remosaic.BurstPolicy.block(multiFrameText("pref_mfsr_source_key","1"));
+    }
+    public static String getMultiFrameCfa() { return multiFrameText("pref_mfsr_cfa_key","auto"); }
+    public static int getMultiFrameCount() {
+        return (int)SettingsNumericRules.value("pref_mfsr_frames_key",multiFrameText("pref_mfsr_frames_key","15"),15);
+    }
+    public static boolean isMultiFrameFpnEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_fpn_key",true);
+    }
+    public static boolean isMultiFrameCalibration() {
+        return isRawMfsrEnabled() && preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_calibrate_key",false);
+    }
+    public static void finishMultiFrameCalibration() {
+        preferenceKeys.settingsManager.set("default_scope","pref_mfsr_calibrate_key",false);
+    }
+    public static float getMultiFrameRedCa() {
+        return (float)SettingsNumericRules.value("pref_mfsr_red_ca_key",multiFrameText("pref_mfsr_red_ca_key","1"),1);
+    }
+    public static float getMultiFrameBlueCa() {
+        return (float)SettingsNumericRules.value("pref_mfsr_blue_ca_key",multiFrameText("pref_mfsr_blue_ca_key","1"),1);
+    }
+
     public static boolean isSensorSharpeningEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_sensor_sharpening_enabled", true);
     }
@@ -793,20 +819,6 @@ public class PreferenceKeys {
             return fallback;
         }
     }
-
-    /**
-     * RAW MFSR kernel regression parameters, after Wronski et al. 2019 section 5.1.
-     * They shape the anisotropic Gaussian kernel used to resample the aligned frame:
-     * kDetail/kDenoise set its width on detailed and on flat areas, kStretch/kShrink
-     * its anisotropy along and across an edge, and Dth/Dtr where the transition
-     * between "flat" and "detail" sits on the gradient magnitude.
-     */
-    public static float getMfsrKDetail()  { return mfsrFloat(Key.KEY_MFSR_K_DETAIL, 0.5f); }
-    public static float getMfsrKDenoise() { return mfsrFloat(Key.KEY_MFSR_K_DENOISE, 1.0f); }
-    public static float getMfsrKStretch() { return mfsrFloat(Key.KEY_MFSR_K_STRETCH, 4.0f); }
-    public static float getMfsrKShrink()  { return mfsrFloat(Key.KEY_MFSR_K_SHRINK, 2.0f); }
-    public static float getMfsrDth()      { return mfsrFloat(Key.KEY_MFSR_DTH, 0.005f); }
-    public static float getMfsrDtr()      { return mfsrFloat(Key.KEY_MFSR_DTR, 0.02f); }
 
     /**
      * Highlight handling. Recovery merges from the unclipped channels of a partly
@@ -945,14 +957,6 @@ public class PreferenceKeys {
     public static float getHighlightProtectionStrength() {
         return Math.max(0f, Math.min(1f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_STRENGTH, 1.0f)));
     }
-
-    /** Coarse-grid spacing for the kernel field, in packed quads (Jiang et al. 2022). */
-    public static int getMfsrTensorStride() {
-        return Math.max(1, Math.round(mfsrFloat(Key.KEY_MFSR_TENSOR_STRIDE, 8f)));
-    }
-
-    /** Gradient noise gate in sigmas for the structure tensor (Liba et al. 2019). */
-    public static float getMfsrGradK() { return mfsrFloat(Key.KEY_MFSR_GRAD_K, 2.5f); }
 
     public static boolean isRaisrEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAISR_ENABLED, false);
@@ -1371,12 +1375,6 @@ public class PreferenceKeys {
         KEY_AI_DENOISE_CHROMA(R.string.pref_ai_denoise_chroma_key),
         KEY_AI_DENOISE_MODEL(R.string.pref_ai_denoise_model_key),
         KEY_RAW_MFSR_ENABLED(R.string.pref_raw_mfsr_enabled_key),
-        KEY_MFSR_K_DETAIL(R.string.pref_mfsr_k_detail_key),
-        KEY_MFSR_K_DENOISE(R.string.pref_mfsr_k_denoise_key),
-        KEY_MFSR_K_STRETCH(R.string.pref_mfsr_k_stretch_key),
-        KEY_MFSR_K_SHRINK(R.string.pref_mfsr_k_shrink_key),
-        KEY_MFSR_DTH(R.string.pref_mfsr_dth_key),
-        KEY_MFSR_DTR(R.string.pref_mfsr_dtr_key),
         KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_HIGHLIGHT_RECOVERY(R.string.pref_highlight_recovery_key),
@@ -1384,8 +1382,6 @@ public class PreferenceKeys {
         KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),
         KEY_HIGHLIGHT_PROTECTION_KNEE(R.string.pref_highlight_protection_knee_key),
         KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
-        KEY_MFSR_TENSOR_STRIDE(R.string.pref_mfsr_tensor_stride_key),
-        KEY_MFSR_GRAD_K(R.string.pref_mfsr_grad_k_key),
         KEY_VIVO_DOWNSCALE_KERNEL(R.string.pref_vivo_downscale_kernel_key),
         KEY_VIVO_DOWNSCALE_SIZE(R.string.pref_vivo_downscale_size_key),
         KEY_VIVO_UPSCALE_BACKEND(R.string.pref_vivo_upscale_backend_key),

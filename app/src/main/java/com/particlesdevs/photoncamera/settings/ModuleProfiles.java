@@ -17,7 +17,7 @@ public final class ModuleProfiles {
     }
     public boolean isApplying(){return applying;}
     public static boolean isLocal(String key) {
-        if(key==null)return false;
+        if(key==null || key.equals("pref_mfsr_calibrate_key"))return false;
         if(key.equals(PreferenceKeys.Key.CAMERA_ID.mValue)||key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue))return false;
         if(key.startsWith("lens_")||key.startsWith("module_")||key.startsWith("pref_sensorconfig_")||key.startsWith("settings_")||key.startsWith("pref_theme")||key.contains("debug")||key.contains("folder")||key.contains("config_file"))return false;
         if(key.equals("user_camera_ids")||key.equals("hidden_camera_ids")||key.equals(PreferenceKeys.Key.CAMERA_MODE.mValue))return false;
@@ -42,12 +42,13 @@ public final class ModuleProfiles {
     }
     private void restore(Map<String,?> values){
         applying=true;
-        try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();}
+        try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();SettingsMigration.migrateMultiFrame(prefs);}
         finally{applying=false;}
         if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings()!=null)com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().loadCache();
     }
     public synchronized void changed(String key){
         if(applying)return;
+        if(key.equals(PreferenceKeys.Key.CAMERA_ID.mValue))prefs.edit().remove("pref_mfsr_calibrate_key").apply();
         if(key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)){
             if(PreferenceKeys.isPerLensSettingsOn()){
                 write(file("common"),current());meta.edit().putBoolean("baseline",true).apply();

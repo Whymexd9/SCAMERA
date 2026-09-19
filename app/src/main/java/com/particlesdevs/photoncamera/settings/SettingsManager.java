@@ -98,6 +98,7 @@ public class SettingsManager {
         mContext = context;
         mPackageName = mContext.getPackageName();
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
+        SettingsMigration.migrateMultiFrame(mDefaultPreferences);
     }
 
     public Context getContext() {

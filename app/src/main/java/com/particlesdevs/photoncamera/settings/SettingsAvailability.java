@@ -17,7 +17,8 @@ public final class SettingsAvailability {
         return false;
     }
     public String reason(String key) {
-        boolean remosaic = on("pref_remosaic_enabled_key", false);
+        boolean multi = on("pref_raw_mfsr_enabled_key", false);
+        boolean remosaic = !multi && on("pref_remosaic_enabled_key", false);
         String backend = text("pref_remosaic_backend_key", "scamera");
         boolean hex = remosaic && backend.equals("hp9_hexquad");
         boolean post = !hex || on("hexquad_post_denoise", false);
@@ -28,6 +29,14 @@ public final class SettingsAvailability {
         boolean hdr = text("pref_camera_mode_key", "2").equals("4")
                 ? text("pref_night_merge_algorithm_key", "legacy").equals("hdrplus")
                 : text("pref_zsl_merge_algorithm_key", "legacy").equals("hdrplus");
+        if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_")
+                || key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
+                || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
+                || any(key,"pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
+                "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
+                "pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key","pref_highlight_recovery_key",
+                "pref_highlight_protection_key","scamera_quad_bayer_enabled")))
+            return "Multi-frame Remosaic использует свою склейку и выбранный в его меню тип мозаики.";
         // Both per-mode selectors remain editable even while a different mode is open.
         if (key.startsWith("hexquad_") && !key.endsWith("screen")) {
             if (!hex) return "Доступно: включите ремозаик и выберите HP9 HexQuad.";

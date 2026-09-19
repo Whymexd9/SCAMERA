@@ -58,7 +58,7 @@ public class Bayer2Float extends Node {
             // stackFrame here would throw that away and hand the demosaic the
             // original block pattern.
             in = postPipeline.remosaicOutput;
-        } else if(basePipeline.mSettings.alignAlgorithm != 2) {
+        } else if((basePipeline.mSettings.alignAlgorithm != 2 || basePipeline.mParameters.remosaicDone)) {
             in = new GLTexture(rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16),
                     ((PostPipeline) (basePipeline)).stackFrame, GL_NEAREST, GL_MIRRORED_REPEAT);
         } else {
@@ -72,7 +72,7 @@ public class Bayer2Float extends Node {
             startT();
             try {
                 hlChroma = OpposedGL.compute(glProg, in, rawSize, basePipeline.mParameters.cfaPattern,
-                        basePipeline.mSettings.alignAlgorithm == 2,
+                        (basePipeline.mSettings.alignAlgorithm == 2 && !basePipeline.mParameters.remosaicDone),
                         basePipeline.mParameters.whiteLevel, basePipeline.mParameters.blackLevel,
                         basePipeline.mParameters.whitePoint, OpposedGL.CLIP_MAGIC * hlClip);
             } catch (Exception e) {
@@ -111,7 +111,7 @@ public class Bayer2Float extends Node {
         glProg.setDefine("BLG", BL[1]);
         glProg.setDefine("BLB", BL[2]);
         glProg.setDefine("QUAD", basePipeline.mSettings.cfaPattern == -2 && !basePipeline.remosaicApplied);
-        glProg.setDefine("RGBLAYOUT",basePipeline.mSettings.alignAlgorithm == 2);
+        glProg.setDefine("RGBLAYOUT",(basePipeline.mSettings.alignAlgorithm == 2 && !basePipeline.mParameters.remosaicDone));
         glProg.setDefine("TESTPATTERN",testPattern);
         glProg.setDefine("TP", testPatternIndex);
         glProg.setDefine("HLRECON", hlChroma != null);

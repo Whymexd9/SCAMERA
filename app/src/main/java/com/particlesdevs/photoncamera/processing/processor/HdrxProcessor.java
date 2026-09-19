@@ -128,7 +128,7 @@ public class HdrxProcessor extends ProcessorBase {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
             }
-            if (PreferenceKeys.isHexQuadCaptureEnabled() && mImageFramesToProcess != null)
+            if ((PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()) && mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
         }
     }
@@ -173,7 +173,7 @@ public class HdrxProcessor extends ProcessorBase {
             IsoExpoSelector.fullpairs.add(fallback);
             Log.w(TAG, "No exposure roles supplied; inserted safe normal role");
         }
-        if (PreferenceKeys.isHexQuadCaptureEnabled()) {
+        if (PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()) {
             double reference = -1;
             for (ImageFrame frame : mImageFramesToProcess) {
                 Double measured = exposures.get(frame.getTimestamp());
@@ -329,9 +329,22 @@ public class HdrxProcessor extends ProcessorBase {
         processingStage = "frame selection";
 
         ParseExif.syncWithParameters(exifData, processingParameters);
+        boolean multiCapture = PreferenceKeys.isRawMfsrEnabled();
         boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
         ByteBuffer hexOutput = null;
-        if (hexCapture) {
+        if (multiCapture) {
+            processingStage = "Multi-frame Remosaic";
+            try {
+                if(PreferenceKeys.isMultiFrameCalibration()) {
+                    com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.calibrate(images,processingParameters);
+                    processingEventsListener.onProcessingFinished("Тёмная калибровка текущего модуля сохранена");
+                    callback.onFinished();return;
+                }
+                hexOutput=com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.process(images,processingParameters);
+                hexOwnedOutput=hexOutput;
+            } catch(Exception e) {throw new IllegalStateException("Multi-frame Remosaic: "+e.getMessage(),e);}
+            finally {for(ImageFrame frame:images)frame.close();}
+        } else if (hexCapture) {
             processingStage = "HP9 HexQuad: six-frame NPU remosaic";
             try {
                 hexOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.HexQuadBurst.process(
@@ -345,7 +358,7 @@ public class HdrxProcessor extends ProcessorBase {
                 for (ImageFrame frame : images) frame.close();
             }
         }
-        if (!hexCapture) {
+        if (!hexCapture && !multiCapture) {
         ImageFrameDeblur imageFrameDeblur = new ImageFrameDeblur(processingParameters);
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
@@ -466,7 +479,7 @@ public class HdrxProcessor extends ProcessorBase {
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");
         ESD4D esd4d = null;
-        if (hexCapture) {
+        if (hexCapture || multiCapture) {
             processingParameters.highlightSuppressionStrength = 0f;
         } else if(images.size() > 1) {
             processingStage = "RAW alignment/fusion";
@@ -500,7 +513,7 @@ public class HdrxProcessor extends ProcessorBase {
             images.get(0).buffer = null;
         }
         Log.d(TAG, "HDRX Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
-        if ((saveRAW >= 1) && alignAlgorithm != 2) {
+        if ((saveRAW >= 1) && (alignAlgorithm != 2 || multiCapture)) {
             boolean imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
                     processingParameters);
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);

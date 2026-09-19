@@ -568,6 +568,7 @@ public class PostPipeline extends GLBasePipeline {
     }
 
     private void BuildDefaultPipeline() {
+        remosaicApplied = mParameters.remosaicDone;
         boolean nightMode = PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT;
         // Before anything reads the frame as bayer: a quad or tetra mosaic has
         // to be rearranged first, or every stage downstream decodes it at the
@@ -590,7 +591,7 @@ public class PostPipeline extends GLBasePipeline {
         }
         // A remosaiced frame is plain bayer, so it takes the ordinary demosaic
         // even though the sensor is a quad one.
-        int demosaicPattern = PreferenceKeys.isRemosaicEnabled()
+        int demosaicPattern = mParameters.remosaicDone ? mParameters.cfaPattern : PreferenceKeys.isRemosaicEnabled()
                 ? Math.max(PhotonCamera.getSettings().cfaPattern, 0)
                 : PhotonCamera.getSettings().cfaPattern;
         switch (demosaicPattern) {
@@ -603,7 +604,7 @@ public class PostPipeline extends GLBasePipeline {
                 break;
             }
             default: {
-                if (mSettings.alignAlgorithm != 2) {
+                if (mSettings.alignAlgorithm != 2 || mParameters.remosaicDone) {
                     switch (demosaicingMethod) {
                         case "compat":
                             add(new Demosaic());
