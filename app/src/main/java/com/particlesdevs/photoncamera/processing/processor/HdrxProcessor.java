@@ -153,6 +153,7 @@ public class HdrxProcessor extends ProcessorBase {
         Log.d(TAG, "Api WhiteLevel:" + characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL));
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
+        processingParameters.vivoHdrMode = PreferenceKeys.isVivoHdrEnabled();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
         if(PreferenceKeys.isSabreEnabled()) {
             String cfa=com.particlesdevs.photoncamera.remosaic.BurstPolicy.cfa(
@@ -465,6 +466,8 @@ public class HdrxProcessor extends ProcessorBase {
                 // Preserve the sharpest input RAW and continue through the normal
                 // post-pipeline; the detailed cause remains in logcat.
                 Log.e(TAG, "RAW fusion failed; using single-frame recovery", fusionError);
+                processingParameters.vivoHdrRawScale=1f;
+                processingParameters.effectiveStackSamples=1;
                 processingParameters.cfaPattern=inputCfa;
                 processingParameters.quadCfa=inputQuad;
                 processingParameters.remosaicDone=inputRemosaic;
@@ -531,7 +534,16 @@ public class HdrxProcessor extends ProcessorBase {
         // so normalized variance falls by four (independence assumption).
         processingParameters.noiseModeler.computeStackingNoiseModel(effective,Allocator.binning?4:1);
 
-        boolean allowPostDenoise = !processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise;
+        // The autonomous mode owns denoising; do not run a second AI/vendor pass.
+        if (processingParameters.vivoHdrMode) {
+            double scale=processingParameters.vivoHdrRawScale;
+            for (int c=0;c<processingParameters.noiseModeler.computeModel.length;c++) {
+                android.util.Pair<Double,Double> n=processingParameters.noiseModeler.computeModel[c];
+                processingParameters.noiseModeler.computeModel[c]=new android.util.Pair<>(n.first*scale,n.second*scale*scale);
+            }
+        }
+        boolean allowPostDenoise = !processingParameters.vivoHdrMode
+                && (!processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise);
         if (processingParameters.hexQuadProcessed) Log.i(TAG,"HEX POST DENOISE: AI/SCAMERA/RT allowed="+allowPostDenoise);
         if (allowPostDenoise && PreferenceKeys.isAiDenoiseEnabled() && PreferenceKeys.getAiDenoiseStrength() > 0) {
             processingStage = "AI RAW denoise";
@@ -570,7 +582,7 @@ public class HdrxProcessor extends ProcessorBase {
         final int downscaleKernel = PreferenceKeys.getVivoDownscaleKernel();
         final String downscaleSize = PreferenceKeys.getVivoDownscaleSize();
         boolean vivoSucceeded = false;
-        if (PreferenceKeys.isRaisrEnabled()) {
+        if (!processingParameters.vivoHdrMode && PreferenceKeys.isRaisrEnabled()) {
             processingStage = "softpqe".equals(PreferenceKeys.getVivoUpscaleBackend()) ? "Vivo SoftPQE" : "Vivo RAISR";
             try {
                 Bitmap enhanced = VivoRaisrProcessor.process(PhotonCamera.getAppContext(), img,

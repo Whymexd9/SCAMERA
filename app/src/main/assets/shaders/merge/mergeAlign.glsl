@@ -1,5 +1,6 @@
 #define LAYOUT //
 LAYOUT
+#define VIVO_HDR 0
 precision highp float;
 precision highp sampler2D;
 precision highp image2D;
@@ -657,6 +658,21 @@ void main() {
 
         trust *= vec4(tilingTrust);
 #if SABRE_RECONSTRUCTION
+#if VIVO_HDR
+        // Compare only unsaturated reference channels, in common radiance units.
+        // This avoids interpreting recovered highlight detail as object motion.
+        vec4 refValid=1.0-step(vec4(0.98*packedScale),bayerBase);
+        vec4 variance=max(bayerBase*sabreNoiseRef.x+sabreNoiseRef.y
+                +alterScaled*(sabreNoiseAlt.x*exposure)+sabreNoiseAlt.y*exposure*exposure,vec4(1e-10));
+        vec4 residual=(bayerAlter*exposure-bayerBase);
+        float error=dot(residual*residual/variance,refValid)/max(dot(refValid,vec4(1)),1.0);
+        float motion=1.0-smoothstep(9.0,36.0,error);
+        float peak=max(max(bayerAlter.r,bayerAlter.g),max(bayerAlter.b,bayerAlter.a))/max(packedScale,1e-8);
+        float valid=1.0-smoothstep(0.90,0.995,peak);
+        // Out-of-bounds samples must fall back rather than repeat edge pixels.
+        bool inside=all(greaterThanEqual(xy+align,ivec2(0))) && all(lessThan(xy+align,outSize));
+        trust=vec4(inside ? motion*valid*tilingTrust : 0.0);
+#endif
         acceptedMass += trust*w[i];
         alignedSum += bayerAlter*trust*w[i];
 #else

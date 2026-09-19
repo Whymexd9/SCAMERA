@@ -34,6 +34,9 @@ public class HeadroomRender extends Node {
     @Tunable(title = "Headroom Max", category = "Sky (Headroom)", min = 1.0f, max = 20.0f, defaultValue = 14.5f, step = 0.5f, description = "Только Sky: предел запаса в светах. Держите выше Headroom Scale × Gain Max, чтобы сохранить переходы в светах.")
     float sceneWhiteMax = 14.5f;
 
+    protected float toneAmount = 1f;
+    protected float localContrast = 0.42f;
+    protected float shadowLift = 0f;
     private GLTexture fallbackGainMap;
 
     public HeadroomRender() {
@@ -93,6 +96,9 @@ public class HeadroomRender extends Node {
         glProg.setVar("intermediateToSRGB", intermediateToSRGB);
         glProg.setVar("displayGain", displayGain);
         glProg.setVar("sceneWhite", sceneWhite);
+        glProg.setVar("toneAmount", toneAmount);
+        glProg.setVar("localContrast", localContrast);
+        glProg.setVar("shadowLift", shadowLift);
         glProg.setVar("outputExposureScale", Math.max(outputExposureScale, 1.0e-2f));
         glProg.setVar("activeSize", 2, 2,
                 basePipeline.mParameters.sensorPix.right - basePipeline.mParameters.sensorPix.left - 2,

@@ -29,6 +29,9 @@ import com.particlesdevs.photoncamera.util.Log;
 public class RTSharpening extends Node {
     /** RawTherapee's Lab L scale; its UI values are expressed against this. */
     private static final float RT_L_SCALE = 32768.0f;
+    private float hdrSharpenScale() {
+        return basePipeline.mParameters.vivoHdrMode ? PreferenceKeys.vivoHdrValue("sharpen",1f) : 1f;
+    }
 
     public RTSharpening() {
         super("", "Sharpening");
@@ -47,6 +50,7 @@ public class RTSharpening extends Node {
         // Each stage that runs takes the previous stage's output as its input,
         // so any subset can be enabled.
         GLTexture in = previousNode.WorkingTexture;
+        if(hdrSharpenScale()==0f) { WorkingTexture=in;glProg.closed=true;return; }
         boolean any = false;
 
         if (PreferenceKeys.isSharpDeconvEnabled()) {
@@ -66,7 +70,7 @@ public class RTSharpening extends Node {
     }
 
     private GLTexture runUnsharpMask(GLTexture input) {
-        float amount = PreferenceKeys.getSharpAmount() / 100.0f;
+        float amount = hdrSharpenScale() * PreferenceKeys.getSharpAmount() / 100.0f;
         Log.d(Name, "RT unsharp mask: radius=" + PreferenceKeys.getSharpRadius()
                 + " amount=" + amount
                 + " contrast=" + PreferenceKeys.getSharpContrast()
@@ -97,7 +101,7 @@ public class RTSharpening extends Node {
         boolean matrix3x3 = PreferenceKeys.isSharpMicroMatrix3x3();
         // RT: amount / 1500, times 2.7 for the 3x3 matrix so both kernels land at
         // a comparable strength for the same slider position.
-        float amount = (matrix3x3 ? 2.7f : 1.0f) * PreferenceKeys.getSharpMicroAmount() / 1500.0f;
+        float amount = hdrSharpenScale() * (matrix3x3 ? 2.7f : 1.0f) * PreferenceKeys.getSharpMicroAmount() / 1500.0f;
         Log.d(Name, "RT microcontrast: amount=" + amount
                 + " uniformity=" + PreferenceKeys.getSharpMicroUniformity()
                 + " contrast=" + PreferenceKeys.getSharpMicroContrast()
@@ -129,7 +133,7 @@ public class RTSharpening extends Node {
         boolean ran = false;
         for (int stage = 1; stage <= 3; stage++) {
             int iterations = PreferenceKeys.getSharpDeconvIterations(stage);
-            float amount = PreferenceKeys.getSharpDeconvAmount(stage) / 100.0f;
+            float amount = hdrSharpenScale() * PreferenceKeys.getSharpDeconvAmount(stage) / 100.0f;
             if (iterations <= 0 || amount <= 0.0f) {
                 Log.d(Name, "RL stage " + stage + ": skipped (iterations=" + iterations
                         + " amount=" + amount + ")");

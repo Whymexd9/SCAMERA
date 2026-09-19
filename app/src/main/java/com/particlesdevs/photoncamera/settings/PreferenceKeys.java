@@ -464,11 +464,11 @@ public class PreferenceKeys {
     }
 
     public static int getFrameCountValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FRAME_COUNT).intValue();
+        return Math.max(isVivoHdrEnabled() ? 3 : 1, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FRAME_COUNT).intValue());
     }
 
     public static int getShortFrameCountValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SHORT_FRAME_COUNT).intValue();
+        return Math.max(isVivoHdrEnabled() ? 1 : 0, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SHORT_FRAME_COUNT).intValue());
     }
 
     public static int getLongFrameCountValue() {
@@ -484,7 +484,7 @@ public class PreferenceKeys {
     }
 
     public static int getHighlightSuppressionValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HIGHLIGHT_SUPPRESSION).intValue();
+        return Math.max(isVivoHdrEnabled() ? 100 : 0, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HIGHLIGHT_SUPPRESSION).intValue());
     }
 
     public static int getProcessingBackendValue() {
@@ -788,6 +788,15 @@ public class PreferenceKeys {
 
     public static boolean isRawMfsrEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
+    }
+
+    /** Autonomous HDR is exclusive with the native remosaic engines. Stored choices are retained. */
+    public static boolean isVivoHdrEnabled() {
+        return isGcamStageEnabled("pref_vivo_hdr_enabled") && !isRawMfsrEnabled()
+                && (!isRemosaicEnabled() || "scamera".equals(getRemosaicBackend()));
+    }
+    public static float vivoHdrValue(String key, float fallback) {
+        return gcamValue("pref_vivo_hdr_" + key, fallback, 0f, 2f);
     }
 
     public static boolean isGcamStageEnabled(String key) {
@@ -1136,7 +1145,7 @@ public class PreferenceKeys {
     }
 
     public static boolean isHdrPlusMergeEnabled() {
-        if (isRawMfsrEnabled()) return false; // Native base + exposure-aware bracket merge, no second HDR+ denoise.
+        if (isRawMfsrEnabled() || isVivoHdrEnabled()) return false; // Native base + exposure-aware bracket merge, no second HDR+ denoise.
         CameraMode mode = CameraMode.valueOf(getCameraModeOrdinal());
         return "hdrplus".equals(mode == CameraMode.NIGHT ? getNightMergeAlgorithm() : getZslMergeAlgorithm());
     }

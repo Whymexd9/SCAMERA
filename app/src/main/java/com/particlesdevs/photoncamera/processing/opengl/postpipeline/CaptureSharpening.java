@@ -16,6 +16,9 @@ public class CaptureSharpening extends Node {
 
     @Override
     public void Run() {
+        if(basePipeline.mParameters.vivoHdrMode && PreferenceKeys.vivoHdrValue("sharpen",1f)==0f) {
+            WorkingTexture=previousNode.WorkingTexture;glProg.closed=true;return;
+        }
         Log.d(Name,"CaptureSharpening specific:"+basePipeline.mParameters.sensorSpecifics);
         if(basePipeline.mParameters.sensorSpecifics == null){
             WorkingTexture = previousNode.WorkingTexture;
@@ -25,6 +28,7 @@ public class CaptureSharpening extends Node {
         float str = (0.2f + Math.min(PreferenceKeys.getSharpnessValue(), 0.0f))/0.2f;
         float size = basePipeline.mParameters.sensorSpecifics.captureSharpeningS;
         float strength = basePipeline.mParameters.sensorSpecifics.captureSharpeningIntense*str;
+        if(basePipeline.mParameters.vivoHdrMode) strength*=PreferenceKeys.vivoHdrValue("sharpen",1f);
         glProg.setDefine("SHARPSTR",strength);
         glProg.setDefine("SHARPSIZEKER",size);
         glProg.setDefine("INSIZE",basePipeline.workSize);

@@ -36,6 +36,9 @@ import java.util.Scanner;
 
 
 public class Parameters {
+    /** Frozen for the submitted RAW processing job. */
+    public boolean vivoHdrMode = false;
+    public float vivoHdrRawScale = 1f;
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;
