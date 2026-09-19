@@ -646,8 +646,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
                 Integer state = result.get(CaptureResult.FLASH_STATE);
                 mFlashed = state != null && (state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED);
-                if (isZslMode() && (PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
-                        || PreferenceKeys.isZslQualitySelectionEnabled())) {
+                if (isZslMode()) {
                     Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     if (timestamp != null) synchronized (mZslBufferLock) {
                         mHexZslResults.put(timestamp, result);
@@ -2311,10 +2310,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mZslRingBuffer.clear();
         }
         mNativeZslBase=null;
+        java.util.Map<Long,TotalCaptureResult> selectedMetadata;
+        synchronized(mZslBufferLock) {selectedMetadata=new HashMap<>(mHexZslResults);mHexZslResults.clear();}
         if(PreferenceKeys.isRawMfsrEnabled()) {
             rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
-            java.util.Map<Long,TotalCaptureResult> results;
-            synchronized(mZslBufferLock) {results=new HashMap<>(mHexZslResults);mHexZslResults.clear();}
+            java.util.Map<Long,TotalCaptureResult> results=selectedMetadata;
             List<HexQuadZslSelector.Sample> samples=new ArrayList<>();
             for(Image image:rawImages) {
                 TotalCaptureResult result=results.get(image.getTimestamp());
@@ -2368,10 +2368,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             ImageFrame frame = new ImageFrame(img.getPlanes()[0].getBuffer(), img.getFormat(),
                     width, rowStride, offset, capacity);
             frame.timestamp = img.getTimestamp();frame.fromZsl=true;
+            frame.setCaptureMetadata(selectedMetadata.get(frame.timestamp));
             frame.width = PhotonCamera.getSettings().binning ? width / 2 : width;
             frame.height = PhotonCamera.getSettings().binning ? height / 2 : height;
             img.close();
-            mExposures.put(frame.timestamp, exposureProduct);
+            mExposures.put(frame.timestamp, frame.measuredExposure > 0 && frame.measuredIso > 0
+                    ? frame.measuredExposure / 1e9 * frame.measuredIso : exposureProduct);
             selected.add(frame);
         }
         return selected;
@@ -2504,6 +2506,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     width, rowStride, offset, bufCapacity);
             frame.timestamp = img.getTimestamp();
             frame.fromZsl = true;
+            frame.setCaptureMetadata(results.get(frame.timestamp));
 
             frame.width = width;
             frame.height = height;
@@ -2512,7 +2515,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 frame.height/= 2;
             }
             img.close();
-            mExposures.put(frame.timestamp, exposureVal);
+            mExposures.put(frame.timestamp, frame.measuredExposure > 0 && frame.measuredIso > 0
+                    ? frame.measuredExposure / 1e9 * frame.measuredIso : exposureVal);
             selected.add(frame);
         }
         int actualCount = selected.size();

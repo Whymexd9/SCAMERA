@@ -59,16 +59,11 @@ public class ESD4D extends GLOneScript {
 
     @Override
     public void Compile(){}
-    private int baseCnt = 0;
 
     private GLTexture getBase(){
-        if(baseCnt == 0){
-            baseCnt++;
-            return baseAlter;
-        } else {
-            baseCnt = 0;
-            return base;
-        }
+        // Keep immutable handles: assigning base=getBase() must never make
+        // the next pass read and write the same image texture.
+        return base == basePrimary ? baseAlter : basePrimary;
     }
     float noiseS;
     float noiseO;
@@ -304,8 +299,11 @@ public class ESD4D extends GLOneScript {
         for (ImageFrame f : frames) maxMpy = Math.max(maxMpy, 1.f / f.pair.layerMpy);
         return maxMpy > 0.f ? maxMpy : 1.f;
     }
+    GLTexture sabreConfidence, sabreMassA, sabreMassB;
+    int sabreMerged;
     GLTexture baseDiff;
     GLTexture base;
+    GLTexture basePrimary;
     GLTexture baseAlter;
     //GLTexture;
     GLTexture brightMap;
@@ -587,6 +585,7 @@ public class ESD4D extends GLOneScript {
     @Override
     public void Run() {
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
+        if(PreferenceKeys.isSabreEnabled()) enableAlignment=true;
         Log.d("ESD4D", "Noise multiplier: " + noiseMpy);
         Log.d("ESD4D", "Optical flow refinement: " + enableFlowRefinement + " maxShift: " + flowRefineMaxDisp);
         glUtils = new GLUtils(glOne.glProcessing);
@@ -693,8 +692,15 @@ public class ESD4D extends GLOneScript {
         mosaicPeriod = mosaicPeriodFor(parameters);
         // Pyramid diff
         baseDiff = new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+        if(PreferenceKeys.isSabreEnabled()) {
+            sabreConfidence=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            sabreMassA=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            sabreMassB=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            sabreMerged=0;
+        }
         // Temporal result
         base = new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+        basePrimary = base;
         baseAlter = new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
         alter = new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
         // Pack 4 horizontal luma samples per rgba16f texel (r16f image formats are
@@ -1027,7 +1033,7 @@ public class ESD4D extends GLOneScript {
                 PreferenceKeys.getProcessingBackendValue()));
         // Algorithm and accelerator are independent settings. A selected device
         // must not silently override the explicit FlowNet switch.
-        useNcnnFlow = enableAlignment && useNcnnFlow;
+        useNcnnFlow = enableAlignment && useNcnnFlow && !PreferenceKeys.isSabreEnabled();
         // FlowNet was trained for similarly exposed pairs. On a strong HDR
         // bracket its low-resolution field can jump by whole model tiles,
         // producing the visible rectangular fragments reported by users.
@@ -1202,6 +1208,7 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("HIGHLIGHT_PROTECTION_KNEE", hlKnee);
             glProg.setDefine("HIGHLIGHT_PROTECTION_STRENGTH", hlStrength);
             glProg.setLayout(tile, tile, 1);
+            glProg.setDefine("SABRE_RECONSTRUCTION",PreferenceKeys.isSabreEnabled()?1:0);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);
             glProg.setVarU("whitelevel", (int) parameters.whiteLevel);
@@ -1212,7 +1219,22 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("cfaShift", cfaShift);
             glProg.setVar("minLevel",minLevel);
             glProg.setVar("exposure", exposure);
-            glProg.setVar("rawMfsr", 0);
+            glProg.setVar("rawMfsr", PreferenceKeys.isSabreEnabled() && mosaicPeriod == 1 ? 1 : 0);
+            float packedScale=mergeExposure(images);
+            ImageFrame refFrame=images.get(0);
+            float isoRatio=(float)frame.pair.iso / Math.max(refFrame.pair.iso,1);
+            float refS=Float.isFinite(refFrame.noiseSlope) ? refFrame.noiseSlope : rawNoiseS;
+            float refO=Float.isFinite(refFrame.noiseOffset) ? refFrame.noiseOffset : rawNoiseO;
+            // HAL profiles take priority. Gain-scaled fallback is an approximation,
+            // explicitly logged; exposure normalization transforms variance by g².
+            float altS=Float.isFinite(frame.noiseSlope) ? frame.noiseSlope : refS*isoRatio;
+            float altO=Float.isFinite(frame.noiseOffset) ? frame.noiseOffset : refO*isoRatio*isoRatio;
+            glProg.setVar("sabreNoiseRef",new float[]{refS*packedScale,refO*packedScale*packedScale});
+            glProg.setVar("sabreNoiseAlt",new float[]{altS*packedScale,altO*packedScale*packedScale});
+            glProg.setVar("packedScale",packedScale);
+            glProg.setVar("sabreRejection",useNcnnFlow ? 0 : 1);
+            Log.i("SABRE", "reconstruction="+PreferenceKeys.isSabreEnabled()+" gain="+exposure
+                    +" noise="+(Float.isFinite(frame.noiseSlope)?"HAL":"ISO-scaled fallback"));
             glProg.setVar("mosaicPeriod", mosaicPeriod);
             glProg.setVar("analogBalance", analogBalance);
             if(exposure >= 0.95f) {
@@ -1247,6 +1269,7 @@ public class ESD4D extends GLOneScript {
             // non-MFSR path clean.
             glProg.setTexture("alterSampler", alter);
             glProg.setTextureCompute("outTexture", baseDiff, true);
+            if(sabreConfidence!=null) glProg.setTextureCompute("confidenceTexture",sabreConfidence,true);
             glProg.computeAuto(baseDiff.mSize, 1);
 
             Log.d("ESD4D", "create diff");
@@ -1265,6 +1288,23 @@ public class ESD4D extends GLOneScript {
                 kernelsMap = createKernelsMap(kernelNetResult.get());
             }
 
+            if(sabreConfidence!=null) {
+                glProg.setLayout(tile,tile,1);
+                glProg.useAssetProgram("merge/sabreCombine",true);
+                glProg.setTextureCompute("referenceTexture",base,false);
+                glProg.setTextureCompute("donorTexture",baseDiff,false);
+                glProg.setTextureCompute("confidenceTexture",sabreConfidence,false);
+                glProg.setTextureCompute("oldMassTexture",sabreMassA,false);
+                base=getBase();
+                glProg.setTextureCompute("outputTexture",base,true);
+                glProg.setTextureCompute("newMassTexture",sabreMassB,true);
+                glProg.setVar("first",sabreMerged==0?1:0);
+                glProg.computeAuto(base.mSize,1);
+                GLTexture swap=sabreMassA;sabreMassA=sabreMassB;sabreMassB=swap;
+                sabreMerged++;
+                endT();
+                continue;
+            }
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram("merge/mergeCombineWeight0", true);
             glProg.setVar("cfaPattern", parameters.cfaPattern);
@@ -1451,8 +1491,9 @@ public class ESD4D extends GLOneScript {
         inputAlter.close();
         alter.close();
         inputBase.close();
+        if(sabreConfidence!=null) {sabreConfidence.close();sabreMassA.close();sabreMassB.close();}
         baseDiff.close();
-        base.close();
+        basePrimary.close();
         baseAlter.close();
         brightMap.close();
         result.close();

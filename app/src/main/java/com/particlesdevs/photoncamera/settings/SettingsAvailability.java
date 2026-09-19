@@ -18,6 +18,9 @@ public final class SettingsAvailability {
     }
     public String reason(String key) {
         boolean multi = on("pref_raw_mfsr_enabled_key", false);
+        boolean sabre=multi && text("pref_mfsr_engine_key","native").equals("sabre");
+        if(sabre && any(key,"pref_mfsr_fpn_key","pref_mfsr_calibrate_key","pref_mfsr_red_ca_key","pref_mfsr_blue_ca_key"))
+            return "Эта настройка относится к Multi-frame Remosaic, а выбран Sabre.";
         boolean remosaic = !multi && on("pref_remosaic_enabled_key", false);
         String backend = text("pref_remosaic_backend_key", "scamera");
         boolean hex = remosaic && backend.equals("hp9_hexquad");
@@ -32,7 +35,7 @@ public final class SettingsAvailability {
         if (multi && any(key,"pref_short_frame_count_key","pref_long_frame_count_key",
                 "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
                 "pref_highlight_recovery_key","pref_highlight_protection_key"))
-            return on("pref_mfsr_calibrate_key",false) ? "При тёмной калибровке брекетинг отключён." : null;
+            return !sabre && on("pref_mfsr_calibrate_key",false) ? "При тёмной калибровке брекетинг отключён." : null;
         boolean multiBracket=multi && !on("pref_mfsr_calibrate_key",false)
                 && (PreferenceNumber.read(values.get("pref_short_frame_count_key"),0)>0
                 || PreferenceNumber.read(values.get("pref_long_frame_count_key"),0)>0);

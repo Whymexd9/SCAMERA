@@ -105,6 +105,17 @@ uniform ivec2 rawHalf;
 uniform vec4 analogBalance;
 uniform ivec2 cfaShift; // sensor red-site offset (cfa%2, cfa/2), 0..1 per axis
 uniform int rawMfsr;
+uniform int sabreRejection;
+uniform vec2 sabreNoiseRef;
+uniform vec2 sabreNoiseAlt;
+uniform float packedScale;
+#ifndef SABRE_RECONSTRUCTION
+#define SABRE_RECONSTRUCTION 0
+#endif
+#if SABRE_RECONSTRUCTION
+layout(rgba16f, binding = 5) uniform highp writeonly image2D confidenceTexture;
+#endif
+
 /**
  * Colour period of the mosaic, in packed texels. 1 for ordinary bayer, where
  * one texel holds a full RGGB quad and any integer texel shift keeps every
@@ -297,7 +308,9 @@ vec3 kernelCovarianceAt(ivec2 node, float sigmaLuma) {
     // Both axes are built from the same kDetail scale, so the kernel reshapes
     // without inflating - which is what the area-preserving normalisation added
     // earlier was patching around by hand.
-    float A = 1.0 + sqrt(max((l1 - l2) / max(l1 + l2, 1e-20), 0.0));
+    float coherence=(sqrt(max(l1,0.0))-sqrt(max(l2,0.0)))
+            /(sqrt(max(l1,0.0))+sqrt(max(l2,0.0))+1e-6);
+    float A = 1.0 + coherence;
     float D = clamp(1.0 - sqrt(max(l1, 0.0)) / max(MFSR_DTR, 1e-8) + MFSR_DTH, 0.0, 1.0);
     float sk1 = 1.0 + 0.5 * A * (1.0 / MFSR_KSHRINK - 1.0);
     float sk2 = 1.0 + 0.5 * A * (MFSR_KSTRETCH - 1.0);
@@ -359,7 +372,7 @@ vec4 baseRBF(ivec2 xy, vec3 omegaInv) {
             float q = omegaInv.x * d.x * d.x
                     + 2.0 * omegaInv.y * d.x * d.y
                     + omegaInv.z * d.y * d.y;
-            float w = exp(-0.5 * q);
+            float w = exp2(-0.5 * q) + 0.00005;
             ivec2 p = clamp(xy + ivec2(i, j), ivec2(0), sz - ivec2(1));
             sum += imageLoad(baseTexture, p) * w;
             weightSum += w;
@@ -372,8 +385,8 @@ vec4 baseRBF(ivec2 xy, vec3 omegaInv) {
 // processed once per frame and all nine samples share one kernel function.
 vec4 samplePackedRBF(highp sampler2D tex, vec2 pos, vec3 omegaInv) {
     ivec2 sz = textureSize(tex, 0);
-    ivec2 origin = ivec2(floor(pos));
-    vec2 f = fract(pos);
+    ivec2 origin = ivec2(floor(pos + 0.5));
+    vec2 f = pos - vec2(origin);
     vec4 sum = vec4(0.0);
     float weightSum = 0.0;
     for (int j = -1; j <= 1; ++j) {
@@ -382,7 +395,7 @@ vec4 samplePackedRBF(highp sampler2D tex, vec2 pos, vec3 omegaInv) {
             float q = omegaInv.x * d.x * d.x
                     + 2.0 * omegaInv.y * d.x * d.y
                     + omegaInv.z * d.y * d.y;
-            float w = exp(-0.5 * q);
+            float w = exp2(-0.5 * q) + 0.00005;
             ivec2 p = clamp(origin + ivec2(i, j), ivec2(0), sz - ivec2(1));
             sum += texelFetch(tex, p, 0) * w;
             weightSum += w;
@@ -393,9 +406,34 @@ vec4 samplePackedRBF(highp sampler2D tex, vec2 pos, vec3 omegaInv) {
     return sum / max(weightSum, 1e-6);
 }
 
+// Sabre rejection arithmetic adapted to unfiltered, same-CFA packed samples.
+// Consequently variance scaling is 1, not the donor's bicubic RGB constant.
+vec4 sabreConfidence(ivec2 xy, ivec2 other, float gain) {
+    vec4 mr=vec4(0), ma=vec4(0), vr=vec4(0), va=vec4(0);
+    ivec2 size=imageSize(baseTexture), phase=ivec2(max(mosaicPeriod,1));
+    for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++) {
+        ivec2 d=ivec2(x,y)*phase;
+        vec4 r=imageLoad(baseTexture,clamp(xy+d,ivec2(0),size-1));
+        vec4 a=imageLoad(alterTexture,clamp(other+d,ivec2(0),size-1))*gain;
+        mr+=r; ma+=a; vr+=r*r; va+=a*a;
+    }
+    mr/=9.0; ma/=9.0;
+    vr=max(vr/9.0-mr*mr,vec4(0)); va=max(va/9.0-ma*ma,vec4(0));
+    // Both noise models use reference scene brightness, expressed in each
+    // frame's sensor domain, never a potentially misregistered donor object.
+    vec4 n=max(mr*sabreNoiseRef.x+sabreNoiseRef.y
+            +gain*gain*(mr/max(gain,1e-6)*sabreNoiseAlt.x+sabreNoiseAlt.y),vec4(1e-9));
+    vec4 r=imageLoad(baseTexture,xy);
+    vec4 a=imageLoad(alterTexture,clamp(other,ivec2(0),size-1))*gain;
+    vec4 d=max((a-r)*(a-r)-n,vec4(0));
+    vec4 distance=d/max(2.0*min(vr,va),n);
+    return exp2(-distance);
+}
+
 void main() {
     ivec2 xy = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outSize = imageSize(outTexture);
+    if(any(greaterThanEqual(xy,outSize))) return;
     vec2 uvScale = vec2(outSize-border);
     vec2 uv = vec2(xy)/uvScale + vec2(0.5)/uvScale;
     vec4 bayerBase = imageLoad(baseTexture,xy);
@@ -409,6 +447,7 @@ void main() {
     w[1] = windowxy4((TILE*xy)%TILE_AL + ivec2(0,TILE_AL));
     w[0] = windowxy4((TILE*xy)%TILE_AL + ivec2(TILE_AL));
     vec4 alignedSum = vec4(0.0);
+    vec4 acceptedMass = vec4(0.0);
     vec4 bayerNone = imageLoad(alterTexture, xy);
 
     // Tiling guard. The four alignment tiles blended at this pixel should agree;
@@ -544,9 +583,13 @@ void main() {
             alterScaled = mix(alterScaled, vec4(mean), t * HIGHLIGHT_PROTECTION_STRENGTH);
             bayerAlter = alterScaled / max(exposure, 1e-6);
         }
-        vec4 alterOk = step(alterScaled, vec4(CLIP_LEVEL));
+        vec4 alterOk = step(bayerAlter, vec4(CLIP_LEVEL*packedScale));
         vec4 baseOk  = step(bayerBase,   vec4(CLIP_LEVEL));
-        trust *= alterOk * baseOk;
+        if(sabreRejection == 1) trust=min(trust,sabreConfidence(xy,aligned,exposure));
+        trust *= alterOk;
+        // A clipped reference has no valid residual. A shorter, unclipped
+        // donor may replace it after the geometric alignment/validity gates.
+        trust=mix(trust,alterOk,step(vec4(CLIP_LEVEL*packedScale),bayerBase));
 
         // One weight for all four packed CFA channels, after Liba et al.
         // (Night Sight, 2019, sec. 3.2): instead of a per-channel weight they
@@ -613,11 +656,19 @@ void main() {
         trust *= alterValid;
 
         trust *= vec4(tilingTrust);
-        bayerAlter = mix(bayerNone, bayerAlter, trust);
+#if SABRE_RECONSTRUCTION
+        acceptedMass += trust*w[i];
+        alignedSum += bayerAlter*trust*w[i];
+#else
+        bayerAlter = mix(bayerBase / max(exposure,1e-6), bayerAlter, trust);
         alignedSum += bayerAlter * w[i];
+#endif
     }
 
-    alignedSum = clamp(alignedSum, vec4(0.0), vec4(1.0));
+#if SABRE_RECONSTRUCTION
+    alignedSum /= max(acceptedMass,vec4(1e-7));
+    imageStore(confidenceTexture,xy,clamp(acceptedMass,0.0,1.0));
+#endif
     alignedSum *= vec4(exposure);
 
     imageStore(outTexture, xy, clamp(alignedSum, vec4(0.0), vec4(1.0)));

@@ -21,8 +21,8 @@ public final class RawFrameQuality {
         double signal = 0;
         // Same CFA phase even on quad/tetra sensors; include the whole inner 80%.
         for (int gy = 0; gy < 48; gy++) for (int gx = 0; gx < 64; gx++) {
-            int x = (width / 10 + gx * (width * 4 / 5) / 64) / period * period;
-            int y = (height / 10 + gy * (height * 4 / 5) / 48) / period * period;
+            int x = (width / 10 + gx * (width * 4 / 5) / 64) / period * period + (gx % 2) * block;
+            int y = (height / 10 + gy * (height * 4 / 5) / 48) / period * period + (gy % 2) * block;
             if (x < period || y < period || x + period >= width || y + period >= height) continue;
             int pos = y * rowStride + x * 2;
             int left = raw.getShort(pos - period * 2) & 65535;

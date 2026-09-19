@@ -31,45 +31,41 @@ public class ImageFrame {
      */
     public float sharpness = Float.NaN;
 
-    /**
-     * Mean squared gradient over the central 60% of the raw frame, normalised by
-     * the squared mean level.
-     *
-     * Neighbours are taken two pixels apart so both samples share a CFA colour,
-     * and the grid is walked in steps of four to keep the cost near a megapixel
-     * of reads regardless of sensor size. Motion blur and defocus both suppress
-     * high-frequency energy, so the frame scoring highest is the sharpest of a
-     * constant-exposure group.
-     */
-    public void computeSharpness() {
-        if (buffer == null || width <= 8 || height <= 8) return;
-        // Buffers from Allocator come through JNI NewDirectByteBuffer, which yields
-        // BIG_ENDIAN regardless of the platform, so asShortBuffer() would read each
-        // RAW16 sample byte-swapped. Duplicate rather than reorder in place: the
-        // buffer is uploaded to GL elsewhere and its position must not move.
-        java.nio.ShortBuffer raw = buffer.duplicate()
-                .order(java.nio.ByteOrder.nativeOrder())
-                .asShortBuffer();
-        if (raw.remaining() < width * height) return;
-        int x0 = (width / 5) & ~1, x1 = width - x0;
-        int y0 = (height / 5) & ~1, y1 = height - y0;
-        double grad = 0.0, mean = 0.0;
-        long n = 0;
-        for (int y = y0; y < y1 - 2; y += 4) {
-            int row = y * width;
-            for (int x = x0; x < x1 - 2; x += 4) {
-                int c = raw.get(row + x) & 0xFFFF;
-                int dx = (raw.get(row + x + 2) & 0xFFFF) - c;
-                int dy = (raw.get(row + 2 * width + x) & 0xFFFF) - c;
-                grad += (double) dx * dx + (double) dy * dy;
-                mean += c;
-                n++;
+    public long measuredExposure;
+    public int measuredIso;
+    public float noiseSlope = Float.NaN, noiseOffset = Float.NaN;
+    public float focusDiopters = Float.NaN;
+    public boolean lensMoving;
+    public double blurPixels = Double.NaN;
+
+    public void setCaptureMetadata(android.hardware.camera2.CaptureResult result) {
+        if (result == null) return;
+        Long time = result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME);
+        Integer iso = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY);
+        measuredExposure = time == null ? 0 : time;
+        measuredIso = iso == null ? 0 : iso;
+        android.util.Pair<Double,Double>[] model = result.get(android.hardware.camera2.CaptureResult.SENSOR_NOISE_PROFILE);
+        if (model != null && model.length > 0) {
+            double slope=0, offset=0;
+            for (android.util.Pair<Double,Double> channel:model) {
+                if (channel == null || channel.first == null || channel.second == null) { slope=Double.NaN; break; }
+                slope += channel.first; offset += channel.second;
+            }
+            if (Double.isFinite(slope+offset) && slope>=0 && offset>=0) {
+                noiseSlope=(float)(slope/model.length); noiseOffset=(float)(offset/model.length);
             }
         }
-        if (n == 0) return;
-        mean /= n;
-        if (mean <= 1.0) return;
-        sharpness = (float) (grad / n / (mean * mean));
+        Float focus = result.get(android.hardware.camera2.CaptureResult.LENS_FOCUS_DISTANCE);
+        Integer state = result.get(android.hardware.camera2.CaptureResult.LENS_STATE);
+        focusDiopters = focus == null ? Float.NaN : focus;
+        lensMoving = state != null && state == android.hardware.camera2.CaptureResult.LENS_STATE_MOVING;
+    }
+
+    public void computeSharpness() { computeSharpness(1); }
+
+    public void computeSharpness(int block) {
+        sharpness = (float) com.particlesdevs.photoncamera.capture.RawFrameQuality.score(
+                buffer, width, height, width * 2, 2, block);
     }
 
     public long getTimestamp() {

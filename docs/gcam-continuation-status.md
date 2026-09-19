@@ -4,7 +4,7 @@ Base: codex/approved-ui-concepts, 18db9f5d368d6a42419e5befabcfa91ba13d23eb.
 
 ## Scope
 
-User excludes Hotshot explicitly, plus original items 8, 13, 15, 16, 17, 18, 19.
+User removes original items 7–10 from the plan, plus exclusions 13, 15, 16, 17, 18, 19. Existing Saliency is retained; no new work on items 7–10.
 The user's additional term "TFlight" is provisionally understood as TFLite:
 no new neural model/runtime integration in this branch. Existing baseline
 features are not removed. SoftPQE remains outside this task.
@@ -91,9 +91,9 @@ branch. “Partial” and “open” MUST NOT be reported as completed donor por
 | 4 Reference selection | Partial | HexQuadZslSelector implements RAW-quality chronological selection; not original BurstCurator policy. |
 | 5 Sharpness/focus | Partial | RawFrameQuality is CFA-aware; donor byte-luma metric is not interchangeable with RAW; focus-specific branches remain. |
 | 6 Gyro blur | Partial | GyroExposureWindow fixes actual capture windows; OIS and full row-dependent blur kernels remain. |
-| 7 BurstCurator | Open | Recovered scoring fragments do not provide full options/features/selection protocol. |
+| 7 BurstCurator | Removed from plan | User request; no further implementation. |
 | 8 Quality/composition | Excluded | User exclusion. |
-| 9 Saliency | Present | SaliencyProtection and bundled existing model; photo detail-protection path. |
+| 9 Saliency | Removed from plan; existing code retained | No further implementation; removal from plan does not uninstall the existing feature. |
 | 10 Hotshot | Excluded | Explicit user exclusion; no asset or inference integration. |
 | 11 Point2Mask | Blocked/excluded new model | Fourth input channel prompt contract unrecovered; new TFLite integration excluded provisionally. |
 | 12 Tracking | Open/excluded new model | Paired model state and runtime wiring remain; no new TFLite integration. |
@@ -126,3 +126,58 @@ The donor audit itself explicitly says the complete GCam source, runtime and
 all processing kernels have NOT been recovered. Completing the open rows needs
 additional reverse engineering and camera integration; adding isolated unused
 formulas or relabelling existing algorithms would not complete the agreed list.
+
+## Current follow-up: requested items 1–6
+
+This supersedes the open/partial integration status for items 1–6 in the historical
+30219 audit above. The implementation is a SCAMERA adaptation of recovered
+Sabre mathematics, not the entire proprietary GCam runtime or its calibration.
+
+1. **RAW reconstruction:** selectable `pref_mfsr_engine_key=sabre` alongside the
+   existing native engine. Routes capture to ESD4D, forces pyramid alignment,
+   uses fractional-phase anisotropic 3x3 same-CFA gathers, recovered square-root
+   eigenvalue coherence and `exp2(-0.5*q)+0.00005` kernel without determinant
+   normalization. A dedicated combine pass accumulates accepted per-pixel mass
+   and normalizes it; this is not an extra sharpening residual. Output stays at
+   native RAW dimensions. Quad/Tetra go through the existing per-frame SCAMERA
+   remosaic first; this is NOT direct proprietary Quad/Tetra Sabre reconstruction.
+2. **Noise-dependent rejection:** recovered excess-squared-difference / max of
+   texture and noise variance, transformed current-frame noise by exposure gain
+   squared, and exponential confidence. Packed unfiltered guide samples have
+   variance scale 1; donor bicubic RGB constants are deliberately not reused.
+   HAL per-frame noise profiles take priority; missing profiles use an explicitly
+   logged ISO-scaled approximation. Tiling, clipping and floor gates remain.
+3. **Bracket photometry:** measured exposure products define the common linear
+   reference domain; source clipping is evaluated BEFORE exposure scaling.
+   A rejected donor falls back to reference, never an unaligned current pixel.
+   Valid shorter donors can replace clipped reference regions. Sabre normalizes
+   accepted mass rather than applying a fixed 1/N weight to rejected frames.
+4. **Reference:** one shared reference is selected before pyramid/merge. Regular
+   frames preferred, latest settled focus plane used when available, sharpness
+   ranked with rotational pixel-blur penalty only when gyro is known for every
+   regular candidate. Unknown gyro cannot masquerade as a stable frame.
+5. **Burst selection:** bounded CFA-aware quality samples all four colour phases
+   and uses same-colour neighbours at periods 2/4/8. Known focus mismatch, moving
+   lens and substantially weaker sharpness can reject regular donors. Bracket
+   roles are preserved; optional filters roll back if fewer than three remain.
+6. **Gyro:** no cyclic reuse of another frame's samples when correspondence is
+   missing. Exposure-window rotation is projected into RAW pixel extent using
+   focal length and physical sensor dimensions. Path extrema preserve return
+   motion, unlike net angle. OIS correction and rolling-shutter per-row kernels
+   are not estimated; blurPixels is an uncompensated ranking cue, not actual
+   measured optical blur. Existing timestamp coverage/clock checks remain.
+
+Tests: production mergeAlign and sabreCombine execute on Mesa GPU compute;
+5 bracket gains, colour-channel isolation, non-multiple dispatch dimensions,
+clipped donor/zero confidence fallback, accepted-mass normalization, motion/noise
+separation and fractional reconstruction. Java checks cover focus, blur ranking,
+missing gyro, optional-filter rollback and return motion. Existing RAW quality
+checks cover Bayer/Quad/Tetra. CI compiles Android and runs the existing gates.
+
+Native-engine CAL/FPN and R/B scale controls are disabled for Sabre. Native remains
+the default to preserve previous user configurations. Real Vivo capture quality,
+OIS behavior and sensor-specific tuning require on-device testing.
+
+The integration review also fixed ESD4D texture ping-pong: immutable basePrimary
+and baseAlter handles prevent the second and later passes from reading and
+writing the same GPU image. The fix applies to both merge engines.

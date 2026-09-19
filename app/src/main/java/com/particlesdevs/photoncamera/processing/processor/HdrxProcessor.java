@@ -154,6 +154,11 @@ public class HdrxProcessor extends ProcessorBase {
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
+        if(PreferenceKeys.isSabreEnabled()) {
+            String cfa=com.particlesdevs.photoncamera.remosaic.BurstPolicy.cfa(
+                    PreferenceKeys.getMultiFrameCfa(),processingParameters.cfaPattern);
+            processingParameters.cfaPattern=(byte)java.util.Arrays.asList("RGGB","GRBG","GBRG","BGGR").indexOf(cfa);
+        }
         // sort by timestamp first
         mImageFramesToProcess.sort(Comparator.comparingLong(ImageFrame::getTimestamp));
 
@@ -223,8 +228,8 @@ public class HdrxProcessor extends ProcessorBase {
                 pairByTimestamp.put(timestamp, new IsoExpoSelector.ExpoPair(
                         IsoExpoSelector.fullpairs.get(i)));
             }
-            if (!BurstShakiness.isEmpty()) {
-                gyroByTimestamp.put(timestamp, BurstShakiness.get(i % BurstShakiness.size()));
+            if (BurstShakiness.size() == mImageFramesToProcess.size()) {
+                gyroByTimestamp.put(timestamp, BurstShakiness.get(i));
             }
         }
 
@@ -290,7 +295,7 @@ public class HdrxProcessor extends ProcessorBase {
             ImageFrame frame = mImageFramesToProcess.get(i);
             GyroBurst mappedGyro = gyroByTimestamp.get(frame.getTimestamp());
             frame.frameGyro = mappedGyro != null ? mappedGyro
-                    : BurstShakiness.get(i % BurstShakiness.size()); // cyclic fallback
+                    : new GyroBurst(1); // missing association is unknown, never another frame's motion
             //frame.image = mImageFramesToProcess.get(i);
             //Log.d(TAG,"Timestamp:"+frame.image.getTimestamp());
             //frame.pair = IsoExpoSelector.pairs.get(i % IsoExpoSelector.patternSize);
@@ -298,6 +303,9 @@ public class HdrxProcessor extends ProcessorBase {
             if (frame.pair == null) {
                 frame.pair = new IsoExpoSelector.ExpoPair(IsoExpoSelector.fullpairs.get(
                         Math.min(i, IsoExpoSelector.fullpairs.size() - 1)));
+            }
+            if(frame.measuredExposure>0 && frame.measuredIso>0) {
+                frame.pair.exposure=frame.measuredExposure; frame.pair.iso=frame.measuredIso;
             }
             frame.number = i;
             frame.pair.layerMpy = (float) (exposures.get(mImageFramesToProcess.get(i).getTimestamp()) / minExpo);
@@ -319,7 +327,9 @@ public class HdrxProcessor extends ProcessorBase {
             // a better SNR, which lowers the noise part of the gradient energy on its
             // own - so it is logged for diagnosis and used only against the same
             // exposure, never as a cross-exposure threshold.
-            frame.computeSharpness();
+            frame.computeSharpness(PreferenceKeys.isRawMfsrEnabled() ? PreferenceKeys.getMultiFrameBlock()
+                    : PreferenceKeys.isRemosaicEnabled() || processingParameters.quadCfa
+                    ? PreferenceKeys.getRemosaicBlockSize() : 1);
             Log.d(TAG, "frame " + i + ": mpy=" + frame.pair.layerMpy
                     + " iso=" + frame.pair.iso
                     + " sharpness=" + frame.sharpness
@@ -347,7 +357,7 @@ public class HdrxProcessor extends ProcessorBase {
         com.particlesdevs.photoncamera.remosaic.CalibrationSession calibrationSession=
                 captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession
                 ? (com.particlesdevs.photoncamera.remosaic.CalibrationSession)captureRequest.getTag() : null;
-        boolean multiCapture = calibrationSession!=null || PreferenceKeys.isRawMfsrEnabled();
+        boolean multiCapture = calibrationSession!=null || (PreferenceKeys.isRawMfsrEnabled() && !PreferenceKeys.isSabreEnabled());
         boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
         ByteBuffer hexOutput = null;
         boolean multiBracket=multiCapture && images.stream().anyMatch(f->f.pair.isHighlightFrame || f.pair.isLongFrame);
@@ -391,112 +401,35 @@ public class HdrxProcessor extends ProcessorBase {
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
             imageFrameDeblur.processDeblurPosition(images.get(i));
-        boolean allGyroKnown = true;
-        for (ImageFrame image : images) allGyroKnown &= image.frameGyro.samples > 0;
-        if (allGyroKnown && mImageFramesToProcess.size() >= 3)
-            images.sort((img1, img2) -> Float.compare(img1.frameGyro.shakiness, img2.frameGyro.shakiness));
-        double unluckypickiness = 1.05;
-        float unluckyavr = 0;
-        for (ImageFrame image : images) {
-            unluckyavr += image.frameGyro.shakiness;
-            Log.d(TAG, "unlucky map:" + image.frameGyro.shakiness + "n:" + image.number);
+        com.particlesdevs.photoncamera.capture.BurstFrameSelector.Sample[] candidates =
+                new com.particlesdevs.photoncamera.capture.BurstFrameSelector.Sample[images.size()];
+        for (int i=0;i<images.size();i++) {
+            ImageFrame f=images.get(i);
+            double fx=processingParameters.focalLength * processingParameters.rawSize.x
+                    / processingParameters.sensorSize.getWidth();
+            double fy=processingParameters.focalLength * processingParameters.rawSize.y
+                    / processingParameters.sensorSize.getHeight();
+            f.blurPixels=com.particlesdevs.photoncamera.control.GyroBlurEstimate.pixels(
+                    f.frameGyro,fx,fy,f.width,f.height);
+            candidates[i]=new com.particlesdevs.photoncamera.capture.BurstFrameSelector.Sample(
+                    f.sharpness,f.blurPixels,f.focusDiopters,f.pair.exposure,f.pair.iso,
+                    f.pair.isHighlightFrame || f.pair.isLongFrame,f.lensMoving);
+            Log.i(TAG,"Burst quality frame="+i+" sharpness="+f.sharpness+" blurPixels="+f.blurPixels
+                    +" focus="+f.focusDiopters+" lensMoving="+f.lensMoving);
         }
-        unluckyavr /= images.size();
-        // search for high exposure close frame by time
-        int highind = -1;
-        int timeDiff = Integer.MAX_VALUE;
-        for (int i = 0; i < images.size(); i++) {
-            if (images.get(i).pair.curlayer == IsoExpoSelector.ExpoPair.exposureLayer.High) {
-                int diff = (int) Math.abs(images.get(i).timestamp - images.get(0).timestamp);
-                if (diff < timeDiff) {
-                    timeDiff = diff;
-                    highind = i;
-                }
-            }
+        int selected=com.particlesdevs.photoncamera.capture.BurstFrameSelector.reference(candidates);
+        if(selected<0) throw new IllegalStateException("No valid RAW reference frame");
+        boolean[] keep=com.particlesdevs.photoncamera.capture.BurstFrameSelector.keep(candidates,selected);
+        ImageFrame reference=images.get(selected);
+        for(int i=images.size()-1;i>=0;i--) if(!keep[i]) {
+            Log.i(TAG,"Reject defocused/unsharp RAW frame="+images.get(i).number);
+            images.remove(i).close();
         }
-        // swap to second
-        if (highind != -1) {
-            ImageFrame frame = images.get(0);
-            images.set(0, images.get(highind));
-            images.set(highind, frame);
-        }
-
-        if (allGyroKnown && images.size() > 10) {
-            int size = (int) (images.size() - FrameNumberSelector.throwCount);
-            Log.d(TAG, "Throw Count:" + size);
-            Log.d(TAG, "Image Count:" + images.size());
-            //if (size == images.size())
-                size = (int) (images.size() * 0.75);
-            for (int i = images.size(); i > size; i--) {
-                ImageFrame cur = images.get(images.size() - 1);
-                float curunlucky = cur.frameGyro.shakiness;
-                if (curunlucky > unluckyavr * unluckypickiness) {
-                    if(normalFrames == 1 && cur.pair.curlayer == IsoExpoSelector.ExpoPair.exposureLayer.Normal) {
-                        continue;
-                    }
-                    if(cur.pair.curlayer == IsoExpoSelector.ExpoPair.exposureLayer.Normal){
-                        normalFrames--;
-                    }
-                    Log.d(TAG, "Removing unlucky:" + curunlucky + " number:" + images.get(images.size() - 1).number);
-                    images.get(images.size() - 1).close();
-                    images.remove(images.size() - 1);
-                }
-            }
-            Log.d(TAG, "Size after removal:" + images.size());
-        }
-
-        float minMpy = 1000.f;
-        for (int i = 0; i < images.size(); i++) {
-            if (images.get(i).pair.layerMpy < minMpy) {
-                minMpy = images.get(i).pair.layerMpy;
-            }
-        }
-        /*
-        if (images.get(0).pair.layerMpy != minMpy) {
-            Log.d(TAG,"Replace 0 with minMpy");
-            for (int i = 1; i < images.size(); i++) {
-                if (images.get(i).pair.layerMpy == minMpy) {
-                    ImageFrame frame = images.get(0);
-                    images.set(0, images.get(i));
-                    images.set(i, frame);
-                    break;
-                }
-            }
-        }*/
-        int selected = -1;
-        float bestSharp = -1.f;
-        for (int i = 0; i < images.size(); i++) {
-            ImageFrame f = images.get(i);
-            if (f.pair.isHighlightFrame || f.pair.isLongFrame) continue;
-            if (Float.isNaN(f.sharpness)) continue;
-            if (f.sharpness > bestSharp) {
-                bestSharp = f.sharpness;
-                selected = i;
-            }
-        }
-        if (selected < 0) {
-            // No measured regular frame: keep the previous behaviour and take the
-            // shortest-exposure frame.
-            selected = 0;
-            for (int i = 0; i < images.size(); i++) {
-                if (images.get(i).pair.layerMpy == minMpy) {
-                    selected = i;
-                    break;
-                }
-            }
-        }
-        Log.d(TAG, "Base frame: " + selected + " sharpness=" + images.get(selected).sharpness
-                + " layerMpy=" + images.get(selected).pair.layerMpy);
-
-        // move selected image to 0 index
-        if(selected != 0){
-            ImageFrame frame = images.get(0);
-            images.set(0, images.get(selected));
-            images.set(selected, frame);
-        }
-        selected = 0;
-
-
+        images.remove(reference);
+        images.add(0,reference);
+        // Alignment, reconstruction and all later gates now share this reference.
+        Log.i(TAG,"Selected reference="+reference.number+" kept="+images.size()
+                +" blurPixels="+reference.blurPixels);
 
         Log.d(TAG, "White Level:" + processingParameters.whiteLevel);
         Log.d(TAG, "Wrapper.loadFrame");
@@ -513,6 +446,8 @@ public class HdrxProcessor extends ProcessorBase {
             processingParameters.highlightSuppressionStrength = 0f;
         } else if(images.size() > 1) {
             processingStage = "RAW alignment/fusion";
+            byte inputCfa=processingParameters.cfaPattern;
+            boolean inputQuad=processingParameters.quadCfa, inputRemosaic=processingParameters.remosaicDone;
             try {
                 esd4d = new ESD4D(new Point(width, height), images);
                 esd4d.parameters = processingParameters;
@@ -528,6 +463,9 @@ public class HdrxProcessor extends ProcessorBase {
                 // Preserve the sharpest input RAW and continue through the normal
                 // post-pipeline; the detailed cause remains in logcat.
                 Log.e(TAG, "RAW fusion failed; using single-frame recovery", fusionError);
+                processingParameters.cfaPattern=inputCfa;
+                processingParameters.quadCfa=inputQuad;
+                processingParameters.remosaicDone=inputRemosaic;
                 ImageFrame recovery = images.get(0);
                 output = recovery.buffer;
                 recovery.buffer = null;
