@@ -15,6 +15,7 @@ public final class VivoRaisrProcessor {
     // System EGL/graphicsenv must resolve against system libbase/libutils, not
     // same-soname vendor copies. Vendor entry libraries are opened by absolute path.
     static final String LIBRARY_PATH = "/system/lib64:/system_ext/lib64:/vendor/lib64:/vendor/lib64/hw";
+    static final String SOFT_LIBRARY_PATH = "/system/lib64:/system_ext/lib64:/vendor/npu/lib:/vendor/lib64";
     private static String quote(String s) { return "'" + s.replace("'", "'\\''") + "'"; }
     private static void asset(Context c, String name, File target) throws IOException {
         try (InputStream in=c.getAssets().open("vivo-upscale/"+name);
@@ -32,6 +33,9 @@ public final class VivoRaisrProcessor {
         final boolean soft="softpqe".equals(backend);
         if(!soft && !"raisr".equals(backend))throw new IOException("Unknown Vivo backend");
         final String name=soft?"SOFTPQE":"RAISR";
+        final String libraryPath=soft?SOFT_LIBRARY_PATH:LIBRARY_PATH;
+        final String dspPath=(soft?"/vendor/npu/lib;":"/vendor/lib64/hw;")+
+                "/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp";
         final int strength=percent(PreferenceKeys.getRaisrStrength());
         final int texture=percent(PreferenceKeys.getRaisrAliasingSuppression());
         final int halo=percent(PreferenceKeys.getRaisrHaloProtection());
@@ -61,8 +65,8 @@ public final class VivoRaisrProcessor {
             if(!worker.setExecutable(true,true) || !output.createNewFile())throw new IOException("Не удалось подготовить апскейл");
             writeNv21(source,input);
             String command="/system/bin/sha256sum -c "+quote(checks.getAbsolutePath())+
-                    " && exec /system/bin/env LD_LIBRARY_PATH="+quote(LIBRARY_PATH)+" "+
-                    "ADSP_LIBRARY_PATH="+quote("/vendor/lib64/hw;/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+" "+
+                    " && exec /system/bin/env LD_LIBRARY_PATH="+quote(libraryPath)+" "+
+                    "ADSP_LIBRARY_PATH="+quote(dspPath)+" "+
                     quote(worker.getAbsolutePath())+(soft?
                     " --softpqe /vendor/lib64/libvivo_softpqe.so /vendor/camera3rd/nti/softpqe/config/ui_normal_shot/aigc_24M ":
                     " --raisr /vendor/lib64/libvivo_raisr.so /vendor/camera3rd/nti/raisr ")+
@@ -70,7 +74,7 @@ public final class VivoRaisrProcessor {
                     " 17 "+Math.max(1,Math.min(1000000,iso))+" "+("5".equals(cameraId)?8:2)+
                     (soft?"":" "+strength+" "+texture+" "+halo);
             String launch="START "+name+" camera="+cameraId+" "+w+"x"+h+" -> "+ow+"x"+oh+
-                    " ISO="+iso+" LD_LIBRARY_PATH="+LIBRARY_PATH;
+                    " ISO="+iso+" LD_LIBRARY_PATH="+libraryPath;
             report.append(launch).append('\n');Log.d("VivoUpscale",launch);
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();final Process child=process;

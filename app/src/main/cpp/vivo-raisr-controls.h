@@ -6,7 +6,7 @@
 
 // SCAMERA output controls, not undocumented Vivo algorithm parameters.
 // Work on the enhancement residual against a half-pixel bilinear reference.
-// Six cached rows keep memory bounded even for 96 MP outputs.
+// Ten cached rows keep memory bounded even for 96 MP outputs.
 namespace vivo_raisr {
 struct Controls { unsigned strength=50, texture=60, halo=70; };
 inline void referenceRow(const uint8_t* in, int w, int h, int ow, int oh,
@@ -26,28 +26,56 @@ inline void referenceRow(const uint8_t* in, int w, int h, int ow, int oh,
 inline void finish(const uint8_t* in,uint8_t* out,int w,int h,int ow,int oh,Controls c) {
     if(c.strength==100 && c.texture==0 && c.halo==0)return;
     const float strength=c.strength*.01f, texture=c.texture*.01f, halo=c.halo*.01f;
-    std::vector<float> base[3],residual[3];
-    for(int i=0;i<3;++i){base[i].resize(ow);residual[i].resize(ow);}
+    std::vector<float> base[5],residual[5];
+    for(int i=0;i<5;++i){base[i].resize(ow);residual[i].resize(ow);}
     auto cache=[&](int row) {
-        int slot=row%3;referenceRow(in,w,h,ow,oh,row,1,base[slot]);
+        int slot=row%5;referenceRow(in,w,h,ow,oh,row,1,base[slot]);
         for(int x=0;x<ow;++x)residual[slot][x]=out[size_t(row)*ow+x]-base[slot][x];
     };
-    cache(0);if(oh>1)cache(1);
+    for(int y=0;y<std::min(3,oh);++y)cache(y);
+    auto sample=[&](int x,int y) {
+        return float(in[size_t(std::clamp(y,0,h-1))*w+std::clamp(x,0,w-1)]);
+    };
+    // At texture=0 the raw enhancement remains available. At the tested 35%
+    // setting, incoherent noise gets only 3.2% of the enhancement residual.
+    const float noiseFloor=std::pow(1.f-texture,8.f);
     for(int y=0;y<oh;++y) {
-        if(y+1<oh && y>0)cache(y+1);
+        if(y+2<oh && y>0)cache(y+2);
         for(int x=0;x<ow;++x) {
-            float b=base[y%3][x],r=residual[y%3][x],sum=0,weight=0,lo=b,hi=b;
+            float b=base[y%5][x],r=residual[y%5][x],sum=0,weight=0,lo=b,hi=b;
+            float xx=0,yy=0,xy=0,lapEnergy=0;
+            const int inputX=std::min(int((x+.5f)*w/ow),w-1);
+            const int inputY=std::min(int((y+.5f)*h/oh),h-1);
             for(int dy=-1;dy<=1;++dy) {
-                int slot=std::clamp(y+dy,0,oh-1)%3;
+                int slot=std::clamp(y+dy,0,oh-1)%5;
                 for(int dx=-1;dx<=1;++dx) {
                     int nx=std::clamp(x+dx,0,ow-1);float nb=base[slot][nx];
                     lo=std::min(lo,nb);hi=std::max(hi,nb);
                     float wt=1.f/(1.f+std::abs(nb-b)*.25f);
                     sum+=residual[slot][nx]*wt;weight+=wt;
+                    if(texture>0) {
+                        int px=inputX+dx,py=inputY+dy;
+                        float left=sample(px-1,py),right=sample(px+1,py);
+                        float top=sample(px,py-1),bottom=sample(px,py+1);
+                        float gx=right-left,gy=bottom-top;
+                        float lap=4.f*sample(px,py)-left-right-top-bottom;
+                        xx+=gx*gx;yy+=gy*gy;xy+=gx*gy;lapEnergy+=lap*lap;
+                    }
                 }
             }
             // Suppress alternating fine residuals without smoothing the reference edge.
             r=r*(1-texture)+(sum/weight)*texture;
+            if(texture>0) {
+                // Structure tensor at INPUT resolution: interpolation would make
+                // noise look coherent at 2x. Never measure the processed output.
+                // White-noise gradient energy is 4*sigma^2; Laplacian is 20*sigma^2.
+                float energy=xx+yy;
+                float coherence=std::sqrt((xx-yy)*(xx-yy)+4.f*xy*xy)/(energy+1.e-6f);
+                float signal=std::clamp(1.f-.2f*lapEnergy/(energy+1.e-6f),0.f,1.f);
+                float confidence=std::clamp((coherence*signal-.25f)/.45f,0.f,1.f);
+                confidence=confidence*confidence*(3.f-2.f*confidence);
+                r*=noiseFloor+(1.f-noiseFloor)*confidence;
+            }
             // At maximum protection, enhancement cannot create new local extrema.
             float bounded=std::clamp(b+r,lo,hi)-b;
             r=r*(1-halo)+bounded*halo;

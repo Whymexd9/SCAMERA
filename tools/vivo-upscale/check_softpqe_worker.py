@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as tmp:
 static bool ready=false;
 extern "C" {
 int vdnnPlatformInitV2(void** out,const std::string& config){
- if(config!="PLATFORM:SM8750_2_28 APK:1")return 9;
+ if(config!="PLATFORM:SM8750_2_28 APK:0 SIGNEDPD:0")return 9;
  if(strcmp(getenv("TEST_FAULT"),"platform")==0)return 8;
  ready=true;*out=&ready;return 0;
 }

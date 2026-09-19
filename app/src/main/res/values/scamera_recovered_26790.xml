@@ -881,7 +881,7 @@
     <string name="raisr_mode_desc">Режим RAISR: только резкость или полноценный апскейл</string>
     <string name="raisr_strength_desc">Доля результата Vivo: 0 — обычная интерполяция; 100 — полный эффект с выбранной защитой</string>
     <string name="raisr_halo_desc">Ограничивает светлые и тёмные ореолы. 0 — без защиты; 100 — без новых локальных перепадов</string>
-    <string name="raisr_aliasing_desc">Смягчает мелкие «червивые» детали, добавленные RAISR. Высокие значения уменьшают и мелкую детализацию</string>
+    <string name="raisr_aliasing_desc">Подавляет усиление шума и «червивых» деталей по структуре исходного кадра. Высокие значения уменьшают и мелкую детализацию</string>
     <string name="ai_denoise_model_desc">Нейросетевая модель шумоподавления. Более крупные чище, но медленнее</string>
     <string name="ai_denoise_strength_desc">Общая сила ИИ-шумодава. Избыток стирает фактуру</string>
     <string name="ai_denoise_luma_desc">Сила ИИ-шумодава по яркости: зерно</string>

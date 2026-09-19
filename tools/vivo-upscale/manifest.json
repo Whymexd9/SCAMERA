@@ -1632,6 +1632,30 @@
         "libdl.so",
         "libc.so"
       ]
+    },
+    {
+      "path": "vendor/npu/lib/libQnnHtp.so",
+      "size": 2013936,
+      "sha256": "3c71c06536c7f42966aff0ed12cb40fe0ada57132ef2b4b4fa1e72d3aaa0be1d",
+      "source": "Same-device HexQuad remosaic runtime bundle; QNN 2.29.8"
+    },
+    {
+      "path": "vendor/npu/lib/libQnnSystem.so",
+      "size": 271568,
+      "sha256": "4250e5366a7f7b3c692a184649929e4d763a979c47691bfec49e8511af993842",
+      "source": "Same-device HexQuad remosaic runtime bundle; QNN 2.29.8"
+    },
+    {
+      "path": "vendor/npu/lib/libQnnHtpV79Stub.so",
+      "size": 463136,
+      "sha256": "2dfaabe735cdd3f6a23e9089d9b93c04cee2818e8168fdad7a864535ff620656",
+      "source": "Same-device HexQuad remosaic runtime bundle; QNN 2.29.8"
+    },
+    {
+      "path": "vendor/npu/lib/libQnnHtpV79Skel.so",
+      "size": 8607804,
+      "sha256": "eaf6f153c814f1f4d544ae17b37ee25835f678ed4b81d43e30a25e65396c5a8d",
+      "source": "Same-device HexQuad remosaic runtime bundle; QNN 2.29.8"
     }
   ]
 }

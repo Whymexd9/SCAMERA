@@ -34,6 +34,34 @@ int main(){
  finish(input.data(),out.data(),w,h,w,h,{0,60,70});
  assert(std::equal(input.begin(),input.end(),out.begin()));
  for(size_t i=input.size();i<out.size();i++)assert(out[i]==0xa5);
+ // High-ISO-like input with broad, curved enhancement residuals. Exercise
+ // the user's saved 70/35/70 controls at both native size and 2x output.
+ uint32_t seed=17;
+ for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+   seed=seed*1664525u+1013904223u;input[y*w+x]=128+int(seed>>24)%25-12;
+ }
+ for(int scale: {1,2}){
+   int ww=w*scale,hh=h*scale;
+   std::vector<uint8_t> reference(ww*hh*3/2,128), worms=reference;
+   finish(input.data(),reference.data(),w,h,ww,hh,{0,0,0});
+   for(int y=0;y<hh;y++)for(int x=0;x<ww;x++)
+     worms[y*ww+x]=reference[y*ww+x]+int(18*std::sin(x*.65+2*std::sin(y*.31)));
+   auto unprotected=worms,protectedOut=worms;
+   finish(input.data(),unprotected.data(),w,h,ww,hh,{70,0,70});
+   finish(input.data(),protectedOut.data(),w,h,ww,hh,{70,35,70});
+   double before=0,after=0;
+   for(int y=2;y<hh-2;y++)for(int x=2;x<ww-2;x++){
+     int i=y*ww+x;before+=std::abs(int(unprotected[i])-reference[i]);
+     after+=std::abs(int(protectedOut[i])-reference[i]);
+   }
+   std::cout<<"noise residual "<<scale<<"x: "<<after/before<<" of unprotected"<<std::endl;
+   assert(after<before*.5);
+ }
+ // A coherent ramp retains enhancement: protection must not blanket-disable RAISR.
+ for(int y=0;y<h;y++)for(int x=0;x<w;x++)input[y*w+x]=40+x*5;
+ out=input;for(int y=0;y<h;y++)for(int x=0;x<w;x++)out[y*w+x]+=4;
+ finish(input.data(),out.data(),w,h,w,h,{70,35,70});
+ for(int y=2;y<h-2;y++)for(int x=2;x<w-2;x++)assert(out[y*w+x]>=input[y*w+x]+2);
  std::cout<<"PASS RAISR raw/baseline endpoints, fine-artifact suppression, halo bounds, NV21 order, row edges/guards\n";
 }
 ''')

@@ -156,3 +156,42 @@ output is 2x; they do not rule out inappropriate input color/range, processing-s
 differences, or native tuning as sources of artifacts. No post-30204 device log or
 paired RAISR image was available for this follow-up, so SoftPQE session execution
 and the visual effect of the new controls remain unconfirmed on the phone.
+
+## 30204 device results and follow-up repair
+
+New `SCAMERA-debug.log (9).txt` reaches VDNN engine creation with APK=1 but still
+fails Y/UV session creation. `(10).txt` completes RAISR at 1x, ISO 2097 and controls
+70/35/70. The user identifies the worm-textured side of the supplied 318% comparison
+screenshots as RAISR-on. Original paired JPEGs are not available for measurement.
+
+The earlier APK=1 runtime choice was incorrect. The supplied `/vendor/lib64/hw`
+QNN is SDK 2.25.23 / Core 2.18. The original VDNN qnn_2_28 selector at 0x1e5bb8
+requires Core major 2 and minor **greater than 20**. Emulating those instructions
+reproduces rejection of 2.18/2.20 and acceptance of 2.21/2.22. The same-device
+HexQuad remosaic runtime in `/vendor/npu/lib` is SDK 2.29.8 / Core 2.22.0.
+
+Use `PLATFORM:SM8750_2_28 APK:0 SIGNEDPD:0` before any model session, with
+system-first LD_LIBRARY_PATH including `/vendor/npu/lib` and that directory first
+in ADSP_LIBRARY_PATH. Preload FastRPC and the V79 stub, validate the QNN provider
+version/build, and pin all four runtime hashes to the supplied remosaic bundle.
+Keep the original SoftPQE model files unchanged. SIGNEDPD is a parsed VDNN option
+for a standalone unsigned DSP process; no global policies or models are patched.
+Forward this worker's liblog messages into stderr so session failures are visible
+in the application's diagnostic log. Do not read other processes' logs.
+
+RAISR now gates its enhancement residual using a 5x5 structure tensor and a
+Laplacian noise estimate from the **native input resolution**. Measuring the
+bilinearly enlarged reference made interpolated noise look coherent at 2x and
+failed the new noise regression; native-resolution measurement fixes this.
+Protection remains controlled by the existing texture slider, including saved
+35%. It does not denoise or blur the source. It can reduce genuine fine texture.
+The 100/0/0 setting still returns untouched vendor output. Ten cached output rows
+bound extra memory to under 800 KiB at maximum width.
+
+Validation: synthetic noisy-input/curved-residual tests at the user's 70/35/70
+settings, both 1x and 2x, require at least 50% less added residual than protection
+0; a coherent-ramp case retains enhancement. Existing halo/chroma/edge/guard
+checks pass under ASan/UBSan. Original VDNN parser and version-selector emulation,
+worker fault injection and both backend loader-order checks pass. These are not
+phone inference or proof of stock-camera equivalence. SoftPQE still needs an
+on-device test of model sessions, actual output and performance.

@@ -18,6 +18,9 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 #include "vivo-softpqe-abi.h"
 #include "vivo-raisr-abi.h"
 #include "vivo-raisr-controls.h"
@@ -74,9 +77,48 @@ struct Library {
         return reinterpret_cast<T>(p);
     }
 };
+void nativeLogs() {
+#ifdef __ANDROID__
+    // VDNN/QNN log through liblog, not stdout. Forward only this worker's
+    // messages; do not collect other processes or alter global log properties.
+    Library log("liblog.so");
+    auto set=reinterpret_cast<void(*)(void(*)(const __android_log_message*))>(
+        dlsym(log.h,"__android_log_set_logger"));
+    auto priority=reinterpret_cast<int(*)(int)>(dlsym(log.h,"__android_log_set_minimum_priority"));
+    if(priority)priority(ANDROID_LOG_DEBUG);
+    if(set)set(+[](const __android_log_message* m){
+        if(m && m->message)std::fprintf(stderr,"NATIVE/%s: %.16384s\n",m->tag?m->tag:"?",m->message);
+    });
+#endif
+}
+void softRuntime() {
+#ifdef __ANDROID__
+    // Same generation as the HexQuad remosaic runtime. /vendor/lib64/hw is
+    // QNN 2.25 / Core 2.18 and is rejected by VDNN qnn_2_28 (needs Core >=2.21).
+    Library driver("libcdsprpc.so");
+    Library stub("/vendor/npu/lib/libQnnHtpV79Stub.so");
+    Library htp("/vendor/npu/lib/libQnnHtp.so");
+    struct Version { uint32_t major,minor,patch; };
+    struct Provider { uint32_t id;const char* name;Version core,backend;void* slots[5]; };
+    static_assert(offsetof(Provider,core)==0x10 && offsetof(Provider,slots)==0x28,"QNN provider prefix");
+    const Provider** providers=nullptr;uint32_t count=0;
+    auto rc=htp.symbol<uint64_t(*)(const Provider***,uint32_t*)>("QnnInterface_getProviders")(&providers,&count);
+    if(rc || !providers || !count || count>16)throw std::runtime_error("SoftPQE QNN providers failed");
+    const Provider* api=nullptr;
+    for(uint32_t i=0;i<count;++i)if(providers[i] && providers[i]->id==6 &&
+        providers[i]->core.major==2 && providers[i]->core.minor==22 && providers[i]->core.patch==0)api=providers[i];
+    if(!api || !api->slots[4])throw std::runtime_error("SoftPQE requires pinned QNN Core 2.22.0");
+    const char* build=nullptr;
+    rc=reinterpret_cast<uint64_t(*)(const char**)>(api->slots[4])(&build);
+    if(rc || !build || std::strcmp(build,"v2.29.8.250123143957_105779"))
+        throw std::runtime_error("Unexpected SoftPQE QNN build");
+    std::cout<<"SOFTPQE QNN Core 2.22.0 SDK="<<build<<std::endl;
+#endif
+}
 }
 int run(int argc,char** argv) {
     try {
+        nativeLogs();
         if(argc==3 && std::string(argv[1])=="--probe") {
             alarm(30); Library library(argv[2]);
             const std::string path(argv[2]);
@@ -137,13 +179,16 @@ int run(int argc,char** argv) {
         signal(SIGALRM,SIG_DFL);alarm(180);
         // Like the neural-remosaic worker, select the matching QNN runtime before
         // creating any model session. VDNN's QNN-2.28 runtime is a first-use singleton.
-        // APK=1 selects the pinned /vendor/lib64/hw libraries, not /vendor/npu/lib.
+        // APK=0 selects /vendor/npu/lib (QNN 2.29.8); APK=1 would load 2.25.
         if(soft) {
 #ifdef __ANDROID__
             static_assert(sizeof(std::string)==24,"Pinned Android libc++ string ABI");
 #endif
+            softRuntime();
             Library vdnn(VIVO_VDNN_LIBRARY);
-            std::string config="PLATFORM:SM8750_2_28 APK:1";
+            // Public runtime option: standalone unsigned DSP process, as used
+            // by the remosaic adapter. No SELinux/signature policy changes.
+            std::string config="PLATFORM:SM8750_2_28 APK:0 SIGNEDPD:0";
             void* engine=nullptr;
             int rc=vdnn.symbol<int(*)(void**,const std::string&)>("vdnnPlatformInitV2")(&engine,config);
             std::cout<<"VDNN "<<config<<" init="<<rc<<" engine="<<(engine?"created":"null")<<std::endl;

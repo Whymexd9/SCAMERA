@@ -34,7 +34,7 @@ def putstr(a,s):
  else:
   ptr=alloc(len(s)+1);u.mem_write(ptr,s+b'\0');raw=struct.pack('<QQQ',((len(s)+16)//16*16)|1,len(s),ptr)
  u.mem_write(a,raw)
-cfg=(sys.argv[2] if len(sys.argv)>2 else 'PLATFORM:SM8750_2_28 APK:1').encode();putstr(0x10002000,cfg)
+cfg=b'PLATFORM:SM8750_2_28 APK:0 SIGNEDPD:0';putstr(0x10002000,cfg)
 u.reg_write(UC_ARM64_REG_X0,0x10001000);u.reg_write(UC_ARM64_REG_X1,0x10002000);u.reg_write(UC_ARM64_REG_SP,0x100f0000);u.reg_write(UC_ARM64_REG_TPIDR_EL0,0x10003000);u.reg_write(UC_ARM64_REG_LR,0x10000000)
 seen=[]
 def hook(uc,addr,size,data):
@@ -72,5 +72,21 @@ u.hook_add(UC_HOOK_CODE,hook)
 try:u.emu_start(0x86b28,0x10000000,count=300000)
 except Exception as ex:print('PC',hex(u.reg_read(UC_ARM64_REG_PC)));raise
 assert u.reg_read(UC_ARM64_REG_PC)==0x10000000,'Instruction budget exceeded'
-assert u.reg_read(UC_ARM64_REG_X0)==0 and seen==[(18,1,1)],seen
-print('PASS original VDNN parser / platform map: modelType=18, APK=1, stock signed-PD default retained')
+assert u.reg_read(UC_ARM64_REG_X0)==0 and seen==[(18,0,0)],seen
+print('PASS original VDNN parser / platform map: modelType=18, APK=0, SIGNEDPD=0')
+# Execute the original provider-version selection branch, stopping before table
+# copying or error logging. No synthetic reimplementation of the comparison.
+u.mem_write(0x10004000,struct.pack('<Q',0x10005000))
+u.reg_write(UC_ARM64_REG_SP,0x10006000)
+u.mem_write(0x1000600c,struct.pack('<I',1))
+u.mem_write(0x10006010,struct.pack('<Q',0x10004000))
+ends=[]
+def selector_stop(uc,addr,size,data):
+ if addr in (0x1e5bf0,0x1e5c78):ends.append(addr);uc.emu_stop()
+hook_id=u.hook_add(UC_HOOK_CODE,selector_stop)
+for major,minor,expected in [(2,18,False),(2,20,False),(2,21,True),(2,22,True),(3,22,False)]:
+ u.mem_write(0x10005010,struct.pack('<III',major,minor,0));ends.clear()
+ u.emu_start(0x1e5bb8,0x10000000,count=100)
+ assert ends==[0x1e5bf0 if expected else 0x1e5c78],(major,minor,ends)
+u.hook_del(hook_id)
+print('PASS original VDNN QNN selector rejects Core 2.18/2.20, accepts 2.21/2.22')
