@@ -790,6 +790,16 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
     }
 
+    public static boolean isGcamStageEnabled(String key) {
+        return preferenceKeys.settingsManager.getBoolean("default_scope",key,false);
+    }
+    public static float gcamValue(String key,float fallback,float min,float max) {
+        try {
+            float value=Float.parseFloat(preferenceKeys.settingsManager.getString("default_scope",key,String.valueOf(fallback)));
+            return Float.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
+        } catch(RuntimeException error) { return fallback; }
+    }
+
     public static boolean isSabreEnabled() {
         return isRawMfsrEnabled() && "sabre".equals(multiFrameText("pref_mfsr_engine_key", "native"));
     }

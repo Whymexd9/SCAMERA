@@ -447,6 +447,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
+                    updateDistributionAe(img,mHexZslResults.get(img.getTimestamp()));
                     mZslRingBuffer.addLast(img);
                     int maxFrames = zslRingCapacity();
                     while (mZslRingBuffer.size() > maxFrames) {
@@ -2191,10 +2192,58 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * copy inside LiveRawFrame is what the viewfinder develops; the Image goes
      * on to the ring untouched.
      */
+    private long distributionAeTime;
+    private boolean distributionAeOwned;
+    private CaptureRequest.Builder distributionAeBuilder;
+    private int distributionAeLast;
+    private void updateDistributionAe(Image image,CaptureResult result) {
+        if(mPreviewRequestBuilder==null || mCameraCharacteristics==null || burst || mZslCapturing || mHybridZslCapture)return;
+        int baseline=paramController==null?0:paramController.EV;
+        boolean enabled=PreferenceKeys.isGcamStageEnabled("pref_gcam_scene_ae");
+        if(distributionAeBuilder!=mPreviewRequestBuilder){distributionAeOwned=false;distributionAeBuilder=mPreviewRequestBuilder;}
+        if(!enabled){
+            Integer current=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+            if(distributionAeOwned && current!=null && current==distributionAeLast){
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,baseline);rebuildPreviewBuilder();
+            }
+            distributionAeOwned=false;return;
+        }
+        if(result==null || image.getFormat()!=ImageFormat.RAW_SENSOR || image.getPlanes()[0].getPixelStride()!=2)return;
+        if(paramController!=null && (paramController.ISO!=-1 || paramController.SHUTTER!=-1))return;
+        Integer mode=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_MODE);
+        Boolean locked=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_LOCK);
+        Integer state=result.get(CaptureResult.CONTROL_AE_STATE);
+        if(mode==null || mode!=CaptureRequest.CONTROL_AE_MODE_ON || Boolean.TRUE.equals(locked)
+                || state==null || state!=CaptureResult.CONTROL_AE_STATE_CONVERGED)return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(now-distributionAeTime<1000)return;
+        distributionAeTime=now;
+        Integer white=mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+        android.hardware.camera2.params.BlackLevelPattern black=mCameraCharacteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        if(white==null || black==null)return;
+        double level=0;for(int y=0;y<2;y++)for(int x=0;x<2;x++)level+=black.getOffsetForIndex(x,y)*.25;
+        int block=PreferenceKeys.isRawMfsrEnabled()?PreferenceKeys.getMultiFrameBlock()
+                :PreferenceKeys.isRemosaicEnabled()?PreferenceKeys.getRemosaicBlockSize():1;
+        double[] stats=SceneDistributionMeter.measure(image.getPlanes()[0].getBuffer(),image.getWidth(),image.getHeight(),
+                image.getPlanes()[0].getRowStride(),block,level,white);
+        Range<Integer> range=mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+        Rational step=mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+        if(stats==null || range==null || step==null)return;
+        Integer value=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+        int current=value==null?baseline:value;
+        int next=SceneDistributionMeter.nextSteps(stats[0],stats[1],current,baseline,step.doubleValue(),range.getLower(),range.getUpper());
+        if(next!=current){
+            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,next);
+            distributionAeOwned=true;distributionAeLast=next;rebuildPreviewBuilder();
+            Log.i("SCENE_AE","p50="+stats[0]+" p99="+stats[1]+" compensation="+next);
+        }
+    }
+
     private void onMatchedLiveRaw(Image img, TotalCaptureResult result) {
         boolean retained = false;
         try {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture) return;
+            updateDistributionAe(img,result);
             publishLiveRawFrame(img, result);
             if (isZslMode()) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;

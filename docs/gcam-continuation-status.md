@@ -181,3 +181,40 @@ OIS behavior and sensor-specific tuning require on-device testing.
 The integration review also fixed ESD4D texture ping-pong: immutable basePrimary
 and baseAlter handles prevent the second and later passes from reading and
 writing the same GPU image. The fix applies to both merge engines.
+
+## Current scope update: finish stages and noise (after 30221)
+
+User authorizes items 20–31 and 34; removes all other remaining items. Items
+22/23/25 were already present and are retained. Items 7–10 remain removed from
+future work; existing Saliency is retained. Cross-camera colour (32), preview/
+photo matching (35) and preview hot pixels (36) are no longer planned.
+
+New optional menu: “GCam — маски и тональная обработка”. All new image effects
+and scene AE are disabled by default. This is an integration of recovered
+arithmetic plus explicitly documented SCAMERA adaptations, NOT full proprietary
+Cyclops/FinishRaw/learned AE equivalence.
+
+| Item | Implemented path | Exact boundary |
+|---|---|---|
+| 20 | Sabre confidence → threshold → three 3x3 box passes → threshold → separable sigma=1 Gaussian → byte mask blend | Recovers selected Cyclops mask arithmetic, including even-kernel offset and truncation. Uses Sabre confidence as the initial reliability signal, not original bidirectional flow/ML. Subject and smooth masks are constant 255, gain=1; no new segmentation model. |
+| 21 | Sparse RAW16 distribution meter → bounded Camera2 AE compensation | Own p50/p99 policy, one compensation step per second after AE convergence, ±2 EV from user's compensation. Requires matched preview RAW metadata. Manual shutter/ISO, flash AE and AE Lock are excluded. Turning off restores user's compensation. Not Google's learned Qualcomm metering. |
+| 24 | Three-scale luminance decomposition with independent gains and recovered five-knot curves | Curve arithmetic recovered; Gaussian pyramid, noise floor and default knots are SCAMERA tuning. Neutral gains bypass rendering when other controls are neutral. |
+| 26 | Optional luminance shoulder before main tone curve | Soft compression retains colour ratios and floating-point values above 1; cannot reconstruct information clipped in every RAW. |
+| 27 | Match measured shadow percentile toward .03, capped by user EV, with shadow-only blend | Own upstream target/weight integration, not full S16/F16 ApplySlm or Google's missing level estimator. |
+| 28 | Positive-domain geometric blend and selectable linear/geometric interpolation | Recovered geometric branch; exact black stays black. Negative linear RGB is floored before processing. |
+| 29 | Recovered piecewise rolloff/digital gain split | Product preserved; rolloff capped at 1.5. Applying the rolloff to RGB is a separate SCAMERA integration curve. |
+| 30 | Coarse-scale local contrast, clarity and atmospheric-scattering dehaze | Own approximations; original GCam kernels were not recovered. Controls are separate and default to zero. |
+| 31 | User-controlled subtraction of a low-percentile veiling pedestal | Own simple model of broad veiling light. Does not remove local lens ghosts, reconstruct obscured content or provide optical calibration. |
+| 34 | Variance scale 1/(effective temporal samples × independent spatial samples) | Sabre tracks sum(w) and sum(w²), then uses a conservative minimum-bin effective count for the scalar downstream model. Native path retains its count; ordinary confidence merge without a weight map conservatively uses 1. Software 2x2 binning contributes 4 under the independent-sample assumption. No unjustified 0.9 variance divisor at N=1. |
+
+The finish node operates on linear camera RGB after ABLC, before the chosen tone
+pipeline. The median/peak histogram targets and all aesthetic tuning are not
+claimed to be Google's original settings. Dehaze/flare can darken scene shadows;
+leave them at zero unless intentionally adjusting that image characteristic.
+
+Validation: executable production GPU shaders against independent mask/blend
+fixtures, all three frequency controls, neutral identity, black, HDR and colour
+ratios. GLSL ES 3.10 compile checks; Java gain split, weighted effective counts,
+noise identity, RAW histograms and AE bounds. Existing Sabre tests retained.
+On-device AE stability, optical behaviour and final photo quality require Vivo
+capture testing; no end-to-end donor equivalence is claimed.

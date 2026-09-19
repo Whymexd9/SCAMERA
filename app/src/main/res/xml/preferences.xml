@@ -1,6 +1,23 @@
 <?xml version='1.0' encoding='utf-8'?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:key="prefscreen" android:title="Настройки камеры" app:iconSpaceReserved="false" android:orderingFromXml="true">
     <Preference android:key="settings_scope_info" android:title="Область настроек" android:selectable="false" app:iconSpaceReserved="false" />
+    <PreferenceScreen android:key="gcam_finish_screen" android:title="GCam — маски и тональная обработка" android:summary="Cyclops, экспозиция, три диапазона резкости, тени и локальный контраст" app:iconSpaceReserved="false">
+        <SwitchPreferenceCompat android:key="pref_gcam_cyclops" android:title="Cyclops — очистка маски движения" android:summary="Для Sabre RAW: уменьшает вклад ненадёжных областей и границ движения. Использует маску доверия Sabre." android:defaultValue="false" />
+        <SwitchPreferenceCompat android:key="pref_gcam_scene_ae" android:title="Автоэкспозиция по RAW-гистограмме" android:summary="Подстраивает автоматическую экспозицию по полутонам и светам при поступлении RAW предпросмотра. Ручную выдержку/ISO и AE Lock не меняет." android:defaultValue="false" />
+        <SwitchPreferenceCompat android:key="pref_gcam_finish" android:title="Тональная обработка и резкость" android:summary="Перед основной тональной кривой. Адаптации SCAMERA; включайте нужные регуляторы постепенно." android:defaultValue="false" />
+        <EditTextPreference android:key="pref_gcam_fine" android:title="Мелкие детали — усиление" android:defaultValue="1" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_medium" android:title="Средние детали — усиление" android:defaultValue="1" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_coarse" android:title="Крупные детали — усиление" android:defaultValue="1" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_slm" android:title="Согласование теней — сила, 0–1" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_shadow_ev" android:title="Подъём теней, EV — 0–2" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_log_mix" android:title="Логарифмическое смешивание — 0–1" android:defaultValue="1" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_highlights" android:title="Мягкое сжатие светов — 0–1" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_local" android:title="Локальный контраст — 0–1" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_dehaze" android:title="Dehaze — 0–1" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_clarity" android:title="Clarity — 0–1" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <EditTextPreference android:key="pref_gcam_flare" android:title="Коррекция вуалирующей засветки — 0–1" android:defaultValue="0" android:dependency="pref_gcam_finish" />
+        <Preference android:key="gcam_finish_info" android:title="Ограничения" android:summary="Резкость: три диапазона, усиление 0–2. Засветка корректирует общий световой налёт, но не удаляет отдельные блики. Dehaze и коррекция засветки — собственные адаптации. Все эффекты отключены при исходных значениях." android:selectable="false" />
+    </PreferenceScreen>
     <PreferenceScreen android:key="capture_settings_screen" android:layout="@layout/preference_concept_section" android:icon="@drawable/settings_concept_capture" android:title="Съёмка и склейка" app:iconSpaceReserved="false" android:summary="Кадры, ZSL, HDR, выравнивание и параметры склейки">
         <PreferenceScreen android:key="burst_settings_screen" android:title="Кадры и экспозиция серии" app:iconSpaceReserved="false" android:summary="Число кадров, короткие и длинные экспозиции">
             <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:icon="@drawable/ic_burst_mode_black_24dp" android:layout="@layout/preference_seekbar" android:title="@string/frame_count" android:key="@string/pref_frame_count_key" android:summary="@string/frame_count_desc" android:defaultValue="@string/pref_framecount_default" app:maxValue="200" app:minValue="1" />

@@ -12,9 +12,10 @@ void main() {
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
     if(any(greaterThanEqual(p,imageSize(outputTexture)))) return;
     vec4 a=imageLoad(referenceTexture,p), b=imageLoad(donorTexture,p);
-    vec4 w=clamp(imageLoad(confidenceTexture,p),0.0,1.0);
-    vec4 old=first==1?vec4(1):imageLoad(oldMassTexture,p);
-    vec4 total=old+w;
-    imageStore(outputTexture,p,(a*old+b*w)/max(total,vec4(1e-7)));
-    imageStore(newMassTexture,p,total);
+    vec4 confidence=clamp(imageLoad(confidenceTexture,p),0.0,1.0);
+    float w=min(min(confidence.r,confidence.g),min(confidence.b,confidence.a));
+    vec4 state=first==1?vec4(1):imageLoad(oldMassTexture,p);
+    float total=state.r+w, squares=state.g+w*w;
+    imageStore(outputTexture,p,(a*state.r+b*w)/max(total,1e-7));
+    imageStore(newMassTexture,p,vec4(total,squares,total*total/max(squares,1e-7),1));
 }

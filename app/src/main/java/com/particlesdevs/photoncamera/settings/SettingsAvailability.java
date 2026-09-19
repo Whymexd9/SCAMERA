@@ -21,6 +21,9 @@ public final class SettingsAvailability {
         boolean sabre=multi && text("pref_mfsr_engine_key","native").equals("sabre");
         if(sabre && any(key,"pref_mfsr_fpn_key","pref_mfsr_calibrate_key","pref_mfsr_red_ca_key","pref_mfsr_blue_ca_key"))
             return "Эта настройка относится к Multi-frame Remosaic, а выбран Sabre.";
+        if(key.equals("pref_gcam_cyclops") && !sabre) return "Маска Cyclops подключена к Sabre RAW — выберите этот алгоритм MFSR.";
+        if(key.startsWith("pref_gcam_") && !any(key,"pref_gcam_finish","pref_gcam_cyclops","pref_gcam_scene_ae")
+                && !on("pref_gcam_finish",false)) return "Включите тональную обработку и резкость в меню GCam.";
         boolean remosaic = !multi && on("pref_remosaic_enabled_key", false);
         String backend = text("pref_remosaic_backend_key", "scamera");
         boolean hex = remosaic && backend.equals("hp9_hexquad");

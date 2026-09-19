@@ -299,7 +299,7 @@ public class ESD4D extends GLOneScript {
         for (ImageFrame f : frames) maxMpy = Math.max(maxMpy, 1.f / f.pair.layerMpy);
         return maxMpy > 0.f ? maxMpy : 1.f;
     }
-    GLTexture sabreConfidence, sabreMassA, sabreMassB;
+    GLTexture sabreConfidence, sabreMassA, sabreMassB, cyclopsTemp;
     int sabreMerged;
     GLTexture baseDiff;
     GLTexture base;
@@ -696,6 +696,8 @@ public class ESD4D extends GLOneScript {
             sabreConfidence=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
             sabreMassA=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
             sabreMassB=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            if(PreferenceKeys.isGcamStageEnabled("pref_gcam_cyclops"))
+                cyclopsTemp=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
             sabreMerged=0;
         }
         // Temporal result
@@ -1289,11 +1291,27 @@ public class ESD4D extends GLOneScript {
             }
 
             if(sabreConfidence!=null) {
+                GLTexture confidence=sabreConfidence;
+                if(cyclopsTemp!=null) {
+                    // alter is no longer sampled after alignment. Reuse it as
+                    // mask scratch; the next donor upload restores its contents.
+                    for(int stage=0;stage<6;stage++) {
+                        GLTexture dst=(stage%2==0)?cyclopsTemp:alter;
+                        glProg.setLayout(tile,tile,1);
+                        glProg.useAssetProgram("merge/cyclopsMask",true);
+                        glProg.setTextureCompute("inputMask",confidence,false);
+                        glProg.setTextureCompute("originalConfidence",sabreConfidence,false);
+                        glProg.setTextureCompute("outputMask",dst,true);
+                        glProg.setVar("stage",stage);
+                        glProg.computeAuto(dst.mSize,1);
+                        confidence=dst;
+                    }
+                }
                 glProg.setLayout(tile,tile,1);
                 glProg.useAssetProgram("merge/sabreCombine",true);
                 glProg.setTextureCompute("referenceTexture",base,false);
                 glProg.setTextureCompute("donorTexture",baseDiff,false);
-                glProg.setTextureCompute("confidenceTexture",sabreConfidence,false);
+                glProg.setTextureCompute("confidenceTexture",confidence,false);
                 glProg.setTextureCompute("oldMassTexture",sabreMassA,false);
                 base=getBase();
                 glProg.setTextureCompute("outputTexture",base,true);
@@ -1398,6 +1416,20 @@ public class ESD4D extends GLOneScript {
         }
 
 
+        if(sabreMassA!=null && sabreMerged>0) {
+            // Conservative scalar for downstream denoisers: lower occupied
+            // histogram bin of per-pixel (sum w)^2/sum(w^2), not frame count.
+            try(GLHistogram histogram=new GLHistogram(glProg,1024)) {
+                histogram.Rc=false;histogram.Gc=false;histogram.Bc=true;histogram.Ac=false;
+                histogram.resize=1;histogram.exposure[2]=1f/64f;
+                int[] bins=histogram.Compute(sabreMassA)[2];
+                for(int i=0;i<bins.length;i++) if(bins[i]>0) {
+                    parameters.effectiveStackSamples=Math.max(1,i*64.0/(bins.length-1));break;
+                }
+                Log.i("SABRE","Conservative effective samples="+parameters.effectiveStackSamples);
+            }
+        }
+
         float[] bl2 = new float[4];
         for (int i = 0; i < 4; i++) {
             bl2[i] = blNorm[i]*(FAKE_WL / parameters.whiteLevel);
@@ -1491,6 +1523,7 @@ public class ESD4D extends GLOneScript {
         inputAlter.close();
         alter.close();
         inputBase.close();
+        if(cyclopsTemp!=null)cyclopsTemp.close();
         if(sabreConfidence!=null) {sabreConfidence.close();sabreMassA.close();sabreMassB.close();}
         baseDiff.close();
         basePrimary.close();

@@ -522,8 +522,14 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
 
-        processingParameters.noiseModeler.computeStackingNoiseModel(
-                processingParameters.multiFrameCount>0 ? processingParameters.multiFrameCount : images.size());
+        double effective=Double.isFinite(processingParameters.effectiveStackSamples)
+                ? processingParameters.effectiveStackSamples
+                : processingParameters.multiFrameCount>0?processingParameters.multiFrameCount:1;
+        // The ordinary merge has spatially rejected donors but no weight map:
+        // do not pretend every pixel received images.size() independent samples.
+        // Allocator binning sums 2x2 pixels; white/black are scaled by four,
+        // so normalized variance falls by four (independence assumption).
+        processingParameters.noiseModeler.computeStackingNoiseModel(effective,Allocator.binning?4:1);
 
         boolean allowPostDenoise = !processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise;
         if (processingParameters.hexQuadProcessed) Log.i(TAG,"HEX POST DENOISE: AI/SCAMERA/RT allowed="+allowPostDenoise);
