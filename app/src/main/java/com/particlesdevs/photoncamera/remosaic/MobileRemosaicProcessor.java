@@ -99,8 +99,9 @@ public final class MobileRemosaicProcessor {
         int block=PreferenceKeys.getMultiFrameBlock();
         String cfa=BurstPolicy.cfa(PreferenceKeys.getMultiFrameCfa(),p.baseCfaPattern);
         ByteBuffer[] inputs=validate(frames,p,block,3);load();
-        RemosaicCalibrationStore.save(RemosaicCalibrationStore.key(p.cameraID,block,cfa,p.rawSize.x,p.rawSize.y),
-                inputs,p.rawSize.x,p.rawSize.y,p.iso,(long)(p.exposureTime*1e9));
-        PreferenceKeys.finishMultiFrameCalibration();
+        CalibrationSession session=CalibrationSession.active;
+        if(session==null || !session.camera.equals(p.cameraID))throw new IllegalStateException("Отсутствует план CAL для этого модуля");
+        session.save(RemosaicCalibrationStore.key(p.cameraID,block,cfa,p.rawSize.x,p.rawSize.y),
+                inputs,p.rawSize.x,p.rawSize.y,frames.get(0).pair.iso,frames.get(0).pair.exposure);
     }
 }

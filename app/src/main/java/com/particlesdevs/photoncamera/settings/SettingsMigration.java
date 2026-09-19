@@ -58,6 +58,10 @@ public final class SettingsMigration {
     public static void migrateMultiFrame(SharedPreferences preferences) {
         Map<String, ?> values=preferences.getAll();
         SharedPreferences.Editor e=preferences.edit();
+        if(!values.containsKey("settings_zsl_capacity_v2")) {
+            e.putString("pref_zsl_buffer_count_key","50");
+            e.putBoolean("settings_zsl_capacity_v2",true);
+        }
         if(!values.containsKey("pref_mfsr_source_key")) {
             boolean clustered=PreferenceNumber.bool(values.get("pref_remosaic_enabled_key"),false);
             int block=clustered ? (PreferenceNumber.read(values.get("pref_remosaic_block_key"),4)==2 ? 2 : 4) : 1;

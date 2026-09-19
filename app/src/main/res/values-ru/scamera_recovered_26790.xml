@@ -190,6 +190,6 @@
     <string name="v7_preference_off">ВЫКЛ.</string>
     <string name="v7_preference_on">ВКЛ.</string>
     <string name="zsl_buffer_count">Кадров в буфере ZSL</string>
-    <string name="zsl_buffer_count_summary">0 — съёмка PSL; 1–100 — число RAW-кадров до нажатия спуска (большие значения требуют много памяти)</string>
+    <string name="zsl_buffer_count_summary">Размер RAW-буфера до нажатия: 1–100 кадров, по умолчанию 50. Один размер для всех модулей и режимов фото/ночь, включая MFSR. Число кадров склейки задаётся отдельно.</string>
     <string name="zsl_merge_algorithm">Алгоритм склейки ZSL</string>
 </resources>

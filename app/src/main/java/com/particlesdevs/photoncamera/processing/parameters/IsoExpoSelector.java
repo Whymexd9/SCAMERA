@@ -103,6 +103,11 @@ public class IsoExpoSelector {
         lastSelectedExposure = pair.exposure;
     }
 
+    public static void setMeasuredBracketBase(long exposure,int iso,CaptureController controller) {
+        hdrPlusBasePair=GenerateExpoPair(-1,controller);
+        hdrPlusBasePair.exposure=exposure;hdrPlusBasePair.iso=iso;
+    }
+
     /** Capture the denoising portion of the HDR+ burst at strictly constant exposure. */
     public static void setHdrPlusExpo(CaptureRequest.Builder builder, int step,
                                       CaptureController captureController) {

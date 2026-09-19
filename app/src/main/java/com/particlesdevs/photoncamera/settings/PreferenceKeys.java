@@ -1096,12 +1096,11 @@ public class PreferenceKeys {
     }
 
     /**
-     * Pre-shutter RAW frames kept in the ZSL ring; 0 follows the burst frame
-     * count. Read by CaptureController.zslRingCapacity().
+     * Global pre-shutter RAW capacity, independent of mode, lens and merge count.
      */
     public static int getZslBufferCountValue() {
-        return Math.max(0, Math.min(100,
-                preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 0).intValue()));
+        return Math.max(1, Math.min(100,
+                preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 50).intValue()));
     }
 
     public static String getZslMergeAlgorithm() {

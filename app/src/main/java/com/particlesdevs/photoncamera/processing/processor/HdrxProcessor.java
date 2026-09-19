@@ -350,7 +350,7 @@ public class HdrxProcessor extends ProcessorBase {
             try {
                 if(PreferenceKeys.isMultiFrameCalibration()) {
                     com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor.calibrate(images,processingParameters);
-                    processingEventsListener.onProcessingFinished("Тёмная калибровка текущего модуля сохранена");
+                    Log.i("RAW_MFSR","CAL group saved; controller continues the bank");
                     callback.onFinished();return;
                 }
                 if(multiBracket) {

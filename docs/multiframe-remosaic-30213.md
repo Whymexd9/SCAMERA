@@ -97,3 +97,9 @@ incomplete/variable normal groups; capture-budget tests cover normal+short+long 
 menu tests confirm independent counts and calibration restrictions. Phone tests must compare
 bracketing off/on, 1 short, 1 long and both together, with a bright window and dark interior.
 The existing HDR fusion's real-world highlight recovery and movement rejection still require testing.
+
+## Superseded behavior in 30215
+
+The single-profile calibration shortcut and full-PSL bracket capture described above
+are replaced by the original 10-profile CAL bank and a timestamp-matched ZSL base.
+See [30215 details](multiframe-remosaic-30215.md).

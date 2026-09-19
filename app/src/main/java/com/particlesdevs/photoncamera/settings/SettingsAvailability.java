@@ -43,7 +43,7 @@ public final class SettingsAvailability {
         if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_")
                 || key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
                 || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
-                || any(key,"pref_frame_count_key","pref_zsl_buffer_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
+                || any(key,"pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
                 "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
                 "pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key","pref_highlight_recovery_key",
                 "pref_highlight_protection_key","scamera_quad_bayer_enabled")))

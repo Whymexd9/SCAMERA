@@ -17,7 +17,7 @@ public final class ModuleProfiles {
     }
     public boolean isApplying(){return applying;}
     public static boolean isLocal(String key) {
-        if(key==null || key.equals("pref_mfsr_calibrate_key"))return false;
+        if(key==null || key.equals("pref_mfsr_calibrate_key") || key.equals("pref_zsl_buffer_count_key"))return false;
         if(key.equals(PreferenceKeys.Key.CAMERA_ID.mValue)||key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue))return false;
         if(key.startsWith("lens_")||key.startsWith("module_")||key.startsWith("pref_sensorconfig_")||key.startsWith("settings_")||key.startsWith("pref_theme")||key.contains("debug")||key.contains("folder")||key.contains("config_file"))return false;
         if(key.equals("user_camera_ids")||key.equals("hidden_camera_ids")||key.equals(PreferenceKeys.Key.CAMERA_MODE.mValue))return false;
