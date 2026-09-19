@@ -123,3 +123,36 @@ bypass, process error, overrun, descriptor and stride changes; ASan/UBSan synthe
 RAISR residual, halo, interpolation, chroma-order and border invariants; Android
 Java/resource compilation. These do not execute QNN on a phone and do not prove
 that SoftPQE inference or visual quality is now correct on the user's device.
+
+## Follow-up: native RAISR filter selection
+
+`tools/vivo-upscale/check_raisr_profiles.py <extracted-dump>` executes the pinned
+core routine at VA 0x8eb8 through its return. TinyXML navigation and libc helpers
+are emulated; the zoom/ISO branches and native configuration writes execute from
+the original ARM64 instructions. ELF, XML and every selected filter are SHA-checked
+against the manifest. This is a configuration audit, not image processing.
+
+Both supplied profiles have `zoomMode=1`. The branch at 0x9114 selects **Z1 for
+every accepted input zoom >=1**, including 2x and 4x. The routine stores the filter
+group at handle+0x1180 and input zoom divided by that group at +0x1184; those are
+distinct from the requested output dimensions. Merely finding Z2/Z4 files in the
+dump does not show that the supplied stock configuration uses them. Do not force
+these banks or alter firmware XML as an assumed fix for worm-like artifacts.
+
+| Profile | Low ISO | Mid ISO | High ISO | Default white/black tuple |
+| --- | --- | --- | --- | --- |
+| Main / SAT 2 | <140 | 140–749 | >=750 | 1, 2, 1 |
+| Tele / SAT 8 | <90 | 90–399 | >=400 | 2, 1, 1 |
+
+The no-face branch is the one our adapter uses. A positive face count selects the
+separate `withFaceEnhance` tuple (2, 6, 6 for Z1); this audit does not justify
+inventing face metadata. The test covers 96 combinations: both profiles, 1/1.5/2/4x,
+six ISO cases including each threshold boundary, and both face branches. All pass.
+
+No runtime change follows from these results: our worker already delegates this
+selection to the original core with actual capture ISO and the pinned per-role
+configuration. They rule out an assumed need to switch to Z2 solely because the
+output is 2x; they do not rule out inappropriate input color/range, processing-stage
+differences, or native tuning as sources of artifacts. No post-30204 device log or
+paired RAISR image was available for this follow-up, so SoftPQE session execution
+and the visual effect of the new controls remain unconfirmed on the phone.
