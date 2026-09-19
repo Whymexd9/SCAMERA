@@ -114,10 +114,6 @@ public final class SettingsAvailability {
             if (key.equals("pref_vivo_downscale_size_key") && text("pref_vivo_downscale_kernel_key","0").equals("0"))
                 return "Выберите Lanczos 2–5.";
         }
-        if (key.startsWith("pref_softpqe_")) {
-            if (!on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
-            if (!"softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "Выберите алгоритм SoftPQE.";
-        }
         if (key.startsWith("pref_raisr_") && !key.equals("pref_raisr_enabled_key") && !on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
         if (key.startsWith("pref_mfsr_") && !on("pref_raw_mfsr_enabled_key",false)) return "Включите RAW MFSR.";
         if (hex && (key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")

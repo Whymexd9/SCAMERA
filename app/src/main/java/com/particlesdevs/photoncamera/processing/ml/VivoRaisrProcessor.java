@@ -39,8 +39,6 @@ public final class VivoRaisrProcessor {
         final int strength=percent(PreferenceKeys.getRaisrStrength());
         final int texture=percent(PreferenceKeys.getRaisrAliasingSuppression());
         final int halo=percent(PreferenceKeys.getRaisrHaloProtection());
-        final int softLuma=percent(PreferenceKeys.getSoftPqeLuma()), softChroma=percent(PreferenceKeys.getSoftPqeChroma());
-        final int softSharpen=percent(PreferenceKeys.getSoftPqeSharpen()), softStrength=percent(PreferenceKeys.getSoftPqeStrength());
         // SoftPQE processes the completed Bitmap from any module with the same
         // verified 2x profile. Role 2 selects that profile, not a Camera2 ID.
         // RAISR keeps its distinct pinned main/tele configurations.
@@ -75,9 +73,9 @@ public final class VivoRaisrProcessor {
                     " --raisr /vendor/lib64/libvivo_raisr.so /vendor/camera3rd/nti/raisr ")+
                     quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+ow+" "+oh+
                     " 17 "+Math.max(1,Math.min(1000000,iso))+" "+(soft?2:("5".equals(cameraId)?8:2))+
-                    (soft?" "+softLuma+" "+softChroma+" "+softSharpen+" "+softStrength:" "+strength+" "+texture+" "+halo);
+                    (soft?"":" "+strength+" "+texture+" "+halo);
             String launch="START "+name+" camera="+cameraId+" "+w+"x"+h+" -> "+ow+"x"+oh+
-                    " ISO="+iso+(soft?" profile=shared_master_2x controls=v2 luma="+softLuma+" chroma="+softChroma+" sharpen="+softSharpen+" strength="+softStrength:"")+" LD_LIBRARY_PATH="+libraryPath;
+                    " ISO="+iso+(soft?" profile=shared_master_2x SR-only-v3 Y=neural UV=Lanczos2 external_NR=off sharpening=off":"")+" LD_LIBRARY_PATH="+libraryPath;
             report.append(launch).append('\n');Log.d("VivoUpscale",launch);
             process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
             process.getOutputStream().close();final Process child=process;

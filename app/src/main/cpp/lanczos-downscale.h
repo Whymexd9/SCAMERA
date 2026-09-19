@@ -17,10 +17,11 @@ inline double sinc(double x) {
     return std::sin(p) / p;
 }
 inline std::vector<Tap> coefficients(int input, int output, int lobes) {
-    const double scale = double(output) / input, radius = lobes / scale;
+    const double ratio = double(output) / input;
+    const double scale = std::min(1.0, ratio), radius = lobes / scale;
     std::vector<Tap> taps(output);
     for (int i = 0; i < output; ++i) {
-        const double center = (i + 0.5) / scale - 0.5;
+        const double center = (i + 0.5) / ratio - 0.5;
         int first = std::max(0, int(std::ceil(center - radius)));
         int last = std::min(input - 1, int(std::floor(center + radius)));
         Tap& tap = taps[i]; tap.first = first;

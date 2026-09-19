@@ -158,39 +158,13 @@ public class SettingsMenuTest {
         assertArrayEquals(new int[]{6144,4608},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"75"));
         assertArrayEquals(new int[]{13,10},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(49,37,49,37,"25"));
     }
-    @Test public void softPqeControlsHaveStockDefaultsAndBackendAvailability(){
+    @Test public void softPqeExposesUpscaleWithoutLegacyNoiseAndSharpControls() {
         PreferenceScreen screen=inflate();
-        assertNotNull(screen.findPreference("softpqe_settings_screen"));
-        Map<String,Object> values=new HashMap<>();
-        for(String name:Arrays.asList("luma","chroma","sharpen","strength")){
-            String key="pref_softpqe_"+name+"_key";
-            assertNotNull(screen.findPreference(key));assertTrue(ModuleProfiles.isLocal(key));
-            assertEquals(100.0,PreferenceNumber.read(prefs.getAll().get(key),-1),0.0);
-            assertNotNull(new SettingsAvailability(values).reason(key));
-            values.put("pref_raisr_enabled_key",true);values.put("pref_vivo_upscale_backend_key","raisr");
-            assertNotNull(new SettingsAvailability(values).reason(key));
-            values.put("pref_vivo_upscale_backend_key","softpqe");
-            assertNull(new SettingsAvailability(values).reason(key));values.clear();
-        }
-        // Exercise the actual slider persistence (String), not an artificial
-        // direct integer write. Rebinding must not restore the default.
-        for(String name:Arrays.asList("luma","chroma","sharpen","strength")){
-            String key="pref_softpqe_"+name+"_key";
-            var slider=(com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)screen.findPreference(key);
-            var row=LayoutInflater.from(context).inflate(slider.getLayoutResource(),null,false);
-            slider.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
-            for(int value:new int[]{0,100}){
-                slider.onProgressChanged(slider.getSeekBar(),value,true);
-                slider.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
-                assertEquals(Integer.toString(value),prefs.getString(key,"missing"));
-                assertEquals(value,slider.getSeekBarProgress());
-                int actual=name.equals("luma")?PreferenceKeys.getSoftPqeLuma():name.equals("chroma")?PreferenceKeys.getSoftPqeChroma():name.equals("sharpen")?PreferenceKeys.getSoftPqeSharpen():PreferenceKeys.getSoftPqeStrength();
-                assertEquals(value,actual);
-            }
-        }
-        assertEquals(100,PreferenceKeys.getSoftPqeLuma());
-        prefs.edit().putInt("pref_softpqe_luma_key",25).commit();
-        assertEquals(25,PreferenceKeys.getSoftPqeLuma());
+        assertNotNull(screen.findPreference("softpqe_sr_only_info"));
+        assertNull(screen.findPreference("softpqe_settings_screen"));
+        for (String name:Arrays.asList("luma","chroma","sharpen","strength"))
+            assertNull(screen.findPreference("pref_softpqe_"+name+"_key"));
+        assertNotNull(screen.findPreference("pref_vivo_downscale_kernel_key"));
     }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
