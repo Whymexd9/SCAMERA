@@ -42,3 +42,32 @@ The separate NICE settings test now includes root execution through the same
 worker mechanism as HTP remosaic. This does not enable NICE in photographs:
 22-channel semantics, exact forward-HDR VST/IVST, alignment/routing and photo
 quality still require verification. See vivo-nice-port.md.
+
+
+## Highlight follow-up from 1000738692.jpg
+
+The additional 1542x2048 JPEG visibly contains tan rectangular cells inside the
+lamp diffuser. It has no EXIF/version metadata. This is a separate failure from
+shadow grain; the initial JPEG review underemphasized it. Neither original
+30227 JPEG contains MPF/Ultra HDR gain-map payload markers; `hasGainMap` in the
+legacy EXIF description refers to lens shading, not proof of an Ultra HDR JPEG.
+The new JPEG also has no gain-map payload. Do not attribute these blocks to an
+HDR viewer without evidence.
+
+A production-shader saturated-lamp fixture with corrupted flow in the clipped
+reference reproduces switching between highlight recovery and fallback cells.
+Added a coarse GPU flow completion pass: only coherent, photometrically valid
+unclipped neighbours seed the saturated hole; conflicting neighbour motions
+remain unresolved. It changes vectors only in saturated reference windows.
+The bounded 32-step propagation uses GPU barriers without per-pass CPU stalls.
+Synthetic central-lamp mean absolute error changes from 0.4125 to 0.000468.
+Fully clipped frames without valid seeds behave exactly as before. Moving-object,
+clipping and shadow regressions remain passing. Device confirmation is pending.
+
+A second confirmed boundary bug clipped white-balanced values to 1 in
+Bayer2Float and hard-coded AMaZE's clip threshold to 1. In Vivo HDR mode,
+Bayer2Float now retains positive HDR radiance, skips a second single-frame
+inpaint stage, and passes its WB/LSC domain bound to AMaZE. The actual conversion
+shader regression retains R=2.0 and B=1.2; non-HDR clamp behaviour is unchanged.
+These tests establish corrected mechanisms, not a claim that every artefact in
+the user's original RAW burst has been eliminated without reproducing it.

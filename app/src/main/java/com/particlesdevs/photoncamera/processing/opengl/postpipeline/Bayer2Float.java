@@ -68,7 +68,7 @@ public class Bayer2Float extends Node {
         GLTexture GainMapTex = new GLTexture(basePipeline.mParameters.mapSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4),
                 BufferUtils.getFrom(basePipeline.mParameters.gainMap), GL_LINEAR, GL_CLAMP_TO_EDGE);
         float[] hlChroma = null;
-        if (hlInpaintOpposed && basePipeline.mParameters.cfaPattern != 4) {
+        if (hlInpaintOpposed && !basePipeline.mParameters.vivoHdrMode && basePipeline.mParameters.cfaPattern != 4) {
             startT();
             try {
                 hlChroma = OpposedGL.compute(glProg, in, rawSize, basePipeline.mParameters.cfaPattern,
@@ -98,6 +98,16 @@ public class Bayer2Float extends Node {
             }
         }
 
+        if(basePipeline.mParameters.vivoHdrMode) {
+            // Packed RAW remains <=1, but WB and normalized LSC can exceed 1.
+            // RGB-normalized LSC is <=3; preserve that full domain in AMaZE.
+            float minimumWhite=1f;
+            for(float value:basePipeline.mParameters.whitePoint)
+                minimumWhite=Math.min(minimumWhite,Math.max(value,1e-6f));
+            postPipeline.rawClipLevel=3f/minimumWhite;
+            Log.i("VIVO_HDR","Preserving pre-demosaic HDR radiance; clip bound="+postPipeline.rawClipLevel);
+        }
+
         if (PhotonCamera.getSettings().aspect169) {
             if (rawSize.x > rawSize.y) {
                 glProg.setDefine("OFFSET", 0, 2 * (((rawSize.y - rawSize.x * 9 / 16) / 2) / 2));
@@ -114,6 +124,7 @@ public class Bayer2Float extends Node {
         glProg.setDefine("RGBLAYOUT",(basePipeline.mSettings.alignAlgorithm == 2 && !basePipeline.mParameters.remosaicDone));
         glProg.setDefine("TESTPATTERN",testPattern);
         glProg.setDefine("TP", testPatternIndex);
+        glProg.setDefine("HDR_RADIANCE",basePipeline.mParameters.vivoHdrMode);
         glProg.setDefine("HLRECON", hlChroma != null);
         if (hlChroma != null) glProg.setDefine("HLCLIP", OpposedGL.CLIP_MAGIC * hlClip);
         glProg.useAssetProgram("Bayer2Float/tofloat");

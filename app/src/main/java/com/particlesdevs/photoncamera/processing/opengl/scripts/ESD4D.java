@@ -305,7 +305,34 @@ public class ESD4D extends GLOneScript {
         return maxMpy > 0.f ? maxMpy : 1.f;
     }
     GLTexture sabreConfidence, sabreMassA, sabreMassB, cyclopsTemp;
-    GLTexture vivoReference, vivoMask;
+    GLTexture vivoReference, vivoMask, vivoFlowA, vivoFlowB;
+    private void repairVivoHighlightFlow(GLTexture alignment, Point shift, float scale,
+            float gain, float refS, float refO, float altS, float altO) {
+        if(vivoFlowA==null) {
+            vivoFlowA=new GLTexture(parameters.alignmentSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            vivoFlowB=new GLTexture(parameters.alignmentSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+        }
+        for(int stage=0;stage<=32;stage++) {
+            glProg.setLayout(8,8,1);
+            glProg.useAssetProgram("vivohdr/highlightflow",true);
+            glProg.setTexture("alignmentTexture",alignment);
+            glProg.setTextureCompute("referenceTexture",vivoReference,false);
+            glProg.setTextureCompute("donorTexture",alter,false);
+            glProg.setTextureCompute("previousFlow",vivoFlowA,false);
+            glProg.setTextureCompute("outputFlow",vivoFlowB,true);
+            glProg.setVar("shift",shift);glProg.setVar("rawHalf",parameters.rawSize.x/2,parameters.rawSize.y/2);
+            glProg.setVar("stage",stage);glProg.setVar("tileStep",parameters.tile/2);glProg.setVar("referenceScale",scale);
+            glProg.setVar("exposure",gain);
+            glProg.setVar("noiseRef",refS*scale,refO*scale*scale);
+            glProg.setVar("noiseAlt",altS*scale,altO*scale*scale);
+            // GPU-only propagation: no glFinish for each of the 32 small passes.
+            android.opengl.GLES31.glDispatchCompute((parameters.alignmentSize.x+7)/8,
+                    (parameters.alignmentSize.y+7)/8,1);
+            android.opengl.GLES31.glMemoryBarrier(android.opengl.GLES31.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
+                    |android.opengl.GLES31.GL_TEXTURE_FETCH_BARRIER_BIT);
+            GLTexture swap=vivoFlowA;vivoFlowA=vivoFlowB;vivoFlowB=swap;
+        }
+    }
     int sabreMerged;
     GLTexture baseDiff;
     GLTexture base;
@@ -1188,6 +1215,15 @@ public class ESD4D extends GLOneScript {
                 flowTex = flowNetAlignment.computeFlow(ind);
             }
 
+            float packedScale=mergeExposure(images);
+            ImageFrame refFrame=images.get(0);
+            float isoRatio=(float)frame.pair.iso / Math.max(refFrame.pair.iso,1);
+            float refS=Float.isFinite(refFrame.noiseSlope) ? refFrame.noiseSlope : rawNoiseS;
+            float refO=Float.isFinite(refFrame.noiseOffset) ? refFrame.noiseOffset : rawNoiseO;
+            // HAL profiles take priority. Gain-scaled fallback is an approximation,
+            // explicitly logged; exposure normalization transforms variance by g².
+            float altS=Float.isFinite(frame.noiseSlope) ? frame.noiseSlope : refS*isoRatio;
+            float altO=Float.isFinite(frame.noiseOffset) ? frame.noiseOffset : refO*isoRatio*isoRatio;
             // Convert inputAlter to alter (vec4 format)
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram("merge/merge00", true);
@@ -1203,11 +1239,13 @@ public class ESD4D extends GLOneScript {
             
             correctHotPixelsInAlter(hotPixelBuffer, hotPixelCount);
             //alignmentTex.loadData(alignment.position((ind-1)*(aSize.x*aSize.y*4*2)));
-            glProg.setDefine("TILE_AL", parameters.tile);
             // Merge robustness tuning. These are compile-time defines in the shader,
             // so they have to be set before useAssetProgram compiles it.
             float robustness = PreferenceKeys.getMergeRobustness();
             float clipLevel = PreferenceKeys.getMergeClipLevel();
+            if(parameters.vivoHdrMode)
+                repairVivoHighlightFlow(alignmentTex,shift,packedScale,exposure,refS,refO,altS,altO);
+            glProg.setDefine("TILE_AL", parameters.tile);
             float tilingTolerance = PreferenceKeys.getMergeTilingTolerance();
             glProg.setDefine("ROBUSTNESS", robustness);
             glProg.setDefine("CLIP_LEVEL", clipLevel);
@@ -1238,15 +1276,6 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("minLevel",minLevel);
             glProg.setVar("exposure", exposure);
             glProg.setVar("rawMfsr", PreferenceKeys.isSabreEnabled() && mosaicPeriod == 1 ? 1 : 0);
-            float packedScale=mergeExposure(images);
-            ImageFrame refFrame=images.get(0);
-            float isoRatio=(float)frame.pair.iso / Math.max(refFrame.pair.iso,1);
-            float refS=Float.isFinite(refFrame.noiseSlope) ? refFrame.noiseSlope : rawNoiseS;
-            float refO=Float.isFinite(refFrame.noiseOffset) ? refFrame.noiseOffset : rawNoiseO;
-            // HAL profiles take priority. Gain-scaled fallback is an approximation,
-            // explicitly logged; exposure normalization transforms variance by g².
-            float altS=Float.isFinite(frame.noiseSlope) ? frame.noiseSlope : refS*isoRatio;
-            float altO=Float.isFinite(frame.noiseOffset) ? frame.noiseOffset : refO*isoRatio*isoRatio;
             glProg.setVar("sabreNoiseRef",new float[]{refS*packedScale,refO*packedScale*packedScale});
             glProg.setVar("sabreNoiseAlt",new float[]{altS*packedScale,altO*packedScale*packedScale});
             glProg.setVar("packedScale",packedScale);
@@ -1274,6 +1303,7 @@ public class ESD4D extends GLOneScript {
                 glProg.setVar("shift", shift);
                 glProg.setVar("alignmentSize", parameters.alignmentSize);
                 glProg.setTexture("alignmentTexture", alignmentTex);
+                if(parameters.vivoHdrMode)glProg.setTexture("highlightFlow",vivoFlowA);
             }
             glProg.setTexture("inTexture", inputBase);
             glProg.setTextureCompute("baseTexture",parameters.vivoHdrMode ? vivoReference : base, false);
@@ -1594,6 +1624,8 @@ public class ESD4D extends GLOneScript {
         inputBase.close();
         if(vivoReference!=null)vivoReference.close();
         if(vivoMask!=null)vivoMask.close();
+        if(vivoFlowA!=null)vivoFlowA.close();
+        if(vivoFlowB!=null)vivoFlowB.close();
         if(cyclopsTemp!=null)cyclopsTemp.close();
         if(sabreConfidence!=null) {sabreConfidence.close();sabreMassA.close();sabreMassB.close();}
         baseDiff.close();

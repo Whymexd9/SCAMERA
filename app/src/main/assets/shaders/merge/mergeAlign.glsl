@@ -6,6 +6,9 @@ precision highp sampler2D;
 precision highp image2D;
 uniform highp usampler2D inTexture;
 uniform highp sampler2D alignmentTexture;
+#if VIVO_HDR
+uniform highp sampler2D highlightFlow;
+#endif
 // Tuning factor on the noise variance: larger accepts more of the aligned
 // frame (more denoising, less robustness). HDR+ fixes the equivalent to 8.
 #ifndef ROBUSTNESS
@@ -172,6 +175,13 @@ vec2 vec4ToAlignment(vec4 alignment) {
     // as e.g. 1.9998 and truncation would bias offsets by -1px. The fract
     // part (subpixel residual) is preserved for the caller to floor().
     return floor(alignment.xy * vec2(rawHalf) + vec2(0.5)) + alignment.zw;
+}
+vec2 alignmentAt(ivec2 p) {
+#if VIVO_HDR
+    vec4 repaired=texelFetch(highlightFlow,p,0);
+    if(repaired.w>0.5 && repaired.z>0.2)return repaired.xy;
+#endif
+    return vec4ToAlignment(texelFetch(alignmentTexture,p+shift,0));
 }
 vec2 hash22(vec2 p)
 {
@@ -472,7 +482,7 @@ void main() {
     vec2 alignVecs[4];
     for (int i = 0; i < 4; i++) {
         ivec2 t = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)), ivec2(0), alignmentSize-1);
-        alignVecs[i] = vec4ToAlignment(texelFetch(alignmentTexture, t + shift, 0));
+        alignVecs[i] = alignmentAt(t);
         alignAvg += alignVecs[i] * 0.25;
     }
     // Local flow variation over a 3x3 tile neighbourhood, after Wronski et al.
@@ -488,7 +498,7 @@ void main() {
         for (int i = -1; i <= 1; ++i) {
             ivec2 p = clamp(ivec2((TILE*xy)/TILE_AL) + ivec2(i, j),
                             ivec2(0), alignmentSize - 1);
-            vec2 v = vec4ToAlignment(texelFetch(alignmentTexture, p + shift, 0));
+            vec2 v = alignmentAt(p);
             mx = max(mx, v.x); mxn = min(mxn, v.x);
             my = max(my, v.y); myn = min(myn, v.y);
         }
@@ -534,8 +544,7 @@ void main() {
 
     for (int i = 0; i < 4; i++) {
         ivec2 xyT = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)),ivec2(0),alignmentSize-1);
-        vec4 alignLoad = texelFetch(alignmentTexture, xyT + shift, 0);
-        vec2 alignF = vec4ToAlignment(alignLoad);
+        vec2 alignF = alignmentAt(xyT);
         if (mosaicPeriod > 1) {
             // Snap the displacement to whole colour periods. Anything finer
             // fetches a sample of the wrong colour, and no weighting downstream

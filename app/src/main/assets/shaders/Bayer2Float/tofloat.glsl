@@ -34,6 +34,7 @@ uniform int MinimalInd;
 // _process_opposed): clipped photosites are inpainted from their opposed
 // colours; Chrominance is the global per-channel offset measured on the
 // unclipped ring around clipped areas (see OpposedChroma.java)
+#define HDR_RADIANCE 0
 #define HLRECON 0
 #define HLCLIP 0.987
 #import interpolation
@@ -158,7 +159,12 @@ void main() {
     } else
     #endif
     {
+        #if HDR_RADIANCE == 1
+        // A WB-scaled merged sample above 1 is radiance, not sensor clipping.
+        Output = max(gainC * hlVal, 0.0);
+        #else
         Output = clamp(gainC * hlVal, 0.0, 1.0);
+        #endif
     }
     #endif
     #if TESTPATTERN == 1

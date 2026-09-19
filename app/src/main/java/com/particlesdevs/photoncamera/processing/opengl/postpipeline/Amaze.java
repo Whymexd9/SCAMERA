@@ -90,7 +90,7 @@ public class Amaze extends Node {
         glProg.setVar("u_size", window.x, window.y);
         // Bayer2Float re-anchors every sensor pattern to an RGGB output phase
         glProg.setVar("u_fc", 0, 1, 1, 2);
-        glProg.setVar("u_clip", 1.0f);
+        glProg.setVar("u_clip", Math.max(1f,((PostPipeline)basePipeline).rawClipLevel));
     }
 
     @Override
