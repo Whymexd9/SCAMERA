@@ -288,9 +288,55 @@ path list confirms both exist under `/vendor/lib64/`; it also lists
 `libvivo.mempool.controller.so`. The provider and internal allocator ownership
 cannot be established merely from the call-site name.
 
-The original constructor was executed only until this missing imported
-implementation; no successful native allocation is claimed. A substitute
-malloc shim here would hide the ownership contract we need to recover.
+The original constructor was initially executed only until this missing
+imported implementation. That dependency has now been supplied and resolved.
+
+### Allocator supplied and native call wrapper
+
+`vivo-allocator.tar.gz` supplies all three requested files:
+
+| Library | SHA256 |
+| --- | --- |
+| libvivo_platform_common.so | `530eb4c1b911c1e8631042627cfda0042bc150d643ab604d4dcdf6c533171343` |
+| libvivo.mempool.so | `798719366cd1fa084bcf44be2198c018ab02900b475c9f2288e4220573fdecdb` |
+| libvivo.mempool.controller.so | `53e249917529b4bf92c211889e3fa47cd9e7396b2269e34b15d00ca530bc3c13` |
+
+The provider is platform-common. Create (`8020`) returns a handle. Allocation
+with cache (`8430`), release (`84e8`) and handler destruction (`86a4`) take
+the **address** of that handle. CPU sync (`8734`/`8744`) takes the handle itself.
+CRE uses sync mode 3 with null callbacks, and supplies its cache flag as a bool.
+The provider chooses VivoMM when available and otherwise uses DMA-BUF heaps;
+calling these exports preserves that choice. No replacement malloc is used.
+
+`vivo-nice-shared-buffer.h` owns the handle, fd and mapping, pairs CPU sync,
+and releases buffers before the handler. `vivo-nice-tce-buffer.h` uses the
+recovered RGB16 layout, 6 bytes/pixel, uncached allocation, scanline=height,
+zero dataSize and nativeHandle. The first int32 at image+0x60 is now proven
+to be the shared-buffer fd: constructor+0x40 / CRE descriptor+0x28 is copied
+to that location by `392d6c..392d7c`.
+
+`vivo-nice-tone-runtime.h` binds the real platform-common and TCE exports in
+the root worker's namespace, checks their entry offsets, and retains library
+ownership in the APIs. `vivo-nice-tce-session.h` invokes Create/Process/Destroy,
+keeps Create storage live, propagates errors, and copies Process arguments for
+each invocation so native zoom mutation cannot accumulate. Output storage
+retains the CRE node's 0x6e0-byte region; this is not a new exact-size claim.
+Borrowed strings/LUTs and the buffers must remain live through the session.
+This callable path still requires the complete capture-side input adapter;
+the active seven-input worker has not been switched to it.
+
+```
+python tools/check_vivo_nice_shared_buffer.py /path/libvivo_platform_common.so --cre /path/libvivo_nice_cre.so
+c++ -std=c++17 -Wall -Wextra -Werror -I app/src/main/cpp tools/check_vivo_nice_tce_session.cpp -ldl -o /tmp/check-tce-session
+/tmp/check-tce-session
+```
+
+16 executions of the original allocator wrapper verify the handle level,
+size, cache flag and output pointer ABI; the underlying allocator is a
+recording test callback. Five original CRE constructors with allocation
+disabled verify RGB row layout. C++ tests verify ownership, failure cleanup,
+CPU sync, output fields, overflow rejection, fresh Process arguments and
+library lifetime. These are not device DMA/GPU execution or photograph tests.
 
 ### Create argument producer
 
