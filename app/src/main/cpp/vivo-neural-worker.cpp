@@ -6,6 +6,7 @@
 #define NICE_HOST_TEST 1
 #include "vivo-nice-probe.cpp"
 #undef NICE_HOST_TEST
+#include "vivo-nice-capture.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -21,6 +22,25 @@ int main(int argc,char** argv) {
         vivo_nn::log("Vivo Neural native executable v17 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
+        }
+        if(argc==5 && std::string(argv[1])=="--nice-capture") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(840);
+            vivo_nice::MappedNiceBurst mapped(argv[3]);
+            auto report=[](const std::string& line){vivo_nn::log(line);};
+            report("NICE CAPTURE: original forward weights; Camera2 alignment/calibration adaptation");
+            vivo_nice::Graph graph(argv[2],report);
+            auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
+                graph.input=in;graph.execute();out=graph.output;
+            },report);
+            double sum=0;float maximum=0;
+            for(float value:result){sum+=value;maximum=std::max(maximum,value);}
+            report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
+            std::ofstream file(argv[4],std::ios::binary|std::ios::trunc);
+            if(!file)throw std::runtime_error("Cannot open NICE output");
+            file.write(reinterpret_cast<const char*>(result.data()),std::streamsize(result.size()*sizeof(float)));
+            file.close();if(!file)throw std::runtime_error("Incomplete NICE output");
+            alarm(0);report("NICE CAPTURE OK");return 0;
         }
         if(argc==3 && std::string(argv[1])=="--nice-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");

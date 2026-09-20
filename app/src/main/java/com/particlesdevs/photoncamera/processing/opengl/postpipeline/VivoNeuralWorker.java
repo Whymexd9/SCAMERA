@@ -29,7 +29,8 @@ public final class VivoNeuralWorker {
     public static void main(String[] args) {
         int exit=1;
         try {
-            boolean nice=args.length==2 && args[1].equals("--nice");
+            boolean niceCapture=args.length==4 && args[1].equals("--nice-capture");
+            boolean nice=niceCapture || (args.length==2 && args[1].equals("--nice"));
             boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
             System.out.println("SCAMERA Vivo Neural bundled; path="+(nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
@@ -52,7 +53,8 @@ public final class VivoNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(nice){command.add("--nice-check");command.add(args[0]);}
+            if(niceCapture){command.add("--nice-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
+            else if(nice){command.add("--nice-check");command.add(args[0]);}
             else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(hex){command.add("--hexquad-check");command.add(args[0]);}
             else java.util.Collections.addAll(command,args);

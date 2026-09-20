@@ -20,11 +20,15 @@ def main():
         cpp = Path(temp) / 'vst.cpp'
         cpp.write_text('#include "vivo-nice-preprocess.h"\nextern "C" void run(const float* p, unsigned bits, unsigned outbits, uint16_t* out) {\n'
                        'vivo_nice::VstMode2 v{p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7],{p[8],p[9],p[10]},bits,outbits};\n'
-                       'auto a=vivo_nice::makeVstMode2(v); std::copy(a.begin(),a.end(),out); }\n')
+                       'auto a=vivo_nice::makeVstMode2(v); std::copy(a.begin(),a.end(),out); }\n'
+                       'extern \"C\" void inverse(const float* p, unsigned bits, float scale, int zep, float* out) {\n'
+                       'vivo_nice::VstMode2 v{p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7],{p[8],p[9],p[10]},14,16};\n'
+                       'auto a=vivo_nice::makeInverseVstMode2(v,bits,scale,zep); for(auto& c:a){std::copy(c.begin(),c.end(),out);out+=c.size();} }\n')
         so = Path(temp) / 'vst.so'
         subprocess.run(['g++','-std=c++17','-O2','-ffp-contract=off','-shared','-fPIC',
                         '-I'+str(root/'app/src/main/cpp'),str(cpp),'-o',str(so)],check=True)
         lib = ctypes.CDLL(str(so))
+        lib.inverse.argtypes = [ctypes.POINTER(ctypes.c_float),ctypes.c_uint,ctypes.c_float,ctypes.c_int,ctypes.POINTER(ctypes.c_float)]
         lib.run.argtypes = [ctypes.POINTER(ctypes.c_float),ctypes.c_uint,ctypes.c_uint,ctypes.POINTER(ctypes.c_uint16)]
         u = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
         u.mem_map(0, 0x500000)
@@ -78,5 +82,29 @@ def main():
             diff=max(abs(a-b) for a,b in zip(donor,actual));worst=max(worst,diff);total+=count
             if diff>1:raise AssertionError((case,diff, list(values)))
         print(f'PASS: {total} VST LUT entries vs original ARM64; maximum difference {worst} uint16 units (limit 1)')
+        total=0;worst=0.0
+        for case in range(12):
+            bits=16 if case<2 else 10;count=1<<bits
+            scale=1.0/(count-1);zep=0 if case%2 else 12
+            values=(ctypes.c_float*11)(.01,.001,.002,1e-6,1,4,120,2,1,1.4,1.8)
+            write(paddr+0x14,'f',values[6]);write(paddr+0x40,'f',values[5]);write(paddr+0x5c,'I',2)
+            stack=0x11ff000
+            write(stack+0x38,'fff',values[2],values[3],values[1])
+            for reg,v in [(UC_ARM64_REG_SP,stack),(UC_ARM64_REG_X19,paddr),
+                          (UC_ARM64_REG_W21,zep),(UC_ARM64_REG_W27,count),
+                          (UC_ARM64_REG_X23,lut),(UC_ARM64_REG_X24,lut+count*4),
+                          (UC_ARM64_REG_X22,lut+count*8)]:u.reg_write(reg,v)
+            for reg,v in [(UC_ARM64_REG_D8,values[8]),(UC_ARM64_REG_D9,values[9]),(UC_ARM64_REG_D10,values[10])]:
+                u.reg_write(reg,struct.unpack('<Q',struct.pack('<d',v))[0])
+            for reg,v in [(UC_ARM64_REG_S11,values[7]),(UC_ARM64_REG_S12,scale)]:
+                u.reg_write(reg,struct.unpack('<I',struct.pack('<f',v))[0])
+            u.emu_start(0x2dc834,0x2dc7f4,count=15000000)
+            if u.reg_read(UC_ARM64_REG_PC)!=0x2dc7f4:raise RuntimeError('CRE IVST did not finish')
+            donor=struct.unpack('<'+'f'*(count*3),bytes(u.mem_read(lut,count*12)))
+            actual=(ctypes.c_float*(count*3))();lib.inverse(values,bits,scale,zep,actual)
+            diff=max(abs(a-b) for a,b in zip(donor,actual));worst=max(worst,diff);total+=count*3
+            if diff>1e-6:raise AssertionError(('IVST',case,diff))
+        print(f'PASS: {total} IVST LUT entries vs original ARM64; maximum absolute difference {worst}')
+
 
 if __name__=='__main__':main()

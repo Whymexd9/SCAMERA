@@ -1,4 +1,4 @@
-# NICE HDR neural port: current boundary
+# NICE HDR neural capture port: verified boundaries
 
 ## Verified from the supplied files
 
@@ -71,8 +71,8 @@ resident until exit; QNN context is destroyed before model/client memory.
 4. Restore alignment, overlap fusion and the post-CRE colour/tone contract, then
    compare the same RAW burst against the stock intermediate/output.
 
-The production HDR path remains the adaptation with the 30230 artifact fixes. It is NOT silently renamed
-NICE and is not replaced with an unverified network. A runtime PASS alone is not
+The ordinary autonomous HDR path retains the 30230 artifact fixes. Original
+NICE capture is a separate opt-in switch, described below. A runtime PASS alone is not
 permission to claim the neural photo pipeline is complete.
 
 ## Reproduction
@@ -95,7 +95,7 @@ CPU function 0x2da2c0 generates three-plane VST LUTs for integer source samples.
 A FLOAT32 network input does not imply floating-point source RAW samples.
 
 
-## Recovered preparation module (not connected to capture)
+## Recovered preparation primitives
 
 `tools/decode_vivo_nice_kernels.py` checks CRE SHA256
 41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e.
@@ -139,5 +139,57 @@ host numerator by 65535, while types 3/4 include additional host scale terms.
 Do not directly substitute XML inputScale or outScale for these bindings.
 The source confirms formulas, but host object fields, frame routing, IVST LUT
 generation, tile crop and per-shot calibration still require recovery before
-feeding actual camera bursts to this model. These helpers are not called from
-the capture pipeline and do not make this a completed NICE photo port.
+feeding actual camera bursts to this model. The connected Camera2 adaptation and its remaining stock-parity limits are
+described below.
+
+
+## Capture integration (next bundled build)
+
+The original forward graph is now connected behind the separate
+`pref_vivo_nice_enabled` switch under Vivo / Autonomous HDR. It defaults off.
+It accepts Camera2 Bayer IMX06C IDs 3/4, up to 16 MP, with measured RAW exposure
+metadata. Main and ultrawide forward VDNN hashes are identical in this donor.
+Tetra/quad/remosaic/binning and other sensors are rejected; a visible message
+reports fallback to the existing autonomous HDR when NICE cannot process a shot.
+
+The pipeline is Camera2 RAW -> tagged warp -> mode-2 VST -> NHWC22 -> original
+QNN graph -> mode-2 IVST -> weighted tile overlap -> sensor RGB -> WB/normalized
+LSC -> existing Vivo-group denoise/tone/sharpen controls. It bypasses Bayer2Float,
+AMaZE and ABLC for successful neural RGB. The ordinary RAW buffer remains the
+reference for DNG saving; this is NOT a neural Bayer DNG reconstruction.
+
+Original routing evidence at 0x35d828/0x35b9ac confirms type 1=N, 2=L, 0=S, 3=ES.
+The forward slots are N,N,N,N-ref,L,S,ES. The donor explicitly copies S when ES
+is absent (0x35dab8) and repeats available frames if a group lacks requested
+members. SCAMERA requests at least four N, one L and one S; it logs actual slot
+sources and any repetition. Every frame is transferred before releasing RAW
+memory; a failed worker leaves the sources available for ordinary HDR recovery.
+
+The Camera2 adaptation uses the recovered IMX06C HDR noise polynomial and
+normalizes exposure products against the shortest frame for the unit-range
+inverse transform, then restores normal-reference scene radiance. The tensor
+sqrt(EV) factor and its reciprocal keep values above normal white representable.
+Black removal uses Camera2 per-site levels. This is an explicit Camera2
+radiometric adaptation, not a claim that proprietary runtime metadata,
+OpticalBlackCorrectHDR and gain/ISO adjustments match stock bit for bit.
+
+IVST generator 0x2dc834..0x2dc970 is now independently implemented and compared
+against original ARM64 execution: 423,936 entries, zero absolute difference.
+VST still matches 193,536 entries exactly. Header/RAW bounds, invalid calibration,
+tagged packing, output poisoning, four-tile blending and WB/LSC are tested.
+The full host chain with a mock graph preserves a clipped-reference HDR signal
+of 1.6 with maximum error 0.000041962; this proves plumbing, not neural quality.
+
+Alignment uses SCAMERA's CPU coarse-to-fine guide matching and local warp field.
+The 544 tile implementation uses a 16-pixel margin and 16-pixel weighted overlap
+with explicit edge reflection; these are tested SCAMERA boundary choices based
+on the donor's overlap setting, not a recovered per-shot proprietary ROI planner.
+Stock MEE/LCA/tone neural models are not claimed to have been ported by this work.
+Only the original forward CRE neural graph runs. Photo quality, latency and
+artifact freedom for this connected path require the user's physical device.
+
+The root worker has an 840-second hard limit and a 900-second client limit.
+Models/QNN are bundled and hash checked. The FastRPC platform driver remains a
+system dependency. Native inference and file copies run on the processing
+thread, not the UI thread. Report lines go to the detailed SCAMERA log and a
+separate NICE capture report; the old runtime self-test cannot overwrite it.

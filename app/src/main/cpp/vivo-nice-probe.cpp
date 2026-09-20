@@ -4,8 +4,8 @@
 #endif
 #include <cstdlib>
 
-// Execution prerequisite only. The 22 input channels are NOT interpreted as
-// camera pixels until the original NICE preprocessing contract is recovered.
+// Shared pinned QNN graph session for diagnostics and real NICE capture.
+// probe() itself still uses synthetic tensors and does not test photo quality.
 namespace vivo_nice {
 using namespace vivo_nn;
 using Reporter=std::function<void(const std::string&)>;
@@ -48,13 +48,16 @@ Tensor requireTensor(const Tensor* t,uint32_t channels,uint32_t kind,const char*
     return Tensor{1,v};
 }
 
-void probe(const std::string& directory,const Reporter& report) {
-    report("NICE RUNTIME CHECK: IMX06C forward HDR; synthetic tensor inputs only");
-    auto model=read(directory+"/nice-main-forward-v79.bin");
+struct Graph {
+    std::vector<uint8_t> model;
+    std::vector<float> input,output;
+    Session s;
+    Tensor in{},out{};
+    Graph(const std::string& directory,const Reporter& report)
+        :model(read(directory+"/nice-main-forward-v79.bin")),input(size_t(544)*544*22),
+         output(size_t(544)*544*3),s(report) {
     if(model.size()!=5840224)throw std::runtime_error("NICE model size mismatch");
     // Context may refer to its binary and client storage until destruction.
-    std::vector<float> input(size_t(544)*544*22),output(size_t(544)*544*3);
-    Session s(report);
     auto system=s.load(directory+"/libQnnSystem.so");
     auto getSystem=reinterpret_cast<Error(*)(const SystemProvider***,uint32_t*)>(dlsym(system,"QnnSystemInterface_getProviders"));
     if(!getSystem)throw std::runtime_error("Missing QNN System provider");
@@ -74,8 +77,8 @@ void probe(const std::string& directory,const Reporter& report) {
     if(b->graphs!=1 || !g || g->version<1 || g->version>3 || g->inputs!=1 || g->outputs!=1
             || !g->name || std::strcmp(g->name,"nice_hdr_imx06c_general_forward_bayer_x1_quant_8w16a32b"))
         throw std::runtime_error("Unexpected NICE graph");
-    Tensor in=requireTensor(g->input,22,0,"inputs_0");
-    Tensor out=requireTensor(g->output,3,1,"tail_conv_1_0");
+    in=requireTensor(g->input,22,0,"inputs_0");
+    out=requireTensor(g->output,3,1,"tail_conv_1_0");
     report("METADATA PASS: FLOAT32 input 1x544x544x22; output 1x544x544x3");
     report("DRIVER: public platform FastRPC; algorithms/model/runtime are bundled");
     s.load("libcdsprpc.so");
@@ -111,12 +114,24 @@ void probe(const std::string& directory,const Reporter& report) {
     if(!s.graph)throw std::runtime_error("Empty graph");
     in.v1.memType=0;in.v1.client={input.data(),static_cast<uint32_t>(input.size()*4)};
     out.v1.memType=0;out.v1.client={output.data(),static_cast<uint32_t>(output.size()*4)};
-    for(int fixture=0;fixture<2;fixture++) {
-        std::fill(input.begin(),input.end(),fixture==0?0.0f:0.125f);
+    }
+    void execute() {
+        in.v1.client={input.data(),static_cast<uint32_t>(input.size()*4)};
+        out.v1.client={output.data(),static_cast<uint32_t>(output.size()*4)};
         poisonOutput(output);
-        report("GRAPH EXECUTE "+std::to_string(fixture+1)+": synthetic uniform tensor");
         check(s.fn<Error(*)(Handle,const Tensor*,uint32_t,Tensor*,uint32_t,Handle,Handle)>(21)
                 (s.graph,&in,1,&out,1,nullptr,nullptr),"NICE execute");
+        for(float value:output)if(!std::isfinite(value))throw std::runtime_error("NICE output invalid or unwritten");
+    }
+};
+void probe(const std::string& directory,const Reporter& report) {
+    report("NICE RUNTIME CHECK: IMX06C forward HDR; synthetic tensor inputs only");
+    Graph graph(directory,report);
+    auto& input=graph.input;auto& output=graph.output;
+    for(int fixture=0;fixture<2;fixture++) {
+        std::fill(input.begin(),input.end(),fixture==0?0.0f:0.125f);
+        report("GRAPH EXECUTE "+std::to_string(fixture+1)+": synthetic uniform tensor");
+        graph.execute();
         size_t invalid=0;double sum=0;float lo=INFINITY,hi=-INFINITY;
         for(float v:output) {
             if(!std::isfinite(v)){invalid++;continue;}

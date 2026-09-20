@@ -579,6 +579,9 @@ public class PostPipeline extends GLBasePipeline {
         // Before anything reads the frame as bayer: a quad or tetra mosaic has
         // to be rearranged first, or every stage downstream decodes it at the
         // wrong phase.
+        if (mParameters.vivoNiceRgb != null) {
+            add(new VivoNiceRgb());
+        } else {
         if (PreferenceKeys.isRemosaicEnabled()) {
             if (mParameters.remosaicDone) {
                 // The merge rearranged every frame as it loaded them, so the
@@ -640,7 +643,8 @@ public class PostPipeline extends GLBasePipeline {
                 break;
             }
         }
-        add(new ABLC());
+        } // Bayer import/demosaic: NICE already produces RGB.
+        if (mParameters.vivoNiceRgb == null) add(new ABLC());
         if (!mParameters.vivoHdrMode) add(new GcamFinish());
         if (!mParameters.vivoHdrMode && (!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
                 && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {

@@ -464,7 +464,7 @@ public class PreferenceKeys {
     }
 
     public static int getFrameCountValue() {
-        return Math.max(isVivoHdrEnabled() ? 3 : 1, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FRAME_COUNT).intValue());
+        return Math.max(isVivoNiceEnabled() ? 4 : isVivoHdrEnabled() ? 3 : 1, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FRAME_COUNT).intValue());
     }
 
     public static int getShortFrameCountValue() {
@@ -472,7 +472,7 @@ public class PreferenceKeys {
     }
 
     public static int getLongFrameCountValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LONG_FRAME_COUNT).intValue();
+        return Math.max(isVivoNiceEnabled() ? 1 : 0, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LONG_FRAME_COUNT).intValue());
     }
 
     public static int getShortExposureEvValue() {
@@ -794,6 +794,9 @@ public class PreferenceKeys {
     public static boolean isVivoHdrEnabled() {
         return isGcamStageEnabled("pref_vivo_hdr_enabled") && !isRawMfsrEnabled()
                 && (!isRemosaicEnabled() || "scamera".equals(getRemosaicBackend()));
+    }
+    public static boolean isVivoNiceEnabled() {
+        return isVivoHdrEnabled() && isGcamStageEnabled("pref_vivo_nice_enabled");
     }
     public static float vivoHdrValue(String key, float fallback) {
         return gcamValue("pref_vivo_hdr_" + key, fallback, 0f, 2f);

@@ -59,6 +59,45 @@ inline std::vector<uint16_t> makeVstMode2(const VstMode2& p) {
     return lut;
 }
 
+struct NiceNoise { float slope, offset; };
+inline NiceNoise imx06cHdrNoise(unsigned iso) {
+    if(iso<50 || iso>12800) throw std::invalid_argument("NICE IMX06C ISO range");
+    const float x=float(iso);
+    const float slope=std::fma(0.0001242085f,x,-0.0014234833f)/255.0f;
+    const float quadratic=std::fma(0.0000000158f*x,x,0.0000376323f*x);
+    const float offset=std::max(0.0272538637f+quadratic,0.000001f)/65025.0f;
+    return {slope,offset};
+}
+
+inline std::array<std::vector<float>,3> makeInverseVstMode2(
+        const VstMode2& p, unsigned bits, float scale, int zeroPoint) {
+    // Validate the shared calibration without constructing an input LUT.
+    if(bits<1 || bits>16 || !std::isfinite(scale) || scale<=0 ||
+       !std::isfinite(p.norm) || p.norm<=0 || !std::isfinite(p.exposureMultiplier) ||
+       p.exposureMultiplier<=0 || !std::isfinite(p.referenceSlope) || p.referenceSlope<=0 ||
+       !std::isfinite(p.normalizationSlope) || p.normalizationSlope<=0 ||
+       !std::isfinite(p.normalizationOffset) || p.normalizationOffset<0 ||
+       !std::isfinite(p.normalizationExposureRatio) || p.normalizationExposureRatio<=0)
+        throw std::invalid_argument("NICE IVST mode 2 parameters");
+    const double offset=(double(p.normalizationOffset)/
+        (double(p.normalizationSlope)*p.normalizationSlope)+0.375)/p.normalizationExposureRatio;
+    const unsigned count=1u<<bits;
+    std::array<std::vector<float>,3> output;
+    for(unsigned c=0;c<3;++c) {
+        if(!std::isfinite(p.gains[c]) || p.gains[c]<=0) throw std::invalid_argument("NICE IVST gain");
+        const double noise=float(offset*double(p.gains[c]));
+        output[c].resize(count);
+        for(unsigned i=0;i<count;++i) {
+            float v=(float(i)-float(zeroPoint))*scale;
+            v=(v*p.norm)/p.exposureMultiplier;
+            v=std::max(v,0.0f)*0.5f;
+            double restored=(double(v)*v-noise)*double(p.referenceSlope);
+            output[c][i]=float(std::clamp(restored,0.0,1.0));
+        }
+    }
+    return output;
+}
+
 struct TaggedFrame {
     const uint16_t* data;
     size_t count;

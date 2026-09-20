@@ -39,6 +39,8 @@ public class Parameters {
     /** Frozen for the submitted RAW processing job. */
     public boolean vivoHdrMode = false;
     public float vivoHdrRawScale = 1f;
+    /** Processor-owned linear sensor RGB; null unless NICE completed a real burst. */
+    public java.nio.ByteBuffer vivoNiceRgb;
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;

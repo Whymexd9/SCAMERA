@@ -52,6 +52,7 @@ public class HdrxProcessor extends ProcessorBase {
     private ArrayList<GyroBurst> BurstShakiness;
     private String processingStage = "initialization";
     private ByteBuffer hexOwnedOutput;
+    private ByteBuffer niceOwnedOutput;
 
 
     public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
@@ -124,6 +125,10 @@ public class HdrxProcessor extends ProcessorBase {
             processingEventsListener.onProcessingError("HDRX failed at "
                     + processingStage + " — " + detail);
          } finally {
+            if (niceOwnedOutput != null) {
+                Allocator.free(niceOwnedOutput);niceOwnedOutput=null;
+                processingParameters.vivoNiceRgb=null;
+            }
             if (hexOwnedOutput != null) {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
@@ -440,12 +445,31 @@ public class HdrxProcessor extends ProcessorBase {
         //        IsoExpoSelector.getMPY() - 40.)*6400.f / (6.2f*IsoExpoSelector.getISOAnalog());
 
         } // Ordinary frame selection; HexQuad owns its six-frame burst.
+        boolean niceComplete=false;
+        if (PreferenceKeys.isVivoNiceEnabled() && !hexCapture && !multiCapture) {
+            processingStage="NICE HDR neural burst";
+            try {
+                niceOwnedOutput=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
+                        PhotonCamera.getAppContext(),images,processingParameters);
+                processingParameters.vivoNiceRgb=niceOwnedOutput;
+                processingParameters.vivoHdrRawScale=1f;niceComplete=true;
+                Log.i("NICE_HDR","Original model capture completed; RGB goes directly to WB/LSC/tone. DNG retains the reference RAW.");
+            } catch(Exception e) {
+                Log.e("NICE_HDR","Neural capture failed; preserving photo with autonomous HDR",e);
+                final String reason="NICE: "+e.getMessage()+". Использован автономный HDR.";
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(()->android.widget.Toast.makeText(
+                        PhotonCamera.getAppContext(),reason,android.widget.Toast.LENGTH_LONG).show());
+            }
+        }
         ByteBuffer output = hexOutput;
         Log.d(TAG, "Packing");
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");
         ESD4D esd4d = null;
-        if (hexCapture || (multiCapture && !multiBracket)) {
+        if (niceComplete) {
+            ImageFrame ref=images.get(0);output=ref.buffer;ref.buffer=null;
+            for(ImageFrame frame:images)frame.close();
+        } else if (hexCapture || (multiCapture && !multiBracket)) {
             processingParameters.highlightSuppressionStrength = 0f;
         } else if(images.size() > 1) {
             processingStage = "RAW alignment/fusion";
@@ -503,7 +527,7 @@ public class HdrxProcessor extends ProcessorBase {
         ByteBuffer mosaicSrForJpeg = null;
         int mosaicSrWidth = 0;
         int mosaicSrHeight = 0;
-        if (ScameraPreferences.mosaicSrEnabled()) {
+        if (!niceComplete && ScameraPreferences.mosaicSrEnabled()) {
             if (processingParameters.quadCfa) {
                 Log.w(TAG, "RAW SR Mosaic skipped for direct Quad CFA");
             } else {
