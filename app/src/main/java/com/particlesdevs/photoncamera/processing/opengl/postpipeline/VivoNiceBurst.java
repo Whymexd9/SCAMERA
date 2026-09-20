@@ -83,7 +83,7 @@ public final class VivoNiceBurst {
             offset=Math.max(0.0272538637f+Math.fma(0.0000000158f*iso,iso,0.0000376323f*iso),0.000001f)/65025f;
         }
         if(!Float.isFinite(slope)||slope<=0||!Float.isFinite(offset)||offset<0)
-            throw new IOException("NICE HDR: нет корректного профиля шума RAW frame="+frame.number);
+            throw new IOException("NICE HDR: некорректный Camera2 SENSOR_NOISE_PROFILE для RAW frame="+frame.number);
         return new float[]{slope,offset};
     }
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
