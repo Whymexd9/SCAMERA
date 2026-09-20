@@ -83,13 +83,22 @@ int main(){
     // The generic profile must round-trip calibrated radiance through the
     // actual VST/IVST; snapshots must observe graph values, not alter output.
     b.cameraNoise=true;b.noise={slope,offset};b.iso.fill(25600);int snapshots=0;tiles=0;
+    bool checkedTensor=false;
     auto generic=reconstruct(b,[&](const std::vector<float>& in,std::vector<float>& result){
+        // Independent expected scalar scale: baseline is the model's ISO 50,
+        // even though the current Camera2 slope is .00015 at ISO 25600.
+        const double baseSlope=(0.0001242085*50-0.0014234833)/255;
+        const double baseOffset=(0.0272538637+0.0000000158*50*50+0.0000376323*50)/65025;
+        const double norm=2*std::sqrt(1/baseSlope+baseOffset/(baseSlope*baseSlope)+.375);
+        const double currentOffset=double(offset)/(double(slope)*slope)+.375;
+        const double expectedMask=2*std::sqrt(1/double(slope)+currentOffset)/norm;
+        assert(std::abs(in[21]-expectedMask)<.00004);checkedTensor=true;
         ++tiles;for(size_t i=0;i<result.size()/3;++i)for(int c=0;c<3;++c)
             result[i*3+c]=std::max({in[i*22+15],in[i*22+16],in[i*22+17]});
     },[](const std::string&){},[&](const std::string&,const std::vector<float>& values,int w,int h){
         ++snapshots;assert(w==544&&h==544&&values.size()==size_t(w)*h*3);assert(std::isfinite(values[0]));
     });
-    assert(tiles==4&&snapshots==2);
+    assert(tiles==4&&snapshots==2&&checkedTensor);
     for(float v:generic)assert(std::isfinite(v)&&std::abs(v-1.6f)<.001f);
 
     std::cout<<"PASS: NICE full tile path, HDR 1.6 retained, 4-tile overlap/crop coverage; error="<<worst<<" (mock graph)\n";

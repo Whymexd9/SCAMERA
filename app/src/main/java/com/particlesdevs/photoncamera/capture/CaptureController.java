@@ -1973,6 +1973,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 cameraEventsListener.onProcessingError("Камера ещё готовится. Повторите снимок.");
                 return false;
             }
+            Long previewTimestamp = mPreviewCaptureResult.get(CaptureResult.SENSOR_TIMESTAMP);
+            niceZslShutterTimestamp = previewTimestamp == null ? 0 : previewTimestamp;
             mShotInProgress = true;
             final long shotGeneration = ++mShutterGeneration;
             if (isZslMode()) {
@@ -2401,6 +2403,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return PreferenceKeys.getZslBufferCountValue();
     }
 
+    private long niceZslShutterTimestamp;
+
     private List<ImageFrame> drainZslNormalFrames(int requestedCount) {
         List<Image> rawImages;
         java.util.Map<Long,TotalCaptureResult> selectedMetadata;
@@ -2420,7 +2424,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 TotalCaptureResult result = selectedMetadata.get(image.getTimestamp());
                 Long exposure = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
-                if (exposure == null || exposure <= 0 || iso == null || iso <= 0) {
+                if (exposure == null || exposure <= 0 || iso == null || iso <= 0
+                        || (niceZslShutterTimestamp > 0 && image.getTimestamp() > niceZslShutterTimestamp)) {
                     Log.w("NICE_HDR", "Skip unpaired ZSL RAW timestamp=" + image.getTimestamp()
                             + " result=" + (result != null) + " exposureNs=" + exposure + " ISO=" + iso);
                     image.close();
@@ -2450,10 +2455,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             rawImages=chosen;mNativeZslBase=results.get(chosen.get(chosen.size()/2).getTimestamp());
             Log.i("RAW_MFSR","ZSL normal="+chosen.size()+"; only bracket donors captured after shutter");
         }
+        rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
         int take = Math.min(rawImages.size(), Math.max(0, requestedCount));
         int skip = rawImages.size() - take;
         for (int i = 0; i < skip; i++) rawImages.get(i).close();
 
+        if (PreferenceKeys.isVivoNiceEnabled() && take > 0) {
+            mNativeZslBase = selectedMetadata.get(rawImages.get(rawImages.size()-1).getTimestamp());
+            Log.i("NICE_HDR", "ZSL shutter cutoff=" + niceZslShutterTimestamp
+                    + " selected=" + take + " newest=" + rawImages.get(rawImages.size()-1).getTimestamp());
+        }
         double exposureSeconds = 1.0;
         double isoValue = 100.0;
         CaptureResult baseResult=mNativeZslBase!=null?mNativeZslBase:mPreviewCaptureResult;
@@ -2828,7 +2839,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // queued preview images would consume the bracket frame slots.
                 mHybridZslCapture = false;
                 mZslCapturing = true;
-                mPendingZslNormalFrames = drainZslNormalFrames(denoiseFrameCount);
+                // This graph consumes four N inputs; avoid selecting an old
+                // reference from a longer series that the graph cannot use.
+                mPendingZslNormalFrames = drainZslNormalFrames(
+                        PreferenceKeys.isVivoNiceEnabled() ? 4 : denoiseFrameCount);
                 if (!mPendingZslNormalFrames.isEmpty()) {
                     denoiseFrameCount = mPendingZslNormalFrames.size();
                     long[] zslTimestamps = new long[denoiseFrameCount];
@@ -2951,7 +2965,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 } else {
                     IsoExpoSelector.fullpairs.clear();
                 }
-                if(nativePsl && hybridZsl) {
+                if(hybridZsl && mNativeZslBase != null) {
                     IsoExpoSelector.setMeasuredBracketBase(mNativeZslBase.get(CaptureResult.SENSOR_EXPOSURE_TIME),
                             mNativeZslBase.get(CaptureResult.SENSOR_SENSITIVITY),this);
                 }

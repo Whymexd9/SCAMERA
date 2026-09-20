@@ -21,6 +21,12 @@ import static android.opengl.GLES30.*;
 /** Per-capture diagnostics. Bounded previews, exact sampled floats, no image changes. */
 public final class NiceDiagnostics {
     private static final ThreadLocal<Job> active=new ThreadLocal<>();
+    private static final java.util.concurrent.ThreadPoolExecutor exports =
+            new java.util.concurrent.ThreadPoolExecutor(1, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
+                    new java.util.concurrent.ArrayBlockingQueue<>(2), r -> {
+                        Thread t=new Thread(r,"NICE-diagnostic-export");t.setDaemon(true);return t;
+                    });
+    static { exports.allowCoreThreadTimeOut(true); }
     private static final class Job {
         final Context context;final File dir;final String name;
         Job(Context c) throws IOException {
@@ -122,7 +128,14 @@ public final class NiceDiagnostics {
     }
 
     public static void finish() {
-        Job j=active.get();active.remove();if(j==null)return;Uri uri=null;
+        Job j=active.get();active.remove();if(j==null)return;
+        try { exports.execute(() -> export(j)); }
+        catch(java.util.concurrent.RejectedExecutionException e) {
+            Log.w("NICE_DIAG","Export queue full; diagnostic cache retained: " + j.dir);
+        }
+    }
+    private static void export(Job j) {
+        Uri uri=null;
         try {
             OutputStream stream;
             if(Build.VERSION.SDK_INT>=29) {

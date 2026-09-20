@@ -16,12 +16,16 @@ public final class VivoNiceBurst {
     private final float white;
     private float noiseSlope,noiseOffset;
     final boolean diagnostics;
+    private final boolean trainedSensor;
     private final float[] black;
     private final ImageFrame[] ordered=new ImageFrame[7];
     private final float[] exposure=new float[7];
     private VivoNiceBurst(List<ImageFrame> source,Parameters p) throws IOException {
         width=p.rawSize.x;height=p.rawSize.y;cfa=p.cfaPattern;white=p.whiteLevel;black=p.blackLevel.clone();
         diagnostics=PreferenceKeys.isNiceDiagnosticsEnabled();
+        trainedSensor = "vivo".equalsIgnoreCase(android.os.Build.MANUFACTURER)
+                && "PD2454".equalsIgnoreCase(android.os.Build.DEVICE)
+                && (p.physicalID == 3 || p.physicalID == 4);
         if(p.quadCfa||cfa<0||cfa>3||PreferenceKeys.isRemosaicEnabled()
                 ||com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException("NICE HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
@@ -48,9 +52,16 @@ public final class VivoNiceBurst {
         ordered[4]=longs.isEmpty()?ordered[3]:longs.get(longs.size()-1);
         ordered[5]=shorts.get(shorts.size()-1);ordered[6]=shorts.get(0);
         noiseSlope=ordered[3].noiseSlope;noiseOffset=ordered[3].noiseOffset;
+        if (trainedSensor) {
+            int iso=ordered[3].measuredIso;
+            if (iso<50 || iso>12800) throw new IOException("NICE HDR: ISO вне проверенного профиля IMX06C");
+            // Recovered NoiseInfoHDR from the matching forward model config.
+            noiseSlope=Math.fma(0.0001242085f,iso,-0.0014234833f)/255f;
+            noiseOffset=Math.max(0.0272538637f+Math.fma(0.0000000158f*iso,iso,0.0000376323f*iso),0.000001f)/65025f;
+        }
         if(!Float.isFinite(noiseSlope)||noiseSlope<=0||!Float.isFinite(noiseOffset)||noiseOffset<0)
             throw new IOException("NICE HDR: Camera2 не передала корректный профиль шума опорного RAW; sensor="+p.physicalID);
-        Log.i("NICE_HDR","Calibration source=Camera2 SENSOR_NOISE_PROFILE sensor="+p.physicalID
+        Log.i("NICE_HDR","Calibration source="+(trainedSensor?"IMX06C forward HDR profile":"Camera2 experimental cross-sensor")+" sensor="+p.physicalID
                 +" CFA="+cfa+" slope="+noiseSlope+" offset="+noiseOffset
                 +"; original weights, experimental cross-sensor adaptation");
         double ref=product(ordered[3]);

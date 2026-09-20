@@ -134,6 +134,28 @@ public class CameraResumeTest {
             assertTrue(ring.isEmpty());assertTrue(metadata.isEmpty());
         }
     }
+    @Test public void niceZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        // Out-of-order delivery, a post-press frame and an unrelated preview
+        // exposure must not change this shot's selection or bracket base.
+        for(long timestamp:new long[]{5,3,7,2,6,4}) {
+            ring.add(rawImage(timestamp));metadata.put(timestamp,exposure(timestamp*1000000,100));
+        }
+        TotalCaptureResult expected=metadata.get(6L);
+        put(controller,"niceZslShutterTimestamp",6L);
+        put(controller,"mPreviewCaptureResult",exposure(99000000,800));
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,4);
+            assertEquals(4,frames.size());
+            for(int i=0;i<4;i++)assertEquals(i+3,frames.get(i).timestamp);
+            assertSame(expected,get(controller,"mNativeZslBase"));
+        }
+    }
     @Test public void niceZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");

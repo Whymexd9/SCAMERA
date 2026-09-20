@@ -178,7 +178,10 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
     auto ref=guides(b,3);std::array<Warp,7> warp;
     std::array<std::vector<uint16_t>,7> luts;
     const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[3]);
-    const auto baseline=b.cameraNoise?n:imx06cHdrNoise(50);
+    // The bundled graph was trained with a fixed ISO-50 normalization.
+    // Camera2 noise may describe the frame but must not change the network's
+    // tensor scale on every shot. Use the same normalization for VST and IVST.
+    const auto baseline=imx06cHdrNoise(50);
     // Ref and RefN are the same normal-frame slot in the forward HDR XML.
     // Camera2 black subtraction happens before 14-bit encoding, so black=0.
     float norm=2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375));
@@ -194,7 +197,7 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
     const float offset=float(double(n.offset)/(double(n.slope)*n.slope)+.375);
     float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
-    report(std::string("NICE calibration source=")+(b.cameraNoise?"Camera2":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
+    report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
     report("NICE alignment: phase-preserving bilinear Bayer warp");
     std::array<std::vector<uint16_t>,7> packedRaw;for(auto& v:packedRaw)v.resize(tile*tile);
     std::array<TaggedFrame,7> frames;

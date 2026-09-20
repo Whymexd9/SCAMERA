@@ -293,3 +293,32 @@ reported explicitly. These changes apply to auxiliary cameras as well as the
 main camera, without camera-ID special cases. The supplied archive contains no
 HP9 attempt log, so its exact failure path remains unconfirmed. `SHUTTER` log
 lines record camera ID, capture state and busy flags for the next device check.
+
+
+## Shutter-bounded selection and fixed model normalization (worker v20)
+
+The NICE hybrid path now takes the newest four timestamp-paired N RAWs up to
+its shutter-time preview timestamp. Image delivery order cannot admit a later
+frame. The newest selected RAW metadata sets the L/S bracket base on every
+shot, replacing the previous series' cached exposure. The forward graph uses
+four N slots, so selecting eight and feeding the oldest three was unnecessary.
+This remains hybrid N-before/L/S-after capture, not verified stock Vivo timing.
+Stock dynamic bracket scheduling and all-exposure prebuffering remain unported.
+
+The graph's normalization scale is fixed to the recovered IMX06C ISO-50
+baseline rather than the current Camera2 noise profile. The frame noise used
+in the transform and inverse remains identical. On Vivo PD2454 IDs 3/4 the
+matching NoiseInfoHDR polynomial replaces the generic Camera2 profile. Other
+sensors retain an explicitly experimental measured-noise adaptation; the
+bundled forward graph is still the IMX06C model, not an HP9 model. Matching HP9
+weights and their input calibration remain required for stock-equivalent HP9.
+
+The diagnostic ZIP exports through a single bounded background queue. A full
+queue retains its completed diagnostic directory and logs its location; it
+never blocks capture or shares a mutable Job with another photograph.
+
+Host tests verify the fixed tensor scale independently of round-trip inversion,
+HDR retention, four-tile blending, CFA warp continuity, and shutter cutoff/base
+selection. Real NPU photo quality and disappearance of the reported artifacts
+still require a fresh device capture; old model outputs cannot validate changed
+model inputs. No tone model or stock-parity claim is introduced.
