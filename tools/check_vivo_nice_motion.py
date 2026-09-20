@@ -52,6 +52,7 @@ def emulator(library):
      if name in ('malloc','_Znwm','_Znam'):
       ret=heap;heap+=(a+255)&~255
       if heap>0x6000000:raise RuntimeError('oracle heap exhausted')
+     elif name=='__system_property_get':u.mem_write(b,b'\0')
      elif name=='__cxa_guard_acquire':ret=0 if u.mem_read(a,1)[0] else 1
      elif name=='__cxa_guard_release':u.mem_write(a,b'\x01')
      elif name=='dlopen':
@@ -59,6 +60,9 @@ def emulator(library):
       if library_name != b'libvivo.mempool.so':raise RuntimeError(f'unexpected dlopen: {library_name!r}')
       ret=0  # Exercise the original built-in allocator fallback.
      elif name in ('__v_android_log_print','printf','__cxa_atexit'):pass
+     elif name=='strncmp':
+      left=bytes(u.mem_read(a,c)).split(b'\0',1)[0];right=bytes(u.mem_read(b,c)).split(b'\0',1)[0]
+      ret=((left>right)-(left<right))&0xffffffffffffffff
      elif name=='strlen':
       while u.mem_read(a+ret,1)[0]:ret+=1
      elif name=='calloc':

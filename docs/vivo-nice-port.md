@@ -690,3 +690,32 @@ RAW-to-guide construction and feature-selection policy, matrix/ROI conversions,
 failed-frame and motion-dependent exposure handling, dynamic ZSL/bracket
 scheduling, and the complete color/segmentation/TCE tone chain. The new oracle
 is not connected to Android capture, and no APK or artifact-removal claim is made.
+
+### RAW-to-motion-guide CPU arithmetic port (2026-09-20)
+
+`vivo-nice-guide.h` ports the fourfold guide reduction used by CRE's CPU
+optical-flow path. The original `0x26fde4` wrapper invokes mean estimation at
+`0x26fa70` and the fourfold reduction at `0x26d010`. This path normalizes each
+frame by its exposure ratio and estimated intensity before a gamma LUT. It is
+not equivalent to the existing capture guide's average of green samples.
+
+`check_vivo_nice_guide.py <libvivo_nice_cre.so>` builds the C++ implementation
+and compares its complete byte output against the unpatched original wrapper
+in Unicorn. The wrapper receives two frame descriptors and calculates the
+normal/donor exposure ratio itself. All 16,641 samples match bit-for-bit across
+18 cases: two image dimensions, RAW10/12/14, and exposure gains .25/1/4. The
+property-query import shim returns an absent property; string comparison is
+emulated explicitly. Allocation remains the donor's built-in fallback path.
+These imported environment shims are not a reproduction of the phone runtime.
+
+Gamma .5 is an explicit synthetic test input, not a recovered capture default.
+The XML parser reads `gammaLutCoef` into alignment parameters +0x54 (global
+configuration +0x563c), and otherwise retains the initialized value. That default
+and the upstream RAW black-level/bit-depth convention must be established before
+selecting this guide in Camera2 capture. The C++ function accepts gamma and gain
+from its caller and requires RAW with the donor's 64/1023 black convention; it
+must not be fed the black-subtracted network input without a defined conversion.
+
+This component is not enabled in capture. Original motion runtime linkage,
+coordinate/ROI conversion, failed-frame handling, dynamic ZSL/bracket scheduling
+and complete Tone/TCE integration remain unfinished. No new APK was built.
