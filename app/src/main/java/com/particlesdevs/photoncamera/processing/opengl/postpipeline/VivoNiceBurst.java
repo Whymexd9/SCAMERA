@@ -20,6 +20,7 @@ public final class VivoNiceBurst {
     private final boolean trainedSensor;
     private final float[] black;
     private final ImageFrame[] ordered=new ImageFrame[7];
+    private final VivoNiceAe[] ae=new VivoNiceAe[7];
     private final float[] exposure=new float[7];
     private VivoNiceBurst(List<ImageFrame> source,Parameters p) throws IOException {
         width=p.rawSize.x;height=p.rawSize.y;cfa=p.cfaPattern;white=p.whiteLevel;black=p.blackLevel.clone();
@@ -67,6 +68,8 @@ public final class VivoNiceBurst {
         double ref=product(ordered[0]);
         if(!(product(ordered[6])<ref))throw new IOException("NICE HDR: короткий кадр не темнее опорного");
         for(int i=0;i<7;++i){
+            ae[i]=VivoNiceAe.fromFrame(ordered[i]);
+            Log.i("NICE_HDR","slot="+i+" "+ae[i].describe());
             exposure[i]=(float)(product(ordered[i])/ref);
             if(!Float.isFinite(exposure[i])||exposure[i]<1f/256||exposure[i]>256||ordered[i].measuredIso<=0)
                 throw new IOException("NICE HDR: экспозиция/ISO вне диапазона");
@@ -91,13 +94,14 @@ public final class VivoNiceBurst {
     }
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
     void write(File file)throws IOException {
-        ByteBuffer header=ByteBuffer.allocate(160).order(ByteOrder.LITTLE_ENDIAN);
-        header.putInt(0x3143484e).putInt(6).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
+        ByteBuffer header=ByteBuffer.allocate(160+7*VivoNiceAe.TRANSPORT_BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        header.putInt(0x3143484e).putInt(7).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
         for(float v:black)header.putFloat(v);for(float v:exposure)header.putFloat(v);for(ImageFrame f:ordered)header.putInt(f.measuredIso);
         header.putFloat(noiseSlope).putFloat(noiseOffset).putInt(diagnostics?1:0);
         header.putFloat(normalNoiseSlope).putFloat(normalNoiseOffset);
         header.position(128);
         scene.writeTransport(header);
+        for(VivoNiceAe value:ae)value.writeTransport(header);
         header.position(0);
         try(FileChannel out=new FileOutputStream(file).getChannel()){
             while(header.hasRemaining())out.write(header);

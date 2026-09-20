@@ -122,7 +122,7 @@ and the destination image, respectively, not the owning wrapper object.
 
 | NICEProcParam source | CRE destination | Meaning | Wrapper instruction |
 | --- | --- | --- | --- |
-| 0x1b08 + 4*i | image+0x78 | expTime, native unit not yet established | 10b18..10b1c |
+| 0x1b08 + 4*i | image+0x78 | expTime, milliseconds in the recovered RAW AEC path | 10b18..10b1c |
 | 0x1b58 + 4*i | image+0x7c | EV | 10b20..10b2c |
 | 0x1bf8 + 4*i | image+0xb0 | shortGain | 10bf8..10bfc |
 | 0x1c48 + 4*i | image+0xb4 | analogGain | 10bdc..10be4 |
@@ -139,8 +139,10 @@ when manager+0xf8 == 1, it uses max(rawHdrCaptureGain, 1) from internal tag
 0x3015f (`33c3ec..33c438`); otherwise it reads AE tag 4 (`33c4b4..33c4d0`).
 The log at `33c524` distinguishes rawHdrCaptureGain from drcgainFromAe.
 Additional IC and short/long-frame branches can replace these arrays later.
-These are VAF metadata IDs, not Camera2 tag numbers. Their external tag routing
-is still required; in particular ADRC alone is not a verified HDR substitute.
+These are VAF metadata IDs, not Camera2 tag numbers. Their RAW external routing
+has now been traced and tested; see `vivo-vaf-metadata.md`. In particular,
+ADRC alone is not an HDR substitute. Additional IC/flash/scene overrides still
+need their own routing; the recovered baseline is not the whole manager.
 
 The two tone exposure domains must also remain separate:
 
@@ -270,13 +272,12 @@ Descriptor copies alone cannot replace that lifetime. TCE image `dataSize`
 is at 0x50 (confirmed by the original input logger); the block at 0x60 remains
 opaque, even though the CRE output producer writes there.
 
-The available donors import `VAF::VMetadata::getMetadataValueByTag` from the
-missing `libvivo.algo.metadata.so`. Internal IDs (including 0x3015f for HDR DRC)
-are not yet proven equivalent to public Camera2 result keys. The phone's
-supplied file inventory lists `/vendor/lib64/libvivo.algo.metadata.so`, 154536
-bytes, but it is absent from the extracted donors and `vivo-vcf-libs.tar.gz`.
-Recovering this dependency is a next investigation step, not proof that all
-remaining TCE, scene and capture integration requirements will be resolved.
+The user supplied `libvivo.algo.metadata.so` (154536 bytes; SHA256
+`83f1f950456f62396530f80ac393eaeaa0b4602427a41f59650137cd9f76c362`).
+It resolves the internal metadata schema and exported VMetadata accessor.
+The RAW adapter routing and per-frame capture transport are described in
+`vivo-vaf-metadata.md`. This resolves the prior missing-library investigation;
+it does not establish complete TCE creation, execution or output ownership.
 
 ```
 python tools/check_vivo_nice_tce_create.py /path/libvivo_nice_cre.so

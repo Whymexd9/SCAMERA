@@ -2,6 +2,7 @@
 #include "vivo-nice-preprocess.h"
 #include "vivo-nice-profile.h"
 #include "vivo-nice-homography.h"
+#include "vivo-nice-ae.h"
 #include <fstream>
 #include <functional>
 #include <sys/mman.h>
@@ -26,6 +27,7 @@ inline int reflectCfa(int x,int size);
 // and sub-tile image padding remain SCAMERA adaptations, not stock MEE.
 struct Burst {
     SceneMetadata scene;
+    std::array<NiceAe,7> ae{};
     int w=0,h=0,cfa=0;
     int noiseReferenceSlot=0; // v1-v3 noise belongs to N; v4 belongs to L
     float white=0;
@@ -53,12 +55,12 @@ struct MappedNiceBurst {
         int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open NICE burst");
         struct stat st{};
-        if(fstat(fd,&st)||st.st_size<128||st.st_size>160+16000000LL*14){close(fd);throw std::runtime_error("Invalid NICE file size");}
+        if(fstat(fd,&st)||st.st_size<128||uint64_t(st.st_size)>160+7*NiceAe::transportBytes+16000000ULL*14){close(fd);throw std::runtime_error("Invalid NICE file size");}
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>6) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>7) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
@@ -88,7 +90,7 @@ struct MappedNiceBurst {
             }
             if(std::abs(burst.exposure[h[1]<3?3:forwardReferenceSlot]-1)>1e-5f)throw std::runtime_error("NICE reference exposure mismatch");
             size_t pixels=size_t(burst.w)*burst.h;
-            const size_t headerBytes=h[1]>=6?160:128;
+            const size_t headerBytes=h[1]>=7?160+7*NiceAe::transportBytes:h[1]>=6?160:128;
             if(length!=headerBytes+pixels*14)throw std::runtime_error("Truncated NICE RAW burst");
             if(h[1]>=6) {
                 const auto* extension=static_cast<const uint8_t*>(address)+128;
@@ -103,6 +105,12 @@ struct MappedNiceBurst {
                    (s.hasLux()? !std::isfinite(s.lux) : s.lux!=0.f) ||
                    (s.hasAdrc()? (!std::isfinite(s.adrc)||s.adrc<=0.f) : s.adrc!=0.f))
                     throw std::runtime_error("Invalid NICE scene snapshot");
+            }
+            if(h[1]>=7) {
+                const auto* records=static_cast<const uint8_t*>(address)+160;
+                for(size_t i=0;i<7;++i)burst.ae[i].read(records+i*NiceAe::transportBytes);
+                if(burst.ae[0].timestamp!=burst.scene.timestamp)
+                    throw std::runtime_error("NICE AE reference timestamp mismatch");
             }
             auto data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+headerBytes);
             for(int f=0;f<7;++f)burst.raw[f]=data+f*pixels;
@@ -225,7 +233,8 @@ inline uint16_t warpOrderBayerProjective(const Burst& b,int f,int x,int y,const 
 // kernel's RGGB cell addressing and half-pixel convention.
 inline std::array<uint16_t,3> warpShortRgbAt(const Burst& b,int f,DonorPoint point) {
     float fx=point.x,fy=point.y;
-    if(fx<0)fx=-fx;if(fy<0)fy=-fy;
+    if(fx<0)fx=-fx;
+    if(fy<0)fy=-fy;
     if(fx>b.w-1)fx=2*(b.w-1)-fx;
     if(fy>b.h-1)fy=2*(b.h-1)-fy;
     const int ix=std::clamp(int(fx),0,b.w-1),iy=std::clamp(int(fy),0,b.h-1);

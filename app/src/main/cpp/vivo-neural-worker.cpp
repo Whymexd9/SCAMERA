@@ -21,7 +21,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v27 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v28 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -36,6 +36,17 @@ int main(int argc,char** argv) {
                 +" lux="+(scene.hasLux()?std::to_string(scene.lux):"unavailable")
                 +" ADRC="+(scene.hasAdrc()?std::to_string(scene.adrc):"unavailable")
                 +" flags="+std::to_string(scene.flags)+" luxSource="+std::to_string(scene.luxSource));
+            for(size_t i=0;i<mapped.burst.ae.size();++i) {
+                const auto& ae=mapped.burst.ae[i];
+                report("NICE AE: slot="+std::to_string(i)+" timestamp="+std::to_string(ae.timestamp)
+                    +" flags="+std::to_string(ae.flags));
+                if(ae.hasAec()) {
+                    const auto f=ae.fields();
+                    report("NICE AE VALUES: lux="+std::to_string(f.lux)+" exposureMs="+std::to_string(f.exposureMs)
+                        +" shortGain="+std::to_string(f.shortGain)+" digitalGain="+std::to_string(f.digitalGain)
+                        +" rawHdrDrc="+(ae.hasHdrDrc()?std::to_string(ae.drcGain(true)):"unavailable"));
+                }
+            }
             vivo_nice::StockMotion motion;
             vivo_nice::Graph graph(argv[2],report);
             auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
