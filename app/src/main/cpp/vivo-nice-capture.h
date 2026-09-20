@@ -10,21 +10,26 @@
 #include <limits>
 
 namespace vivo_nice {
+inline int reflectCfa(int x,int size);
 // Camera2 adaptation around the recovered CRE tensor/VST contract. Alignment
 // and tile padding are owned by SCAMERA; they are not claimed to be stock MEE.
 struct Burst {
     int w=0,h=0,cfa=0;
     float white=0;
-    NiceNoise noise{}; bool cameraNoise=false,diagnostics=false;
+    NiceNoise noise{}; bool cameraNoise=false,diagnostics=false,canonicalRggb=false;
     std::array<float,4> black{};
     std::array<float,7> exposure{}; // sensor exposure products relative to N ref
     std::array<unsigned,7> iso{};
     std::array<const uint16_t*,7> raw{};
     int color(int x,int y) const {
         const int phase=((y&1)<<1)|(x&1);
-        return phase==cfa?0:phase==(cfa^3)?2:1;
+        const int red=canonicalRggb?0:cfa;
+        return phase==red?0:phase==(red^3)?2:1;
     }
     float sample(int f,int x,int y) const {
+        // CRE UnpackAndToRGGB translates the sensor CFA before the network.
+        // Keep this a view: seven additional full-frame copies are unnecessary.
+        if(canonicalRggb){x=reflectCfa(x+(cfa&1),w);y=reflectCfa(y+(cfa>>1),h);}
         const float b=black[((y&1)<<1)|(x&1)];
         return std::clamp((float(raw[f][size_t(y)*w+x])-b)/(white-b),0.0f,1.0f);
     }
@@ -149,34 +154,59 @@ inline int reflectCfa(int x,int size) {
     while(x<0||x>=size){if(x<0)x=-x;else x=2*(size-1)-x;}
     return x;
 }
-inline uint16_t warpBayer(const Burst& b,int f,int x,int y,Shift shift) {
-    // Interpolate on the reference site's 2x2 CFA sublattice. Rounding a
-    // continuous displacement to sensor pixels switches R/G/B at every half
-    // pixel contour of the warp field, corrupting the sparse network input.
-    const float sx=x+shift.x,sy=y+shift.y;
-    if(!std::isfinite(sx)||!std::isfinite(sy)||std::abs(sx)>1000000||std::abs(sy)>1000000)
-        return 0xc000;
-    const int phaseX=x&1,phaseY=y&1;
-    const float gx=(sx-phaseX)*.5f,gy=(sy-phaseY)*.5f;
-    const int ix=int(std::floor(gx)),iy=int(std::floor(gy));
-    const float tx=gx-ix,ty=gy-iy;
-    // CRE's Bayer warp mirrors donor coordinates at the image boundary.
-    // Missing/tag-3 samples here create a dark band even for a constant scene.
-    // Mirror each same-colour tap so fractional shifts retain their CFA phase.
-    const int x0=reflectCfa(2*ix+phaseX,b.w);
-    const int x1=reflectCfa(2*(ix+1)+phaseX,b.w);
-    const int y0=reflectCfa(2*iy+phaseY,b.h);
-    const int y1=reflectCfa(2*(iy+1)+phaseY,b.h);
-    const float a=b.sample(f,x0,y0)*(1-tx)+b.sample(f,x1,y0)*tx;
-    const float d=b.sample(f,x0,y1)*(1-tx)+b.sample(f,x1,y1)*tx;
-    const float value=a*(1-ty)+d*ty;
-    return uint16_t(std::min(16383.f,std::floor(value*16383.f+.5f)))
-            | uint16_t(b.color(x,y)<<14);
-}
 using NiceExecute=std::function<void(const std::vector<float>&,std::vector<float>&)>;
-inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
+// CRE warp=2: transform a 2x2 cell's origin once, then copy all four sites
+// with their DONOR tags. This is neither independent per-pixel rounding nor
+// interpolation on a reference-colour sublattice.
+inline int donorBorder(int x,int size) {
+    if(x<0)x=-x;
+    if(x>size-1)x=2*(size-1)-x;
+    return std::clamp(x,0,size-1);
+}
+inline uint16_t raw14(const Burst& b,int f,int x,int y) {
+    return uint16_t(std::min(16383.f,std::floor(b.sample(f,x,y)*16383.f+.5f)));
+}
+inline uint16_t warpOrderBayer(const Burst& b,int f,int x,int y,Shift shift) {
+    const int sx=donorBorder(int(float(x&~1)+shift.x+.5f)+(x&1),b.w);
+    const int sy=donorBorder(int(float(y&~1)+shift.y+.5f)+(y&1),b.h);
+    return raw14(b,f,sx,sy)|uint16_t(b.color(sx,sy)<<14);
+}
+// CRE swarp=6: three dense tagged planes, using the per-channel interpolation
+// kernel's RGGB cell addressing and half-pixel convention.
+inline std::array<uint16_t,3> warpShortRgb(const Burst& b,int f,int x,int y,Shift shift) {
+    float fx=x+shift.x+.5f,fy=y+shift.y+.5f;
+    if(fx<0)fx=-fx;if(fy<0)fy=-fy;
+    if(fx>b.w-1)fx=2*(b.w-1)-fx;
+    if(fy>b.h-1)fy=2*(b.h-1)-fy;
+    const int ix=std::clamp(int(fx),0,b.w-1),iy=std::clamp(int(fy),0,b.h-1);
+    const int xs[]={ix,std::min(ix+1,b.w-1)},ys[]={iy,std::min(iy+1,b.h-1)};
+    const float rx=fx-ix,ry=fy-iy;
+    const float weights[2][2]={{(1-rx)*(1-ry),rx*(1-ry)},{(1-rx)*ry,rx*ry}};
+    std::array<uint16_t,3> result{};
+    for(int c=0;c<3;++c){
+        float sum=0;
+        for(int j=0;j<2;++j)for(int i=0;i<2;++i){
+            const int px=(xs[i]&~1)+(c==0?0:c==2?1:1-(ys[j]&1));
+            const int py=(ys[j]&~1)+(c==0?0:c==2?1:ys[j]&1);
+            sum+=raw14(b,f,px,py)*weights[j][i];
+        }
+        result[c]=uint16_t(std::clamp(int(sum+.5f),0,16383))|uint16_t(c<<14);
+    }
+    return result;
+}
+inline void restoreSensorOrigin(std::vector<float>& rgb,int w,int h,int cfa) {
+    // Same direction as CRE pixelShiftf32: dst reads max(dst-offset, 0).
+    // Reverse traversal permits overlap, without another full-resolution RGB.
+    for(int y=h-1;y>=0;--y)for(int x=w-1;x>=0;--x){
+        const size_t src=(size_t(std::max(0,y-(cfa>>1)))*w+std::max(0,x-(cfa&1)))*3;
+        const size_t dst=(size_t(y)*w+x)*3;
+        for(int c=0;c<3;++c)rgb[dst+c]=rgb[src+c];
+    }
+}
+inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& execute,
                                       const std::function<void(const std::string&)>& report,
                                       const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={}) {
+    Burst b=sensor;b.canonicalRggb=true;
     constexpr int tile=544,margin=16,core=512,step=496;
     auto ref=guides(b,3);std::array<Warp,7> warp;
     std::array<std::vector<uint16_t>,7> luts;
@@ -201,8 +231,9 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
     float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
     report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
-    report("NICE alignment: phase-preserving bilinear Bayer warp; reflected donor borders");
-    std::array<std::vector<uint16_t>,7> packedRaw;for(auto& v:packedRaw)v.resize(tile*tile);
+    report("NICE input: canonical RGGB; N/L warp=2 ordered Bayer; S/ES swarp=6 planar RGB; output RGB with sensor-origin restoration");
+    std::array<std::vector<uint16_t>,7> packedRaw;
+    for(int f=0;f<7;++f)packedRaw[f].resize(tile*tile*(f>=5?3:1));
     std::array<TaggedFrame,7> frames;
     std::vector<float> result(size_t(b.w)*b.h*3,0),weight(size_t(b.w)*b.h,0),output(tile*tile*3);
     std::vector<int> xs,ys;for(int x=0;;x+=step){xs.push_back(x);if(x+core>=b.w)break;}for(int y=0;;y+=step){ys.push_back(y);if(y+core>=b.h)break;}
@@ -211,12 +242,26 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
         for(int f=0;f<7;++f){
             for(int y=0;y<tile;++y)for(int x=0;x<tile;++x){
                 int px=reflectCfa(ox+x-margin,b.w),py=reflectCfa(oy+y-margin,b.h);
-                auto shift=warp[f].at(px,py);
-                packedRaw[f][size_t(y)*tile+x]=warpBayer(b,f,px,py,shift);
+                const size_t pos=size_t(y)*tile+x;
+                if(f>=5){
+                    const auto rgb=warpShortRgb(b,f,px,py,warp[f].at(px,py));
+                    for(int c=0;c<3;++c)packedRaw[f][pos+c*tile*tile]=rgb[c];
+                } else {
+                    packedRaw[f][pos]=warpOrderBayer(b,f,px,py,warp[f].at(px&~1,py&~1));
+                }
             }
-            frames[f]={packedRaw[f].data(),packedRaw[f].size(),tile,0,0,0,luts[f].data(),luts[f].size()};
+            frames[f]={packedRaw[f].data(),packedRaw[f].size(),tile,0,
+                    f>=5?size_t(tile*tile):0,f>=5?size_t(2*tile*tile):0,luts[f].data(),luts[f].size()};
         }
         auto input=packSevenFrames(frames,tile,tile,16383,0,sqrtEV/65535,mask,std::numeric_limits<float>::max());
+        if(snapshot && b.diagnostics && finished==0){
+            std::vector<float> channels(size_t(tile)*tile*3);
+            for(int slot:{3,5}){
+                for(size_t i=0;i<channels.size()/3;++i)for(int c=0;c<3;++c)
+                    channels[i*3+c]=input[i*22+slot*3+c];
+                snapshot(slot==3?"nice-diag-input-N-ref":"nice-diag-input-S",channels,tile,tile);
+            }
+        }
         std::fill(output.begin(),output.end(),std::numeric_limits<float>::quiet_NaN());
         execute(input,output);
         if(output.size()!=size_t(tile)*tile*3)throw std::runtime_error("NICE tile output shape changed");
@@ -234,6 +279,7 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
         report("NICE TILE "+std::to_string(++finished)+"/"+std::to_string(xs.size()*ys.size()));
     }
     for(size_t i=0;i<weight.size();++i){if(!(weight[i]>0))throw std::runtime_error("NICE tile coverage gap");for(int c=0;c<3;++c)result[i*3+c]/=weight[i];}
+    restoreSensorOrigin(result,b.w,b.h,b.cfa);
     return result;
 }
 } // namespace vivo_nice

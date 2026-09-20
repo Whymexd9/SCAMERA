@@ -33,6 +33,10 @@ public class AsyncLogTest {
         // Pause the writer: equivalent to a stalled SAF provider. The caller
         // must only enqueue, even with an active SAF logging destination.
         shadowOf(handler.getLooper()).pause();
+        // Exclude the recurring flush timer from this bounded-queue test.
+        // idle() only drains up to its initial clock instant; log messages
+        // posted one millisecond later could remain queued on slower CI hosts.
+        handler.removeCallbacksAndMessages(null);
         field("logContext").set(null,RuntimeEnvironment.getApplication());
         field("currentDate").set(null,new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date()));
         StringWriter sink=new StringWriter();BufferedWriter writer=new BufferedWriter(sink);
@@ -43,7 +47,7 @@ public class AsyncLogTest {
             int queued=((AtomicInteger)field("pendingLines").get(null)).get();
             assertTrue(queued>0);assertTrue(queued<=4096);
             assertEquals("",sink.toString());
-            shadowOf(handler.getLooper()).idle();
+            shadowOf(handler.getLooper()).runToEndOfTasks();
             writer.flush();
             assertTrue(sink.toString().contains("entry 0"));
             assertTrue(sink.toString().contains("dropped"));

@@ -354,3 +354,51 @@ tone-model integration. This is a bounded border fix, not stock equivalence.
 Completing the port requires the original CRE/tone host libraries and model
 assets from `Vivo-camera-files-20260919-224713.zip`; the current workspace has
 recovered excerpts/configs and selected weights, not that full archive.
+
+
+## Full donor recovered: RGGB and role-specific warps (worker v22)
+
+Source: `Vivo-camera-files-20260919-224713.zip`, Google Drive file
+`1G_6pkx1gfytL3pFn-ckT3OPStfXgD6_B`. Retrieved on 2026-09-20. The archive has
+606 libraries, 1,873 config files and 466 model files. Original paths are
+preserved in the local extraction. The earlier missing-archive blocker is
+resolved; the unresolved work below is implementation/verification work.
+
+Pinned `vendor/lib64/libvivo_nice_cre.so` SHA256:
+`41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e`.
+
+Confirmed host/kernel contracts:
+
+- `0x2d08a4` is the UnpackAndToRGGB path. `0x2d1d38..0x2d1d98`
+  sets the sensor phase offsets. Vivo enumerates BGGR as 2 and GBRG as 3;
+  Camera2 enumerates GBRG as 2 and BGGR as 3. The adapter uses Camera2's
+  actual red-site coordinates, without passing its enum into donor code.
+- `0x3c5ec0..0x3c5f1c`: warp method 2 dispatches
+  `vivoRawBackwardWarp2CanvasOrder`. Its Bayer buffer kernel transforms a
+  2x2 cell origin, copies adjacent sites and tags the donor's colour.
+- `0x3c5f20..0x3c5f8c`: methods 6/7 dispatch
+  `vivoRawBackwardWarp2CanvasAlignPerChanInterp`. The Bayer kernel emits
+  three dense planes, with half-pixel coordinates and per-row green lookup.
+- MainCamera/NiceCREConfigHdrForward.xml selects `warp=2`, `swarp=6`, with
+  `lwarp` defaulting to `warp` (`0x3cffbc..0x3d0000`). Model slots remain
+  N,N,N,N-ref,L,S,ES. The previous adapter incorrectly used sparse Bayer
+  with the same reference-phase interpolation for every slot.
+- GeneralNetPostprocess host bindings set rIndex=0, gIndex=1, bIndex=2.
+  For example `0x33de78..0x33deb0` initializes the indices and
+  `0x33e5e4..0x33e628` binds arguments 17..19. No output R/B swap is justified.
+- `pixelShiftf32`/`icIVSTf32` restore the sensor origin by sampling
+  `max(dst-offset,0)`. The adapter restores it in-place after stitching.
+- `0x2d888c..0x2d88dc` confirms normalization ISO 50 for VstBaseISOMode=0.
+
+The capture adapter now uses an RGGB view of all RAWs, warp=2 for N/L, and
+three-plane swarp=6 for S/ES. It retains original RGB output order. Diagnostic
+exports also include first-tile N-ref and S input triplets, making sparse vs
+planar input inspectable. Host checks use unequal colour planes, independent
+known coordinate values, all Camera2 CFAs, actual packing and HDR inversion.
+They use mock inference and cannot certify actual NPU photo quality.
+
+Remaining stock differences: motion estimates still come from SCAMERA, as do
+its tile plan, N-buffer/L-S-post-trigger capture scheduling, and photographic
+tone path. Full stock ZSL, dynamic bracket strategy, NICE Tone/TCE masks and
+HDRNet integration are not implemented by this change. Do not label this
+build stock-identical or claim the cyan device regression is verified fixed.

@@ -2,54 +2,48 @@
 #include <cassert>
 #include <iostream>
 using namespace vivo_nice;
-static void checkWarpColorContinuity() {
-    Burst b;b.w=64;b.h=64;b.white=16383;b.black.fill(0);
+static void checkRecoveredWarpContracts() {
+    Burst b;b.w=64;b.h=64;b.white=16383;b.black.fill(0);b.canonicalRggb=true;
     std::vector<uint16_t> raw(64*64);b.raw[0]=raw.data();
-    for(int cfa=0;cfa<4;++cfa) {
+    for(int cfa=0;cfa<4;++cfa){
         b.cfa=cfa;
-        // Separate, sloped colour planes expose both channel swaps and steps
-        // at half-pixel contours; the previous uniform mock could not do so.
-        for(int y=0;y<64;++y)for(int x=0;x<64;++x)
-            raw[y*64+x]=1000+4000*b.color(x,y)+8*x+16*y;
-        for(int y=24;y<26;++y)for(int x=24;x<26;++x) {
-            int previous=-1;
-            for(int i=-400;i<=400;++i) {
-                const Shift shift{i*.01f,i*.003f};
-                const auto value=warpBayer(b,0,x,y,shift);
-                assert((value>>14)==b.color(x,y));
-                const float expected=1000+4000*b.color(x,y)+8*(x+shift.x)+16*(y+shift.y);
-                assert(std::abs(float(value&0x3fff)-expected)<=.51f);
-                if(previous>=0)assert(std::abs(int(value&0x3fff)-previous)<=1);
-                previous=value&0x3fff;
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x){
+            const int phase=(y%2)*2+x%2;
+            raw[y*64+x]=phase==cfa?1200:phase==(3-cfa)?9200:4800;
+        }
+        // Input must be RGGB independently of the Camera2 sensor enumeration.
+        assert(raw14(b,0,20,20)==1200);assert(raw14(b,0,21,20)==4800);
+        assert(raw14(b,0,20,21)==4800);assert(raw14(b,0,21,21)==9200);
+        const int expected[]={1200,4800,9200};
+        for(int y:{0,1,30,31,62,63})for(int x:{0,1,30,31,62,63})
+            for(float dx:{-2.2f,0.f,.49f,.51f,2.2f})for(float dy:{-2.2f,0.f,2.2f}){
+                auto v=warpOrderBayer(b,0,x,y,{dx,dy});
+                assert((v>>14)<3);assert((v&16383)==expected[v>>14]);
+                auto rgb=warpShortRgb(b,0,x,y,{dx,dy});
+                for(int c=0;c<3;++c){assert((rgb[c]>>14)==c);assert((rgb[c]&16383)==expected[c]);}
             }
-        }
-        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
-            auto v=warpBayer(b,0,x,y,{0,0});
-            assert((v&0x3fff)==raw[y*64+x]);assert((v>>14)==b.color(x,y));
-        }
-        // Reflection of a linear same-colour plane has a known boundary value.
-        assert((warpBayer(b,0,0,0,{-1,0})&0x3fff)==1000+4000*b.color(0,0)+8);
-        assert((warpBayer(b,0,63,63,{1,0})&0x3fff)==1000+4000*b.color(63,63)+8*62+16*63);
-        assert(warpBayer(b,0,20,20,{NAN,0})==0xc000);
-        for(int x:{0,1,62,63})for(int y:{0,1,62,63}) {
-            auto v=warpBayer(b,0,x,y,{x<32?.2f:-.2f,y<32?.2f:-.2f});
-            assert((v>>14)==b.color(x,y));
-        }
-        // Movement beyond every edge must not inject holes or mix colour planes.
-        for(int y=0;y<64;++y)for(int x=0;x<64;++x)
-            raw[y*64+x]=1000+4000*b.color(x,y);
-        for(int x:{0,1,62,63})for(int y:{0,1,62,63})
-            for(float dx:{-70.25f,-2.5f,0.f,2.5f,70.25f})
-                for(float dy:{-70.25f,-2.5f,0.f,2.5f,70.25f}) {
-                    const auto v=warpBayer(b,0,x,y,{dx,dy});
-                    assert((v>>14)==b.color(x,y));
-                    assert((v&0x3fff)==1000+4000*b.color(x,y));
-                }
     }
-    std::cout<<"PASS: fractional Bayer warp retains all four CFA layouts and continuous colour ramps\n";
+    // warp=2 rounds the cell origin, not four independent positions. An odd
+    // translation must carry the donor tags, including its two green sites.
+    b.cfa=0;
+    for(int y=0;y<64;++y)for(int x=0;x<64;++x)raw[y*64+x]=uint16_t(y*64+x);
+    auto v=warpOrderBayer(b,0,21,21,{.6f,0});
+    assert((v&16383)==21*64+22);assert((v>>14)==1);
+    // swarp=6's half-pixel and per-row green addressing, evaluated by hand
+    // for identity at (20,20): R(20,20), G average of (21,20)/(20,21), B(21,21).
+    auto rgb=warpShortRgb(b,0,20,20,{0,0});
+    assert((rgb[0]&16383)==1300);assert((rgb[1]&16383)==1333);assert((rgb[2]&16383)==1365);
+    for(int cfa=0;cfa<4;++cfa){
+        std::vector<float> values(8*8*3);
+        for(size_t i=0;i<values.size();++i)values[i]=float(i);
+        restoreSensorOrigin(values,8,8,cfa);
+        for(int y=0;y<8;++y)for(int x=0;x<8;++x)for(int c=0;c<3;++c)
+            assert(values[(y*8+x)*3+c]==float((std::max(0,y-(cfa>>1))*8+std::max(0,x-(cfa&1)))*3+c));
+    }
+    std::cout<<"PASS: canonical RGGB, ordered Bayer warp=2, dense short swarp=6, inverse origin shift\n";
 }
 int main(){
-    checkWarpColorContinuity();
+    checkRecoveredWarpContracts();
     // Constant HDR radiance, clipped in N and L, retained in S/ES. Mock graph
     // forwards the short-frame VST samples to RGB, testing real pre/post/tile
     // code without pretending to execute network weights on the host.
@@ -111,6 +105,35 @@ int main(){
     });
     assert(tiles==4&&snapshots==2&&checkedTensor);
     for(float v:generic)assert(std::isfinite(v)&&std::abs(v-1.6f)<.001f);
+
+    // Exercise the real seven-frame tile packer with unequal R/G/B signals.
+    // The old achromatic mock did not catch missing dense S/ES channels or
+    // the BGGR input passed to an RGGB-trained graph.
+    b.w=64;b.h=64;b.cameraNoise=false;b.iso.fill(100);
+    const float scene[]={.12f,.24f,.48f};
+    for(int cfa=0;cfa<4;++cfa){
+        b.cfa=cfa;
+        for(int f=0;f<7;++f){
+            raw[f].resize(64*64);b.raw[f]=raw[f].data();
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x){
+                const int phase=(y%2)*2+x%2;
+                const int c=phase==cfa?0:phase==(3-cfa)?2:1;
+                raw[f][y*64+x]=uint16_t(std::round(std::min(scene[c]*b.exposure[f],1.f)*16383));
+            }
+        }
+        const auto color=reconstruct(b,[&](const std::vector<float>& in,std::vector<float>& result){
+            for(int y=0;y<544;++y)for(int x=0;x<544;++x){
+                const size_t i=size_t(y)*544+x;
+                const int phase=(y%2)*2+x%2,c=phase==0?0:phase==3?2:1;
+                for(int k=0;k<3;++k){
+                    assert((in[i*22+9+k]>0)==(k==c));
+                    assert(in[i*22+15+k]>0&&in[i*22+18+k]>0);
+                    result[i*3+k]=in[i*22+15+k];
+                }
+            }
+        },[](const std::string&){});
+        for(size_t i=0;i<color.size();++i)assert(std::abs(color[i]-scene[i%3])<.001f);
+    }
 
     std::cout<<"PASS: NICE full tile path, HDR 1.6 retained, 4-tile overlap/crop coverage; error="<<worst<<" (mock graph)\n";
 }
