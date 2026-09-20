@@ -149,6 +149,27 @@ inline int reflectCfa(int x,int size) {
     while(x<0||x>=size){if(x<0)x=-x;else x=2*(size-1)-x;}
     return x;
 }
+inline uint16_t warpBayer(const Burst& b,int f,int x,int y,Shift shift) {
+    // Interpolate on the reference site's 2x2 CFA sublattice. Rounding a
+    // continuous displacement to sensor pixels switches R/G/B at every half
+    // pixel contour of the warp field, corrupting the sparse network input.
+    const float sx=x+shift.x,sy=y+shift.y;
+    if(!std::isfinite(sx)||!std::isfinite(sy)||sx<0||sy<0||sx>b.w-1||sy>b.h-1)
+        return 0xc000;
+    const int phaseX=x&1,phaseY=y&1;
+    const float gx=(sx-phaseX)*.5f,gy=(sy-phaseY)*.5f;
+    const int ix=int(std::floor(gx)),iy=int(std::floor(gy));
+    const float tx=gx-ix,ty=gy-iy;
+    const int x0=std::clamp(2*ix+phaseX,phaseX,b.w-2+phaseX);
+    const int x1=std::clamp(2*(ix+1)+phaseX,phaseX,b.w-2+phaseX);
+    const int y0=std::clamp(2*iy+phaseY,phaseY,b.h-2+phaseY);
+    const int y1=std::clamp(2*(iy+1)+phaseY,phaseY,b.h-2+phaseY);
+    const float a=b.sample(f,x0,y0)*(1-tx)+b.sample(f,x1,y0)*tx;
+    const float d=b.sample(f,x0,y1)*(1-tx)+b.sample(f,x1,y1)*tx;
+    const float value=a*(1-ty)+d*ty;
+    return uint16_t(std::min(16383.f,std::floor(value*16383.f+.5f)))
+            | uint16_t(b.color(x,y)<<14);
+}
 using NiceExecute=std::function<void(const std::vector<float>&,std::vector<float>&)>;
 inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
                                       const std::function<void(const std::string&)>& report,
@@ -174,6 +195,7 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
     float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
     report(std::string("NICE calibration source=")+(b.cameraNoise?"Camera2":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
+    report("NICE alignment: phase-preserving bilinear Bayer warp");
     std::array<std::vector<uint16_t>,7> packedRaw;for(auto& v:packedRaw)v.resize(tile*tile);
     std::array<TaggedFrame,7> frames;
     std::vector<float> result(size_t(b.w)*b.h*3,0),weight(size_t(b.w)*b.h,0),output(tile*tile*3);
@@ -184,11 +206,7 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
             for(int y=0;y<tile;++y)for(int x=0;x<tile;++x){
                 int px=reflectCfa(ox+x-margin,b.w),py=reflectCfa(oy+y-margin,b.h);
                 auto shift=warp[f].at(px,py);
-                int sx=int(std::lround(px+shift.x)),sy=int(std::lround(py+shift.y));
-                uint16_t value=0xc000;
-                if(sx>=0&&sy>=0&&sx<b.w&&sy<b.h)
-                    value=uint16_t(std::min(16383.f,std::floor(b.sample(f,sx,sy)*16383.f+.5f))) | uint16_t(b.color(sx,sy)<<14);
-                packedRaw[f][size_t(y)*tile+x]=value;
+                packedRaw[f][size_t(y)*tile+x]=warpBayer(b,f,px,py,shift);
             }
             frames[f]={packedRaw[f].data(),packedRaw[f].size(),tile,0,0,0,luts[f].data(),luts[f].size()};
         }

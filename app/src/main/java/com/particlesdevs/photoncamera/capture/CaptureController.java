@@ -368,6 +368,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * window: they belong to the shot.
      */
     private volatile boolean mShotInProgress = false;
+    private long mShutterGeneration;
     private volatile boolean mLiveRawSession;
     private volatile boolean mNativeRawPslCapture;
     private TotalCaptureResult mNativeZslBase;
@@ -582,6 +583,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Log.w(TAG, "Timed out waiting for pre-capture sequence to complete.");
                 mState = STATE_PICTURE_TAKEN;
                 captureStillPicture();
+                return;
             }
             if (afState == null) {
                 mState = STATE_PICTURE_TAKEN;
@@ -604,6 +606,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.v(TAG, "WAITING_PRECAPTURE");
             // CONTROL_AE_STATE can be null on some devices
             Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+            if (hitTimeoutLocked()) {
+                mState = STATE_PICTURE_TAKEN;
+                captureStillPicture();
+                return;
+            }
             if (aeState == null ||
                     aeState == CaptureResult.CONTROL_AE_STATE_PRECAPTURE ||
                     aeState == CaptureRequest.CONTROL_AE_STATE_FLASH_REQUIRED) {
@@ -616,7 +623,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         private void waitingNonPrecaptureProcess(CaptureResult result) {
             // CONTROL_AE_STATE can be null on some devices
             Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-            if (aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
+            if (hitTimeoutLocked() || aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
                 mState = STATE_PICTURE_TAKEN;
                 captureStillPicture();
             }
@@ -1439,10 +1446,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         try {
             mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
                     mBackgroundHandler);
-        } catch (CameraAccessException e) {
-            Log.e(TAG, "Failed to start camera preview because it couldn't access camera", e);
-        } catch (IllegalStateException e) {
-            Log.e(TAG, "Failed to start camera preview.", e);
+        } catch (CameraAccessException | RuntimeException e) {
+            failPendingShutter(e);
         }
     }
 
@@ -1463,8 +1468,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mState = STATE_WAITING_PRECAPTURE;
             mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback,
                     mBackgroundHandler);
-        } catch (CameraAccessException | IllegalStateException e) {
-            Log.e(TAG, Log.getStackTraceString(e));
+        } catch (CameraAccessException | RuntimeException e) {
+            failPendingShutter(e);
         }
     }
 
@@ -1953,33 +1958,67 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /**
      * Initiate a still image capture.
      */
-    public void takePicture() {
-        if(mCalibrationSession!=null || mZslCapturing || isProcessing)return;
+    public boolean takePicture() {
         synchronized (mPreviewStateLock) {
+            Log.i(TAG, "SHUTTER camera=" + physicalID + " state=" + mState
+                    + " processing=" + isProcessing + " zsl=" + mZslCapturing
+                    + " shot=" + mShotInProgress + " burst=" + burst);
+            if (mCalibrationSession != null || mZslCapturing || isProcessing || mShotInProgress || burst) {
+                showToast("Предыдущий снимок ещё обрабатывается. Дождитесь завершения.");
+                return false;
+            }
             if (!isCameraResumed || mPreviewRequestBuilder == null || mCaptureSession == null ||
                     mCameraDevice == null || mPreviewCaptureResult == null) {
                 Log.w(TAG, "takePicture(): waiting for current-session preview after resume");
                 cameraEventsListener.onProcessingError("Камера ещё готовится. Повторите снимок.");
-                return;
+                return false;
             }
             mShotInProgress = true;
+            final long shotGeneration = ++mShutterGeneration;
             if (isZslMode()) {
                 captureStillPicture();
-                return;
+                return true;
             }
-            if (mCameraAfModes.length > 1) lockFocus();
+            startTimerLocked();
+            // Some auxiliary cameras never signal AF/AE convergence. Bound
+            // every precapture state, including missing preview callbacks.
+            final CameraCaptureSession shotSession = mCaptureSession;
+            final int generation = mSessionGeneration.get();
+            if (mBackgroundHandler != null) mBackgroundHandler.postDelayed(() -> {
+                synchronized (mPreviewStateLock) {
+                    if (shotGeneration != mShutterGeneration || generation != mSessionGeneration.get()
+                            || !isCurrentPreviewSession(shotSession)
+                            || !mShotInProgress || !isWaitingForCapture()) return;
+                    Log.w(TAG, "SHUTTER precapture timeout camera=" + physicalID + " state=" + mState);
+                    mState = STATE_PICTURE_TAKEN;
+                    captureStillPicture();
+                }
+            }, 1000);
+            if (mCameraAfModes != null && mCameraAfModes.length > 1) lockFocus();
             else {
                 try {
                     mState = STATE_WAITING_NON_PRECAPTURE;
                     mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
                             mBackgroundHandler);
-                } catch (CameraAccessException e) {
-                    Log.e(TAG, "Failed to start camera preview because it couldn't access camera", e);
-                } catch (IllegalStateException e) {
-                    Log.e(TAG, "Failed to start camera preview.", e);
+                } catch (CameraAccessException | RuntimeException e) {
+                    failPendingShutter(e);
+                    return false;
                 }
             }
+            return mShotInProgress;
         }
+    }
+
+    private boolean isWaitingForCapture() {
+        return mState == STATE_WAITING_LOCK || mState == STATE_WAITING_PRECAPTURE
+                || mState == STATE_WAITING_NON_PRECAPTURE;
+    }
+
+    private void failPendingShutter(Exception error) {
+        mShotInProgress = false;
+        mState = STATE_PREVIEW;
+        Log.e(TAG, "SHUTTER failed camera=" + physicalID, error);
+        cameraEventsListener.onProcessingError("Не удалось запустить съёмку: " + error.getMessage());
     }
 
     /**
@@ -2667,6 +2706,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void captureStillPicture() {
         try {
             if (null == mCameraDevice) {
+                failPendingShutter(new IllegalStateException("Камера закрыта"));
                 return;
             }
             SensorConfigInjector.applyToSensor(physicalID, this);
@@ -3061,14 +3101,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                 @Override
                 public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
-                    if (nativePsl) {
-                        mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;
-                        mLiveRawRouter.clear();burst=false;
-                        if(calSession!=null) {calSession.cancel();mCalibrationSession=null;PreferenceKeys.finishMultiFrameCalibration();}
-                        for(ImageFrame frame:mPendingZslNormalFrames)frame.close();mPendingZslNormalFrames=new ArrayList<>();
-                        mHybridZslCapture=false;
-                        cameraEventsListener.onProcessingError("Серия Multi-frame RAW прервана; повторите съёмку");
-                    }
+                    if (session != mCaptureSession) return;
+                    mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;
+                    mLiveRawRouter.clear();burst=false;
+                    if(calSession!=null) {calSession.cancel();mCalibrationSession=null;PreferenceKeys.finishMultiFrameCalibration();}
+                    for(ImageFrame frame:mPendingZslNormalFrames)frame.close();mPendingZslNormalFrames=new ArrayList<>();
+                    mHybridZslCapture=false;
+                    Log.w(TAG, "SHUTTER sequence aborted camera=" + physicalID + " sequence=" + sequenceId);
+                    cameraEventsListener.onCaptureSequenceCompleted(null);
+                    cameraEventsListener.onProcessingError("Серия RAW прервана камерой. Повторите снимок.");
+                    unlockFocus();
                 }
 
                 @Override
@@ -3129,6 +3171,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             });
                             try{
                             if(mImageSaver.bufferSize() == 0){
+                                cameraEventsListener.onProcessingError("Камера не передала RAW-кадры. Повторите снимок.");
                                 return;
                             }
                             mImageSaver.updateFrameCount(mImageSaver.bufferSize());
@@ -3219,7 +3262,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;mLiveRawRouter.clear();
             for(ImageFrame frame:mPendingZslNormalFrames)frame.close();mPendingZslNormalFrames=new ArrayList<>();
             if(mCalibrationSession!=null) {mCalibrationSession.cancel();mCalibrationSession=null;PreferenceKeys.finishMultiFrameCalibration();}
-            mHybridZslCapture=false;
+            mHybridZslCapture=false;burst=false;
+            cameraEventsListener.onCaptureSequenceCompleted(null);
             cameraEventsListener.onProcessingError(e.getMessage());
             unlockFocus();
             Log.e(TAG, Log.getStackTraceString(e));

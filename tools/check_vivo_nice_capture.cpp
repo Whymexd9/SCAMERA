@@ -2,7 +2,43 @@
 #include <cassert>
 #include <iostream>
 using namespace vivo_nice;
+static void checkWarpColorContinuity() {
+    Burst b;b.w=64;b.h=64;b.white=16383;b.black.fill(0);
+    std::vector<uint16_t> raw(64*64);b.raw[0]=raw.data();
+    for(int cfa=0;cfa<4;++cfa) {
+        b.cfa=cfa;
+        // Separate, sloped colour planes expose both channel swaps and steps
+        // at half-pixel contours; the previous uniform mock could not do so.
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x)
+            raw[y*64+x]=1000+4000*b.color(x,y)+8*x+16*y;
+        for(int y=24;y<26;++y)for(int x=24;x<26;++x) {
+            int previous=-1;
+            for(int i=-400;i<=400;++i) {
+                const Shift shift{i*.01f,i*.003f};
+                const auto value=warpBayer(b,0,x,y,shift);
+                assert((value>>14)==b.color(x,y));
+                const float expected=1000+4000*b.color(x,y)+8*(x+shift.x)+16*(y+shift.y);
+                assert(std::abs(float(value&0x3fff)-expected)<=.51f);
+                if(previous>=0)assert(std::abs(int(value&0x3fff)-previous)<=1);
+                previous=value&0x3fff;
+            }
+        }
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            auto v=warpBayer(b,0,x,y,{0,0});
+            assert((v&0x3fff)==raw[y*64+x]);assert((v>>14)==b.color(x,y));
+        }
+        assert(warpBayer(b,0,0,0,{-1,0})==0xc000);
+        assert(warpBayer(b,0,63,63,{1,0})==0xc000);
+        assert(warpBayer(b,0,20,20,{NAN,0})==0xc000);
+        for(int x:{0,1,62,63})for(int y:{0,1,62,63}) {
+            auto v=warpBayer(b,0,x,y,{x<32?.2f:-.2f,y<32?.2f:-.2f});
+            assert((v>>14)==b.color(x,y));
+        }
+    }
+    std::cout<<"PASS: fractional Bayer warp retains all four CFA layouts and continuous colour ramps\n";
+}
 int main(){
+    checkWarpColorContinuity();
     // Constant HDR radiance, clipped in N and L, retained in S/ES. Mock graph
     // forwards the short-frame VST samples to RGB, testing real pre/post/tile
     // code without pretending to execute network weights on the host.

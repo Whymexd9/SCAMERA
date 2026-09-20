@@ -269,3 +269,27 @@ Host checks exercise both legacy and Camera2 noise profiles through VST/IVST,
 HDR retention, snapshots, malformed version-2 headers and a non-IMX ISO range.
 The Android regression test uses camera ID 77 to prevent a sensor allowlist
 from returning. Image quality and real HP9 capture still require device testing.
+
+
+## Fractional Bayer alignment and shutter recovery (30242)
+
+The supplied 30241 diagnostic capture has contour-like colour artifacts already
+in `02-after-ivst`, while the reference Bayer preview is clear. This localizes
+the problem before GPU colour/tone and JPEG; it does not by itself distinguish
+alignment, graph calibration and inference. Review found that the continuous
+local warp was rounded to individual sensor pixels, changing the Bayer phase
+at half-pixel displacement contours. The replacement samples each reference
+site's same-colour 2x2 sublattice bilinearly and retains its tag. Tests cover all
+four CFA layouts, continuous colour ramps across fractional shifts, identity,
+borders and invalid coordinates; the existing mock HDR round-trip still passes.
+The trained graph's actual photo quality requires another device capture.
+
+The shutter now reports whether it accepted a press, so a busy rejection cannot
+leave the UI button disabled. Request failures and aborted ordinary RAW bursts
+release pending capture state and show an error. All AF/AE precapture states
+have bounded waits, with a session/shot-scoped callback deadline; a timeout no
+longer starts a second burst through the AF branch. An empty delivered burst is
+reported explicitly. These changes apply to auxiliary cameras as well as the
+main camera, without camera-ID special cases. The supplied archive contains no
+HP9 attempt log, so its exact failure path remains unconfirmed. `SHUTTER` log
+lines record camera ID, capture state and busy flags for the next device check.

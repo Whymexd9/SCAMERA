@@ -220,6 +220,34 @@ public class CameraResumeTest {
         verify(events,never()).onCameraRestarted();
         assertEquals(true,get(controller,"mShotInProgress"));
     }
+    @Test public void busyShutterDeclinesWithoutStartingOrCancellingExistingWork() throws Exception {
+        CaptureController.isProcessing=true;
+        assertFalse(controller.takePicture());
+        assertTrue(CaptureController.isProcessing);
+        verifyNoInteractions(events);
+        CaptureController.isProcessing=false;
+        put(controller,"mZslCapturing",true);
+        assertFalse(controller.takePicture());
+        assertEquals(true,get(controller,"mZslCapturing"));
+        verifyNoInteractions(events);
+    }
+    @Test public void rejectedAuxiliaryPreviewRequestReleasesPendingShot() throws Exception {
+        controller.isDualSession=true;
+        CameraCaptureSession session=mock(CameraCaptureSession.class);
+        put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
+        put(controller,"mCameraDevice",mock(CameraDevice.class));
+        put(controller,"mCameraAfModes",new int[]{0});
+        controller.mPreviewRequestBuilder=newRequestBuilder();
+        CaptureController.mPreviewCaptureResult=mock(TotalCaptureResult.class);
+        when(session.setRepeatingRequest(any(),any(),isNull()))
+                .thenThrow(new IllegalStateException("session closed"));
+        assertFalse(controller.takePicture());
+        assertEquals(false,get(controller,"mShotInProgress"));
+        verify(events).onProcessingError(contains("session closed"));
+        // Retrying is accepted once the HAL is ready; no app restart required.
+        doReturn(1).when(session).setRepeatingRequest(any(),any(),isNull());
+        assertTrue(controller.takePicture());
+    }
     @Test public void restartUsesTheNormalPreparedResumePath() throws Exception {
         var spy=spy(controller);
         doNothing().when(spy).startBackgroundThread();
