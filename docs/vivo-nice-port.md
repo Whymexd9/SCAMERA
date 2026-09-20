@@ -787,3 +787,27 @@ private VCF path that bypasses CameraService. Its shell syntax is checked locall
 the phone command itself remains untested. Full Tone/TCE color, masks, guided
 gain-map reconstruction and routing are also unfinished. No new APK, full-port
 completion, or artifact-removal claim accompanies this source change.
+
+### Collector v2: Binder failure diagnosed (2026-09-20)
+
+The uploaded `camera-help.txt` contains only `cmd: Failure calling service
+media.camera: Failed transaction (2147483646)`. This establishes a failed Binder
+command transaction, not absence of camera tag monitoring. Inspection of the
+supplied `/system/lib64/libcameraservice.so` confirms `shellCommand` (0x1d46a8),
+`handleWatchCommand` (0x20ccf4), and watch help strings. `Camera3Device::dump`
+(0x30ff44) also parses `-m <tags>`; its literal `off` branch at 0x3102e8–0x310394
+calls `TagMonitor::disableMonitoring`. The monitor option is `-m`, stored at
+0x12b858. These are donor-binary observations, not assumptions about current AOSP.
+
+Collector v1 redirected command FDs directly to shared-storage files and inherited
+its terminal input. FD transfer rejection is a possible cause of this error, not
+proven by this one-line report. V2 gives Binder pipe FDs for stdin/stdout/stderr,
+retains actual command exit status, bounds command execution, and archives errors
+instead of stopping with an isolated help file. If watch remains unavailable, it
+tries the verified `dumpsys media.camera -m <tags>` path after allowing the user to
+open the stock camera. Cleanup uses watch stop or `-m off`, respectively. The
+fallback applies to currently connected camera clients and is not package-scoped;
+users are instructed to close other camera applications. No SELinux policy,
+persistent property, camera binary, or firmware changes are made. No general
+logcat or photographs are collected. Phone execution and availability of private
+Vivo tags remain unverified until the new archive is received.
