@@ -34,19 +34,39 @@ def main():
     u.mem_write(obj+0x90,struct.pack('<Q',state))
     u.mem_write(state,struct.pack('<Q',model))
     u.mem_write(vec,struct.pack('<QQQ',0x1010000,0x1010038,0x1010038))
-    exposures=[1.,4.,16.,64.,256.];isos=[50.,100.,200.,400.,800.]
-    u.mem_write(ev,struct.pack('<5f',*exposures));u.mem_write(iso,struct.pack('<5f',*isos));word(level,3)
-    for ref in range(5):
-        for refn in range(5):
-            word(model+0x1ec,ref);word(model+0x1f0,refn)
-            for reg,value in [(UC_ARM64_REG_SP,0x11ff000),(UC_ARM64_REG_LR,0x4ff000),
-                (UC_ARM64_REG_X0,obj),(UC_ARM64_REG_X1,vec),(UC_ARM64_REG_X2,ev),
-                (UC_ARM64_REG_X3,iso),(UC_ARM64_REG_X4,level)]:u.reg_write(reg,value)
-            u.emu_start(0x35e604,0x4ff000,count=10000)
-            assert u.reg_read(UC_ARM64_REG_PC)==0x4ff000,'Original selector did not return'
-            assert struct.unpack('<If',u.mem_read(state+0xe4,8))==(int(isos[ref]),exposures[ref])
-            assert struct.unpack('<If',u.mem_read(state+0xf4,8))==(int(isos[refn]),exposures[refn])
-    print('PASS: 25 ref/refn combinations select radiometric exposure levels, independently of the seven input slots')
+    def f32(value): return struct.unpack('<f',struct.pack('<f',value))[0]
+    checked=0
+    # Non-unit base levels expose the division hidden by the original test.
+    # Keep refEV, refNEV, refEv0EV and output-domain EV independent.
+    for exposures in ([1.,4.,16.,64.,256.], [.125,.25,1.,4.,4.],
+                      [3.,7.,19.,61.,61.]):
+        isos=[50.,100.,200.,400.,800.]
+        u.mem_write(ev,struct.pack('<5f',*exposures))
+        u.mem_write(iso,struct.pack('<5f',*isos))
+        for normal in (0,2,3):
+            word(level,normal)
+            for mode in (0,1,2,3,4):
+                word(model+0x1cc,mode)
+                for first_type in (0,1,2,3):
+                    word(model+0x1fc,first_type)
+                    for ref in range(5):
+                        for refn in range(5):
+                            word(model+0x1ec,ref);word(model+0x1f0,refn)
+                            for reg,value in [(UC_ARM64_REG_SP,0x11ff000),(UC_ARM64_REG_LR,0x4ff000),
+                                (UC_ARM64_REG_X0,obj),(UC_ARM64_REG_X1,vec),(UC_ARM64_REG_X2,ev),
+                                (UC_ARM64_REG_X3,iso),(UC_ARM64_REG_X4,level)]:u.reg_write(reg,value)
+                            u.emu_start(0x35e604,0x4ff000,count=10000)
+                            assert u.reg_read(UC_ARM64_REG_PC)==0x4ff000,'Original selector did not return'
+                            ratio=lambda index: f32(exposures[index]/exposures[0])
+                            assert struct.unpack('<If',u.mem_read(state+0xe4,8))==(int(isos[ref]),ratio(ref))
+                            assert struct.unpack('<If',u.mem_read(state+0xf4,8))==(int(isos[refn]),ratio(refn))
+                            assert struct.unpack('<f',u.mem_read(state+0xf0,4))[0]==ratio(normal)
+                            output_level=max(normal-1,0) if first_type==0 else (normal if mode in (2,3) else ref)
+                            assert struct.unpack('<f',u.mem_read(state+0xec,4))[0]==ratio(output_level)
+                            checked+=1
+    print(f'PASS: {checked} original CRE radiometric selections, including non-unit bases and independent normal/output domains')
+    print('This verifies selector semantics, not complete capture or image quality.')
+
 
 
 if __name__=='__main__':main()

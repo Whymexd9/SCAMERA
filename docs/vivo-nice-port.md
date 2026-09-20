@@ -534,3 +534,44 @@ entry's CRC. It contains classes.dex through classes9.dex, and no embedded
 capture-request orchestration; another APK collection is not a prerequisite.
 This acquisition does not establish completion of scheduling, motion or tone
 integration and does not justify releasing a partial test APK.
+
+
+### Complete APK follow-up: scheduling and radiometric domains
+
+The complete stock APK decompilation completed with 332 reported errors;
+individual affected methods require DEX/disassembly inspection. Do not treat
+the Java output as complete or automatically correct.
+
+Recovered, readable call sites establish the following:
+
+- `com.android.vcamera.util.Utils.isVCF2AndHigherVersion()` tests HAL version
+  flags 16, 64 or 128; VCameraInfo reads `com.vivo.halversion` as a long.
+- `VOuterCaptureRequest.Builder` skips request-side ZSL translation for those
+  versions. `Vcf2SnapNonCoreHandler.onCaptureProgressed()` instead reads
+  `vivo.control.RequestLeftInThisSnapshot` from the first partial result and
+  invokes `updateZslNumber`. Array entries 0 and 1 become forward and backward
+  counts, respectively. A missing array falls back to 0/1. These are results
+  of the service's decision, not a stock fixed burst plan to copy.
+- The legacy branch instead reads that key from the request, then falls back
+  to `CONTROL_ENABLE_ZSL`. Copying this legacy path unconditionally would not
+  reproduce VCF2 behavior.
+- `Vcf2CameraManager` opens and initializes the firmware-provided
+  `android.hardware.vivocamera.VivoCameraManager`/`VivoCameraDevice`, with VIF
+  partial results, completed results, frame completion and buffer callbacks.
+  The APK caller does not contain the whole firmware processing implementation.
+
+The original CRE selector at 0x35e604 keeps refEV (+0xe8), refNEV (+0xf8),
+refEv0EV (+0xf0) and output-map EV (+0xec) separate. All are normalized by
+exposure-level array entry zero. Output-map selection also depends on the
+model mode and first frame type. `tools/check_vivo_nice_reference.py` now
+executes 4,500 combinations of the unmodified original function, including
+non-unit bases, independent normal levels and output selection branches;
+all pass. The previous 25-case check used a unit base and did not test these
+branches. It must not be taken as validation of the current adapter's use of
+one `range` variable for these distinct domains.
+
+The native capture adapter still conflates those radiometric domains, in
+addition to the documented alignment and Tone/TCE gaps. The misleading
+comment that ref/refn identify a normal-frame slot has been corrected. No
+photographic behavior change or completed port is claimed by this follow-up;
+no new APK has been built or released.

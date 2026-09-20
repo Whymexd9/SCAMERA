@@ -223,7 +223,8 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     // Camera2 noise may describe the frame but must not change the network's
     // tensor scale on every shot. Use the same normalization for VST and IVST.
     const auto baseline=imx06cHdrNoise(50);
-    // Ref and RefN are the same normal-frame slot in the forward HDR XML.
+    // TODO: ref/refn=3 select radiometric LEVELS, not the normal-frame slot.
+    // The adapter still conflates refEV/refNEV/refEv0EV; see the stock oracle.
     // Camera2 black subtraction happens before 14-bit encoding, so black=0.
     float norm=forwardNormCoefficient*(2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375)));
     // Exposures are expressed relative to the shortest captured frame for the
