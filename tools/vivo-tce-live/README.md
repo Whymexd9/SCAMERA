@@ -1,4 +1,4 @@
-# SCAMERA TCE live trace v1
+# SCAMERA TCE live trace v4
 
 This is a diagnostic instrument, **not a working TCE port or an APK update**.
 It observes the stock implementation without substituting arguments, return
@@ -7,11 +7,11 @@ hooks; this changes timing and phone stability has not been tested here.
 
 ## Что делать на Vivo X200 Ultra
 
-1. Сохранить `SCAMERA-TCE-Live-v1.tar.gz` в Download. Закрыть стоковую камеру.
+1. Сохранить `SCAMERA-TCE-Live-v4.tar.gz` в Download. Закрыть стоковую камеру.
 2. Выполнить в Termux:
 
 ```sh
-su -c 'scamera_tce_dir=$(mktemp -d /data/local/tmp/scamera-tce.XXXXXX) && tar -xzf /sdcard/Download/SCAMERA-TCE-Live-v1.tar.gz -C "$scamera_tce_dir" && sh "$scamera_tce_dir/run.sh"'
+su -c 'scamera_tce_dir=$(mktemp -d /data/local/tmp/scamera-tce.XXXXXX) && tar -xzf /sdcard/Download/SCAMERA-TCE-Live-v4.tar.gz -C "$scamera_tce_dir" && sh "$scamera_tce_dir/run.sh"'
 ```
 
 3. Только после **ПОДКЛЮЧЕНО** открыть стоковую камеру и сделать один обычный
@@ -19,25 +19,39 @@ su -c 'scamera_tce_dir=$(mktemp -d /data/local/tmp/scamera-tce.XXXXXX) && tar -x
 4. Прислать `scamera-tce-trace.*.tar.gz` из Download/SCAMERA. Если подключение
    не удалось, прислать тот же архив; самостоятельно менять SELinux не нужно.
 
-Сборщик останавливается после первого завершённого Process или через 100 секунд
-(у агента свой лимит 90 секунд). Он не перезапускает сервис, не вызывает затвор,
+Сборщик останавливается после первого завершённого Process или через 250 секунд
+(ожидание первого вызова — до 90 секунд, общий лимит агента — 240 секунд). Он не перезапускает сервис, не вызывает затвор,
 не меняет системные свойства, разрешения камеры или SELinux. Завершается только
-его собственный процесс frida-inject. Исходные фотографии не копируются.
+его собственный процесс frida-inject. В архив включается RGB до и после TCE, поэтому выбирай обычную тестовую сцену.
+Нужно минимум 1 ГиБ свободного места. Чтение больших буферов замедляет этот снимок.
 Ранее включённый дамп Vivo сборщик не отключает: его значение записывается в отчёт.
 
 ## What it captures
 
-- The exact 0x4c8-byte Create argument, twelve bounded config/path strings,
+- The exact 0x4c8-byte Create argument, thirteen bounded config/path strings (including GPU binary path),
   returned handle and call association; at most eight creations.
 - First Process input (0x6d0), known output prefix (0x2e0), before/after and status.
-- First 32 SetParam keys and payload addresses, without dereferencing unknown payloads.
+- First 32 SetParam keys and payload addresses; key 4 copies exactly 4 bytes, key 8 exactly 0x55 bytes. Other payloads are not dereferenced.
 - Build fingerprint, process domain/UID, existing dump property, donor SHA256.
 
 A `process_leave` with status 0 only means the **stock** call returned success;
 it does not establish that SCAMERA can reproduce it. If Create predates attach,
-`createId` is null and the trace is explicitly incomplete. No pixel buffers,
-mask contents, LUT payloads or arbitrary pointer graphs are copied. Those can
-be investigated after the actual active configuration and field values are known.
+`createId` is null and the trace is explicitly incomplete. v4 copies the input
+and successful output RGB16 planes, color LUT and six bounded face arrays.
+It does not copy segmentation masks or unverified opaque pointer graphs.
+RGB must match the observed packed 0x1004 layout (6 bytes per pixel, stride
+width*6, scanline height), maximum 96 MiB per plane. LUT edge is bounded to
+65 and the stored count must equal 3*edge^3; 65 is a collector limit, not a
+claim about the vendor API. Faces are bounded to the recovered capacity 40.
+The total payload budget is 192 MiB. Memory is read in 16 KiB chunks through
+the existing injector stdout channel, without target filesystem permissions.
+The trace can exceed 300 MB before compression. This captures the observed
+CPU mapping; GPU/CPU cache coherence still requires device validation.
+`extract_payloads.py trace.log new-directory` streams the payloads into files,
+checks ordering/extents/completeness, refuses unsafe names and existing output,
+and generates SHA256 metadata. Incomplete captures are rejected and staged
+files removed. Extraction needs Python on the host, not on the phone.
+`native_call_start` separates input-copy delay from measured Process duration.
 This trace cannot be replayed: addresses belong to the phone's current process.
 
 The shell requires the donor SHA256 documented in `../../docs/vivo-tce-boundary.md`.

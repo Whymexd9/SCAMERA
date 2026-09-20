@@ -1976,6 +1976,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             Long previewTimestamp = mPreviewCaptureResult.get(CaptureResult.SENSOR_TIMESTAMP);
             niceZslShutterTimestamp = previewTimestamp == null ? 0 : previewTimestamp;
+            if(PreferenceKeys.isVivoNiceEnabled()) Log.i("NICE_CAPTURE","shutter camera="+physicalID
+                    +" mode="+PhotonCamera.getSettings().selectedMode+" zslMode="+isZslMode()
+                    +" sensorCutoffNs="+niceZslShutterTimestamp+" cutoffSource=latest_preview_result"
+                    +" normalRequested="+PreferenceKeys.getFrameCountValue()
+                    +" longRequested="+PreferenceKeys.getLongFrameCountValue()
+                    +" shortRequested="+PreferenceKeys.getShortFrameCountValue());
             mShotInProgress = true;
             final long shotGeneration = ++mShutterGeneration;
             if (isZslMode()) {
@@ -2426,7 +2432,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Long exposure = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
                 if (exposure == null || exposure <= 0 || iso == null || iso <= 0
-                        || (niceZslShutterTimestamp > 0 && image.getTimestamp() > niceZslShutterTimestamp)) {
+                        || (niceZslShutterTimestamp <= 0 || image.getTimestamp() > niceZslShutterTimestamp)) {
                     Log.w("NICE_HDR", "Skip unpaired ZSL RAW timestamp=" + image.getTimestamp()
                             + " result=" + (result != null) + " exposureNs=" + exposure + " ISO=" + iso);
                     image.close();
@@ -3082,6 +3088,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                @NonNull TotalCaptureResult result) {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
+                    if(niceCapture) VivoNiceCaptureLog.result(request,result,niceZslShutterTimestamp);
                     if(nativePsl && !hybridZsl && frameCount==nativeBaseIndex)nativeBaseResult[0]=result;
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
@@ -3271,6 +3278,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mHybridZslCapture = true;
             }
             mCaptureSession.stopRepeating();
+            if(niceCapture) {
+                Log.i("NICE_CAPTURE","submit zslNormals="+mPendingZslNormalFrames.size()
+                        +" futureRequests="+captures.size()+" hybrid="+hybridZsl
+                        +" stockVcfPlan=false");
+                for(int i=0;i<captures.size();i++) VivoNiceCaptureLog.request(captures.get(i),i);
+            }
             if (!niceZslRequested) mCaptureSession.abortCaptures();
             if(captures.isEmpty() && hybridZsl) {
                 CaptureCallback.onCaptureSequenceCompleted(mCaptureSession,0,-1);return;

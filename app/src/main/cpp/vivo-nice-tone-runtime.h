@@ -43,6 +43,7 @@ public:
         tone.create=symbol<decltype(tone.create)>(tceLibrary,"vivoNiceTceCreate",0x38424c);
         tone.process=symbol<decltype(tone.process)>(tceLibrary,"vivoNiceTceProcess",0x391340);
         tone.destroy=symbol<decltype(tone.destroy)>(tceLibrary,"vivoNiceTceDestroy",0x385988);
+        tone.setParam=symbol<decltype(tone.setParam)>(tceLibrary,"vivoNiceTceSetParam",0x39751c);
         tone.libraryLifetime=tceLibrary;
     }
 };

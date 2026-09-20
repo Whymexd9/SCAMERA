@@ -5,6 +5,8 @@ public final class SettingsNumericRules {
     private SettingsNumericRules() {}
     public static double[] bounds(String key) {
         switch (key) {
+            case "pref_vivo_nice_norm": return new double[]{0.55,2.2,0};
+            case "pref_vivo_nice_noise_scale": return new double[]{0.25,4,0};
             case "pref_vivo_hdr_exposure": return new double[]{-2,2,0};
             case "pref_vivo_hdr_contrast": case "pref_vivo_hdr_gamma": return new double[]{0.5,2,0};
             case "pref_vivo_hdr_black": return new double[]{0,0.1,0};

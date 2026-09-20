@@ -5,8 +5,11 @@ from pathlib import Path
 
 def analyze(path):
     records=[]
-    for line in Path(path).read_text(errors='replace').splitlines():
-        if line.startswith('SCAMERA_TCE '): records.append(json.loads(line[12:]))
+    with Path(path).open(errors='replace') as stream:
+        for line in stream:
+            if line.startswith('SCAMERA_TCE '):
+                record=json.loads(line[12:])
+                if record['event']!='payload_chunk': records.append(record)
     def latest(event): return next((r for r in reversed(records) if r['event']==event),None)
     enter,leave=latest('process_enter'),latest('process_leave')
     result={'records':len(records),'finished':latest('finished'),'process_observed':enter is not None,
@@ -15,6 +18,11 @@ def analyze(path):
     create=next((r for r in records if r['event']=='create_enter' and r['id']==enter['createId']),None)
     result.update(create_observed=create is not None,status=leave['status'] if leave else None,
                   paths=create['paths'] if create else [])
+    result['process_duration_ms']=leave['timeMs']-(latest('native_call_start') or enter)['timeMs'] if leave else None
+    result['setparams']=[{'key':r['key'],'block':r.get('block')} for r in records
+                        if r['event']=='setparam' and r['handle']==enter['handle']
+                        and r['sequence']<enter['sequence']
+                        and (not create or r['sequence']>create['sequence'])]
     def block(record,key,size):
         b=record[key]
         if 'error' in b: return None
@@ -29,6 +37,11 @@ def analyze(path):
     a=block(enter,'argument',0x6d0)
     if a:
         result['input_image']=image(a,0)
+        edge,count,address=struct.unpack_from('<IIQ',a,0x370)
+        result['color_lut']={'edge':edge,'element_count':count,'address':hex(address),
+                             'element_type':'uint16','payload_captured':False,
+                             'extent_consistent':count==3*edge**3,
+                             'expected_bytes':6*edge**3}
         result['known_input_fields']={name:struct.unpack_from('<'+fmt,a,offset)[0] for name,offset,fmt in [
             ('luxIndex',0xc0,'i'),('digitalZoom',0x104,'f'),('exposureVal',0x128,'f'),
             ('shortGain',0x134,'f'),('expTime',0x138,'f'),('digitalGain',0x2f0,'f'),
@@ -37,6 +50,7 @@ def analyze(path):
         o=block(leave,'outputPrefix',0x2e0)
         if o: result['output']={name:image(o,offset) for name,offset in [('rgb',0),('rgbDeRaw',0x78),
             ('sky',0xf8),('portrait0',0x170),('portrait1',0x1e8),('portrait2',0x260)]}
-    result['limitations']='No pixel/mask/LUT payloads, opaque SetParam payloads not copied; native context still needs reconstruction.'
+    result['payloads']=[r for r in records if r['event'] in ('payload_begin','payload_end','payload_error')]
+    result['limitations']='v4 payloads require separate extraction and completeness checks. Opaque scene objects and masks are not fully captured; native context still needs reconstruction.'
     return result
 if __name__=='__main__': print(json.dumps(analyze(sys.argv[1]),ensure_ascii=False,indent=2))

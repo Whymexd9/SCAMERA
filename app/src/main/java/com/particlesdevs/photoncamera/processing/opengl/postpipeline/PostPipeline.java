@@ -580,6 +580,11 @@ public class PostPipeline extends GLBasePipeline {
         // to be rearranged first, or every stage downstream decodes it at the
         // wrong phase.
         if (mParameters.vivoNiceRgb != null) {
+            Log.i("NICE_PIPELINE","import=NICE_linear_RGB WB_LSC=SCAMERA TCE=not_connected"
+                    +" postLuma="+PreferenceKeys.vivoHdrValue("luma",.6f)
+                    +" postChroma="+PreferenceKeys.vivoHdrValue("chroma",1f)
+                    +" postSharpen="+PreferenceKeys.vivoHdrValue("sharpen",1f)
+                    +" tone=VivoHdrTone_SCAMERA; actual node order/timings follow in Pipeline log");
             add(new VivoNiceRgb());
         } else {
         if (PreferenceKeys.isRemosaicEnabled()) {

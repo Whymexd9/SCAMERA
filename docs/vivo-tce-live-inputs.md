@@ -104,3 +104,63 @@ terminal-read version: `timeout-or-eof`, no uptime records, restored after
 20 seconds, no JSON. The corrected collector is therefore delivered under
 a distinct `_v2.sh` filename, prints its version at launch and saves
 `collector-version.txt` in each archive to make version identification explicit.
+
+## Successful live observation, 2026-09-21
+
+`scamera-tce-trace.qgZIDuDt.tar.gz` records paired Create/Process, SetParam
+keys 4 and 8, and Process return 0 after 878 ms. All twelve configuration
+paths were read, including `/vendor/camera3rd/nti/nice_tce/xml/MainCamera/Common/NiceTceEffect.xml`.
+This proves stock execution, not a working SCAMERA port. Pointer values are
+process-local and cannot be replayed. Existing archived XML files include the
+active effect file. The dump directory is relative (`data/vendor/camera/dump/...`)
+and the dump property was 0 during collection.
+
+The pinned donor SetParam jump table at 0x4c551 routes key 4 to 0x3976f8
+(4-byte load), and key 8 to 0x397784 (copies bytes 0..0x54, including an
+unaligned 8-byte load at +0x4d). Collector v3 copies only these verified
+payload extents and the Create GPU binary path at +0x100. These were not
+recorded in v2. Image pixels, LUT contents and pointer-backed scene structures
+remain absent; this trace is not a complete replay fixture.
+
+### v3 observation: QLpODGVk
+
+The v3 trace records Create, SetParam 4/8 and Process status 0 (716 ms).
+GPU binary/cache path is `/data/vendor/camera`. Key 4 payload is int32 0.
+Key 8 payload is 85 bytes: `2026-09-21 04:07` followed by zero bytes. This
+observed timestamp is not a tone-strength parameter or a reusable constant.
+All thirteen path reads succeeded. The session wrapper now resolves the
+verified SetParam export and supports these two copying branches explicitly,
+with error checks and no generic pointer-retaining SetParam interface.
+Host tests verify order, payloads, missing symbol and failure at either key.
+The capture worker still does not call original TCE: the input RGB encoding,
+pointed-to LUT/scene structures and buffer ownership must be implemented and
+validated first. The supplied trace does not contain their payloads.
+
+### Color LUT ownership
+
+The QLpODGVk Process argument has edge 33 at +0x370 and 107811 elements
+at +0x374. TCE's serializer at 3e685c..3e691c computes edge cubed times
+three and reads RGB triples using ldrh with two-byte element spacing.
+Thus the payload pointed to at +0x378 is 215622 bytes of uint16 samples;
+the trace contains none of these samples. Values and channel ordering must
+be preserved, not regenerated as an identity table.
+
+vivo-nice-tce-lut.h owns this payload and binds its live address, edge
+and count without altering adjacent Process fields. Copy/move are disabled.
+The caller must retain it through Process and session destruction; capture
+is not connected yet. Host tests cover the observed extent, exact samples,
+guard bytes and malformed or overflowing dimensions. The analyzer now
+reports LUT size, same-handle SetParam payloads and call duration.
+This still cannot replay the captured stock invocation.
+
+### v4 payload capture (awaiting phone validation)
+
+The previous traces cannot supply LUT samples or RGB comparisons. v4 now
+captures packed input/output RGB16, the verified uint16 LUT and recovered
+face arrays via bounded chunks in injector stdout. No new filesystem policy
+rules are required for this transport; existing attachment permissions still
+apply. Other opaque pointers and segmentation masks are explicitly excluded.
+A completed v4 capture is additional evidence, not yet a complete replay.
+The actual agent and extractor pass host mock tests for extents, payload
+identity, missing chunks, truncation and path rejection. No phone execution
+of v4 or photographic TCE integration is claimed.

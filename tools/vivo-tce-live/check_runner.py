@@ -25,7 +25,7 @@ sleep 3
         else:payload+="echo 'fixture: permission denied' >&2\nexit 42\n"
         (work/'frida-inject').write_text(payload)
         (work/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256((work/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in ['frida-inject','trace.js','run.sh']))
-        stubs={'uname':'echo aarch64','id':'echo 0','getprop':'echo fixture','getenforce':'echo Enforcing','dmesg':'exit 0',
+        stubs={'df':'echo filesystem 4000000 1000 2000000 1% /', 'uname':'echo aarch64','id':'echo 0','getprop':'echo fixture','getenforce':'echo Enforcing','dmesg':'exit 0',
           'sha256sum':'''if [ "$1" = /vendor/lib64/libvivo_nicetce.so ]; then
  echo '9f5deac3bc68fc86fcf16b98f43c232a9642bc309c7d5d42c88d6a4b596b892d  /vendor/lib64/libvivo_nicetce.so'
 else exec /usr/bin/sha256sum "$@"; fi'''}

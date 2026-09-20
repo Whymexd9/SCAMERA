@@ -6,6 +6,16 @@ using namespace vivo_nice::tce_contract;
 static int nativeHandle;
 static std::vector<int> events;
 static bool failCreate=false,failProcess=false;
+static int failParameter=0;
+static int setParameter(void* handle,int32_t key,void* payload) {
+    assert(handle==&nativeHandle);events.push_back(key+10);
+    if(key==4)assert(*static_cast<int32_t*>(payload)==0);
+    else {assert(key==8);assert(std::memcmp(payload,"2026-09-21 04:07",16)==0);
+        auto* bytes=static_cast<uint8_t*>(payload);
+        for(int i=16;i<85;i++)assert(bytes[i]==0);
+    }
+    return key==failParameter?7:0;
+}
 static void* create(void* argument) {
     events.push_back(1);auto* bytes=static_cast<uint8_t*>(argument);
     assert(bytes[0]==0x42);bytes[0]=0x24;
@@ -39,4 +49,23 @@ int main() {
     try{TceSession session(api,creation);session.process(input,output);assert(false);}
     catch(const std::runtime_error&){}
     assert((events==std::vector<int>{1,2,3}));
+    failProcess=false;events.clear();
+    std::array<uint8_t,0x55> metadata{};
+    std::memcpy(metadata.data(),"2026-09-21 04:07",16);
+    {
+        TceSession session(api,creation);
+        try{session.setCopiedParameters(0,metadata);assert(false);}catch(const std::runtime_error&){}
+    }
+    assert((events==std::vector<int>{1,3}));
+    api.setParam=setParameter;
+    for(int failed: {0,4,8}) {
+        events.clear();failParameter=failed;
+        {
+            TceSession session(api,creation);
+            bool threw=false;
+            try{session.setCopiedParameters(0,metadata);}catch(const std::runtime_error&){threw=true;}
+            assert(threw==(failed!=0));
+        }
+        assert(events==(failed==4?std::vector<int>{1,14,3}:std::vector<int>{1,14,18,3}));
+    }
 }
