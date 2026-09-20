@@ -3,12 +3,12 @@
 Bootstrap via the encrypted archive key or a private HTTPS URL in Actions
 secrets, then reuse a hash-verified Actions artifact. Never include download URLs or credentials in output.
 """
-from concurrent.futures import ThreadPoolExecutor
 import argparse
 import hashlib
 import io
 import json
 import os
+import subprocess
 from pathlib import Path
 import urllib.error
 import urllib.parse
@@ -63,12 +63,21 @@ def decrypt_bundle(manifest, parts, key):
 
 def encrypted_seed(key):
     manifest = json.loads(Path(__file__).with_name('neural-assets-encrypted.json').read_text())
-    root = 'https://raw.githubusercontent.com/Whymexd9/SCAMERA/' + manifest['commit'] + '/'
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        parts = list(pool.map(lambda p: download(root + p['name']), manifest['parts']))
+    commit = manifest['commit']
+    # checkout@v4 with fetch-depth: 0 already fetched the seed branch. Read
+    # pinned Git objects locally instead of requesting 28 raw-content URLs.
+    present = subprocess.run(['git', 'cat-file', '-e', commit + '^{commit}'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if present.returncode:
+        subprocess.run(['git', 'fetch', '--depth=1', 'origin', commit], check=True)
+    parts = [subprocess.check_output(['git', 'show', commit + ':' + p['name']])
+             for p in manifest['parts']]
     return decrypt_bundle(manifest, parts, key)
 
 def restore():
+    key = os.environ.get('SCAMERA_NEURAL_ASSETS_KEY', '')
+    if key:
+        return encrypted_seed(key)
     seed = os.environ.get('SCAMERA_NEURAL_ASSETS_URL', '')
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ['GH_TOKEN']
@@ -86,9 +95,6 @@ def restore():
             return archive.read(info)
     if seed:
         return download(seed, redirect=True)
-    key = os.environ.get('SCAMERA_NEURAL_ASSETS_KEY', '')
-    if key:
-        return encrypted_seed(key)
     raise RuntimeError('Private model bundle is not provisioned. Configure the encrypted '
                        'bundle key SCAMERA_NEURAL_ASSETS_KEY or bootstrap URL '
                        'SCAMERA_NEURAL_ASSETS_URL. No incomplete APK will be published.')

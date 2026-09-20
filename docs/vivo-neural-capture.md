@@ -252,3 +252,6 @@ and the plaintext/file hashes are checked before packaging. This removes the
 need for a public model URL and allows recovery after the Actions cache expires.
 Only encrypted bytes are stored in git; authorized final APK artifacts contain
 the runtime/model files required by the app.
+
+When the key is configured, Actions reads the encrypted parts directly from the
+pinned Git commit fetched by checkout; no raw-content download service is needed.
