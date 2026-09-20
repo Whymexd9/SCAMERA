@@ -16,7 +16,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name('collect_vivo_tce_json.sh')
 HASH = '9f5deac3bc68fc86fcf16b98f43c232a9642bc309c7d5d42c88d6a4b596b892d'
 MOCK = r'''#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 name=Path(sys.argv[0]).name
 state=Path(os.environ['TCE_TEST_STATE'])
@@ -31,6 +31,18 @@ elif name=='setprop':
     if value=='-1': data['enable_calls']=data.get('enable_calls',0)+1
     state.write_text(json.dumps(data))
 elif name=='logcat': print('mock TCE log')
+elif name=='cat':
+    assert sys.argv[1]=='/proc/uptime'
+    clock=state.with_suffix('.clock')
+    print((clock.read_text() if clock.exists() else '0')+'.00 0.00')
+elif name=='sleep':
+    time.sleep(.05)
+    clock=state.with_suffix('.clock')
+    interrupted=state.with_suffix('.interrupted')
+    if data.get('interrupt_sleep') and not interrupted.exists():
+        interrupted.touch()
+        sys.exit(1)
+    clock.write_text(str((int(clock.read_text()) if clock.exists() else 0)+30))
 else: raise RuntimeError(name)
 '''
 KEY = 'vendor.vivo.vaf.dump.nice.portraitseg'
@@ -50,8 +62,10 @@ def run_case(root, name, initial='', *, scenario='normal'):
         data['vendor.vivo.vaf.dump.nicetce'] = '4'
     if scenario == 'failure':
         data['fail_enable'] = True
+    if scenario == 'interrupted_sleep':
+        data['interrupt_sleep'] = True
     state.write_text(json.dumps(data))
-    for name in ('id', 'sha256sum', 'getprop', 'setprop', 'logcat'):
+    for name in ('id', 'sha256sum', 'getprop', 'setprop', 'logcat', 'cat', 'sleep'):
         p = bins/name
         p.write_text(MOCK)
         p.chmod(0o755)
@@ -63,7 +77,7 @@ def run_case(root, name, initial='', *, scenario='normal'):
     process = subprocess.Popen(['bash', str(SCRIPT), str(output), str(camera)],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, env=env)
-    if scenario in ('normal', 'signal', 'empty', 'eof'):
+    if scenario in ('normal', 'signal', 'empty', 'eof', 'interrupted_sleep'):
         deadline = time.monotonic()+5
         while True:
             # Read may coincide with the mock's truncation/rewrite.
@@ -87,6 +101,9 @@ def run_case(root, name, initial='', *, scenario='normal'):
                 (camera/'image.bin').write_bytes(b'image data must not be collected')
             out, err = process.communicate('' if scenario == 'eof' else '\n', timeout=10)
             assert process.returncode == (0 if scenario == 'normal' else 2), (out, err)
+            assert int(state.with_suffix('.clock').read_text()) >= 90
+            if scenario == 'interrupted_sleep':
+                assert state.with_suffix('.interrupted').exists()
             archives = list(output.glob('*.tar.gz'))
             assert len(archives) == 1
             with tarfile.open(archives[0]) as archive:
@@ -107,9 +124,9 @@ def main():
         root = Path(directory)
         for initial in ('', '0', '1', '-1'):
             run_case(root, 'normal-'+(initial or 'empty'), initial)
-        for scenario in ('signal', 'empty', 'eof', 'hash', 'level', 'failure'):
+        for scenario in ('signal', 'empty', 'eof', 'hash', 'level', 'failure', 'interrupted_sleep'):
             run_case(root, scenario, scenario=scenario)
-    print('PASS: 10 collector cases; exact property restoration, failure/signal/EOF, donor guards, new JSON only')
+    print('PASS: 11 collector cases; restoration, monotonic window despite EOF/interrupted sleep, donor guards, new JSON only')
 
 
 if __name__ == '__main__':

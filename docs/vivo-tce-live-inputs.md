@@ -55,10 +55,23 @@ archive before asking for another capture. A recovery script preserves the
 original property value in case the shell is killed in a way traps cannot catch.
 Restoration failure is an error and keeps the collector lock for investigation.
 
+The first phone run reported `read: select: Interrupted system call`. The old
+timed terminal read incorrectly treated that failure as the end of capture.
+The revised collector never reads the terminal: it waits until a 90-second
+`/proc/uptime` deadline, tolerating interrupted sleep without shortening the
+window. Enter/EOF no longer ends collection. Explicit termination still restores
+the setting and exits. Inspect the existing failed-run archive before recapture;
+zero collected JSON alone does not establish that stock TCE never generated one.
+The supplied `vivo-tce-json-U4ddFl7x.tar.gz` confirms the early close: its start
+marker is 19:54:51 UTC and restoration is 19:54:55 UTC (2026-09-20), only four
+seconds apart. Donor hash matches, search completed without errors, and both
+candidate list and TCE log are empty. Thus this run did not provide the intended
+90-second collection window. The revision records measured uptime duration.
+
 `check_vivo_tce_collector.py` runs the actual shell script under host bash with
-mock Android commands. Ten cases cover previous empty/0/1/-1 values, SIGTERM,
-EOF, no matching file, wrong donor, pre-existing full dump, failed property
-write, restoration and exclusion of older/unrelated JSON and image files.
+mock Android commands. Eleven cases cover previous empty/0/1/-1 values, SIGTERM,
+EOF, interrupted sleep, no matching file, wrong donor, pre-existing full dump,
+failed property write, restoration and exclusion of older/unrelated JSON and image files.
 Android shell/property permissions and actual JSON generation remain untested.
 
 ## How to interpret the snapshot

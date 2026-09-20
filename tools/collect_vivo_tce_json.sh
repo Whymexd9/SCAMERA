@@ -10,7 +10,7 @@ if [ "$(id -u)" != 0 ]; then
     echo 'Запустите через su (root).'
     exit 1
 fi
-for tce_command in sha256sum timeout find tar getprop setprop; do
+for tce_command in sha256sum timeout find tar getprop setprop cat sleep; do
     command -v "$tce_command" >/dev/null || exit 1
 done
 tce_expected=9f5deac3bc68fc86fcf16b98f43c232a9642bc309c7d5d42c88d6a4b596b892d
@@ -85,15 +85,27 @@ tce_changed=1
 setprop vendor.vivo.vaf.dump.nice.portraitseg -1
 [ "$(getprop vendor.vivo.vaf.dump.nice.portraitseg)" = -1 ] || exit 2
 echo 'Откройте стоковую камеру. Сделайте ОДИН снимок в авто на том же модуле и зуме, что в SCAMERA.'
-echo 'Дождитесь готовой миниатюры, вернитесь в Termux и нажмите Enter. Окно сбора — 90 секунд.'
+echo 'Дождитесь готовой миниатюры. Сбор завершится автоматически через 90 секунд; Enter нажимать не нужно.'
 echo "Каталог восстановления при обрыве Termux: $tce_dir"
-# mksh (Android /system/bin/sh) supports a bounded read. A timeout or EOF must
-# still restore the original property; neither condition retries capture.
-if read -r -t 90 tce_answer; then
-    echo finished > "$tce_dir/wait-status.txt"
-else
-    echo timeout-or-eof > "$tce_dir/wait-status.txt"
-fi
+# Android mksh's timed terminal read can return EINTR on switching apps. Never
+# let terminal input, EOF or a short/interrupted sleep close the capture window.
+# Use monotonic uptime rather than wall time or a count of sleep invocations.
+tce_clock() {
+    tce_uptime=$(cat /proc/uptime) || return 1
+    tce_seconds=${tce_uptime%%.*}
+    case "$tce_seconds" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$tce_seconds"
+}
+tce_started=$(tce_clock)
+printf '%s\n' "$tce_started" > "$tce_dir/wait-start-uptime.txt"
+tce_deadline=$((tce_started + 90))
+while :; do
+    tce_now=$(tce_clock)
+    [ "$tce_now" -lt "$tce_deadline" ] || break
+    sleep 1 || true
+done
+printf '%s\n' "$((tce_now - tce_started))" > "$tce_dir/wait-elapsed-seconds.txt"
+echo window-complete > "$tce_dir/wait-status.txt"
 restore_tce_property || exit 3
 
 # Copy new TCE JSON only. Never modify or delete the stock camera's files.
