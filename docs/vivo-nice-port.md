@@ -825,3 +825,34 @@ Mock command checks verify the one-read path and error archives; they do not
 prove camera responsiveness. V3 is not yet requested for a device rerun: first
 stop v2 and inspect its existing archive. The user was told to use Ctrl+C and
 not repeat capture while this fault is being diagnosed.
+
+### Device archive corrects the freeze hypothesis (2026-09-20)
+
+`vivo-stock-schedule-v2-cAKQlEPc.tar` confirms **watch mode**, not the dumpsys
+fallback. `monitor-start.txt` says `Started watching 0 active clients`; all 45
+watch samples say `No monitoring information to print`. `monitor-stop.txt`
+confirms `Stopped watching all clients`. Therefore repeated full dumps from the
+fallback do not explain this particular run. V2 did still take its full before
+and after snapshots; their causal involvement is not established.
+
+The after snapshot contains a fresh camera-service event history: all ten
+camera devices are removed at 19:51:26 and re-added at 19:51:49 (device clock).
+Earlier history from the before snapshot has disappeared. This is consistent
+with camera service/provider restart, but is not a native crash backtrace or
+proof of which process failed. Both snapshots have no active camera clients
+and `Camera error traces (0)`. No live exposure/burst values were collected.
+The snapshot only establishes these vendor-tag declarations:
+
+| Tag | Numeric ID | Type |
+| --- | --- | --- |
+| vivo.control.RequestLeftInThisSnapshot | 0x81220067 | int32 |
+| vivo.parameter.VivoMotionAdaptiveAECInfo | 0x81260014 | int32 |
+| vivo.parameter.VivoAlgoAECFrameControl | 0x81260015 | float |
+| vivo.parameter.VivoAlgoCaptureFrameControl | 0x8126001a | int32 |
+
+The installed CRE/TCE/Tone hashes match the donor. Binder help now succeeds
+under root `u:r:ksu:s0`, with SELinux Enforcing. No new collection/reproduction
+should be requested on this evidence alone. Next diagnostic is a one-shot read
+of the existing Android crash log, without camera commands, monitoring or new
+photographs. Collector v3 remains unverified and must not be described as fixing
+this device failure merely because its dumpsys fallback was removed.
