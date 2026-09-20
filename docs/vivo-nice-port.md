@@ -61,15 +61,14 @@ timeout leaves the last report; reopening the entry allows copying it. Closing
 the activity terminates only its dedicated process. Library handles remain
 resident until exit; QNN context is destroyed before model/client memory.
 
-## Remaining work before capture integration
+## Remaining device validation and stock parity
 
-1. Runtime prerequisite is PASSED on the user device. No further identical
-   synthetic runtime test is needed.
-2. Recover input packing, channel semantics, VST and inverse VST, noise/exposure
-   calibration and valid tile region from original CRE code or captured tensors.
-3. Establish active model selection and actual frame roles for Photo and Night.
-4. Restore alignment, overlap fusion and the post-CRE colour/tone contract, then
-   compare the same RAW burst against the stock intermediate/output.
+The original forward graph is now connected to Camera2 capture, as detailed below.
+Runtime compatibility and recovered VST/IVST primitives are verified. Real-photo
+quality, highlight artifacts and latency still require a new capture on the device.
+Alignment, per-shot radiometry and tile boundaries use explicit SCAMERA adaptations.
+Stock MEE/LCA/tone model execution and comparison against stock intermediate tensors
+remain unverified; this implementation does not claim complete Vivo parity.
 
 The ordinary autonomous HDR path retains the 30230 artifact fixes. Original
 NICE capture is a separate opt-in switch, described below. A runtime PASS alone is not

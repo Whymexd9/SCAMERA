@@ -28,7 +28,8 @@ public final class VivoNiceRgb extends Node {
             }
             glProg.setVar("cropOffset",ox,oy);
             glProg.setVar("inverseSize",1f/p.mParameters.rawSize.x,1f/p.mParameters.rawSize.y);
-            WorkingTexture=p.main2;glProg.drawBlocks(WorkingTexture);glProg.closed=true;p.regenerationSense=1;
+            // Keep the ping-pong cursor in sync for every following postprocessing pass.
+            WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;p.regenerationSense=1;
         }finally{input.close();}
     }
 }

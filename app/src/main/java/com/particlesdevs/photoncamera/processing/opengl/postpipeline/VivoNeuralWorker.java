@@ -33,7 +33,7 @@ public final class VivoNeuralWorker {
             boolean nice=niceCapture || (args.length==2 && args[1].equals("--nice"));
             boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(niceCapture?"NICE HDR capture":nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
             if(!nice && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
             if(nice){
