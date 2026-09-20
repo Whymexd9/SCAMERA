@@ -452,6 +452,19 @@ public class HdrxProcessor extends ProcessorBase {
         if (PreferenceKeys.isVivoNiceEnabled() && !hexCapture && !multiCapture) {
             processingStage="NICE HDR neural burst";
             try {
+                ImageFrame niceReference = images.get(0);
+                CaptureResult referenceMetadata = niceReference.getMatchedCaptureMetadata();
+                if (referenceMetadata == null)
+                    throw new IllegalStateException("NICE HDR: нет метаданных опорного RAW timestamp="
+                            + niceReference.timestamp);
+                captureResult = referenceMetadata;
+                captureRequest = referenceMetadata.getRequest();
+                processingParameters.FillDynamicParameters(referenceMetadata, captureRequest,
+                        niceReference.measuredIso);
+                ParseExif.syncWithParameters(exifData, processingParameters);
+                Log.i("NICE_HDR", "Reference calibration timestamp=" + niceReference.timestamp
+                        + " ISO=" + processingParameters.iso
+                        + " exposureSeconds=" + processingParameters.exposureTime);
                 niceOwnedOutput=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
                         PhotonCamera.getAppContext(),images,processingParameters);
                 niceOutputParameters=processingParameters;

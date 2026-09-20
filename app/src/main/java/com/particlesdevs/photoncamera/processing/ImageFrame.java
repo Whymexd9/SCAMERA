@@ -37,9 +37,22 @@ public class ImageFrame {
     public float focusDiopters = Float.NaN;
     public boolean lensMoving;
     public double blurPixels = Double.NaN;
+    private android.hardware.camera2.CaptureResult captureMetadata;
+
+    /** Full calibration must come from this RAW, not the last burst callback. */
+    public android.hardware.camera2.CaptureResult getMatchedCaptureMetadata() {
+        if (captureMetadata == null) return null;
+        Long sensorTimestamp = captureMetadata.get(android.hardware.camera2.CaptureResult.SENSOR_TIMESTAMP);
+        return sensorTimestamp != null && sensorTimestamp == timestamp ? captureMetadata : null;
+    }
 
     public void setCaptureMetadata(android.hardware.camera2.CaptureResult result) {
+        // A ZSL frame already owns its result; a second metadata-map drain can
+        // return null and must not erase that association.
         if (result == null) return;
+        captureMetadata = result;
+        noiseSlope = Float.NaN;
+        noiseOffset = Float.NaN;
         Long time = result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY);
         measuredExposure = time == null ? 0 : time;
@@ -107,4 +120,3 @@ public class ImageFrame {
         }
     }
 }
-

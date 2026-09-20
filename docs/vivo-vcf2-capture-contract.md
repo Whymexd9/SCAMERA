@@ -161,3 +161,37 @@ batches and direction values 0/1/2/0xffffffff. Reader checks separately enforce
 the supported scheduling subset. Existing extraction checks still pass.
 No APK is built from this partial integration, and this correction alone does
 not change the current photographic path or establish artifact removal.
+
+## Scope and reference-calibration connection (2026-09-20)
+
+User clarification: port the automatic photographic processing path with the
+existing sensor mode. Stock sensor-mode switching, remosaic-mode transitions
+and stock camera session reconfiguration are outside this task. Dynamic ZSL,
+exposure brackets, motion, reconstruction and tone remain in scope; they must
+operate on the existing RAW stream.
+
+The active NICE path now retains the full timestamp-matched CaptureResult in
+ImageFrame. After reference selection, HdrxProcessor reloads dynamic processing
+parameters and EXIF from that reference before constructing the NICE burst.
+Previously only exposure/noise scalar fields survived, while WB, lens shading,
+black/white levels and downstream exposure could still come from another burst
+result. A missing or mismatched reference result now fails the NICE capture
+instead of silently borrowing calibration. A null second metadata-map lookup
+preserves an existing ZSL association. Replacing a result resets missing noise,
+and a repeated dynamic parameter fill resets dynamic-level and shading flags.
+
+`python tools/check_nice_reference_metadata.py` compiles the actual ImageFrame
+against minimal Android stubs and checks matched association, null relookup,
+replacement, missing noise, missing/wrong timestamps and independent frames.
+It passes on Java 17. The three changed production Java files also parse with
+javac, but a full Android build and phone photography have not been checked.
+This fixes a capture/processing metadata boundary; it is not an implementation
+of the remaining stock reference policy or a claim that artifacts disappeared.
+
+Further consumer tracing distinguishes the YUV-only HDR gain/shutter tags
+(session updateYuvHDRGainShutterTag 0x2557c0) from RAW scheduling. Its division
+by 1,000,000 must not be borrowed as proof of CaptureFrameControl shutter units.
+Session mergeOlSettingToRtRequest 0x16ab80 propagates metadata and handles
+isPastToCaptureFrame; tracing it has not established a Camera2 exposure writer.
+The remaining dynamic scheduler and photographic Tone/TCE routing are still
+unconnected. No completed-port APK is available from this checkpoint.

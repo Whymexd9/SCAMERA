@@ -256,6 +256,12 @@ public class Parameters {
     }
 
     public void FillDynamicParameters(CaptureResult result, CaptureRequest request, int ISO) {
+        // Selection may change the reference after the first metadata pass.
+        // Missing tags must not retain another frame's dynamic calibration.
+        usedDynamic = false;
+        hasGainMap = false;
+        Integer staticWhite = CaptureController.mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+        if (staticWhite != null) whiteLevel = staticWhite;
         sensorSpecifics = PhotonCamera.getSpecificSensor().selectedSensorSpecifics;
         Integer sensivity = result.get(CaptureResult.SENSOR_SENSITIVITY);
         if (sensivity == null) {
