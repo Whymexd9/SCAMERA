@@ -134,7 +134,9 @@ public class CameraResumeTest {
             assertTrue(ring.isEmpty());assertTrue(metadata.isEmpty());
         }
     }
-    @Test public void niceZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void niceZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         // Out-of-order delivery, a post-press frame and an unrelated preview
