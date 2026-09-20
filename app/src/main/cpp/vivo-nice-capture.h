@@ -154,16 +154,19 @@ inline uint16_t warpBayer(const Burst& b,int f,int x,int y,Shift shift) {
     // continuous displacement to sensor pixels switches R/G/B at every half
     // pixel contour of the warp field, corrupting the sparse network input.
     const float sx=x+shift.x,sy=y+shift.y;
-    if(!std::isfinite(sx)||!std::isfinite(sy)||sx<0||sy<0||sx>b.w-1||sy>b.h-1)
+    if(!std::isfinite(sx)||!std::isfinite(sy)||std::abs(sx)>1000000||std::abs(sy)>1000000)
         return 0xc000;
     const int phaseX=x&1,phaseY=y&1;
     const float gx=(sx-phaseX)*.5f,gy=(sy-phaseY)*.5f;
     const int ix=int(std::floor(gx)),iy=int(std::floor(gy));
     const float tx=gx-ix,ty=gy-iy;
-    const int x0=std::clamp(2*ix+phaseX,phaseX,b.w-2+phaseX);
-    const int x1=std::clamp(2*(ix+1)+phaseX,phaseX,b.w-2+phaseX);
-    const int y0=std::clamp(2*iy+phaseY,phaseY,b.h-2+phaseY);
-    const int y1=std::clamp(2*(iy+1)+phaseY,phaseY,b.h-2+phaseY);
+    // CRE's Bayer warp mirrors donor coordinates at the image boundary.
+    // Missing/tag-3 samples here create a dark band even for a constant scene.
+    // Mirror each same-colour tap so fractional shifts retain their CFA phase.
+    const int x0=reflectCfa(2*ix+phaseX,b.w);
+    const int x1=reflectCfa(2*(ix+1)+phaseX,b.w);
+    const int y0=reflectCfa(2*iy+phaseY,b.h);
+    const int y1=reflectCfa(2*(iy+1)+phaseY,b.h);
     const float a=b.sample(f,x0,y0)*(1-tx)+b.sample(f,x1,y0)*tx;
     const float d=b.sample(f,x0,y1)*(1-tx)+b.sample(f,x1,y1)*tx;
     const float value=a*(1-ty)+d*ty;
@@ -198,7 +201,7 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
     float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
     report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
-    report("NICE alignment: phase-preserving bilinear Bayer warp");
+    report("NICE alignment: phase-preserving bilinear Bayer warp; reflected donor borders");
     std::array<std::vector<uint16_t>,7> packedRaw;for(auto& v:packedRaw)v.resize(tile*tile);
     std::array<TaggedFrame,7> frames;
     std::vector<float> result(size_t(b.w)*b.h*3,0),weight(size_t(b.w)*b.h,0),output(tile*tile*3);

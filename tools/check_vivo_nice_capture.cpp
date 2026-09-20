@@ -27,13 +27,24 @@ static void checkWarpColorContinuity() {
             auto v=warpBayer(b,0,x,y,{0,0});
             assert((v&0x3fff)==raw[y*64+x]);assert((v>>14)==b.color(x,y));
         }
-        assert(warpBayer(b,0,0,0,{-1,0})==0xc000);
-        assert(warpBayer(b,0,63,63,{1,0})==0xc000);
+        // Reflection of a linear same-colour plane has a known boundary value.
+        assert((warpBayer(b,0,0,0,{-1,0})&0x3fff)==1000+4000*b.color(0,0)+8);
+        assert((warpBayer(b,0,63,63,{1,0})&0x3fff)==1000+4000*b.color(63,63)+8*62+16*63);
         assert(warpBayer(b,0,20,20,{NAN,0})==0xc000);
         for(int x:{0,1,62,63})for(int y:{0,1,62,63}) {
             auto v=warpBayer(b,0,x,y,{x<32?.2f:-.2f,y<32?.2f:-.2f});
             assert((v>>14)==b.color(x,y));
         }
+        // Movement beyond every edge must not inject holes or mix colour planes.
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x)
+            raw[y*64+x]=1000+4000*b.color(x,y);
+        for(int x:{0,1,62,63})for(int y:{0,1,62,63})
+            for(float dx:{-70.25f,-2.5f,0.f,2.5f,70.25f})
+                for(float dy:{-70.25f,-2.5f,0.f,2.5f,70.25f}) {
+                    const auto v=warpBayer(b,0,x,y,{dx,dy});
+                    assert((v>>14)==b.color(x,y));
+                    assert((v&0x3fff)==1000+4000*b.color(x,y));
+                }
     }
     std::cout<<"PASS: fractional Bayer warp retains all four CFA layouts and continuous colour ramps\n";
 }

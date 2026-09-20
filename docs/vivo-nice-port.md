@@ -329,3 +329,28 @@ preview images cannot take L/S slots. Processing waits for N plus bracket RAWs,
 not just the bracket count (which was already satisfied by buffered N frames).
 The snapshot's normal RAW metadata seeds processing instead of the last S
 result. The other capture modes retain their prior abort behavior.
+
+## Second device regression: border holes (worker v21)
+
+The two SCAMERA(5) captures (2026-09-20 11:19:50 and 11:20:46) are both
+camera 3, CFA 3. Their reference Bayer previews remain plausible, but the
+reconstructed native RGB is already cyan before GPU colour and tone. This
+does not establish whether the model's input or output colour contract is
+wrong; swapping RGB channels or adjusting white balance without resolving
+that contract is not a verified fix.
+
+An independent boundary error was identified: the adapted warp emitted tag 3
+(zero tensor input) whenever donor coordinates crossed the sensor border.
+The recovered `vivoRawBackwardWarp2CanvasBayerBufferCL` reflects coordinates
+instead. The adapter now reflects its same-colour bilinear taps, retaining
+its existing interpolation but removing these artificial holes. Constant
+separate colour planes stay constant across all edges, fractional shifts,
+and repeated reflections for all four CFA layouts in the host regression.
+That test does not establish disappearance of the device artifacts.
+
+Unresolved: the cyan output, stock warp/interpolation selection, dynamic
+ZSL/bracket scheduling, sensor-specific model selection and real-image
+tone-model integration. This is a bounded border fix, not stock equivalence.
+Completing the port requires the original CRE/tone host libraries and model
+assets from `Vivo-camera-files-20260919-224713.zip`; the current workspace has
+recovered excerpts/configs and selected weights, not that full archive.
