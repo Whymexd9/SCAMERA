@@ -54,6 +54,7 @@ public class HdrxProcessor extends ProcessorBase {
     private ByteBuffer hexOwnedOutput;
     private ByteBuffer niceOwnedOutput;
     private Parameters niceOutputParameters;
+    private boolean niceCapture;
 
 
     public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
@@ -89,6 +90,7 @@ public class HdrxProcessor extends ProcessorBase {
         this.characteristics = characteristics;
         this.captureResult = captureResult;
         this.captureRequest = captureRequest;
+        this.niceCapture = PreferenceKeys.isVivoNiceEnabled();
         Log.d(TAG, "HdrxProcessor called start()");
         Run();
     }
@@ -136,7 +138,7 @@ public class HdrxProcessor extends ProcessorBase {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
             }
-            if ((PreferenceKeys.isVivoNiceEnabled() || PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
+            if ((niceCapture || PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
                     || (captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession))
                     && mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
@@ -173,11 +175,22 @@ public class HdrxProcessor extends ProcessorBase {
         if(PhotonCamera.getCaptureController()!=null) for(ImageFrame frame:mImageFramesToProcess)
             frame.setCaptureMetadata(PhotonCamera.getCaptureController().takeRawMetadata(frame.timestamp));
 
+        if (niceCapture) {
+            java.util.HashSet<Long> seen = new java.util.HashSet<>();
+            for (ImageFrame frame : mImageFramesToProcess) {
+                if (!seen.add(frame.timestamp) || frame.getCaptureRole() == null
+                        || frame.measuredExposure <= 0 || frame.measuredIso <= 0)
+                    throw new IllegalStateException("NICE HDR: нет однозначной роли/экспозиции RAW timestamp="
+                            + frame.timestamp);
+                exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);
+            }
+        }
+
         // A few camera HALs occasionally omit one result callback in a mixed
         // ZSL + manual bracket even though the RAW image is delivered. HDRX
         // must not fail merely because its auxiliary timestamp/gyro entry is
         // absent: reconstruct a conservative normal role and exposure.
-        if (IsoExpoSelector.fullpairs.isEmpty()) {
+        if (!niceCapture && IsoExpoSelector.fullpairs.isEmpty()) {
             Long expNs = captureResult != null
                     ? captureResult.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
             Integer iso = captureResult != null
@@ -214,7 +227,7 @@ public class HdrxProcessor extends ProcessorBase {
                     throw new IllegalStateException("MFSR: камера не выполнила заданную экспозицию кадра "+i);
             }
         }
-        double safeExposure = IsoExpoSelector.fullpairs.get(0).Exposure();
+        double safeExposure = niceCapture ? 0 : IsoExpoSelector.fullpairs.get(0).Exposure();
         for (ImageFrame frame : mImageFramesToProcess) {
             Double value = exposures.get(frame.getTimestamp());
             if (value == null || !Double.isFinite(value) || value <= 0.0) {
@@ -235,7 +248,15 @@ public class HdrxProcessor extends ProcessorBase {
         HashMap<Long, GyroBurst> gyroByTimestamp = new HashMap<>();
         for (int i = 0; i < mImageFramesToProcess.size(); i++) {
             long timestamp = mImageFramesToProcess.get(i).getTimestamp();
-            if (i < IsoExpoSelector.fullpairs.size()) {
+            if (niceCapture) {
+                ImageFrame frame = mImageFramesToProcess.get(i);
+                IsoExpoSelector.ExpoPair role = new IsoExpoSelector.ExpoPair(
+                        frame.measuredExposure, frame.measuredExposure, frame.measuredExposure,
+                        frame.measuredIso, frame.measuredIso, frame.measuredIso, frame.measuredIso);
+                role.isHighlightFrame = frame.getCaptureRole() == ImageFrame.CaptureRole.SHORT;
+                role.isLongFrame = frame.getCaptureRole() == ImageFrame.CaptureRole.LONG;
+                pairByTimestamp.put(timestamp, role);
+            } else if (i < IsoExpoSelector.fullpairs.size()) {
                 pairByTimestamp.put(timestamp, new IsoExpoSelector.ExpoPair(
                         IsoExpoSelector.fullpairs.get(i)));
             }
@@ -449,7 +470,7 @@ public class HdrxProcessor extends ProcessorBase {
 
         } // Ordinary frame selection; HexQuad owns its six-frame burst.
         boolean niceComplete=false;
-        if (PreferenceKeys.isVivoNiceEnabled() && !hexCapture && !multiCapture) {
+        if (niceCapture && !hexCapture && !multiCapture) {
             processingStage="NICE HDR neural burst";
             try {
                 ImageFrame niceReference = images.get(0);

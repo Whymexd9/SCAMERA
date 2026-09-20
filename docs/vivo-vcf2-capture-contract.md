@@ -195,3 +195,21 @@ Session mergeOlSettingToRtRequest 0x16ab80 propagates metadata and handles
 isPastToCaptureFrame; tracing it has not established a Camera2 exposure writer.
 The remaining dynamic scheduler and photographic Tone/TCE routing are still
 unconnected. No completed-port APK is available from this checkpoint.
+
+## Request-bound bracket roles (2026-09-20)
+
+NICE still requests the existing Camera2 bracket without changing sensor mode.
+Each new normal/long/short request now carries its immutable N/L/S role as the
+CaptureRequest tag. ImageFrame recovers the role only from its own matched
+CaptureResult; paired ZSL images are normal frames. HdrxProcessor constructs
+NICE roles and exposure products from those matched results, not from indices
+into the global fullpairs list. A missing RAW or reordered delivery can no
+longer shift the subsequent frames into other bracket roles. Missing/duplicate
+metadata and untagged PSL inputs fail explicitly. Non-NICE and calibration
+request tagging remain unchanged.
+
+The host regression additionally covers dropped/reordered deliveries and
+unknown or mismatched roles. It does not test Android HAL delivery or establish
+a stock dynamic bracket policy. The APK build is being run to exercise the
+connected capture changes and previously recovered CRE motion/warp/VST work.
+Full VCF scheduling and photographic Tone/TCE routing remain incomplete.

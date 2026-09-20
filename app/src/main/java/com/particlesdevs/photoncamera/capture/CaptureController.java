@@ -2741,7 +2741,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final com.particlesdevs.photoncamera.remosaic.CalibrationSession calSession=calibration?mCalibrationSession:null;
             final int calStep=calibration?calSession.completed:-1;
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
-            final boolean niceZslRequested = hybridZslRequested && PreferenceKeys.isVivoNiceEnabled();
+            final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
+            final boolean niceZslRequested = hybridZslRequested && niceCapture;
             if (niceZslRequested) {
                 mLiveRawRouter.clear();
                 mNativeRawPslCapture = true;
@@ -2967,6 +2968,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE,focus);
                         }
                         times[captureIndex] = IsoExpoSelector.lastSelectedExposure;
+                        if (niceCapture && !calibration) captureBuilder.setTag(ImageFrame.CaptureRole.NORMAL);
                         captures.add(captureBuilder.build());
                         mCaptureRequest = captureBuilder.build();
                     }
@@ -2981,6 +2983,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 for (int i = 0; i < longFrameCount; i++, captureIndex++) {
                     IsoExpoSelector.setLongExpo(captureBuilder, this);
                     times[captureIndex] = IsoExpoSelector.lastSelectedExposure;
+                    if (niceCapture) captureBuilder.setTag(ImageFrame.CaptureRole.LONG);
                     captures.add(captureBuilder.build());
                     mCaptureRequest = captureBuilder.build();
                 }
@@ -2991,6 +2994,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         break;
                     }
                     times[captureIndex++] = IsoExpoSelector.lastSelectedExposure;
+                    if (niceCapture) captureBuilder.setTag(ImageFrame.CaptureRole.SHORT);
                     captures.add(captureBuilder.build());
                     mCaptureRequest = captureBuilder.build();
                 }

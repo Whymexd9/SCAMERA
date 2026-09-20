@@ -12,6 +12,10 @@ BASE = 'com/particlesdevs/photoncamera/'
 STUBS = {
 'android/graphics/ImageFormat.java': 'package android.graphics; public class ImageFormat {}',
 'android/media/Image.java': 'package android.media; public class Image {}',
+'android/hardware/camera2/CaptureRequest.java': '''package android.hardware.camera2;
+public class CaptureRequest {private final Object tag;
+ public CaptureRequest(Object tag){this.tag=tag;} public Object getTag(){return tag;}
+}''',
 'android/util/Pair.java': '''package android.util; public class Pair<A,B> {
  public final A first; public final B second;
  public Pair(A a,B b){first=a;second=b;}
@@ -19,6 +23,8 @@ STUBS = {
 'android/hardware/camera2/CaptureResult.java': '''package android.hardware.camera2;
 import android.util.Pair; import java.util.*;
 public class CaptureResult {
+ public CaptureRequest request;
+ public CaptureRequest getRequest(){return request;}
  public static class Key<T> {}
  public static final Key<Long> SENSOR_TIMESTAMP=new Key<>(), SENSOR_EXPOSURE_TIME=new Key<>();
  public static final Key<Integer> SENSOR_SENSITIVITY=new Key<>(), LENS_STATE=new Key<>();
@@ -74,7 +80,23 @@ public class Check {
   ImageFrame other=new ImageFrame(ByteBuffer.allocate(8));other.timestamp=f.timestamp+1;
   other.setCaptureMetadata(wrong);f.setCaptureMetadata(zsl);
   check(other.getMatchedCaptureMetadata()==wrong && f.getMatchedCaptureMetadata()==zsl,"frame metadata shared");
+  check(f.getCaptureRole()==null,"untagged PSL frame guessed as normal");
+  f.fromZsl=true;
+  check(f.getCaptureRole()==ImageFrame.CaptureRole.NORMAL,"ZSL normal role lost");
+  f.fromZsl=false;
+  zsl.request=new android.hardware.camera2.CaptureRequest(ImageFrame.CaptureRole.LONG);
+  wrong.request=new android.hardware.camera2.CaptureRequest(ImageFrame.CaptureRole.SHORT);
+  check(f.getCaptureRole()==ImageFrame.CaptureRole.LONG && other.getCaptureRole()==ImageFrame.CaptureRole.SHORT,
+        "request roles not attached to their own RAW");
+  java.util.List<ImageFrame> delivered=new java.util.ArrayList<>();
+  delivered.add(other);delivered.add(f);java.util.Collections.reverse(delivered);delivered.remove(f);
+  check(delivered.get(0).getCaptureRole()==ImageFrame.CaptureRole.SHORT,"dropped/reordered frame changed role");
+  other.timestamp++;
+  check(other.getCaptureRole()==null,"mismatched timestamp supplied a role");
+  other.fromZsl=true;
+  check(other.getCaptureRole()==null,"ZSL flag bypassed metadata match");
   System.out.println("PASS: actual ImageFrame retains timestamp-matched ZSL/reference metadata and resets missing noise");
+  System.out.println("PASS: N/L/S request roles survive reordering/dropped frames; unknown roles rejected");
  }
 }'''
 }
