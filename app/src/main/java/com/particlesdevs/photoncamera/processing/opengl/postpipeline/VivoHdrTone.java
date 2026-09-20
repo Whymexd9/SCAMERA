@@ -12,6 +12,13 @@ public final class VivoHdrTone extends HeadroomRender {
         outputExposureScale=1f;
         localContrast=PreferenceKeys.vivoHdrValue("local",0.35f);
         shadowLift=PreferenceKeys.vivoHdrValue("shadows",0.25f);
+        manualTone=true;
+        manualExposure=PreferenceKeys.vivoHdrValue("exposure",0f);
+        manualContrast=PreferenceKeys.vivoHdrValue("contrast",1f);
+        manualGamma=PreferenceKeys.vivoHdrValue("gamma",1f);
+        manualSaturation=PreferenceKeys.vivoHdrValue("saturation",1f);
+        manualBlack=PreferenceKeys.vivoHdrValue("black",0f);
+        manualWhite=PreferenceKeys.vivoHdrValue("white",1f);
         super.Run();
     }
 }

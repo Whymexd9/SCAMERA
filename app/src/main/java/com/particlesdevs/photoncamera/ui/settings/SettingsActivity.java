@@ -176,6 +176,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
+            Preference toneReset=findPreference("pref_vivo_hdr_reset_tone");
+            if(toneReset!=null) toneReset.setOnPreferenceClickListener(p -> {
+                PreferenceGroup tonePage=fullPreferenceScreen.findPreference("vivo_hdr_tone_screen");
+                for(int i=0;i<tonePage.getPreferenceCount();i++) {
+                    Preference control=tonePage.getPreference(i);
+                    if(control instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)
+                        ((com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)control).resetToDefault();
+                }
+                PhotonCamera.showToast("Тональные настройки сброшены");
+                return true;
+            });
             setupRemosaicBackend();
             setupOriginalNoiseReduction();
             updateHexQuadDenoiseControls(PreferenceKeys.getRemosaicBackend());

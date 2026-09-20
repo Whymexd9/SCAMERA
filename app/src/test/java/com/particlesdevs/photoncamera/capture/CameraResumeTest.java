@@ -87,12 +87,15 @@ public class CameraResumeTest {
         var shortFrame=mock(com.particlesdevs.photoncamera.processing.ImageFrame.class);
         for(var f:java.util.List.of(normal,shortFrame)) {
             f.width=64;f.height=64;f.buffer=java.nio.ByteBuffer.allocate(64*64*2);
-            f.measuredIso=25600;f.measuredExposure=1000000;f.noiseSlope=.00015f;f.noiseOffset=.000002f;
+            f.timestamp=f==normal?1_000_000_000L:2_000_000_000L;
+            f.measuredIso=25600;f.measuredExposure=f==normal?1000000:250000;
+            f.noiseSlope=.00015f;f.noiseOffset=.000002f;
             var metadata=exposure(f.measuredExposure,f.measuredIso);
+            when(metadata.get(CaptureResult.SENSOR_TIMESTAMP)).thenReturn(f.timestamp);
             when(f.getMatchedCaptureMetadata()).thenReturn(metadata);
             f.pair=mock(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair.class);
         }
-        shortFrame.measuredExposure=250000;shortFrame.pair.isHighlightFrame=true;
+        shortFrame.pair.isHighlightFrame=true;
         var constructor=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.class
                 .getDeclaredConstructor(java.util.List.class,com.particlesdevs.photoncamera.processing.render.Parameters.class);
         constructor.setAccessible(true);

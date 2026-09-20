@@ -124,6 +124,54 @@ assert np.max(abs(render_tone(1,1)-mapped))>.01
 assert np.max(abs(render_tone(1,0,1)-mapped))>.0001
 print('HDR tone PASS: production GLES/desktop shaders, monotonic bounded output, highlight detail, independent tone/shadow/local controls.')
 
+# Manual controls use the same shipped renderer; neutral settings must be
+# pixel-identical to the historical branch. Compile GLES as well as desktop.
+manual_source=s.replace('#define MANUAL_TONE 0','#define MANUAL_TONE 1')
+ctx.program(vertex_shader=vs.replace('430','310 es'),fragment_shader='#version 310 es\n'+manual_source).release()
+manual=ctx.program(vertex_shader=vs,fragment_shader='#version 430\n'+manual_source)
+historical=tone
+neutral={'manualExposure':1.,'manualContrast':1.,'manualGamma':1.,
+         'manualSaturation':1.,'manualBlack':0.,'manualWhite':1.}
+tone=manual
+uniforms(manual,neutral)
+assert np.array_equal(render_tone(1),mapped)
+for key,value in [('manualExposure',2.),('manualContrast',2.),('manualGamma',2.),
+                  ('manualBlack',.1),('manualWhite',.7)]:
+ uniforms(manual,{**neutral,key:value})
+ result=render_tone(1)
+ assert np.isfinite(result).all() and result.min()>=0 and result.max()<=1,key
+ assert np.min(np.diff(result[h//2,:,0]))>=-.001,key
+ assert np.max(abs(result-mapped))>.01,key
+# Extreme combinations: endpoints, monotonic gradients, finite output.
+import itertools
+for ev,contrast,gamma,black,white in itertools.product([.25,4.],[.5,2.],[.5,2.],[0.,.1],[.7,1.]):
+ uniforms(manual,{**neutral,'manualExposure':ev,'manualContrast':contrast,
+          'manualGamma':gamma,'manualBlack':black,'manualWhite':white})
+ result=render_tone(1)
+ assert np.isfinite(result).all()
+ assert result[:,:,:3].min()>=black-.001 and result[:,:,:3].max()<=white+.001
+ assert np.min(np.diff(result[h//2,:,0]))>=-.001
+# Directly exercise the production grade on coloured patches and endpoints.
+body=manual_source[:manual_source.index('void main()')]
+body+='void main(){vec3 c=texelFetch(InputBuffer,ivec2(gl_FragCoord.xy),0).rgb;Output=vec4(manualGrade(c),1.);}'
+grade=ctx.program(vertex_shader=vs,fragment_shader='#version 430\n'+body)
+patch=np.tile(np.array([[0,0,0,1],[1,1,1,1],[.18,.18,.18,1],[.1,.4,.8,1],[1,0,0,1]],np.float32),(h,7,1))
+inp=tex(patch);out=tex(np.zeros_like(patch));fb=ctx.framebuffer([out]);fb.use();ctx.viewport=(0,0,w,h);inp.use(0)
+uniforms(grade,{'InputBuffer':0,**neutral})
+vao=ctx.vertex_array(grade,[])
+for sat in [0.,1.,2.]:
+ uniforms(grade,{'manualSaturation':sat});vao.render(vertices=3);result=read(out)
+ assert np.isfinite(result).all() and result.min()>=0 and result.max()<=1
+ assert np.max(abs(result[:,:3,:3]-patch[:,:3,:3]))<.001
+ if sat==0: assert np.max(np.ptp(result[:,:,:3],axis=2))<.001
+ elif sat==1: assert np.max(abs(result-patch))<.001
+ else: assert np.max(abs(result-patch))>.01
+weights=np.array([.2126,.7152,.0722])
+assert np.max(abs(result[:,:,:3]@weights-patch[:,:,:3]@weights))<.001
+for resource in [vao,fb,grade]:resource.release()
+tone=historical
+print('Manual tone PASS: exact neutral bypass, GLES compilation, five independent adjustments, 32 extreme curves, saturation/neutral/black/white/luminance preservation.')
+
 # Packing at the shortest exposure must not change reference midtones, even at
 # 8 EV. The production Java histogram meters with 1/rawScale, then restores
 # this scale in linearDisplayGain. Check the real renderer at that boundary.
