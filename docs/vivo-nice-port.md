@@ -322,3 +322,10 @@ HDR retention, four-tile blending, CFA warp continuity, and shutter cutoff/base
 selection. Real NPU photo quality and disappearance of the reported artifacts
 still require a fresh device capture; old model outputs cannot validate changed
 model inputs. No tone model or stock-parity claim is introduced.
+
+NICE's hybrid bracket also uses the existing timestamp router for in-flight
+preview rejection, removing both HAL abort/flush calls on that path. Late
+preview images cannot take L/S slots. Processing waits for N plus bracket RAWs,
+not just the bracket count (which was already satisfied by buffered N frames).
+The snapshot's normal RAW metadata seeds processing instead of the last S
+result. The other capture modes retain their prior abort behavior.

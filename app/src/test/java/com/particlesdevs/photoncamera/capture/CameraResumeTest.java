@@ -156,6 +156,16 @@ public class CameraResumeTest {
             assertSame(expected,get(controller,"mNativeZslBase"));
         }
     }
+    @Test public void delayedPreviewCannotConsumeNiceBracketSlot() throws Exception {
+        var saver=mock(com.particlesdevs.photoncamera.processing.ImageSaver.class);
+        put(controller,"mImageSaver",saver);put(controller,"mZslCapturing",true);
+        var router=(TimestampFrameRouter<Image>)get(controller,"mLiveRawRouter");
+        Image preview=rawImage(10),shortRaw=rawImage(20);
+        router.image(10,preview);router.request(20,true);
+        router.image(20,shortRaw);router.request(10,false);
+        verify(preview).close();verify(saver).initProcess(shortRaw);
+        verify(saver,never()).initProcess(preview);
+    }
     @Test public void niceZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
