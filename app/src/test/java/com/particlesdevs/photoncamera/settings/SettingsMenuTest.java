@@ -339,6 +339,32 @@ public class SettingsMenuTest {
         assertEquals(before.get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue),prefs.getAll().get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue));
     }
 
+    @Test public void manualTonePageOpensAndResetsWithoutParentDependency() {
+        manager.set("default_scope","pref_vivo_hdr_enabled",true);
+        manager.set("default_scope","pref_vivo_hdr_exposure","-1.25");
+        manager.set("default_scope","pref_vivo_hdr_local","0.65");
+        manager.set("default_scope","pref_vivo_hdr_luma","1.75");
+        try(var controller=org.robolectric.Robolectric.buildActivity(
+                com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
+            fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            PreferenceScreen tone=root.findPreference("vivo_hdr_tone_screen");
+            activity.onPreferenceStartScreen(root,tone);fm.executePendingTransactions();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            assertEquals("vivo_hdr_tone_screen",page.getPreferenceScreen().getKey());
+            assertTrue(page.findPreference("pref_vivo_hdr_exposure").isEnabled());
+            Preference reset=page.findPreference("pref_vivo_hdr_reset_tone");
+            reset.getOnPreferenceClickListener().onPreferenceClick(reset);
+            assertEquals(0f,PreferenceKeys.vivoHdrValue("exposure",9),0f);
+            assertEquals(.35f,PreferenceKeys.vivoHdrValue("local",9),0f);
+            assertEquals(1.75f,PreferenceKeys.vivoHdrValue("luma",9),0f);
+            assertTrue(PreferenceKeys.isVivoHdrEnabled());
+            camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
+        }
+    }
+
     @Test public void settingsBackPopsOnePageWithoutRestart(){
         try(org.robolectric.android.controller.ActivityController<com.particlesdevs.photoncamera.ui.settings.SettingsActivity> controller=
                 org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
