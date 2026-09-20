@@ -99,6 +99,9 @@ int main(){
         for(int i=0;i<7;++i)assert(mapped.burst.raw[i][0]==200+i);
         assert(mapped.burst.iso[0]==25600);}
     float wrongRef=.5f;std::memcpy(bytes.data()+11*4,&wrongRef,4);save();rejected();
+    // Version 4 explicitly associates the transported profile with L.
+    header[1]=4;std::memcpy(bytes.data(),header,128);save();
+    {MappedNiceBurst mapped(file);assert(mapped.burst.noiseReferenceSlot==4);}
     unlink(file);
     // The generic profile must round-trip calibrated radiance through the
     // actual VST/IVST; snapshots must observe graph values, not alter output.
@@ -111,8 +114,8 @@ int main(){
         const double baseOffset=(0.0272538637+0.0000000158*50*50+0.0000376323*50)/65025;
         const double norm=1.1*2*std::sqrt(1/baseSlope+baseOffset/(baseSlope*baseSlope)+.375);
         const double currentOffset=double(offset)/(double(slope)*slope)+.375;
-        const double expectedMask=2*std::sqrt(1/double(slope)+currentOffset)/norm;
-        assert(std::abs(in[21]-expectedMask)<.00004);checkedTensor=true;
+        const double expectedMask=2*std::sqrt(4/double(slope)+currentOffset)/norm;
+        assert(std::abs(in[21]-expectedMask)<4.0/65535+.000001);checkedTensor=true;
         ++tiles;for(size_t i=0;i<result.size()/3;++i)for(int c=0;c<3;++c)
             result[i*3+c]=std::max({in[i*22+15],in[i*22+16],in[i*22+17]});
     },[](const std::string&){},[&](const std::string&,const std::vector<float>& values,int w,int h){
@@ -120,6 +123,25 @@ int main(){
     });
     assert(tiles==4&&snapshots==2&&checkedTensor);
     for(float v:generic)assert(std::isfinite(v)&&std::abs(v-1.6f)<.001f);
+
+    // A distinct ES must not change S normalization or output radiance.
+    b.exposure[6]=.03125f;
+    raw[6].assign(size_t(b.w)*b.h,uint16_t(std::round(1.6f*b.exposure[6]*16383)));
+    b.raw[6]=raw[6].data();
+    auto distinctEs=reconstruct(b,[&](const std::vector<float>& in,std::vector<float>& result){
+        auto domains=forwardExposureDomains(b.exposure);
+        assert(domains.frameEV[5]==1 && domains.frameEV[6]==1);
+        assert(domains.normalEV==4 && domains.normalizationEV==16);
+        for(size_t i=0;i<result.size()/3;++i)for(int c=0;c<3;++c)result[i*3+c]=in[i*22+15+c];
+    },[](const std::string&){});
+    for(float v:distinctEs)assert(std::isfinite(v)&&std::abs(v-1.6f)<.001f);
+    b.iso[4]=100;
+    bool missingLongNoise=false;
+    try{reconstruct(b,[](const auto&,auto&){assert(false);},[](const auto&){});}
+    catch(const std::runtime_error&){missingLongNoise=true;}
+    assert(missingLongNoise);b.iso[4]=25600;
+    b.noiseReferenceSlot=4;
+    b.exposure[6]=.25f;
 
     // Exercise the real seven-frame tile packer with unequal R/G/B signals.
     // The old achromatic mock did not catch missing dense S/ES channels or

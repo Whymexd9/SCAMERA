@@ -54,9 +54,10 @@ public final class VivoNiceBurst {
         shorts.sort(byExposure);longs.sort(byExposure);
         ordered[4]=longs.isEmpty()?ordered[0]:longs.get(longs.size()-1);
         ordered[5]=shorts.get(shorts.size()-1);ordered[6]=shorts.get(0);
-        noiseSlope=ordered[0].noiseSlope;noiseOffset=ordered[0].noiseOffset;
+        // Forward ref/refn=3 identify L in the ES/S/N/L radiometric table.
+        noiseSlope=ordered[4].noiseSlope;noiseOffset=ordered[4].noiseOffset;
         if (trainedSensor) {
-            int iso=ordered[0].measuredIso;
+            int iso=ordered[4].measuredIso;
             if (iso<50 || iso>12800) throw new IOException("NICE HDR: ISO вне проверенного профиля IMX06C");
             // Recovered NoiseInfoHDR from the matching forward model config.
             noiseSlope=Math.fma(0.0001242085f,iso,-0.0014234833f)/255f;
@@ -83,7 +84,7 @@ public final class VivoNiceBurst {
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
     void write(File file)throws IOException {
         ByteBuffer header=ByteBuffer.allocate(128).order(ByteOrder.LITTLE_ENDIAN);
-        header.putInt(0x3143484e).putInt(3).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
+        header.putInt(0x3143484e).putInt(4).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
         for(float v:black)header.putFloat(v);for(float v:exposure)header.putFloat(v);for(ImageFrame f:ordered)header.putInt(f.measuredIso);
         header.putFloat(noiseSlope).putFloat(noiseOffset).putInt(diagnostics?1:0);
         header.position(0);

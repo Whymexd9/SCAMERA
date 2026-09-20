@@ -1,5 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <stdexcept>
 #include <vector>
 
@@ -16,6 +18,26 @@ constexpr bool forwardOverlapFusion = false; // Overlap/useFusion defaults to 0
 // CRE SelectFrame 0x3617e8..0x361830 moves the selected reference first.
 // FrameTypeOrder ref/refn select exposure levels, not network slot numbers.
 constexpr int forwardReferenceSlot = 0;
+
+// Fixed forward graph: four N, one L, one S, one ES. The XML's ref/refn=3
+// select the L exposure level in the ES/S/N/L level table, not input slot 3.
+// CRE ExceptNode 0x2ddf14..0x2ddfc8 then rebases on S and sets ES EV to one.
+struct ForwardExposureDomains {
+    std::array<float,7> frameEV;
+    float normalEV, normalizationEV;
+};
+inline ForwardExposureDomains forwardExposureDomains(const std::array<float,7>& exposure) {
+    for(float value:exposure)
+        if(!std::isfinite(value)||value<=0)
+            throw std::invalid_argument("NICE exposure domain");
+    ForwardExposureDomains d{};
+    const float shortBase=exposure[5]/exposure[6];
+    for(int f=0;f<7;++f)d.frameEV[f]=(exposure[f]/exposure[6])/shortBase;
+    d.frameEV[6]=1.f;
+    d.normalEV=d.frameEV[forwardReferenceSlot];
+    d.normalizationEV=d.frameEV[4];
+    return d;
+}
 
 struct TileAxis {
     int inputOrigin, outputOrigin, outputSize, crop;

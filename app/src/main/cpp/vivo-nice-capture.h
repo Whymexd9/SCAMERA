@@ -16,6 +16,7 @@ inline int reflectCfa(int x,int size);
 // and sub-tile image padding remain SCAMERA adaptations, not stock MEE.
 struct Burst {
     int w=0,h=0,cfa=0;
+    int noiseReferenceSlot=0; // v1-v3 noise belongs to N; v4 belongs to L
     float white=0;
     NiceNoise noise{}; bool cameraNoise=false,diagnostics=false,canonicalRggb=false;
     std::array<float,4> black{};
@@ -46,7 +47,7 @@ struct MappedNiceBurst {
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>3) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>4) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
@@ -57,6 +58,7 @@ struct MappedNiceBurst {
                 if(!std::isfinite(burst.noise.slope)||burst.noise.slope<=0||!std::isfinite(burst.noise.offset)||burst.noise.offset<0||h[27]>1)
                     throw std::runtime_error("Invalid Camera2 noise profile/diagnostic flags");
                 burst.cameraNoise=true;burst.diagnostics=h[27]!=0;
+                burst.noiseReferenceSlot=h[1]>=4?4:0;
             }
             for(int i=h[1]>=2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
             if(!std::isfinite(burst.white)||burst.white>65535)throw std::runtime_error("NICE white level");
@@ -218,28 +220,28 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     constexpr int tile=forwardTileSize;
     auto ref=guides(b,forwardReferenceSlot);std::array<Warp,7> warp;
     std::array<std::vector<uint16_t>,7> luts;
-    const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[forwardReferenceSlot]);
+    const auto domains=forwardExposureDomains(b.exposure);
+    if(b.cameraNoise && b.iso[b.noiseReferenceSlot]!=b.iso[4])
+        throw std::runtime_error("Legacy NICE capture lacks the long-reference noise profile; NCH v4 required");
+    const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[4]);
     // The bundled graph was trained with a fixed ISO-50 normalization.
     // Camera2 noise may describe the frame but must not change the network's
     // tensor scale on every shot. Use the same normalization for VST and IVST.
     const auto baseline=imx06cHdrNoise(50);
-    // TODO: ref/refn=3 select radiometric LEVELS, not the normal-frame slot.
-    // The adapter still conflates refEV/refNEV/refEv0EV; see the stock oracle.
-    // Camera2 black subtraction happens before 14-bit encoding, so black=0.
+    // ISO-50 norm is fixed; ref/refn noise and refNEV belong to L. The
+    // output remains normal-reference linear RGB for the downstream adapter.
     float norm=forwardNormCoefficient*(2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375)));
-    // Exposures are expressed relative to the shortest captured frame for the
-    // unit-range IVST. Public tensors carry sqrt(EV_N); undo it before IVST and
-    // restore Camera2 normal-reference radiance afterwards (which may exceed 1).
-    const float range=1.f/(*std::min_element(b.exposure.begin(),b.exposure.end()));
-    const float sqrtEV=std::sqrt(range);
-    VstMode2 p{0,n.slope,n.slope,n.offset,1,range,norm,1,{1,1,1},14,16};
-    for(int f=0;f<7;++f){p.frameExposureRatio=b.exposure[f]*range;luts[f]=makeVstMode2(p);warp[f]=align(b,ref,f);}
+    const float range=domains.normalEV;
+    const float sqrtEV=std::sqrt(domains.normalizationEV);
+    VstMode2 p{0,n.slope,n.slope,n.offset,1,domains.normalizationEV,norm,1,{1,1,1},14,16};
+    for(int f=0;f<7;++f){p.frameExposureRatio=domains.frameEV[f];luts[f]=makeVstMode2(p);warp[f]=align(b,ref,f);}
     p.frameExposureRatio=1;
     auto inverse=makeInverseVstMode2(p,16,1.0f/65535,0);
-    const float offset=float(double(n.offset)/(double(n.slope)*n.slope)+.375);
-    float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
+    const float offset=float((double(n.offset)/(double(n.slope)*n.slope)+.375)/domains.normalizationEV);
+    const float maskSignal=std::min(1.f/range,1.f)/n.slope;
+    float vstMask=std::min(2*std::sqrt(maskSignal+offset)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
-    report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[forwardReferenceSlot])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
+    report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[4])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" normalEV="+std::to_string(range)+" refNEV="+std::to_string(domains.normalizationEV));
     report("NICE input: reference in slot 0; canonical RGGB; N/L warp=2 ordered Bayer; S/ES swarp=6 planar RGB; output RGB with sensor-origin restoration");
     report("NICE forward profile: VST norm coefficient=1.1; edge-anchored 544 input tiles, 512 work step, context=16, overlapFusion=0");
     std::array<std::vector<uint16_t>,7> packedRaw;

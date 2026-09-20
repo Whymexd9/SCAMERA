@@ -575,3 +575,37 @@ addition to the documented alignment and Tone/TCE gaps. The misleading
 comment that ref/refn identify a normal-frame slot has been corrected. No
 photographic behavior change or completed port is claimed by this follow-up;
 no new APK has been built or released.
+
+
+### Forward exposure-domain implementation (worker v25, no APK)
+
+The fixed forward adapter now keeps normalEV (N/S) separate from
+normalizationEV (L/S). The ES/S/N/L level ordering is visible in the original
+0x35d828 routing and 0x35e2ac level builder; XML ref/refn=3 selects L when all
+four groups are populated. ExceptNode 0x2ddf14..0x2ddfc8 rebases on selected S,
+sets ES EV to one, and separately divides refMapEV/refNEV/refEv0EV. The adapter
+preserves the two float divisions of this rebase rather than collapsing them.
+`check_vivo_nice_domains.py` compares its nine values directly with those
+original ARM64 instructions and original getters/setters: 103 cases pass
+bit-for-bit, including unequal S/ES and non-binary exposure ratios. This is a
+selected-S arithmetic-block test, not a full ExceptNode execution.
+
+VST/IVST noise normalization and public sqrt(EV) now use L/S; normal-reference
+output radiance remains N/S. The mask retains separate normal and normalization
+terms and the donor's double-to-float ordering for the noise offset. Forward
+ref/refn noise comes from L. NCH v4 explicitly transports that profile; v1-v3
+continue to load, but old transported N noise with unequal N/L ISO is rejected
+before inference because the missing L noise cannot be recovered reliably.
+The selected unwarped image remains input slot zero; this is independent of
+radiometric reference selection. Java and native protocol changes are paired.
+
+Host integration checks use a mock graph and cover HDR radiance 1.6, separate
+RGB planes/CFA layouts, stock tile crops, distinct S/ES, legacy header migration,
+v4 profile association and rejection of missing L calibration. These tests do
+not establish corrected real NPU output or disappearance of the rings. Saved
+pre-fix input tensor snapshots also have the old normalization: the historical
+reference replay's zero difference is not expected after this domain change.
+
+Still incomplete: motion-derived selection and failed-L alignment behavior,
+stock dynamic capture scheduling, and the complete color/segmentation/TCE tone
+chain. No Actions APK is produced for this bounded source correction.
