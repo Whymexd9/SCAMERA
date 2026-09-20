@@ -34,21 +34,18 @@ extern "C" int build(int past,int future,int alternate,const float* a,const int*
   auto b=vivo_vcf::buildNiceHdrCapture(q,ctx,initial);
   if(b.plan.control.frameCount!=q.pastCount+q.futureCount)return -2;
   if(q.pastCount && b.plan.control.frames[0].gain!=37.f)return -3;
-  if(alternate && b.plan.control.frames[past].gain!=37.f)return -4;
-  auto p=static_cast<unsigned char*>(out);
-  std::memcpy(p,b.metadata.aec.data(),192);p+=192;
-  std::memcpy(p,&b.metadata.shortAec,196);p+=196;
-  std::memcpy(p,b.metadata.captureControl.data(),36);p+=36;
-  std::memcpy(p,b.metadata.rawHdrParams.data(),12);p+=12;
-  std::memcpy(p,b.metadata.evContent.data(),8);p+=8;
-  std::memcpy(p,&b.metadata.captureDrcGain,4);
+  if(alternate && future && b.plan.control.frames[past].gain!=37.f)return -4;
+  auto wire=vivo_vcf::encodeNiceHdrRequest(b.metadata);
+  std::memcpy(out,wire.data(),wire.size());
   return 0;
  }catch(const std::invalid_argument&){return -1;}
 }
 '''
 
 def main():
-    ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('library',type=Path);args=ap.parse_args()
+    ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('library',type=Path)
+    ap.add_argument('--payloads',type=Path);args=ap.parse_args()
+    payloads=bytearray()
     assert hashlib.sha256(args.library.read_bytes()).hexdigest()==SHA
     u,_=emulator(args.library)
     preview,control,owner,adapter,meta=0x1100000,0x1110000,0x1120000,0x1130000,0x1140000
@@ -114,12 +111,14 @@ def main():
                   'rawHDRParams','niceHdrExpEVMode','rawHDRCaptureDrcGain']
             expected=b''.join(published['vivo.parameter.'+key] for key in keys)
             assert out.raw==expected,(past,future,alternate,dual,len(expected))
+            payloads.extend(out.raw)
             checked+=1
         for past,future,alternate,index,value in ((17,0,0,0,1.),(4,3,0,96,float('nan')),(4,3,0,112,float('inf'))):
             ac=(ctypes.c_float*128)(*([1.]*128));ac[index]=value
             out=ctypes.create_string_buffer(b'\xa5'*448,448)
             assert build(past,future,alternate,ac,ic,1.,out)==-1
             assert out.raw==b'\xa5'*448
+        if args.payloads:args.payloads.write_bytes(payloads)
         print(f'PASS: {checked} original vendor publications match connected query/request builder; atomic rejection verified')
         print('Exposure units preserved. No device capture or TCE call is tested.')
 

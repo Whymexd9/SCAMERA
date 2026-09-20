@@ -81,3 +81,59 @@ AE fields. Invalid counts and paired-short AE are rejected atomically.
 
 This is host boundary verification, not capture validation or a claim that
 photographic artifacts are fixed.
+
+## Android request-field bridge
+
+`encodeNiceHdrRequest` exports the six payloads as exactly 448 little-endian
+bytes in the order above. It writes each 32-bit word explicitly, with no struct
+padding, pointer fields or numeric conversion of the short-AEC integer tail.
+`VivoNiceRequestPlan.decode` takes a private immutable copy. The caller's buffer
+position and byte order are not changed. Counts, the recovered zero-batch
+layout, active exposure fields and DRC are validated before a plan is returned.
+
+`applyExposureFields` binds the verified subset to a **fresh, unpublished**
+Camera2 builder for a specified series index:
+
+| Request field | Value |
+| --- | --- |
+| `vivo.parameter.VivoAlgoAECFrameControl` | Complete 48-float primary array |
+| `vivo.parameter.VivoAlgoCaptureFrameControl` | Complete nine-integer control array |
+| `vivo.parameter.rawHDRParams` | Three caller-supplied integers |
+| `vivo.control.RequestLeftInThisSnapshot` | `Integer[]{past,future}` for index zero, `{0,0}` otherwise |
+| `android.control.enableZsl` | True for indices below pastCount, false thereafter |
+| `android.control.aeLock` | False |
+
+The full six-field publication by the native adapter is **not** evidence that
+all six fields should be written into Camera2 requests. The supplied stock
+`SuperNightCaptureCommand.executeRawVifVivoRawHdrCommand` copies the three
+vendor fields listed here; it does not copy short-AEC, EV-content or capture
+DRC in that block. Those three payloads remain intact for downstream consumers.
+The stock `VivoCaptureRequestKey` declares RequestLeftInThisSnapshot as
+`Integer[]`, not `int[]`. Its VOuterCaptureRequest wrapper also interprets
+these counts, with a version-dependent VCF path. A Camera2 ZSL flag alone
+does not reproduce that internal queue behavior.
+
+Arrays are copied for each builder, so later requests and mutations do not
+change the frozen plan. Unsupported vendor keys propagate an error. Discard a
+builder after failure; setting individual Camera2 fields is not transactional.
+There is no fallback to a manually exposed sequence. No sensor-mode write is
+introduced, and the stock five-second exposure sentinel is not guessed to be
+a valid SCAMERA request.
+
+```
+python tools/check_vivo_nice_request_android.py /path/to/libvivo.vas.adapter.vcf.so
+```
+
+The test first executes the existing original ARM64 metadata-publication
+oracle against the production C++ builder and encoder. It then passes those
+384 encoded plans through the actual Java bridge into 3648 **stub** Camera2
+builders. It checks key types, every copied value, series order, immutable
+ownership, opaque inactive float bits and integer-tail preservation, malformed
+input and unsupported-key propagation. It is not an Android instrumentation
+test or evidence that the device accepts the requests.
+
+**Activation status:** this bridge is not called by CaptureController. There
+is no JNI producer or capture-session submission yet. Scene/motion/current-mode
+request context, the full AE producer, VCF queue integration and model dispatch
+for variable series remain required. The active worker still consumes seven
+inputs and does not call TCE. No APK has been built from this bridge.

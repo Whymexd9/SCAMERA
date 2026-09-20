@@ -32,6 +32,26 @@ struct NiceHdrCaptureBundle {
     NiceHdrPlan plan;
     NiceHdrRequestMetadata metadata;
 };
+// Explicit little-endian value transport to Android; never send native struct
+// padding or float-converted dualRawType. This is NOT a HAL metadata blob.
+inline std::array<uint8_t,448> encodeNiceHdrRequest(const NiceHdrRequestMetadata& m) {
+    std::array<uint8_t,448> out{};
+    size_t position=0;
+    const auto word=[&](const auto& value) {
+        static_assert(sizeof(value)==4);
+        uint32_t bits;
+        std::memcpy(&bits,&value,4);
+        for(unsigned i=0;i<4;++i) out[position++]=uint8_t(bits>>(8*i));
+    };
+    for(const auto& v:m.aec) word(v);
+    for(const auto& v:m.shortAec.values) word(v);
+    word(m.shortAec.dualRawType);
+    for(const auto& v:m.captureControl) word(v);
+    for(const auto& v:m.rawHdrParams) word(v);
+    for(const auto& v:m.evContent) word(v);
+    word(m.captureDrcGain);
+    return out;
+}
 inline NiceHdrCaptureBundle buildNiceHdrCapture(const NiceHdrQuery& query,
                                                const NiceHdrRequestContext& context,
                                                const NiceHdrPlan& initializedPlan) {
