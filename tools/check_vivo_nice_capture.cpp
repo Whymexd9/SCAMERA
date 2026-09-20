@@ -94,7 +94,7 @@ int main(){
         // even though the current Camera2 slope is .00015 at ISO 25600.
         const double baseSlope=(0.0001242085*50-0.0014234833)/255;
         const double baseOffset=(0.0272538637+0.0000000158*50*50+0.0000376323*50)/65025;
-        const double norm=2*std::sqrt(1/baseSlope+baseOffset/(baseSlope*baseSlope)+.375);
+        const double norm=1.1*2*std::sqrt(1/baseSlope+baseOffset/(baseSlope*baseSlope)+.375);
         const double currentOffset=double(offset)/(double(slope)*slope)+.375;
         const double expectedMask=2*std::sqrt(1/double(slope)+currentOffset)/norm;
         assert(std::abs(in[21]-expectedMask)<.00004);checkedTensor=true;
@@ -135,5 +135,5 @@ int main(){
         for(size_t i=0;i<color.size();++i)assert(std::abs(color[i]-scene[i%3])<.001f);
     }
 
-    std::cout<<"PASS: NICE full tile path, HDR 1.6 retained, 4-tile overlap/crop coverage; error="<<worst<<" (mock graph)\n";
+    std::cout<<"PASS: NICE full tile path, HDR 1.6 retained, 4-tile stock crop coverage; error="<<worst<<" (mock graph)\n";
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "vivo-nice-preprocess.h"
+#include "vivo-nice-profile.h"
 #include <fstream>
 #include <functional>
 #include <sys/mman.h>
@@ -11,8 +12,8 @@
 
 namespace vivo_nice {
 inline int reflectCfa(int x,int size);
-// Camera2 adaptation around the recovered CRE tensor/VST contract. Alignment
-// and tile padding are owned by SCAMERA; they are not claimed to be stock MEE.
+// Camera2 adaptation around the recovered CRE tensor/VST contract. Motion estimation
+// and sub-tile image padding remain SCAMERA adaptations, not stock MEE.
 struct Burst {
     int w=0,h=0,cfa=0;
     float white=0;
@@ -207,7 +208,7 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                                       const std::function<void(const std::string&)>& report,
                                       const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={}) {
     Burst b=sensor;b.canonicalRggb=true;
-    constexpr int tile=544,margin=16,core=512,step=496;
+    constexpr int tile=forwardTileSize;
     auto ref=guides(b,3);std::array<Warp,7> warp;
     std::array<std::vector<uint16_t>,7> luts;
     const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[3]);
@@ -217,7 +218,7 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     const auto baseline=imx06cHdrNoise(50);
     // Ref and RefN are the same normal-frame slot in the forward HDR XML.
     // Camera2 black subtraction happens before 14-bit encoding, so black=0.
-    float norm=2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375));
+    float norm=forwardNormCoefficient*(2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375)));
     // Exposures are expressed relative to the shortest captured frame for the
     // unit-range IVST. Public tensors carry sqrt(EV_N); undo it before IVST and
     // restore Camera2 normal-reference radiance afterwards (which may exceed 1).
@@ -232,16 +233,17 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     uint16_t mask=uint16_t(vstMask*65535);
     report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
     report("NICE input: canonical RGGB; N/L warp=2 ordered Bayer; S/ES swarp=6 planar RGB; output RGB with sensor-origin restoration");
+    report("NICE forward profile: VST norm coefficient=1.1; edge-anchored 544 input tiles, 512 work step, context=16, overlapFusion=0");
     std::array<std::vector<uint16_t>,7> packedRaw;
     for(int f=0;f<7;++f)packedRaw[f].resize(tile*tile*(f>=5?3:1));
     std::array<TaggedFrame,7> frames;
-    std::vector<float> result(size_t(b.w)*b.h*3,0),weight(size_t(b.w)*b.h,0),output(tile*tile*3);
-    std::vector<int> xs,ys;for(int x=0;;x+=step){xs.push_back(x);if(x+core>=b.w)break;}for(int y=0;;y+=step){ys.push_back(y);if(y+core>=b.h)break;}
+    std::vector<float> result(size_t(b.w)*b.h*3,0),output(tile*tile*3);
+    const auto xs=forwardTileAxis(b.w),ys=forwardTileAxis(b.h);
     int finished=0;
-    for(int oy:ys)for(int ox:xs){
+    for(const auto& ty:ys)for(const auto& tx:xs){
         for(int f=0;f<7;++f){
             for(int y=0;y<tile;++y)for(int x=0;x<tile;++x){
-                int px=reflectCfa(ox+x-margin,b.w),py=reflectCfa(oy+y-margin,b.h);
+                int px=reflectCfa(tx.inputOrigin+x,b.w),py=reflectCfa(ty.inputOrigin+y,b.h);
                 const size_t pos=size_t(y)*tile+x;
                 if(f>=5){
                     const auto rgb=warpShortRgb(b,f,px,py,warp[f].at(px,py));
@@ -267,18 +269,14 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         if(output.size()!=size_t(tile)*tile*3)throw std::runtime_error("NICE tile output shape changed");
         if(snapshot && (finished==0 || finished==int(xs.size()*ys.size()/2)))
             snapshot("nice-diag-model-tile-"+std::to_string(finished),output,tile,tile);
-        for(int y=0;y<core&&oy+y<b.h;++y)for(int x=0;x<core&&ox+x<b.w;++x){
-            float wx=(ox>0&&x<16)?float(x+1)/17:1;float wy=(oy>0&&y<16)?float(y+1)/17:1;
-            if(ox+core<b.w&&x>=core-16)wx=float(core-x)/17;
-            if(oy+core<b.h&&y>=core-16)wy=float(core-y)/17;
-            float w=wx*wy;size_t dst=size_t(oy+y)*b.w+ox+x,src=size_t(y+margin)*tile+x+margin;
+        for(int y=0;y<ty.outputSize;++y)for(int x=0;x<tx.outputSize;++x){
+            size_t dst=size_t(ty.outputOrigin+y)*b.w+tx.outputOrigin+x;
+            size_t src=size_t(y+ty.crop)*tile+x+tx.crop;
             for(int c=0;c<3;++c){float value=output[src*3+c];if(!std::isfinite(value))throw std::runtime_error("NICE tile has nonfinite/unwritten pixels");
-                unsigned idx=unsigned(std::clamp(value*(65535.f/sqrtEV),0.f,65535.f));result[dst*3+c]+=inverse[c][idx]*w*range;}
-            weight[dst]+=w;
+                unsigned idx=unsigned(std::clamp(value*(65535.f/sqrtEV),0.f,65535.f));result[dst*3+c]=inverse[c][idx]*range;}
         }
         report("NICE TILE "+std::to_string(++finished)+"/"+std::to_string(xs.size()*ys.size()));
     }
-    for(size_t i=0;i<weight.size();++i){if(!(weight[i]>0))throw std::runtime_error("NICE tile coverage gap");for(int c=0;c<3;++c)result[i*3+c]/=weight[i];}
     restoreSensorOrigin(result,b.w,b.h,b.cfa);
     return result;
 }

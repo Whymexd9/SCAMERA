@@ -18,7 +18,7 @@ import java.util.*;
 import java.util.zip.*;
 import static android.opengl.GLES30.*;
 
-/** Per-capture diagnostics. Bounded previews, exact sampled floats, no image changes. */
+/** Per-capture diagnostics: sampled previews plus the exact bounded native input. */
 public final class NiceDiagnostics {
     private static final ThreadLocal<Job> active=new ThreadLocal<>();
     private static final java.util.concurrent.ThreadPoolExecutor exports =
@@ -46,6 +46,8 @@ public final class NiceDiagnostics {
                     +"\nPNG: clipped preview only; linear stages use gamma 1/2.2. PFM retains negative/HDR values."
                     +"\n00: Bayer-cell preview, black-subtracted, NO WB. 01: NPU tile before IVST."
                     +"\n02: reconstructed native RGB after IVST. Other files: named GPU stages."
+                    +"\ninput.nch: exact native burst, 128-byte NCH header followed by seven little-endian RAW16 planes."
+                    +"\nIt retains every model slot and its exposure/ISO, black level and noise calibration for replay."
                     +"\nSensor portability is experimental; original model weights are unchanged.\n";
             Files.write(new File(j.dir,"README.txt").toPath(),info.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             int step=Math.max(1,(Math.max(ref.width,ref.height)/2+1023)/1024),w=ref.width/(2*step),h=ref.height/(2*step);
@@ -94,6 +96,14 @@ public final class NiceDiagnostics {
     }
     public static void nativeFiles(File source,String report) {
         Job j=active.get();if(j==null)return;
+        // Take ownership before the client's finally block removes its job.
+        // Both directories are in this app's cache: rename avoids another full
+        // seven-frame copy and lets the existing export queue do compression.
+        File burst=new File(source,"input.f32");
+        if(burst.isFile()&&burst.length()>=128&&burst.length()<=128+16000000L*14) {
+            if(!burst.renameTo(new File(j.dir,"input.nch")))
+                Log.w("NICE_DIAG","Could not retain native burst for replay");
+        }
         try {
             File[] files=source.listFiles((d,n)->n.startsWith("nice-diag-")&&n.endsWith(".pfm"));
             if(files!=null)for(File f:files)Files.copy(f.toPath(),new File(j.dir,"01-"+f.getName()).toPath());

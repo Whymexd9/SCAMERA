@@ -410,3 +410,49 @@ random 14-bit RAW values and 28 positive/negative translation pairs, all
 458,752 ordered-Bayer and planar-RGB samples matched the adapter bit-for-bit.
 This covers translation sampling, not the original homography/flow estimator
 or GPU compiler rounding under arbitrary projective transforms.
+
+
+## Original forward profile and tile planner (worker v23)
+
+The user's `SCAMERA(6).zip` capture still contains coloured rings in the raw
+NPU tile, before IVST and GPU tone processing. The Bayer reference does not
+show these rings. This localizes the observed failure to NICE preparation or
+inference; it does not establish that the changes below eliminate it.
+
+The connected HDR adapter now applies the missing 1.1 normalization coefficient.
+MainCamera and UltraWideCamera **HDRConfig** both declare againList=0,5 and
+againCoeff=1.1,1.1. CRE selector 0x36cbe4 chooses the coefficient and stores it
+at state+0x778; 0x2d8a30 multiplies the ISO-50 normalization by it. This is
+separate from the XML vstNormCoeff=1 base coefficient. Both VST and IVST use
+this corrected normalization.
+
+Tile assembly now follows CRE BlockInit 0x2fe8f8 and planner 0x3dba84. A 544
+input has 16 pixels of context on either side of a 512-pixel work area. First
+and last input tiles anchor to the actual image boundaries; output crops are
+asymmetric. Overlap/useFusion defaults to zero in this profile, so adjacent
+output tiles are copied, not blended. The old 496-pixel step, negative-origin
+first tile and weighted output overlap have been removed. At 4096x3072 this
+produces 48 inference tiles instead of 63. Images smaller than one model tile
+still require the adapter's explicit CFA-preserving reflection.
+
+`tools/check_vivo_nice_stock_profile.py <libvivo_nice_cre.so>` hash-checks the
+same donor as the VST oracle, executes its ARM64 planner unmodified, compiles
+the connected C++ planner and compares input/output offsets, crops and work
+sizes. 289 image dimensions and 1,296 descriptors match exactly, including
+512/528/544 boundaries, narrow final strips and 4096x3072. This supersedes
+older sections describing SCAMERA-owned tile planning.
+
+Diagnostic exports now retain `input.nch`: the exact 128-byte native header
+and all seven RAW16 planes, moved before worker-job cleanup. This allows
+replaying the actual model input instead of reconstructing a burst from only
+one DNG. Export remains on the existing bounded background queue.
+
+Full-stock differences remain: SCAMERA motion estimation, Camera2 radiometry,
+ZSL selection and bracket scheduling, and the photographic tone path. Tone
+models' synthetic runtime checks are not photographic integration. Original
+TCE FastTM config specifies NormFloat and NormValue=15615 (not 16383 or 65535);
+its original host divides uint16 RGB by that value at 0x39dee4. Its low-resolution
+output feeds a log-domain gain-map and guided-filter path. Simply substituting
+the model for the existing RGB tone shader would use the wrong contract.
+The recovered sources and host bindings are being inspected; FastTM, Adams
+and HDRNet are not connected to photo processing by this commit.
