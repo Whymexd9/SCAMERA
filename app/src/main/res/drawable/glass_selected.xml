@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Selected item inside a glass control: a light wash, not a colour. Colour on
-     these would compete with the shutter, which is the only white element. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#38FFFFFF" />
-    <corners android:radius="999dp" />
-</shape>

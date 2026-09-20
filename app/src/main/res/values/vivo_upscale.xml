@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="pref_vivo_upscale_backend_key" translatable="false">pref_vivo_upscale_backend_key</string>
-    <string-array name="vivo_upscale_backend_entries">
-        <item>Vivo RAISR — экспериментальный</item>
-        <item>Vivo SoftPQE ×2 — экспериментальный</item>
-    </string-array>
-    <string-array name="vivo_upscale_backend_values"><item>raisr</item><item>softpqe</item></string-array>
-</resources>

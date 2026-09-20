@@ -1,4 +1,0 @@
-<resources>
-    <string-array name="mfsr_engine_entries"><item>Multi-frame Remosaic</item><item>Sabre RAW — GPU</item></string-array>
-    <string-array name="mfsr_engine_values"><item>native</item><item>sabre</item></string-array>
-</resources>

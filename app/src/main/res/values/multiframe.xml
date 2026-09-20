@@ -1,6 +1,0 @@
-<resources>
-    <string-array name="multiframe_source_entries"><item>Bayer</item><item>Quad 2×2</item><item>Tetra 4×4</item></string-array>
-    <string-array name="multiframe_source_values"><item>1</item><item>2</item><item>4</item></string-array>
-    <string-array name="multiframe_cfa_entries"><item>Авто — метаданные сенсора</item><item>RGGB</item><item>GRBG</item><item>GBRG</item><item>BGGR</item></string-array>
-    <string-array name="multiframe_cfa_values"><item>auto</item><item>RGGB</item><item>GRBG</item><item>GBRG</item><item>BGGR</item></string-array>
-</resources>
