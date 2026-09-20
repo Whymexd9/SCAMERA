@@ -236,7 +236,50 @@ missing/invalid values and immutable snapshots using the actual Java classes.
 
 ## Verification
 
+### Create argument producer
+
+`vivo-nice-tce-create.h` ports the writes in CRE `38c19c..38c414`,
+inside the argument producer at `38c16c`. The caller must supply the existing
+0x4c8-byte argument context; the helper preserves every unassigned byte.
+It cannot safely be used as a zero-filled replacement for full initialization.
+String addresses are borrowed and must outlive the TCE instance.
+
+| Create offset | CRE source |
+| --- | --- |
+| 0x00 | Debug level returned before the block |
+| 0x08..0x60 | Model/config/effect/segmentation/all-in-one/sky/sun/dump/SPE/face/outline string addresses |
+| 0x68..0xcf | Input 0x18a0..0x1907, opaque camera info |
+| 0xd0 / 0xd4 | Args 0x14 / 0x10, photo mode / mode |
+| 0xd8..0xf7 | Input 0x186c..0x188b, opaque scene info |
+| 0xf8 | Number of 44-byte entries in the vector reached through Args 0x68 |
+| 0xfc | Input 0x1818, overridden by optional color-info 0x1484 |
+| 0x100 | GPU binary path from Args 0x50 |
+| 0x108 | Config block 0x164 |
+| 0x110..0x173 | Explicit zero writes |
+| 0x218 | Explicit 64-bit zero |
+| 0x220 / 0x228 | Args 0x1c / 0x18, enum meanings not inferred |
+
+The config string block is at config-object 0x5d08. The test executes the
+original ARM64 writes and real leaf getters across 128 cases, including both
+libc++ string layouts, present/absent color info and randomized initial bytes.
+This verifies argument binding only; it does not call TCE Create or Process.
+
+Output ownership remains separate: CRE `392aa8` allocates a 0x5230-byte native
+image object and shared ownership control; descriptors borrow its buffers.
+Descriptor copies alone cannot replace that lifetime. TCE image `dataSize`
+is at 0x50 (confirmed by the original input logger); the block at 0x60 remains
+opaque, even though the CRE output producer writes there.
+
+The available donors import `VAF::VMetadata::getMetadataValueByTag` from the
+missing `libvivo.algo.metadata.so`. Internal IDs (including 0x3015f for HDR DRC)
+are not yet proven equivalent to public Camera2 result keys. The phone's
+supplied file inventory lists `/vendor/lib64/libvivo.algo.metadata.so`, 154536
+bytes, but it is absent from the extracted donors and `vivo-vcf-libs.tar.gz`.
+Recovering this dependency is a next investigation step, not proof that all
+remaining TCE, scene and capture integration requirements will be resolved.
+
 ```
+python tools/check_vivo_nice_tce_create.py /path/libvivo_nice_cre.so
 python tools/check_vivo_nice_tce_contract.py /path/libvivo_nice_cre.so /path/libvivo_nicetce.so --wrapper /path/libvivo.vaf.algo.nice.so
 python tools/check_vivo_nice_tce_gamma.py /path/libvivo_nicetce.so
 python tools/check_nice_reference_metadata.py
