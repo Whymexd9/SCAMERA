@@ -15,6 +15,13 @@ public final class VivoNeuralWorker {
         {"libQnnHtp.so","73683f1dabfafe1199ff922b43cf748198bbc793783d50585aeeb22e0e14caa2"},
         {"libQnnHtpV79Skel.so","3353856643575df6ff215ca430e0d9274e5c8ba62a172907b7bc5a5c716f6494"}
     };
+    public static final String[][] NICE_TONE_FILES = {
+        {"nice-tone-fasttm-v79.bin","696317a4f1478fa5a8b048425dc45c03af525b2db53a8e05eb66666df5231e2b"},
+        {"nice-tone-adams-v79.bin","6b484f11c748007978d928e14813ba6b98bddcbf53c3a8fef445094824e0d0fe"},
+        {"nice-tone-adams-landscape-v79.bin","14185fa7ea113e8fd3fc205281b9b83ccea9f2fc6346e44b6e121d0902a80b51"},
+        {"nice-tone-hdrnet-coeff-v79.bin","9bee14bddfd9dc0a7820c5e20087700d1a3a09c13939a4f8795f6a6cc52f3297"},
+        {"nice-tone-hdrnet-weight-v79.bin","ae050107939723b545c194f41fa70245dcd3c25f358e6c9cc1b7e6d8435cdb56"}
+    };
     public static final String[][] NICE_FILES = {
         {"nice-main-forward-v79.bin","a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c"}
     };
@@ -30,14 +37,15 @@ public final class VivoNeuralWorker {
         int exit=1;
         try {
             boolean niceCapture=args.length==4 && args[1].equals("--nice-capture");
-            boolean nice=niceCapture || (args.length==2 && args[1].equals("--nice"));
+            boolean niceTone=args.length==2 && args[1].equals("--nice-tone-check");
+            boolean nice=niceTone || niceCapture || (args.length==2 && args[1].equals("--nice"));
             boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(niceCapture?"NICE HDR capture":nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(niceTone?"NICE tone runtime check":niceCapture?"NICE HDR capture":nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
             if(!nice && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
             if(nice){
-                java.util.Collections.addAll(required,NICE_FILES);
+                java.util.Collections.addAll(required,niceTone?NICE_TONE_FILES:NICE_FILES);
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
             } else java.util.Collections.addAll(required,hex?HEX_FILES:FILES);
             for(String[] item:required){
@@ -53,7 +61,8 @@ public final class VivoNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(niceCapture){command.add("--nice-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
+            if(niceTone){command.add("--nice-tone-check");command.add(args[0]);}
+            else if(niceCapture){command.add("--nice-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(nice){command.add("--nice-check");command.add(args[0]);}
             else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(hex){command.add("--hexquad-check");command.add(args[0]);}

@@ -81,6 +81,7 @@ def main():
     assets = pinned_assets()
     hex_assets = pinned_assets('HEX_FILES', 6)
     nice_assets = pinned_assets('NICE_FILES', 1)
+    nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
     for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets)):
         for name, sha in manifest.items():
             if digest_file(directory / name) != sha:

@@ -24,8 +24,8 @@ usesqrtev=1, no input clipping, inputScale 1/32767, outputScale
 0.00008737626194488257. Those XML scales are not automatically the public QNN
 FLOAT32 client-buffer scale. Decoded GeneralNetPreprocessCL_7 confirms seven consecutive triplets and one
 constant factor*clipMask channel. Each triplet contains tagged Bayer/planar
-samples, not an automatically demosaiced RGB frame. Actual frame-code routing,
-per-shot factors and active kernel selection remain unverified.
+samples, not an automatically demosaiced RGB frame. Frame-code routing is recovered below; exact per-shot factors and active stock
+kernel selection remain unverified.
 
 The earlier runtime captures prove NICE libraries were loaded, not which model
 was executed for an individual photograph. Static configuration candidates are
@@ -119,8 +119,7 @@ committed to git.
 - General float-output IVST LUT application: explicit scale/zero point,
   clamp to uint16 range, truncate then right shift, separate colour LUTs,
   optional row*column overlap-add and caller-supplied output limits. Values
-  above 1 survive when the caller's HDR limit permits them. This applies a
-  supplied IVST LUT; it does not yet generate the donor's IVST LUT.
+  above 1 survive when the caller's HDR limit permits them. The mode-2 generator is now recovered too; see capture validation below.
 
 Validation: `tools/check_vivo_nice_vst.py <CRE.so>` emulates the original ARM64
 function with Unicorn; only the noise lookup is supplied as explicit test
@@ -136,13 +135,12 @@ clipMask by truncating a host mask times 65535 at 0x352200..0x35220c. The factor
 at 0x352324 has a dtype-dependent denominator; the float branch divides the
 host numerator by 65535, while types 3/4 include additional host scale terms.
 Do not directly substitute XML inputScale or outScale for these bindings.
-The source confirms formulas, but host object fields, frame routing, IVST LUT
-generation, tile crop and per-shot calibration still require recovery before
-feeding actual camera bursts to this model. The connected Camera2 adaptation and its remaining stock-parity limits are
+The source confirms formulas. Exact stock tile planning and per-shot calibration
+remain distinct from the connected Camera2 adaptation. The connected Camera2 adaptation and its remaining stock-parity limits are
 described below.
 
 
-## Capture integration (next bundled build)
+## Capture integration (30235)
 
 The original forward graph is now connected behind the separate
 `pref_vivo_nice_enabled` switch under Vivo / Autonomous HDR. It defaults off.
@@ -192,3 +190,43 @@ Models/QNN are bundled and hash checked. The FastRPC platform driver remains a
 system dependency. Native inference and file copies run on the processing
 thread, not the UI thread. Report lines go to the detailed SCAMERA log and a
 separate NICE capture report; the old runtime self-test cannot overwrite it.
+
+## Tone runtime continuation
+
+`vivo-nice-tone-contracts.json` records exact source/context hashes and actual QNN
+metadata for five supplied candidates: FastTM, portrait/nonportrait Adams, and
+HDRNet S1 coefficient/weight graphs. `tools/extract_vivo_nice_tone.py` extracts
+only these contexts after validating their hashes and graph descriptors.
+
+The diagnostics screen adds a separate root tone-model check. All five models
+and the same pinned QNN runtime are APK-contained. It checks graph names, tensor
+names/counts, shapes and types before dispatch. Adams uses two UFIXED16 inputs
+(1024x1024 RGB and 512x512 mask), rather than interpreting its wrapper as a
+single FLOAT32 image. Raw quantized uniform codes are synthetic diagnostics;
+the runtime quantization descriptors are printed without claiming scene units.
+Float outputs are poisoned with NaN. Quantized outputs are run twice for the
+same input with distinct output poisons, rejecting unwritten/nondeterministic
+results. There are two synthetic input fixtures per model. Exceptions are
+reported per model; the bounded native process reports the last stage on crash.
+Native/client/activity limits are 360/420/480 seconds. The capture report remains
+separate. No new tone model is automatically enabled for real photographs.
+
+Concrete mismatches prevent treating XML as a ready photographic contract:
+FastTM actually outputs `_376_0`, not XML `371`; sceneseg actually has 256x256
+input, not the LCA XML's 512x512 declaration. The available night models are
+2-input Adams graphs, not the coefficient/weight filenames still referenced in
+HDRNet configuration. The supplied S1 HDRNet pair is recorded as a candidate;
+this does not establish it as the active TCE model for this firmware mode.
+
+The MEE library exports face magic, TCM and USM/pyramid sharpening. Its supplied
+configuration describes those roles; it is not evidence of an original RAW
+motion-estimation engine. Prior loose references to "MEE alignment" should not
+be used to infer a stock alignment contract. LCA's supplied configuration requests
+scene masks, highlighting another distinct input contract.
+
+Readable original tone/TCE OpenCL sources were recovered locally, including
+exposure preparation, bilateral-grid application and CCM-protection kernels.
+They remain private evidence, not bundled donor algorithms. Model selection,
+mask semantics, normalization and postprocessing still need verified binding
+before photographic use. First obtain the new tone runtime report on the phone;
+30235's successful CRE test does not verify these additional graphs.

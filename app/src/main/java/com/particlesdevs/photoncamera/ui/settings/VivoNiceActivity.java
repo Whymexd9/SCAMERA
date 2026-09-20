@@ -23,7 +23,7 @@ public final class VivoNiceActivity extends Activity {
     private final StringBuilder report=new StringBuilder();
     private SharedPreferences saved;
     private TextView output;
-    private Button start,rootStart;
+    private Button start,rootStart,toneStart;
     private volatile boolean running;
     private native void nativeProbe(String directory);
 
@@ -37,6 +37,8 @@ public final class VivoNiceActivity extends Activity {
         layout.addView(note);
         start=new Button(this);start.setText("Проверить без root");start.setOnClickListener(v->runProbe(false));layout.addView(start);
         rootStart=new Button(this);rootStart.setText("Проверить NICE через root");rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
+        toneStart=new Button(this);toneStart.setText("Проверить тональные модели NICE через root");
+        toneStart.setOnClickListener(v->runProbe(true,true));layout.addView(toneStart);
         Button captureReport=new Button(this);captureReport.setText("Отчёт последней съёмки NICE");
         captureReport.setOnClickListener(v->{
             if(running)return;
@@ -72,15 +74,18 @@ public final class VivoNiceActivity extends Activity {
         if(!hash.toString().equals(item[1])){target.delete();throw new java.io.IOException("SHA-256 mismatch: "+item[0]);}
         onNativeProgress("VERIFIED APK: "+item[0]);
     }
-    private void runProbe(boolean root) {
-        if(running)return;running=true;start.setEnabled(false);rootStart.setEnabled(false);
+    private void runProbe(boolean root) {runProbe(root,false);}
+    private void runProbe(boolean root,boolean tone) {
+        if(running)return;running=true;start.setEnabled(false);rootStart.setEnabled(false);toneStart.setEnabled(false);
         synchronized(report){report.setLength(0);}
         saved.edit().putBoolean("complete",false).commit();
         onNativeProgress("SCAMERA NICE prerequisite v2; root_path="+root+" uid="+android.os.Process.myUid()+"\n"+android.os.Build.FINGERPRINT);
-        main.postDelayed(timeout,240000);
+        main.postDelayed(timeout,tone?480000:240000);
         new Thread(()-> {
             try {
-                if(root) {
+                if(tone) {
+                    com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralClient.selfTestNiceTone(this,this::onNativeProgress);
+                } else if(root) {
                     com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralClient.selfTestNice(this,this::onNativeProgress);
                 } else {
                 File dir=new File(getFilesDir(),"nice-bundled-v1");

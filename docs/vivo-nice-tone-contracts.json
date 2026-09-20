@@ -1,0 +1,202 @@
+[
+  {
+    "file": "nice-tone-fasttm-v79.bin",
+    "source": "nicetce_fasttm_v1.vdnn",
+    "source_sha256": "c2ca5b829d6a41f0efeb248afdb584a9e4c8f4d8bf53e7da0196ec03a9a719c9",
+    "size": 991248,
+    "sha256": "696317a4f1478fa5a8b048425dc45c03af525b2db53a8e05eb66666df5231e2b",
+    "graphs": [
+      {
+        "name": "fasttmv7_arch295k_520input_DX4_1_fp16",
+        "inputs": [
+          {
+            "name": "_1_0",
+            "shape": [
+              1,
+              520,
+              520,
+              3
+            ],
+            "datatype_hex": "0x232"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "_376_0",
+            "shape": [
+              1,
+              520,
+              520,
+              3
+            ],
+            "datatype_hex": "0x232"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "nice-tone-adams-v79.bin",
+    "source": "nicetce_night_portrait_v2.vdnn",
+    "source_sha256": "36e1742acefe98d24df84c3eea8f13e5f64da9d345b52ee60b0d6b3c55b9b537",
+    "size": 10158400,
+    "sha256": "6b484f11c748007978d928e14813ba6b98bddcbf53c3a8fef445094824e0d0fe",
+    "graphs": [
+      {
+        "name": "nicetone_adams_x200u_quant_8w16a32b",
+        "inputs": [
+          {
+            "name": "x_0",
+            "shape": [
+              1,
+              1024,
+              1024,
+              3
+            ],
+            "datatype_hex": "0x416"
+          },
+          {
+            "name": "mask_0",
+            "shape": [
+              1,
+              512,
+              512,
+              1
+            ],
+            "datatype_hex": "0x416"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "d2s_0",
+            "shape": [
+              1,
+              1024,
+              1024,
+              3
+            ],
+            "datatype_hex": "0x416"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "nice-tone-adams-landscape-v79.bin",
+    "source": "nicetce_night_noportrait_v11.vdnn",
+    "source_sha256": "4bc237ec58ceb6abbd5828e799f2be092260adac4809407f6d32a244970b6032",
+    "size": 10162552,
+    "sha256": "14185fa7ea113e8fd3fc205281b9b83ccea9f2fc6346e44b6e121d0902a80b51",
+    "graphs": [
+      {
+        "name": "nicetce_noportrait_v11_quant_8w16a32b",
+        "inputs": [
+          {
+            "name": "x_0",
+            "shape": [
+              1,
+              1024,
+              1024,
+              3
+            ],
+            "datatype_hex": "0x416"
+          },
+          {
+            "name": "mask_0",
+            "shape": [
+              1,
+              512,
+              512,
+              1
+            ],
+            "datatype_hex": "0x416"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "d2s_vnnop_0",
+            "shape": [
+              1,
+              1024,
+              1024,
+              3
+            ],
+            "datatype_hex": "0x416"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "nice-tone-hdrnet-coeff-v79.bin",
+    "source": "aitm_hdrnet_coeff_s1_fp16.vdnn",
+    "source_sha256": "c2f1d0df197b6a98598d2a9191622f553335f8afbab0801c7cd02b7db9654584",
+    "size": 9521192,
+    "sha256": "9bee14bddfd9dc0a7820c5e20087700d1a3a09c13939a4f8795f6a6cc52f3297",
+    "graphs": [
+      {
+        "name": "coeff_1_fp16",
+        "inputs": [
+          {
+            "name": "_1_0",
+            "shape": [
+              1,
+              512,
+              512,
+              8
+            ],
+            "datatype_hex": "0x232"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "_116_0",
+            "shape": [
+              1,
+              32,
+              32,
+              384
+            ],
+            "datatype_hex": "0x232"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "nice-tone-hdrnet-weight-v79.bin",
+    "source": "aitm_hdrnet_weight_s1_fp16.vdnn",
+    "source_sha256": "e20cc30dd86cf65e78803b4a587d30e1b070f4a272aca46cacf37367f6e256b1",
+    "size": 2627792,
+    "sha256": "ae050107939723b545c194f41fa70245dcd3c25f358e6c9cc1b7e6d8435cdb56",
+    "graphs": [
+      {
+        "name": "weight_1_fp16",
+        "inputs": [
+          {
+            "name": "_1_0",
+            "shape": [
+              1,
+              512,
+              512,
+              8
+            ],
+            "datatype_hex": "0x232"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "_134_0",
+            "shape": [
+              1,
+              512,
+              512,
+              2
+            ],
+            "datatype_hex": "0x232"
+          }
+        ]
+      }
+    ]
+  }
+]

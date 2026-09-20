@@ -16,7 +16,7 @@ from inspect_vivo_neural import Metadata
 FORWARD_SHA='7c4663c3c03394841b92cbcc207ad6bd610369c004d45d913aa950cc61511a16'
 CONTEXT_SHA='a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c'
 
-def inspect(path):
+def inspect(path, allow_multiple_inputs=False):
     data=path.read_bytes()
     if not 1024<=len(data)<=64*1024*1024:raise ValueError('VDNN size outside inspected range')
     r=FlatBuffer(data);network=r.pointer(r.field(r.pointer(0),7))
@@ -34,9 +34,9 @@ def inspect(path):
         graphs.append(dict(name=m.string(m.ref_field(g,0)),
             inputs=[m.tensor(t) for t in m.vector(m.ref_field(g,2),True)],
             outputs=[m.tensor(t) for t in m.vector(m.ref_field(g,4),True)]))
-    if len(graphs)!=1 or len(graphs[0]['inputs'])!=1 or len(graphs[0]['outputs'])!=1:
+    if len(graphs)!=1 or (not allow_multiple_inputs and len(graphs[0]['inputs'])!=1) or len(graphs[0]['outputs'])!=1:
         raise ValueError('Unexpected graph/tensor count')
-    result=dict(source_sha256=hashlib.sha256(data).hexdigest(),wrapper_input=tensor(0),wrapper_output=tensor(5),
+    result=dict(source_sha256=hashlib.sha256(data).hexdigest(),wrapper_input=tensor(0) if len(graphs[0]["inputs"])==1 else None,wrapper_output=tensor(5),
                 context=dict(offset=start,bytes=length,sha256=hashlib.sha256(context).hexdigest()),
                 qnn_builds=sorted(set(x.decode() for x in re.findall(rb'v2\.[0-9.]+_[0-9]+',context))),
                 graphs=graphs,preprocessing_verified=False,device_execution_verified=False)

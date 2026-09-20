@@ -7,6 +7,7 @@
 #include "vivo-nice-probe.cpp"
 #undef NICE_HOST_TEST
 #include "vivo-nice-capture.h"
+#include "vivo-nice-tone-probe.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -41,6 +42,12 @@ int main(int argc,char** argv) {
             file.write(reinterpret_cast<const char*>(result.data()),std::streamsize(result.size()*sizeof(float)));
             file.close();if(!file)throw std::runtime_error("Incomplete NICE output");
             alarm(0);report("NICE CAPTURE OK");return 0;
+        }
+        if(argc==3 && std::string(argv[1])=="--nice-tone-check") {
+            if(getuid()!=0)throw std::runtime_error("NICE tone check requires root");
+            alarm(360);
+            vivo_nice::probeTone(argv[2],[](const std::string& line){std::cout<<line<<std::endl;});
+            return 0;
         }
         if(argc==3 && std::string(argv[1])=="--nice-check") {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
