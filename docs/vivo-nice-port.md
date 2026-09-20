@@ -641,3 +641,52 @@ Additional source locations for that work: the CRE global-alignment path at
 parameters from its parameter object's +0x3c/+0x40/+0x44; the wrapper converts
 the resulting nine doubles to floats at 0x29a9cc..0x29a9f8. Calling this internal
 function in the Android worker is not yet implemented or ABI-validated.
+
+### Original corner detection, LK and RANSAC execution (2026-09-20)
+
+`tools/check_vivo_nice_motion.py <libvivo_nice_cre.so>` now executes the pinned
+ARM64 donor instructions under Unicorn. CRE SHA-256 is checked before execution.
+This is a binary oracle, not an Android implementation or a photographic test.
+No instructions in the detector, tracker, estimator or matrix solver are
+replaced. Imports are serviced by explicit bounded allocation/memory/libm and
+single-thread C++ lifetime shims. Logging is silent; optional
+`libvivo.mempool.so` loading fails to exercise CRE's built-in allocator fallback.
+Unknown imports and exhausted instruction budgets fail the test.
+
+Validated entry points:
+
+- `0x28ef00`: original `vivoFindHomographyUp4`, with float2 source/target arrays,
+  double[9] output, parameter pointer, point count, two integer extent arguments,
+  integer mode, then stack output-flag pointer and log level. RANSAC parameters
+  are at +0x3c/+0x40/+0x44 (100, .995f, 3).
+- `0x29a548`: image descriptor A, descriptor B, input float2 points, output float2
+  points, count, accepted-count pointer, parameter pointer, float[9] output H,
+  then stack log level. Descriptor format 9 is the tested single-channel byte
+  format; width/height are +4/+8, data pointer +0x10 and byte stride +0x30.
+  LK parameters are .01f at +0x30, 20 at +0x34 and .7f at +0x38. The wrapper
+  passes an 8x8 window, three levels and .0001f minimum eigenvalue internally.
+- `0x2914d0`: original CPU `vivoRawGoodFeaturesToTrack`, using parameter pointer,
+  image descriptor, zero mask, float2 output storage, count pointer, log level.
+  Tested fields: null CPU context at +0, maxCorners=1000 at +8, minCorners=0 at
+  +0xc, maxCandidates=32768 at +0x10, minDistance=16 at +0x14, useHarris=0 at
+  +0x18, HarrisK=.04f at +0x1c, scale=4 at +0x20, quality=.01f at +0x24.
+
+Direction is significant: LK tracks A points into B, but this wrapper's final
+H maps B coordinates back into A. For B shifted (+2,+1), tracked points move
+(+2,+1), while H is approximately translation (-2,-1). This must not be passed
+blindly to a destination-to-donor sampler for an A destination. The caller's
+matrix inversion, ROI and resolution conventions still require reconstruction.
+
+Results: nine RANSAC cases (translation/rotation/perspective, each with 0/8/20
+outliers among 64 points) have maximum inlier reprojection error below
+0.000008 px. Four smoothed-texture LK+RANSAC translations retain 49/49 points,
+with H error below .0012 px and tracking error below .0037 px. A separate
+256x256 textured pair passes through the original detector and tracker without
+hand-picked points: 105 detected and accepted points, H error .147697 px.
+These are synthetic host results with imported host libm, not full device parity.
+
+Capture still uses the prior local-shift estimator. Required work remains:
+RAW-to-guide construction and feature-selection policy, matrix/ROI conversions,
+failed-frame and motion-dependent exposure handling, dynamic ZSL/bracket
+scheduling, and the complete color/segmentation/TCE tone chain. The new oracle
+is not connected to Android capture, and no APK or artifact-removal claim is made.
