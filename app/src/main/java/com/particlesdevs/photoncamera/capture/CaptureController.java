@@ -2364,13 +2364,32 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount) {
         List<Image> rawImages;
+        java.util.Map<Long,TotalCaptureResult> selectedMetadata;
         synchronized (mZslBufferLock) {
             rawImages = new ArrayList<>(mZslRingBuffer);
             mZslRingBuffer.clear();
+            selectedMetadata = new HashMap<>(mHexZslResults);
+            mHexZslResults.clear();
         }
         mNativeZslBase=null;
-        java.util.Map<Long,TotalCaptureResult> selectedMetadata;
-        synchronized(mZslBufferLock) {selectedMetadata=new HashMap<>(mHexZslResults);mHexZslResults.clear();}
+        if (PreferenceKeys.isVivoNiceEnabled()) {
+            // RAW may arrive before its TotalCaptureResult. Select from matched
+            // pairs BEFORE taking the newest N images, so older complete ZSL
+            // frames can fill the burst without guessing another frame's ISO.
+            for (java.util.Iterator<Image> it = rawImages.iterator(); it.hasNext();) {
+                Image image = it.next();
+                TotalCaptureResult result = selectedMetadata.get(image.getTimestamp());
+                Long exposure = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
+                if (exposure == null || exposure <= 0 || iso == null || iso <= 0) {
+                    Log.w("NICE_HDR", "Skip unpaired ZSL RAW timestamp=" + image.getTimestamp()
+                            + " result=" + (result != null) + " exposureNs=" + exposure + " ISO=" + iso);
+                    image.close();
+                    it.remove();
+                }
+            }
+            Log.i("NICE_HDR", "ZSL matched RAWs=" + rawImages.size() + " requested=" + requestedCount);
+        }
         if(PreferenceKeys.isRawMfsrEnabled()) {
             rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
             java.util.Map<Long,TotalCaptureResult> results=selectedMetadata;

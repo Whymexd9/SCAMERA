@@ -57,6 +57,64 @@ public class CameraResumeTest {
         CaptureController.isProcessing=false;
     }
     @After public void cleanup(){CaptureController.mPreviewCaptureResult=null;CaptureController.mPreviewCaptureRequest=null;managers.close();photon.close();}
+    private Image rawImage(long timestamp) {
+        Image image=mock(Image.class);Image.Plane plane=mock(Image.Plane.class);
+        when(image.getTimestamp()).thenReturn(timestamp);
+        when(image.getFormat()).thenReturn(android.graphics.ImageFormat.RAW_SENSOR);
+        when(image.getWidth()).thenReturn(64);when(image.getHeight()).thenReturn(64);
+        when(image.getPlanes()).thenReturn(new Image.Plane[]{plane});
+        when(plane.getRowStride()).thenReturn(128);when(plane.getPixelStride()).thenReturn(2);
+        when(plane.getBuffer()).thenReturn(java.nio.ByteBuffer.allocate(64*64*2));
+        return image;
+    }
+    private TotalCaptureResult exposure(long ns,int iso) {
+        TotalCaptureResult result=mock(TotalCaptureResult.class);
+        when(result.get(CaptureResult.SENSOR_EXPOSURE_TIME)).thenReturn(ns);
+        when(result.get(CaptureResult.SENSOR_SENSITIVITY)).thenReturn(iso);
+        return result;
+    }
+    @Test public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        java.util.List<Image> raws=new java.util.ArrayList<>();
+        for(long timestamp=1;timestamp<=9;timestamp++) {
+            Image image=rawImage(timestamp);raws.add(image);ring.add(image);
+            if(timestamp<9)metadata.put(timestamp,exposure(24_999_987L,10775));
+        }
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        // Native copying is unrelated to timestamp selection; retain the actual
+        // controller method and inspect which metadata it attaches to each copy.
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            var results=new java.util.HashMap<>(metadata);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,8);
+            assertEquals(8,frames.size());assertEquals(8,copies.constructed().size());
+            for(int i=0;i<8;i++) {
+                assertEquals(i+1,frames.get(i).timestamp);
+                verify(frames.get(i)).setCaptureMetadata(results.get((long)i+1));
+            }
+            for(Image image:raws)verify(image,times(1)).close();
+            assertTrue(ring.isEmpty());assertTrue(metadata.isEmpty());
+        }
+    }
+    @Test public void niceZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        Image missing=rawImage(1),zeroTime=rawImage(2),zeroIso=rawImage(3);
+        ring.add(missing);ring.add(zeroTime);ring.add(zeroIso);
+        metadata.put(2L,exposure(0,100));metadata.put(3L,exposure(25_000_000,0));
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            assertTrue(((java.util.List<?>)method.invoke(controller,8)).isEmpty());
+            assertTrue(copies.constructed().isEmpty());
+            verify(missing).close();verify(zeroTime).close();verify(zeroIso).close();
+        }
+    }
     @Test public void oldPreviewCallbacksCannotEnterNewSession() throws Exception {
         CameraCaptureSession old=mock(CameraCaptureSession.class),current=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",current);
