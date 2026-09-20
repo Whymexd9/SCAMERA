@@ -20,7 +20,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v17 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v18 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -33,7 +33,14 @@ int main(int argc,char** argv) {
             vivo_nice::Graph graph(argv[2],report);
             auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
                 graph.input=in;graph.execute();out=graph.output;
-            },report);
+            },report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
+                if(!mapped.burst.diagnostics)return;
+                std::ofstream f(std::string(argv[2])+"/"+name+".pfm",std::ios::binary);
+                if(!f){report("NICE DIAGNOSTIC: cannot open tile dump");return;}
+                f<<"PF\n"<<w<<" "<<h<<"\n-1.0\n";
+                for(int y=h-1;y>=0;--y)f.write(reinterpret_cast<const char*>(data.data()+size_t(y)*w*3),w*3*sizeof(float));
+                if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
+            });
             double sum=0;float maximum=0;
             for(float value:result){sum+=value;maximum=std::max(maximum,value);}
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));

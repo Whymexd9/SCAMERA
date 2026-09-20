@@ -795,6 +795,9 @@ public class PreferenceKeys {
         return isGcamStageEnabled("pref_vivo_hdr_enabled") && !isRawMfsrEnabled()
                 && (!isRemosaicEnabled() || "scamera".equals(getRemosaicBackend()));
     }
+    public static boolean isNiceDiagnosticsEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", true);
+    }
     public static boolean isVivoNiceEnabled() {
         return isVivoHdrEnabled() && isGcamStageEnabled("pref_vivo_nice_enabled");
     }

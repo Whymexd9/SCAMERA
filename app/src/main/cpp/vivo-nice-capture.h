@@ -15,6 +15,7 @@ namespace vivo_nice {
 struct Burst {
     int w=0,h=0,cfa=0;
     float white=0;
+    NiceNoise noise{}; bool cameraNoise=false,diagnostics=false;
     std::array<float,4> black{};
     std::array<float,7> exposure{}; // sensor exposure products relative to N ref
     std::array<unsigned,7> iso{};
@@ -39,17 +40,23 @@ struct MappedNiceBurst {
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || h[1]!=1 || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]!=1 && h[1]!=2) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
             std::memcpy(&burst.white,h+6,4);std::memcpy(burst.black.data(),h+7,16);
             std::memcpy(burst.exposure.data(),h+11,28);std::memcpy(burst.iso.data(),h+18,28);
-            for(int i=25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
+            if(h[1]==2) {
+                std::memcpy(&burst.noise.slope,h+25,4);std::memcpy(&burst.noise.offset,h+26,4);
+                if(!std::isfinite(burst.noise.slope)||burst.noise.slope<=0||!std::isfinite(burst.noise.offset)||burst.noise.offset<0||h[27]>1)
+                    throw std::runtime_error("Invalid Camera2 noise profile/diagnostic flags");
+                burst.cameraNoise=true;burst.diagnostics=h[27]!=0;
+            }
+            for(int i=h[1]==2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
             if(!std::isfinite(burst.white)||burst.white>65535)throw std::runtime_error("NICE white level");
             for(float b:burst.black)if(!std::isfinite(b)||b<0||b+1>=burst.white)throw std::runtime_error("NICE black level");
             for(int i=0;i<7;++i) {
-                if(!std::isfinite(burst.exposure[i])||burst.exposure[i]<1.0f/256||burst.exposure[i]>256||burst.iso[i]<50||burst.iso[i]>12800)
+                if(!std::isfinite(burst.exposure[i])||burst.exposure[i]<1.0f/256||burst.exposure[i]>256||burst.iso[i]==0||(!burst.cameraNoise&&(burst.iso[i]<50||burst.iso[i]>12800)))
                     throw std::runtime_error("NICE exposure or ISO outside calibrated range");
             }
             if(std::abs(burst.exposure[3]-1)>1e-5f)throw std::runtime_error("NICE reference exposure mismatch");
@@ -144,11 +151,13 @@ inline int reflectCfa(int x,int size) {
 }
 using NiceExecute=std::function<void(const std::vector<float>&,std::vector<float>&)>;
 inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
-                                      const std::function<void(const std::string&)>& report) {
+                                      const std::function<void(const std::string&)>& report,
+                                      const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={}) {
     constexpr int tile=544,margin=16,core=512,step=496;
     auto ref=guides(b,3);std::array<Warp,7> warp;
     std::array<std::vector<uint16_t>,7> luts;
-    const auto n=imx06cHdrNoise(b.iso[3]);const auto baseline=imx06cHdrNoise(50);
+    const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[3]);
+    const auto baseline=b.cameraNoise?n:imx06cHdrNoise(50);
     // Ref and RefN are the same normal-frame slot in the forward HDR XML.
     // Camera2 black subtraction happens before 14-bit encoding, so black=0.
     float norm=2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375));
@@ -164,7 +173,7 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
     const float offset=float(double(n.offset)/(double(n.slope)*n.slope)+.375);
     float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
-    report("NICE calibration: ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
+    report(std::string("NICE calibration source=")+(b.cameraNoise?"Camera2":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
     std::array<std::vector<uint16_t>,7> packedRaw;for(auto& v:packedRaw)v.resize(tile*tile);
     std::array<TaggedFrame,7> frames;
     std::vector<float> result(size_t(b.w)*b.h*3,0),weight(size_t(b.w)*b.h,0),output(tile*tile*3);
@@ -187,6 +196,8 @@ inline std::vector<float> reconstruct(const Burst& b,const NiceExecute& execute,
         std::fill(output.begin(),output.end(),std::numeric_limits<float>::quiet_NaN());
         execute(input,output);
         if(output.size()!=size_t(tile)*tile*3)throw std::runtime_error("NICE tile output shape changed");
+        if(snapshot && (finished==0 || finished==int(xs.size()*ys.size()/2)))
+            snapshot("nice-diag-model-tile-"+std::to_string(finished),output,tile,tile);
         for(int y=0;y<core&&oy+y<b.h;++y)for(int x=0;x<core&&ox+x<b.w;++x){
             float wx=(ox>0&&x<16)?float(x+1)/17:1;float wy=(oy>0&&y<16)?float(y+1)/17:1;
             if(ox+core<b.w&&x>=core-16)wx=float(core-x)/17;

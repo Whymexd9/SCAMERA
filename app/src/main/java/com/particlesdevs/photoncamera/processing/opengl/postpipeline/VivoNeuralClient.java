@@ -143,6 +143,7 @@ public final class VivoNeuralClient {
             try(FileChannel channel=new FileInputStream(output).getChannel()){while(result.hasRemaining())if(channel.read(result)<0)throw new EOFException("Неполный результат");}
             catch(Exception e){if(burst!=null||niceBurst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
             result.flip();
+            if(niceBurst!=null)NiceDiagnostics.buffer("02-after-ivst",result,w,h,3,true);
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);}
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
             log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));
@@ -153,6 +154,7 @@ public final class VivoNeuralClient {
             synchronized(report){
                 prefs.edit().putString("report",report.toString()).putBoolean("complete",true).commit();
             }
+            if(niceBurst!=null)NiceDiagnostics.nativeFiles(dir,report.toString());
             File[] files=dir.listFiles();if(files!=null)for(File f:files)f.delete();dir.delete();
         }
     }

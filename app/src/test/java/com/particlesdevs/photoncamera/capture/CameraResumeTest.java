@@ -80,6 +80,34 @@ public class CameraResumeTest {
     }
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void niceAcceptsArbitraryBayerSensorAndRequiresItsNoiseProfile() throws Exception {
+        var p=new com.particlesdevs.photoncamera.processing.render.Parameters();
+        p.rawSize=new android.graphics.Point(64,64);p.physicalID=77;p.cfaPattern=3;p.whiteLevel=1023;
+        var normal=mock(com.particlesdevs.photoncamera.processing.ImageFrame.class);
+        var shortFrame=mock(com.particlesdevs.photoncamera.processing.ImageFrame.class);
+        for(var f:java.util.List.of(normal,shortFrame)) {
+            f.width=64;f.height=64;f.buffer=java.nio.ByteBuffer.allocate(64*64*2);
+            f.measuredIso=25600;f.measuredExposure=1000000;f.noiseSlope=.00015f;f.noiseOffset=.000002f;
+            f.pair=mock(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair.class);
+        }
+        shortFrame.measuredExposure=250000;shortFrame.pair.isHighlightFrame=true;
+        var constructor=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.class
+                .getDeclaredConstructor(java.util.List.class,com.particlesdevs.photoncamera.processing.render.Parameters.class);
+        constructor.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class)) {
+            assertNotNull(constructor.newInstance(java.util.List.of(normal,shortFrame),p));
+            normal.noiseSlope=Float.NaN;
+            var error=assertThrows(java.lang.reflect.InvocationTargetException.class,
+                    ()->constructor.newInstance(java.util.List.of(normal,shortFrame),p));
+            assertTrue(error.getCause().getMessage().contains("Camera2"));
+            normal.noiseSlope=.00015f;p.quadCfa=true;
+            error=assertThrows(java.lang.reflect.InvocationTargetException.class,
+                    ()->constructor.newInstance(java.util.List.of(normal,shortFrame),p));
+            assertTrue(error.getCause().getMessage().contains("Bayer"));
+        }
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
     public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");

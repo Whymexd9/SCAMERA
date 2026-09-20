@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   # Pinned so an upstream change cannot silently alter our native build.
@@ -240,18 +241,39 @@ jobs:
           grep -q 'rt512_ccurve' /tmp/apk-preferences.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -1
 
-      # CI emits a template; private model/runtime assets are added and signed
-      # with tools/package_vivo_neural.py before delivering a Bundled APK.
-      - name: Collect APK template
+      # Private vendor binaries stay out of git. A secret bootstraps the
+      # pinned bundle once; subsequent builds restore the verified artifact.
+      - name: Restore and verify private neural assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCAMERA_NEURAL_ASSETS_URL: ${{ secrets.SCAMERA_NEURAL_ASSETS_URL }}
+        run: python3 tools/ci_neural_assets.py --output "$RUNNER_TEMP/neural-assets"
+
+      - name: Package and sign the final APK
         run: |
           mkdir -p out
-          find app/build/outputs/apk/debug -name '*.apk' -exec cp {} out/ \;
-          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/
-          ls -l out
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          python3 tools/package_vivo_neural.py \
+            --template "$APK" \
+            --bundle-dir "$RUNNER_TEMP/neural-assets/bundle" \
+            --hexquad-dir "$RUNNER_TEMP/neural-assets/hexquad" \
+            --nice-dir "$RUNNER_TEMP/neural-assets/nice" \
+            --apksigner "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" \
+            --output "out/SCAMERA-0.98-${{ steps.ver.outputs.code }}-NICE.apk"
+          (cd out && sha256sum *.apk > SHA256SUMS.txt)
+          cat out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SCAMERA-template-${{ steps.ver.outputs.code }}
+          name: SCAMERA-neural-assets-v1
+          path: ${{ runner.temp }}/neural-assets/scamera-neural-assets-v1.zip
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCAMERA-Build-${{ steps.ver.outputs.code }}
           path: out/*
           if-no-files-found: error
           compression-level: 0

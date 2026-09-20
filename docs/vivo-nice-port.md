@@ -230,3 +230,42 @@ They remain private evidence, not bundled donor algorithms. Model selection,
 mask semantics, normalization and postprocessing still need verified binding
 before photographic use. First obtain the new tone runtime report on the phone;
 30235's successful CRE test does not verify these additional graphs.
+
+
+## Sensor-independent Camera2 capture and stage diagnostics (worker v18)
+
+The capture gate no longer uses physical camera IDs or an IMX name. Ordinary
+Bayer RAW up to 16 MP is accepted on any camera, including HP9 telephoto, provided
+Camera2 supplies valid measured exposure, sensitivity and SENSOR_NOISE_PROFILE
+for the selected reference. Quad/Tetra RAW, remosaic and software binning remain
+unsupported input layouts. Select the ordinary RAW mode for NICE on HP9.
+
+Transport version 2 carries the reference's measured noise slope/offset and a
+diagnostic flag. The mean Camera2 channel noise profile replaces the IMX06C
+polynomial. VST normalization now uses this current measured profile; missing
+or invalid noise metadata produces an explicit error and the existing autonomous
+HDR fallback. Version 1 is retained only for compatibility with old transports.
+This is an experimental cross-sensor adaptation with unchanged model weights,
+not a promise of HP9-trained inference or a correction of observed color defects.
+
+`NICE — сохранить этапы обработки` defaults on for this diagnostic build. Each
+shot writes `Download/SCAMERA/NICE-<timestamp>-<id>.zip` with:
+
+- Camera ID, CFA, dimensions, exposure, ISO, noise, black/white levels and color metadata.
+- A black-subtracted Bayer-cell reference preview without white balance.
+- Full 544x544 graph output from the first and middle tiles before IVST (PFM).
+- Native reconstructed RGB after IVST and sampled GPU outputs after RGB import,
+  denoise, exposure, headroom rendering, false-color suppression and sharpening.
+- PFM float data retaining negative/HDR values; clipped PNG previews, stage range
+  summaries and native execution report. Previews are at most 1024 pixels per side.
+
+GPU diagnostics read sampled rows with a temporary read framebuffer and restore
+its binding; they do not change processing shader or texture state. Export costs
+time and storage and can be disabled. Files are written on-device only, never
+uploaded automatically. Diagnostic export errors are logged without failing the
+photo. The saved DNG remains the reference RAW, not neural output.
+
+Host checks exercise both legacy and Camera2 noise profiles through VST/IVST,
+HDR retention, snapshots, malformed version-2 headers and a non-IMX ISO range.
+The Android regression test uses camera ID 77 to prevent a sensor allowlist
+from returning. Image quality and real HP9 capture still require device testing.

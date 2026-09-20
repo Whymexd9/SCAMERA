@@ -10,18 +10,21 @@ import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.util.*;
 
-/** Camera2 burst transport for the original IMX06C forward NICE model. */
+/** Camera2 burst transport for the original forward NICE model; calibration comes from Camera2. */
 public final class VivoNiceBurst {
     final int width,height,cfa;
     private final float white;
+    private float noiseSlope,noiseOffset;
+    final boolean diagnostics;
     private final float[] black;
     private final ImageFrame[] ordered=new ImageFrame[7];
     private final float[] exposure=new float[7];
     private VivoNiceBurst(List<ImageFrame> source,Parameters p) throws IOException {
         width=p.rawSize.x;height=p.rawSize.y;cfa=p.cfaPattern;white=p.whiteLevel;black=p.blackLevel.clone();
-        if((p.physicalID!=3&&p.physicalID!=4)||p.quadCfa||cfa<0||cfa>3||PreferenceKeys.isRemosaicEnabled()
+        diagnostics=PreferenceKeys.isNiceDiagnosticsEnabled();
+        if(p.quadCfa||cfa<0||cfa>3||PreferenceKeys.isRemosaicEnabled()
                 ||com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException("NICE HDR: нужен обычный Bayer IMX06C (основа/широкоугольная), без ремозаика и биннинга");
+            throw new IOException("NICE HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
         if(black.length!=4)throw new IOException("NICE HDR: нужны четыре уровня чёрного");
         if(width<64||height<64||(width&1)!=0||(height&1)!=0||(long)width*height>16000000)
             throw new IOException("NICE HDR: размер RAW до 16 МП");
@@ -44,11 +47,17 @@ public final class VivoNiceBurst {
         shorts.sort(byExposure);longs.sort(byExposure);
         ordered[4]=longs.isEmpty()?ordered[3]:longs.get(longs.size()-1);
         ordered[5]=shorts.get(shorts.size()-1);ordered[6]=shorts.get(0);
+        noiseSlope=ordered[3].noiseSlope;noiseOffset=ordered[3].noiseOffset;
+        if(!Float.isFinite(noiseSlope)||noiseSlope<=0||!Float.isFinite(noiseOffset)||noiseOffset<0)
+            throw new IOException("NICE HDR: Camera2 не передала корректный профиль шума опорного RAW; sensor="+p.physicalID);
+        Log.i("NICE_HDR","Calibration source=Camera2 SENSOR_NOISE_PROFILE sensor="+p.physicalID
+                +" CFA="+cfa+" slope="+noiseSlope+" offset="+noiseOffset
+                +"; original weights, experimental cross-sensor adaptation");
         double ref=product(ordered[3]);
         if(!(product(ordered[6])<ref))throw new IOException("NICE HDR: короткий кадр не темнее опорного");
         for(int i=0;i<7;++i){
             exposure[i]=(float)(product(ordered[i])/ref);
-            if(!Float.isFinite(exposure[i])||exposure[i]<1f/256||exposure[i]>256||ordered[i].measuredIso<50||ordered[i].measuredIso>12800)
+            if(!Float.isFinite(exposure[i])||exposure[i]<1f/256||exposure[i]>256||ordered[i].measuredIso<=0)
                 throw new IOException("NICE HDR: экспозиция/ISO вне диапазона");
             Log.i("NICE_HDR","slot="+i+" role="+new String[]{"N","N","N","N-ref","L","S","ES"}[i]
                     +" frame="+ordered[i].number+" timestamp="+ordered[i].timestamp+" exposureNs="+ordered[i].measuredExposure
@@ -60,8 +69,9 @@ public final class VivoNiceBurst {
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
     void write(File file)throws IOException {
         ByteBuffer header=ByteBuffer.allocate(128).order(ByteOrder.LITTLE_ENDIAN);
-        header.putInt(0x3143484e).putInt(1).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
+        header.putInt(0x3143484e).putInt(2).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
         for(float v:black)header.putFloat(v);for(float v:exposure)header.putFloat(v);for(ImageFrame f:ordered)header.putInt(f.measuredIso);
+        header.putFloat(noiseSlope).putFloat(noiseOffset).putInt(diagnostics?1:0);
         header.position(0);
         try(FileChannel out=new FileOutputStream(file).getChannel()){
             while(header.hasRemaining())out.write(header);
@@ -69,6 +79,8 @@ public final class VivoNiceBurst {
         }
     }
     public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p)throws Exception {
-        return VivoNeuralClient.processNiceBurst(context,new VivoNiceBurst(frames,p));
+        VivoNiceBurst burst=new VivoNiceBurst(frames,p);
+        if(burst.diagnostics)NiceDiagnostics.begin(context,p,burst.ordered[3]);
+        return VivoNeuralClient.processNiceBurst(context,burst);
     }
 }

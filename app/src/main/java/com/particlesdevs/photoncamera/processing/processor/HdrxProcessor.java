@@ -126,6 +126,7 @@ public class HdrxProcessor extends ProcessorBase {
             processingEventsListener.onProcessingError("HDRX failed at "
                     + processingStage + " — " + detail);
          } finally {
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.finish();
             if (niceOwnedOutput != null) {
                 Allocator.free(niceOwnedOutput);niceOwnedOutput=null;
                 if(niceOutputParameters!=null)niceOutputParameters.vivoNiceRgb=null;

@@ -33,6 +33,28 @@ int main(){
     auto rejected=[&]{bool failed=false;try{MappedNiceBurst mapped(file);}catch(const std::exception&){failed=true;}assert(failed);};
     bytes.pop_back();save();rejected();bytes.push_back(0);
     uint32_t nan=0x7fc00000;std::memcpy(bytes.data()+44,&nan,4);save();rejected();
+    // Version 2 uses this camera's measured noise, without a sensor-ID or
+    // IMX ISO-range gate. Corrupt calibration never reaches inference.
+    header[1]=2;header[18+3]=25600;header[27]=1;
+    float slope=.00015f,offset=.000002f;
+    std::memcpy(header+25,&slope,4);std::memcpy(header+26,&offset,4);
+    std::memcpy(bytes.data(),header,128);save();
+    {MappedNiceBurst mapped(file);assert(mapped.burst.cameraNoise&&mapped.burst.diagnostics);
+     assert(mapped.burst.iso[3]==25600&&mapped.burst.noise.slope==slope&&mapped.burst.noise.offset==offset);}
+    auto invalidWord=[&](int index,uint32_t value){auto valid=bytes;std::memcpy(bytes.data()+index*4,&value,4);save();rejected();bytes=valid;};
+    invalidWord(25,0);invalidWord(25,nan);invalidWord(26,0xbf800000);invalidWord(27,2);invalidWord(28,1);
     unlink(file);
+    // The generic profile must round-trip calibrated radiance through the
+    // actual VST/IVST; snapshots must observe graph values, not alter output.
+    b.cameraNoise=true;b.noise={slope,offset};b.iso.fill(25600);int snapshots=0;tiles=0;
+    auto generic=reconstruct(b,[&](const std::vector<float>& in,std::vector<float>& result){
+        ++tiles;for(size_t i=0;i<result.size()/3;++i)for(int c=0;c<3;++c)
+            result[i*3+c]=std::max({in[i*22+15],in[i*22+16],in[i*22+17]});
+    },[](const std::string&){},[&](const std::string&,const std::vector<float>& values,int w,int h){
+        ++snapshots;assert(w==544&&h==544&&values.size()==size_t(w)*h*3);assert(std::isfinite(values[0]));
+    });
+    assert(tiles==4&&snapshots==2);
+    for(float v:generic)assert(std::isfinite(v)&&std::abs(v-1.6f)<.001f);
+
     std::cout<<"PASS: NICE full tile path, HDR 1.6 retained, 4-tile overlap/crop coverage; error="<<worst<<" (mock graph)\n";
 }
