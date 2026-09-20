@@ -183,6 +183,8 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/photo_look_gl.py
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_preprocess.cpp -o /tmp/check-nice-preprocess
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-preprocess
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_probe.cpp -ldl -o /tmp/check-nice-probe
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-probe /tmp/nice-probe-fixture
           chmod +x gradlew
