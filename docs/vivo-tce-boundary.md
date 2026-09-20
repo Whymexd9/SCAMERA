@@ -238,6 +238,32 @@ missing/invalid values and immutable snapshots using the actual Java classes.
 
 ## Verification
 
+### Complete scene/color Process binding
+
+`vivo-nice-tce-process.h` ports the complete producer `38d140..38d4b4`.
+The Process argument begins at node+0x9d0. `CreSceneInput` and `CreColorInput`
+are native input views, not Camera2 metadata or a serialized pointer format.
+All embedded addresses borrow storage from their caller. This producer does
+not replace the separate image, face, AE and allocation producers.
+
+The binding copies the scene fields, local-AWB payload, Process EV, LUT address,
+size and count, multiple-LUT information, color controls and six float-to-double
+coefficients. The no-color branch uses the scene lux and clears precisely the
+native fields; it does **not** clear every color field. Likewise disabling the
+LUT leaves unrelated color controls active. Unassigned bytes are preserved.
+These differences matter when preparing a fresh context per shot.
+
+```
+python tools/check_vivo_nice_tce_process.py /path/libvivo_nice_cre.so
+```
+
+384 executions of the complete original ARM64 function match the C++ binding
+byte for byte, including absent-color, LUT enabled/disabled, logging branches,
+uint32 LUT-size overflow, preserved fields and guard bytes. The emulator
+supplies imported logging and libm; no algorithm instructions are replaced.
+This establishes another producer, not complete TCE image execution. It is
+not yet called by the active capture worker.
+
 ### Create argument producer
 
 `vivo-nice-tce-create.h` ports the writes in CRE `38c19c..38c414`,
