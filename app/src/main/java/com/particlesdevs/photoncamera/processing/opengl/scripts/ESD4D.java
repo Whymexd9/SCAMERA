@@ -295,11 +295,44 @@ public class ESD4D extends GLOneScript {
      * floor. The scale must follow the burst, not whichever frame sits first.
      */
     private float mergeExposure(java.util.ArrayList<ImageFrame> frames) {
+        if (parameters.vivoHdrMode) {
+            // Preserve radiance above the reference sensor white in the existing
+            // [0,1] RAW transport by expressing it at the shortest burst exposure.
+            return 1f / Math.max(1f, frames.get(0).pair.layerMpy);
+        }
         float maxMpy = 0.f;
         for (ImageFrame f : frames) maxMpy = Math.max(maxMpy, 1.f / f.pair.layerMpy);
         return maxMpy > 0.f ? maxMpy : 1.f;
     }
     GLTexture sabreConfidence, sabreMassA, sabreMassB, cyclopsTemp;
+    GLTexture vivoReference, vivoMask, vivoFlowA, vivoFlowB;
+    private void repairVivoHighlightFlow(GLTexture alignment, Point shift, float scale,
+            float gain, float refS, float refO, float altS, float altO) {
+        if(vivoFlowA==null) {
+            vivoFlowA=new GLTexture(parameters.alignmentSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            vivoFlowB=new GLTexture(parameters.alignmentSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+        }
+        for(int stage=0;stage<=32;stage++) {
+            glProg.setLayout(8,8,1);
+            glProg.useAssetProgram("vivohdr/highlightflow",true);
+            glProg.setTexture("alignmentTexture",alignment);
+            glProg.setTextureCompute("referenceTexture",vivoReference,false);
+            glProg.setTextureCompute("donorTexture",alter,false);
+            glProg.setTextureCompute("previousFlow",vivoFlowA,false);
+            glProg.setTextureCompute("outputFlow",vivoFlowB,true);
+            glProg.setVar("shift",shift);glProg.setVar("rawHalf",parameters.rawSize.x/2,parameters.rawSize.y/2);
+            glProg.setVar("stage",stage);glProg.setVar("tileStep",parameters.tile/2);glProg.setVar("referenceScale",scale);
+            glProg.setVar("exposure",gain);
+            glProg.setVar("noiseRef",refS*scale,refO*scale*scale);
+            glProg.setVar("noiseAlt",altS*scale,altO*scale*scale);
+            // GPU-only propagation: no glFinish for each of the 32 small passes.
+            android.opengl.GLES31.glDispatchCompute((parameters.alignmentSize.x+7)/8,
+                    (parameters.alignmentSize.y+7)/8,1);
+            android.opengl.GLES31.glMemoryBarrier(android.opengl.GLES31.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
+                    |android.opengl.GLES31.GL_TEXTURE_FETCH_BARRIER_BIT);
+            GLTexture swap=vivoFlowA;vivoFlowA=vivoFlowB;vivoFlowB=swap;
+        }
+    }
     int sabreMerged;
     GLTexture baseDiff;
     GLTexture base;
@@ -585,10 +618,12 @@ public class ESD4D extends GLOneScript {
     @Override
     public void Run() {
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
-        if(PreferenceKeys.isSabreEnabled()) enableAlignment=true;
+        if(PreferenceKeys.isSabreEnabled() || parameters.vivoHdrMode) enableAlignment=true;
         Log.d("ESD4D", "Noise multiplier: " + noiseMpy);
         Log.d("ESD4D", "Optical flow refinement: " + enableFlowRefinement + " maxShift: " + flowRefineMaxDisp);
         glUtils = new GLUtils(glOne.glProcessing);
+        if(parameters.vivoHdrMode) Log.i("VIVO_HDR","Autonomous HDR: frames="+images.size()
+                +" pyramid alignment, radiance fusion; no vendor runtime");
 
         float minExp = 1.f;
         int minExpIdx = -1;
@@ -692,7 +727,7 @@ public class ESD4D extends GLOneScript {
         mosaicPeriod = mosaicPeriodFor(parameters);
         // Pyramid diff
         baseDiff = new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
-        if(PreferenceKeys.isSabreEnabled()) {
+        if(PreferenceKeys.isSabreEnabled() || parameters.vivoHdrMode) {
             sabreConfidence=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
             sabreMassA=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
             sabreMassB=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
@@ -1006,6 +1041,12 @@ public class ESD4D extends GLOneScript {
         glProg.setTextureCompute("outTexture",brightMap, true);
         glProg.computeAuto(brightMap.mSize, 1);
         exportBrightMap();
+        if (parameters.vivoHdrMode) {
+            vivoReference=glUtils.convertVec4(base,"in1");
+            vivoMask=new GLTexture(packedSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            parameters.vivoHdrRawScale=mergeExposure(images);
+        }
+
         // KernelNet's input derives from the reference frame only, so its
         // inference is independent of the alignment/merge loop below. Run it
         // on a worker thread concurrently with alignment (merge00 / FlowNet /
@@ -1021,7 +1062,8 @@ public class ESD4D extends GLOneScript {
                 Log.e("ESD4D", "KernelNet worker failed", t);
             }
         }, "KernelNet-inference");
-        kernelNetThread.start();
+        if (parameters.vivoHdrMode) kernelNetThread=null;
+        else kernelNetThread.start();
 
         // Alignment runs after the KernelNet worker is launched so the CPU
         // ncnn inference overlaps the whole alignment pass (pyramid or FlowNet)
@@ -1035,7 +1077,7 @@ public class ESD4D extends GLOneScript {
                 PreferenceKeys.getProcessingBackendValue()));
         // Algorithm and accelerator are independent settings. A selected device
         // must not silently override the explicit FlowNet switch.
-        useNcnnFlow = enableAlignment && useNcnnFlow && !PreferenceKeys.isSabreEnabled();
+        useNcnnFlow = enableAlignment && useNcnnFlow && !PreferenceKeys.isSabreEnabled() && !parameters.vivoHdrMode;
         // FlowNet was trained for similarly exposed pairs. On a strong HDR
         // bracket its low-resolution field can jump by whole model tiles,
         // producing the visible rectangular fragments reported by users.
@@ -1173,6 +1215,15 @@ public class ESD4D extends GLOneScript {
                 flowTex = flowNetAlignment.computeFlow(ind);
             }
 
+            float packedScale=mergeExposure(images);
+            ImageFrame refFrame=images.get(0);
+            float isoRatio=(float)frame.pair.iso / Math.max(refFrame.pair.iso,1);
+            float refS=Float.isFinite(refFrame.noiseSlope) ? refFrame.noiseSlope : rawNoiseS;
+            float refO=Float.isFinite(refFrame.noiseOffset) ? refFrame.noiseOffset : rawNoiseO;
+            // HAL profiles take priority. Gain-scaled fallback is an approximation,
+            // explicitly logged; exposure normalization transforms variance by g².
+            float altS=Float.isFinite(frame.noiseSlope) ? frame.noiseSlope : refS*isoRatio;
+            float altO=Float.isFinite(frame.noiseOffset) ? frame.noiseOffset : refO*isoRatio*isoRatio;
             // Convert inputAlter to alter (vec4 format)
             glProg.setLayout(tile, tile, 1);
             glProg.useAssetProgram("merge/merge00", true);
@@ -1188,11 +1239,13 @@ public class ESD4D extends GLOneScript {
             
             correctHotPixelsInAlter(hotPixelBuffer, hotPixelCount);
             //alignmentTex.loadData(alignment.position((ind-1)*(aSize.x*aSize.y*4*2)));
-            glProg.setDefine("TILE_AL", parameters.tile);
             // Merge robustness tuning. These are compile-time defines in the shader,
             // so they have to be set before useAssetProgram compiles it.
             float robustness = PreferenceKeys.getMergeRobustness();
             float clipLevel = PreferenceKeys.getMergeClipLevel();
+            if(parameters.vivoHdrMode)
+                repairVivoHighlightFlow(alignmentTex,shift,packedScale,exposure,refS,refO,altS,altO);
+            glProg.setDefine("TILE_AL", parameters.tile);
             float tilingTolerance = PreferenceKeys.getMergeTilingTolerance();
             glProg.setDefine("ROBUSTNESS", robustness);
             glProg.setDefine("CLIP_LEVEL", clipLevel);
@@ -1201,7 +1254,7 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("FLOOR_SIGMAS", floorSigmas);
             int hlRecovery = PreferenceKeys.isHighlightRecoveryEnabled() ? 1 : 0;
             int hlRecoveryMinOk = PreferenceKeys.getHighlightRecoveryMinOk();
-            int hlProtection = PreferenceKeys.isHighlightProtectionEnabled() ? 1 : 0;
+            int hlProtection = !parameters.vivoHdrMode && PreferenceKeys.isHighlightProtectionEnabled() ? 1 : 0;
             float hlKnee = PreferenceKeys.getHighlightProtectionKnee();
             float hlStrength = PreferenceKeys.getHighlightProtectionStrength();
             glProg.setDefine("HIGHLIGHT_RECOVERY", hlRecovery);
@@ -1210,7 +1263,8 @@ public class ESD4D extends GLOneScript {
             glProg.setDefine("HIGHLIGHT_PROTECTION_KNEE", hlKnee);
             glProg.setDefine("HIGHLIGHT_PROTECTION_STRENGTH", hlStrength);
             glProg.setLayout(tile, tile, 1);
-            glProg.setDefine("SABRE_RECONSTRUCTION",PreferenceKeys.isSabreEnabled()?1:0);
+            glProg.setDefine("SABRE_RECONSTRUCTION",(PreferenceKeys.isSabreEnabled() || parameters.vivoHdrMode)?1:0);
+            glProg.setDefine("VIVO_HDR",parameters.vivoHdrMode?1:0);
             glProg.useAssetProgram(useNcnnFlow ? "merge/mergeAlignFlow" : "merge/mergeAlign", true);
             glProg.setVar("rawHalf", rawHalf);
             glProg.setVarU("whitelevel", (int) parameters.whiteLevel);
@@ -1222,15 +1276,6 @@ public class ESD4D extends GLOneScript {
             glProg.setVar("minLevel",minLevel);
             glProg.setVar("exposure", exposure);
             glProg.setVar("rawMfsr", PreferenceKeys.isSabreEnabled() && mosaicPeriod == 1 ? 1 : 0);
-            float packedScale=mergeExposure(images);
-            ImageFrame refFrame=images.get(0);
-            float isoRatio=(float)frame.pair.iso / Math.max(refFrame.pair.iso,1);
-            float refS=Float.isFinite(refFrame.noiseSlope) ? refFrame.noiseSlope : rawNoiseS;
-            float refO=Float.isFinite(refFrame.noiseOffset) ? refFrame.noiseOffset : rawNoiseO;
-            // HAL profiles take priority. Gain-scaled fallback is an approximation,
-            // explicitly logged; exposure normalization transforms variance by g².
-            float altS=Float.isFinite(frame.noiseSlope) ? frame.noiseSlope : refS*isoRatio;
-            float altO=Float.isFinite(frame.noiseOffset) ? frame.noiseOffset : refO*isoRatio*isoRatio;
             glProg.setVar("sabreNoiseRef",new float[]{refS*packedScale,refO*packedScale*packedScale});
             glProg.setVar("sabreNoiseAlt",new float[]{altS*packedScale,altO*packedScale*packedScale});
             glProg.setVar("packedScale",packedScale);
@@ -1258,9 +1303,10 @@ public class ESD4D extends GLOneScript {
                 glProg.setVar("shift", shift);
                 glProg.setVar("alignmentSize", parameters.alignmentSize);
                 glProg.setTexture("alignmentTexture", alignmentTex);
+                if(parameters.vivoHdrMode)glProg.setTexture("highlightFlow",vivoFlowA);
             }
             glProg.setTexture("inTexture", inputBase);
-            glProg.setTextureCompute("baseTexture",base, false);
+            glProg.setTextureCompute("baseTexture",parameters.vivoHdrMode ? vivoReference : base, false);
             glProg.setTextureCompute("alterTexture", alter, false);
             // The MFSR path reads the alternate frame through alterSampler, not
             // through the image binding: the RBF gather needs filtered texel
@@ -1290,6 +1336,35 @@ public class ESD4D extends GLOneScript {
                 kernelsMap = createKernelsMap(kernelNetResult.get());
             }
 
+            if (parameters.vivoHdrMode) {
+                // Conservative mask cleanup expands rejection at moving boundaries.
+                // Unlike PatchMatch this never invents detail in an invalid region.
+                glProg.setLayout(tile,tile,1);
+                glProg.useAssetProgram("vivohdr/mask",true);
+                glProg.setTextureCompute("inputMask",sabreConfidence,false);
+                glProg.setTextureCompute("outputMask",vivoMask,true);
+                glProg.computeAuto(vivoMask.mSize,1);
+                glProg.setLayout(tile,tile,1);
+                glProg.useAssetProgram("vivohdr/combine",true);
+                glProg.setTextureCompute("referenceTexture",vivoReference,false);
+                glProg.setTextureCompute("accumulatedTexture",base,false);
+                glProg.setTextureCompute("donorTexture",baseDiff,false);
+                glProg.setTextureCompute("confidenceTexture",vivoMask,false);
+                glProg.setTextureCompute("oldMassTexture",sabreMassA,false);
+                base=getBase();
+                glProg.setTextureCompute("outputTexture",base,true);
+                glProg.setTextureCompute("newMassTexture",sabreMassB,true);
+                glProg.setVar("first",sabreMerged==0?1:0);
+                glProg.setVar("referenceScale",packedScale);
+                glProg.setVar("donorScale",packedScale*exposure);
+                glProg.setVar("noiseRef",refS*packedScale,refO*packedScale*packedScale);
+                glProg.setVar("noiseAlt",altS*packedScale*exposure,altO*packedScale*packedScale*exposure*exposure);
+                glProg.computeAuto(base.mSize,1);
+                GLTexture swap=sabreMassA;sabreMassA=sabreMassB;sabreMassB=swap;
+                sabreMerged++;
+                endT();
+                continue;
+            }
             if(sabreConfidence!=null) {
                 GLTexture confidence=sabreConfidence;
                 if(cyclopsTemp!=null) {
@@ -1416,6 +1491,22 @@ public class ESD4D extends GLOneScript {
         }
 
 
+        if (parameters.vivoHdrMode && sabreMerged > 0) {
+            GLTexture merged = base;
+            base = getBase();
+            glProg.setLayout(tile,tile,1);
+            glProg.useAssetProgram("vivohdr/finalize",true);
+            glProg.setTextureCompute("referenceTexture",vivoReference,false);
+            glProg.setTextureCompute("mergedTexture",merged,false);
+            glProg.setTextureCompute("massTexture",sabreMassA,false);
+            glProg.setTextureCompute("outputTexture",base,true);
+            glProg.setVar("referenceScale",parameters.vivoHdrRawScale);
+            float[] wp=parameters.whitePoint;
+            glProg.setVar("whitePoint",wp[0],wp[1],wp[1],wp[2]);
+            glProg.computeAuto(base.mSize,1);
+            Log.i("VIVO_HDR","Highlight fallback: confidence feathering and neutral clipped fallback");
+        }
+
         if(sabreMassA!=null && sabreMerged>0) {
             // Conservative scalar for downstream denoisers: lower occupied
             // histogram bin of per-pixel (sum w)^2/sum(w^2), not frame count.
@@ -1426,7 +1517,15 @@ public class ESD4D extends GLOneScript {
                 for(int i=0;i<bins.length;i++) if(bins[i]>0) {
                     parameters.effectiveStackSamples=Math.max(1,i*64.0/(bins.length-1));break;
                 }
-                Log.i("SABRE","Conservative effective samples="+parameters.effectiveStackSamples);
+                long pixels=0, singlePixels=0;double totalSamples=0;
+                for(int i=0;i<bins.length;i++) {
+                    double samples=i*64.0/(bins.length-1);
+                    pixels+=bins[i];totalSamples+=bins[i]*samples;
+                    if(samples<1.5)singlePixels+=bins[i];
+                }
+                Log.i("SABRE","Conservative effective samples="+parameters.effectiveStackSamples
+                        +" mean="+(pixels>0?totalSamples/pixels:0)
+                        +" single_frame_fraction="+(pixels>0?(double)singlePixels/pixels:0));
             }
         }
 
@@ -1523,6 +1622,10 @@ public class ESD4D extends GLOneScript {
         inputAlter.close();
         alter.close();
         inputBase.close();
+        if(vivoReference!=null)vivoReference.close();
+        if(vivoMask!=null)vivoMask.close();
+        if(vivoFlowA!=null)vivoFlowA.close();
+        if(vivoFlowB!=null)vivoFlowB.close();
         if(cyclopsTemp!=null)cyclopsTemp.close();
         if(sabreConfidence!=null) {sabreConfidence.close();sabreMassA.close();sabreMassB.close();}
         baseDiff.close();

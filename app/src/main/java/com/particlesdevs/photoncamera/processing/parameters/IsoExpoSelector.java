@@ -150,20 +150,19 @@ public class IsoExpoSelector {
         // committed at this point, so the short frame is what gives.
         float maxRatio = PreferenceKeys.getMaxHdrRatio();
         if (maxRatio > 1.0f) {
-            double longFactor = Math.scalb(1.0,
-                    Math.max(0, Math.min(8, PreferenceKeys.getLongExposureEvValue())));
+            double longFactor = PreferenceKeys.getLongFrameCountValue() > 0 ? Math.scalb(1.0,
+                    Math.max(0, Math.min(8, PreferenceKeys.getLongExposureEvValue()))) : 1.0;
             double spread = factor * longFactor;
             if (spread > maxRatio) {
                 // Pull both ends in by the same proportion instead of making the short
                 // frame absorb the whole overshoot: with a long frame at +4 EV the short
                 // one was clamped all the way to 1.0 and stopped being a highlight donor
                 // at all. Splitting the correction keeps both frames useful.
-                double excess = Math.sqrt(spread / maxRatio);
-                double clamped = Math.max(1.0, factor / excess);
+                double clamped = HdrBracketFactors.limit(factor, longFactor, maxRatio);
                 Log.i(TAG, "HDR ratio " + spread + " exceeds the ceiling " + maxRatio
                         + ", short frame factor " + factor + " -> " + clamped
                         + " (long frame factor " + longFactor + " -> "
-                        + Math.max(1.0, longFactor / excess) + ")");
+                        + HdrBracketFactors.limit(longFactor, factor, maxRatio) + ")");
                 factor = clamped;
             }
         }
@@ -275,12 +274,12 @@ public class IsoExpoSelector {
         // Same ceiling as the short frame, applied to this end of the bracket.
         float maxHdrRatio = PreferenceKeys.getMaxHdrRatio();
         if (maxHdrRatio > 1.0f) {
-            double shortFactor = Math.scalb(1.0,
-                    Math.max(0, Math.min(8, PreferenceKeys.getShortExposureEvValue())));
+            double shortFactor = PreferenceKeys.getShortFrameCountValue() > 0
+                    && PreferenceKeys.getHighlightSuppressionValue() > 0 ? Math.scalb(1.0,
+                    Math.max(0, Math.min(8, PreferenceKeys.getShortExposureEvValue()))) : 1.0;
             double spread = factor * shortFactor;
             if (spread > maxHdrRatio) {
-                double excess = Math.sqrt(spread / maxHdrRatio);
-                double clamped = Math.max(1.0, factor / excess);
+                double clamped = HdrBracketFactors.limit(factor, shortFactor, maxHdrRatio);
                 Log.i(TAG, "Long frame factor " + factor + " -> " + clamped
                         + " to fit the HDR ratio ceiling " + maxHdrRatio);
                 factor = clamped;

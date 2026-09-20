@@ -252,6 +252,7 @@ public class GLBasePipeline implements AutoCloseable {
             if (i != Nodes.size() - 1) {
                 drawProgramTexture(node);
             }
+            if (i != Nodes.size()-1) com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.gpu(node.Name,node.WorkingTexture);
             try {
                 node.AfterRun();
             } catch (RuntimeException error) {

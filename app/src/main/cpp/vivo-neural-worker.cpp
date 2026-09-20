@@ -3,6 +3,12 @@
 #include "vivo-hexquad-check.h"
 #include "vivo-hexquad-capture.h"
 #include "vivo-hexquad-profile-check.h"
+#define NICE_HOST_TEST 1
+#include "vivo-nice-probe.cpp"
+#undef NICE_HOST_TEST
+#include "vivo-nice-capture.h"
+#include "vivo-nice-tone-probe.h"
+#include "vivo-nice-stock-motion.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -15,9 +21,64 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v17 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v28 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
+        }
+        if(argc==5 && std::string(argv[1])=="--nice-capture") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(840);
+            vivo_nice::MappedNiceBurst mapped(argv[3]);
+            auto report=[](const std::string& line){vivo_nn::log(line);};
+            report("NICE CAPTURE: original forward weights and stock CPU motion; Camera2 calibration adaptation");
+            const auto& scene=mapped.burst.scene;
+            report("NICE SCENE: timestamp="+std::to_string(scene.timestamp)
+                +" lux="+(scene.hasLux()?std::to_string(scene.lux):"unavailable")
+                +" ADRC="+(scene.hasAdrc()?std::to_string(scene.adrc):"unavailable")
+                +" flags="+std::to_string(scene.flags)+" luxSource="+std::to_string(scene.luxSource));
+            for(size_t i=0;i<mapped.burst.ae.size();++i) {
+                const auto& ae=mapped.burst.ae[i];
+                report("NICE AE: slot="+std::to_string(i)+" timestamp="+std::to_string(ae.timestamp)
+                    +" flags="+std::to_string(ae.flags));
+                if(ae.hasAec()) {
+                    const auto f=ae.fields();
+                    report("NICE AE VALUES: lux="+std::to_string(f.lux)+" exposureMs="+std::to_string(f.exposureMs)
+                        +" shortGain="+std::to_string(f.shortGain)+" digitalGain="+std::to_string(f.digitalGain)
+                        +" rawHdrDrc="+(ae.hasHdrDrc()?std::to_string(ae.drcGain(true)):"unavailable"));
+                }
+            }
+            vivo_nice::StockMotion motion;
+            vivo_nice::Graph graph(argv[2],report);
+            auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
+                graph.input=in;graph.execute();out=graph.output;
+            },report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
+                if(!mapped.burst.diagnostics)return;
+                std::ofstream f(std::string(argv[2])+"/"+name+".pfm",std::ios::binary);
+                if(!f){report("NICE DIAGNOSTIC: cannot open tile dump");return;}
+                f<<"PF\n"<<w<<" "<<h<<"\n-1.0\n";
+                for(int y=h-1;y>=0;--y)f.write(reinterpret_cast<const char*>(data.data()+size_t(y)*w*3),w*3*sizeof(float));
+                if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
+            },[&](vivo_nice::Burst& burst){return motion.align(burst,report);});
+            double sum=0;float maximum=0;
+            for(float value:result){sum+=value;maximum=std::max(maximum,value);}
+            report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
+            std::ofstream file(argv[4],std::ios::binary|std::ios::trunc);
+            if(!file)throw std::runtime_error("Cannot open NICE output");
+            file.write(reinterpret_cast<const char*>(result.data()),std::streamsize(result.size()*sizeof(float)));
+            file.close();if(!file)throw std::runtime_error("Incomplete NICE output");
+            alarm(0);report("NICE CAPTURE OK");return 0;
+        }
+        if(argc==3 && std::string(argv[1])=="--nice-tone-check") {
+            if(getuid()!=0)throw std::runtime_error("NICE tone check requires root");
+            alarm(360);
+            vivo_nice::probeTone(argv[2],[](const std::string& line){std::cout<<line<<std::endl;});
+            return 0;
+        }
+        if(argc==3 && std::string(argv[1])=="--nice-check") {
+            if(geteuid()!=0)throw std::runtime_error("Root worker required");
+            signal(SIGALRM,SIG_DFL);alarm(150);
+            vivo_nice::probe(argv[2],[](const std::string& line){vivo_nn::log(line);});
+            alarm(0);vivo_nn::log("NICE RUNTIME CHECK COMPLETE");return 0;
         }
         if(argc==5 && (std::string(argv[1])=="--hexquad-capture" || std::string(argv[1])=="--hexquad-capture-cached")) {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");

@@ -62,7 +62,7 @@ public final class SimpleStorageHelper {
             }
             return false;
         } catch (Throwable t) {
-            Log.e(TAG, "hasStorageAccess: " + t.getMessage());
+            android.util.Log.e(TAG, "hasStorageAccess: " + t.getMessage());
             return false;
         }
     }

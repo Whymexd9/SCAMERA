@@ -1,0 +1,61 @@
+{
+  "adapter": "vendor/lib64/libvcf_camera_aidl_device.so",
+  "sha256": "97aa148c1673d2c1097d4098ff5d0441b75aa5209b8162a023b081964cad8bb3",
+  "vcf_dependencies": [
+    {
+      "name": "libvcf_utils.so",
+      "available": true,
+      "sha256": "71f77e750c4feea39f37152be7ea77f68b4b7bc49cb1900fb8728f2dc7bdd85c"
+    },
+    {
+      "name": "libvcf_platform_utils.so",
+      "available": true,
+      "sha256": "5f3bf712b8a8c4b092b7e5bd2ccdc4dfdfced7cc301730d1cc3fcbe8fe1a2f9d"
+    },
+    {
+      "name": "libvcf_session.so",
+      "available": true,
+      "sha256": "93a3149a70fea5f177bb0542278c47ec232fc477aa96cb7a63534b1f6b5f8dad"
+    },
+    {
+      "name": "libvcf_features.so",
+      "available": true,
+      "sha256": "9d6f5091f6806637bea3f01647c67ca4d5271f52b8279e860ec6aa7099715a92"
+    },
+    {
+      "name": "libvcf_platform.so",
+      "available": true,
+      "sha256": "4d7ec5bdd170af3de750acdeba9ad1e0eb6f9c0bc72d54cc8a34ee44c3acbf6b"
+    },
+    {
+      "name": "libvcf_log_control.so",
+      "available": true,
+      "sha256": "b0cc40457debac30b343c2085ecd3a69685cfdfec403066c1311b6582cd46e38"
+    },
+    {
+      "name": "libvcf_core.so",
+      "available": true,
+      "sha256": "c3449dbb9867118173abc649de1fbab7edebebd826603cabe51fb9b58c0f07c5"
+    },
+    {
+      "name": "libvcf_configure.so",
+      "available": true,
+      "sha256": "b66b521a998bf04fbeba0e8189a93b3b484fc7ecf359d8634f68a358820e3810"
+    }
+  ],
+  "observed_entrypoints": {
+    "processCaptureRequest": "0x5949c",
+    "processOneCaptureRequest": "0x5a8b8",
+    "generateSessionRequestBuilder": "0x5fe30"
+  },
+  "imported_controller_factory": "vcf::ISessionController::createInstance()",
+  "exposure_policy_recovered": false,
+  "received_archive_sha256": "96a8c858a7b63bd0335f26a19d9e853f4591e19431fa3ac80e5ecd7c15607cc3",
+  "frame_compatibility": {
+    "library": "libvcf_session.so",
+    "address": "0x1429ec",
+    "caller": "modifiedOffseByMotionInfo",
+    "comparison_cases": 2960,
+    "integrated_into_capture": false
+  }
+}

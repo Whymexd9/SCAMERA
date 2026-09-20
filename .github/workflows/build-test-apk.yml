@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   # Pinned so an upstream change cannot silently alter our native build.
@@ -154,7 +155,7 @@ jobs:
         run: |
           g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_vivo_neural_capture.cpp -ldl -o /tmp/check-vivo-neural-capture
           /tmp/check-vivo-neural-capture
-          g++ -pthread -std=c++14 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -o /tmp/vivo-neural-worker
+          g++ -pthread -std=c++17 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -o /tmp/vivo-neural-worker
           /tmp/vivo-neural-worker --transport-check
 
       - name: Build debug APK
@@ -171,6 +172,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_arkcam_color.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_sabre_gpu.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_gcam_finish_gpu.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_vivo_hdr_gpu.py
           mkdir -p /tmp/zsl-quality-check
           javac -d /tmp/zsl-quality-check app/src/main/java/com/particlesdevs/photoncamera/capture/RawFrameQuality.java app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java tools/java/RawFrameQualityCheck.java tools/java/HexQuadZslSelectorCheck.java
           java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck
@@ -182,8 +184,17 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/photo_look_gl.py
           /usr/bin/python3 tools/build_rt_host.py --fftw-include /usr/include --fftw-library /usr/lib/x86_64-linux-gnu/libfftw3f.so --output /tmp/rt-denoise.so
           /usr/bin/python3 tools/check_rt_denoise.py /tmp/rt-denoise.so
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_preprocess.cpp -o /tmp/check-nice-preprocess
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-preprocess
+          g++ -std=c++17 -O2 -fsanitize=address,undefined tools/check_vivo_nice_capture.cpp -o /tmp/check-nice-capture
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-capture
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_motion_capture.cpp -ldl -o /tmp/check-nice-motion-capture
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-motion-capture
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_probe.cpp -ldl -o /tmp/check-nice-probe
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-probe /tmp/nice-probe-fixture
+          python3 tools/check_nice_reference_metadata.py
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.util.AsyncLogTest" --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" --tests "com.particlesdevs.photoncamera.processing.parameters.HdrBracketFactorsTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()
@@ -233,18 +244,43 @@ jobs:
           grep -q 'rt512_ccurve' /tmp/apk-preferences.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -1
 
-      # CI emits a template; private model/runtime assets are added and signed
-      # with tools/package_vivo_neural.py before delivering a Bundled APK.
-      - name: Collect APK template
+      # Private vendor binaries stay out of git. A secret bootstraps the
+      # pinned bundle once; subsequent builds restore the verified artifact.
+      - name: Restore and verify private neural assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCAMERA_NEURAL_ASSETS_URL: ${{ secrets.SCAMERA_NEURAL_ASSETS_URL }}
+          SCAMERA_NEURAL_ASSETS_KEY: ${{ secrets.SCAMERA_NEURAL_ASSETS_KEY }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/asset-tools"
+          "$RUNNER_TEMP/asset-tools/bin/pip" install cryptography==46.0.0
+          "$RUNNER_TEMP/asset-tools/bin/python" tools/ci_neural_assets.py --output "$RUNNER_TEMP/neural-assets"
+
+      - name: Package and sign the final APK
         run: |
           mkdir -p out
-          find app/build/outputs/apk/debug -name '*.apk' -exec cp {} out/ \;
-          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/
-          ls -l out
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          python3 tools/package_vivo_neural.py \
+            --template "$APK" \
+            --bundle-dir "$RUNNER_TEMP/neural-assets/bundle" \
+            --hexquad-dir "$RUNNER_TEMP/neural-assets/hexquad" \
+            --nice-dir "$RUNNER_TEMP/neural-assets/nice" \
+            --apksigner "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" \
+            --output "out/SCAMERA-0.98-${{ steps.ver.outputs.code }}-NICE.apk"
+          (cd out && sha256sum *.apk > SHA256SUMS.txt)
+          cat out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SCAMERA-template-${{ steps.ver.outputs.code }}
+          name: SCAMERA-neural-assets-v1
+          path: ${{ runner.temp }}/neural-assets/scamera-neural-assets-v1.zip
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCAMERA-Build-${{ steps.ver.outputs.code }}
           path: out/*
           if-no-files-found: error
           compression-level: 0

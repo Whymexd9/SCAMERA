@@ -27,6 +27,11 @@ import static org.mockito.Mockito.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk=35, application=Application.class)
 public class CameraResumeTest {
+    @org.robolectric.annotation.Implements(value=com.particlesdevs.photoncamera.util.Allocator.class, isInAndroidSdk=false)
+    public static class ShadowAllocator {
+        @org.robolectric.annotation.Implementation
+        protected static void __staticInitializer__() { /* Native memory is mocked in this selection test. */ }
+    }
     private CaptureController controller;
     private MockedStatic<PhotonCamera> photon;
     private MockedConstruction<CameraManager2> managers;
@@ -57,6 +62,130 @@ public class CameraResumeTest {
         CaptureController.isProcessing=false;
     }
     @After public void cleanup(){CaptureController.mPreviewCaptureResult=null;CaptureController.mPreviewCaptureRequest=null;managers.close();photon.close();}
+    private Image rawImage(long timestamp) {
+        Image image=mock(Image.class);Image.Plane plane=mock(Image.Plane.class);
+        when(image.getTimestamp()).thenReturn(timestamp);
+        when(image.getFormat()).thenReturn(android.graphics.ImageFormat.RAW_SENSOR);
+        when(image.getWidth()).thenReturn(64);when(image.getHeight()).thenReturn(64);
+        when(image.getPlanes()).thenReturn(new Image.Plane[]{plane});
+        when(plane.getRowStride()).thenReturn(128);when(plane.getPixelStride()).thenReturn(2);
+        when(plane.getBuffer()).thenReturn(java.nio.ByteBuffer.allocate(64*64*2));
+        return image;
+    }
+    private TotalCaptureResult exposure(long ns,int iso) {
+        TotalCaptureResult result=mock(TotalCaptureResult.class);
+        when(result.get(CaptureResult.SENSOR_EXPOSURE_TIME)).thenReturn(ns);
+        when(result.get(CaptureResult.SENSOR_SENSITIVITY)).thenReturn(iso);
+        return result;
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void niceAcceptsArbitraryBayerSensorAndRequiresItsNoiseProfile() throws Exception {
+        var p=new com.particlesdevs.photoncamera.processing.render.Parameters();
+        p.rawSize=new android.graphics.Point(64,64);p.physicalID=77;p.cfaPattern=3;p.whiteLevel=1023;
+        var normal=mock(com.particlesdevs.photoncamera.processing.ImageFrame.class);
+        var shortFrame=mock(com.particlesdevs.photoncamera.processing.ImageFrame.class);
+        for(var f:java.util.List.of(normal,shortFrame)) {
+            f.width=64;f.height=64;f.buffer=java.nio.ByteBuffer.allocate(64*64*2);
+            f.measuredIso=25600;f.measuredExposure=1000000;f.noiseSlope=.00015f;f.noiseOffset=.000002f;
+            var metadata=exposure(f.measuredExposure,f.measuredIso);
+            when(f.getMatchedCaptureMetadata()).thenReturn(metadata);
+            f.pair=mock(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair.class);
+        }
+        shortFrame.measuredExposure=250000;shortFrame.pair.isHighlightFrame=true;
+        var constructor=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.class
+                .getDeclaredConstructor(java.util.List.class,com.particlesdevs.photoncamera.processing.render.Parameters.class);
+        constructor.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class)) {
+            assertNotNull(constructor.newInstance(java.util.List.of(normal,shortFrame),p));
+            normal.noiseSlope=Float.NaN;
+            var error=assertThrows(java.lang.reflect.InvocationTargetException.class,
+                    ()->constructor.newInstance(java.util.List.of(normal,shortFrame),p));
+            assertTrue(error.getCause().getMessage().contains("Camera2"));
+            normal.noiseSlope=.00015f;p.quadCfa=true;
+            error=assertThrows(java.lang.reflect.InvocationTargetException.class,
+                    ()->constructor.newInstance(java.util.List.of(normal,shortFrame),p));
+            assertTrue(error.getCause().getMessage().contains("Bayer"));
+        }
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        java.util.List<Image> raws=new java.util.ArrayList<>();
+        for(long timestamp=1;timestamp<=9;timestamp++) {
+            Image image=rawImage(timestamp);raws.add(image);ring.add(image);
+            if(timestamp<9)metadata.put(timestamp,exposure(24_999_987L,10775));
+        }
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        // Native copying is unrelated to timestamp selection; retain the actual
+        // controller method and inspect which metadata it attaches to each copy.
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            var results=new java.util.HashMap<>(metadata);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,8);
+            assertEquals(8,frames.size());assertEquals(8,copies.constructed().size());
+            for(int i=0;i<8;i++) {
+                assertEquals(i+1,frames.get(i).timestamp);
+                verify(frames.get(i)).setCaptureMetadata(results.get((long)i+1));
+            }
+            for(Image image:raws)verify(image,times(1)).close();
+            assertTrue(ring.isEmpty());assertTrue(metadata.isEmpty());
+        }
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void niceZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        // Out-of-order delivery, a post-press frame and an unrelated preview
+        // exposure must not change this shot's selection or bracket base.
+        for(long timestamp:new long[]{5,3,7,2,6,4}) {
+            ring.add(rawImage(timestamp));metadata.put(timestamp,exposure(timestamp*1000000,100));
+        }
+        TotalCaptureResult expected=metadata.get(6L);
+        put(controller,"niceZslShutterTimestamp",6L);
+        put(controller,"mPreviewCaptureResult",exposure(99000000,800));
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,4);
+            assertEquals(4,frames.size());
+            for(int i=0;i<4;i++)assertEquals(i+3,frames.get(i).timestamp);
+            assertSame(expected,get(controller,"mNativeZslBase"));
+        }
+    }
+    @Test public void delayedPreviewCannotConsumeNiceBracketSlot() throws Exception {
+        var saver=mock(com.particlesdevs.photoncamera.processing.ImageSaver.class);
+        put(controller,"mImageSaver",saver);put(controller,"mZslCapturing",true);
+        var router=(TimestampFrameRouter<Image>)get(controller,"mLiveRawRouter");
+        Image preview=rawImage(10),shortRaw=rawImage(20);
+        router.image(10,preview);router.request(20,true);
+        router.image(20,shortRaw);router.request(10,false);
+        verify(preview).close();verify(saver).initProcess(shortRaw);
+        verify(saver,never()).initProcess(preview);
+    }
+    @Test public void niceZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        Image missing=rawImage(1),zeroTime=rawImage(2),zeroIso=rawImage(3);
+        ring.add(missing);ring.add(zeroTime);ring.add(zeroIso);
+        metadata.put(2L,exposure(0,100));metadata.put(3L,exposure(25_000_000,0));
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            assertTrue(((java.util.List<?>)method.invoke(controller,8)).isEmpty());
+            assertTrue(copies.constructed().isEmpty());
+            verify(missing).close();verify(zeroTime).close();verify(zeroIso).close();
+        }
+    }
     @Test public void oldPreviewCallbacksCannotEnterNewSession() throws Exception {
         CameraCaptureSession old=mock(CameraCaptureSession.class),current=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",current);
@@ -126,6 +255,34 @@ public class CameraResumeTest {
         verify(session).setRepeatingRequest(any(CaptureRequest.class),any(),isNull());
         verify(events,never()).onCameraRestarted();
         assertEquals(true,get(controller,"mShotInProgress"));
+    }
+    @Test public void busyShutterDeclinesWithoutStartingOrCancellingExistingWork() throws Exception {
+        CaptureController.isProcessing=true;
+        assertFalse(controller.takePicture());
+        assertTrue(CaptureController.isProcessing);
+        verifyNoInteractions(events);
+        CaptureController.isProcessing=false;
+        put(controller,"mZslCapturing",true);
+        assertFalse(controller.takePicture());
+        assertEquals(true,get(controller,"mZslCapturing"));
+        verifyNoInteractions(events);
+    }
+    @Test public void rejectedAuxiliaryPreviewRequestReleasesPendingShot() throws Exception {
+        controller.isDualSession=true;
+        CameraCaptureSession session=mock(CameraCaptureSession.class);
+        put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
+        put(controller,"mCameraDevice",mock(CameraDevice.class));
+        put(controller,"mCameraAfModes",new int[]{0});
+        controller.mPreviewRequestBuilder=newRequestBuilder();
+        CaptureController.mPreviewCaptureResult=mock(TotalCaptureResult.class);
+        when(session.setRepeatingRequest(any(),any(),isNull()))
+                .thenThrow(new IllegalStateException("session closed"));
+        assertFalse(controller.takePicture());
+        assertEquals(false,get(controller,"mShotInProgress"));
+        verify(events).onProcessingError(contains("session closed"));
+        // Retrying is accepted once the HAL is ready; no app restart required.
+        doReturn(1).when(session).setRepeatingRequest(any(),any(),isNull());
+        assertTrue(controller.takePicture());
     }
     @Test public void restartUsesTheNormalPreparedResumePath() throws Exception {
         var spy=spy(controller);

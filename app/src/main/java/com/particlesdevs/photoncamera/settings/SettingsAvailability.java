@@ -18,6 +18,17 @@ public final class SettingsAvailability {
     }
     public String reason(String key) {
         boolean multi = on("pref_raw_mfsr_enabled_key", false);
+        boolean autonomous=on("pref_vivo_hdr_enabled",false);
+        boolean incompatible=multi || (on("pref_remosaic_enabled_key",false)
+                && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
+        if(key.startsWith("pref_vivo_hdr_")) {
+            if(incompatible) return "Выберите Bayer или ремозаик SCAMERA и отключите MFSR. Автономный HDR использует собственную склейку.";
+            if(!key.equals("pref_vivo_hdr_enabled") && !autonomous) return "Включите автономный HDR.";
+        }
+        if(autonomous && !incompatible && (any(key,"pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key",
+                "pref_tunable_postpipeline_tonepipeline","pref_gcam_finish","pref_ai_denoise_enabled_key")
+                || key.startsWith("pref_hdrplus_")))
+            return "Сейчас используется автономный HDR: настройте его шумоподавление и тональную обработку в отдельном меню.";
         boolean sabre=multi && text("pref_mfsr_engine_key","native").equals("sabre");
         if(sabre && any(key,"pref_mfsr_fpn_key","pref_mfsr_calibrate_key","pref_mfsr_red_ca_key","pref_mfsr_blue_ca_key"))
             return "Эта настройка относится к Multi-frame Remosaic, а выбран Sabre.";

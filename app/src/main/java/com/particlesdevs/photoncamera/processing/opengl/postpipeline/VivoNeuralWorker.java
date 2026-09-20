@@ -15,7 +15,17 @@ public final class VivoNeuralWorker {
         {"libQnnHtp.so","73683f1dabfafe1199ff922b43cf748198bbc793783d50585aeeb22e0e14caa2"},
         {"libQnnHtpV79Skel.so","3353856643575df6ff215ca430e0d9274e5c8ba62a172907b7bc5a5c716f6494"}
     };
-    static final String[][] HEX_FILES = {
+    public static final String[][] NICE_TONE_FILES = {
+        {"nice-tone-fasttm-v79.bin","696317a4f1478fa5a8b048425dc45c03af525b2db53a8e05eb66666df5231e2b"},
+        {"nice-tone-adams-v79.bin","6b484f11c748007978d928e14813ba6b98bddcbf53c3a8fef445094824e0d0fe"},
+        {"nice-tone-adams-landscape-v79.bin","14185fa7ea113e8fd3fc205281b9b83ccea9f2fc6346e44b6e121d0902a80b51"},
+        {"nice-tone-hdrnet-coeff-v79.bin","9bee14bddfd9dc0a7820c5e20087700d1a3a09c13939a4f8795f6a6cc52f3297"},
+        {"nice-tone-hdrnet-weight-v79.bin","ae050107939723b545c194f41fa70245dcd3c25f358e6c9cc1b7e6d8435cdb56"}
+    };
+    public static final String[][] NICE_FILES = {
+        {"nice-main-forward-v79.bin","a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c"}
+    };
+    public static final String[][] HEX_FILES = {
         {"hexquad-x1-v79.bin","e4519b2b8ee4ff1684c10d0e3006c6ab613972d107ed8f05c58543b833e17e22"},
         {"hexquad-x2-v79.bin","70e0a1c4e5c1316505a562badb85a8910cb6860106894b1d137077f2af357218"},
         {"libQnnSystem.so","4250e5366a7f7b3c692a184649929e4d763a979c47691bfec49e8511af993842"},
@@ -26,24 +36,37 @@ public final class VivoNeuralWorker {
     public static void main(String[] args) {
         int exit=1;
         try {
+            boolean niceCapture=args.length==4 && args[1].equals("--nice-capture");
+            boolean niceTone=args.length==2 && args[1].equals("--nice-tone-check");
+            boolean nice=niceTone || niceCapture || (args.length==2 && args[1].equals("--nice"));
             boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
-            if(!hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
-            for(String[] item:hex?HEX_FILES:FILES){
-                File file=new File(args[0],item[0]);
-                System.out.println("VERIFY APK ASSET: "+item[0]);
-                if(file.length()<=0||file.length()>128L*1024*1024)throw new IllegalStateException("Unavailable bundled asset: "+file);
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(niceTone?"NICE tone runtime check":niceCapture?"NICE HDR capture":nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            if(!nice && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
+            java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
+            if(nice){
+                java.util.Collections.addAll(required,niceTone?NICE_TONE_FILES:NICE_FILES);
+                for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
+            } else java.util.Collections.addAll(required,hex?HEX_FILES:FILES);
+            if(niceCapture)required.add(new String[]{"/vendor/lib64/libvivo_nice_cre.so",
+                    "41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e"});
+            for(String[] item:required){
+                File file=item[0].startsWith("/")?new File(item[0]):new File(args[0],item[0]);
+                System.out.println("VERIFY RESOURCE: "+item[0]);
+                if(file.length()<=0||file.length()>128L*1024*1024)throw new IllegalStateException("Unavailable model/runtime resource: "+file);
                 MessageDigest digest=MessageDigest.getInstance("SHA-256");
                 try(FileInputStream in=new FileInputStream(file)){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);}
                 StringBuilder hash=new StringBuilder();for(byte b:digest.digest())hash.append(String.format(Locale.ROOT,"%02x",b&255));
-                if(!item[1].contentEquals(hash))throw new IllegalStateException("Unknown bundled asset "+item[0]+": "+hash);
+                if(!item[1].contentEquals(hash))throw new IllegalStateException("Unknown model/runtime resource "+item[0]+": "+hash);
             }
             File executable=new File(args[0],"vivo-neural-worker");
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
+            if(niceTone){command.add("--nice-tone-check");command.add(args[0]);}
+            else if(niceCapture){command.add("--nice-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
+            else if(nice){command.add("--nice-check");command.add(args[0]);}
+            else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(hex){command.add("--hexquad-check");command.add(args[0]);}
             else java.util.Collections.addAll(command,args);
             System.out.println("EXEC: native worker, bundled model/runtime, no JNI namespace");

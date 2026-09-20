@@ -181,5 +181,8 @@
             android:exported="false" android:process=":vivo_neural"
             android:configChanges="orientation|screenSize|keyboardHidden" />
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+        <activity android:name=".ui.settings.VivoNiceActivity"
+            android:exported="false" android:process=":vivo_nice"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>

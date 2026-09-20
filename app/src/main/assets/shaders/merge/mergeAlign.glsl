@@ -1,10 +1,14 @@
 #define LAYOUT //
 LAYOUT
+#define VIVO_HDR 0
 precision highp float;
 precision highp sampler2D;
 precision highp image2D;
 uniform highp usampler2D inTexture;
 uniform highp sampler2D alignmentTexture;
+#if VIVO_HDR
+uniform highp sampler2D highlightFlow;
+#endif
 // Tuning factor on the noise variance: larger accepts more of the aligned
 // frame (more denoising, less robustness). HDR+ fixes the equivalent to 8.
 #ifndef ROBUSTNESS
@@ -171,6 +175,13 @@ vec2 vec4ToAlignment(vec4 alignment) {
     // as e.g. 1.9998 and truncation would bias offsets by -1px. The fract
     // part (subpixel residual) is preserved for the caller to floor().
     return floor(alignment.xy * vec2(rawHalf) + vec2(0.5)) + alignment.zw;
+}
+vec2 alignmentAt(ivec2 p) {
+#if VIVO_HDR
+    vec4 repaired=texelFetch(highlightFlow,p,0);
+    if(repaired.w>0.5 && repaired.z>0.2)return repaired.xy;
+#endif
+    return vec4ToAlignment(texelFetch(alignmentTexture,p+shift,0));
 }
 vec2 hash22(vec2 p)
 {
@@ -471,7 +482,7 @@ void main() {
     vec2 alignVecs[4];
     for (int i = 0; i < 4; i++) {
         ivec2 t = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)), ivec2(0), alignmentSize-1);
-        alignVecs[i] = vec4ToAlignment(texelFetch(alignmentTexture, t + shift, 0));
+        alignVecs[i] = alignmentAt(t);
         alignAvg += alignVecs[i] * 0.25;
     }
     // Local flow variation over a 3x3 tile neighbourhood, after Wronski et al.
@@ -487,7 +498,7 @@ void main() {
         for (int i = -1; i <= 1; ++i) {
             ivec2 p = clamp(ivec2((TILE*xy)/TILE_AL) + ivec2(i, j),
                             ivec2(0), alignmentSize - 1);
-            vec2 v = vec4ToAlignment(texelFetch(alignmentTexture, p + shift, 0));
+            vec2 v = alignmentAt(p);
             mx = max(mx, v.x); mxn = min(mxn, v.x);
             my = max(my, v.y); myn = min(myn, v.y);
         }
@@ -511,10 +522,29 @@ void main() {
             ? 1.0
             : 1.0 - smoothstep(1.0, TILING_TOLERANCE, alignSpread);
 
+#if VIVO_HDR
+    // In flat, noisy shadows there is no measurable geometric displacement.
+    // Let the per-donor radiometric motion test decide there; a hard tile veto
+    // otherwise stamps single-frame noise beside multi-frame denoising. Retain
+    // the geometric veto at visible structure and saturated reference pixels.
+    vec4 localMean=vec4(0), localSquare=vec4(0);
+    for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++) {
+        ivec2 p=clamp(xy+ivec2(x,y)*max(mosaicPeriod,1),ivec2(0),outSize-1);
+        vec4 v=imageLoad(baseTexture,p);
+        localMean+=v;localSquare+=v*v;
+    }
+    localMean/=25.0;
+    vec4 localVariance=max(localSquare/25.0-localMean*localMean,vec4(0));
+    vec4 expectedVariance=max(localMean*sabreNoiseRef.x+sabreNoiseRef.y,vec4(1e-10));
+    vec4 excess=max(localVariance/expectedVariance-vec4(1),vec4(0));
+    float structure=smoothstep(1.0,4.0,max(max(excess.r,excess.g),max(excess.b,excess.a)));
+    float clippedReference=step(0.90*packedScale,max(max(bayerBase.r,bayerBase.g),max(bayerBase.b,bayerBase.a)));
+    tilingTrust=mix(1.0,tilingTrust,max(structure,clippedReference));
+#endif
+
     for (int i = 0; i < 4; i++) {
         ivec2 xyT = clamp(ivec2((TILE*xy)/TILE_AL + ivec2(i % 2, i / 2)),ivec2(0),alignmentSize-1);
-        vec4 alignLoad = texelFetch(alignmentTexture, xyT + shift, 0);
-        vec2 alignF = vec4ToAlignment(alignLoad);
+        vec2 alignF = alignmentAt(xyT);
         if (mosaicPeriod > 1) {
             // Snap the displacement to whole colour periods. Anything finer
             // fetches a sample of the wrong colour, and no weighting downstream
@@ -657,6 +687,21 @@ void main() {
 
         trust *= vec4(tilingTrust);
 #if SABRE_RECONSTRUCTION
+#if VIVO_HDR
+        // Compare only unsaturated reference channels, in common radiance units.
+        // This avoids interpreting recovered highlight detail as object motion.
+        vec4 refValid=1.0-step(vec4(0.98*packedScale),bayerBase);
+        vec4 variance=max(bayerBase*sabreNoiseRef.x+sabreNoiseRef.y
+                +alterScaled*(sabreNoiseAlt.x*exposure)+sabreNoiseAlt.y*exposure*exposure,vec4(1e-10));
+        vec4 residual=(bayerAlter*exposure-bayerBase);
+        float error=dot(residual*residual/variance,refValid)/max(dot(refValid,vec4(1)),1.0);
+        float motion=1.0-smoothstep(9.0,36.0,error);
+        float peak=max(max(bayerAlter.r,bayerAlter.g),max(bayerAlter.b,bayerAlter.a))/max(packedScale,1e-8);
+        float valid=1.0-smoothstep(0.90,0.995,peak);
+        // Out-of-bounds samples must fall back rather than repeat edge pixels.
+        bool inside=all(greaterThanEqual(xy+align,ivec2(0))) && all(lessThan(xy+align,outSize));
+        trust=vec4(inside ? motion*valid*tilingTrust : 0.0);
+#endif
         acceptedMass += trust*w[i];
         alignedSum += bayerAlter*trust*w[i];
 #else

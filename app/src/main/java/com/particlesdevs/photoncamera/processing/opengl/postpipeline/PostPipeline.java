@@ -559,6 +559,11 @@ public class PostPipeline extends GLBasePipeline {
         add(new Bayer2Float());
         add(new BinnedDemosaic());
         add(new ABLC());
+        if (PreferenceKeys.isVivoHdrEnabled()) {
+            add(new LinearExposure());
+            add(new VivoHdrTone());
+            return;
+        }
         add(new GcamFinish());
         add(new LinearExposure());
         add(new AutoExposureCurve());
@@ -574,6 +579,9 @@ public class PostPipeline extends GLBasePipeline {
         // Before anything reads the frame as bayer: a quad or tetra mosaic has
         // to be rearranged first, or every stage downstream decodes it at the
         // wrong phase.
+        if (mParameters.vivoNiceRgb != null) {
+            add(new VivoNiceRgb());
+        } else {
         if (PreferenceKeys.isRemosaicEnabled()) {
             if (mParameters.remosaicDone) {
                 // The merge rearranged every frame as it loaded them, so the
@@ -587,7 +595,7 @@ public class PostPipeline extends GLBasePipeline {
             }
         }
         add(new Bayer2Float());
-        if ("fusion".equals(tonePipeline)) {
+        if (!mParameters.vivoHdrMode && "fusion".equals(tonePipeline)) {
             add(new ExposureFusionBayer2());
         }
         // A remosaiced frame is plain bayer, so it takes the ordinary demosaic
@@ -625,7 +633,7 @@ public class PostPipeline extends GLBasePipeline {
                 // The user-facing component switches are authoritative.  The
                 // old hdrxNR flag is device/profile dependent and made these
                 // controls no-ops on profiles where it was false.
-                if ((!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
+                if (!mParameters.vivoHdrMode && (!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
                         && !com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()
                         && !PreferenceKeys.isHdrPlusMergeEnabled()
                         && (PreferenceKeys.getRtLumaDenoise() > 0
@@ -635,13 +643,18 @@ public class PostPipeline extends GLBasePipeline {
                 break;
             }
         }
-        add(new ABLC());
-        add(new GcamFinish());
-        if ((!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
+        } // Bayer import/demosaic: NICE already produces RGB.
+        if (mParameters.vivoNiceRgb == null) add(new ABLC());
+        if (!mParameters.vivoHdrMode) add(new GcamFinish());
+        if (!mParameters.vivoHdrMode && (!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
                 && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {
             add(new RawTherapeeDenoise());
         }
-        if ("off".equals(tonePipeline)) {
+        if (mParameters.vivoHdrMode) {
+            add(new VivoHdrDenoise());
+            add(new LinearExposure());
+            add(new VivoHdrTone());
+        } else if ("off".equals(tonePipeline)) {
             // No tone/color stage: the linear camera RGB passes through
             // untouched. LinearExposure draws nothing but keeps the Ultra HDR
             // linear-scene snapshot duty alive.
@@ -661,7 +674,7 @@ public class PostPipeline extends GLBasePipeline {
             add(new AutoExposureCurve());
             add(new Initial());
         }
-        if (!"fusion".equals(tonePipeline) && !"opendrt".equals(tonePipeline)) {
+        if (!mParameters.vivoHdrMode && !"fusion".equals(tonePipeline) && !"opendrt".equals(tonePipeline)) {
             add(new LocalLaplacian());
         }
         add(new CorrectingFlow());
@@ -672,7 +685,10 @@ public class PostPipeline extends GLBasePipeline {
         if (mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f) {
             add(new HexQuadExposure("off".equals(tonePipeline)));
         }
-        if (PreferenceKeys.isSensorSharpeningEnabled()) add(new CaptureSharpening());
+        boolean rtSharpening = PreferenceKeys.isSharpDeconvEnabled()
+                || PreferenceKeys.isSharpUsmEnabled() || PreferenceKeys.isSharpMicroEnabled();
+        if (PreferenceKeys.isSensorSharpeningEnabled() && !(mParameters.vivoHdrMode && rtSharpening))
+            add(new CaptureSharpening());
         // Sharpening is RawTherapee's, selected inside the node by method:
         // unsharp mask, RL deconvolution or microcontrast. The previous
         // PhotonCamera/Luma switch is gone with the node it selected.

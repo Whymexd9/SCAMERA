@@ -145,7 +145,7 @@ android {
 // app_process/System.load creates an ART namespace that excludes FastRPC deps.
 def neuralAssets = layout.buildDirectory.dir('generated/vivoNeuralAssets')
 def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
-    inputs.files(fileTree('src/main/cpp') { include 'vivo-neural-*', 'vivo-hexquad-*' })
+    inputs.files(fileTree('src/main/cpp') { include 'vivo-neural-*', 'vivo-hexquad-*', 'vivo-nice-*' })
     inputs.property('ndkVersion', '27.2.12479018')
     outputs.file(neuralAssets.map { it.file('vivo-neural/arm64-v8a/vivo-neural-worker') })
     doFirst {
@@ -155,7 +155,7 @@ def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
         def clang = new File(android.sdkDirectory, "ndk/27.2.12479018/toolchains/llvm/prebuilt/${tag}/bin/aarch64-linux-android26-clang++")
         def output = neuralAssets.get().file('vivo-neural/arm64-v8a/vivo-neural-worker').asFile
         output.parentFile.mkdirs()
-        commandLine clang.absolutePath, '-std=c++14', '-O2', '-Wall', '-Wextra',
+        commandLine clang.absolutePath, '-std=c++17', '-O2', '-Wall', '-Wextra',
                 '-pthread', '-fPIE', '-pie', '-static-libstdc++', '-Wl,-z,max-page-size=16384',
                 file('src/main/cpp/vivo-neural-worker.cpp').absolutePath, '-ldl', '-lEGL', '-lGLESv3', '-o', output.absolutePath
     }

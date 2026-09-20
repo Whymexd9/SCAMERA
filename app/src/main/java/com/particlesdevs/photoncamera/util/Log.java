@@ -24,7 +24,7 @@ public class Log {
     private static Context logContext = null; // Application context for SimpleStorage
     private static final int LOG_RETENTION_DAYS = 10;
     private static String currentLogFileName = null;
-    private static boolean logEnabled = true;
+    private static volatile boolean logEnabled = true;
 
     // Thread-safe date formatters
     private static final ThreadLocal<SimpleDateFormat> dateFormatter =
@@ -37,6 +37,10 @@ public class Log {
     private static Handler logHandler;
     private static BufferedWriter bufferedWriter = null;
     private static String currentDate = null;
+    private static long retryAfterMs;
+    private static final int MAX_PENDING_LINES = 4096;
+    private static final java.util.concurrent.atomic.AtomicInteger pendingLines = new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger droppedLines = new java.util.concurrent.atomic.AtomicInteger();
     private static final int BUFFER_FLUSH_INTERVAL = 1000; // Flush every 1 second
 
     static {
@@ -64,27 +68,28 @@ public class Log {
      * Call this when the app has SAF storage access (e.g. from SplashActivity).
      */
     public static void setLogFolder(Context context) {
-        if (context != null) {
-            logContext = context.getApplicationContext();
-            logDir = null;
-            logHandler.post(() -> cleanupOldLogs());
-        } else {
-            logContext = null;
+        final Context app = context == null ? null : context.getApplicationContext();
+        logHandler.post(() -> {
             closeWriter();
-        }
+            logContext = app;
+            logDir = null;
+            currentDate = null;
+            retryAfterMs = 0;
+            if (app != null) cleanupOldLogs();
+        });
     }
 
-    /** @deprecated Prefer {@link #setLogFolder(Context)} with SimpleStorage. Kept for fallback. */
+    /** @deprecated Prefer {@link #setLogFolder(Context)} with SimpleStorage. */
     @Deprecated
     public static void setLogFile(java.io.File folder) {
-        if (folder != null && folder.isDirectory()) {
-            logDir = folder;
-            logContext = null;
-            logHandler.post(() -> cleanupOldLogs());
-        } else {
-            logDir = null;
+        logHandler.post(() -> {
             closeWriter();
-        }
+            logDir = folder != null && folder.isDirectory() ? folder : null;
+            logContext = null;
+            currentDate = null;
+            retryAfterMs = 0;
+            if (logDir != null) cleanupOldLogs();
+        });
     }
 
     /** Returns PhotonCamera/PhotonLog folder via SimpleStorage, or null if no access. */
@@ -194,7 +199,8 @@ public class Log {
             try {
                 bufferedWriter.flush();
             } catch (Exception e) {
-                // Ignore
+                closeWriter();
+                retryAfterMs = android.os.SystemClock.uptimeMillis() + 5000;
             }
         }
     }
@@ -205,38 +211,48 @@ public class Log {
         // folder is unavailable. ScameraDebugLog is a no-op while the switch is off.
         ScameraDebugLog.mirror(level, tag, message);
 
-        boolean useSimpleStorage = (logContext != null && SimpleStorageHelper.hasStorageAccess(logContext));
         if (!logEnabled) return;
-        if (!useSimpleStorage && logDir == null) return;
-
-        long timestamp = System.currentTimeMillis();
-
-        logHandler.post(() -> {
+        // No SAF/Binder/file operation on the caller (UI/capture/GL) thread.
+        // A stalled storage provider cannot create an unbounded logging queue.
+        if (pendingLines.incrementAndGet() > MAX_PENDING_LINES) {
+            pendingLines.decrementAndGet();
+            droppedLines.incrementAndGet();
+            return;
+        }
+        final long timestamp = System.currentTimeMillis();
+        if (!logHandler.post(() -> {
             try {
-                if (useSimpleStorage) {
-                    DocumentFile file = getLogFileDocumentFile();
-                    if (file == null || !file.exists()) return;
-                    if (bufferedWriter == null) {
+                if (logContext == null && logDir == null) return;
+                String today = dateFormatter.get().format(new java.util.Date(timestamp));
+                if (!today.equals(currentDate)) closeWriter();
+                if (bufferedWriter == null) {
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now < retryAfterMs) return;
+                    retryAfterMs = now + 5000;
+                    if (logContext != null) {
+                        DocumentFile file = getLogFileDocumentFile();
+                        if (file == null) return;
                         java.io.OutputStream os = DocumentFileUtils.openOutputStream(file, logContext, true);
                         if (os == null) return;
                         bufferedWriter = new BufferedWriter(new OutputStreamWriter(os), 8192);
-                    }
-                } else {
-                    java.io.File file = getLogFile();
-                    if (file == null) return;
-                    if (bufferedWriter == null) {
+                    } else {
+                        java.io.File file = getLogFile();
+                        if (file == null) return;
                         bufferedWriter = new BufferedWriter(new FileWriter(file, true), 8192);
                     }
+                    retryAfterMs = 0;
                 }
-                if (bufferedWriter == null) return;
-
+                int dropped = droppedLines.getAndSet(0);
+                if (dropped > 0) bufferedWriter.write("W/Log: dropped " + dropped + " queued lines (slow storage)\n");
                 String time = timeFormatter.get().format(new java.util.Date(timestamp));
-                String logEntry = time + " " + level + "/" + tag + ": " + message + "\n";
-                bufferedWriter.write(logEntry);
+                bufferedWriter.write(time + " " + level + "/" + tag + ": " + message + "\n");
             } catch (Exception e) {
                 closeWriter();
+                retryAfterMs = android.os.SystemClock.uptimeMillis() + 5000;
+            } finally {
+                pendingLines.decrementAndGet();
             }
-        });
+        })) pendingLines.decrementAndGet();
     }
 
     public static void d(String tag, String message) {

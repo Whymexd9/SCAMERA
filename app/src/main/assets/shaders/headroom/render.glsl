@@ -25,6 +25,9 @@ uniform sampler2D FusionMap;
 uniform mat3 sensorToIntermediate; // Color transform from sensor to a wide-gamut colorspace
 uniform mat3 intermediateToSRGB; // Color transform from wide-gamut colorspace to sRGB
 uniform float displayGain; // Linear exposure multiplier from LinearExposure
+uniform float toneAmount;
+uniform float localContrast;
+uniform float shadowLift;
 uniform float sceneWhite; // Scene headroom, 0.90*displayGain clamped to [1, sceneWhiteMax]
 uniform float outputExposureScale; // Global output exposure (~-0.32 EV at 0.80)
 uniform ivec4 activeSize;
@@ -105,7 +108,7 @@ float mapHeadroomLuminance(float y, float whitePoint) {
     /* Map to the inverse of the output exposure so the final SDR endpoint
      * can actually reach 1.0 after the global scale. */
     float preScaleDisplayWhite=1.0/max(outputExposureScale,1.0e-6);
-    return start+(preScaleDisplayWhite-start)*shaped;
+    return mix(y,start+(preScaleDisplayWhite-start)*shaped,clamp(toneAmount,0.0,1.0));
 }
 
 /* Chroma-preserving headroom compression: the curve acts on one scalar guide
@@ -194,7 +197,7 @@ void main() {
         float shadowGate=smoothstep(0.025,0.12,y);
         float highlightGate=1.0-smoothstep(0.55,0.92,y);
         float gate=shadowGate*highlightGate;
-        wb*=exp(0.42*gate*detail);
+        wb*=exp(localContrast*gate*detail);
     }
 
     /* The lens/fusion local gain also scales the shoulder's white point, so
@@ -202,6 +205,8 @@ void main() {
      * of stacking above the global headroom and clipping to flat white. */
     float whitePoint=max(sceneWhite*clamp(localGain,0.25,4.0),0.55);
 
+    // Bounded shadow gain; black remains black and the shoulder is unaffected.
+    wb*=1.0+shadowLift*(1.0-smoothstep(0.0,0.35,y));
     vec3 linearSrgb=intermediateToSRGB*sensorToIntermediate*wb;
     linearSrgb=mapExtendedLinearHeadroom(linearSrgb,whitePoint);
     linearSrgb*=outputExposureScale;

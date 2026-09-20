@@ -4,6 +4,7 @@ package com.particlesdevs.photoncamera.settings;
 public final class SettingsNumericRules {
     private SettingsNumericRules() {}
     public static double[] bounds(String key) {
+        if (key.startsWith("pref_vivo_hdr_") && !key.equals("pref_vivo_hdr_enabled")) return new double[]{0,2,0};
         switch (key) {
             case "pref_aces_gamma_curve_key": case "pref_aces_tone_curve_key": case "pref_aces_output_key": return new double[]{0,20,1};
             case "pref_antibanding_hz_key": return new double[]{0,1000,1};

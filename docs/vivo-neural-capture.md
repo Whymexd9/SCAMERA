@@ -219,3 +219,39 @@ period, red/blue reversal rejection, within-phase variance, nonfinite output,
 the ten-chart sweep, and propagation of driver errors. These are synthetic
 transport/analysis fixtures; they do not run HTP weights on the host.
 
+
+
+## One final APK from Actions
+
+The test workflow now packages, verifies and signs all 17 pinned model/runtime
+entries inside Actions. The downloadable `SCAMERA-Build-<version>` artifact
+contains the final APK and SHA256SUMS.txt. Deliver that exact APK; never append
+assets or re-sign it locally after downloading. A successful source compile
+without the private bundle must not publish an incomplete APK.
+
+Vendor binaries remain outside public git. Bootstrap once with the repository
+Actions secret `SCAMERA_NEURAL_ASSETS_URL`, an HTTPS download of
+`scamera-neural-assets-v1.zip` (SHA256
+`7a2c0d642f3fce5dd20f4f5c0bb94cbd9f6216cae7fd504cb380f94b85c54587`).
+The archive contains bundle/, hexquad/ and nice/ files verified individually
+against the Java asset manifest. Signed URLs and credentials must not be
+committed to source or entered in public PR comments.
+
+After the first successful build, subsequent runs restore the hash-checked
+`SCAMERA-neural-assets-v1` Actions artifact and refresh its 90-day retention.
+The temporary bootstrap secret can then be removed. If all copies expire,
+provision the same pinned bundle again. Artifact redirects do not receive the
+GitHub authorization header. Bundle URLs are omitted from failure messages.
+
+
+An encrypted seed is also available on `codex/encrypted-neural-assets-v1`.
+The source-side `tools/neural-assets-encrypted.json` pins its commit and all
+ciphertext hashes. `SCAMERA_NEURAL_ASSETS_KEY` holds the random 256-bit AES-GCM
+key in repository Actions secrets; the key is never committed. GCM authentication
+and the plaintext/file hashes are checked before packaging. This removes the
+need for a public model URL and allows recovery after the Actions cache expires.
+Only encrypted bytes are stored in git; authorized final APK artifacts contain
+the runtime/model files required by the app.
+
+When the key is configured, Actions reads the encrypted parts directly from the
+pinned Git commit fetched by checkout; no raw-content download service is needed.
