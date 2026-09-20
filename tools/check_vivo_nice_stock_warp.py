@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Host execution of two recovered CL bodies with only type/builtin shims.
 
-Pass decoded-source.txt from the supplied CRE evidence. Tests the translation
-component of warp=2/swarp=6, including border reflection and donor colour tags.
+Pass decoded-source.txt from the supplied CRE evidence. Tests translations and full projective
+warp=2/swarp=6, including upRatio, reflection and donor colour tags.
 Does not validate stock alignment, CFA ROI planning, capture or tone.
 """
 from pathlib import Path
 import re
-import argparse,subprocess,tempfile,json
+import argparse,subprocess,tempfile,json,os
 parser=argparse.ArgumentParser(description="Compare NICE warp adapters with recovered donor OpenCL bodies. No NPU/photo-quality claim.")
 parser.add_argument('decoded_source',type=Path,help="Decoded CRE OpenCL source from the pinned donor; not downloaded by this tool")
+parser.add_argument("--sanitize",action="store_true",help="Enable address/undefined checks for kernel bodies and adapters")
 args=parser.parse_args()
 source=args.decoded_source.read_text();chunks=[]
 for name in ['vivoRawBackwardWarp2CanvasOrderBayerBufferCL','vivoRawBackwardWarp2CanvasAlignPerChanInterpBayerCL']:
@@ -49,12 +50,51 @@ int main(){
    for(int c=0;c<3;++c){assert(stock[c*4096+y*64+x]==v[c]);++checked;}
   }
  }
- std::cout<<"PASS: "<<checked<<" samples bit-identical to recovered OpenCL kernel bodies (translation-only geometry)\\n";
+ // Test the projective implementation directly against the untouched kernel
+ // bodies, not against a reimplementation of the projection equation.
+ std::vector<std::array<float,8>> matrices={
+  {1,0,0,0,1,0,0,0}, {1,0,.51f,0,1,-.3f,0,0},
+  {.98f,-.17f,5,.17f,.98f,-4,0,0}, {1.2f,.08f,-9,-.03f,.83f,7,0,0},
+  {1,.04f,-3,-.06f,1,4,.002f,-.001f},
+  {.92f,-.12f,8,.11f,1.07f,-7,-.0015f,.0025f}};
+ for(int i=0;i<40;++i){
+  auto unit=[&](){return float(random()%2001)/1000.f-1.f;};
+  matrices.push_back({1+unit()*.15f,unit()*.2f,unit()*10,unit()*.2f,
+                     1+unit()*.15f,unit()*10,unit()*.002f,unit()*.002f});
+ }
+ for(const auto& m:matrices)for(float ratio:{.75f,1.f,1.25f,2.f}){
+  const vivo_nice::BackwardHomography transform{m,ratio};
+  float4 l{m[0],m[1],m[2],m[3]},h{m[4],m[5],m[6],m[7]};
+  for(gidY=0;gidY<32;++gidY)for(gidX=0;gidX<32;++gidX)
+   vivoRawBackwardWarp2CanvasOrderBayerBufferCL(32,32,raw.data(),stock.data(),l,h,ratio,64,64,64,64,64,64,pattern,0);
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x){
+   assert(stock[y*64+x]==vivo_nice::warpOrderBayerProjective(b,0,x,y,transform));++checked;
+  }
+  for(gidY=0;gidY<64;++gidY)for(gidX=0;gidX<64;++gidX)
+   vivoRawBackwardWarp2CanvasAlignPerChanInterpBayerCL(64,64,raw.data(),stock.data(),l,h,ratio,64,64,64,64,64,64,64);
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x){
+   auto v=vivo_nice::warpShortRgbProjective(b,0,x,y,transform);
+   for(int c=0;c<3;++c){assert(stock[c*4096+y*64+x]==v[c]);++checked;}
+  }
+ }
+ for(int kind=0;kind<4;++kind){
+  vivo_nice::BackwardHomography bad;
+  if(kind==0)bad.h[6]=-1.f/32;
+  if(kind==1)bad.h[0]=std::numeric_limits<float>::quiet_NaN();
+  if(kind==2)bad.upRatio=0;
+  if(kind==3)bad.h[2]=std::numeric_limits<float>::max();
+  bool rejected=false;try{vivo_nice::warpOrderBayerProjective(b,0,32,32,bad);}
+  catch(const std::invalid_argument&){rejected=true;}assert(rejected);
+ }
+ std::cout<<"PASS: "<<checked<<" samples bit-identical to recovered OpenCL kernel bodies (translation, rotation, scale, shear, perspective and upRatio; CPU kernel-body oracle)\\n";
 }
 '''
 header=Path(__file__).resolve().parents[1]/'app/src/main/cpp/vivo-nice-capture.h'
 with tempfile.TemporaryDirectory(prefix='nice-stock-warp-') as directory:
     cpp=Path(directory)/'oracle.cpp';exe=Path(directory)/'oracle'
     cpp.write_text(prefix+s+harness.replace('NICE_CAPTURE_HEADER',json.dumps(str(header))))
-    subprocess.run(['g++','-std=c++17','-O2',str(cpp),'-o',str(exe)],check=True)
-    subprocess.run([str(exe)],check=True)
+    flags=['-O1','-g','-fsanitize=address,undefined'] if args.sanitize else ['-O2']
+    subprocess.run(['g++','-std=c++17',*flags,str(cpp),'-o',str(exe)],check=True)
+    env=os.environ.copy()
+    if args.sanitize:env["ASAN_OPTIONS"]="detect_leaks=0" # LSan cannot run in the ptraced host
+    subprocess.run([str(exe)],check=True,env=env)

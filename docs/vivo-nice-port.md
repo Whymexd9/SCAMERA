@@ -609,3 +609,35 @@ reference replay's zero difference is not expected after this domain change.
 Still incomplete: motion-derived selection and failed-L alignment behavior,
 stock dynamic capture scheduling, and the complete color/segmentation/TCE tone
 chain. No Actions APK is produced for this bounded source correction.
+
+### Projective donor sampling (preparatory motion port, no APK)
+
+`vivo-nice-homography.h` represents the original backward mapping as eight
+row-major float coefficients (implicit h22=1), plus `upRatio`. The two new
+projective samplers accept this mapping directly. N/L warp=2 transforms each
+2x2 cell origin, divides by upRatio, rounds once, then preserves donor Bayer
+labels. S/ES swarp=6 instead adds the half-pixel offset before upRatio division
+and uses the original dense three-plane interpolation. Both retain the donor's
+single reflection followed by clamping. Nonfinite matrices, singular evaluated
+coordinates and unsafe float-to-integer coordinates are rejected; those checks
+are memory-safety checks, not a reconstruction of stock alignment acceptance.
+
+`check_vivo_nice_stock_warp.py` now compares 3,473,408 tagged sample values with
+the recovered OpenCL bodies executed on the CPU. Cases include existing
+translations and 46 matrices at four upRatio values, with rotation, anisotropic
+scale, shear and perspective, plus invalid-matrix rejection. All samples match
+bit-for-bit. The `--sanitize` option checks both the adapted samplers and the
+original kernel bodies with ASan/UBSan (LSan disabled on the ptraced host).
+This does not establish GPU compiler arithmetic parity or photographic quality.
+
+The existing capture alignment still produces a local shift grid. The new
+projective entry points are deliberately not selected by capture until the
+matrix estimator, coordinate-system/ROI conversion, validity checks and
+failed-frame policy have been recovered and connected. No assertion that the
+motion estimator has been ported follows from these sampler tests.
+
+Additional source locations for that work: the CRE global-alignment path at
+0x29a96c calls `vivoFindHomographyUp4` at 0x28ef00. That function reads RANSAC
+parameters from its parameter object's +0x3c/+0x40/+0x44; the wrapper converts
+the resulting nine doubles to floats at 0x29a9cc..0x29a9f8. Calling this internal
+function in the Android worker is not yet implemented or ABI-validated.

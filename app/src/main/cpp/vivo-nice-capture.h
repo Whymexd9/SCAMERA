@@ -1,6 +1,7 @@
 #pragma once
 #include "vivo-nice-preprocess.h"
 #include "vivo-nice-profile.h"
+#include "vivo-nice-homography.h"
 #include <fstream>
 #include <functional>
 #include <sys/mman.h>
@@ -176,15 +177,21 @@ inline int donorBorder(int x,int size) {
 inline uint16_t raw14(const Burst& b,int f,int x,int y) {
     return uint16_t(std::min(16383.f,std::floor(b.sample(f,x,y)*16383.f+.5f)));
 }
-inline uint16_t warpOrderBayer(const Burst& b,int f,int x,int y,Shift shift) {
-    const int sx=donorBorder(int(float(x&~1)+shift.x+.5f)+(x&1),b.w);
-    const int sy=donorBorder(int(float(y&~1)+shift.y+.5f)+(y&1),b.h);
+inline uint16_t warpOrderBayerAt(const Burst& b,int f,int x,int y,DonorPoint point) {
+    const int sx=donorBorder(int(point.x+.5f)+(x&1),b.w);
+    const int sy=donorBorder(int(point.y+.5f)+(y&1),b.h);
     return raw14(b,f,sx,sy)|uint16_t(b.color(sx,sy)<<14);
+}
+inline uint16_t warpOrderBayer(const Burst& b,int f,int x,int y,Shift shift) {
+    return warpOrderBayerAt(b,f,x,y,{float(x&~1)+shift.x,float(y&~1)+shift.y});
+}
+inline uint16_t warpOrderBayerProjective(const Burst& b,int f,int x,int y,const BackwardHomography& h) {
+    return warpOrderBayerAt(b,f,x,y,h.bayerOrigin(x,y));
 }
 // CRE swarp=6: three dense tagged planes, using the per-channel interpolation
 // kernel's RGGB cell addressing and half-pixel convention.
-inline std::array<uint16_t,3> warpShortRgb(const Burst& b,int f,int x,int y,Shift shift) {
-    float fx=x+shift.x+.5f,fy=y+shift.y+.5f;
+inline std::array<uint16_t,3> warpShortRgbAt(const Burst& b,int f,DonorPoint point) {
+    float fx=point.x,fy=point.y;
     if(fx<0)fx=-fx;if(fy<0)fy=-fy;
     if(fx>b.w-1)fx=2*(b.w-1)-fx;
     if(fy>b.h-1)fy=2*(b.h-1)-fy;
@@ -203,6 +210,12 @@ inline std::array<uint16_t,3> warpShortRgb(const Burst& b,int f,int x,int y,Shif
         result[c]=uint16_t(std::clamp(int(sum+.5f),0,16383))|uint16_t(c<<14);
     }
     return result;
+}
+inline std::array<uint16_t,3> warpShortRgb(const Burst& b,int f,int x,int y,Shift shift) {
+    return warpShortRgbAt(b,f,{x+shift.x+.5f,y+shift.y+.5f});
+}
+inline std::array<uint16_t,3> warpShortRgbProjective(const Burst& b,int f,int x,int y,const BackwardHomography& h) {
+    return warpShortRgbAt(b,f,h.shortPosition(x,y));
 }
 inline void restoreSensorOrigin(std::vector<float>& rgb,int w,int h,int cfa) {
     // Same direction as CRE pixelShiftf32: dst reads max(dst-offset, 0).
