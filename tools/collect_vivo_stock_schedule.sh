@@ -1,8 +1,7 @@
 #!/system/bin/sh
-# v2: isolate Binder stdin/stdout/stderr with pipes; retain real command status.
+# v3: watch only; no full camera dumps or repeated polling during capture.
 # No firmware changes, persistent properties, SELinux changes, or uploads.
-# Donor libcameraservice.so: shellCommand 0x1d46a8; handleWatchCommand 0x20ccf4;
-# Camera3Device::dump 0x30ff44 supports -m <tags> and -m off.
+# The v2 dumpsys fallback is withdrawn after a device camera-freeze report.
 set -eu
 if [ "$(id -u)" != 0 ]; then
     echo 'Запустите этот файл через su (root).'
@@ -11,7 +10,7 @@ fi
 umask 077
 trace_parent=/sdcard/Download/SCAMERA
 mkdir -p "$trace_parent"
-trace_dir=$(mktemp -d "$trace_parent/vivo-stock-schedule-v2-XXXXXXXX")
+trace_dir=$(mktemp -d "$trace_parent/vivo-stock-schedule-v3-XXXXXXXX")
 trace_mode=none
 trace_finished=0
 
@@ -35,7 +34,6 @@ finish() {
     trace_finished=1
     case "$trace_mode" in
         watch) collect_command "$trace_dir/monitor-stop.txt" cmd media.camera watch stop || true ;;
-        dumpsys) collect_command "$trace_dir/monitor-stop.txt" dumpsys -t 10 media.camera -m off || true ;;
     esac
     trace_mode=none
     trace_name=${trace_dir##*/}
@@ -47,7 +45,7 @@ finish() {
 }
 trap finish 0
 trap 'exit 130' INT TERM
-printf 'SCAMERA stock schedule collector v2\n' > "$trace_dir/collector.txt"
+printf 'SCAMERA stock schedule collector v3\n' > "$trace_dir/collector.txt"
 if ! command -v timeout >/dev/null 2>&1; then
     echo 'Нет утилиты timeout; сбор не запущен.' | tee -a "$trace_dir/collector.txt"
     exit 2
@@ -57,11 +55,10 @@ id > "$trace_dir/identity.txt"
 id -Z >> "$trace_dir/identity.txt" 2>&1 || true
 getenforce >> "$trace_dir/identity.txt" 2>&1 || true
 collect_command "$trace_dir/camera-help.txt" cmd media.camera help || true
-collect_command "$trace_dir/camera-before.txt" dumpsys -t 10 media.camera || true
 for trace_lib in /system/lib64/libcameraservice.so /vendor/lib64/libvivo_nice_cre.so /vendor/lib64/libvivo_nicetce.so /vendor/lib64/libvivo_nicetone.so; do
     if [ -f "$trace_lib" ]; then sha256sum "$trace_lib" >> "$trace_dir/library-hashes.txt"; fi
 done
-trace_tags=android.sensor.timestamp,android.sensor.exposureTime,android.sensor.sensitivity,android.control.aeState,android.control.enableZsl,android.control.captureIntent,android.colorCorrection.gains,android.colorCorrection.transform,vivo.parameter.VivoAlgoAECFrameControl,vivo.parameter.VivoAlgoCaptureFrameControl,vivo.parameter.VivoMotionAdaptiveAECInfo,vivo.control.RequestLeftInThisSnapshot,vivo.control.currentModeEx,vivo.control.hdr_gain,vivo.control.hdr_shutter,vivo.control.sensor_gain,vivo.feedback.RealGain,vivo.feedback.AdrcGain,vivo.feedback.ISPDigitalGain
+trace_tags=android.sensor.exposureTime,android.sensor.sensitivity,vivo.parameter.VivoAlgoAECFrameControl,vivo.parameter.VivoAlgoCaptureFrameControl,vivo.parameter.VivoMotionAdaptiveAECInfo,vivo.control.RequestLeftInThisSnapshot
 
 if grep -q 'watch' "$trace_dir/camera-help.txt" && ! command_failed "$trace_dir/camera-help.txt"; then
     # Mark before starting so a timeout or interrupt still triggers cleanup.
@@ -74,39 +71,19 @@ if grep -q 'watch' "$trace_dir/camera-help.txt" && ! command_failed "$trace_dir/
     fi
 fi
 
-echo 'Откройте стоковую камеру Vivo: Фото, основная камера 35 мм. Другие приложения камеры закройте.'
-echo 'Сейчас 15 секунд на открытие камеры, затем 90 секунд на три снимка: обычный свет; яркое окно с тёмной комнатой; движущийся предмет.'
-echo 'Сохраняются диагностика и метаданные камеры; фотографии и общий logcat не собираются.'
-sleep 15
-if [ "$trace_mode" = none ]; then
-    # Legacy entry point is in the supplied Vivo binary. It applies to clients
-    # already connected, so the stock camera must be open before this call.
-    trace_mode=dumpsys
-    if collect_command "$trace_dir/monitor-start-dumpsys.txt" dumpsys -t 10 media.camera -m "$trace_tags" && ! command_failed "$trace_dir/monitor-start-dumpsys.txt" && grep -q 'Tag monitoring enabled' "$trace_dir/monitor-start-dumpsys.txt"; then
-        echo 'Монитор включён через dumpsys.' | tee -a "$trace_dir/collector.txt"
-    else
-        echo 'Запуск монитора не подтверждён. Архив диагностики будет сохранён; фотографировать пока не нужно.' | tee -a "$trace_dir/collector.txt"
-        collect_command "$trace_dir/camera-services.txt" dumpsys -l || true
-        exit 3
-    fi
+if [ "$trace_mode" != watch ]; then
+    echo 'Монитор watch недоступен. Сбор остановлен; резервный dumpsys отключён после сообщения о зависании камеры.' | tee -a "$trace_dir/collector.txt"
+    exit 3
 fi
-trace_step=0
-while [ "$trace_step" -lt 45 ]; do
-    date '+%s' >> "$trace_dir/watch.txt"
-    if [ "$trace_mode" = watch ]; then
-        collect_command "$trace_dir/watch-last.txt" cmd media.camera watch dump || true
-    else
-        collect_command "$trace_dir/watch-last.txt" dumpsys -t 10 media.camera || true
-    fi
-    cat "$trace_dir/watch-last.txt" >> "$trace_dir/watch.txt"
-    if command_failed "$trace_dir/watch-last.txt"; then
-        echo 'Чтение монитора завершилось ошибкой. Сохраняю диагностику.' | tee -a "$trace_dir/collector.txt"
-        exit 4
-    fi
-    trace_step=$((trace_step + 1))
-    sleep 2
-done
-collect_command "$trace_dir/camera-after.txt" dumpsys -t 10 media.camera || true
+echo 'Откройте стоковую камеру Vivo: Фото, основная камера 35 мм.'
+echo 'За следующие 30 секунд сделайте один снимок яркого окна с тёмной комнатой.'
+echo 'Опрос камеры во время съёмки отключён. При зависании остановите сбор через Ctrl+C.'
+# No service calls during this interval. Read the tag buffer exactly once.
+sleep 30
+if ! collect_command "$trace_dir/watch.txt" cmd media.camera watch dump || command_failed "$trace_dir/watch.txt"; then
+    echo 'Не удалось прочитать монитор. Сохраняю диагностику.' | tee -a "$trace_dir/collector.txt"
+    exit 4
+fi
 if ! grep -q 'VivoAlgoAECFrameControl' "$trace_dir/watch.txt"; then
     echo 'AEC-тег не найден; наличие нужных значений будет проверено по архиву.' | tee -a "$trace_dir/collector.txt"
 fi

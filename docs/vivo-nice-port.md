@@ -811,3 +811,17 @@ users are instructed to close other camera applications. No SELinux policy,
 persistent property, camera binary, or firmware changes are made. No general
 logcat or photographs are collected. Phone execution and availability of private
 Vivo tags remain unverified until the new archive is received.
+
+### Collector v2 withdrawn after camera-freeze report (2026-09-20)
+
+The user reports that collection now runs but the stock camera freezes during
+it. No v2 archive has been received yet, so the active mode and precise cause
+are unknown. V2's fallback performed a full camera dump every two seconds;
+this is intrusive diagnostic work during capture and is a plausible contributor.
+Collector v3 removes all dumpsys calls and that fallback. It uses six tags,
+waits 30 seconds without service polling, then reads watch once and stops it.
+Unavailable watch now fails with an archive instead of switching to full dumps.
+Mock command checks verify the one-read path and error archives; they do not
+prove camera responsiveness. V3 is not yet requested for a device rerun: first
+stop v2 and inspect its existing archive. The user was told to use Ctrl+C and
+not repeat capture while this fault is being diagnosed.
