@@ -856,3 +856,31 @@ should be requested on this evidence alone. Next diagnostic is a one-shot read
 of the existing Android crash log, without camera commands, monitoring or new
 photographs. Collector v3 remains unverified and must not be described as fixing
 this device failure merely because its dumpsys fallback was removed.
+
+### Crash log proves TagMonitor formatter abort; all collector versions withdrawn
+
+Uploaded `vivo-camera-crash.txt` identifies the primary fault in **cameraserver**:
+SIGABRT with `ubsan: mul-overflow`, inside `fmt::v11::detail::format_float<double>`
+called by float `write_float`, then `TagMonitor::getEventDataString` at PC
+0x3da93c. The cameraserver BuildId is d86792e405d8e06febf35e6a4d893e26.
+At 19:51:25.985 the path is `printWatchedTags -> handleWatchCommand -> shellCommand`.
+At 19:50:39.120 the same failure occurs while caching monitored events during
+client disconnect (`cacheClientTagDumpIfNeeded -> removeByClient`). Thus even
+monitoring without repeated polling can trigger the abort when a client closes.
+The precise float value/tag responsible is not recorded in this log.
+
+The provider subsequently aborts in `CameraProvider::binderDied` (19:51:26.719),
+and the stock app throws a null List.size() exception in `SnapController.prepare`
+(19:51:33.513). The observed failure begins in diagnostic metadata formatting,
+not in a NICE reconstruction or Tone model stack. Our active diagnostic collector
+exposed this firmware failure. The earlier polling-load explanation is superseded.
+
+**All active collector versions v1-v3 are withdrawn.** The canonical script now
+exits before any service call. The v3 single-dump/smaller-tag variant is not a fix:
+it still monitored float values and used the same formatting path. We do not
+patch cameraserver, suppress UBSan, disable SELinux, or request another live
+reproduction. The preceding archive already confirms monitor stop succeeded.
+No additional log is needed to establish this diagnostic crash mechanism.
+Dynamic stock schedule recovery still lacks live values; any future approach
+must avoid CameraService TagMonitor float formatting entirely and be validated
+before asking the user to exercise it on the phone.
