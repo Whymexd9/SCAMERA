@@ -884,3 +884,41 @@ No additional log is needed to establish this diagnostic crash mechanism.
 Dynamic stock schedule recovery still lacks live values; any future approach
 must avoid CameraService TagMonitor float formatting entirely and be validated
 before asking the user to exercise it on the phone.
+
+### Alternative metadata source and C++ Tone conversion (2026-09-20)
+
+The decompiled stock app has a metadata path independent of CameraService
+TagMonitor. `SuperNightCaptureCommand.executeRawVifVivoRawHdrCommand` logs
+`aecFrameInfo`, forward/backward/total counts, opaque batch info, and
+`motionMetering`. Its YUV path logs `aecFrameControl` and `captureFrameControl`.
+The SDK `Logger.d` requires `persist.sys.log.ctrl=yes`. `VLogWrapper` can route
+those logs to `/data/bbklog/camap_log/camapp_*.txt` when its file writer exists and
+`persist.log.ratelimit=1`; otherwise it uses VLog. These settings are read, not
+changed, by the new `tools/read_vivo_stock_logs.sh`.
+
+This new tool is a passive snapshot of existing logcat camera SDK tags plus
+bounded tails of at most ten stock-camera log files, retaining only the relevant
+capture-command lines from files. It never calls cmd/dumpsys CameraService,
+enables monitoring, starts capture, attaches to processes, changes properties,
+or clears logs. It reports absent records honestly. It does not enable the
+withdrawn collector. No device run has been observed yet.
+
+`tools/parse_vivo_stock_schedule.py` parses observed stock Java records with
+line/PID/TID provenance where present. It validates count sums, int32 arrays,
+batch-length bounds and finite values. AEC decoding exposes only the proven
+first-plane normal marker and indices 32..47 shutter-ms plane. Gain/other
+fields stay opaque. Adjacent lines are not silently paired into a capture.
+Synthetic checks cover count inconsistencies, truncation, nonfinite values,
+null records, and unrelated command tags. This is an analysis tool; dynamic
+Camera2 request scheduling remains blocked on actual values and full ABI mapping.
+
+`vivo-nice-tone-conversion.h` now implements the recovered FastTM normalization
+and Log-output conversion in C++: input /15615 without an input clamp, output
+clamp to [0,1], truncate multiplication by 9937, lookup in the caller-supplied
+9938-entry original exp table, and clamp to 16383. Nonfinite graph output throws
+before indexing. The table must come from the pinned TCE; no guessed gamma is
+substituted. The ARM oracle test now compiles and exercises this C++ code and
+compares all 134,880 values bit-for-bit against original execution, including
+row-padding checks on the original functions. Full color calibration, masks,
+gain-map reconstruction and model routing are still not integrated. No new
+APK or completed-stock-port claim is made.

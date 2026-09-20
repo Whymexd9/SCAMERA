@@ -6,6 +6,9 @@ No library instructions or imported functions are replaced. Optional source
 extraction preserves the original embedded OpenCL text for further inspection.
 """
 import argparse
+import ctypes
+import subprocess
+import tempfile
 import hashlib
 import json
 import re
@@ -65,6 +68,26 @@ def main():
     # The log-domain float-output branch uses this pinned table, not a direct
     # multiplication by 16383. It indexes trunc(clamp(value,0,1)*9937).
     exp_table = np.frombuffer(bytes(u.mem_read(0x4c5aa, 9938 * 2)), dtype='<u2')
+    # Compare deployable C++ conversion to the same unmodified ARM oracle.
+    temporary = tempfile.TemporaryDirectory(prefix='nice-tce-cpp-')
+    directory = Path(temporary.name)
+    header = Path(__file__).resolve().parents[1] / 'app/src/main/cpp/vivo-nice-tone-conversion.h'
+    source = directory / 'conversion.cpp'
+    source.write_text('#include "' + str(header) + '\"\n' + r'''
+extern "C" float normalize(unsigned short input) {
+    return vivo_nice::FastTmConversion::normalize(input);
+}
+extern "C" unsigned short convert(float input, const unsigned short* lut) {
+    vivo_nice::FastTmConversion::ExpTable table;
+    std::copy_n(lut,table.size(),table.begin());
+    return vivo_nice::FastTmConversion::logOutput(input,table);
+}
+''')
+    subprocess.run(['c++','-std=c++17','-O2','-shared','-fPIC',str(source),'-o',str(directory/'conversion.so')],check=True)
+    cpp = ctypes.CDLL(str(directory/'conversion.so'))
+    cpp.normalize.argtypes=[ctypes.c_uint16];cpp.normalize.restype=ctypes.c_float
+    cpp.convert.argtypes=[ctypes.c_float,ctypes.POINTER(ctypes.c_uint16)];cpp.convert.restype=ctypes.c_uint16
+    table_ptr=exp_table.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     checked = 0
     for width, height in [(7, 5), (8, 5), (9, 5), (520, 43)]:
         count = width * height * 3
@@ -76,6 +99,11 @@ def main():
             if expected is None:
                 indices = (np.clip(input_data, 0, 1) * np.float32(9937)).astype(np.uint32)
                 expected = np.minimum(exp_table[indices], 16383).astype('<u2')
+            if function == 0x39dee4:
+                actual = np.array([cpp.normalize(int(x)) for x in input_data.flat],dtype=np.float32).reshape(expected.shape)
+            else:
+                actual = np.array([cpp.convert(float(x),table_ptr) for x in input_data.flat],dtype=np.uint16).reshape(expected.shape)
+            assert actual.tobytes() == expected.tobytes(), ('C++ conversion',hex(function),width,height)
             # Odd extra padding tests byte strides and ensures row padding is
             # neither interpreted as image data nor overwritten by SIMD tails.
             in_stride = input_data.shape[1] * input_data.dtype.itemsize + 16
@@ -98,7 +126,8 @@ def main():
             assert u.reg_read(UC_ARM64_REG_X0) == 0, 'Original function returned an error'
             assert bytes(u.mem_read(dstdata, len(output))) == bytes(output), (hex(function), width, height)
             checked += count
-    print(f'PASS: {checked} TCE normalization/log-output samples match original ARM64 exactly; padding intact')
+    print(f'PASS: {checked} C++ TCE normalization/log-output samples match original ARM64 exactly; padding intact')
+    temporary.cleanup()
     print('This is host arithmetic validation; real-image FastTM integration remains separate.')
 
 
