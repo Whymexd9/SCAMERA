@@ -37,6 +37,14 @@ public final class VivoNiceActivity extends Activity {
         layout.addView(note);
         start=new Button(this);start.setText("Проверить без root");start.setOnClickListener(v->runProbe(false));layout.addView(start);
         rootStart=new Button(this);rootStart.setText("Проверить NICE через root");rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
+        Button captureReport=new Button(this);captureReport.setText("Отчёт последней съёмки NICE");
+        captureReport.setOnClickListener(v->{
+            if(running)return;
+            SharedPreferences capture=getSharedPreferences("vivo_nice_capture_report",MODE_PRIVATE);
+            String text=capture.getString("report","");
+            output.setText(text.isEmpty()?"Отчёта съёмки NICE пока нет.":
+                    (capture.getBoolean("complete",false)?"":"Съёмка не завершена. Последний этап:\n")+text);
+        });layout.addView(captureReport);
         Button copy=new Button(this);copy.setText("Скопировать отчёт");
         copy.setOnClickListener(v->((ClipboardManager)getSystemService(CLIPBOARD_SERVICE))
                 .setPrimaryClip(ClipData.newPlainText("NICE HDR",output.getText())));layout.addView(copy);

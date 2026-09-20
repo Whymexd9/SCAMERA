@@ -125,6 +125,7 @@ public final class VivoNeuralClient {
             if(!process.waitFor(burst!=null||niceBurst!=null?900:200,TimeUnit.SECONDS)){process.destroyForcibly();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
+                    niceBurst!=null?"NICE не завершён. Откройте NICE HDR — проверка запуска → Отчёт последней съёмки NICE.":
                     (nice?"Проверка NICE не завершена. Скопируйте этот отчёт. ":"Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ")+
                     (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
             if(raw==null&&burst==null&&niceBurst==null)return null;
