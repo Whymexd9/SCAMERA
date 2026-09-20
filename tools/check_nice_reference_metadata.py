@@ -25,7 +25,18 @@ import android.util.Pair; import java.util.*;
 public class CaptureResult {
  public CaptureRequest request;
  public CaptureRequest getRequest(){return request;}
- public static class Key<T> {}
+ public static class Key<T> {
+  private final String name; private final Class<T> type;
+  public Key(){name=null;type=null;}
+  public Key(String n,Class<T> t){name=n;type=t;}
+  public String getName(){return name;}
+  @Override public boolean equals(Object other){
+   if(this==other)return true;
+   if(name==null || !(other instanceof Key))return false;
+   Key<?> k=(Key<?>)other;return name.equals(k.name)&&type.equals(k.type);
+  }
+  @Override public int hashCode(){return name==null?System.identityHashCode(this):Objects.hash(name,type);}
+ }
  public static final Key<Long> SENSOR_TIMESTAMP=new Key<>(), SENSOR_EXPOSURE_TIME=new Key<>();
  public static final Key<Integer> SENSOR_SENSITIVITY=new Key<>(), LENS_STATE=new Key<>();
  public static final Key<Float> LENS_FOCUS_DISTANCE=new Key<>();
@@ -54,6 +65,7 @@ public class Allocator {
 'Check.java': '''import android.hardware.camera2.CaptureResult;
 import android.util.Pair; import java.nio.ByteBuffer;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceScene;
 public class Check {
  static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
  static CaptureResult result(long timestamp,int iso){
@@ -95,8 +107,31 @@ public class Check {
   check(other.getCaptureRole()==null,"mismatched timestamp supplied a role");
   other.fromZsl=true;
   check(other.getCaptureRole()==null,"ZSL flag bypassed metadata match");
+  var missing=VivoNiceScene.fromReference(f);
+  check(missing.luxIndex==null && missing.adrcGain==null,"missing scene inputs fabricated");
+  var luxNew=new CaptureResult.Key<Float>("vivo.statsaec.AecLux",Float.class);
+  var luxOld=new CaptureResult.Key<Float>("com.qti.chi.statsaec.AecLux",Float.class);
+  var adrc=new CaptureResult.Key<Float>("vivo.feedback.AdrcGain",Float.class);
+  zsl.put(luxOld,410.7971f);zsl.put(adrc,2.5f);
+  var scene=VivoNiceScene.fromReference(f);
+  check(scene.timestamp==f.timestamp && scene.luxIndex==410.7971f && scene.adrcGain==2.5f,
+        "reference scene inputs missing");
+  check(scene.luxSource.equals(luxOld.getName()),"legacy lux alias lost");
+  zsl.put(luxNew,0f);zsl.put(adrc,null);
+  var zero=VivoNiceScene.fromReference(f);
+  check(zero.luxIndex==0f && zero.luxSource.equals(luxNew.getName()),"real lux zero treated as missing");
+  check(zero.adrcGain==null && !zero.invalidAdrc,"missing ADRC reused");
+  check(scene.luxIndex==410.7971f && scene.adrcGain==2.5f,"scene snapshot mutated");
+  zsl.put(luxNew,Float.NaN);zsl.put(adrc,-1f);
+  var invalid=VivoNiceScene.fromReference(f);
+  check(invalid.luxIndex==null && invalid.invalidLux && invalid.luxSource.equals(luxNew.getName()),
+        "invalid lux replaced with another alias");
+  check(invalid.adrcGain==null && invalid.invalidAdrc,"invalid gain accepted");
+  try {VivoNiceScene.fromReference(other);throw new AssertionError("unmatched scene metadata accepted");}
+  catch(IllegalArgumentException expected){}
   System.out.println("PASS: actual ImageFrame retains timestamp-matched ZSL/reference metadata and resets missing noise");
   System.out.println("PASS: N/L/S request roles survive reordering/dropped frames; unknown roles rejected");
+  System.out.println("PASS: scene inputs use matched RAW metadata, preserve absence, validate values and retain source");
  }
 }'''
 }
@@ -107,6 +142,7 @@ with tempfile.TemporaryDirectory(prefix='nice-reference-metadata-') as tmp:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
     source = ROOT/'app/src/main/java'/BASE/'processing/ImageFrame.java'
+    scene = ROOT/'app/src/main/java'/BASE/'processing/opengl/postpipeline/VivoNiceScene.java'
     subprocess.run(['java','-m','jdk.compiler/com.sun.tools.javac.Main','-d',str(out),
-                    *map(str,out.rglob('*.java')),str(source)],check=True)
+                    *map(str,out.rglob('*.java')),str(source),str(scene)],check=True)
     subprocess.run(['java','-cp',str(out),'Check'],check=True)

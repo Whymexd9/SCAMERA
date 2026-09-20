@@ -88,6 +88,8 @@ public class CameraResumeTest {
         for(var f:java.util.List.of(normal,shortFrame)) {
             f.width=64;f.height=64;f.buffer=java.nio.ByteBuffer.allocate(64*64*2);
             f.measuredIso=25600;f.measuredExposure=1000000;f.noiseSlope=.00015f;f.noiseOffset=.000002f;
+            var metadata=exposure(f.measuredExposure,f.measuredIso);
+            when(f.getMatchedCaptureMetadata()).thenReturn(metadata);
             f.pair=mock(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair.class);
         }
         shortFrame.measuredExposure=250000;shortFrame.pair.isHighlightFrame=true;

@@ -34,12 +34,13 @@ public final class NiceDiagnostics {
             dir=new File(c.getCacheDir(),name);if(!dir.mkdir())throw new IOException("diagnostic directory");
         }
     }
-    public static void begin(Context context,Parameters p,ImageFrame ref) {
+    public static void begin(Context context,Parameters p,ImageFrame ref,VivoNiceScene scene) {
         try {
             Job j=new Job(context);active.set(j);
             String info="NICE diagnostic capture\nCamera="+p.physicalID+" CFA="+p.cfaPattern+" size="+p.rawSize
                     +"\nISO="+ref.measuredIso+" exposureNs="+ref.measuredExposure+" timestamp="+ref.timestamp
                     +"\nCamera2 noise slope="+ref.noiseSlope+" offset="+ref.noiseOffset
+                    +"\n"+scene.describe()
                     +"\nwhite="+p.whiteLevel+" black="+Arrays.toString(p.blackLevel)+" neutral="+Arrays.toString(p.whitePoint)
                     +"\nsensorToProPhoto="+Arrays.toString(p.sensorToProPhoto)
                     +"\nPFM: little-endian float32 RGB; rows bottom first. Thumbnails are nearest sampled, sensor orientation."

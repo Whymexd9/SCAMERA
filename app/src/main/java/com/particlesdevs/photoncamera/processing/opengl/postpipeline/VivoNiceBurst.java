@@ -16,6 +16,7 @@ public final class VivoNiceBurst {
     private final float white;
     private float noiseSlope,noiseOffset,normalNoiseSlope,normalNoiseOffset;
     final boolean diagnostics;
+    final VivoNiceScene scene;
     private final boolean trainedSensor;
     private final float[] black;
     private final ImageFrame[] ordered=new ImageFrame[7];
@@ -49,6 +50,8 @@ public final class VivoNiceBurst {
         // (0x3617e8). XML ref/refn select radiometric exposure levels,
         // not the position of the unwarped network reference.
         ordered[0]=normal.get(0);
+        scene=VivoNiceScene.fromReference(ordered[0]);
+        Log.i("NICE_HDR",scene.describe());
         for(int i=1;i<4;++i)ordered[i]=normal.get(Math.min(i,normal.size()-1));
         Comparator<ImageFrame> byExposure=Comparator.comparingDouble(VivoNiceBurst::product);
         shorts.sort(byExposure);longs.sort(byExposure);
@@ -101,7 +104,7 @@ public final class VivoNiceBurst {
     }
     public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p)throws Exception {
         VivoNiceBurst burst=new VivoNiceBurst(frames,p);
-        if(burst.diagnostics)NiceDiagnostics.begin(context,p,burst.ordered[0]);
+        if(burst.diagnostics)NiceDiagnostics.begin(context,p,burst.ordered[0],burst.scene);
         return VivoNeuralClient.processNiceBurst(context,burst);
     }
 }

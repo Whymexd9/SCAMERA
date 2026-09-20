@@ -87,10 +87,41 @@ nonfinite/out-of-range ceilings, and nonpositive/overflowed exposure scales.
 It does not replace the GPU native_log with host libm or guess the missing
 scene gains. The native kernel's pixel accuracy on Adreno is not host-tested.
 
+## Scene input capture and gamma selection
+
+`VivoNiceScene` snapshots scene values from the timestamp-matched result of
+the RAW selected as NICE's reference. The PD2454 stock application's
+`VivoCaptureResultKey` defines `vivo.statsaec.AecLux` and the older alias
+`com.qti.chi.statsaec.AecLux` as Float, and `vivo.feedback.AdrcGain` as Float.
+Missing vendor keys stay absent; malformed values are marked invalid. A real
+zero lux is preserved. The snapshot is retained with the burst and included
+in diagnostics, but is not yet transported into the native TCE process.
+The ADRC result tag has not been proven equivalent to CRE's DRC exposure
+field. The lux float-to-integer rule at the TCE caller remains unresolved.
+Neither the separate AEC debug array nor ISO is used to fabricate these values.
+
+`vivo-nice-tce-gamma.h` ports the complete TCE function at `0x3b1590`:
+select the first region whose upper lux bound includes the scene, copy its
+table inside that region, or blend preceding/current tables in the gap.
+Blending preserves the donor's single-precision operations, fused multiply-add,
+addition of 0.5 and truncation. Above the last region the destination stays
+untouched, as in the original. Added adapter checks reject invalid dimensions,
+unsorted regions, out-of-range entries and overflowing lux differences.
+This helper is not a substitute for the complete image tone mapper and is
+not yet enabled in the worker's image path.
+
+`check_vivo_nice_tce_gamma.py` executes the entire original ARM64 function,
+including scalar/SIMD/tail paths, and compares 1478 selections with the C++
+port. Guard words remain unchanged; four malformed configurations are rejected.
+`check_nice_reference_metadata.py` verifies scene timestamps, both aliases,
+missing/invalid values and immutable snapshots using the actual Java classes.
+
 ## Verification
 
 ```
 python tools/check_vivo_nice_tce_contract.py /path/libvivo_nice_cre.so /path/libvivo_nicetce.so
+python tools/check_vivo_nice_tce_gamma.py /path/libvivo_nicetce.so
+python tools/check_nice_reference_metadata.py
 ```
 
 604 complete original ARM64 log-EV executions and 300 original log-encoding
