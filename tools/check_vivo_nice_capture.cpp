@@ -70,7 +70,7 @@ int main(){
     for(int i=0;i<7;++i){float ev=i>=5?.25f:1.f;std::memcpy(header+11+i,&ev,4);header[18+i]=100;}
     std::memcpy(bytes.data(),header,128);
     auto save=[&]{std::ofstream f(file,std::ios::binary|std::ios::trunc);f.write((const char*)bytes.data(),bytes.size());};
-    save();{MappedNiceBurst mapped(file);assert(mapped.burst.w==64&&mapped.burst.iso[3]==100);}
+    save();{MappedNiceBurst mapped(file);assert(mapped.burst.w==64&&mapped.burst.iso[0]==100);}
     auto rejected=[&]{bool failed=false;try{MappedNiceBurst mapped(file);}catch(const std::exception&){failed=true;}assert(failed);};
     bytes.pop_back();save();rejected();bytes.push_back(0);
     uint32_t nan=0x7fc00000;std::memcpy(bytes.data()+44,&nan,4);save();rejected();
@@ -81,9 +81,24 @@ int main(){
     std::memcpy(header+25,&slope,4);std::memcpy(header+26,&offset,4);
     std::memcpy(bytes.data(),header,128);save();
     {MappedNiceBurst mapped(file);assert(mapped.burst.cameraNoise&&mapped.burst.diagnostics);
-     assert(mapped.burst.iso[3]==25600&&mapped.burst.noise.slope==slope&&mapped.burst.noise.offset==offset);}
+     assert(mapped.burst.iso[0]==25600&&mapped.burst.noise.slope==slope&&mapped.burst.noise.offset==offset);}
     auto invalidWord=[&](int index,uint32_t value){auto valid=bytes;std::memcpy(bytes.data()+index*4,&value,4);save();rejected();bytes=valid;};
     invalidWord(25,0);invalidWord(25,nan);invalidWord(26,0xbf800000);invalidWord(27,2);invalidWord(28,1);
+    // Header v3 puts the selected reference first. Older diagnostic bursts
+    // retain their selected RAW/ISO pair when converted from slot 3 to slot 0.
+    for(int i=0;i<7;++i){uint16_t marker=uint16_t(200+i);
+        std::memcpy(bytes.data()+128+i*64*64*2,&marker,2);}
+    save();
+    {MappedNiceBurst mapped(file);
+        const int expected[]={203,200,201,202,204,205,206};
+        for(int i=0;i<7;++i)assert(mapped.burst.raw[i][0]==expected[i]);
+        assert(mapped.burst.iso[0]==25600);}
+    header[1]=3;header[18]=25600;header[21]=100;
+    std::memcpy(bytes.data(),header,128);save();
+    {MappedNiceBurst mapped(file);
+        for(int i=0;i<7;++i)assert(mapped.burst.raw[i][0]==200+i);
+        assert(mapped.burst.iso[0]==25600);}
+    float wrongRef=.5f;std::memcpy(bytes.data()+11*4,&wrongRef,4);save();rejected();
     unlink(file);
     // The generic profile must round-trip calibrated radiance through the
     // actual VST/IVST; snapshots must observe graph values, not alter output.

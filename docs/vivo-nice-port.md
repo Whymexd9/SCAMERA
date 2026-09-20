@@ -156,7 +156,7 @@ AMaZE and ABLC for successful neural RGB. The ordinary RAW buffer remains the
 reference for DNG saving; this is NOT a neural Bayer DNG reconstruction.
 
 Original routing evidence at 0x35d828/0x35b9ac confirms type 1=N, 2=L, 0=S, 3=ES.
-The forward slots are N,N,N,N-ref,L,S,ES. The donor explicitly copies S when ES
+The current forward slots are N-ref,N,N,N,L,S,ES (corrected after 30249; see below). The donor explicitly copies S when ES
 is absent (0x35dab8) and repeats available frames if a group lacks requested
 members. SCAMERA requests at least four N, one L and one S; it logs actual slot
 sources and any repetition. Every frame is transferred before releasing RAW
@@ -381,7 +381,7 @@ Confirmed host/kernel contracts:
   three dense planes, with half-pixel coordinates and per-row green lookup.
 - MainCamera/NiceCREConfigHdrForward.xml selects `warp=2`, `swarp=6`, with
   `lwarp` defaulting to `warp` (`0x3cffbc..0x3d0000`). Model slots remain
-  N,N,N,N-ref,L,S,ES. The previous adapter incorrectly used sparse Bayer
+  N-ref,N,N,N,L,S,ES (reference position corrected after 30249). The previous adapter incorrectly used sparse Bayer
   with the same reference-phase interpolation for every slot.
 - GeneralNetPostprocess host bindings set rIndex=0, gIndex=1, bIndex=2.
   For example `0x33de78..0x33deb0` initializes the indices and
@@ -474,3 +474,53 @@ original instructions or imported functions are replaced. Optional extraction
 writes the embedded OpenCL strings with their virtual addresses and SHA256
 provenance; binary payloads remain outside git. This verifies recovered tone
 arithmetic only, not routing, masks, colour calibration or neural photo quality.
+
+
+## SCAMERA(7): reference-order regression identified; release withheld
+
+The 30249 capture still has coloured concentric contours before IVST. Unlike
+previous uploads, this diagnostic contains all seven RAW planes in `input.nch`.
+Replaying SCAMERA's local shifts shows the first donor's Bayer-phase contours
+at the same locations/shapes as the model-output artifacts. This establishes
+a concrete preparation fault; no corrected NPU output has yet been captured.
+
+Earlier interpretations of XML `ref=3, refn=3` as input slot indices were wrong.
+Parser 0x3d38a4 stores these fields as exposure selectors. CRE 0x35e604 indexes
+radiometric EV/ISO level arrays with them. `tools/check_vivo_nice_reference.py`
+executes this complete original function without replacement instructions:
+all 25 combinations of selectors 0..4 select the corresponding five EV/ISO
+levels independently of the seven-frame input count.
+
+Frame ordering is separate: SelectFrame 0x3617e8..0x361830 swaps the chosen
+reference to vector index zero. ExceptNode 0x2dd594..0x2dd5c0 enforces zero
+as its reference index. The connected code had incorrectly warped the first
+network input and put the unwarped reference in slot three. Its reference is
+now first in Java transport, native guide generation, identity warp, ISO/noise
+selection and diagnostic snapshots. NCH version 3 records this convention;
+versions 1/2 rotate the old four N slots and their RAW/exposure/ISO together
+on load, so old diagnostic bursts retain their correct reference.
+
+`tools/replay_vivo_nice_reference.cpp` replays the actual saved burst through
+the capture preparation code, stops before inference and compares the first
+triplet with the original unwarped N-reference PFM. On SCAMERA(7), all 887,808
+values match exactly (maximum difference zero). Transport migration and HDR
+round-trip checks pass ASan/UBSan. This does not certify final image quality.
+
+Global alignment is still incomplete: the donor's selected warp consumes a
+homography; the adapter's local 64-pixel shift grid is not stock motion
+estimation. MainCamera HDRConfig specifies 1000 corners, 32768 candidates,
+minimum distance 16, quality .01, Harris disabled, LK epsilon .01 / 20
+iterations / ratio .7, minimum 50 points and RANSAC 100 iterations / confidence
+.995 / threshold 3. Substituting these constants into a different estimator
+would not establish full equivalence. Stock scheduling and Tone/TCE integration
+also remain incomplete. No new test APK is requested or delivered for this
+partial correction; the user explicitly requires finishing the full port first.
+
+The full donor archive includes libraries, models and configurations but no
+camera APK/JAR. Its `camera-apk-paths.txt` contains only
+`cmd: Failure calling service package: Failed transaction (2147483646)`.
+The stock app's capture-request orchestration and vendor metadata contract are
+therefore not available in that archive. `tools/collect_vivo_camera_app.sh`
+collects camera APKs and their source paths/hashes without changing firmware
+or accessing application private data; it has a filesystem fallback for the
+observed PackageManager failure. It must run on the phone, not this host.

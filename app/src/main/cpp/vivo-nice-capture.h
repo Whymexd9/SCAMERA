@@ -46,30 +46,37 @@ struct MappedNiceBurst {
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || (h[1]!=1 && h[1]!=2) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>3) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
             std::memcpy(&burst.white,h+6,4);std::memcpy(burst.black.data(),h+7,16);
             std::memcpy(burst.exposure.data(),h+11,28);std::memcpy(burst.iso.data(),h+18,28);
-            if(h[1]==2) {
+            if(h[1]>=2) {
                 std::memcpy(&burst.noise.slope,h+25,4);std::memcpy(&burst.noise.offset,h+26,4);
                 if(!std::isfinite(burst.noise.slope)||burst.noise.slope<=0||!std::isfinite(burst.noise.offset)||burst.noise.offset<0||h[27]>1)
                     throw std::runtime_error("Invalid Camera2 noise profile/diagnostic flags");
                 burst.cameraNoise=true;burst.diagnostics=h[27]!=0;
             }
-            for(int i=h[1]==2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
+            for(int i=h[1]>=2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
             if(!std::isfinite(burst.white)||burst.white>65535)throw std::runtime_error("NICE white level");
             for(float b:burst.black)if(!std::isfinite(b)||b<0||b+1>=burst.white)throw std::runtime_error("NICE black level");
             for(int i=0;i<7;++i) {
                 if(!std::isfinite(burst.exposure[i])||burst.exposure[i]<1.0f/256||burst.exposure[i]>256||burst.iso[i]==0||(!burst.cameraNoise&&(burst.iso[i]<50||burst.iso[i]>12800)))
                     throw std::runtime_error("NICE exposure or ISO outside calibrated range");
             }
-            if(std::abs(burst.exposure[3]-1)>1e-5f)throw std::runtime_error("NICE reference exposure mismatch");
+            if(std::abs(burst.exposure[h[1]<3?3:forwardReferenceSlot]-1)>1e-5f)throw std::runtime_error("NICE reference exposure mismatch");
             size_t pixels=size_t(burst.w)*burst.h;
             if(length!=128+pixels*14)throw std::runtime_error("Truncated NICE RAW burst");
             auto data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+128);
             for(int f=0;f<7;++f)burst.raw[f]=data+f*pixels;
+            if(h[1]<3) {
+                // Preserve old diagnostic burst replay while correcting its
+                // obsolete reference-at-slot-3 transport convention.
+                std::rotate(burst.raw.begin(),burst.raw.begin()+3,burst.raw.begin()+4);
+                std::rotate(burst.exposure.begin(),burst.exposure.begin()+3,burst.exposure.begin()+4);
+                std::rotate(burst.iso.begin(),burst.iso.begin()+3,burst.iso.begin()+4);
+            }
         }catch(...){munmap(address,length);address=MAP_FAILED;throw;}
     }
     MappedNiceBurst(const MappedNiceBurst&)=delete;
@@ -136,7 +143,7 @@ struct Warp {
 };
 inline Warp align(const Burst& b,const std::vector<Guide>& ref,int f) {
     Warp warp{(b.w+63)/64+1,(b.h+63)/64+1,{}};warp.shifts.resize(size_t(warp.nx)*warp.ny);
-    if(f==3)return warp;
+    if(f==forwardReferenceSlot)return warp;
     auto donor=guides(b,f);Shift global=globalShift(ref,donor,b.exposure[f]);
     for(int gy=0;gy<warp.ny;++gy)for(int gx=0;gx<warp.nx;++gx){
         int dx=int(global.x/4),dy=int(global.y/4),bx=dx,by=dy;
@@ -209,9 +216,9 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                                       const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={}) {
     Burst b=sensor;b.canonicalRggb=true;
     constexpr int tile=forwardTileSize;
-    auto ref=guides(b,3);std::array<Warp,7> warp;
+    auto ref=guides(b,forwardReferenceSlot);std::array<Warp,7> warp;
     std::array<std::vector<uint16_t>,7> luts;
-    const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[3]);
+    const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[forwardReferenceSlot]);
     // The bundled graph was trained with a fixed ISO-50 normalization.
     // Camera2 noise may describe the frame but must not change the network's
     // tensor scale on every shot. Use the same normalization for VST and IVST.
@@ -231,8 +238,8 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     const float offset=float(double(n.offset)/(double(n.slope)*n.slope)+.375);
     float vstMask=std::min(2*std::sqrt((1/n.slope+offset)/range)/norm,1.f);
     uint16_t mask=uint16_t(vstMask*65535);
-    report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[3])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
-    report("NICE input: canonical RGGB; N/L warp=2 ordered Bayer; S/ES swarp=6 planar RGB; output RGB with sensor-origin restoration");
+    report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[forwardReferenceSlot])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" HDR_range="+std::to_string(range));
+    report("NICE input: reference in slot 0; canonical RGGB; N/L warp=2 ordered Bayer; S/ES swarp=6 planar RGB; output RGB with sensor-origin restoration");
     report("NICE forward profile: VST norm coefficient=1.1; edge-anchored 544 input tiles, 512 work step, context=16, overlapFusion=0");
     std::array<std::vector<uint16_t>,7> packedRaw;
     for(int f=0;f<7;++f)packedRaw[f].resize(tile*tile*(f>=5?3:1));
@@ -258,10 +265,10 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         auto input=packSevenFrames(frames,tile,tile,16383,0,sqrtEV/65535,mask,std::numeric_limits<float>::max());
         if(snapshot && b.diagnostics && finished==0){
             std::vector<float> channels(size_t(tile)*tile*3);
-            for(int slot:{3,5}){
+            for(int slot:{forwardReferenceSlot,5}){
                 for(size_t i=0;i<channels.size()/3;++i)for(int c=0;c<3;++c)
                     channels[i*3+c]=input[i*22+slot*3+c];
-                snapshot(slot==3?"nice-diag-input-N-ref":"nice-diag-input-S",channels,tile,tile);
+                snapshot(slot==forwardReferenceSlot?"nice-diag-input-N-ref":"nice-diag-input-S",channels,tile,tile);
             }
         }
         std::fill(output.begin(),output.end(),std::numeric_limits<float>::quiet_NaN());

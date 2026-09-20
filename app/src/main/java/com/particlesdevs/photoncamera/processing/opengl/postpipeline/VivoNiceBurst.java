@@ -45,15 +45,18 @@ public final class VivoNiceBurst {
             if(f.pair.isHighlightFrame)shorts.add(f);else if(f.pair.isLongFrame)longs.add(f);else normal.add(f);
         }
         if(normal.isEmpty()||shorts.isEmpty())throw new IOException("NICE HDR: нужны обычные и короткие кадры");
-        ordered[3]=normal.get(0); // HdrxProcessor selected the reference by quality.
-        int next=1;for(int i=0;i<3;++i){ordered[i]=normal.get(Math.min(next,normal.size()-1));++next;}
+        // CRE SelectFrame sorts the chosen reference to vector index zero
+        // (0x3617e8). XML ref/refn select radiometric exposure levels,
+        // not the position of the unwarped network reference.
+        ordered[0]=normal.get(0);
+        for(int i=1;i<4;++i)ordered[i]=normal.get(Math.min(i,normal.size()-1));
         Comparator<ImageFrame> byExposure=Comparator.comparingDouble(VivoNiceBurst::product);
         shorts.sort(byExposure);longs.sort(byExposure);
-        ordered[4]=longs.isEmpty()?ordered[3]:longs.get(longs.size()-1);
+        ordered[4]=longs.isEmpty()?ordered[0]:longs.get(longs.size()-1);
         ordered[5]=shorts.get(shorts.size()-1);ordered[6]=shorts.get(0);
-        noiseSlope=ordered[3].noiseSlope;noiseOffset=ordered[3].noiseOffset;
+        noiseSlope=ordered[0].noiseSlope;noiseOffset=ordered[0].noiseOffset;
         if (trainedSensor) {
-            int iso=ordered[3].measuredIso;
+            int iso=ordered[0].measuredIso;
             if (iso<50 || iso>12800) throw new IOException("NICE HDR: ISO вне проверенного профиля IMX06C");
             // Recovered NoiseInfoHDR from the matching forward model config.
             noiseSlope=Math.fma(0.0001242085f,iso,-0.0014234833f)/255f;
@@ -64,13 +67,13 @@ public final class VivoNiceBurst {
         Log.i("NICE_HDR","Calibration source="+(trainedSensor?"IMX06C forward HDR profile":"Camera2 experimental cross-sensor")+" sensor="+p.physicalID
                 +" CFA="+cfa+" slope="+noiseSlope+" offset="+noiseOffset
                 +"; original weights, experimental cross-sensor adaptation");
-        double ref=product(ordered[3]);
+        double ref=product(ordered[0]);
         if(!(product(ordered[6])<ref))throw new IOException("NICE HDR: короткий кадр не темнее опорного");
         for(int i=0;i<7;++i){
             exposure[i]=(float)(product(ordered[i])/ref);
             if(!Float.isFinite(exposure[i])||exposure[i]<1f/256||exposure[i]>256||ordered[i].measuredIso<=0)
                 throw new IOException("NICE HDR: экспозиция/ISO вне диапазона");
-            Log.i("NICE_HDR","slot="+i+" role="+new String[]{"N","N","N","N-ref","L","S","ES"}[i]
+            Log.i("NICE_HDR","slot="+i+" role="+new String[]{"N-ref","N","N","N","L","S","ES"}[i]
                     +" frame="+ordered[i].number+" timestamp="+ordered[i].timestamp+" exposureNs="+ordered[i].measuredExposure
                     +" exposure_ratio="+exposure[i]+" ISO="+ordered[i].measuredIso);
         }
@@ -80,7 +83,7 @@ public final class VivoNiceBurst {
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
     void write(File file)throws IOException {
         ByteBuffer header=ByteBuffer.allocate(128).order(ByteOrder.LITTLE_ENDIAN);
-        header.putInt(0x3143484e).putInt(2).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
+        header.putInt(0x3143484e).putInt(3).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
         for(float v:black)header.putFloat(v);for(float v:exposure)header.putFloat(v);for(ImageFrame f:ordered)header.putInt(f.measuredIso);
         header.putFloat(noiseSlope).putFloat(noiseOffset).putInt(diagnostics?1:0);
         header.position(0);
@@ -91,7 +94,7 @@ public final class VivoNiceBurst {
     }
     public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p)throws Exception {
         VivoNiceBurst burst=new VivoNiceBurst(frames,p);
-        if(burst.diagnostics)NiceDiagnostics.begin(context,p,burst.ordered[3]);
+        if(burst.diagnostics)NiceDiagnostics.begin(context,p,burst.ordered[0]);
         return VivoNeuralClient.processNiceBurst(context,burst);
     }
 }

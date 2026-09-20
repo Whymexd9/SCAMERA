@@ -13,6 +13,10 @@ constexpr int forwardTileSize = 544;
 constexpr int forwardOverlap = 16;
 constexpr bool forwardOverlapFusion = false; // Overlap/useFusion defaults to 0
 
+// CRE SelectFrame 0x3617e8..0x361830 moves the selected reference first.
+// FrameTypeOrder ref/refn select exposure levels, not network slot numbers.
+constexpr int forwardReferenceSlot = 0;
+
 struct TileAxis {
     int inputOrigin, outputOrigin, outputSize, crop;
 };
