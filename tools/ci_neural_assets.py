@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Restore the hash-pinned private model bundle without putting binaries in git.
-Bootstrap via SCAMERA_NEURAL_ASSETS_URL (an Actions secret), then reuse an
-Actions artifact. Never include download URLs or credentials in output.
+Bootstrap via the encrypted archive key or a private HTTPS URL in Actions
+secrets, then reuse a hash-verified Actions artifact. Never include download URLs or credentials in output.
 """
+from concurrent.futures import ThreadPoolExecutor
 import argparse
 import hashlib
 import io
@@ -43,6 +44,30 @@ def download(url, headers=None, redirect=False):
         raise ValueError('Asset download exceeded size limit')
     return data
 
+def decrypt_bundle(manifest, parts, key):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    for part, descriptor in zip(parts, manifest['parts']):
+        if len(part) != descriptor['bytes'] or hashlib.sha256(part).hexdigest() != descriptor['sha256']:
+            raise ValueError('Encrypted asset part checksum mismatch')
+    ciphertext = b''.join(parts)
+    if hashlib.sha256(ciphertext).hexdigest() != manifest['ciphertext_sha256']:
+        raise ValueError('Encrypted bundle checksum mismatch')
+    try:
+        plaintext = AESGCM(bytes.fromhex(key)).decrypt(ciphertext[:12], ciphertext[12:],
+                                                       manifest['associated_data'].encode())
+    except Exception:
+        raise ValueError('Encrypted bundle authentication failed') from None
+    if hashlib.sha256(plaintext).hexdigest() != SHA256:
+        raise ValueError('Decrypted bundle checksum mismatch')
+    return plaintext
+
+def encrypted_seed(key):
+    manifest = json.loads(Path(__file__).with_name('neural-assets-encrypted.json').read_text())
+    root = 'https://raw.githubusercontent.com/Whymexd9/SCAMERA/' + manifest['commit'] + '/'
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        parts = list(pool.map(lambda p: download(root + p['name']), manifest['parts']))
+    return decrypt_bundle(manifest, parts, key)
+
 def restore():
     seed = os.environ.get('SCAMERA_NEURAL_ASSETS_URL', '')
     repository = os.environ['GITHUB_REPOSITORY']
@@ -61,9 +86,12 @@ def restore():
             return archive.read(info)
     if seed:
         return download(seed, redirect=True)
-    raise RuntimeError('Private model bundle is not provisioned. Set Actions secret '
-                       'SCAMERA_NEURAL_ASSETS_URL to an HTTPS download of the pinned bundle '
-                       'and re-run this job. No incomplete APK will be published.')
+    key = os.environ.get('SCAMERA_NEURAL_ASSETS_KEY', '')
+    if key:
+        return encrypted_seed(key)
+    raise RuntimeError('Private model bundle is not provisioned. Configure the encrypted '
+                       'bundle key SCAMERA_NEURAL_ASSETS_KEY or bootstrap URL '
+                       'SCAMERA_NEURAL_ASSETS_URL. No incomplete APK will be published.')
 
 def unpack(data, output):
     if hashlib.sha256(data).hexdigest() != SHA256:

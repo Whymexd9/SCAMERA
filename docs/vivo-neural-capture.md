@@ -242,3 +242,13 @@ After the first successful build, subsequent runs restore the hash-checked
 The temporary bootstrap secret can then be removed. If all copies expire,
 provision the same pinned bundle again. Artifact redirects do not receive the
 GitHub authorization header. Bundle URLs are omitted from failure messages.
+
+
+An encrypted seed is also available on `codex/encrypted-neural-assets-v1`.
+The source-side `tools/neural-assets-encrypted.json` pins its commit and all
+ciphertext hashes. `SCAMERA_NEURAL_ASSETS_KEY` holds the random 256-bit AES-GCM
+key in repository Actions secrets; the key is never committed. GCM authentication
+and the plaintext/file hashes are checked before packaging. This removes the
+need for a public model URL and allows recovery after the Actions cache expires.
+Only encrypted bytes are stored in git; authorized final APK artifacts contain
+the runtime/model files required by the app.

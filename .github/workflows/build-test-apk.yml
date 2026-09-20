@@ -247,7 +247,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SCAMERA_NEURAL_ASSETS_URL: ${{ secrets.SCAMERA_NEURAL_ASSETS_URL }}
-        run: python3 tools/ci_neural_assets.py --output "$RUNNER_TEMP/neural-assets"
+          SCAMERA_NEURAL_ASSETS_KEY: ${{ secrets.SCAMERA_NEURAL_ASSETS_KEY }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/asset-tools"
+          "$RUNNER_TEMP/asset-tools/bin/pip" install cryptography==46.0.0
+          "$RUNNER_TEMP/asset-tools/bin/python" tools/ci_neural_assets.py --output "$RUNNER_TEMP/neural-assets"
 
       - name: Package and sign the final APK
         run: |
