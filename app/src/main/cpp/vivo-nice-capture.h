@@ -12,10 +12,20 @@
 #include <limits>
 
 namespace vivo_nice {
+// NCH scene snapshot, deliberately separate from TCE's internal exposure
+// fields: an ADRC result tag is not yet proven to equal CRE's DRC gain.
+struct SceneMetadata {
+    uint64_t timestamp=0;
+    float lux=0,adrc=0;
+    uint32_t flags=0,luxSource=0;
+    bool hasLux() const {return flags&1;}
+    bool hasAdrc() const {return flags&2;}
+};
 inline int reflectCfa(int x,int size);
 // Camera2 adaptation around the recovered CRE tensor/VST contract. Motion estimation
 // and sub-tile image padding remain SCAMERA adaptations, not stock MEE.
 struct Burst {
+    SceneMetadata scene;
     int w=0,h=0,cfa=0;
     int noiseReferenceSlot=0; // v1-v3 noise belongs to N; v4 belongs to L
     float white=0;
@@ -43,12 +53,12 @@ struct MappedNiceBurst {
         int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open NICE burst");
         struct stat st{};
-        if(fstat(fd,&st)||st.st_size<128||st.st_size>128+16000000LL*14){close(fd);throw std::runtime_error("Invalid NICE file size");}
+        if(fstat(fd,&st)||st.st_size<128||st.st_size>160+16000000LL*14){close(fd);throw std::runtime_error("Invalid NICE file size");}
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>5) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>6) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
@@ -78,8 +88,23 @@ struct MappedNiceBurst {
             }
             if(std::abs(burst.exposure[h[1]<3?3:forwardReferenceSlot]-1)>1e-5f)throw std::runtime_error("NICE reference exposure mismatch");
             size_t pixels=size_t(burst.w)*burst.h;
-            if(length!=128+pixels*14)throw std::runtime_error("Truncated NICE RAW burst");
-            auto data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+128);
+            const size_t headerBytes=h[1]>=6?160:128;
+            if(length!=headerBytes+pixels*14)throw std::runtime_error("Truncated NICE RAW burst");
+            if(h[1]>=6) {
+                const auto* extension=static_cast<const uint8_t*>(address)+128;
+                auto& s=burst.scene;
+                std::memcpy(&s.timestamp,extension,8);
+                std::memcpy(&s.lux,extension+8,4);std::memcpy(&s.adrc,extension+12,4);
+                std::memcpy(&s.flags,extension+16,4);std::memcpy(&s.luxSource,extension+20,4);
+                uint64_t reserved;std::memcpy(&reserved,extension+24,8);
+                if(!s.timestamp || reserved || (s.flags&~15u) || s.luxSource>2 ||
+                   ((s.flags&5)==5) || ((s.flags&10)==10) ||
+                   ((s.flags&5)!=0)!=(s.luxSource!=0) ||
+                   (s.hasLux()? !std::isfinite(s.lux) : s.lux!=0.f) ||
+                   (s.hasAdrc()? (!std::isfinite(s.adrc)||s.adrc<=0.f) : s.adrc!=0.f))
+                    throw std::runtime_error("Invalid NICE scene snapshot");
+            }
+            auto data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+headerBytes);
             for(int f=0;f<7;++f)burst.raw[f]=data+f*pixels;
             if(h[1]<3) {
                 // Preserve old diagnostic burst replay while correcting its

@@ -21,7 +21,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v26 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v27 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -31,6 +31,11 @@ int main(int argc,char** argv) {
             vivo_nice::MappedNiceBurst mapped(argv[3]);
             auto report=[](const std::string& line){vivo_nn::log(line);};
             report("NICE CAPTURE: original forward weights and stock CPU motion; Camera2 calibration adaptation");
+            const auto& scene=mapped.burst.scene;
+            report("NICE SCENE: timestamp="+std::to_string(scene.timestamp)
+                +" lux="+(scene.hasLux()?std::to_string(scene.lux):"unavailable")
+                +" ADRC="+(scene.hasAdrc()?std::to_string(scene.adrc):"unavailable")
+                +" flags="+std::to_string(scene.flags)+" luxSource="+std::to_string(scene.luxSource));
             vivo_nice::StockMotion motion;
             vivo_nice::Graph graph(argv[2],report);
             auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){

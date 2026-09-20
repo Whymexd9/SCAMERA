@@ -6,6 +6,7 @@ No device/photographic equivalence is claimed. Requires Java 17 with jdk.compile
 from pathlib import Path
 import subprocess
 import tempfile
+import struct
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'com/particlesdevs/photoncamera/'
@@ -72,7 +73,7 @@ public class Check {
   CaptureResult r=new CaptureResult();r.put(CaptureResult.SENSOR_TIMESTAMP,timestamp);
   r.put(CaptureResult.SENSOR_SENSITIVITY,iso);r.put(CaptureResult.SENSOR_EXPOSURE_TIME,10000000L);return r;
  }
- @SuppressWarnings("unchecked") public static void main(String[] args){
+ @SuppressWarnings("unchecked") public static void main(String[] args) throws Exception {
   ImageFrame f=new ImageFrame(ByteBuffer.allocate(8));f.timestamp=123456789012L;
   CaptureResult zsl=result(f.timestamp,200);
   zsl.put(CaptureResult.SENSOR_NOISE_PROFILE,new Pair[]{new Pair<Double,Double>(.2,.01)});
@@ -129,6 +130,13 @@ public class Check {
   check(invalid.adrcGain==null && invalid.invalidAdrc,"invalid gain accepted");
   try {VivoNiceScene.fromReference(other);throw new AssertionError("unmatched scene metadata accepted");}
   catch(IllegalArgumentException expected){}
+  ByteBuffer transport=ByteBuffer.allocate(4*32).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+  for(var value:java.util.List.of(scene,missing,zero,invalid))value.writeTransport(transport);
+  java.nio.file.Files.write(java.nio.file.Path.of(args[0]),transport.array());
+  try {scene.writeTransport(ByteBuffer.allocate(32));throw new AssertionError("big endian transport accepted");}
+  catch(IllegalArgumentException expected){}
+  try {scene.writeTransport(ByteBuffer.allocate(31).order(java.nio.ByteOrder.LITTLE_ENDIAN));
+       throw new AssertionError("short transport accepted");}catch(IllegalArgumentException expected){}
   System.out.println("PASS: actual ImageFrame retains timestamp-matched ZSL/reference metadata and resets missing noise");
   System.out.println("PASS: N/L/S request roles survive reordering/dropped frames; unknown roles rejected");
   System.out.println("PASS: scene inputs use matched RAW metadata, preserve absence, validate values and retain source");
@@ -145,4 +153,34 @@ with tempfile.TemporaryDirectory(prefix='nice-reference-metadata-') as tmp:
     scene = ROOT/'app/src/main/java'/BASE/'processing/opengl/postpipeline/VivoNiceScene.java'
     subprocess.run(['java','-m','jdk.compiler/com.sun.tools.javac.Main','-d',str(out),
                     *map(str,out.rglob('*.java')),str(source),str(scene)],check=True)
-    subprocess.run(['java','-cp',str(out),'Check'],check=True)
+    fixture = out/'scene.bin'
+    subprocess.run(['java','-cp',str(out),'Check',str(fixture)],check=True)
+    header = bytearray(128)
+    struct.pack_into('<6If',header,0,0x3143484e,6,64,64,0,7,16383.)
+    struct.pack_into('<7f',header,44,1,1,1,1,4,.25,.125)
+    struct.pack_into('<7I',header,72,*([100]*7))
+    struct.pack_into('<ffIff',header,100,.00015,.000002,0,.00015,.000002)
+    extensions = fixture.read_bytes()
+    for i in range(4):
+        (out/f'burst{i}').write_bytes(header+extensions[i*32:(i+1)*32]+bytes(64*64*14))
+    driver = out/'scene.cpp'
+    driver.write_text(r'''#include "vivo-nice-capture.h"
+#include <cassert>
+int main(int argc,char** argv) {
+ assert(argc==2);
+ for(int i=0;i<4;++i) {
+  vivo_nice::MappedNiceBurst b(std::string(argv[1])+"/burst"+std::to_string(i));
+  auto s=b.burst.scene;
+  assert(s.timestamp==123456789012ULL);
+  const unsigned flags[]={3,0,1,12},sources[]={2,0,1,1};
+  assert(s.flags==flags[i] && s.luxSource==sources[i]);
+  if(i==0)assert(s.hasLux()&&s.hasAdrc()&&s.lux==410.7971f&&s.adrc==2.5f);
+  if(i==2)assert(s.hasLux()&&!s.hasAdrc()&&s.lux==0.f);
+  assert(b.burst.raw[0][0]==0 && b.burst.raw[6][4095]==0);
+ }
+}
+''')
+    subprocess.run(['c++','-std=c++17','-O1','-Wall','-Wextra','-I',str(ROOT/'app/src/main/cpp'),
+                    str(driver),'-o',str(out/'scene-check')],check=True)
+    subprocess.run([str(out/'scene-check'),str(out)],check=True)
+    print('PASS: actual Java scene transport reaches native RAW reader with timestamp, units, source and missing/invalid flags intact')

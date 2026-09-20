@@ -109,6 +109,25 @@ int main(){
     {MappedNiceBurst mapped(file);assert(mapped.burst.hasNormalNoise);
      assert(mapped.burst.normalNoise.slope==normalSlope&&mapped.burst.normalNoise.offset==normalOffset);}
     invalidWord(28,0);invalidWord(28,nan);invalidWord(29,0xbf800000);invalidWord(30,1);
+    // v6 has a scene extension; moving RAW by the wrong header size would
+    // silently shift every plane. Preserve all seven slot markers.
+    bytes.insert(bytes.begin()+128,32,0);
+    header[1]=6;std::memcpy(bytes.data(),header,128);
+    uint64_t timestamp=123456789012ULL;
+    float lux=410.7971f,adrc=2.5f;uint32_t flags=3,source=2;
+    std::memcpy(bytes.data()+128,&timestamp,8);
+    std::memcpy(bytes.data()+136,&lux,4);std::memcpy(bytes.data()+140,&adrc,4);
+    std::memcpy(bytes.data()+144,&flags,4);std::memcpy(bytes.data()+148,&source,4);
+    save();
+    {MappedNiceBurst mapped(file);auto s=mapped.burst.scene;
+     assert(s.timestamp==timestamp&&s.hasLux()&&s.hasAdrc()&&s.lux==lux&&s.adrc==adrc&&s.luxSource==2);
+     for(int i=0;i<7;++i)assert(mapped.burst.raw[i][0]==200+i);}
+    auto validScene=bytes;
+    std::memset(bytes.data()+128,0,8);save();rejected();bytes=validScene;
+    invalidWord(34,nan);invalidWord(35,0);invalidWord(35,nan);
+    invalidWord(36,7);invalidWord(36,11);invalidWord(36,16);
+    invalidWord(37,0);invalidWord(37,3);invalidWord(38,1);invalidWord(39,1);
+    bytes.resize(159);save();rejected();
     unlink(file);
     // The generic profile must round-trip calibrated radiance through the
     // actual VST/IVST; snapshots must observe graph values, not alter output.

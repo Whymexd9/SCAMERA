@@ -118,11 +118,25 @@ the RAW selected as NICE's reference. The PD2454 stock application's
 `VivoCaptureResultKey` defines `vivo.statsaec.AecLux` and the older alias
 `com.qti.chi.statsaec.AecLux` as Float, and `vivo.feedback.AdrcGain` as Float.
 Missing vendor keys stay absent; malformed values are marked invalid. A real
-zero lux is preserved. The snapshot is retained with the burst and included
-in diagnostics, but is not yet transported into the native TCE process.
+zero lux is preserved. The snapshot is retained with the burst, included
+in diagnostics, and transported to the native worker in NCH version 6.
+It is not yet consumed by a TCE call.
 The ADRC result tag has not been proven equivalent to CRE's DRC exposure
 field. The lux float-to-integer rule at the TCE caller remains unresolved.
 Neither the separate AEC debug array nor ISO is used to fabricate these values.
+
+NCH v6 keeps the previous 128-byte header intact and appends 32 bytes before
+the seven RAW planes: timestamp:uint64, lux:float, ADRC:float, flags:uint32,
+luxSource:uint32, reserved:uint64. Flag bits 0/1 mark available lux/ADRC;
+bits 2/3 record invalid vendor values. Lux source 0/1/2 means absent/new/old
+vendor key. Missing/invalid float slots are zero storage with availability
+bits clear; consumers must never interpret them as measured zero. The native
+reader validates flags, source, finite present values, positive present ADRC,
+timestamp, reserved bytes and total length before reading RAW. Versions 1--5
+remain readable without a scene snapshot. No exposure or lux conversion is
+performed by transport. Actual Java-written snapshots are read by the actual
+C++ RAW reader in `check_nice_reference_metadata.py`; capture tests additionally
+check corrupt/truncated headers and alignment of all seven RAW planes.
 
 `vivo-nice-tce-gamma.h` ports the complete TCE function at `0x3b1590`:
 select the first region whose upper lux bound includes the scene, copy its
