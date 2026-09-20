@@ -40,6 +40,30 @@ Image offsets established by callers/consumers are declared in
 `vivo-nice-tce-contract.h`. The block at +0x60 remains unnamed. Integer
 addresses in the layout are process-local; this is not a file transport ABI.
 
+The known `OutputPrefix` now describes the six image descriptors and the mode:
+
+| Offset | Meaning | Producer/consumer |
+| --- | --- | --- |
+| 0x000 | rgbOutput | CRE `392d48..392da4` |
+| 0x078 | rgbDeRaw | CRE `392ce4..392d44` |
+| 0x0f0 | tone mode returned by processing | TCE `393134..393184` |
+| 0x0f8 | sky mask | CRE `38aeac..38aef8`, dump `3925b0` |
+| 0x170, 0x1e8, 0x260 | portrait masks 0, 1, 2 | CRE `38aefc..38afe4`, dump `392618..392740` |
+| 0x2d8 | extra-output pointer | CRE `38b01c..38b020` |
+
+CRE copies all four auxiliary descriptors from caller storage at +0x80,
++0xf8, +0x170 and +0x1e8; no mask allocation occurs in that copy block.
+`bindAuxiliaryOutputs` preserves complete descriptors, including unknown
+fields, without taking ownership. The RGB allocator `392aa8` constructs a
+shared image object; `392ca8` retains it across processing. Its data pointer
+and stride populate the output descriptor. After the call CRE retains/releases
+the shared objects (`38dd70..38ddfc`); copying the descriptor alone does not
+extend the RGB storage's lifetime. TCE internally creates/releases its own GPU
+resources, so a simple free of a copied nativeHandle would be incorrect.
+This establishes a borrowed-output boundary, not a complete allocator port.
+Twenty-four randomized original CRE descriptor-copy executions match the
+C++ binding, with untouched RGB/mode fields and guard bytes checked.
+
 ## Log exposure before TCE
 
 CRE `0x391f88..0x39209c` consumes five floats from the node's block at +0x1780:

@@ -78,8 +78,18 @@ window does not fit. Modes 4/5 can request future-only buffers when settled
 frames are insufficient. The returned offset is clamped below at zero, not
 above at the queue size: an upper clamp would destroy the future-frame meaning.
 When the timestamp is newer than the queue, the late-reference branch depends
-on the result of config lookup 0x1426f0. This remains an explicit caller input;
-the lookup table and scene policy have not been substituted with a constant.
+on the result of config lookup 0x1426f0. This remains an explicit caller input.
+Its source has now been traced: the nested map at ConfigProvider+0x2f0 is
+populated from `SPORT_PORTRAIT_SCENE_UIMODE` in CameraConfig.xml, by
+libvcf_platform_utils `1c5f88..1c6768`. Lookup uses scene ID, UI mode and an
+exact camera-type string. Missing scene/UI/type entries return false.
+The supplied PD2454 XML lists only SCENE_BOKEH_ZOOM with Wide/Tele and
+SCENE_NORMAL_PORTRAIT_EXTERNAL with TeleExternal/default, each for
+MODE_PROTRAIT (stock spelling) and MODE_HUMANITY. It does not list the normal
+auto mode. This is evidence for a false result in that configuration, not
+permission to replace all scene lookups with a constant. The scene/UI enum
+mapping and caller metadata routing remain to be connected. Reading this
+policy does not require enabling any sensor-mode switching.
 
 Verification:
 

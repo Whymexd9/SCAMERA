@@ -34,6 +34,35 @@ static_assert(offsetof(Image, scanline) == 0x40);
 static_assert(offsetof(Image, dataSize) == 0x50);
 static_assert(offsetof(Image, nativeHandle) == 0x70);
 
+// Known output prefix, not a claim about the complete allocation size. CRE
+// owns RGB storage through shared image objects and borrows segmentation
+// descriptors from its caller. These copies do not transfer buffer ownership.
+struct OutputPrefix {
+    Image rgbOutput;
+    Image rgbDeRaw;
+    int32_t toneMode;
+    uint32_t unknownF4;
+    Image sky;
+    Image portrait[3];
+    uint64_t extraOutput;
+};
+static_assert(sizeof(OutputPrefix) == outputMinimumBytes);
+static_assert(offsetof(OutputPrefix, rgbDeRaw) == 0x78);
+static_assert(offsetof(OutputPrefix, toneMode) == 0xf0);
+static_assert(offsetof(OutputPrefix, sky) == 0xf8);
+static_assert(offsetof(OutputPrefix, portrait) == 0x170);
+static_assert(offsetof(OutputPrefix, extraOutput) == 0x2d8);
+
+// CRE 38aeac..38afe8 copies the complete descriptors, including padding and
+// unknown fields. Do not rebuild only width/height/data and discard the rest.
+inline void bindAuxiliaryOutputs(OutputPrefix& output, const Image& sky,
+                                 const std::array<Image, 3>& portrait,
+                                 uint64_t extraOutput) {
+    output.sky = sky;
+    for (size_t i = 0; i < portrait.size(); ++i) output.portrait[i] = portrait[i];
+    output.extraOutput = extraOutput;
+}
+
 // Layout follows CRE's five-float block at VNICETceNode+1780. The +8
 // value is consumed separately by LogConvert, not by logExposure().
 struct Exposure {

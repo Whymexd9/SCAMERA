@@ -30,6 +30,9 @@ extern "C" int encoding(const Exposure* p, int bits, LogEncoding* result) {
     try { *result = logEncoding(*p, bits); return 0; }
     catch (const std::invalid_argument&) { return 1; }
 }
+extern "C" void bind_outputs(OutputPrefix* out, const Image* images, uint64_t extra) {
+    bindAuxiliaryOutputs(*out, images[0], {images[1], images[2], images[3]}, extra);
+}
 extern "C" void layout(size_t* out) {
     const size_t values[] = {createArgumentBytes, processArgumentBytes,
         outputMinimumBytes, sizeof(Image), offsetof(Image, nativeHandle),
@@ -111,6 +114,33 @@ def main():
             assert bytes(tce.mem_read(input_arg, layout[1])) == bytes(before_input)
             assert bytes(tce.mem_read(output_arg, layout[2])) == bytes(before_output)
 
+        # Run CRE's actual descriptor-copy block with distinct randomized bytes
+        # in every field. Prove that borrowed metadata/pointers and untouched
+        # RGB/mode fields survive; this does not execute allocation or TCE GPU.
+        lib.bind_outputs.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint64]
+        node, capture, auxiliary, args_address = 0x1600000, 0x1610000, 0x1620000, 0x1630000
+        for _ in range(24):
+            images = bytes(rng.randrange(256) for _ in range(4 * 0x78))
+            initial = bytes(rng.randrange(256) for _ in range(layout[2]))
+            extra = rng.randrange(1 << 64)
+            guard = b'\xa5' * 16
+            cre.mem_write(node + 0x10a0 - 16, guard + initial + guard)
+            cre.mem_write(capture + 0x90, struct.pack('<Q', auxiliary))
+            cre.mem_write(auxiliary + 0x80, images)
+            cre.mem_write(args_address + 0x9f0, struct.pack('<Q', extra))
+            for register, value in [(UC_ARM64_REG_X20, node), (UC_ARM64_REG_X21, capture),
+                                     (UC_ARM64_REG_X9, auxiliary)]:
+                cre.reg_write(register, value)
+            cre.emu_start(0x38aeac, 0x38afe8, count=100)
+            assert cre.reg_read(UC_ARM64_REG_PC) == 0x38afe8
+            cre.reg_write(UC_ARM64_REG_X9, args_address)
+            cre.emu_start(0x38b01c, 0x38b024, count=3)
+            assert cre.reg_read(UC_ARM64_REG_PC) == 0x38b024
+            output = ctypes.create_string_buffer(initial, len(initial))
+            input_images = ctypes.create_string_buffer(images)
+            lib.bind_outputs(output, input_images, extra)
+            assert bytes(cre.mem_read(node + 0x10a0 - 16, layout[2] + 32)) == guard + output.raw + guard
+
         # Original log() imports use host libm, as does the compiled port.
         # Native conversions, signed delta handling and add order are original.
         cases = [(1., 0., 1., 1., 1.), (1., -1000., 1., 1., 1.),
@@ -171,7 +201,7 @@ def main():
                 assert actual.value == 123.
                 rejected += 1
     print(f'PASS: {len(cases)} CRE tone-EV and {encoded} log-encoding argument cases bit-exact; {rejected} invalid inputs rejected; '
-          '2 TCE copies and 8 handle-mutation blocks verified')
+          '2 TCE copies, 24 auxiliary-output bindings and 8 handle-mutation blocks verified')
     print('Boundary tests only; original TCE image processing is not connected.')
 
 
