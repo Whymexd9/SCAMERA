@@ -27,8 +27,8 @@ interpret direction/format enums, or claim to decode the entire payload.
 | 0x000, 0x004, 0x008 | uint32 | frameNum, batchNum, remosaicType |
 | 0x00c..0x00f | byte flags | needImageEcho, needImageEchoYuvProcess, needSelectPreferred, needSubCam |
 | 0x010 | byte | remosaicSizeType |
-| 0x014 | uint32[16] | per-batch frame counts |
-| 0x054 | uint32[16] | per-batch algorithm types |
+| 0x014 | uint32[16] | per-batch algorithm types |
+| 0x054 | uint32[16] | per-batch frame counts |
 | 0x094 | 32 records, stride 20 | format:uint32, EV:float, gain:float, shutter:float, direction:uint32 |
 | 0xb10, 0xb14, 0xb18 | uint32 | shot2shotDepth, countDown, frameCatchMode |
 | 0xb28 | float | pastFrameISOThreshold |
@@ -41,7 +41,7 @@ reports DefaultRequired without fabricating a default bracket. Oversized
 counts, truncation and nonfinite selected float fields are explicit added
 boundary failures. Failure clears output, so stale capture data cannot survive.
 Unused array records and unimplemented payload sections are not interpreted.
-Batch membership semantics and sum constraints remain unestablished.
+Batch source slices and additional adapter consistency checks are described below.
 
 The producer sets frameCatchMode=6 in a conditional branch at 0xf35d0 and
 copies two threshold fields from PreviewToQueryParams. The core's log and
@@ -104,7 +104,7 @@ schedule or reference selection. Supplying an arbitrary mode to the recovered
 selector would retain the hybrid behavior the user reported.
 
 Before using these components, recover the producer/consumer mapping for the
-actual shutter/gain units, direction enums, batch-to-request association and
+actual shutter/gain units, remaining direction enums, batch-to-request association and
 mode/config inputs. Connect that mapping to timestamp-matched capture metadata
 and preserve ownership/cleanup when a window requires future buffers.
 
@@ -112,3 +112,52 @@ Tone/TCE still lacks the photographic input/mask/color and gain-map routing in
 the capture path. Existing FastTM conversion and synthetic QNN execution checks
 do not supply that missing routing. No new APK is produced from this checkpoint,
 and no artifact-fix or stock-photo-parity claim is made.
+
+
+## Batch-consumer correction and recovered counts
+
+Following processRequest exposed a semantic error in the first reader: the
+names of the two batch arrays were swapped. The corrected layout is algorithm
+IDs at 0x14 and frame counts at 0x54. queryCaptureControlInfo's log at 0x59600
+passes the 0x54 value as its frame-count argument. More decisively,
+processRequest 0x61068 stores 0x54 in the loop count, 0x61184--0x61198 consumes
+that many 20-byte frames, and 0x61080 appends 0x14 to the algorithm-ID vector.
+The previous extraction tests only checked round-trip byte placement; they
+could not detect incorrect member names. They are retained alongside a new
+consumer-level semantic test with deliberately distinct counts and IDs.
+
+`vivo-vcf-batches.h` recovers contiguous source slices using cumulative batch
+counts. It preserves source order and numeric algorithm IDs. The native loop
+reads a batch's first direction at 0x6106c and uses it for the entire batch.
+The adapter adds checks for nonempty batches, exact coverage of the frame list,
+bounds, supported direction values and consistent direction within a batch.
+These are adapter validations, not assertions that native HAL code validates
+malformed input in the same way.
+
+Direction 0 is accumulated as past frames in generateBaseFrameCaptureInfo
+0x15c144--0x15c16c. Direction 1 is counted as future by
+DecisionRule::calcFutureFrames 0x140a10. Both calcAllFrames 0x1409b0 and
+calcFutureFrames are now implemented independently of any fixed bracket.
+The latter counts exactly 1: other nonzero enum values do not count as future.
+It is therefore incorrect to universally equate nonzero direction with future.
+
+processRequest places direction-zero batches directly into the output vector
+at 0x6169c, collects nonzero batches separately at 0x61614, then appends them
+at 0x61780--0x617a4. The slice reader does NOT silently perform that reordering;
+its returned indices identify the original payload. The association with the
+separate algorithm-ID vector and final request construction still needs to be
+preserved when integrating the planner. This is not yet a Camera2 scheduler.
+
+Verification:
+
+```sh
+python tools/check_vivo_vcf_batches.py /path/to/libvcf_core.so
+```
+
+Passed 716 original batch-consumer block comparisons, 600 executions of the
+complete original count functions, and six invalid-schedule checks. Fixtures
+exercise empty batches in the count functions, vector/scalar lengths, multiple
+batches and direction values 0/1/2/0xffffffff. Reader checks separately enforce
+the supported scheduling subset. Existing extraction checks still pass.
+No APK is built from this partial integration, and this correction alone does
+not change the current photographic path or establish artifact removal.

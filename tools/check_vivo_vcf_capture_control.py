@@ -33,7 +33,7 @@ extern "C" int decode(const void* p, size_t n, unsigned char* out) {
     w(0,c.frameCount);w(4,c.batchCount);w(8,c.remosaicType);
     out[12]=c.needImageEcho;out[13]=c.needImageEchoYuvProcess;
     out[14]=c.needSelectPreferred;out[15]=c.needSubCam;out[16]=c.remosaicSizeType;
-    for(size_t i=0;i<c.MaxBatches;++i){w(0x14+4*i,c.batchFrameCounts[i]);w(0x54+4*i,c.batchAlgoTypes[i]);}
+    for(size_t i=0;i<c.MaxBatches;++i){w(0x54+4*i,c.batchFrameCounts[i]);w(0x14+4*i,c.batchAlgoTypes[i]);}
     for(size_t i=0;i<c.MaxFrames;++i){auto& v=c.frames[i];size_t o=0x94+20*i;
         w(o,v.format);f(o+4,v.ev);f(o+8,v.gain);f(o+12,v.shutter);w(o+16,v.direction);}
     w(0xb10,c.shot2shotDepth);w(0xb14,c.countDown);w(0xb18,c.frameCatchMode);

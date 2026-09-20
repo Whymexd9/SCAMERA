@@ -71,8 +71,8 @@ inline CaptureControlRead readCaptureControlFields(const void* data, size_t byte
     result.needSubCam = p[0xf] != 0;
     result.remosaicSizeType = p[0x10];
     for (size_t i = 0; i < batchCount; ++i) {
-        result.batchFrameCounts[i] = word(p, 0x14 + 4 * i);
-        result.batchAlgoTypes[i] = word(p, 0x54 + 4 * i);
+        result.batchFrameCounts[i] = word(p, 0x54 + 4 * i);
+        result.batchAlgoTypes[i] = word(p, 0x14 + 4 * i);
     }
     for (size_t i = 0; i < frameCount; ++i) {
         const size_t offset = 0x94 + 20 * i;
