@@ -980,3 +980,41 @@ which missing library owns each exposure decision. A full port cannot be
 claimed from the adapter exports alone. Read-only collection of the phone's
 libvcf*.so files is required to continue this path; no CameraService monitoring,
 property changes, capture reproduction or firmware patching is needed.
+
+
+### VCF2 libraries received and first original-code predicate port (2026-09-20)
+
+`vivo-vcf-libs.tar.gz` supplies eleven libraries, resolving all eight missing
+VCF dependencies above. Hashes are recorded in vivo-vcf2-dependencies.json.
+The duplicated AIDL adapter remains the previously pinned binary. No new phone
+capture or diagnostic logging is required for this step.
+
+`libvcf_session.so` now exposes the actual queue implementation:
+BufferQueue::preparePastBuffersLocked 0x1274dc, preparePastAndNextBuffers
+0x12b6f8, modifiedOffseByMotionInfo 0x140214, getOffset 0x142dc0,
+SessionControllerImp::setCaptureNum 0x170f70. The motion function reads sensor
+exposure, sensitivity, timestamp, motion level and the short-exposure/gain
+fields at float indices 34/31 of Vivo3rdAlgoAECFrameControl. These fields are
+not a generic array of independent L/N/S exposures.
+
+Recovered its candidate-compatibility helper at 0x1429ec into
+`vivo-vcf-frame-compatibility.h`. Depending on numeric mode, it tests exposure,
+ISO, AEC settled state, or stagger short exposure/gain. Standard windows use
+original double constants 0.8 and 1.2; mode 6 uses caller-supplied tolerances.
+Capture type 0xf00 and scene 0xc00000 have distinct branches. Numeric enum
+names are deliberately not guessed. Timestamp and motion metadata influence
+the surrounding selector; this helper is not the whole motion algorithm.
+
+`check_vivo_vcf_frame_compatibility.py` executes the original helper in Unicorn
+and compares it with compiled C++: all 2,960 cases agree (634 accepted), covering
+all discovered branches, thresholds and AEC states. Only ConfigProvider's
+unused camera-name result is stubbed to an empty string; no predicate
+instructions are replaced. This verification does not establish complete ZSL
+policy or device image quality. The helper is not connected to production
+capture until caller modes, reference selection and failure handling are mapped.
+
+The dynamic count owner is setCaptureNum: it consumes per-builder information
+and accounts for past, future, batch and queue availability. It cannot be
+replaced by a fixed 4/4/6-frame pattern inferred from the app preview log.
+The full caller policy, HAL metadata contract and Tone/TCE integration remain
+unfinished. No APK is released from this partial state.
