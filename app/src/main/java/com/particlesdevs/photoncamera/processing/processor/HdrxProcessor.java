@@ -53,6 +53,7 @@ public class HdrxProcessor extends ProcessorBase {
     private String processingStage = "initialization";
     private ByteBuffer hexOwnedOutput;
     private ByteBuffer niceOwnedOutput;
+    private Parameters niceOutputParameters;
 
 
     public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
@@ -127,7 +128,8 @@ public class HdrxProcessor extends ProcessorBase {
          } finally {
             if (niceOwnedOutput != null) {
                 Allocator.free(niceOwnedOutput);niceOwnedOutput=null;
-                processingParameters.vivoNiceRgb=null;
+                if(niceOutputParameters!=null)niceOutputParameters.vivoNiceRgb=null;
+                niceOutputParameters=null;
             }
             if (hexOwnedOutput != null) {
                 Allocator.free(hexOwnedOutput);
@@ -451,6 +453,7 @@ public class HdrxProcessor extends ProcessorBase {
             try {
                 niceOwnedOutput=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
                         PhotonCamera.getAppContext(),images,processingParameters);
+                niceOutputParameters=processingParameters;
                 processingParameters.vivoNiceRgb=niceOwnedOutput;
                 processingParameters.vivoHdrRawScale=1f;niceComplete=true;
                 Log.i("NICE_HDR","Original model capture completed; RGB goes directly to WB/LSC/tone. DNG retains the reference RAW.");
