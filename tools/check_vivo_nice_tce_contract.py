@@ -26,6 +26,10 @@ extern "C" int exposure(const Exposure* p, float* result) {
     try { *result = logExposure(*p); return 0; }
     catch (const std::invalid_argument&) { return 1; }
 }
+extern "C" int encoding(const Exposure* p, int bits, LogEncoding* result) {
+    try { *result = logEncoding(*p, bits); return 0; }
+    catch (const std::invalid_argument&) { return 1; }
+}
 extern "C" void layout(size_t* out) {
     const size_t values[] = {createArgumentBytes, processArgumentBytes,
         outputMinimumBytes, sizeof(Image), offsetof(Image, nativeHandle),
@@ -55,6 +59,8 @@ def main():
         lib = ctypes.CDLL(str(root / 'test.so'))
         lib.exposure.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
         lib.exposure.restype = ctypes.c_int
+        lib.encoding.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        lib.encoding.restype = ctypes.c_int
         lib.layout.argtypes = [ctypes.POINTER(ctypes.c_size_t)]
         layout = (ctypes.c_size_t * 6)()
         lib.layout(layout)
@@ -123,6 +129,37 @@ def main():
             assert lib.exposure(native_input, ctypes.byref(actual)) == 0
             assert struct.unpack('<I', struct.pack('<f', actual.value))[0] == native_bits, values
 
+        encoded = 0
+        for bits in [16, 32]:
+            for _ in range(150):
+                values = [2**rng.uniform(-2, 3), rng.uniform(-1000, 1000),
+                          rng.choice([0., 128., 236.5, 354.5, 9937., 16383., 65535.]),
+                          2**rng.uniform(-2, 3), 2**rng.uniform(-2, 3)]
+                payload = struct.pack('<5f', *values)
+                cre.mem_write(source, payload)
+                cre.mem_write(context + 0x1780, payload)
+                invoke(cre, 0x391f88, (context, source))
+                # Execute original argument-setting blocks, stopping before
+                # each GPU setter. No GPU function or pixels are emulated.
+                sp = 0x1ffe000
+                cre.mem_write(source + 0x100, struct.pack('<I', cre.reg_read(UC_ARM64_REG_S0)))
+                for register, value in [(UC_ARM64_REG_SP, sp), (UC_ARM64_REG_X21, source + 0x100),
+                                         (UC_ARM64_REG_X20, context),
+                                         (UC_ARM64_REG_W27, 1 if bits == 32 else 65535)]:
+                    cre.reg_write(register, value)
+                native = bytearray()
+                for start, end, size in [(0x38e208, 0x38e23c, 4), (0x38e240, 0x38e258, 4),
+                                          (0x38e25c, 0x38e288, 2), (0x38e28c, 0x38e2b8, 2),
+                                          (0x38e2bc, 0x38e2dc, 4)]:
+                    cre.emu_start(start, end, count=60)
+                    assert cre.reg_read(UC_ARM64_REG_PC) == end
+                    native += bytes(cre.mem_read(sp + 0x80, size))
+                data = ctypes.create_string_buffer(payload)
+                output = ctypes.create_string_buffer(16)
+                assert lib.encoding(data, bits, output) == 0
+                assert output.raw == bytes(native), (values, bits)
+                encoded += 1
+
         rejected = 0
         for index in [0, 1, 3, 4]:
             for invalid in [math.nan, math.inf, -math.inf] + ([0., -1.] if index != 1 else []):
@@ -133,7 +170,7 @@ def main():
                 assert lib.exposure(payload, ctypes.byref(actual)) == 1
                 assert actual.value == 123.
                 rejected += 1
-    print(f'PASS: {len(cases)} CRE tone-EV cases bit-exact; {rejected} invalid inputs rejected; '
+    print(f'PASS: {len(cases)} CRE tone-EV and {encoded} log-encoding argument cases bit-exact; {rejected} invalid inputs rejected; '
           '2 TCE copies and 8 handle-mutation blocks verified')
     print('Boundary tests only; original TCE image processing is not connected.')
 

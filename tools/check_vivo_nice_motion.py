@@ -78,10 +78,10 @@ def emulator(library):
      elif name=='memset':u.mem_write(a,bytes([b&255])*c);ret=a
      elif name=='gettimeofday':u.mem_write(a,struct.pack('<qq',1,0))
      elif name=='clock_gettime':u.mem_write(b,struct.pack('<qq',1,0))
-     elif name in ('log','hypot','pow'):
+     elif name in ('log','hypot','pow','exp2'):
       val=struct.unpack('<d',struct.pack('<Q',u.reg_read(UC_ARM64_REG_D0)))[0]
       other=struct.unpack('<d',struct.pack('<Q',u.reg_read(UC_ARM64_REG_D1)))[0]
-      result=math.log(val) if name=='log' else math.hypot(val,other) if name=='hypot' else math.pow(val,other)
+      result=math.log(val) if name=='log' else math.hypot(val,other) if name=='hypot' else math.exp2(val) if name=='exp2' else math.pow(val,other)
       u.reg_write(UC_ARM64_REG_D0,struct.unpack('<Q',struct.pack('<d',result))[0])
      else:raise RuntimeError('unhandled '+name+' '+str(regs)+' lr='+hex(u.reg_read(UC_ARM64_REG_LR)))
      u.reg_write(UC_ARM64_REG_X0,ret);u.reg_write(UC_ARM64_REG_PC,u.reg_read(UC_ARM64_REG_LR))

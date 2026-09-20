@@ -39,7 +39,7 @@ static_assert(offsetof(Image, nativeHandle) == 0x70);
 struct Exposure {
     float referenceGain;
     float deltaEvMilli;
-    float conversionGain;
+    float logMaximum;
     float digitalGain;
     float drcGain;
 };
@@ -62,6 +62,31 @@ inline float logExposure(const Exposure& p) {
     const float first = absoluteDelta + reference;
     const float second = first + digital;
     return second + drc;
+}
+
+struct LogEncoding {
+    float exposureScale, logMaximum;
+    uint16_t zeroCode, oneCode;
+    float inputScale;
+};
+static_assert(sizeof(LogEncoding) == 16);
+
+// Arguments 5..9 of CRE niceLog, set by 38e208..38e2dc. Input is float
+// normalized RGB for 32-bit data, or unsigned 16-bit RGB for 16-bit data.
+// This only prepares the kernel arguments; std::log is not a bit-exact
+// substitute for the GPU's native_log used on pixels by niceLog.
+inline LogEncoding logEncoding(const Exposure& p, int inputBits) {
+    if ((inputBits != 16 && inputBits != 32) || !std::isfinite(p.logMaximum) ||
+        p.logMaximum < 0.f || p.logMaximum > 65535.f)
+        throw std::invalid_argument("Invalid CRE log encoding format or ceiling");
+    const float exponent = logExposure(p) + 14.f;
+    const float scale = float(std::exp2(double(exponent)) - 1.0);
+    if (!std::isfinite(scale) || scale <= 0.f)
+        throw std::invalid_argument("CRE log encoding exposure outside positive range");
+    return {scale, p.logMaximum,
+        uint16_t(std::fmin(double(p.logMaximum), 236.59423763112798)),
+        uint16_t(std::fmin(double(p.logMaximum), 354.891356446692)),
+        1.f / (inputBits == 32 ? 1.f : 65535.f)};
 }
 } // namespace tce_contract
 } // namespace vivo_nice

@@ -43,8 +43,8 @@ addresses in the layout are process-local; this is not a file transport ABI.
 ## Log exposure before TCE
 
 CRE `0x391f88..0x39209c` consumes five floats from the node's block at +0x1780:
-reference gain, delta EV in thousandths, a separate conversion gain, digital
-gain, and DRC gain. The third float is used elsewhere by LogConvert, not by
+reference gain, delta EV in thousandths, log ceiling, digital
+gain, and DRC gain. The third float is used by LogConvert, not by
 this exposure function. The result is evaluated with these rounding points:
 
 ```
@@ -60,20 +60,49 @@ product or replacing the computation with float log2 changes rounding.
 Invalid/nonpositive gain rejection is added boundary validation; it is not
 claimed as native behavior.
 
+## Logarithmic image input
+
+The decoded CRE OpenCL fragment at `0x16c993` contains `niceLog`, including
+float and unsigned-short input variants. The source is recovered by
+`tools/decode_vivo_nice_kernels.py`; fragment SHA256 is
+`27b1c62d3c081065b7569c409fbbb2c90f587dfdbeb3802f383913eaab7230da`.
+CRE `0x38e208..0x38e2dc` supplies its arguments:
+
+- exposureScale = float(exp2(double(float(logExposure + 14))) - 1).
+- logMaximum = the third float in the exposure block.
+- zeroCode = trunc(min(double(logMaximum), 236.59423763112798)).
+- oneCode = trunc(min(double(logMaximum), 354.891356446692)).
+- inputScale = 1 for float input (bit depth 32), 1/65535 for uint16 input.
+
+For each RGB channel, `niceLog` calculates
+`value = input * inputScale * exposureScale`, then truncates
+`clamp(native_log(value) * 1024, 0, logMaximum)` to uint16. It replaces the
+result with zeroCode when value is exactly zero and oneCode when it is exactly
+one. Thus normalized linear RGB cannot simply be passed to TCE as uint16.
+The input bit-depth flag 32 means normalized float, not an unsigned 32-bit
+integer range. The two special codes must not be replaced by zero.
+
+`logEncoding()` ports argument preparation and rejects unsupported formats,
+nonfinite/out-of-range ceilings, and nonpositive/overflowed exposure scales.
+It does not replace the GPU native_log with host libm or guess the missing
+scene gains. The native kernel's pixel accuracy on Adreno is not host-tested.
+
 ## Verification
 
 ```
 python tools/check_vivo_nice_tce_contract.py /path/libvivo_nice_cre.so /path/libvivo_nicetce.so
 ```
 
-604 complete original ARM64 log-EV executions match the C++ result bit for
-bit; 18 malformed inputs are rejected. Two original copy blocks establish
+604 complete original ARM64 log-EV executions and 300 original log-encoding
+argument preparations match C++ bit for bit; 18 malformed exposure inputs
+are rejected. Two original copy blocks establish
 argument sizes, with guards checked around the copies. Eight original handle
 mutation cases verify both output handle offsets and null preservation.
-The ARM emulator supplies host libm for imported log and implements imported
-memcpy. No instructions in the tested algorithm blocks are replaced.
+The ARM emulator supplies host libm for imported log/exp2 and implements
+imported memcpy. Argument-preparation blocks stop before GPU setters.
+No instructions in the tested algorithm blocks are replaced.
 
 Remaining before capture integration: complete creation parameters and output
-ownership, actual input encoding/scale from LogConvert, scene/mask/color/LUT
+ownership, execution of the recovered input encoding, scene/mask/color/LUT
 metadata routing, and processing/release of additional outputs. These tests
 do not establish complete TCE execution or removal of photographic artifacts.
