@@ -1,0 +1,45 @@
+{
+  "adapter": "vendor/lib64/libvcf_camera_aidl_device.so",
+  "sha256": "97aa148c1673d2c1097d4098ff5d0441b75aa5209b8162a023b081964cad8bb3",
+  "vcf_dependencies": [
+    {
+      "name": "libvcf_utils.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_platform_utils.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_session.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_features.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_platform.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_log_control.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_core.so",
+      "available": false
+    },
+    {
+      "name": "libvcf_configure.so",
+      "available": false
+    }
+  ],
+  "observed_entrypoints": {
+    "processCaptureRequest": "0x5949c",
+    "processOneCaptureRequest": "0x5a8b8",
+    "generateSessionRequestBuilder": "0x5fe30"
+  },
+  "imported_controller_factory": "vcf::ISessionController::createInstance()",
+  "exposure_policy_recovered": false
+}

@@ -960,3 +960,23 @@ Next reverse-engineering target is the actual VCF2 service/native scheduling
 path used here. Repeating the old SuperNight-only collection will not recover
 that path. Full dynamic exposure policy and Tone/TCE integration remain
 incomplete; this diagnostic correction does not fix SCAMERA image artifacts.
+
+
+### VCF2 native dependency boundary (2026-09-20)
+
+The supplied `libvcf_camera_aidl_device.so` exports `processCaptureRequest`
+(0x5949c), `processOneCaptureRequest` (0x5a8b8), and
+`generateSessionRequestBuilder` (0x5fe30). It imports
+`vcf::ISessionController::createInstance()` and SessionRequestBuilder methods.
+Its DT_NEEDED includes libvcf_session, libvcf_features, libvcf_platform,
+libvcf_core, libvcf_configure, libvcf_utils, libvcf_platform_utils and
+libvcf_log_control. None of these eight libraries is present in donor-full or
+listed in the donor archive's libraries-present manifest. Only the AIDL
+device/provider and VAS adapter were collected. See vivo-vcf2-dependencies.json
+for the adapter hash and exact missing names.
+
+This establishes a missing native implementation boundary; it does not prove
+which missing library owns each exposure decision. A full port cannot be
+claimed from the adapter exports alone. Read-only collection of the phone's
+libvcf*.so files is required to continue this path; no CameraService monitoring,
+property changes, capture reproduction or firmware patching is needed.
