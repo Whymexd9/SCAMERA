@@ -402,3 +402,11 @@ its tile plan, N-buffer/L-S-post-trigger capture scheduling, and photographic
 tone path. Full stock ZSL, dynamic bracket strategy, NICE Tone/TCE masks and
 HDRNet integration are not implemented by this change. Do not label this
 build stock-identical or claim the cyan device regression is verified fixed.
+
+Independent kernel-body check:
+`python tools/check_vivo_nice_stock_warp.py /path/to/decoded-source.txt`
+executes the recovered OpenCL arithmetic as C++ with type/builtin shims. On
+random 14-bit RAW values and 28 positive/negative translation pairs, all
+458,752 ordered-Bayer and planar-RGB samples matched the adapter bit-for-bit.
+This covers translation sampling, not the original homography/flow estimator
+or GPU compiler rounding under arbitrary projective transforms.
