@@ -456,3 +456,21 @@ output feeds a log-domain gain-map and guided-filter path. Simply substituting
 the model for the existing RGB tone shader would use the wrong contract.
 The recovered sources and host bindings are being inspected; FastTM, Adams
 and HDRNet are not connected to photo processing by this commit.
+
+
+FastTM arithmetic verification:
+`python tools/check_vivo_nice_tce.py <libvivo_nicetce.so> [--sources <directory>]`
+checks TCE SHA256
+`9f5deac3bc68fc86fcf16b98f43c232a9642bc309c7d5d42c88d6a4b596b892d`
+and executes original ARM64 functions 0x39dee4 and 0x39e670. NormFloat divides
+interleaved uint16 RGB by 15615. Log-output conversion clamps float RGB to
+[0,1], truncates float32 multiplication by 9937, indexes the original uint16
+exponential table at 0x4c5aa, then limits its result to 16383. This is distinct
+from the Gamma-output branch's direct multiplication by 16383.
+
+134,880 channel samples match bit-for-bit, including all uint16 input values,
+negative/above-one outputs, scalar/SIMD widths and untouched row padding. No
+original instructions or imported functions are replaced. Optional extraction
+writes the embedded OpenCL strings with their virtual addresses and SHA256
+provenance; binary payloads remain outside git. This verifies recovered tone
+arithmetic only, not routing, masks, colour calibration or neural photo quality.
