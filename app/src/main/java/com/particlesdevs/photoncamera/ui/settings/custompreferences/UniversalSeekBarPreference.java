@@ -267,6 +267,13 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         return value == null ? fallback : value.toString();
     }
 
+    /** Reset through the Preference store, preserving module/profile scoping. */
+    public void resetToDefault() {
+        persistString(formatExactValue(clamp(defaultNumber())));
+        showStoredValue();
+        notifyChanged();
+    }
+
     public String getValue() {
         return readStoredString(fallback_value);
     }

@@ -16,6 +16,12 @@ public class SettingsModelCheck {
         if(SettingsNumericRules.error("pref_mfsr_frames_key","2")==null)throw new AssertionError("short burst accepted");
         eq(Double.parseDouble(SettingsNumericRules.normalized("pref_aces_gamut_key","98.25","100")),98.25);
         eq(Double.parseDouble(SettingsNumericRules.normalized("pref_noise_model_coefficient_key","NaN","1.0")),1);
+        eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-1,25",0),-1.25);
+        eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-9",0),-2);
+        eq(SettingsNumericRules.value("pref_vivo_hdr_gamma","0",1),.5);
+        eq(SettingsNumericRules.value("pref_vivo_hdr_white","9",1),1);
+        eq(SettingsNumericRules.value("pref_vivo_hdr_black","9",0),.1);
+        eq(SettingsNumericRules.value("pref_vivo_hdr_contrast","NaN",1),1);
         Map<String,Object> p=new HashMap<>();
         inactive(p,"hexquad_luma");active(p,"pref_remosaic_enabled_key");
         p.put("pref_remosaic_enabled_key",true);p.put("pref_remosaic_backend_key","hp9_hexquad");

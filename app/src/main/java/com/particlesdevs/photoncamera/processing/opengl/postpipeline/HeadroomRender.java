@@ -37,6 +37,9 @@ public class HeadroomRender extends Node {
     protected float toneAmount = 1f;
     protected float localContrast = 0.42f;
     protected float shadowLift = 0f;
+    protected boolean manualTone = false;
+    protected float manualExposure = 0f, manualContrast = 1f, manualGamma = 1f;
+    protected float manualSaturation = 1f, manualBlack = 0f, manualWhite = 1f;
     private GLTexture fallbackGainMap;
 
     public HeadroomRender() {
@@ -86,6 +89,7 @@ public class HeadroomRender extends Node {
         }
 
         boolean fusion = pipeline.FusionMap != null;
+        glProg.setDefine("MANUAL_TONE", manualTone);
         glProg.setDefine("FUSION", fusion);
         glProg.setDefine("NEUTRALPOINT", basePipeline.mParameters.whitePoint);
         glProg.useAssetProgram("headroom/render");
@@ -96,6 +100,18 @@ public class HeadroomRender extends Node {
         glProg.setVar("intermediateToSRGB", intermediateToSRGB);
         glProg.setVar("displayGain", displayGain);
         glProg.setVar("sceneWhite", sceneWhite);
+        if (manualTone) {
+            glProg.setVar("manualExposure", (float) Math.pow(2.0, manualExposure));
+            glProg.setVar("manualContrast", manualContrast);
+            glProg.setVar("manualGamma", manualGamma);
+            glProg.setVar("manualSaturation", manualSaturation);
+            glProg.setVar("manualBlack", manualBlack);
+            glProg.setVar("manualWhite", manualWhite);
+            Log.d(Name, "manual tone: EV=" + manualExposure + " contrast=" + manualContrast
+                    + " gamma=" + manualGamma + " saturation=" + manualSaturation
+                    + " black=" + manualBlack + " white=" + manualWhite
+                    + " shoulder=" + toneAmount + " local=" + localContrast + " shadows=" + shadowLift);
+        }
         glProg.setVar("toneAmount", toneAmount);
         glProg.setVar("localContrast", localContrast);
         glProg.setVar("shadowLift", shadowLift);

@@ -51,6 +51,29 @@ public class SettingsMenuTest {
         assertTrue(PreferenceKeys.isZslQualitySelectionEnabled());
         assertTrue(PreferenceKeys.isSaliencyProtectionEnabled());
     }
+    @Test public void manualToneControlsKeepRangesAndDefaults() {
+        PreferenceScreen screen=inflate();
+        assertNotNull(screen.findPreference("vivo_hdr_tone_screen"));
+        String[] keys={"exposure","contrast","gamma","saturation","black","white"};
+        float[] defaults={0,1,1,1,0,1};
+        float[] minimum={-2,.5f,.5f,0,0,.7f};
+        float[] maximum={2,2,2,2,.1f,1};
+        for(int i=0;i<keys.length;i++) {
+            String key="pref_vivo_hdr_"+keys[i];
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference p=screen.findPreference(key);
+            assertNotNull(p);
+            assertTrue(ModuleProfiles.isLocal(key));
+            assertEquals(defaults[i],p.defaultNumber(),0f);
+            assertEquals(minimum[i],p.minimum(),0f);
+            assertEquals(maximum[i],p.maximum(),0f);
+            manager.set("default_scope",key,"-999");
+            assertEquals(minimum[i],PreferenceKeys.vivoHdrValue(keys[i],defaults[i]),0f);
+            manager.set("default_scope",key,"999");
+            assertEquals(maximum[i],PreferenceKeys.vivoHdrValue(keys[i],defaults[i]),0f);
+        }
+        manager.set("default_scope","pref_vivo_hdr_exposure","-1,25");
+        assertEquals(-1.25f,PreferenceKeys.vivoHdrValue("exposure",0),0f);
+    }
     @Test public void autonomousHdrControlsPersistAndRestorePreviousPipeline() {
         PreferenceScreen screen=inflate();
         assertNotNull(screen.findPreference("vivo_hdr_screen"));

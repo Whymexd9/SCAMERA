@@ -34,6 +34,15 @@ uniform ivec4 activeSize;
 
 #define NEUTRALPOINT 0.0,0.0,0.0
 #define FUSION 0
+#define MANUAL_TONE 0
+#if MANUAL_TONE == 1
+uniform float manualExposure;
+uniform float manualContrast;
+uniform float manualGamma;
+uniform float manualSaturation;
+uniform float manualBlack;
+uniform float manualWhite;
+#endif
 #define luminocity(x) dot(x.rgb, vec3(0.299, 0.587, 0.114))
 
 #import coords
@@ -147,6 +156,31 @@ vec3 fitDisplayGamut(vec3 rgb) {
     return mix(hueSafe,vec3(1.0),smoothstep(0.0,1.0,overflow));
 }
 
+#if MANUAL_TONE == 1
+// Artistic controls on display-linear luminance. They do not change the
+// sensor/model transfer functions or require a proprietary TCE context.
+vec3 manualGrade(vec3 rgb) {
+    float y=clamp(luminance(rgb),0.0,1.0);
+    float target=y;
+    if(manualContrast!=1.0 && y>0.0 && y<1.0) {
+        // Monotonic contrast about 18% grey, with fixed black/white endpoints.
+        const float pivot=0.18;
+        float odds=pow((y/(1.0-y))/(pivot/(1.0-pivot)),manualContrast);
+        target=(pivot*odds)/(1.0-pivot+pivot*odds);
+    }
+    if(manualGamma!=1.0) target=pow(target,1.0/manualGamma);
+    // Separate luminance and chroma; compress chroma only as far as required
+    // to fit SDR. This keeps neutral pixels neutral, even at saturation=2.
+    vec3 chroma=(rgb-vec3(y))*(y>1.0e-7 ? target/y : 0.0)*manualSaturation;
+    float extent=max(chroma.r,max(chroma.g,chroma.b));
+    float depth=-min(chroma.r,min(chroma.g,chroma.b));
+    float fit=1.0;
+    if(extent>0.0) fit=min(fit,(1.0-target)/extent);
+    if(depth>0.0) fit=min(fit,target/depth);
+    return vec3(target)+chroma*max(fit,0.0);
+}
+#endif
+
 void main() {
     ivec2 xy=ivec2(gl_FragCoord.xy);
     xy=mirrorCoords(xy,activeSize);
@@ -187,6 +221,9 @@ void main() {
     vec3 neutralPoint=vec3(NEUTRALPOINT);
     float localGain=gainsVal*tonemapGain;
     float exposure=displayGain*localGain;
+    #if MANUAL_TONE == 1
+    exposure*=manualExposure;
+    #endif
     vec3 wb=inColor*neutralPoint*exposure;
 
     /* Pre-tone local contrast (motionv2 reference-safe microcontrast). */
@@ -212,5 +249,14 @@ void main() {
     linearSrgb*=outputExposureScale;
     linearSrgb=fitDisplayGamut(linearSrgb);
 
-    Output=vec4(clamp(srgbEncode(linearSrgb),vec3(0.0),vec3(1.0)),1.0);
+    #if MANUAL_TONE == 1
+    // Exact neutral bypass preserves the previous renderer at defaults.
+    if(manualContrast!=1.0 || manualGamma!=1.0 || manualSaturation!=1.0)
+        linearSrgb=manualGrade(linearSrgb);
+    #endif
+    vec3 encoded=clamp(srgbEncode(linearSrgb),vec3(0.0),vec3(1.0));
+    #if MANUAL_TONE == 1
+    encoded=vec3(manualBlack)+(manualWhite-manualBlack)*encoded;
+    #endif
+    Output=vec4(encoded,1.0);
 }
