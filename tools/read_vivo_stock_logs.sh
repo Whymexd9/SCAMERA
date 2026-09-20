@@ -18,18 +18,24 @@ else
     echo "$?" > "$log_dir/read-status.txt"
 fi
 # VLogWrapper may route output to its own files when rate limiting is on.
-# Read bounded tails and retain only the stock capture command, not other logs.
+# Retain camera SDK events across the complete file, including VCF2.
+# A command-only filter incorrectly discarded all three observed VCF2 captures.
 mkdir "$log_dir/camera-file-excerpts"
 log_index=0
 for log_file in /data/bbklog/camap_log/camapp_*.txt; do
     [ -f "$log_file" ] || continue
     log_index=$((log_index + 1))
     [ "$log_index" -le 10 ] || break
-    tail -c 1048576 "$log_file" | grep -F '[SuperNightCaptureCommand]' > "$log_dir/camera-file-excerpts/${log_file##*/}" || true
+    if grep -F -e '_V_VCameraSdk:' -e 'VCameraSdk:' "$log_file" > "$log_dir/camera-file-excerpts/${log_file##*/}" 2>> "$log_dir/read-error.txt"; then
+        echo "${log_file##*/}: matched" >> "$log_dir/file-read-status.txt"
+    else
+        log_status=$?
+        echo "${log_file##*/}: grep_exit=$log_status" >> "$log_dir/file-read-status.txt"
+    fi
 done
 log_name=${log_dir##*/}
 tar -cf "$log_parent/$log_name.tar" -C "$log_parent" "$log_name"
 echo "Пришлите архив: $log_parent/$log_name.tar"
 if ! grep -Eq 'aecFrameInfo:|aecFrameControl:|captureFrameControl:|forwardFrameCount:' "$log_dir/stock-log.txt" "$log_dir"/camera-file-excerpts/*.txt 2>/dev/null; then
-    echo 'Нужные записи в текущем журнале не найдены. Настройки логирования не менялись; съёмку повторять не нужно.'
+    echo 'Массивы экспозиций SuperNightCaptureCommand не найдены. Это не исключает записи съёмок VCF2; нужен разбор архива. Настройки логирования не менялись.'
 fi

@@ -2,7 +2,8 @@
 """Read stock Java logger events without inventing a HAL exposure ABI.
 
 Source: PD2454 VivoCamera APK, SuperNightCaptureCommand.java and
-SuperNightUtils.java. Events remain independent: adjacency does not establish
+SuperNightUtils.java, Vcf2SnapNonCoreHandler.java and ReferenceImageReader.java.
+VCF2 preview-reference counts are not RAW bracket counts. Events remain independent: adjacency does not establish
 that two lines belong to the same capture. This is analysis, not camera control.
 """
 import argparse
@@ -13,7 +14,7 @@ from pathlib import Path
 
 ARRAY = re.compile(r'\b(aecFrameInfo|aecFrameControl|captureFrameControl|motionMetering):\s*(null|\[[^\]]*\])')
 COUNTS = re.compile(r'forwardFrameCount:\s*(-?\d+)\s+backwardFrameCount:\s*(-?\d+)\s+totalFrameCount:\s*(-?\d+)\s+batchInfo:\s*(\[[^\]]*\])')
-THREAD = re.compile(r'^\s*(\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+)\s+(\d+)\s+(\d+)\s+[VDIWEF]\s+')
+THREAD = re.compile(r'^\s*((?:\d{4}-)?\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+)\s+(\d+)\s+(\d+)\s+[VDIWEF]\s+')
 
 
 def values(text, integer=False):
@@ -44,14 +45,29 @@ def capture_counts(forward, backward, total, batch):
 def parse(text):
     events = []
     for line_number, line in enumerate(text.splitlines(), 1):
-        # Accept only lines from the identified stock command, not unrelated
-        # messages containing similarly named arrays.
-        if '[SuperNightCaptureCommand]' not in line:
-            continue
+        # Decode each recognized producer separately; do not infer capture
+        # membership from neighboring messages or treat previews as RAW frames.
         context = dict(line=line_number)
         thread = THREAD.match(line)
         if thread:
             context.update(timestamp=thread[1], pid=int(thread[2]), tid=int(thread[3]))
+        if '[ReferenceImageReader]' in line:
+            reference = re.search(r'Prepare to capture captureId:(\d+) startTimestamp:(\d+) count:(\d+) isBackCapture:(true|false)\b', line)
+            if reference:
+                events.append(dict(context, kind='vcf2_preview_reference',
+                    capture_id=int(reference[1]), sensor_timestamp=int(reference[2]),
+                    preview_reference_count=int(reference[3]),
+                    direction='future' if reference[4] == 'true' else 'past',
+                    raw_bracket_inferred=False))
+        if ' Vcf2ImageCallbackANode]' in line and 'onVcf2ImageAvailable' in line:
+            capture = re.search(r'capture id: (\d+) Vcf2ImageCallbackANode]', line)
+            result = re.search(r'buffer size: (\d+) vifImageFormat:(\d+) timestamp:(\d+)', line)
+            if capture and result:
+                events.append(dict(context, kind='vcf2_image_available',
+                    capture_id=int(capture[1]), buffer_bytes=int(result[1]),
+                    image_format=int(result[2]), sensor_timestamp=int(result[3])))
+        if '[SuperNightCaptureCommand]' not in line:
+            continue
         for match in ARRAY.finditer(line):
             event = dict(context, kind=match[1])
             try:

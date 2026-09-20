@@ -922,3 +922,41 @@ compares all 134,880 values bit-for-bit against original execution, including
 row-padding checks on the original functions. Full color calibration, masks,
 gain-map reconstruction and model routing are still not integrated. No new
 APK or completed-stock-port claim is made.
+
+
+### Actual Photo route: VCF2, not the assumed command (2026-09-20)
+
+The full user log `vivo-camera-app-log.txt` (2,943,159 bytes, 12,984 lines,
+SHA256 `8663cdf485b7f9d509732b1f7fbde38f49650b54c9fdf8ce9120497a8af3a952`) covers 20:11:10.016--20:14:05.633.
+It contains three successful image callbacks for capture IDs 1789915272890,
+1789915436661, 1789915440665. Each uses
+`PhotoPipeline[CaptureNode,Vcf2ImageCallbackANode,]`; the capture command reports
+camera ID 3, zoom 1.5, 4096x3072. `CamMngProxy` initializes the private
+`android.hardware.vivocamera.VivoCameraManager`. No `SuperNightCaptureCommand`
+or its numeric AEC/bracket arrays appear anywhere in the full file.
+Thus this experiment confirms an incorrect diagnostic route assumption, not a
+failure to enable logging or a failure by the user to take a photo.
+
+`VivoCaptureResultKey` maps forward/backward timestamps to
+`vcf.parameter.capture.past` / `vcf.parameter.capture.future`.
+`Vcf2SnapNonCoreHandler.notifyPreviewReferenceCaptureComplete` passes element 1
+as timestamp and element 0 as count to `ReferenceImageReader.capture`.
+Its consumer logs explicitly capture-ID-associated preview-reference counts
+4, 4, 6 in the past direction. These describe the preview-reference queue;
+they do NOT establish L/N/S RAW exposure counts or an HDR bracket.
+Motion array messages such as `[F@...` are Java object strings, not numeric
+array contents. No EV, gain or shutter values can be reconstructed from them.
+
+The passive reader now retains camera SDK lines across complete existing
+camera log files (at most ten files), including VCF2, and records file read
+status. It no longer silently discards everything outside the night command
+or the last 1 MiB. No device property, camera call or monitoring was added.
+The parser supports the file logger's year-prefixed timestamps, explicit VCF2
+preview-reference events and image callbacks. It reports six real events from
+this log without promoting preview counts to a RAW schedule. Shell syntax and
+parser checks passed. No additional phone reproduction is requested.
+
+Next reverse-engineering target is the actual VCF2 service/native scheduling
+path used here. Repeating the old SuperNight-only collection will not recover
+that path. Full dynamic exposure policy and Tone/TCE integration remain
+incomplete; this diagnostic correction does not fix SCAMERA image artifacts.
