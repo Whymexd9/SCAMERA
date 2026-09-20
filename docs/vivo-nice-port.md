@@ -519,8 +519,18 @@ partial correction; the user explicitly requires finishing the full port first.
 The full donor archive includes libraries, models and configurations but no
 camera APK/JAR. Its `camera-apk-paths.txt` contains only
 `cmd: Failure calling service package: Failed transaction (2147483646)`.
-The stock app's capture-request orchestration and vendor metadata contract are
-therefore not available in that archive. `tools/collect_vivo_camera_app.sh`
-collects camera APKs and their source paths/hashes without changing firmware
-or accessing application private data; it has a filesystem fallback for the
-observed PackageManager failure. It must run on the phone, not this host.
+That archive's contents do not establish whether the stock APK was supplied
+separately. The user supplied `vivo-camera-app-NUvSvK.tar.gz` on September 20;
+its `apks/8-VivoCamera.apk` is the complete stock application from
+`/system/app/VivoCamera/VivoCamera.apk`. All nine collected APK files match
+the archive's `SHA256SUMS.txt`.
+
+The stock APK is 436,720,224 bytes, SHA-256
+`aaf998e96056b6c56b01d0fbd9b962ed281c8d61210895acc11b4cc7a98f9bdd`.
+Python ZipFile successfully reads its final directory and verifies every
+entry's CRC. It contains classes.dex through classes9.dex, and no embedded
+`.so` entries. Its build fingerprint matches the PD2454 Android 16 donor
+(`compiler260106191612`). The complete app code is now available for studying
+capture-request orchestration; another APK collection is not a prerequisite.
+This acquisition does not establish completion of scheduling, motion or tone
+integration and does not justify releasing a partial test APK.
