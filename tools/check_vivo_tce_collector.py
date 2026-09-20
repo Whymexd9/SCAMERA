@@ -13,7 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 
-SCRIPT = Path(__file__).with_name('collect_vivo_tce_json.sh')
+SCRIPT = Path(__file__).with_name('collect_vivo_tce_json_v2.sh')
 HASH = '9f5deac3bc68fc86fcf16b98f43c232a9642bc309c7d5d42c88d6a4b596b892d'
 MOCK = r'''#!/usr/bin/env python3
 import json, os, sys, time
@@ -107,6 +107,8 @@ def run_case(root, name, initial='', *, scenario='normal'):
             archives = list(output.glob('*.tar.gz'))
             assert len(archives) == 1
             with tarfile.open(archives[0]) as archive:
+                version = next(m for m in archive.getmembers() if m.name.endswith('/collector-version.txt'))
+                assert archive.extractfile(version).read() == b'2-monotonic-window\n'
                 members = [m for m in archive.getmembers() if '/json/' in m.name and m.isfile()]
                 assert len(members) == (1 if scenario == 'normal' else 0)
                 if members:

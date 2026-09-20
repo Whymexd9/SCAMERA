@@ -36,7 +36,7 @@ GPU processing or camera on a phone, and cannot establish device stability.
 
 ## Collector
 
-`tools/collect_vivo_tce_json.sh` checks the donor hash and refuses a nonzero
+`tools/collect_vivo_tce_json_v2.sh` checks the donor hash and refuses a nonzero
 general dump setting. It changes only the live JSON selector, waits at most
 90 seconds for one manual stock auto capture, restores the exact previous
 value, and copies new matching TCE JSON files. It does not enable TagMonitor,
@@ -47,7 +47,7 @@ included if available. Original camera files are never modified or removed.
 Run after closing the stock camera, then follow the script's one-photo prompt:
 
 ```
-su -c 'sh /sdcard/Download/collect_vivo_tce_json.sh'
+su -c 'sh /sdcard/Download/collect_vivo_tce_json_v2.sh'
 ```
 
 The archive is written to Download/SCAMERA. If no JSON appears, inspect the
@@ -98,3 +98,9 @@ enabling the worker call. A JSON sample alone does not finish creation-context
 initialization, missing scene/LUT transport, log encoding, dynamic model routing,
 or the scheduler's connection to real capture. These remain implementation work,
 not reasons to ask for the already supplied libraries/models again.
+
+The next supplied `vivo-tce-json-RfbqHBhE.tar.gz` again came from the old
+terminal-read version: `timeout-or-eof`, no uptime records, restored after
+20 seconds, no JSON. The corrected collector is therefore delivered under
+a distinct `_v2.sh` filename, prints its version at launch and saves
+`collector-version.txt` in each archive to make version identification explicit.
