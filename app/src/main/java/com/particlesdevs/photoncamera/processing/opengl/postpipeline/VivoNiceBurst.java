@@ -14,7 +14,7 @@ import java.util.*;
 public final class VivoNiceBurst {
     final int width,height,cfa;
     private final float white;
-    private float noiseSlope,noiseOffset;
+    private float noiseSlope,noiseOffset,normalNoiseSlope,normalNoiseOffset;
     final boolean diagnostics;
     private final boolean trainedSensor;
     private final float[] black;
@@ -55,16 +55,9 @@ public final class VivoNiceBurst {
         ordered[4]=longs.isEmpty()?ordered[0]:longs.get(longs.size()-1);
         ordered[5]=shorts.get(shorts.size()-1);ordered[6]=shorts.get(0);
         // Forward ref/refn=3 identify L in the ES/S/N/L radiometric table.
-        noiseSlope=ordered[4].noiseSlope;noiseOffset=ordered[4].noiseOffset;
-        if (trainedSensor) {
-            int iso=ordered[4].measuredIso;
-            if (iso<50 || iso>12800) throw new IOException("NICE HDR: ISO вне проверенного профиля IMX06C");
-            // Recovered NoiseInfoHDR from the matching forward model config.
-            noiseSlope=Math.fma(0.0001242085f,iso,-0.0014234833f)/255f;
-            noiseOffset=Math.max(0.0272538637f+Math.fma(0.0000000158f*iso,iso,0.0000376323f*iso),0.000001f)/65025f;
-        }
-        if(!Float.isFinite(noiseSlope)||noiseSlope<=0||!Float.isFinite(noiseOffset)||noiseOffset<0)
-            throw new IOException("NICE HDR: Camera2 не передала корректный профиль шума опорного RAW; sensor="+p.physicalID);
+        float[] longNoise=noiseFor(ordered[4]), normalNoise=noiseFor(ordered[0]);
+        noiseSlope=longNoise[0];noiseOffset=longNoise[1];
+        normalNoiseSlope=normalNoise[0];normalNoiseOffset=normalNoise[1];
         Log.i("NICE_HDR","Calibration source="+(trainedSensor?"IMX06C forward HDR profile":"Camera2 experimental cross-sensor")+" sensor="+p.physicalID
                 +" CFA="+cfa+" slope="+noiseSlope+" offset="+noiseOffset
                 +"; original weights, experimental cross-sensor adaptation");
@@ -81,12 +74,25 @@ public final class VivoNiceBurst {
         if(ordered[5]==ordered[6])Log.i("NICE_HDR","No distinct ES: using S for ES, as supported by donor routing");
         if(normal.size()<4)Log.i("NICE_HDR","Fewer than 4 N frames: repeating available normal input");
     }
+    private float[] noiseFor(ImageFrame frame) throws IOException {
+        float slope=frame.noiseSlope,offset=frame.noiseOffset;
+        if(trainedSensor) {
+            int iso=frame.measuredIso;
+            if(iso<50||iso>12800)throw new IOException("NICE HDR: ISO вне проверенного профиля IMX06C");
+            slope=Math.fma(0.0001242085f,iso,-0.0014234833f)/255f;
+            offset=Math.max(0.0272538637f+Math.fma(0.0000000158f*iso,iso,0.0000376323f*iso),0.000001f)/65025f;
+        }
+        if(!Float.isFinite(slope)||slope<=0||!Float.isFinite(offset)||offset<0)
+            throw new IOException("NICE HDR: нет корректного профиля шума RAW frame="+frame.number);
+        return new float[]{slope,offset};
+    }
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
     void write(File file)throws IOException {
         ByteBuffer header=ByteBuffer.allocate(128).order(ByteOrder.LITTLE_ENDIAN);
-        header.putInt(0x3143484e).putInt(4).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
+        header.putInt(0x3143484e).putInt(5).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
         for(float v:black)header.putFloat(v);for(float v:exposure)header.putFloat(v);for(ImageFrame f:ordered)header.putInt(f.measuredIso);
         header.putFloat(noiseSlope).putFloat(noiseOffset).putInt(diagnostics?1:0);
+        header.putFloat(normalNoiseSlope).putFloat(normalNoiseOffset);
         header.position(0);
         try(FileChannel out=new FileOutputStream(file).getChannel()){
             while(header.hasRemaining())out.write(header);

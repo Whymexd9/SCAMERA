@@ -4,7 +4,7 @@
 The donor receives two RAW frame descriptors, first reference and then donor,
 with measured exposure products 1 and 1/gain. Its original guide builder runs
 unpatched. The same bytes and resulting ratio are passed to the C++ port.
-Gamma=.5 here is a test input, not a claim about the stock capture default.
+Gamma=.6 follows the recovered default constructor at 0x3ce2a0.
 """
 import argparse, hashlib, struct, random, subprocess, tempfile
 from pathlib import Path
@@ -37,7 +37,7 @@ for w,h in [(128,128),(132,100)]:
     u.mem_write(p+0x78,struct.pack('<ff',1 if f==0 else 1/gain,0 if f==0 else 1));u.mem_write(p+0xb4,struct.pack('<f',1))
    u.mem_write(0x10a0000,struct.pack('<QQ',0x10b0000,0x10b0400))
    u.mem_write(0x1090000,struct.pack('<QQQ',0x10a0000,0x10a0010,0x10a0010))
-   gamma=.5
+   gamma=.6
    u.reg_write(UC_ARM64_REG_S0,struct.unpack('<I',struct.pack('<f',gamma))[0])
    status=invoke(u,0x26fde4,(0x1070000,0x1090000,4))
    begin,end,capacity=struct.unpack('<QQQ',u.mem_read(0x10700a8,24))

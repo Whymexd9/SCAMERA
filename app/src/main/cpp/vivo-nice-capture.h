@@ -19,7 +19,7 @@ struct Burst {
     int w=0,h=0,cfa=0;
     int noiseReferenceSlot=0; // v1-v3 noise belongs to N; v4 belongs to L
     float white=0;
-    NiceNoise noise{}; bool cameraNoise=false,diagnostics=false,canonicalRggb=false;
+    NiceNoise noise{},normalNoise{}; bool hasNormalNoise=false; bool cameraNoise=false,diagnostics=false,canonicalRggb=false;
     std::array<float,4> black{};
     std::array<float,7> exposure{}; // sensor exposure products relative to N ref
     std::array<unsigned,7> iso{};
@@ -48,7 +48,7 @@ struct MappedNiceBurst {
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>4) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>5) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
@@ -61,7 +61,15 @@ struct MappedNiceBurst {
                 burst.cameraNoise=true;burst.diagnostics=h[27]!=0;
                 burst.noiseReferenceSlot=h[1]>=4?4:0;
             }
-            for(int i=h[1]>=2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
+            if(h[1]>=5) {
+                std::memcpy(&burst.normalNoise.slope,h+28,4);
+                std::memcpy(&burst.normalNoise.offset,h+29,4);
+                if(!std::isfinite(burst.normalNoise.slope)||burst.normalNoise.slope<=0||
+                   !std::isfinite(burst.normalNoise.offset)||burst.normalNoise.offset<0)
+                    throw std::runtime_error("Invalid normal-reference noise profile");
+                burst.hasNormalNoise=true;
+            }
+            for(int i=h[1]>=5?30:h[1]>=2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
             if(!std::isfinite(burst.white)||burst.white>65535)throw std::runtime_error("NICE white level");
             for(float b:burst.black)if(!std::isfinite(b)||b<0||b+1>=burst.white)throw std::runtime_error("NICE black level");
             for(int i=0;i<7;++i) {
@@ -226,12 +234,22 @@ inline void restoreSensorOrigin(std::vector<float>& rgb,int w,int h,int cfa) {
         for(int c=0;c<3;++c)rgb[dst+c]=rgb[src+c];
     }
 }
+using NiceAlignment = std::function<std::array<BackwardHomography,7>(Burst&)>;
 inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& execute,
                                       const std::function<void(const std::string&)>& report,
-                                      const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={}) {
+                                      const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={},
+                                      const NiceAlignment& alignment={}) {
     Burst b=sensor;b.canonicalRggb=true;
     constexpr int tile=forwardTileSize;
-    auto ref=guides(b,forwardReferenceSlot);std::array<Warp,7> warp;
+    std::array<Warp,7> warp;
+    std::array<BackwardHomography,7> projective;
+    if(alignment) {
+        projective=alignment(b);
+        for(const auto& h:projective)h.validate();
+    } else {
+        auto ref=guides(b,forwardReferenceSlot);
+        for(int f=0;f<7;++f)warp[f]=align(b,ref,f);
+    }
     std::array<std::vector<uint16_t>,7> luts;
     const auto domains=forwardExposureDomains(b.exposure);
     if(b.cameraNoise && b.iso[b.noiseReferenceSlot]!=b.iso[4])
@@ -247,7 +265,7 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     const float range=domains.normalEV;
     const float sqrtEV=std::sqrt(domains.normalizationEV);
     VstMode2 p{0,n.slope,n.slope,n.offset,1,domains.normalizationEV,norm,1,{1,1,1},14,16};
-    for(int f=0;f<7;++f){p.frameExposureRatio=domains.frameEV[f];luts[f]=makeVstMode2(p);warp[f]=align(b,ref,f);}
+    for(int f=0;f<7;++f){p.frameExposureRatio=domains.frameEV[f];luts[f]=makeVstMode2(p);}
     p.frameExposureRatio=1;
     auto inverse=makeInverseVstMode2(p,16,1.0f/65535,0);
     const float offset=float((double(n.offset)/(double(n.slope)*n.slope)+.375)/domains.normalizationEV);
@@ -269,10 +287,10 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                 int px=reflectCfa(tx.inputOrigin+x,b.w),py=reflectCfa(ty.inputOrigin+y,b.h);
                 const size_t pos=size_t(y)*tile+x;
                 if(f>=5){
-                    const auto rgb=warpShortRgb(b,f,px,py,warp[f].at(px,py));
+                    const auto rgb=alignment?warpShortRgbProjective(b,f,px,py,projective[f]):warpShortRgb(b,f,px,py,warp[f].at(px,py));
                     for(int c=0;c<3;++c)packedRaw[f][pos+c*tile*tile]=rgb[c];
                 } else {
-                    packedRaw[f][pos]=warpOrderBayer(b,f,px,py,warp[f].at(px&~1,py&~1));
+                    packedRaw[f][pos]=alignment?warpOrderBayerProjective(b,f,px,py,projective[f]):warpOrderBayer(b,f,px,py,warp[f].at(px&~1,py&~1));
                 }
             }
             frames[f]={packedRaw[f].data(),packedRaw[f].size(),tile,0,

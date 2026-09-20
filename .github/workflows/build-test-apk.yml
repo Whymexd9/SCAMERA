@@ -188,6 +188,8 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-preprocess
           g++ -std=c++17 -O2 -fsanitize=address,undefined tools/check_vivo_nice_capture.cpp -o /tmp/check-nice-capture
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-capture
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_motion_capture.cpp -ldl -o /tmp/check-nice-motion-capture
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-motion-capture
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_probe.cpp -ldl -o /tmp/check-nice-probe
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-probe /tmp/nice-probe-fixture
           chmod +x gradlew

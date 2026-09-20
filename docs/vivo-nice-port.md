@@ -719,3 +719,71 @@ must not be fed the black-subtracted network input without a defined conversion.
 This component is not enabled in capture. Original motion runtime linkage,
 coordinate/ROI conversion, failed-frame handling, dynamic ZSL/bracket scheduling
 and complete Tone/TCE integration remain unfinished. No new APK was built.
+
+### Original motion linked into capture source; release still blocked (2026-09-20)
+
+This supersedes the preceding motion integration/default-gamma status, not the
+outstanding stock-parity limitations. Native worker v26 now calls the original
+CPU corner detector and LK/RANSAC through `vivo-nice-stock-motion.h` during
+`--nice-capture`. The Java root launcher hashes the installed CRE library before
+execution; native linkage checks its version-export offset and entry-point
+instructions. Different or unavailable binaries stop processing. NICE errors no
+longer silently produce a photograph through the unrelated autonomous HDR path.
+
+The constructor at 0x3ce2a0 supplies gamma=.6 at +0x563c, failed-frame fallback
+method 0 at +0x56bc, and guide scale 4 at +0x5718. The supplied HDR XML omits gamma
+and comments out fallback-method override. The ARM64 oracle now executes this
+constructor and checks those values. Guide tests now use the recovered .6:
+all 16,641 bytes still match the original wrapper across 18 synthetic cases.
+
+The Camera2 adapter converts calibrated canonical RAW to RAW14 black=1024 before
+guide generation. Original LK's donor-to-reference H is inverted and scaled
+from guide to RAW coordinates, then used by both original-style Bayer and short
+RGB samplers before network packing. Singular matrices, nonfinite/unwritten
+outputs, and projective horizons crossing the frame are rejected. The current
+50-point/.7 retention checks are adapter policy using XML values; the complete
+original ROI, feature-block, random-disturbance and acceptance path is **not**
+reproduced. Calibrated Camera2 RAW conversion is likewise an explicit adaptation.
+
+CRE's failed-frame handler at 0x2e1d4c uses replacement method 0 by default and
+resets failed-L refNEV when resetEvCoeff is enabled. Its replacement routine at
+0x2a94bc copies the reference image descriptor and frame metadata. The adapter
+replaces failed donors with Nref and recomputes exposure domains before VST.
+NCH v5 adds Nref noise slope/offset at header words 28/29 so a failed L can select
+Nref noise instead of retaining L calibration. Versions 1-4 remain readable;
+their missing Nref calibration is a clear error if a failed L requires it.
+
+Verification completed locally: native worker C++ syntax; ASan/UBSan capture
+transport and projective integration tests (leak detection disabled because the
+execution environment uses ptrace); the full original ARM64 motion oracle;
+and the .6-gamma guide oracle. New integration checks cover nonaffine inversion,
+horizon rejection, the actual callback-to-tensor path, and failed-L calibration
+replacement. Mock-graph reconstruction error is 2.97129e-5. The Actions workflow
+now includes the integration check. Android compilation, original-library loading
+on the phone, and actual NPU/image-quality verification have **not** run here.
+
+Dynamic capture remains blocked on recovering and verifying the live stock HAL
+contract. Stock app code forwards `VivoAlgoAECFrameControl` and uses
+`VivoAlgoCaptureFrameControl` counts/batch data, plus
+`RequestLeftInThisSnapshot`; `VivoMotionAdaptiveAECInfo` supplies additional
+motion/exposure state. Available uploaded logs contain no live values for these
+tags. Some AEC offsets are visible in Java, but the complete gain/role/units ABI
+is not established; inventing a float-array layout would create another hybrid.
+No attached Android device or adb connection is available in this environment.
+
+`tools/collect_vivo_stock_schedule.sh` collects these tags using Android's
+built-in CameraService watch interface, scoped to `com.android.camera`. It needs
+root and 90 seconds of stock-camera shooting: normal light, a bright window with
+a dark interior, then motion in that scene. Save it in Download and run:
+
+```sh
+su -c 'sh /sdcard/Download/collect_vivo_stock_schedule.sh'
+```
+
+It writes a tar archive under Download/SCAMERA, without installing an APK or
+collecting photographs. Availability of the watch interface and exposure of Vivo
+private tags are checked/reported; this collector is not guaranteed to observe a
+private VCF path that bypasses CameraService. Its shell syntax is checked locally;
+the phone command itself remains untested. Full Tone/TCE color, masks, guided
+gain-map reconstruction and routing are also unfinished. No new APK, full-port
+completion, or artifact-removal claim accompanies this source change.

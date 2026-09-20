@@ -8,6 +8,7 @@
 #undef NICE_HOST_TEST
 #include "vivo-nice-capture.h"
 #include "vivo-nice-tone-probe.h"
+#include "vivo-nice-stock-motion.h"
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -20,7 +21,7 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v25 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v26 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
@@ -29,7 +30,8 @@ int main(int argc,char** argv) {
             signal(SIGALRM,SIG_DFL);alarm(840);
             vivo_nice::MappedNiceBurst mapped(argv[3]);
             auto report=[](const std::string& line){vivo_nn::log(line);};
-            report("NICE CAPTURE: original forward weights; Camera2 alignment/calibration adaptation");
+            report("NICE CAPTURE: original forward weights and stock CPU motion; Camera2 calibration adaptation");
+            vivo_nice::StockMotion motion;
             vivo_nice::Graph graph(argv[2],report);
             auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
                 graph.input=in;graph.execute();out=graph.output;
@@ -40,7 +42,7 @@ int main(int argc,char** argv) {
                 f<<"PF\n"<<w<<" "<<h<<"\n-1.0\n";
                 for(int y=h-1;y>=0;--y)f.write(reinterpret_cast<const char*>(data.data()+size_t(y)*w*3),w*3*sizeof(float));
                 if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
-            });
+            },[&](vivo_nice::Burst& burst){return motion.align(burst,report);});
             double sum=0;float maximum=0;
             for(float value:result){sum+=value;maximum=std::max(maximum,value);}
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));

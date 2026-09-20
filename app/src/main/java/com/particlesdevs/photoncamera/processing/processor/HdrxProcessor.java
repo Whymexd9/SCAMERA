@@ -136,7 +136,7 @@ public class HdrxProcessor extends ProcessorBase {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
             }
-            if ((PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
+            if ((PreferenceKeys.isVivoNiceEnabled() || PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
                     || (captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession))
                     && mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
@@ -459,10 +459,7 @@ public class HdrxProcessor extends ProcessorBase {
                 processingParameters.vivoHdrRawScale=1f;niceComplete=true;
                 Log.i("NICE_HDR","Original model capture completed; RGB goes directly to WB/LSC/tone. DNG retains the reference RAW.");
             } catch(Exception e) {
-                Log.e("NICE_HDR","Neural capture failed; preserving photo with autonomous HDR",e);
-                final String reason="NICE: "+e.getMessage()+". Использован автономный HDR.";
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(()->android.widget.Toast.makeText(
-                        PhotonCamera.getAppContext(),reason,android.widget.Toast.LENGTH_LONG).show());
+                throw new IllegalStateException("NICE capture failed: "+e.getMessage(),e);
             }
         }
         ByteBuffer output = hexOutput;

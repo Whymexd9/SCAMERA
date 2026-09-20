@@ -52,6 +52,10 @@ def emulator(library):
      if name in ('malloc','_Znwm','_Znam'):
       ret=heap;heap+=(a+255)&~255
       if heap>0x6000000:raise RuntimeError('oracle heap exhausted')
+     elif name=='_ZNSt6__ndk112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEC1ERKS5_':
+      value=bytes(u.mem_read(b,24))
+      if value[0]&1:raise RuntimeError('oracle supports only short-string copy')
+      u.mem_write(a,value);ret=a
      elif name=='__system_property_get':u.mem_write(b,b'\0')
      elif name=='__cxa_guard_acquire':ret=0 if u.mem_read(a,1)[0] else 1
      elif name=='__cxa_guard_release':u.mem_write(a,b'\x01')
@@ -197,12 +201,24 @@ def check_corner_chain(library):
     print(f'Corners+LK+RANSAC detected={count} accepted={accepted} H_error={error:.6f}px')
 
 
+
+def check_defaults(library):
+    u,_=emulator(library)
+    u.mem_write(0x1030000,b'\x06HDR\0'+bytes(19))
+    invoke(u,0x3ce2a0,(0x1040000,0x1030000))
+    assert bytes(u.mem_read(0x104563c,4))==struct.pack('<f',.6)
+    assert struct.unpack('<I',u.mem_read(0x10456bc,4))[0]==0
+    assert struct.unpack('<I',u.mem_read(0x1045718,4))[0]==4
+    print('PASS: original defaults gamma=.6, failed-frame method=0, guide scale=4')
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('library',type=Path,help='exact libvivo_nice_cre.so from donor')
     args=parser.parse_args()
     if hashlib.sha256(args.library.read_bytes()).hexdigest()!=CRE_SHA256:
         parser.error('unsupported CRE binary: SHA-256 mismatch')
+    check_defaults(args.library)
     check_ransac(args.library)
     check_lk(args.library)
     check_corner_chain(args.library)

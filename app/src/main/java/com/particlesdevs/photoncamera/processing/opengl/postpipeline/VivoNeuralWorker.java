@@ -48,14 +48,16 @@ public final class VivoNeuralWorker {
                 java.util.Collections.addAll(required,niceTone?NICE_TONE_FILES:NICE_FILES);
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
             } else java.util.Collections.addAll(required,hex?HEX_FILES:FILES);
+            if(niceCapture)required.add(new String[]{"/vendor/lib64/libvivo_nice_cre.so",
+                    "41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e"});
             for(String[] item:required){
-                File file=new File(args[0],item[0]);
-                System.out.println("VERIFY APK ASSET: "+item[0]);
-                if(file.length()<=0||file.length()>128L*1024*1024)throw new IllegalStateException("Unavailable bundled asset: "+file);
+                File file=item[0].startsWith("/")?new File(item[0]):new File(args[0],item[0]);
+                System.out.println("VERIFY RESOURCE: "+item[0]);
+                if(file.length()<=0||file.length()>128L*1024*1024)throw new IllegalStateException("Unavailable model/runtime resource: "+file);
                 MessageDigest digest=MessageDigest.getInstance("SHA-256");
                 try(FileInputStream in=new FileInputStream(file)){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);}
                 StringBuilder hash=new StringBuilder();for(byte b:digest.digest())hash.append(String.format(Locale.ROOT,"%02x",b&255));
-                if(!item[1].contentEquals(hash))throw new IllegalStateException("Unknown bundled asset "+item[0]+": "+hash);
+                if(!item[1].contentEquals(hash))throw new IllegalStateException("Unknown model/runtime resource "+item[0]+": "+hash);
             }
             File executable=new File(args[0],"vivo-neural-worker");
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");

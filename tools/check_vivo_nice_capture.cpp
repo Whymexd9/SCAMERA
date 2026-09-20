@@ -102,6 +102,13 @@ int main(){
     // Version 4 explicitly associates the transported profile with L.
     header[1]=4;std::memcpy(bytes.data(),header,128);save();
     {MappedNiceBurst mapped(file);assert(mapped.burst.noiseReferenceSlot==4);}
+    header[1]=5;
+    float normalSlope=.0002f,normalOffset=.000003f;
+    std::memcpy(header+28,&normalSlope,4);std::memcpy(header+29,&normalOffset,4);
+    std::memcpy(bytes.data(),header,128);save();
+    {MappedNiceBurst mapped(file);assert(mapped.burst.hasNormalNoise);
+     assert(mapped.burst.normalNoise.slope==normalSlope&&mapped.burst.normalNoise.offset==normalOffset);}
+    invalidWord(28,0);invalidWord(28,nan);invalidWord(29,0xbf800000);invalidWord(30,1);
     unlink(file);
     // The generic profile must round-trip calibrated radiance through the
     // actual VST/IVST; snapshots must observe graph values, not alter output.
