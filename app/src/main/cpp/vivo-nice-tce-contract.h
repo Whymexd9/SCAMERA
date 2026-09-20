@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 namespace vivo_nice {
@@ -74,6 +75,25 @@ struct Exposure {
 };
 static_assert(sizeof(Exposure) == 20);
 
+// CRE 37a990..37a9dc, followed by 37b03c..37b04c.
+// refEv0EV is NOT the Camera2 exposure-compensation index, ISO or ADRC gain.
+// The two mode fields retain their parent-object offsets: their full enum
+// identities have not been established, so do not substitute app mode enums.
+struct GainRouting {
+    float referenceEv0; // parent+4a8, already in the selected CRE domain
+    int32_t parent22fc, parent2320;
+    bool singleDemosaicModelSelected;
+    float imageDigitalGain, imageDrcGain;
+};
+inline Exposure routeExposure(const GainRouting& input, float finalDeltaEvMilli,
+                              float logMaximum) {
+    const bool imageDomain = input.parent22fc == 0 || input.parent22fc == 3;
+    return {imageDomain && input.parent2320 == 1 && input.singleDemosaicModelSelected
+                ? input.referenceEv0 : 1.f,
+            finalDeltaEvMilli, logMaximum,
+            imageDomain ? input.imageDigitalGain : 1.f, input.imageDrcGain};
+}
+
 // CRE 391f88..39209c. Preserve the donor's double log followed by separate
 // float conversions/additions: log2(product) is not bit-equivalent.
 inline float logExposure(const Exposure& p) {
@@ -91,6 +111,47 @@ inline float logExposure(const Exposure& p) {
     const float first = absoluteDelta + reference;
     const float second = first + digital;
     return second + drc;
+}
+
+// TCE Process+0x78 and LogConvert's reference gain are different inputs.
+// CRE 38d1cc..38d20c always uses args+0x28 here, before model-dependent
+// args+0x2c routing or double-stream overrides applied to LogConvert.
+inline float processExposureEv(float reference, float deltaEvMilli) {
+    if (!std::isfinite(reference) || reference <= 0.f || !std::isfinite(deltaEvMilli))
+        throw std::invalid_argument("Invalid CRE process exposure metadata");
+    const float delta = deltaEvMilli / 1000.f;
+    const float absoluteDelta = delta < 0.f ? -delta : delta;
+    return absoluteDelta + float(std::log(double(reference)) / 0.6931471805599453);
+}
+// ICInputPreProcess 36fe0c..36fe18, used when an IC input supplies refEv0EV
+// as uint32 Q10. Ordinary selected-frame reference EV is already float and
+// must NOT be quantized to this representation just to call the tone mapper.
+inline float decodeIcReferenceEv(uint32_t q10) {
+    return float(q10) * (1.f / 1024.f);
+}
+struct LogExposureConfig {
+    int32_t motionDoubleStream; // config+5ec8, override only when ==1
+    int32_t hdrDoubleStream;    // config+55cc, override only when ==1
+    int32_t bypassZeroDeltaEv;  // config+5a4c, zero enables override
+    float logMaximum;          // config+5eac
+};
+// Complete coefficient preparation performed by CRE 38d680..38d820.
+inline Exposure prepareLogExposure(const GainRouting& gains, float deltaEvMilli,
+                                   const LogExposureConfig& config) {
+    auto p = routeExposure(gains, deltaEvMilli, config.logMaximum);
+    if (config.motionDoubleStream == 1) p.digitalGain = 1.f;
+    if (config.hdrDoubleStream == 1 && config.bypassZeroDeltaEv == 0)
+        p.deltaEvMilli = 0.f;
+    return p;
+}
+// NICEIntegration 10d34..10d3c -> CRE 38d150..38d15c -> TCE Process+0xc0.
+// Truncation toward zero, NOT Java Math.round. Nonfinite/out-of-range input
+// rejection is added boundary validation, not emulation of ARM saturation.
+inline int32_t sceneLuxIndex(float lux) {
+    if (!std::isfinite(lux) || double(lux) < std::numeric_limits<int32_t>::min() ||
+        double(lux) > std::numeric_limits<int32_t>::max())
+        throw std::invalid_argument("Invalid NICE scene lux");
+    return int32_t(lux);
 }
 
 struct LogEncoding {

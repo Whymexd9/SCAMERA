@@ -99,11 +99,69 @@ args+0x24 to node+0x178c; input descriptor+0xbc to node+0x1790;
 args+0x2c to node+0x1780 (`38d7e4..38d814`). Thus the gain in the first
 slot of `Exposure` is not an unconditional copy of args+0x28.
 Parent+0x4a8 is produced by uint32-to-float conversion of upstream+0x116c
-times 1/1024 (`36fdd0..36fe18`). The semantic identity of that upstream
-field and of image descriptor+0xb8/+0xbc is still unresolved. Do not equate
-them with vendor-result tags merely because both contain floating-point gains.
+times 1/1024 (`36fdd0..36fe18`). That conversion belongs specifically to
+**ICInputPreProcess** (`36fa34`): its log names upstream+0x116c `refEv0EV`.
+Do not quantize ordinary selected-frame float EV to Q10; `decodeIcReferenceEv`
+is only for this IC input representation. The image fields are now identified
+as digitalGain (+0xb8) and drcgain (+0xbc) by the wrapper's JSON dump and CRE's
+AE log. This does not prove that arbitrary Camera2 gain tags replace them.
 `2a1da4` returns object+0x18, so image-descriptor offsets must also not be
 confused with owning-object offsets when tracing their producers.
+
+### Verified coefficient preparation and wrapper inputs
+
+Additional donors:
+
+- `libvivo.vaf.algo.nice.so`: SHA256 `965c448c63274d031f974c3f24de062efe69ca5f90bb5060ef5e495bf05c1738`.
+- `libvivo.vaf.system.so`: SHA256 `3f4ee25636fb04023c338ded9f087734ab8aeb429c4e50adf19a822e5398c188`.
+
+`NICEIntegration::fillInputParams` (`10a24`) maps source index and destination
+index separately. Source AE arrays have 20 float slots (stride 4); destination
+CRE image records have stride 0x198. Offsets below are relative to NICEProcParam
+and the destination image, respectively, not the owning wrapper object.
+
+| NICEProcParam source | CRE destination | Meaning | Wrapper instruction |
+| --- | --- | --- | --- |
+| 0x1b08 + 4*i | image+0x78 | expTime, native unit not yet established | 10b18..10b1c |
+| 0x1b58 + 4*i | image+0x7c | EV | 10b20..10b2c |
+| 0x1bf8 + 4*i | image+0xb0 | shortGain | 10bf8..10bfc |
+| 0x1c48 + 4*i | image+0xb4 | analogGain | 10bdc..10be4 |
+| 0x1c98 + 4*i | image+0xb8 | digitalGain | 10be8..10bec |
+| 0x1ce8 + 4*i | image+0xbc | drcgain | 10bf0..10bf4 |
+| 0x2db4 | input+0x1814 | deltaEV | 10ce4..10cf0 |
+| 0x3754 | input+0x1860 | float lux truncated to signed int32 | 10d34..10d3c |
+
+Wrapper JSON dump at `11edc..12050` independently names the AE fields.
+`NICEParameterManager::fillParameterEvryFrame` reads internal VMetadata tags
+0x22/7/0x16 into expTime/shortGain/digitalGain (`33c310..33c3ac`). It computes
+analogGain as shortGain/digitalGain (`33d134..33d14c`). DRC has a branch:
+when manager+0xf8 == 1, it uses max(rawHdrCaptureGain, 1) from internal tag
+0x3015f (`33c3ec..33c438`); otherwise it reads AE tag 4 (`33c4b4..33c4d0`).
+The log at `33c524` distinguishes rawHdrCaptureGain from drcgainFromAe.
+Additional IC and short/long-frame branches can replace these arrays later.
+These are VAF metadata IDs, not Camera2 tag numbers. Their external tag routing
+is still required; in particular ADRC alone is not a verified HDR substitute.
+
+The two tone exposure domains must also remain separate:
+
+| Consumer | Reference term | Other terms / overrides |
+| --- | --- | --- |
+| TCE Process+0x78 (`38d1cc..38d20c`) | unconditional args+0x28 = parent+0x4a8 | abs(deltaEV/1000) + float(log(ref)/ln2) |
+| LogConvert (`38d680..38d820`) | routed args+0x2c | digitalGain, DRC, deltaEV and log ceiling |
+
+`routeExposure` preserves the mode/model branches above. `prepareLogExposure`
+then ports the complete five-coefficient fill: config+0x5ec8 == 1 forces digital
+gain to 1 (Motion DoubleStream); config+0x55cc == 1 with config+0x5a4c == 0
+forces log deltaEV to zero (HDR DoubleStream without bypassZeroDeltaev).
+Neither override changes the separate Process EV calculation. The log ceiling
+comes from config+0x5eac. `processExposureEv` and `sceneLuxIndex` retain their
+own conversions instead of borrowing the final log-exposure value.
+
+600 original CRE routing cases and 600 complete coefficient-fill/Process EV
+cases match bit for bit, including model reset and both double-stream overrides.
+512 original wrapper lux conversions and 20 per-frame AE copy blocks also
+match; five malformed lux values are rejected by added boundary validation.
+This prepares coefficients; it does not enable the TCE image call.
 
 ## Logarithmic image input
 
@@ -143,7 +201,8 @@ zero lux is preserved. The snapshot is retained with the burst, included
 in diagnostics, and transported to the native worker in NCH version 6.
 It is not yet consumed by a TCE call.
 The ADRC result tag has not been proven equivalent to CRE's DRC exposure
-field. The lux float-to-integer rule at the TCE caller remains unresolved.
+field. The wrapper's lux float-to-integer rule is now verified truncation,
+but routing the source lux tag into VAF's metadata ID 0 is still unverified.
 Neither the separate AEC debug array nor ISO is used to fabricate these values.
 
 NCH v6 keeps the previous 128-byte header intact and appends 32 bytes before
@@ -178,7 +237,7 @@ missing/invalid values and immutable snapshots using the actual Java classes.
 ## Verification
 
 ```
-python tools/check_vivo_nice_tce_contract.py /path/libvivo_nice_cre.so /path/libvivo_nicetce.so
+python tools/check_vivo_nice_tce_contract.py /path/libvivo_nice_cre.so /path/libvivo_nicetce.so --wrapper /path/libvivo.vaf.algo.nice.so
 python tools/check_vivo_nice_tce_gamma.py /path/libvivo_nicetce.so
 python tools/check_nice_reference_metadata.py
 ```

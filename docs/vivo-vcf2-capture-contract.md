@@ -223,3 +223,59 @@ unknown or mismatched roles. It does not test Android HAL delivery or establish
 a stock dynamic bracket policy. The APK build is being run to exercise the
 connected capture changes and previously recovered CRE motion/warp/VST work.
 Full VCF scheduling and photographic Tone/TCE routing remain incomplete.
+
+## NICE HDR plan producer (2026-09-20)
+
+`vivo-vcf-nice-hdr-plan.h` now ports the count/batch/frame construction in
+VASAdapterMetadataConvertVCF::getNiceHdrCaptureControlInfo (`101f48`), for
+the existing sensor stream. It does not switch sensor modes or emulate the
+seamless/dual-stream branches. It consumes a real scene/AE query decision;
+it does not generate that decision from ISO, lux, user settings or gyro.
+
+| PreviewToQueryParams offset | Meaning in the producer |
+| --- | --- |
+| 0x2d08 / 0x2d0c | past / future frame counts |
+| 0x2d10 / 0x2d50 / 0x2d90 | future EV / gain / shutter float[16] |
+| 0x2dd0 | separate short EV float[16] for QueryToShot RAW descriptors |
+| 0x3d8c | nonzero selects alternate exposure mode |
+| 0x2ec0 / 0x2f00 | alternate EV / alternate short EV float[16] |
+
+`applyNiceHdrQuery` produces one-frame batches (algorithm ID 1) with native
+format 0x12. Past frames use direction 0; future frames use direction 1. It
+preserves the initialized AE fields of past frames and the gain/shutter of
+alternate-mode frames, because the original does not write those fields.
+The normal frame record gets EV while the separate QueryToShot RAW record
+gets short EV; merging those arrays would change the stock request.
+The original float shutter sum is truncated to int32; units are left untouched.
+The stock echo marker is exactly 101.f, not zero EV. Without past frames it
+selects the echo index; with past frames it does so only when the caller's
+image-echo flag is enabled. Later matching markers overwrite earlier ones.
+When past frames exist, scene IDs 8/31 select catch mode 3, others select 4;
+without past frames the previous catch mode is retained.
+
+Added validation bounds the total to 16 one-frame batches, rejects nonfinite
+active query fields and int32 shutter-sum overflow, and publishes no partial
+result on failure. It does not reject unused alternative arrays. Existing
+`captureBatchSlices` accepts the produced batches without losing association.
+
+```sh
+python tools/check_vivo_vcf_nice_hdr_plan.py /path/libvivo.vas.adapter.vcf.so
+```
+
+608 original ARM64/C++ comparisons cover every total 1..16, every past/future
+partition, both exposure modes and both echo policies. Distinct initialized
+values test preservation of untouched fields. Nine malformed queries are
+rejected. The test executes `101fa4..101fb8`, `102048..1022c8` and
+`1023ec..102410`; only logging is skipped. It does not run scene/AE inference,
+sensor/seamless handling, vendor metadata publishing, or Camera2.
+
+The same producer publishes `vivo.parameter.VivoAlgoAECFrameControl` (48
+elements), `VivoAlgoAECShortFrameControl` (49), and `VivoAlgoCaptureFrameControl`
+(9), at `10284c`, `1028bc` and `1029d8`. These are separate from the internal
+VCF capture-control payload. The supplied APK declares the first as float[]
+and the count array as int[]; existence of those keys does not establish that
+our current Camera2 session receives the complete stock scene decision.
+Connecting the query producer, ready-queue policy and exposure request writer
+is still necessary. The current camera capture path still uses its fixed
+normal-frame selection and manual bracket; this helper is not advertised as
+a finished dynamic capture scheduler. No APK build was started for this work.

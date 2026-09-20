@@ -20,15 +20,31 @@ from unicorn.arm64_const import *
 TCE_SHA256 = '9f5deac3bc68fc86fcf16b98f43c232a9642bc309c7d5d42c88d6a4b596b892d'
 DRIVER = r'''
 #include <algorithm>
+#include <cstring>
 #include "vivo-nice-tce-contract.h"
 using namespace vivo_nice::tce_contract;
 extern "C" int exposure(const Exposure* p, float* result) {
     try { *result = logExposure(*p); return 0; }
     catch (const std::invalid_argument&) { return 1; }
 }
+extern "C" void routing(uint32_t q10, int32_t mode, int32_t referenceMode,
+ int selected, float digital, float drc, float* out) {
+    const auto p = routeExposure({decodeIcReferenceEv(q10),mode,referenceMode,selected!=0,digital,drc},-250.f,17034.8f);
+    out[0]=p.referenceGain;out[1]=p.digitalGain;out[2]=p.drcGain;
+    out[3]=p.deltaEvMilli;out[4]=p.logMaximum;
+}
 extern "C" int encoding(const Exposure* p, int bits, LogEncoding* result) {
     try { *result = logEncoding(*p, bits); return 0; }
     catch (const std::invalid_argument&) { return 1; }
+}
+extern "C" void prepared(uint32_t q10,int mode,int referenceMode,int selected,
+ float digital,float drc,float delta,int motion,int hdr,int bypass,float* out) {
+    const auto p=prepareLogExposure({decodeIcReferenceEv(q10),mode,referenceMode,selected!=0,digital,drc},delta,
+        {motion,hdr,bypass,17034.8f});
+    std::memcpy(out,&p,sizeof(p));out[5]=processExposureEv(decodeIcReferenceEv(q10),delta);
+}
+extern "C" int lux(float value,int32_t* out) {
+    try {*out=sceneLuxIndex(value);return 0;}catch(const std::invalid_argument&){return 1;}
 }
 extern "C" void bind_outputs(OutputPrefix* out, const Image* images, uint64_t extra) {
     bindAuxiliaryOutputs(*out, images[0], {images[1], images[2], images[3]}, extra);
@@ -46,6 +62,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('cre', type=Path)
     ap.add_argument('tce', type=Path)
+    ap.add_argument('--wrapper', type=Path, help='Also verify NICEIntegration lux conversion and AE mapping')
     args = ap.parse_args()
     for path, expected in [(args.cre, CRE_SHA256), (args.tce, TCE_SHA256)]:
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
@@ -60,6 +77,96 @@ def main():
             '-Wall', '-Wextra', '-Werror', '-I', str(include),
             str(root / 'test.cpp'), '-o', str(root / 'test.so')], check=True)
         lib = ctypes.CDLL(str(root / 'test.so'))
+        lib.routing.argtypes = [ctypes.c_uint32,ctypes.c_int32,ctypes.c_int32,
+            ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_void_p]
+        lib.prepared.argtypes=[ctypes.c_uint32,ctypes.c_int,ctypes.c_int,ctypes.c_int,
+            ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_void_p]
+        rng = random.Random(20260925)
+        parent, source, image_object = 0x1100000, 0x1200000, 0x1300000
+        for i in range(600):
+            q10 = [1,1023,1024,1025,2**24-1,2**24+1,2**32-1][i%7] if i<100 else rng.randrange(1,2**32)
+            mode = [-1,0,1,2,3,4,0x7fffffff][i%7]
+            reference_mode = [0,1,2,-1][i%4]
+            selected = (i//4)%2
+            digital, drc = rng.uniform(.1,8), rng.uniform(.1,8)
+            cre.mem_write(source+0x116c,struct.pack('<I',q10))
+            cre.reg_write(UC_ARM64_REG_X19,parent)
+            cre.reg_write(UC_ARM64_REG_X20,source)
+            cre.reg_write(UC_ARM64_REG_S1,0x3a800000)
+            cre.emu_start(0x36fe0c,0x36fe1c,count=10)
+            cre.mem_write(parent+0x2298,struct.pack('<Q',image_object))
+            cre.mem_write(image_object+0x18+0xb8,struct.pack('<f',digital))
+            cre.mem_write(parent+0x22fc,struct.pack('<i',mode))
+            cre.mem_write(parent+0x2320,struct.pack('<i',reference_mode))
+            cre.mem_write(parent+0x21e4,struct.pack('<I',selected))
+            cre.reg_write(UC_ARM64_REG_W8,mode & 0xffffffff)
+            cre.emu_start(0x37a990,0x37a9dc,count=100)
+            assert cre.reg_read(UC_ARM64_REG_PC)==0x37a9dc
+            cre.emu_start(0x37b03c,0x37b04c,count=10)
+            out=(ctypes.c_float*5)()
+            lib.routing(q10,mode,reference_mode,selected,digital,drc,out)
+            actual=bytes(cre.mem_read(parent+0x1224,4))+bytes(cre.mem_read(parent+0x121c,4))
+            assert bytes(out)[:8]==actual, (i,q10,mode,reference_mode,selected)
+            assert bytes(out)[8:]==struct.pack('<fff',drc,-250,17034.8)
+            # Execute the complete five-coefficient fill, including both
+            # double-stream overrides; Process EV must retain its own domain.
+            node,config,args_address=0x1400000,0x1500000,0x1600000
+            motion,hdr,bypass=[rng.choice([0,1,2,-1]) for _ in range(3)]
+            delta=rng.uniform(-4000,4000)
+            cre.mem_write(source+0x1814,struct.pack('<f',delta))
+            cre.mem_write(node+0x9b0,struct.pack('<Q',args_address))
+            cre.mem_write(args_address,struct.pack('<Q',config))
+            cre.mem_write(args_address+0x24,bytes(cre.mem_read(parent+0x121c,12)))
+            # args+28 is the unconditional refEv0EV, not the routed +2c gain.
+            cre.mem_write(args_address+0x28,bytes(cre.mem_read(parent+0x4a8,4)))
+            cre.mem_write(args_address+0x68,struct.pack('<Q',image_object))
+            cre.mem_write(image_object+0x18+0xbc,struct.pack('<f',drc))
+            for off,value in [(0x5ec8,motion),(0x55cc,hdr),(0x5a4c,bypass)]:
+                cre.mem_write(config+off,struct.pack('<i',value))
+            cre.mem_write(config+0x5eac,struct.pack('<f',17034.8))
+            cre.reg_write(UC_ARM64_REG_X0,node);cre.reg_write(UC_ARM64_REG_X1,source)
+            cre.emu_start(0x38d68c,0x38d818,count=300)
+            assert cre.reg_read(UC_ARM64_REG_PC)==0x38d818
+            out=(ctypes.c_float*6)()
+            lib.prepared(q10,mode,reference_mode,selected,digital,drc,delta,motion,hdr,bypass,out)
+            assert bytes(out)[:20]==bytes(cre.mem_read(node+0x1780,20)), ('prepare',i)
+            cre.reg_write(UC_ARM64_REG_X9,args_address)
+            cre.reg_write(UC_ARM64_REG_X19,node);cre.reg_write(UC_ARM64_REG_X20,source)
+            cre.emu_start(0x38d1cc,0x38d210,count=50)
+            assert bytes(out)[20:]==bytes(cre.mem_read(node+0xa48,4)), ('process',i)
+        print('600 original CRE gain-routing cases matched, including Q10 rounding and model reset')
+        print('600 original complete log-coefficient and separate Process EV preparations matched')
+        if args.wrapper:
+            if hashlib.sha256(args.wrapper.read_bytes()).hexdigest()!='965c448c63274d031f974c3f24de062efe69ca5f90bb5060ef5e495bf05c1738':
+                raise ValueError('Unsupported NICE wrapper')
+            wrapper,_=emulator(args.wrapper)
+            lib.lux.argtypes=[ctypes.c_float,ctypes.c_void_p]
+            values=[-2147483648.,2147483520.,-1.99,-.99,-0.,0.,.49,.5,.99,1.99,209.9,210.1]
+            values += [rng.uniform(-10000,10000) for _ in range(500)]
+            for value in values:
+                wrapper.mem_write(source+0x3754,struct.pack('<f',value))
+                wrapper.reg_write(UC_ARM64_REG_X22,source);wrapper.reg_write(UC_ARM64_REG_X19,parent)
+                wrapper.emu_start(0x10d34,0x10d40,count=10)
+                out=ctypes.c_int32()
+                assert lib.lux(value,ctypes.byref(out))==0
+                assert bytes(out)==bytes(wrapper.mem_read(parent+0x1860,4))
+            for value in [float('nan'),float('inf'),-float('inf'),2147483648.,-2147483904.]:
+                out=ctypes.c_int32(777)
+                assert lib.lux(value,ctypes.byref(out))==1 and out.value==777
+            # Per-frame AE fields copied by the actual wrapper, with different
+            # source/destination indices and preserved descriptor guard bytes.
+            for index in range(20):
+                initial=bytes(rng.randrange(256) for _ in range(0x198))
+                fields=struct.pack('<4f',*[rng.uniform(.1,20) for _ in range(4)])
+                wrapper.mem_write(parent,initial)
+                for offset,value in zip([0x1c48,0x1c98,0x1ce8,0x1bf8],struct.iter_unpack('<f',fields)):
+                    wrapper.mem_write(source+4*index+offset,struct.pack('<f',*value))
+                wrapper.reg_write(UC_ARM64_REG_X23,source+4*index)
+                wrapper.reg_write(UC_ARM64_REG_X27,parent)
+                wrapper.emu_start(0x10bdc,0x10c00,count=20)
+                expected=bytearray(initial);expected[0xb0:0xc0]=fields[12:]+fields[:12]
+                assert bytes(wrapper.mem_read(parent,0x198))==bytes(expected)
+            print('512 original lux conversions, 20 per-frame AE mappings and 5 lux rejections verified')
         lib.exposure.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
         lib.exposure.restype = ctypes.c_int
         lib.encoding.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
