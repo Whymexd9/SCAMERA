@@ -264,6 +264,34 @@ supplies imported logging and libm; no algorithm instructions are replaced.
 This establishes another producer, not complete TCE image execution. It is
 not yet called by the active capture worker.
 
+The same header now includes the complete reference producer `38ccb8..38d138`,
+after the image accessors: original dimensions/offsets, inclusive crop extent,
+reference AE, opaque image statistics, both face coordinate sets, face IDs,
+mask rectangles and validity. `ToneFaceStorage` owns the six backing arrays
+and cannot be copied or moved; its lifetime must include the native call.
+The native node's initialized face-view padding is zero. The adapter accepts
+at most 40 faces, the capacity of the recovered node arrays. The added capacity
+check precedes any mutation. Inactive array entries remain untouched.
+128 additional complete original-function executions verify the argument and
+all six storage arrays, with native pointer locations normalized only in the
+comparison. The native code and accessors are unmodified.
+
+### Allocator implementation dependency
+
+CRE RGB construction `2a1dac` calls its allocator singleton `39cc08` and then
+`39f7ec`/`3a0de4`. The singleton initialization reaches an imported
+`vivoCreateShareBufAllocHandler` at `39e904` (return address `39e908`). None of
+the currently extracted donor libraries defines that symbol. CRE's DT_NEEDED
+contains `libvivo_platform_common.so` and `libvivo.mempool.so`, both absent
+from the supplied libraries manifest and extracted files. The supplied phone
+path list confirms both exist under `/vendor/lib64/`; it also lists
+`libvivo.mempool.controller.so`. The provider and internal allocator ownership
+cannot be established merely from the call-site name.
+
+The original constructor was executed only until this missing imported
+implementation; no successful native allocation is claimed. A substitute
+malloc shim here would hide the ownership contract we need to recover.
+
 ### Create argument producer
 
 `vivo-nice-tce-create.h` ports the writes in CRE `38c19c..38c414`,
