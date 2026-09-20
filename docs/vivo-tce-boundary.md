@@ -84,6 +84,27 @@ product or replacing the computation with float log2 changes rounding.
 Invalid/nonpositive gain rejection is added boundary validation; it is not
 claimed as native behavior.
 
+### Upstream gain routing (not yet connected)
+
+CRE `37ac0c..37ac28` passes parent+0x11f8 as `_VNiceTxeArgs_` to the TCE
+node constructor. `37a914..37a928` copies parent+0x4a8 into args+0x28.
+`37a990..37a9d8` separately selects args+0x24 from either 1.0 or the input
+image descriptor's +0xb8, and args+0x2c from either 1.0 or parent+0x4a8.
+`37b03c..37b048` can reset args+0x2c to 1.0 when parent+0x21e4 is zero.
+`366b30..366c8c` derives that field from model selection; it is not simply
+the ADRC gain or a constant for every shot.
+
+The actual log-exposure block is populated by `38d680` and its tail:
+args+0x24 to node+0x178c; input descriptor+0xbc to node+0x1790;
+args+0x2c to node+0x1780 (`38d7e4..38d814`). Thus the gain in the first
+slot of `Exposure` is not an unconditional copy of args+0x28.
+Parent+0x4a8 is produced by uint32-to-float conversion of upstream+0x116c
+times 1/1024 (`36fdd0..36fe18`). The semantic identity of that upstream
+field and of image descriptor+0xb8/+0xbc is still unresolved. Do not equate
+them with vendor-result tags merely because both contain floating-point gains.
+`2a1da4` returns object+0x18, so image-descriptor offsets must also not be
+confused with owning-object offsets when tracing their producers.
+
 ## Logarithmic image input
 
 The decoded CRE OpenCL fragment at `0x16c993` contains `niceLog`, including
