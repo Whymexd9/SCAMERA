@@ -801,6 +801,13 @@ public class PreferenceKeys {
     public static boolean isVivoNiceEnabled() {
         return isVivoHdrEnabled() && isGcamStageEnabled("pref_vivo_nice_enabled");
     }
+    public static float niceInternalValue(String key, float fallback) {
+        String fullKey="pref_vivo_nice_"+key;
+        try {
+            return (float)SettingsNumericRules.value(fullKey,
+                    preferenceKeys.settingsManager.getString("default_scope",fullKey,String.valueOf(fallback)),fallback);
+        } catch(RuntimeException error) { return fallback; }
+    }
     public static float vivoHdrValue(String key, float fallback) {
         String fullKey = "pref_vivo_hdr_" + key;
         try {

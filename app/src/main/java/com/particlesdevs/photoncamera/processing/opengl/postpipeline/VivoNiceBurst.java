@@ -26,8 +26,8 @@ public final class VivoNiceBurst {
     private VivoNiceBurst(List<ImageFrame> source,Parameters p) throws IOException {
         width=p.rawSize.x;height=p.rawSize.y;cfa=p.cfaPattern;white=p.whiteLevel;black=p.blackLevel.clone();
         diagnostics=PreferenceKeys.isNiceDiagnosticsEnabled();
-        normCoefficient=PreferenceKeys.gcamValue("pref_vivo_nice_norm",1.1f,.55f,2.2f);
-        noiseScale=PreferenceKeys.gcamValue("pref_vivo_nice_noise_scale",1f,.25f,4f);
+        normCoefficient=PreferenceKeys.niceInternalValue("norm",1.1f);
+        noiseScale=PreferenceKeys.niceInternalValue("noise_scale",1f);
         trainedSensor = "vivo".equalsIgnoreCase(android.os.Build.MANUFACTURER)
                 && "PD2454".equalsIgnoreCase(android.os.Build.DEVICE)
                 && (p.physicalID == 3 || p.physicalID == 4);
