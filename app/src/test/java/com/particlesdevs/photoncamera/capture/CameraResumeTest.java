@@ -27,6 +27,11 @@ import static org.mockito.Mockito.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk=35, application=Application.class)
 public class CameraResumeTest {
+    @org.robolectric.annotation.Implements(value=com.particlesdevs.photoncamera.util.Allocator.class, isInAndroidSdk=false)
+    public static class ShadowAllocator {
+        @org.robolectric.annotation.Implementation
+        protected static void __staticInitializer__() { /* Native memory is mocked in this selection test. */ }
+    }
     private CaptureController controller;
     private MockedStatic<PhotonCamera> photon;
     private MockedConstruction<CameraManager2> managers;
@@ -73,7 +78,9 @@ public class CameraResumeTest {
         when(result.get(CaptureResult.SENSOR_SENSITIVITY)).thenReturn(iso);
         return result;
     }
-    @Test public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         java.util.List<Image> raws=new java.util.ArrayList<>();
