@@ -208,6 +208,7 @@ public class CameraResumeTest {
     @Test public void oldPreviewCallbacksCannotEnterNewSession() throws Exception {
         CameraCaptureSession old=mock(CameraCaptureSession.class),current=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",current);
+        put(controller,"mConfiguredSessionGeneration",0);
         controller.mPreviewRequestBuilder=newRequestBuilder();
         var callback=(CameraCaptureSession.CaptureCallback)get(controller,"mCaptureCallback");
         CaptureRequest request=mock(CaptureRequest.class);TotalCaptureResult result=mock(TotalCaptureResult.class);
@@ -262,6 +263,7 @@ public class CameraResumeTest {
         controller.isDualSession=true;
         CameraCaptureSession session=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
+        put(controller,"mConfiguredSessionGeneration",0);
         put(controller,"mCameraDevice",mock(CameraDevice.class));
         put(controller,"mCameraAfModes",new int[]{0});
         controller.mPreviewRequestBuilder=newRequestBuilder();
@@ -290,6 +292,7 @@ public class CameraResumeTest {
         controller.isDualSession=true;
         CameraCaptureSession session=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
+        put(controller,"mConfiguredSessionGeneration",0);
         put(controller,"mCameraDevice",mock(CameraDevice.class));
         put(controller,"mCameraAfModes",new int[]{0});
         controller.mPreviewRequestBuilder=newRequestBuilder();
@@ -302,6 +305,19 @@ public class CameraResumeTest {
         // Retrying is accepted once the HAL is ready; no app restart required.
         doReturn(1).when(session).setRepeatingRequest(any(),any(),isNull());
         assertTrue(controller.takePicture());
+    }
+    @Test public void shutterRejectsMetadataUntilNewSessionIsConfigured() throws Exception {
+        CameraCaptureSession session=mock(CameraCaptureSession.class);
+        put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
+        put(controller,"mConfiguredSessionGeneration",0);
+        put(controller,"mCameraDevice",mock(CameraDevice.class));
+        controller.mPreviewRequestBuilder=newRequestBuilder();
+        CaptureController.mPreviewCaptureResult=mock(TotalCaptureResult.class);
+        ((java.util.concurrent.atomic.AtomicInteger)get(controller,"mSessionGeneration")).incrementAndGet();
+        assertFalse(controller.takePicture());
+        verifyNoInteractions(session);
+        verify(events).onProcessingError(any());
+        assertEquals(false,get(controller,"mShotInProgress"));
     }
     @Test public void restartUsesTheNormalPreparedResumePath() throws Exception {
         var spy=spy(controller);
