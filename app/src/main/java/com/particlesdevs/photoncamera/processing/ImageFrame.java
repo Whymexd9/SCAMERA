@@ -38,7 +38,7 @@ public class ImageFrame {
     public boolean lensMoving;
     public double blurPixels = Double.NaN;
     private android.hardware.camera2.CaptureResult captureMetadata;
-    public enum CaptureRole { NORMAL, LONG, SHORT }
+    public enum CaptureRole { NORMAL, LONG, SHORT, EXTRA_SHORT }
     public static final class NiceCaptureTag {
         public final long generation;
         public final int index;

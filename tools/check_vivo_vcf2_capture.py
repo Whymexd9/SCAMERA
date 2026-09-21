@@ -9,6 +9,7 @@ tree = ast.parse((ROOT/'tools/check_vivo_vcf2_request.py').read_text())
 STUBS = ast.literal_eval(next(n.value for n in tree.body if isinstance(n, ast.Assign)
                              and any(isinstance(t, ast.Name) and t.id == 'STUBS' for t in n.targets)))
 STUBS.update({
+'android/util/Log.java': 'package android.util; public class Log { public static int i(String t,String m){return 0;} }',
 'android/content/Context.java': 'package android.content; public class Context {}',
 'android/os/Handler.java': '''package android.os;
 import java.util.*;
@@ -39,16 +40,27 @@ public class VivoVcf2Device {
   public Buffer(long id){captureId=id;}
   public byte[] copyJpegBytes()throws IOException{reads++;if(fail)throw new IOException("map failed");return bytes;}
  }
- public static VivoVcf2Device last;public Listener listener;public boolean closed;
- public static VivoVcf2Device open(Context c,Handler h,Listener l){last=new VivoVcf2Device();last.listener=l;return last;}
+ public static boolean blocked; public static VivoVcf2Device last;public Listener listener;public boolean closed;
+ public static VivoVcf2Device open(Context c,Handler h,Listener l)throws NoSuchMethodException{if(blocked)throw new NoSuchMethodException("hidden API");last=new VivoVcf2Device();last.listener=l;return last;}
  public void close()throws ReflectiveOperationException{closed=true;}
 }'''
 })
+STUBS['com/particlesdevs/photoncamera/capture/VivoVcf2Root.java'] = """package com.particlesdevs.photoncamera.capture;
+import android.content.Context;import android.os.Handler;import java.io.IOException;
+public class VivoVcf2Root {
+ public interface Listener {void onJpeg(long id,byte[] b);void onFinal(long id,long t);void onFailure(long id,String r);}
+ public static VivoVcf2Root last;public Listener listener;public Runnable ack;public boolean closed;public long pending;
+ public VivoVcf2Root(Context c,Handler h,Listener l){last=this;listener=l;}
+ public void arm(long id,Runnable callback)throws IOException{pending=id;ack=callback;}
+ public void retire(long id){if(pending==id){pending=0;ack=null;}}
+ public void close(){closed=true;}
+}
+"""
 CHECK = '''import android.content.Context; import android.os.Handler; import android.hardware.camera2.*;
 import com.particlesdevs.photoncamera.capture.*; import java.util.*;
 public class Check implements VivoVcf2Capture.Listener {
- static int checks;int done,failed;long lastId;byte[] bytes;CaptureResult metadata;
- public void onComplete(long id,byte[] jpeg,CaptureResult r){done++;lastId=id;bytes=jpeg;metadata=r;}
+ static int checks;int done,failed;long lastId;byte[] bytes;long metadata;
+ public void onComplete(long id,byte[] jpeg,long r){done++;lastId=id;bytes=jpeg;metadata=r;}
  public void onFailure(long id,String reason){failed++;lastId=id;}
  static void check(boolean value){checks++;if(!value)throw new AssertionError("check "+checks);}
  interface Task{void run()throws Exception;}
@@ -66,7 +78,7 @@ public class Check implements VivoVcf2Capture.Listener {
   var buffer=new VivoVcf2Device.Buffer(1);capture.onBuffer(buffer);capture.onBuffer(buffer);
   check(buffer.reads==1&&listener.done==0);
   capture.onResult(1,result,false);check(listener.done==1&&listener.lastId==1);
-  check(listener.bytes==buffer.bytes&&listener.metadata==result&&handler.delayed.isEmpty());
+  check(listener.bytes==buffer.bytes&&listener.metadata==result.timestamp&&handler.delayed.isEmpty());
   capture.onResult(1,result,false);capture.onBuffer(buffer);check(listener.done==1&&buffer.reads==1);
   capture.start(new CaptureRequest.Builder(),2,session,callback);capture.onResult(2,result,false);
   capture.onBuffer(new VivoVcf2Device.Buffer(2));check(listener.done==2);
@@ -91,6 +103,25 @@ public class Check implements VivoVcf2Capture.Listener {
   second.onResult(11,result,false);second.onBuffer(new VivoVcf2Device.Buffer(11));handler.expire();
   check(listener.done==2&&listener.failed==5&&handler.delayed.isEmpty());
   rejects(()->second.start(new CaptureRequest.Builder(),12,session,callback));
+  VivoVcf2Device.blocked=true;
+  var rooted=new VivoVcf2Capture(new Context(),handler,listener);
+  var receiver=VivoVcf2Root.last;int submitted=session.calls;
+  rooted.start(new CaptureRequest.Builder(),30,session,callback);
+  check(session.calls==submitted&&receiver.pending==30);
+  receiver.listener.onJpeg(30,buffer.bytes);receiver.listener.onFinal(30,777L);
+  check(listener.done==2); // No result accepted before acknowledgement/submission.
+  receiver.ack.run();check(session.calls==submitted+1);
+  receiver.listener.onFinal(31,888L);receiver.listener.onJpeg(31,buffer.bytes);
+  check(listener.done==2);
+  receiver.listener.onFinal(30,777L);receiver.listener.onJpeg(30,buffer.bytes);
+  check(listener.done==3&&listener.metadata==777L&&receiver.pending==0);
+  rooted.start(new CaptureRequest.Builder(),32,session,callback);
+  var lateAck=receiver.ack;handler.expire();lateAck.run();
+  check(session.calls==submitted+1&&listener.failed==6);
+  rooted.start(new CaptureRequest.Builder(),33,session,callback);
+  receiver.listener.onFailure(0,"root lost");
+  check(listener.failed==7);rejects(()->rooted.start(new CaptureRequest.Builder(),34,session,callback));
+  rooted.close();check(receiver.closed);
   System.out.println("PASS: "+checks+" VCF2 transaction ordering/cancellation checks; host stubs");
  }
 }'''

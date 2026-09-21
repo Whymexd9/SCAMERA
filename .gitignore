@@ -105,3 +105,6 @@ app/src/main/cpp/ncnn/
 
 # ncnn prebuilt SDK, fetched by CI (see build-test-apk.yml)
 app/src/main/cpp/ncnn/
+# Generated from the pinned official release by tools/fetch_vivo_ae_runtime.py.
+app/src/main/assets/vivo-aec/frida-inject.gz
+tools/__pycache__/

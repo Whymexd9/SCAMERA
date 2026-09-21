@@ -582,7 +582,7 @@ public class PostPipeline extends GLBasePipeline {
         if (mParameters.vivoNiceRgb != null) {
             Log.i("NICE_PIPELINE","import=NICE_linear_RGB WB_LSC=SCAMERA TCE=not_connected"
                     +" postDenoise=bypassed"
-                    +" postSharpen="+PreferenceKeys.vivoHdrValue("sharpen",1f)
+                    +" postSharpen=RawTherapee amount="+PreferenceKeys.vivoHdrValue("sharpen",1f)
                     +" tone=VivoHdrTone_SCAMERA; actual node order/timings follow in Pipeline log");
             add(new VivoNiceRgb());
         } else {
@@ -680,6 +680,12 @@ public class PostPipeline extends GLBasePipeline {
         }
         if (!mParameters.vivoHdrMode && !"fusion".equals(tonePipeline) && !"opendrt".equals(tonePipeline)) {
             add(new LocalLaplacian());
+        }
+        if (mParameters.vivoNiceRgb != null) {
+            Log.i("NICE_PIPELINE", "legacyPost=disabled except=RawTherapee_sharpen; tone=SCAMERA_fallback TCE=not_connected");
+            add(new RTSharpening());
+            add(new RotateWatermark(getRotation()));
+            return;
         }
         add(new CorrectingFlow());
         add(new FalseColorSuppression());

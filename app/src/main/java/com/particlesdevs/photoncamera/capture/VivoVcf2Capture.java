@@ -9,15 +9,16 @@ import android.os.Handler;
 
 public final class VivoVcf2Capture implements VivoVcf2Device.Listener, AutoCloseable {
     public interface Listener {
-        void onComplete(long id, byte[] jpeg, CaptureResult result);
+        void onComplete(long id, byte[] jpeg, long sensorTimestamp);
         void onFailure(long id, String reason);
     }
 
     private final Handler handler;
     private final Listener listener;
     private VivoVcf2Device device;
+    private VivoVcf2Root root;
     private VivoVcf2Request request;
-    private CaptureResult result;
+    private long sensorTimestamp;
     private byte[] jpeg;
     private Runnable timeout;
     private boolean closed;
@@ -27,7 +28,31 @@ public final class VivoVcf2Capture implements VivoVcf2Device.Listener, AutoClose
             throws ReflectiveOperationException {
         this.handler = handler;
         this.listener = listener;
-        device = VivoVcf2Device.open(context, handler, this);
+        try {
+            device = VivoVcf2Device.open(context, handler, this);
+        } catch (NoSuchMethodException blockedFramework) {
+            android.util.Log.i("NICE_CAPTURE", "VCF2 reflection unavailable; connecting root receiver");
+            root = new VivoVcf2Root(context, handler, new VivoVcf2Root.Listener() {
+                @Override public void onJpeg(long id, byte[] bytes) {
+                    synchronized (VivoVcf2Capture.this) {
+                        if (!accepts(id) || jpeg != null) return;
+                        jpeg = bytes;
+                    }
+                    complete(id);
+                }
+                @Override public void onFinal(long id, long timestamp) { acceptTimestamp(id, timestamp); }
+                @Override public void onFailure(long id, String reason) {
+                    synchronized (VivoVcf2Capture.this) {
+                        if (closed) return;
+                        if (id == 0) {
+                            deviceError = reason;
+                            id = request == null ? 0 : request.captureId;
+                        }
+                    }
+                    if (id != 0) fail(id, reason);
+                }
+            });
+        }
     }
 
     public synchronized void start(CaptureRequest.Builder builder, long id,
@@ -41,7 +66,25 @@ public final class VivoVcf2Capture implements VivoVcf2Device.Listener, AutoClose
         try {
             if (!handler.postDelayed(timeout, 180_000L))
                 throw new IllegalStateException("VCF2 callback handler stopped");
-            request.submit(session, callback, handler);
+            if (root == null) {
+                request.submit(session, callback, handler);
+            } else {
+                root.arm(id, () -> {
+                    synchronized (VivoVcf2Capture.this) {
+                        if (closed || request == null || request.captureId != id) return;
+                        try {
+                            request.submit(session, callback, handler);
+                            android.util.Log.i("NICE_CAPTURE", "VCF2 submitted captureId=" + id
+                                    + " Camera2Requests=1 receiver=root");
+                        } catch (CameraAccessException | RuntimeException failure) {
+                            fail(id, "VCF2 submit: " + failure);
+                        }
+                    }
+                });
+            }
+        } catch (java.io.IOException failure) {
+            retire();
+            throw new IllegalStateException("VCF2 root arm failed", failure);
         } catch (CameraAccessException | RuntimeException failure) {
             retire();
             throw failure;
@@ -55,15 +98,19 @@ public final class VivoVcf2Capture implements VivoVcf2Device.Listener, AutoClose
     private void retire() {
         if (timeout != null) handler.removeCallbacks(timeout);
         timeout = null;
-        if (request != null) request.close();
+        if (request != null) {
+            if (root != null) root.retire(request.captureId);
+            request.close();
+        }
         request = null;
-        result = null;
+        sensorTimestamp = 0;
         jpeg = null;
     }
 
     public void fail(long id, String reason) {
         synchronized (this) {
-            if (!accepts(id)) return;
+            // Initialization/arming can fail before Camera2 submission.
+            if (closed || request == null || request.captureId != id) return;
             retire();
         }
         listener.onFailure(id, reason);
@@ -89,30 +136,35 @@ public final class VivoVcf2Capture implements VivoVcf2Device.Listener, AutoClose
     @Override public void onResult(long id, CaptureResult value, boolean partial) {
         if (partial) return;
         synchronized (this) {
-            if (!accepts(id) || result != null) return;
+            if (!accepts(id) || sensorTimestamp != 0) return;
         }
         Long timestamp = value == null ? null : value.get(CaptureResult.SENSOR_TIMESTAMP);
-        if (timestamp == null || timestamp <= 0) {
+        acceptTimestamp(id, timestamp == null ? 0 : timestamp);
+    }
+
+    private void acceptTimestamp(long id, long timestamp) {
+        synchronized (this) { if (!accepts(id)) return; }
+        if (timestamp <= 0) {
             fail(id, "VCF2: final result has no sensor timestamp");
             return;
         }
         synchronized (this) {
-            if (!accepts(id) || result != null) return;
-            result = value;
+            if (!accepts(id) || sensorTimestamp != 0) return;
+            sensorTimestamp = timestamp;
         }
         complete(id);
     }
 
     private void complete(long id) {
-        final CaptureResult metadata;
+        final long timestamp;
         final byte[] bytes;
         synchronized (this) {
-            if (!accepts(id) || result == null || jpeg == null) return;
-            metadata = result;
+            if (!accepts(id) || sensorTimestamp == 0 || jpeg == null) return;
+            timestamp = sensorTimestamp;
             bytes = jpeg;
             retire();
         }
-        listener.onComplete(id, bytes, metadata);
+        listener.onComplete(id, bytes, timestamp);
     }
 
     @Override public void onError(int error) {
@@ -131,12 +183,16 @@ public final class VivoVcf2Capture implements VivoVcf2Device.Listener, AutoClose
 
     @Override public void close() {
         final VivoVcf2Device owned;
+        final VivoVcf2Root ownedRoot;
         synchronized (this) {
             closed = true;
             retire();
             owned = device;
             device = null;
+            ownedRoot = root;
+            root = null;
         }
+        if (ownedRoot != null) ownedRoot.close();
         if (owned != null) try { owned.close(); }
         catch (ReflectiveOperationException | RuntimeException ignored) { }
     }

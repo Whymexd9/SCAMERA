@@ -53,35 +53,27 @@ public class SettingsModelCheck {
         if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("Default must retain RAW");
         p.put("pref_vivo_nice_route", "vcf2");
         Map<String,Object> saved = new HashMap<>(p);
-        for (String key : new String[]{"rt512_chroma", "pref_rt_nr_luma_key",
-                "pref_tunable_esd3d2_enable", "pref_tunable_ablc_enable", "pref_ai_denoise_enabled_key",
-                "pref_noise_model_profile_key", "pref_aces_enabled_key", "pref_sharp_usm_enabled_key",
-                "pref_raisr_enabled_key", "pref_frame_count_key", "pref_zsl_buffer_count_key",
-                "pref_vivo_nice_noise_scale", "pref_vivo_hdr_contrast", "pref_save_raw_key",
-                "rt_denoise_screen", "vivo_hdr_tone_screen", "sharp_settings_screen"}) inactive(p,key);
-        for (String key : new String[]{"pref_vivo_nice_enabled", "pref_vivo_hdr_enabled",
-                "pref_expocompensation_seekbar_key", "pref_camera_sounds_key", "scamera_full_debug",
-                "vivo_nice_probe", "pref_vivo_nice_route"}) active(p,key);
+        // Retired route values from saved/imported configs must not bypass RAW
+        // processing or hide sharpening. Exercise every mode, not only Photo.
+        for (String mode : new String[]{"0", "1", "2", "3", "4", "5"}) {
+            p.put("pref_camera_mode_key", mode);
+            for (String route : new String[]{"raw", "vcf2", "invalid"}) {
+                p.put("pref_vivo_nice_route", route);
+                if (new SettingsAvailability(p).usesVcfPhoto())
+                    throw new AssertionError("Retired JPEG route remains active");
+                inactive(p,"pref_vivo_nice_route");
+                inactive(p,"rt512_chroma");
+                inactive(p,"pref_vivo_hdr_luma");inactive(p,"pref_vivo_hdr_chroma");
+                active(p,"pref_vivo_nice_noise_scale");active(p,"pref_vivo_hdr_contrast");
+                active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
+                active(p,"pref_sharp_usm_enabled_key");
+            }
+        }
+        p.clear();p.putAll(saved);
+        new SettingsAvailability(p).reason("pref_vivo_nice_route");
         if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
         p.put("pref_vivo_nice_enabled",false);active(p,"rt512_chroma");
         p.put("pref_vivo_nice_enabled",true);
-        for (String mode : new String[]{"2", "3"}) {
-            p.put("pref_camera_mode_key",mode);
-            if (!new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("Photo VCF unreachable");
-            active(p,"pref_vivo_nice_route");
-            p.put("pref_vivo_nice_route","raw");inactive(p,"rt512_chroma");
-            active(p,"pref_vivo_nice_noise_scale");active(p,"pref_vivo_hdr_contrast");
-            active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
-            inactive(p,"pref_vivo_hdr_luma");inactive(p,"pref_vivo_hdr_chroma");
-            active(p,"pref_sharp_usm_enabled_key");
-            p.put("pref_vivo_nice_route","invalid");
-            if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("Unknown route enabled VCF");
-            p.put("pref_vivo_nice_route","vcf2");
-        }
-        for (String mode : new String[]{"0", "1", "4", "5"}) {
-            p.put("pref_camera_mode_key",mode);inactive(p,"rt512_chroma");
-            if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("RAW mode gated as VCF");
-        }
         p.put("pref_camera_mode_key","3");p.put("pref_raw_mfsr_enabled_key",true);
         if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("MFSR gate mismatch");
         System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability");

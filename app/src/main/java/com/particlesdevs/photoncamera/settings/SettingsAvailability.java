@@ -22,12 +22,8 @@ public final class SettingsAvailability {
     }
 
     public boolean usesVcfPhoto() {
-        return isVcfPhotoMode((int) PreferenceNumber.read(values.get("pref_camera_mode_key"), 2))
-                && text("pref_vivo_nice_route", "raw").equals("vcf2")
-                && on("pref_vivo_hdr_enabled", false) && on("pref_vivo_nice_enabled", false)
-                && !on("pref_raw_mfsr_enabled_key", false)
-                && (!on("pref_remosaic_enabled_key", false)
-                    || text("pref_remosaic_backend_key", "scamera").equals("scamera"));
+        // Keep availability aligned with PreferenceKeys, including old configs.
+        return false;
     }
 
     private boolean bypassedByVcf(String key) {
@@ -81,8 +77,7 @@ public final class SettingsAvailability {
                 && (!autonomous || incompatible || !on("pref_vivo_nice_enabled", false)))
             return "Включите совместимый RAW-путь NICE HDR.";
         if (key.equals("pref_vivo_nice_route")) {
-            if (incompatible) return "Отключите MFSR и выберите совместимый ремозаик для NICE HDR.";
-            if (!autonomous || !on("pref_vivo_nice_enabled", false)) return "Включите автономный HDR и NICE HDR.";
+            return "NICE HDR использует RAW. Выбор пути больше не применяется.";
         }
         if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false) && !usesVcfPhoto()
                 && (key.startsWith("rt512_") || key.startsWith("pref_rt_")

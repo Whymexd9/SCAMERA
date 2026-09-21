@@ -513,6 +513,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private volatile CameraCaptureSession mCaptureSession;
     private final Object mPreviewStateLock = new Object();
     private final java.util.concurrent.atomic.AtomicInteger mSessionGeneration = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile VivoStockAe mStockAe;
     private int mConfiguredSessionGeneration = -1;
     /**
      * MediaRecorder
@@ -696,6 +697,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
+                if(PreferenceKeys.isVivoNiceEnabled() && isCurrentPreviewSession(session)) {
+                    VivoStockAe stock=mStockAe;
+                    if(stock==null || stock.generation!=mSessionGeneration.get()) {
+                        if(stock!=null)stock.close();
+                        stock=new VivoStockAe(PhotonCamera.getAppContext(),mSessionGeneration.get(),physicalID);
+                        mStockAe=stock;
+                    }
+                    stock.offer(result);
+                }
                 process(result);
                 if (mTouchFocus != null) {
                     mTouchFocus.onCaptureResult(result);
@@ -1104,6 +1114,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public void closeCamera() {
+        VivoStockAe stock=mStockAe;mStockAe=null;if(stock!=null)stock.close();
         // Invalidate callbacks before releasing their resources. onConfigured and
         // capture results can still arrive after returning from Settings.
         synchronized (mPreviewStateLock) {
@@ -1758,12 +1769,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
-            final boolean nicePreview = PreferenceKeys.isVivoVcf2Enabled(
-                    PhotonCamera.getSettings().selectedMode.ordinal())
+            final boolean nicePreview = PreferenceKeys.isVivoNiceEnabled() && photoMode
                     && !isBurstSession && !mIsRecordingVideo
                     && !PreferenceKeys.isMultiFrameCalibration();
             closeVcfCapture();
-            mUseVcfCapture = nicePreview;
+            mUseVcfCapture = nicePreview && PreferenceKeys.isVivoVcf2Enabled(
+                    PhotonCamera.getSettings().selectedMode.ordinal());
             Log.i("NICE_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (mUseVcfCapture ? "VCF2_JPEG"
                     : PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));
@@ -1815,13 +1826,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
                             if (nicePreview) {
                                 try {
-                                    VivoVcf2PhotoProfile.session(mPreviewRequestBuilder,
-                                            mVcfJpegReader.getWidth(), mVcfJpegReader.getHeight(),
-                                            physicalID, !Objects.equals(physicalID, logicalID));
-                                    VivoVcf2PhotoProfile.repeating(mPreviewRequestBuilder);
-                                    Log.i("NICE_CAPTURE", "preview NICE AUTO; capture route=VCF2");
+                                    // Detector controls only: VCF2 JPEG stream usage and
+                                    // SnapshotJpegStreamMap do not describe this RAW session.
+                                    VivoNicePreview.applyRepeating(mPreviewRequestBuilder);
+                                    Log.i("NICE_CAPTURE", "preview NICE AUTO; capture route=Camera2_RAW"
+                                            + " stockAeSource=preview_metadata stockPlanApplied=false");
                                 } catch (IllegalArgumentException unsupported) {
-                                    mVcfFailure = unsupported.getMessage();
                                     Log.w("NICE_CAPTURE", "NICE preview controls unavailable", unsupported);
                                 }
                             }
@@ -1902,11 +1912,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         CaptureRequest.Builder niceSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
                         VendorTagUtils.builderSessionApply(niceSession, false, useMaximumResolutionKey, physicalID);
-                        VivoVcf2PhotoProfile.session(niceSession, mVcfJpegReader.getWidth(),
-                                mVcfJpegReader.getHeight(), physicalID, !Objects.equals(physicalID, logicalID));
+                        VivoNicePreview.applySession(niceSession);
                         configuration.setSessionParameters(niceSession.build());
                     } catch (IllegalArgumentException unsupported) {
-                        mVcfFailure = unsupported.getMessage();
                         Log.w("NICE_CAPTURE", "NICE session control unavailable", unsupported);
                     }
                 }
@@ -2134,13 +2142,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }, mBackgroundHandler);
         try {
             mVcfCapture = new VivoVcf2Capture(activity, mBackgroundHandler, new VivoVcf2Capture.Listener() {
-                @Override public void onComplete(long id, byte[] jpeg, CaptureResult result) {
+                @Override public void onComplete(long id, byte[] jpeg, long sensorTimestamp) {
                     synchronized (mPreviewStateLock) {
                         if (generation != mSessionGeneration.get() || !isCameraResumed) return;
-                        mCaptureResult = result;
                         mMeasuredFrameCnt = 1;
                         isProcessing = true;
                     }
+                    Log.i("NICE_CAPTURE", "VCF2 complete captureId=" + id + " timestamp=" + sensorTimestamp);
                     cameraEventsListener.onFrameCaptureCompleted(null);
                     cameraEventsListener.onCaptureSequenceCompleted(null);
                     cameraEventsListener.onProcessingStarted("VCF2 JPEG");
@@ -2198,7 +2206,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             });
             mCaptureRequest = builder.build();
-            Log.i("NICE_CAPTURE", "VCF2 submitted captureId=" + id + " Camera2Requests=1 processing=stock_HAL");
+            Log.i("NICE_CAPTURE", "VCF2 capture queued captureId=" + id + " processing=stock_HAL");
             return true;
         } catch (CameraAccessException | IOException | RuntimeException error) {
             cameraEventsListener.onCaptureSequenceCompleted(null);
@@ -2459,7 +2467,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void updateDistributionAe(Image image,CaptureResult result) {
         if(mPreviewRequestBuilder==null || mCameraCharacteristics==null || burst || mZslCapturing || mHybridZslCapture)return;
         int baseline=paramController==null?0:paramController.EV;
-        boolean enabled=PreferenceKeys.isGcamStageEnabled("pref_gcam_scene_ae");
+        boolean enabled=!mUseVcfCapture && !PreferenceKeys.isVivoNiceEnabled()
+                && PreferenceKeys.isGcamStageEnabled("pref_gcam_scene_ae");
         if(distributionAeBuilder!=mPreviewRequestBuilder){distributionAeOwned=false;distributionAeBuilder=mPreviewRequestBuilder;}
         if(!enabled){
             Integer current=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
@@ -2958,8 +2967,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             final com.particlesdevs.photoncamera.remosaic.CalibrationSession calSession=calibration?mCalibrationSession:null;
             final int calStep=calibration?calSession.completed:-1;
-            final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
             final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
+            final boolean hybridZslRequested = !niceCapture && isZslMode() && needsExposureBracket();
+            final VivoStockAe.Plan stockPlan;
+            if(niceCapture && !calibration) {
+                VivoStockAe stock=mStockAe;
+                if(stock==null || stock.generation!=mSessionGeneration.get())throw new IllegalStateException("Стоковый AE ещё не готов");
+                stockPlan=stock.freeze();
+                Log.i("NICE_CAPTURE","bracket=Vivo_stock_solver Camera2_RAW frameId="+stockPlan.frameId+" timestamp="+stockPlan.timestamp);
+            } else stockPlan=null;
             final VivoNiceAeSnapshot shutterAe = mNiceShutterAe;
             mNiceShutterAe = null;
             if (niceCapture && shutterAe != null) {
@@ -3054,6 +3070,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     ? Math.max(0, Math.min(8, PreferenceKeys.getShortFrameCountValue())) : 0;
             int longFrameCount = denoiseFrameCount > 0
                     ? Math.max(0, Math.min(8, PreferenceKeys.getLongFrameCountValue())) : 0;
+            if(stockPlan!=null){denoiseFrameCount=4;shortFrameCount=2;longFrameCount=1;}
             if (PreferenceKeys.isHexQuadCaptureEnabled() && selectedFrameMode > 0) {
                 denoiseFrameCount = 6;
                 shortFrameCount = 0;
@@ -3175,6 +3192,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                     captures.add(captureBuilder.build());
                 }
+            } else if(stockPlan!=null) {
+                IsoExpoSelector.fullpairs.clear();
+                long[] times=new long[7];
+                for(int i=0;i<7;i++) {
+                    stockPlan.apply(captureBuilder,i,mCameraCharacteristics);
+                    captureBuilder.setTag(new ImageFrame.NiceCaptureTag(mShutterGeneration,i,stockPlan.role(i)));
+                    CaptureRequest request=captureBuilder.build();captures.add(request);mCaptureRequest=request;
+                    long ns=stockPlan.shutter(i);int iso=stockPlan.iso(i);times[i]=ns;
+                    IsoExpoSelector.ExpoPair pair=new IsoExpoSelector.ExpoPair(ns,ns,ns,iso,iso,iso,iso);
+                    pair.isLongFrame=i==4;pair.isHighlightFrame=i>=5;IsoExpoSelector.fullpairs.add(pair);
+                }
+                PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness);
             } else {
                 long[] times = new long[hybridZsl ? shortFrameCount + longFrameCount : frameCount];
                 int captureIndex = 0;
@@ -3318,7 +3347,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                @NonNull TotalCaptureResult result) {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
-                    if(niceSequence != null) niceSequence.completed(request, result);
+                    if(niceSequence != null) {
+                        if(stockPlan!=null)try{stockPlan.verify(request,result);}
+                        catch(RuntimeException mismatch){niceSequence.failed(mismatch.getMessage());}
+                        niceSequence.completed(request, result);
+                    }
                     if(niceCapture) VivoNiceCaptureLog.result(request,result,niceZslShutterTimestamp);
                     if(nativePsl && !hybridZsl && frameCount==nativeBaseIndex)nativeBaseResult[0]=result;
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
@@ -3455,7 +3488,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             if (niceSequence != null) {
                                 niceSequence.bindAndValidate(mImageSaver.snapshotFrames());
                                 Log.i("NICE_CAPTURE", "complete matched RAWs=" + niceSequence.frameCount
-                                        + " futureRequests=" + niceSequence.futureCount + " stockVcfPlan=false");
+                                        + " futureRequests=" + niceSequence.futureCount + " stockAePlan=" + (stockPlan!=null));
                             }
                             if(mImageSaver.bufferSize() == 0){
                                 cameraEventsListener.onProcessingError("Камера не передала RAW-кадры. Повторите снимок.");
@@ -3536,7 +3569,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if(niceCapture) {
                 Log.i("NICE_CAPTURE","submit zslNormals="+mPendingZslNormalFrames.size()
                         +" futureRequests="+captures.size()+" hybrid="+hybridZsl
-                        +" stockVcfPlan=false");
+                        +" stockAePlan="+(stockPlan!=null));
                 for(int i=0;i<captures.size();i++) VivoNiceCaptureLog.request(captures.get(i),i);
             }
             if (!niceZslRequested) mCaptureSession.abortCaptures();

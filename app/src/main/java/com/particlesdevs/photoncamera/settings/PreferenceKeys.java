@@ -802,9 +802,9 @@ public class PreferenceKeys {
         return isVivoHdrEnabled() && isGcamStageEnabled("pref_vivo_nice_enabled");
     }
     public static boolean isVivoVcf2Enabled(int modeOrdinal) {
-        return isVivoNiceEnabled() && SettingsAvailability.isVcfPhotoMode(modeOrdinal)
-                && "vcf2".equals(preferenceKeys.settingsManager.getString(
-                        "default_scope", "pref_vivo_nice_route", "raw"));
+        // NICE capture now stays on Camera2 RAW. Ignore the retired stored
+        // route as well, so an imported/older config cannot select JPEG delivery.
+        return false;
     }
     public static float niceInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;

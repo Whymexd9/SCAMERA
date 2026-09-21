@@ -9,6 +9,9 @@
 #include "vivo-nice-capture.h"
 #include "vivo-nice-tone-probe.h"
 #include "vivo-nice-stock-motion.h"
+#include "vivo-raw-channel.h"
+#include "vivo-raw-nice-input.h"
+#include <memory>
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -19,25 +22,48 @@ static int integer(const char* text) {
     if(errno || !text[0] || *end || v<0 || v>16000000)throw std::runtime_error("Invalid integer argument");
     return static_cast<int>(v);
 }
+static uint64_t identity(const char* text) {
+    if(!text[0])throw std::runtime_error("Empty RAW identity");
+    uint64_t value=0;
+    for(const char* p=text;*p;p++) {
+        if(*p<'0' || *p>'9' || value>(uint64_t(INT64_MAX)-unsigned(*p-'0'))/10)
+            throw std::runtime_error("Invalid RAW identity");
+        value=value*10+unsigned(*p-'0');
+    }
+    return value;
+}
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v29 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v30 (RAW stream input; HP9 hybrid CPU/GPU/NPU); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
-        if(argc==5 && std::string(argv[1])=="--nice-capture") {
+        const bool rawStream=argc==11 && std::string(argv[1])=="--nice-raw-stream";
+        if((argc==5 && std::string(argv[1])=="--nice-capture") || rawStream) {
             if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(840);
-            vivo_nice::MappedNiceBurst mapped(argv[3]);
+            std::unique_ptr<vivo_nice::MappedNiceBurst> mapped;
+            std::unique_ptr<vivo_raw::NiceInput> received;
+            if(rawStream) {
+                vivo_raw::Burst transaction(identity(argv[4]),identity(argv[5]),integer(argv[6]),
+                    identity(argv[7]),identity(argv[8]));
+                vivo_raw::Channel channel(integer(argv[3]),uid_t(integer(argv[9])));
+                channel.receiveBurst(transaction);
+                received=std::make_unique<vivo_raw::NiceInput>(transaction);
+            } else mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
+            const auto& input=rawStream?received->view():mapped->burst;
+            const char* outputPath=argv[rawStream?10:4];
             auto report=[](const std::string& line){vivo_nn::log(line);};
-            report("NICE CAPTURE: original forward weights and stock CPU motion; Camera2 calibration adaptation");
-            const auto& scene=mapped.burst.scene;
+            report("NICE CAPTURE: original forward weights and stock CPU motion; supplied per-frame calibration");
+            report(rawStream?"NICE INPUT: seven owned RAW16 frames received over authenticated local socket"
+                            :"NICE INPUT: mapped capture file");
+            const auto& scene=input.scene;
             report("NICE SCENE: timestamp="+std::to_string(scene.timestamp)
                 +" lux="+(scene.hasLux()?std::to_string(scene.lux):"unavailable")
                 +" ADRC="+(scene.hasAdrc()?std::to_string(scene.adrc):"unavailable")
                 +" flags="+std::to_string(scene.flags)+" luxSource="+std::to_string(scene.luxSource));
-            for(size_t i=0;i<mapped.burst.ae.size();++i) {
-                const auto& ae=mapped.burst.ae[i];
+            for(size_t i=0;i<input.ae.size();++i) {
+                const auto& ae=input.ae[i];
                 report("NICE AE: slot="+std::to_string(i)+" timestamp="+std::to_string(ae.timestamp)
                     +" flags="+std::to_string(ae.flags));
                 if(ae.hasAec()) {
@@ -49,10 +75,10 @@ int main(int argc,char** argv) {
             }
             vivo_nice::StockMotion motion;
             vivo_nice::Graph graph(argv[2],report);
-            auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
+            auto result=vivo_nice::reconstruct(input,[&](const std::vector<float>& in,std::vector<float>& out){
                 graph.input=in;graph.execute();out=graph.output;
             },report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
-                if(!mapped.burst.diagnostics)return;
+                if(!input.diagnostics)return;
                 std::ofstream f(std::string(argv[2])+"/"+name+".pfm",std::ios::binary);
                 if(!f){report("NICE DIAGNOSTIC: cannot open tile dump");return;}
                 f<<"PF\n"<<w<<" "<<h<<"\n-1.0\n";
@@ -62,7 +88,7 @@ int main(int argc,char** argv) {
             double sum=0;float maximum=0;
             for(float value:result){sum+=value;maximum=std::max(maximum,value);}
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
-            std::ofstream file(argv[4],std::ios::binary|std::ios::trunc);
+            std::ofstream file(outputPath,std::ios::binary|std::ios::trunc);
             if(!file)throw std::runtime_error("Cannot open NICE output");
             file.write(reinterpret_cast<const char*>(result.data()),std::streamsize(result.size()*sizeof(float)));
             file.close();if(!file)throw std::runtime_error("Incomplete NICE output");

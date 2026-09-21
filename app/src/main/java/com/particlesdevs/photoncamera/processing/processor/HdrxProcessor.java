@@ -265,7 +265,7 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
 
-        int requestedHighlightValue = Math.max(0, Math.min(200,
+        int requestedHighlightValue = niceCapture ? 100 : Math.max(0, Math.min(200,
                 PreferenceKeys.getHighlightSuppressionValue()));
         if (requestedHighlightValue == 0) {
             int removed = 0;
@@ -428,7 +428,7 @@ public class HdrxProcessor extends ProcessorBase {
                 for (ImageFrame frame : images) frame.close();
             }
         }
-        if (!hexCapture && !multiCapture) {
+        if (!niceCapture && !hexCapture && !multiCapture) {
         ImageFrameDeblur imageFrameDeblur = new ImageFrameDeblur(processingParameters);
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
@@ -473,7 +473,11 @@ public class HdrxProcessor extends ProcessorBase {
         if (niceCapture && !hexCapture && !multiCapture) {
             processingStage="NICE HDR neural burst";
             try {
-                ImageFrame niceReference = images.get(0);
+                ImageFrame niceReference = images.stream()
+                        .filter(f -> !f.pair.isHighlightFrame && !f.pair.isLongFrame)
+                        .findFirst().orElseThrow(() -> new IllegalStateException("NICE: no normal reference"));
+                images.remove(niceReference);
+                images.add(0, niceReference);
                 CaptureResult referenceMetadata = niceReference.getMatchedCaptureMetadata();
                 if (referenceMetadata == null)
                     throw new IllegalStateException("NICE HDR: нет метаданных опорного RAW timestamp="

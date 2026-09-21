@@ -44,6 +44,13 @@ public class LinearExposure extends Node {
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
+        if (pipeline.mParameters.vivoNiceRgb != null) {
+            histSize = 1024;
+            midAnchor = 0.050f;
+            highAnchor = 0.180f;
+            gainMin = 1.0f;
+            gainMax = 16.0f;
+        }
         // Keep the linear scene snapshot for the Ultra HDR gain-map pass
         // (this buffer is the post-demosaic/ABLC input Initial used to see).
         if (pipeline.captureDemosaic) {

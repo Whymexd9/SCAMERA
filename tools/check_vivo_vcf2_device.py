@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import subprocess
+import struct
 import tempfile
 import zipfile
 from enum import IntFlag
@@ -141,6 +142,48 @@ public class Check implements VivoVcf2Device.Listener {
  }
 }'''
 
+def check_hidden_api_access(raw, dex):
+    # hiddenapi_class_data uses one offset per class, then ULEB flags in
+    # class_data member order. Androguard's get_flags(class_index) does not
+    # decode these per-member streams; parse the original bytes explicitly.
+    def u32(offset):
+        return struct.unpack_from('<I', raw, offset)[0]
+    map_offset = u32(52)
+    sections = [struct.unpack_from('<H2xII', raw, map_offset + 4 + i * 12)
+                for i in range(u32(map_offset))]
+    section = next(offset for kind, _, offset in sections if kind == 0xf000)
+    blocked = set()
+    targets = {
+        'Landroid/hardware/vivocamera/IVivoCameraDeviceCb;': set(CALLBACKS),
+        'Landroid/hardware/vivocamera/VivoCameraManager;': {'open'},
+    }
+    for index, cls in enumerate(dex.get_classes()):
+        if cls.get_name() not in targets:
+            continue
+        relative = u32(section + 4 + 4 * index)
+        assert relative != 0, 'Expected donor access flags'
+        position = section + relative
+        data = cls.get_class_data()
+        members = (data.get_static_fields() + data.get_instance_fields()
+                   + data.get_direct_methods() + data.get_virtual_methods())
+        for member in members:
+            flag = shift = 0
+            while True:
+                byte = raw[position]
+                position += 1
+                flag |= (byte & 127) << shift
+                if byte < 128:
+                    break
+                shift += 7
+                assert shift < 35, 'Invalid hidden API flag'
+            if member.get_name() in targets[cls.get_name()]:
+                assert flag & 7 == 2, 'Donor restriction changed; review runtime access'
+                blocked.add((cls.get_name(), member.get_name()))
+    assert len(blocked) == len(CALLBACKS) + 1
+    print('ACCESS BLOCKER: all 9 callbacks and manager.open have blocked hidden-API flags; '
+          'host ABI tests do not establish app access', flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('framework', type=Path)
@@ -157,7 +200,9 @@ def main():
         TEST_API = 2
     HiddenApiClassDataItem.DomapiApiFlag = Domain
     with zipfile.ZipFile(args.framework) as archive:
-        dex = DEX(archive.read('classes.dex'))
+        dex_bytes = archive.read('classes.dex')
+        dex = DEX(dex_bytes)
+    check_hidden_api_access(dex_bytes, dex)
     classes = {c.get_name(): c for c in dex.get_classes()}
     def methods(name):
         return {m.get_name(): m.get_descriptor().replace(' ', '')
@@ -165,6 +210,11 @@ def main():
     assert methods('Landroid/hardware/vivocamera/IVivoCameraDeviceCb;') == CALLBACKS
     assert classes['Landroid/hardware/VIFResult;'].get_superclassname() == 'Landroid/hardware/camera2/CaptureResult;'
     assert methods('Landroid/hardware/VIFResult;')['getCaptureId'] == '()J'
+    vif_writer = next(m for m in classes['Landroid/hardware/VIFResult;'].get_methods()
+                      if m.get_name() == 'writeToParcel')
+    assert [i.get_name() for i in vif_writer.get_instructions()] == ['return-void']
+    print('TRANSPORT BLOCKER: donor VIFResult.writeToParcel writes no data; '
+          'root-to-app forwarding needs an explicit metadata protocol', flush=True)
     device = methods('Landroid/hardware/vivocamera/VivoCameraDevice;')
     assert device['close'] == device['initialize'] == '()V'
     manager = methods('Landroid/hardware/vivocamera/VivoCameraManager;')
