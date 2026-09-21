@@ -132,7 +132,7 @@ padding, pointer fields or numeric conversion of the short-AEC integer tail.
 position and byte order are not changed. Counts, the recovered zero-batch
 layout, active exposure fields and DRC are validated before a plan is returned.
 
-`applyExposureFields` binds the verified subset to a **fresh, unpublished**
+`applyLegacyExposureFields` binds the verified subset to a **fresh, unpublished**
 Camera2 builder for a specified series index:
 
 | Request field | Value |
@@ -246,8 +246,24 @@ template and executed command lists. `addCaptureIdIntoRequestExtension` also
 places the ID in the Java request tag for app-side bookkeeping.
 
 This path cannot be replaced with `plan.frameCount` applications of the legacy
-`applyExposureFields` method. Internal HAL series count, number of submitted
+`applyLegacyExposureFields` method. Internal HAL series count, number of submitted
 Camera2 requests and number of VIF output buffers are distinct quantities.
 The callback receiver alone does not complete the missing template, session,
 command-list and output-processing integration. The current manual seven-input
 NICE graph is still active. No full-port test APK is available.
+
+`VivoVcf2Request` now represents the separate single-request transport. It writes
+the two Long identities as recovered above, preserves the supplied template,
+and submits one immutable request via captureBurst. It rejects the legacy
+capture-control/count fields before adding VCF identities. The legacy writer
+is explicitly named `applyLegacyExposureFields`; it is not used by this class.
+Submission can be attempted once. Failure or close retires callback matching;
+a failed RPC must not be retried with the same transaction. A matching VIF ID
+is accepted only while the VIF-enabled transaction is submitted.
+
+`python tools/check_vivo_vcf2_request.py` passes 31 host checks for request count,
+64-bit ID fields, VIF-disabled routing, template isolation, legacy rejection,
+duplicate submission, cancellation and failed RPC handling. The existing
+384-plan AE boundary check still passes after the legacy API rename.
+The configured stock template and output consumer remain caller prerequisites;
+CaptureController has not yet switched to this submission path.

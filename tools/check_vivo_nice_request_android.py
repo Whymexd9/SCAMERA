@@ -131,7 +131,7 @@ public class Check {
   check(plan.pastCount==past && plan.futureCount==future && plan.frameCount==past+future);
   CaptureRequest.Builder previous=null;
   for(int i=0;i<plan.frameCount;++i){
-   var builder=new CaptureRequest.Builder();plan.applyExposureFields(builder,i);
+   var builder=new CaptureRequest.Builder();plan.applyLegacyExposureFields(builder,i);
    check(builder.fields.size()==6);
    float[] a=(float[])builder.fields.get(A);
    for(int j=0;j<48;++j)check(Float.floatToRawIntBits(a[j])==in.getInt(j*4));
@@ -150,11 +150,11 @@ public class Check {
   }
   check(Arrays.equals(bytes,plan.copyPayload()));
   var untouched=new CaptureRequest.Builder();
-  rejected(()->plan.applyExposureFields(untouched,-1));
-  rejected(()->plan.applyExposureFields(untouched,plan.frameCount));
+  rejected(()->plan.applyLegacyExposureFields(untouched,-1));
+  rejected(()->plan.applyLegacyExposureFields(untouched,plan.frameCount));
   check(untouched.fields.isEmpty());
   var unsupported=new CaptureRequest.Builder();unsupported.reject=C;
-  rejected(()->plan.applyExposureFields(unsupported,0));
+  rejected(()->plan.applyLegacyExposureFields(unsupported,0));
   return plan.frameCount;
  }
  public static void main(String[] args)throws Exception {

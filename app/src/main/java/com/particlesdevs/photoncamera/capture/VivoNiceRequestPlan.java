@@ -71,12 +71,12 @@ public final class VivoNiceRequestPlan {
         return index<pastCount;
     }
 
-    /** Apply only the fields proven by executeRawVifVivoRawHdrCommand.
+    /** Legacy only: fields proven by executeRawVifVivoRawHdrCommand, not VCF2.
      * Use a fresh, unpublished builder. An unsupported vendor key propagates
      * failure; callers must discard the builder rather than submit half a plan.
      * No sensor mode, AE-mode or manual exposure setting is introduced here.
      */
-    public void applyExposureFields(CaptureRequest.Builder builder, int index) {
+    public void applyLegacyExposureFields(CaptureRequest.Builder builder, int index) {
         checkIndex(index);
         if (builder==null) throw new IllegalArgumentException("Missing request builder");
         builder.set(AEC,aec.clone());
