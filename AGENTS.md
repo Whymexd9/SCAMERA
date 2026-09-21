@@ -1,5 +1,10 @@
 # ZSL/bracket port scope
 
+The target Vivo X200 Ultra has root, confirmed by the user. Root-backed workers
+are allowed and already used by VivoNeuralClient/VivoNeuralWorker. Do not treat
+ordinary app-UID limitations as the only available implementation path. Root on
+the phone does not imply that this workspace has a live connection to it.
+
 User clarification (2026-09-21): do not switch sensor modes. This is the only
 scope restriction on changes needed for the port. Camera session configuration,
 streams, AE, VCF2 frame delivery and processing may be changed to follow the
