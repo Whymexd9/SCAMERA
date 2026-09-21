@@ -22,6 +22,9 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_vivo_hdr_white","9",1),1);
         eq(SettingsNumericRules.value("pref_vivo_hdr_black","9",0),.1);
         eq(SettingsNumericRules.value("pref_vivo_hdr_contrast","NaN",1),1);
+        eq(SettingsNumericRules.value("pref_vivo_nice_noise_photon","0",1),.25);
+        eq(SettingsNumericRules.value("pref_vivo_nice_noise_readout","NaN",1),1);
+        eq(SettingsNumericRules.value("pref_vivo_nice_noise_readout","8",1),4);
         Map<String,Object> p=new HashMap<>();
         inactive(p,"hexquad_luma");active(p,"pref_remosaic_enabled_key");
         p.put("pref_remosaic_enabled_key",true);p.put("pref_remosaic_backend_key","hp9_hexquad");
@@ -43,6 +46,44 @@ public class SettingsModelCheck {
         inactive(p,"pref_noise_iso_manual_key");p.put("pref_noise_model_profile_key","hp9");active(p,"pref_noise_iso_manual_key");
         p.put("pref_noise_dynamic_enabled_key",false);inactive(p,"pref_tunable_esd4d_enablenoisestore");
         p.put("pref_sharp_usm_enabled_key",false);inactive(p,"pref_sharp_amount_key");active(p,"pref_sharp_usm_enabled_key");
+        p.clear();
+        p.put("pref_camera_mode_key", "3");
+        p.put("pref_vivo_hdr_enabled", true);p.put("pref_vivo_nice_enabled", true);
+        p.put("pref_rt_denoise_backend", "rt512");p.put("rt512_chroma", 15);
+        if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("Default must retain RAW");
+        p.put("pref_vivo_nice_route", "vcf2");
+        Map<String,Object> saved = new HashMap<>(p);
+        for (String key : new String[]{"rt512_chroma", "pref_rt_nr_luma_key",
+                "pref_tunable_esd3d2_enable", "pref_tunable_ablc_enable", "pref_ai_denoise_enabled_key",
+                "pref_noise_model_profile_key", "pref_aces_enabled_key", "pref_sharp_usm_enabled_key",
+                "pref_raisr_enabled_key", "pref_frame_count_key", "pref_zsl_buffer_count_key",
+                "pref_vivo_nice_noise_scale", "pref_vivo_hdr_contrast", "pref_save_raw_key",
+                "rt_denoise_screen", "vivo_hdr_tone_screen", "sharp_settings_screen"}) inactive(p,key);
+        for (String key : new String[]{"pref_vivo_nice_enabled", "pref_vivo_hdr_enabled",
+                "pref_expocompensation_seekbar_key", "pref_camera_sounds_key", "scamera_full_debug",
+                "vivo_nice_probe", "pref_vivo_nice_route"}) active(p,key);
+        if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
+        p.put("pref_vivo_nice_enabled",false);active(p,"rt512_chroma");
+        p.put("pref_vivo_nice_enabled",true);
+        for (String mode : new String[]{"2", "3"}) {
+            p.put("pref_camera_mode_key",mode);
+            if (!new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("Photo VCF unreachable");
+            active(p,"pref_vivo_nice_route");
+            p.put("pref_vivo_nice_route","raw");inactive(p,"rt512_chroma");
+            active(p,"pref_vivo_nice_noise_scale");active(p,"pref_vivo_hdr_contrast");
+            active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
+            inactive(p,"pref_vivo_hdr_luma");inactive(p,"pref_vivo_hdr_chroma");
+            active(p,"pref_sharp_usm_enabled_key");
+            p.put("pref_vivo_nice_route","invalid");
+            if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("Unknown route enabled VCF");
+            p.put("pref_vivo_nice_route","vcf2");
+        }
+        for (String mode : new String[]{"0", "1", "4", "5"}) {
+            p.put("pref_camera_mode_key",mode);inactive(p,"rt512_chroma");
+            if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("RAW mode gated as VCF");
+        }
+        p.put("pref_camera_mode_key","3");p.put("pref_raw_mfsr_enabled_key",true);
+        if (new SettingsAvailability(p).usesVcfPhoto()) throw new AssertionError("MFSR gate mismatch");
         System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability");
     }
 }

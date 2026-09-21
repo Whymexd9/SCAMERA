@@ -16,7 +16,7 @@ public final class VivoNiceBurst {
     private final float white;
     private float noiseSlope,noiseOffset,normalNoiseSlope,normalNoiseOffset;
     final boolean diagnostics;
-    final float normCoefficient,noiseScale;
+    final float normCoefficient,noiseScale,photonScale,readoutScale;
     final VivoNiceScene scene;
     private final boolean trainedSensor;
     private final float[] black;
@@ -28,6 +28,8 @@ public final class VivoNiceBurst {
         diagnostics=PreferenceKeys.isNiceDiagnosticsEnabled();
         normCoefficient=PreferenceKeys.niceInternalValue("norm",1.1f);
         noiseScale=PreferenceKeys.niceInternalValue("noise_scale",1f);
+        photonScale=PreferenceKeys.niceInternalValue("noise_photon",1f);
+        readoutScale=PreferenceKeys.niceInternalValue("noise_readout",1f);
         trainedSensor = "vivo".equalsIgnoreCase(android.os.Build.MANUFACTURER)
                 && "PD2454".equalsIgnoreCase(android.os.Build.DEVICE)
                 && (p.physicalID == 3 || p.physicalID == 4);
@@ -68,6 +70,12 @@ public final class VivoNiceBurst {
         Log.i("NICE_HDR","Calibration source="+(trainedSensor?"IMX06C forward HDR profile":"Camera2 experimental cross-sensor")+" sensor="+p.physicalID
                 +" CFA="+cfa+" slope="+noiseSlope+" offset="+noiseOffset
                 +"; original weights, experimental cross-sensor adaptation");
+        noiseSlope*=photonScale;
+        noiseOffset*=readoutScale;
+        normalNoiseSlope*=photonScale;
+        normalNoiseOffset*=readoutScale;
+        Log.i("NICE_HDR", "Input noise tuning: photon="+photonScale+" readout="+readoutScale
+                +" overall="+noiseScale+"; applied before model VST/IVST, no RGB denoise");
         double ref=product(ordered[0]);
         if(!(product(ordered[6])<ref))throw new IOException("NICE HDR: короткий кадр не темнее опорного");
         for(int i=0;i<7;++i){

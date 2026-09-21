@@ -801,6 +801,11 @@ public class PreferenceKeys {
     public static boolean isVivoNiceEnabled() {
         return isVivoHdrEnabled() && isGcamStageEnabled("pref_vivo_nice_enabled");
     }
+    public static boolean isVivoVcf2Enabled(int modeOrdinal) {
+        return isVivoNiceEnabled() && SettingsAvailability.isVcfPhotoMode(modeOrdinal)
+                && "vcf2".equals(preferenceKeys.settingsManager.getString(
+                        "default_scope", "pref_vivo_nice_route", "raw"));
+    }
     public static float niceInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;
         try {

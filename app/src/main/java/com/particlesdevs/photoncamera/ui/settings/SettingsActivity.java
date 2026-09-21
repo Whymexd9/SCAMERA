@@ -732,9 +732,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             for (int i = 0; i < group.getPreferenceCount(); i++) {
                 Preference p = group.getPreference(i);
                 if (p instanceof PreferenceGroup) {
-                    if (p instanceof PreferenceScreen) p.setEnabled(true); // the page explains inactive controls
+                    if (p instanceof PreferenceScreen) p.setEnabled(true);
                     applyAvailability((PreferenceGroup) p, state);
-                    continue;
+                    if (!(p instanceof PreferenceScreen)) continue;
                 }
                 String key = p.getKey();
                 if (key == null) continue;

@@ -1758,12 +1758,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
-            final boolean nicePreview = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
+            final boolean nicePreview = PreferenceKeys.isVivoVcf2Enabled(
+                    PhotonCamera.getSettings().selectedMode.ordinal())
                     && !isBurstSession && !mIsRecordingVideo
-                    && !PreferenceKeys.isMultiFrameCalibration()
-                    && PreferenceKeys.isVivoNiceEnabled();
+                    && !PreferenceKeys.isMultiFrameCalibration();
             closeVcfCapture();
             mUseVcfCapture = nicePreview;
+            Log.i("NICE_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
+                    + " route=" + (mUseVcfCapture ? "VCF2_JPEG"
+                    : PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));
             mVcfFailure = null;
             if (mUseVcfCapture) prepareVcfCapture(generation);
             mLiveRawSession = !mUseVcfCapture && photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected

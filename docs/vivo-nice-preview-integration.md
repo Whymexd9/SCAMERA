@@ -1,3 +1,39 @@
+## RAW tuning and progress
+
+The independent photon/readout controls multiply the measured/calibrated
+slope and offset before Java writes the existing v8 transport. The global
+noise multiplier remains applied by the worker. Both new defaults are 1;
+VST and inverse VST use the same resulting profile. These are experimental
+input-noise controls, not independent learned luma/chroma strengths.
+
+NICE RGB skips VivoHdrDenoise entirely. Its saved luma/chroma values remain
+available for autonomous HDR without NICE. Tone remains VivoHdrTone_SCAMERA;
+this change does not claim a port of original TCE. Existing contrast, gamma,
+shadow, shoulder and saturation controls remain available in RAW mode.
+
+VCF2 shows indeterminate processing while awaiting the paired result/JPEG;
+it does not show manual-bracket progress. RAW retains real burst progress.
+Host checks exercise independent slope/offset effects on input tensors with
+matched inverse VST using a mock model, settings availability, and VCF
+ordering/cancellation. Quality of changed tuning still requires phone tests.
+
+## Explicit RAW / VCF2 selection
+
+`pref_vivo_nice_route` defaults to `raw`. Existing installs retain the RAW
+NICE capture verified in the user log dated 2026-09-21 12:49. That log does
+not validate VCF2: it shows MOTION, 4 ZSL normals plus LONG/SHORT, original
+NICE inference and SCAMERA RGB postprocessing.
+
+Selecting `vcf2` enables the VCF route for visible Photo (MOTION ordinal 2)
+and legacy PHOTO (3). Night retains RAW, as stated beside the selector.
+The camera closes when settings open and recreates its session on return.
+The selector remains editable while VCF-only availability rules disable
+bypassed processing; no stored processing values are erased. RAW availability
+also disables the skipped RT/ESD3D/Bayer denoise, ABLC and alternate tone stages,
+while retaining actual NICE tuning, VivoHdrTone and downstream sharpening.
+Existing VCF errors terminate the shot without retrying through RAW.
+Device validation of the newly reachable VCF route remains outstanding.
+
 # Stock VCF2 Photo route connected to CaptureController
 
 Source: supplied `vivo-camera-app-log.txt`, SHA-256

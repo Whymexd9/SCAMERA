@@ -1095,6 +1095,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onProcessingError(Object obj) {
+            vcfCaptureProgress = false;
+            mCameraUIView.resetCaptureProgressBar();
             if (obj instanceof String)
                 showToast((String) obj);
             mCameraUIView.lockUIForBurst(false);
@@ -1113,13 +1115,16 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onCaptureStillPictureStarted(Object o) {
+            vcfCaptureProgress = "VCF2".equals(o);
             if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
-                mCameraUIView.setCaptureProgressBarOpacity(1.0f);
+                mCameraUIView.setCaptureProgressBarOpacity(vcfCaptureProgress ? 0.0f : 1.0f);
+                if (vcfCaptureProgress) mCameraUIView.setProcessingProgressBarIndeterminate(true);
                 mCameraUIView.lockUIForBurst(true);
             }
             //textureView.post(() -> textureView.setAlpha(0.8f));
         }
 
+        private boolean vcfCaptureProgress;
         private long prevPlayTime = 0;
         @Override
         public void onFrameCaptureStarted(Object o) {
@@ -1158,6 +1163,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onCaptureSequenceCompleted(Object o) {
+            if (vcfCaptureProgress) {
+                mCameraUIView.setProcessingProgressBarIndeterminate(false);
+                vcfCaptureProgress = false;
+            }
             if (PreferenceKeys.isCameraSoundsOn()) {
                 MediaPlayer player = endPlayer;
                 if (player != null) {

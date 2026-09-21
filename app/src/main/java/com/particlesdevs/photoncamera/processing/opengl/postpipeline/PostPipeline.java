@@ -581,8 +581,7 @@ public class PostPipeline extends GLBasePipeline {
         // wrong phase.
         if (mParameters.vivoNiceRgb != null) {
             Log.i("NICE_PIPELINE","import=NICE_linear_RGB WB_LSC=SCAMERA TCE=not_connected"
-                    +" postLuma="+PreferenceKeys.vivoHdrValue("luma",.6f)
-                    +" postChroma="+PreferenceKeys.vivoHdrValue("chroma",1f)
+                    +" postDenoise=bypassed"
                     +" postSharpen="+PreferenceKeys.vivoHdrValue("sharpen",1f)
                     +" tone=VivoHdrTone_SCAMERA; actual node order/timings follow in Pipeline log");
             add(new VivoNiceRgb());
@@ -656,7 +655,7 @@ public class PostPipeline extends GLBasePipeline {
             add(new RawTherapeeDenoise());
         }
         if (mParameters.vivoHdrMode) {
-            add(new VivoHdrDenoise());
+            if (mParameters.vivoNiceRgb == null) add(new VivoHdrDenoise());
             add(new LinearExposure());
             add(new VivoHdrTone());
         } else if ("off".equals(tonePipeline)) {

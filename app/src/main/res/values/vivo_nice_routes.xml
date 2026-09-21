@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="vivo_nice_route_entries">
+        <item>RAW — настраиваемый</item>
+        <item>VCF2 — обработка Vivo (тестовый)</item>
+    </string-array>
+    <string-array name="vivo_nice_route_values">
+        <item>raw</item>
+        <item>vcf2</item>
+    </string-array>
+</resources>

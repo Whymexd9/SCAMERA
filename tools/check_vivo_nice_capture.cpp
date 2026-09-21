@@ -220,6 +220,20 @@ int main(){
         },[](const auto&){});
         for(size_t i=0;i<tuned.size();i++)assert(std::abs(tuned[i]-scene[i%3])<.002f);
     }
+    b.noiseScale=1.f;
+    b.cameraNoise=true;b.noiseReferenceSlot=4;
+    const auto originalNoise=imx06cHdrNoise(b.iso[4]);
+    previous.clear();
+    for(const auto factors: {std::array<float,2>{1.f,1.f}, {2.f,1.f}, {2.f,3.f}}) {
+        b.noise=originalNoise;
+        b.noise.slope*=factors[0];b.noise.offset*=factors[1];
+        auto tuned=reconstruct(b,[&](const auto& input,auto& output){
+            if(!previous.empty())assert(input!=previous);
+            previous=input;
+            for(size_t i=0;i<output.size()/3;i++)for(int c=0;c<3;c++)output[i*3+c]=input[i*22+15+c];
+        },[](const auto&){});
+        for(size_t i=0;i<tuned.size();i++)assert(std::abs(tuned[i]-scene[i%3])<.002f);
+    }
     b.noiseScale=0;
     bool refused=false;try{reconstruct(b,[](const auto&,auto&){assert(false);},[](const auto&){});}
     catch(const std::runtime_error&){refused=true;}assert(refused);
