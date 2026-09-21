@@ -143,6 +143,6 @@ measurement provenance, exposure consumer and variable model dispatch remain
 unconnected. This change is a verified predicate port, not complete ZSL parity.
 
 The scene library additionally imports vivoHdrAISCProcess from libvivo_hdr_aisc.so
-and a separate libbacklight.so. Neither binary is in this five-library archive
-or the locally available donor archives. Their inference cannot be reconstructed
-from the wrapper or replaced by assuming constant backlight decisions.
+and a separate libbacklight.so. Both were subsequently supplied in
+SCAMERA-scene-deps.tar.gz. The AISC result postprocessor is now ported; runtime
+assets and remaining integration are tracked in vivo-nice-aisc.md.
