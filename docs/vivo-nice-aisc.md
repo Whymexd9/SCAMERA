@@ -55,8 +55,7 @@ are rejected without modifying the caller's destination.
 `HdrAISCConfig.xml` was recovered from the earlier vivo-nr-analysis archive:
 CPU device 0, one thread, NeedSoftmax=1, input `data`, outputs `conv2d/116` and
 `conv2d/118`, ImageMean=127.5, ImageStd=0.00784313, AsyncMode=1, AsyncFreq=3.
-It names `/vendor/camera3rd/nti/pj_hdrsc_light_2_t6_1_vdnn.bin`. That model has
-not been found in the available donor archives. libvdnn.so was recovered from
+It names `/vendor/camera3rd/nti/pj_hdrsc_light_2_t6_1_vdnn.bin`. The model was subsequently supplied and its structural validation is described below. libvdnn.so was recovered from
 the earlier VivoCamera-app-libs archive (SHA256
 7b6d50da0d022af4c91fd611b63f5f12dc3304de82566af07c84734d4a385cdf);
 its compatibility with the vendor AISC runtime has not been established.
@@ -69,3 +68,21 @@ This header is not yet called from the app. Missing model inference, full scene
 mode selection, measured exposure-code consumption and variable NICE graph
 routing still prevent an end-to-end stock ZSL/bracket claim. No APK is produced
 by these host checks, and neither image quality nor camera stability is tested.
+
+## Supplied AISC model
+
+The received model is 1,617,496 bytes; SHA256
+`b05e37e0fc04701cbb978254c613ef500c1a44337cdefce9372b1c2136a3a4a4`.
+It has input `data`, dimensions [1,160,160,3], 66 named tensors and 67
+graph records: one input, 54 convolution records, 10 residual-add records,
+one global-mean record and one output record. The output record consumes
+tensors 64/65 (`conv2d/116` and `conv2d/118`). Their weight dimensions are
+[7,1,1,1280] and [2,1,1,1280], agreeing with the seven/two AISC outputs.
+
+`tools/inspect_vivo_aisc_model.py` checks the pinned hash, bounded FlatBuffer
+accesses, tensor dependencies, unique producers and all 54 weight-array sizes
+against their dimensions (393,568 weight elements total). It rejects unknown
+model revisions instead of guessing a schema. This is structural inspection,
+not evidence that the selected libvdnn.so executes the model correctly.
+No runtime has yet executed this model in this workspace. The source header
+remains disconnected from CaptureController; full integration is unfinished.
