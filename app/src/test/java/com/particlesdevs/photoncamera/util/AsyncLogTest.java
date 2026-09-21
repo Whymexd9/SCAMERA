@@ -37,6 +37,10 @@ public class AsyncLogTest {
         // idle() only drains up to its initial clock instant; log messages
         // posted one millisecond later could remain queued on slower CI hosts.
         handler.removeCallbacksAndMessages(null);
+        // Removing a queued log callback also removes its finally block.
+        // Reset accounting for discarded setup logs before the measured burst.
+        ((AtomicInteger)field("pendingLines").get(null)).set(0);
+        ((AtomicInteger)field("droppedLines").get(null)).set(0);
         field("logContext").set(null,RuntimeEnvironment.getApplication());
         field("currentDate").set(null,new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date()));
         StringWriter sink=new StringWriter();BufferedWriter writer=new BufferedWriter(sink);
@@ -47,7 +51,7 @@ public class AsyncLogTest {
             int queued=((AtomicInteger)field("pendingLines").get(null)).get();
             assertTrue(queued>0);assertTrue(queued<=4096);
             assertEquals("",sink.toString());
-            shadowOf(handler.getLooper()).runToEndOfTasks();
+            shadowOf(handler.getLooper()).idleFor(java.time.Duration.ofSeconds(1));
             writer.flush();
             assertTrue(sink.toString().contains("entry 0"));
             assertTrue(sink.toString().contains("dropped"));
