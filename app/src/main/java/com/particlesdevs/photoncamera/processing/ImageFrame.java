@@ -39,6 +39,18 @@ public class ImageFrame {
     public double blurPixels = Double.NaN;
     private android.hardware.camera2.CaptureResult captureMetadata;
     public enum CaptureRole { NORMAL, LONG, SHORT }
+    public static final class NiceCaptureTag {
+        public final long generation;
+        public final int index;
+        public final CaptureRole role;
+        public NiceCaptureTag(long generation, int index, CaptureRole role) {
+            if (index < 0 || role == null) throw new IllegalArgumentException("Invalid NICE request tag");
+            this.generation = generation;
+            this.index = index;
+            this.role = role;
+        }
+        @Override public String toString() { return role + " series=" + generation + " index=" + index; }
+    }
 
     /** Role follows its request/result even if other burst images are missing. */
     public CaptureRole getCaptureRole() {
@@ -47,6 +59,7 @@ public class ImageFrame {
         if (fromZsl) return CaptureRole.NORMAL;
         android.hardware.camera2.CaptureRequest request = matched.getRequest();
         Object tag = request == null ? null : request.getTag();
+        if (tag instanceof NiceCaptureTag) return ((NiceCaptureTag) tag).role;
         return tag instanceof CaptureRole ? (CaptureRole) tag : null;
     }
 

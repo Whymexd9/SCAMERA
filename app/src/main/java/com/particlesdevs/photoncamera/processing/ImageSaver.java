@@ -57,8 +57,18 @@ public class ImageSaver {
         this.implementation.frameCount = desiredFrameCount;
     }
 
-    public int bufferSize(){
+    public synchronized int bufferSize(){
         return SaverImplementation.IMAGE_BUFFER.size();
+    }
+
+    public synchronized ArrayList<ImageFrame> snapshotFrames() {
+        return new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
+    }
+
+    public synchronized void discardFrames() {
+        desiredFrameCount = 0;
+        for (ImageFrame frame : SaverImplementation.IMAGE_BUFFER) frame.close();
+        SaverImplementation.IMAGE_BUFFER.clear();
     }
 
     public ImageSaver(ProcessingEventsListener processingEventsListener) {
@@ -74,7 +84,7 @@ public class ImageSaver {
     }
 
     /** Accepts an owned image after preview/still routing by sensor timestamp. */
-    public void initProcess(Image image) {
+    public synchronized void initProcess(Image image) {
         if (image == null) return;
         if (frameCounter < desiredFrameCount || desiredFrameCount == -1) {
             imageFormat = image.getFormat();

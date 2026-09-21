@@ -2109,6 +2109,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             Log.d(TAG, "CaptureStarted!");
 
+            final Surface niceRawSurface = niceSequence != null ? mImageReaderRaw.getSurface() : null;
             final long[] baseFrameNumber = {0};
             final int[] maxFrameCount = {frameCount};
 
@@ -2974,7 +2975,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE,focus);
                         }
                         times[captureIndex] = IsoExpoSelector.lastSelectedExposure;
-                        if (niceCapture && !calibration) captureBuilder.setTag(ImageFrame.CaptureRole.NORMAL);
+                        if (niceCapture && !calibration) captureBuilder.setTag(new ImageFrame.NiceCaptureTag(
+                            mShutterGeneration, captures.size(), ImageFrame.CaptureRole.NORMAL));
                         captures.add(captureBuilder.build());
                         mCaptureRequest = captureBuilder.build();
                     }
@@ -2989,7 +2991,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 for (int i = 0; i < longFrameCount; i++, captureIndex++) {
                     IsoExpoSelector.setLongExpo(captureBuilder, this);
                     times[captureIndex] = IsoExpoSelector.lastSelectedExposure;
-                    if (niceCapture) captureBuilder.setTag(ImageFrame.CaptureRole.LONG);
+                    if (niceCapture) captureBuilder.setTag(new ImageFrame.NiceCaptureTag(
+                            mShutterGeneration, captures.size(), ImageFrame.CaptureRole.LONG));
                     captures.add(captureBuilder.build());
                     mCaptureRequest = captureBuilder.build();
                 }
@@ -3000,7 +3003,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         break;
                     }
                     times[captureIndex++] = IsoExpoSelector.lastSelectedExposure;
-                    if (niceCapture) captureBuilder.setTag(ImageFrame.CaptureRole.SHORT);
+                    if (niceCapture) captureBuilder.setTag(new ImageFrame.NiceCaptureTag(
+                            mShutterGeneration, captures.size(), ImageFrame.CaptureRole.SHORT));
                     captures.add(captureBuilder.build());
                     mCaptureRequest = captureBuilder.build();
                 }
@@ -3030,7 +3034,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             //img
             Log.d(TAG, "FrameCount:" + frameCount);
             mImageSaver = new ImageSaver(cameraEventsListener);
-            mImageSaver.setFrameCount(frameCount);
+            final VivoNiceCaptureSequence niceSequence = niceCapture && !calibration
+                    ? new VivoNiceCaptureSequence(captures, hybridZsl
+                            ? mPendingZslNormalFrames : java.util.Collections.emptyList()) : null;
+            // Buffered RAWs are already present; only submitted requests consume reader slots.
+            mImageSaver.setFrameCount(niceSequence != null ? captures.size() : frameCount);
             if (hybridZsl) {
                 mImageSaver.setImageFormat(CaptureController.RAW_FORMAT);
                 SaverImplementation.IMAGE_BUFFER.addAll(mPendingZslNormalFrames);
@@ -3042,6 +3050,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }*/
             Log.d(TAG, "CaptureStarted!");
 
+            final Surface niceRawSurface = niceSequence != null ? mImageReaderRaw.getSurface() : null;
             final long[] baseFrameNumber = {0};
             final int[] maxFrameCount = {hybridZsl ? captures.size() : frameCount};
             final int zslNormalCount=hybridZsl ? mPendingZslNormalFrames.size() : 0;
@@ -3088,6 +3097,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                @NonNull TotalCaptureResult result) {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
+                    if(niceSequence != null) niceSequence.completed(request, result);
                     if(niceCapture) VivoNiceCaptureLog.result(request,result,niceZslShutterTimestamp);
                     if(nativePsl && !hybridZsl && frameCount==nativeBaseIndex)nativeBaseResult[0]=result;
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
@@ -3135,6 +3145,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
 
                 @Override
+                public void onCaptureFailed(@NonNull CameraCaptureSession session,
+                                            @NonNull CaptureRequest request,
+                                            @NonNull android.hardware.camera2.CaptureFailure failure) {
+                    if (niceSequence != null) niceSequence.failed("HAL capture failure=" + failure.getReason());
+                }
+
+                @Override
+                public void onCaptureBufferLost(@NonNull CameraCaptureSession session,
+                                                @NonNull CaptureRequest request,
+                                                @NonNull Surface target, long frameNumber) {
+                    if (niceSequence != null && target == niceRawSurface)
+                        niceSequence.failed("RAW buffer lost frame=" + frameNumber);
+                }
+
+                @Override
                 public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
                     if (session != mCaptureSession) return;
                     mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;
@@ -3153,7 +3178,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                        int sequenceId,
                                                        long lastFrameNumber) {
 
-                    int finalFrameCount = (int) (lastFrameNumber - baseFrameNumber[0]) + 1;
+                    final int finalFrameCount = niceSequence != null ? niceSequence.futureCount
+                            : (int) (lastFrameNumber - baseFrameNumber[0]) + 1;
                     Log.v("BurstCounter", "CaptureSequenceCompleted! FrameCount:" + finalFrameCount);
                     Log.d("DefaultSaver", "CaptureSequenceCompleted! FrameCount:" + finalFrameCount);
                     Log.v("BurstCounter", "CaptureSequenceCompleted! LastFrameNumber:" + lastFrameNumber);
@@ -3205,6 +3231,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     createCameraPreviewSession(false);
                             });
                             try{
+                            if (niceSequence != null) {
+                                niceSequence.bindAndValidate(mImageSaver.snapshotFrames());
+                                Log.i("NICE_CAPTURE", "complete matched RAWs=" + niceSequence.frameCount
+                                        + " futureRequests=" + niceSequence.futureCount + " stockVcfPlan=false");
+                            }
                             if(mImageSaver.bufferSize() == 0){
                                 cameraEventsListener.onProcessingError("Камера не передала RAW-кадры. Повторите снимок.");
                                 return;
@@ -3224,6 +3255,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             } catch (Exception e){
                                 Log.e(TAG, "runRaw:"+Log.getStackTraceString(e));
                                 cameraEventsListener.onProcessingError(e.getLocalizedMessage());
+                                if (niceSequence != null) {
+                                    mImageSaver.discardFrames();
+                                }
                             } finally {
                                 if (nativePsl || niceZslRequested) {
                                     mNativeRawPslCapture=false;mZslCapturing=false;mLiveRawRouter.clear();

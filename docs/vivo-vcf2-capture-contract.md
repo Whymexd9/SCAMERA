@@ -310,3 +310,58 @@ and copies no image pixels. The TCE v4 archive cannot supply this scheduling
 context because it starts downstream of capture. Device validation of this
 new collector is pending. The active app still has its old manual bracket;
 there is no claim of completed stock ZSL or a new working APK at this point.
+
+
+## Phone replay and delivery boundary (2026-09-21)
+
+The v6 trace `scamera-zsl-trace.30Hy1RcT.tar.gz` records a real query with
+past=4, future=1, alternateExposureMode=true. The future descriptor carries
+EV code 100 and zero gain/shutter. These zeros are preserved fields in the
+alternate branch, not an instruction to expose for zero nanoseconds.
+The portable producer matches the recorded counts, batch arrays, frame records,
+RAW descriptors, catch mode and accumulated shutter in
+`tools/replay_vivo_zsl_trace.py`. This replaces synthetic-only evidence for this
+one producer case; it does not implement or validate the scene/AE solver.
+
+The producer returns catch mode 4, whereas both prepare calls use mode 6.
+Ready IDs are 113..118; each queue appends 114..117 to the shared ID vector.
+The duplicate ID range is two queues, not eight temporal frames. No delivery
+callback was observed by v6 because it did not hook that function. A successful
+prepare return is not proof that its requested future buffers were delivered.
+
+Collector v7 retains the two known exported hooks and adds the verified export
+`BufferQueue::getPastAndNextBuffers` at 0x12bb14. Its actual ABI is this=x0,
+past shared_ptr vector=x1, future shared_ptr vector=x2, request-ID vector=x3.
+The ELF symbol and disassembly confirm these references; shared_ptr stride is
+16, request-ID stride 4. BufferPrepareInfo vector at queue+0x270 has stride 144
+(12ba94..12bac4), and is recorded opaquely. No buffer object methods or pixel
+pointers are invoked/read. The v5 interior hook 0x1417e8 remains removed: the
+phone tombstone established SIGILL at 0x1417f4 inside its literal patch data.
+
+## Connected app completeness check
+
+The active manual NICE path now freezes the submitted request identities and
+selected ZSL timestamps in `VivoNiceCaptureSequence`. A unique immutable tag
+preserves generation, request index and N/L/S role. Every future request must
+produce a distinct matching result with positive measured exposure/ISO, and a
+RAW with that exact timestamp. Reordering is accepted; missing, duplicate,
+foreign-series, failed or RAW-buffer-lost requests fail before NICE processing.
+The expected count comes from the actual submitted request list, including a
+skipped collapsed short exposure, not the difference between HAL frame numbers.
+ImageSaver's reader quota counts only future requests: ZSL inputs are already
+owned. Snapshot/discard synchronize with image insertion; failed series close
+retained frames. Existing matched reference/noise calibration remains intact.
+
+Host verification covers real Java production classes with Android stubs,
+original donor queue dispatch and selection, the real phone producer replay,
+and collector coordinator/hook simulations. These are not Android device tests.
+Callback signatures follow the Android CaptureCallback API:
+https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.CaptureCallback
+
+**Remaining blockers:** complete scene/AE query production for SCAMERA's RAW
+stream; final producer-to-queue mode/context translation; exposure-code consumer
+and measured future-frame association; compatible graph dispatch for variable
+series. Neither reading an EV code as stops nor copying a single 4+1 trace is a
+valid substitute. The capture controller therefore still reports stockVcfPlan=false.
+The v7 hook set also needs a phone trace; no device connection is available in
+this workspace. No full-port APK or stock-parity claim is made.
