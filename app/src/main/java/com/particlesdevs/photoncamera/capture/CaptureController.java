@@ -1760,6 +1760,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
             final boolean nicePreview = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     && !isBurstSession && !mIsRecordingVideo
+                    && !PreferenceKeys.isMultiFrameCalibration()
                     && PreferenceKeys.isVivoNiceEnabled();
             closeVcfCapture();
             mUseVcfCapture = nicePreview;
@@ -1856,6 +1857,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             }
                         } catch (Exception e) {
                             Log.e(TAG, Log.getStackTraceString(e));
+                            if (mUseVcfCapture) {
+                                mVcfFailure = "VCF2 preview: " + e.getMessage();
+                                cameraEventsListener.onProcessingError(mVcfFailure);
+                            }
                             if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                         }
                         if (mIsRecordingVideo)
@@ -1908,6 +1913,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
+            if (mUseVcfCapture) {
+                mVcfFailure = "VCF2 session: " + e.getMessage();
+                closeVcfCapture();
+                cameraEventsListener.onProcessingError(mVcfFailure);
+            }
         }
     }
 
@@ -2037,7 +2047,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     Log.w("NICE_CAPTURE", "shutterAeUnavailable=" + unavailable.getMessage());
                 }
             }
-            if(PreferenceKeys.isVivoNiceEnabled()) Log.i("NICE_CAPTURE","shutter camera="+physicalID
+            if(PreferenceKeys.isVivoNiceEnabled() && !mUseVcfCapture) Log.i("NICE_CAPTURE","shutter camera="+physicalID
                     +" mode="+PhotonCamera.getSettings().selectedMode+" zslMode="+isZslMode()
                     +" sensorCutoffNs="+niceZslShutterTimestamp+" cutoffSource=latest_preview_result"
                     +" normalRequested="+PreferenceKeys.getFrameCountValue()

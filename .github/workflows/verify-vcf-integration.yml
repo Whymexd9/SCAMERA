@@ -26,5 +26,6 @@ jobs:
         run: |
           python3 tools/check_vivo_vcf2_request.py
           python3 tools/check_vivo_vcf2_capture.py
+          python3 tools/check_vivo_vcf2_profile.py
       - name: Compile Android sources without packaging
         run: bash gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace

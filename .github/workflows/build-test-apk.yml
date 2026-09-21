@@ -2,7 +2,7 @@ name: Build SCAMERA test APK
 
 on:
   push:
-    branches: [ main, work ]
+    branches: [ main, work, codex/zsl-bracket-completion ]
   pull_request:
   workflow_dispatch:
 
@@ -16,7 +16,7 @@ env:
 
 jobs:
   build:
-    # APK builds for the port are deferred until integration is complete.
+    # The port branch builds on push; avoid a duplicate APK for its PR event.
     if: github.head_ref != 'codex/zsl-bracket-completion'
     runs-on: ubuntu-latest
     timeout-minutes: 90
