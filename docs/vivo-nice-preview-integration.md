@@ -30,3 +30,18 @@ Remaining: establish a sensor-mode-preserving VCF2 session/template, connect
 submission and capture-ID-scoped result delivery to CaptureController, and use
 the correct output processing/save path. The manual RAW graph is still active;
 these detector controls do not make the full ZSL/bracket port complete.
+
+The VCF2 Buffer adapter now exposes `copyJpegBytes()` for HAL BLOB format 33.
+It duplicates the descriptor and maps the callback's exact byte count read-only,
+as the stock `Vcf2ImageCallbackProxy.getBufferFromFd` does. It preserves every
+byte, including payloads following JPEG end markers; no Bitmap decode, EXIF
+rewrite or JPEG encode is performed. Other formats, invalid lengths, mappings
+and non-JPEG prefixes fail explicitly. The callback still owns its original FD.
+This reader is not yet invoked by CaptureController; the submission/result/save
+connection remains unfinished.
+
+`check_vivo_vcf2_buffer.py` runs 11 checks through the production JNI function
+and actual host mmap. The 28 framework callback/lifetime checks also pass.
+Neither suite verifies Android DMA-buffer behavior or reference image quality.
+The host runtime lacks JNI development headers; the buffer check accepts
+`--jni-include` to use OpenJDK's real headers, without altering the Android build.

@@ -42,6 +42,7 @@ import java.io.*;
 public class ParcelFileDescriptor implements AutoCloseable {
  public int closes; private final FileDescriptor descriptor=new FileDescriptor();
  public FileDescriptor getFileDescriptor(){return descriptor;}
+ public int getFd(){return -1;}
  public static ParcelFileDescriptor dup(FileDescriptor fd)throws IOException{return new ParcelFileDescriptor();}
  public void close()throws IOException{closes++;}
 }''',

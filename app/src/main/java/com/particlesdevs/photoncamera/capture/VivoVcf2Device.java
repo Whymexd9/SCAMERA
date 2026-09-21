@@ -40,11 +40,24 @@ public final class VivoVcf2Device implements AutoCloseable {
             return ParcelFileDescriptor.dup(descriptor.getFileDescriptor());
         }
 
+        public byte[] copyJpegBytes() throws IOException {
+            // VCF2 reports HAL BLOB (33), not Camera2 ImageFormat.JPEG (256).
+            if (format != 33) throw new IOException("VCF2 output is not a JPEG BLOB: " + format);
+            try (ParcelFileDescriptor owned = duplicateDescriptor()) {
+                return NativeReader.copy(owned.getFd(), size);
+            }
+        }
+
         @Override public synchronized void close() {
             ParcelFileDescriptor owned = descriptor;
             descriptor = null;
             if (owned != null) try { owned.close(); } catch (IOException ignored) { }
         }
+    }
+
+    private static final class NativeReader {
+        static { System.loadLibrary("vivoVcfBuffer"); }
+        static native byte[] copy(int fd, int size) throws IOException;
     }
 
     private final Handler handler;
