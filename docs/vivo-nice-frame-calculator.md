@@ -110,3 +110,39 @@ matching variable-length captures to a compatible model, and TCE Create/Process
 with complete arguments and correctly owned output storage. The existing
 seven-input forward graph cannot accept arbitrary table counts. These tests
 are not device photographic validation and do not establish artifact removal.
+
+## Additional original scene predicates
+
+The supplied SCAMERA-port-libs archive matches all five pinned hashes.
+`vivo-nice-scene-rules.h` now includes these full VAF functions:
+
+| Portable function | Native address | Inputs / behavior |
+| --- | --- | --- |
+| niceNormalBack | 0x29a714 | Threshold comparison, AI scene 13/15 exclusion, portrait exclusion, capture types 42/44, force flag, manual exposure milliseconds in UI 71, forced mode |
+| niceNearMinExposure | 0x29a83c | Truncate lux and native ADRC to integers; compare lux minus 2 against float log10(ADRC) divided by float bits 0x3c52532c |
+| niceFastNight | 0x29b508 | Native state 1 overrides the truncated-lux threshold; return also updates the original cached flag |
+| niceQuickNight | 0x29b470 | Mode 1 and cached fast-night flag |
+| niceImageEcho | 0x29b540 | Capture-type groups, platform, UI bitmask and forward/more-frame decisions, with an inclusive lux boundary |
+
+Do not substitute standard Camera2 ADRC/ISO for the native ADRC field.
+Normal-back inputs originate at scene +b4, tuning +8, preview +11ac/+3bd0,
+scene +1f0, preview +440, tuning +64, scene +1a4/+1b0/+186.
+Near-min uses scene +b0 and preview +43c. Fast-night uses preview +3de0,
+preview +43c and the tuning object reached via preview+8 at +c8. Quick-night
+uses scene +134 and the earlier fast-night result.
+Image echo receives normal-back, HDR-back and more-frame booleans as
+arguments; platform comes from getPlatform(), and its lux threshold is tuning +34.
+Portable functions return values; the future coordinator must retain the
+fast-night result explicitly. No native memory offset is dereferenced by app code.
+
+`check_vivo_nice_scene_exposure.py` executes the original unmodified decision
+instructions: 3,000 normal-back, 180 night, 3,240 near-minimum, 6,048 image-echo
+cases. Only external platform lookup and scalar libm are supplied by the oracle.
+The app still does not call these functions: full setDetectTypeForNICE, live
+measurement provenance, exposure consumer and variable model dispatch remain
+unconnected. This change is a verified predicate port, not complete ZSL parity.
+
+The scene library additionally imports vivoHdrAISCProcess from libvivo_hdr_aisc.so
+and a separate libbacklight.so. Neither binary is in this five-library archive
+or the locally available donor archives. Their inference cannot be reconstructed
+from the wrapper or replaced by assuming constant backlight decisions.
