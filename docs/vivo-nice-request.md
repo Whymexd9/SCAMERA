@@ -65,6 +65,47 @@ series. Writing these payloads into the existing manually exposed sequence
 would combine conflicting control paths. The complete TCE call is another
 remaining integration dependency; it is not enabled by this metadata builder.
 
+### VCF2 submission and buffer return
+
+Further inspection of the complete stock APK (SHA256
+`aaf998e96056b6c56b01d0fbd9b962ed281c8d61210895acc11b4cc7a98f9bdd`)
+establishes a separate VCF2 transport boundary:
+
+- `SnapController.run` calls `ICameraCaptureSession.vifCaptureBurst`.
+  `VifCameraCaptureSessionImpl.handleMessage` unwraps the requests and calls
+  ordinary `CameraCaptureSession.captureBurst` (`03a2` in that DEX method).
+  This submission method alone does not expose the internal ZSL queue.
+- `Vcf2CameraManager.init` obtains
+  `android.hardware.vivocamera.VivoCameraManager.getInstance()`, calls
+  `open(Context, android.hardware.vivocamera.IVivoCameraDeviceCb)`, then calls
+  `android.hardware.vivocamera.VivoCameraDevice.initialize()`.
+  These names/signatures come from the stock reflection call sites; availability
+  and authorization for SCAMERA's UID have not been tested.
+- The callback is a Java dynamic proxy for `IVivoCameraDeviceCb`. It receives
+  `onBufferCallback(long requestId, ParcelFileDescriptor, int size, int width,
+  int height, int stride, int scanlines, int format)`, a separate VIF result,
+  a partial VIF result, and `onCaptureFrameDone(long requestId)`.
+- `Vcf2ImageCallbackNode.getVBufferInfoBundle` maps the returned FD and pairs it
+  with VIF metadata. It explicitly handles format 35 as YUV, including stride
+  and scanline padding. This is not evidence of delivery of each unprocessed
+  RAW in the seven-frame NICE input series. RAW output variants require their
+  own provenance; do not feed this returned buffer to the RAW worker by default.
+- The stock completion mask has exactly three events: `CAPTURE_START`,
+  `CAPTURE_PROGRESS`, `CAPTURE_BUFFER_FRAME_DONE`. The last comes from the VIF
+  callback, not from counting Camera2 TotalCaptureResults or ImageReader calls.
+
+`SuperNightCaptureCommand.executeRawVifVivoRawHdrCommand` additionally writes
+scene mode, motion metering and current-mode flags. Its Qualcomm branch can
+write a five-second exposure value and changes AE mode depending on raw-HDR
+support. Copying only the three arrays into SCAMERA's manually exposed burst
+is therefore not a complete implementation of even that legacy command.
+
+CaptureController integration remains blocked on implementing the correct
+RAW-series transport and the matching AE query lifecycle. The existing
+ImageReader series and the VCF2 processed-buffer callback must remain distinct.
+No vendor session is opened, no sensor requests are changed and no APK is built
+on the basis of this static inspection alone.
+
 ## Verification
 
 ```
