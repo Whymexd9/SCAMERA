@@ -164,3 +164,44 @@ A completed v4 capture is additional evidence, not yet a complete replay.
 The actual agent and extractor pass host mock tests for extents, payload
 identity, missing chunks, truncation and path rejection. No phone execution
 of v4 or photographic TCE integration is claimed.
+
+### v4 phone validation: DAWMDHB0
+
+The supplied `scamera-tce-trace.DAWMDHB0.tar.gz` contains a complete v4 trace
+(303988410 uncompressed bytes; SHA256
+`e749341cbc050240ae17198e282def4b8fd345deb067e57af9fd743cb99ac6ba`).
+The pinned donor matches. Create and SetParam 4/8 are paired with Process,
+which returns status 0 in 649 ms, excluding payload-copy overhead. The final
+`finished` record is present. SELinux remains Enforcing with the same policy
+hash before/after. Existing property-read AVCs do not establish call failure.
+
+The streaming extractor verified every chunk offset, extent and payload end:
+
+| Payload | Bytes | SHA256 |
+| --- | ---: | --- |
+| Input RGB16, 4098 × 3074 | 75583512 | `35b59d5508986f8a24209d59d7f2c06cb312151410290fa4fa7b41c4aa6da971` |
+| Output RGB16, 4096 × 3072 | 75497472 | `14669a93ec6bed2dcb9601874187ec8ccc3aadcee5f3e323bf2b857b04436feb` |
+| LUT, 33³ × 3 uint16 | 215622 | `6b1db945b5a4b0b6e8e58c9a87411e9edcf81b382639fff5618b7359708a9c9b` |
+
+Observed input channel ranges are [4792,9383], [5272,9539], [4703,9262].
+Output ranges are [0,15499], [0,16383], [0,14104]. LUT samples lie in 0..16383.
+These are measured sample ranges, not proof of a universal transfer function.
+The first LUT coordinate varies channel 0 fastest, then channel 1, then channel 2;
+retain exact samples rather than replacing this near-identity LUT with an identity.
+No face arrays were emitted because this call's face count is zero.
+
+Known Process fields: lux index 287, digital zoom 1, exposureVal 0, short/analog
+ gain 9.36977767944336, exposure 19.99722671508789 ms, digital gain 1,
+serializer ADRC field 1, sensor mode 1. They describe this shot only.
+
+This closes the missing RGB/LUT fixture gap. It does not close opaque scene
+pointer ownership, segmentation-mask context, linear-to-log routing, or an
+on-device SCAMERA native-call comparison. Do not replay recorded addresses or
+ship this per-shot LUT as universal calibration. No app integration, stock ZSL
+scheduler equivalence, or independent native denoise/sharpen controls are
+established by this observation. Repeating the same v4 capture is unnecessary.
+
+The analyzer now verifies payload hashes/offsets and reports completeness,
+including a captured LUT instead of the previous hardcoded false. A truncated
+trace yields diagnostics and preserves evidence of earlier complete payloads;
+it never becomes a complete RGB pair. `check_analyzer.py` covers those cases.

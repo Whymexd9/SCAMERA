@@ -1,19 +1,56 @@
 #!/usr/bin/env python3
 """Decode the bounded trace; pointers are observations, never replay inputs."""
-import json, struct, sys
+import hashlib, json, struct, sys
 from pathlib import Path
 
 def analyze(path):
     records=[]
+    payloads={}
+    errors=[]
+    current=None
     with Path(path).open(errors='replace') as stream:
-        for line in stream:
-            if line.startswith('SCAMERA_TCE '):
+        for number,line in enumerate(stream,1):
+            if not line.startswith('SCAMERA_TCE '): continue
+            try:
                 record=json.loads(line[12:])
-                if record['event']!='payload_chunk': records.append(record)
+                event=record['event']
+                if event=='payload_begin':
+                    if current: raise ValueError('overlapping payloads')
+                    name,size=record['name'],record['size']
+                    if name in payloads or type(size) is not int or not 0<size<=192*1024*1024:
+                        raise ValueError('invalid or duplicate payload')
+                    current=dict(name=name,size=size,offset=0,digest=hashlib.sha256())
+                elif event in ('payload_chunk','payload_end'):
+                    if not current or record['name']!=current['name']:
+                        raise ValueError('unpaired payload record')
+                    if event=='payload_chunk':
+                        if record['offset']!=current['offset'] or len(record['hex'])>32768:
+                            raise ValueError('invalid chunk offset/extent')
+                        data=bytes.fromhex(record['hex'])
+                        if not data or current['offset']+len(data)>current['size']:
+                            raise ValueError('invalid chunk size')
+                        current['digest'].update(data)
+                        current['offset']+=len(data)
+                    else:
+                        if record['size']!=current['size'] or current['offset']!=current['size']:
+                            raise ValueError('truncated payload')
+                        payloads[current['name']]=dict(size=current['size'],sha256=current['digest'].hexdigest())
+                        current=None
+                elif event=='payload_error':
+                    raise ValueError('collector payload error: '+str(record))
+                if event!='payload_chunk': records.append(record)
+            except (ValueError,KeyError,TypeError) as error:
+                errors.append(dict(line=number,error=str(error)))
+                break
+    if current: errors.append(dict(error='incomplete payload',name=current['name'],
+                                   received=current['offset'],expected=current['size']))
     def latest(event): return next((r for r in reversed(records) if r['event']==event),None)
     enter,leave=latest('process_enter'),latest('process_leave')
     result={'records':len(records),'finished':latest('finished'),'process_observed':enter is not None,
-            'process_returned':leave is not None,'replayable':False}
+            'process_returned':leave is not None,'replayable':False,
+            'verified_payloads':payloads,'capture_errors':errors,
+            'rgb_pair_complete':not errors and {'input-rgb16','output-rgb16'}<=payloads.keys(),
+            'capture_finished':not errors and latest('finished') is not None}
     if not enter: return result
     create=next((r for r in records if r['event']=='create_enter' and r['id']==enter['createId']),None)
     result.update(create_observed=create is not None,status=leave['status'] if leave else None,
@@ -39,7 +76,7 @@ def analyze(path):
         result['input_image']=image(a,0)
         edge,count,address=struct.unpack_from('<IIQ',a,0x370)
         result['color_lut']={'edge':edge,'element_count':count,'address':hex(address),
-                             'element_type':'uint16','payload_captured':False,
+                             'element_type':'uint16','payload_captured':payloads.get('color-lut',{}).get('size')==count*2,
                              'extent_consistent':count==3*edge**3,
                              'expected_bytes':6*edge**3}
         result['known_input_fields']={name:struct.unpack_from('<'+fmt,a,offset)[0] for name,offset,fmt in [
