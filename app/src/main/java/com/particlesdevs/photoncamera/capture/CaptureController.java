@@ -2991,7 +2991,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mLiveRawRouter.clear();
                 mNativeRawPslCapture = true;
             }
-            if(nativePsl) {
+            if(nativePsl || stockPlan!=null) {
+                mLiveRawRouter.clear();
                 mNativeRawPslCapture=true;mZslCapturing=true;
                 if(!hybridZslRequested) synchronized(mZslBufferLock) {
                     for(Image image:mZslRingBuffer)image.close();
@@ -3513,7 +3514,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     mImageSaver.discardFrames();
                                 }
                             } finally {
-                                if (nativePsl || niceZslRequested) {
+                                if (nativePsl || niceZslRequested || stockPlan!=null) {
                                     mNativeRawPslCapture=false;mZslCapturing=false;mLiveRawRouter.clear();
                                 }
                                 if (hybridZslRequested) {
