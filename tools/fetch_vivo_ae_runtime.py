@@ -2,7 +2,8 @@
 import argparse
 import gzip
 import hashlib
-import lzma
+import runpy
+import tempfile
 from pathlib import Path
 from urllib.request import urlopen
 import zipfile
@@ -16,6 +17,21 @@ def verify(data):
     binary = gzip.decompress(data)
     if hashlib.sha256(binary).hexdigest() != SHA:
         raise ValueError('AE runtime SHA-256 mismatch')
+
+
+def fetch_runtime():
+    with urlopen(URL, timeout=120) as response:
+        archive = response.read()
+    with tempfile.TemporaryDirectory(prefix='scamera-ae-') as temporary:
+        root = Path(temporary)
+        source, output = root / 'official.xz', root / 'frida-inject'
+        source.write_bytes(archive)
+        # Preserve the audited removal of Frida's automatic global policy rewrite.
+        prepare = runpy.run_path(str(Path(__file__).parent / 'vivo-tce-live/prepare_injector.py'))['prepare']
+        prepare(source, output)
+        packed = gzip.compress(output.read_bytes(), compresslevel=9, mtime=0)
+        verify(packed)
+        return packed
 
 
 def main():
@@ -35,10 +51,7 @@ def main():
     if output.is_file():
         verify(output.read_bytes())
     else:
-        with urlopen(URL, timeout=120) as response:
-            binary = lzma.decompress(response.read())
-        packed = gzip.compress(binary, compresslevel=9, mtime=0)
-        verify(packed)
+        packed = fetch_runtime()
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(packed)
     print('PASS: pinned AE injector SHA-256')

@@ -29,8 +29,11 @@ public final class VivoStockAe implements AutoCloseable {
 
     public VivoStockAe(Context context,int generation,String cameraId) {
         this.context=context.getApplicationContext();this.generation=generation;
-        // Calibration below was measured on this physical camera in Camera2 RAW.
-        if(!"3".equals(cameraId)) {failure="Стоковый AE: gain-калибровка этой камеры ещё не проверена";return;}
+        // Calibration was measured separately on all three rear RAW cameras.
+        if(!"PD2454".equals(android.os.Build.DEVICE) ||
+                !("3".equals(cameraId)||"4".equals(cameraId)||"5".equals(cameraId))) {
+            failure="Стоковый AE: gain-калибровка этой камеры ещё не проверена";return;
+        }
         Thread worker=new Thread(this::run,"SCAMERA-stock-AE");worker.setDaemon(true);worker.start();
     }
     private static final class Preview {
