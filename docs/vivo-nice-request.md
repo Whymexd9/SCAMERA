@@ -196,8 +196,36 @@ manual capture path. It does not apply the plan or assert RAW-series delivery.
 The Android bridge check now also compares all 384 native payloads with these
 snapshots, including split partials and invalid identity/metadata cases.
 
-The recorded phone filesystem contains
-`/system/framework/vivo-camera-framework.jar`; its bytes are absent from the
-available donor archives and exact Library filename search. This framework is
-the next source needed to inspect the stock reflected VCF2 service contract.
-No APK was built.
+The subsequently supplied `vivo-camera-framework.jar` is now inspected; see
+the transport boundary below. No APK was built.
+
+## Framework transport boundary (2026-09-21)
+
+Framework SHA256:
+`5da51afefe3c2902697f57d466525f83ea62c221303f0c664cac15c3c0ef685b`.
+
+`VivoVcf2Device` implements the actual reflected open/initialize/close API and
+all nine `IVivoCameraDeviceCb` callbacks. It uses the application's real Context;
+there is no identity substitution or hidden-API restriction bypass. Method
+signatures and VIFResult inheritance are checked before opening the service.
+Framework initialize returns void and its wrapper swallows RemoteException:
+return from open is not proof of pipeline readiness or successful capture.
+
+VIFResult extends CaptureResult, but its constructor supplies frame number -1
+and its own long capture ID. The adapter preserves that ID and does not turn
+it into a normal Camera2 result with an invented request/frame association.
+Callbacks are posted to the caller's Handler because the framework invokes
+them under its device lock. Buffer FDs are closed after callback delivery,
+rejected posting, consumer failure or connection teardown. Consumers retaining
+data must duplicate the descriptor before returning. Format and layout remain
+opaque; the adapter does not treat a format-35 buffer as RAW.
+
+`onVOPCaptureDone` exists in the framework, but the supplied stock APK's
+`Vcf2CameraManager$1.onVOPCaptureDone` immediately returns without handling it.
+Its presence alone does not establish an ImageReader RAW-series route.
+
+`python tools/check_vivo_vcf2_device.py /path/to/vivo-camera-framework.jar`
+verifies the actual DEX signatures and runs 28 host callback/ownership checks.
+The adapter is not opened by CaptureController yet. Session/request routing,
+complete RAW-series delivery and activation of the AE request plan remain
+unfinished. No APK was built.
