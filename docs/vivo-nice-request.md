@@ -229,3 +229,25 @@ verifies the actual DEX signatures and runs 28 host callback/ownership checks.
 The adapter is not opened by CaptureController yet. Session/request routing,
 complete RAW-series delivery and activation of the AE request plan remain
 unfinished. No APK was built.
+
+### VCF2 request submission is not the legacy burst writer
+
+The stock `VcfCaptureParameter.doSubmit` constructs one VRequest for a normal
+capture (`0394..03a0`). Before constructing it, it writes two Long vendor fields:
+
+- `vivo.capability.capture.id`: capture ID if VIF is enabled, otherwise zero
+  (`0310..0340`). The enable decision comes from the algorithm request after
+  common and single-frame commands have run, not from presence of preview AE.
+- `vivo.control.globalCaptureId`: the capture ID (`0346..0356`).
+
+`applyTargets` adds the session's total capture surfaces. `applyAlgoParameters`
+in this class is empty; the relevant processing parameters come from the
+template and executed command lists. `addCaptureIdIntoRequestExtension` also
+places the ID in the Java request tag for app-side bookkeeping.
+
+This path cannot be replaced with `plan.frameCount` applications of the legacy
+`applyExposureFields` method. Internal HAL series count, number of submitted
+Camera2 requests and number of VIF output buffers are distinct quantities.
+The callback receiver alone does not complete the missing template, session,
+command-list and output-processing integration. The current manual seven-input
+NICE graph is still active. No full-port test APK is available.
