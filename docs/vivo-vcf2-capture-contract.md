@@ -174,11 +174,13 @@ not change the current photographic path or establish artifact removal.
 
 ## Scope and reference-calibration connection (2026-09-20)
 
-User clarification: port the automatic photographic processing path with the
-existing sensor mode. Stock sensor-mode switching, remosaic-mode transitions
-and stock camera session reconfiguration are outside this task. Dynamic ZSL,
-exposure brackets, motion, reconstruction and tone remain in scope; they must
-operate on the existing RAW stream.
+Updated user clarification (2026-09-21), superseding the original scope here:
+do not switch sensor modes. All other changes needed for the stock processing
+port are allowed, including camera session reconfiguration, stream changes,
+AE and VCF2 frame delivery. Retaining the existing camera session and RAW stream
+is no longer a requirement. Dynamic ZSL, exposure brackets, motion,
+reconstruction and tone remain in scope. Any stock session or stream path must
+still preserve the sensor mode; stock behavior alone does not establish that.
 
 The active NICE path now retains the full timestamp-matched CaptureResult in
 ImageFrame. After reference selection, HdrxProcessor reloads dynamic processing
