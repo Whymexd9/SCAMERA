@@ -11,13 +11,14 @@ child=$!
 (
     exec 4<"$directory/events"
     while IFS= read -r line <&4; do
-        printf '%s\n' "$line"
         case "$line" in
-            *'"event":"attached"'*)
+            'SCAMERA_AE_CONTEXT '*)
                 : >"$directory/attached"
+                printf '%s\n' "$line"
                 exec cat <&4
                 ;;
         esac
+        printf '%s\n' "$line"
     done
 ) &
 pump=$!
