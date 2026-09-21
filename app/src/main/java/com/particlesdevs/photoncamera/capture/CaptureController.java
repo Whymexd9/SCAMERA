@@ -2109,7 +2109,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             Log.d(TAG, "CaptureStarted!");
 
-            final Surface niceRawSurface = niceSequence != null ? mImageReaderRaw.getSurface() : null;
             final long[] baseFrameNumber = {0};
             final int[] maxFrameCount = {frameCount};
 

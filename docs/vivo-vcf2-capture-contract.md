@@ -363,8 +363,8 @@ stream; final producer-to-queue mode/context translation; exposure-code consumer
 and measured future-frame association; compatible graph dispatch for variable
 series. Neither reading an EV code as stops nor copying a single 4+1 trace is a
 valid substitute. The capture controller therefore still reports stockVcfPlan=false.
-The v7 hook set also needs a phone trace; no device connection is available in
-this workspace. No full-port APK or stock-parity claim is made.
+The v8 split-getter hooks have now been validated by a phone trace; no direct
+device connection is available in this workspace. No full-port APK or stock-parity claim is made.
 
 ### v7 observation and v8 coverage
 
@@ -378,3 +378,20 @@ against the pinned libvcf_session.so. It records getters for unknown queues
 within the same bounded window, but excludes them from associated future
 delivery evidence. These additional hooks still require phone validation;
 no claim of full ZSL/bracket parity follows from this trace.
+
+### v8 complete queue observation
+
+`CqyFNMG0` records one queue preparing 4 past + 3 future frames. Four separate
+getPastBuffers calls return IDs 63,64,65,66; three getNextBuffers calls return
+83,84,85. Each call returns 1 and appends a distinct non-null shared pointer.
+All seven calls refer to the prepared queue. The last returns 268 ms after
+NICE entry; provider PID 28598 remains present at the end of observation.
+The alternate native EV codes are -100,-200,100; no shutter/ISO conversion
+is established by those codes. Producer replay passes for both 4+1 and 4+3.
+This proves queue delivery in the stock session, not SCAMERA scene inference
+or model dispatch. The archive contains historical v5 crash records.
+
+The debugCapture method also contained an out-of-scope niceSequence reference;
+it has been removed. Host sequence validation covers a 4-past/3-future shape
+with reordered results/RAWs. These synthetic timestamps and measured values
+exercise association only; they do not substitute for vendor frame metadata.

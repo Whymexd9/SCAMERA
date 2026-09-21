@@ -45,6 +45,15 @@ public class Check {
   var mismatch=new VivoNiceCaptureSequence(requests,zsl);mismatch.completed(a,result(b,40));rejects(mismatch::requireCompleteMetadata);
   var failed=new VivoNiceCaptureSequence(requests,zsl);failed.completed(a,result(a,40));failed.completed(b,result(b,50));failed.failed("buffer lost");rejects(failed::requireCompleteMetadata);
   var invalid=new VivoNiceCaptureSequence(requests,zsl);var r=result(a,40);r.put(CaptureResult.SENSOR_EXPOSURE_TIME,0L);invalid.completed(a,r);rejects(invalid::requireCompleteMetadata);
+  var q3=List.of(request(2,0,ImageFrame.CaptureRole.SHORT),request(2,1,ImageFrame.CaptureRole.SHORT),request(2,2,ImageFrame.CaptureRole.LONG));
+  var p4=List.of(past(63),past(64),past(65),past(66));
+  var stockShape=new VivoNiceCaptureSequence(q3,p4);
+  for(int i=2;i>=0;--i)stockShape.completed(q3.get(i),result(q3.get(i),83+i));
+  var all7=new ArrayList<ImageFrame>(p4);all7.add(raw(85));all7.add(raw(83));all7.add(raw(84));
+  stockShape.bindAndValidate(all7);
+  check(stockShape.futureCount==3&&stockShape.frameCount==7);
+  check(all7.get(4).getCaptureRole()==ImageFrame.CaptureRole.LONG);
+  check(all7.get(5).getCaptureRole()==ImageFrame.CaptureRole.SHORT);
   var onlyPast=new VivoNiceCaptureSequence(List.of(),zsl);onlyPast.bindAndValidate(zsl);check(onlyPast.futureCount==0);
   var onlyFuture=new VivoNiceCaptureSequence(requests,List.of());onlyFuture.completed(a,result(a,40));onlyFuture.completed(b,result(b,50));onlyFuture.bindAndValidate(List.of(raw(50),raw(40)));
   rejects(()->new VivoNiceCaptureSequence(List.of(),List.of()));
