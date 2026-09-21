@@ -10,7 +10,8 @@ import zipfile
 
 SHA = '4952c58fa7f3caca7816e5e8a2b8be9c2b88b95a28110296504007b661c2fc4f'
 URL = 'https://github.com/frida/frida/releases/download/17.18.0/frida-inject-17.18.0-android-arm64.xz'
-ASSET = 'assets/vivo-aec/frida-inject.gz'
+# AAPT treats the .gz suffix specially; keep the compressed payload opaque.
+ASSET = 'assets/vivo-aec/frida-inject.bin'
 
 
 def verify(data):

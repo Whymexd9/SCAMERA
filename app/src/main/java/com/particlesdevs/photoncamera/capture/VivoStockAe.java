@@ -173,7 +173,7 @@ public final class VivoStockAe implements AutoCloseable {
     private void observeOnce() {
         try {
             System.loadLibrary("vivoAe");
-            File injector=asset("frida-inject.gz",true),script=asset("observer.js",false),policy=asset("policy-fix.sh",false),runner=asset("observer-run.sh",false);
+            File injector=asset("frida-inject.bin",true),script=asset("observer.js",false),policy=asset("policy-fix.sh",false),runner=asset("observer-run.sh",false);
             String command="set -e; test \"$(sha256sum /vendor/lib64/camera/components/com.vivo.stats.aec.so | cut -d ' ' -f 1)\" = "+DONOR
                 +"; p=$(pidof vendor.qti.camera.provider-service_64); case \"$p\" in ''|*[!0-9]*) exit 21;; esac; "
                 +"sh "+quote(policy.getAbsolutePath())+" \"$p\" >&2; chmod 700 "+quote(injector.getAbsolutePath())
