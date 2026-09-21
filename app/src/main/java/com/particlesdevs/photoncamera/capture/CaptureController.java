@@ -100,6 +100,9 @@ import org.jetbrains.annotations.TestOnly;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -220,6 +223,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public static volatile CaptureResult mPreviewCaptureResult;
     private VivoNiceAeSnapshot mNiceShutterAe;
+    private VivoVcf2Capture mVcfCapture;
+    private ImageReader mVcfJpegReader;
+    private boolean mUseVcfCapture;
+    private String mVcfFailure;
+    private static final java.util.concurrent.atomic.AtomicLong VCF_IDS =
+            new java.util.concurrent.atomic.AtomicLong();
     public static CaptureRequest mPreviewCaptureRequest;
     public static int mPreviewTargetFormat = ImageFormat.JPEG;
     public boolean isDualSession = false;
@@ -1107,6 +1116,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mShotInProgress = false;
         }
         clearZslPreviewFrames();
+        closeVcfCapture();
         LiveRawFrame.setEnabled(false);
         mLiveRawSession = false;
         mNativeRawPslCapture = false;
@@ -1751,7 +1761,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean nicePreview = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     && !isBurstSession && !mIsRecordingVideo
                     && PreferenceKeys.isVivoNiceEnabled();
-            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
+            closeVcfCapture();
+            mUseVcfCapture = nicePreview;
+            mVcfFailure = null;
+            if (mUseVcfCapture) prepareVcfCapture(generation);
+            mLiveRawSession = !mUseVcfCapture && photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
                     && mTargetFormat == ImageFormat.RAW_SENSOR && PreferenceKeys.isLiveViewfinderRawEnabled();
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
@@ -1797,9 +1811,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
                             if (nicePreview) {
                                 try {
-                                    VivoNicePreview.applyRepeating(mPreviewRequestBuilder);
-                                    Log.i("NICE_CAPTURE", "preview NICE AUTO enabled; VCF2 capture not yet active");
+                                    VivoVcf2PhotoProfile.session(mPreviewRequestBuilder,
+                                            mVcfJpegReader.getWidth(), mVcfJpegReader.getHeight(),
+                                            physicalID, !Objects.equals(physicalID, logicalID));
+                                    VivoVcf2PhotoProfile.repeating(mPreviewRequestBuilder);
+                                    Log.i("NICE_CAPTURE", "preview NICE AUTO; capture route=VCF2");
                                 } catch (IllegalArgumentException unsupported) {
+                                    mVcfFailure = unsupported.getMessage();
                                     Log.w("NICE_CAPTURE", "NICE preview controls unavailable", unsupported);
                                 }
                             }
@@ -1858,6 +1876,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             return;
                         }
                         if (retryWithoutLiveRaw(cameraCaptureSession)) return;
+                        if (mUseVcfCapture) mVcfFailure = "VCF2 session configuration failed";
                         showToast(activity.getString(R.string.session_on_configure_failed));
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
                     }
@@ -1874,9 +1893,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     try {
                         CaptureRequest.Builder niceSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
-                        VivoNicePreview.applySession(niceSession);
+                        VendorTagUtils.builderSessionApply(niceSession, false, useMaximumResolutionKey, physicalID);
+                        VivoVcf2PhotoProfile.session(niceSession, mVcfJpegReader.getWidth(),
+                                mVcfJpegReader.getHeight(), physicalID, !Objects.equals(physicalID, logicalID));
                         configuration.setSessionParameters(niceSession.build());
                     } catch (IllegalArgumentException unsupported) {
+                        mVcfFailure = unsupported.getMessage();
                         Log.w("NICE_CAPTURE", "NICE session control unavailable", unsupported);
                     }
                 }
@@ -1904,6 +1926,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @NotNull
     private List<Surface> configureSurfaces(boolean isBurstSession) {
+        if (mUseVcfCapture) return Arrays.asList(surface, mVcfJpegReader.getSurface());
         List<Surface> surfaces = Arrays.asList(surface, mImageReaderPreview.getSurface());
         if (isDualSession) {
             if (isBurstSession) {
@@ -1958,7 +1981,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 while ((stale = mImageReaderRaw.acquireNextImage()) != null) stale.close();
             } catch (Exception ignored) {}
         }
-        if (isZslMode() || mLiveRawSession) {
+        if (!mUseVcfCapture && (isZslMode() || mLiveRawSession)) {
             // Still-photo modes keep the RAW ring; outside them the RAW stream
             // was never part of the repeating request and the raw viewfinder
             // had nothing to develop. It needs the stream in every mode.
@@ -2022,6 +2045,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     +" shortRequested="+PreferenceKeys.getShortFrameCountValue());
             mShotInProgress = true;
             final long shotGeneration = ++mShutterGeneration;
+            if (mUseVcfCapture) return captureVcfPhoto();
             if (isZslMode()) {
                 captureStillPicture();
                 return true;
@@ -2066,6 +2090,143 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mState = STATE_PREVIEW;
         Log.e(TAG, "SHUTTER failed camera=" + physicalID, error);
         cameraEventsListener.onProcessingError("Не удалось запустить съёмку: " + error.getMessage());
+    }
+
+    private void closeVcfCapture() {
+        VivoVcf2Capture capture = mVcfCapture;
+        mVcfCapture = null;
+        if (capture != null) capture.close();
+        ImageReader reader = mVcfJpegReader;
+        mVcfJpegReader = null;
+        if (reader != null) reader.close();
+    }
+
+    private void prepareVcfCapture(final int generation) throws IOException {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P)
+            throw new IOException("VCF2 requires session parameters");
+        final Size size = new Size(mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight());
+        CameraCharacteristics physical = mCameraCharacteristicsMap.get(physicalID);
+        if (physical == null) physical = mCameraCharacteristics;
+        StreamConfigurationMap map = physical.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        Size[] sizes = map == null ? null : map.getOutputSizes(ImageFormat.JPEG);
+        if (sizes == null || !Arrays.asList(sizes).contains(size))
+            throw new IOException("VCF2: JPEG недоступен в текущем размере " + size);
+        mVcfJpegReader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.JPEG, 3);
+        mVcfJpegReader.setOnImageAvailableListener(reader -> {
+            // VCF2's completed image comes through Binder; release Camera2 placeholders.
+            try {
+                Image image;
+                while ((image = reader.acquireNextImage()) != null) image.close();
+            } catch (IllegalStateException closedReader) { }
+        }, mBackgroundHandler);
+        try {
+            mVcfCapture = new VivoVcf2Capture(activity, mBackgroundHandler, new VivoVcf2Capture.Listener() {
+                @Override public void onComplete(long id, byte[] jpeg, CaptureResult result) {
+                    synchronized (mPreviewStateLock) {
+                        if (generation != mSessionGeneration.get() || !isCameraResumed) return;
+                        mCaptureResult = result;
+                        mMeasuredFrameCnt = 1;
+                        isProcessing = true;
+                    }
+                    cameraEventsListener.onFrameCaptureCompleted(null);
+                    cameraEventsListener.onCaptureSequenceCompleted(null);
+                    cameraEventsListener.onProcessingStarted("VCF2 JPEG");
+                    try {
+                        processExecutor.execute(() -> saveVcfJpeg(generation, id, jpeg));
+                    } catch (RuntimeException rejected) {
+                        finishVcfSave(generation, null, rejected);
+                    }
+                }
+
+                @Override public void onFailure(long id, String reason) {
+                    synchronized (mPreviewStateLock) {
+                        if (generation != mSessionGeneration.get()) return;
+                        cameraEventsListener.onCaptureSequenceCompleted(null);
+                        failPendingShutter(new IOException(reason));
+                    }
+                }
+            });
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            mVcfFailure = "VCF2 connection: " + error;
+            Log.e("NICE_CAPTURE", mVcfFailure);
+        }
+    }
+
+    private boolean captureVcfPhoto() {
+        try {
+            if (mVcfFailure != null || mVcfCapture == null)
+                throw new IOException(mVcfFailure == null ? "VCF2 is not connected" : mVcfFailure);
+            final VivoVcf2Capture capture = mVcfCapture;
+            final int generation = mSessionGeneration.get();
+            final long id = VCF_IDS.updateAndGet(previous -> Math.max(previous + 1, System.currentTimeMillis()));
+            CaptureRequest.Builder builder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            VendorTagUtils.builderSessionApply(builder, false, useMaximumResolutionKey, physicalID);
+            VivoVcf2PhotoProfile.copyPreview(mPreviewRequestBuilder.build(), builder);
+            builder.addTarget(mVcfJpegReader.getSurface());
+            builder.set(CaptureRequest.JPEG_ORIENTATION,
+                    PhotonCamera.getGravity().getCameraRotation(mSensorOrientation));
+            mState = STATE_PICTURE_TAKEN;
+            cameraEventsListener.onFrameCountSet(1);
+            cameraEventsListener.onCaptureStillPictureStarted("VCF2");
+            cameraEventsListener.onBurstPrepared(null);
+            capture.start(builder, id, mCaptureSession, new CameraCaptureSession.CaptureCallback() {
+                @Override public void onCaptureStarted(@NonNull CameraCaptureSession session,
+                        @NonNull CaptureRequest request, long timestamp, long frameNumber) {
+                    synchronized (mPreviewStateLock) {
+                        if (generation == mSessionGeneration.get()) cameraEventsListener.onFrameCaptureStarted(null);
+                    }
+                }
+                @Override public void onCaptureFailed(@NonNull CameraCaptureSession session,
+                        @NonNull CaptureRequest request, @NonNull android.hardware.camera2.CaptureFailure failure) {
+                    capture.fail(id, "Camera2 VCF2 capture failed: " + failure.getReason());
+                }
+                @Override public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
+                    capture.fail(id, "Camera2 VCF2 capture aborted");
+                }
+            });
+            mCaptureRequest = builder.build();
+            Log.i("NICE_CAPTURE", "VCF2 submitted captureId=" + id + " Camera2Requests=1 processing=stock_HAL");
+            return true;
+        } catch (CameraAccessException | IOException | RuntimeException error) {
+            cameraEventsListener.onCaptureSequenceCompleted(null);
+            failPendingShutter(error);
+            return false;
+        }
+    }
+
+    private void saveVcfJpeg(int generation, long id, byte[] jpeg) {
+        Path temporary = null;
+        Path saved = null;
+        Exception failure = null;
+        try {
+            Path base = com.particlesdevs.photoncamera.processing.ImagePath.getNewImageFilePath("jpg");
+            Path target = base.resolveSibling("VCF_" + id + "_" + base.getFileName());
+            temporary = Files.createTempFile(target.getParent(), ".vcf-", ".tmp");
+            Files.write(temporary, jpeg);
+            try { Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE); }
+            catch (java.nio.file.AtomicMoveNotSupportedException unsupported) { Files.move(temporary, target); }
+            saved = target;
+        } catch (IOException | RuntimeException error) {
+            failure = error;
+        } finally {
+            if (temporary != null) try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+        }
+        finishVcfSave(generation, saved, failure);
+    }
+
+    private void finishVcfSave(int generation, Path saved, Exception failure) {
+        synchronized (mPreviewStateLock) {
+            isProcessing = false;
+            if (generation == mSessionGeneration.get()) {
+                mShotInProgress = false;
+                mState = STATE_PREVIEW;
+            }
+        }
+        if (failure != null) cameraEventsListener.onProcessingError("VCF2: " + failure.getMessage());
+        else {
+            cameraEventsListener.notifyImageSavedStatus(true, saved);
+            cameraEventsListener.onProcessingFinished("VCF2 JPEG saved unchanged");
+        }
     }
 
     /**

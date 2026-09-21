@@ -1,0 +1,30 @@
+name: Verify VCF2 integration without APK
+
+on:
+  push:
+    branches: [codex/zsl-bracket-completion]
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+      - run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check VCF2 request and callback state
+        run: |
+          python3 tools/check_vivo_vcf2_request.py
+          python3 tools/check_vivo_vcf2_capture.py
+      - name: Compile Android sources without packaging
+        run: bash gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
