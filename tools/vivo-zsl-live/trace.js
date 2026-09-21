@@ -15,7 +15,7 @@
     }
   };
   function emit(event,fields={}) {
-    console.log('SCAMERA_ZSL '+JSON.stringify({version:7,event,sequence:++sequence,
+    console.log('SCAMERA_ZSL '+JSON.stringify({version:8,event,sequence:++sequence,
       timeMs:Date.now(),pid:Process.id,...fields}));
   }
   function stop(reason) {
@@ -103,25 +103,40 @@
         }
       });
 
-      const delivery=module.findExportByName(spec.deliverySymbol);
-      if(!delivery || !delivery.equals(module.base.add(spec.deliveryOffset))) {
-        emit('wrong_delivery_symbol',{name:module.name});stop('unsupported_binary');return;
-      }
-      attach(delivery,{
-        onEnter(args) {
-          if(!selected || !queues.has(args[0].toString()) || calls>=192)return;
-          this.id=++calls;this.queue=args[0];this.past=args[1];this.future=args[2];this.ids=args[3];
-          emit('delivery_enter',{id:this.id,thread:this.threadId,queue:this.queue.toString(),
-            past:vector(this.past,16),future:vector(this.future,16),requestedIds:vector(this.ids,4),
-            preparations:vector(this.queue.add(0x270),144)});
-        },
-        onLeave(result) {
-          if(!this.id)return;
-          emit('delivery_leave',{id:this.id,thread:this.threadId,queue:this.queue.toString(),
-            returnBits:result.toInt32(),past:vector(this.past,16),future:vector(this.future,16),
-            requestedIds:vector(this.ids,4)});
+      const routes=[
+        {route:'combined',symbol:spec.deliverySymbol,offset:spec.deliveryOffset},
+        {route:'past',symbol:'_ZN3vcf11BufferQueue14getPastBuffersERNSt3__16vectorINS1_10shared_ptrINS_11ImageBufferEEENS1_9allocatorIS5_EEEERNS2_IjNS6_IjEEEEj',offset:0x128734},
+        {route:'future',symbol:'_ZN3vcf11BufferQueue14getNextBuffersERNSt3__16vectorINS1_10shared_ptrINS_11ImageBufferEEENS1_9allocatorIS5_EEEERNS2_IjNS6_IjEEEEj',offset:0x129f50}
+      ];
+      const snapshot=address=>address?vector(address,16):{count:0,stride:16,data:null};
+      for(const route of routes) {
+        const delivery=module.findExportByName(route.symbol);
+        if(!delivery || !delivery.equals(module.base.add(route.offset))) {
+          emit('wrong_delivery_symbol',{name:module.name,route:route.route});stop('unsupported_binary');return;
         }
-      });
+        attach(delivery,{
+          onEnter(args) {
+            if(!selected || calls>=192)return;
+            this.id=++calls;this.queue=args[0];
+            this.past=route.route==='future'?null:args[1];
+            this.future=route.route==='past'?null:args[route.route==='combined'?2:1];
+            this.ids=args[route.route==='combined'?3:2];
+            this.knownQueue=queues.has(this.queue.toString());
+            emit('delivery_enter',{id:this.id,thread:this.threadId,queue:this.queue.toString(),
+              route:route.route,knownQueue:this.knownQueue,
+              requestArgument:route.route==='combined'?null:args[3].toUInt32(),
+              past:snapshot(this.past),future:snapshot(this.future),requestedIds:vector(this.ids,4),
+              preparations:vector(this.queue.add(0x270),144)});
+          },
+          onLeave(result) {
+            if(!this.id)return;
+            emit('delivery_leave',{id:this.id,thread:this.threadId,queue:this.queue.toString(),
+              route:route.route,knownQueue:this.knownQueue,
+              returnBits:result.toInt32(),past:snapshot(this.past),future:snapshot(this.future),
+              requestedIds:vector(this.ids,4)});
+          }
+        });
+      }
     }
     installed.add(module.name);
     emit('module_ready',{name:module.name});

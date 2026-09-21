@@ -72,7 +72,7 @@ trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
 {
-  echo 'SCAMERA ZSL live trace v7'; date -u; echo "PID=$target"
+  echo 'SCAMERA ZSL live trace v8'; date -u; echo "PID=$target"
   getprop ro.build.fingerprint
   echo 'SELINUX BEFORE:'; getenforce; sha256sum /sys/fs/selinux/policy
   sha256sum /vendor/lib64/libvcf_session.so /vendor/lib64/libvivo.vas.adapter.vcf.so
@@ -88,7 +88,7 @@ fi
 chmod 700 frida-inject || exit 1
 ./frida-inject -p "$target" -s trace.js > "$run/trace.log" 2>&1 &
 helper=$!
-echo 'ZSL v7: собираются только параметры очереди и брекета, без изображений.'
+echo 'ZSL v8: собираются только параметры очереди и брекета, без изображений.'
 echo 'Сборщик запущен. Ожидание подключения...'
 now() { read task_u rest < /proc/uptime; echo "${task_u%%.*}"; }
 deadline=$(( $(now) + 100 )); announced=0; full_announced=0; status_announced=0

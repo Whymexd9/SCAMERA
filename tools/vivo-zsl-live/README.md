@@ -1,12 +1,15 @@
-# SCAMERA ZSL live v7
+# SCAMERA ZSL live v8
 
 v6 проверена трассой `30Hy1RcT`: NICE и обе очереди вернулись,
 PID provider 28598 сохранился. Получение будущего кадра v6 не наблюдала.
 
-v7 добавляет только вход/выход экспортированной `getPastAndNextBuffers`
-(0x12bb14, libvcf_session.so). Записываются ограниченные векторы shared_ptr
-прошлых/будущих буферов и ID, без чтения пикселей или вызова методов буферов.
-Наблюдаются только очереди, ранее увиденные в preparePastAndNextBuffers.
+В трассе v7 VvrJ8241 план и подготовка обеих очередей записаны, PID сохранился,
+но ни входа, ни выхода getPastAndNextBuffers нет. Это не доказывает потерю кадра.
+v8 наблюдает экспортированные getPastAndNextBuffers (0x12bb14), getPastBuffers
+(0x128734) и getNextBuffers (0x129f50) в libvcf_session.so.
+Записываются ограниченные векторы shared_ptr и ID, без чтения пикселей
+или вызова методов буферов. Наблюдаются все очереди в ограниченном окне;
+knownQueue отмечает связь с ранее наблюдавшейся подготовкой.
 Вектор BufferPrepareInfo по queue+0x270 имеет шаг 144; он остаётся сырыми байтами.
 Окно наблюдения — 30 секунд после первого плана NICE, общий предел агента — 90 секунд,
 оболочки — 100 секунд. Завершение окна не означает завершение серии.
@@ -14,12 +17,12 @@ v7 добавляет только вход/выход экспортирова�
 Открыть стоковую камеру, затем выполнить в Termux:
 
 ```sh
-su -c 'scamera_zsl_dir=$(mktemp -d /data/local/tmp/scamera-zsl.XXXXXX) && tar -xzf /sdcard/Download/SCAMERA-ZSL-Live-v1.tar.gz -C "$scamera_zsl_dir" && sh "$scamera_zsl_dir/run.sh"'
+su -c 'scamera_zsl_dir=$(mktemp -d /data/local/tmp/scamera-zsl.XXXXXX) && tar -xzf /sdcard/Download/SCAMERA-ZSL-Live-v1.tar.gz -C "$scamera_zsl_dir" && grep -q "version:8" "$scamera_zsl_dir/trace.js" && sh "$scamera_zsl_dir/run.sh"'
 ```
 
 После `NICE ПОДКЛЮЧЁН` сделать один снимок Фото, 1×, вернуться в Termux,
 дождаться `ГОТОВО`. Результат: Download/SCAMERA/scamera-zsl-trace.*.tar.gz.
-Новый перехват v7 проверен локально; на телефоне ещё не проверен.
+Новые перехваты v8 проверен локально; на телефоне ещё не проверен.
 
 ## Проверяемые границы
 
@@ -36,7 +39,7 @@ su -c 'scamera_zsl_dir=$(mktemp -d /data/local/tmp/scamera-zsl.XXXXXX) && tar -x
 
 Падение v5 подтверждено tombstone_26 из 09UAIDGg: SIGILL по смещению
 0x1417f4 внутри literal-данных патча перехвата 0x1417e8. Этот перехват удалён.
-Три текущих перехвата стоят на экспортированных входах функций.
+Пять текущих перехватов стоят на экспортированных входах функций.
 
 ## Анализ
 
@@ -47,7 +50,7 @@ python3 check_runner.py
 ```
 
 Анализ разделяет query/произведённый план, очередь и выдачу буферов.
-`futureDeliveryObserved` требует возврата 1, роста future-вектора с ненулевыми
+`futureDeliveryObserved` требует известной очереди, возврата 1, роста future-вектора с ненулевыми
 указателями и сохранения его прежнего префикса. Это не проверка содержимого RAW,
 экспозиций или входа нейросети. ID общие для нескольких очередей, повторы нельзя
 считать новыми временными кадрами. Native gain/shutter не переводятся в Camera2.

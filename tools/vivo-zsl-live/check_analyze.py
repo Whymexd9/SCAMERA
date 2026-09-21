@@ -29,3 +29,14 @@ for field,value in [('returnBits',0),('future',refs(0x100000000)),
     assert not analyze(trace+[a,failed])['futureDeliveryObserved'],(field,value)
 assert not analyze(trace+[a])['futureDeliveryObserved']
 print('PASS: real v6 trace decoded; prepare/timeout, failed return, null future, unchanged or replaced vectors do not prove future delivery')
+
+unknown_a=copy.deepcopy(a); unknown_b=copy.deepcopy(b)
+unknown_a.update(queue="0xunknown", knownQueue=False, route="future")
+unknown_b.update(queue="0xunknown", knownQueue=False, route="future")
+assert not analyze(trace+[unknown_a,unknown_b])["futureDeliveryObserved"]
+split_a=copy.deepcopy(a); split_b=copy.deepcopy(b)
+split_a.update(route="future",knownQueue=True,past=refs())
+split_b.update(route="future",knownQueue=True,past=refs())
+assert analyze(trace+[split_a,split_b])["futureDeliveryObserved"]
+assert analyze(trace+[split_a,split_b])["deliveries"][0]["route"] == "future"
+print("PASS: split future delivery recognized; unrelated queue excluded")

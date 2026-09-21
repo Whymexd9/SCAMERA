@@ -365,3 +365,16 @@ series. Neither reading an EV code as stops nor copying a single 4+1 trace is a
 valid substitute. The capture controller therefore still reports stockVcfPlan=false.
 The v7 hook set also needs a phone trace; no device connection is available in
 this workspace. No full-port APK or stock-parity claim is made.
+
+### v7 observation and v8 coverage
+
+Trace `VvrJ8241` records NICE 4 past + 1 future, producer catch mode 4,
+and two successful prepare calls with catch mode 6 and appended IDs 100–103.
+Provider PID 28598 remains present. Neither entry nor return of the combined
+getter was recorded; this does not establish a failed buffer delivery.
+Collector v8 additionally observes exported `getPastBuffers` (0x128734) and
+`getNextBuffers` (0x129f50), whose addresses and argument layouts were checked
+against the pinned libvcf_session.so. It records getters for unknown queues
+within the same bounded window, but excludes them from associated future
+delivery evidence. These additional hooks still require phone validation;
+no claim of full ZSL/bracket parity follows from this trace.

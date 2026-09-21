@@ -81,7 +81,9 @@ def analyze(trace):
     deliveries = []
     for enter in [e for e in trace if e["event"] == "delivery_enter"]:
         leave = next((e for e in trace if e["event"] == "delivery_leave" and e["id"] == enter["id"]), None)
-        item = dict(queue=enter["queue"], call=enter["id"], returned=leave is not None)
+        item = dict(queue=enter["queue"], call=enter["id"], returned=leave is not None,
+                    route=enter.get("route", "combined"),
+                    knownQueue=enter.get("knownQueue", any(q["queue"]==enter["queue"] for q in queues)))
         if leave:
             # Vector growth is evidence of delivery, not merely preexisting buffers.
             before_past = references(enter["past"])
@@ -97,7 +99,7 @@ def analyze(trace):
     return dict(version=nice["version"], pid=nice["pid"], query=dict(past=past, future=future,
         alternateExposureMode=alternate), producerCatchMode=struct.unpack_from("<I",control,0xb18)[0],
         frames=records, queues=queues, deliveries=deliveries,
-        futureDeliveryObserved=any(d.get("returnBits")==1 and d.get("futureAdded",0)>0 and d.get("futureAppendValid") for d in deliveries),
+        futureDeliveryObserved=any(d.get("knownQueue") and d.get("returnBits")==1 and d.get("futureAdded",0)>0 and d.get("futureAppendValid") for d in deliveries),
         limitations=["No proof of scene/AE solver parity", "No proof of RAW pixels or NICE model inputs",
                     "Native gain/shutter units are not Camera2 conversions"])
 
