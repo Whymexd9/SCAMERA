@@ -42,7 +42,8 @@ def main():
         with zipfile.ZipFile(args.apk) as apk:
             verify(apk.read(ASSET))
             for name in ('lib/arm64-v8a/libvivoAe.so', 'assets/vivo-aec/observer.js',
-                         'assets/vivo-aec/policy-fix.sh', 'assets/vivo-aec/COPYING.frida'):
+                         'assets/vivo-aec/policy-fix.sh', 'assets/vivo-aec/observer-run.sh',
+                         'assets/vivo-aec/COPYING.frida'):
                 if not apk.read(name):
                     raise ValueError('Empty AE artifact: ' + name)
         print('PASS: APK stock AE runtime and pinned injector SHA-256')

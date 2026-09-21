@@ -165,26 +165,36 @@ public final class VivoStockAe implements AutoCloseable {
         return output;
     }
     private void run() {
+        while(!closed) {
+            observeOnce();
+            if(!closed)try{Thread.sleep(1000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
+        }
+    }
+    private void observeOnce() {
         try {
             System.loadLibrary("vivoAe");
-            File injector=asset("frida-inject.gz",true),script=asset("observer.js",false),policy=asset("policy-fix.sh",false);
+            File injector=asset("frida-inject.gz",true),script=asset("observer.js",false),policy=asset("policy-fix.sh",false),runner=asset("observer-run.sh",false);
             String command="set -e; test \"$(sha256sum /vendor/lib64/camera/components/com.vivo.stats.aec.so | cut -d ' ' -f 1)\" = "+DONOR
                 +"; p=$(pidof vendor.qti.camera.provider-service_64); case \"$p\" in ''|*[!0-9]*) exit 21;; esac; "
                 +"sh "+quote(policy.getAbsolutePath())+" \"$p\" >&2; chmod 700 "+quote(injector.getAbsolutePath())
-                +"; "+quote(injector.getAbsolutePath())+" -p \"$p\" -s "+quote(script.getAbsolutePath())
-                +" </dev/null & child=$!; trap 'kill -TERM \"$child\" 2>/dev/null || true' EXIT; cat >/dev/null; kill -TERM \"$child\" 2>/dev/null || true; wait \"$child\"";
+                +"; exec sh "+quote(runner.getAbsolutePath())+" "+quote(injector.getAbsolutePath())+" \"$p\" "
+                +quote(script.getAbsolutePath())+" "+quote(injector.getParent());
             Process child=new ProcessBuilder("su","-c",command).start();
             synchronized(this){process=child;if(closed){child.getOutputStream().close();return;}}
             Thread errors=new Thread(()->{try(BufferedReader r=new BufferedReader(new InputStreamReader(child.getErrorStream()))){String line;while((line=r.readLine())!=null)android.util.Log.w("NICE_AE",line);}catch(IOException ignored){}},"SCAMERA-AE-errors");errors.setDaemon(true);errors.start();
             try(BufferedReader reader=new BufferedReader(new InputStreamReader(child.getInputStream()))) {
                 String line;while(!closed && (line=reader.readLine())!=null) {
                     if(line.length()>262144)throw new IOException("AE event extent");
-                    if(line.startsWith("SCAMERA_AE_CONTEXT "))try{event(new JSONObject(line.substring(19)));}
-                    catch(Exception invalid){synchronized(this){failure=invalid.toString();latest=null;pending.clear();}}
+                    if(line.startsWith("SCAMERA_AE_CONTEXT ")) {
+                        JSONObject message=new JSONObject(line.substring(19));
+                        if("finished".equals(message.optString("event")))throw new IOException("AE observer interval ended");
+                        try{event(message);}
+                        catch(Exception invalid){synchronized(this){failure=invalid.toString();latest=null;pending.clear();}}
+                    }
                 }
             }
         }catch(Exception|LinkageError error){synchronized(this){failure="Стоковый AE: "+error;latest=null;}}
-        finally{closeProcess();}
+        finally{synchronized(this){latest=null;pending.clear();snapshots.clear();previews.clear();}closeProcess();}
     }
     private synchronized void closeProcess(){if(process!=null)try{process.getOutputStream().close();}catch(IOException ignored){}process=null;}
     @Override public synchronized void close(){closed=true;latest=null;pending.clear();snapshots.clear();previews.clear();closeProcess();}

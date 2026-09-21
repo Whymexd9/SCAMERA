@@ -92,5 +92,6 @@
     emit('ready');
   }
   observer=Process.attachModuleObserver({onAdded(m){try{install(m);}catch(error){emit('error',{error:String(error)});stop('install_error');}}});
+  emit('attached');
   setTimeout(()=>stop('session_limit'),1800000);
 })();
