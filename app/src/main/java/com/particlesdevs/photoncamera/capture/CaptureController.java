@@ -1748,6 +1748,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
+            final boolean nicePreview = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
+                    && !isBurstSession && !mIsRecordingVideo
+                    && PreferenceKeys.isVivoNiceEnabled();
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
                     && mTargetFormat == ImageFormat.RAW_SENSOR && PreferenceKeys.isLiveViewfinderRawEnabled();
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
@@ -1792,6 +1795,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             applyAeMeteringRegions(mPreviewRequestBuilder);
                             Camera2ApiAutoFix.applyPrev(mPreviewRequestBuilder);
                             VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
+                            if (nicePreview) {
+                                try {
+                                    VivoNicePreview.applyRepeating(mPreviewRequestBuilder);
+                                    Log.i("NICE_CAPTURE", "preview NICE AUTO enabled; VCF2 capture not yet active");
+                                } catch (IllegalArgumentException unsupported) {
+                                    Log.w("NICE_CAPTURE", "NICE preview controls unavailable", unsupported);
+                                }
+                            }
                             //if(isZslMode()){
                                 try {
                                     mPreviewRequestBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
@@ -1859,6 +1870,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         processExecutor,
                         stateCallback
                 );
+                if (nicePreview) {
+                    try {
+                        CaptureRequest.Builder niceSession = sessionDevice.createCaptureRequest(
+                                CameraDevice.TEMPLATE_PREVIEW);
+                        VivoNicePreview.applySession(niceSession);
+                        configuration.setSessionParameters(niceSession.build());
+                    } catch (IllegalArgumentException unsupported) {
+                        Log.w("NICE_CAPTURE", "NICE session control unavailable", unsupported);
+                    }
+                }
                 mCameraDevice.createCaptureSession(configuration);
             } else {
                 mCameraDevice.createCaptureSession(surfaces, stateCallback, mBackgroundHandler);
