@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <limits>
+#include <chrono>
 
 namespace vivo_nice {
 // NCH scene snapshot, deliberately separate from TCE's internal exposure
@@ -31,6 +32,7 @@ struct Burst {
     int w=0,h=0,cfa=0;
     int noiseReferenceSlot=0; // v1-v3 noise belongs to N; v4 belongs to L
     float white=0;
+    float normCoefficient=forwardNormCoefficient, noiseScale=1.f;
     NiceNoise noise{},normalNoise{}; bool hasNormalNoise=false; bool cameraNoise=false,diagnostics=false,canonicalRggb=false;
     std::array<float,4> black{};
     std::array<float,7> exposure{}; // sensor exposure products relative to N ref
@@ -60,7 +62,7 @@ struct MappedNiceBurst {
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
             uint32_t h[32];std::memcpy(h,address,128);
-            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>7) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
+            if(h[0]!=0x3143484e || (h[1]<1 || h[1]>8) || h[2]<64 || h[3]<64 || h[2]%2 || h[3]%2 ||
                uint64_t(h[2])*h[3]>16000000 || h[4]>3 || h[5]!=7)
                 throw std::runtime_error("Unsupported NICE dimensions/CFA/header");
             burst.w=int(h[2]);burst.h=int(h[3]);burst.cfa=int(h[4]);
@@ -81,7 +83,14 @@ struct MappedNiceBurst {
                     throw std::runtime_error("Invalid normal-reference noise profile");
                 burst.hasNormalNoise=true;
             }
-            for(int i=h[1]>=5?30:h[1]>=2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
+            if(h[1]>=8) {
+                std::memcpy(&burst.normCoefficient,h+30,4);
+                std::memcpy(&burst.noiseScale,h+31,4);
+                if(!std::isfinite(burst.normCoefficient)||burst.normCoefficient<.55f||burst.normCoefficient>2.2f||
+                   !std::isfinite(burst.noiseScale)||burst.noiseScale<.25f||burst.noiseScale>4.f)
+                    throw std::runtime_error("Invalid NICE internal VST tuning");
+            }
+            for(int i=h[1]>=8?32:h[1]>=5?30:h[1]>=2?28:25;i<32;++i)if(h[i])throw std::runtime_error("NICE reserved header");
             if(!std::isfinite(burst.white)||burst.white>65535)throw std::runtime_error("NICE white level");
             for(float b:burst.black)if(!std::isfinite(b)||b<0||b+1>=burst.white)throw std::runtime_error("NICE black level");
             for(int i=0;i<7;++i) {
@@ -273,7 +282,13 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                                       const std::function<void(const std::string&)>& report,
                                       const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={},
                                       const NiceAlignment& alignment={}) {
+    using Clock=std::chrono::steady_clock;
+    const auto started=Clock::now();
+    auto millis=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
     Burst b=sensor;b.canonicalRggb=true;
+    if(!std::isfinite(b.normCoefficient)||b.normCoefficient<.55f||b.normCoefficient>2.2f||
+       !std::isfinite(b.noiseScale)||b.noiseScale<.25f||b.noiseScale>4.f)
+        throw std::runtime_error("Invalid NICE internal VST tuning");
     constexpr int tile=forwardTileSize;
     std::array<Warp,7> warp;
     std::array<BackwardHomography,7> projective;
@@ -284,18 +299,28 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         auto ref=guides(b,forwardReferenceSlot);
         for(int f=0;f<7;++f)warp[f]=align(b,ref,f);
     }
+    const auto motionFinished=Clock::now();
+    double inferenceMs=0;
     std::array<std::vector<uint16_t>,7> luts;
     const auto domains=forwardExposureDomains(b.exposure);
     if(b.cameraNoise && b.iso[b.noiseReferenceSlot]!=b.iso[4])
         throw std::runtime_error("Legacy NICE capture lacks the long-reference noise profile; NCH v4 required");
-    const auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[4]);
+    auto n=b.cameraNoise?b.noise:imx06cHdrNoise(b.iso[4]);
+    const auto calibratedNoise=n;
+    n.slope*=b.noiseScale;n.offset*=b.noiseScale;
+    report("NICE INTERNAL TUNING: normCoefficient="+std::to_string(b.normCoefficient)
+        +" noiseVarianceScale="+std::to_string(b.noiseScale)
+        +" calibratedSlope="+std::to_string(calibratedNoise.slope)
+        +" calibratedOffset="+std::to_string(calibratedNoise.offset)
+        +" effectiveSlope="+std::to_string(n.slope)+" effectiveOffset="+std::to_string(n.offset)
+        +" learnedDenoise=fixed_weights learnedSharpen=fixed_weights TCE=not_connected");
     // The bundled graph was trained with a fixed ISO-50 normalization.
     // Camera2 noise may describe the frame but must not change the network's
     // tensor scale on every shot. Use the same normalization for VST and IVST.
     const auto baseline=imx06cHdrNoise(50);
     // ISO-50 norm is fixed; ref/refn noise and refNEV belong to L. The
     // output remains normal-reference linear RGB for the downstream adapter.
-    float norm=forwardNormCoefficient*(2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375)));
+    float norm=b.normCoefficient*(2*std::sqrt(1.0f/baseline.slope+float(double(baseline.offset)/(double(baseline.slope)*baseline.slope)+.375)));
     const float range=domains.normalEV;
     const float sqrtEV=std::sqrt(domains.normalizationEV);
     VstMode2 p{0,n.slope,n.slope,n.offset,1,domains.normalizationEV,norm,1,{1,1,1},14,16};
@@ -308,7 +333,7 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     uint16_t mask=uint16_t(vstMask*65535);
     report(std::string("NICE calibration source=")+(b.cameraNoise?"transport noise profile":"legacy IMX06C")+" ISO="+std::to_string(b.iso[4])+" slope="+std::to_string(n.slope)+" normalizationISO=50 norm="+std::to_string(norm)+" mask="+std::to_string(vstMask)+" normalEV="+std::to_string(range)+" refNEV="+std::to_string(domains.normalizationEV));
     report("NICE input: reference in slot 0; canonical RGGB; N/L warp=2 ordered Bayer; S/ES swarp=6 planar RGB; output RGB with sensor-origin restoration");
-    report("NICE forward profile: VST norm coefficient=1.1; edge-anchored 544 input tiles, 512 work step, context=16, overlapFusion=0");
+    report("NICE forward profile: edge-anchored 544 input tiles, 512 work step, context=16, overlapFusion=0");
     std::array<std::vector<uint16_t>,7> packedRaw;
     for(int f=0;f<7;++f)packedRaw[f].resize(tile*tile*(f>=5?3:1));
     std::array<TaggedFrame,7> frames;
@@ -340,7 +365,9 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
             }
         }
         std::fill(output.begin(),output.end(),std::numeric_limits<float>::quiet_NaN());
+        const auto inferenceStarted=Clock::now();
         execute(input,output);
+        inferenceMs+=millis(Clock::now()-inferenceStarted);
         if(output.size()!=size_t(tile)*tile*3)throw std::runtime_error("NICE tile output shape changed");
         if(snapshot && (finished==0 || finished==int(xs.size()*ys.size()/2)))
             snapshot("nice-diag-model-tile-"+std::to_string(finished),output,tile,tile);
@@ -353,6 +380,10 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         report("NICE TILE "+std::to_string(++finished)+"/"+std::to_string(xs.size()*ys.size()));
     }
     restoreSensorOrigin(result,b.w,b.h,b.cfa);
+    report("NICE STAGES ms: alignment="+std::to_string(millis(motionFinished-started))
+        +" inference="+std::to_string(inferenceMs)
+        +" totalReconstruction="+std::to_string(millis(Clock::now()-started))
+        +" tiles="+std::to_string(finished)+" model=nice-main-forward-v79.bin");
     return result;
 }
 } // namespace vivo_nice

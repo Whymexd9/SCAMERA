@@ -16,6 +16,7 @@ public final class VivoNiceBurst {
     private final float white;
     private float noiseSlope,noiseOffset,normalNoiseSlope,normalNoiseOffset;
     final boolean diagnostics;
+    final float normCoefficient,noiseScale;
     final VivoNiceScene scene;
     private final boolean trainedSensor;
     private final float[] black;
@@ -25,6 +26,8 @@ public final class VivoNiceBurst {
     private VivoNiceBurst(List<ImageFrame> source,Parameters p) throws IOException {
         width=p.rawSize.x;height=p.rawSize.y;cfa=p.cfaPattern;white=p.whiteLevel;black=p.blackLevel.clone();
         diagnostics=PreferenceKeys.isNiceDiagnosticsEnabled();
+        normCoefficient=PreferenceKeys.niceInternalValue("norm",1.1f);
+        noiseScale=PreferenceKeys.niceInternalValue("noise_scale",1f);
         trainedSensor = "vivo".equalsIgnoreCase(android.os.Build.MANUFACTURER)
                 && "PD2454".equalsIgnoreCase(android.os.Build.DEVICE)
                 && (p.physicalID == 3 || p.physicalID == 4);
@@ -78,6 +81,19 @@ public final class VivoNiceBurst {
                     +" exposure_ratio="+exposure[i]+" ISO="+ordered[i].measuredIso);
         }
         if(ordered[5]==ordered[6])Log.i("NICE_HDR","No distinct ES: using S for ES, as supported by donor routing");
+        Set<Long> unique=new HashSet<>();int zslSlots=0;
+        for(int i=0;i<7;i++) {
+            ImageFrame frame=ordered[i];boolean duplicate=!unique.add(frame.timestamp);
+            if(frame.fromZsl)zslSlots++;
+            Log.i("NICE_PIPELINE","slot="+i+" timestamp="+frame.timestamp+" source="+(frame.fromZsl?"ZSL":"PSL")
+                    +" duplicateTimestamp="+duplicate+" deltaToReferenceNs="+(frame.timestamp-ordered[0].timestamp)
+                    +" measuredExposureNs="+frame.measuredExposure+" measuredISO="+frame.measuredIso);
+        }
+        Log.i("NICE_PIPELINE","capture=Camera2_manual_hybrid stockVcfRequests=false graph=fixed_4N_1L_1S_1ES"
+                +" sourceCounts=N:"+normal.size()+",L:"+longs.size()+",S:"+shorts.size()
+                +" uniqueSelected="+unique.size()+" zslSlots="+zslSlots+" pslSlots="+(7-zslSlots)
+                +" separateES="+(ordered[5].timestamp!=ordered[6].timestamp)+" referencePolicy=first_normal"
+                +" TCE=not_connected normCoefficient="+normCoefficient+" noiseVarianceScale="+noiseScale);
         if(normal.size()<4)Log.i("NICE_HDR","Fewer than 4 N frames: repeating available normal input");
     }
     private float[] noiseFor(ImageFrame frame) throws IOException {
@@ -95,10 +111,11 @@ public final class VivoNiceBurst {
     private static double product(ImageFrame f){return (double)f.measuredExposure*f.measuredIso;}
     void write(File file)throws IOException {
         ByteBuffer header=ByteBuffer.allocate(160+7*VivoNiceAe.TRANSPORT_BYTES).order(ByteOrder.LITTLE_ENDIAN);
-        header.putInt(0x3143484e).putInt(7).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
+        header.putInt(0x3143484e).putInt(8).putInt(width).putInt(height).putInt(cfa).putInt(7).putFloat(white);
         for(float v:black)header.putFloat(v);for(float v:exposure)header.putFloat(v);for(ImageFrame f:ordered)header.putInt(f.measuredIso);
         header.putFloat(noiseSlope).putFloat(noiseOffset).putInt(diagnostics?1:0);
         header.putFloat(normalNoiseSlope).putFloat(normalNoiseOffset);
+        header.putFloat(normCoefficient).putFloat(noiseScale);
         header.position(128);
         scene.writeTransport(header);
         for(VivoNiceAe value:ae)value.writeTransport(header);

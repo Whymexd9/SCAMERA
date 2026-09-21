@@ -279,3 +279,34 @@ Connecting the query producer, ready-queue policy and exposure request writer
 is still necessary. The current camera capture path still uses its fixed
 normal-frame selection and manual bracket; this helper is not advertised as
 a finished dynamic capture scheduler. No APK build was started for this work.
+
+## Queue dispatch and caller offset normalization (2026-09-21)
+
+The user prioritized completing ZSL/bracket before TCE. Original VCF2
+getOffset (142dc0) and modifiedOffseByReq (140078) are now represented by
+vivo-vcf-queue-offset.h. Modes outside 1..6 return queueSize-requested without
+running motion selection. Within 1..6, sync byte 0 set / byte 1 clear plus a
+nonempty request-ID list selects the first occurrence of its first ID in the
+queue. A missing ID returns zero; the original fallback-offset argument is not
+used. If both sync bytes are set, onlyNeedNext becomes 1 before motion policy.
+The remaining branch delegates to the full motion policy explicitly.
+
+**Caller correction:** although selectReadyFrames only clamps its offset below
+at zero, preparePastBuffersLocked at 127618..127748 resets a negative offset or
+an offset at/after the queue end to zero. The onlyNeedNext flag independently
+prevents consuming past frames. Do not interpret an out-of-range selector offset
+alone as a future-frame request. pastQueueStart implements this caller boundary.
+
+check_vivo_vcf_queue_offset.py compares 1200 cases with the original complete
+getOffset/request-ID implementation and original caller normalization block.
+The motion body is intercepted with a configurable return/flag, while its
+arguments and call/no-call selection are checked. Logging and empty metadata-map
+copy scaffolding do not replace the decision instructions. This test does not
+claim that the full motion policy or production capture is connected.
+
+SCAMERA-ZSL-Live-v1 observes the real first NICE plan, VCF2 queue before/after,
+request IDs and native ready-frame metadata. It avoids CameraService TagMonitor
+and copies no image pixels. The TCE v4 archive cannot supply this scheduling
+context because it starts downstream of capture. Device validation of this
+new collector is pending. The active app still has its old manual bracket;
+there is no claim of completed stock ZSL or a new working APK at this point.

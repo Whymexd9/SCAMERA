@@ -114,6 +114,7 @@ public class CameraResumeTest {
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
     public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
+        put(controller,"niceZslShutterTimestamp",9L);
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         java.util.List<Image> raws=new java.util.ArrayList<>();
@@ -163,6 +164,20 @@ public class CameraResumeTest {
             assertSame(expected,get(controller,"mNativeZslBase"));
         }
     }
+    @Test public void niceZslWithoutShutterTimestampDoesNotClaimBufferedFrames() throws Exception {
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        Image image=rawImage(1);ring.add(image);metadata.put(1L,exposure(25000000,100));
+        put(controller,"niceZslShutterTimestamp",0L);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class);
+        method.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            assertTrue(((java.util.List<?>)method.invoke(controller,4)).isEmpty());
+            assertTrue(copies.constructed().isEmpty());verify(image).close();
+        }
+    }
     @Test public void delayedPreviewCannotConsumeNiceBracketSlot() throws Exception {
         var saver=mock(com.particlesdevs.photoncamera.processing.ImageSaver.class);
         put(controller,"mImageSaver",saver);put(controller,"mZslCapturing",true);
@@ -174,6 +189,7 @@ public class CameraResumeTest {
         verify(saver,never()).initProcess(preview);
     }
     @Test public void niceZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
+        put(controller,"niceZslShutterTimestamp",3L);
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         Image missing=rawImage(1),zeroTime=rawImage(2),zeroIso=rawImage(3);

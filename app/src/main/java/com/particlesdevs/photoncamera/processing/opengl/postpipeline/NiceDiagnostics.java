@@ -47,7 +47,7 @@ public final class NiceDiagnostics {
                     +"\nPNG: clipped preview only; linear stages use gamma 1/2.2. PFM retains negative/HDR values."
                     +"\n00: Bayer-cell preview, black-subtracted, NO WB. 01: NPU tile before IVST."
                     +"\n02: reconstructed native RGB after IVST. Other files: named GPU stages."
-                    +"\ninput.nch: exact native burst, 128-byte NCH header followed by seven little-endian RAW16 planes."
+                    +"\ninput.nch: exact native burst, NCH v8: 128-byte base header, 32-byte scene, seven AE records, then seven RAW16 planes."
                     +"\nIt retains every model slot and its exposure/ISO, black level and noise calibration for replay."
                     +"\nSensor portability is experimental; original model weights are unchanged.\n";
             Files.write(new File(j.dir,"README.txt").toPath(),info.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -101,7 +101,7 @@ public final class NiceDiagnostics {
         // Both directories are in this app's cache: rename avoids another full
         // seven-frame copy and lets the existing export queue do compression.
         File burst=new File(source,"input.f32");
-        if(burst.isFile()&&burst.length()>=128&&burst.length()<=128+16000000L*14) {
+        if(burst.isFile()&&burst.length()>=128&&burst.length()<=160+7*VivoNiceAe.TRANSPORT_BYTES+16000000L*14) {
             if(!burst.renameTo(new File(j.dir,"input.nch")))
                 Log.w("NICE_DIAG","Could not retain native burst for replay");
         }

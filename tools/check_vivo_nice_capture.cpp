@@ -128,6 +128,17 @@ int main(){
     invalidWord(36,7);invalidWord(36,11);invalidWord(36,16);
     invalidWord(37,0);invalidWord(37,3);invalidWord(38,1);invalidWord(39,1);
     bytes.resize(159);save();rejected();
+    bytes=validScene;
+    bytes.insert(bytes.begin()+160,7*NiceAe::transportBytes,0);
+    header[1]=8;float coefficient=1.3f,noiseScale=1.7f;
+    std::memcpy(header+30,&coefficient,4);std::memcpy(header+31,&noiseScale,4);
+    std::memcpy(bytes.data(),header,128);
+    for(int i=0;i<7;++i)std::memcpy(bytes.data()+160+i*NiceAe::transportBytes,&timestamp,8);
+    save();
+    {MappedNiceBurst mapped(file);
+     assert(mapped.burst.normCoefficient==coefficient&&mapped.burst.noiseScale==noiseScale);
+     for(int i=0;i<7;++i)assert(mapped.burst.raw[i][0]==200+i);}
+    invalidWord(30,nan);invalidWord(31,nan);invalidWord(30,0);invalidWord(31,0);
     unlink(file);
     // The generic profile must round-trip calibrated radiance through the
     // actual VST/IVST; snapshots must observe graph values, not alter output.
@@ -198,5 +209,19 @@ int main(){
         for(size_t i=0;i<color.size();++i)assert(std::abs(color[i]-scene[i%3])<.001f);
     }
 
+    // Settings must reach the actual model tensor, with matching inverse VST.
+    std::vector<float> previous;
+    for(const auto values: {std::array<float,2>{1.1f,1.f}, {1.4f,1.f}, {1.4f,2.f}}) {
+        b.normCoefficient=values[0];b.noiseScale=values[1];
+        auto tuned=reconstruct(b,[&](const auto& input,auto& output){
+            if(!previous.empty())assert(input!=previous);
+            previous=input;
+            for(size_t i=0;i<output.size()/3;i++)for(int c=0;c<3;c++)output[i*3+c]=input[i*22+15+c];
+        },[](const auto&){});
+        for(size_t i=0;i<tuned.size();i++)assert(std::abs(tuned[i]-scene[i%3])<.002f);
+    }
+    b.noiseScale=0;
+    bool refused=false;try{reconstruct(b,[](const auto&,auto&){assert(false);},[](const auto&){});}
+    catch(const std::runtime_error&){refused=true;}assert(refused);
     std::cout<<"PASS: NICE full tile path, HDR 1.6 retained, 4-tile stock crop coverage; error="<<worst<<" (mock graph)\n";
 }

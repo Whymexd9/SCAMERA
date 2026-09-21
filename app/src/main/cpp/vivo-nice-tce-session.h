@@ -11,6 +11,7 @@ struct TceApi {
     int (*process)(void*,void*,void*);
     int (*destroy)(void*);
     std::shared_ptr<void> libraryLifetime{};
+    int (*setParam)(void*,int32_t,void*)=nullptr;
 };
 
 // CRE uses output descriptors inside a 0x6e0-byte node region. Keep that region
@@ -39,6 +40,14 @@ public:
     TceSession(const TceSession&)=delete;
     TceSession& operator=(const TceSession&)=delete;
     ~TceSession(){if(handle)api.destroy(handle);}
+    void setCopiedParameters(int32_t parameter4, std::array<uint8_t,0x55> parameter8) {
+        if(!api.setParam)throw std::runtime_error("Missing Vivo TCE SetParam API");
+        // These two donor branches copy their payloads; other keys may retain pointers.
+        int status=api.setParam(handle,4,&parameter4);
+        if(status)throw std::runtime_error("Vivo TCE SetParam 4 failed: "+std::to_string(status));
+        status=api.setParam(handle,8,parameter8.data());
+        if(status)throw std::runtime_error("Vivo TCE SetParam 8 failed: "+std::to_string(status));
+    }
     void process(const tce_contract::ProcessArgument& initialized,TceOutputStorage& output) {
         // TCE mutates input zoom and image handles. Reusing that mutation for
         // another frame would compound zoom; always start from fresh arguments.

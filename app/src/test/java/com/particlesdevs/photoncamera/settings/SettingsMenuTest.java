@@ -51,6 +51,22 @@ public class SettingsMenuTest {
         assertTrue(PreferenceKeys.isZslQualitySelectionEnabled());
         assertTrue(PreferenceKeys.isSaliencyProtectionEnabled());
     }
+    @Test public void niceInternalTuningKeepsValidatedValues() {
+        PreferenceScreen screen=inflate();
+        assertNotNull(screen.findPreference("vivo_nice_internal_screen"));
+        for(String key:new String[]{"norm","noise_scale"}) {
+            assertNotNull(screen.findPreference("pref_vivo_nice_"+key));
+            assertTrue(ModuleProfiles.isLocal("pref_vivo_nice_"+key));
+        }
+        manager.set("default_scope","pref_vivo_nice_norm","1,3");
+        assertEquals(1.3f,PreferenceKeys.niceInternalValue("norm",1.1f),0f);
+        manager.set("default_scope","pref_vivo_nice_noise_scale","0");
+        assertEquals(.25f,PreferenceKeys.niceInternalValue("noise_scale",1f),0f);
+        manager.set("default_scope","pref_vivo_nice_noise_scale","NaN");
+        assertEquals(1f,PreferenceKeys.niceInternalValue("noise_scale",1f),0f);
+        manager.set("default_scope","pref_vivo_nice_norm","999");
+        assertEquals(2.2f,PreferenceKeys.niceInternalValue("norm",1.1f),0f);
+    }
     @Test public void manualToneControlsKeepRangesAndDefaults() {
         PreferenceScreen screen=inflate();
         assertNotNull(screen.findPreference("vivo_hdr_tone_screen"));
