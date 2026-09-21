@@ -173,8 +173,31 @@ ownership, opaque inactive float bits and integer-tail preservation, malformed
 input and unsupported-key propagation. It is not an Android instrumentation
 test or evidence that the device accepts the requests.
 
-**Activation status:** this bridge is not called by CaptureController. There
-is no JNI producer or capture-session submission yet. Scene/motion/current-mode
+**Activation status:** request application is not called by CaptureController.
+There is no JNI producer or capture-session submission yet. Scene/motion/current-mode
 request context, the full AE producer, VCF queue integration and model dispatch
 for variable series remain required. The active worker still consumes seven
 inputs and does not call TCE. No APK has been built from this bridge.
+
+## CaptureController AE snapshot (2026-09-21)
+
+At shutter, CaptureController now reads the six fields from the current total
+preview result and its associated partial results into `VivoNiceAeSnapshot`.
+Partials must match request, sequence, frame number and any supplied timestamp.
+Final fields override partial fields. Wrong types/sizes, missing fields or an
+invalid plan invalidate the snapshot; arrays and opaque float bits are copied.
+The frozen snapshot carries the session generation and sensor timestamp into
+capture preparation. Session reconfiguration rejects old preview callbacks and
+clears the previous result before allowing a new shutter.
+
+This is connected metadata ingestion, not AE execution or VCF2 submission:
+capture preparation validates/logs the snapshot but still uses the existing
+manual capture path. It does not apply the plan or assert RAW-series delivery.
+The Android bridge check now also compares all 384 native payloads with these
+snapshots, including split partials and invalid identity/metadata cases.
+
+The recorded phone filesystem contains
+`/system/framework/vivo-camera-framework.jar`; its bytes are absent from the
+available donor archives and exact Library filename search. This framework is
+the next source needed to inspect the stock reflected VCF2 service contract.
+No APK was built.

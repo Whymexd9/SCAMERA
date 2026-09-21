@@ -219,6 +219,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public static CaptureRequest mCaptureRequest;
 
     public static volatile CaptureResult mPreviewCaptureResult;
+    private VivoNiceAeSnapshot mNiceShutterAe;
     public static CaptureRequest mPreviewCaptureRequest;
     public static int mPreviewTargetFormat = ImageFormat.JPEG;
     public boolean isDualSession = false;
@@ -503,6 +504,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private volatile CameraCaptureSession mCaptureSession;
     private final Object mPreviewStateLock = new Object();
     private final java.util.concurrent.atomic.AtomicInteger mSessionGeneration = new java.util.concurrent.atomic.AtomicInteger();
+    private int mConfiguredSessionGeneration = -1;
     /**
      * MediaRecorder
      */
@@ -1081,7 +1083,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Closes the current {@link CameraDevice}.
      */
     private boolean isCurrentPreviewSession(CameraCaptureSession session) {
-        return isCameraResumed && session != null && session == mCaptureSession && mPreviewRequestBuilder != null;
+        return isCameraResumed && session != null && session == mCaptureSession
+                && mConfiguredSessionGeneration == mSessionGeneration.get() && mPreviewRequestBuilder != null;
     }
 
     private void clearZslPreviewFrames() {
@@ -1099,6 +1102,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mSessionGeneration.incrementAndGet();
             mPreviewRequestBuilder = null;
             mPreviewCaptureResult = null;
+            mNiceShutterAe = null;
             mPreviewCaptureRequest = null;
             mShotInProgress = false;
         }
@@ -1776,6 +1780,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         // When the session is ready, we start displaying the preview.
                         mCaptureSession = cameraCaptureSession;
+                        mConfiguredSessionGeneration = generation;
+                        mPreviewCaptureResult = null;
+                        mPreviewCaptureRequest = null;
+                        mNiceShutterAe = null;
                         try {
                             // Auto focus should be continuous for camera preview.
                             //mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
@@ -1968,7 +1976,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 showToast("Предыдущий снимок ещё обрабатывается. Дождитесь завершения.");
                 return false;
             }
-            if (!isCameraResumed || mPreviewRequestBuilder == null || mCaptureSession == null ||
+            if (!isCurrentPreviewSession(mCaptureSession) ||
                     mCameraDevice == null || mPreviewCaptureResult == null) {
                 Log.w(TAG, "takePicture(): waiting for current-session preview after resume");
                 cameraEventsListener.onProcessingError("Камера ещё готовится. Повторите снимок.");
@@ -1976,6 +1984,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             Long previewTimestamp = mPreviewCaptureResult.get(CaptureResult.SENSOR_TIMESTAMP);
             niceZslShutterTimestamp = previewTimestamp == null ? 0 : previewTimestamp;
+            mNiceShutterAe = null;
+            if (PreferenceKeys.isVivoNiceEnabled() && mPreviewCaptureResult instanceof TotalCaptureResult) {
+                try {
+                    mNiceShutterAe = VivoNiceAeSnapshot.read(
+                            (TotalCaptureResult) mPreviewCaptureResult, mSessionGeneration.get());
+                } catch (RuntimeException unavailable) {
+                    Log.w("NICE_CAPTURE", "shutterAeUnavailable=" + unavailable.getMessage());
+                }
+            }
             if(PreferenceKeys.isVivoNiceEnabled()) Log.i("NICE_CAPTURE","shutter camera="+physicalID
                     +" mode="+PhotonCamera.getSettings().selectedMode+" zslMode="+isZslMode()
                     +" sensorCutoffNs="+niceZslShutterTimestamp+" cutoffSource=latest_preview_result"
@@ -2748,6 +2765,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final int calStep=calibration?calSession.completed:-1;
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
             final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
+            final VivoNiceAeSnapshot shutterAe = mNiceShutterAe;
+            mNiceShutterAe = null;
+            if (niceCapture && shutterAe != null) {
+                if (shutterAe.sessionGeneration != mSessionGeneration.get()
+                        || shutterAe.timestamp != niceZslShutterTimestamp)
+                    throw new IllegalStateException("NICE AE: shutter belongs to another session");
+                Log.i("NICE_CAPTURE", "shutterAeFrame=" + shutterAe.frameNumber
+                        + " past=" + shutterAe.plan.pastCount + " future=" + shutterAe.plan.futureCount
+                        + " stockVcfPlanApplied=false");
+            }
             final boolean niceZslRequested = hybridZslRequested && niceCapture;
             if (niceZslRequested) {
                 mLiveRawRouter.clear();
