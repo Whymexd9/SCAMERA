@@ -175,6 +175,29 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         return captureController;
     }
 
+    /** Pinch / dial: continuous zoom over the configured modules. */
+    public void zoomTo(float requested) {
+        String slot = com.particlesdevs.photoncamera.control.ZoomController.onZoomChanged(requested);
+        if (slot != null) {
+            // Same path as tapping the module button: profile + Camera ID, session restart.
+            com.particlesdevs.photoncamera.settings.ModuleRegistry.select(slot);
+            mCameraUIEventsListener.onAuxButtonClicked(com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot));
+        } else if (captureController != null) {
+            captureController.onZoomChanged();
+        }
+        com.particlesdevs.photoncamera.util.Log.d("ZoomController", "zoomTo " + requested + " zoom=" + com.particlesdevs.photoncamera.control.ZoomController.zoom()
+                + " residual=" + com.particlesdevs.photoncamera.control.ZoomController.residual() + " switch=" + slot);
+        showZoomLabel();
+    }
+
+    public void showZoomLabel() {
+        if (zoomDial != null) { refreshZoomDial(); zoomDial.poke(); }
+        View layout = findViewById(R.id.aux_buttons_container);
+        if (layout instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
+            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) layout)
+                    .setZoomLabel(com.particlesdevs.photoncamera.control.ZoomController.zoom());
+    }
+
     public ManualModeConsole getManualModeConsole() {
         return manualModeConsole;
     }
@@ -293,11 +316,49 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
         }
         initSettingsBar();
+        initZoomDial(view);
         com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton favorites = view.findViewWithTag("favorite_settings");
         favorites.setOnApplied(() -> {
             PhotonCamera.getSettings().loadCache();
             captureController.restartCamera();
         });
+    }
+
+    private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
+
+    /** Zoom ruler above the lens strip; dragging the strip or the ruler zooms continuously. */
+    private void initZoomDial(View root) {
+        View viewfinder = root.findViewById(R.id.layout_viewfinder);
+        if (!(viewfinder instanceof android.widget.FrameLayout)) return;
+        zoomDial = new com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView(requireContext());
+        int screen = getResources().getDisplayMetrics().widthPixels;
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(Math.round(screen * .86f), Math.round(screen * .15f),
+                android.view.Gravity.BOTTOM | android.view.Gravity.CENTER_HORIZONTAL);
+        lp.bottomMargin = Math.round(screen * .01f);
+        ((android.widget.FrameLayout) viewfinder).addView(zoomDial, lp);
+        zoomDial.setListener(this::zoomTo);
+        View strip = root.findViewById(R.id.aux_buttons_container);
+        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
+            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setZoomDrag(dx -> {
+                if (zoomDial != null) { refreshZoomDial(); zoomDial.dragBy(dx); }
+            });
+        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
+            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setDialRefresh(this::showZoomLabel);
+        refreshZoomDial();
+    }
+
+    private void refreshZoomDial() {
+        if (zoomDial == null) return;
+        java.util.List<String> slots = com.particlesdevs.photoncamera.control.ZoomController.lenses();
+        java.util.List<Float> ratios = new java.util.ArrayList<>();
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (String slot : slots) {
+            ratios.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(slot));
+            labels.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot));
+        }
+        zoomDial.configure(com.particlesdevs.photoncamera.control.ZoomController.minZoom(),
+                com.particlesdevs.photoncamera.control.ZoomController.maxZoom(), ratios, labels);
+        zoomDial.setZoom(com.particlesdevs.photoncamera.control.ZoomController.zoom());
     }
 
     private void initSettingsBar() {

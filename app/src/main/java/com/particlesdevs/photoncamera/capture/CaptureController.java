@@ -1242,6 +1242,41 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
     
+    /** Digital/optical zoom of the current module: CONTROL_ZOOM_RATIO (R+) or SCALER_CROP_REGION. */
+    private void applyZoom(CaptureRequest.Builder builder, boolean force) {
+        final float z = com.particlesdevs.photoncamera.control.ZoomController.residual();
+        if (builder == null || (z <= 1.001f && !force)) return;
+        try {
+            final CameraCharacteristics characteristics = mCameraCharacteristics;
+            if (characteristics == null) return;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                android.util.Range<Float> range = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+                if (range != null) {
+                    builder.set(CaptureRequest.CONTROL_ZOOM_RATIO, Math.max(range.getLower(), Math.min(range.getUpper(), z)));
+                    return;
+                }
+            }
+            android.graphics.Rect active = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            if (active == null) return;
+            int w = Math.round(active.width() / z), h = Math.round(active.height() / z);
+            int x = active.left + (active.width() - w) / 2, y = active.top + (active.height() - h) / 2;
+            builder.set(CaptureRequest.SCALER_CROP_REGION, new android.graphics.Rect(x, y, x + w, y + h));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "applyZoom: " + e.getMessage());
+        }
+    }
+
+    /** Zoom changed inside the current module: push it to the repeating preview request. */
+    public void onZoomChanged() {
+        Handler handler = mBackgroundHandler;
+        Runnable update = () -> {
+            if (mPreviewRequestBuilder == null || mCaptureSession == null) return;
+            applyZoom(mPreviewRequestBuilder, true);
+            rebuildPreviewBuilder();
+        };
+        if (handler != null) handler.post(update); else update.run();
+    }
+
     public void rebuildPreviewBuilder() {
         if(burst) return;
         if (mPreviewRequestBuilder == null || mCaptureSession == null) {
@@ -2047,6 +2082,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mInitialMeteringAE = mPreviewRequestBuilder.get(CONTROL_AE_REGIONS);
         mPreviewMeteringAE = mInitialMeteringAE;
         mPreviewAEMode = mPreviewRequestBuilder.get(CONTROL_AE_MODE);
+        applyZoom(mPreviewRequestBuilder, false);
     }
 
     private void showToast(String msg) {
@@ -3069,6 +3105,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mBackgroundHandler.post(this::captureStillPicture);
             return;
         }
+        com.particlesdevs.photoncamera.control.ZoomController.markShot();
         try {
             if (null == mCameraDevice) {
                 failPendingShutter(new IllegalStateException("Камера закрыта"));
@@ -3190,6 +3227,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             }
             Camera2ApiAutoFix.applyEnergySaving();
+            applyZoom(captureBuilder, false);
             cameraRotation = PhotonCamera.getGravity().getCameraRotation(mSensorOrientation);
 
             //captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);

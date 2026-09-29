@@ -91,7 +91,20 @@ public class Swipe {
                 return false;
             }
         });
-        View.OnTouchListener touchListener = (view, motionEvent) -> gestureDetector.onTouchEvent(motionEvent);
+        android.view.ScaleGestureDetector scaleDetector = new android.view.ScaleGestureDetector(cameraFragment.getContext(),
+                new android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    @Override
+                    public boolean onScale(android.view.ScaleGestureDetector detector) {
+                        cameraFragment.zoomTo(ZoomController.zoom() * detector.getScaleFactor());
+                        return true;
+                    }
+                });
+        View.OnTouchListener touchListener = (view, motionEvent) -> {
+            if (motionEvent.getPointerCount() > 1) Log.d(TAG, "pinch touch pointers=" + motionEvent.getPointerCount() + " action=" + motionEvent.getActionMasked());
+            scaleDetector.onTouchEvent(motionEvent);
+            if (scaleDetector.isInProgress() || motionEvent.getPointerCount() > 1) return true;
+            return gestureDetector.onTouchEvent(motionEvent);
+        };
         View holder = cameraFragment.findViewById(R.id.textureHolder);
         Log.d(TAG, "input:" + holder);
         if (holder != null) holder.setOnTouchListener(touchListener);

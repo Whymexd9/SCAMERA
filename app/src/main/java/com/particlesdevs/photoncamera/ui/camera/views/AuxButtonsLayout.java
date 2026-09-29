@@ -115,13 +115,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
 
     private void setAuxButtons(List<CameraLensData> cameraLensDataList, String activeId) {
         SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
-        List<CameraLensData> ordered = new ArrayList<>(cameraLensDataList);
-        ordered.sort(Comparator.comparingInt(data -> lensOrder(manager, data.getCameraId())));
         ModuleRegistry.initialize("front", auxButtonsModel.getFrontCameras());
         ModuleRegistry.initialize("back", auxButtonsModel.getBackCameras());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";
-        List<String> slots = ModuleRegistry.initialize(side, ordered);
-        slots.sort(Comparator.comparingInt(ModuleRegistry::order));
+        List<String> slots = ModuleRegistry.initialize(side, cameraLensDataList);
+        slots.sort(Comparator.comparingDouble(ModuleRegistry::zoom)); // zoom order, like the dial
         String currentSlot=ModuleRegistry.active();
         if(!slots.contains(currentSlot)||!ModuleRegistry.camera(currentSlot).equals(activeId))
             for(String slot:slots)if(ModuleRegistry.visible(slot)&&ModuleRegistry.camera(slot).equals(activeId)){ModuleRegistry.select(slot);break;}
@@ -135,16 +133,6 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         }
         setListenerAndSelected(activeId);
         updateVisibility();
-    }
-
-    private static int lensOrder(SettingsManager manager, String cameraId) {
-        if (manager == null) return Integer.MAX_VALUE;
-        try {
-            return Integer.parseInt(manager.getString(
-                    "default_scope", "lens_order_" + cameraId, String.valueOf(Integer.MAX_VALUE)));
-        } catch (NumberFormatException ignored) {
-            return Integer.MAX_VALUE;
-        }
     }
 
     private void setListenerAndSelected(String activeId) {
@@ -190,6 +178,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             {
                 String slot=auxButtonsMap.get(view.getId());
                 ModuleRegistry.select(slot);
+                com.particlesdevs.photoncamera.control.ZoomController.onButton(slot);
+                if(getContext() instanceof android.app.Activity)touchDial();
                 auxButtonListener.onAuxButtonClicked(ModuleRegistry.camera(slot));
             }
         }
@@ -232,6 +222,25 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         addView(b);
     }
 
+    /** The selected button shows the live zoom ("2.3×") while it differs from the module's own ratio. */
+    public void setZoomLabel(float zoom) {
+        String active = ModuleRegistry.active();
+        for (int i = 0; i < getChildCount(); i++) {
+            View v = getChildAt(i);
+            String slot = auxButtonsMap.get(v.getId());
+            if (!(v instanceof Button) || slot == null) continue;
+            boolean selected = slot.equals(active);
+            v.setSelected(selected);
+            ((Button) v).setText(selected && Math.abs(zoom - ModuleRegistry.zoom(slot)) >= 0.05f
+                    ? String.format(Locale.US, "%.1f×", zoom).replace(".0×", "×") : ModuleRegistry.label(slot));
+        }
+    }
+
+    private Runnable dialRefresh;
+    /** Lets the owner refresh and show the zoom ruler after a button tap. */
+    public void setDialRefresh(Runnable dialRefresh){this.dialRefresh=dialRefresh;}
+    private void touchDial(){if(dialRefresh!=null)dialRefresh.run();}
+
     public void rotateLabels(int orientation, long duration) {
         labelRotation=orientation;
         for(int i=0;i<getChildCount();i++){
@@ -241,6 +250,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         }
     }
 
+    /** Horizontal drag on the strip: continuous zoom (pixels since the previous event). */
+    public interface ZoomDrag { void onDrag(float dx); }
+    private ZoomDrag zoomDrag;
+    public void setZoomDrag(ZoomDrag zoomDrag){this.zoomDrag=zoomDrag;}
+    private float lastDragX;
     private float touchX,touchY;
     @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
         if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){touchX=e.getX();touchY=e.getY();}
@@ -248,6 +262,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         return super.onInterceptTouchEvent(e);
     }
     @Override public boolean onTouchEvent(android.view.MotionEvent e){
+        if(zoomDrag!=null){
+            if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN)lastDragX=e.getX();
+            else if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE){zoomDrag.onDrag(e.getX()-lastDragX);lastDragX=e.getX();}
+            return true;
+        }
         if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
             float dx=e.getX()-touchX;
             if(Math.abs(dx)>getResources().getDisplayMetrics().density*24)for(int i=0;i<getChildCount();i++)if(getChildAt(i).isSelected()){

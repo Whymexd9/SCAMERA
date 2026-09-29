@@ -210,6 +210,13 @@ public final class VivoNeuralClient {
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException("Не удалось создать маркер CRE");
             }
+            if(niceBurst!=null){
+                // Developer switch (created with adb): dump the network's input/output tiles.
+                File external=context.getExternalFilesDir(null);
+                if(external!=null && new File(external,"dump-forward").exists()){
+                    try(java.io.FileWriter marker=new java.io.FileWriter(new File(dir,"dump-forward"))){marker.write(external.getAbsolutePath());}
+                }
+            }
             final long assetsDone=android.os.SystemClock.elapsedRealtime();
             File input=new File(dir,"input.f32"),output=new File(dir,"output.f32");
             if(burst!=null)burst.write(input);

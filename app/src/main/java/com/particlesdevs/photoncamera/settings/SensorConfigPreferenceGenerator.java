@@ -53,7 +53,7 @@ public class SensorConfigPreferenceGenerator {
 
         try {
             List<String> physicalIds = new ArrayList<>(ModuleRegistry.slots());
-            physicalIds.sort(java.util.Comparator.comparingInt(ModuleRegistry::order));
+            physicalIds.sort(java.util.Comparator.comparingDouble(ModuleRegistry::zoom));
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
             for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
             submenu.setTitle("Настройки сенсоров по модулям");

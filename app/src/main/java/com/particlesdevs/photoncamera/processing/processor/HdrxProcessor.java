@@ -705,6 +705,11 @@ public class HdrxProcessor extends ProcessorBase {
                 Log.e(TAG, "Lanczos failed; preserving successful Vivo result", downscaleError);
             }
         }
+        final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
+        if (zoomCrop > 1.005f && !PhotonCamera.getSettings().ultraHdr) {
+            processingStage = "digital zoom crop";
+            img = com.particlesdevs.photoncamera.control.ZoomController.crop(img, zoomCrop);
+        }
         processingStage = "image encoding";
 
         PostPipeline.GainMapRaw gm = null;

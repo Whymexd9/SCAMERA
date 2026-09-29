@@ -647,6 +647,12 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         return packSevenFrames(frames,tile,tile,16383,0,sqrtEV/65535,mask,std::numeric_limits<float>::max());
     };
     int finished=0;
+    // Reference tiles for weight extraction: raw network input (22 channels) and output (3).
+    std::ofstream dumpIn,dumpOut;
+    if(const char* dumpDir=std::getenv("SCAM_DUMP_FORWARD")) {
+        dumpIn.open(std::string(dumpDir)+"/fwd-in.f32",std::ios::binary|std::ios::app);
+        dumpOut.open(std::string(dumpDir)+"/fwd-out.f32",std::ios::binary|std::ios::app);
+    }
     std::future<std::vector<float>> pending=std::async(std::launch::async,prepare,size_t(0));
     for(size_t index=0;index<order.size();++index){
         const auto& ty=ys[order[index].first];const auto& tx=xs[order[index].second];
@@ -665,6 +671,10 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         execute(input,output);
         inferenceMs+=millis(Clock::now()-inferenceStarted);
         if(output.size()!=size_t(tile)*tile*3)throw std::runtime_error("NICE tile output shape changed");
+        if(dumpIn && dumpOut && index%4==0) {
+            dumpIn.write(reinterpret_cast<const char*>(input.data()),std::streamsize(input.size()*4));
+            dumpOut.write(reinterpret_cast<const char*>(output.data()),std::streamsize(output.size()*4));
+        }
         if(snapshot && (finished==0 || finished==int(xs.size()*ys.size()/2)))
             snapshot("nice-diag-model-tile-"+std::to_string(finished),output,tile,tile);
         for(int y=0;y<ty.outputSize;++y)for(int x=0;x<tx.outputSize;++x){

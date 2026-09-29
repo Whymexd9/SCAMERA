@@ -31,6 +31,11 @@ int main(int argc,char** argv) {
         if(argc==5 && std::string(argv[1])=="--nice-capture") {
             signal(SIGALRM,SIG_DFL);alarm(840);
             // Burst and result arrive as "fd:N" (memfd shared by the app) or as file paths.
+            {
+                std::ifstream marker(std::string(argv[2])+"/dump-forward");
+                std::string target;
+                if(marker && std::getline(marker,target) && !target.empty())setenv("SCAM_DUMP_FORWARD",target.c_str(),1);
+            }
             const auto mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
             const auto& input=mapped->burst;
             const char* outputPath=argv[4];
@@ -105,6 +110,29 @@ int main(int argc,char** argv) {
             alarm(360);
             vivo_nice::probeTone(argv[2],[](const std::string& line){std::cout<<line<<std::endl;});
             return 0;
+        }
+        if(argc==5 && std::string(argv[1])=="--nice-forward") {
+            // Reference runner for weight extraction: N input tiles (float32 NHWC 1x544x544x22)
+            // in, N output tiles (1x544x544x3) out. Same graph and runtime as the capture path.
+            alarm(600);
+            const size_t inTile=size_t(544)*544*22,outTile=size_t(544)*544*3;
+            std::ifstream inFile(argv[3],std::ios::binary|std::ios::ate);
+            if(!inFile)throw std::runtime_error("Cannot open forward input");
+            const size_t bytes=size_t(inFile.tellg());
+            if(!bytes||bytes%(inTile*4))throw std::runtime_error("Forward input is not a whole number of tiles");
+            const size_t tiles=bytes/(inTile*4);inFile.seekg(0);
+            vivo_nice::Graph graph(argv[2],[](const std::string& line){vivo_nn::log(line);});
+            std::ofstream outFile(argv[4],std::ios::binary|std::ios::trunc);
+            if(!outFile)throw std::runtime_error("Cannot open forward output");
+            for(size_t t=0;t<tiles;++t) {
+                inFile.read(reinterpret_cast<char*>(graph.input.data()),std::streamsize(inTile*4));
+                if(!inFile)throw std::runtime_error("Short forward input");
+                graph.execute();
+                outFile.write(reinterpret_cast<const char*>(graph.output.data()),std::streamsize(outTile*4));
+            }
+            outFile.flush();
+            vivo_nn::log("NICE FORWARD OK tiles="+std::to_string(tiles));
+            alarm(0);return 0;
         }
         if(argc==3 && std::string(argv[1])=="--nice-check") {
             signal(SIGALRM,SIG_DFL);alarm(150);

@@ -23,7 +23,8 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
         scope.setPadding(dp(16),dp(10),dp(16),dp(10));scope.setBackground(shape(0x25000000|(accent&0x00FFFFFF),0,20));body.addView(scope,space(-2,-2,10));
         caption(" ");
         navigation("▣","Назначение Camera ID","Авто, список камер или ручной ввод",()->open(ModuleLensFragment.create("id")));
-        navigation("☷","Отображение и порядок",null,()->open(ModuleLensFragment.create("order")));
+        navigation("⌕","Зум-факторы кнопок","Порог переключения модулей при зуме и кроп на сенсоре",()->open(ModuleLensFragment.create("zoom")));
+        navigation("☷","Отображение кнопок","Порядок задаётся зум-фактором",()->open(ModuleLensFragment.create("order")));
         navigation("◇","Названия модулей",null,()->open(ModuleLensFragment.create("names")));
         navigation("▢","Копировать настройки",null,()->open(new ModuleCopyFragment()));
         note("При первом включении используются текущие настройки. При отключении профили сохраняются.");
