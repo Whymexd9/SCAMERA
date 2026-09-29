@@ -37,7 +37,7 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
 
     public float getFloatValue() {
         SharedPreferences prefs = getSharedPreferences();
-        return PreferenceNumber.bounded(prefs == null ? null : prefs.getAll().get(getKey()),
+        return PreferenceNumber.bounded(prefs == null ? null : com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs, getKey()),
                 mDefaultValue, mMin, mMax);
     }
     @Override protected void onSetInitialValue(Object defaultValue) { refresh(); }

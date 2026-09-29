@@ -58,6 +58,14 @@ public final class VivoNiceAe {
 
     public static VivoNiceAe fromFrame(ImageFrame frame) { return new VivoNiceAe(frame); }
 
+    public boolean hasMeasuredExposure() { return (flags & 1) != 0; }
+
+    public double measuredExposureProduct() {
+        if (!hasMeasuredExposure())
+            throw new IllegalStateException("NICE measured vendor AE unavailable");
+        return (double) aec[14] * aec[2];
+    }
+
     public void writeTransport(ByteBuffer destination) {
         if (destination.order() != ByteOrder.LITTLE_ENDIAN || destination.remaining() < TRANSPORT_BYTES)
             throw new IllegalArgumentException("NICE AE requires 176 little-endian bytes");

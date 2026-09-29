@@ -35,6 +35,11 @@ public final class HexQuadOptions {
         double t=Math.max(0,Math.min(1,Math.log(Math.max(1,iso)/100.0)/Math.log(32.0)));
         return (float)(low+(high-low)*t);
     }
+    /** Quad 2x2 has only the x1 model; noise factors and GPU flag carry over. */
+    public HexQuadOptions quadModel(){
+        return new HexQuadOptions(100,1,false,noiseOverall,noisePhoton,noiseReadout,
+                lumaPercent,chromaPercent,false,0,0,0,0,texture*100,gpu);
+    }
     public int outputScale(){return fullResolution?2:1;}
     public long outputBytes(int width,int height){return (long)width*height*outputScale()*outputScale()*2;}
     public String profileKey(int iso,int red){
@@ -43,11 +48,19 @@ public final class HexQuadOptions {
                 Float.floatToIntBits(noisePhoton)+":"+Float.floatToIntBits(noiseReadout);
     }
     public ByteBuffer header(int width,int height,int iso,int red,float black,float white,boolean response,float[] neutral){
+        return header(width,height,iso,red,black,white,response,neutral,6);
+    }
+    /** frames: HP9 HexQuad 6..50, Quad 2x2 4..50 (first 6/4 are model slots, rest merged into them). */
+    public ByteBuffer header(int width,int height,int iso,int red,float black,float white,boolean response,float[] neutral,int frames){
+        return header(width,height,iso,red,black,white,response,neutral,frames,0);
+    }
+    /** quadModel: 0 main IMX06C, 1 tele HP9 ROI (only with frames=4). */
+    public ByteBuffer header(int width,int height,int iso,int red,float black,float white,boolean response,float[] neutral,int frames,int quadModel){
         if(neutral==null||neutral.length!=3)throw new IllegalArgumentException("Invalid neutral point");
         for(float v:neutral)bounded(v,.0001f,10000);
         ByteBuffer b=ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
         b.putInt(0x32515848).putInt(gpu?4:3).putInt(width).putInt(height).putInt(iso).putInt(red)
-                .putInt(0).putInt(0).putFloat(black).putFloat(white).putInt(response?1:0).putInt(6)
+                .putInt(quadModel).putInt(0).putFloat(black).putFloat(white).putInt(response?1:0).putInt(frames)
                 .putFloat(lumaPercent/100f).putFloat(chromaPercent/100f)
                 .putFloat(neutral[0]).putFloat(neutral[1]).putFloat(neutral[2]);
         b.position(80);

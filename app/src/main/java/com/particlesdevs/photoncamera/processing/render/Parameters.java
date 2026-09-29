@@ -286,6 +286,9 @@ public class Parameters {
         if (result != null) {
             boolean isHuawei = Build.BRAND.equals("Huawei");
 
+            float[] reportedBlack = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
+            Log.i(TAG, "black level static=" + level + " dynamic=" + java.util.Arrays.toString(reportedBlack)
+                    + " whiteDynamic=" + result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL));
             if(useDynamicBlackLevel) {
                 float[] dynbl = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
                 if (dynbl != null) {
@@ -332,6 +335,14 @@ public class Parameters {
             } catch (Exception e){
                 Log.d(TAG, "Error retrieving lens shading map, disabling gain map: " + Log.getStackTraceString(e));
             }
+            if (hasGainMap && rawShadingAlreadyApplied(CaptureController.mCameraCharacteristics)) {
+                // The HAL delivered RAW with lens shading already corrected; applying the
+                // map again brightens the edges up to ~5x and lifts their blacks.
+                Log.i(TAG, "RAW lens shading already applied by HAL, gain map skipped");
+                gainMap = new float[]{1.f, 1.f, 1.f, 1.f};
+                mapSize = new Point(1, 1);
+                hasGainMap = false;
+            }
             hotPixels = result.get(CaptureResult.STATISTICS_HOT_PIXEL_MAP);
             ReCalcColor(false, result);
         }
@@ -369,6 +380,76 @@ public class Parameters {
         }
     }
 
+
+    /**
+     * Lowers blackLevel when the RAW itself proves it too high. Signal cannot sit below
+     * black, so the dark floor of the frame is an upper bound for it. OPPO Find X8 Ultra
+     * RAW_SENSOR reports 64 while the data floor drifts to ~60 per frame; subtracting 64
+     * clips the weaker R and B channels first and turns the shadows green.
+     * Estimate: third-lowest mean of 32x32-sample blocks per CFA channel (one dead column
+     * or defect block cannot drive it), common for all channels. Never raises black.
+     * buffer: packed 16-bit RAW, rowStride = width*2.
+     */
+    public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height) {
+        if (buffer == null || width < 128 || height < 128 || blackLevelOverride >= 0) return;
+        if (!PreferenceKeys.isRawBlackFromData()) return;
+        // Same frame again (NICE re-reads the reference metadata): reuse the floor.
+        if (buffer == blackFloorSource) { applyBlackFloor(blackFloorEstimate); return; }
+        java.nio.ShortBuffer data = buffer.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+        if (data.capacity() < width * height) return;
+        final int bs = 32;
+        int bw = width / 2 / bs, bh = height / 2 / bs;
+        float estimate = Float.MAX_VALUE;
+        for (int c = 0; c < 4; c++) {
+            int ox = c % 2, oy = c / 2;
+            float low1 = Float.MAX_VALUE, low2 = Float.MAX_VALUE, low3 = Float.MAX_VALUE;
+            for (int by = 0; by < bh; by++) for (int bx = 0; bx < bw; bx++) {
+                // Every 4th sample of the block both ways (64 per block): the block mean
+                // stays well below 1 DN of noise, at 1/16 of the full-frame read cost.
+                long sum = 0;
+                for (int y = 0; y < bs; y += 4) {
+                    int row = (by * bs + y) * 2 + oy;
+                    int base = row * width + bx * bs * 2 + ox;
+                    for (int x = 0; x < bs; x += 4) sum += data.get(base + x * 2) & 0xffff;
+                }
+                float mean = sum / (float) ((bs / 4) * (bs / 4));
+                if (mean < low1) { low3 = low2; low2 = low1; low1 = mean; }
+                else if (mean < low2) { low3 = low2; low2 = mean; }
+                else if (mean < low3) low3 = mean;
+            }
+            estimate = Math.min(estimate, low3);
+        }
+        if (estimate == Float.MAX_VALUE) return;
+        blackFloorSource = buffer;
+        blackFloorEstimate = estimate;
+        applyBlackFloor(estimate);
+    }
+
+    private java.nio.ByteBuffer blackFloorSource;
+    private float blackFloorEstimate;
+
+    private void applyBlackFloor(float estimate) {
+        // ~1 DN of a 10-bit range; below that it is noise in the estimate, not a wrong black.
+        float margin = Math.max(1f, whiteLevel / 1023f);
+        boolean changed = false;
+        float[] before = blackLevel.clone();
+        for (int i = 0; i < 4; i++) {
+            if (blackLevel[i] > estimate + margin) { blackLevel[i] = estimate; changed = true; }
+        }
+        if (changed) Log.i(TAG, "RAW black level from data: " + Arrays.toString(before)
+                + " -> " + Arrays.toString(blackLevel) + " (data floor " + estimate + ")");
+    }
+
+    /**
+     * Whether RAW_SENSOR already carries the HAL's lens shading correction, so the
+     * STATISTICS_LENS_SHADING_CORRECTION_MAP must not be applied again.
+     * Setting pref_raw_lsc_mode: auto | apply | skip; only "skip" drops the map.
+     * SENSOR_INFO_LENS_SHADING_APPLIED is not trusted: vivo X200 Ultra reports true,
+     * yet its RAW renders correctly only with the map applied.
+     */
+    public static boolean rawShadingAlreadyApplied(CameraCharacteristics characteristics) {
+        return "skip".equals(PreferenceKeys.getRawLscMode());
+    }
 
     public float[] customNeutral;
 

@@ -97,14 +97,43 @@ public class HorizonIndicatorView extends View {
 
     public void setVisible(boolean visible) {
         this.isVisible = visible;
+        removeCallbacks(gyroTick);
+        if (visible) post(gyroTick);
         invalidate();
     }
 
     public void updateFromGyro() {
         if (gyro != null) {
-            updateAngles(gyro.getRoll(), gyro.getPitch(), gyro.getYaw());
-            invalidate();
+            float roll = gyro.getRoll(), pitch = gyro.getPitch(), yaw = gyro.getYaw();
+            // Redraw only on a visible change: onDraw used to call this and
+            // invalidate() itself, redrawing the UI at the full display rate
+            // (120 Hz) even with the phone still or the indicator hidden.
+            if (Math.abs(roll - rollAngle) > 0.1f || Math.abs(pitch - pitchAngle) > 0.1f)
+                updateAngles(roll, pitch, yaw);
         }
+    }
+
+    // Gyro poll at ~30 Hz while shown, instead of an invalidate loop.
+    private final Runnable gyroTick = new Runnable() {
+        @Override public void run() {
+            if (isVisible && isAttachedToWindow()) {
+                updateFromGyro();
+                postDelayed(this, 33);
+            }
+        }
+    };
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        removeCallbacks(gyroTick);
+        if (isVisible) post(gyroTick);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        removeCallbacks(gyroTick);
+        super.onDetachedFromWindow();
     }
 
     /**
@@ -118,22 +147,10 @@ public class HorizonIndicatorView extends View {
         }
     }
 
-    /**
-     * Updates the state of the viewfinder magnifier.
-     * @param isMagnified True if the viewfinder is currently magnified.
-     */
-    public void setViewfinderMagnified(boolean isMagnified) {
-        if (this.isViewfinderMagnified != isMagnified) {
-            this.isViewfinderMagnified = isMagnified;
-            invalidate();
-        }
-    }
-
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (isVisible) {
-            updateFromGyro();
             int centerX = getWidth() / 2;
             int centerY = getHeight() / 2;
         /*if (isViewfinderMagnified && PhotonCamera.getSettings().useAlternateLoupe) {

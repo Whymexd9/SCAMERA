@@ -32,6 +32,9 @@ android {
             // FlowNet/KernelNet/RAISR JNI surface.  Keep the source fallback
             // out of the APK so System.loadLibrary("ncnnMl") resolves to it.
             excludes += ['**/libncnnMlSource.so']
+            // Extracted to nativeLibraryDir: the NICE/neural worker and its QNN
+            // runtime (added by tools/package_vivo_neural.py) run from there without root.
+            useLegacyPackaging true
         }
     }
 
@@ -60,7 +63,7 @@ android {
     defaultConfig {
         compileSdk 36
         ndkVersion "27.2.12479018"
-        applicationId 'com.hdrplus.ultra'
+        applicationId 'org.codeaurora.snapcam'
         minSdkVersion 26
         targetSdkVersion 35
         versionCode ciVersionCode
@@ -76,6 +79,17 @@ android {
         versionName '0.98'
         versionProps['VERSION_NAME'] = versionName
         proguardFiles
+        if (System.getenv('SCAMERA_LOCAL_CMAKE_VERSION')) {
+            // Only when substituting a newer local CMake (CI uses the SDK's
+            // pinned 3.22.1 and never sets this env var): CMake 4 removed
+            // support for vendored deps that declare cmake_minimum_required
+            // below 3.5 (e.g. the fetched rt_fftw sources).
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+                }
+            }
+        }
     }
 
     gradle.taskGraph.whenReady { taskGraph ->
@@ -96,17 +110,27 @@ android {
             signingConfig signingConfigs.debug
         }
         debug {
+            // This is the shipped variant (CI and local packaging use assembleDebug).
+            // Not debuggable: ART compiles the app instead of interpreting it, and the
+            // JNI libraries (RAW copy/convert, DNG writer) are built optimised - the
+            // Debug CMake type built them at -O0.
+            debuggable false
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            jniDebuggable = true
-            zipAlignEnabled = false
+            jniDebuggable = false
+            zipAlignEnabled = true
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
         }
     }
 
     externalNativeBuild {
         cmake {
-            version "3.22.1"
+            version System.getenv('SCAMERA_LOCAL_CMAKE_VERSION') ?: "3.22.1"
             path "src/main/cpp/CMakeLists.txt"
         }
     }
@@ -117,6 +141,8 @@ android {
     }
     lint {
         abortOnError false
+        // The shipped debug variant is not debuggable; skip lintVital on assemble.
+        checkReleaseBuilds false
     }
     namespace 'com.particlesdevs.photoncamera'
     applicationVariants.all {

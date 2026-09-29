@@ -71,7 +71,7 @@ public class ManagedSwitchPreference extends SwitchPreferenceCompat {
                 // Opening a screen is read-only. Keep the Boolean representation
                 // used by Android preferences/migration, and notify only on changes.
                 android.content.SharedPreferences prefs = settingsManager.getDefaultPreferences();
-                Object stored = prefs.getAll().get(getKey());
+                Object stored = com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs, getKey());
                 if (stored == null || com.particlesdevs.photoncamera.settings.PreferenceNumber.bool(stored, !value) != value)
                     prefs.edit().putBoolean(getKey(), value).apply();
                 return true;

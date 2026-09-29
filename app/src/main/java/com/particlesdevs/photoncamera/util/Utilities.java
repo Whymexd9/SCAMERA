@@ -53,15 +53,6 @@ public class Utilities {
 
         return output;
     }
-    public static void drawPoints(Point[] inputPoints, float pointSize,Bitmap io){
-        Canvas canvas = new Canvas(io);
-        Paint wallPaint = new Paint();
-        wallPaint.setAntiAlias(true);
-        wallPaint.setStyle(Paint.Style.FILL);
-        wallPaint.setARGB(255, 0, 255, 0);
-        for(Point p : inputPoints)
-            canvas.drawCircle(p.x,p.y,pointSize,wallPaint);
-    }
     public static void saveBitmap(Bitmap in, String name){
         File debug = new File(ImagePath.newImageFilePath().toString().replace(".jpg","") + name + ".png");
         FileOutputStream fOut = null;
@@ -231,35 +222,6 @@ public class Utilities {
         return c;
     }
 
-    public static float[] interpolateArr(float[] in, int requiredSize){
-        float[] output = new float[requiredSize];
-        ArrayList<Float> mY,mx;
-        mY = new ArrayList<>();
-        mx = new ArrayList<>();
-        for(int xi = 0; xi<in.length; xi++){
-            mx.add((float)xi/(float)(in.length-1));
-            mY.add(in[xi]);
-        }
-        SplineInterpolator splineInterpolator = SplineInterpolator.createMonotoneCubicSpline(mx,mY);
-        for(int i =0; i<output.length;i++)
-            output[i] = splineInterpolator.interpolate(i/(float)(output.length-1));
-        return output;
-    }
-    public static float[] interpolateTonemap(float[] in, int requiredSize){
-        float[] output = new float[requiredSize];
-        ArrayList<Float> mY,mx;
-        mY = new ArrayList<>();
-        mx = new ArrayList<>();
-        for(int xi = 0; xi<in.length; xi+=2){
-            float line = xi / (in.length-1.f);
-            mx.add(in[xi]);
-            mY.add((float) Math.pow(line,1.0/2.0));
-        }
-        SplineInterpolator splineInterpolator = SplineInterpolator.createMonotoneCubicSpline(mx,mY);
-        for(int i =0; i<output.length;i++)
-            output[i] = splineInterpolator.interpolate(i/(float)(output.length-1));
-        return output;
-    }
     public static float luminocity(float[] in){
         return (in[0]*0.299f+in[1]*0.587f+in[2]*0.114f);
     }
@@ -303,14 +265,6 @@ public class Utilities {
         }
 
         return output;
-    }
-
-    @ColorInt
-    public static int resolveColor(Context context, int attr) {
-        TypedValue typedValue = new TypedValue();
-        Resources.Theme theme = context.getTheme();
-        theme.resolveAttribute(attr, typedValue, true);
-        return typedValue.data;
     }
 
     public static Drawable resolveDrawable(Context context, int attr) {

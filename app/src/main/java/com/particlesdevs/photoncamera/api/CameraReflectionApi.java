@@ -188,19 +188,6 @@ public class CameraReflectionApi {
         }
     }
 
-    public static ByteBuffer replaceImageBuffer(Image.Plane plane, ByteBuffer buffer) {
-        ByteBuffer oldBuffer = null;
-        try {
-            Field mNativeBufferField = NativeEngine.getCameraField(plane.getClass(), "mBuffer");
-            mNativeBufferField.setAccessible(true);
-            oldBuffer = (ByteBuffer) mNativeBufferField.get(plane);
-            mNativeBufferField.set(plane, buffer);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return oldBuffer;
-    }
-
     public static void createCustomCaptureSession(CameraDevice cameraDevice,
                                                   InputConfiguration inputConfig,
                                                   List<OutputConfiguration> outputs,

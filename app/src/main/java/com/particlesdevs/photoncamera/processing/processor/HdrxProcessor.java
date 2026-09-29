@@ -67,6 +67,11 @@ public class HdrxProcessor extends ProcessorBase {
         this.cameraMode = cameraMode;
     }
 
+    // Per-shot copy when processing is queued: the camera thread rebuilds the
+    // static list for the next shot while this one is still processing.
+    public java.util.List<IsoExpoSelector.ExpoPair> ownedPairs;
+    private java.util.List<IsoExpoSelector.ExpoPair> fullpairs;
+
     public void start(Path dngFile, Path imageFile,
                       ParseExif.ExifData exifData,
                       ArrayList<GyroBurst> BurstShakiness,
@@ -91,6 +96,7 @@ public class HdrxProcessor extends ProcessorBase {
         this.captureResult = captureResult;
         this.captureRequest = captureRequest;
         this.niceCapture = PreferenceKeys.isVivoNiceEnabled();
+        this.fullpairs = ownedPairs != null ? ownedPairs : IsoExpoSelector.fullpairs;
         Log.d(TAG, "HdrxProcessor called start()");
         Run();
     }
@@ -138,7 +144,7 @@ public class HdrxProcessor extends ProcessorBase {
                 Allocator.free(hexOwnedOutput);
                 hexOwnedOutput = null;
             }
-            if ((niceCapture || PreferenceKeys.isHexQuadCaptureEnabled() || PreferenceKeys.isRawMfsrEnabled()
+            if ((niceCapture || PreferenceKeys.isNeuralBurstRemosaic() || PreferenceKeys.isRawMfsrEnabled()
                     || (captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession))
                     && mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
@@ -180,7 +186,7 @@ public class HdrxProcessor extends ProcessorBase {
             for (ImageFrame frame : mImageFramesToProcess) {
                 if (!seen.add(frame.timestamp) || frame.getCaptureRole() == null
                         || frame.measuredExposure <= 0 || frame.measuredIso <= 0)
-                    throw new IllegalStateException("NICE HDR: нет однозначной роли/экспозиции RAW timestamp="
+                    throw new IllegalStateException("SCAM HDR: нет однозначной роли/экспозиции RAW timestamp="
                             + frame.timestamp);
                 exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);
             }
@@ -190,7 +196,7 @@ public class HdrxProcessor extends ProcessorBase {
         // ZSL + manual bracket even though the RAW image is delivered. HDRX
         // must not fail merely because its auxiliary timestamp/gyro entry is
         // absent: reconstruct a conservative normal role and exposure.
-        if (!niceCapture && IsoExpoSelector.fullpairs.isEmpty()) {
+        if (!niceCapture && fullpairs.isEmpty()) {
             Long expNs = captureResult != null
                     ? captureResult.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
             Integer iso = captureResult != null
@@ -201,10 +207,10 @@ public class HdrxProcessor extends ProcessorBase {
                     safeExp, safeExp, safeExp, safeIso, safeIso, safeIso, safeIso);
             fallback.isHighlightFrame = false;
             fallback.isLongFrame = false;
-            IsoExpoSelector.fullpairs.add(fallback);
+            fullpairs.add(fallback);
             Log.w(TAG, "No exposure roles supplied; inserted safe normal role");
         }
-        if (PreferenceKeys.isHexQuadCaptureEnabled()) {
+        if (PreferenceKeys.isNeuralBurstRemosaic()) {
             double reference = -1;
             for (ImageFrame frame : mImageFramesToProcess) {
                 Double measured = exposures.get(frame.getTimestamp());
@@ -216,18 +222,18 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
         if(PreferenceKeys.isRawMfsrEnabled()) {
-            if(IsoExpoSelector.fullpairs.size()!=mImageFramesToProcess.size())
+            if(fullpairs.size()!=mImageFramesToProcess.size())
                 throw new IllegalStateException("MFSR: число метаданных не совпадает с серией RAW");
             for(int i=0;i<mImageFramesToProcess.size();i++) {
                 ImageFrame f=mImageFramesToProcess.get(i);
-                IsoExpoSelector.ExpoPair requested=IsoExpoSelector.fullpairs.get(i);
+                IsoExpoSelector.ExpoPair requested=fullpairs.get(i);
                 Double actual=exposures.get(f.timestamp);
                 double expected=requested.exposure/1e9*requested.iso;
                 if(actual==null || !Double.isFinite(actual) || actual<=0 || Math.abs(actual/expected-1)>0.02)
                     throw new IllegalStateException("MFSR: камера не выполнила заданную экспозицию кадра "+i);
             }
         }
-        double safeExposure = niceCapture ? 0 : IsoExpoSelector.fullpairs.get(0).Exposure();
+        double safeExposure = niceCapture ? 0 : fullpairs.get(0).Exposure();
         for (ImageFrame frame : mImageFramesToProcess) {
             Double value = exposures.get(frame.getTimestamp());
             if (value == null || !Double.isFinite(value) || value <= 0.0) {
@@ -256,16 +262,16 @@ public class HdrxProcessor extends ProcessorBase {
                 role.isHighlightFrame = frame.getCaptureRole() == ImageFrame.CaptureRole.SHORT;
                 role.isLongFrame = frame.getCaptureRole() == ImageFrame.CaptureRole.LONG;
                 pairByTimestamp.put(timestamp, role);
-            } else if (i < IsoExpoSelector.fullpairs.size()) {
+            } else if (i < fullpairs.size()) {
                 pairByTimestamp.put(timestamp, new IsoExpoSelector.ExpoPair(
-                        IsoExpoSelector.fullpairs.get(i)));
+                        fullpairs.get(i)));
             }
             if (BurstShakiness.size() == mImageFramesToProcess.size()) {
                 gyroByTimestamp.put(timestamp, BurstShakiness.get(i));
             }
         }
 
-        int requestedHighlightValue = Math.max(0, Math.min(200,
+        int requestedHighlightValue = niceCapture ? 100 : Math.max(0, Math.min(200,
                 PreferenceKeys.getHighlightSuppressionValue()));
         if (requestedHighlightValue == 0) {
             int removed = 0;
@@ -333,8 +339,8 @@ public class HdrxProcessor extends ProcessorBase {
             //frame.pair = IsoExpoSelector.pairs.get(i % IsoExpoSelector.patternSize);
             frame.pair = pairByTimestamp.get(frame.getTimestamp());
             if (frame.pair == null) {
-                frame.pair = new IsoExpoSelector.ExpoPair(IsoExpoSelector.fullpairs.get(
-                        Math.min(i, IsoExpoSelector.fullpairs.size() - 1)));
+                frame.pair = new IsoExpoSelector.ExpoPair(fullpairs.get(
+                        Math.min(i, fullpairs.size() - 1)));
             }
             if(frame.measuredExposure>0 && frame.measuredIso>0) {
                 frame.pair.exposure=frame.measuredExposure; frame.pair.iso=frame.measuredIso;
@@ -381,6 +387,7 @@ public class HdrxProcessor extends ProcessorBase {
         ISO = isoFrames > 0 ? ISO / isoFrames : ISO / images.size();
 
         processingParameters.FillDynamicParameters(captureResult, captureRequest,ISO);
+        refineBlackFromDarkestFrame(processingParameters, images);
         processingParameters.cameraRotation = cameraRotation;
         processingStage = "frame selection";
 
@@ -390,7 +397,7 @@ public class HdrxProcessor extends ProcessorBase {
                 captureRequest!=null && captureRequest.getTag() instanceof com.particlesdevs.photoncamera.remosaic.CalibrationSession
                 ? (com.particlesdevs.photoncamera.remosaic.CalibrationSession)captureRequest.getTag() : null;
         boolean multiCapture = calibrationSession!=null || (PreferenceKeys.isRawMfsrEnabled() && !PreferenceKeys.isSabreEnabled());
-        boolean hexCapture = PreferenceKeys.isHexQuadCaptureEnabled();
+        boolean hexCapture = PreferenceKeys.isNeuralBurstRemosaic();
         ByteBuffer hexOutput = null;
         boolean multiBracket=multiCapture && images.stream().anyMatch(f->f.pair.isHighlightFrame || f.pair.isLongFrame);
         if (multiCapture) {
@@ -415,7 +422,7 @@ public class HdrxProcessor extends ProcessorBase {
             } catch(Exception e) {throw new IllegalStateException("Multi-frame Remosaic: "+e.getMessage(),e);}
             finally {if(!multiBracket)for(ImageFrame frame:images)frame.close();}
         } else if (hexCapture) {
-            processingStage = "HP9 HexQuad: six-frame NPU remosaic";
+            processingStage = PreferenceKeys.isQuadNeuralCaptureEnabled() ? "Quad 2x2: four-frame NPU remosaic" : "HP9 HexQuad: six-frame NPU remosaic";
             try {
                 hexOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.HexQuadBurst.process(
                         PhotonCamera.getAppContext(), images, processingParameters);
@@ -428,7 +435,7 @@ public class HdrxProcessor extends ProcessorBase {
                 for (ImageFrame frame : images) frame.close();
             }
         }
-        if (!hexCapture && !multiCapture) {
+        if (!niceCapture && !hexCapture && !multiCapture) {
         ImageFrameDeblur imageFrameDeblur = new ImageFrameDeblur(processingParameters);
         imageFrameDeblur.firstFrameGyro = images.get(0).frameGyro.clone();
         for (int i = 0; i < images.size(); i++)
@@ -471,23 +478,29 @@ public class HdrxProcessor extends ProcessorBase {
         } // Ordinary frame selection; HexQuad owns its six-frame burst.
         boolean niceComplete=false;
         if (niceCapture && !hexCapture && !multiCapture) {
-            processingStage="NICE HDR neural burst";
+            processingStage="SCAM HDR neural burst";
             try {
-                ImageFrame niceReference = images.get(0);
+                ImageFrame niceReference = images.stream()
+                        .filter(f -> !f.pair.isHighlightFrame && !f.pair.isLongFrame)
+                        .findFirst().orElseThrow(() -> new IllegalStateException("NICE: no normal reference"));
+                images.remove(niceReference);
+                images.add(0, niceReference);
                 CaptureResult referenceMetadata = niceReference.getMatchedCaptureMetadata();
                 if (referenceMetadata == null)
-                    throw new IllegalStateException("NICE HDR: нет метаданных опорного RAW timestamp="
+                    throw new IllegalStateException("SCAM HDR: нет метаданных опорного RAW timestamp="
                             + niceReference.timestamp);
                 captureResult = referenceMetadata;
                 captureRequest = referenceMetadata.getRequest();
                 processingParameters.FillDynamicParameters(referenceMetadata, captureRequest,
                         niceReference.measuredIso);
+                refineBlackFromDarkestFrame(processingParameters, images);
                 ParseExif.syncWithParameters(exifData, processingParameters);
                 Log.i("NICE_HDR", "Reference calibration timestamp=" + niceReference.timestamp
                         + " ISO=" + processingParameters.iso
                         + " exposureSeconds=" + processingParameters.exposureTime);
                 niceOwnedOutput=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
-                        PhotonCamera.getAppContext(),images,processingParameters);
+                        PhotonCamera.getAppContext(),images,processingParameters,
+                        saveRAW>=1 && (alignAlgorithm!=2 || multiCapture));
                 niceOutputParameters=processingParameters;
                 processingParameters.vivoNiceRgb=niceOwnedOutput;
                 processingParameters.vivoHdrRawScale=1f;niceComplete=true;
@@ -501,9 +514,12 @@ public class HdrxProcessor extends ProcessorBase {
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");
         ESD4D esd4d = null;
+        ByteBuffer niceMergedDng=null;
         if (niceComplete) {
             ImageFrame ref=images.get(0);output=ref.buffer;ref.buffer=null;
             for(ImageFrame frame:images)frame.close();
+            niceMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng;
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng=null;
         } else if (hexCapture || (multiCapture && !multiBracket)) {
             processingParameters.highlightSuppressionStrength = 0f;
         } else if(images.size() > 1) {
@@ -546,7 +562,23 @@ public class HdrxProcessor extends ProcessorBase {
         }
         Log.d(TAG, "HDRX Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
         if ((saveRAW >= 1) && (alignAlgorithm != 2 || multiCapture)) {
-            boolean imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
+            boolean imageSaved;
+            if (niceMergedDng != null) {
+                // Whole-burst merge (like the merged DNG of GCam/LMC), 14-bit levels.
+                float[] black = processingParameters.blackLevel.clone();
+                int white = processingParameters.whiteLevel;
+                float k = 16383f / white;
+                for (int i = 0; i < 4; i++) processingParameters.blackLevel[i] = Math.round(black[i] * k);
+                processingParameters.whiteLevel = 16383;
+                try {
+                    imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, niceMergedDng, processingParameters);
+                    Log.i("NICE_HDR", "DNG: merged burst RAW (all N frames), 14-bit");
+                } finally {
+                    System.arraycopy(black, 0, processingParameters.blackLevel, 0, 4);
+                    processingParameters.whiteLevel = white;
+                    Allocator.free(niceMergedDng);
+                }
+            } else imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
                     processingParameters);
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
             if (saveRAW == 2) {
@@ -641,11 +673,17 @@ public class HdrxProcessor extends ProcessorBase {
         final int downscaleKernel = PreferenceKeys.getVivoDownscaleKernel();
         final String downscaleSize = PreferenceKeys.getVivoDownscaleSize();
         boolean vivoSucceeded = false;
-        if (!processingParameters.vivoHdrMode && PreferenceKeys.isRaisrEnabled()) {
-            processingStage = "softpqe".equals(PreferenceKeys.getVivoUpscaleBackend()) ? "Vivo SoftPQE" : "Vivo RAISR";
+        // VSR works on the finished bitmap, so it also follows NICE / vivo HDR.
+        if ((!processingParameters.vivoHdrMode || "vsr".equals(PreferenceKeys.getVivoUpscaleBackend()))
+                && PreferenceKeys.isRaisrEnabled()) {
+            final String upscaleBackend = PreferenceKeys.getVivoUpscaleBackend();
+            processingStage = "softpqe".equals(upscaleBackend) ? "Vivo SoftPQE" : "vsr".equals(upscaleBackend) ? "Vivo VSR" : "Vivo RAISR";
             try {
-                Bitmap enhanced = VivoRaisrProcessor.process(PhotonCamera.getAppContext(), img,
-                        processingParameters.cameraID, processingParameters.iso, PreferenceKeys.getRaisrOutputScale(), PreferenceKeys.getVivoUpscaleBackend());
+                Bitmap enhanced = "vsr".equals(upscaleBackend)
+                        ? com.particlesdevs.photoncamera.processing.ml.VivoVsrProcessor.process(PhotonCamera.getAppContext(), img,
+                                PreferenceKeys.getRaisrOutputScale(), PreferenceKeys.getRaisrStrength())
+                        : VivoRaisrProcessor.process(PhotonCamera.getAppContext(), img,
+                        processingParameters.cameraID, processingParameters.iso, PreferenceKeys.getRaisrOutputScale(), upscaleBackend);
                 if (enhanced != img) {
                     img.recycle();
                     img = enhanced;
@@ -727,6 +765,20 @@ public class HdrxProcessor extends ProcessorBase {
 
         Allocator.getMemoryCount();
         callback.onFinished();
+    }
+
+    /** The shortest exposure has the most pixels at the dark floor, so it bounds black best. */
+    private static void refineBlackFromDarkestFrame(Parameters processingParameters, ArrayList<ImageFrame> frames) {
+        ImageFrame darkest = null;
+        double lowest = Double.MAX_VALUE;
+        for (ImageFrame frame : frames) {
+            if (frame == null || frame.buffer == null) continue;
+            double exposure = frame.measuredExposure > 0 && frame.measuredIso > 0
+                    ? (double) frame.measuredExposure * frame.measuredIso
+                    : frame.pair != null ? frame.pair.exposure * (double) frame.pair.iso : Double.MAX_VALUE / 2;
+            if (exposure < lowest) { lowest = exposure; darkest = frame; }
+        }
+        if (darkest != null) processingParameters.refineBlackLevel(darkest.buffer, darkest.width, darkest.height);
     }
 
     private static Path syntheticMosaicPath(Path original, int width, int height) {

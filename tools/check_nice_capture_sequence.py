@@ -59,6 +59,23 @@ public class Check {
   rejects(()->new VivoNiceCaptureSequence(List.of(),List.of()));
   rejects(()->new VivoNiceCaptureSequence(requests,List.of(zsl.get(0),zsl.get(0))));
   rejects(()->new VivoNiceCaptureSequence(List.of(b,a),zsl));
+  var tail=List.of(request(3,0,ImageFrame.CaptureRole.LONG),request(3,1,ImageFrame.CaptureRole.SHORT),request(3,2,ImageFrame.CaptureRole.EXTRA_SHORT));
+  var realZsl=VivoNiceCaptureSequence.stockZsl(tail,p4,70);
+  for(int i=2;i>=0;i--)realZsl.completed(tail.get(i),result(tail.get(i),81+i));
+  var joined=new ArrayList<ImageFrame>(p4);joined.add(raw(83));joined.add(raw(81));joined.add(raw(82));
+  realZsl.bindAndValidate(joined);
+  check(realZsl.futureCount==3 && joined.get(4).getCaptureRole()==ImageFrame.CaptureRole.EXTRA_SHORT);
+  rejects(()->VivoNiceCaptureSequence.stockZsl(tail,p4,65));
+  rejects(()->VivoNiceCaptureSequence.stockZsl(tail,p4,0));
+  rejects(()->VivoNiceCaptureSequence.stockZsl(tail,p4.subList(0,3),70));
+  rejects(()->VivoNiceCaptureSequence.stockZsl(q3,p4,70));
+  var wrongTail=List.of(request(3,0,ImageFrame.CaptureRole.NORMAL),tail.get(1),tail.get(2));
+  rejects(()->VivoNiceCaptureSequence.stockZsl(wrongTail,p4,70));
+  var latePreview=VivoNiceCaptureSequence.stockZsl(tail,p4,70);
+  latePreview.completed(tail.get(0),result(tail.get(0),69));
+  latePreview.completed(tail.get(1),result(tail.get(1),82));
+  latePreview.completed(tail.get(2),result(tail.get(2),83));
+  rejects(latePreview::requireCompleteMetadata);
   System.out.println("PASS: "+checks+" NICE request/result/RAW checks, including reordering, missing frames, stale series, invalid metadata and HAL failure");
  }
 }'''

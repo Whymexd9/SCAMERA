@@ -44,6 +44,16 @@ public class LinearExposure extends Node {
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
+        if (pipeline.mParameters.vivoNiceRgb != null) {
+            // NICE brightness targets are user settings (group "Светотень и тон").
+            // Gain up to x128 by default: 16 capped every dim indoor/night NICE shot
+            // (p50 ~0.001-0.002 needs x25..x50) and pictures came out darker than the scene.
+            histSize = 1024;
+            midAnchor = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_mid", 0.050f, 0.005f, 0.200f);
+            highAnchor = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_high", 0.180f, 0.020f, 0.500f);
+            gainMin = 1.0f;
+            gainMax = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_gain_max", 128f, 1f, 256f);
+        }
         // Keep the linear scene snapshot for the Ultra HDR gain-map pass
         // (this buffer is the post-demosaic/ABLC input Initial used to see).
         if (pipeline.captureDemosaic) {
@@ -82,8 +92,28 @@ public class LinearExposure extends Node {
         if (total > 0L) {
             float p50 = percentile(cumulative, total, 0.50f);
             float p90 = percentile(cumulative, total, 0.90f);
-            float gain50 = midAnchor / Math.max(p50, 1.0e-4f);
-            float gain90 = highAnchor / Math.max(p90, 1.0e-4f);
+            // Dark scene: the whole histogram sits in the first few of 1024 linear
+            // bins (p50 = p90 = 0 on a night wide-angle shot), so the gain was blind
+            // and just hit its cap. Meter again with the values magnified.
+            if (p90 < 32f / bins) {
+                final float zoom = 64f;
+                GLHistogram fine = new GLHistogram(glProg, bins);
+                fine.Rc = true; fine.Gc = true; fine.Bc = true; fine.Ac = false;
+                for (int c = 0; c < 3; c++) fine.exposure[c] = zoom / rawScale;
+                try {
+                    int[][] h = fine.Compute(previousNode.WorkingTexture);
+                    long all = 0L; long[] cum = new long[bins];
+                    for (int i = 0; i < bins; i++) { all += (long) h[0][i] + h[1][i] + h[2][i]; cum[i] = all; }
+                    if (all > 0L) {
+                        p50 = percentile(cum, all, 0.50f) / zoom;
+                        p90 = percentile(cum, all, 0.90f) / zoom;
+                    }
+                } finally {
+                    fine.close();
+                }
+            }
+            float gain50 = midAnchor / Math.max(p50, 1.0e-5f);
+            float gain90 = highAnchor / Math.max(p90, 1.0e-5f);
             float sceneGain = (float) Math.sqrt(
                     Math.max(1.f, gain50) * Math.max(1.f, gain90));
             gain = Math.max(gainMin, Math.min(gainMax, sceneGain));
@@ -93,6 +123,25 @@ public class LinearExposure extends Node {
             Log.d(Name, "Empty histogram, displayGain:" + gain);
         }
         pipeline.linearDisplayGain = gain/rawScale;
+        pipeline.linearHighlight = 0f;
+        if (basePipeline.mParameters.vivoHdrMode && !AgxTone.enabled()) {
+            // Legacy shoulder only (AgX has its own range): highlight level of the HDR data itself (unscaled, up to its own max),
+            // so the renderer's white point follows the scene instead of clipping
+            // everything brighter than the normal exposure's white.
+            GLHistogram high = new GLHistogram(glProg, bins);
+            high.Rc = true; high.Gc = true; high.Bc = true; high.Ac = false;
+            for (int c = 0; c < 3; c++) high.exposure[c] = 1f;
+            try {
+                int[][] h = high.Compute(previousNode.WorkingTexture);
+                long all = 0L; long[] cum = new long[bins];
+                for (int i = 0; i < bins; i++) { all += (long) h[0][i] + h[1][i] + h[2][i]; cum[i] = all; }
+                float pct = com.particlesdevs.photoncamera.settings.PreferenceKeys.vivoHdrValue("highlight_pct", 99.5f) / 100f;
+                if (all > 0L) pipeline.linearHighlight = percentile(cum, all, Math.max(0.9f, Math.min(0.9999f, pct)));
+            } finally {
+                high.close();
+            }
+            Log.d(Name, "HDR highlight level: " + pipeline.linearHighlight);
+        }
 
         WorkingTexture = previousNode.WorkingTexture;
         glProg.closed = true;

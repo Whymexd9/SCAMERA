@@ -8,6 +8,7 @@
 #include <limits>
 #include <chrono>
 #include <memory>
+#include <future>
 #include "vivo-hexquad-detail.h"
 #include "vivo-hexquad-gpu.h"
 #include "vivo-hexquad-prefetch.h"
@@ -24,15 +25,18 @@ struct RawBurst {
     float texture=0.f;
     Rgb neutral{{1.f,1.f,1.f}};
     std::array<const uint16_t*,Frames> raw{};
+    // Extra equal-exposure RAWs merged into the six model slots (round-robin).
+    std::vector<const uint16_t*> extra;
     std::array<float,64> gain;
     RawBurst() { gain.fill(1.f); }
     // Sampling, site gains, guides, registration and tiles use canonical RGGB
     // coordinates. red is retained for the physical sensor/output orientation.
     int color(int x,int y) const { return tagSource(0,x,y,0)>>14; }
-    float sample(int f,int x,int y) const {
+    float sample(int f,int x,int y) const {return sampleRaw(raw[f],x,y);}
+    float sampleRaw(const uint16_t* data,int x,int y) const {
         const int k=(y&7)*8+(x&7);
         const CfaOrientation orientation(w,h,red);
-        return std::max(0.f,std::min(1.f,(float(raw[f][size_t(orientation.y(y))*w+orientation.x(x)])-black)/(white-black)*gain[k]));
+        return std::max(0.f,std::min(1.f,(float(data[size_t(orientation.y(y))*w+orientation.x(x)])-black)/(white-black)*gain[k]));
     }
 };
 struct MappedBurst {
@@ -41,7 +45,7 @@ struct MappedBurst {
         int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC);
         if(fd<0)throw std::runtime_error("Cannot open HexQuad RAW burst");
         struct stat st{};
-        if(fstat(fd,&st)||st.st_size<64||st.st_size>112+16000000LL*12){close(fd);throw std::runtime_error("Invalid burst file size");}
+        if(fstat(fd,&st)||st.st_size<64||st.st_size>112+16000000LL*2*50){close(fd);throw std::runtime_error("Invalid burst file size");}
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map burst");
         try {
@@ -52,7 +56,7 @@ struct MappedBurst {
             burst.w=int(v[2]);burst.h=int(v[3]);burst.iso=int(v[4]);burst.red=int(v[5]);
             std::memcpy(&burst.black,&v[8],4);std::memcpy(&burst.white,&v[9],4);
             require(std::isfinite(burst.black)&&std::isfinite(burst.white)&&burst.black>=0&&
-                    burst.white<=65535&&burst.white>burst.black+1&&v[10]<=1&&v[11]==6,
+                    burst.white<=65535&&burst.white>burst.black+1&&v[10]<=1&&v[11]>=6&&v[11]<=50,
                     "Invalid HexQuad radiometry");
             burst.response=v[10]!=0;
             const size_t header=v[1]>=3?112:v[1]==2?80:64;
@@ -80,9 +84,10 @@ struct MappedBurst {
                 for(size_t i=v[1]==4?108:104;i<112;++i)require(bytes[i]==0,"Invalid reserved header bytes");
             }
             size_t pixels=size_t(burst.w)*burst.h;
-            require(length==header+pixels*Frames*2,"Truncated HexQuad burst");
+            require(length==header+pixels*v[11]*2,"Truncated HexQuad burst");
             const uint16_t* data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+header);
             for(size_t f=0;f<Frames;++f)burst.raw[f]=data+f*pixels;
+            for(size_t f=Frames;f<v[11];++f)burst.extra.push_back(data+f*pixels);
         }catch(...){munmap(address,length);address=MAP_FAILED;throw;}
     }
     MappedBurst(const MappedBurst&)=delete;
@@ -126,7 +131,9 @@ inline void estimateResponse(RawBurst& b) {
 }
 struct Guide {
     int w,h;std::vector<float> data;
-    Guide(const RawBurst& b,int f,RowExecutor* team=nullptr):w(b.w/8),h(b.h/8),data(size_t(w)*h){
+    // Mean of 8x8 cells: colour-neutral for Tetra 4x4 and for 2x2 Quad (two periods).
+    template<class Burst>
+    Guide(const Burst& b,int f,RowExecutor* team=nullptr):w(b.w/8),h(b.h/8),data(size_t(w)*h){
         independentRows(team,h,[&](int y){for(int x=0;x<w;++x){float sum=0;
             for(int ky=0;ky<8;++ky)for(int kx=0;kx<8;++kx)sum+=b.sample(f,x*8+kx,y*8+ky);
             data[y*w+x]=sum/64;
@@ -267,6 +274,15 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
     std::vector<Guide> guides;guides.reserve(6);for(int f=0;f<6;++f)guides.emplace_back(b,f,&team);
     const double guidesDone=hexClockMs();
     std::vector<Flow> flows;flows.reserve(5);for(int f=1;f<6;++f)flows.emplace_back(guides[0],guides[f],&team);
+    // Extra frames: registered to the reference like the slots; slot f merges
+    // extras f, f+6, ... at the same reference position.
+    std::vector<Flow> extraFlows;std::vector<Guide> extraGuides;
+    for(const uint16_t* data:b.extra){
+        RawBurst view=b;view.raw[1]=data;
+        extraGuides.emplace_back(view,1,&team);
+        extraFlows.emplace_back(guides[0],extraGuides.back(),&team);
+    }
+    if(!b.extra.empty())vivo_nn::log("HEX EXTRA FRAMES: "+std::to_string(b.extra.size())+" merged into the six slots");
     const double flowsDone=hexClockMs();
     SignalStats inputSignal;
     // Sample complete CFA cells so the sample stride cannot alias one colour.
@@ -311,151 +327,182 @@ template<class Network> void captureHex(Network& net,RawBurst& b,const std::stri
                 }
                 if(tx>=Halo&&tx<288-Halo&&ty>=Halo&&ty<288-Halo){++rowSamples[ty];if(!valid)++rowHoles[ty];}
                 if(!valid)continue; // sparse hole, never duplicate the base frame
-                int c=b.color(sx,sy);unsigned value=unsigned(std::lround(b.sample(f,sx,sy)*16383.f));
+                int c=b.color(sx,sy);float own=b.sample(f,sx,sy);
+                if(!b.extra.empty()){
+                    // Same-colour donors of the extras at this reference position,
+                    // rejected beyond ~3 sigma of the frame difference (motion).
+                    const float sigma=std::sqrt(std::max(2*(physicalNoise.shot*own+physicalNoise.variance),1e-12f));
+                    float sum=own,weight=1;
+                    for(size_t e=size_t(f);e<b.extra.size();e+=6){
+                        const Shift s=extraFlows[e].at(x,y);
+                        const int ex=x+int(std::lround(s.x)),ey=y+int(std::lround(s.y));
+                        if(ex<0||ex>=b.w||ey<0||ey>=b.h||s.error>=.06f||b.color(ex,ey)!=c)continue;
+                        const float v=b.sampleRaw(b.extra[e],ex,ey);
+                        if(v>=.95f||own>=.95f)continue;
+                        const float d=(v-own)/(3*sigma),w=std::exp(-d*d);sum+=w*v;weight+=w;
+                    }
+                    own=sum/weight;
+                }
+                unsigned value=unsigned(std::lround(own*16383.f));
                 input[(size_t(ty)*288+tx)*18+f*3+c]=lut[c*Levels+value]*(1.f/65535.f);
             }
         }});
         for(int ty=0;ty<288;++ty){info.holes+=rowHoles[ty];info.samples+=rowSamples[ty];}
         info.ms=hexClockMs()-begin;return info;
     };
-    // An extra 5.7 MiB tile, not six extra RAW frames. The inactive input is
-    // never shared with QNN; completed vector storage is swapped, not copied.
-    std::vector<float> preparedInput;PackInfo currentPack,nextPack;
-    if(b.useGpu)try{preparedInput.resize(net.input.size());}
-        catch(const std::bad_alloc&){vivo_nn::log("HEX HYBRID: preparation buffer unavailable; serial CPU packing");}
-    // Declared last so an exception joins the job before destroying captures.
-    TilePreparation preparation(b.useGpu&&!preparedInput.empty());
-    const bool pipelined=preparation.enabled();double packingWaitMs=0,firstPackingMs=0;
-    auto finishPreparation=[&]{const double begin=hexClockMs();preparation.wait();packingWaitMs+=hexClockMs()-begin;};
-    vivo_nn::log("HEX HYBRID: CPU=alignment+input+overlap; NPU=model; GPU=detail+IVST+blend; input_prefetch="+
+    // NPU overlap: tile i runs on the HTP from a worker thread while this thread
+    // assembles tile i-1 (GPU context stays on this thread) and packs tile i+1.
+    // Input and output storage is swapped between completed calls only; execute()
+    // rebinds the client descriptors. Same arithmetic as the serial order.
+    std::vector<float> preparedInput,finishedOutput;PackInfo currentPack,nextPack;
+    bool overlap=b.useGpu;
+    if(overlap)try{preparedInput.resize(net.input.size());finishedOutput.resize(net.output.size());}
+        catch(const std::bad_alloc&){overlap=false;vivo_nn::log("HEX HYBRID: overlap buffers unavailable; serial CPU packing");}
+    const bool pipelined=overlap;double packingWaitMs=0,firstPackingMs=0;
+    vivo_nn::log("HEX HYBRID: CPU=alignment+input+overlap; NPU=model; GPU=detail+IVST+blend; npu_overlap="+
         std::to_string(pipelined)+"; one serial NPU call; bounded double buffer");
-    for(int oy:ys)for(int ox:xs){
-        if(pipelined&&done){net.input.swap(preparedInput);currentPack=nextPack;}
-        else currentPack=pack(net.input,ox,oy);
-        if(!done)firstPackingMs=currentPack.ms;
-        packingMs+=currentPack.ms;holes+=currentPack.holes;samples+=currentPack.samples;
-        if(pipelined&&done+1<total){
-            const int nx=xs[(done+1)%xs.size()],ny=ys[(done+1)/xs.size()];
-            preparation.submit([&,nx,ny]{nextPack=pack(preparedInput,nx,ny);});
-        }
+    auto assemble=[&](int ox,int oy,const std::vector<float>& tileOut){
         double tick=hexClockMs();
-        net.execute();npuMs+=hexClockMs()-tick;tick=hexClockMs();
-        typename TetraDetailReference<RawBurst>::Tile detailTile;
+            typename TetraDetailReference<RawBurst>::Tile detailTile;
 
-        const int scale=b.scale,side=288*scale;
-        require(net.output.size()==size_t(side)*side*3,"Unexpected HexQuad output shape");
-        // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
-        // decoded with stock IVST index saturation, not a chart-only range gate.
-        for(float v:net.output)require(std::isfinite(v),"Nonfinite HexQuad output");
-        OutputStats tileStats;
-        std::array<OutputStats,Core*2> rowStats;
-        const int tileSide=Core*outputScale;
-        std::vector<float> gpuValues,cpuCheck;
-        if(gpu){
-            const double start=hexClockMs();
-            try{gpuValues=gpu->render(net.output,ox,oy);}
-            catch(const std::exception& e){vivo_nn::log(std::string("HEX GPU FALLBACK: ")+e.what()+"; current and remaining tiles use CPU + NPU");gpu.reset();gpuVerified=false;}
-            gpuMs+=hexClockMs()-start;
-        }
-        // GPU dispatch may also overlap preparation. CPU postprocessing uses
-        // the same row team, so it cannot start until this job has completed.
-        if(pipelined)finishPreparation();
-        const bool checkGpu=gpu&&!gpuVerified;
-        if(checkGpu)cpuCheck.resize(size_t(tileSide)*tileSide);
-        if(gpu&&gpuVerified){
-            team.run(std::min(tileSide,oh-oy*outputScale),[&](int ty){for(int tx=0;tx<tileSide&&ox*outputScale+tx<ow;++tx){
-                // Diagnostic extrema/counters retain the original sample support.
-                const int area=b.fullResolution?1:scale;
-                const int nx=b.fullResolution?tx+64:(tx+Halo)*scale,ny=b.fullResolution?ty+64:(ty+Halo)*scale;
-                for(int dy=0;dy<area;++dy)for(int dx=0;dx<area;++dx)for(int c=0;c<3;++c)
-                    rowStats[ty].add(net.output[(size_t(ny+dy)*side+nx+dx)*3+c],nx+dx,ny+dy,c);
-                const float value=gpuValues[size_t(ty)*tileSide+tx];
-                const float w=feather((tx+.5f)/outputScale-.5f)*feather((ty+.5f)/outputScale-.5f);
-                const size_t at=size_t(oy*outputScale+ty)*ow+ox*outputScale+tx;
-                sum[at]+=value*w;weight[at]+=w;
-            }});
-            ++gpuTiles;
-        }else{
-        if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core,b.fullResolution?5:4);detailMs+=hexClockMs()-start;}
-        if(b.fullResolution){
-            // Build the single-RAW reference once at input resolution. Only the
-            // reference is bilinearly sampled; every neural output pixel is kept.
-            constexpr int refSide=Core+2;
-            std::vector<Rgb> refRgb;std::vector<float> confidence;
-            if(reference){
-                refRgb.resize(refSide*refSide);confidence.resize(refRgb.size());
-                team.run(refSide,[&](int y){for(int x=0;x<refSide;++x){
-                    int px=std::max(0,std::min(b.w-1,ox+x-1)),py=std::max(0,std::min(b.h-1,oy+y-1));
-                    refRgb[y*refSide+x]=reference->rgb(detailTile,px,py);
-                    confidence[y*refSide+x]=b.texture>0?reference->textureConfidence(px,py,physicalNoise.shot,physicalNoise.variance):0;
-                }});
+            const int scale=b.scale,side=288*scale;
+            require(tileOut.size()==size_t(side)*side*3,"Unexpected HexQuad output shape");
+            // Nonfinite/unwritten output anywhere is fatal. Finite overshoot is
+            // decoded with stock IVST index saturation, not a chart-only range gate.
+            for(float v:tileOut)require(std::isfinite(v),"Nonfinite HexQuad output");
+            OutputStats tileStats;
+            std::array<OutputStats,Core*2> rowStats;
+            const int tileSide=Core*outputScale;
+            std::vector<float> gpuValues,cpuCheck;
+            if(gpu){
+                const double start=hexClockMs();
+                try{gpuValues=gpu->render(tileOut,ox,oy);}
+                catch(const std::exception& e){vivo_nn::log(std::string("HEX GPU FALLBACK: ")+e.what()+"; current and remaining tiles use CPU + NPU");gpu.reset();gpuVerified=false;}
+                gpuMs+=hexClockMs()-start;
             }
-            team.run(std::min(Core*2,oh-oy*2),[&](int ty){for(int tx=0;tx<Core*2&&ox*2+tx<ow;++tx){
-                int x=ox*2+tx,y=oy*2+ty,c=bayerColor(x,y,0);
-                size_t ni=(size_t(ty+Halo*2)*side+tx+Halo*2)*3;
-                Rgb rgb{};for(int ch=0;ch<3;++ch){
-                    rowStats[ty].add(net.output[ni+ch],tx+Halo*2,ty+Halo*2,ch);
-                    rgb[ch]=inverse[ch][normalizedIvstIndex(net.output[ni+ch])];
-                }
-                float value=rgb[c];
+            const bool checkGpu=gpu&&!gpuVerified;
+            if(checkGpu)cpuCheck.resize(size_t(tileSide)*tileSide);
+            if(gpu&&gpuVerified){
+                team.run(std::min(tileSide,oh-oy*outputScale),[&](int ty){for(int tx=0;tx<tileSide&&ox*outputScale+tx<ow;++tx){
+                    // Diagnostic extrema/counters retain the original sample support.
+                    const int area=b.fullResolution?1:scale;
+                    const int nx=b.fullResolution?tx+64:(tx+Halo)*scale,ny=b.fullResolution?ty+64:(ty+Halo)*scale;
+                    for(int dy=0;dy<area;++dy)for(int dx=0;dx<area;++dx)for(int c=0;c<3;++c)
+                        rowStats[ty].add(tileOut[(size_t(ny+dy)*side+nx+dx)*3+c],nx+dx,ny+dy,c);
+                    const float value=gpuValues[size_t(ty)*tileSide+tx];
+                    const float w=feather((tx+.5f)/outputScale-.5f)*feather((ty+.5f)/outputScale-.5f);
+                    const size_t at=size_t(oy*outputScale+ty)*ow+ox*outputScale+tx;
+                    sum[at]+=value*w;weight[at]+=w;
+                }});
+                ++gpuTiles;
+            }else{
+            if(reference){double start=hexClockMs();detailTile=reference->tile(ox,oy,Core,b.fullResolution?5:4);detailMs+=hexClockMs()-start;}
+            if(b.fullResolution){
+                // Build the single-RAW reference once at input resolution. Only the
+                // reference is bilinearly sampled; every neural output pixel is kept.
+                constexpr int refSide=Core+2;
+                std::vector<Rgb> refRgb;std::vector<float> confidence;
                 if(reference){
-                    float sx=(tx+.5f)*.5f+.5f,sy=(ty+.5f)*.5f+.5f;
-                    int ix=int(sx),iy=int(sy);float fx=sx-ix,fy=sy-iy;
-                    Rgb ref{};float mask=0;
-                    for(int j=0;j<2;++j)for(int i=0;i<2;++i){
-                        float w=(i?fx:1-fx)*(j?fy:1-fy);size_t at=size_t(iy+j)*refSide+ix+i;
-                        for(int ch=0;ch<3;++ch)ref[ch]+=refRgb[at][ch]*w;
-                        mask+=confidence[at]*w;
+                    refRgb.resize(refSide*refSide);confidence.resize(refRgb.size());
+                    team.run(refSide,[&](int y){for(int x=0;x<refSide;++x){
+                        int px=std::max(0,std::min(b.w-1,ox+x-1)),py=std::max(0,std::min(b.h-1,oy+y-1));
+                        refRgb[y*refSide+x]=reference->rgb(detailTile,px,py);
+                        confidence[y*refSide+x]=b.texture>0?reference->textureConfidence(px,py,physicalNoise.shot,physicalNoise.variance):0;
+                    }});
+                }
+                team.run(std::min(Core*2,oh-oy*2),[&](int ty){for(int tx=0;tx<Core*2&&ox*2+tx<ow;++tx){
+                    int x=ox*2+tx,y=oy*2+ty,c=bayerColor(x,y,0);
+                    size_t ni=(size_t(ty+Halo*2)*side+tx+Halo*2)*3;
+                    Rgb rgb{};for(int ch=0;ch<3;++ch){
+                        rowStats[ty].add(tileOut[ni+ch],tx+Halo*2,ty+Halo*2,ch);
+                        rgb[ch]=inverse[ch][normalizedIvstIndex(tileOut[ni+ch])];
                     }
-                    value=mixDetail(ref,rgb,b.luma*(1-b.texture*mask),b.chroma,b.neutral)[c];
+                    float value=rgb[c];
+                    if(reference){
+                        float sx=(tx+.5f)*.5f+.5f,sy=(ty+.5f)*.5f+.5f;
+                        int ix=int(sx),iy=int(sy);float fx=sx-ix,fy=sy-iy;
+                        Rgb ref{};float mask=0;
+                        for(int j=0;j<2;++j)for(int i=0;i<2;++i){
+                            float w=(i?fx:1-fx)*(j?fy:1-fy);size_t at=size_t(iy+j)*refSide+ix+i;
+                            for(int ch=0;ch<3;++ch)ref[ch]+=refRgb[at][ch]*w;
+                            mask+=confidence[at]*w;
+                        }
+                        value=mixDetail(ref,rgb,b.luma*(1-b.texture*mask),b.chroma,b.neutral)[c];
+                    }
+                    if(checkGpu)cpuCheck[size_t(ty)*tileSide+tx]=value;
+                    float w=feather((tx+.5f)*.5f-.5f)*feather((ty+.5f)*.5f-.5f);
+                    size_t at=size_t(y)*ow+x;sum[at]+=value*w;weight[at]+=w;
+                }
+                });
+            } else team.run(std::min(Core,b.h-oy),[&](int ty){for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
+                int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;Rgb rgb{};
+                const float area=1.f/(scale*scale);
+                for(int dy=0;dy<scale;++dy)for(int dx=0;dx<scale;++dx){
+                    size_t index=(size_t((ty+Halo)*scale+dy)*side+(tx+Halo)*scale+dx)*3;
+                    for(int ch=0;ch<3;++ch)rowStats[ty].add(tileOut[index+ch],(tx+Halo)*scale+dx,(ty+Halo)*scale+dy,ch);
+                    value+=inverse[c][normalizedIvstIndex(tileOut[index+c])]*area;
+                    if(hybrid)for(int ch=0;ch<3;++ch)rgb[ch]+=inverse[ch][normalizedIvstIndex(tileOut[index+ch])]*area;
+                }
+                if(reference){
+                    const float confidence=b.texture>0?reference->textureConfidence(x,y,physicalNoise.shot,physicalNoise.variance):0.f;
+                    value=mixDetail(reference->rgb(detailTile,x,y),rgb,b.luma*(1.f-b.texture*confidence),b.chroma,b.neutral)[c];
                 }
                 if(checkGpu)cpuCheck[size_t(ty)*tileSide+tx]=value;
-                float w=feather((tx+.5f)*.5f-.5f)*feather((ty+.5f)*.5f-.5f);
-                size_t at=size_t(y)*ow+x;sum[at]+=value*w;weight[at]+=w;
+                float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
+                sum[index]+=value*w;weight[index]+=w;
+            }});
             }
-            });
-        } else team.run(std::min(Core,b.h-oy),[&](int ty){for(int tx=0;tx<Core&&ox+tx<b.w;++tx){
-            int x=ox+tx,y=oy+ty,c=bayerColor(x,y,0);float value=0;Rgb rgb{};
-            const float area=1.f/(scale*scale);
-            for(int dy=0;dy<scale;++dy)for(int dx=0;dx<scale;++dx){
-                size_t index=(size_t((ty+Halo)*scale+dy)*side+(tx+Halo)*scale+dx)*3;
-                for(int ch=0;ch<3;++ch)rowStats[ty].add(net.output[index+ch],(tx+Halo)*scale+dx,(ty+Halo)*scale+dy,ch);
-                value+=inverse[c][normalizedIvstIndex(net.output[index+c])]*area;
-                if(hybrid)for(int ch=0;ch<3;++ch)rgb[ch]+=inverse[ch][normalizedIvstIndex(net.output[index+ch])]*area;
+            if(checkGpu){
+                double squared=0;float worst=0;size_t count=0;
+                for(int y=0;y<tileSide&&oy*outputScale+y<oh;++y)for(int x=0;x<tileSide&&ox*outputScale+x<ow;++x){
+                    const size_t i=size_t(y)*tileSide+x;float error=std::abs(cpuCheck[i]-gpuValues[i]);
+                    squared+=double(error)*error;worst=std::max(worst,error);++count;
+                }
+                const double rmse=std::sqrt(squared/std::max(size_t(1),count));
+                gpuVerified=count&&worst<=.0002f&&rmse<=.00002;
+                vivo_nn::log("HEX GPU CHECK: max="+std::to_string(worst)+" RMSE="+std::to_string(rmse)+" pass="+std::to_string(gpuVerified)+"; first tile kept from CPU");
+                if(!gpuVerified){gpu.reset();vivo_nn::log("HEX GPU FALLBACK: precision check failed; using CPU + NPU");}
             }
-            if(reference){
-                const float confidence=b.texture>0?reference->textureConfidence(x,y,physicalNoise.shot,physicalNoise.variance):0.f;
-                value=mixDetail(reference->rgb(detailTile,x,y),rgb,b.luma*(1.f-b.texture*confidence),b.chroma,b.neutral)[c];
+            // Combine integer/extrema diagnostics in raster order; never reduce
+            // floating-point pixel accumulators across threads.
+            for(const auto& stats:rowStats){
+                if(!stats.count)continue;
+                if(tileStats.firstX<0&&stats.firstX>=0){tileStats.firstX=stats.firstX;tileStats.firstY=stats.firstY;tileStats.firstChannel=stats.firstChannel;tileStats.firstValue=stats.firstValue;}
+                tileStats.merge(stats);
             }
-            if(checkGpu)cpuCheck[size_t(ty)*tileSide+tx]=value;
-            float w=feather(tx)*feather(ty);size_t index=size_t(y)*b.w+x;
-            sum[index]+=value*w;weight[index]+=w;
-        }});
+            assemblyMs+=hexClockMs()-tick;
+            frameStats.merge(tileStats);++done;
+            if(tileStats.outsideChart)++anomalousTiles;
+            if(done==1||done%8==0||done==total||(tileStats.outsideChart&&anomalousTiles<=4))
+                vivo_nn::log("HEX OUTPUT: tile="+std::to_string(done)+"/"+std::to_string(total)+
+                    " origin="+std::to_string(ox)+","+std::to_string(oy)+" "+tileStats.summary());
+        };
+    std::vector<std::pair<int,int>> order;
+    for(int oy:ys)for(int ox:xs)order.push_back({ox,oy});
+    if(pipelined){
+        currentPack=pack(net.input,order[0].first,order[0].second);firstPackingMs=currentPack.ms;
+        for(size_t i=0;i<order.size();++i){
+            packingMs+=currentPack.ms;holes+=currentPack.holes;samples+=currentPack.samples;
+            double npuTile=0;
+            auto npu=std::async(std::launch::async,[&]{const double t=hexClockMs();net.execute();npuTile=hexClockMs()-t;});
+            try{
+                if(i>0)assemble(order[i-1].first,order[i-1].second,finishedOutput);
+                if(i+1<order.size())nextPack=pack(preparedInput,order[i+1].first,order[i+1].second);
+            }catch(...){npu.wait();throw;}
+            const double waitStart=hexClockMs();
+            npu.get();packingWaitMs+=hexClockMs()-waitStart;npuMs+=npuTile;
+            net.output.swap(finishedOutput);
+            if(i+1<order.size()){net.input.swap(preparedInput);currentPack=nextPack;}
         }
-        if(checkGpu){
-            double squared=0;float worst=0;size_t count=0;
-            for(int y=0;y<tileSide&&oy*outputScale+y<oh;++y)for(int x=0;x<tileSide&&ox*outputScale+x<ow;++x){
-                const size_t i=size_t(y)*tileSide+x;float error=std::abs(cpuCheck[i]-gpuValues[i]);
-                squared+=double(error)*error;worst=std::max(worst,error);++count;
-            }
-            const double rmse=std::sqrt(squared/std::max(size_t(1),count));
-            gpuVerified=count&&worst<=.0002f&&rmse<=.00002;
-            vivo_nn::log("HEX GPU CHECK: max="+std::to_string(worst)+" RMSE="+std::to_string(rmse)+" pass="+std::to_string(gpuVerified)+"; first tile kept from CPU");
-            if(!gpuVerified){gpu.reset();vivo_nn::log("HEX GPU FALLBACK: precision check failed; using CPU + NPU");}
+        assemble(order.back().first,order.back().second,finishedOutput);
+    } else {
+        for(const auto& tile:order){
+            currentPack=pack(net.input,tile.first,tile.second);
+            if(!done)firstPackingMs=currentPack.ms;
+            packingMs+=currentPack.ms;holes+=currentPack.holes;samples+=currentPack.samples;
+            const double t=hexClockMs();net.execute();npuMs+=hexClockMs()-t;
+            assemble(tile.first,tile.second,net.output);
         }
-        // Combine integer/extrema diagnostics in raster order; never reduce
-        // floating-point pixel accumulators across threads.
-        for(const auto& stats:rowStats){
-            if(!stats.count)continue;
-            if(tileStats.firstX<0&&stats.firstX>=0){tileStats.firstX=stats.firstX;tileStats.firstY=stats.firstY;tileStats.firstChannel=stats.firstChannel;tileStats.firstValue=stats.firstValue;}
-            tileStats.merge(stats);
-        }
-        assemblyMs+=hexClockMs()-tick;
-        frameStats.merge(tileStats);++done;
-        if(tileStats.outsideChart)++anomalousTiles;
-        if(done==1||done%8==0||done==total||(tileStats.outsideChart&&anomalousTiles<=4))
-            vivo_nn::log("HEX OUTPUT: tile="+std::to_string(done)+"/"+std::to_string(total)+
-                " origin="+std::to_string(ox)+","+std::to_string(oy)+" "+tileStats.summary());
     }
     vivo_nn::log("HEX OUTPUT TOTAL: retained RGB samples incl overlap; "+frameStats.summary()+
         " anomalous_tiles="+std::to_string(anomalousTiles));

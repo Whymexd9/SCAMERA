@@ -59,7 +59,7 @@ inline bool usesDualHdrGroup(int seamlessMode, int previewHdrVersion) {
     return (seamlessMode == 4 || seamlessMode == 0x500) && previewHdrVersion >= 2;
 }
 inline const HdrRow* findHdrRow(int lens, bool dual, const char* name) {
-    if (!name) throw std::invalid_argument("Missing NICE HDR variant");
+    if (!name) throw std::invalid_argument("Missing SCAM HDR variant");
     bool hasLens = false;
     for (const auto& row : hdrRows) if (row.lens == lens && row.dual == dual) hasLens = true;
     const int group = hasLens ? lens : 0; // Native map lookup falls back to wide.

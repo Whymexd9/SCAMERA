@@ -153,15 +153,6 @@ public class GalleryFileOperations {
         return imageFile;
     }
 
-    public static Uri createNewImageFile(ContentResolver contentResolver, String relativePath, String newImageName) {
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME, newImageName);
-        values.put(MediaStore.MediaColumns.MIME_TYPE, URLConnection.guessContentTypeFromName(newImageName));
-        String column = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? MediaStore.MediaColumns.RELATIVE_PATH : MediaStore.MediaColumns.DATA;
-        values.put(column, relativePath);
-        return contentResolver.insert(MediaStore.Files.getContentUri("external"), values);
-    }
-
     public static void deleteImageFiles(Activity activity, List<ImageFile> toDelete, ImagesDeletedCallback deletedCallback) {
         List<Uri> toDeleteUriList = toDelete.stream().map(ImageFile::getFileUri).collect(Collectors.toList());
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {

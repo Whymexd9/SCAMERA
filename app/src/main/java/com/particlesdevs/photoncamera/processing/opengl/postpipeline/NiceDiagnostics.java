@@ -101,7 +101,7 @@ public final class NiceDiagnostics {
         // Both directories are in this app's cache: rename avoids another full
         // seven-frame copy and lets the existing export queue do compression.
         File burst=new File(source,"input.f32");
-        if(burst.isFile()&&burst.length()>=128&&burst.length()<=160+7*VivoNiceAe.TRANSPORT_BYTES+16000000L*14) {
+        if(burst.isFile()&&burst.length()>=128&&burst.length()<=160+7*VivoNiceAe.TRANSPORT_BYTES+32+16000000L*14) {
             if(!burst.renameTo(new File(j.dir,"input.nch")))
                 Log.w("NICE_DIAG","Could not retain native burst for replay");
         }

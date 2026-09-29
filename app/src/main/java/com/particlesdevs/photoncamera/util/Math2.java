@@ -39,22 +39,6 @@ public class Math2 {
         }
         return cumulativeHist;
     }
-    public static float[] buildCumulativeHistInv(int[] hist, int outSize) {
-        float[] cumulativeHist = new float[hist.length + 1];
-        for (int i = 1; i < cumulativeHist.length; i++) {
-            cumulativeHist[i] = cumulativeHist[i - 1] + hist[hist.length - (i - 1) - 1];
-        }
-        float max = cumulativeHist[hist.length];
-        for (int i = 0; i < cumulativeHist.length; i++) {
-            cumulativeHist[i] /= max;
-        }
-        float[] prevH = cumulativeHist.clone();
-        cumulativeHist = new float[outSize];
-        for(int i =0; i<cumulativeHist.length;i++){
-            cumulativeHist[i] = getInterpolated(prevH,i*((float)prevH.length/(cumulativeHist.length)));
-        }
-        return cumulativeHist;
-    }
     private static float getInterpolated(float[] in, float ind){
         int indi = (int)ind;
         if(ind > indi){

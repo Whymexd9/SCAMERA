@@ -1,25 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools"
            tools:ignore="MissingTranslation">
-    <bool name="pref_enhanced_processing_default">false</bool>
     <bool name="pref_camera_sounds_default">true</bool>
     <bool name="pref_energy_safe_default">false</bool>
     <string name="pref_show_grid_default" translatable="false">0</string>
     <bool name="pref_wide169_default">false</bool>
     <bool name="pref_binning_default">false</bool>
     <bool name="pref_show_watermark_default">true</bool>
-    <bool name="pref_show_afdata_default">false</bool>
     <bool name="pref_show_roundedge_default">true</bool>
-    <bool name="pref_system_nr_default">false</bool>
-    <bool name="pref_disable_align_default">false</bool>
-    <bool name="pref_hdrx_nr_default">true</bool>
-    <bool name="pref_save_raw_default">false</bool>
 
     <bool name="pref_quad_bayer_default">false</bool>
     <bool name="pref_ultrahdr_default">false</bool>
     <bool name="pref_remosaic_default">false</bool>
     <bool name="pref_eis_photo_default">true</bool>
-    <bool name="pref_fps_preview_default">false</bool>
     <bool name="pref_hdrx_mode_default">true</bool>
     <string name="pref_ae_mode_default" translatable="false">1</string>
     <string name="pref_camera_mode_default" translatable="false">2</string>
@@ -64,12 +57,6 @@
     <string name="pref_long_exposure_ev_default" translatable="false">4</string>
     <string name="pref_highlight_suppression_default" translatable="false">100</string>
     <string name="pref_processing_backend_default" translatable="false">0</string>
-    <string name="pref_chroma_seekbar_default" translatable="false">12</string>
-    <string name="pref_luma_seekbar_default" translatable="false">12</string>
-    <string name="pref_sharpness_seekbar_default" translatable="false">0.20</string>
-    <bool name="pref_nr_luma_enabled_default">true</bool>
-    <bool name="pref_nr_chroma_enabled_default">true</bool>
-    <bool name="pref_nr_moire_enabled_default">true</bool>
     <bool name="pref_ai_denoise_enabled_default">false</bool>
     <string name="pref_ai_denoise_strength_default" translatable="false">50</string>
     <string name="pref_ai_denoise_luma_default" translatable="false">100</string>
@@ -83,8 +70,6 @@
     <string name="pref_noise_merge_seekbar_default" translatable="false">0.0</string>
     <string name="pref_compressor_seekbar_default" translatable="false">0.0</string>
     <string name="pref_align_method_default" translatable="false">1</string>
-    <string name="pref_focus_peak_default" translatable="false">2</string>
-    <string name="pref_color_method_default" translatable="false">0</string>
     <string name="pref_preview_format_default" translatable="false">0</string>
     <string name="pref_cfa_default_value" translatable="false">-1</string>
     <string name="pref_theme_default_value" translatable="false">-1</string>

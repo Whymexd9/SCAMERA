@@ -1,4 +1,4 @@
-# NICE HDR scene selection and frame planning
+# SCAM HDR scene selection and frame planning
 
 `vivo-nice-scene-selector.h` connects the recovered scene selection, HDR
 postprocessing, image-echo decision, tuning lookup and frame calculator.

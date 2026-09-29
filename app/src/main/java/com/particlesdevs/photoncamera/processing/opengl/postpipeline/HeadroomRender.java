@@ -37,9 +37,19 @@ public class HeadroomRender extends Node {
     protected float toneAmount = 1f;
     protected float localContrast = 0.42f;
     protected float shadowLift = 0f;
+    /** Shoulder position (0..1) where highlights start fading to neutral white. */
+    protected float highlightNeutralStart = 0.82f;
+    /** Display-linear level where near-white starts losing tint; 1 disables it. */
+    protected float displayNeutralStart = 1f;
     protected boolean manualTone = false;
     protected float manualExposure = 0f, manualContrast = 1f, manualGamma = 1f;
     protected float manualSaturation = 1f, manualBlack = 0f, manualWhite = 1f;
+    /** AgX picture formation instead of the headroom shoulder (see AgxTone). */
+    protected boolean agx = false;
+
+    public HeadroomRender agx(boolean enabled) { agx = enabled; return this; }
+    /** SCAM HDR tone stage: AgX with its HDR-specific highlight handling (see AgxTone.load). */
+    protected boolean niceTone = false;
     private GLTexture fallbackGainMap;
 
     public HeadroomRender() {
@@ -59,6 +69,28 @@ public class HeadroomRender extends Node {
             fallbackGainMap.close();
             fallbackGainMap = null;
         }
+        if (agxBase != null) {
+            agxBase.close();
+            agxBase = null;
+        }
+    }
+
+    private GLTexture agxBase;
+
+    /** Large-scale log2 luminance at 1/16 scale for the AgX local highlight range. */
+    private GLTexture buildAgxBase(GLTexture input) {
+        GLTexture quarter = glUtils.gaussdown(input, 4);
+        GLTexture sixteenth = glUtils.gaussdown(quarter, 4);
+        quarter.close();
+        GLTexture base = new GLTexture(sixteenth.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1),
+                null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+        glProg.useAssetProgram("headroom/agxbase", false);
+        glProg.setTexture("InputBuffer", sixteenth);
+        glProg.setVar("neutral", basePipeline.mParameters.whitePoint);
+        glProg.drawBlocks(base);
+        glProg.closed = true;
+        sixteenth.close();
+        return base;
     }
 
     @Override
@@ -89,7 +121,11 @@ public class HeadroomRender extends Node {
         }
 
         boolean fusion = pipeline.FusionMap != null;
+        AgxTone.Params agxParams = agx ? AgxTone.load(niceTone) : null;
+        if (agxParams != null && agxParams.localStrength > 0f)
+            agxBase = buildAgxBase(super.previousNode.WorkingTexture);
         glProg.setDefine("MANUAL_TONE", manualTone);
+        glProg.setDefine("AGX", agx);
         glProg.setDefine("FUSION", fusion);
         glProg.setDefine("NEUTRALPOINT", basePipeline.mParameters.whitePoint);
         glProg.useAssetProgram("headroom/render");
@@ -112,9 +148,24 @@ public class HeadroomRender extends Node {
                     + " black=" + manualBlack + " white=" + manualWhite
                     + " shoulder=" + toneAmount + " local=" + localContrast + " shadows=" + shadowLift);
         }
+        if (agx) {
+            AgxTone.Params a = agxParams;
+            glProg.setTexture("AgxBase", agxBase != null ? agxBase : gainMapTex);
+            glProg.setVar("agxLocal", agxBase != null ? a.localStrength : 0f, a.localStart);
+            glProg.setVar("agxHiDesat", a.highlightDesat, Math.min(a.desatStart, 0.95f));
+            glProg.setVar("agxInset", a.inset);
+            glProg.setVar("agxOutset", a.outset);
+            glProg.setVar("agxExposure", a.exposure);
+            glProg.setVar("agxRange", a.minEv, a.maxEv);
+            glProg.setVar("agxCurve", a.px, a.py, a.slope, 0f);
+            glProg.setVar("agxPowers", a.toe, a.shoulder, a.ts, a.ss);
+            glProg.setVar("agxLook", a.lookSlope, a.lookOffset, a.lookPower, a.saturation);
+        }
         glProg.setVar("toneAmount", toneAmount);
         glProg.setVar("localContrast", localContrast);
         glProg.setVar("shadowLift", shadowLift);
+        glProg.setVar("highlightNeutralStart", Math.max(0f, Math.min(0.99f, highlightNeutralStart)));
+        glProg.setVar("displayNeutralStart", Math.max(0f, Math.min(1f, displayNeutralStart)));
         glProg.setVar("outputExposureScale", Math.max(outputExposureScale, 1.0e-2f));
         glProg.setVar("activeSize", 2, 2,
                 basePipeline.mParameters.sensorPix.right - basePipeline.mParameters.sensorPix.left - 2,

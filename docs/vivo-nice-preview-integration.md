@@ -1,3 +1,30 @@
+## Current direction: Camera2 RAW, no VCF2
+
+The user retired the VCF2 direction on 2026-09-21. NICE now always selects
+Camera2 RAW; `pref_vivo_nice_route=vcf2` in old/imported settings cannot enable
+JPEG delivery or disable downstream sharpening. The route selector is removed.
+Earlier VCF2 sections below describe historical work, not an active app route.
+
+CaptureController now enables the NICE detector independently of VCF2 for
+compatible Photo/Night RAW preview sessions. Session parameters receive only
+NiceMagicEnable; repeating preview receives NiceMagicEnable and NICE AUTO.
+No VCF2 JPEG dimensions, stream usages or SnapshotJpegStreamMap are applied to
+RAW. Existing sensor-mode selection is retained. Actual acceptance and metadata
+availability on this phone remain unverified.
+
+The existing shutter snapshot reader can consume matching Camera2 preview
+metadata if all six required vendor fields are exposed. Merely enabling the
+detector does not prove those fields exist, translate vendor gain into requested
+ISO, or implement internal paired RAW streams. Capture still logs
+stockPlanApplied=false and uses the existing manual schedule. No stock-equivalent
+bracket or new APK is claimed. An internal VCF2 pixel dump is not a prerequisite
+for developing this Camera2 route.
+
+Host checks pass for retired saved route values across all six camera modes,
+retained sharpening/NICE controls, exact detector key types and rollback, and
+legacy ratio/TET isolation in the production exposure selector. These checks
+do not compile the full Android app or validate the HAL.
+
 ## RAW tuning and progress
 
 The independent photon/readout controls multiply the measured/calibrated

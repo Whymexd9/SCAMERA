@@ -24,97 +24,6 @@ public class GLUtils {
         glProg = blockProcessing.mProgram;
         glProcessing = blockProcessing;
     }
-    public GLTexture blurfast(GLTexture in, double size){
-        glProg.useProgram(
-                "#define tvar "+in.mFormat.getTemVar()+"\n" +
-                        "#define tscal "+in.mFormat.getScalar()+"\n" +
-                        "precision mediump float;\n" +
-                        "precision mediump "+in.mFormat.getTemSamp()+";\n" +
-                        "uniform "+in.mFormat.getTemSamp()+" InputBuffer;\n" +
-                        "uniform int yOffset;\n" +
-                        "out tvar Output;\n" +
-                        "#define size1 "+((double)(size)*0.5)+"\n" +
-                        "#define MSIZE1 "+(int)size+"\n" +
-                        "#import gaussian\n" +
-                        "void main() {\n" +
-                        "    ivec2 xy = ivec2(gl_FragCoord.xy);\n" +
-                        "    xy+=ivec2(0,yOffset);\n" +
-                        "    const int kSize = (MSIZE1-1)/2;\n" +
-                        //"    float kernel[MSIZE1];\n" +
-                        "    tvar mask = tvar(0.0);\n" +
-                        "    float pdfsize = 0.0;\n" +
-                        //"    for (int j = 0; j <= kSize; ++j) kernel[kSize+j] = kernel[kSize-j] = normpdf(float(j), size1);\n" +
-                        //"    for (int i=-kSize; i <= kSize; ++i){\n" +
-                        "        for (int j=-kSize; j <= kSize; ++j){\n" +
-                        "            tvar inp = tvar(texelFetch(InputBuffer, (xy+ivec2(0,j)), 0)"+in.mFormat.getTemExt()+");\n" +
-                        "            if(length(inp"+in.mFormat.getLimExt()+") > 1.0/1000.0) {\n"+
-                        "            float pdfv = pdf(float(float(abs(j)))/size1);\n" +
-                        "            mask+=inp*pdfv;\n" +
-                        "            pdfsize+=pdfv;\n" +
-                        "            }\n" +
-                        "        }\n" +
-                        //"    }\n" +
-                        "    mask/=pdfsize;\n" +
-                        "    Output = mask;\n" +
-                        "}\n");
-        glProg.setTexture("InputBuffer",in);
-        GLTexture out = new GLTexture(in);
-        glProg.drawBlocks(out);
-        glProg.closed = true;
-        glProg.useProgram(
-                "#define tvar "+out.mFormat.getTemVar()+"\n" +
-                        "#define tscal "+out.mFormat.getScalar()+"\n" +
-                        "precision mediump float;\n" +
-                        "precision mediump "+out.mFormat.getTemSamp()+";\n" +
-                        "uniform "+in.mFormat.getTemSamp()+" InputBuffer;\n" +
-                        "uniform int yOffset;\n" +
-                        "out tvar Output;\n" +
-                        "#define size1 "+((double)(size)*0.5)+"\n" +
-                        "#define MSIZE1 "+(int)size+"\n" +
-                        "#import gaussian\n" +
-                        "void main() {\n" +
-                        "    ivec2 xy = ivec2(gl_FragCoord.xy);\n" +
-                        "    xy+=ivec2(0,yOffset);\n" +
-                        "    const int kSize = (MSIZE1-1)/2;\n" +
-                        //"    float kernel[MSIZE1];\n" +
-                        "    tvar mask = tvar(0.0);\n" +
-                        "    float pdfsize = 0.0;\n" +
-                        //"    for (int j = 0; j <= kSize; ++j) kernel[kSize+j] = kernel[kSize-j] = normpdf(float(j), size1);\n" +
-                        "    for (int i=-kSize; i <= kSize; ++i){\n" +
-                        //"        for (int j=-kSize; j <= kSize; ++j){\n" +
-                        //"            float pdf = kernel[kSize+i];\n" +
-                        "            tvar inp = tvar(texelFetch(InputBuffer, (xy+ivec2(i,0)), 0)"+out.mFormat.getTemExt()+");\n" +
-                        "            if(length(inp"+in.mFormat.getLimExt()+") > 1.0/1000.0) {\n"+
-                        "            float pdfv = pdf(float(float(abs(i)))/size1);\n" +
-                        "            mask+=inp*pdfv;\n" +
-                        "            pdfsize+=pdfv;\n" +
-                        "            }\n" +
-                        "        }\n" +
-                        //"    }\n" +
-                        "    mask/=pdfsize;\n" +
-                        "    Output = mask;\n" +
-                        "}\n");
-        glProg.setTexture("InputBuffer",out);
-        GLTexture out2 = new GLTexture(out);
-        glProg.drawBlocks(out2);
-        out.close();
-        glProg.closed = true;
-        return out2;
-    }
-    public void bluxVH(GLTexture in,GLTexture out, double size,boolean horizontal){
-        glProg.setDefine("tvar",in.mFormat.getTemVar());
-        glProg.setDefine("tscal",in.mFormat.getScalar());
-        glProg.setDefine("TSAMP",in.mFormat.getTemSamp());
-        glProg.setDefine("INSIZE", Utilities.addP(in.mSize,0));
-        glProg.setDefine("SIZE",(float)size*0.5f);
-        glProg.setDefine("KSIZE",((int)size - 1)/2);
-        if(horizontal) glProg.setDefine("INP","tvar inp = tvar(texelFetch(InputBuffer, (xy+ivec2(i,0)), 0)"+out.mFormat.getTemExt()+");");
-        else glProg.setDefine("INP","tvar inp = tvar(texelFetch(InputBuffer, (xy+ivec2(0,i)), 0)"+out.mFormat.getTemExt()+");");
-        glProg.useAssetProgram("blurvh",false);
-        glProg.setTexture("InputBuffer",in);
-        glProg.drawBlocks(out,out.mSize);
-        glProg.closed = true;
-    }
     public GLTexture blursmall(GLTexture in, int kersize,double size){
         GLTexture out = new GLTexture(in);
         return blursmall(in,out,kersize,size);
@@ -716,31 +625,6 @@ public class GLUtils {
         glProg.drawBlocks(out);
         return out;
     }
-    public GLTexture conglby(GLTexture in,GLTexture out,GLTexture prevout, int split,int step){
-        glProg.useProgram(
-                "precision highp "+in.mFormat.getTemSamp()+";\n" +
-                        "precision highp float;\n" +
-                        "#define tvar "+in.mFormat.getTemVar()+"\n" +
-                        "#define tscal "+in.mFormat.getScalar()+"\n" +
-                        "uniform "+in.mFormat.getTemSamp()+" InputBuffer;\n" +
-                        "uniform "+prevout.mFormat.getTemSamp()+" PrevOut;\n" +
-                        "uniform int yOffset;\n" +
-                        "out tvar Output;\n" +
-                        "#define splitby ("+split+")\n" +
-                        "#define step ("+step+")\n" +
-                        "void main() {\n" +
-                        "    ivec2 xy = ivec2(gl_FragCoord.xy);\n" +
-                        "    xy+=ivec2(0,yOffset);\n" +
-                        "    if((xy.x%splitby)+(xy.y%splitby)*splitby == step){\n" +
-                        "    Output = tvar(texelFetch(InputBuffer, xy/splitby, 0)"+in.mFormat.getTemExt()+");\n" +
-                        "    } else \n" +
-                        "    Output = tvar(texelFetch(PrevOut, xy, 0)"+in.mFormat.getTemExt()+");\n" +
-                        "}\n");
-        glProg.setTexture("InputBuffer",in);
-        glProg.setTexture("PrevOut",prevout);
-        glProg.drawBlocks(out);
-        return out;
-    }
 
     public GLTexture boxdown2(GLTexture in){
         GLTexture out = new GLTexture((in.mSize.x/2),(in.mSize.y/2),in.mFormat);
@@ -788,26 +672,6 @@ public class GLUtils {
                 tex.close();
             }
         }
-        public void fillPyramid(GLTexture input){
-            gauss[0] = input;
-            GLTexture[] upscale = new GLTexture[gauss.length - 1];
-            boolean autostep = step == 0;
-            for (int i = 1; i < gauss.length; i++) {
-                if(autostep && i < 2) step = 2; else step = 4;
-                Point insize = gauss[i-1].mSize;
-                if(insize.x <= step+2 || insize.y <= step+2) step = 2;
-                glUtils.interpolate(gauss[i - 1],gauss[i]);
-            }
-            System.arraycopy(gauss, 1, upscale, 0, upscale.length);
-            glProg.useAssetProgram("utils/pyramiddiff",false);
-            for (int i = 0; i < laplace.length; i++) {
-                glProg.setTexture("target", gauss[i]);
-                glProg.setTexture("base", upscale[i]);
-                glProg.setVar("size",sizes[i]);
-                glProg.drawBlocks(laplace[i]);
-                Log.d("Pyramid","diff:"+laplace[i].mSize+" downscaled:"+gauss[i].mSize+" upscale:"+upscale[i].mSize);
-            }
-        }
         public GLTexture getGauss(int number){
             if(number > sizes.length || number < 0) return null;
             if(number == 0) return gauss[0];
@@ -816,58 +680,9 @@ public class GLUtils {
             t1.close();
             return out;
         }
-        public GLTexture getLaplace(int number){
-            if(number > sizes.length || number < 0) return null;
-            glProg.useAssetProgram("utils/pyramiddiff",false);
-            GLTexture downscaled = getGauss(number);
-            glProg.setTexture("target", downscaled);
-            glProg.setTexture("base", getGauss(number+1));
-            glProg.setVar("size",sizes[number]);
-            //glProg.setTexture("base", downscaled[i]);
-            //glProg.setTexture("target", upscale[i]);
-            //Reuse of amirzaidi code // Reuse the upsampled texture.
-            GLTexture out = new GLTexture(sizes[number],gauss[0].mFormat);
-            glProg.drawBlocks(out);
-            //upscale[i].close();
-            Log.d("Pyramid","diff:"+out.mSize);
-            return out;
-        }
     }
     public Pyramid createPyramid(int levels, GLTexture input){
         return createPyramid(levels,2,input);
-    }
-    public Pyramid createPyramidTex(int levels, int step, GLTexture input){
-        Pyramid pyramid = new Pyramid();
-        pyramid.levels = levels;
-        pyramid.step = step;
-        pyramid.glProg = glProg;
-        pyramid.glUtils = this;
-        GLTexture[] downscaled = new GLTexture[levels];
-        downscaled[0] = input;
-
-        GLTexture[] upscale = new GLTexture[downscaled.length - 1];
-        pyramid.sizes = new Point[downscaled.length];
-        pyramid.sizes[0] = new Point(input.mSize);
-        boolean autostep = step == 0;
-        for (int i = 1; i < downscaled.length; i++) {
-            if(autostep && i < 2) step = 2; else step = 4;
-            Point insize = downscaled[i-1].mSize;
-            if(insize.x <= step+2 || insize.y <= step+2) step = 2;
-            downscaled[i] = new GLTexture(new Point(insize.x/step,insize.y/step),input.mFormat);
-            pyramid.sizes[i] = new Point(pyramid.sizes[i-1].x/step,pyramid.sizes[i-1].y/step);
-            //Log.d("Pyramid","downscale:"+pyramid.sizes[i]);
-        }
-        for (int i = 0; i < upscale.length; i++) {
-            upscale[i] = downscaled[i+1];
-            //Log.d("Pyramid","upscale:"+pyramid.sizes[i]);
-        }
-        GLTexture[] diff = new GLTexture[upscale.length];
-        for (int i = 0; i < diff.length; i++) {
-            diff[i] = new GLTexture(pyramid.sizes[i],upscale[i].mFormat);
-        }
-        pyramid.gauss = downscaled;
-        pyramid.laplace = diff;
-        return pyramid;
     }
     public Pyramid createPyramid(int levels, double step, GLTexture input){
         Pyramid pyramid = new Pyramid();

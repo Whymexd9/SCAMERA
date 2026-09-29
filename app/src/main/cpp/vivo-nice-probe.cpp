@@ -1,4 +1,5 @@
 #include "vivo-neural-runtime.h"
+#include "qnn-htp-perf.h"
 #ifndef NICE_HOST_TEST
 #include <jni.h>
 #endif
@@ -106,6 +107,7 @@ struct Graph {
     report("DEVICE CREATE");
     check(s.fn<Error(*)(Handle,const void**,Handle*)>(40)(nullptr,nullptr,&s.device),"Device create");
     if(!s.device)throw std::runtime_error("Empty device");
+    qnn_perf::voteHtpPerformance(s.api,report);
     report("CONTEXT CREATE: original NICE weights");
     check(s.fn<Error(*)(Handle,Handle,const void**,const void*,uint64_t,Handle*,Handle)>(13)
             (s.backend,s.device,nullptr,model.data(),model.size(),&s.context,nullptr),"Context create");

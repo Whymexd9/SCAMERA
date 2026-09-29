@@ -165,7 +165,22 @@ Java_com_particlesdevs_photoncamera_api_NativeEngine_nativeInitialize(
     
     // Configure camera API access level (Java)
     bool javaAccess = setHiddenApiExemptions(env);
-    
+
+    // Android 11+ denies VMRuntime.setHiddenApiExemptions to app callers. On a freshly
+    // attached native thread there is no managed frame to identify the caller, and ART
+    // treats an undeterminable JNI caller as trusted, so repeat the call from there.
+    if (!javaAccess && gJavaVM != nullptr) {
+        std::thread worker([&javaAccess]() {
+            JNIEnv* threadEnv = attachCurrentThread();
+            if (threadEnv != nullptr) {
+                javaAccess = setHiddenApiExemptions(threadEnv);
+                detachCurrentThread();
+            }
+        });
+        worker.join();
+        LOGI("Camera API access via attached native thread: %d", javaAccess);
+    }
+
     if (nativeAccess || javaAccess) {
         LOGI("Camera API access configured (native: %d, java: %d)", 
              nativeAccess, javaAccess);

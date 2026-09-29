@@ -163,9 +163,9 @@ template<class RowLookup>
 inline NiceHdrDecision finishNiceHdrScene(const NiceSceneInputs& p,const NiceHdrPostInputs& h,
                                          const RowLookup& rowForMode) {
     if(p.captureType!=41 && p.captureType!=43)
-        throw std::invalid_argument("NICE HDR postprocess requires HDR capture type");
+        throw std::invalid_argument("SCAM HDR postprocess requires HDR capture type");
     for(float v:{h.motionScore,h.extremeThreshold,h.extremeAutoThreshold,h.extremeHysteresis})
-        if(!std::isfinite(v))throw std::invalid_argument("Missing NICE HDR postprocess input");
+        if(!std::isfinite(v))throw std::invalid_argument("Missing SCAM HDR postprocess input");
     const auto scene=selectNiceScene(p,rowForMode);
     const int mode=scene.mode;
     uint64_t flags=0;

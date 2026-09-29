@@ -207,9 +207,10 @@ final class CameraUIController implements CameraUIEventsListener,
         this.shutterButton.setHovered(false);
         this.shutterButton.setActivated(false);
         this.shutterButton.setClickable(false);
-        if (!cameraFragment.captureController.takePicture()) {
-            // A busy/not-ready controller did not accept a shot. No completion
-            // callback belongs to this press, so restore the button immediately.
+        if (!cameraFragment.captureController.takePicture()
+                || cameraFragment.captureController.niceShutterQueues()) {
+            // A busy/not-ready controller did not accept a shot, or NICE queues
+            // further presses during capture: the button stays usable.
             this.shutterButton.setActivated(true);
             this.shutterButton.setClickable(true);
         }

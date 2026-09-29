@@ -1,4 +1,5 @@
 #pragma once
+#include "qnn-htp-perf.h"
 #include "vivo-neural-model.h"
 #include <dlfcn.h>
 #include <cmath>
@@ -207,6 +208,7 @@ public:
         const char* build=nullptr;check(fn<Error(*)(const char**)>(4)(&build),"Build ID");log(std::string("SDK: ")+(build?build:"unknown"));
         created=nullptr;check(fn<Error(*)(Handle,const void**,Handle*)>(1)(nullptr,nullptr,&created),"Backend create");backend=created;
         created=nullptr;check(fn<Error(*)(Handle,const void**,Handle*)>(40)(nullptr,nullptr,&created),"Device create");device=created;
+        qnn_perf::voteHtpPerformance(api,[](const std::string& line){log(line);});
         created=nullptr;check(fn<Error(*)(Handle,Handle,const void**,const void*,uint64_t,Handle*,Handle)>(13)(backend,device,nullptr,model.data(),model.size(),&created,nullptr),"Context create");context=created;
         check(fn<Error(*)(Handle,const char*,Handle*)>(20)(context,g->name,&graph),"Graph retrieve");
         if(!backend||!device||!context||!graph)throw std::runtime_error("QNN returned an empty handle");

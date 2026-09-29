@@ -31,16 +31,16 @@ struct NiceHdrPlan {
 inline void applyNiceHdrQuery(const NiceHdrQuery& q, NiceHdrPlan& plan) {
     if (q.pastCount > q.Capacity || q.futureCount > q.Capacity - q.pastCount ||
         q.pastCount + q.futureCount == 0)
-        throw std::invalid_argument("NICE HDR query exceeds native batch capacity");
+        throw std::invalid_argument("SCAM HDR query exceeds native batch capacity");
     float shutterSum = 0.f;
     for (uint32_t i = 0; i < q.futureCount; ++i) {
         if (q.alternateExposureMode) {
             if (!std::isfinite(q.alternateEv[i]) || !std::isfinite(q.alternateShortEv[i]))
-                throw std::invalid_argument("Nonfinite NICE HDR alternate exposure");
+                throw std::invalid_argument("Nonfinite SCAM HDR alternate exposure");
         } else {
             if (!std::isfinite(q.ev[i]) || !std::isfinite(q.gain[i]) ||
                 !std::isfinite(q.shutter[i]) || !std::isfinite(q.shortEv[i]))
-                throw std::invalid_argument("Nonfinite NICE HDR exposure");
+                throw std::invalid_argument("Nonfinite SCAM HDR exposure");
             shutterSum += q.shutter[i];
         }
     }
@@ -48,7 +48,7 @@ inline void applyNiceHdrQuery(const NiceHdrQuery& q, NiceHdrPlan& plan) {
     // undefined C++ conversion; do not reinterpret the native shutter unit.
     if (!std::isfinite(shutterSum) || double(shutterSum) < std::numeric_limits<int32_t>::min() ||
         double(shutterSum) > std::numeric_limits<int32_t>::max())
-        throw std::invalid_argument("NICE HDR shutter sum outside int32");
+        throw std::invalid_argument("SCAM HDR shutter sum outside int32");
     auto result = plan;
     auto& c = result.control;
     c.frameCount = c.batchCount = q.pastCount + q.futureCount;

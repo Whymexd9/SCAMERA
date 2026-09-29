@@ -3,12 +3,15 @@
 #include "vivo-hexquad-check.h"
 #include "vivo-hexquad-capture.h"
 #include "vivo-hexquad-profile-check.h"
+#include "vivo-quad-capture.h"
+#include "vivo-vsr.h"
 #define NICE_HOST_TEST 1
 #include "vivo-nice-probe.cpp"
 #undef NICE_HOST_TEST
 #include "vivo-nice-capture.h"
 #include "vivo-nice-tone-probe.h"
 #include "vivo-nice-stock-motion.h"
+#include <memory>
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
@@ -21,23 +24,26 @@ static int integer(const char* text) {
 }
 int main(int argc,char** argv) {
     try {
-        vivo_nn::log("Vivo Neural native executable v29 (HP9 hybrid CPU prefetch + GPU post + NPU inference); root="+std::to_string(geteuid()));
+        vivo_nn::log("Vivo Neural native executable v30 (RAW stream input; HP9 hybrid CPU/GPU/NPU); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
         }
         if(argc==5 && std::string(argv[1])=="--nice-capture") {
-            if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(840);
-            vivo_nice::MappedNiceBurst mapped(argv[3]);
+            // Burst and result arrive as "fd:N" (memfd shared by the app) or as file paths.
+            const auto mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
+            const auto& input=mapped->burst;
+            const char* outputPath=argv[4];
             auto report=[](const std::string& line){vivo_nn::log(line);};
-            report("NICE CAPTURE: original forward weights and stock CPU motion; Camera2 calibration adaptation");
-            const auto& scene=mapped.burst.scene;
+            report("NICE CAPTURE: original forward weights and stock CPU motion; supplied per-frame calibration");
+            report("NICE INPUT: mapped capture file");
+            const auto& scene=input.scene;
             report("NICE SCENE: timestamp="+std::to_string(scene.timestamp)
                 +" lux="+(scene.hasLux()?std::to_string(scene.lux):"unavailable")
                 +" ADRC="+(scene.hasAdrc()?std::to_string(scene.adrc):"unavailable")
                 +" flags="+std::to_string(scene.flags)+" luxSource="+std::to_string(scene.luxSource));
-            for(size_t i=0;i<mapped.burst.ae.size();++i) {
-                const auto& ae=mapped.burst.ae[i];
+            for(size_t i=0;i<input.ae.size();++i) {
+                const auto& ae=input.ae[i];
                 report("NICE AE: slot="+std::to_string(i)+" timestamp="+std::to_string(ae.timestamp)
                     +" flags="+std::to_string(ae.flags));
                 if(ae.hasAec()) {
@@ -47,41 +53,57 @@ int main(int argc,char** argv) {
                         +" rawHdrDrc="+(ae.hasHdrDrc()?std::to_string(ae.drcGain(true)):"unavailable"));
                 }
             }
-            vivo_nice::StockMotion motion;
+            // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
+            // fall back to SCAMERA's own tile alignment instead of failing.
+            std::unique_ptr<vivo_nice::StockMotion> motion;
+            try {
+                const bool forceBundled=access((std::string(argv[2])+"/cre-force-bundled").c_str(),F_OK)==0;
+                const bool vendorOnly=access((std::string(argv[2])+"/cre-vendor-only").c_str(),F_OK)==0;
+                motion=std::make_unique<vivo_nice::StockMotion>(vendorOnly?std::string():std::string(argv[2]),forceBundled);
+                report("NICE MOTION: vivo CRE source="+motion->source);
+            }
+            catch(const std::exception& error) { report(std::string("NICE MOTION: SCAMERA tile alignment (")+error.what()+")"); }
+            vivo_nice::NiceAlignment alignment;
+            if(motion)alignment=[&](vivo_nice::Burst& burst){return motion->align(burst,report);};
             vivo_nice::Graph graph(argv[2],report);
-            auto result=vivo_nice::reconstruct(mapped.burst,[&](const std::vector<float>& in,std::vector<float>& out){
+            std::vector<uint16_t> mergedDng;
+            auto result=vivo_nice::reconstruct(input,[&](const std::vector<float>& in,std::vector<float>& out){
                 graph.input=in;graph.execute();out=graph.output;
             },report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
-                if(!mapped.burst.diagnostics)return;
+                if(!input.diagnostics)return;
                 std::ofstream f(std::string(argv[2])+"/"+name+".pfm",std::ios::binary);
                 if(!f){report("NICE DIAGNOSTIC: cannot open tile dump");return;}
                 f<<"PF\n"<<w<<" "<<h<<"\n-1.0\n";
                 for(int y=h-1;y>=0;--y)f.write(reinterpret_cast<const char*>(data.data()+size_t(y)*w*3),w*3*sizeof(float));
                 if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
-            },[&](vivo_nice::Burst& burst){return motion.align(burst,report);});
+            },alignment,&mergedDng);
             double sum=0;float maximum=0;
             for(float value:result){sum+=value;maximum=std::max(maximum,value);}
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
-            std::ofstream file(argv[4],std::ios::binary|std::ios::trunc);
-            if(!file)throw std::runtime_error("Cannot open NICE output");
-            file.write(reinterpret_cast<const char*>(result.data()),std::streamsize(result.size()*sizeof(float)));
-            file.close();if(!file)throw std::runtime_error("Incomplete NICE output");
+            const int out=vivo_nice::openArgument(outputPath,O_WRONLY|O_CREAT|O_TRUNC);
+            if(out<0)throw std::runtime_error("Cannot open NICE output");
+            auto writeAll=[&](const void* data,size_t bytes){
+                const char* p=static_cast<const char*>(data);
+                while(bytes){const ssize_t n=write(out,p,bytes);if(n<0&&errno==EINTR)continue;
+                    if(n<=0){close(out);throw std::runtime_error("Incomplete NICE output");}p+=n;bytes-=size_t(n);}
+            };
+            writeAll(result.data(),result.size()*sizeof(float));
+            // Optional trailer: merged Bayer RAW (uint16, sensor layout) for the DNG.
+            if(!mergedDng.empty())writeAll(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
+            if(close(out))throw std::runtime_error("Incomplete NICE output");
             alarm(0);report("NICE CAPTURE OK");return 0;
         }
         if(argc==3 && std::string(argv[1])=="--nice-tone-check") {
-            if(getuid()!=0)throw std::runtime_error("NICE tone check requires root");
             alarm(360);
             vivo_nice::probeTone(argv[2],[](const std::string& line){std::cout<<line<<std::endl;});
             return 0;
         }
         if(argc==3 && std::string(argv[1])=="--nice-check") {
-            if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(150);
             vivo_nice::probe(argv[2],[](const std::string& line){vivo_nn::log(line);});
             alarm(0);vivo_nn::log("NICE RUNTIME CHECK COMPLETE");return 0;
         }
         if(argc==5 && (std::string(argv[1])=="--hexquad-capture" || std::string(argv[1])=="--hexquad-capture-cached")) {
-            if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(840);
             {
                 vivo_hexquad::MappedBurst mapped(argv[3]);
@@ -97,8 +119,47 @@ int main(int argc,char** argv) {
             }
             alarm(0);vivo_nn::log("HEXQUAD CAPTURE OK");return 0;
         }
+        if(argc==9 && std::string(argv[1])=="--vsr-capture") {
+            signal(SIGALRM,SIG_DFL);alarm(300);
+            {
+                const int scale=integer(argv[3]),w=integer(argv[6]),h=integer(argv[7]);
+                const float blend=std::strtof(argv[8],nullptr);
+                if(w<64||h<64||uint64_t(w)*h*scale*scale>100000000ULL||!(blend>=0&&blend<=1))throw std::runtime_error("Invalid VSR request");
+                vivo_nn::log("VIVO VSR: scale="+std::to_string(scale)+" "+std::to_string(w)+"x"+std::to_string(h)+" blend="+std::to_string(blend));
+                std::vector<uint8_t> rgb=vivo_nn::read(argv[4]);
+                if(rgb.size()!=size_t(w)*h*3)throw std::runtime_error("VSR input size");
+                vivo_vsr::VsrSession session(vivo_vsr::spec(scale));session.init(argv[2]);
+                auto out=vivo_vsr::upscale(session,rgb,w,h,blend);
+                std::ofstream f(argv[5],std::ios::binary|std::ios::trunc);f.write(reinterpret_cast<const char*>(out.data()),out.size());
+                if(!f)throw std::runtime_error("VSR output write failed");
+            }
+            alarm(0);vivo_nn::log("VSR CAPTURE OK");return 0;
+        }
+        if(argc==5 && std::string(argv[1])=="--quad-capture") {
+            signal(SIGALRM,SIG_DFL);alarm(600);
+            {
+                // Debug: keep the transport file when /data/local/tmp/quad_keep exists.
+                if(access("/data/local/tmp/quad_keep",F_OK)==0){
+                    std::ifstream src(argv[3],std::ios::binary);std::ofstream dst("/data/local/tmp/quad_burst.bin",std::ios::binary|std::ios::trunc);
+                    dst<<src.rdbuf();vivo_nn::log("QUAD DEBUG: burst copied to /data/local/tmp/quad_burst.bin");
+                }
+                vivo_quad::MappedQuadBurst mapped(argv[3]);
+                auto& burst=mapped.burst;
+                vivo_nn::log(std::string("QUAD CAPTURE: model=")+(burst.model==1?"nice_ldr_hp9_general_roi_quad_x1 (tele)":"nice_ldr_imx06c_general_quad_x1 (main)")+" frames=4; Quad2x2; "+
+                    std::to_string(burst.w)+"x"+std::to_string(burst.h)+" ISO="+std::to_string(burst.iso)+" CFA="+std::to_string(burst.red));
+                const double initStart=vivo_hexquad::hexClockMs();
+                const int net=burst.model==1&&burst.iso>2000?2:burst.model;burst.network=net;
+                vivo_nn::log("QUAD NETWORK: "+std::string(net==2?"roi_quad_x1_highdrc (ISO > 2000)":net==1?"roi_quad_x1":"imx06c quad_x1"));
+                vivo_hexquad::HexSession session(vivo_hexquad::quadSpec(net));session.init(argv[2]);
+                vivo_nn::log("QUAD TIMING ms: model_runtime_init="+std::to_string(vivo_hexquad::hexClockMs()-initStart));
+                vivo_quad::captureQuad(session,burst,argv[4]);
+                if(access("/data/local/tmp/quad_keep",F_OK)==0){
+                    std::ifstream src(argv[4],std::ios::binary);std::ofstream dst("/data/local/tmp/quad_out.bin",std::ios::binary|std::ios::trunc);dst<<src.rdbuf();
+                }
+            }
+            alarm(0);vivo_nn::log("HEXQUAD CAPTURE OK");return 0;
+        }
         if(argc==3 && std::string(argv[1])=="--hexquad-check") {
-            if(geteuid()!=0)throw std::runtime_error("Root worker required");
             signal(SIGALRM,SIG_DFL);alarm(180);
             vivo_nn::log("HP9 HEXQUAD v5: bundled QNN 2.29.8; canonical RGGB; noiseless stress + profiled capture checks");
             bool x1Passed=false,x2Passed=true,profilePassed=false;
@@ -123,7 +184,6 @@ int main(int argc,char** argv) {
         const int width=argc==7?integer(argv[4]):0,height=argc==7?integer(argv[5]):0,redQuad=argc==7?integer(argv[6]):0;
         if(argc==7 && (width<8||height<8||width%8||height%8||static_cast<int64_t>(width)*height>16000000||redQuad>3))
             throw std::runtime_error("Unsupported Tetra frame");
-        if(geteuid()!=0)throw std::runtime_error("Root worker required");
         // Hard kernel timeout covers blocked vendor code, not just Java waits.
         signal(SIGALRM,SIG_DFL);alarm(180);
         {

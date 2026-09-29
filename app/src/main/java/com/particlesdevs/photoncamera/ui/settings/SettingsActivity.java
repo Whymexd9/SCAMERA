@@ -178,13 +178,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             setupScalarInputs(getPreferenceScreen());
             Preference toneReset=findPreference("pref_vivo_hdr_reset_tone");
             if(toneReset!=null) toneReset.setOnPreferenceClickListener(p -> {
-                PreferenceGroup tonePage=fullPreferenceScreen.findPreference("vivo_hdr_tone_screen");
-                for(int i=0;i<tonePage.getPreferenceCount();i++) {
-                    Preference control=tonePage.getPreference(i);
+                // Everything SCAM HDR light/shadow: Fusion, highlights, shadows and levels.
+                for(String key:new String[]{"pref_vivo_hdr_shadows","pref_vivo_hdr_local","pref_vivo_hdr_gamma","pref_vivo_hdr_black","pref_vivo_hdr_white",
+                        "pref_agx_nice_local_strength","pref_agx_nice_local_start","pref_agx_highlight_desat","pref_agx_desat_start",
+                        "pref_vivo_nice_fusion_strength","pref_vivo_nice_fusion_dark_ev","pref_vivo_nice_fusion_bright_ev",
+                        "pref_vivo_nice_fusion_detail","pref_vivo_nice_fusion_sigma"}) {
+                    Preference control=fullPreferenceScreen.findPreference(key);
                     if(control instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)
                         ((com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)control).resetToDefault();
                 }
-                PhotonCamera.showToast("Тональные настройки сброшены");
+                PhotonCamera.showToast("Светотень SCAM HDR сброшена");
                 return true;
             });
             setupRemosaicBackend();
@@ -211,7 +214,23 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
+        private void updateQuadDenoiseControls(String backend) {
+            boolean active=PreferenceKeys.isRemosaicEnabled() && "imx06c_quad".equals(backend);
+            boolean auto=com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic()!=null
+                    && com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic().getBoolean("default_scope","quad2x2_auto_iso",false);
+            for(String key:new String[]{"quad2x2_exposure_ev","quad2x2_noise_overall","quad2x2_noise_photon","quad2x2_noise_readout",
+                    "quad2x2_auto_iso","quad2x2_luma","quad2x2_chroma","quad2x2_iso_low_luma","quad2x2_iso_low_chroma",
+                    "quad2x2_iso_high_luma","quad2x2_iso_high_chroma","quad2x2_post_denoise"}){
+                Preference p=findPreference(key);if(p==null)continue;
+                boolean enabled=active;
+                if(key.equals("quad2x2_luma")||key.equals("quad2x2_chroma"))enabled &= !auto;
+                if(key.startsWith("quad2x2_iso_"))enabled &= auto;
+                p.setEnabled(enabled);
+            }
+        }
+
         private void updateHexQuadDenoiseControls(String backend) {
+            updateQuadDenoiseControls(backend);
             boolean active=PreferenceKeys.isRemosaicEnabled() && "hp9_hexquad".equals(backend);
             boolean auto=PreferenceKeys.isHexQuadAutoIso();
             for(String key:new String[]{"hexquad_compute","hexquad_exposure_ev","hexquad_model","hexquad_full_resolution","hexquad_noise_overall",
@@ -357,7 +376,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void updateRemosaicControls(String backend) {
             updateHexQuadDenoiseControls(backend);
             boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend)
-                    || "hp9_hexquad".equals(backend);
+                    || "hp9_hexquad".equals(backend) || "imx06c_quad".equals(backend);
             int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,
                     R.string.pref_remosaic_clamp_key, R.string.pref_remosaic_flatfield_key};
             for (int key : legacy) {
@@ -612,42 +631,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             } catch (Exception e) {
                 Log.e("SettingsActivity", "Error adding reset button", e);
             }
-        }
-
-        private void filterPreferencesByMode() {
-            // Get the camera mode from the activity
-            if (sCameraMode == -1) {
-                // If no mode is passed, get from preferences
-                sCameraMode = PreferenceKeys.getCameraModeOrdinal();
-            }
-            
-            CameraMode cameraMode = CameraMode.valueOf(sCameraMode);
-            
-            // Show/hide categories based on camera mode
-            if (cameraMode == CameraMode.RAWVIDEO) {
-                // Raw video mode: show raw video settings only
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_photo_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_jpg_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_hdrx_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_video_key));
-            } else if (cameraMode == CameraMode.VIDEO) {
-                // Regular video mode: show video settings, hide raw video settings
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_photo_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_jpg_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_hdrx_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_rawvideo_key));
-            } else {
-                // Photo modes: hide all video-specific settings
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_video_key));
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_rawvideo_key));
-            }
-        }
-
-        private void showHideHdrxSettings() {
-            if (PreferenceKeys.isHdrXOn())
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_jpg_key));
-            else
-                removePreferenceFromScreen(mContext.getString(R.string.pref_category_hdrx_key));
         }
 
         @Override

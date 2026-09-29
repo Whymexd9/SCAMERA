@@ -40,7 +40,7 @@ public final class FavoriteSettings {
         public int kind;public float min,max;public boolean decimal;
         public Object defaultValue;public CharSequence[] labels,values;
         Entry(Preference p){preference=p;key=p.getKey();title=String.valueOf(p.getTitle());}
-        public Object value(){Object value=prefs().getAll().get(key);return value==null?defaultValue:value;}
+        public Object value(){Object value=com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), key);return value==null?defaultValue:value;}
         public String label(){Object v=value();if(kind==0)return PreferenceNumber.bool(v,false)?"Вкл":"Выкл";if(kind==1){for(int i=0;i<values.length;i++)if(values[i].toString().equals(String.valueOf(v)))return labels[i].toString();}return String.valueOf(v);}
         public String unavailable(){return new SettingsAvailability(prefs().getAll()).reason(key);}
         public void write(Object value){SharedPreferences.Editor e=prefs().edit();if(kind==0)e.putBoolean(key,(Boolean)value);else if(kind==3){float n=((Number)value).floatValue();if(decimal)e.putFloat(key,n);else e.putInt(key,Math.round(n));}else if(kind==2)e.putString(key,PreferenceNumber.format(((Number)value).floatValue(),decimal));else e.putString(key,value.toString());e.apply();}

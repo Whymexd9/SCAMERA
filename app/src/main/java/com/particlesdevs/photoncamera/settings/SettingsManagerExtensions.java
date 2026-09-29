@@ -13,7 +13,7 @@ public class SettingsManagerExtensions {
     public static Float getFloat(SettingsManager manager, String scope, String key, Float defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            return (float) PreferenceNumber.read(preferences.getAll().get(key), defaultValue);
+            return (float) PreferenceNumber.read(com.particlesdevs.photoncamera.settings.PreferenceValue.get(preferences, key), defaultValue);
         }
         return defaultValue;
     }
@@ -34,7 +34,7 @@ public class SettingsManagerExtensions {
     public static Integer getInteger(SettingsManager manager, String scope, String key, Integer defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            return (int) PreferenceNumber.read(preferences.getAll().get(key), defaultValue);
+            return (int) PreferenceNumber.read(com.particlesdevs.photoncamera.settings.PreferenceValue.get(preferences, key), defaultValue);
         }
         return defaultValue;
     }
@@ -55,7 +55,7 @@ public class SettingsManagerExtensions {
     public static boolean getBoolean(SettingsManager manager, String scope, String key, boolean defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            return PreferenceNumber.bool(preferences.getAll().get(key), defaultValue);
+            return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(preferences, key), defaultValue);
         }
         return defaultValue;
     }
@@ -78,7 +78,7 @@ public class SettingsManagerExtensions {
     public static String getString(SettingsManager manager, String scope, String key, String defaultValue) {
         SharedPreferences preferences = manager.getDefaultPreferences();
         if (scope.equals(SettingsManager.SCOPE_GLOBAL)) {
-            Object value = preferences.getAll().get(key);
+            Object value = com.particlesdevs.photoncamera.settings.PreferenceValue.get(preferences, key);
             if (value instanceof String) {
                 return (String) value;
             } else if (value instanceof Number || value instanceof Boolean) {

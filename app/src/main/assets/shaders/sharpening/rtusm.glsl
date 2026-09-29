@@ -76,14 +76,14 @@ void main() {
     vec3 center = texelFetch(InputBuffer, xy, 0).rgb;
     float centerY = dot(center, LUMA);
 
-    // RT buildBlendMask: contrast from the 2-tap and 4-tap gradients.  RT's
-    // 0.0625/327.68 scale converts its 0..32768 L into the same 0..1 range this
-    // shader already works in, so only the 0.0625 factor remains.
+    // RT buildBlendMask (rt_algo.cc): sqrt(sum dL^2) * 0.0625/327.68 with L in
+    // 0..32768, i.e. gradients measured in 0..100 L units. Luma here is 0..1, so
+    // the factor is 0.0625*100 (the former 0.0625 made the mask 100x too weak).
     float contrast = sqrt(
             (lumaAt(xy + ivec2(1, 0)) - lumaAt(xy + ivec2(-1, 0))) * (lumaAt(xy + ivec2(1, 0)) - lumaAt(xy + ivec2(-1, 0)))
           + (lumaAt(xy + ivec2(0, 1)) - lumaAt(xy + ivec2(0, -1))) * (lumaAt(xy + ivec2(0, 1)) - lumaAt(xy + ivec2(0, -1)))
           + (lumaAt(xy + ivec2(2, 0)) - lumaAt(xy + ivec2(-2, 0))) * (lumaAt(xy + ivec2(2, 0)) - lumaAt(xy + ivec2(-2, 0)))
-          + (lumaAt(xy + ivec2(0, 2)) - lumaAt(xy + ivec2(0, -2))) * (lumaAt(xy + ivec2(0, 2)) - lumaAt(xy + ivec2(0, -2)))) * 0.0625;
+          + (lumaAt(xy + ivec2(0, 2)) - lumaAt(xy + ivec2(0, -2))) * (lumaAt(xy + ivec2(0, 2)) - lumaAt(xy + ivec2(0, -2)))) * 6.25;
     float blend = contrastThreshold <= 0.0 ? 1.0 : calcBlendFactor(contrast, contrastThreshold);
 
     // base: RT sharpens lab->L directly, or the bilateral-filtered copy when

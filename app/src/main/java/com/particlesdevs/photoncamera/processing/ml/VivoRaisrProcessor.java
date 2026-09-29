@@ -32,6 +32,9 @@ public final class VivoRaisrProcessor {
                                                int iso, int scaleTenths, String backend) throws Exception {
         final boolean soft="softpqe".equals(backend);
         if(!soft && !"raisr".equals(backend))throw new IOException("Unknown Vivo backend");
+        // Loads vivo's own /vendor RAISR/SoftPQE libraries: root only (optional).
+        if(!com.particlesdevs.photoncamera.settings.PreferenceKeys.isRootEnabled())
+            throw new IOException("Vivo "+(soft?"SoftPQE":"RAISR")+" работает только с root: включите «Root-доступ» или выберите VSR");
         final String name=soft?"SOFTPQE":"RAISR";
         final String libraryPath=soft?SOFT_LIBRARY_PATH:LIBRARY_PATH;
         final String dspPath=(soft?"/vendor/npu/lib;":"/vendor/lib64/hw;")+

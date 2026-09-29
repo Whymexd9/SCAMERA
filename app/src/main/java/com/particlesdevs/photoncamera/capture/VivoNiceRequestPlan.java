@@ -71,22 +71,6 @@ public final class VivoNiceRequestPlan {
         return index<pastCount;
     }
 
-    /** Legacy only: fields proven by executeRawVifVivoRawHdrCommand, not VCF2.
-     * Use a fresh, unpublished builder. An unsupported vendor key propagates
-     * failure; callers must discard the builder rather than submit half a plan.
-     * No sensor mode, AE-mode or manual exposure setting is introduced here.
-     */
-    public void applyLegacyExposureFields(CaptureRequest.Builder builder, int index) {
-        checkIndex(index);
-        if (builder==null) throw new IllegalArgumentException("Missing request builder");
-        builder.set(AEC,aec.clone());
-        builder.set(CONTROL,control.clone());
-        builder.set(RAW_HDR,rawHdr.clone());
-        builder.set(COUNTS,index==0 ? new Integer[]{pastCount,futureCount} : new Integer[]{0,0});
-        builder.set(CaptureRequest.CONTROL_ENABLE_ZSL,index<pastCount);
-        builder.set(CaptureRequest.CONTROL_AE_LOCK,false);
-    }
-
     private void checkIndex(int index) {
         if (index<0 || index>=frameCount) throw new IndexOutOfBoundsException("NICE request index");
     }

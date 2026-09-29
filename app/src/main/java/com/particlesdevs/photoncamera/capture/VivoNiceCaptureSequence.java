@@ -15,7 +15,47 @@ public final class VivoNiceCaptureSequence {
     private final HashSet<Long> timestamps = new HashSet<>();
     private final HashSet<Long> zslTimestamps = new HashSet<>();
     private String failure;
+    private long shutterTimestamp;
     public final int futureCount, frameCount;
+
+    public static VivoNiceCaptureSequence stockZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp) {
+        if(shutterTimestamp<=0 || past.size()<4 || past.size()>50 || requests.size()<2 || requests.size()>3)
+            throw new IllegalArgumentException("NICE ZSL requires 4..50 past N and S/ES (and L) bracket requests");
+        // Two requests: L is built from the buffered N frames (no L after the shutter).
+        ImageFrame.CaptureRole[] roles=requests.size()==3
+                ?new ImageFrame.CaptureRole[]{ImageFrame.CaptureRole.LONG,ImageFrame.CaptureRole.SHORT,ImageFrame.CaptureRole.EXTRA_SHORT}
+                :new ImageFrame.CaptureRole[]{ImageFrame.CaptureRole.SHORT,ImageFrame.CaptureRole.EXTRA_SHORT};
+        for(int i=0;i<roles.length;i++) {
+            Object tag=requests.get(i).getTag();
+            if(!(tag instanceof ImageFrame.NiceCaptureTag) || ((ImageFrame.NiceCaptureTag)tag).role!=roles[i])
+                throw new IllegalArgumentException("NICE ZSL must not request replacement normal frames");
+        }
+        for(ImageFrame frame:past) {
+            CaptureResult result=frame.getMatchedCaptureMetadata();
+            Long timestamp=result==null?null:result.get(CaptureResult.SENSOR_TIMESTAMP);
+            if(frame.timestamp<=0 || frame.timestamp>shutterTimestamp || timestamp==null || timestamp!=frame.timestamp)
+                throw new IllegalArgumentException("NICE ZSL RAW is not matched to the shutter cutoff");
+        }
+        VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,past);
+        sequence.shutterTimestamp=shutterTimestamp;
+        return sequence;
+    }
+
+    // Stock normal-back: all four N and L/S/ES are requested after the shutter.
+    public static VivoNiceCaptureSequence stockNormalBack(List<CaptureRequest> requests,long shutterTimestamp) {
+        if(shutterTimestamp<=0 || requests.size()!=7)
+            throw new IllegalArgumentException("NICE normal-back requires seven bracket requests");
+        for(int i=0;i<7;i++) {
+            ImageFrame.CaptureRole role=i<4?ImageFrame.CaptureRole.NORMAL:i==4?ImageFrame.CaptureRole.LONG
+                    :i==5?ImageFrame.CaptureRole.SHORT:ImageFrame.CaptureRole.EXTRA_SHORT;
+            Object tag=requests.get(i).getTag();
+            if(!(tag instanceof ImageFrame.NiceCaptureTag) || ((ImageFrame.NiceCaptureTag)tag).role!=role)
+                throw new IllegalArgumentException("NICE normal-back request order");
+        }
+        VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,new ArrayList<>());
+        sequence.shutterTimestamp=shutterTimestamp;
+        return sequence;
+    }
 
     public VivoNiceCaptureSequence(List<CaptureRequest> requests, List<ImageFrame> past) {
         long generation = -1;
@@ -59,6 +99,7 @@ public final class VivoNiceCaptureSequence {
         Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
         if (timestamp == null || timestamp <= 0 || exposure == null || exposure <= 0
                 || iso == null || iso <= 0 || results.containsKey(tag.index)
+                || (shutterTimestamp>0 && timestamp<=shutterTimestamp)
                 || zslTimestamps.contains(timestamp) || !timestamps.add(timestamp)) {
             failed("duplicate or invalid capture metadata"); return;
         }

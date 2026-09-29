@@ -25,6 +25,21 @@ public class SensorConfigInjector {
      * @param sensorId physical camera id (e.g. "0", "1", "2")
      * @param target   the object whose {@code @SensorConfig} fields will be updated
      */
+    // Scanning every declared field of CaptureController (hundreds) with
+    // annotation lookups ran on each shutter press; the set never changes.
+    private static final java.util.Map<Class<?>, Field[]> ANNOTATED = new java.util.concurrent.ConcurrentHashMap<>();
+    private static Field[] annotatedFields(Class<?> clazz) {
+        return ANNOTATED.computeIfAbsent(clazz, c -> {
+            java.util.ArrayList<Field> list = new java.util.ArrayList<>();
+            for (Field field : c.getDeclaredFields()) {
+                if (!field.isAnnotationPresent(SensorConfig.class)) continue;
+                field.setAccessible(true);
+                list.add(field);
+            }
+            return list.toArray(new Field[0]);
+        });
+    }
+
     public static void applyToSensor(String sensorId, Object target) {
         if (target == null || sensorId == null || sensorId.isEmpty()) {
             Log.w(TAG, "Target or sensorId is null, cannot inject");
@@ -40,12 +55,10 @@ public class SensorConfigInjector {
         Class<?> clazz = target.getClass();
         String className = clazz.getSimpleName();
 
-        for (Field field : clazz.getDeclaredFields()) {
-            if (!field.isAnnotationPresent(SensorConfig.class)) continue;
+        for (Field field : annotatedFields(clazz)) {
             SensorConfig annotation = field.getAnnotation(SensorConfig.class);
             if (annotation == null) continue;
 
-            field.setAccessible(true);
             String prefKey = ModuleSensorSettings.prefix(ModuleSensorSettings.runtimeScope(sensorId)) + field.getName().toLowerCase(java.util.Locale.ROOT);
             String sensorKey = className + "." + field.getName() + " [" + sensorId + "]";
 

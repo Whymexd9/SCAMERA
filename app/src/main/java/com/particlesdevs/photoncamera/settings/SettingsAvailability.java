@@ -16,75 +16,21 @@ public final class SettingsAvailability {
         for (String value : alternatives) if (key.equals(value)) return true;
         return false;
     }
-    public static boolean isVcfPhotoMode(int mode) {
-        // MOTION is the visible «Фото» mode; PHOTO is retained for legacy configs.
-        return mode == 2 || mode == 3;
-    }
-
-    public boolean usesVcfPhoto() {
-        return isVcfPhotoMode((int) PreferenceNumber.read(values.get("pref_camera_mode_key"), 2))
-                && text("pref_vivo_nice_route", "raw").equals("vcf2")
-                && on("pref_vivo_hdr_enabled", false) && on("pref_vivo_nice_enabled", false)
-                && !on("pref_raw_mfsr_enabled_key", false)
-                && (!on("pref_remosaic_enabled_key", false)
-                    || text("pref_remosaic_backend_key", "scamera").equals("scamera"));
-    }
-
-    private boolean bypassedByVcf(String key) {
-        if (any(key, "pref_vivo_hdr_enabled", "pref_vivo_nice_enabled", "pref_vivo_nice_route")) return false;
-        for (String prefix : new String[]{"rt512_", "hexquad_", "pref_rt_", "pref_ai_denoise_",
-                "pref_noise_", "pref_sharp_", "pref_aces_", "pref_c1_", "pref_gcam_",
-                "pref_raisr_", "pref_vivo_upscale_", "pref_vivo_downscale_",
-                "pref_vivo_hdr_", "pref_vivo_nice_", "pref_remosaic_", "pref_mfsr_",
-                "pref_merge_", "pref_hdrplus_", "pref_snr_", "pref_highlight_",
-                "scamera_darktable_", "scamera_mosaic_sr_", "scamera_quad_"}) {
-            if (key.startsWith(prefix)) return true;
-        }
-        if (key.startsWith("pref_tunable_") && !key.equals("pref_tunable_submenu")
-                && !key.startsWith("pref_tunable_camerauiviewimpl_")) return true;
-        return any(key, "rt_denoise_screen", "rt_original_controls", "legacy_denoise_screen",
-                "ai_bayer_denoise_screen", "noise_model_screen", "expert_noise_screen",
-                "vivo_nice_internal_screen", "vivo_hdr_tone_screen", "vivo_remosaic_screen",
-                "raisr_settings_screen", "gcam_finish_screen", "burst_settings_screen",
-                "detail_noise_settings_screen", "expert_merge_screen", "scamera_quad_bayer_screen",
-                "quad_compatibility_screen", "expert_raw_screen", "sharp_settings_screen",
-                "unsharp_settings_screen", "deconvolution_settings_screen", "microcontrast_settings_screen",
-                "resolution_settings_screen", "mfsr_settings_screen", "scamera_mosaic_sr_screen",
-                "expert_detail_screen", "aces_group_screen", "capture_one_group_screen",
-                "scamera_darktable_screen", "optical_correction_screen", "expert_tone_screen",
-                "expert_output_screen", "expert_sensor_screen", "hexquad_denoise_screen",
-                "pref_frame_count_key", "pref_short_frame_count_key",
-                "pref_long_frame_count_key", "pref_short_exposure_ev_key", "pref_long_exposure_ev_key",
-                "pref_zsl_buffer_count_key", "pref_zsl_quality_selection_key", "pref_max_hdr_ratio_key",
-                "pref_antibanding_hz_key", "pref_tet_model_enabled_key", "pref_long_frame_shutter_cap_key",
-                "pref_zsl_merge_algorithm_key", "pref_processing_backend_key", "pref_binning_key",
-                "pref_raw_mfsr_enabled_key", "pref_tetra_response_key", "pref_cfa_key",
-                "pref_sensor_sharpening_enabled", "pref_capture_one_enabled_key", "pref_dcp_profile_key",
-                "pref_saturation_seekbar_key", "pref_contrast_seekbar_key", "pref_shadows_seekbar_key",
-                "pref_compressor_seekbar_key", "pref_false_color_enabled_key", "pref_false_color_strength_key",
-                "pref_saliency_protection_key", "pref_defringe_purple_key", "pref_defringe_green_key",
-                "pref_ca_red_key", "pref_ca_blue_key", "pref_color_method_key", "pref_live_viewfinder_raw_key",
-                "pref_save_raw_key", "pref_ultrahdr_key", "pref_wide169_key", "pref_show_watermark_key");
-    }
-
     public String reason(String key) {
-        if (usesVcfPhoto() && bypassedByVcf(key))
-            return "Недоступно с NICE HDR в режиме Фото: этот этап SCAMERA не используется. Значение сохранено.";
         boolean multi = on("pref_raw_mfsr_enabled_key", false);
         boolean autonomous=on("pref_vivo_hdr_enabled",false);
         boolean incompatible=multi || (on("pref_remosaic_enabled_key",false)
                 && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
         if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false)
                 && any(key, "pref_vivo_hdr_luma", "pref_vivo_hdr_chroma"))
-            return "С NICE HDR дополнительный RGB-шумодав отключён. Используйте внутренние параметры NICE.";
+            return "С SCAM HDR дополнительный RGB-шумодав отключён. Используйте внутренние параметры SCAM HDR.";
         if (key.startsWith("pref_vivo_nice_") && !any(key, "pref_vivo_nice_enabled", "pref_vivo_nice_route")
                 && (!autonomous || incompatible || !on("pref_vivo_nice_enabled", false)))
-            return "Включите совместимый RAW-путь NICE HDR.";
+            return "Включите совместимый RAW-путь SCAM HDR.";
         if (key.equals("pref_vivo_nice_route")) {
-            if (incompatible) return "Отключите MFSR и выберите совместимый ремозаик для NICE HDR.";
-            if (!autonomous || !on("pref_vivo_nice_enabled", false)) return "Включите автономный HDR и NICE HDR.";
+            return "SCAM HDR использует RAW. Выбор пути больше не применяется.";
         }
-        if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false) && !usesVcfPhoto()
+        if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false)
                 && (key.startsWith("rt512_") || key.startsWith("pref_rt_")
                     || key.startsWith("pref_ai_denoise_") || key.startsWith("pref_tunable_esd3d2_")
                     || key.startsWith("pref_tunable_ablc_") || key.startsWith("pref_aces_")
@@ -96,7 +42,7 @@ public final class SettingsAvailability {
                         "expert_detail_screen", "pref_tunable_postpipeline_demosaicingmethod",
                         "pref_contrast_seekbar_key", "pref_saturation_seekbar_key", "pref_shadows_seekbar_key",
                         "pref_compressor_seekbar_key")))
-            return "В RAW-пути NICE этот этап пропускается. Настройки тона и шума доступны в меню NICE HDR.";
+            return "В RAW-пути SCAM HDR этот этап пропускается. Настройки тона и шума доступны в меню SCAM HDR.";
         if(key.startsWith("pref_vivo_hdr_")) {
             if(incompatible) return "Выберите Bayer или ремозаик SCAMERA и отключите MFSR. Автономный HDR использует собственную склейку.";
             if(!key.equals("pref_vivo_hdr_enabled") && !autonomous) return "Включите автономный HDR.";
@@ -114,7 +60,8 @@ public final class SettingsAvailability {
         boolean remosaic = !multi && on("pref_remosaic_enabled_key", false);
         String backend = text("pref_remosaic_backend_key", "scamera");
         boolean hex = remosaic && backend.equals("hp9_hexquad");
-        boolean post = !hex || on("hexquad_post_denoise", false);
+        boolean quad2x2 = remosaic && backend.equals("imx06c_quad");
+        boolean post = hex ? on("hexquad_post_denoise", false) : !quad2x2 || on("quad2x2_post_denoise", false);
         boolean original = text("pref_rt_denoise_backend", "legacy").equals("rt512");
         String tone = text("pref_tunable_postpipeline_tonepipeline", "fusion");
         boolean initial = tone.equals("fusion") || tone.equals("curve");
@@ -133,7 +80,7 @@ public final class SettingsAvailability {
                 || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")))
             return null; // These now align/fuse the native base with exposure donors.
         if(multi)hdr=false;
-        if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_")
+        if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_") || key.startsWith("quad2x2_")
                 || key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
                 || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
                 || any(key,"pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
@@ -142,6 +89,12 @@ public final class SettingsAvailability {
                 "pref_highlight_protection_key","scamera_quad_bayer_enabled")))
             return "Multi-frame Remosaic использует свою склейку и выбранный в его меню тип мозаики.";
         // Both per-mode selectors remain editable even while a different mode is open.
+        if (key.startsWith("quad2x2_") && !key.endsWith("screen")) {
+            if (!quad2x2) return "Доступно: включите ремозаик и выберите Quad 2×2.";
+            boolean auto = on("quad2x2_auto_iso", false);
+            if (any(key,"quad2x2_luma","quad2x2_chroma") && auto) return "Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.";
+            if (key.startsWith("quad2x2_iso_") && !auto) return "Включите «Люма и хрома по ISO».";
+        }
         if (key.startsWith("hexquad_") && !key.endsWith("screen")) {
             if (!hex) return "Доступно: включите ремозаик и выберите HP9 HexQuad.";
             if (key.equals("hexquad_full_resolution") && !text("hexquad_model", "2").equals("2")) return "Полный выход доступен только для модели x2.";

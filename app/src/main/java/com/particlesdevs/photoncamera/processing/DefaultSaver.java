@@ -20,6 +20,9 @@ public class DefaultSaver extends SaverImplementation {
     final UnlimitedProcessor mUnlimitedProcessor;
     final RawVideoProcessor mRawVideoProcessor;
     final HdrxProcessor hdrxProcessor;
+    ArrayList<ImageFrame> ownedFrames;
+    Path ownedDngFile, ownedImageFile;
+    java.util.List<com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair> ownedPairs;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -30,6 +33,20 @@ public class DefaultSaver extends SaverImplementation {
 
     public void runRaw(int imageFormat, CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
         super.runRaw(imageFormat, characteristics, captureResult,captureRequest, burstShakiness, cameraRotation, exposures);
+        if (ownedFrames != null) {
+            // Queued shot: frames and exposure pairs were detached from the
+            // shared buffers on the camera thread when the burst completed.
+            ArrayList<ImageFrame> frames = ownedFrames;
+            ownedFrames = null;
+            hdrxProcessor.ownedPairs = ownedPairs;
+            hdrxProcessor.configure(PhotonCamera.getSettings().alignAlgorithm,
+                    PhotonCamera.getSettings().rawSaver, PhotonCamera.getSettings().selectedMode);
+            hdrxProcessor.start(ownedDngFile, ownedImageFile,
+                    ParseExif.parse(captureResult, captureRequest), burstShakiness, frames, exposures,
+                    imageFormat, cameraRotation, characteristics, captureResult, captureRequest,
+                    processingCallback);
+            return;
+        }
         //Wait for one frame at least.
         Log.d(TAG, "Acquiring:" + IMAGE_BUFFER.size());
         while (bufferLock || IMAGE_BUFFER.isEmpty()){}

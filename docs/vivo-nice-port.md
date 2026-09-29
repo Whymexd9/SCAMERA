@@ -1,4 +1,4 @@
-# NICE HDR neural capture port: verified boundaries
+# SCAM HDR neural capture port: verified boundaries
 
 ## Verified from the supplied files
 
@@ -34,7 +34,7 @@ tone/TCE and motion/IC paths; this probe covers one CRE graph only.
 
 ## App-contained execution prerequisite
 
-Settings -> Vivo -> Diagnostics -> NICE HDR runs in a dedicated :vivo_nice
+Settings -> Vivo -> Diagnostics -> SCAM HDR runs in a dedicated :vivo_nice
 process. Camera initialization is skipped. There are two explicit buttons:
 ordinary app-UID execution, and root execution using the existing
 VivoNeuralClient -> VivoNeuralWorker -> native worker mechanism proven for HTP

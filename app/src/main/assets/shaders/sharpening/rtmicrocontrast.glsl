@@ -190,7 +190,7 @@ void main() {
             (lm(xy + ivec2(1, 0)) - lm(xy + ivec2(-1, 0))) * (lm(xy + ivec2(1, 0)) - lm(xy + ivec2(-1, 0)))
           + (lm(xy + ivec2(0, 1)) - lm(xy + ivec2(0, -1))) * (lm(xy + ivec2(0, 1)) - lm(xy + ivec2(0, -1)))
           + (lm(xy + ivec2(2, 0)) - lm(xy + ivec2(-2, 0))) * (lm(xy + ivec2(2, 0)) - lm(xy + ivec2(-2, 0)))
-          + (lm(xy + ivec2(0, 2)) - lm(xy + ivec2(0, -2))) * (lm(xy + ivec2(0, 2)) - lm(xy + ivec2(0, -2)))) * 0.0625 * 0.01;
+          + (lm(xy + ivec2(0, 2)) - lm(xy + ivec2(0, -2))) * (lm(xy + ivec2(0, 2)) - lm(xy + ivec2(0, -2)))) * 0.0625; // lm is RT's LM (0..100)
     float blend = contrastThreshold <= 0.0 ? 1.0 : calcBlendFactor(blendContrast, contrastThreshold);
 
     float newY = clamp(mix(centerY, tempL * 0.01, blend), 0.0, 1.0);

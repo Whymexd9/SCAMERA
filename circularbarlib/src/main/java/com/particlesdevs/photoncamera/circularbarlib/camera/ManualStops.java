@@ -27,8 +27,12 @@ public final class ManualStops {
         return new ArrayList<>(values);
     }
     private static TreeSet<Long> endpoints(long min, long max) {
-        if (min <= 0 || max < min) throw new IllegalArgumentException("Invalid manual range");
-        TreeSet<Long> values = new TreeSet<>(); values.add(min); values.add(max); return values;
+        // Some HALs report a zero/negative lower bound or swapped bounds for a module;
+        // a manual knob must not take the camera down with it.
+        if (min <= 0 || max < min)
+            android.util.Log.w("ManualStops", "Invalid manual range " + min + ".." + max + ", repaired");
+        long lo = Math.max(1, Math.min(min, max)), hi = Math.max(lo, Math.max(min, max));
+        TreeSet<Long> values = new TreeSet<>(); values.add(lo); values.add(hi); return values;
     }
     private static void add(TreeSet<Long> values, long value, long min, long max) {
         if (value >= min && value <= max) values.add(value);

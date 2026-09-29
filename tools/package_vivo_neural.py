@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'assets/vivo-neural/arm64-v8a/'
 HEX_PREFIX = 'assets/vivo-hexquad/arm64-v8a/'
 NICE_PREFIX = 'assets/vivo-nice/arm64-v8a/'
+# Worker without root: executable + QNN/CRE runtime installed into nativeLibraryDir.
+LIB_PREFIX = 'lib/arm64-v8a/'
+LIB_WORKER = 'libscamera_worker.so'
 
 
 def pinned_assets(manifest='FILES', expected=5):
@@ -62,9 +65,19 @@ def verify_bundle(apk, assets, hex_assets, nice_assets):
         check_worker(archive.read(PREFIX + 'vivo-neural-worker'))
         for prefix, manifest in ((PREFIX, assets), (HEX_PREFIX, hex_assets), (NICE_PREFIX, nice_assets)):
             for name, sha in manifest.items():
+                if name.endswith('.so') and prefix != PREFIX:
+                    continue  # shipped as lib/arm64-v8a/<name>, verified below
                 with archive.open(prefix + name) as stream:
                     if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
                         raise ValueError('APK asset hash mismatch: ' + prefix + name)
+        if archive.read(LIB_PREFIX + LIB_WORKER) != archive.read(PREFIX + 'vivo-neural-worker'):
+            raise ValueError('Native-library worker differs from the asset worker')
+        for directory_manifest in (hex_assets, nice_assets):
+            for name, sha in directory_manifest.items():
+                if name.endswith('.so'):
+                    with archive.open(LIB_PREFIX + name) as stream:
+                        if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
+                            raise ValueError('Native library hash mismatch: ' + name)
         if archive.testzip() is not None:
             raise ValueError('Invalid APK CRC')
 
@@ -80,7 +93,12 @@ def main():
     args = parser.parse_args()
     assets = pinned_assets()
     hex_assets = pinned_assets('HEX_FILES', 6)
-    nice_assets = pinned_assets('NICE_FILES', 1)
+    # 2x2 Quad (2x ISZ) models: main IMX06C and tele HP9 ROI; runs on the same QNN runtime as HexQuad.
+    hex_assets.update(pinned_assets('QUAD_FILES', 3))
+    # Vivo VSR still super-resolution contexts (sr1x/sr2x/sr4x).
+    hex_assets.update(pinned_assets('VSR_FILES', 3))
+    # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
+    nice_assets = pinned_assets('NICE_FILES', 6)
     nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
     for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets)):
         for name, sha in manifest.items():
@@ -99,9 +117,18 @@ def main():
                                                 (args.hexquad_dir, HEX_PREFIX, hex_assets),
                                                 (args.nice_dir, NICE_PREFIX, nice_assets)):
                 for name in manifest:
+                    # The hexquad / nice runtime libraries ship only as native libraries (mapped
+                    # executable in the app sandbox, also used by the su launcher); the tele576
+                    # set has a different QNN build and stays an asset.
+                    if name.endswith('.so') and prefix != PREFIX:
+                        if LIB_PREFIX + name in archive.namelist():
+                            raise ValueError('Template already contains ' + LIB_PREFIX + name)
+                        archive.write(directory / name, LIB_PREFIX + name)
+                        continue
                     if prefix + name in archive.namelist():
                         raise ValueError('Template already contains ' + prefix + name)
                     archive.write(directory / name, prefix + name)
+            archive.writestr(LIB_PREFIX + LIB_WORKER, archive.read(PREFIX + 'vivo-neural-worker'))
         subprocess.run(['java', '-jar', str(args.apksigner), 'sign', '--ks', str(ROOT / 'key/PcamLeak.jks'),
                         '--ks-key-alias', 'key0', '--ks-pass', 'pass:photoncamera',
                         '--key-pass', 'pass:photoncamera', '--out', str(signed), str(unsigned)], check=True)

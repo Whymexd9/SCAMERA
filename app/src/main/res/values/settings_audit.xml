@@ -1,14 +1,10 @@
 <resources>
     <string-array name="audit_demosaic_entries">
-        <item>Совместимость (быстро)</item>
-        <item>Градиент + цвет (GPU)</item>
-        <item>Compute edge-aware (GPU)</item>
-        <item>AMaZE RT</item>
+        <item>Pixel grouping (GCam, быстро)</item>
+        <item>AMaZE RT (максимум качества, медленно)</item>
     </string-array>
     <string-array name="audit_demosaic_values">
-        <item>compat</item>
-        <item>gradient</item>
-        <item>compute</item>
+        <item>pg</item>
         <item>amaze</item>
     </string-array>
     <string-array name="audit_tone_entries">

@@ -14,7 +14,7 @@ public final class ScameraPreferences {
     }
 
     public static boolean quadBayerEnabled() {
-        return PreferenceNumber.bool(prefs().getAll().get("scamera_quad_bayer_enabled"), false);
+        return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_quad_bayer_enabled"), false);
     }
 
     public static String quadBayerMode() {
@@ -36,16 +36,16 @@ public final class ScameraPreferences {
     }
 
     public static boolean mosaicSrEnabled() {
-        return PreferenceNumber.bool(prefs().getAll().get("scamera_mosaic_sr_enabled"), false);
+        return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_mosaic_sr_enabled"), false);
     }
 
     public static boolean mosaicSrUseForJpeg() {
-        return PreferenceNumber.bool(prefs().getAll().get("scamera_mosaic_sr_jpeg"), true);
+        return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_mosaic_sr_jpeg"), true);
     }
 
     public static float mosaicSrScale() {
         try {
-            return PreferenceNumber.bounded(prefs().getAll().get("scamera_mosaic_sr_scale"),1.41421356f,1f,2f);
+            return PreferenceNumber.bounded(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_mosaic_sr_scale"),1.41421356f,1f,2f);
         } catch (NumberFormatException ignored) {
             return 1.41421356f;
         }
@@ -58,7 +58,7 @@ public final class ScameraPreferences {
         return 2;
     }
 
-    public static boolean darktableEnabled() { return PreferenceNumber.bool(prefs().getAll().get("scamera_darktable_enabled"), false); }
+    public static boolean darktableEnabled() { return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_darktable_enabled"), false); }
     public static float darktableExposure() { return intValue("scamera_darktable_exposure", 0) / 10.0f; }
     public static float darktableFilmicContrast() { return intValue("scamera_darktable_filmic_contrast", 100) / 100.0f; }
     public static float darktableShadows() { return intValue("scamera_darktable_shadows", 0) / 100.0f; }
@@ -86,12 +86,12 @@ public final class ScameraPreferences {
     public static float darktableTexture() { return intValue("scamera_darktable_texture", 0) / 100.0f; }
 
     private static String text(String key, String fallback) {
-        Object value = prefs().getAll().get(key); return value == null ? fallback : value.toString();
+        Object value = com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), key); return value == null ? fallback : value.toString();
     }
 
     private static int intValue(String key, int fallback) {
         try {
-            Object value = prefs().getAll().get(key);
+            Object value = com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), key);
             if (value instanceof Number) return ((Number) value).intValue();
             if (value != null) return Integer.parseInt(value.toString());
         } catch (RuntimeException ignored) { }

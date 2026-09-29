@@ -28,7 +28,7 @@ public final class VivoNiceActivity extends Activity {
     private native void nativeProbe(String directory);
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);setTitle("NICE HDR — проверка запуска");
+        super.onCreate(state);setTitle("SCAM HDR — проверка запуска");
         saved=getSharedPreferences("vivo_nice_report",MODE_PRIVATE);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
         int pad=Math.round(16*getResources().getDisplayMetrics().density);layout.setPadding(pad,pad,pad,pad);
@@ -36,20 +36,20 @@ public final class VivoNiceActivity extends Activity {
         note.setText("Запуск оригинальной HDR-модели основной камеры Vivo. Модель и QNN находятся в APK. Проверка пока не обрабатывает фотографии. Root использует тот же механизм запуска HTP, что нейроремозаик. Обычный запуск проверяет доступ без root. После завершения скопируйте отчёт.");
         layout.addView(note);
         start=new Button(this);start.setText("Проверить без root");start.setOnClickListener(v->runProbe(false));layout.addView(start);
-        rootStart=new Button(this);rootStart.setText("Проверить NICE через root");rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
-        toneStart=new Button(this);toneStart.setText("Проверить тональные модели NICE через root");
+        rootStart=new Button(this);rootStart.setText("Проверить SCAM HDR через root");rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
+        toneStart=new Button(this);toneStart.setText("Проверить тональные модели SCAM HDR через root");
         toneStart.setOnClickListener(v->runProbe(true,true));layout.addView(toneStart);
-        Button captureReport=new Button(this);captureReport.setText("Отчёт последней съёмки NICE");
+        Button captureReport=new Button(this);captureReport.setText("Отчёт последней съёмки SCAM HDR");
         captureReport.setOnClickListener(v->{
             if(running)return;
             SharedPreferences capture=getSharedPreferences("vivo_nice_capture_report",MODE_PRIVATE);
             String text=capture.getString("report","");
-            output.setText(text.isEmpty()?"Отчёта съёмки NICE пока нет.":
+            output.setText(text.isEmpty()?"Отчёта съёмки SCAM HDR пока нет.":
                     (capture.getBoolean("complete",false)?"":"Съёмка не завершена. Последний этап:\n")+text);
         });layout.addView(captureReport);
         Button copy=new Button(this);copy.setText("Скопировать отчёт");
         copy.setOnClickListener(v->((ClipboardManager)getSystemService(CLIPBOARD_SERVICE))
-                .setPrimaryClip(ClipData.newPlainText("NICE HDR",output.getText())));layout.addView(copy);
+                .setPrimaryClip(ClipData.newPlainText("SCAM HDR",output.getText())));layout.addView(copy);
         output=new TextView(this);output.setTextSize(12);output.setTextIsSelectable(true);
         String previous=saved.getString("report","");
         if(!previous.isEmpty())output.setText((saved.getBoolean("complete",false)?"":"Проверка прервалась. Последний этап:\n")+previous);
@@ -57,7 +57,7 @@ public final class VivoNiceActivity extends Activity {
         layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(layout);
     }
     private final Runnable timeout=()-> {
-        if(running){onNativeProgress("TIMEOUT: NICE остановлен. Откройте пункт снова и скопируйте отчёт.");
+        if(running){onNativeProgress("TIMEOUT: SCAM HDR остановлен. Откройте пункт снова и скопируйте отчёт.");
             android.os.Process.killProcess(android.os.Process.myPid());}
     };
     private void copyVerified(File directory,String prefix,String[] item)throws Exception {

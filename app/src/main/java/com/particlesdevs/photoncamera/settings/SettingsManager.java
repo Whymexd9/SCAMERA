@@ -196,45 +196,6 @@ public class SettingsManager {
     }
 
     /**
-     * Remove a specific SettingsListener. This should be done in onPause if a
-     * listener has been set.
-     */
-    public void removeListener(OnSettingChangedListener listener) {
-        if (listener == null) {
-            throw new IllegalArgumentException();
-        }
-        if (!mListeners.contains(listener)) {
-            return;
-        }
-        int index = mListeners.indexOf(listener);
-        mListeners.remove(listener);
-        OnSharedPreferenceChangeListener sharedPreferenceListener =
-                mSharedPreferenceListeners.get(index);
-        mSharedPreferenceListeners.remove(index);
-        mDefaultPreferences.unregisterOnSharedPreferenceChangeListener(
-                sharedPreferenceListener);
-        if (mCustomPreferences != null) {
-            mCustomPreferences.unregisterOnSharedPreferenceChangeListener(
-                    sharedPreferenceListener);
-        }
-    }
-
-    /**
-     * Remove all OnSharedPreferenceChangedListener's. This should be done in
-     * onDestroy.
-     */
-    public void removeAllListeners() {
-        for (OnSharedPreferenceChangeListener listener : mSharedPreferenceListeners) {
-            mDefaultPreferences.unregisterOnSharedPreferenceChangeListener(listener);
-            if (mCustomPreferences != null) {
-                mCustomPreferences.unregisterOnSharedPreferenceChangeListener(listener);
-            }
-        }
-        mSharedPreferenceListeners.clear();
-        mListeners.clear();
-    }
-
-    /**
      * Returns the SharedPreferences file matching the scope
      * argument.
      * <p>
@@ -329,7 +290,7 @@ public class SettingsManager {
 
     public String getString(String scope, String key, String defaultValue) {
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        Object value = preferences.getAll().get(key);
+        Object value = com.particlesdevs.photoncamera.settings.PreferenceValue.get(preferences, key);
         if (value == null) return defaultValue;
         if (value instanceof Boolean) return (Boolean)value ? "1" : "0";
         return value.toString();
@@ -411,7 +372,7 @@ public class SettingsManager {
         // getString() throws ClassCastException, which aborted the whole capture.
         // Accept both representations instead of assuming one.
         SharedPreferences preferences = getPreferencesFromScope(scope);
-        return PreferenceNumber.bool(preferences.getAll().get(key), defaultValue);
+        return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(preferences, key), defaultValue);
     }
 
     /**
@@ -588,16 +549,6 @@ public class SettingsManager {
     public boolean isSet(String scope, String key) {
         SharedPreferences preferences = getPreferencesFromScope(scope);
         return preferences.contains(key);
-    }
-
-    /**
-     * Check whether a setting's value is currently set to the
-     * default value.
-     */
-    public boolean isDefault(String scope, PreferenceKeys.Key key) {
-        String defaultValue = getStringDefault(key);
-        String value = getString(scope, key);
-        return value != null && value.equals(defaultValue);
     }
 
     /**

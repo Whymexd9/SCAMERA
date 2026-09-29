@@ -1,0 +1,32 @@
+[
+  {
+    "source": "phone-ae-context-stock-20260921.log",
+    "sha256": "32721ca01833b1d5f0e5c042f65c0a3d351ab2d9a70048f4e89eb906794ec1f4",
+    "runMode": 9,
+    "sceneMode": "0xc80000",
+    "hdrFlags": 65536,
+    "tableType": 4,
+    "tableId": 0,
+    "stockNice": true
+  },
+  {
+    "source": "phone-ae-context-scamera-20260921.log",
+    "sha256": "f264bd1475cad53518283711af86a942f50a072ca92853bc3f7830325314a610",
+    "runMode": 14,
+    "sceneMode": "0x0",
+    "hdrFlags": 2,
+    "tableType": 9,
+    "tableId": 3,
+    "stockNice": false
+  },
+  {
+    "source": "nice-scene-probe.txt",
+    "sha256": "4a5867cd2274ad7104b613f67d0f81f01070c529a869f535054447e72aafd4fe",
+    "runMode": 14,
+    "sceneMode": "0x0",
+    "hdrFlags": 2,
+    "tableType": 9,
+    "tableId": 3,
+    "stockNice": false
+  }
+]

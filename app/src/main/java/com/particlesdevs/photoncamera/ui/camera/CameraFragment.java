@@ -865,35 +865,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     /**
-     * Returns the ConstraintLayout object after adjusting the LayoutParams of Views contained in it.
-     * Adjusts the relative position of layout_top-bar and camera_container (= viewfinder + rest of the buttons excluding layout_topbar)
-     * depending on the aspect ratio of device.
-     * This is done in order to re-organise the camera layout for long displays (having aspect ratio > 16:9)
-     *
-     * @param aspectRatio     the aspect ratio of device display given by (height in pixels / width in pixels)
-     * @param activity_layout here, the layout of activity_main
-     * @return Object of {@param activity_layout} after adjustments.
-     */
-    private ConstraintLayout getAdjustedLayout(float aspectRatio, ConstraintLayout activity_layout) {
-        ConstraintLayout camera_container = activity_layout.findViewById(R.id.camera_container);
-        ConstraintLayout.LayoutParams camera_containerLP = (ConstraintLayout.LayoutParams) camera_container.getLayoutParams();
-        if (aspectRatio > 16f / 9f) {
-            DisplayMetrics displayMetrics = activity.getResources().getDisplayMetrics();
-            float dpHeight = displayMetrics.heightPixels / displayMetrics.density;
-            float dpWidth = displayMetrics.widthPixels / displayMetrics.density;
-
-            float dpmargin = (dpHeight - (dpWidth / 9f * 16f));
-            ConstraintLayout.LayoutParams layout_topbarLP = ((ConstraintLayout.LayoutParams) activity_layout.findViewById(R.id.layout_topbar).getLayoutParams());
-
-            layout_topbarLP.topMargin = (int) dpmargin;
-            camera_containerLP.bottomMargin = (int) dpmargin;
-            camera_containerLP.topToTop = -1;
-            camera_containerLP.topToBottom = R.id.layout_topbar;
-        }
-        return activity_layout;
-    }
-
-    /**
      * Logs the device display properties
      *
      * @param dm Object of {@link DisplayMetrics} obtained from Fragment
@@ -1095,7 +1066,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onProcessingError(Object obj) {
-            vcfCaptureProgress = false;
             mCameraUIView.resetCaptureProgressBar();
             if (obj instanceof String)
                 showToast((String) obj);
@@ -1115,16 +1085,13 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onCaptureStillPictureStarted(Object o) {
-            vcfCaptureProgress = "VCF2".equals(o);
             if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
-                mCameraUIView.setCaptureProgressBarOpacity(vcfCaptureProgress ? 0.0f : 1.0f);
-                if (vcfCaptureProgress) mCameraUIView.setProcessingProgressBarIndeterminate(true);
+                mCameraUIView.setCaptureProgressBarOpacity(1.0f);
                 mCameraUIView.lockUIForBurst(true);
             }
             //textureView.post(() -> textureView.setAlpha(0.8f));
         }
 
-        private boolean vcfCaptureProgress;
         private long prevPlayTime = 0;
         @Override
         public void onFrameCaptureStarted(Object o) {
@@ -1163,10 +1130,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onCaptureSequenceCompleted(Object o) {
-            if (vcfCaptureProgress) {
-                mCameraUIView.setProcessingProgressBarIndeterminate(false);
-                vcfCaptureProgress = false;
-            }
             if (PreferenceKeys.isCameraSoundsOn()) {
                 MediaPlayer player = endPlayer;
                 if (player != null) {
@@ -1176,6 +1139,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             timerFrameCountViewModel.clearFrameTimeCnt();
             mCameraUIView.resetCaptureProgressBar();
             mCameraUIView.lockUIForBurst(false);
+            // Stock-like: the next shot is allowed once the burst is captured;
+            // processing of earlier shots continues in the background queue.
+            mCameraUIView.activateShutterButton(true);
             mCameraUIView.setVideoRecordingInfoVisible(false);
             textureView.post(() -> textureView.setAlpha(1f));
         }

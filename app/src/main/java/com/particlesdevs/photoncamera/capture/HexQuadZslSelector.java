@@ -20,7 +20,7 @@ public final class HexQuadZslSelector {
         return select(frames,count,false);
     }
     public static int[] select(List<Sample> frames,int count,boolean preferSharp) {
-        if(count<3 || count>40)return new int[0];
+        if(count<3 || count>50)return new int[0];
         int end=frames.size()-1;
         // A just-delivered Image can precede its result callback. Use the last
         // fully paired frame, never invent metadata for that unfinished pair.

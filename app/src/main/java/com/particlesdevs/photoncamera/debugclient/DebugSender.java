@@ -21,12 +21,6 @@ public class DebugSender extends SaverImplementation {
         super(processingEventsListener);
     }
 
-    public void addRAW16(Image image) {
-        image.getFormat();
-        IMAGE_BUFFER.add(getFrame(image));
-        image.close();
-    }
-
     public void runRaw(int imageFormat, CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
         super.runRaw(imageFormat,characteristics,captureResult, captureRequest,burstShakiness,cameraRotation, exposures);
         Log.d("DebugSender","RunDebug sender");

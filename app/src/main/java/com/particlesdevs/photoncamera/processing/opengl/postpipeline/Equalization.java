@@ -145,18 +145,6 @@ public class Equalization extends Node {
         }
         return output;
     }
-    private float[] bezier1(float in1,float in3,float in4,int size){
-        float[] output = new float[size];
-        for(int i =0; i<size;i++){
-            float s = (float)(i)/size;
-            float p0 = mix(in1,in3,s);
-            float p2 = mix(in3,in4,s);
-            float p3 = mix(p0,p2,s);
-            float p4 = mix(p2,p3,s);
-            output[i] = mix(p3,p4,s);
-        }
-        return output;
-    }
     private float findWL(float[] inputR,float[] inputG, float[] inputB){
         boolean nightMode = PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT;
         float wlind = inputG.length-1;
@@ -354,43 +342,8 @@ public class Equalization extends Node {
         }
         return output;
     }
-    private float[] bezierIterate(float[] input, int iterations){
-        float[] inchanging = input.clone();
-        float wlind = findWL(input,input,input);
-        float[] params = new float[]{input[0],input[(int)(wlind/3.f)],input[(int)(wlind/1.5f)],input[(int)wlind]};
-        float k = (params[3])/(params.length-1);
-
-        if(wlind <= input.length-16){
-            float wl = params[3];
-            for(int i =0; i<params.length;i++){
-                float ik = i*k;
-                if(params[i] < ik){
-                    params[i] = ik;
-                }
-            }
-            params[3] = wl;
-        }
-        float[] bezier = bezier(params[0],params[1],params[2],params[3],input.length,(int)wlind);
-
-        for(int j = 0; j<iterations;j++){
-            for(int i =0; i<inchanging.length;i++){
-                inchanging[i] += (float)i/inchanging.length - bezier[i];
-            }
-            float[] bezier2 = bezier(inchanging[0],inchanging[(int)(wlind/3.f)],inchanging[(int)(wlind/1.5f)],inchanging[(int)wlind],input.length,(int)wlind);
-            for(int i =0; i<inchanging.length;i++){
-                bezier[i] -=(float)i/inchanging.length - bezier2[i];
-            }
-        }
-        return bezier;
-    }
     static class Point2D{
         float x,y;
-    }
-    private Point2D mixp(Point2D in, Point2D in2, float t){
-        Point2D outp = new Point2D();
-        outp.x = in.x*(1.f-t) + in2.x*t;
-        outp.y = in.y*(1.f-t) + in2.y*t;
-        return outp;
     }
     private void ApplyLaplace(float[] currentCurve, float[] eqCurve){
         float laplacianAMP = 1.5f;

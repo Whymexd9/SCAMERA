@@ -4,6 +4,7 @@
     <string-array name="vivo_upscale_backend_entries">
         <item>Vivo RAISR — экспериментальный</item>
         <item>Vivo SoftPQE ×2 — экспериментальный</item>
+        <item>Vivo VSR — нейросеть ×1/×2/×4 (NPU)</item>
     </string-array>
-    <string-array name="vivo_upscale_backend_values"><item>raisr</item><item>softpqe</item></string-array>
+    <string-array name="vivo_upscale_backend_values"><item>raisr</item><item>softpqe</item><item>vsr</item></string-array>
 </resources>

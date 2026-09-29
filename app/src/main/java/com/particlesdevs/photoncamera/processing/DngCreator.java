@@ -416,13 +416,6 @@ public class DngCreator {
         setGainMap(nativePtr, gainMap, xmin, ymin, xmax, ymax, width, height);
     }
 
-    public void writeImage(OutputStream outputStream, Image image) {
-        ByteBuffer rawImageData = image.getPlanes()[0].getBuffer();
-        int width = image.getWidth();
-        int height = image.getHeight();
-        writeBuffer(outputStream, rawImageData, width, height);
-    }
-
     public ByteBuffer dngBuffer(ByteBuffer buffer, int width, int height) {
         ByteBuffer dngData = createDNG(nativePtr, width, height, buffer);
         return dngData;

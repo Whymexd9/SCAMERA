@@ -13,7 +13,8 @@
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "Allocator", __VA_ARGS__)
 
-long memoryCount = 0;
+#include <atomic>
+std::atomic<long> memoryCount{0};
 
 static float mosaicSrKernel(float x, int kernel) {
     x = std::fabs(x);

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace vivo_nice {
@@ -133,7 +134,9 @@ inline std::vector<float> packSevenFrames(const std::array<TaggedFrame, 7>& fram
         }
     }
     std::vector<float> output(size_t(width) * height * 22, 0.0f);
-    for (unsigned y = 0; y < height; ++y) for (unsigned x = 0; x < width; ++x) {
+    // Rows are independent; bands run on all cores (each thread owns its rows).
+    auto rows = [&](unsigned y0, unsigned y1) {
+    for (unsigned y = y0; y < y1; ++y) for (unsigned x = 0; x < width; ++x) {
         float* pixel = output.data() + (size_t(y) * width + x) * 22;
         for (unsigned i = 0; i < 7; ++i) {
             const auto& f = frames[i];
@@ -152,6 +155,15 @@ inline std::vector<float> packSevenFrames(const std::array<TaggedFrame, 7>& fram
         }
         pixel[21] = factor * float(clipMask);
     }
+    };
+    const unsigned threads = std::max(1u, std::min(8u, std::thread::hardware_concurrency()));
+    std::vector<std::thread> pool;
+    const unsigned band = (height + threads - 1) / threads;
+    for (unsigned t = 0; t < threads; ++t) {
+        const unsigned y0 = t * band, y1 = std::min(height, y0 + band);
+        if (y0 < y1) pool.emplace_back(rows, y0, y1);
+    }
+    for (auto& thread : pool) thread.join();
     return output;
 }
 

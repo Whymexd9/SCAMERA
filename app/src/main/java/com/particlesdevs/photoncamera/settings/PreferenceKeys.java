@@ -559,6 +559,20 @@ public class PreferenceKeys {
         return isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
     }
 
+    /** Main camera 2x2 Quad (2x ISZ): vendor IMX06C quad model, four equal RAWs. */
+    public static boolean isQuadNeuralCaptureEnabled() {
+        return isRemosaicEnabled() && "imx06c_quad".equals(getRemosaicBackend());
+    }
+
+    /** Either NPU burst remosaic: the burst is equal-exposure and owned by the worker. */
+    public static boolean isNeuralBurstRemosaic() {
+        return isHexQuadCaptureEnabled() || isQuadNeuralCaptureEnabled();
+    }
+
+    public static int neuralBurstFrames() {
+        return isQuadNeuralCaptureEnabled() ? getQuadFrames() : getHexQuadFrames();
+    }
+
     /** Hybrid reconstruction weights; not exposed parameters of the closed neural model. */
     public static float getHexQuadLuma() {
         return RawTherapeeSettings.number("hexquad_luma",50,0,100);
@@ -593,6 +607,30 @@ public class PreferenceKeys {
                 RawTherapeeSettings.number("hexquad_iso_high_chroma",100,0,100),
                 RawTherapeeSettings.number("hexquad_texture",0,0,100),
                 true /* Unified hybrid; legacy hexquad_compute selection is no longer used. */);
+    }
+
+    /** Quad 2x2 (2x ISZ) denoise controls: same meaning as the HexQuad ones, own keys. */
+    public static HexQuadOptions getQuadOptions(int iso) {
+        return new HexQuadOptions(iso,1,false,
+                RawTherapeeSettings.number("quad2x2_noise_overall",1,.5f,2),
+                RawTherapeeSettings.number("quad2x2_noise_photon",1,.5f,2),
+                RawTherapeeSettings.number("quad2x2_noise_readout",1,.5f,2),
+                RawTherapeeSettings.number("quad2x2_luma",50,0,100),
+                RawTherapeeSettings.number("quad2x2_chroma",100,0,100),
+                preferenceKeys.settingsManager.getBoolean("default_scope","quad2x2_auto_iso",false),
+                RawTherapeeSettings.number("quad2x2_iso_low_luma",35,0,100),
+                RawTherapeeSettings.number("quad2x2_iso_low_chroma",85,0,100),
+                RawTherapeeSettings.number("quad2x2_iso_high_luma",70,0,100),
+                RawTherapeeSettings.number("quad2x2_iso_high_chroma",100,0,100),
+                0f,false);
+    }
+
+    public static float getQuadExposureEv() {
+        return RawTherapeeSettings.number("quad2x2_exposure_ev",0,-2,2);
+    }
+
+    public static boolean isQuadPostDenoiseEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope","quad2x2_post_denoise",false);
     }
 
     public static boolean isHexQuadPostDenoiseEnabled() {
@@ -726,6 +764,11 @@ public class PreferenceKeys {
         return getBool(Key.KEY_SHARP_MICRO_MATRIX_3X3);
     }
 
+    /** NICE: flush the HAL request queue before the bracket (shutter lag ~0.4 s -> ~0.15 s). */
+    public static boolean isNiceFastCapture() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_nice_fast_capture", true);
+    }
+
     public static boolean isZslQualitySelectionEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_zsl_quality_selection_key", false);
     }
@@ -798,14 +841,103 @@ public class PreferenceKeys {
     public static boolean isNiceDiagnosticsEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", true);
     }
+    /** true: vivo stock AE solver via root observer; false: SCAMERA planner (no root, any device). */
+    /** LMC curve presets: "off" or an asset path under assets/curves (Tone/..., Gamma/...). */
+    public static String getLmcToneCurve() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_lmc_tone_curve", "off");
+    }
+    public static String getLmcGammaCurve() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_lmc_gamma_curve", "off");
+    }
+    /** Curve strength as a 0..1 blend with the identity. */
+    public static float getLmcToneCurveStrength() {
+        return RawTherapeeSettings.number("pref_lmc_tone_curve_strength", 100, 0, 100) / 100f;
+    }
+    public static float getLmcGammaCurveStrength() {
+        return RawTherapeeSettings.number("pref_lmc_gamma_curve_strength", 100, 0, 100) / 100f;
+    }
+
+    /**
+     * Optional root features (off by default; everything works without root):
+     * the vivo stock-AE observer for the NICE bracket, and su as the fallback
+     * launcher when the worker is not installed as a native library.
+     */
+    public static boolean isRootEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_root_enabled", false);
+    }
+    public static boolean useStockBracketPlanner() {
+        return isRootEnabled()
+                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_planner", "stock"))
+                && com.particlesdevs.photoncamera.capture.VivoStockAe.supportedDevice();
+    }
+    /** NICE: build L from the ZSL N frames instead of capturing it after the shutter. */
+    public static boolean isNiceZslLong() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_nice_zsl_long", true);
+    }
+    public static boolean isNicePlannerAdaptive() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_planner_adaptive", true);
+    }
+    /** NICE noise profile source: auto | imx06c | camera2 | settings. */
+    public static String getNiceNoiseSource() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_noise_source", "auto");
+    }
+    /** RAW lens shading map: auto | apply | skip (HAL already corrected RAW_SENSOR). */
+    public static String getRawLscMode() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_lsc_mode", "auto");
+    }
+    /** Lower the reported RAW black level to the frame's measured dark floor when it is higher. */
+    public static boolean isRawBlackFromData() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_raw_black_from_data", true);
+    }
+    /** Exposure Fusion may only brighten; highlights are left to the tone shoulder. */
+    public static boolean isNiceFusionLiftOnly() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_fusion_lift_only", true);
+    }
+    /** NICE motion (CRE) source: auto (vendor, else APK copy) | bundled (always APK copy). */
+    public static String getNiceCreSource() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_cre_source", "auto");
+    }
+    public static boolean isNiceFusionEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_fusion_enabled", true);
+    }
+    /** ISO level 1..5 of the NICE normal reference, as in the settings screen. */
+    public static int niceIsoLevel(int iso) {
+        return iso <= 200 ? 1 : iso <= 800 ? 2 : iso <= 3200 ? 3 : iso <= 12800 ? 4 : 5;
+    }
+    /** Luma/chroma strength inside NICE (0..2, 1 = model as trained), with the ISO-level multiplier. */
+    public static float getNiceLuma(int iso) {
+        return Math.max(0f, Math.min(2f, niceInternalValue("luma", 1f) * niceInternalValue("luma_iso" + niceIsoLevel(iso), 1f)));
+    }
+    public static float getNiceChroma(int iso) {
+        return Math.max(0f, Math.min(2f, niceInternalValue("chroma", 1f) * niceInternalValue("chroma_iso" + niceIsoLevel(iso), 1f)));
+    }
+    /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
+    public static float getNiceMerge() {
+        return Math.max(0f, Math.min(1f, niceInternalValue("merge", 100f) / 100f));
+    }
+    /** Extra EV for the NICE long frame over the stock plan (0 = stock). */
+    public static float getNiceLongBoostEv() {
+        return niceInternalValue("long_boost_ev", 1.1f);
+    }
     public static boolean isVivoNiceEnabled() {
         return isVivoHdrEnabled() && isGcamStageEnabled("pref_vivo_nice_enabled");
     }
-    public static boolean isVivoVcf2Enabled(int modeOrdinal) {
-        return isVivoNiceEnabled() && SettingsAvailability.isVcfPhotoMode(modeOrdinal)
-                && "vcf2".equals(preferenceKeys.settingsManager.getString(
-                        "default_scope", "pref_vivo_nice_route", "raw"));
+    /** Normal-exposure N frames taken from the ZSL ring for SCAM HDR (4..50). */
+    public static int getNiceZslFrames() {
+        return Math.round(niceInternalValue("zsl_frames", 4f));
     }
+
+    /** Equal-exposure RAWs for the neural remosaics: HP9 HexQuad 6..50, Quad 2x2 4..50. */
+    public static int getHexQuadFrames() {
+        return (int)Math.round(SettingsNumericRules.value("pref_hexquad_frames",
+                preferenceKeys.settingsManager.getString("default_scope","pref_hexquad_frames","6"),6));
+    }
+
+    public static int getQuadFrames() {
+        return (int)Math.round(SettingsNumericRules.value("pref_quad_frames",
+                preferenceKeys.settingsManager.getString("default_scope","pref_quad_frames","4"),4));
+    }
+
     public static float niceInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;
         try {

@@ -2,7 +2,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools"
            tools:ignore="MissingTranslation">
     <string name="_pref_version" translatable="false">_pref_version</string>
-    <string name="pref_category_general_key" translatable="false">pref_category_general_key</string>
     <string name="pref_category_jpg_key" translatable="false">pref_category_jpg_key</string>
     <string name="pref_category_hdrx_key" translatable="false">pref_category_hdrx_key</string>
     <string name="pref_category_photo_key" translatable="false">pref_category_photo_key</string>
@@ -12,8 +11,6 @@
     <string name="pref_rawvideo_write_zip_key" translatable="false">pref_rawvideo_write_zip_key</string>
     <string name="pref_rawvideo_crop_169_key" translatable="false">pref_rawvideo_crop_169_key</string>
     <string name="pref_theme_category_key" translatable="false">pref_theme_category_key</string>
-    <string name="pref_category_about_key" translatable="false">pref_category_about_key</string>
-    <string name="pref_category_advanced_key" translatable="false">pref_category_advanced_key</string>
 
     <string name="pref_preview_resolution_key" translatable="false">pref_show_afdata_key</string>
     <string name="pref_show_afdata_key" translatable="false">pref_show_afdata_key</string>
@@ -88,7 +85,6 @@
     <string name="_cameras" translatable="false">_cameras</string>
     <string name="_devices" translatable="false">_devices</string>
     <string name="all_devices_names" translatable="false">all_devices_names</string>
-    <string name="all_devices_specific" translatable="false">all_devices_specific</string>
     <string name="pref_this_device_key" translatable="false">pref_this_device_key</string>
     <string name="_per_lens" translatable="false">_per_lens</string>
 
@@ -102,7 +98,6 @@
     <string name="pref_version_key" translatable="false">pref_version_key</string>
     <string name="pref_folders_list" translatable="false">pref_folders_list</string>
     <string name="pref_hide_gallery_icon_key" translatable="false">pref_hide_gallery_icon_key</string>
-    <string name="pref_category_device_key" translatable="false">pref_category_device_key</string>
     <string name="pref_fetch_configurations_key" translatable="false">pref_fetch_configurations_key</string>
     <string name="pref_sharp_usm_enabled_key" translatable="false">pref_sharp_usm_enabled_key</string>
     <string name="pref_sharp_deconv_enabled_key" translatable="false">pref_sharp_deconv_enabled_key</string>

@@ -66,7 +66,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
         mTitleView = (TextView) holder.findViewById(android.R.id.title);
         
         // Ensure checkbox state is correct based on persisted int value
-        int currentValue = (PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), mDefaultValue != 0) ? 1 : 0);
+        int currentValue = (PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(getSharedPreferences(), getKey()), mDefaultValue != 0) ? 1 : 0);
         setChecked(currentValue != 0);
         
         // Update color based on whether value is default or customized
@@ -110,7 +110,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
             Log.d(TAG, "First init - using default (NOT persisting yet): " + currentValue + " (from mDefaultValue: " + mDefaultValue + ")");
         } else {
             // Load existing persisted value
-            currentValue = (PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), mDefaultValue != 0) ? 1 : 0);
+            currentValue = (PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(getSharedPreferences(), getKey()), mDefaultValue != 0) ? 1 : 0);
             Log.d(TAG, "Loading persisted: " + currentValue);
         }
         
@@ -160,7 +160,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
     protected boolean getPersistedBoolean(boolean defaultReturnValue) {
         // Get persisted int value and convert to boolean
         int intDefault = defaultReturnValue ? 1 : 0;
-        int persistedValue = PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), defaultReturnValue) ? 1 : 0;
+        int persistedValue = PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(getSharedPreferences(), getKey()), defaultReturnValue) ? 1 : 0;
         return persistedValue != 0;
     }
 
@@ -168,7 +168,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
      * Get the current value as int (0 or 1)
      */
     public int getIntValue() {
-        return (PreferenceNumber.bool(getSharedPreferences().getAll().get(getKey()), mDefaultValue != 0) ? 1 : 0);
+        return (PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(getSharedPreferences(), getKey()), mDefaultValue != 0) ? 1 : 0);
     }
     
     /**

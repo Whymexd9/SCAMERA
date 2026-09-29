@@ -208,12 +208,6 @@ public class GLTexture implements AutoCloseable {
         glReadPixels(0, 0, mSize.x, mSize.y, outputFormat.getGLFormatExternal(), outputFormat.getGLType(), buffer);
         return buffer;
     }
-    public Bitmap toBitmap(){
-        ByteBuffer buffer = textureBuffer(mFormat);
-        Bitmap bmp = Bitmap.createBitmap(mSize.x, mSize.y, Bitmap.Config.ARGB_8888);
-        bmp.copyPixelsFromBuffer(buffer);
-        return bmp;
-    }
     public int getByteCount(){
         return mSize.x * mSize.y * mFormat.mFormat.mSize * mFormat.mChannels;
     }

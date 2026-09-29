@@ -104,8 +104,10 @@ public class IsoExpoSelector {
     }
 
     public static void setMeasuredBracketBase(long exposure,int iso,CaptureController controller) {
-        hdrPlusBasePair=GenerateExpoPair(-1,controller);
-        hdrPlusBasePair.exposure=exposure;hdrPlusBasePair.iso=iso;
+        if (exposure <= 0 || iso <= 0)
+            throw new IllegalArgumentException("Invalid measured bracket base");
+        hdrPlusBasePair = new ExpoPair(exposure, getEXPLOW(), getEXPHIGH(),
+                iso, getISOLOW(), getISOHIGH(), getISOAnalog());
     }
 
     /** Capture the denoising portion of the HDR+ burst at strictly constant exposure. */
@@ -148,7 +150,11 @@ public class IsoExpoSelector {
         // up until their ratio fits max_hdr_ratio_default; the shot dump shows an ideal
         // ratio of 17.48 being reduced to 9.80 exactly this way. The long frame is already
         // committed at this point, so the short frame is what gives.
-        float maxRatio = PreferenceKeys.getMaxHdrRatio();
+        // The ceiling limits the LONG frame only (see setLongExpo). The short frame is
+        // the highlight donor: clamping it too left -1.65 EV of a requested -4 EV and
+        // bright windows clipped, where stock/GCam keep them. GCam's max_hdr_ratio is
+        // a tone-compression bound, not a limit on how dark the protective frame is.
+        float maxRatio = 0f;
         if (maxRatio > 1.0f) {
             double longFactor = PreferenceKeys.getLongFrameCountValue() > 0 ? Math.scalb(1.0,
                     Math.max(0, Math.min(8, PreferenceKeys.getLongExposureEvValue()))) : 1.0;
@@ -193,7 +199,7 @@ public class IsoExpoSelector {
         // from the shutter.
         int isoFloor = getISOLOW();
         long sensorMinimum = getEXPLOW();
-        if (PreferenceKeys.isTetModelEnabled()) {
+        if (!PreferenceKeys.isVivoNiceEnabled() && PreferenceKeys.isTetModelEnabled()) {
             // The curve is applied to THIS frame's TET, not the base frame's. An earlier
             // version pinned one shutter for the whole burst, on the strength of a dump
             // whose "Desired exposure time factor" read 1.000000. A second dump from this
@@ -252,6 +258,7 @@ public class IsoExpoSelector {
      * viewfinder cadence.
      */
     private static long shutterCapNs(CaptureController captureController) {
+        if (PreferenceKeys.isVivoNiceEnabled()) return getEXPHIGH();
         float periods = PreferenceKeys.getLongFrameShutterCapPeriods();
         if (periods <= 0.0f) {
             return Long.MAX_VALUE;
@@ -272,11 +279,10 @@ public class IsoExpoSelector {
         int requestedEv = Math.max(1, Math.min(8, PreferenceKeys.getLongExposureEvValue()));
         double factor = Math.scalb(1.0, requestedEv);
         // Same ceiling as the short frame, applied to this end of the bracket.
-        float maxHdrRatio = PreferenceKeys.getMaxHdrRatio();
+        float maxHdrRatio = PreferenceKeys.isVivoNiceEnabled() ? 0f : PreferenceKeys.getMaxHdrRatio();
         if (maxHdrRatio > 1.0f) {
-            double shortFactor = PreferenceKeys.getShortFrameCountValue() > 0
-                    && PreferenceKeys.getHighlightSuppressionValue() > 0 ? Math.scalb(1.0,
-                    Math.max(0, Math.min(8, PreferenceKeys.getShortExposureEvValue()))) : 1.0;
+            // Only the long end is bounded; the short (highlight) frame keeps its depth.
+            double shortFactor = 1.0;
             double spread = factor * shortFactor;
             if (spread > maxHdrRatio) {
                 double clamped = HdrBracketFactors.limit(factor, shortFactor, maxHdrRatio);
@@ -293,7 +299,7 @@ public class IsoExpoSelector {
         // bracketed frame will not align. Whatever EV the cap leaves unspent is taken
         // from gain instead.
         long shutterCap = shutterCapNs(captureController);
-        if (PreferenceKeys.isTetModelEnabled()) {
+        if (!PreferenceKeys.isVivoNiceEnabled() && PreferenceKeys.isTetModelEnabled()) {
             // Per-frame, as for the short end. This is where the curve differs most from
             // the existing heuristic, which stretches the shutter first and only gives
             // the remainder to gain.
@@ -350,6 +356,12 @@ public class IsoExpoSelector {
     public static ExpoPair GenerateExpoPair(int step, CaptureController captureController) {
         ExpoPair pair = new ExpoPair(captureController.mPreviewExposureTime, getEXPLOW(), getEXPHIGH(),
                 captureController.mPreviewIso, getISOLOW(), getISOHIGH(),getISOAnalog());
+        // NICE uses the metered sensor exposure, without reapplying legacy AE curves.
+        if (PreferenceKeys.isVivoNiceEnabled()) {
+            if (pair.exposure <= 0 || pair.iso <= 0)
+                throw new IllegalStateException("NICE: missing preview exposure/ISO");
+            return pair;
+        }
         double compensation = Math.pow(2.0,PhotonCamera.getSettings().exposureCompensation);
         pair.normalizeiso100();
         pair.ExpoCompensateLower(1.0/compensation);

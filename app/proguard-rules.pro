@@ -93,3 +93,7 @@
 -keep class ai.onnxruntime.** { *; }
 -dontwarn ai.onnxruntime.**
 -keep class com.particlesdevs.photoncamera.ui.settings.VivoNiceActivity { *; }
+-keep class com.particlesdevs.photoncamera.capture.VivoVcf2RootWorker { *; }
+-keep class com.particlesdevs.photoncamera.capture.VivoVcf2RootWorker$ClientContext { *; }
+-keep class com.particlesdevs.photoncamera.capture.VivoVcf2Device$NativeReader { *; }
+-keep class com.particlesdevs.photoncamera.capture.VivoStockAe { native <methods>; }

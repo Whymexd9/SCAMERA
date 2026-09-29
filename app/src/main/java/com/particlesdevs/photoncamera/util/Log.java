@@ -79,19 +79,6 @@ public class Log {
         });
     }
 
-    /** @deprecated Prefer {@link #setLogFolder(Context)} with SimpleStorage. */
-    @Deprecated
-    public static void setLogFile(java.io.File folder) {
-        logHandler.post(() -> {
-            closeWriter();
-            logDir = folder != null && folder.isDirectory() ? folder : null;
-            logContext = null;
-            currentDate = null;
-            retryAfterMs = 0;
-            if (logDir != null) cleanupOldLogs();
-        });
-    }
-
     /** Returns PhotonCamera/PhotonLog folder via SimpleStorage, or null if no access. */
     private static DocumentFile getLogFolderDocumentFile() {
         if (logContext == null || !SimpleStorageHelper.hasStorageAccess(logContext)) {

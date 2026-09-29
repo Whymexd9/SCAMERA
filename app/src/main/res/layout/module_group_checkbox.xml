@@ -1,1 +1,0 @@
-<CheckBox xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/module_group_check" android:layout_width="48dp" android:layout_height="48dp" android:buttonTint="#C5B8F2" android:contentDescription="Выбрать группу" />

@@ -40,11 +40,6 @@ public class ParseExif {
         if (out != null) return out.toString();
         else return "";
     }
-    public static String requestget(CaptureRequest res, CaptureRequest.Key<?> key) {
-        Object out = res.get(key);
-        if (out != null) return out.toString();
-        else return "";
-    }
 
     public static ExifData parse(CaptureResult result, CaptureRequest request) {
         ExifData data = new ExifData();

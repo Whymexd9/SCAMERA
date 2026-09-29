@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the recovered NICE HDR plan builder with original VAS ARM64 blocks.
+"""Compare the recovered SCAM HDR plan builder with original VAS ARM64 blocks.
 
 Does not execute scene/AE inference, seamless/sensor branches, vendor publishing
 or Camera2. Both EV-only and explicit-exposure branches execute unmodified;
@@ -124,7 +124,7 @@ def main():
             assert build(past,future,alternate,0,0,arr,initial_c,raw_c,out)==-1
             assert out.raw==b'\xa5'*0xc74
             invalid+=1
-        print(f'PASS: {checked} original NICE HDR plan comparisons; {invalid} invalid queries rejected')
+        print(f'PASS: {checked} original SCAM HDR plan comparisons; {invalid} invalid queries rejected')
         print('Scene/AE inputs, Camera2 submission and TCE image integration remain outside this test.')
 
 if __name__=='__main__':main()

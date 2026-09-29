@@ -46,7 +46,8 @@ void main() {
     float dy1 = lumaAt(xy + ivec2(0, 1)) - lumaAt(xy + ivec2(0, -1));
     float dx2 = lumaAt(xy + ivec2(2, 0)) - lumaAt(xy + ivec2(-2, 0));
     float dy2 = lumaAt(xy + ivec2(0, 2)) - lumaAt(xy + ivec2(0, -2));
-    float contrast = sqrt(dx1 * dx1 + dy1 * dy1 + dx2 * dx2 + dy2 * dy2) * 0.0625;
+    // RT buildBlendMask scale: 0.0625/327.68 on 0..32768 L = 0.0625*100 on 0..1 luma.
+    float contrast = sqrt(dx1 * dx1 + dy1 * dy1 + dx2 * dx2 + dy2 * dy2) * 6.25;
     float blend = contrastThreshold <= 0.0 ? 1.0 : calcBlendFactor(contrast, contrastThreshold);
 
     float estimate = max(texelFetch(EstimateBuffer, xy, 0).r, 0.0);

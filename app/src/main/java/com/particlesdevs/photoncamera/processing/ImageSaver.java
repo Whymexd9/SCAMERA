@@ -65,6 +65,39 @@ public class ImageSaver {
         return new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
     }
 
+    /**
+     * Moves this burst's frames and exposure pairs out of the shared buffers
+     * so the camera can capture the next shot while this one is processed.
+     */
+    public synchronized void detachForQueue() {
+        if (!(implementation instanceof DefaultSaver))
+            throw new IllegalStateException("Queued processing requires the RAW saver");
+        DefaultSaver saver = (DefaultSaver) implementation;
+        saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
+        saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
+        SaverImplementation.IMAGE_BUFFER.clear();
+        // Named at capture time, like the stock camera, not when processing starts.
+        String suffix = uniqueSuffix(ImagePath.newImageFilePath().getFileName().toString());
+        saver.ownedDngFile = withSuffix(ImagePath.newDNGFilePath(), suffix);
+        saver.ownedImageFile = withSuffix(ImagePath.newImageFilePath(), suffix);
+    }
+
+    // Names have one-second resolution; queued shots can share a second.
+    private static String lastReservedName = "";
+    private static int lastReservedCount = 0;
+    private static synchronized String uniqueSuffix(String name) {
+        if (name.equals(lastReservedName)) return "_" + (++lastReservedCount);
+        lastReservedName = name;
+        lastReservedCount = 0;
+        return "";
+    }
+    private static java.nio.file.Path withSuffix(java.nio.file.Path path, String suffix) {
+        if (suffix.isEmpty()) return path;
+        String name = path.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return path.resolveSibling(dot < 0 ? name + suffix : name.substring(0, dot) + suffix + name.substring(dot));
+    }
+
     public synchronized void discardFrames() {
         desiredFrameCount = 0;
         for (ImageFrame frame : SaverImplementation.IMAGE_BUFFER) frame.close();
@@ -150,22 +183,6 @@ public class ImageSaver {
             }
         }*/
 
-        public static boolean saveBitmapAsPNG(Path fileToSave, Bitmap img, int pngQuality, ParseExif.ExifData exifData) {
-            try {
-                OutputStream outputStream = Files.newOutputStream(fileToSave);
-                img.compress(Bitmap.CompressFormat.PNG, pngQuality, outputStream);
-                outputStream.flush();
-                outputStream.close();
-                img.recycle();
-                ExifInterface inter = ParseExif.setAllAttributes(fileToSave.toFile(), exifData);
-                inter.saveAttributes();
-                return true;
-            } catch (IOException e) {
-                e.printStackTrace();
-                return false;
-            }
-        }
-
         public static boolean saveStackedRaw(Path dngFilePath,
                                              ByteBuffer buffer, Parameters parameters) {
             return saveSingleRaw(dngFilePath, buffer, parameters);
@@ -205,6 +222,7 @@ public class ImageSaver {
             parameters.FillConstParameters(characteristics, new Point(image.width, image.height));
             int iso = captureResult.get(CaptureResult.SENSOR_SENSITIVITY);
             parameters.FillDynamicParameters(captureResult, null, iso);
+            parameters.refineBlackLevel(image.buffer, image.width, image.height);
             parameters.cameraRotation = cameraRotation;
             Log.d(TAG, "Camera rotation: " + parameters.cameraRotation);
             Log.d(TAG, "activearr:" + characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE));

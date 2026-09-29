@@ -82,14 +82,6 @@ public class GLProg implements AutoCloseable {
     public void useAssetProgram(String name,boolean compute){
         useProgram(PhotonCamera.getAssetLoader().getString("shaders/"+name+".glsl"),compute);
     }
-    public void useFileProgram(String path, boolean compute){
-        // open file by path
-        try {
-            useProgram(new String(Files.readAllBytes(new File(path).toPath())),compute);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
     public void useUtilProgram(String name){
         useUtilProgram(name,false);
     }
@@ -399,12 +391,6 @@ public class GLProg implements AutoCloseable {
             default:
                 throw new RuntimeException("Wrong var size " + name);
         }
-        checkEglError("setVar:" + name);
-    }
-
-    public void setVar1(String name, int... vars) {
-        int addr = glGetUniformLocation(mCurrentProgramActive, name);
-        glUniform1iv(addr, vars.length, vars, 0);
         checkEglError("setVar:" + name);
     }
 

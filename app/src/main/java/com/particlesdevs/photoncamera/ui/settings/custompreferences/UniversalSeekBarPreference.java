@@ -263,7 +263,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
 
     private String readStoredString(String fallback) {
         android.content.SharedPreferences prefs = getSharedPreferences();
-        Object value = prefs == null ? null : prefs.getAll().get(getKey());
+        Object value = prefs == null ? null : com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs, getKey());
         return value == null ? fallback : value.toString();
     }
 

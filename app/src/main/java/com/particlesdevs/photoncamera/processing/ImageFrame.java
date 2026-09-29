@@ -14,6 +14,8 @@ public class ImageFrame {
     public ByteBuffer buffer;
     public long timestamp;
     public boolean fromZsl = false;
+    /** NICE: L exposure ratio for an L built from the ZSL N frames (0 = L was captured). */
+    public float syntheticLongRatio = 0;
     public int width, height;
     public GyroBurst frameGyro;
     public float[][][] BlurKernels;
@@ -38,7 +40,7 @@ public class ImageFrame {
     public boolean lensMoving;
     public double blurPixels = Double.NaN;
     private android.hardware.camera2.CaptureResult captureMetadata;
-    public enum CaptureRole { NORMAL, LONG, SHORT }
+    public enum CaptureRole { NORMAL, LONG, SHORT, EXTRA_SHORT }
     public static final class NiceCaptureTag {
         public final long generation;
         public final int index;
@@ -129,13 +131,61 @@ public class ImageFrame {
         buffer = direct;
     }
 
+    // Deferred ZSL copy: the frame keeps its reader Image until materialize(), so
+    // the bracket can be submitted before ~20 RAWs are copied out of the reader.
+    private Image pendingImage;
+    private int pendingFormat, pendingRowStride, pendingShift, pendingCapacity, pendingWidth;
+    private boolean pendingBinning;
+
+    private ImageFrame() {}
+
+    public static ImageFrame deferred(Image image, int format, int width, int rowStride, int shift, int capacity) {
+        ImageFrame frame = new ImageFrame();
+        frame.pendingImage = image;
+        frame.pendingFormat = format;
+        frame.pendingWidth = width;
+        frame.pendingRowStride = rowStride;
+        frame.pendingShift = shift;
+        frame.pendingCapacity = capacity;
+        frame.pendingBinning = Allocator.binning;
+        return frame;
+    }
+
+    /** Copies a deferred frame out of the ImageReader and releases its slot. */
+    public synchronized void materialize() {
+        if (pendingImage == null) return;
+        try {
+            ByteBuffer in = pendingImage.getPlanes()[0].getBuffer();
+            ByteBuffer direct;
+            if (pendingBinning) {
+                int height = pendingCapacity / pendingRowStride;
+                direct = pendingFormat == 0x25
+                        ? Allocator.allocateAndCopyConvertBinning(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
+                        : Allocator.allocateAndCopyBinning(pendingCapacity, in, pendingWidth, height, pendingRowStride);
+            } else {
+                direct = pendingFormat == 0x25
+                        ? Allocator.allocateAndCopyConvert(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
+                        : Allocator.allocateAndCopy(pendingCapacity, in, pendingShift);
+            }
+            direct.position(0);
+            buffer = direct;
+        } finally {
+            pendingImage.close();
+            pendingImage = null;
+        }
+    }
+
     public ImageFrame(ByteBuffer in) {
         ByteBuffer direct = Allocator.allocateAndCopy(in.capacity(), in, 0);
         direct.position(0);
         buffer = direct;
     }
 
-    public void close() {
+    public synchronized void close() {
+        if (pendingImage != null) {
+            pendingImage.close();
+            pendingImage = null;
+        }
         if (buffer != null) {
             Allocator.free(buffer);
             buffer = null;

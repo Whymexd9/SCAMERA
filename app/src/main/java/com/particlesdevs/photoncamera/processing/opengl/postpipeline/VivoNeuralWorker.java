@@ -23,7 +23,14 @@ public final class VivoNeuralWorker {
         {"nice-tone-hdrnet-weight-v79.bin","ae050107939723b545c194f41fa70245dcd3c25f358e6c9cc1b7e6d8435cdb56"}
     };
     public static final String[][] NICE_FILES = {
-        {"nice-main-forward-v79.bin","a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c"}
+        {"nice-main-forward-v79.bin","a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c"},
+        // PD2454 CRE motion (same pinned file as /vendor) plus its runtime for non-vivo
+        // devices; the three vivo libraries it links are vivo-cre-compat.cpp stubs.
+        {"libvivo_nice_cre.so","41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e"},
+        {"libc++_shared.so","f9992c4ba6b7c5a716e3a202fceb1ce029d6a2b0605838ac6b3219f489dd7970"},
+        {"libvivolog.so","1dd79c9a92d3856fcf5e5f93ee532c98559ae82f6adff8f0810e20a04e3db704"},
+        {"libvivo_platform_common.so","173945c6ebda5ff6cfea6e5b56c90818fd85cc531438d8304a4fb478e5c537b1"},
+        {"libvivo.mempool.so","51e3029a6f32ca537033bb9f5ea4bdcbb3ba573626dd8ae830d2a0354ebe3d4c"}
     };
     public static final String[][] HEX_FILES = {
         {"hexquad-x1-v79.bin","e4519b2b8ee4ff1684c10d0e3006c6ab613972d107ed8f05c58543b833e17e22"},
@@ -33,22 +40,50 @@ public final class VivoNeuralWorker {
         {"libQnnHtpV79Stub.so","2dfaabe735cdd3f6a23e9089d9b93c04cee2818e8168fdad7a864535ff620656"},
         {"libQnnHtpV79Skel.so","eaf6f153c814f1f4d544ae17b37ee25835f678ed4b81d43e30a25e65396c5a8d"}
     };
+    /** Main-camera IMX06C 2x2 Quad model (vendor nice_ldr_imx06c_general_quad_x1 context). */
+    public static final String[][] QUAD_FILES = {
+        {"quad-x1-v79.bin","7b42687974c53439fcb71ef3254b218eca26388c397138431f5a7a3daf6314aa"},
+        // Tele HP9 2x ISZ: vendor nice_ldr_hp9_general_roi_quad_x1 context.
+        {"quad-hp9-x1-v79.bin","c135a5b54a0637bdaa5b116c76ce667d73f0a9d9b8adae059d178a80d66bdbc3"},
+        // Tele above ISO 2000 (vendor maxiso switch): roi_quad_x1_highdrc context.
+        {"quad-hp9-highdrc-x1-v79.bin","7c09eca4b1522fed690631cc86174bf9a75a14dde8e3279d935d3f253974d812"}
+    };
+    /** Vivo VSR still SR contexts (vendor sr1x_m4, sr2x_m24, sr4x_m24; /vendor/camera3rd/nti/VSR). */
+    public static final String[][] VSR_FILES = {
+        {"vsr1x-v79.bin","db7eec6b89c9040e05be84bfacebb9d7dacb725817998047f7c51e199027b72c"},
+        {"vsr2x-v79.bin","d392f3c23181bd792f766ab21b7635f966edbc188ff323d166ed6859a395d118"},
+        {"vsr4x-v79.bin","cc6d236a3f6da5214c687d93e16f35715fbeffd36c52eef417ad68f2a0dcb83e"}
+    };
+    public static String[] vsrFile(int scale) {
+        return VSR_FILES[scale==4?2:scale==2?1:0];
+    }
     public static void main(String[] args) {
         int exit=1;
         try {
             boolean niceCapture=args.length==4 && args[1].equals("--nice-capture");
             boolean niceTone=args.length==2 && args[1].equals("--nice-tone-check");
             boolean nice=niceTone || niceCapture || (args.length==2 && args[1].equals("--nice"));
-            boolean capture=args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached"));
+            boolean quad=args.length==4 && args[1].equals("--quad-capture");
+            boolean vsr=args.length==8 && args[1].equals("--vsr-capture");
+            boolean capture=quad || (args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached")));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA Vivo Neural bundled; path="+(niceTone?"NICE tone runtime check":niceCapture?"NICE HDR capture":nice?"NICE HDR runtime check":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
-            if(!nice && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
+            System.out.println("SCAMERA Vivo Neural bundled; path="+(niceTone?"NICE tone runtime check":niceCapture?"SCAM HDR capture":nice?"SCAM HDR runtime check":quad?"Quad 2x2 capture":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            if(!nice && !hex && !vsr && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
             if(nice){
                 java.util.Collections.addAll(required,niceTone?NICE_TONE_FILES:NICE_FILES);
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
+            } else if(vsr){
+                for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
+                required.add(vsrFile(Integer.parseInt(args[2])));
+            } else if(quad){
+                for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
+                java.util.Collections.addAll(required,QUAD_FILES);
             } else java.util.Collections.addAll(required,hex?HEX_FILES:FILES);
-            if(niceCapture)required.add(new String[]{"/vendor/lib64/libvivo_nice_cre.so",
+            // vivo CRE motion is optional: without it (non-vivo devices) the native
+            // worker aligns with SCAMERA's own tile alignment. If present it must match.
+            if(niceCapture && new File("/vendor/lib64/libvivo_nice_cre.so").isFile())
+                required.add(new String[]{"/vendor/lib64/libvivo_nice_cre.so",
                     "41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e"});
             for(String[] item:required){
                 File file=item[0].startsWith("/")?new File(item[0]):new File(args[0],item[0]);
@@ -63,7 +98,8 @@ public final class VivoNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(niceTone){command.add("--nice-tone-check");command.add(args[0]);}
+            if(vsr){command.add("--vsr-capture");command.add(args[0]);for(int i=2;i<8;i++)command.add(args[i]);}
+            else if(niceTone){command.add("--nice-tone-check");command.add(args[0]);}
             else if(niceCapture){command.add("--nice-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(nice){command.add("--nice-check");command.add(args[0]);}
             else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}

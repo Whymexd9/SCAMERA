@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="agx_mode_entries">
+        <item>AgX (в SCAM HDR — вместе с Exposure Fusion)</item>
+        <item>Выкл. — Exposure Fusion как раньше</item>
+    </string-array>
+    <string-array name="agx_mode_values" translatable="false">
+        <item>agx</item>
+        <item>off</item>
+    </string-array>
+    <string-array name="agx_look_entries">
+        <item>SCAMERA — как LMC (по умолчанию)</item>
+        <item>Базовый (Blender AgX)</item>
+        <item>Очень низкий контраст</item>
+        <item>Низкий контраст</item>
+        <item>Пониженный контраст</item>
+        <item>Повышенный контраст</item>
+        <item>Высокий контраст</item>
+        <item>Очень высокий контраст</item>
+        <item>Punchy — сочный</item>
+        <item>Hue — насыщенный (FairplexVR)</item>
+        <item>Powerful — плотный (FairplexVR)</item>
+        <item>Golden — тёплый мягкий</item>
+        <item>Чёрно-белый</item>
+    </string-array>
+    <string-array name="agx_look_values" translatable="false">
+        <item>scamera</item>
+        <item>base</item>
+        <item>very_low</item>
+        <item>low</item>
+        <item>medium_low</item>
+        <item>medium_high</item>
+        <item>high</item>
+        <item>very_high</item>
+        <item>punchy</item>
+        <item>hue</item>
+        <item>powerful</item>
+        <item>golden</item>
+        <item>greyscale</item>
+    </string-array>
+</resources>

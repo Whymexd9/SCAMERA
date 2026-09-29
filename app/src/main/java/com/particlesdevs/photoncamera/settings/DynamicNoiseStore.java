@@ -392,15 +392,6 @@ public class DynamicNoiseStore {
         }
     }
 
-    public IsoBin getBin(int physicalID, int iso) {
-        ensureLoaded(physicalID);
-        Integer baseIso = minIso.get(physicalID);
-        if (baseIso == null) return null;
-        Map<Integer, IsoBin> bins = store.get(physicalID);
-        if (bins == null) return null;
-        return bins.get(isoBin(iso, baseIso));
-    }
-
     /** Raw sample kept for re-binning when a new minimum ISO is discovered.
      *  Also serialized to JSON via Gson. */
     private static final class RawSample {
