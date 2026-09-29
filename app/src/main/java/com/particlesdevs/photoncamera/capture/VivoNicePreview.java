@@ -27,6 +27,12 @@ public final class VivoNicePreview {
 
     private VivoNicePreview() {}
 
+    /** The stock-preview vendor tags are defined by the vivo camera HAL only. */
+    public static boolean supported() {
+        return "vivo".equalsIgnoreCase(android.os.Build.MANUFACTURER)
+                || "iqoo".equalsIgnoreCase(android.os.Build.BRAND);
+    }
+
     // Stock Photo repeating preview (PD2454 VivoCamera, NICE on, rear main), read
     // 2026-09-23 from the stock app's own CaptureRequests. These drive the vendor
     // preview AE (AI AE, motion/night/echo/HDR policy) that the stock NICE solver

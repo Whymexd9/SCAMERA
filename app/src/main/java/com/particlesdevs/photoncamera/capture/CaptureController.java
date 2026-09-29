@@ -1811,8 +1811,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
+            // Vendor detector tags exist only on a vivo HAL; elsewhere SCAM HDR uses the plain preview.
             final boolean nicePreview = PreferenceKeys.isVivoNiceEnabled() && photoMode
-                    && !isBurstSession && !mIsRecordingVideo
+                    && VivoNicePreview.supported() && !isBurstSession && !mIsRecordingVideo
                     && !PreferenceKeys.isMultiFrameCalibration();
             Log.i("NICE_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));

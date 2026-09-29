@@ -484,7 +484,9 @@ public final class VivoStockAe implements AutoCloseable {
         }
         /** N's real exposure as ISO from the vendor AE (gain*50), or -1. */
         public static double vendorIso(CaptureResult result) {
-            float[] aec=result==null?null:result.get(AEC);
+            float[] aec=null;
+            // Not a vivo HAL (no vendor tag): the Camera2 ISO is the only source.
+            try{aec=result==null?null:result.get(AEC);}catch(IllegalArgumentException noVendorTag){return -1;}
             if(aec==null||aec.length<35||!Float.isFinite(aec[2])||aec[2]<=0)return -1;
             return aec[2]*50.;
         }

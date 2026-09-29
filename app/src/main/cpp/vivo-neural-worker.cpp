@@ -65,11 +65,19 @@ int main(int argc,char** argv) {
             catch(const std::exception& error) { report(std::string("NICE MOTION: SCAMERA tile alignment (")+error.what()+")"); }
             vivo_nice::NiceAlignment alignment;
             if(motion)alignment=[&](vivo_nice::Burst& burst){return motion->align(burst,report);};
-            vivo_nice::Graph graph(argv[2],report);
+            // The forward network ships as Hexagon v79 context binaries (SM8750 only); on any
+            // other SoC the burst is reconstructed without a model (vivo-nice-portable.h).
+            std::unique_ptr<vivo_nice::Graph> graph;
+            if(access((std::string(argv[2])+"/portable-forward").c_str(),F_OK)!=0) {
+                try{graph=std::make_unique<vivo_nice::Graph>(argv[2],report);}
+                catch(const std::exception& error){report(std::string("NICE NPU: neural model unavailable (")+error.what()+"); portable reconstruction");}
+            } else report("NICE NPU: portable reconstruction requested");
             std::vector<uint16_t> mergedDng;
-            auto result=vivo_nice::reconstruct(input,[&](const std::vector<float>& in,std::vector<float>& out){
-                graph.input=in;graph.execute();out=graph.output;
-            },report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
+            vivo_nice::NiceExecute forward;
+            if(graph)forward=[&](const std::vector<float>& in,std::vector<float>& out){
+                graph->input=in;graph->execute();out=graph->output;
+            };
+            auto result=vivo_nice::reconstruct(input,forward,report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
                 if(!input.diagnostics)return;
                 std::ofstream f(std::string(argv[2])+"/"+name+".pfm",std::ios::binary);
                 if(!f){report("NICE DIAGNOSTIC: cannot open tile dump");return;}
