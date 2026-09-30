@@ -338,7 +338,13 @@ void main() {
         float own=log2(max(luminance(inColor*neutralPoint),1.0e-7));
         float level=mix(base,own,smoothstep(1.0,2.0,abs(own-base)));
         float ev=level+log2(max(exposure*agxExposure,1.0e-7)/0.18);
-        linearSrgb*=exp2(-agxLocal.x*max(ev-agxLocal.y,0.0));
+        /* Hyperbolic knee: slope 1 up to the start, then the range above it folds into a
+         * finite number of stops (asymptote R) instead of a fixed fraction of it, so a window
+         * that is 8 stops over the room keeps its texture and does not clip. Strength 0.7 is
+         * R=2.5 stops; strength 1 clamps to the start. */
+        float x=max(ev-agxLocal.y,0.0);
+        float knee=max(0.5,(1.0-agxLocal.x)*8.34);
+        linearSrgb*=exp2(-(x-x/(1.0+x/knee)));
     }
     // AgX replaces the headroom shoulder, output scale and gamut fit: it forms
     // highlights itself (they attenuate toward white instead of clipping).

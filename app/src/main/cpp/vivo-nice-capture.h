@@ -17,6 +17,7 @@
 #include <cstring>
 #include <limits>
 #include <chrono>
+#include <atomic>
 #include <future>
 
 namespace vivo_nice {
@@ -809,6 +810,62 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         return slotFrames[0]+slotFrames[1]+slotFrames[2]+slotFrames[3];
     });
     const double lumaChromaMs=millis(Clock::now()-lumaChromaStarted);
+    // The network saturates where the merged N does (its output plateaus at the N white), so
+    // windows and lamps come out as one flat level. The short frames hold that range: rebuild
+    // those pixels from S (and ES where S clips) exactly as the portable path does and blend
+    // them in, in the network's own units.
+    if(alignment) {
+        const auto rebuildStarted=Clock::now();
+        const bool haveMerged=mergeAll();
+        const float rS=b.exposure[5],rE=b.exposure[6];
+        auto donor=[&](int f,int x,int y)->float{
+            const DonorPoint origin=projective[f].bayerOrigin(x,y);
+            const float qx=std::max(0.f,origin.x*.5f),qy=std::max(0.f,origin.y*.5f);
+            const int ix=int(qx),iy=int(qy);const float fx=qx-ix,fy=qy-iy;
+            auto at=[&](int cx,int cy){
+                int sx=2*cx+(x&1),sy=2*cy+(y&1);
+                while(sx>b.w-1)sx-=2;while(sy>b.h-1)sy-=2;
+                return b.sample(f,sx,sy);
+            };
+            return (at(ix,iy)*(1-fx)+at(ix+1,iy)*fx)*(1-fy)+(at(ix,iy+1)*(1-fx)+at(ix+1,iy+1)*fx)*fy;
+        };
+        std::vector<float> hdr(size_t(b.w)*b.h),weight(size_t(b.w)*b.h,0.f);
+        std::atomic<long> rebuilt{0};
+        mergeRowBands(b.h,[&](int y0,int y1){
+            long local=0;
+            for(int y=y0;y<y1;++y)for(int x=0;x<b.w;++x){
+                const float n=haveMerged?canonical[size_t(y)*b.w+x]*(1.f/16383.f):b.sample(forwardReferenceSlot,x,y);
+                float v=n;
+                if(n>.70f) {
+                    const float t=portableSmooth(.70f,.94f,n);
+                    const float s=donor(5,x,y);
+                    float value=s/rS;
+                    if(s>.88f){const float te=portableSmooth(.88f,.97f,s);value=value*(1-te)+donor(6,x,y)/rE*te;}
+                    v=n*(1-t)+std::max(value,n)*t;
+                    weight[size_t(y)*b.w+x]=t;++local;
+                }
+                hdr[size_t(y)*b.w+x]=v;
+            }
+            rebuilt+=local;
+        });
+        if(rebuilt>0) {
+            std::vector<float> portable;
+            portableDemosaic(hdr,b.w,b.h,[&](int x,int y){return b.color(x,y);},[](int x,int size){return reflectCfa(x,size);},
+                [](int rows,const std::function<void(int,int)>& body){mergeRowBands(rows,body);},portable);
+            mergeRowBands(b.h,[&](int y0,int y1){
+                for(int y=y0;y<y1;++y)for(int x=0;x<b.w;++x){
+                    const float t=weight[size_t(y)*b.w+x];
+                    if(t<=0.f)continue;
+                    for(int c=0;c<3;++c){
+                        float& o=result[(size_t(y)*b.w+x)*3+c];
+                        o=o*(1-t)+std::max(portable[(size_t(y)*b.w+x)*3+c]*scale,o)*t;
+                    }
+                }
+            });
+        }
+        report("NICE HIGHLIGHT REBUILD: pixels="+std::to_string(long(rebuilt))+" S="+std::to_string(rS)+" ES="+std::to_string(rE)
+            +" ms="+std::to_string(millis(Clock::now()-rebuildStarted)));
+    }
     restoreSensorOrigin(result,b.w,b.h,b.cfa);
     report("NICE STAGES ms: lumaChroma="+std::to_string(lumaChromaMs)+"  alignment="+std::to_string(millis(motionFinished-started))
         +" inference="+std::to_string(inferenceMs)

@@ -592,6 +592,7 @@ public class PostPipeline extends GLBasePipeline {
                     +" tone=VivoHdrTone_SCAMERA; actual node order/timings follow in Pipeline log");
             add(new VivoNiceRgb());
             add(new HighlightRecovery());
+            add(new NiceChromaDenoise());
         } else {
         if (PreferenceKeys.isRemosaicEnabled()) {
             if (mParameters.remosaicDone) {

@@ -180,7 +180,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if(toneReset!=null) toneReset.setOnPreferenceClickListener(p -> {
                 // Everything SCAM HDR light/shadow: Fusion, highlights, shadows and levels.
                 for(String key:new String[]{"pref_vivo_hdr_shadows","pref_vivo_hdr_local","pref_vivo_hdr_gamma","pref_vivo_hdr_black","pref_vivo_hdr_white",
-                        "pref_agx_nice_local_strength","pref_agx_nice_local_start","pref_agx_highlight_desat","pref_agx_desat_start",
+                        "pref_agx_nice_local_strength","pref_agx_nice_knee_start","pref_agx_highlight_desat","pref_agx_desat_start",
                         "pref_vivo_nice_fusion_strength","pref_vivo_nice_fusion_dark_ev","pref_vivo_nice_fusion_bright_ev",
                         "pref_vivo_nice_fusion_detail","pref_vivo_nice_fusion_sigma"}) {
                     Preference control=fullPreferenceScreen.findPreference(key);
