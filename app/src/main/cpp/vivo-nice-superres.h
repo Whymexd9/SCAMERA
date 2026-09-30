@@ -130,7 +130,7 @@ std::vector<float> superResolveReference(int w,int h,int frames,Sample sample,Or
     const auto mergeStart=std::chrono::steady_clock::now();
 
     // Gaussian kernel of the sample distance, tabulated (|d| <= 2 px per axis).
-    constexpr float sigma=.7f;
+    constexpr float sigma=.55f;
     constexpr int lutSteps=256;
     std::array<float,2*lutSteps+1> kernel{};
     for(int i=0;i<=2*lutSteps;++i){const float d=float(i-lutSteps)*2.f/lutSteps;kernel[i]=std::exp(-d*d/(2*sigma*sigma));}

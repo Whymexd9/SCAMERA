@@ -152,9 +152,9 @@ public final class NiceDenoise extends Node {
             GLTexture source = before;
             if (chroma > 0f) {
                 GLTexture[] targets = {ping, pong, ping, pong};
-                int[] steps = {1, 2, 4, 8};
+                int[] steps = {1, 2};
                 float tolerance = Math.max(1f, chroma);
-                for (int pass = 0; pass < 4; pass++) {
+                for (int pass = 0; pass < steps.length; pass++) {
                     glProg.useAssetProgram("chromadn/filter", false);
                     glProg.setTexture("InputBuffer", source);
                     glProg.setVar("step", steps[pass]);

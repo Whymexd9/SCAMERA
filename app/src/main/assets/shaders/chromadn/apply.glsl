@@ -41,6 +41,31 @@ void main() {
         wsum += w;
     }
     vec3 q = acc / wsum;
+    // Colour detail: the half-resolution filter dilutes thin coloured strokes (red lettering on a
+    // yellow card). Where the pixel's own colour differs from the filtered one by clearly more than
+    // the colour noise expected at its brightness, it is real structure and the pixel keeps its
+    // own colour; flat noise stays filtered.
+    if (sigma > 0.0) {
+        // The pixel's colour averaged over 3x3 (luminance weighted) has a third of the single-pixel
+        // colour noise, so a coherent coloured shape a few pixels wide stands out of it where a
+        // single pixel would not.
+        ivec2 lastI = textureSize(InputBuffer, 0) - ivec2(1);
+        vec3 s3 = vec3(0.0);
+        float w3 = 0.0;
+        for (int j = -1; j <= 1; j++) {
+            for (int i = -1; i <= 1; i++) {
+                float wgt = ((i == 0) ? 1.0 : 0.3614) * ((j == 0) ? 1.0 : 0.3614);
+                s3 += wgt * max(texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), lastI), 0).rgb, vec3(0.0));
+                w3 += wgt;
+            }
+        }
+        vec3 own = s3 / max(dot(s3, vec3(1.0 / 3.0)), 1.0e-6);
+        float relN = 2.0 * sigma * sqrt(ym + offsetC) / ym;
+        float tolC = clamp(3.0 * relN, 0.02, 0.5) * 1.7 * 0.42;
+        float dist = length(own - q) / tolC;
+        float keep = smoothstep(1.6, 3.0, dist);
+        q = mix(q, own, keep);
+    }
     q = mix(vec3(1.0), q, smoothstep(darkFade.x, darkFade.y, ym));
     vec3 chroma = ym * mix(c / ym, q, chromaAmount);
     float un = texelFetch(Noisy, p, 0).r;
@@ -59,7 +84,26 @@ void main() {
     // Dark specks: black-level clipping gives the noise of the darkest areas a heavy dark tail;
     // cap the dark side at about two sigma where the level is flat.
     d = mix(d, max(d, -2.0 * sigma), flatness);
-    float uc = uf + grain * d;
+    // Fine structure: the non-local means flattens low-contrast texture (lettering, weave, wood
+    // grain) together with the noise. The residue (noisy - clean) smoothed over 3x3 keeps what is
+    // spatially coherent and averages the white noise down to about a third, so where the smoothed
+    // residue is clearly above the noise it is real texture and goes back in.
+    float detail = 0.0;
+    if (sigma > 0.0) {
+        ivec2 lastN = textureSize(Noisy, 0) - ivec2(1);
+        float acc9 = 0.0;
+        for (int j = -1; j <= 1; j++) {
+            for (int i = -1; i <= 1; i++) {
+                ivec2 t = clamp(p + ivec2(i, j), ivec2(0), lastN);
+                float wgt = ((i == 0) ? 1.0 : 0.3614) * ((j == 0) ? 1.0 : 0.3614);
+                acc9 += wgt * clamp(texelFetch(Noisy, t, 0).r - texelFetch(Clean, clamp(t, ivec2(0), lastC), 0).r, -3.0 * sigma, 3.0 * sigma);
+            }
+        }
+        float rb = acc9 / 2.9588;
+        float mk = smoothstep(0.7 * sigma, 1.6 * sigma, abs(rb));
+        detail = (1.0 - grain) * mk * rb;
+    }
+    float uc = uf + grain * d + detail;
     float y0 = un * un - offsetC;
     float y1 = uc * uc - offsetC;
     float gain = y0 > 1.0e-6 ? clamp(y1 / y0, 0.25, 4.0) : 1.0;

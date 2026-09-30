@@ -87,7 +87,7 @@ uniform int modelY0;
 uniform int modelRows;
 uniform float invScale;
 uniform vec2 noise; // single-frame noise model: slope, offset (RAW units)
-const float sigma=0.7;
+const float sigma=0.55;
 const float prior=0.02;
 const float relativeFloor=0.004;
 const float achromatic=0.75;
