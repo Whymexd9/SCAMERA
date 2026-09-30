@@ -975,6 +975,10 @@ public class PreferenceKeys {
         if (v < 0f) v = niceUsesStudent() ? 0f : 100f;
         return Math.max(0f, Math.min(1f, v / 100f));
     }
+    /** Mid-frequency local contrast (texture) of the SCAM HDR render, 0..2 (1 = matched to a GCam/LMC render). */
+    public static float getNiceTexture() {
+        return Math.max(0f, Math.min(2f, niceInternalValue("texture", 1f)));
+    }
     /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
     public static float getNiceMerge() {
         return Math.max(0f, Math.min(1f, niceInternalValue("merge", 100f) / 100f));

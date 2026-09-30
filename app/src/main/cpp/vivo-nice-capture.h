@@ -329,7 +329,8 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                                       const std::function<void(const std::string&)>& report,
                                       const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={},
                                       const NiceAlignment& alignment={},
-                                      std::vector<uint16_t>* mergedDng=nullptr) {
+                                      std::vector<uint16_t>* mergedDng=nullptr,
+                                      std::vector<uint8_t>* effMap=nullptr) {
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
@@ -748,7 +749,8 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                         in.homography.resize(frames.size());
                         for(size_t f=1;f<frames.size();++f){const int slot=slotOf[f];in.homography[f]=slot>=0?projective[slot]:extraProjective[-1-slot];}
                         SuperResGpu gpu;
-                        gpu.merge(in,refNoise.slope,refNoise.offset,b.lumaChroma.merge,out,effective,share);
+                        const SuperResTuning tune=loadSuperResTuning(report);
+                        gpu.merge(in,refNoise.slope,refNoise.offset,b.lumaChroma.merge,out,effective,share,tune);
                         report("NICE SUPERRES GPU: "+gpu.renderer);
                         return true;
                     }catch(const std::exception& e){
@@ -867,6 +869,15 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
             +" ms="+std::to_string(millis(Clock::now()-rebuildStarted)));
     }
     restoreSensorOrigin(result,b.w,b.h,b.cfa);
+    // Effective number of merged frames per pixel (1/8 frame steps, 0 = unknown) for the post
+    // denoise: its strength follows the noise each pixel really has (rejected areas are noisier).
+    if(effMap&&!stats.effectiveFrames.empty()&&stats.effectiveFrames.size()==size_t(b.w)*b.h){
+        effMap->assign(size_t(b.w)*b.h,0);
+        for(int y=0;y<b.h;++y)for(int x=0;x<b.w;++x){
+            const size_t src=size_t(std::max(0,y-(b.cfa>>1)))*b.w+std::max(0,x-(b.cfa&1));
+            (*effMap)[size_t(y)*b.w+x]=uint8_t(std::clamp(std::lround(stats.effectiveFrames[src]*8.f),1L,255L));
+        }
+    }
     report("NICE STAGES ms: lumaChroma="+std::to_string(lumaChromaMs)+"  alignment="+std::to_string(millis(motionFinished-started))
         +" inference="+std::to_string(inferenceMs)
         +" totalReconstruction="+std::to_string(millis(Clock::now()-started))

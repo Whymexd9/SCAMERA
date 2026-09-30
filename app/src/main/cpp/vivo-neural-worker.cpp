@@ -37,6 +37,13 @@ int main(int argc,char** argv) {
                 if(marker && std::getline(marker,target) && !target.empty())setenv("SCAM_DUMP_FORWARD",target.c_str(),1);
             }
             const auto mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
+            // Debug: keep the burst (touch <external files>/nice_keep) so the merge can be replayed
+            // offline with `--nice-capture <job dir> <external files>/nice_burst.bin <out>`.
+            if(std::string(argv[3])!="/sdcard/Android/data/org.codeaurora.snapcam/files/nice_burst.bin"
+                    &&access("/sdcard/Android/data/org.codeaurora.snapcam/files/nice_keep",F_OK)==0){
+                std::ofstream dst("/sdcard/Android/data/org.codeaurora.snapcam/files/nice_burst.bin",std::ios::binary|std::ios::trunc);
+                dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
+            }
             const auto& input=mapped->burst;
             const char* outputPath=argv[4];
             auto report=[](const std::string& line){vivo_nn::log(line);};
@@ -78,6 +85,7 @@ int main(int argc,char** argv) {
                 catch(const std::exception& error){report(std::string("NICE NPU: neural model unavailable (")+error.what()+"); portable reconstruction");}
             } else report("NICE NPU: portable reconstruction requested");
             std::vector<uint16_t> mergedDng;
+            std::vector<uint8_t> effMap;
             vivo_nice::NiceExecute forward;
             if(graph)forward=[&](const std::vector<float>& in,std::vector<float>& out){
                 graph->input=in;graph->execute();out=graph->output;
@@ -89,7 +97,7 @@ int main(int argc,char** argv) {
                 f<<"PF\n"<<w<<" "<<h<<"\n-1.0\n";
                 for(int y=h-1;y>=0;--y)f.write(reinterpret_cast<const char*>(data.data()+size_t(y)*w*3),w*3*sizeof(float));
                 if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
-            },alignment,&mergedDng);
+            },alignment,&mergedDng,&effMap);
             double sum=0;float maximum=0;
             for(float value:result){sum+=value;maximum=std::max(maximum,value);}
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
@@ -103,6 +111,8 @@ int main(int argc,char** argv) {
             writeAll(result.data(),result.size()*sizeof(float));
             // Optional trailer: merged Bayer RAW (uint16, sensor layout) for the DNG.
             if(!mergedDng.empty())writeAll(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
+            // Optional second trailer: effective merged frames per pixel (uint8, 1/8 frame), w*h bytes.
+            if(!effMap.empty()&&effMap.size()*3==result.size())writeAll(effMap.data(),effMap.size());
             if(close(out))throw std::runtime_error("Incomplete NICE output");
             alarm(0);report("NICE CAPTURE OK");return 0;
         }

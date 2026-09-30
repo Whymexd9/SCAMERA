@@ -1,5 +1,6 @@
 precision highp float;
 precision highp sampler2D;
+precision highp usampler2D;
 // Post-network denoise, last step. The colour of the full-resolution pixel is replaced by the
 // filtered half-resolution colour (joint bilateral upsampling: the four nearest half-resolution
 // samples are weighted by how close their luminance is to the pixel's own, so colour edges stay
@@ -12,6 +13,9 @@ uniform sampler2D Noisy;     // u = sqrt(Y + c), full resolution
 uniform sampler2D Clean;     // the same after non-local means
 uniform sampler2D Coarse;    // quarter resolution correction of the blotch-scale residue
 uniform float sigma;         // noise sigma of u (0 = off)
+uniform usampler2D EffMap;   // effective merged frames per pixel (1/8 frame steps, 0 = unknown)
+uniform float effRef;
+uniform int useEff;
 uniform float grain;         // share of the removed noise put back (a flat, fine grain), 0..1
 uniform float offsetC;
 uniform float lumaAmount;    // 0..1
@@ -20,6 +24,12 @@ uniform vec2 darkFade;       // mean level where colour starts to fade / is full
 out vec4 Output;
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
+    // Noise of this pixel: the measured level scaled by how well the merge covered it.
+    float sg = sigma;
+    if (useEff != 0 && sigma > 0.0) {
+        uint v = texelFetch(EffMap, p, 0).r;
+        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.6, 2.0);
+    }
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
     ivec2 lowSize = textureSize(After, 0);
@@ -60,7 +70,7 @@ void main() {
             }
         }
         vec3 own = s3 / max(dot(s3, vec3(1.0 / 3.0)), 1.0e-6);
-        float relN = 2.0 * sigma * sqrt(ym + offsetC) / ym;
+        float relN = 2.0 * sg * sqrt(ym + offsetC) / ym;
         float tolC = clamp(3.0 * relN, 0.02, 0.5) * 1.7 * 0.42;
         float dist = length(own - q) / tolC;
         float keep = smoothstep(1.6, 3.0, dist);
@@ -78,12 +88,12 @@ void main() {
     float gy = abs(texelFetch(Clean, clamp(p + ivec2(0, 3), ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(0, 3), ivec2(0), lastC), 0).r);
     // Only flat areas get the coarse correction and the tail cap; at edges the quarter-resolution
     // correction would leave a stair-stepped rim.
-    float flatness = sigma > 0.0 ? 1.0 - smoothstep(3.0 * sigma, 6.0 * sigma, max(gx, gy)) : 0.0;
+    float flatness = sigma > 0.0 ? 1.0 - smoothstep(3.0 * sg, 6.0 * sg, max(gx, gy)) : 0.0;
     float uf = texelFetch(Clean, p, 0).r + flatness * texture(Coarse, cs).r;
     float d = un - uf;
     // Dark specks: black-level clipping gives the noise of the darkest areas a heavy dark tail;
     // cap the dark side at about two sigma where the level is flat.
-    d = mix(d, max(d, -2.0 * sigma), flatness);
+    d = mix(d, max(d, -2.0 * sg), flatness);
     // Fine structure: the non-local means flattens low-contrast texture (lettering, weave, wood
     // grain) together with the noise. The residue (noisy - clean) smoothed over 3x3 keeps what is
     // spatially coherent and averages the white noise down to about a third, so where the smoothed
@@ -96,11 +106,11 @@ void main() {
             for (int i = -1; i <= 1; i++) {
                 ivec2 t = clamp(p + ivec2(i, j), ivec2(0), lastN);
                 float wgt = ((i == 0) ? 1.0 : 0.3614) * ((j == 0) ? 1.0 : 0.3614);
-                acc9 += wgt * clamp(texelFetch(Noisy, t, 0).r - texelFetch(Clean, clamp(t, ivec2(0), lastC), 0).r, -3.0 * sigma, 3.0 * sigma);
+                acc9 += wgt * clamp(texelFetch(Noisy, t, 0).r - texelFetch(Clean, clamp(t, ivec2(0), lastC), 0).r, -3.0 * sg, 3.0 * sg);
             }
         }
         float rb = acc9 / 2.9588;
-        float mk = smoothstep(0.7 * sigma, 1.6 * sigma, abs(rb));
+        float mk = smoothstep(0.7 * sg, 1.6 * sg, abs(rb));
         detail = (1.0 - grain) * mk * rb;
     }
     float uc = uf + grain * d + detail;

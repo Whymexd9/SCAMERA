@@ -8,10 +8,13 @@
 // 3x3 erosion needs whole-cell neighbourhoods).
 #include "vivo-nice-homography.h"
 #include <EGL/egl.h>
+#include <fstream>
+#include <functional>
 #include <GLES3/gl31.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <array>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -29,6 +32,54 @@ struct SuperResGpuInput {
     const std::vector<float>* model=nullptr;       // RGB, w*h*3
     float invScale=1;
 };
+
+
+// Merge tuning. Defaults are the shipped values; a debug file with "key value" lines
+// (<external files>/nice_sr.txt or /data/local/tmp/nice_sr.txt) overrides them so the merge can be
+// tuned on a replayed burst without rebuilding.
+struct SuperResTuning {
+    int legacy=0;          // 1: the former isotropic kernel + 3x3-minimum robustness
+    int grid=1;            // sub-pixel evaluations per axis for detailed pixels (1 or 2): 2 = merge on a 2x grid
+                           // and average back to the sensor grid (anti-aliased, supersampled)
+    float subDetail=0.3f;  // detail measure above which the 2x grid is used
+    // Kernel (Gaussian standard deviations in sensor pixels) from the structure tensor of the model
+    // luma, after Wronski et al. / GCam Sabre: narrow across a coherent edge, long along it, wide
+    // and isotropic in flat areas.
+    float base=0.50f,shrunk=0.42f,stretched=1.00f,flat=0.70f;
+    float strengthScale=50.f;   // edge amount: coherence limited by strength * scale
+    float flat0=0.002f,flat1=0.008f;  // gradient (u per pixel) below which the kernel is blurred
+    float texStd=0.25f;         // weight of the local raw std in the "detail" measure
+    float tensorNoise=0.0015f;  // gradient noise floor (u per pixel)
+    // Robustness: Wiener-shrunk colour differences against max(noise, share of the local texture).
+    float robustK=3.f,robustSigmas=3.f,robustTex=0.25f,dilate=4.f;
+    // Base frame (added last): wider kernel where little donor weight accumulated.
+    float widenBelow=2.5f,widenMul=1.6f;
+    float subShrink=0.8f;      // kernel scale on the 2x sub-grid
+    float legacySigma=0.55f;
+};
+inline SuperResTuning loadSuperResTuning(const std::function<void(const std::string&)>& report) {
+    SuperResTuning t;
+    for(const char* path:{"/sdcard/Android/data/org.codeaurora.snapcam/files/nice_sr.txt","/data/local/tmp/nice_sr.txt"}){
+        std::ifstream f(path);if(!f)continue;
+        std::string key;float v;std::string applied;
+        while(f>>key>>v){
+            float* target=nullptr;
+            if(key=="legacy")t.legacy=int(v);else if(key=="grid")t.grid=int(v);
+            else if(key=="subDetail")target=&t.subDetail;else if(key=="base")target=&t.base;else if(key=="shrunk")target=&t.shrunk;
+            else if(key=="stretched")target=&t.stretched;else if(key=="flat")target=&t.flat;else if(key=="strengthScale")target=&t.strengthScale;
+            else if(key=="flat0")target=&t.flat0;else if(key=="flat1")target=&t.flat1;else if(key=="texStd")target=&t.texStd;
+            else if(key=="tensorNoise")target=&t.tensorNoise;else if(key=="robustK")target=&t.robustK;
+            else if(key=="robustSigmas")target=&t.robustSigmas;else if(key=="robustTex")target=&t.robustTex;else if(key=="dilate")target=&t.dilate;
+            else if(key=="widenBelow")target=&t.widenBelow;else if(key=="widenMul")target=&t.widenMul;else if(key=="legacySigma")target=&t.legacySigma;else if(key=="subShrink")target=&t.subShrink;
+            else continue;
+            if(target)*target=v;
+            applied+=" "+key+"="+std::to_string(v);
+        }
+        if(report&&!applied.empty())report("NICE SUPERRES TUNING FILE "+std::string(path)+":"+applied);
+        break;
+    }
+    return t;
+}
 
 // Shared by both programs: strip-uploaded frames, canonical CFA shift, black/white
 // normalisation and the per-frame backward homography.
@@ -75,7 +126,7 @@ vec2 origin(int f,int x,int y){
 )";
 
 // Super-resolution merge (vivo-nice-superres.h), one invocation per 2x2 cell.
-static const char* kSuperResShader=R"(
+static const char* kSuperResShaderLegacy=R"(
 layout(std430,binding=1) readonly buffer Model{float model[];};
 layout(std430,binding=8) readonly buffer Robust{float robust[];};
 layout(std430,binding=3) writeonly buffer Out{float outRgb[];};
@@ -222,7 +273,7 @@ void main(){
 // Robustness, step 1: per 2x2 cell and donor frame, agreement of the donor's
 // cell mean (bilinear at its aligned position) with the reference cell mean,
 // against the noise model plus a 4% share of the local 3x3 reference range.
-static const char* kRobustShader=R"(
+static const char* kRobustShaderLegacy=R"(
 layout(std430,binding=7) writeonly buffer RawR{float rawR[];};
 uniform int ry0;
 uniform int ry1;
@@ -256,7 +307,7 @@ void main(){
 
 // Robustness, step 2: 3x3 minimum (a frame is used only where it agrees all
 // around, so moving objects are not partially mixed) times the user merge weight.
-static const char* kErodeShader=R"(
+static const char* kErodeShaderLegacy=R"(
 layout(std430,binding=7) readonly buffer RawR{float rawR[];};
 layout(std430,binding=8) writeonly buffer Robust{float robust[];};
 layout(std430,binding=9) buffer Sums{uint sums[];};
@@ -280,30 +331,343 @@ void main(){
 }
 )";
 
+// ---------------------------------------------------------------------------------------------
+// Merge after Wronski et al. (2019) / the GCam 6.1 "Sabre" shaders.
+//
+//  1. u-plane:  sqrt(model luma + eps), the variance-stabilised domain (noise variance of one raw
+//               site is slope/4 everywhere).
+//  2. guide:    per 2x2 cell (a Bayer quad): reference colour (R, G, B in u), its local texture
+//               variance (3x3 cells, noise removed), and from the structure tensor of the model
+//               luma the kernel precision matrix (narrow across an edge, long along it, wide where
+//               flat) and a detail measure.
+//  3. robust:   per donor frame and cell, Wiener-shrunk colour difference in u against the larger
+//               of the noise and a share of the local texture (the alignment error grows with it).
+//  4. dilate:   soft spread of rejections to the neighbouring cells (not a hard 3x3 minimum).
+//  5. merge:    per output pixel, every donor frame's raw sites around the aligned position weighted
+//               by the anisotropic kernel (and its robustness); the base frame is added last with a
+//               wider kernel where little donor weight accumulated. The merged residual against the
+//               model is added to the model as before. Detailed pixels are evaluated on a 2x2 grid of
+//               sub-positions (merge on a 2x grid) and averaged back: no aliasing, cleaner edges.
+// ---------------------------------------------------------------------------------------------
+static const char* kSrHelpers=R"(
+uniform ivec4 phaseColor;
+uniform vec2 noise; // single-frame noise model: slope, offset (RAW units)
+float epsU(){ return max(noise.y/max(noise.x,1.0e-9),1.0e-5); }
+// Colour (u domain) of the 2x2 cell (i,j) of frame f; gd = |sqrt(G1)-sqrt(G2)|, rawMax = brightest colour.
+vec3 quadU(int f,int i,int j,out float gd,out float rawMax){
+    float g0=0.0,g1=0.0;int gi=0;vec3 r=vec3(0.0);
+    for(int p=0;p<4;p++){
+        int px=p&1,py=p>>1;int c=phaseColor[p];
+        float v=sampleRaw(f,2*i+px,2*j+py);
+        if(c==1){ if(gi==0)g0=v; else g1=v; gi++; }
+        else if(c==0)r.r=v; else r.b=v;
+    }
+    r.g=0.5*(g0+g1);
+    float e=epsU();
+    gd=abs(sqrt(max(g0,0.0)+e)-sqrt(max(g1,0.0)+e));
+    rawMax=max(r.r,max(r.g,r.b));
+    return sqrt(max(r,vec3(0.0))+vec3(e));
+}
+)";
+
+static const char* kUPlaneShader=R"(
+layout(std430,binding=1) readonly buffer Model{float model[];};
+layout(std430,binding=2) writeonly buffer UPlane{float uplane[];};
+uniform int modelRows;
+uniform float invScale;
+void main(){
+    int x=int(gl_GlobalInvocationID.x),ry=int(gl_GlobalInvocationID.y);
+    if(x>=size.x||ry>=modelRows)return;
+    int o=(ry*size.x+x)*3;
+    float m=(model[o]+model[o+1]+model[o+2])*(1.0/3.0)*invScale;
+    uplane[ry*size.x+x]=sqrt(max(m,0.0)+epsU());
+}
+)";
+
+static const char* kGuideShader=R"(
+layout(std430,binding=2) readonly buffer UPlane{float uplane[];};
+layout(std430,binding=10) writeonly buffer Guide{vec4 guide[];};
+layout(std430,binding=11) writeonly buffer Cov{vec4 cov[];};
+uniform int ry0;
+uniform int ry1;
+uniform int uRow0;
+uniform int uRows;
+uniform vec4 kA; // base, shrunk, stretched, flat (sigma in sensor pixels)
+uniform vec4 kB; // strength scale, flat0, flat1, texStd
+uniform vec4 kC; // tensor noise
+float uAt(int x,int y){
+    x=clamp(x,0,size.x-1);y=clamp(y,0,size.y-1);
+    return uplane[clamp(y-uRow0,0,uRows-1)*size.x+x];
+}
+void main(){
+    int w2=size.x/2,h2=size.y/2;
+    int cx=int(gl_GlobalInvocationID.x),cy=ry0+int(gl_GlobalInvocationID.y);
+    if(cx>=w2||cy>=ry1)return;
+    // Reference statistics over the 3x3 cells.
+    vec3 mean=vec3(0.0),mean2=vec3(0.0),centre=vec3(0.0);float gdSum=0.0;
+    for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
+        float gd,rm;
+        vec3 uv=quadU(0,clamp(cx+di,0,w2-1),clamp(cy+dj,0,h2-1),gd,rm);
+        mean+=uv*(1.0/9.0);mean2+=uv*uv*(1.0/9.0);
+        gdSum+=gd*((di==0)?0.5:0.25)*((dj==0)?0.5:0.25);
+        if(di==0&&dj==0)centre=uv;
+    }
+    vec3 var=max(mean2-mean*mean,vec3(0.0));
+    float s2=(var.x+var.y+var.z)*(1.0/3.0);
+    float nvMean=noise.x*0.2083*0.89;              // noise variance of the 9-sample estimate
+    float gdTex=max(gdSum-0.56*sqrt(noise.x),0.0); // aliasing in the green pair above the noise
+    float s2tex=max(max(s2-nvMean,0.0),gdTex*gdTex);
+    int gi=(cy-ry0)*w2+cx;
+    guide[gi]=vec4(centre,s2tex);
+    // Structure tensor of the model luma over the 4x4 pixels of the cell and its surround.
+    float uu[36];
+    for(int j=0;j<6;j++)for(int i=0;i<6;i++)uu[j*6+i]=uAt(2*cx-2+i,2*cy-2+j);
+    float txx=0.0,tyy=0.0,txy=0.0;
+    for(int j=1;j<=4;j++)for(int i=1;i<=4;i++){
+        float gx=0.5*(uu[j*6+i+1]-uu[j*6+i-1]);
+        float gy=0.5*(uu[(j+1)*6+i]-uu[(j-1)*6+i]);
+        txx+=gx*gx;tyy+=gy*gy;txy+=gx*gy;
+    }
+    txx*=(1.0/16.0);tyy*=(1.0/16.0);txy*=(1.0/16.0);
+    float tr=txx+tyy,df=txx-tyy,sq=sqrt(max(df*df+4.0*txy*txy,0.0));
+    float l1=0.5*(tr+sq),l2=max(0.5*(tr-sq),0.0);
+    vec2 e1=vec2(1.0,0.0);
+    if(abs(txy)>1.0e-9){ e1=normalize(vec2(txy,l1-txx)); }
+    else if(txx<tyy){ e1=vec2(0.0,1.0); }
+    vec2 e2=vec2(-e1.y,e1.x);
+    float sv1=sqrt(l1),sv2=sqrt(l2);
+    float l1w=l1*l1/(l1+kC.x*kC.x+1.0e-12);        // noise-filtered strength (Sabre)
+    float strength=sqrt(l1w);
+    float coherence=(sv1-sv2)/(sv1+sv2+1.0e-6);
+    float dominant=max(strength,kB.w*sqrt(s2tex));
+    float flatness=1.0-smoothstep(kB.y,kB.z,dominant);
+    float across=mix(kA.x,kA.y,min(coherence,strength*kB.x));
+    float along=mix(kA.x,kA.z,coherence);
+    across=mix(across,kA.w,flatness);
+    along=mix(along,kA.w,flatness);
+    float ia=1.0/(across*across),il=1.0/(along*along);
+    cov[gi]=vec4(e1.x*e1.x*ia+e2.x*e2.x*il,e1.y*e1.y*ia+e2.y*e2.y*il,e1.x*e1.y*ia+e2.x*e2.y*il,1.0-flatness);
+}
+)";
+
+static const char* kRobustShader=R"(
+layout(std430,binding=7) writeonly buffer RawR{float rawR[];};
+layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
+uniform int ry0;
+uniform int ry1;
+uniform vec4 rb; // K, sigmas^2, texture tolerance^2
+void main(){
+    int w2=size.x/2,h2=size.y/2;
+    int cx=int(gl_GlobalInvocationID.x),cy=ry0+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
+    if(cx>=w2||cy>=ry1||f>=frameCount)return;
+    vec4 G=guide[(cy-ry0)*w2+cx];
+    vec2 o=origin(f,2*cx,2*cy)*0.5;
+    int ix=int(floor(o.x)),iy=int(floor(o.y));
+    float fx=o.x-float(ix),fy=o.y-float(iy);
+    float gd,r00,r10,r01,r11;
+    vec3 u00=quadU(f,clamp(ix,0,w2-1),clamp(iy,0,h2-1),gd,r00);
+    vec3 u10=quadU(f,clamp(ix+1,0,w2-1),clamp(iy,0,h2-1),gd,r10);
+    vec3 u01=quadU(f,clamp(ix,0,w2-1),clamp(iy+1,0,h2-1),gd,r01);
+    vec3 u11=quadU(f,clamp(ix+1,0,w2-1),clamp(iy+1,0,h2-1),gd,r11);
+    vec3 g=(u00*(1.0-fx)+u10*fx)*(1.0-fy)+(u01*(1.0-fx)+u11*fx)*fy;
+    float e=epsU();
+    float uClip=sqrt(0.9+e);
+    float r=0.0;
+    if(max(G.x,max(G.y,G.z))<uClip&&max(max(r00,r10),max(r01,r11))<0.9){
+        vec3 nv=noise.x*vec3(0.5,0.25,0.5);      // variance of a difference of two cells
+        vec3 d=g-G.xyz;vec3 d2=d*d;
+        vec3 shr=d2*d2/(d2+nv);                   // Wiener-like shrinkage of the difference
+        float nvMean=(nv.x+nv.y+nv.z)*(1.0/3.0);
+        float tol2=max(rb.y*nvMean,rb.z*G.w);
+        float D=(shr.x+shr.y+shr.z)*(1.0/3.0)/tol2;
+        r=exp2(-rb.x*max(D-1.0,0.0));
+    }
+    rawR[(f-1)*(ry1-ry0)*w2+(cy-ry0)*w2+cx]=floor(r*255.0+0.5)*(1.0/255.0);
+}
+)";
+
+static const char* kDilateShader=R"(
+layout(std430,binding=7) readonly buffer RawR{float rawR[];};
+layout(std430,binding=8) writeonly buffer Robust{float robust[];};
+layout(std430,binding=9) buffer Sums{uint sums[];};
+uniform int ry0;
+uniform int ry1;
+uniform int cy0;
+uniform int cy1;
+uniform float mergeWeight;
+uniform float dil;
+void main(){
+    int w2=size.x/2;
+    int cx=int(gl_GlobalInvocationID.x),cy=cy0+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
+    if(cx>=w2||cy>=cy1||f>=frameCount)return;
+    float s=0.0,wc=1.0;
+    for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
+        int y=clamp(cy+dj,ry0,ry1-1),x=clamp(cx+di,0,w2-1);
+        float v=rawR[(f-1)*(ry1-ry0)*w2+(y-ry0)*w2+x];
+        s+=1.0-v;
+        if(di==0&&dj==0)wc=v;
+    }
+    float r=min(wc,1.0-clamp(s/max(dil,1.0e-3),0.0,1.0));
+    r=floor(r*mergeWeight*255.0+0.5)*(1.0/255.0);
+    robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx]=r;
+    atomicAdd(sums[f],uint(r*255.0+0.5));
+}
+)";
+
+static const char* kSuperResShader=R"(
+layout(std430,binding=1) readonly buffer Model{float model[];};
+layout(std430,binding=8) readonly buffer Robust{float robust[];};
+layout(std430,binding=3) writeonly buffer Out{float outRgb[];};
+layout(std430,binding=4) writeonly buffer Eff{float eff[];};
+layout(std430,binding=11) readonly buffer Cov{vec4 cov[];};
+uniform int cy0;
+uniform int cy1;
+uniform int ry0;
+uniform int modelY0;
+uniform int modelRows;
+uniform float invScale;
+uniform vec4 kD;    // sub-grid per axis, sub-detail threshold, widen below, widen multiplier
+uniform float subShrink; // kernel scale on the sub-grid (averaging the sub-positions widens the result)
+const float prior=0.02;
+const float relativeFloor=0.004;
+const float achromatic=0.75;
+const float chromaFloor=0.2;
+struct Acc{vec3 num;vec3 den;float numA;float denA;float denA2;};
+void initAcc(out Acc a){a.num=vec3(0.0);a.den=vec3(prior);a.numA=0.0;a.denA=prior;a.denA2=0.0;}
+void addS(inout Acc a,int c,float kw,float v,float m){
+    a.num[c]+=kw*(v-m);a.den[c]+=kw;
+    float ka=kw*kw; // narrower kernel (sigma/sqrt2) for luminance
+    a.numA+=ka*(v-m)/(m+relativeFloor);a.denA+=ka;a.denA2+=ka*ka;
+}
+float modelAt(int x,int y,int c){
+    int ry=clamp(clamp(y,0,size.y-1)-modelY0,0,modelRows-1);
+    return model[(ry*size.x+clamp(x,0,size.x-1))*3+c];
+}
+float modelBilinear(int mx,int my,float fx,float fy,int c){
+    mx=clamp(mx,0,size.x-2);my=clamp(my,0,size.y-2);
+    float p0=modelAt(mx,my,c),p1=modelAt(mx+1,my,c),q0=modelAt(mx,my+1,c),q1=modelAt(mx+1,my+1,c);
+    return ((p0*(1.0-fx)+p1*fx)*(1.0-fy)+(q0*(1.0-fx)+q1*fx)*fy)*invScale;
+}
+float kernelW(vec2 d,vec3 P){
+    return exp2(-0.72135*(d.x*d.x*P.x+d.y*d.y*P.y+2.0*d.x*d.y*P.z)); // exp(-0.5 d'Pd)
+}
+float robustAt(int f,int cx,int cy){
+    int w2=size.x/2;
+    return robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+}
+// Raw sites of frame 0 around pos: the two lattice sites per axis of every colour phase.
+void refSamples(inout Acc a,vec2 pos,vec3 P){
+    for(int p=0;p<4;p++){
+        int px=p&1,py=p>>1,c=phaseColor[p];
+        int bx=int(floor((pos.x-float(px))*0.5))*2+px,by=int(floor((pos.y-float(py))*0.5))*2+py;
+        for(int dj=0;dj<=2;dj+=2)for(int di=0;di<=2;di+=2){
+            int sx=bx+di,sy=by+dj;
+            float kw=kernelW(vec2(float(sx),float(sy))-pos,P);
+            if(kw<0.004)continue;
+            float v=sampleRaw(0,sx,sy);
+            if(v>=0.95)continue;
+            addS(a,c,kw,v,modelAt(sx,sy,c)*invScale);
+        }
+    }
+}
+// Raw sites of donor frame f around the aligned position of pos.
+void donorSamples(inout Acc a,int f,vec2 pos,int cx,int cy,float r,vec3 P){
+    vec2 cell=vec2(float(2*cx),float(2*cy));
+    vec2 oc=origin(f,2*cx,2*cy);
+    vec2 O=oc+(pos-cell);
+    vec2 t=cell-oc;
+    int itx=int(floor(t.x)),ity=int(floor(t.y));
+    float mfx=t.x-float(itx),mfy=t.y-float(ity);
+    for(int p=0;p<4;p++){
+        int px=p&1,py=p>>1,c=phaseColor[p];
+        int bx=int(floor((O.x-float(px))*0.5))*2+px,by=int(floor((O.y-float(py))*0.5))*2+py;
+        for(int dj=0;dj<=2;dj+=2)for(int di=0;di<=2;di+=2){
+            int sx=bx+di,sy=by+dj;
+            float kw=r*kernelW(vec2(float(sx),float(sy))-O,P);
+            if(kw<0.003)continue;
+            float v=sampleRaw(f,sx,sy);
+            if(v>=0.95)continue;
+            addS(a,c,kw,v,modelBilinear(sx+itx,sy+ity,mfx,mfy,c));
+        }
+    }
+}
+vec3 modelAtPos(vec2 pos){
+    int ix=int(floor(pos.x)),iy=int(floor(pos.y));
+    float fx=pos.x-float(ix),fy=pos.y-float(iy);
+    return vec3(modelBilinear(ix,iy,fx,fy,0),modelBilinear(ix,iy,fx,fy,1),modelBilinear(ix,iy,fx,fy,2));
+}
+void main(){
+    int w2=size.x/2;
+    int cx=int(gl_GlobalInvocationID.x),cy=cy0+int(gl_GlobalInvocationID.y);
+    if(cx>=w2||cy>=cy1)return;
+    vec4 cv=cov[(cy-ry0)*w2+cx];
+    vec3 P=cv.xyz;
+    int ns=(kD.x>1.5&&cv.w>kD.y)?2:1;
+    int y0=2*cy0;
+    for(int q=0;q<4;q++){
+        int x=2*cx+(q&1),y=2*cy+(q>>1);
+        vec3 col=vec3(0.0);float framesSum=0.0;
+        for(int sy=0;sy<ns;sy++)for(int sx=0;sx<ns;sx++){
+            vec2 pos=vec2(float(x),float(y));
+            if(ns>1)pos+=(vec2(float(sx),float(sy))-0.5)*0.5;
+            Acc a;initAcc(a);
+            vec3 Pe=ns>1?P/(subShrink*subShrink):P;
+            for(int f=1;f<frameCount;f++){
+                float r=robustAt(f,cx,cy);
+                if(r<0.02)continue;
+                donorSamples(a,f,pos,cx,cy,r,Pe);
+            }
+            // Base frame last: where the donors left little weight (rejection, motion) its kernel widens.
+            float donorFrames=a.denA2>0.0?(a.denA-prior)*(a.denA-prior)/a.denA2:0.0;
+            float widen=mix(kD.w,1.0,smoothstep(0.5*kD.z,kD.z,donorFrames));
+            refSamples(a,pos,Pe/(widen*widen));
+            float rel=a.numA/a.denA;
+            float frames=a.denA2>0.0?max(1.0,(a.denA-prior)*(a.denA-prior)/a.denA2):1.0;
+            vec3 m=modelAtPos(pos);
+            for(int c=0;c<3;c++){
+                float mc=m[c];
+                // Colour detail: where the merge is clean enough (signal well above the merged noise)
+                // the true per-colour residual is taken in full, as a GCam merge does.
+                float snr=mc/sqrt(max(noise.x*max(mc,0.0)+noise.y,1.0e-9)/frames);
+                float aa=mix(chromaFloor,achromatic,1.0-smoothstep(10.0,50.0,snr));
+                // Where rejection left only a frame or two, the residual is mostly single-frame noise:
+                // fall back towards the model.
+                float cover=smoothstep(1.3,5.0,frames);
+                col[c]+=max(0.0,mc+cover*(aa*(mc+relativeFloor)*rel+(1.0-aa)*a.num[c]/a.den[c]));
+            }
+            framesSum+=frames;
+        }
+        float inv=1.0/float(ns*ns);
+        int o=((y-y0)*size.x+x)*3;
+        outRgb[o]=col.x*inv;outRgb[o+1]=col.y*inv;outRgb[o+2]=col.z*inv;
+        eff[(y-y0)*size.x+x]=framesSum*inv;
+    }
+}
+)";
+
 class SuperResGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
     EGLSurface surface=EGL_NO_SURFACE;
-    GLuint srProgram=0,slotProgram=0,robustProgram=0,erodeProgram=0,buffers[10]{};
-    size_t capacity[10]{};
+    GLuint srProgram=0,slotProgram=0,robustProgram=0,dilateProgram=0,uplaneProgram=0,guideProgram=0;
+    GLuint srProgramLegacy=0,robustProgramLegacy=0,erodeProgramLegacy=0,buffers[14]{};
+    size_t capacity[14]{};
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("NICE GPU ")+where+" GL error="+std::to_string(e));}
     void cleanup() noexcept {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
-            if(srProgram)glDeleteProgram(srProgram);
-            if(slotProgram)glDeleteProgram(slotProgram);
-            if(robustProgram)glDeleteProgram(robustProgram);
-            if(erodeProgram)glDeleteProgram(erodeProgram);
-            glDeleteBuffers(10,buffers);
+            for(GLuint program:{srProgram,slotProgram,robustProgram,dilateProgram,uplaneProgram,guideProgram,srProgramLegacy,robustProgramLegacy,erodeProgramLegacy})
+                if(program)glDeleteProgram(program);
+            glDeleteBuffers(14,buffers);
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
         }
         if(surface!=EGL_NO_SURFACE)eglDestroySurface(display,surface);
         if(context!=EGL_NO_CONTEXT)eglDestroyContext(display,context);
         eglTerminate(display);display=EGL_NO_DISPLAY;
     }
-    GLuint compile(const char* body){
-        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kCommonShader,body};
-        glShaderSource(shader,2,sources,nullptr);glCompileShader(shader);
+    GLuint compile(const char* body,bool helpers=false){
+        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kCommonShader,helpers?kSrHelpers:"",body};
+        glShaderSource(shader,3,sources,nullptr);glCompileShader(shader);
         GLint ok=0;glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
         if(!ok){char msg[2048]{};glGetShaderInfoLog(shader,sizeof(msg),nullptr,msg);glDeleteShader(shader);throw std::runtime_error(std::string("NICE GPU shader: ")+msg);}
         GLuint program=glCreateProgram();glAttachShader(program,shader);glLinkProgram(program);glDeleteShader(shader);
@@ -390,11 +754,16 @@ public:
             const EGLint size[]={EGL_WIDTH,1,EGL_HEIGHT,1,EGL_NONE};surface=eglCreatePbufferSurface(display,config,size);
             if(surface==EGL_NO_SURFACE||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");
             const auto* name=glGetString(GL_RENDERER);renderer=name?reinterpret_cast<const char*>(name):"unknown";
-            srProgram=compile(kSuperResShader);
             slotProgram=compile(kSlotShader);
-            robustProgram=compile(kRobustShader);
-            erodeProgram=compile(kErodeShader);
-            glGenBuffers(10,buffers);check("init");
+            srProgramLegacy=compile(kSuperResShaderLegacy);
+            robustProgramLegacy=compile(kRobustShaderLegacy);
+            erodeProgramLegacy=compile(kErodeShaderLegacy);
+            srProgram=compile(kSuperResShader,true);
+            robustProgram=compile(kRobustShader,true);
+            dilateProgram=compile(kDilateShader);
+            uplaneProgram=compile(kUPlaneShader,true);
+            guideProgram=compile(kGuideShader,true);
+            glGenBuffers(14,buffers);check("init");
         }catch(...){cleanup();throw;}
     }
     SuperResGpu(const SuperResGpu&)=delete;
@@ -403,18 +772,101 @@ public:
     // Robustness (per 2x2 cell, per donor frame) and the merge, all on the GPU.
     // robustShare[f]: mean robustness of frame f (for the report).
     void merge(const SuperResGpuInput& in,float noiseSlope,float noiseOffset,float mergeWeight,
+               std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare,
+               const SuperResTuning& tune={}){
+        if(tune.legacy){mergeLegacy(in,noiseSlope,noiseOffset,mergeWeight,out,effective,robustShare);return;}
+        validate(in);
+        const int w=in.w,h=in.h,w2=w/2,h2=h/2,frames=int(in.frames.size());
+        out.assign(size_t(w)*h*3,0.f);effective.assign(size_t(w)*h,1.f);
+        robustShare.assign(frames,1.0);
+        for(GLuint program:{srProgram,robustProgram,dilateProgram,uplaneProgram,guideProgram})frameUniforms(program,in);
+        auto common=[&](GLuint program){
+            glUseProgram(program);
+            glUniform4i(glGetUniformLocation(program,"phaseColor"),in.phaseColor[0],in.phaseColor[1],in.phaseColor[2],in.phaseColor[3]);
+            glUniform2f(glGetUniformLocation(program,"noise"),noiseSlope,noiseOffset);
+        };
+        auto uni1i=[&](GLuint program,const char* n,int v){glUniform1i(glGetUniformLocation(program,n),v);};
+        for(GLuint program:{srProgram,robustProgram,uplaneProgram,guideProgram})common(program);
+        glUseProgram(uplaneProgram);glUniform1f(glGetUniformLocation(uplaneProgram,"invScale"),in.invScale);
+        glUseProgram(guideProgram);
+        glUniform4f(glGetUniformLocation(guideProgram,"kA"),tune.base,tune.shrunk,tune.stretched,tune.flat);
+        glUniform4f(glGetUniformLocation(guideProgram,"kB"),tune.strengthScale,tune.flat0,tune.flat1,tune.texStd);
+        glUniform4f(glGetUniformLocation(guideProgram,"kC"),tune.tensorNoise,0,0,0);
+        glUseProgram(robustProgram);
+        glUniform4f(glGetUniformLocation(robustProgram,"rb"),tune.robustK,tune.robustSigmas*tune.robustSigmas,tune.robustTex*tune.robustTex,0);
+        glUseProgram(dilateProgram);
+        glUniform1f(glGetUniformLocation(dilateProgram,"mergeWeight"),std::clamp(mergeWeight,0.f,1.f));
+        glUniform1f(glGetUniformLocation(dilateProgram,"dil"),tune.dilate);
+        glUseProgram(srProgram);
+        glUniform1f(glGetUniformLocation(srProgram,"invScale"),in.invScale);
+        glUniform4f(glGetUniformLocation(srProgram,"kD"),float(tune.grid),tune.subDetail,tune.widenBelow,tune.widenMul);
+        glUniform1f(glGetUniformLocation(srProgram,"subShrink"),tune.subShrink);
+        std::vector<GLuint> zeros(size_t(std::max(frames,1)),0);
+        reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
+        constexpr int stripCells=128; // 256 output rows per dispatch
+        const int donors=std::max(1,frames-1);
+        for(int cy0=0;cy0<h2;cy0+=stripCells){
+            const int cy1=std::min(h2,cy0+stripCells),y0=2*cy0,y1=2*cy1;
+            const int ry0=std::max(0,cy0-1),ry1=std::min(h2,cy1+1);
+            uploadStrip({srProgram,robustProgram,dilateProgram,guideProgram},in,std::max(0,y0-4),std::min(h,y1+4));
+            const int my0=std::max(0,y0-4),my1=std::min(h,y1+5);
+            reserve(1,size_t(my1-my0)*w*3*4);put(1,0,in.model->data()+size_t(my0)*w*3,size_t(my1-my0)*w*3*4);
+            reserve(2,size_t(my1-my0)*w*4);
+            reserve(10,size_t(ry1-ry0)*w2*16);reserve(11,size_t(ry1-ry0)*w2*16);
+            reserve(7,size_t(donors)*(ry1-ry0)*w2*4);
+            reserve(8,size_t(donors)*(cy1-cy0)*w2*4);
+            reserve(9,zeros.size()*4);
+            // u plane of the model, then guide + kernel covariance per cell.
+            glUseProgram(uplaneProgram);uni1i(uplaneProgram,"modelRows",my1-my0);
+            glDispatchCompute(GLuint((w+7)/8),GLuint((my1-my0+7)/8),1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glUseProgram(guideProgram);
+            uni1i(guideProgram,"ry0",ry0);uni1i(guideProgram,"ry1",ry1);uni1i(guideProgram,"uRow0",my0);uni1i(guideProgram,"uRows",my1-my0);
+            glDispatchCompute(GLuint((w2+7)/8),GLuint((ry1-ry0+7)/8),1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            check("guide");
+            if(frames>1){
+                glUseProgram(robustProgram);
+                uni1i(robustProgram,"ry0",ry0);uni1i(robustProgram,"ry1",ry1);
+                glDispatchCompute(GLuint((w2+7)/8),GLuint((ry1-ry0+7)/8),GLuint(frames-1));
+                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                glUseProgram(dilateProgram);
+                uni1i(dilateProgram,"ry0",ry0);uni1i(dilateProgram,"ry1",ry1);uni1i(dilateProgram,"cy0",cy0);uni1i(dilateProgram,"cy1",cy1);
+                glDispatchCompute(GLuint((w2+7)/8),GLuint((cy1-cy0+7)/8),GLuint(frames-1));
+                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                check("robustness");
+            }
+            reserve(3,size_t(y1-y0)*w*3*4);reserve(4,size_t(y1-y0)*w*4);
+            glUseProgram(srProgram);
+            uni1i(srProgram,"cy0",cy0);uni1i(srProgram,"cy1",cy1);uni1i(srProgram,"ry0",ry0);
+            uni1i(srProgram,"modelY0",my0);uni1i(srProgram,"modelRows",my1-my0);
+            glDispatchCompute(GLuint((w2+7)/8),GLuint((cy1-cy0+7)/8),1);
+            glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
+            check("dispatch");
+            get(3,out.data()+size_t(y0)*w*3,size_t(y1-y0)*w*3*4);
+            get(4,effective.data()+size_t(y0)*w,size_t(y1-y0)*w*4);
+            check("readback");
+        }
+        std::vector<GLuint> sums(zeros.size());
+        get(9,sums.data(),sums.size()*4);
+        for(int f=1;f<frames;++f)robustShare[f]=double(sums[f])/(255.0*double(w2)*h2);
+    }
+
+    // The former merge (isotropic kernel, 3x3-minimum robustness), kept for A/B comparison (tuning legacy=1).
+    // robustShare[f]: mean robustness of frame f (for the report).
+    void mergeLegacy(const SuperResGpuInput& in,float noiseSlope,float noiseOffset,float mergeWeight,
                std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare){
         validate(in);
         const int w=in.w,h=in.h,w2=w/2,h2=h/2,frames=int(in.frames.size());
         out.assign(size_t(w)*h*3,0.f);effective.assign(size_t(w)*h,1.f);
         robustShare.assign(frames,1.0);
-        frameUniforms(srProgram,in);frameUniforms(robustProgram,in);frameUniforms(erodeProgram,in);
-        glUseProgram(robustProgram);glUniform2f(glGetUniformLocation(robustProgram,"noise"),noiseSlope,noiseOffset);
-        glUseProgram(erodeProgram);glUniform1f(glGetUniformLocation(erodeProgram,"mergeWeight"),std::clamp(mergeWeight,0.f,1.f));
+        frameUniforms(srProgramLegacy,in);frameUniforms(robustProgramLegacy,in);frameUniforms(erodeProgramLegacy,in);
+        glUseProgram(robustProgramLegacy);glUniform2f(glGetUniformLocation(robustProgramLegacy,"noise"),noiseSlope,noiseOffset);
+        glUseProgram(erodeProgramLegacy);glUniform1f(glGetUniformLocation(erodeProgramLegacy,"mergeWeight"),std::clamp(mergeWeight,0.f,1.f));
         std::vector<GLuint> zeros(size_t(std::max(frames,1)),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
-        glUseProgram(srProgram);
-        auto loc=[&](const char* n){return glGetUniformLocation(srProgram,n);};
+        glUseProgram(srProgramLegacy);
+        auto loc=[&](const char* n){return glGetUniformLocation(srProgramLegacy,n);};
         glUniform4i(loc("phaseColor"),in.phaseColor[0],in.phaseColor[1],in.phaseColor[2],in.phaseColor[3]);
         glUniform1f(loc("invScale"),in.invScale);
         glUniform2f(loc("noise"),noiseSlope,noiseOffset);
@@ -424,26 +876,26 @@ public:
             const int cy1=std::min(h2,cy0+stripCells),y0=2*cy0,y1=2*cy1;
             const int ry0=std::max(0,cy0-1),ry1=std::min(h2,cy1+1);
             // Frame rows for the merge and for the robustness margin (one cell each side).
-            uploadStrip({srProgram,robustProgram,erodeProgram},in,std::max(0,y0-4),std::min(h,y1+4));
+            uploadStrip({srProgramLegacy,robustProgramLegacy,erodeProgramLegacy},in,std::max(0,y0-4),std::min(h,y1+4));
             const int my0=std::max(0,y0-4),my1=std::min(h,y1+5);
             reserve(1,size_t(my1-my0)*w*3*4);put(1,0,in.model->data()+size_t(my0)*w*3,size_t(my1-my0)*w*3*4);
             reserve(7,size_t(donors)*(ry1-ry0)*w2*4);
             reserve(8,size_t(donors)*(cy1-cy0)*w2*4);
             reserve(9,zeros.size()*4);
             if(frames>1){
-                glUseProgram(robustProgram);
-                glUniform1i(glGetUniformLocation(robustProgram,"ry0"),ry0);glUniform1i(glGetUniformLocation(robustProgram,"ry1"),ry1);
+                glUseProgram(robustProgramLegacy);
+                glUniform1i(glGetUniformLocation(robustProgramLegacy,"ry0"),ry0);glUniform1i(glGetUniformLocation(robustProgramLegacy,"ry1"),ry1);
                 glDispatchCompute(GLuint((w2+7)/8),GLuint((ry1-ry0+7)/8),GLuint(frames-1));
                 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-                glUseProgram(erodeProgram);
-                glUniform1i(glGetUniformLocation(erodeProgram,"ry0"),ry0);glUniform1i(glGetUniformLocation(erodeProgram,"ry1"),ry1);
-                glUniform1i(glGetUniformLocation(erodeProgram,"cy0"),cy0);glUniform1i(glGetUniformLocation(erodeProgram,"cy1"),cy1);
+                glUseProgram(erodeProgramLegacy);
+                glUniform1i(glGetUniformLocation(erodeProgramLegacy,"ry0"),ry0);glUniform1i(glGetUniformLocation(erodeProgramLegacy,"ry1"),ry1);
+                glUniform1i(glGetUniformLocation(erodeProgramLegacy,"cy0"),cy0);glUniform1i(glGetUniformLocation(erodeProgramLegacy,"cy1"),cy1);
                 glDispatchCompute(GLuint((w2+7)/8),GLuint((cy1-cy0+7)/8),GLuint(frames-1));
                 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
                 check("robustness");
             }
             reserve(3,size_t(y1-y0)*w*3*4);reserve(4,size_t(y1-y0)*w*4);
-            glUseProgram(srProgram);
+            glUseProgram(srProgramLegacy);
             glUniform1i(loc("cy0"),cy0);glUniform1i(loc("cy1"),cy1);
             glUniform1i(loc("modelY0"),my0);glUniform1i(loc("modelRows"),my1-my0);
             glDispatchCompute(GLuint((w2+7)/8),GLuint((cy1-cy0+7)/8),1);

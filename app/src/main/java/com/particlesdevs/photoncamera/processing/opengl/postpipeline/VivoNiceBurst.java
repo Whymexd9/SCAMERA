@@ -255,6 +255,8 @@ public final class VivoNiceBurst {
     boolean mergedDng;
     /** Merged Bayer RAW of the last NICE shot (uint16, sensor layout, white 16383), or null. */
     public static volatile ByteBuffer lastMergedDng;
+    /** Effective merged frames per pixel of the last SCAM HDR result (uint8, 1/8 frame), or null. */
+    public static volatile ByteBuffer lastEffectiveFrames;
     public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p,boolean mergedDng)throws Exception {
         VivoNiceBurst burst=new VivoNiceBurst(frames,p);
         burst.mergedDng=mergedDng;

@@ -10,6 +10,7 @@ import com.particlesdevs.photoncamera.util.Log;
 
 import static android.opengl.GLES20.GL_CLAMP_TO_EDGE;
 import static android.opengl.GLES20.GL_LINEAR;
+import static android.opengl.GLES20.GL_NEAREST;
 
 /**
  * Noise removal on the SCAM HDR RGB after the network, for SoCs whose network is the distilled
@@ -73,6 +74,37 @@ public final class NiceDenoise extends Node {
     }
 
     /** Noise level (sigma of u) from the flat, quiet blocks of the frame (25th percentile of the block statistics). */
+    /**
+     * Effective merged frames per pixel of this shot (uint8, 1/8 frame) as a texture for the filters;
+     * null when the merge did not report it (the noise is then taken as uniform). effRef = its median.
+     */
+    private float effRef = 1f;
+    private GLTexture loadEffectiveFrames(Point size) {
+        java.nio.ByteBuffer eff = VivoNiceBurst.lastEffectiveFrames;
+        if (eff == null || eff.capacity() != size.x * size.y) return null;
+        eff.rewind();
+        int[] histogram = new int[256];
+        long count = 0;
+        for (int i = 0; i < eff.capacity(); i += 7) {
+            int v = eff.get(i) & 255;
+            if (v > 0) { histogram[v]++; count++; }
+        }
+        if (count == 0) return null;
+        long seen = 0;
+        int median = 1;
+        for (int v = 1; v < 256; v++) { seen += histogram[v]; if (seen * 2 >= count) { median = v; break; } }
+        effRef = Math.max(1f, median / 8f);
+        eff.rewind();
+        android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT, 1);
+        return new GLTexture(size, new GLFormat(GLFormat.DataType.UNSIGNED_8, 1), eff, GL_NEAREST, GL_CLAMP_TO_EDGE);
+    }
+
+    private void bindEffectiveFrames(GLTexture effMap) {
+        if (effMap != null) glProg.setTexture("EffMap", effMap);
+        glProg.setVar("useEff", effMap != null ? 1 : 0);
+        glProg.setVar("effRef", effRef);
+    }
+
     private float estimateNoise(GLTexture noisy) {
         Point blocks = new Point((noisy.mSize.x + 7) / 8, (noisy.mSize.y + 7) / 8);
         GLTexture est = new GLTexture(blocks, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
@@ -111,7 +143,7 @@ public final class NiceDenoise extends Node {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
         float chroma = Math.max(0f, Math.min(2f, PreferenceKeys.niceInternalValue("post_chroma", 1f)));
-        float luma = Math.max(0f, Math.min(2f, PreferenceKeys.niceInternalValue("post_luma", 1f)));
+        float luma = Math.max(0f, Math.min(2f, PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
         boolean despeckle = PreferenceKeys.isNiceDespeckleEnabled();
         if (chroma <= 0f && luma <= 0f && !despeckle) { glProg.closed = true; return; }
         long started = System.currentTimeMillis();
@@ -122,6 +154,7 @@ public final class NiceDenoise extends Node {
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);
         Point half = new Point((original.mSize.x + 1) / 2, (original.mSize.y + 1) / 2);
         float noiseSigma = 0f;
+        GLTexture effMap = loadEffectiveFrames(original.mSize);
         GLTexture cleaned = null, before = null, ping = null, pong = null, noisy = null, clean = null, quarter = null, coarse = null;
         try {
             GLTexture input = original;
@@ -180,6 +213,7 @@ public final class NiceDenoise extends Node {
                 float h = luma * Math.max(0.0035f, 3f * sigma);
                 glProg.useAssetProgram("chromadn/nlm", false);
                 glProg.setTexture("InputBuffer", noisy);
+                bindEffectiveFrames(effMap);
                 glProg.setVar("h", h);
                 glProg.drawBlocks(clean);
                 Point quarterSize = new Point((original.mSize.x + 3) / 4, (original.mSize.y + 3) / 4);
@@ -195,6 +229,7 @@ public final class NiceDenoise extends Node {
             }
             glProg.useAssetProgram("chromadn/apply", false);
             glProg.setTexture("InputBuffer", input);
+            bindEffectiveFrames(effMap);
             glProg.setTexture("Before", before);
             glProg.setTexture("After", source);
             glProg.setTexture("Noisy", noisy);
@@ -204,7 +239,7 @@ public final class NiceDenoise extends Node {
             // Share of the removed noise put back: the grain that stays is held near an absolute level
             // (about 0.0004 in u), so a noisier frame (dim scene, high ISO) is cleaned harder, as a
             // GCam render does, instead of keeping a fixed fraction of its noise.
-            glProg.setVar("grain", luma > 0f ? Math.max(0.12f, Math.min(1f, 0.0004f / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
+            glProg.setVar("grain", luma > 0f ? Math.max(PreferenceKeys.niceInternalValue("grain_min", 0.12f), Math.min(1f, PreferenceKeys.niceInternalValue("grain_level", 0.0007f) / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
@@ -213,7 +248,7 @@ public final class NiceDenoise extends Node {
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
         } finally {
-            for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean, quarter, coarse}) if (t != null) t.close();
+            for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean, quarter, coarse, effMap}) if (t != null) t.close();
         }
         dumpTexture(pipeline, WorkingTexture, "denoise-out");
         Log.i("NICE_PIPELINE", "denoise chroma=" + chroma + " luma=" + luma + " despeckle=" + despeckle + " sigma=" + noiseSigma

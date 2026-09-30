@@ -687,6 +687,7 @@ public class PostPipeline extends GLBasePipeline {
         if (mParameters.vivoNiceRgb != null) {
             Log.i("NICE_PIPELINE", "legacyPost=disabled except=RawTherapee_sharpen; tone=SCAMERA_fallback TCE=not_connected");
             add(new LmcCurves());
+            add(new NiceLocalContrast());
             add(new RTSharpening());
             add(new RotateWatermark(getRotation()));
             return;

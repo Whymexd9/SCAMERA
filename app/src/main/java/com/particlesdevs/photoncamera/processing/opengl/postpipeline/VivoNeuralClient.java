@@ -300,9 +300,11 @@ public final class VivoNeuralClient {
             long expected=niceBurst!=null?(long)w*h*12:burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
             final long outputBytes=niceOut!=null?niceOut.size():output.length();
-            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng&&outputBytes==expected+(long)w*h*2?(long)w*h*2:0;
-            if(outputBytes!=expected+dngBytes)throw new IOException("Неверный размер нейрорезультата");
-            if(niceBurst!=null)VivoNiceBurst.lastMergedDng=null;
+            // Trailers after the RGB: merged Bayer RAW (w*h*2, if requested), then effective frames (w*h).
+            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng&&(outputBytes==expected+(long)w*h*2||outputBytes==expected+(long)w*h*3)?(long)w*h*2:0;
+            final long effBytes=niceBurst!=null&&outputBytes==expected+dngBytes+(long)w*h?(long)w*h:0;
+            if(outputBytes!=expected+dngBytes+effBytes)throw new IOException("Неверный размер нейрорезультата");
+            if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null||niceBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException("Недостаточно памяти для результата");
@@ -323,6 +325,14 @@ public final class VivoNeuralClient {
                         dng.flip();VivoNiceBurst.lastMergedDng=dng;
                     }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
                 }
+            }
+            if(effBytes>0){
+                ByteBuffer eff=ByteBuffer.allocateDirect((int)effBytes);
+                try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
+                    long position=expected+dngBytes;
+                    while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException("Неполная карта кадров");position+=n;}
+                    eff.flip();VivoNiceBurst.lastEffectiveFrames=eff;
+                }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
             if(niceBurst!=null)NiceDiagnostics.buffer("02-after-ivst",result,w,h,3,true);
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
