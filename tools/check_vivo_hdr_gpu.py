@@ -117,8 +117,8 @@ def render_tone(amount,shadows=0,local=0,raw_scale=1.0,display_gain=4.0):
  ctx.vertex_array(tone,[]).render(vertices=3);v=read(out);fb.release();return v
 mapped=render_tone(1);linear=render_tone(0)
 assert np.isfinite(mapped).all() and mapped.min()>=0 and mapped.max()<=1
-assert np.min(np.diff(mapped[h//2,:,0]))>=-1e-4
-assert np.std(mapped[h//2,10:30,0])>.03 # retained highlight contrast
+assert np.min(np.diff(mapped[h//2,:,0]))>=-3/255 # triangular dither is +-1 LSB
+assert np.std(mapped[h//2,10:30,0])>.025 # retained highlight contrast (C1 shoulder reaches the top plateau earlier)
 assert np.max(abs(mapped-linear))>.05
 assert np.max(abs(render_tone(1,1)-mapped))>.01
 assert np.max(abs(render_tone(1,0,1)-mapped))>.0001
@@ -140,7 +140,7 @@ for key,value in [('manualExposure',2.),('manualContrast',2.),('manualGamma',2.)
  uniforms(manual,{**neutral,key:value})
  result=render_tone(1)
  assert np.isfinite(result).all() and result.min()>=0 and result.max()<=1,key
- assert np.min(np.diff(result[h//2,:,0]))>=-.001,key
+ assert np.min(np.diff(result[h//2,:,0]))>=-3/255,key # +-1 LSB triangular dither
  assert np.max(abs(result-mapped))>.01,key
 # Extreme combinations: endpoints, monotonic gradients, finite output.
 import itertools
@@ -149,8 +149,8 @@ for ev,contrast,gamma,black,white in itertools.product([.25,4.],[.5,2.],[.5,2.],
           'manualGamma':gamma,'manualBlack':black,'manualWhite':white})
  result=render_tone(1)
  assert np.isfinite(result).all()
- assert result[:,:,:3].min()>=black-.001 and result[:,:,:3].max()<=white+.001
- assert np.min(np.diff(result[h//2,:,0]))>=-.001
+ assert result[:,:,:3].min()>=black-.006 and result[:,:,:3].max()<=white+.006 # dither is +-1 LSB
+ assert np.min(np.diff(result[h//2,:,0]))>=-3/255
 # Directly exercise the production grade on coloured patches and endpoints.
 body=manual_source[:manual_source.index('void main()')]
 body+='void main(){vec3 c=texelFetch(InputBuffer,ivec2(gl_FragCoord.xy),0).rgb;Output=vec4(manualGrade(c),1.);}'
@@ -311,7 +311,7 @@ raw=ctx.texture((4,4),3,np.tile(np.array([2,.5,1.2],np.float32),(4,4,1)).tobytes
 gain=ctx.texture((1,1),4,np.array([1,1,1,1],np.float32).tobytes(),dtype='f4')
 out=ctx.texture((4,4),3,dtype='f4');fb=ctx.framebuffer([out]);fb.use()
 raw.use(0);gain.use(1)
-for k,v in {'InputBuffer':0,'GainMap':1,'whitePoint':(1,.5,1),'inverseSize':(.25,.25),'cropOffset':(0,0)}.items():program[k].value=v
+for k,v in {'InputBuffer':0,'GainMap':1,'whitePoint':(1,.5,1),'clipLevel':(1e30,1e30,1e30),'inverseSize':(.25,.25),'cropOffset':(0,0)}.items():program[k].value=v
 vao.render(moderngl.TRIANGLE_STRIP)
 a=np.frombuffer(fb.read(components=3,dtype='f4'),np.float32).reshape(4,4,3)
 assert np.max(np.abs(a-np.array([2,1,1.2])))<1e-5
