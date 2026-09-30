@@ -4,7 +4,9 @@
 #include <jni.h>
 #endif
 #include <cstdlib>
+#ifdef __ANDROID__
 #include <sys/system_properties.h>
+#endif
 
 // Shared pinned QNN graph session for diagnostics and real NICE capture.
 // probe() itself still uses synthetic tensors and does not test photo quality.
@@ -58,9 +60,13 @@ struct Graph {
     // SM8750 (Hexagon v79) runs vivo's original quantized context. Other SoCs use the
     // distilled fp16 student (nice-student-v75.bin, compiled for Hexagon v75 with QAIRT 2.28).
     static bool studentSoc() {
+#ifdef __ANDROID__
         char soc[PROP_VALUE_MAX]={0};
         __system_property_get("ro.soc.model",soc);
         return std::strcmp(soc,"SM8750")!=0;
+#else
+        return false;
+#endif
     }
     bool student=false;
     Graph(const std::string& directory,const Reporter& report)
