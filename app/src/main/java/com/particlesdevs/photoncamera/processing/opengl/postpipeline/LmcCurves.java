@@ -27,10 +27,10 @@ public final class LmcCurves extends Node {
     /**
      * SCAM HDR tone match to a GCam/LMC render: display-encoded luma of the same scenes mapped
      * quantile-to-quantile (vivo X200 Ultra, dusk and daylight scenes agree within about 10 %).
-     * GCam keeps the shadows about half as bright as the fused NICE tone, and puts the whites higher.
+     * Fitted on top of the lift-only fusion (a fusion that darkens leaves black halos around bright objects).
      */
-    private static final float[] GCAM_MATCH = {0.0000f, 0.0278f, 0.0635f, 0.0998f, 0.1353f, 0.1737f, 0.2192f, 0.2682f,
-            0.3213f, 0.3826f, 0.4685f, 0.6013f, 0.7620f, 0.8911f, 0.9599f, 0.9849f, 1.0000f};
+    private static final float[] GCAM_MATCH = {0.0000f, 0.0191f, 0.0471f, 0.0814f, 0.1137f, 0.1482f, 0.2004f, 0.2541f,
+            0.3046f, 0.3614f, 0.4316f, 0.5396f, 0.6996f, 0.8449f, 0.9560f, 0.9880f, 1.0000f};
 
     public LmcCurves() {
         super("", "LmcCurves");
