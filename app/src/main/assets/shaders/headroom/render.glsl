@@ -224,6 +224,19 @@ vec3 fitDisplayGamut(vec3 rgb) {
     return mix(hueSafe,vec3(1.0),smoothstep(0.0,1.0,overflow));
 }
 
+/* Clipped highlights turn magenta: every sensor channel saturates at about the same
+ * raw level, so white balance (R and B gains > G) leaves R,B > G in blown windows/sky
+ * while a real bright pixel is never that far from neutral. A bright pixel whose R and
+ * B are both above G is a clipped white: return it to neutral white (its brightest
+ * channel). Saturated coloured objects are untouched (strongly non-magenta or dark). */
+vec3 neutralizeClippedMagenta(vec3 rgb) {
+    rgb=max(rgb,vec3(0.0));
+    float y=luminance(rgb);
+    float cast=min(rgb.r,rgb.b)/max(rgb.g,1.0e-4);
+    float t=smoothstep(1.03,1.15,cast)*smoothstep(0.25,0.5,y);
+    return mix(rgb,vec3(max(max3(rgb),y)),t);
+}
+
 #if MANUAL_TONE == 1
 // Artistic controls on display-linear luminance. They do not change the
 // sensor/model transfer functions or require a proprietary TCE context.
@@ -336,6 +349,7 @@ void main() {
     linearSrgb=fitDisplayGamut(linearSrgb);
     #endif
 
+    linearSrgb=neutralizeClippedMagenta(linearSrgb);
     #if MANUAL_TONE == 1
     // Exact neutral bypass preserves the previous renderer at defaults.
     if(manualContrast!=1.0 || manualGamma!=1.0 || manualSaturation!=1.0)
