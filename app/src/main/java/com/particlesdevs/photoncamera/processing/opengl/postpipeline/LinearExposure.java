@@ -116,6 +116,18 @@ public class LinearExposure extends Node {
             float gain90 = highAnchor / Math.max(p90, 1.0e-5f);
             float sceneGain = (float) Math.sqrt(
                     Math.max(1.f, gain50) * Math.max(1.f, gain90));
+            if (pipeline.mParameters.vivoNiceRgb != null) {
+                // Bright scenes (daylight, p50 ~0.15 of the reference white) already sit above both
+                // anchors, so their gain stayed at 1 and the picture came out ~1 EV darker than
+                // stock, sky and windows dull. Lift them towards a mid target; dim scenes keep
+                // their (larger) gain, and nothing is ever darkened.
+                float brightMid = com.particlesdevs.photoncamera.settings.RawTherapeeSettings
+                        .number("pref_nice_ae_bright_mid", 0.25f, 0f, 1f);
+                if (brightMid > 0f) {
+                    float brightLift = Math.max(1.f, Math.min(2.2f, brightMid / Math.max(p50, 1.0e-5f)));
+                    sceneGain = Math.max(sceneGain, brightLift);
+                }
+            }
             gain = Math.max(gainMin, Math.min(gainMax, sceneGain));
             Log.d(Name, "p50:" + p50 + " p90:" + p90
                     + " displayGain:" + gain);
