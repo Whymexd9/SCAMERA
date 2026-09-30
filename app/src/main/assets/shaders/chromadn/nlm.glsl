@@ -23,7 +23,7 @@ void main() {
     float hp = h;
     if (useEff != 0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 0.6, 2.0);
+        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, 3.0);
     }
     float norm = 1.0 / (hp * hp);
     for (int j = -2; j <= 2; j++) {
@@ -46,5 +46,7 @@ void main() {
     float own = centre[4];
     sum += best * own;
     mass += best;
-    Output = mass > 0.0 ? sum / mass : own;
+    // Weights far below 1e-30 are denormal or flushed to zero by the GPU (sum and mass can then disagree,
+    // 0/0 gave NaN at outlier pixels whose candidate patches are all far away); such a pixel keeps its value.
+    Output = mass > 1.0e-20 ? sum / mass : own;
 }

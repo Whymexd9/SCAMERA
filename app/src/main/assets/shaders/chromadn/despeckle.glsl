@@ -62,6 +62,10 @@ void main() {
                           + sqrt(luma(max(texelFetch(InputBuffer, clamp(p - ivec2(0, 1), ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC));
         if (uhi - ulo < 7.0 * sigma && uc < um - 3.5 * sigma && un4 > um - 1.5 * sigma) {
             c = rgbSum * (1.0 / 16.0);
+        } else if (uc > um + 4.5 * sigma && un4 < um + 1.5 * sigma && uhi - ulo < 9.0 * sigma + 0.5 * (uc - um)) {
+            // Bright dot (hot pixel the merge kept): far above a flat ring while its direct neighbours stay
+            // at the ring level (a real small highlight is blurred over its neighbours by the lens).
+            c = rgbSum * (1.0 / 16.0);
         }
     }
     Output = vec4(c, 1.0);

@@ -872,11 +872,19 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     // Effective number of merged frames per pixel (1/8 frame steps, 0 = unknown) for the post
     // denoise: its strength follows the noise each pixel really has (rejected areas are noisier).
     if(effMap&&!stats.effectiveFrames.empty()&&stats.effectiveFrames.size()==size_t(b.w)*b.h){
+        // The scale is set so that the median pixel gets code 64 (8.0 in 1/8 steps): the filters only use ratios to the
+        // median, and with kernels that widen in flat areas the counts run far past 32 (the former fixed 1/8 scale saturated).
+        std::vector<float> sample;
+        for(size_t i=0;i<stats.effectiveFrames.size();i+=7)sample.push_back(stats.effectiveFrames[i]);
+        float median=1.f;
+        if(!sample.empty()){std::nth_element(sample.begin(),sample.begin()+sample.size()/2,sample.end());median=std::max(sample[sample.size()/2],1.f);}
+        const float codeScale=64.f/median;
         effMap->assign(size_t(b.w)*b.h,0);
         for(int y=0;y<b.h;++y)for(int x=0;x<b.w;++x){
             const size_t src=size_t(std::max(0,y-(b.cfa>>1)))*b.w+std::max(0,x-(b.cfa&1));
-            (*effMap)[size_t(y)*b.w+x]=uint8_t(std::clamp(std::lround(stats.effectiveFrames[src]*8.f),1L,255L));
+            (*effMap)[size_t(y)*b.w+x]=uint8_t(std::clamp(std::lround(stats.effectiveFrames[src]*codeScale),1L,255L));
         }
+        report("NICE EFFECTIVE MAP: median samples="+std::to_string(median)+" code scale="+std::to_string(codeScale));
     }
     report("NICE STAGES ms: lumaChroma="+std::to_string(lumaChromaMs)+"  alignment="+std::to_string(millis(motionFinished-started))
         +" inference="+std::to_string(inferenceMs)

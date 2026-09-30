@@ -37,6 +37,7 @@ struct SuperResGpuInput {
 // Merge tuning. Defaults are the shipped values; a debug file with "key value" lines
 // (<external files>/nice_sr.txt or /data/local/tmp/nice_sr.txt) overrides them so the merge can be
 // tuned on a replayed burst without rebuilding.
+inline std::function<void(const std::string&)> g_superResReport;
 struct SuperResTuning {
     int legacy=0;          // 1: the former isotropic kernel + 3x3-minimum robustness
     int grid=1;            // sub-pixel evaluations per axis for detailed pixels (1 or 2): 2 = merge on a 2x grid
@@ -45,9 +46,16 @@ struct SuperResTuning {
     // Kernel (Gaussian standard deviations in sensor pixels) from the structure tensor of the model
     // luma, after Wronski et al. / GCam Sabre: narrow across a coherent edge, long along it, wide
     // and isotropic in flat areas.
-    float base=0.50f,shrunk=0.42f,stretched=1.00f,flat=0.70f;
+    // Negative = follows the SNR of the reference frame (Sabre: every kernel parameter is a curve of the
+    // SNR of mid grey, see snrKernel()); a value from nice_sr.txt overrides that parameter.
+    float base=-1.f,shrunk=-1.f,stretched=-1.f,flat=-1.f;
     float strengthScale=50.f;   // edge amount: coherence limited by strength * scale
-    float flat0=0.002f,flat1=0.008f;  // gradient (u per pixel) below which the kernel is blurred
+    float flat0=-1.f,flat1=-1.f;  // gradient (u per pixel) below which the kernel is blurred
+    float snrScale=0.25f;       // noise variance scale of the model input (applied to the SNR key only)
+    int snrFixed=0;             // >0: use this SNR instead of the one derived from the noise model
+    float rawTensor=0.f;        // weight of the structure tensor of the reference frame's raw greens (LMC guide), added to the model's
+    float rawNoise=1.f;         // bias (noise) removed from the raw tensor, in units of the expected gradient noise^2
+    int subset=0;               // debug: 1 = odd donor frames only, 2 = even donor frames only (split-half noise estimate)
     float texStd=0.25f;         // weight of the local raw std in the "detail" measure
     float tensorNoise=0.0015f;  // gradient noise floor (u per pixel)
     // Robustness: Wiener-shrunk colour differences against max(noise, share of the local texture).
@@ -59,6 +67,7 @@ struct SuperResTuning {
 };
 inline SuperResTuning loadSuperResTuning(const std::function<void(const std::string&)>& report) {
     SuperResTuning t;
+    g_superResReport=report;
     for(const char* path:{"/sdcard/Android/data/org.codeaurora.snapcam/files/nice_sr.txt","/data/local/tmp/nice_sr.txt"}){
         std::ifstream f(path);if(!f)continue;
         std::string key;float v;std::string applied;
@@ -70,6 +79,9 @@ inline SuperResTuning loadSuperResTuning(const std::function<void(const std::str
             else if(key=="flat0")target=&t.flat0;else if(key=="flat1")target=&t.flat1;else if(key=="texStd")target=&t.texStd;
             else if(key=="tensorNoise")target=&t.tensorNoise;else if(key=="robustK")target=&t.robustK;
             else if(key=="robustSigmas")target=&t.robustSigmas;else if(key=="robustTex")target=&t.robustTex;else if(key=="dilate")target=&t.dilate;
+            else if(key=="rawTensor")target=&t.rawTensor;else if(key=="rawNoise")target=&t.rawNoise;
+            else if(key=="snrScale")target=&t.snrScale;else if(key=="snr"){t.snrFixed=int(v);applied+=" snr="+std::to_string(v);continue;}
+            else if(key=="subset"){t.subset=int(v);applied+=" subset="+std::to_string(v);continue;}
             else if(key=="widenBelow")target=&t.widenBelow;else if(key=="widenMul")target=&t.widenMul;else if(key=="legacySigma")target=&t.legacySigma;else if(key=="subShrink")target=&t.subShrink;
             else continue;
             if(target)*target=v;
@@ -79,6 +91,35 @@ inline SuperResTuning loadSuperResTuning(const std::function<void(const std::str
         break;
     }
     return t;
+}
+
+// Piecewise-linear curve (values outside the keys are clamped), as the GCam Sabre parameter curves.
+template<size_t N> inline float sabreCurve(float x,const float (&k)[N],const float (&v)[N]){
+    if(x<=k[0])return v[0];
+    for(size_t i=1;i<N;++i)if(x<=k[i])return v[i-1]+(v[i]-v[i-1])*(x-k[i-1])/(k[i]-k[i-1]);
+    return v[N-1];
+}
+// SNR of mid grey (18 %) of the reference frame: the key of the Sabre curves.
+inline float sabreSnr(float slope,float offset,float scale){
+    return 0.18f/std::sqrt(std::max(scale*(offset+slope*0.18f),1e-10f));
+}
+// Kernel parameters for an SNR. Sabre 6.1 (true gaussian sigmas, sensor pixels): across an edge 0.18 -> 0.14, base 0.40 -> 0.30,
+// along 1.6 -> 1.2, blurred 1.9 -> 0.9 from SNR 8 to 30; structure threshold f2 0.01 -> 0.001, transition f3 0.02 -> 0.006.
+// Luminance is merged with sigma/sqrt2 here (and colour with sigma), hence the larger values than in Sabre.
+inline void snrKernel(SuperResTuning& t,float snr){
+    static const float k[]={4.f,8.f,14.f,30.f};
+    static const float shrunk[]={0.40f,0.32f,0.28f,0.22f};
+    static const float base[]={0.56f,0.46f,0.40f,0.32f};
+    static const float stretched[]={1.90f,1.65f,1.42f,1.18f};
+    static const float flat[]={2.50f,2.05f,1.65f,1.27f};
+    static const float f0[]={0.0020f,0.0013f,0.0009f,0.0005f};
+    static const float f1[]={0.0120f,0.0085f,0.0060f,0.0040f};
+    if(t.shrunk<0)t.shrunk=sabreCurve(snr,k,shrunk);
+    if(t.base<0)t.base=sabreCurve(snr,k,base);
+    if(t.stretched<0)t.stretched=sabreCurve(snr,k,stretched);
+    if(t.flat<0)t.flat=sabreCurve(snr,k,flat);
+    if(t.flat0<0)t.flat0=sabreCurve(snr,k,f0);
+    if(t.flat1<0)t.flat1=sabreCurve(snr,k,f1);
 }
 
 // Shared by both programs: strip-uploaded frames, canonical CFA shift, black/white
@@ -395,6 +436,7 @@ uniform int uRows;
 uniform vec4 kA; // base, shrunk, stretched, flat (sigma in sensor pixels)
 uniform vec4 kB; // strength scale, flat0, flat1, texStd
 uniform vec4 kC; // tensor noise
+uniform vec4 kF; // raw green tensor: weight, noise bias (u per pixel)^2
 float uAt(int x,int y){
     x=clamp(x,0,size.x-1);y=clamp(y,0,size.y-1);
     return uplane[clamp(y-uRow0,0,uRows-1)*size.x+x];
@@ -429,6 +471,29 @@ void main(){
         txx+=gx*gx;tyy+=gy*gy;txy+=gx*gy;
     }
     txx*=(1.0/16.0);tyy*=(1.0/16.0);txy*=(1.0/16.0);
+    if(kF.x>0.0){
+        // Structure tensor of the raw greens of the reference frame (18 green sites of the 6x6 window, gradient from the four
+        // diagonal neighbours), less the gradient noise: sees lines the network has smoothed away.
+        float ug[64];
+        float e=epsU();
+        for(int j=0;j<8;j++)for(int i=0;i<8;i++){
+            int X=2*cx-3+i,Y=2*cy-3+j;
+            ug[j*8+i]=(phaseColor[((Y&1)<<1)|(X&1)]==1)?sqrt(max(sampleRaw(0,X,Y),0.0)+e):0.0;
+        }
+        float rxx=0.0,ryy=0.0,rxy=0.0,rn=0.0;
+        for(int j=1;j<7;j++)for(int i=1;i<7;i++){
+            int X=2*cx-3+i,Y=2*cy-3+j;
+            if(phaseColor[((Y&1)<<1)|(X&1)]!=1)continue;
+            float a=ug[(j+1)*8+i+1],b=ug[(j-1)*8+i+1],c=ug[(j+1)*8+i-1],d=ug[(j-1)*8+i-1];
+            float gx=0.25*(a+b-c-d),gy=0.25*(a+c-b-d);
+            rxx+=gx*gx;ryy+=gy*gy;rxy+=gx*gy;rn+=1.0;
+        }
+        rn=1.0/max(rn,1.0);
+        rxx=max(rxx*rn-kF.y,0.0);ryy=max(ryy*rn-kF.y,0.0);rxy*=rn;
+        // the cross term shrinks with the diagonal it can no longer support
+        float lim=sqrt(rxx*ryy);rxy=clamp(rxy,-lim,lim);
+        txx+=kF.x*rxx;tyy+=kF.x*ryy;txy+=kF.x*rxy;
+    }
     float tr=txx+tyy,df=txx-tyy,sq=sqrt(max(df*df+4.0*txy*txy,0.0));
     float l1=0.5*(tr+sq),l2=max(0.5*(tr-sq),0.0);
     vec2 e1=vec2(1.0,0.0);
@@ -527,6 +592,7 @@ uniform int modelY0;
 uniform int modelRows;
 uniform float invScale;
 uniform vec4 kD;    // sub-grid per axis, sub-detail threshold, widen below, widen multiplier
+uniform vec4 kE;    // subset (debug)
 uniform float subShrink; // kernel scale on the sub-grid (averaging the sub-positions widens the result)
 const float prior=0.02;
 const float relativeFloor=0.004;
@@ -615,6 +681,7 @@ void main(){
             for(int f=1;f<frameCount;f++){
                 float r=robustAt(f,cx,cy);
                 if(r<0.02)continue;
+                if(kE.x>0.5&&(f&1)!=(int(kE.x)&1))continue; // debug split-half: 1 = odd donors, 2 = even donors
                 donorSamples(a,f,pos,cx,cy,r,Pe);
             }
             // Base frame last: where the donors left little weight (rejection, motion) its kernel widens.
@@ -773,8 +840,13 @@ public:
     // robustShare[f]: mean robustness of frame f (for the report).
     void merge(const SuperResGpuInput& in,float noiseSlope,float noiseOffset,float mergeWeight,
                std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare,
-               const SuperResTuning& tune={}){
-        if(tune.legacy){mergeLegacy(in,noiseSlope,noiseOffset,mergeWeight,out,effective,robustShare);return;}
+               const SuperResTuning& tuneIn={}){
+        if(tuneIn.legacy){mergeLegacy(in,noiseSlope,noiseOffset,mergeWeight,out,effective,robustShare);return;}
+        SuperResTuning tune=tuneIn;
+        const float snr=tune.snrFixed>0?float(tune.snrFixed):sabreSnr(noiseSlope,noiseOffset,tune.snrScale);
+        snrKernel(tune,snr);
+        if(g_superResReport)g_superResReport("NICE SUPERRES KERNEL: snr="+std::to_string(snr)+" across="+std::to_string(tune.shrunk)+" base="+std::to_string(tune.base)
+            +" along="+std::to_string(tune.stretched)+" flat="+std::to_string(tune.flat)+" thresholds="+std::to_string(tune.flat0)+"/"+std::to_string(tune.flat1));
         validate(in);
         const int w=in.w,h=in.h,w2=w/2,h2=h/2,frames=int(in.frames.size());
         out.assign(size_t(w)*h*3,0.f);effective.assign(size_t(w)*h,1.f);
@@ -792,6 +864,8 @@ public:
         glUniform4f(glGetUniformLocation(guideProgram,"kA"),tune.base,tune.shrunk,tune.stretched,tune.flat);
         glUniform4f(glGetUniformLocation(guideProgram,"kB"),tune.strengthScale,tune.flat0,tune.flat1,tune.texStd);
         glUniform4f(glGetUniformLocation(guideProgram,"kC"),tune.tensorNoise,0,0,0);
+        // gradient noise of the raw-green tensor: a diagonal difference of four samples (+-1/4) of variance slope/4 (u domain)
+        glUniform4f(glGetUniformLocation(guideProgram,"kF"),tune.rawTensor,tune.rawNoise*noiseSlope*tune.snrScale/16.f,0,0);
         glUseProgram(robustProgram);
         glUniform4f(glGetUniformLocation(robustProgram,"rb"),tune.robustK,tune.robustSigmas*tune.robustSigmas,tune.robustTex*tune.robustTex,0);
         glUseProgram(dilateProgram);
@@ -801,6 +875,7 @@ public:
         glUniform1f(glGetUniformLocation(srProgram,"invScale"),in.invScale);
         glUniform4f(glGetUniformLocation(srProgram,"kD"),float(tune.grid),tune.subDetail,tune.widenBelow,tune.widenMul);
         glUniform1f(glGetUniformLocation(srProgram,"subShrink"),tune.subShrink);
+        glUniform4f(glGetUniformLocation(srProgram,"kE"),float(tune.subset),0,0,0);
         std::vector<GLuint> zeros(size_t(std::max(frames,1)),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
         constexpr int stripCells=128; // 256 output rows per dispatch

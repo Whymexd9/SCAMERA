@@ -80,6 +80,8 @@ public final class NiceDenoise extends Node {
      */
     private float effRef = 1f;
     private GLTexture loadEffectiveFrames(Point size) {
+        java.io.File debugDir = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getExternalFilesDir(null);
+        if (debugDir != null && new java.io.File(debugDir, "noeff").exists()) return null; // developer switch: uniform noise
         java.nio.ByteBuffer eff = VivoNiceBurst.lastEffectiveFrames;
         if (eff == null || eff.capacity() != size.x * size.y) return null;
         eff.rewind();
@@ -237,9 +239,11 @@ public final class NiceDenoise extends Node {
             glProg.setTexture("Coarse", luma > 0f ? coarse : noisy);
             glProg.setVar("sigma", luma > 0f ? noiseSigma : 0f);
             // Share of the removed noise put back: the grain that stays is held near an absolute level
-            // (about 0.0004 in u), so a noisier frame (dim scene, high ISO) is cleaned harder, as a
+            // (about 0.0002 in u: the merge leaves about half the noise it did before its kernel followed the
+            // SNR, and measured against an LMC render of the same scene this level gives the same noise in
+            // flat and in textured areas), so a noisier frame (dim scene, high ISO) is cleaned harder, as a
             // GCam render does, instead of keeping a fixed fraction of its noise.
-            glProg.setVar("grain", luma > 0f ? Math.max(PreferenceKeys.niceInternalValue("grain_min", 0.12f), Math.min(1f, PreferenceKeys.niceInternalValue("grain_level", 0.0007f) / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
+            glProg.setVar("grain", luma > 0f ? Math.max(PreferenceKeys.niceInternalValue("grain_min", 0.12f), Math.min(1f, PreferenceKeys.niceInternalValue("grain_level", 0.0002f) / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
