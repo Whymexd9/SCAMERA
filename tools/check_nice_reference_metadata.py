@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = 'com/particlesdevs/photoncamera/'
 STUBS = {
 'android/graphics/ImageFormat.java': 'package android.graphics; public class ImageFormat {}',
-'android/media/Image.java': 'package android.media; public class Image {}',
+'android/media/Image.java': 'package android.media; public class Image {public static class Plane {public java.nio.ByteBuffer getBuffer(){return null;}} public Plane[] getPlanes(){return new Plane[]{new Plane()};} public void close(){}}',
 'android/hardware/camera2/CaptureRequest.java': '''package android.hardware.camera2;
 public class CaptureRequest {private final Object tag;
  public CaptureRequest(Object tag){this.tag=tag;} public Object getTag(){return tag;}

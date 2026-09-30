@@ -14,7 +14,7 @@ public class CaptureResult {public float[] aec; public static class Key<T> {publ
 pkg+'processing/ImageFrame.java':'''package com.particlesdevs.photoncamera.processing;
 import android.hardware.camera2.CaptureResult;import java.nio.ByteBuffer;
 public class ImageFrame {public int number,width=64,height=64,measuredIso=100;public long timestamp,measuredExposure=1000000;
-public boolean fromZsl;public float noiseSlope=1,noiseOffset=0;public ByteBuffer buffer=ByteBuffer.allocate(8192);
+public boolean fromZsl;public float noiseSlope=1,noiseOffset=0,syntheticLongRatio=0;public ByteBuffer buffer=ByteBuffer.allocate(8192);
 public enum CaptureRole {NORMAL,SHORT,LONG,EXTRA_SHORT}
 public CaptureRole role=CaptureRole.NORMAL;public CaptureRole getCaptureRole(){return role;}
 public Pair pair=new Pair();public CaptureResult result=new CaptureResult();public CaptureResult getMatchedCaptureMetadata(){return result;}
@@ -24,8 +24,18 @@ public class Parameters {public static class Size {public int x=64,y=64;} public
 public int cfaPattern,physicalID=3;public float whiteLevel=16383;public float[] blackLevel={64,64,64,64};public boolean quadCfa;}''',
 pkg+'settings/PreferenceKeys.java':'''package com.particlesdevs.photoncamera.settings;
 public class PreferenceKeys {public static boolean isNiceDiagnosticsEnabled(){return false;}public static boolean isRemosaicEnabled(){return false;}
-public static float niceInternalValue(String key,float value){return value;}}''',
-pkg+'util/Log.java':'package com.particlesdevs.photoncamera.util; public class Log {public static void i(String a,String b){}}',
+public static float niceInternalValue(String key,float value){return value;}
+public static float getNiceChroma(int iso){return 1;}public static float getNiceLuma(int iso){return 1;}public static float getNiceMerge(){return 1;}
+public static String getNiceNoiseSource(){return "auto";}public static int getNoiseModelProfileId(){return 0;}public static int niceIsoLevel(int iso){return 0;}}''',
+pkg+'util/Log.java':'package com.particlesdevs.photoncamera.util; public class Log {public static void i(String a,String b){}public static void w(String a,String b){}public static void d(String a,String b){}}',
+'android/util/Pair.java':'package android.util; public class Pair<F,S> {public F first;public S second;public Pair(F f,S s){first=f;second=s;}}',
+'android/hardware/camera2/CameraCharacteristics.java':'''package android.hardware.camera2;
+public class CameraCharacteristics {public static class Key<T>{} public static final Key<Integer> SENSOR_MAX_ANALOG_SENSITIVITY=new Key<>();
+public <T>T get(Key<T> k){return null;}}''',
+pkg+'capture/CaptureController.java':'package com.particlesdevs.photoncamera.capture; public class CaptureController {public static android.hardware.camera2.CameraCharacteristics mCameraCharacteristics=null;}',
+pkg+'processing/render/NoiseModelProfile.java':'''package com.particlesdevs.photoncamera.processing.render;
+public class NoiseModelProfile {public int id=0;public static NoiseModelProfile byId(int id){return null;}
+@SuppressWarnings("unchecked") public android.util.Pair<Double,Double>[] evaluate(int iso,int max){return new android.util.Pair[]{new android.util.Pair<Double,Double>(1.0,0.0)};}}''',
 pkg+'util/Allocator.java':'package com.particlesdevs.photoncamera.util; public class Allocator {public static boolean binning;}',
 post+'VivoNiceScene.java':'''package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 public class VivoNiceScene {static VivoNiceScene fromReference(com.particlesdevs.photoncamera.processing.ImageFrame f){return new VivoNiceScene();}

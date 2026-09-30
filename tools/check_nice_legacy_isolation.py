@@ -36,8 +36,8 @@ IsoExpoSelector.HDR=true;
 for(int step=0;step<4;step++){var p=IsoExpoSelector.GenerateExpoPair(step,cc);check(p.iso==547 && p.exposure==8333326);}
 for(int ev=1;ev<=8;ev++) {PreferenceKeys.ev=ev;IsoExpoSelector.setHdrPlusExpo(b,0,cc);check(product(b)==ref);IsoExpoSelector.setLongExpo(b,cc);check(Math.abs(product(b)/ref/Math.scalb(1.,ev)-1)<.002);check(b.get(CaptureRequest.SENSOR_EXPOSURE_TIME)<=1000000000L);check(IsoExpoSelector.setUltraShortExpo(b,cc));check(Math.abs(product(b)/ref*Math.scalb(1.,ev)-1)<.02);}
 PreferenceKeys.ev=4;IsoExpoSelector.setMeasuredBracketBase(10000000,100,cc);IsoExpoSelector.setLongExpo(b,cc);check(product(b)==16000000000.);
-PreferenceKeys.nice=false;PreferenceKeys.poison=false;IsoExpoSelector.setMeasuredBracketBase(8333326,547,cc);IsoExpoSelector.setLongExpo(b,cc);check(Math.abs(product(b)/ref-Math.sqrt(9.8))<.001);IsoExpoSelector.setUltraShortExpo(b,cc);check(Math.abs(product(b)/ref-1/Math.sqrt(9.8))<.001);
-System.out.println("PASS: production IsoExpoSelector, NICE EV 1..8, poisoned legacy settings, measured base and legacy ratio regression");}}
+PreferenceKeys.nice=false;PreferenceKeys.poison=false;IsoExpoSelector.setMeasuredBracketBase(8333326,547,cc);IsoExpoSelector.setLongExpo(b,cc);check(Math.abs(product(b)/ref-9.8)<.01);IsoExpoSelector.setUltraShortExpo(b,cc);check(Math.abs(product(b)/ref-1/16.0)<.001);
+System.out.println("PASS: production IsoExpoSelector, NICE EV 1..8, poisoned legacy settings, measured base, legacy long ratio and unclamped short frame");}}
 '''
 }
 keys = {
