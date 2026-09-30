@@ -100,6 +100,8 @@ def main():
     # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
     nice_assets = pinned_assets('NICE_FILES', 6)
     nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
+    # Hexagon v75 (SM8650) runtime + distilled fp16 student of the NICE forward network
+    nice_assets.update(pinned_assets('NICE75_FILES', 4))
     for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets)):
         for name, sha in manifest.items():
             if digest_file(directory / name) != sha:

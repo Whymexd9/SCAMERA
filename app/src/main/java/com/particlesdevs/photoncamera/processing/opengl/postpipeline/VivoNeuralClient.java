@@ -174,6 +174,9 @@ public final class VivoNeuralClient {
                 java.util.HashSet<String> niceAssets=new java.util.HashSet<>();
                 names.add("vivo-neural-worker");
                 if(nice)for(String[] item:niceTone?VivoNeuralWorker.NICE_TONE_FILES:VivoNeuralWorker.NICE_FILES){names.add(item[0]);niceAssets.add(item[0]);}
+                // Hexagon v75 student (non-SM8750 devices); absent from older bundles.
+                if(nice&&!niceTone&&apk.getEntry("assets/vivo-nice/arm64-v8a/nice-student-v75.bin")!=null)
+                    for(String[] item:VivoNeuralWorker.NICE75_FILES){names.add(item[0]);niceAssets.add(item[0]);}
                 final boolean quad=burst!=null&&burst.quad;
                 for(String[] item:hex?VivoNeuralWorker.HEX_FILES:VivoNeuralWorker.FILES)
                     if(!nice && !quad || item[0].endsWith(".so"))names.add(item[0]);

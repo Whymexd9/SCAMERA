@@ -4,6 +4,7 @@
 #include <jni.h>
 #endif
 #include <cstdlib>
+#include <sys/system_properties.h>
 
 // Shared pinned QNN graph session for diagnostics and real NICE capture.
 // probe() itself still uses synthetic tensors and does not test photo quality.
@@ -54,10 +55,19 @@ struct Graph {
     std::vector<float> input,output;
     Session s;
     Tensor in{},out{};
+    // SM8750 (Hexagon v79) runs vivo's original quantized context. Other SoCs use the
+    // distilled fp16 student (nice-student-v75.bin, compiled for Hexagon v75 with QAIRT 2.28).
+    static bool studentSoc() {
+        char soc[PROP_VALUE_MAX]={0};
+        __system_property_get("ro.soc.model",soc);
+        return std::strcmp(soc,"SM8750")!=0;
+    }
+    bool student=false;
     Graph(const std::string& directory,const Reporter& report)
-        :model(read(directory+"/nice-main-forward-v79.bin")),input(size_t(544)*544*22),
+        :model(read(directory+(studentSoc()?"/nice-student-v75.bin":"/nice-main-forward-v79.bin"))),input(size_t(544)*544*22),
          output(size_t(544)*544*3),s(report) {
-    if(model.size()!=5840224)throw std::runtime_error("NICE model size mismatch");
+    student=studentSoc();
+    if(!student && model.size()!=5840224)throw std::runtime_error("NICE model size mismatch");
     // Context may refer to its binary and client storage until destruction.
     auto system=s.load(directory+"/libQnnSystem.so");
     auto getSystem=reinterpret_cast<Error(*)(const SystemProvider***,uint32_t*)>(dlsym(system,"QnnSystemInterface_getProviders"));
@@ -76,7 +86,7 @@ struct Graph {
     auto b=reinterpret_cast<const BinaryV3Prefix*>(static_cast<const uint8_t*>(info)+8);
     auto g=b->graph;
     if(b->graphs!=1 || !g || g->version<1 || g->version>3 || g->inputs!=1 || g->outputs!=1
-            || !g->name || std::strcmp(g->name,"nice_hdr_imx06c_general_forward_bayer_x1_quant_8w16a32b"))
+            || !g->name || std::strcmp(g->name,student?"graph":"nice_hdr_imx06c_general_forward_bayer_x1_quant_8w16a32b"))
         throw std::runtime_error("Unexpected NICE graph");
     in=requireTensor(g->input,22,0,"inputs_0");
     out=requireTensor(g->output,3,1,"tail_conv_1_0");
@@ -86,21 +96,21 @@ struct Graph {
     // Only this app-private process is affected; never modify system properties
     // or linker/SELinux policies to make a failed load succeed.
     if(setenv("ADSP_LIBRARY_PATH",directory.c_str(),1))throw std::runtime_error("DSP search path failed");
-    s.load(directory+"/libQnnHtpV79Stub.so");
-    auto htp=s.load(directory+"/libQnnHtp.so");
+    s.load(directory+(student?"/libQnnHtpV75Stub.so":"/libQnnHtpV79Stub.so"));
+    auto htp=s.load(directory+(student?"/libQnnHtp228.so":"/libQnnHtp.so"));
     auto get=reinterpret_cast<Error(*)(const Provider***,uint32_t*)>(dlsym(htp,"QnnInterface_getProviders"));
     if(!get)throw std::runtime_error("Missing HTP provider");
     const Provider** providers=nullptr;count=0;
     check(get(&providers,&count),"HTP providers");
     if(!providers || !count || count>16)throw std::runtime_error("HTP provider count");
     for(uint32_t i=0;i<count;i++)if(providers[i] && providers[i]->id==6
-            && providers[i]->core.major==2 && providers[i]->core.minor==22
-            && providers[i]->core.patch==0)s.api=providers[i];
-    if(!s.api)throw std::runtime_error("HTP Core 2.22.0 required");
+            && providers[i]->core.major==2 && (student || (providers[i]->core.minor==22
+            && providers[i]->core.patch==0)))s.api=providers[i];
+    if(!s.api)throw std::runtime_error(student?"HTP Core 2.x required":"HTP Core 2.22.0 required");
     for(int slot:{1,4,8,13,14,20,21,40,43})if(!s.api->slots[slot])throw std::runtime_error("Missing HTP operation");
     const char* build=nullptr;check(s.fn<Error(*)(const char**)>(4)(&build),"Build ID");
     report(std::string("SDK: ")+(build?build:"unknown"));
-    if(!build || std::strcmp(build,"v2.29.8.250123143957_105779"))throw std::runtime_error("Unverified runtime build");
+    if(!build || std::strcmp(build,student?"v2.28.0.241029232508_102474":"v2.29.8.250123143957_105779"))throw std::runtime_error("Unverified runtime build");
     report("BACKEND CREATE");
     check(s.fn<Error(*)(Handle,const void**,Handle*)>(1)(nullptr,nullptr,&s.backend),"Backend create");
     if(!s.backend)throw std::runtime_error("Empty backend");
@@ -108,7 +118,7 @@ struct Graph {
     check(s.fn<Error(*)(Handle,const void**,Handle*)>(40)(nullptr,nullptr,&s.device),"Device create");
     if(!s.device)throw std::runtime_error("Empty device");
     qnn_perf::voteHtpPerformance(s.api,report);
-    report("CONTEXT CREATE: original NICE weights");
+    report(student?"CONTEXT CREATE: distilled fp16 NICE student (Hexagon v75)":"CONTEXT CREATE: original NICE weights");
     check(s.fn<Error(*)(Handle,Handle,const void**,const void*,uint64_t,Handle*,Handle)>(13)
             (s.backend,s.device,nullptr,model.data(),model.size(),&s.context,nullptr),"Context create");
     if(!s.context)throw std::runtime_error("Empty context");
