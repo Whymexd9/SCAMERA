@@ -201,7 +201,10 @@ public final class NiceDenoise extends Node {
             glProg.setTexture("Clean", luma > 0f ? clean : noisy);
             glProg.setTexture("Coarse", luma > 0f ? coarse : noisy);
             glProg.setVar("sigma", luma > 0f ? noiseSigma : 0f);
-            glProg.setVar("grain", luma > 0f ? Math.min(1f, 0.33f / luma) : 1f);
+            // Share of the removed noise put back: the grain that stays is held near an absolute level
+            // (about 0.0004 in u), so a noisier frame (dim scene, high ISO) is cleaned harder, as a
+            // GCam render does, instead of keeping a fixed fraction of its noise.
+            glProg.setVar("grain", luma > 0f ? Math.max(0.12f, Math.min(1f, 0.0004f / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
