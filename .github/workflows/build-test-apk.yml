@@ -247,7 +247,9 @@ jobs:
             exit 1
           fi
           unzip -p "$APK" assets/vivo-upscale/softpqe-master.sha256 | grep -q libvivo_softpqe.so
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file res/xml/preferences.xml > /tmp/apk-preferences.txt
+          # The shipped (non-debuggable) variant shortens resource paths: resolve the real one.
+          PREFS_PATH=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump resources "$APK" | grep -A1 'xml/preferences$' | grep -o 'res/[^ ]*\.xml' | head -1)
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file "$PREFS_PATH" > /tmp/apk-preferences.txt
           grep -q 'rt_denoise_screen' /tmp/apk-preferences.txt
           grep -q 'pref_rt_denoise_backend' /tmp/apk-preferences.txt
           grep -q 'rt_original_controls' /tmp/apk-preferences.txt
