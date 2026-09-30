@@ -269,6 +269,9 @@ jobs:
           "$RUNNER_TEMP/asset-tools/bin/pip" install cryptography==46.0.0
           "$RUNNER_TEMP/asset-tools/bin/python" tools/ci_neural_assets.py --output "$RUNNER_TEMP/neural-assets"
 
+      - name: Stage Hexagon v75 NICE assets (QAIRT 2.28 runtime + distilled student)
+        run: python3 tools/fetch_qnn228_runtime.py --output "$RUNNER_TEMP/neural-assets/nice"
+
       - name: Package and sign the final APK
         run: |
           mkdir -p out

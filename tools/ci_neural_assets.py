@@ -103,7 +103,8 @@ def unpack(data, output):
     if hashlib.sha256(data).hexdigest() != SHA256:
         raise ValueError('Private bundle SHA256 mismatch')
     manifests = {'bundle': pinned_assets(), 'hexquad': pinned_assets('HEX_FILES', 6),
-                 'nice': {**pinned_assets('NICE_FILES', 1), **pinned_assets('NICE_TONE_FILES', 5)}}
+                 'nice': {**{name: sha for name, sha in pinned_assets('NICE_FILES', None).items()
+                        if name == 'nice-main-forward-v79.bin'}, **pinned_assets('NICE_TONE_FILES', 5)}}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         expected = {group + '/' + name for group, manifest in manifests.items() for name in manifest}
         if len(archive.namelist()) != len(expected) or set(archive.namelist()) != expected:

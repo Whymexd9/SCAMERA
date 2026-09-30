@@ -19,16 +19,22 @@ NICE_PREFIX = 'assets/vivo-nice/arm64-v8a/'
 # Worker without root: executable + QNN/CRE runtime installed into nativeLibraryDir.
 LIB_PREFIX = 'lib/arm64-v8a/'
 LIB_WORKER = 'libscamera_worker.so'
+# Added after the private bundle was cut: bundled when present in --nice-dir, skipped otherwise
+# (CRE motion runtime for non-vivo phones; QAIRT 2.28 runtime + distilled student for Hexagon v75).
+OPTIONAL_NICE = {'libvivo_nice_cre.so', 'libc++_shared.so', 'libvivolog.so', 'libvivo_platform_common.so',
+                 'libvivo.mempool.so', 'nice-student-v75.bin', 'libQnnHtp228.so', 'libQnnHtpV75Stub.so',
+                 'libQnnHtpV75Skel.so'}
 
 
 def pinned_assets(manifest='FILES', expected=5):
+    """expected=None skips the entry-count check (manifests that grew after the private bundle)."""
     source = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/VivoNeuralWorker.java'
     block = re.search(r'\b' + re.escape(manifest) + r'\s*=\s*\{(.*?)\n    \};', source.read_text(), re.S)
     if block is None:
         raise ValueError('Missing bundled asset manifest: ' + manifest)
     pairs = re.findall(r'\{"([^"/]+)","([a-f0-9]{64})"\}', block.group(1))
     result = dict(pairs)
-    if len(result) != expected or len(pairs) != expected:
+    if expected is not None and (len(result) != expected or len(pairs) != expected):
         raise ValueError('Unexpected bundled asset manifest')
     return result
 
@@ -98,10 +104,15 @@ def main():
     # Vivo VSR still super-resolution contexts (sr1x/sr2x/sr4x).
     hex_assets.update(pinned_assets('VSR_FILES', 3))
     # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
-    nice_assets = pinned_assets('NICE_FILES', 6)
+    nice_assets = pinned_assets('NICE_FILES', None)
     nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
     # Hexagon v75 (SM8650) runtime + distilled fp16 student of the NICE forward network
     nice_assets.update(pinned_assets('NICE75_FILES', 4))
+    skipped = sorted(name for name in nice_assets if name in OPTIONAL_NICE and not (args.nice_dir / name).is_file())
+    for name in skipped:
+        del nice_assets[name]
+    if skipped:
+        print('Optional NICE assets not supplied, not bundled: ' + ', '.join(skipped))
     for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets)):
         for name, sha in manifest.items():
             if digest_file(directory / name) != sha:
