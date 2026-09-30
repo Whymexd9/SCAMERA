@@ -23,7 +23,9 @@ import static android.opengl.GLES20.GL_LINEAR;
  * Colour: the colour is filtered edge-aware at half resolution over about 56 px (four dilated
  * passes) and replaces the full-resolution colour (joint bilateral upsampling); the darkest pixels
  * fade to neutral because their colour is a black-level error rather than a measurement.
- * Luma: non-local means on sqrt(Y + c), one absolute strength for every noise level.
+ * Luma: non-local means on sqrt(Y + c) plus an edge-stopping correction of the blotch-scale residue,
+ * then a share of the removed noise is put back so the remaining grain is fine and even (a flat
+ * spectrum like a GCam render) instead of a denoiser's cloudy mid-frequency residue.
  * Runs on the white-balanced linear image after {@link HighlightRecovery}.
  */
 public final class NiceDenoise extends Node {
@@ -120,21 +122,30 @@ public final class NiceDenoise extends Node {
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);
         Point half = new Point((original.mSize.x + 1) / 2, (original.mSize.y + 1) / 2);
         float noiseSigma = 0f;
-        GLTexture cleaned = null, before = null, ping = null, pong = null, noisy = null, clean = null;
+        GLTexture cleaned = null, before = null, ping = null, pong = null, noisy = null, clean = null, quarter = null, coarse = null;
         try {
             GLTexture input = original;
+            noisy = new GLTexture(original.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+            clean = new GLTexture(original.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+            if (luma > 0f || despeckle || chroma > 0f) {
+                glProg.useAssetProgram("chromadn/luma", false);
+                glProg.setTexture("InputBuffer", original);
+                glProg.setVar("offsetC", offsetC);
+                glProg.drawBlocks(noisy);
+                noiseSigma = estimateNoise(noisy);
+            }
             if (despeckle) {
                 cleaned = new GLTexture(original.mSize, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
                 glProg.useAssetProgram("chromadn/despeckle", false);
                 glProg.setTexture("InputBuffer", original);
+                glProg.setVar("sigma", noiseSigma);
+                glProg.setVar("offsetC", offsetC);
                 glProg.drawBlocks(cleaned);
                 input = cleaned;
             }
             before = new GLTexture(half, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             ping = new GLTexture(half, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             pong = new GLTexture(half, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
-            noisy = new GLTexture(original.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
-            clean = new GLTexture(original.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             glProg.useAssetProgram("chromadn/down", false);
             glProg.setTexture("InputBuffer", input);
             glProg.drawBlocks(before);
@@ -142,30 +153,45 @@ public final class NiceDenoise extends Node {
             if (chroma > 0f) {
                 GLTexture[] targets = {ping, pong, ping, pong};
                 int[] steps = {1, 2, 4, 8};
-                float tolerance = 0.3f * Math.max(1f, chroma);
+                float tolerance = Math.max(1f, chroma);
                 for (int pass = 0; pass < 4; pass++) {
                     glProg.useAssetProgram("chromadn/filter", false);
                     glProg.setTexture("InputBuffer", source);
                     glProg.setVar("step", steps[pass]);
                     glProg.setVar("strength", 1f);
                     glProg.setVar("tolerance", tolerance);
+                    glProg.setVar("sigmaU", Math.max(noiseSigma, 0.0008f));
+                    glProg.setVar("offsetC", offsetC);
                     glProg.drawBlocks(targets[pass]);
                     source = targets[pass];
                 }
             }
-            glProg.useAssetProgram("chromadn/luma", false);
-            glProg.setTexture("InputBuffer", input);
-            glProg.setVar("offsetC", offsetC);
-            glProg.drawBlocks(noisy);
             if (luma > 0f) {
-                float sigma = noiseSigma = estimateNoise(noisy);
-                // One absolute strength (about 0.002 in u) matches the grain of a GCam render; a
-                // noisier frame needs the strength to follow its noise or the weights collapse.
-                float h = luma * Math.max(0.0018f, 1.75f * sigma);
+                if (despeckle) {
+                    glProg.useAssetProgram("chromadn/luma", false);
+                    glProg.setTexture("InputBuffer", input);
+                    glProg.setVar("offsetC", offsetC);
+                    glProg.drawBlocks(noisy);
+                }
+                float sigma = noiseSigma;
+                // Flat level: non-local means strong enough to remove the noise (h about three
+                // sigma), then the blotch-scale residue at quarter resolution; a share of the
+                // removed noise is put back in the last step so the grain stays fine and even.
+                float h = luma * Math.max(0.0035f, 3f * sigma);
                 glProg.useAssetProgram("chromadn/nlm", false);
                 glProg.setTexture("InputBuffer", noisy);
                 glProg.setVar("h", h);
                 glProg.drawBlocks(clean);
+                Point quarterSize = new Point((original.mSize.x + 3) / 4, (original.mSize.y + 3) / 4);
+                quarter = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+                coarse = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+                glProg.useAssetProgram("chromadn/down4", false);
+                glProg.setTexture("InputBuffer", clean);
+                glProg.drawBlocks(quarter);
+                glProg.useAssetProgram("chromadn/coarse", false);
+                glProg.setTexture("InputBuffer", quarter);
+                glProg.setVar("tolerance", Math.max(0.004f, 3.5f * sigma));
+                glProg.drawBlocks(coarse);
             }
             glProg.useAssetProgram("chromadn/apply", false);
             glProg.setTexture("InputBuffer", input);
@@ -173,6 +199,9 @@ public final class NiceDenoise extends Node {
             glProg.setTexture("After", source);
             glProg.setTexture("Noisy", noisy);
             glProg.setTexture("Clean", luma > 0f ? clean : noisy);
+            glProg.setTexture("Coarse", luma > 0f ? coarse : noisy);
+            glProg.setVar("sigma", luma > 0f ? noiseSigma : 0f);
+            glProg.setVar("grain", luma > 0f ? Math.min(1f, 0.33f / luma) : 1f);
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
@@ -181,7 +210,7 @@ public final class NiceDenoise extends Node {
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
         } finally {
-            for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean}) if (t != null) t.close();
+            for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean, quarter, coarse}) if (t != null) t.close();
         }
         dumpTexture(pipeline, WorkingTexture, "denoise-out");
         Log.i("NICE_PIPELINE", "denoise chroma=" + chroma + " luma=" + luma + " despeckle=" + despeckle + " sigma=" + noiseSigma

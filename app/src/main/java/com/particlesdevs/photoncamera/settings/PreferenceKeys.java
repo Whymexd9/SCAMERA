@@ -407,6 +407,26 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_SHOW_WATERMARK);
     }
 
+    /** Signature text lines (default "SHOT ON" / "SCAMERA"); an empty line is left out. */
+    public static String getWatermarkLine1() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_line1", "SHOT ON");
+    }
+    public static String getWatermarkLine2() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_line2", "SCAMERA");
+    }
+    public static boolean isWatermarkLogoOn() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_watermark_logo", true);
+    }
+    /** Height of the signature in percent of the frame height (stock: 6.7). */
+    public static float getWatermarkHeightPercent() {
+        return (float) SettingsNumericRules.value("pref_watermark_size",
+                preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_size", "7"), 7);
+    }
+    public static float getWatermarkOpacity() {
+        return (float) SettingsNumericRules.value("pref_watermark_opacity",
+                preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_opacity", "100"), 100) / 100f;
+    }
+
     public static boolean isPerLensSettingsOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_SAVE_PER_LENS_SETTINGS);
     }
@@ -927,6 +947,26 @@ public class PreferenceKeys {
     public static float niceStudentTrust() {
         if (!niceUsesStudent()) return 1f;
         return Math.max(0f, Math.min(1f, niceInternalValue("student_trust", 0f)));
+    }
+    /**
+     * Share of the scene illuminant's colour kept in SCAM HDR (0..1). -1 = auto: 30 % on the 8 Gen 3
+     * (matches GCam/stock there); 0 (fully neutral) where the original
+     * network runs: GCam removes more of a warm lamp's cast than the camera's own white balance.
+     */
+    public static float getNiceWarmRetention() {
+        float v = niceInternalValue("warm_retention", -1f);
+        if (v < 0f) v = niceUsesStudent() ? 30f : 0f;
+        return Math.max(-0.6f, Math.min(1f, v / 100f));
+    }
+    /**
+     * How far the SCAM HDR tone is pulled to a GCam/LMC render (0..1): darker shadows, brighter whites.
+     * -1 = auto: on where the original network runs (vivo), where the fused tone is much brighter
+     * than GCam; the 8 Gen 3 render already agrees with it.
+     */
+    public static float getNiceGcamTone() {
+        float v = niceInternalValue("gcam_tone", -1f);
+        if (v < 0f) v = niceUsesStudent() ? 0f : 100f;
+        return Math.max(0f, Math.min(1f, v / 100f));
     }
     /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
     public static float getNiceMerge() {

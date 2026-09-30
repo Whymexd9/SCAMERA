@@ -24,6 +24,13 @@ import static android.opengl.GLES20.GL_LINEAR;
  */
 public final class LmcCurves extends Node {
     private static final int LUT_SIZE = 1024;
+    /**
+     * SCAM HDR tone match to a GCam/LMC render: display-encoded luma of the same scenes mapped
+     * quantile-to-quantile (vivo X200 Ultra, dusk and daylight scenes agree within about 10 %).
+     * GCam keeps the shadows about half as bright as the fused NICE tone, and puts the whites higher.
+     */
+    private static final float[] GCAM_MATCH = {0.0000f, 0.0278f, 0.0635f, 0.0998f, 0.1353f, 0.1737f, 0.2192f, 0.2682f,
+            0.3213f, 0.3826f, 0.4685f, 0.6013f, 0.7620f, 0.8911f, 0.9599f, 0.9849f, 1.0000f};
 
     public LmcCurves() {
         super("", "LmcCurves");
@@ -90,7 +97,8 @@ public final class LmcCurves extends Node {
             Log.e(Name, "LMC curve unavailable: " + e);
             tone = null; gamma = null;
         }
-        if (tone == null && gamma == null) {
+        float matchStrength = PreferenceKeys.isVivoNiceEnabled() ? PreferenceKeys.getNiceGcamTone() : 0f;
+        if (tone == null && gamma == null && matchStrength <= 0f) {
             WorkingTexture = previousNode.WorkingTexture;
             glProg.closed = true;
             return;
@@ -100,6 +108,7 @@ public final class LmcCurves extends Node {
             float x = i / (float) (LUT_SIZE - 1), y = x;
             if (tone != null) y += (sample(tone, y) - y) * toneStrength;
             if (gamma != null) y += (sample(gamma, y) - y) * gammaStrength;
+            if (matchStrength > 0f) y += (sample(GCAM_MATCH, y) - y) * matchStrength;
             lut[i] = Math.max(0f, Math.min(1f, y));
         }
         GLTexture lutTexture = new GLTexture(LUT_SIZE, 1, new GLFormat(GLFormat.DataType.FLOAT_16, 1),
@@ -108,11 +117,13 @@ public final class LmcCurves extends Node {
         glProg.useAssetProgram("lmc/curves");
         glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
         glProg.setTexture("CurveLut", lutTexture);
+        glProg.setVar("satGain", 1f + 0.25f * matchStrength);
+        glProg.setVar("whiteDesat", 0.75f * matchStrength);
         WorkingTexture = basePipeline.getMain();
         glProg.drawBlocks(WorkingTexture);
         glProg.closed = true;
         lutTexture.close();
-        Log.i(Name, "LMC curves: tone=" + toneName + "@" + toneStrength + " gamma=" + gammaName + "@" + gammaStrength
+        Log.i(Name, "LMC curves: gcamMatch=" + matchStrength + " tone=" + toneName + "@" + toneStrength + " gamma=" + gammaName + "@" + gammaStrength
                 + " mid=" + lut[LUT_SIZE / 2] + " q1=" + lut[LUT_SIZE / 4] + " q3=" + lut[3 * LUT_SIZE / 4]);
     }
 }

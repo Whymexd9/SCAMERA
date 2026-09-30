@@ -10,6 +10,9 @@ uniform sampler2D Before;    // half resolution colour, unfiltered
 uniform sampler2D After;     // half resolution colour, filtered
 uniform sampler2D Noisy;     // u = sqrt(Y + c), full resolution
 uniform sampler2D Clean;     // the same after non-local means
+uniform sampler2D Coarse;    // quarter resolution correction of the blotch-scale residue
+uniform float sigma;         // noise sigma of u (0 = off)
+uniform float grain;         // share of the removed noise put back (a flat, fine grain), 0..1
 uniform float offsetC;
 uniform float lumaAmount;    // 0..1
 uniform float chromaAmount;  // 0..1: 0 keeps the original colour
@@ -41,7 +44,22 @@ void main() {
     q = mix(vec3(1.0), q, smoothstep(darkFade.x, darkFade.y, ym));
     vec3 chroma = ym * mix(c / ym, q, chromaAmount);
     float un = texelFetch(Noisy, p, 0).r;
-    float uc = texelFetch(Clean, p, 0).r;
+    // Flat level = non-local means plus the coarse correction; the removed noise is put back
+    // partly so the grain that stays is fine and even at every scale (a denoiser that leaves
+    // only its own mid-frequency residue looks blotchy).
+    vec2 cs = (vec2(p) + 0.5) / vec2(textureSize(InputBuffer, 0));
+    ivec2 lastC = textureSize(Clean, 0) - ivec2(1);
+    float gx = abs(texelFetch(Clean, clamp(p + ivec2(3, 0), ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(3, 0), ivec2(0), lastC), 0).r);
+    float gy = abs(texelFetch(Clean, clamp(p + ivec2(0, 3), ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(0, 3), ivec2(0), lastC), 0).r);
+    // Only flat areas get the coarse correction and the tail cap; at edges the quarter-resolution
+    // correction would leave a stair-stepped rim.
+    float flatness = sigma > 0.0 ? 1.0 - smoothstep(3.0 * sigma, 6.0 * sigma, max(gx, gy)) : 0.0;
+    float uf = texelFetch(Clean, p, 0).r + flatness * texture(Coarse, cs).r;
+    float d = un - uf;
+    // Dark specks: black-level clipping gives the noise of the darkest areas a heavy dark tail;
+    // cap the dark side at about two sigma where the level is flat.
+    d = mix(d, max(d, -2.0 * sigma), flatness);
+    float uc = uf + grain * d;
     float y0 = un * un - offsetC;
     float y1 = uc * uc - offsetC;
     float gain = y0 > 1.0e-6 ? clamp(y1 / y0, 0.25, 4.0) : 1.0;

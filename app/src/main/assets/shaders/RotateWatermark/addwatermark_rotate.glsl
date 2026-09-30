@@ -10,7 +10,8 @@ uniform ivec2 cropSize;
 uniform ivec2 rawSize;
 out vec4 Output;
 #define WATERMARK 1
-#define watersizek (15.0)
+uniform float watersizek;      // 100 / watermark height in percent of the frame
+uniform float watermarkAlpha;  // 0..1
 #define OFFSET 0,0
 #import interpolation
 
@@ -73,6 +74,7 @@ void main() {
     cr*=watersizek;
     if(cr.x >= 0.0 && cr.y >= 0.0){
     water = texture(Watermark,cr);
+    water.a *= watermarkAlpha;
     Output = mix(Output,water,water.a);
     }
     #endif

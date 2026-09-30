@@ -100,7 +100,7 @@ public class HeadroomRender extends Node {
      * a GCam/stock render, instead of every white being pulled fully neutral.
      */
     static float[] warmTint(float cct, float share) {
-        if (share <= 0f) return new float[]{1f, 1f, 1f};
+        if (share == 0f) return new float[]{1f, 1f, 1f};   // negative: over-corrects, cooler than neutral
         double t = Math.max(2000.0, Math.min(8000.0, cct));
         double x = t <= 7000 ? -4.6070e9 / (t * t * t) + 2.9678e6 / (t * t) + 0.09911e3 / t + 0.244063
                 : -2.0064e9 / (t * t * t) + 1.9018e6 / (t * t) + 0.24748e3 / t + 0.23704;
@@ -182,7 +182,7 @@ public class HeadroomRender extends Node {
             glProg.setVar("agxLook", a.lookSlope, a.lookOffset, a.lookPower, a.saturation);
         }
         glProg.setVar("castTint", niceTone ? warmTint(basePipeline.mParameters.sceneCct,
-                Math.max(0f, Math.min(1f, PreferenceKeys.niceInternalValue("warm_retention", 30f) / 100f))) : new float[]{1f, 1f, 1f});
+                PreferenceKeys.getNiceWarmRetention()) : new float[]{1f, 1f, 1f});
         glProg.setVar("toneAmount", toneAmount);
         glProg.setVar("localContrast", localContrast);
         glProg.setVar("shadowLift", shadowLift);

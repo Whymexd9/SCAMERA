@@ -8,7 +8,9 @@ precision highp sampler2D;
 uniform sampler2D InputBuffer;
 uniform int step;
 uniform float strength;   // 0..1 blend towards the filtered colour
-uniform float tolerance;  // colour-noise scale (ratio units at mean level 0.02)
+uniform float tolerance;  // colour-noise multiplier (1 = three times the relative luminance noise)
+uniform float sigmaU;     // noise sigma of u = sqrt(Y + offsetC)
+uniform float offsetC;
 out vec4 Output;
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
@@ -23,7 +25,11 @@ void main() {
             vec3 c = max(texelFetch(InputBuffer, clamp(p + ivec2(i, j) * step, ivec2(0), last), 0).rgb, vec3(0.0));
             float y = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
             vec3 d = c / y - q0;
-            float sigma = clamp(tolerance * sqrt(0.02 / y), 0.03, 0.5);
+            // Colour noise is about three times the relative luminance noise (white balance and the
+            // colour matrix amplify red and blue); in bright areas that is a percent or two, so real
+            // colour transitions (a shadow on a lit wall) are not merged.
+            float rel = 2.0 * sigmaU * sqrt(y + offsetC) / max(y, 1.0e-5);
+            float sigma = clamp(3.0 * tolerance * rel, 0.02, 0.5);
             float dl = log2(y / y0);
             float w = exp(-float(i * i + j * j) * 0.22 - dot(d, d) / (2.0 * sigma * sigma) - dl * dl / 0.72);
             sum += c * w;
