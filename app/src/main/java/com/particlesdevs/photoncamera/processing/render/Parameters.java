@@ -519,6 +519,15 @@ public class Parameters {
             }
 
         }
+        if (OppoTunedColor.applies()) {
+            ColorSpaceTransform tuned1 = OppoTunedColor.forwardMatrix(characteristics, ref1);
+            ColorSpaceTransform tuned2 = OppoTunedColor.forwardMatrix(characteristics, ref2);
+            if (tuned1 != null && tuned2 != null) {
+                forwardt1 = tuned1;
+                forwardt2 = tuned2;
+                Log.d(TAG, "OPPO tuned forward matrices for illuminants " + ref1 + "/" + ref2);
+            }
+        }
         // Check if forward matrices have each component non-zero, otherwise replace with identity
         boolean invertible = true;
         for (int i = 0; i < 3; i++) {
