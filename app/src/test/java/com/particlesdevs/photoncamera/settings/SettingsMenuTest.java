@@ -69,11 +69,12 @@ public class SettingsMenuTest {
     }
     @Test public void manualToneControlsKeepRangesAndDefaults() {
         PreferenceScreen screen=inflate();
-        assertNotNull(screen.findPreference("vivo_hdr_tone_screen"));
-        String[] keys={"exposure","contrast","gamma","saturation","black","white"};
-        float[] defaults={0,1,1,1,0,1};
-        float[] minimum={-2,.5f,.5f,0,0,.7f};
-        float[] maximum={2,2,2,2,.1f,1};
+        assertNotNull(screen.findPreference("agx_screen"));
+        // Exposure, contrast and saturation are the AgX group's; SCAM HDR keeps gamma and the endpoints.
+        String[] keys={"gamma","black","white"};
+        float[] defaults={1,0,1};
+        float[] minimum={.5f,0,.7f};
+        float[] maximum={2,.1f,1};
         for(int i=0;i<keys.length;i++) {
             String key="pref_vivo_hdr_"+keys[i];
             com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference p=screen.findPreference(key);
@@ -87,8 +88,8 @@ public class SettingsMenuTest {
             manager.set("default_scope",key,"999");
             assertEquals(maximum[i],PreferenceKeys.vivoHdrValue(keys[i],defaults[i]),0f);
         }
-        manager.set("default_scope","pref_vivo_hdr_exposure","-1,25");
-        assertEquals(-1.25f,PreferenceKeys.vivoHdrValue("exposure",0),0f);
+        manager.set("default_scope","pref_vivo_hdr_gamma","1,25");
+        assertEquals(1.25f,PreferenceKeys.vivoHdrValue("gamma",1),0f);
     }
     @Test public void autonomousHdrControlsPersistAndRestorePreviousPipeline() {
         PreferenceScreen screen=inflate();
@@ -102,7 +103,7 @@ public class SettingsMenuTest {
         assertFalse(PreferenceKeys.isHdrPlusMergeEnabled());
         assertEquals(3,PreferenceKeys.getFrameCountValue());
         assertEquals(1,PreferenceKeys.getShortFrameCountValue());
-        for(String control:new String[]{"luma","chroma","tone","shadows","local","sharpen"}) {
+        for(String control:new String[]{"luma","chroma","shadows","local","sharpen"}) {
             String key="pref_vivo_hdr_"+control;
             assertNotNull(screen.findPreference(key));
             assertTrue(ModuleProfiles.isLocal(key));
@@ -290,14 +291,22 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var copy=new com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
-            android.view.View noise=copy.requireView().findViewWithTag("group_rt_denoise_screen");
-            assertNotNull(noise);assertTrue(noise.performClick());
+            android.view.View processing=copy.requireView().findViewWithTag("group_lmc_group_processing");
+            assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
+
             assertNotNull(copy.requireView().findViewWithTag("parameter_rt512_luma"));
             activity.getOnBackPressedDispatcher().onBackPressed();
-            assertNotNull(copy.requireView().findViewWithTag("group_rt_denoise_screen"));
+            assertNotNull(copy.requireView().findViewWithTag("group_lmc_group_processing"));
         }
     }
 
+    private static String tags(android.view.View view) {
+        StringBuilder out=new StringBuilder();
+        java.util.ArrayDeque<android.view.View> queue=new java.util.ArrayDeque<>();queue.add(view);
+        while(!queue.isEmpty()){android.view.View v=queue.poll();if(v.getTag()!=null)out.append(v.getTag()).append(' ');
+            if(v instanceof android.view.ViewGroup)for(int i=0;i<((android.view.ViewGroup)v).getChildCount();i++)queue.add(((android.view.ViewGroup)v).getChildAt(i));}
+        return out.toString();
+    }
     private void renderPage(android.view.View view,String name) throws Exception {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         int exact=android.view.View.MeasureSpec.EXACTLY;
@@ -321,10 +330,10 @@ public class SettingsMenuTest {
             modules.requireView().findViewWithTag("Копировать настройки").performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy");
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
-            copy.requireView().findViewWithTag("group_rt_denoise_screen").performClick();
+            copy.requireView().findViewWithTag("group_lmc_group_processing").performClick();
             copy.requireView().findViewWithTag("parameter_rt512_luma").performClick();renderPage(copy.requireView(),"noise");
             copy.requireView().findViewWithTag("primary_action").performClick();
-            var check=copy.requireView().findViewWithTag("group_check_rt_denoise_screen");assertTrue(check.getContentDescription().toString().contains("частично"));
+            var check=copy.requireView().findViewWithTag("group_check_lmc_group_processing");assertTrue(check.getContentDescription().toString().contains("частично"));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
             assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("rt512_luma"),0),0);
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
@@ -365,15 +374,14 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            PreferenceScreen tone=root.findPreference("vivo_hdr_tone_screen");
+            PreferenceScreen tone=root.findPreference("agx_screen");
             activity.onPreferenceStartScreen(root,tone);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            assertEquals("vivo_hdr_tone_screen",page.getPreferenceScreen().getKey());
-            assertTrue(page.findPreference("pref_vivo_hdr_exposure").isEnabled());
+            assertEquals("agx_screen",page.getPreferenceScreen().getKey());
+            assertTrue(page.findPreference("pref_vivo_hdr_black").isEnabled());
             Preference reset=page.findPreference("pref_vivo_hdr_reset_tone");
             reset.getOnPreferenceClickListener().onPreferenceClick(reset);
-            assertEquals(0f,PreferenceKeys.vivoHdrValue("exposure",9),0f);
             assertEquals(.35f,PreferenceKeys.vivoHdrValue("local",9),0f);
             assertEquals(1.75f,PreferenceKeys.vivoHdrValue("luma",9),0f);
             assertTrue(PreferenceKeys.isVivoHdrEnabled());
@@ -390,11 +398,7 @@ public class SettingsMenuTest {
             fm.executePendingTransactions();
             com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment root=
                     (com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            PreferenceScreen first=null;
-            for(int i=0;i<root.getPreferenceScreen().getPreferenceCount();i++) {
-                Preference p=root.getPreferenceScreen().getPreference(i);
-                if(p instanceof PreferenceScreen){first=(PreferenceScreen)p;break;}
-            }
+            PreferenceScreen first=root.findPreference("vivo_settings_screen");
             assertNotNull(first);activity.onPreferenceStartScreen(root,first);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals(1,fm.getBackStackEntryCount());

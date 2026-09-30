@@ -128,7 +128,7 @@ public class CameraResumeTest {
             Image image=rawImage(timestamp);raws.add(image);ring.add(image);
             if(timestamp<9)metadata.put(timestamp,exposure(24_999_987L,10775));
         }
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         // Native copying is unrelated to timestamp selection; retain the actual
         // controller method and inspect which metadata it attaches to each copy.
@@ -136,7 +136,7 @@ public class CameraResumeTest {
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
             prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
             var results=new java.util.HashMap<>(metadata);
-            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,8,null);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,8,null,false);
             assertEquals(8,frames.size());assertEquals(8,copies.constructed().size());
             for(int i=0;i<8;i++) {
                 assertEquals(i+1,frames.get(i).timestamp);
@@ -159,12 +159,12 @@ public class CameraResumeTest {
         TotalCaptureResult expected=metadata.get(6L);
         put(controller,"niceZslShutterTimestamp",6L);
         put(controller,"mPreviewCaptureResult",exposure(99000000,800));
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
             prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
-            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,4,null);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,4,null,false);
             assertEquals(4,frames.size());
             for(int i=0;i<4;i++)assertEquals(i+3,frames.get(i).timestamp);
             assertSame(expected,get(controller,"mNativeZslBase"));
@@ -175,12 +175,12 @@ public class CameraResumeTest {
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         Image image=rawImage(1);ring.add(image);metadata.put(1L,exposure(25000000,100));
         put(controller,"niceZslShutterTimestamp",0L);
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
             prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
-            assertTrue(((java.util.List<?>)method.invoke(controller,4,null)).isEmpty());
+            assertTrue(((java.util.List<?>)method.invoke(controller,4,null,false)).isEmpty());
             assertTrue(copies.constructed().isEmpty());verify(image).close();
         }
     }
@@ -201,12 +201,12 @@ public class CameraResumeTest {
         Image missing=rawImage(1),zeroTime=rawImage(2),zeroIso=rawImage(3);
         ring.add(missing);ring.add(zeroTime);ring.add(zeroIso);
         metadata.put(2L,exposure(0,100));metadata.put(3L,exposure(25_000_000,0));
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
             prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
-            assertTrue(((java.util.List<?>)method.invoke(controller,8,null)).isEmpty());
+            assertTrue(((java.util.List<?>)method.invoke(controller,8,null,false)).isEmpty());
             assertTrue(copies.constructed().isEmpty());
             verify(missing).close();verify(zeroTime).close();verify(zeroIso).close();
         }

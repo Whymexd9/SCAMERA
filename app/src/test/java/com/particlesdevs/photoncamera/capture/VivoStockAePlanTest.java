@@ -42,9 +42,13 @@ public class VivoStockAePlanTest {
     @Test public void acceptsMatchedPastNormal() throws Exception {
         plan().verifyZslNormal(result(99,4,10000000),100);
     }
-    @Test public void rejectsEqualProductWithWrongGainAndShutter() throws Exception {
+    @Test public void acceptsEqualProductWithDifferentGainSplit() throws Exception {
+        // ZSL N: the preview AE may split the same exposure product differently (0.00 EV).
+        plan().verifyZslNormal(result(99,2,20000000),100);
+    }
+    @Test public void rejectsZslProductFarFromThePlan() throws Exception {
         VivoStockAe.Plan plan=plan();
-        assertThrows(IllegalStateException.class,()->plan.verifyZslNormal(result(99,2,20000000),100));
+        assertThrows(IllegalStateException.class,()->plan.verifyZslNormal(result(99,2,40000000),100));
     }
     @Test public void rejectsNormalAfterCutoff() throws Exception {
         VivoStockAe.Plan plan=plan();
