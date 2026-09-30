@@ -280,8 +280,26 @@ public final class ScameraDebugLog {
                 rawWrite("--- cameras --- unavailable (no CameraManager)\n");
                 return;
             }
+            java.util.Set<String> listed = new java.util.HashSet<>(java.util.Arrays.asList(cm.getCameraIdList()));
             for (String id : cm.getCameraIdList()) {
                 sb.append(describeCamera(cm, id));
+                try {
+                    java.util.Set<String> physical = cm.getCameraCharacteristics(id).getPhysicalCameraIds();
+                    if (physical != null && !physical.isEmpty()) sb.append("  physical ids: ").append(physical).append("\n");
+                } catch (Throwable ignored) { }
+            }
+            // Ids the service does not list: some vendors still answer getCameraCharacteristics for them.
+            for (int i = 0; i < 10; i++) {
+                String id = String.valueOf(i);
+                if (listed.contains(id)) continue;
+                try {
+                    CameraCharacteristics c = cm.getCameraCharacteristics(id);
+                    sb.append("unlisted camera ").append(id).append(": characteristics readable, focal ")
+                            .append(join(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)))
+                            .append(" mm, physical ").append(c.getPhysicalCameraIds()).append("\n");
+                } catch (Throwable t) {
+                    sb.append("unlisted camera ").append(id).append(": ").append(t.getClass().getSimpleName()).append("\n");
+                }
             }
         } catch (Throwable t) {
             sb.append("enumeration failed: ").append(t).append('\n');

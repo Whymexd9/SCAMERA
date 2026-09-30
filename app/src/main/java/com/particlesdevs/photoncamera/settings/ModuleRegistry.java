@@ -22,7 +22,25 @@ public final class ModuleRegistry {
                 e.putBoolean("module_visible_"+slot,i<cameras.size());
                 e.putString("module_label_"+slot,String.format(java.util.Locale.US,"%.1f×",c.getZoomFactor()).replace(".0×","×"));
             }
-        }e.apply();List<String> out=new ArrayList<>();for(int i=0;i<8;i++)out.add(side+i);return out;
+        }e.apply();
+        // Slots are created once. Lenses that appear later (hidden cameras unlocked by the package
+        // spoof, a lens discovered by the user) take the free slots, existing buttons stay as they are.
+        StringBuilder signature=new StringBuilder();for(CameraLensData c:cameras)signature.append(c.getCameraId()).append(',');
+        if(!cameras.isEmpty()&&!signature.toString().equals(prefs().getString("module_lens_sig_"+side,""))){
+            SharedPreferences.Editor fill=prefs().edit();Set<String> assigned=new HashSet<>();
+            for(int i=0;i<8;i++)if(visible(side+i))assigned.add(camera(side+i));
+            int next=0;
+            for(int i=0;i<8;i++){
+                String slot=side+i;if(visible(slot))continue;
+                while(next<cameras.size()&&assigned.contains(cameras.get(next).getCameraId()))next++;
+                if(next>=cameras.size())break;
+                CameraLensData c=cameras.get(next++);assigned.add(c.getCameraId());
+                fill.putString("module_auto_"+slot,c.getCameraId());fill.putBoolean("module_visible_"+slot,true);
+                fill.putString("module_label_"+slot,String.format(java.util.Locale.US,"%.1f×",c.getZoomFactor()).replace(".0×","×"));
+            }
+            fill.putString("module_lens_sig_"+side,signature.toString()).apply();
+        }
+        List<String> out=new ArrayList<>();for(int i=0;i<8;i++)out.add(side+i);return out;
     }
     public static String camera(String slot){String manual=prefs().getString("module_id_"+slot,"").trim();return manual.isEmpty()?prefs().getString("module_auto_"+slot,slot):manual;}
     public static String label(String slot){String custom=prefs().getString("module_name_"+slot,"").trim();return custom.isEmpty()?prefs().getString("module_label_"+slot,"Камера"):custom;}

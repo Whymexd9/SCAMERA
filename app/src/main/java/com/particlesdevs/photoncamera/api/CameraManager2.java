@@ -64,6 +64,17 @@ public final class CameraManager2 {
         SpecificSetting sp = PhotonCamera.getSpecific().specificSetting;
         String[] ids = sp.cameraIDS;
         Log.d("CameraManager2", "Loaded ids:"+ Arrays.toString(ids));
+            // The scan is cached; a changed package spoof changes which cameras the service
+            // exposes (hidden lenses appear), so the cached list would keep hiding them.
+            String spoofSignature = com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof
+                    .signature(mSettingsManager.getContext());
+            if (!spoofSignature.equals(mSettingsManager.getString(_CAMERAS, "spoof_signature", "off"))) {
+                mSettingsManager.set(_CAMERAS, "spoof_signature", spoofSignature);
+                mSettingsManager.remove(_CAMERAS, ALL_CAMERA_IDS_KEY);
+                mSettingsManager.remove(_CAMERAS, ALL_CAMERA_LENS_KEY);
+                mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
+                Log.d("CameraManager2", "Package spoof changed (" + spoofSignature + "): camera scan cache dropped");
+            }
             if (!isLoaded()) {
                 if(ids == null)
                     scanAllCameras(cameraManager);
