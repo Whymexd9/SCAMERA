@@ -1,9 +1,10 @@
 precision highp float;
 precision highp sampler2D;
-// Colour noise removal, step 2 (runs three times with step 1, 2, 4): 5x5 dilated
-// bilateral filter of the colour ratios q=c/mean(c) at half resolution. A neighbour counts
-// when its ratios differ by no more than the colour noise expected at that brightness and
-// its luminance is close; the pixel's own luminance is kept.
+// Colour noise removal, step 2 (runs four times with step 1, 2, 4, 8): 5x5 dilated bilateral
+// filter of the colour at half resolution. A neighbour counts when its colour ratios differ by
+// no more than the colour noise expected at that brightness and its luminance is close; the
+// pixel keeps its own luminance. Averaging is done on the linear values, not on the ratios, so
+// dim pixels weigh less.
 uniform sampler2D InputBuffer;
 uniform int step;
 uniform float strength;   // 0..1 blend towards the filtered colour
@@ -21,15 +22,15 @@ void main() {
         for (int i = -2; i <= 2; i++) {
             vec3 c = max(texelFetch(InputBuffer, clamp(p + ivec2(i, j) * step, ivec2(0), last), 0).rgb, vec3(0.0));
             float y = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
-            vec3 q = c / y;
-            vec3 d = q - q0;
+            vec3 d = c / y - q0;
             float sigma = clamp(tolerance * sqrt(0.02 / y), 0.03, 0.5);
             float dl = log2(y / y0);
             float w = exp(-float(i * i + j * j) * 0.22 - dot(d, d) / (2.0 * sigma * sigma) - dl * dl / 0.72);
-            sum += q * w;
+            sum += c * w;
             mass += w;
         }
     }
-    vec3 q = mix(q0, sum / max(mass, 1.0e-8), strength);
-    Output = vec4(y0 * q, 1.0);
+    vec3 f = sum / max(mass, 1.0e-8);
+    vec3 qf = f / max(dot(f, vec3(1.0 / 3.0)), 1.0e-6);
+    Output = vec4(y0 * mix(q0, qf, strength), 1.0);
 }

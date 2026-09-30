@@ -102,8 +102,8 @@ public final class AgxTone {
             // SCAM HDR has its own highlight controls (group "Света в SCAM HDR").
             p.localStrength = num("pref_agx_nice_local_strength", 70f, 0f, 100f) / 100f;
             p.localStart = num("pref_agx_nice_knee_start", 0.75f, 0f, 5f);
-            p.highlightDesat = num("pref_agx_highlight_desat", 70f, 0f, 100f) / 100f;
-            p.desatStart = num("pref_agx_desat_start", 78f, 50f, 95f) / 100f;
+            p.highlightDesat = num("pref_agx_highlight_desat", 45f, 0f, 100f) / 100f;
+            p.desatStart = num("pref_agx_desat_start", 88f, 50f, 95f) / 100f;
         } else {
             p.localStrength = num("pref_agx_local_highlights", 50f, 0f, 100f) / 100f;
             p.localStart = 3f + num("pref_agx_local_start", 0f, -2f, 3f);

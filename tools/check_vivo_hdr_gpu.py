@@ -112,7 +112,7 @@ def render_tone(amount,shadows=0,local=0,raw_scale=1.0,display_gain=4.0):
  a[:,:,:3]*=raw_scale
  inp=tex(a);gain=tex(np.ones((1,1,4)));out=tex(np.zeros_like(a));fb=ctx.framebuffer([out]);fb.use();ctx.viewport=(0,0,w,h)
  inp.use(0);gain.use(1)
- uniforms(tone,{'InputBuffer':0,'GainMap':1,'displayGain':display_gain/raw_scale,'sceneWhite':display_gain/raw_scale,'outputExposureScale':1.0,'toneAmount':amount,'localContrast':local,'shadowLift':shadows,'activeSize':(0,0,w-1,h-1)})
+ uniforms(tone,{'InputBuffer':0,'GainMap':1,'displayGain':display_gain/raw_scale,'sceneWhite':display_gain/raw_scale,'outputExposureScale':1.0,'toneAmount':amount,'localContrast':local,'shadowLift':shadows,'castTint':(1.0,1.0,1.0),'activeSize':(0,0,w-1,h-1)})
  for k in ['sensorToIntermediate','intermediateToSRGB']:tone[k].write(np.eye(3,dtype='float32').tobytes())
  ctx.vertex_array(tone,[]).render(vertices=3);v=read(out);fb.release();return v
 mapped=render_tone(1);linear=render_tone(0)
@@ -131,7 +131,7 @@ ctx.program(vertex_shader=vs.replace('430','310 es'),fragment_shader='#version 3
 manual=ctx.program(vertex_shader=vs,fragment_shader='#version 430\n'+manual_source)
 historical=tone
 neutral={'manualExposure':1.,'manualContrast':1.,'manualGamma':1.,
-         'manualSaturation':1.,'manualBlack':0.,'manualWhite':1.}
+         'manualSaturation':1.,'manualBlack':0.,'manualWhite':1.,'castTint':(1.0,1.0,1.0)}
 tone=manual
 uniforms(manual,neutral)
 assert np.array_equal(render_tone(1),mapped)

@@ -28,7 +28,9 @@ public final class SettingsNumericRules {
             case "pref_vivo_nice_fusion_detail": return new double[]{0.5,2,0};
             case "pref_vivo_nice_fusion_sigma": return new double[]{0.1,0.4,0};
             case "pref_vivo_nice_chroma_radius": return new double[]{1,12,1};
-            case "pref_vivo_nice_post_chroma": return new double[]{0,2,0};
+            case "pref_vivo_nice_post_chroma": case "pref_vivo_nice_post_luma": return new double[]{0,2,0};
+            case "pref_vivo_nice_student_trust": return new double[]{0,1,0};
+            case "pref_vivo_nice_warm_retention": return new double[]{0,100,0};
             case "pref_vivo_nice_luma_iso1": case "pref_vivo_nice_chroma_iso1": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso2": case "pref_vivo_nice_chroma_iso2": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso3": case "pref_vivo_nice_chroma_iso3": return new double[]{0,2,0};

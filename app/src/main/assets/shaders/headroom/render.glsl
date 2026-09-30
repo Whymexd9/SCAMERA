@@ -33,6 +33,7 @@ uniform float outputExposureScale; // Global output exposure (~-0.32 EV at 0.80)
 uniform float highlightNeutralStart; // Shoulder position where highlights start fading to white
 uniform float displayNeutralStart; // Display-linear level where near-white starts losing tint (1 = off)
 uniform ivec4 activeSize;
+uniform vec3 castTint; // share of the scene light's colour kept in the picture (1,1,1 = fully white balanced)
 
 #define NEUTRALPOINT 0.0,0.0,0.0
 #define FUSION 0
@@ -326,6 +327,7 @@ void main() {
     // Bounded shadow gain; black remains black and the shoulder is unaffected.
     wb*=1.0+shadowLift*(1.0-smoothstep(0.0,0.35,y));
     vec3 linearSrgb=intermediateToSRGB*sensorToIntermediate*wb;
+    linearSrgb*=castTint;
     #if AGX == 1
     /* Local highlight range (GCam/LMC-like local tone mapping): a bright region
      * (window, sky) is pulled down by its large-scale level only, so detail and

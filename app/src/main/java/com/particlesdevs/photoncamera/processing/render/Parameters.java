@@ -66,6 +66,8 @@ public class Parameters {
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];
+    /** Correlated colour temperature of the scene light (K): the DNG estimate, or the neutral-based one on the OPPO HAL. */
+    public float sceneCct = 6504f;
     public int whiteLevel = 1023;
     public static int mergeWhiteLevel = 65535;
     public int realWL = -1;
@@ -578,9 +580,14 @@ public class Parameters {
                 ref2, calibrationTransform1, calibrationTransform2,
                 normalizedColorMatrix1, normalizedColorMatrix2, whitePoint);
         Log.d("Parameters", "Interpolation factor: " + interpolationFactor);
+        {
+            float mired1 = 1e6f / OppoTunedColor.cct(ref1), mired2 = 1e6f / OppoTunedColor.cct(ref2);
+            sceneCct = 1e6f / (mired1 + (float) interpolationFactor * (mired2 - mired1));
+        }
         boolean oppoTuned = false;
         if (OppoTunedColor.applies()) {
             float cctK = OppoTunedColor.estimateCct(characteristics, whitePoint);
+            sceneCct = cctK;
             float[] tunedForward = OppoTunedColor.forwardAt(characteristics, cctK);
             if (tunedForward != null) {
                 normalizedForwardTransform1 = tunedForward.clone();

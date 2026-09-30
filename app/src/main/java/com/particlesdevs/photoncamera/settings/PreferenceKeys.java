@@ -838,6 +838,9 @@ public class PreferenceKeys {
         return isGcamStageEnabled("pref_vivo_hdr_enabled") && !isRawMfsrEnabled()
                 && (!isRemosaicEnabled() || "scamera".equals(getRemosaicBackend()));
     }
+    public static boolean isNiceDespeckleEnabled() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_post_despeckle", true);
+    }
     public static boolean isNiceDiagnosticsEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", true);
     }
@@ -906,10 +909,24 @@ public class PreferenceKeys {
     }
     /** Luma/chroma strength inside NICE (0..2, 1 = model as trained), with the ISO-level multiplier. */
     public static float getNiceLuma(int iso) {
-        return Math.max(0f, Math.min(2f, niceInternalValue("luma", 1f) * niceInternalValue("luma_iso" + niceIsoLevel(iso), 1f)));
+        return Math.max(0f, Math.min(2f, niceInternalValue("luma", 1f) * niceInternalValue("luma_iso" + niceIsoLevel(iso), 1f) * niceStudentTrust()));
     }
     public static float getNiceChroma(int iso) {
-        return Math.max(0f, Math.min(2f, niceInternalValue("chroma", 1f) * niceInternalValue("chroma_iso" + niceIsoLevel(iso), 1f)));
+        return Math.max(0f, Math.min(2f, niceInternalValue("chroma", 1f) * niceInternalValue("chroma_iso" + niceIsoLevel(iso), 1f) * niceStudentTrust()));
+    }
+    /** True where the network is the distilled student (every SoC but the SM8750 the original was built for). */
+    public static boolean niceUsesStudent() {
+        return !"SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
+    }
+    /**
+     * How much of the network's own denoise the student is trusted with (0..1). The student leaves
+     * low-frequency colour and luma blotches (period 16-64 px) that a merge of the same frames does
+     * not have; at 0 the luma/chroma blend takes the merged burst entirely and the post denoise
+     * handles the noise. The original network (SM8750) is always fully trusted.
+     */
+    public static float niceStudentTrust() {
+        if (!niceUsesStudent()) return 1f;
+        return Math.max(0f, Math.min(1f, niceInternalValue("student_trust", 0f)));
     }
     /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
     public static float getNiceMerge() {

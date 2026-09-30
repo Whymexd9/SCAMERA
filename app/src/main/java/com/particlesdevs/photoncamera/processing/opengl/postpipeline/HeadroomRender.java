@@ -8,6 +8,7 @@ import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
 import com.particlesdevs.photoncamera.processing.render.ColorCorrectionTransform;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.util.BufferUtils;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.util.Arrays;
@@ -93,6 +94,25 @@ public class HeadroomRender extends Node {
         return base;
     }
 
+    /**
+     * Linear sRGB colour of a Planckian light at the given temperature (green = 1), to the power of
+     * the retained share, with the luminance kept: a third of a tungsten room's warmth stays, as in
+     * a GCam/stock render, instead of every white being pulled fully neutral.
+     */
+    static float[] warmTint(float cct, float share) {
+        if (share <= 0f) return new float[]{1f, 1f, 1f};
+        double t = Math.max(2000.0, Math.min(8000.0, cct));
+        double x = t <= 7000 ? -4.6070e9 / (t * t * t) + 2.9678e6 / (t * t) + 0.09911e3 / t + 0.244063
+                : -2.0064e9 / (t * t * t) + 1.9018e6 / (t * t) + 0.24748e3 / t + 0.23704;
+        double y = -3 * x * x + 2.87 * x - 0.275;
+        double X = x / y, Z = (1 - x - y) / y;
+        double r = 3.2406 * X - 1.5372 - 0.4986 * Z, g = -0.9689 * X + 1.8758 + 0.0415 * Z, b = 0.0557 * X - 0.2040 + 1.0570 * Z;
+        double[] d65 = {1.0, 1.0, 1.0};
+        double tr = Math.pow(Math.max(r / g, 1e-3), share), tb = Math.pow(Math.max(b / g, 1e-3), share);
+        double luma = 0.2126 * tr + 0.7152 + 0.0722 * tb;
+        return new float[]{(float) (tr / luma), (float) (1.0 / luma), (float) (tb / luma)};
+    }
+
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
@@ -161,6 +181,8 @@ public class HeadroomRender extends Node {
             glProg.setVar("agxPowers", a.toe, a.shoulder, a.ts, a.ss);
             glProg.setVar("agxLook", a.lookSlope, a.lookOffset, a.lookPower, a.saturation);
         }
+        glProg.setVar("castTint", niceTone ? warmTint(basePipeline.mParameters.sceneCct,
+                Math.max(0f, Math.min(1f, PreferenceKeys.niceInternalValue("warm_retention", 30f) / 100f))) : new float[]{1f, 1f, 1f});
         glProg.setVar("toneAmount", toneAmount);
         glProg.setVar("localContrast", localContrast);
         glProg.setVar("shadowLift", shadowLift);
