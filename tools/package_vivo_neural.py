@@ -103,6 +103,13 @@ def main():
     hex_assets.update(pinned_assets('QUAD_FILES', 3))
     # Vivo VSR still super-resolution contexts (sr1x/sr2x/sr4x).
     hex_assets.update(pinned_assets('VSR_FILES', 3))
+    # Quad / VSR contexts were added after the private bundle was cut: bundled only when supplied.
+    optional_hex = set(pinned_assets('QUAD_FILES', 3)) | set(pinned_assets('VSR_FILES', 3))
+    missing_hex = sorted(name for name in hex_assets if name in optional_hex and not (args.hexquad_dir / name).is_file())
+    for name in missing_hex:
+        del hex_assets[name]
+    if missing_hex:
+        print('Optional HexQuad assets not supplied, not bundled: ' + ', '.join(missing_hex))
     # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
     nice_assets = pinned_assets('NICE_FILES', None)
     nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
