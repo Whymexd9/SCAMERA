@@ -232,8 +232,8 @@ vec3 fitDisplayGamut(vec3 rgb) {
 vec3 neutralizeClippedMagenta(vec3 rgb) {
     rgb=max(rgb,vec3(0.0));
     float y=luminance(rgb);
-    float cast=min(rgb.r,rgb.b)/max(rgb.g,1.0e-4);
-    float t=smoothstep(1.03,1.15,cast)*smoothstep(0.25,0.5,y);
+    float tint=min(rgb.r,rgb.b)/max(rgb.g,1.0e-4);
+    float t=smoothstep(1.03,1.15,tint)*smoothstep(0.25,0.5,y);
     return mix(rgb,vec3(max(max3(rgb),y)),t);
 }
 
