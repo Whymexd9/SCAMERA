@@ -157,7 +157,10 @@ jobs:
         run: |
           g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_vivo_neural_capture.cpp -ldl -o /tmp/check-vivo-neural-capture
           /tmp/check-vivo-neural-capture
-          g++ -pthread -std=c++17 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -o /tmp/vivo-neural-worker
+          # The worker includes the EGL/GLES GPU helpers (hexquad / super-resolution).
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl-dev libgles-dev
+          g++ -pthread -std=c++17 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -lEGL -lGLESv2 -o /tmp/vivo-neural-worker
           /tmp/vivo-neural-worker --transport-check
 
       - name: Build debug APK
