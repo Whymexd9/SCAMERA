@@ -519,15 +519,6 @@ public class Parameters {
             }
 
         }
-        if (OppoTunedColor.applies()) {
-            ColorSpaceTransform tuned1 = OppoTunedColor.forwardMatrix(characteristics, ref1);
-            ColorSpaceTransform tuned2 = OppoTunedColor.forwardMatrix(characteristics, ref2);
-            if (tuned1 != null && tuned2 != null) {
-                forwardt1 = tuned1;
-                forwardt2 = tuned2;
-                Log.d(TAG, "OPPO tuned forward matrices for illuminants " + ref1 + "/" + ref2);
-            }
-        }
         // Check if forward matrices have each component non-zero, otherwise replace with identity
         boolean invertible = true;
         for (int i = 0; i < 3; i++) {
@@ -587,6 +578,18 @@ public class Parameters {
                 ref2, calibrationTransform1, calibrationTransform2,
                 normalizedColorMatrix1, normalizedColorMatrix2, whitePoint);
         Log.d("Parameters", "Interpolation factor: " + interpolationFactor);
+        boolean oppoTuned = false;
+        if (OppoTunedColor.applies()) {
+            float cctK = OppoTunedColor.estimateCct(characteristics, whitePoint);
+            float[] tunedForward = OppoTunedColor.forwardAt(characteristics, cctK);
+            if (tunedForward != null) {
+                normalizedForwardTransform1 = tunedForward.clone();
+                Converter.normalizeFM(normalizedForwardTransform1);
+                normalizedForwardTransform2 = normalizedForwardTransform1.clone();
+                oppoTuned = true;
+                Log.d(TAG, "OPPO tuned forward matrix at " + cctK + " K: " + Arrays.toString(normalizedForwardTransform1));
+            }
+        }
         Log.d("Parameters", "normalizedForwardTransform1:" + Arrays.toString(normalizedForwardTransform1) +
                 " normalizedForwardTransform2:" + Arrays.toString(normalizedForwardTransform2));
         Converter.calculateCameraToXYZD50Transform(normalizedForwardTransform1, normalizedForwardTransform2,
@@ -644,6 +647,7 @@ public class Parameters {
             if (cnt <= 4) wrongCalibration = false;
         } else wrongCalibration = false;
         if (sensorSpecifics.CCTExists) wrongCalibration = false;
+        if (oppoTuned) wrongCalibration = false;
         if (PhotonCamera.getSpecific().specificSetting.isRawColorCorrection)
             wrongCalibration = false;
         if (wrongCalibration && !customCCT.exists()) {
