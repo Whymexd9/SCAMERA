@@ -30,6 +30,7 @@ public final class SettingsNumericRules {
             case "pref_vivo_nice_chroma_radius": return new double[]{1,12,1};
             case "pref_vivo_nice_post_chroma": case "pref_vivo_nice_post_luma": return new double[]{0,2,0};
             case "pref_vivo_nice_student_trust": return new double[]{0,1,0};
+            case "pref_vivo_nice_force_portable": return new double[]{0,1,1};
             case "pref_vivo_nice_warm_retention": return new double[]{-1,100,0};
             case "pref_watermark_size": return new double[]{3,20,0};
             case "pref_watermark_opacity": return new double[]{10,100,1};

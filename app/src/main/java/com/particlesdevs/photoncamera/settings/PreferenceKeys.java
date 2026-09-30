@@ -939,13 +939,20 @@ public class PreferenceKeys {
         return !"SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
     }
     /**
+     * Merge only: the network is skipped and the merged burst is demosaiced directly (the student
+     * SoCs' portable route). Forced with pref_vivo_nice_force_portable = 1 on the SM8750 as well.
+     */
+    public static boolean niceMergeOnly() {
+        return niceUsesStudent() || niceInternalValue("force_portable", 0f) > 0f;
+    }
+    /**
      * How much of the network's own denoise the student is trusted with (0..1). The student leaves
      * low-frequency colour and luma blotches (period 16-64 px) that a merge of the same frames does
      * not have; at 0 the luma/chroma blend takes the merged burst entirely and the post denoise
      * handles the noise. The original network (SM8750) is always fully trusted.
      */
     public static float niceStudentTrust() {
-        if (!niceUsesStudent()) return 1f;
+        if (!niceMergeOnly()) return 1f;
         return Math.max(0f, Math.min(1f, niceInternalValue("student_trust", 0f)));
     }
     /**

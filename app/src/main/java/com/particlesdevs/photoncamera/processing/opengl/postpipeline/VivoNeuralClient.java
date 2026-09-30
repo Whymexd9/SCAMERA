@@ -213,7 +213,7 @@ public final class VivoNeuralClient {
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException("Не удалось создать маркер CRE");
             }
-            if(niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceUsesStudent()
+            if(niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceMergeOnly()
                     && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceStudentTrust()<=0f
                     && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("student_skip",1f)>0f){
                 // No trust in the student: the network output would be discarded, skip the ~2.5 s inference.

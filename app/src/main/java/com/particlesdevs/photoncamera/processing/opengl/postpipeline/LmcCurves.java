@@ -118,7 +118,7 @@ public final class LmcCurves extends Node {
         glProg.setTexture("InputBuffer", previousNode.WorkingTexture);
         glProg.setTexture("CurveLut", lutTexture);
         glProg.setVar("satGain", 1f + 0.25f * matchStrength);
-        glProg.setVar("whiteDesat", 0.75f * matchStrength);
+        glProg.setVar("whiteDesat", 0.5f * matchStrength);
         WorkingTexture = basePipeline.getMain();
         glProg.drawBlocks(WorkingTexture);
         glProg.closed = true;

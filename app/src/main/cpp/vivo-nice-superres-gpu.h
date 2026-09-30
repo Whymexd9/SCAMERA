@@ -86,10 +86,12 @@ uniform ivec4 phaseColor;
 uniform int modelY0;
 uniform int modelRows;
 uniform float invScale;
+uniform vec2 noise; // single-frame noise model: slope, offset (RAW units)
 const float sigma=0.7;
 const float prior=0.02;
 const float relativeFloor=0.004;
 const float achromatic=0.75;
+const float chromaFloor=0.2;
 float modelAt(int x,int y,int c){
     int ry=clamp(clamp(y,0,size.y-1)-modelY0,0,modelRows-1);
     return model[(ry*size.x+clamp(x,0,size.x-1))*3+c];
@@ -155,13 +157,24 @@ void main(){
     for(int q=0;q<4;q++){
         int x=2*cx+(q&1),y=2*cy+(q>>1);
         float rel=numA[q]/denA[q];
+        float e=denA[q]-prior;
+        float frames=denA2[q]>0.0?max(1.0,e*e/denA2[q]):1.0;
         int o=((y-y0)*size.x+x)*3;
         for(int c=0;c<3;c++){
             float mc=modelAt(x,y,c)*invScale;
-            outRgb[o+c]=max(0.0,mc+achromatic*(mc+relativeFloor)*rel+(1.0-achromatic)*num[q][c]/den[q][c]);
+            // Colour detail: the model's colour ratios carry the colour of the scene's fine
+            // structure only as far as the network kept it; where the merge is clean enough
+            // (signal well above the merged noise) the true per-colour residual is taken in
+            // full, as a GCam merge does, instead of a quarter of it.
+            float snr=mc/sqrt(max(noise.x*max(mc,0.0)+noise.y,1e-9)/frames);
+            float a=mix(chromaFloor,achromatic,1.0-smoothstep(10.0,50.0,snr));
+            // Where rejection (motion) left only a frame or two, the residual is mostly single-frame
+            // noise: fall back towards the model instead (Sabre widens the base frame's kernel
+            // there for the same reason).
+            float cover=smoothstep(1.3,5.0,frames);
+            outRgb[o+c]=max(0.0,mc+cover*(a*(mc+relativeFloor)*rel+(1.0-a)*num[q][c]/den[q][c]));
         }
-        float e=denA[q]-prior;
-        eff[(y-y0)*size.x+x]=denA2[q]>0.0?max(1.0,e*e/denA2[q]):1.0;
+        eff[(y-y0)*size.x+x]=frames;
     }
 }
 )";
@@ -404,6 +417,7 @@ public:
         auto loc=[&](const char* n){return glGetUniformLocation(srProgram,n);};
         glUniform4i(loc("phaseColor"),in.phaseColor[0],in.phaseColor[1],in.phaseColor[2],in.phaseColor[3]);
         glUniform1f(loc("invScale"),in.invScale);
+        glUniform2f(loc("noise"),noiseSlope,noiseOffset);
         constexpr int stripCells=128; // 256 output rows per dispatch
         const int donors=std::max(1,frames-1);
         for(int cy0=0;cy0<h2;cy0+=stripCells){

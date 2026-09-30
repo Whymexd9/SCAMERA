@@ -116,7 +116,27 @@ public class LinearExposure extends Node {
             float gain90 = highAnchor / Math.max(p90, 1.0e-5f);
             float sceneGain = (float) Math.sqrt(
                     Math.max(1.f, gain50) * Math.max(1.f, gain90));
-            if (pipeline.mParameters.vivoNiceRgb != null) {
+            boolean highlightLimited = pipeline.mParameters.vivoNiceRgb != null
+                    && !com.particlesdevs.photoncamera.settings.PreferenceKeys.niceUsesStudent()
+                    && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_limit_mode", 1f, 0f, 1f) > 0f;
+            if (highlightLimited) {
+                // A dim scene is lifted until its median reaches the mid anchor or its highlights
+                // reach the limit, whichever comes first: lighting a room with a few bright
+                // windows or lamps no longer pushes them far above what a GCam render shows
+                // (the geometric mean with a clamped highlight term lifted such rooms ~0.8 EV
+                // more than GCam and milked the blacks).
+                float limit = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_high_limit", 0.40f, 0.05f, 1f);
+                float highGain = Math.max(1.f, limit / Math.max(p90, 1.0e-5f));
+                sceneGain = Math.min(Math.max(1.f, gain50), highGain);
+                // Bright scenes (median above the mid anchor) are lifted towards a mid target, but
+                // never beyond the highlight limit.
+                float brightMid = com.particlesdevs.photoncamera.settings.RawTherapeeSettings
+                        .number("pref_nice_ae_bright_mid", 0.25f, 0f, 1f);
+                if (brightMid > 0f && p50 >= midAnchor) {
+                    sceneGain = Math.max(sceneGain, Math.min(highGain, Math.max(1.f, Math.min(2.2f, brightMid / p50))));
+                }
+            }
+            if (pipeline.mParameters.vivoNiceRgb != null && !highlightLimited) {
                 // Bright scenes (daylight, p50 ~0.15 of the reference white) already sit above both
                 // anchors, so their gain stayed at 1 and the picture came out ~1 EV darker than
                 // stock, sky and windows dull. Lift them towards a mid target; dim scenes keep

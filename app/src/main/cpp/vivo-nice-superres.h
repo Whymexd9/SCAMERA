@@ -154,6 +154,7 @@ std::vector<float> superResolveReference(int w,int h,int frames,Sample sample,Or
     constexpr float prior=.02f;
     constexpr float relativeFloor=.004f; // RAW units; keeps shadows from dividing by ~0
     constexpr float achromatic=.75f;
+    constexpr float chromaFloor=.2f;
     std::vector<float> out(size_t(w)*h*3);
     stats.effectiveFrames.assign(size_t(w)*h,1.f);
     double coverage=0;std::mutex lock;
@@ -251,9 +252,15 @@ std::vector<float> superResolveReference(int w,int h,int frames,Sample sample,Or
                     // Colour-ratio reconstruction: model colour, luminance detail from the
                     // achromatic residual, true per-colour residual for the rest.
                     const float rel=e.numA/e.denA;
+                    const float framesHere=e.denA2>0?std::max(1.f,(e.denA-prior)*(e.denA-prior)/e.denA2):1.f;
                     for(int c=0;c<3;++c){
                         const float mc=m[c]*invScale;
-                        o[c]=std::max(0.f,mc+achromatic*(mc+relativeFloor)*rel+(1-achromatic)*e.num[c]/e.den[c]);
+                        // Clean areas take the true per-colour residual in full (see the GPU merge).
+                        const float snr=mc/std::sqrt(std::max(noise.slope*std::max(mc,0.f)+noise.offset,1e-9f)/framesHere);
+                        const float t=std::clamp((snr-10.f)/40.f,0.f,1.f);
+                        const float a=chromaFloor+(achromatic-chromaFloor)*(1.f-t*t*(3.f-2.f*t));
+                        const float ct=std::clamp((framesHere-1.3f)/3.7f,0.f,1.f),cover=ct*ct*(3.f-2.f*ct);
+                        o[c]=std::max(0.f,mc+cover*(a*(mc+relativeFloor)*rel+(1-a)*e.num[c]/e.den[c]));
                     }
                     acc+=e.den[0]+e.den[1]+e.den[2];
                     // Effective number of independent samples behind the luminance estimate

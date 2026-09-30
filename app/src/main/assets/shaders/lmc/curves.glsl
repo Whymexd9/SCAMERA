@@ -19,6 +19,6 @@ void main() {
     // whites nearly neutral (the fused tone leaves a warm cast on lit white surfaces).
     float l = dot(o, vec3(0.2126, 0.7152, 0.0722));
     float bell = smoothstep(0.04, 0.22, l) * (1.0 - smoothstep(0.70, 0.92, l));
-    float keep = 1.0 + (satGain - 1.0) * bell - whiteDesat * smoothstep(0.5, 0.82, l);
+    float keep = 1.0 + (satGain - 1.0) * bell - whiteDesat * smoothstep(0.62, 0.93, l);
     Output = max(vec3(l) + (o - vec3(l)) * max(keep, 0.0), vec3(0.0));
 }
