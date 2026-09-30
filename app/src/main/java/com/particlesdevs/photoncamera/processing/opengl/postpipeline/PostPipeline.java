@@ -591,6 +591,7 @@ public class PostPipeline extends GLBasePipeline {
                     +" postSharpen=RawTherapee (own settings)"
                     +" tone=VivoHdrTone_SCAMERA; actual node order/timings follow in Pipeline log");
             add(new VivoNiceRgb());
+            add(new HighlightRecovery());
         } else {
         if (PreferenceKeys.isRemosaicEnabled()) {
             if (mParameters.remosaicDone) {
