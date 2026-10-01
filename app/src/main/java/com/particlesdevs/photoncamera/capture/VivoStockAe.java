@@ -343,6 +343,13 @@ public final class VivoStockAe implements AutoCloseable {
         private boolean degenerate;
         /** Built by the SCAMERA planner: verified against Camera2 exposure/ISO, not vivo AE tags. */
         private boolean camera2Domain;
+        /**
+         * The sensor cannot expose an L at or above N (the ISZ tele at night: the vendor AE runs N at a gain far above the
+         * Camera2 sensitivity range, the longest shutter at the top ISO stays darker than N). L is left at the sensor
+         * maximum and the capture builds the long frame from the ZSL N frames with {@link #longRatio()} instead.
+         */
+        public boolean longBeyondSensor;
+        private double longTarget;
         Plan(byte[] data,VivoNiceAeContext niceContext,long frameId,long timestamp,long received,int generation)throws IOException {
             if(niceContext==null)throw new IOException("SCAM HDR AE: контекст сцены не проверен");
             sceneDescription=niceContext.describe();
@@ -362,6 +369,7 @@ public final class VivoStockAe implements AutoCloseable {
         private Plan(Plan base) {
             frameId=base.frameId;timestamp=base.timestamp;received=base.received;generation=base.generation;
             sceneDescription=base.sceneDescription;degenerate=base.degenerate;camera2Domain=base.camera2Domain;
+            longBeyondSensor=base.longBeyondSensor;longTarget=base.longTarget;
             System.arraycopy(base.shutter,0,shutter,0,4);System.arraycopy(base.iso,0,iso,0,4);
             System.arraycopy(base.product,0,product,0,4);System.arraycopy(base.gain,0,gain,0,4);
         }
@@ -477,8 +485,12 @@ public final class VivoStockAe implements AutoCloseable {
             }
             if(!(p.product[2]<p.product[1]&&p.product[1]<p.product[0]))
                 throw new IllegalStateException("SCAM HDR: сцена слишком яркая для раздельных S/ES даже на минимальной выдержке");
-            if(!(p.product[0]<=p.product[3]))
-                throw new IllegalStateException("SCAM HDR: длинный кадр L не набирает экспозицию N в пределах сенсора ("+p.describePlan()+")");
+            p.longTarget=n*Math.pow(2,lEv);
+            if(!(p.product[0]<=p.product[3])) {
+                p.longBeyondSensor=true;
+                android.util.Log.w("NICE_CAPTURE","SCAMERA planner: the sensor cannot expose L at or above N ("+p.describePlan()
+                        +"); L will be built from the ZSL N frames at x"+String.format(java.util.Locale.ROOT,"%.2f",p.longRatio()));
+            }
             android.util.Log.i("NICE_CAPTURE","SCAMERA planner: "+p.sceneDescription+" -> "+p.describePlan());
             return p;
         }
@@ -496,6 +508,12 @@ public final class VivoStockAe implements AutoCloseable {
             android.util.Range<Integer> isos=characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
             if(times==null||isos==null)return this;
             Plan p=new Plan(this);
+            if(longBeyondSensor) {
+                // No sensor L to lengthen: the synthetic L from the ZSL N frames takes the boost in its ratio.
+                p.longTarget=longTarget*Math.pow(2,ev);
+                android.util.Log.i("NICE_CAPTURE","long boost "+ev+" EV on the ZSL-built L: ratio x"+String.format(java.util.Locale.ROOT,"%.2f",p.longRatio()));
+                return p;
+            }
             double target=product[3]*Math.pow(2,ev);
             long cap=Math.min(times.getUpper(),Math.max(shutter[3],LONG_BOOST_SHUTTER_CAP_NS));
             long ns=Math.max(shutter[3],Math.min(cap,Math.round(target/gain[3])));
@@ -507,7 +525,8 @@ public final class VivoStockAe implements AutoCloseable {
             return p;
         }
         /** L exposure over N (products), as planned. */
-        public double longRatio(){return product[3]/product[0];}
+        public double longRatio(){return longBeyondSensor&&longTarget>0?longTarget/product[0]:product[3]/product[0];}
+        public String planText(){return describePlan();}
         private static int slot(int index){if(index<0||index>=7)throw new IllegalArgumentException("NICE request index");return index<4?0:index==4?3:index==5?1:2;}
         public long shutter(int index){return shutter[slot(index)];}
         public int iso(int index){return iso[slot(index)];}

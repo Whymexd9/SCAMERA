@@ -3411,7 +3411,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 IsoExpoSelector.fullpairs.clear();
                 // L from the ZSL N frames: after the press only S and ES are exposed
                 // (the 125 ms L frame cost ~0.25 s of shutter time).
-                final boolean zslLong=hybridZsl && PreferenceKeys.isNiceZslLong();
+                final boolean zslLong=hybridZsl && (PreferenceKeys.isNiceZslLong() || stockPlan.longBeyondSensor);
+                if(stockPlan.longBeyondSensor && !zslLong)
+                    throw new IllegalStateException("SCAM HDR: длинный кадр L не набирает экспозицию N в пределах сенсора ("+stockPlan.planText()+")");
                 if(zslLong) {
                     final float ratio=(float)Math.max(1,Math.min(64,stockPlan.longRatio()));
                     for(ImageFrame normal:mPendingZslNormalFrames)normal.syntheticLongRatio=ratio;
