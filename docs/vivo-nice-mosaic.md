@@ -56,6 +56,25 @@ response corrected by a 64-class table (`mosaicSiteGain`, class mean against the
 The merge only runs when Luma / Chroma are not both 1 (the tuned profile has 0 / 0) and extras are present. Not yet measured
 handheld; on a tripod the colour gaps are filled only by the model, and isolated dark specks were seen on flat areas in one shot.
 
+## Night on the ISZ modules (2026-10-02, 10x Tetra, ship's deck under lamps, phone on a stand)
+
+* The SCAMERA planner threw "длинный кадр L не набирает экспозицию N" on the ISZ tele at night and no photo was taken: the
+  vendor AE runs N at a gain far above the Camera2 sensitivity range of that mode (true ISO 3500, Camera2 ISO 800), so the
+  longest shutter at the top ISO stays darker than N. `Plan.longBeyondSensor` now keeps L at the sensor maximum and the capture
+  builds the long frame from the ZSL N frames at the planned ratio (`pref_nice_zsl_long` or not); the stock-solver plan already
+  clamped L to N. Every mosaic mode shoots again at night on 10x and 6.7x.
+* `sabre` rendered a magenta lattice on flat walls: the "fast" donor remosaic (nearest, no steering) of the previous round
+  reached the N reference when it was not first in the frame list, so the network and the merge model carried a block-interpolated
+  Tetra pattern. The fast path is gone (it saved 0.7 s of 2.7 s); in the merge a colour without donor weight at an output pixel
+  (one colour per block window on a still burst) now follows the relative residual of the covered colours instead of its own.
+* Times with 12 N: `scamera` 2.7 s remosaic + 5.3 s NICE (15 s shutter to file); `sabre` 2.0 + 5.2 (16 s); `neural` 13.7 s
+  neural + 1.3 s GPU + 3.6 s NICE (25 s); `neural_sabre` 8 s neural on 6 N (the model gets just the frames it needs when the
+  Sabre merge keeps the mosaic donors) + 2.8 s GPU + 5.8 s NICE (25 s); 6.7x Quad `neural` 6.4 + 0.8 + 3.7 s.
+* Detail against the old non-HDR HexQuad neural remosaic of the same module (its stored profile, 30 frames, 12 s): the old
+  route is sharp but far noisier (flat-wall σ 40 against 20..23) and has no HDR; among the SCAM HDR modes `scamera` and `sabre`
+  keep the most micro-detail (Laplacian variance on text 755 / 1176), `neural` and `neural_sabre` are the cleanest and the
+  softest (150 / 180; the text stays legible). Hand-held and daylight not re-measured in this round.
+
 ## OPPO factory configuration
 
 `DeviceDefaults` (Find X7 Ultra PHY110, Find X8 Ultra PKJ110) applies once per defaults version, at the first start after

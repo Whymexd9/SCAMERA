@@ -752,7 +752,11 @@ void main(){
                 // Where rejection left only a frame or two, the residual is mostly single-frame noise:
                 // fall back towards the model.
                 float cover=smoothstep(1.3,5.0,frames);
-                col[c]+=max(0.0,mc+cover*(aa*(mc+relativeFloor)*rel+(1.0-aa)*a.num[c]/a.den[c]));
+                // Mosaic donor sites: inside a Quad / Tetra block the window holds one colour only, so on a still burst a
+                // colour can arrive with (almost) no weight at all; its own residual would then be noise (a magenta lattice
+                // on flat walls at night). Such a colour follows the relative residual of the covered ones instead.
+                if(mosaicBlock>0)aa=mix(1.0,aa,smoothstep(0.05,0.6,a.den[c]));
+                col[c]+=max(0.0,mc+cover*(aa*(mc+relativeFloor)*rel+(1.0-aa)*a.num[c]/max(a.den[c],1.0e-6)));
             }
             framesSum+=frames;
         }

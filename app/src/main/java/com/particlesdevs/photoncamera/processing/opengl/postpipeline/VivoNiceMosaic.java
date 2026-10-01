@@ -142,7 +142,8 @@ public final class VivoNiceMosaic {
             if (f.measuredExposure == newest.measuredExposure && f.measuredIso == newest.measuredIso) same.add(f);
         if (same.size() < minimum)
             throw new IOException("нужно не меньше " + minimum + " кадров N с одной выдержкой и ISO, есть " + same.size() + " из " + normals.size());
-        int cap = neural ? 50 : BurstPolicy.frameCount(same.size(), p.rawSize.x, p.rawSize.y);
+        // With the Sabre merge the other N frames are donors of the merge itself: the model gets just the frames it needs.
+        int cap = neural ? (keepExtras ? minimum : 50) : BurstPolicy.frameCount(same.size(), p.rawSize.x, p.rawSize.y);
         List<ImageFrame> use = new ArrayList<>(same.subList(Math.max(0, same.size() - cap), same.size()));
         // The merged frame must lie in the geometry of the N reference (the transport aligns the others to it, and with
         // the Sabre merge its mosaic sites are residuals against the network output): the neural model registers to its
