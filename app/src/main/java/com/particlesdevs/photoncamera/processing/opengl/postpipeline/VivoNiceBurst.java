@@ -27,6 +27,8 @@ public final class VivoNiceBurst {
     private final float[] exposure=new float[7];
     private final Map<ImageFrame,VivoNiceAe> measuredAe=new IdentityHashMap<>();
     private boolean vendorExposureDomain;
+    /** 2 / 4 when the frames' own Quad / Tetra samples follow the plain frames (Sabre merge over the mosaic sites), else 0. */
+    private int mosaicBlock;
     /** L ratio when L is built from the N frames by the worker, else 0. */
     private float syntheticLong;
     private String noiseSource="?";
@@ -128,6 +130,13 @@ public final class VivoNiceBurst {
             }
         }
         Log.i("NICE_HDR","extra ZSL N frames merged into the 4 N slots: "+extraNormals.size());
+        if(PreferenceKeys.isNiceMosaicSabre()){
+            boolean all=true;
+            for(int i=0;i<4;++i)all&=ordered[i].mosaic!=null&&ordered[i].mosaic.capacity()==(long)width*height*2;
+            for(ImageFrame f:extraNormals)all&=f.mosaic!=null&&f.mosaic.capacity()==(long)width*height*2;
+            mosaicBlock=all?PreferenceKeys.niceMosaicBlock():0;
+            Log.i("NICE_HDR","Sabre over mosaic sites: "+(all?"block "+mosaicBlock+", "+(4+extraNormals.size())+" frames":"off (no mosaic copies)"));
+        }
         if(!(product(ordered[6])<product(ordered[5]) && product(ordered[5])<ref
                 && ref<=product(ordered[4])))
             throw new IOException("SCAM HDR 4+3: измеренные экспозиции должны удовлетворять ES < S < N <= L");
@@ -215,7 +224,7 @@ public final class VivoNiceBurst {
         header.putFloat(luma).putFloat(chroma)
                 .putFloat(PreferenceKeys.niceInternalValue("luma_radius",2f))
                 .putFloat(PreferenceKeys.niceInternalValue("chroma_radius",4f))
-                .putFloat(1f-PreferenceKeys.getNiceMerge()).putFloat(mergedDng?1:0).putFloat(syntheticLong).putFloat(0);
+                .putFloat(1f-PreferenceKeys.getNiceMerge()).putFloat(mergedDng?1:0).putFloat(syntheticLong).putFloat(mosaicBlock);
         Log.i("NICE_HDR","luma/chroma inside NICE: ISO="+referenceIso+" level="+PreferenceKeys.niceIsoLevel(referenceIso)
                 +" luma="+luma+" chroma="+chroma+" merge="+PreferenceKeys.getNiceMerge());
         header.position(0);
@@ -232,16 +241,23 @@ public final class VivoNiceBurst {
         // one thread copied ~0.6 GB at ~1.8 GB/s.
         java.util.List<ImageFrame> frames=new java.util.ArrayList<>(java.util.Arrays.asList(ordered));
         frames.addAll(extraNormals);
-        final long[] offsets=new long[frames.size()];
-        for(int i=0;i<frames.size();i++){offsets[i]=position;position+=frames.get(i).buffer.capacity();}
+        // The plain frames first, then (Sabre over mosaic sites) the N slots' and extras' own mosaic samples.
+        final java.util.List<ByteBuffer> buffers=new java.util.ArrayList<>();
+        for(ImageFrame f:frames)buffers.add(f.buffer);
+        if(mosaicBlock>0){
+            for(int i=0;i<4;++i)buffers.add(ordered[i].mosaic);
+            for(ImageFrame f:extraNormals)buffers.add(f.mosaic);
+        }
+        final long[] offsets=new long[buffers.size()];
+        for(int i=0;i<buffers.size();i++){offsets[i]=position;position+=buffers.get(i).capacity();}
         final java.util.concurrent.atomic.AtomicInteger next=new java.util.concurrent.atomic.AtomicInteger();
         final IOException[] failure={null};
-        Thread[] workers=new Thread[Math.min(4,frames.size())];
+        Thread[] workers=new Thread[Math.min(4,buffers.size())];
         for(int t=0;t<workers.length;t++){
             workers[t]=new Thread(()->{
                 try{
-                    for(int i=next.getAndIncrement();i<frames.size();i=next.getAndIncrement()){
-                        ByteBuffer raw=frames.get(i).buffer.duplicate();raw.clear();long at=offsets[i];
+                    for(int i=next.getAndIncrement();i<buffers.size();i=next.getAndIncrement()){
+                        ByteBuffer raw=buffers.get(i).duplicate();raw.clear();long at=offsets[i];
                         while(raw.hasRemaining())at+=out.write(raw,at);
                     }
                 }catch(IOException e){synchronized(failure){failure[0]=e;}}

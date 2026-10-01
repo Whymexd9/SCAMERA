@@ -366,7 +366,7 @@ public class HdrxProcessor extends ProcessorBase {
             // own - so it is logged for diagnosis and used only against the same
             // exposure, never as a cross-exposure threshold.
             frame.computeSharpness(PreferenceKeys.isRawMfsrEnabled() ? PreferenceKeys.getMultiFrameBlock()
-                    : PreferenceKeys.isRemosaicEnabled() || processingParameters.quadCfa
+                    : PreferenceKeys.isRemosaicEnabled() || PreferenceKeys.isNiceMosaic() || processingParameters.quadCfa
                     ? PreferenceKeys.getRemosaicBlockSize() : 1);
             Log.d(TAG, "frame " + i + ": mpy=" + frame.pair.layerMpy
                     + " iso=" + frame.pair.iso
@@ -510,6 +510,14 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
         ByteBuffer output = hexOutput;
+                if (PreferenceKeys.isNiceMosaic()) {
+                    // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
+                    processingStage = "SCAM HDR: ремозаик мозаики";
+                    images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceMosaic.prepare(
+                            PhotonCamera.getAppContext(), images, processingParameters));
+                    ParseExif.syncWithParameters(exifData, processingParameters);
+                    processingStage = "SCAM HDR neural burst";
+                }
         Log.d(TAG, "Packing");
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");

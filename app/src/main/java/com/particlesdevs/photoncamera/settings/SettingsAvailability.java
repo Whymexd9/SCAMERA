@@ -19,7 +19,8 @@ public final class SettingsAvailability {
     public String reason(String key) {
         boolean multi = on("pref_raw_mfsr_enabled_key", false);
         boolean autonomous=on("pref_vivo_hdr_enabled",false);
-        boolean incompatible=multi || (on("pref_remosaic_enabled_key",false)
+        boolean niceMosaic=!text("pref_vivo_nice_mosaic","off").equals("off") && on("pref_vivo_nice_enabled",false);
+        boolean incompatible=multi || (!niceMosaic && on("pref_remosaic_enabled_key",false)
                 && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
         if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false)
                 && any(key, "pref_vivo_hdr_luma", "pref_vivo_hdr_chroma"))

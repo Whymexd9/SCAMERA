@@ -40,6 +40,13 @@ public final class HexQuadOptions {
         return new HexQuadOptions(100,1,false,noiseOverall,noisePhoton,noiseReadout,
                 lumaPercent,chromaPercent,false,0,0,0,0,texture*100,gpu);
     }
+    /** The same controls with the output kept at the input size (SCAM HDR merges it with frames of that size). */
+    public HexQuadOptions sameSize(){
+        if(!fullResolution)return this;
+        return new HexQuadOptions(100,modelScale,false,noiseOverall,noisePhoton,noiseReadout,
+                lumaPercent,chromaPercent,false,0,0,0,0,texture*100,gpu);
+    }
+    public HexQuadOptions sameSizeIf(boolean apply){return apply?sameSize():this;}
     public int outputScale(){return fullResolution?2:1;}
     public long outputBytes(int width,int height){return (long)width*height*outputScale()*outputScale()*2;}
     public String profileKey(int iso,int red){

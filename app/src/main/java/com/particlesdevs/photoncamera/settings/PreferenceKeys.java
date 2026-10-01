@@ -535,13 +535,60 @@ public class PreferenceKeys {
     }
 
     public static boolean isRemosaicEnabled() {
+        // SCAM HDR on a mosaic stream owns the remosaic itself (VivoNiceMosaic): the stored switches of the module
+        // stay as they are, but every other branch sees a plain-bayer pipeline.
+        if (isNiceMosaic()) return false;
         return isSabreEnabled() ? getMultiFrameBlock() > 1
                 : !isRawMfsrEnabled() && getBool(Key.KEY_REMOSAIC_ENABLED);
     }
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
     public static int getRemosaicBlockSize() {
+        if (isNiceMosaic()) return niceMosaicBlock();
         return isSabreEnabled() ? getMultiFrameBlock() : sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
+    }
+
+    /**
+     * SCAM HDR on a Quad / Tetra stream (the ISZ modules): off (plain Bayer only, as before), scamera (GPU remosaic of
+     * every frame), detail (Tetra Detail v2 on every frame), mfr (Multi-frame Remosaic of the N frames), neural
+     * (the NPU quad / HexQuad models on the N frames); the short and long frames always take the GPU remosaic.
+     */
+    public static String niceMosaicMode() {
+        String mode = preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_mosaic", "off");
+        return mode == null ? "off" : mode;
+    }
+
+    /** The Sabre kernel over the frames' own mosaic samples (sabre / neural_sabre): the donors of the merge are the raw Quad / Tetra sites. */
+    public static boolean isNiceMosaicSabre() {
+        String mode = niceMosaicMode();
+        return "sabre".equals(mode) || "neural_sabre".equals(mode);
+    }
+
+    /** How the plain-bayer burst for the network is built: scamera / detail / mfr / neural (sabre = scamera, neural_sabre = neural). */
+    public static String niceMosaicBase() {
+        String mode = niceMosaicMode();
+        return "sabre".equals(mode) ? "scamera" : "neural_sabre".equals(mode) ? "neural" : mode;
+    }
+
+    /** Raw preferences only: this is consulted by isRemosaicEnabled() and isVivoHdrEnabled(). */
+    public static boolean isNiceMosaic() {
+        return !"off".equals(niceMosaicMode()) && isGcamStageEnabled("pref_vivo_hdr_enabled")
+                && isGcamStageEnabled("pref_vivo_nice_enabled") && !isRawMfsrEnabled();
+    }
+
+    /** Colour block of the module's mosaic: from its forced sensor mode (7 = Tetra 4x4, 5 = Quad 2x2), else the remosaic block. */
+    public static int niceMosaicBlock() {
+        int forced = Math.round(niceInternalValue("mosaic_block", 0f));
+        if (forced == 2 || forced == 4) return forced;
+        int mode = ModuleRegistry.sensorMode(ModuleRegistry.active());
+        if (mode == 7) return 4;
+        if (mode == 5) return 2;
+        return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
+    }
+
+    /** Colour-block side of the RAW stream for statistics and the raw viewfinder: 1 for plain bayer. */
+    public static int mosaicBlock() {
+        return isRawMfsrEnabled() ? getMultiFrameBlock() : (isRemosaicEnabled() || isNiceMosaic()) ? getRemosaicBlockSize() : 1;
     }
 
     /** Interpolate green along edges instead of across them. */
@@ -570,6 +617,7 @@ public class PreferenceKeys {
     }
 
     public static String getRemosaicBackend() {
+        if(isNiceMosaic()) return "detail".equals(niceMosaicMode()) && niceMosaicBlock() == 4 ? "tetra_detail" : "scamera";
         if(isSabreEnabled()) return "scamera";
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
     }

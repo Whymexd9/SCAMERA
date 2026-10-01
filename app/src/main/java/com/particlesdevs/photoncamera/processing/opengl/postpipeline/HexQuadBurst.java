@@ -27,9 +27,13 @@ public final class HexQuadBurst {
     final int quadModel;
     private final List<ImageFrame> frames;
     private HexQuadBurst(List<ImageFrame> frames,Parameters p) throws IOException {
+        this(frames,p,null);
+    }
+    /** forceQuad: null = the module's backend setting; otherwise the model of a SCAM HDR mosaic (true Quad 2x2, false Tetra 4x4). */
+    private HexQuadBurst(List<ImageFrame> frames,Parameters p,Boolean forceQuad) throws IOException {
         this.frames=new ArrayList<>(frames);
         width=p.rawSize.x;height=p.rawSize.y;
-        quad=PreferenceKeys.isQuadNeuralCaptureEnabled();
+        quad=forceQuad!=null?forceQuad:PreferenceKeys.isQuadNeuralCaptureEnabled();
         if(com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException(quad?"Quad 2×2 требует исходный Quad RAW: отключите программный биннинг":"HexQuad требует исходный Tetra RAW: отключите программный биннинг");
         if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169)
@@ -61,7 +65,7 @@ public final class HexQuadBurst {
         iso=p.iso; // Measured sensor ISO from CaptureResult, not normalized UI ISO.
         if(iso<50||iso>12800||!Float.isFinite(black)||!Float.isFinite(white)||white<=black+1)
             throw new IOException("Неподдерживаемые ISO/уровни RAW");
-        options=quad?PreferenceKeys.getQuadOptions(iso):PreferenceKeys.getHexQuadOptions(iso);
+        options=(quad?PreferenceKeys.getQuadOptions(iso):PreferenceKeys.getHexQuadOptions(iso)).sameSizeIf(forceQuad!=null);
         exposureEv=quad?PreferenceKeys.getQuadExposureEv():PreferenceKeys.getHexQuadExposureEv();
         lumaPercent=options.lumaPercent;chromaPercent=options.chromaPercent;
         Set<Long> timestamps=new HashSet<>();
@@ -89,6 +93,29 @@ public final class HexQuadBurst {
                     android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE_MAXIMUM_RESOLUTION);
             return max!=null&&max.getWidth()>=16000;
         }catch(Exception e){return false;}
+    }
+    /**
+     * SCAM HDR on a mosaic stream: the equal-exposure N frames through the NPU model, returned as sensor-domain plain
+     * bayer (uint16, the frames' black and white levels, output size = input size). The parameters are not touched.
+     */
+    public static ByteBuffer processForNice(Context context,List<ImageFrame> frames,Parameters p,boolean quad) throws Exception {
+        HexQuadBurst burst=new HexQuadBurst(frames,p,quad);
+        ByteBuffer result=VivoNeuralClient.processBurst(context,burst);
+        // Normalized linear bayer16, black 0 / white 65535: back to the frames' own levels.
+        ShortBuffer s=result.order(ByteOrder.nativeOrder()).asShortBuffer();
+        float black=burst.black,span=burst.white-burst.black,gain=PreferenceKeys.niceInternalValue("mosaic_gain",1f);
+        double sumIn=0,sumOut=0;int n=s.limit();
+        for(int i=0;i<n;i++){
+            int v=s.get(i)&0xffff;
+            float raw=Math.max(0f,Math.min(burst.white,v*(1f/65535f)*span*gain+black));
+            if((i&63)==0){sumIn+=v;sumOut+=raw;}
+            s.put(i,(short)Math.round(raw));
+        }
+        com.particlesdevs.photoncamera.util.Log.i("NICE_MOSAIC","neural output "+(quad?"Quad 2x2":"HexQuad")+": mean "
+                +String.format(java.util.Locale.US,"%.1f -> %.1f",sumIn/Math.max(1,(n+63)/64),sumOut/Math.max(1,(n+63)/64))
+                +" (black "+black+", white "+burst.white+")");
+        result.position(0);
+        return result;
     }
     public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p) throws Exception {
         HexQuadBurst burst=new HexQuadBurst(frames,p);

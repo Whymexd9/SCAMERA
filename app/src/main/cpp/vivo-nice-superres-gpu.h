@@ -31,6 +31,14 @@ struct SuperResGpuInput {
     std::vector<BackwardHomography> homography;    // per frame (frame 0 unused)
     const std::vector<float>* model=nullptr;       // RGB, w*h*3
     float invScale=1;
+    // Quad / Tetra stream: the merge's donor sites are the frames' own mosaic samples (one colour per block of
+    // mosaicBlock x mosaicBlock sites, 2 or 4), parallel to `frames` (the plain-bayer remosaic of the same frames,
+    // which guide the robustness and the model). mosaicColor: colour of the block phase (by) * 2 + (bx) in sensor
+    // coordinates; siteGain: relative sensitivity per site class (y&7)*8+(x&7).
+    int mosaicBlock=0;
+    std::vector<const uint16_t*> mosaicFrames;
+    std::array<int,4> mosaicColor{0,1,1,2};
+    std::array<float,64> siteGain{};
 };
 
 
@@ -130,6 +138,10 @@ precision highp float;
 precision highp int;
 layout(local_size_x=8,local_size_y=8) in;
 layout(std430,binding=0) readonly buffer Frames{uint frames[];};
+layout(std430,binding=12) readonly buffer MFrames{uint mframes[];};
+uniform int mosaicBlock;     // 0 = plain bayer donors; 2 / 4 = mosaic donor sites (sampleMosaic)
+uniform ivec4 mosaicColor;
+uniform float siteGain[64];
 uniform ivec2 size;
 uniform int frameCount;
 uniform uint frameOffset[32];
@@ -157,6 +169,20 @@ float sampleRaw(int f,int x,int y){
     // once. Averaging clipped samples kept the positive bias of the cut-off
     // negative noise: a lifted, magenta (after WB) haze in high-ISO shadows.
     return clamp((float(v)-black[phase])*inv[phase],-0.25,1.0);
+}
+// Raw site of the frame's own mosaic (same canonical coordinates and strip layout as sampleRaw), its colour from the
+// block phase of the site actually read, and the per-class response correction.
+float sampleMosaic(int f,int x,int y,out int c){
+    x+=cfaShift.x;y+=cfaShift.y;
+    if(x<0||y<0||x>=size.x||y>=size.y){x=reflectCfa(x,size.x);y=reflectCfa(y,size.y);}
+    int ry=clamp(y-frameRow0[f],0,frameRows[f]-1);
+    uint idx=frameOffset[f]+uint(ry*size.x+x);
+    uint word=mframes[idx>>1];
+    uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
+    int phase=((y&1)<<1)|(x&1);
+    int bs=max(mosaicBlock,1);
+    c=mosaicColor[(((y/bs)&1)<<1)|((x/bs)&1)];
+    return clamp((float(v)-black[phase])*inv[phase]*siteGain[((y&7)<<3)|(x&7)],-0.25,1.0);
 }
 vec2 origin(int f,int x,int y){
     vec4 a=hA[f],b=hB[f];
@@ -624,6 +650,19 @@ float robustAt(int f,int cx,int cy){
 }
 // Raw sites of frame 0 around pos: the two lattice sites per axis of every colour phase.
 void refSamples(inout Acc a,vec2 pos,vec3 P){
+    if(mosaicBlock>0){
+        // The same 4x4 site window as the lattice loops below, every site with the colour of its own block.
+        int bx=int(floor(pos.x))-1,by=int(floor(pos.y))-1;
+        for(int j=0;j<4;j++)for(int i=0;i<4;i++){
+            int sx=bx+i,sy=by+j;
+            float kw=kernelW(vec2(float(sx),float(sy))-pos,P);
+            if(kw<0.004)continue;
+            int c;float v=sampleMosaic(0,sx,sy,c);
+            if(v>=0.95)continue;
+            addS(a,c,kw,v,modelAt(sx,sy,c)*invScale);
+        }
+        return;
+    }
     for(int p=0;p<4;p++){
         int px=p&1,py=p>>1,c=phaseColor[p];
         int bx=int(floor((pos.x-float(px))*0.5))*2+px,by=int(floor((pos.y-float(py))*0.5))*2+py;
@@ -645,6 +684,18 @@ void donorSamples(inout Acc a,int f,vec2 pos,int cx,int cy,float r,vec3 P){
     vec2 t=cell-oc;
     int itx=int(floor(t.x)),ity=int(floor(t.y));
     float mfx=t.x-float(itx),mfy=t.y-float(ity);
+    if(mosaicBlock>0){
+        int bx=int(floor(O.x))-1,by=int(floor(O.y))-1;
+        for(int j=0;j<4;j++)for(int i=0;i<4;i++){
+            int sx=bx+i,sy=by+j;
+            float kw=r*kernelW(vec2(float(sx),float(sy))-O,P);
+            if(kw<0.003)continue;
+            int c;float v=sampleMosaic(f,sx,sy,c);
+            if(v>=0.95)continue;
+            addS(a,c,kw,v,modelBilinear(sx+itx,sy+ity,mfx,mfy,c));
+        }
+        return;
+    }
     for(int p=0;p<4;p++){
         int px=p&1,py=p>>1,c=phaseColor[p];
         int bx=int(floor((O.x-float(px))*0.5))*2+px,by=int(floor((O.y-float(py))*0.5))*2+py;
@@ -795,6 +846,10 @@ class SuperResGpu {
         }
         reserve(0,total*2);
         for(int f=0;f<frames;++f)put(0,size_t(offsets[f])*2,in.frames[f]+size_t(row0[f])*w,size_t(rows[f])*w*2);
+        if(in.mosaicBlock>0&&int(in.mosaicFrames.size())==frames){
+            reserve(12,total*2);
+            for(int f=0;f<frames;++f)put(12,size_t(offsets[f])*2,in.mosaicFrames[f]+size_t(row0[f])*w,size_t(rows[f])*w*2);
+        } else reserve(12,16);
         for(GLuint program:programs){
             glUseProgram(program);
             glUniform1uiv(glGetUniformLocation(program,"frameOffset"),frames,offsets.data());
@@ -873,6 +928,13 @@ public:
         glUniform1f(glGetUniformLocation(dilateProgram,"mergeWeight"),std::clamp(mergeWeight,0.f,1.f));
         glUniform1f(glGetUniformLocation(dilateProgram,"dil"),tune.dilate);
         glUseProgram(srProgram);
+        const bool mosaic=in.mosaicBlock>0&&int(in.mosaicFrames.size())==frames;
+        glUniform1i(glGetUniformLocation(srProgram,"mosaicBlock"),mosaic?in.mosaicBlock:0);
+        glUniform4i(glGetUniformLocation(srProgram,"mosaicColor"),in.mosaicColor[0],in.mosaicColor[1],in.mosaicColor[2],in.mosaicColor[3]);
+        std::array<float,64> gains=in.siteGain;
+        if(!(gains[0]>0.f))gains.fill(1.f);
+        glUniform1fv(glGetUniformLocation(srProgram,"siteGain"),64,gains.data());
+        if(mosaic&&g_superResReport)g_superResReport("NICE SUPERRES MOSAIC: block="+std::to_string(in.mosaicBlock)+" donor sites are the frames' own mosaic samples");
         glUniform1f(glGetUniformLocation(srProgram,"invScale"),in.invScale);
         glUniform4f(glGetUniformLocation(srProgram,"kD"),float(tune.grid),tune.subDetail,tune.widenBelow,tune.widenMul);
         glUniform1f(glGetUniformLocation(srProgram,"subShrink"),tune.subShrink);

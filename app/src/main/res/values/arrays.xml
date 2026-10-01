@@ -165,6 +165,25 @@
         <item>vendor</item>
         <item>bundled</item>
     </string-array>
+    <string-array name="vivo_nice_mosaic_entries">
+        <item>Выключено (только обычный Bayer)</item>
+        <item>GPU-ремозаик SCAMERA — каждый кадр</item>
+        <item>GPU Tetra Detail v2 — каждый кадр (только Tetra 4×4)</item>
+        <item>Multi-frame Remosaic — слияние N-кадров (CPU)</item>
+        <item>Нейроремозаик (NPU) — слияние N-кадров</item>
+        <item>Sabre по сырым точкам мозаики (сеть — GPU-ремозаик)</item>
+        <item>Нейроремозаик + Sabre по сырым точкам мозаики</item>
+    </string-array>
+    <string-array name="vivo_nice_mosaic_values">
+        <item>off</item>
+        <item>scamera</item>
+        <item>detail</item>
+        <item>mfr</item>
+        <item>neural</item>
+        <item>sabre</item>
+        <item>neural_sabre</item>
+    </string-array>
+
     <string-array name="raw_lsc_mode_entries">
         <item>Авто (применять)</item>
         <item>Всегда применять</item>

@@ -182,6 +182,7 @@ public class Parameters {
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
                 && !VendorTagUtils.wasRemosaicApplied()
                 && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRemosaicEnabled()
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceMosaic()
                 && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRawMfsrEnabled();
         if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);

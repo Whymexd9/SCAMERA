@@ -12,6 +12,8 @@ import java.nio.ByteBuffer;
 
 public class ImageFrame {
     public ByteBuffer buffer;
+    /** SCAM HDR on a Quad / Tetra stream: the frame's own mosaic samples, kept when its buffer is rearranged into plain bayer. */
+    public ByteBuffer mosaic;
     public long timestamp;
     public boolean fromZsl = false;
     /** NICE: L exposure ratio for an L built from the ZSL N frames (0 = L was captured). */
@@ -185,6 +187,10 @@ public class ImageFrame {
         if (pendingImage != null) {
             pendingImage.close();
             pendingImage = null;
+        }
+        if (mosaic != null) {
+            Allocator.free(mosaic);
+            mosaic = null;
         }
         if (buffer != null) {
             Allocator.free(buffer);

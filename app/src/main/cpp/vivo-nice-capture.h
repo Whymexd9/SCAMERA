@@ -54,6 +54,12 @@ struct Burst {
     // Extra ZSL N frames (same exposure as the N reference), merged into the
     // four N slots before the network; the graph itself stays 4N+L+S+ES.
     std::vector<const uint16_t*> extraNormals;
+    // Quad / Tetra stream (SCAM HDR mosaic donors): block side (2 or 4), 0 = plain bayer. The frames' own mosaic
+    // samples follow the plain frames in the file: the four N slots, then the extra N frames (the plain frames
+    // above are their remosaic and carry the alignment, the model and the robustness).
+    int mosaicBlock=0;
+    std::array<const uint16_t*,4> mosaicSlots{};
+    std::vector<const uint16_t*> mosaicExtras;
     // Also produce the whole-burst merged Bayer RAW for the DNG (like the merged
     // DNG of GCam/LMC), instead of the single reference frame.
     bool mergedDng=false;
@@ -93,7 +99,7 @@ struct MappedNiceBurst {
         int fd=openArgument(path,O_RDONLY);
         if(fd<0)throw std::runtime_error("Cannot open NICE burst");
         struct stat st{};
-        if(fstat(fd,&st)||st.st_size<128||uint64_t(st.st_size)>160+7*NiceAe::transportBytes+32+16000000ULL*2*(7+46)){close(fd);throw std::runtime_error("Invalid NICE file size");}
+        if(fstat(fd,&st)||st.st_size<128||uint64_t(st.st_size)>160+7*NiceAe::transportBytes+32+16000000ULL*2*(7+46)*2){close(fd);throw std::runtime_error("Invalid NICE file size");}
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         try {
@@ -136,7 +142,13 @@ struct MappedNiceBurst {
             if(std::abs(burst.exposure[h[1]<3?3:forwardReferenceSlot]-1)>1e-5f)throw std::runtime_error("NICE reference exposure mismatch");
             size_t pixels=size_t(burst.w)*burst.h;
             const size_t headerBytes=h[1]>=9?160+7*NiceAe::transportBytes+32:h[1]>=7?160+7*NiceAe::transportBytes:h[1]>=6?160:128;
-            if(length!=headerBytes+pixels*2*h[5])throw std::runtime_error("Truncated NICE RAW burst");
+            // v9 tuning float 7: mosaic block (2 / 4) = the frames' own Quad / Tetra samples follow (h[5]-3 frames).
+            int mosaic=0;size_t mosaicFrames=0;
+            if(h[1]>=9&&length>=headerBytes){
+                float t7;std::memcpy(&t7,static_cast<const uint8_t*>(address)+160+7*NiceAe::transportBytes+28,4);
+                if(t7==2.f||t7==4.f){mosaic=int(t7);mosaicFrames=h[5]-3;}
+            }
+            if(length!=headerBytes+pixels*2*(h[5]+mosaicFrames))throw std::runtime_error("Truncated NICE RAW burst");
             if(h[1]>=6) {
                 const auto* extension=static_cast<const uint8_t*>(address)+128;
                 auto& s=burst.scene;
@@ -165,7 +177,7 @@ struct MappedNiceBurst {
                 // t[5]: 1 = also return the merged Bayer RAW for the DNG;
                 // t[6]: L exposure ratio for an L built from the N frames (0 = captured L).
                 if(t[0]<0||t[0]>2||t[1]<0||t[1]>2||t[2]<1||t[2]>4||t[3]<1||t[3]>12||t[4]<0||t[4]>1
-                        ||(t[5]!=0&&t[5]!=1)||(t[6]!=0&&(t[6]<1.f||t[6]>64.f))||t[7])
+                        ||(t[5]!=0&&t[5]!=1)||(t[6]!=0&&(t[6]<1.f||t[6]>64.f))||(t[7]!=0&&t[7]!=2&&t[7]!=4)||int(t[7])!=mosaic)
                     throw std::runtime_error("NICE luma/chroma tuning range");
                 burst.lumaChroma={t[0],t[1],t[2],t[3],1.f-t[4]};
                 burst.mergedDng=t[5]==1;
@@ -174,6 +186,12 @@ struct MappedNiceBurst {
             auto data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+headerBytes);
             for(int f=0;f<7;++f)burst.raw[f]=data+f*pixels;
             for(uint32_t f=7;f<h[5];++f)burst.extraNormals.push_back(data+f*pixels);
+            if(mosaic){
+                burst.mosaicBlock=mosaic;
+                const uint16_t* mosaicBase=data+size_t(h[5])*pixels;
+                for(int i=0;i<4;++i)burst.mosaicSlots[i]=mosaicBase+size_t(i)*pixels;
+                for(uint32_t e=0;e<h[5]-7;++e)burst.mosaicExtras.push_back(mosaicBase+size_t(4+e)*pixels);
+            }
             if(h[1]<3) {
                 // Preserve old diagnostic burst replay while correcting its
                 // obsolete reference-at-slot-3 transport convention.
@@ -323,6 +341,31 @@ inline void restoreSensorOrigin(std::vector<float>& rgb,int w,int h,int cfa) {
         const size_t dst=(size_t(y)*w+x)*3;
         for(int c=0;c<3;++c)rgb[dst+c]=rgb[src+c];
     }
+}
+// Relative sensitivity of the 64 site classes (y&7, x&7) of a Quad / Tetra mosaic: the class mean against the mean of all
+// classes of its colour, over mid-tone sites (every class sees the same scene, so only the response differs).
+inline std::array<float,64> mosaicSiteGain(const Burst& b,const uint16_t* data,int block,const std::array<int,4>& color) {
+    std::array<double,64> sum{},cnt{};
+    for(int y=0;y<b.h;++y){
+        const uint16_t* row=data+size_t(y)*b.w;
+        for(int x=0;x<b.w;++x){
+            const float bl=b.black[((y&1)<<1)|(x&1)];
+            const float v=(float(row[x])-bl)/(b.white-bl);
+            if(v<0.03f||v>0.8f)continue;
+            const int k=((y&7)<<3)|(x&7);sum[k]+=v;cnt[k]+=1;
+        }
+    }
+    auto colourOf=[&](int k){return color[((((k>>3)/block)&1)<<1)|(((k&7)/block)&1)];};
+    std::array<double,3> colSum{},colCnt{};
+    for(int k=0;k<64;++k){const int c=colourOf(k);colSum[c]+=sum[k];colCnt[c]+=cnt[k];}
+    std::array<float,64> gain;gain.fill(1.f);
+    for(int k=0;k<64;++k){
+        const int c=colourOf(k);
+        if(cnt[k]<1000||colCnt[c]<1000)continue;
+        const double mean=colSum[c]/colCnt[c],own=sum[k]/cnt[k];
+        if(own>1e-6)gain[k]=float(std::clamp(mean/own,0.75,1.33));
+    }
+    return gain;
 }
 using NiceAlignment = std::function<std::array<BackwardHomography,7>(Burst&)>;
 inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& execute,
@@ -768,6 +811,17 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                         in.w=b.w;in.h=b.h;in.cfa=b.cfa;
                         for(int k=0;k<4;++k){in.black[k]=b.black[k];in.inv[k]=1.f/(b.white-b.black[k]);in.phaseColor[k]=b.color(k&1,k>>1);}
                         in.frames=frames;in.model=&result;in.invScale=1.f/scale;
+                        if(b.mosaicBlock>0){
+                            // Donor sites = the frames' own mosaic samples (the plain frames above guide the robustness).
+                            in.mosaicBlock=b.mosaicBlock;
+                            const int red=b.cfa;
+                            for(int bp=0;bp<4;++bp)in.mosaicColor[bp]=bp==red?0:bp==(red^3)?2:1;
+                            for(size_t f=0;f<frames.size();++f){const int slot=slotOf[f];in.mosaicFrames.push_back(slot>=0?b.mosaicSlots[slot]:b.mosaicExtras[-1-slot]);}
+                            in.siteGain=mosaicSiteGain(b,in.mosaicFrames[0],b.mosaicBlock,in.mosaicColor);
+                            report("NICE MOSAIC DONORS: block="+std::to_string(b.mosaicBlock)+" frames="+std::to_string(frames.size())
+                                +" siteGain[min,max]="+std::to_string(*std::min_element(in.siteGain.begin(),in.siteGain.end()))
+                                +","+std::to_string(*std::max_element(in.siteGain.begin(),in.siteGain.end())));
+                        }
                         in.homography.resize(frames.size());
                         for(size_t f=1;f<frames.size();++f){const int slot=slotOf[f];in.homography[f]=slot>=0?projective[slot]:extraProjective[-1-slot];}
                         SuperResGpu gpu;

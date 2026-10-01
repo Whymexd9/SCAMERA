@@ -2555,8 +2555,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         android.hardware.camera2.params.BlackLevelPattern black=mCameraCharacteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
         if(white==null || black==null)return;
         double level=0;for(int y=0;y<2;y++)for(int x=0;x<2;x++)level+=black.getOffsetForIndex(x,y)*.25;
-        int block=PreferenceKeys.isRawMfsrEnabled()?PreferenceKeys.getMultiFrameBlock()
-                :PreferenceKeys.isRemosaicEnabled()?PreferenceKeys.getRemosaicBlockSize():1;
+        int block=PreferenceKeys.mosaicBlock();
         double[] stats=SceneDistributionMeter.measure(image.getPlanes()[0].getBuffer(),image.getWidth(),image.getHeight(),
                 image.getPlanes()[0].getRowStride(),block,level,white);
         Range<Integer> range=mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
@@ -2672,7 +2671,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
                     plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh,crop,
-                    PreferenceKeys.isRawMfsrEnabled() ? PreferenceKeys.getMultiFrameBlock() : PreferenceKeys.isRemosaicEnabled() ? PreferenceKeys.getRemosaicBlockSize() : 1,
+                    PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
                     !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise);
@@ -2889,8 +2888,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private double zslFrameQuality(Image image) {
         if (!PreferenceKeys.isZslQualitySelectionEnabled() || image.getFormat() != ImageFormat.RAW_SENSOR)
             return Double.NaN;
-        int block = PreferenceKeys.isRawMfsrEnabled() ? PreferenceKeys.getMultiFrameBlock()
-                : PreferenceKeys.isRemosaicEnabled() ? PreferenceKeys.getRemosaicBlockSize() : 1;
+        int block = PreferenceKeys.mosaicBlock();
         Image.Plane plane = image.getPlanes()[0];
         return RawFrameQuality.score(plane.getBuffer(), image.getWidth(), image.getHeight(),
                 plane.getRowStride(), plane.getPixelStride(), block);

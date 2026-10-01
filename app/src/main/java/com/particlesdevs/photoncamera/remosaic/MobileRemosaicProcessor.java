@@ -73,6 +73,13 @@ public final class MobileRemosaicProcessor {
             return out;
         } finally { if(!ok) Allocator.free(out); }
     }
+    /**
+     * SCAM HDR on a mosaic stream: one plain-bayer frame (the frames' own black/white levels) merged from the equal-exposure
+     * N frames. Updates the bayer layout in the parameters like the ordinary path.
+     */
+    public static ByteBuffer mergeForNice(List<ImageFrame> frames, Parameters p, int block, String cfa) {
+        return processGroup(frames,p,block,cfa,3);
+    }
     /** Fuse each equal-exposure group independently; never feed a bracket to nativeProcess. */
     public static java.util.ArrayList<ImageFrame> prepareBracket(List<ImageFrame> frames,Parameters p) {
         int block=PreferenceKeys.getMultiFrameBlock();
