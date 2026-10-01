@@ -14,7 +14,7 @@ public class CaptureResult {public float[] aec; public static class Key<T> {publ
 pkg+'processing/ImageFrame.java':'''package com.particlesdevs.photoncamera.processing;
 import android.hardware.camera2.CaptureResult;import java.nio.ByteBuffer;
 public class ImageFrame {public int number,width=64,height=64,measuredIso=100;public long timestamp,measuredExposure=1000000;
-public boolean fromZsl;public float noiseSlope=1,noiseOffset=0,syntheticLongRatio=0;public ByteBuffer buffer=ByteBuffer.allocate(8192);
+public boolean fromZsl;public float noiseSlope=1,noiseOffset=0,syntheticLongRatio=0;public ByteBuffer buffer=ByteBuffer.allocate(8192),mosaic;
 public enum CaptureRole {NORMAL,SHORT,LONG,EXTRA_SHORT}
 public CaptureRole role=CaptureRole.NORMAL;public CaptureRole getCaptureRole(){return role;}
 public Pair pair=new Pair();public CaptureResult result=new CaptureResult();public CaptureResult getMatchedCaptureMetadata(){return result;}
@@ -25,6 +25,7 @@ public int cfaPattern,physicalID=3;public float whiteLevel=16383;public float[] 
 pkg+'settings/PreferenceKeys.java':'''package com.particlesdevs.photoncamera.settings;
 public class PreferenceKeys {public static boolean isNiceDiagnosticsEnabled(){return false;}public static boolean isRemosaicEnabled(){return false;}
 public static float niceInternalValue(String key,float value){return value;}
+public static boolean isNiceMosaicSabre(){return false;}public static int niceMosaicBlock(){return 4;}
 public static float getNiceChroma(int iso){return 1;}public static float getNiceLuma(int iso){return 1;}public static float getNiceMerge(){return 1;}
 public static String getNiceNoiseSource(){return "auto";}public static int getNoiseModelProfileId(){return 0;}public static int niceIsoLevel(int iso){return 0;}}''',
 pkg+'util/Log.java':'package com.particlesdevs.photoncamera.util; public class Log {public static void i(String a,String b){}public static void w(String a,String b){}public static void d(String a,String b){}}',
