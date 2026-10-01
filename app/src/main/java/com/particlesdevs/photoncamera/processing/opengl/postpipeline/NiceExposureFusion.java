@@ -33,8 +33,16 @@ public final class NiceExposureFusion extends Node {
         float detail = PreferenceKeys.niceInternalValue("fusion_detail", 1.5f);
         float sigma = PreferenceKeys.niceInternalValue("fusion_sigma", 0.2f);
         boolean liftOnly = PreferenceKeys.isNiceFusionLiftOnly();
+        final boolean softTone = PreferenceKeys.isNiceSoftTone();
+        if (softTone) {
+            // The shadow lift follows the scene: a low-contrast scene (daylight, 4 stops between its 10th and 99th
+            // percentile) is rendered as it is, a room with bright windows (8+ stops) gets the full local lift.
+            float lo = PreferenceKeys.niceInternalValue("tone_dr_lo", 4f), span = PreferenceKeys.niceInternalValue("tone_dr_span", 3.5f);
+            strength *= Math.max(0f, Math.min(1f, (pipeline.sceneDynamicRange - lo) / Math.max(span, 0.1f)));
+            if (strength <= 0.02f) { glProg.closed = true; return; }
+        }
         float exposure = Math.max(1f, pipeline.linearDisplayGain)
-                * AgxTone.exposureMultiplier();
+                * (softTone ? 1f : AgxTone.exposureMultiplier());
         long started = System.currentTimeMillis();
         Point half = new Point(Math.max(1, WorkingTexture.mSize.x / 2), Math.max(1, WorkingTexture.mSize.y / 2));
         GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4);

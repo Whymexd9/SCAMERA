@@ -335,6 +335,7 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     const auto started=Clock::now();
     auto millis=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
     Burst b=sensor;b.canonicalRggb=true;
+    if(std::getenv("SCAM_MERGED_DNG"))b.mergedDng=true; // developer: write the merged Bayer RAW to the output trailer
     if(!std::isfinite(b.normCoefficient)||b.normCoefficient<.55f||b.normCoefficient>2.2f||
        !std::isfinite(b.noiseScale)||b.noiseScale<.25f||b.noiseScale>4.f)
         throw std::runtime_error("Invalid NICE internal VST tuning");

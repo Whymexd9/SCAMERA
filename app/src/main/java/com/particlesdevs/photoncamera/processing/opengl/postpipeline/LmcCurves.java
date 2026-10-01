@@ -97,7 +97,7 @@ public final class LmcCurves extends Node {
             Log.e(Name, "LMC curve unavailable: " + e);
             tone = null; gamma = null;
         }
-        float matchStrength = PreferenceKeys.isVivoNiceEnabled() ? PreferenceKeys.getNiceGcamTone() : 0f;
+        float matchStrength = PreferenceKeys.isVivoNiceEnabled() && !PreferenceKeys.isNiceSoftTone() ? PreferenceKeys.getNiceGcamTone() : 0f;
         if (tone == null && gamma == null && matchStrength <= 0f) {
             WorkingTexture = previousNode.WorkingTexture;
             glProg.closed = true;

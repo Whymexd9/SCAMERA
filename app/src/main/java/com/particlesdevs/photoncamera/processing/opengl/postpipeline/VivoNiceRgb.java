@@ -33,6 +33,14 @@ public final class VivoNiceRgb extends Node {
         GLTexture input=new GLTexture(p.mParameters.rawSize,new GLFormat(GLFormat.DataType.FLOAT_32,3),
                 p.mParameters.vivoNiceRgb,GL_NEAREST,GL_CLAMP_TO_EDGE);
         try {
+            float[] gm=p.mParameters.gainMap;
+            if(gm!=null&&p.mParameters.mapSize!=null&&gm.length>=4*p.mParameters.mapSize.x*p.mParameters.mapSize.y){
+                int mw=p.mParameters.mapSize.x,mh=p.mParameters.mapSize.y;
+                java.util.function.BiFunction<Integer,Integer,Float> g=(x,y)->{int i=4*(y*mw+x);return (gm[i]+gm[i+1]+gm[i+2]+gm[i+3])/4f;};
+                float mean=0;for(int y=0;y<mh;y++)for(int x=0;x<mw;x++)mean+=g.apply(x,y);mean/=mw*mh;
+                com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","lens shading map "+mw+"x"+mh+": centre="+g.apply(mw/2,mh/2)
+                        +" corner="+g.apply(0,0)+" edge-mid="+g.apply(mw/2,0)+" mean="+mean);
+            }
             p.GainMap=new GLTexture(p.mParameters.mapSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),
                     BufferUtils.getFrom(p.mParameters.gainMap),GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main1=new GLTexture(p.mParameters.rawSize,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);

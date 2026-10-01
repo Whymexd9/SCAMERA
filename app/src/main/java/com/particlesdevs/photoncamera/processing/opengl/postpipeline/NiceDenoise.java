@@ -156,6 +156,7 @@ public final class NiceDenoise extends Node {
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);
         Point half = new Point((original.mSize.x + 1) / 2, (original.mSize.y + 1) / 2);
         float noiseSigma = 0f;
+        pipeline.niceNoiseSigma = 0f;
         GLTexture effMap = loadEffectiveFrames(original.mSize);
         GLTexture cleaned = null, before = null, ping = null, pong = null, noisy = null, clean = null, quarter = null, coarse = null;
         try {
@@ -168,6 +169,7 @@ public final class NiceDenoise extends Node {
                 glProg.setVar("offsetC", offsetC);
                 glProg.drawBlocks(noisy);
                 noiseSigma = estimateNoise(noisy);
+                pipeline.niceNoiseSigma = noiseSigma;
             }
             if (despeckle) {
                 cleaned = new GLTexture(original.mSize, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);

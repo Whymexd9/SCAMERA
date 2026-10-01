@@ -7,7 +7,8 @@ public final class VivoHdrTone extends HeadroomRender {
     @Override public void Run() {
         // Legacy headroom shoulder (AgX off) runs on fixed values; with AgX the tone comes
         // from the AgX group (curve, local highlights, highlight desaturation).
-        final boolean agxOn=AgxTone.enabled();
+        final boolean soft=PreferenceKeys.isNiceSoftTone();
+        final boolean agxOn=AgxTone.enabled()&&!soft;
         float strength=2f;
         toneAmount=Math.min(1f,strength);
         headroomScale=0.9f*Math.max(1f,strength);
@@ -18,19 +19,21 @@ public final class VivoHdrTone extends HeadroomRender {
             headroomScale=Math.max(headroomScale,1.02f*highlight*Math.max(1f,strength));
         sceneWhiteMax=Math.max(32f,16f/Math.max(1e-6f,basePipeline.mParameters.vivoHdrRawScale));
         outputExposureScale=1f;
-        localContrast=PreferenceKeys.vivoHdrValue("local",0.35f);
-        shadowLift=PreferenceKeys.vivoHdrValue("shadows",0.25f);
+        localContrast=soft?PreferenceKeys.niceInternalValue("tone_local",0.12f):PreferenceKeys.vivoHdrValue("local",0.35f);
+        shadowLift=soft?0f:PreferenceKeys.vivoHdrValue("shadows",0.25f);
         highlightNeutralStart=0.45f;
         displayNeutralStart=0.55f;
         manualTone=true;
         agx=agxOn;
+        gcam=soft;
         niceTone=true;
         manualExposure=0f;   // exposure, contrast and saturation are the AgX group's
         manualContrast=1f;
-        manualGamma=PreferenceKeys.vivoHdrValue("gamma",1f);
+        // The soft tone has its own curve; the legacy gamma / black / white sliders belong to the former stack.
+        manualGamma=soft?1f:PreferenceKeys.vivoHdrValue("gamma",1f);
         manualSaturation=1f;
-        manualBlack=PreferenceKeys.vivoHdrValue("black",0f);
-        manualWhite=PreferenceKeys.vivoHdrValue("white",1f);
+        manualBlack=soft?0f:PreferenceKeys.vivoHdrValue("black",0f);
+        manualWhite=soft?1f:PreferenceKeys.vivoHdrValue("white",1f);
         super.Run();
     }
 }

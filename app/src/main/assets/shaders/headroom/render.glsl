@@ -39,6 +39,24 @@ uniform vec3 castTint; // share of the scene light's colour kept in the picture 
 #define FUSION 0
 #define MANUAL_TONE 0
 #define AGX 0
+#define GCAM 0
+
+#if GCAM == 1
+// SCAM HDR soft tone (a GCam/LMC-like render): a local highlight knee on the large-scale level, a global
+// toe + soft-shoulder curve on the luminance (hue kept), mild saturation and near-white desaturation.
+uniform sampler2D GcamBase;   // large-scale log2 luminance (agxbase.glsl)
+uniform vec4 gcamKnee;        // knee stops, knee start (scene level, display-linear), unused, unused
+uniform vec4 gcamCurve;       // toe constant, shoulder start, white point, unused
+uniform vec4 gcamColor;       // saturation, near-white desaturation amount, where it starts, unused
+
+float gcamShoulder(float v) {
+    float s=gcamCurve.y, W=gcamCurve.z;
+    if(v<=s) return v;
+    float u=(v-s)/(1.0-s);
+    float uw=(W-s)/(1.0-s);
+    return min(s+(1.0-s)*u*(1.0+u/(uw*uw))/(1.0+u),1.0);
+}
+#endif
 
 #if AGX == 1
 // AgX picture formation (Kraken-AgX, sobotka/AgX-Resolve; see AgxTone.java).
@@ -299,6 +317,10 @@ void main() {
     vec4 gains=textureBicubicHardware(GainMap,vec2(xy)/vec2(textureSize(InputBuffer,0)));
     gains.rgb=vec3(gains.r,(gains.g+gains.b)/2.0,gains.a);
     float gainsVal=dot(gains.rgb,vec3(1.0/3.0));
+    #if GCAM == 1
+    // Only a part of the vignetting is lifted (GCam / LMC renders of the same scene keep about 60 % of it in the log).
+    gainsVal=pow(max(gainsVal,1.0e-3),gcamColor.w);
+    #endif
 
     vec3 neutralPoint=vec3(NEUTRALPOINT);
     float localGain=gainsVal*tonemapGain;
@@ -328,7 +350,25 @@ void main() {
     wb*=1.0+shadowLift*(1.0-smoothstep(0.0,0.35,y));
     vec3 linearSrgb=intermediateToSRGB*sensorToIntermediate*wb;
     linearSrgb*=castTint;
-    #if AGX == 1
+    #if GCAM == 1
+    {
+        vec2 uv=(vec2(xy)+0.5)/vec2(textureSize(InputBuffer,0));
+        float base=texture(GcamBase,uv).r;
+        float own=log2(max(luminance(inColor*neutralPoint),1.0e-7));
+        float level=mix(base,own,smoothstep(1.0,2.0,abs(own-base)));
+        float ev=level+log2(max(exposure,1.0e-7)/max(gcamKnee.y,1.0e-4));
+        float x=max(ev,0.0);
+        linearSrgb*=exp2(-(x-x/(1.0+x/max(gcamKnee.x,0.1))));
+        float lv=max(luminance(linearSrgb),0.0);
+        float lt=lv*lv/(lv+max(gcamCurve.x,1.0e-5));
+        float f=gcamShoulder(lt);
+        linearSrgb=lv>1.0e-7 ? linearSrgb*(f/lv) : vec3(0.0);
+        float lo=luminance(linearSrgb);
+        linearSrgb=vec3(lo)+gcamColor.x*(linearSrgb-vec3(lo));
+        linearSrgb=mix(linearSrgb,vec3(lo),smoothstep(gcamColor.z,0.98,lo)*gcamColor.y);
+        linearSrgb=fitDisplayGamut(linearSrgb);
+    }
+    #elif AGX == 1
     /* Local highlight range (GCam/LMC-like local tone mapping): a bright region
      * (window, sky) is pulled down by its large-scale level only, so detail and
      * local contrast inside it survive and midtones stay untouched. Across a
@@ -372,6 +412,10 @@ void main() {
     vec2 fc=gl_FragCoord.xy;
     float n1=fract(sin(dot(fc,vec2(12.9898,78.233)))*43758.5453);
     float n2=fract(sin(dot(fc,vec2(39.3468,11.1353)))*24634.6345);
+    #if GCAM == 1
+    // NiceSharpen dithers the final 8-bit output after its filters.
+    #else
     encoded=clamp(encoded+vec3((n1+n2-1.0)/255.0),vec3(0.0),vec3(1.0));
+    #endif
     Output=vec4(encoded,1.0);
 }

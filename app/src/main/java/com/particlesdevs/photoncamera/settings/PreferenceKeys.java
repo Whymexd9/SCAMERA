@@ -979,6 +979,13 @@ public class PreferenceKeys {
     public static float getNiceTexture() {
         return Math.max(0f, Math.min(2f, niceInternalValue("texture", 1f)));
     }
+    /**
+     * SCAM HDR soft tone (a GCam/LMC-like render: scene-keyed exposure, toe + soft shoulder, no clipping of the
+     * whites, shadows lifted only when the scene needs it). 0 = the former AgX/fusion/LMC-curve stack.
+     */
+    public static boolean isNiceSoftTone() {
+        return niceInternalValue("soft_tone", 1f) > 0f;
+    }
     /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
     public static float getNiceMerge() {
         return Math.max(0f, Math.min(1f, niceInternalValue("merge", 100f) / 100f));

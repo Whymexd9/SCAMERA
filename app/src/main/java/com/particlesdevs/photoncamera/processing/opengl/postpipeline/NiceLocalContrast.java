@@ -80,12 +80,13 @@ public final class NiceLocalContrast extends Node {
             glProg.drawBlocks(energy[i]);
             floors[i] = Math.max(noiseFloor(energy[i]), 1.0e-5f);
         }
-        float g1 = PreferenceKeys.niceInternalValue("texture_g1", 1.3f);
-        float g2 = PreferenceKeys.niceInternalValue("texture_g2", 1.6f);
-        float g3 = PreferenceKeys.niceInternalValue("texture_g3", 1.7f);
-        // Finest scale (about 1 px): the merge-only route (8 Gen 3 etc.) is a little softer there than the network's
-        // render, 1.5 matched an LMC/GCam render's signal in the 0.6-1.2 px band at lower noise; the network's own stays at 1.
-        float g0 = PreferenceKeys.niceInternalValue("texture_g0", PreferenceKeys.niceUsesStudent() ? 1.5f : 1.0f);
+        float g1 = PreferenceKeys.niceInternalValue("texture_g1", 1.25f);
+        float g2 = PreferenceKeys.niceInternalValue("texture_g2", 1.3f);
+        float g3 = PreferenceKeys.niceInternalValue("texture_g3", 1.3f);
+        // Finest scale (about 1 px): together with NiceSharpen's unsharp mask 1.35 brings the 0.6-1.2 px signal of a daylight
+        // scene to an LMC render's (and past a CameraPit 6.1 one), at no more noise. The merge-only SoCs (8 Gen 3 etc.) have
+        // the noisier frames, where NiceSharpen backs off and this band (gated by its own noise floor) carries the detail: 1.5.
+        float g0 = PreferenceKeys.niceInternalValue("texture_g0", PreferenceKeys.niceUsesStudent() ? 1.5f : 1.35f);
         glProg.useAssetProgram("nicelc/apply", false);
         glProg.setTexture("InputBuffer", WorkingTexture);
         glProg.setTexture("Lap0", pyramid.laplace[0]);

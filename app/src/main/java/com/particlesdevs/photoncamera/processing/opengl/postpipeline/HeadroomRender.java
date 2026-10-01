@@ -47,6 +47,8 @@ public class HeadroomRender extends Node {
     protected float manualSaturation = 1f, manualBlack = 0f, manualWhite = 1f;
     /** AgX picture formation instead of the headroom shoulder (see AgxTone). */
     protected boolean agx = false;
+    /** SCAM HDR soft tone (render.glsl GCAM): local knee, toe, soft shoulder; replaces AgX and the headroom shoulder. */
+    protected boolean gcam = false;
 
     public HeadroomRender agx(boolean enabled) { agx = enabled; return this; }
     /** SCAM HDR tone stage: AgX with its HDR-specific highlight handling (see AgxTone.load). */
@@ -141,11 +143,12 @@ public class HeadroomRender extends Node {
         }
 
         boolean fusion = pipeline.FusionMap != null;
-        AgxTone.Params agxParams = agx ? AgxTone.load(niceTone) : null;
-        if (agxParams != null && agxParams.localStrength > 0f)
+        AgxTone.Params agxParams = agx && !gcam ? AgxTone.load(niceTone) : null;
+        if (gcam || (agxParams != null && agxParams.localStrength > 0f))
             agxBase = buildAgxBase(super.previousNode.WorkingTexture);
         glProg.setDefine("MANUAL_TONE", manualTone);
-        glProg.setDefine("AGX", agx);
+        glProg.setDefine("AGX", agx && !gcam);
+        glProg.setDefine("GCAM", gcam);
         glProg.setDefine("FUSION", fusion);
         glProg.setDefine("NEUTRALPOINT", basePipeline.mParameters.whitePoint);
         glProg.useAssetProgram("headroom/render");
@@ -168,7 +171,14 @@ public class HeadroomRender extends Node {
                     + " black=" + manualBlack + " white=" + manualWhite
                     + " shoulder=" + toneAmount + " local=" + localContrast + " shadows=" + shadowLift);
         }
-        if (agx) {
+        if (gcam) {
+            glProg.setTexture("GcamBase", agxBase);
+            glProg.setVar("gcamKnee", PreferenceKeys.niceInternalValue("tone_knee", 3.0f), PreferenceKeys.niceInternalValue("tone_knee_start", 0.8f), 0f, 0f);
+            glProg.setVar("gcamCurve", PreferenceKeys.niceInternalValue("tone_toe", 0.035f), PreferenceKeys.niceInternalValue("tone_shoulder", 0.22f),
+                    PreferenceKeys.niceInternalValue("tone_white", 1.4f), 0f);
+            glProg.setVar("gcamColor", PreferenceKeys.niceInternalValue("tone_sat", 1.05f), PreferenceKeys.niceInternalValue("tone_desat", 0.5f),
+                    PreferenceKeys.niceInternalValue("tone_desat_start", 0.8f), PreferenceKeys.niceInternalValue("tone_shading", 0.6f));
+        } else if (agx) {
             AgxTone.Params a = agxParams;
             glProg.setTexture("AgxBase", agxBase != null ? agxBase : gainMapTex);
             glProg.setVar("agxLocal", agxBase != null ? a.localStrength : 0f, a.localStart);

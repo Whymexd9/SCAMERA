@@ -89,7 +89,35 @@ public class LinearExposure extends Node {
         }
 
         float gain = gainMax;
-        if (total > 0L) {
+        final boolean softTone = pipeline.mParameters.vivoNiceRgb != null && com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceSoftTone();
+        if (softTone) {
+            // GCam-like exposure: the median of the (white balanced) green channel is lifted towards a key that
+            // grows slowly with the scene's own brightness (dim scenes stay dimmer than daylight, bright ones are
+            // not pushed past their exposure); the dynamic range goes to the exposure fusion and the tone.
+            float[] st = greenPercentiles(result, bins, 1f);
+            if (st[2] < 32f / bins) {
+                final float zoom = 64f;
+                GLHistogram fine = new GLHistogram(glProg, bins);
+                fine.Rc = true; fine.Gc = true; fine.Bc = true; fine.Ac = false;
+                for (int c = 0; c < 3; c++) fine.exposure[c] = zoom / rawScale;
+                try {
+                    int[][] h = fine.Compute(previousNode.WorkingTexture);
+                    st = greenPercentiles(h, bins, zoom);
+                } finally {
+                    fine.close();
+                }
+            }
+            float key = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_key", 0.155f);
+            float keyExp = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_key_exp", 0.30f);
+            float keyMin = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_key_min", 0.045f);
+            float keyMax = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_key_max", 0.30f);
+            float p50g = Math.max(st[1], 1.0e-5f);
+            float target = Math.max(keyMin, Math.min(keyMax, key * (float) Math.pow(p50g / 0.1f, keyExp)));
+            gain = Math.max(gainMin, Math.min(gainMax, Math.max(1f, target / p50g)));
+            pipeline.sceneDynamicRange = (float) (Math.log(Math.max(st[3], 1.0e-5f) / Math.max(st[0], 1.0e-5f)) / Math.log(2.0));
+            Log.d(Name, "soft tone: green p10:" + st[0] + " p50:" + st[1] + " p90:" + st[2] + " p99:" + st[3]
+                    + " key:" + target + " dynamicRange:" + pipeline.sceneDynamicRange + " displayGain:" + gain);
+        } else if (total > 0L) {
             float p50 = percentile(cumulative, total, 0.50f);
             float p90 = percentile(cumulative, total, 0.90f);
             // Dark scene: the whole histogram sits in the first few of 1024 linear
@@ -177,6 +205,16 @@ public class LinearExposure extends Node {
 
         WorkingTexture = previousNode.WorkingTexture;
         glProg.closed = true;
+    }
+
+    /** Percentiles (10, 50, 90, 99) of the green channel of a combined histogram, divided by zoom. */
+    private static float[] greenPercentiles(int[][] h, int bins, float zoom) {
+        long total = 0L;
+        long[] cumulative = new long[bins];
+        for (int i = 0; i < bins; i++) { total += h[1][i]; cumulative[i] = total; }
+        if (total <= 0L) return new float[]{0f, 0f, 0f, 0f};
+        return new float[]{percentile(cumulative, total, 0.10f) / zoom, percentile(cumulative, total, 0.50f) / zoom,
+                percentile(cumulative, total, 0.90f) / zoom, percentile(cumulative, total, 0.99f) / zoom};
     }
 
     /**

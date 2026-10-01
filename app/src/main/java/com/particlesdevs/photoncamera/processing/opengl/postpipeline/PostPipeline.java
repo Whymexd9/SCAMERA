@@ -44,6 +44,10 @@ public class PostPipeline extends GLBasePipeline {
      * histogram (motionv2 percentile scheme); consumed by {@link HeadroomRender}.
      */
     public float linearDisplayGain = 1.0f;
+    /** Dynamic range of the scene in stops (99th over 10th percentile of green), measured by LinearExposure's soft tone metering; 0 = unknown. */
+    public float sceneDynamicRange = 0f;
+    /** Noise sigma of the frame (variance stabilised units) estimated by NiceDenoise; 0 = not measured. */
+    public float niceNoiseSigma = 0f;
     /** Vivo HDR: high percentile of the unscaled HDR input (its own units), 0 when unknown. */
     public float linearHighlight = 0.0f;
     /**
@@ -185,6 +189,8 @@ public class PostPipeline extends GLBasePipeline {
         captureDemosaic = mSettings.ultraHdr;
         mCaptured = false;
         linearDisplayGain = 1.0f;
+        sceneDynamicRange = 0f;
+        niceNoiseSigma = 0f;
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         exposureCurve = null;
@@ -688,7 +694,8 @@ public class PostPipeline extends GLBasePipeline {
             Log.i("NICE_PIPELINE", "legacyPost=disabled except=RawTherapee_sharpen; tone=SCAMERA_fallback TCE=not_connected");
             add(new LmcCurves());
             add(new NiceLocalContrast());
-            add(new RTSharpening());
+            if (PreferenceKeys.isNiceSoftTone() && PreferenceKeys.niceInternalValue("sharp_mode", 1f) > 0f) add(new NiceSharpen());
+            else add(new RTSharpening());
             add(new RotateWatermark(getRotation()));
             return;
         }
