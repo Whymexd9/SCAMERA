@@ -539,10 +539,29 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
         }
     }
     const auto motionFinished=Clock::now();
+    std::vector<float> result;
+    double inferenceMs=0;
+    int finished=0;
     if(!execute) {
         // No neural model on this SoC: portable HDR reconstruction (see vivo-nice-portable.h).
         const auto portableStarted=Clock::now();
         const bool haveMerged=mergeAll();
+        // With aligned extra frames the demosaiced merge of all N frames takes the model's place in the sub-pixel
+        // burst merge below (guide for the kernels, base for the residual): same arithmetic and the same SNR-adaptive
+        // kernels as with the network, highlights are rebuilt from S/ES afterwards. `portable 0` in nice_sr.txt keeps
+        // the plain demosaiced all-N merge.
+        const bool portableMerge=haveMerged&&alignment&&extras>0&&4+extras<=32&&loadSuperResTuning(report).portable!=0;
+        if(portableMerge) {
+            std::vector<float> plain(size_t(b.w)*b.h);
+            mergeRowBands(b.h,[&](int y0,int y1){
+                for(int y=y0;y<y1;++y)for(int x=0;x<b.w;++x)plain[size_t(y)*b.w+x]=canonical[size_t(y)*b.w+x]*(1.f/16383.f);
+            });
+            portableDemosaic(plain,b.w,b.h,[&](int x,int y){return b.color(x,y);},[](int x,int size){return reflectCfa(x,size);},
+                [](int rows,const std::function<void(int,int)>& body){mergeRowBands(rows,body);},result);
+            // The burst merge is the reference: no model to blend with.
+            b.lumaChroma={0.f,0.f,2.f,4.f,1.f};
+            report("SCAM HDR PORTABLE: merge model = demosaiced all-N merge ms="+std::to_string(millis(Clock::now()-portableStarted)));
+        } else {
         const float rS=b.exposure[5],rE=b.exposure[6];
         auto donor=[&](int f,int x,int y)->float{
             DonorPoint origin;
@@ -581,8 +600,9 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
             +" S="+std::to_string(rS)+" ES="+std::to_string(rE)
             +" ms="+std::to_string(millis(Clock::now()-portableStarted))+" total="+std::to_string(millis(Clock::now()-started)));
         return rgb;
+        }
     }
-    double inferenceMs=0;
+    if(execute) {
     std::array<std::vector<uint16_t>,7> luts;
     const auto domains=forwardExposureDomains(b.exposure);
     if(b.cameraNoise && b.iso[b.noiseReferenceSlot]!=b.iso[4])
@@ -620,7 +640,8 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     // while the NPU runs the current one. Same arithmetic as the serial loop.
     std::array<std::array<std::vector<uint16_t>,7>,2> packedRaw;
     for(auto& set:packedRaw)for(int f=0;f<7;++f)set[f].resize(tile*tile*(f>=5?3:1));
-    std::vector<float> result(size_t(b.w)*b.h*3,0),output(tile*tile*3);
+    result.assign(size_t(b.w)*b.h*3,0);
+    std::vector<float> output(tile*tile*3);
     const auto xs=forwardTileAxis(b.w),ys=forwardTileAxis(b.h);
     std::vector<std::pair<size_t,size_t>> order;
     for(size_t iy=0;iy<ys.size();++iy)for(size_t ix=0;ix<xs.size();++ix)order.push_back({iy,ix});
@@ -648,7 +669,6 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                     f>=5?size_t(tile*tile):0,f>=5?size_t(2*tile*tile):0,luts[f].data(),luts[f].size()};
         return packSevenFrames(frames,tile,tile,16383,0,sqrtEV/65535,mask,std::numeric_limits<float>::max());
     };
-    int finished=0;
     // Reference tiles for weight extraction: raw network input (22 channels) and output (3).
     std::ofstream dumpIn,dumpOut;
     if(const char* dumpDir=std::getenv("SCAM_DUMP_FORWARD")) {
@@ -686,6 +706,7 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
                 unsigned idx=unsigned(std::clamp(value*(65535.f/sqrtEV),0.f,65535.f));result[dst*3+c]=inverse[c][idx]*range;}
         }
         report("NICE TILE "+std::to_string(++finished)+"/"+std::to_string(xs.size()*ys.size()));
+    }
     }
     const auto lumaChromaStarted=Clock::now();
     // Luma/Chroma blend partner: the temporal merge of the aligned N frames and L,

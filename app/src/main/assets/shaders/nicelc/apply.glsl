@@ -5,14 +5,16 @@ precision highp sampler2D;
 // noise floor of the band (flat areas keep their noise level), with less gain on strong edges (no
 // halos). The change is added to all three channels (luminance only).
 uniform sampler2D InputBuffer;
+uniform sampler2D Lap0;
 uniform sampler2D Lap1;
 uniform sampler2D Lap2;
 uniform sampler2D Lap3;
+uniform sampler2D En0;
 uniform sampler2D En1;
 uniform sampler2D En2;
 uniform sampler2D En3;
-uniform vec3 gain;     // extra gain per level: (g - 1) * amount
-uniform vec3 floorE;   // noise floor (amplitude) per level
+uniform vec4 gain;     // extra gain per level (finest 1-px level last): (g - 1) * amount
+uniform vec4 floorE;   // noise floor (amplitude) per level
 uniform vec2 core;     // amplitude / floor where the gain starts / is complete
 uniform float bmax;    // band value at which the gain has halved
 out vec4 Output;
@@ -42,6 +44,7 @@ void main() {
     vec3 c = texelFetch(InputBuffer, p, 0).rgb;
     float d = band(Lap1, En1, gain.x, floorE.x, pos, full)
             + band(Lap2, En2, gain.y, floorE.y, pos, full)
-            + band(Lap3, En3, gain.z, floorE.z, pos, full);
+            + band(Lap3, En3, gain.z, floorE.z, pos, full)
+            + band(Lap0, En0, gain.w, floorE.w, pos, full);
     Output = vec4(max(c + vec3(d), vec3(0.0)), 1.0);
 }

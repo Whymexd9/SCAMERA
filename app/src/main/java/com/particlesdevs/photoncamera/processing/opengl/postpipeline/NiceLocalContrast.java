@@ -69,10 +69,11 @@ public final class NiceLocalContrast extends Node {
         glProg.setTexture("InputBuffer", WorkingTexture);
         glProg.drawBlocks(luma);
         GLUtils.Pyramid pyramid = glUtils.createPyramid(5, 2, luma);
-        GLTexture[] energy = new GLTexture[3];
-        float[] floors = new float[3];
-        for (int i = 0; i < 3; i++) {
-            GLTexture lap = pyramid.laplace[i + 1];
+        // levels 1-3 (2-16 px) and, last, the finest 1-px level 0
+        GLTexture[] energy = new GLTexture[4];
+        float[] floors = new float[4];
+        for (int i = 0; i < 4; i++) {
+            GLTexture lap = pyramid.laplace[i < 3 ? i + 1 : 0];
             energy[i] = new GLTexture(lap.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             glProg.useAssetProgram("nicelc/energy", false);
             glProg.setTexture("InputBuffer", lap);
@@ -82,16 +83,21 @@ public final class NiceLocalContrast extends Node {
         float g1 = PreferenceKeys.niceInternalValue("texture_g1", 1.3f);
         float g2 = PreferenceKeys.niceInternalValue("texture_g2", 1.6f);
         float g3 = PreferenceKeys.niceInternalValue("texture_g3", 1.7f);
+        // Finest scale (about 1 px): the merge-only route (8 Gen 3 etc.) is a little softer there than the network's
+        // render, 1.5 matched an LMC/GCam render's signal in the 0.6-1.2 px band at lower noise; the network's own stays at 1.
+        float g0 = PreferenceKeys.niceInternalValue("texture_g0", PreferenceKeys.niceUsesStudent() ? 1.5f : 1.0f);
         glProg.useAssetProgram("nicelc/apply", false);
         glProg.setTexture("InputBuffer", WorkingTexture);
+        glProg.setTexture("Lap0", pyramid.laplace[0]);
         glProg.setTexture("Lap1", pyramid.laplace[1]);
         glProg.setTexture("Lap2", pyramid.laplace[2]);
         glProg.setTexture("Lap3", pyramid.laplace[3]);
+        glProg.setTexture("En0", energy[3]);
         glProg.setTexture("En1", energy[0]);
         glProg.setTexture("En2", energy[1]);
         glProg.setTexture("En3", energy[2]);
-        glProg.setVar("gain", (g1 - 1f) * amount, (g2 - 1f) * amount, (g3 - 1f) * amount);
-        glProg.setVar("floorE", floors[0], floors[1], floors[2]);
+        glProg.setVar("gain", (g1 - 1f) * amount, (g2 - 1f) * amount, (g3 - 1f) * amount, (g0 - 1f) * amount);
+        glProg.setVar("floorE", floors[0], floors[1], floors[2], floors[3]);
         glProg.setVar("core", PreferenceKeys.niceInternalValue("texture_core0", 0.8f), PreferenceKeys.niceInternalValue("texture_core1", 1.8f));
         glProg.setVar("bmax", PreferenceKeys.niceInternalValue("texture_bmax", 0.12f));
         WorkingTexture = pipeline.getMain();
@@ -99,7 +105,7 @@ public final class NiceLocalContrast extends Node {
         glProg.closed = true;
         for (GLTexture e : energy) e.close();
         pyramid.releasePyramid();
-        Log.i("NICE_PIPELINE", "localContrast amount=" + amount + " gains=" + g1 + "," + g2 + "," + g3
-                + " floors=" + floors[0] + "," + floors[1] + "," + floors[2] + " ms=" + (System.currentTimeMillis() - started));
+        Log.i("NICE_PIPELINE", "localContrast amount=" + amount + " gains=" + g1 + "," + g2 + "," + g3 + " fine=" + g0
+                + " floors=" + floors[0] + "," + floors[1] + "," + floors[2] + "," + floors[3] + " ms=" + (System.currentTimeMillis() - started));
     }
 }

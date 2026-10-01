@@ -64,6 +64,7 @@ struct SuperResTuning {
     float widenBelow=2.5f,widenMul=1.6f;
     float subShrink=0.8f;      // kernel scale on the 2x sub-grid
     float legacySigma=0.55f;
+    int portable=1;             // 0: SoCs without the model keep the plain demosaiced all-N merge
 };
 inline SuperResTuning loadSuperResTuning(const std::function<void(const std::string&)>& report) {
     SuperResTuning t;
@@ -73,7 +74,7 @@ inline SuperResTuning loadSuperResTuning(const std::function<void(const std::str
         std::string key;float v;std::string applied;
         while(f>>key>>v){
             float* target=nullptr;
-            if(key=="legacy")t.legacy=int(v);else if(key=="grid")t.grid=int(v);
+            if(key=="legacy")t.legacy=int(v);else if(key=="portable")t.portable=int(v);else if(key=="grid")t.grid=int(v);
             else if(key=="subDetail")target=&t.subDetail;else if(key=="base")target=&t.base;else if(key=="shrunk")target=&t.shrunk;
             else if(key=="stretched")target=&t.stretched;else if(key=="flat")target=&t.flat;else if(key=="strengthScale")target=&t.strengthScale;
             else if(key=="flat0")target=&t.flat0;else if(key=="flat1")target=&t.flat1;else if(key=="texStd")target=&t.texStd;

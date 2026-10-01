@@ -1006,8 +1006,41 @@ public class PreferenceKeys {
                 preferenceKeys.settingsManager.getString("default_scope","pref_quad_frames","4"),4));
     }
 
+    private static long niceDevStamp = -1, niceDevChecked;
+    private static java.util.Map<String, Float> niceDevValues = java.util.Collections.emptyMap();
+    /**
+     * Developer overrides for the NICE internal values: "key value" lines in nice_dev.txt of the app's external files
+     * dir (key without the pref_vivo_nice_ prefix) replace the preference for the next shot. Re-read when the file
+     * changes, at most every 2 s.
+     */
+    private static Float niceDevValue(String key) {
+        long now = System.nanoTime();
+        if (niceDevStamp == -1 || now - niceDevChecked > 2_000_000_000L) {
+            niceDevChecked = now;
+            java.util.Map<String, Float> values = java.util.Collections.emptyMap();
+            long stamp = 0;
+            try {
+                java.io.File dir = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getExternalFilesDir(null);
+                java.io.File file = dir == null ? null : new java.io.File(dir, "nice_dev.txt");
+                if (file != null && file.isFile()) {
+                    stamp = file.lastModified();
+                    if (stamp == niceDevStamp) return niceDevValues.get(key);
+                    values = new java.util.HashMap<>();
+                    for (String line : new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8).split("\r?\n")) {
+                        String[] parts = line.trim().split("\\s+");
+                        if (parts.length == 2) try { values.put(parts[0], Float.parseFloat(parts[1])); } catch (NumberFormatException ignored) { }
+                    }
+                }
+            } catch (java.io.IOException | RuntimeException ignored) { }
+            niceDevStamp = stamp;
+            niceDevValues = values;
+        }
+        return niceDevValues.get(key);
+    }
     public static float niceInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;
+        Float override = niceDevValue(key);
+        if (override != null) return override;
         try {
             return (float)SettingsNumericRules.value(fullKey,
                     preferenceKeys.settingsManager.getString("default_scope",fullKey,String.valueOf(fallback)),fallback);
