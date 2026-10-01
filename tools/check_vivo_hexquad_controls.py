@@ -19,7 +19,7 @@ assert next(e for e in screen.iter() if e.get(a+'key') == 'hexquad_post_denoise'
 burst = (java/'processing/opengl/postpipeline/HexQuadBurst.java').read_text()
 options=(java/'settings/HexQuadOptions.java').read_text()
 assert 'HEADER_BYTES=112' in options and 'putInt(0x32515848).putInt(gpu?4:3)' in options
-assert 'options.header(width,height,iso,red,black,white,response,neutral)' in burst
+assert 'options.header(width,height,iso,red,black,white,response,neutral,frames.size(),quadModel)' in burst
 assert '.putFloat(lumaPercent/100f).putFloat(chromaPercent/100f)' in options
 assert 'p.hexQuadProcessed=true;p.hexQuadPostDenoise=burst.postDenoise' in burst
 pipeline = (java/'processing/opengl/postpipeline/PostPipeline.java').read_text()
