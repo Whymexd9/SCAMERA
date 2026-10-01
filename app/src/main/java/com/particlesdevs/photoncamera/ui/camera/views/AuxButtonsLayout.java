@@ -121,8 +121,13 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         List<String> slots = ModuleRegistry.initialize(side, cameraLensDataList);
         slots.sort(Comparator.comparingDouble(ModuleRegistry::zoom)); // zoom order, like the dial
         String currentSlot=ModuleRegistry.active();
-        if(!slots.contains(currentSlot)||!ModuleRegistry.camera(currentSlot).equals(activeId))
-            for(String slot:slots)if(ModuleRegistry.visible(slot)&&ModuleRegistry.camera(slot).equals(activeId)){ModuleRegistry.select(slot);break;}
+        if(!ModuleRegistry.switching(activeId)&&(!slots.contains(currentSlot)||!ModuleRegistry.camera(currentSlot).equals(activeId))) {
+            // The camera was changed from outside: the module of that camera nearest to the current zoom, not the first one.
+            String best=null;float zoom=com.particlesdevs.photoncamera.control.ZoomController.zoom();
+            for(String slot:slots)if(ModuleRegistry.visible(slot)&&ModuleRegistry.camera(slot).equals(activeId)
+                    &&(best==null||Math.abs(ModuleRegistry.zoom(slot)-zoom)<Math.abs(ModuleRegistry.zoom(best)-zoom)))best=slot;
+            if(best!=null)ModuleRegistry.select(best);
+        }
         List<String> visible = new ArrayList<>(), labels = new ArrayList<>();
         for (String slot : slots) if (ModuleRegistry.visible(slot)) {visible.add(slot);labels.add(ModuleRegistry.label(slot));}
         if (!visible.equals(displayedSlots) || !labels.equals(displayedLabels)) {

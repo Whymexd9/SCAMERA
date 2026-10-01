@@ -62,6 +62,11 @@ public final class ModuleRegistry {
         java.util.regex.Matcher m=java.util.regex.Pattern.compile("forceSensorMode\"[^}]*\"value\":\"(\\d+)\"").matcher(prefs().getString("pref_sensorconfig_"+slot+"_tunablekeys",""));
         return m.find()&&!"0".equals(m.group(1));
     }
+    /** The module's forced vendor sensor mode (vivo.control.forceSensorMode): 7 = 4x ISZ Tetra, 5 = 2x ISZ Quad, 0 = none. */
+    public static int sensorMode(String slot){
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("forceSensorMode\"[^}]*\"value\":\"(\\d+)\"").matcher(prefs().getString("pref_sensorconfig_"+slot+"_tunablekeys",""));
+        try{return m.find()?Integer.parseInt(m.group(1)):0;}catch(NumberFormatException e){return 0;}
+    }
     /** Zoom ratio at which the module's frame is uncropped: its own ratio for sensor-crop modules, else the widest module on the same Camera ID. */
     public static float nativeRatio(String slot){
         if(sensorCrop(slot))return zoom(slot);
@@ -69,5 +74,21 @@ public final class ModuleRegistry {
         for(String other:slots())if(visible(other)&&!sensorCrop(other)&&camera(other).equals(id))min=Math.min(min,zoom(other));
         return min;
     }
-    public static void select(String slot){PreferenceKeys.profiles().activate(slot);prefs().edit().putString("module_active",slot).apply();}
+    private static volatile String pendingSlot="";
+    private static volatile long pendingAt;
+    public static void select(String slot){
+        PreferenceKeys.profiles().activate(slot);prefs().edit().putString("module_active",slot).apply();
+        pendingSlot=slot;pendingAt=android.os.SystemClock.elapsedRealtime();
+    }
+    /**
+     * True while the module just chosen waits for its Camera ID to open. The session restart still reports the
+     * previous camera first; reconciling the module with that stale ID undid the choice (and the next report
+     * then took the first module of the new camera, so 6.7x and 10x on the 2.4x lens came out as 2.4x).
+     */
+    public static boolean switching(String openedCameraId){
+        String slot=pendingSlot;
+        if(slot.isEmpty())return false;
+        if(android.os.SystemClock.elapsedRealtime()-pendingAt>5000||camera(slot).equals(openedCameraId)){pendingSlot="";return false;}
+        return true;
+    }
 }
