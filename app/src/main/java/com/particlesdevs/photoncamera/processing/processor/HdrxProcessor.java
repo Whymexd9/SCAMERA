@@ -387,6 +387,18 @@ public class HdrxProcessor extends ProcessorBase {
         ISO = isoFrames > 0 ? ISO / isoFrames : ISO / images.size();
 
         processingParameters.FillDynamicParameters(captureResult, captureRequest,ISO);
+        // The last burst callback belongs to the ultra-short highlight frame: the exposure of the photo (EXIF, DNG) and the key of the
+        // noise store are those of the normal frames the picture is built from.
+        for (ImageFrame f : images) {
+            if (f.pair != null && !f.pair.isHighlightFrame && !f.pair.isLongFrame && f.measuredExposure > 0) {
+                double normalSeconds = com.particlesdevs.photoncamera.processing.parameters.ExposureIndex.time2sec(f.measuredExposure);
+                if (Math.abs(normalSeconds - processingParameters.exposureTime) > 1e-9)
+                    Log.i(TAG, "Exposure time of the normal frames " + normalSeconds + " s instead of the last callback's "
+                            + processingParameters.exposureTime + " s");
+                processingParameters.exposureTime = normalSeconds;
+                break;
+            }
+        }
         refineBlackFromDarkestFrame(processingParameters, images);
         processingParameters.cameraRotation = cameraRotation;
         processingStage = "frame selection";
@@ -498,6 +510,14 @@ public class HdrxProcessor extends ProcessorBase {
                 Log.i("NICE_HDR", "Reference calibration timestamp=" + niceReference.timestamp
                         + " ISO=" + processingParameters.iso
                         + " exposureSeconds=" + processingParameters.exposureTime);
+                if (PreferenceKeys.isNiceMosaic()) {
+                    // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
+                    processingStage = "SCAM HDR: ремозаик мозаики";
+                    images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceMosaic.prepare(
+                            PhotonCamera.getAppContext(), images, processingParameters));
+                    ParseExif.syncWithParameters(exifData, processingParameters);
+                    processingStage = "SCAM HDR neural burst";
+                }
                 niceOwnedOutput=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
                         PhotonCamera.getAppContext(),images,processingParameters,
                         saveRAW>=1 && (alignAlgorithm!=2 || multiCapture));
@@ -510,14 +530,6 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
         ByteBuffer output = hexOutput;
-                if (PreferenceKeys.isNiceMosaic()) {
-                    // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
-                    processingStage = "SCAM HDR: ремозаик мозаики";
-                    images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceMosaic.prepare(
-                            PhotonCamera.getAppContext(), images, processingParameters));
-                    ParseExif.syncWithParameters(exifData, processingParameters);
-                    processingStage = "SCAM HDR neural burst";
-                }
         Log.d(TAG, "Packing");
         //WrapperAl.packImages();
         Log.d(TAG, "Packed");

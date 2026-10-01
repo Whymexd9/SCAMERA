@@ -41,7 +41,7 @@ public class DynamicNoiseStore {
      * scale (calibrated blend, luma operator, minBr fit fix): samples
      * persisted by an older revision no longer match and are discarded on
      * load. */
-    private static final int CURRENT_VERSION = 5;
+    private static final int CURRENT_VERSION = 6;   // 6: samples of collapsed fits (S at the 1e-10 floor) are discarded
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     // Single low-priority daemon thread for async disk persistence.
     private static final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {

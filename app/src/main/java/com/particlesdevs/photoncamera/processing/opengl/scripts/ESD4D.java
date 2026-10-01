@@ -867,6 +867,8 @@ public class ESD4D extends GLOneScript {
             // and saturation-capped bins without a per-threshold
             // calibration (see tools/noise-blend-calibration pct/gate runs).
             double sumW = 0, sumWb = 0, sumWv = 0, sumWb2 = 0, sumWbv = 0;
+            // The sums the final fit was made from (pass 2 when it ran): the collapse guard below refits from them.
+            double fW = 0, fWb = 0, fWv = 0, fWb2 = 0, fWbv = 0;
             int points = 0;
             int varCnt = 0;
             for (int i = 0; i < noiseScanBins; i++) {
@@ -907,6 +909,7 @@ public class ESD4D extends GLOneScript {
                     double passO = (sumWv - passS * sumWb) / sumW;
                     double fitS = passS;
                     double fitO = passO;
+                    fW = sumW; fWb = sumWb; fWv = sumWv; fWb2 = sumWb2; fWbv = sumWbv;
                     if (noiseFitGateMpy > 0.0f) {
                         // Pass 2: keep only bins whose implied variance is
                         // within the gate multiple of the pass-1 model.
@@ -941,8 +944,22 @@ public class ESD4D extends GLOneScript {
                         if (gPoints >= 1 && gDenom > 1e-20) {
                             fitS = (gW * gWbv - gWb * gWv) / gDenom;
                             fitO = (gWv - fitS * gWb) / gW;
+                            fW = gW; fWb = gWb; fWv = gWv; fWb2 = gWb2; fWbv = gWbv;
                             Log.d("DynamicNoise", "Gate pass: " + gPoints + " bins kept of " + points);
                         }
+                    }
+                    // High-contrast daylight (texture in the dark half, smooth sky in the bright half) collapses the fit: the slope
+                    // goes to zero and the offset absorbs the whole variance, a flat floor several times the real shot noise of the
+                    // shadows. ES3D then smears them (kernel ~5.6 px) and the store keeps the collapse as its lowest sample for good.
+                    // Fit only the slope over the calibrated (Camera2) read noise instead: right shape, measured scale.
+                    if (noiseS > 0 && fitS < 0.2 * noiseS && fWb2 > 1e-20) {
+                        double o0 = Math.max((double) noiseO, 0.0);
+                        double s1 = (fWbv - o0 * fWb) / fWb2;
+                        s1 = Math.min(Math.max(s1, 0.25 * noiseS), 4.0 * noiseS);
+                        Log.w("DynamicNoise", "Noise fit collapsed (S=" + fitS + " O=" + fitO + "), slope refit over the calibrated read noise: S="
+                                + s1 + " O=" + o0 + " (calibrated S=" + noiseS + ")");
+                        fitS = s1;
+                        fitO = o0;
                     }
                     fitS = Math.max(fitS, 1e-10);
                     Log.d("DynamicNoise",  "Fit S:" + fitS + " O:" + fitO);
