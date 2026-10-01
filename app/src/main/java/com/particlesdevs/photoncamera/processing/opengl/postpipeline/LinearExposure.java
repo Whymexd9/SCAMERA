@@ -113,6 +113,12 @@ public class LinearExposure extends Node {
             float keyMax = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_key_max", 0.30f);
             float p50g = Math.max(st[1], 1.0e-5f);
             float target = Math.max(keyMin, Math.min(keyMax, key * (float) Math.pow(p50g / 0.1f, keyExp)));
+            // Night: a scene whose median sits far below daylight stays a night scene (the vivo stock keeps it nearly black, LMC dim).
+            // The key floor above would lift a ship deck at 1/60 s ISO 2560 by x11 (median 70/255, sea and sky amplified to a noisy grey,
+            // 8 % of the picture clipped); below nightP the key falls on with the scene's own median.
+            float nightP = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_night_p", 0.015f);
+            float nightExp = com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("tone_night_exp", 0.6f);
+            if (nightP > 0f && p50g < nightP) target *= (float) Math.pow(p50g / nightP, nightExp);
             gain = Math.max(gainMin, Math.min(gainMax, Math.max(1f, target / p50g)));
             pipeline.sceneDynamicRange = (float) (Math.log(Math.max(st[3], 1.0e-5f) / Math.max(st[0], 1.0e-5f)) / Math.log(2.0));
             Log.d(Name, "soft tone: green p10:" + st[0] + " p50:" + st[1] + " p90:" + st[2] + " p99:" + st[3]
