@@ -629,6 +629,7 @@ public class Parameters {
         File customCCT = new File(Environment.getExternalStorageDirectory() + "//DCIM//PhotonCamera//", "customCCT.txt");
         //ColorSpaceTransform CST = PhotonCamera.getCaptureController().mColorSpaceTransform;//= result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         ColorSpaceTransform CST = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        Log.d(TAG, "result colorCorrection transform=" + CST + " gains=" + result.get(CaptureResult.COLOR_CORRECTION_GAINS));
         assert calibration2 != null;
         assert forwardt1 != null;
         assert forwardt2 != null;
@@ -657,6 +658,13 @@ public class Parameters {
         if (oppoTuned) wrongCalibration = false;
         if (PhotonCamera.getSpecific().specificSetting.isRawColorCorrection)
             wrongCalibration = false;
+        // vivo X200 Ultra: the DNG matrices in the characteristics are generic (the interpolation always lands near D65), but the
+        // HAL reports the colour transform its ISP tuning uses at the scene's colour temperature, together with the
+        // matching white balance gains. SCAM HDR renders with that matrix (the same idea as the OPPO tuned CCM per CCT).
+        if (!oppoTuned && ispCcmUsable(CST)) {
+            wrongCalibration = true;
+            Log.d(TAG, "Using the ISP colour transform of the capture result (vivo)");
+        }
         if (wrongCalibration && !customCCT.exists()) {
             sensorToProPhoto[0] = 1.0f / whitePoint[0];
             sensorToProPhoto[1] = 0.0f;
@@ -716,6 +724,21 @@ public class Parameters {
                 tonemapStrength,
                 0f
         };
+    }
+
+    /** The reported transform of a vivo SCAM HDR capture: a full matrix whose rows sum to about 1 (white stays white). */
+    private static boolean ispCcmUsable(ColorSpaceTransform cst) {
+        if (cst == null || !PreferenceKeys.isVivoNiceEnabled() || PreferenceKeys.niceInternalValue("isp_ccm", 1f) <= 0f) return false;
+        Rational[] r = new Rational[9];
+        cst.copyElements(r, 0);
+        int nonZero = 0;
+        for (int i = 0; i < 9; i++) if (r[i].floatValue() != 0f) nonZero++;
+        if (nonZero < 7) return false;
+        for (int row = 0; row < 3; row++) {
+            float sum = r[row * 3].floatValue() + r[row * 3 + 1].floatValue() + r[row * 3 + 2].floatValue();
+            if (sum < 0.85f || sum > 1.15f || r[row * 3 + row].floatValue() < 0.8f) return false;
+        }
+        return true;
     }
 
     private void normalize(float[] in) {

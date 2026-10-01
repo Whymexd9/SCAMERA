@@ -48,6 +48,9 @@ uniform sampler2D GcamBase;   // large-scale log2 luminance (agxbase.glsl)
 uniform vec4 gcamKnee;        // knee stops, knee start (scene level, display-linear), unused, unused
 uniform vec4 gcamCurve;       // toe constant, shoulder start, white point, unused
 uniform vec4 gcamColor;       // saturation, near-white desaturation amount, where it starts, unused
+uniform float hueGain[12];    // chroma gain per hue (OKLab hue, nodes every 30 degrees from +a), interpolated linearly
+uniform float hueShift[12];   // hue rotation per hue node in radians
+uniform vec3 hueTint;         // neutral shift in OKLab a, b and 1 when the look is active
 
 float gcamShoulder(float v) {
     float s=gcamCurve.y, W=gcamCurve.z;
@@ -233,6 +236,39 @@ vec3 mapExtendedLinearHeadroom(vec3 rgb, float whitePoint) {
 /* sRGB cannot encode a channel above 1.0. If one saturated channel still
  * exceeds the display gamut, shrink chroma uniformly around white instead of
  * independently clipping R/G/B. */
+#if GCAM == 1
+// Colour look of the SCAM HDR render: chroma gain and hue rotation by hue in OKLab (a render of the same scene by the
+// reference cameras keeps blues, greens and cyans clearly more saturated than the plain sensor matrix gives them).
+vec3 colourLook(vec3 rgb) {
+    float l_=pow(max(dot(vec3(0.4122214708,0.5363325363,0.0514459929),rgb),0.0),1.0/3.0);
+    float m_=pow(max(dot(vec3(0.2119034982,0.6806995451,0.1073969566),rgb),0.0),1.0/3.0);
+    float s_=pow(max(dot(vec3(0.0883024619,0.2817188376,0.6299787005),rgb),0.0),1.0/3.0);
+    float L=0.2104542553*l_+0.7936177850*m_-0.0040720468*s_;
+    float a=1.9779984951*l_-2.4285922050*m_+0.4505937099*s_;
+    float b=0.0259040371*l_+0.7827717662*m_-0.8086757660*s_;
+    float C=length(vec2(a,b));
+    float h=atan(b,a);
+    float t=(h<0.0 ? h+6.28318531 : h)*(12.0/6.28318531);
+    int i0=int(floor(t))%12;
+    int i1=(i0+1)%12;
+    float f=t-floor(t);
+    float g=mix(hueGain[i0],hueGain[i1],f);
+    float r=mix(hueShift[i0],hueShift[i1],f);
+    float h2=h+r;
+    float C2=C*g;
+    a=C2*cos(h2)+hueTint.x*exp(-C/0.03);
+    b=C2*sin(h2)+hueTint.y*exp(-C/0.03);
+    float lq=L+0.3963377774*a+0.2158037573*b;
+    float mq=L-0.1055613458*a-0.0638541728*b;
+    float sq=L-0.0894841775*a-1.2914855480*b;
+    lq=lq*lq*lq; mq=mq*mq*mq; sq=sq*sq*sq;
+    return vec3(4.0767416621*lq-3.3077115913*mq+0.2309699292*sq,
+               -1.2684380046*lq+2.6097574011*mq-0.3413193965*sq,
+               -0.0041960863*lq-0.7034186147*mq+1.7076147010*sq);
+}
+
+#endif
+
 vec3 fitDisplayGamut(vec3 rgb) {
     rgb=max(rgb,vec3(0.0));
     float peak=max3(rgb);
@@ -365,6 +401,7 @@ void main() {
         linearSrgb=lv>1.0e-7 ? linearSrgb*(f/lv) : vec3(0.0);
         float lo=luminance(linearSrgb);
         linearSrgb=vec3(lo)+gcamColor.x*(linearSrgb-vec3(lo));
+        if (hueTint.z>0.5) linearSrgb=colourLook(max(linearSrgb,vec3(0.0)));
         linearSrgb=mix(linearSrgb,vec3(lo),smoothstep(gcamColor.z,0.98,lo)*gcamColor.y);
         linearSrgb=fitDisplayGamut(linearSrgb);
     }

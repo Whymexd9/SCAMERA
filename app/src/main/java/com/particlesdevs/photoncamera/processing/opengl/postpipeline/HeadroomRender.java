@@ -96,6 +96,12 @@ public class HeadroomRender extends Node {
         return base;
     }
 
+    // Colour look (render.glsl colourLook): chroma gain and hue shift (degrees) per OKLab hue node (every 30 degrees from +a),
+    // neutral tint in OKLab a, b. Fitted to the mean of the reference cameras' renders of the same scenes.
+    private static final float[] LOOK_GAIN = {1.12f, 1.10f, 1.08f, 1.0f, 1.02f, 1.06f, 1.10f, 1.135f, 1.17f, 1.16f, 1.155f, 1.135f};
+    private static final float[] LOOK_SHIFT = {2f, 3f, 4f, 3.5f, 2f, 2f, 2f, 2f, 1.5f, 0f, 0f, 1f};
+    private static final float[] LOOK_TINT = {-0.0013f, 0f};
+
     /**
      * Linear sRGB colour of a Planckian light at the given temperature (green = 1), to the power of
      * the retained share, with the luminance kept: a third of a tungsten room's warmth stays, as in
@@ -176,6 +182,15 @@ public class HeadroomRender extends Node {
             glProg.setVar("gcamKnee", PreferenceKeys.niceInternalValue("tone_knee", 3.0f), PreferenceKeys.niceInternalValue("tone_knee_start", 0.8f), 0f, 0f);
             glProg.setVar("gcamCurve", PreferenceKeys.niceInternalValue("tone_toe", 0.035f), PreferenceKeys.niceInternalValue("tone_shoulder", 0.22f),
                     PreferenceKeys.niceInternalValue("tone_white", 1.4f), 0f);
+            float[] hueGain = new float[12], hueShift = new float[12];
+            for (int i = 0; i < 12; i++) {
+                hueGain[i] = PreferenceKeys.niceInternalValue("look_g" + i, LOOK_GAIN[i]);
+                hueShift[i] = (float) Math.toRadians(PreferenceKeys.niceInternalValue("look_h" + i, LOOK_SHIFT[i]));
+            }
+            glProg.setVarFloats("hueGain", hueGain);
+            glProg.setVarFloats("hueShift", hueShift);
+            glProg.setVar("hueTint", PreferenceKeys.niceInternalValue("look_da", LOOK_TINT[0]), PreferenceKeys.niceInternalValue("look_db", LOOK_TINT[1]),
+                    PreferenceKeys.niceInternalValue("look", 1f) > 0f ? 1f : 0f);
             glProg.setVar("gcamColor", PreferenceKeys.niceInternalValue("tone_sat", 1.05f), PreferenceKeys.niceInternalValue("tone_desat", 0.5f),
                     PreferenceKeys.niceInternalValue("tone_desat_start", 0.8f), PreferenceKeys.niceInternalValue("tone_shading", 0.6f));
         } else if (agx) {

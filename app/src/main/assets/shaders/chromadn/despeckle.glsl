@@ -3,7 +3,9 @@ precision highp sampler2D;
 // Isolated dark or bright dots (defective or half-dead quad groups that stay put through the
 // whole burst, so the merge keeps them): a pixel whose luminance is far from the ring of
 // pixels four away, while that ring is itself homogeneous, is scaled back to the ring level.
-// Edges, text and texture fail the homogeneity test and are left alone.
+// Edges and texture fail the homogeneity test; text on a flat ground (the strokes of small spaced capitals, the dots
+// of an ellipsis) passes it, so a candidate must also be alone: at most two of its eight direct neighbours may be
+// off the ring level as well (a defect pixel or a pair), while a stroke two or three pixels wide has more.
 uniform sampler2D InputBuffer;
 uniform float sigma;    // noise sigma of u = sqrt(Y + offsetC), 0 disables the noise-aware test
 uniform float offsetC;
@@ -31,8 +33,16 @@ void main() {
     // The ring must be flat to within about 20 %: a thin real shadow or line has its own ring
     // samples along the line, which fail this, while a defect leaves the ring untouched.
     bool homog = mean > 1.0e-4 && hi < 1.25 * mean && lo > 0.8 * mean;
-    bool speck = y < 0.7 * mean || y > 1.45 * mean;
-    if (homog && speck) c *= clamp(mean / max(y, 1.0e-6), 0.3, 3.0);
+    bool darkDot = y < 0.7 * mean, brightDot = y > 1.45 * mean;
+    int offRing = 0;
+    if (homog && (darkDot || brightDot)) {
+        for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+            if (i == 0 && j == 0) continue;
+            float v = luma(max(texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), last), 0).rgb, vec3(0.0)));
+            if (darkDot ? v < 0.85 * mean : v > 1.18 * mean) offRing++;
+        }
+    }
+    if (homog && (darkDot || brightDot) && offRing <= 2) c *= clamp(mean / max(y, 1.0e-6), 0.3, 3.0);
     else if (sigma > 0.0) {
         // Noisy flat areas (dark sky): the ring test above cannot tell a defect from noise
         // there. In u the noise is uniform, so a dark pixel far below the mean of the ring
