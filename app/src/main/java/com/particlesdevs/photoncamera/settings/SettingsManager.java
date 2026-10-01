@@ -99,6 +99,7 @@ public class SettingsManager {
         mPackageName = mContext.getPackageName();
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
         SettingsMigration.migrateMultiFrame(mDefaultPreferences);
+        DeviceDefaults.applyOnce(mContext, mDefaultPreferences);
     }
 
     public Context getContext() {
