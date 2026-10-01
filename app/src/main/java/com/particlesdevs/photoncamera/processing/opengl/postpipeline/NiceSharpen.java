@@ -34,6 +34,7 @@ public final class NiceSharpen extends Node {
             glProg.setVar("radius", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_radius", 0.8f)));
             glProg.setVar("overshoot", PreferenceKeys.niceInternalValue("sharp_overshoot", 0.015f));
             glProg.setVar("chromaAA", PreferenceKeys.niceInternalValue("sharp_chroma", 0.6f), PreferenceKeys.niceInternalValue("sharp_chroma_tol", 0.04f));
+            glProg.setVar("coring", PreferenceKeys.niceInternalValue("sharp_core0", 0.006f), PreferenceKeys.niceInternalValue("sharp_core1", 0.02f));
             glProg.drawBlocks(sharpened);
             glProg.useAssetProgram("nicesharp/sharp2", false);
             glProg.setTexture("InputBuffer", sharpened);

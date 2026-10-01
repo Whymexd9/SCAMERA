@@ -9,6 +9,7 @@ uniform float amount;       // unsharp mask gain on the luminance
 uniform float radius;       // unsharp mask Gaussian sigma in pixels
 uniform float overshoot;    // allowed excursion beyond the local min/max (display units)
 uniform vec2 chromaAA;      // share of the chroma anti-aliasing, luminance tolerance
+uniform vec2 coring;        // detail amplitude (display units) below which the mask does not amplify / above which it is full
 out vec4 Output;
 const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
 float lum(ivec2 p, ivec2 hi) { return dot(texelFetch(InputBuffer, clamp(p, ivec2(0), hi), 0).rgb, LW); }
@@ -44,7 +45,12 @@ void main() {
     blur /= bw;
     float lo = 1.0, hh = 0.0;
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { float v = Y[(j + 2) * 5 + i + 2]; lo = min(lo, v); hh = max(hh, v); }
-    float y1 = clamp(y0 + amount * (y0 - blur), lo - overshoot, hh + overshoot);
+    // Weak fine texture (paint weave, fabric, a noise remainder) would only turn into a regular lattice, so the gain
+    // fades in with the detail amplitude (measured on the 3x3 neighbourhood to keep real edges at full gain).
+    float dm = 0.0;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) dm = max(dm, abs(Y[(j + 2) * 5 + i + 2] - blur));
+    float g = amount * smoothstep(coring.x, coring.y, dm);
+    float y1 = clamp(y0 + g * (y0 - blur), lo - overshoot, hh + overshoot);
     c *= (y0 > 1.0e-4 ? max(y1, 0.0) / y0 : 1.0);
     Output = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
