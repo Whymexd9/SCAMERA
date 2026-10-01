@@ -34,6 +34,7 @@ uniform float highlightNeutralStart; // Shoulder position where highlights start
 uniform float displayNeutralStart; // Display-linear level where near-white starts losing tint (1 = off)
 uniform ivec4 activeSize;
 uniform vec3 castTint; // share of the scene light's colour kept in the picture (1,1,1 = fully white balanced)
+uniform vec4 castRange; // the cast fades out below these luminances (x..y: the dark parts of a night scene are lit by the sky, not by the lamps) and, above the x..y peak channel level (z..w), darkens instead of pushing a channel past white (a lamp-lit white wall stays warm as in the stock render instead of clipping to white)
 
 #define NEUTRALPOINT 0.0,0.0,0.0
 #define FUSION 0
@@ -385,7 +386,12 @@ void main() {
     // Bounded shadow gain; black remains black and the shoulder is unaffected.
     wb*=1.0+shadowLift*(1.0-smoothstep(0.0,0.35,y));
     vec3 linearSrgb=intermediateToSRGB*sensorToIntermediate*wb;
-    linearSrgb*=castTint;
+    {
+        float castY=max(luminance(linearSrgb),0.0);
+        vec3 castMax=castTint/max(max3(castTint),1.0e-3);
+        vec3 castLocal=mix(castTint,castMax,smoothstep(castRange.z,castRange.w,max3(linearSrgb)));
+        linearSrgb*=mix(vec3(1.0),castLocal,smoothstep(castRange.x,castRange.y,castY));
+    }
     #if GCAM == 1
     {
         vec2 uv=(vec2(xy)+0.5)/vec2(textureSize(InputBuffer,0));

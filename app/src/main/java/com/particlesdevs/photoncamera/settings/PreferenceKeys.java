@@ -1005,12 +1005,12 @@ public class PreferenceKeys {
     }
     /**
      * Share of the scene illuminant's colour kept in SCAM HDR (0..1). -1 = auto: 30 % on the 8 Gen 3
-     * (matches GCam/stock there); 0 (fully neutral) where the original
-     * network runs: GCam removes more of a warm lamp's cast than the camera's own white balance.
+     * (matches GCam/stock there); 35 % where the original network runs (vivo, the colour temperature
+     * from the shot's white balance): a lamp-lit scene stays a little warmer than the stock render.
      */
     public static float getNiceWarmRetention() {
         float v = niceInternalValue("warm_retention", -1f);
-        if (v < 0f) v = niceUsesStudent() ? 30f : 0f;
+        if (v < 0f) v = niceUsesStudent() ? 30f : 35f;
         return Math.max(-0.6f, Math.min(1f, v / 100f));
     }
     /**

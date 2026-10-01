@@ -101,6 +101,14 @@ public class HeadroomRender extends Node {
     private static final float[] LOOK_GAIN = {1.12f, 1.10f, 1.08f, 1.0f, 1.02f, 1.06f, 1.10f, 1.135f, 1.17f, 1.16f, 1.155f, 1.135f};
     private static final float[] LOOK_SHIFT = {2f, 3f, 4f, 3.5f, 2f, 2f, 2f, 2f, 1.5f, 0f, 0f, 1f};
     private static final float[] LOOK_TINT = {-0.0013f, 0f};
+    // Warm light (lamps at night, below ~4500 K): the warm hues turn towards orange by this share of look_warm_shift
+    // degrees per node (a stock render keeps a lamp-lit deck orange where the daylight look above makes it yellow).
+    private static final float[] WARM_SHIFT = {0.3f, 0.7f, 1f, 0.8f, 0.3f, 0f, 0f, 0f, 0f, 0f, 0f, 0.1f};
+    /** 1 for a warm scene light (at or below warmLo K), 0 for daylight (warmHi K and above). */
+    static float warmLight(float cct, float warmLo, float warmHi) {
+        if (!(warmHi > warmLo)) return cct <= warmLo ? 1f : 0f;
+        return Math.max(0f, Math.min(1f, (warmHi - cct) / (warmHi - warmLo)));
+    }
 
     /**
      * Linear sRGB colour of a Planckian light at the given temperature (green = 1), to the power of
@@ -183,10 +191,15 @@ public class HeadroomRender extends Node {
             glProg.setVar("gcamCurve", PreferenceKeys.niceInternalValue("tone_toe", 0.035f), PreferenceKeys.niceInternalValue("tone_shoulder", 0.22f),
                     PreferenceKeys.niceInternalValue("tone_white", 1.4f), 0f);
             float[] hueGain = new float[12], hueShift = new float[12];
+            float warm = niceTone ? warmLight(basePipeline.mParameters.sceneCct, PreferenceKeys.niceInternalValue("look_warm_lo", 3200f),
+                    PreferenceKeys.niceInternalValue("look_warm_hi", 4800f)) : 0f;
+            float warmShift = warm * PreferenceKeys.niceInternalValue("look_warm_shift", -10f);
             for (int i = 0; i < 12; i++) {
                 hueGain[i] = PreferenceKeys.niceInternalValue("look_g" + i, LOOK_GAIN[i]);
-                hueShift[i] = (float) Math.toRadians(PreferenceKeys.niceInternalValue("look_h" + i, LOOK_SHIFT[i]));
+                hueShift[i] = (float) Math.toRadians(PreferenceKeys.niceInternalValue("look_h" + i, LOOK_SHIFT[i])
+                        + warmShift * PreferenceKeys.niceInternalValue("look_wh" + i, WARM_SHIFT[i]));
             }
+            if (warm > 0f) Log.d(Name, "warm light: " + basePipeline.mParameters.sceneCct + " K weight " + warm + " hue shift " + warmShift + " deg");
             glProg.setVarFloats("hueGain", hueGain);
             glProg.setVarFloats("hueShift", hueShift);
             glProg.setVar("hueTint", PreferenceKeys.niceInternalValue("look_da", LOOK_TINT[0]), PreferenceKeys.niceInternalValue("look_db", LOOK_TINT[1]),
@@ -206,8 +219,12 @@ public class HeadroomRender extends Node {
             glProg.setVar("agxPowers", a.toe, a.shoulder, a.ts, a.ss);
             glProg.setVar("agxLook", a.lookSlope, a.lookOffset, a.lookPower, a.saturation);
         }
-        glProg.setVar("castTint", niceTone ? warmTint(basePipeline.mParameters.sceneCct,
-                PreferenceKeys.getNiceWarmRetention()) : new float[]{1f, 1f, 1f});
+        float[] castTint = niceTone ? warmTint(basePipeline.mParameters.sceneCct, PreferenceKeys.getNiceWarmRetention()) : new float[]{1f, 1f, 1f};
+        if (niceTone) Log.d(Name, "scene light " + basePipeline.mParameters.sceneCct + " K, kept " + PreferenceKeys.getNiceWarmRetention()
+                + " -> cast tint " + java.util.Arrays.toString(castTint));
+        glProg.setVar("castTint", castTint);
+        glProg.setVar("castRange", PreferenceKeys.niceInternalValue("warm_shadow_lo", 0.015f), PreferenceKeys.niceInternalValue("warm_shadow_hi", 0.10f),
+                PreferenceKeys.niceInternalValue("warm_peak_lo", 0.35f), PreferenceKeys.niceInternalValue("warm_peak_hi", 0.75f));
         glProg.setVar("toneAmount", toneAmount);
         glProg.setVar("localContrast", localContrast);
         glProg.setVar("shadowLift", shadowLift);

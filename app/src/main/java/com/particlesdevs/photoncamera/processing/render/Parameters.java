@@ -719,6 +719,16 @@ public class Parameters {
             CCT = new ColorCorrectionTransform();
             CCT.matrix = proPhotoToSRGB;
         }
+        // vivo: the DNG estimate above lands on a reference illuminant for every scene; the white balance of the shot
+        // against the camera's daylight white gives the real colour temperature (the warm cast kept in the render,
+        // the warm-light hue look).
+        if (!oppoTuned && dcpXyz == null && !customCCT.exists() && wrongCalibration) {
+            float wbCct = com.particlesdevs.photoncamera.processing.color.SceneIlluminant.cct(cameraID, whitePoint, CCT.matrix);
+            if (wbCct > 0f) {
+                Log.d(TAG, "Scene light from the white balance: " + wbCct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
+                sceneCct = wbCct;
+            }
+        }
         customTonemap = new float[]{
                 -2f + 2f * tonemapStrength,
                 3f - 3f * tonemapStrength,
@@ -779,6 +789,7 @@ public class Parameters {
         params.usedDynamic = usedDynamic;
         params.blackLevel = blackLevel.clone();
         params.whitePoint = whitePoint.clone();
+        params.sceneCct = sceneCct;
         params.whiteLevel = whiteLevel;
         params.realWL = realWL;
         params.hasGainMap = hasGainMap;
