@@ -37,19 +37,24 @@ int main(int argc,char** argv) {
                 std::string target;
                 if(marker && std::getline(marker,target) && !target.empty())setenv("SCAM_DUMP_FORWARD",target.c_str(),1);
             }
-            const auto mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
+            // NCH v10 = the LMC hybrid transport (per-frame roles and noise); anything else is the NICE 7-slot burst.
+            vivo_nice::MappedHybridBurst hybridBurst(argv[3]);
+            std::unique_ptr<vivo_nice::MappedNiceBurst> mapped;
+            if(!hybridBurst.hybrid)mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
             // Debug: keep the burst (touch <external files>/nice_keep) so the merge can be replayed
             // offline with `--nice-capture <job dir> <external files>/nice_burst.bin <out>`.
             if(std::string(argv[3])!="/sdcard/Android/data/org.codeaurora.snapcam/files/nice_burst.bin"
                     &&access("/sdcard/Android/data/org.codeaurora.snapcam/files/nice_keep",F_OK)==0){
                 std::ofstream dst("/sdcard/Android/data/org.codeaurora.snapcam/files/nice_burst.bin",std::ios::binary|std::ios::trunc);
-                dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
+                if(mapped)dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
+                else dst.write(static_cast<const char*>(hybridBurst.address),std::streamsize(hybridBurst.length));
             }
-            const auto& input=mapped->burst;
             const char* outputPath=argv[4];
             auto report=[](const std::string& line){vivo_nn::log(line);};
             report("NICE CAPTURE: original forward weights and stock CPU motion; supplied per-frame calibration");
-            report("NICE INPUT: mapped capture file");
+            report(hybridBurst.hybrid?"NICE INPUT: hybrid v10 burst frames="+std::to_string(hybridBurst.input.frames.size()):"NICE INPUT: mapped capture file");
+            if(mapped){
+            const auto& input=mapped->burst;
             const auto& scene=input.scene;
             report("NICE SCENE: timestamp="+std::to_string(scene.timestamp)
                 +" lux="+(scene.hasLux()?std::to_string(scene.lux):"unavailable")
@@ -65,6 +70,7 @@ int main(int argc,char** argv) {
                         +" shortGain="+std::to_string(f.shortGain)+" digitalGain="+std::to_string(f.digitalGain)
                         +" rawHdrDrc="+(ae.hasHdrDrc()?std::to_string(ae.drcGain(true)):"unavailable"));
                 }
+            }
             }
             // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
             // fall back to SCAMERA's own tile alignment instead of failing.
@@ -83,21 +89,22 @@ int main(int argc,char** argv) {
             std::vector<float> result;
             // LMC hybrid merge (GCam 6.1 Sabre kernel + LMC 9.6 front end, Bento, Shasta; any GPU, no model):
             // requested by the app with the job marker, or SCAM_HYBRID=1 for an offline replay.
-            const bool hybrid=access((std::string(argv[2])+"/hybrid-merge").c_str(),F_OK)==0||std::getenv("SCAM_HYBRID");
+            bool hybrid=hybridBurst.hybrid||access((std::string(argv[2])+"/hybrid-merge").c_str(),F_OK)==0||std::getenv("SCAM_HYBRID");
+            std::unique_ptr<vivo_nice::Graph> graph;
+            if(!hybrid) {
+                // The forward network ships as Hexagon v79 context binaries (SM8750 only); without it the
+                // burst is merged by the LMC hybrid (vivo-nice-hybrid.h).
+                try{graph=std::make_unique<vivo_nice::Graph>(argv[2],report);}
+                catch(const std::exception& error){report(std::string("NICE NPU: neural model unavailable (")+error.what()+"); LMC hybrid merge");hybrid=true;}
+            }
             if(hybrid) {
                 report("HYBRID MERGE: LMC hybrid requested (Sabre kernel, LMC rejection/weights, Bento, Shasta)");
                 const auto tuning=vivo_nice::loadHybridTuning(argv[2],report);
-                vivo_nice::HybridInput hin=vivo_nice::hybridFromNiceBurst(input);
+                vivo_nice::HybridInput hin=hybridBurst.hybrid?hybridBurst.input:vivo_nice::hybridFromNiceBurst(mapped->burst);
                 if(std::getenv("SCAM_MERGED_DNG"))hin.mergedDng=true;
                 result=vivo_nice::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,&effMap);
             } else {
-            // The forward network ships as Hexagon v79 context binaries (SM8750 only); on any
-            // other SoC the burst is reconstructed without a model (vivo-nice-portable.h).
-            std::unique_ptr<vivo_nice::Graph> graph;
-            if(access((std::string(argv[2])+"/portable-forward").c_str(),F_OK)!=0) {
-                try{graph=std::make_unique<vivo_nice::Graph>(argv[2],report);}
-                catch(const std::exception& error){report(std::string("NICE NPU: neural model unavailable (")+error.what()+"); portable reconstruction");}
-            } else report("NICE NPU: portable reconstruction requested");
+            const auto& input=mapped->burst;
             vivo_nice::NiceExecute forward;
             if(graph)forward=[&](const std::vector<float>& in,std::vector<float>& out){
                 graph->input=in;graph->execute();out=graph->output;

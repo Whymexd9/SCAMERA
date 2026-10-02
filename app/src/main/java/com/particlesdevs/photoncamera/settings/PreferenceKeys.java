@@ -977,14 +977,14 @@ public class PreferenceKeys {
     }
     /** Luma/chroma strength inside NICE (0..2, 1 = model as trained), with the ISO-level multiplier. */
     public static float getNiceLuma(int iso) {
-        return Math.max(0f, Math.min(2f, niceInternalValue("luma", 1f) * niceInternalValue("luma_iso" + niceIsoLevel(iso), 1f) * niceStudentTrust()));
+        return Math.max(0f, Math.min(2f, niceInternalValue("luma", 1f) * niceInternalValue("luma_iso" + niceIsoLevel(iso), 1f)));
     }
     public static float getNiceChroma(int iso) {
-        return Math.max(0f, Math.min(2f, niceInternalValue("chroma", 1f) * niceInternalValue("chroma_iso" + niceIsoLevel(iso), 1f) * niceStudentTrust()));
+        return Math.max(0f, Math.min(2f, niceInternalValue("chroma", 1f) * niceInternalValue("chroma_iso" + niceIsoLevel(iso), 1f)));
     }
-    /** True where the network is the distilled student (every SoC but the SM8750 the original was built for). */
-    public static boolean niceUsesStudent() {
-        return !"SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
+    /** The SoC the vivo NICE network was built for (Hexagon v79); elsewhere SCAM HDR merges with the LMC hybrid. */
+    public static boolean isVivoNetSoc() {
+        return "SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
     }
     /**
      * SCAM HDR merge engine: the LMC hybrid (GCam 6.1 Sabre kernel, LMC 9.6 rejection and frame weights,
@@ -1000,35 +1000,23 @@ public class PreferenceKeys {
     public static String hybridTuningText() {
         StringBuilder out = new StringBuilder();
         String[][] keys = {
-            {"bento", "pref_vivo_nice_hybrid_bento"}, {"shastaEnable", "pref_vivo_nice_hybrid_shasta"},
+            {"bento", "pref_vivo_nice_hybrid_bento"},
             {"cdm", "pref_vivo_nice_hybrid_cdm"}, {"boostEnable", "pref_vivo_nice_hybrid_boost"},
             {"kernelScale", "pref_vivo_nice_hybrid_kernel"}, {"weightCap", "pref_vivo_nice_hybrid_weight_cap"},
             {"fwe", "pref_vivo_nice_hybrid_fwe"}, {"dilateScale", "pref_vivo_nice_hybrid_dilate"},
             {"shastaSharpness", "pref_vivo_nice_hybrid_shasta_sharpness"}, {"bentoUsWeight", "pref_vivo_nice_hybrid_bento_weight"},
+            {"shastaMaxRatio", "pref_vivo_nice_hybrid_shasta_max_ratio"}, {"filterVariance", "pref_vivo_nice_hybrid_filter_variance"},
+            {"dilateFloor", "pref_vivo_nice_hybrid_dilate_floor"}, {"widenBelow", "pref_vivo_nice_hybrid_widen_below"},
+            {"rawNoise", "pref_vivo_nice_hybrid_tensor_noise"}, {"snrScale", "pref_vivo_nice_hybrid_snr_scale"},
         };
         for (String[] k : keys) {
-            String v = preferenceKeys.settingsManager.getString("default_scope", k[1], "");
+            Float dev = niceDevValue(k[1].substring("pref_vivo_nice_".length()));
+            String v = dev != null ? dev.toString() : preferenceKeys.settingsManager.getString("default_scope", k[1], "");
             if (v == null || v.isEmpty()) continue;
             try { out.append(k[0]).append(' ').append(Float.parseFloat(v.trim())).append('\n'); } catch (NumberFormatException ignored) {}
         }
+        if (!niceInternalSwitch("hybrid_shasta", true)) out.append("shastaEnable 0\n");
         return out.toString();
-    }
-    /**
-     * Merge only: the network is skipped and the merged burst is demosaiced directly (the student
-     * SoCs' portable route). Forced with pref_vivo_nice_force_portable = 1 on the SM8750 as well.
-     */
-    public static boolean niceMergeOnly() {
-        return niceUsesStudent() || niceInternalValue("force_portable", 0f) > 0f;
-    }
-    /**
-     * How much of the network's own denoise the student is trusted with (0..1). The student leaves
-     * low-frequency colour and luma blotches (period 16-64 px) that a merge of the same frames does
-     * not have; at 0 the luma/chroma blend takes the merged burst entirely and the post denoise
-     * handles the noise. The original network (SM8750) is always fully trusted.
-     */
-    public static float niceStudentTrust() {
-        if (!niceMergeOnly()) return 1f;
-        return Math.max(0f, Math.min(1f, niceInternalValue("student_trust", 0f)));
     }
     /**
      * Share of the scene illuminant's colour kept in SCAM HDR (0..1). -1 = auto: 30 % on the 8 Gen 3
@@ -1037,7 +1025,7 @@ public class PreferenceKeys {
      */
     public static float getNiceWarmRetention() {
         float v = niceInternalValue("warm_retention", -1f);
-        if (v < 0f) v = niceUsesStudent() ? 30f : 35f;
+        if (v < 0f) v = !isVivoNetSoc() ? 30f : 35f;
         return Math.max(-0.6f, Math.min(1f, v / 100f));
     }
     /**
@@ -1047,7 +1035,7 @@ public class PreferenceKeys {
      */
     public static float getNiceGcamTone() {
         float v = niceInternalValue("gcam_tone", -1f);
-        if (v < 0f) v = niceUsesStudent() ? 0f : 100f;
+        if (v < 0f) v = !isVivoNetSoc() ? 0f : 100f;
         return Math.max(0f, Math.min(1f, v / 100f));
     }
     /** Mid-frequency local contrast (texture) of the SCAM HDR render, 0..2 (1 = matched to a GCam/LMC render). */
@@ -1059,6 +1047,8 @@ public class PreferenceKeys {
      * whites, shadows lifted only when the scene needs it). 0 = the former AgX/fusion/LMC-curve stack.
      */
     public static boolean isNiceSoftTone() {
+        // LMC hybrid: tone through AgX + Exposure Fusion unless the GCam-like soft tone is asked for explicitly.
+        if (isNiceHybridEnabled() && !niceInternalSwitch("hybrid_soft_tone", false)) return false;
         return niceInternalValue("soft_tone", 1f) > 0f;
     }
     /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
@@ -1119,6 +1109,13 @@ public class PreferenceKeys {
         }
         return niceDevValues.get(key);
     }
+    /** Boolean SCAM HDR internal switch (pref_vivo_nice_<key>), nice_dev.txt "key 0/1" overrides it. */
+    public static boolean niceInternalSwitch(String key, boolean fallback) {
+        Float override = niceDevValue(key);
+        if (override != null) return override > 0f;
+        try { return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_" + key, fallback); }
+        catch (RuntimeException error) { return fallback; }
+    }
     public static float niceInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;
         Float override = niceDevValue(key);
@@ -1136,6 +1133,10 @@ public class PreferenceKeys {
         } catch (RuntimeException error) { return fallback; }
     }
 
+    /** RAW stream format: auto | raw16 (RAW_SENSOR) | raw10 | raw12 — the camera must offer it, else auto order. */
+    public static String getRawStreamFormat() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_stream_format", "auto");
+    }
     public static boolean isGcamStageEnabled(String key) {
         return preferenceKeys.settingsManager.getBoolean("default_scope",key,false);
     }

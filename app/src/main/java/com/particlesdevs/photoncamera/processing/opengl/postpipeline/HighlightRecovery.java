@@ -52,6 +52,8 @@ public final class HighlightRecovery extends Node {
         float[] wp = pipeline.mParameters.whitePoint;
         // Fully clipped pixel: equal raw channels, so after white balance min(R,B)/G = min(wpG/wpR, wpG/wpB).
         float kFull = Math.min(wp[1] / Math.max(wp[0], 1e-6f), wp[1] / Math.max(wp[2], 1e-6f));
+        // LMC hybrid with Bento: the clipped highlights were replaced by the ultrashort frame, their colour is real.
+        if (LmcHybridBurst.lastBentoApplied) { Log.i("NICE_PIPELINE", "highlightRecovery skipped: Bento highlights"); glProg.closed = true; return; }
         if (strength <= 0f || kFull < 1.15f || pipeline.mParameters.vivoNiceRgb == null) { glProg.closed = true; return; }
         float yRef = highlightReference(pipeline.mParameters.vivoNiceRgb, wp);
         if (yRef <= 0f) { glProg.closed = true; return; }

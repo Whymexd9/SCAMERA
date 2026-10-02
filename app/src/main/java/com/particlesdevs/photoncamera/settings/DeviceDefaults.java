@@ -80,7 +80,6 @@ public final class DeviceDefaults {
         put("pref_vivo_nice_planner_adaptive", true);
         put("pref_nice_fast_capture", true);
         put("pref_agx_nice_local_strength", "70");
-        put("pref_vivo_nice_student_trust", "0.00");
     }
 
     /** The defaults that apply to this device, or null. A file "force-oppo-defaults" in the app's external files dir tests them on any device. */

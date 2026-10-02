@@ -86,7 +86,7 @@ public final class NiceLocalContrast extends Node {
         // Finest scale (about 1 px): together with NiceSharpen's unsharp mask 1.35 brings the 0.6-1.2 px signal of a daylight
         // scene to an LMC render's (and past a CameraPit 6.1 one), at no more noise. The merge-only SoCs (8 Gen 3 etc.) have
         // the noisier frames, where NiceSharpen backs off and this band (gated by its own noise floor) carries the detail: 1.5.
-        float g0 = PreferenceKeys.niceInternalValue("texture_g0", PreferenceKeys.niceUsesStudent() ? 1.5f : 1.35f);
+        float g0 = PreferenceKeys.niceInternalValue("texture_g0", PreferenceKeys.isVivoNetSoc() ? 1.35f : 1.5f);
         glProg.useAssetProgram("nicelc/apply", false);
         glProg.setTexture("InputBuffer", WorkingTexture);
         glProg.setTexture("Lap0", pyramid.laplace[0]);

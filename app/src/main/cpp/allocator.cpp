@@ -313,6 +313,62 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvertBinning
     return buffer;
 }
 
+// Helper: decode one RAW12 row (MIPI packed, 3 bytes -> 2 pixels) into dst (width uint16_t values)
+static void decodeRaw12Row(const uint8_t* row_start, uint16_t* dst, int width) {
+    int bytes_per_row = (width * 12) / 8;
+    for (int col = 0, px = 0; col + 2 < bytes_per_row && px + 1 < width; col += 3, px += 2) {
+        uint8_t b0 = row_start[col];
+        uint8_t b1 = row_start[col + 1];
+        uint8_t b2 = row_start[col + 2];
+        dst[px]     = (uint16_t)((b0 << 4) | (b2 & 0x0F));
+        dst[px + 1] = (uint16_t)((b1 << 4) | (b2 >> 4));
+    }
+}
+
+// Converts RAW12 (packed) to uint16 (width*height*2, no row padding).
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert12(JNIEnv *env, jclass clazz,
+                                                                            jint capacity, jobject originBuffer,
+                                                                            jint width, jint row_stride, jint offset) {
+    int height = capacity / row_stride;
+    int output_size = width * height * (int)sizeof(uint16_t);
+    auto* allocation = static_cast<uint16_t*>(malloc(output_size));
+    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
+    if (buffer == nullptr) { LOGD("allocateAndCopyConvert12: failed to allocate output"); free(allocation); return nullptr; }
+    void* ptr = env->GetDirectBufferAddress(originBuffer);
+    if (ptr == nullptr) { LOGD("allocateAndCopyConvert12: failed to get buffer address"); free(allocation); return nullptr; }
+    uint8_t* input = static_cast<uint8_t*>(ptr) + offset;
+    for (int row = 0; row < height; row++) decodeRaw12Row(input + row * row_stride, allocation + (size_t)row * width, width);
+    memoryCount += output_size;
+    LOGD("allocateAndCopyConvert12: %dx%d, memory %ld MB", width, height, (memoryCount / 1024) / 1024);
+    return buffer;
+}
+
+// Converts RAW12 to uint16, then applies Bayer-aware 2x2 sum binning.
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert12Binning(JNIEnv *env, jclass clazz,
+                                                                                   jint capacity, jobject originBuffer,
+                                                                                   jint width, jint row_stride, jint offset) {
+    int height = capacity / row_stride;
+    int out_width = width / 2, out_height = height / 2;
+    int output_size = out_width * out_height * (int)sizeof(uint16_t);
+    auto* allocation = static_cast<uint16_t*>(malloc(output_size));
+    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
+    if (buffer == nullptr) { LOGD("allocateAndCopyConvert12Binning: failed to allocate output"); free(allocation); return nullptr; }
+    void* ptr = env->GetDirectBufferAddress(originBuffer);
+    if (ptr == nullptr) { LOGD("allocateAndCopyConvert12Binning: failed to get buffer address"); free(allocation); return nullptr; }
+    auto* decoded = static_cast<uint16_t*>(malloc((size_t)width * height * sizeof(uint16_t)));
+    if (decoded == nullptr) { free(allocation); return nullptr; }
+    uint8_t* input = static_cast<uint8_t*>(ptr) + offset;
+    for (int row = 0; row < height; row++) decodeRaw12Row(input + row * row_stride, decoded + (size_t)row * width, width);
+    applyBayerBinning(decoded, allocation, width, height, out_width, out_height);
+    free(decoded);
+    memoryCount += output_size;
+    return buffer;
+}
+
 // Applies Bayer-aware 2x2 sum binning on a RAW16 (uint16_t) buffer.
 // row_stride is in bytes; output is (width/2)*(height/2)*sizeof(uint16_t)
 extern "C"

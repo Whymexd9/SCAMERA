@@ -11,7 +11,12 @@ import java.nio.channels.FileChannel;
 import java.util.*;
 
 /** Camera2 burst transport for the original forward NICE model; calibration comes from Camera2. */
-public final class VivoNiceBurst {
+public final class VivoNiceBurst implements NiceTransport {
+    @Override public int width() { return width; }
+    @Override public int height() { return height; }
+    @Override public int cfa() { return cfa; }
+    @Override public boolean mergedDng() { return mergedDng; }
+    @Override public boolean diagnostics() { return diagnostics; }
     final int width,height,cfa;
     private final float white;
     private float noiseSlope,noiseOffset,normalNoiseSlope,normalNoiseOffset;
@@ -230,10 +235,10 @@ public final class VivoNiceBurst {
         header.position(0);
         return header;
     }
-    void write(File file)throws IOException {
+    @Override public void write(File file)throws IOException {
         try(FileChannel out=new FileOutputStream(file).getChannel()){write(out);}
     }
-    void write(FileChannel out)throws IOException {
+    @Override public void write(FileChannel out)throws IOException {
         ByteBuffer header=header();
         long position=0;
         while(header.hasRemaining())position+=out.write(header,position);

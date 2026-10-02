@@ -32,13 +32,6 @@ public final class VivoNeuralWorker {
         {"libvivo_platform_common.so","173945c6ebda5ff6cfea6e5b56c90818fd85cc531438d8304a4fb478e5c537b1"},
         {"libvivo.mempool.so","51e3029a6f32ca537033bb9f5ea4bdcbb3ba573626dd8ae830d2a0354ebe3d4c"}
     };
-    /** Hexagon v75 (SM8650) runtime, QAIRT 2.28, and the distilled fp16 student of the NICE forward network. */
-    public static final String[][] NICE75_FILES = {
-        {"nice-student-v75.bin","cb1be549b49243e89aa91f705bd2acd26c2952911f4a53a6e6b788c172ef8e23"},
-        {"libQnnHtp228.so","c8609ab8917fe641133bf602f6e464cb7f05f44242b9e5c4ba9899102ba6743d"},
-        {"libQnnHtpV75Stub.so","8b11cd9ca7cca268c516ede9f868d8a7363d3ff77d1057a05629d5924338520e"},
-        {"libQnnHtpV75Skel.so","f1c08a179e8b2ff6abfd573b5ac04203e662af4ccc2be2fcd1a0aa73db00fe0e"}
-    };
     public static final String[][] HEX_FILES = {
         {"hexquad-x1-v79.bin","e4519b2b8ee4ff1684c10d0e3006c6ab613972d107ed8f05c58543b833e17e22"},
         {"hexquad-x2-v79.bin","70e0a1c4e5c1316505a562badb85a8910cb6860106894b1d137077f2af357218"},

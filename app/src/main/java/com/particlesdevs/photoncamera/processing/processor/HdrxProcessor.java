@@ -105,7 +105,7 @@ public class HdrxProcessor extends ProcessorBase {
         try {
             processingStage = "camera metadata";
             Camera2ApiAutoFix.ApplyRes(captureResult);
-            if (imageFormat == CaptureController.RAW_FORMAT) {
+            if (CaptureController.isRawFormat(imageFormat)) {
                 ApplyHdrX();
             } else {
                 Log.d(TAG, "HdrX processing skipped due to unsupported image format: " + imageFormat);
@@ -518,7 +518,13 @@ public class HdrxProcessor extends ProcessorBase {
                     ParseExif.syncWithParameters(exifData, processingParameters);
                     processingStage = "SCAM HDR neural burst";
                 }
-                niceOwnedOutput=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
+                final boolean hybrid=PreferenceKeys.isNiceHybridEnabled() && !PreferenceKeys.isNiceMosaic();
+                processingStage=hybrid?"SCAM HDR: LMC hybrid merge":"SCAM HDR neural burst";
+                niceOwnedOutput=hybrid
+                        ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.process(
+                        PhotonCamera.getAppContext(),images,processingParameters,
+                        saveRAW>=1 && (alignAlgorithm!=2 || multiCapture))
+                        : com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
                         PhotonCamera.getAppContext(),images,processingParameters,
                         saveRAW>=1 && (alignAlgorithm!=2 || multiCapture));
                 niceOutputParameters=processingParameters;

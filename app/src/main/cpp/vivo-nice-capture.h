@@ -586,67 +586,8 @@ inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& exe
     std::vector<float> result;
     double inferenceMs=0;
     int finished=0;
-    if(!execute) {
-        // No neural model on this SoC: portable HDR reconstruction (see vivo-nice-portable.h).
-        const auto portableStarted=Clock::now();
-        const bool haveMerged=mergeAll();
-        // With aligned extra frames the demosaiced merge of all N frames takes the model's place in the sub-pixel
-        // burst merge below (guide for the kernels, base for the residual): same arithmetic and the same SNR-adaptive
-        // kernels as with the network, highlights are rebuilt from S/ES afterwards. `portable 0` in nice_sr.txt keeps
-        // the plain demosaiced all-N merge.
-        const bool portableMerge=haveMerged&&alignment&&extras>0&&4+extras<=32&&loadSuperResTuning(report).portable!=0;
-        if(portableMerge) {
-            std::vector<float> plain(size_t(b.w)*b.h);
-            mergeRowBands(b.h,[&](int y0,int y1){
-                for(int y=y0;y<y1;++y)for(int x=0;x<b.w;++x)plain[size_t(y)*b.w+x]=canonical[size_t(y)*b.w+x]*(1.f/16383.f);
-            });
-            portableDemosaic(plain,b.w,b.h,[&](int x,int y){return b.color(x,y);},[](int x,int size){return reflectCfa(x,size);},
-                [](int rows,const std::function<void(int,int)>& body){mergeRowBands(rows,body);},result);
-            // The burst merge is the reference: no model to blend with.
-            b.lumaChroma={0.f,0.f,2.f,4.f,1.f};
-            report("SCAM HDR PORTABLE: merge model = demosaiced all-N merge ms="+std::to_string(millis(Clock::now()-portableStarted)));
-        } else {
-        const float rS=b.exposure[5],rE=b.exposure[6];
-        auto donor=[&](int f,int x,int y)->float{
-            DonorPoint origin;
-            if(alignment) origin=projective[f].bayerOrigin(x,y);
-            else {const Shift sh=warp[f].at(x&~1,y&~1);origin={float(x&~1)+sh.x,float(y&~1)+sh.y};}
-            const float qx=std::max(0.f,origin.x*.5f),qy=std::max(0.f,origin.y*.5f);
-            const int ix=int(qx),iy=int(qy);const float fx=qx-ix,fy=qy-iy;
-            auto at=[&](int cx,int cy){
-                int sx=2*cx+(x&1),sy=2*cy+(y&1);
-                while(sx>b.w-1)sx-=2;while(sy>b.h-1)sy-=2;
-                return b.sample(f,sx,sy);
-            };
-            return (at(ix,iy)*(1-fx)+at(ix+1,iy)*fx)*(1-fy)+(at(ix,iy+1)*(1-fx)+at(ix+1,iy+1)*fx)*fy;
-        };
-        std::vector<float> hdr(size_t(b.w)*b.h);
-        mergeRowBands(b.h,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<b.w;++x){
-                const float n=haveMerged?canonical[size_t(y)*b.w+x]*(1.f/16383.f):b.sample(forwardReferenceSlot,x,y);
-                float v=n;
-                if(n>.70f) {
-                    // N is (nearly) clipped: rebuild the level from S, and from ES where S clips too.
-                    const float t=portableSmooth(.70f,.94f,n);
-                    const float s=donor(5,x,y);
-                    float rebuilt=s/rS;
-                    if(s>.88f){const float te=portableSmooth(.88f,.97f,s);rebuilt=rebuilt*(1-te)+donor(6,x,y)/rE*te;}
-                    v=n*(1-t)+std::max(rebuilt,n)*t;
-                }
-                hdr[size_t(y)*b.w+x]=v;
-            }
-        });
-        std::vector<float> rgb;
-        portableDemosaic(hdr,b.w,b.h,[&](int x,int y){return b.color(x,y);},[](int x,int size){return reflectCfa(x,size);},
-            [](int rows,const std::function<void(int,int)>& body){mergeRowBands(rows,body);},rgb);
-        restoreSensorOrigin(rgb,b.w,b.h,b.cfa);
-        report("SCAM HDR PORTABLE: HDR merge + demosaic (no neural model) merged="+std::string(haveMerged?"all N GPU":"reference N")
-            +" S="+std::to_string(rS)+" ES="+std::to_string(rE)
-            +" ms="+std::to_string(millis(Clock::now()-portableStarted))+" total="+std::to_string(millis(Clock::now()-started)));
-        return rgb;
-        }
-    }
-    if(execute) {
+    if(!execute)throw std::runtime_error("NICE: no neural model; the LMC hybrid merge handles bursts without one");
+    {
     std::array<std::vector<uint16_t>,7> luts;
     const auto domains=forwardExposureDomains(b.exposure);
     if(b.cameraNoise && b.iso[b.noiseReferenceSlot]!=b.iso[4])

@@ -151,7 +151,7 @@ public class LinearExposure extends Node {
             float sceneGain = (float) Math.sqrt(
                     Math.max(1.f, gain50) * Math.max(1.f, gain90));
             boolean highlightLimited = pipeline.mParameters.vivoNiceRgb != null
-                    && !com.particlesdevs.photoncamera.settings.PreferenceKeys.niceUsesStudent()
+                    && com.particlesdevs.photoncamera.settings.PreferenceKeys.isVivoNetSoc()
                     && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_limit_mode", 1f, 0f, 1f) > 0f;
             if (highlightLimited) {
                 // A dim scene is lifted until its median reaches the mid anchor or its highlights

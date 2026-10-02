@@ -56,8 +56,8 @@ public final class VivoNeuralClient {
     public static synchronized void selfTestNice(Context context,Consumer<String> log) throws Exception {
         job(context,null,0,0,0,true,true,false,null,null,log);
     }
-    static synchronized ByteBuffer processNiceBurst(Context context,VivoNiceBurst burst) throws Exception {
-        return job(context,null,burst.width,burst.height,burst.cfa,true,true,false,null,burst,line->Log.i("NICE_HDR",line));
+    static synchronized ByteBuffer processNiceBurst(Context context,NiceTransport burst) throws Exception {
+        return job(context,null,burst.width(),burst.height(),burst.cfa(),true,true,false,null,burst,line->Log.i("NICE_HDR",line));
     }
     public static synchronized void selfTestNiceTone(Context context,Consumer<String> log) throws Exception {
         job(context,null,0,0,0,true,true,true,null,null,log);
@@ -121,7 +121,7 @@ public final class VivoNeuralClient {
         if(!tmp.renameTo(file))throw new IOException("Не удалось сохранить "+name);
         return file;
     }
-    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,boolean nice,boolean niceTone,HexQuadBurst burst,VivoNiceBurst niceBurst,Consumer<String> observer) throws Exception {
+    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,boolean nice,boolean niceTone,HexQuadBurst burst,NiceTransport niceBurst,Consumer<String> observer) throws Exception {
         if(raw!=null && (w<8||h<8||w%8!=0||h%8!=0||(long)w*h>16000000||raw.remaining()!=(long)w*h*4))
             throw new IOException("Неподдерживаемый размер RAW");
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
@@ -174,9 +174,6 @@ public final class VivoNeuralClient {
                 java.util.HashSet<String> niceAssets=new java.util.HashSet<>();
                 names.add("vivo-neural-worker");
                 if(nice)for(String[] item:niceTone?VivoNeuralWorker.NICE_TONE_FILES:VivoNeuralWorker.NICE_FILES){names.add(item[0]);niceAssets.add(item[0]);}
-                // Hexagon v75 student (non-SM8750 devices); absent from older bundles.
-                if(nice&&!niceTone&&apk.getEntry("assets/vivo-nice/arm64-v8a/nice-student-v75.bin")!=null)
-                    for(String[] item:VivoNeuralWorker.NICE75_FILES){names.add(item[0]);niceAssets.add(item[0]);}
                 final boolean quad=burst!=null&&burst.quad;
                 for(String[] item:hex?VivoNeuralWorker.HEX_FILES:VivoNeuralWorker.FILES)
                     if(!nice && !quad || item[0].endsWith(".so"))names.add(item[0]);
@@ -213,7 +210,7 @@ public final class VivoNeuralClient {
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException("Не удалось создать маркер CRE");
             }
-            final boolean hybridMerge=niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceHybridEnabled();
+            final boolean hybridMerge=niceBurst instanceof LmcHybridBurst || (niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceHybridEnabled());
             if(hybridMerge){
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
@@ -221,12 +218,6 @@ public final class VivoNeuralClient {
                 String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
                 if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
                 log.accept("CLIENT: LMC hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
-            }
-            if(!hybridMerge && niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceMergeOnly()
-                    && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceStudentTrust()<=0f
-                    && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("student_skip",1f)>0f){
-                // No trust in the student: the network output would be discarded, skip the ~2.5 s inference.
-                if(!new File(dir,"portable-forward").createNewFile())throw new IOException("Не удалось создать маркер портативной сборки");
             }
             if(niceBurst!=null){
                 // Developer switch (created with adb): dump the network's input/output tiles.
@@ -310,10 +301,11 @@ public final class VivoNeuralClient {
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
             final long outputBytes=niceOut!=null?niceOut.size():output.length();
             // Trailers after the RGB: merged Bayer RAW (w*h*2, if requested), then effective frames (w*h).
-            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng&&(outputBytes==expected+(long)w*h*2||outputBytes==expected+(long)w*h*3)?(long)w*h*2:0;
+            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng()&&(outputBytes==expected+(long)w*h*2||outputBytes==expected+(long)w*h*3)?(long)w*h*2:0;
             final long effBytes=niceBurst!=null&&outputBytes==expected+dngBytes+(long)w*h?(long)w*h:0;
             if(outputBytes!=expected+dngBytes+effBytes)throw new IOException("Неверный размер нейрорезультата");
-            if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;}
+            if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;
+                LmcHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null||niceBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException("Недостаточно памяти для результата");

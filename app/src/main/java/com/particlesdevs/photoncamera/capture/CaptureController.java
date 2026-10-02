@@ -922,6 +922,26 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public static void setTargetFormat(int targetFormat) {
         mTargetFormat = targetFormat;
     }
+    /** RAW_SENSOR (16-bit container), RAW10 or RAW12 — every one is unpacked to uint16 on copy. */
+    public static boolean isRawFormat(int format) {
+        return format == ImageFormat.RAW_SENSOR || format == ImageFormat.RAW10 || format == ImageFormat.RAW12;
+    }
+    /**
+     * The RAW stream format of this camera: pref_raw_stream_format auto (RAW_SENSOR when the camera offers it,
+     * else RAW10, else RAW12), or the forced format when the camera offers it. ZSL / live RAW stay RAW_SENSOR-only.
+     */
+    private static int resolveRawFormat(StreamConfigurationMap map) {
+        String mode = PreferenceKeys.getRawStreamFormat();
+        int[] order;
+        if ("raw10".equals(mode)) order = new int[]{ImageFormat.RAW10, ImageFormat.RAW_SENSOR, ImageFormat.RAW12};
+        else if ("raw12".equals(mode)) order = new int[]{ImageFormat.RAW12, ImageFormat.RAW_SENSOR, ImageFormat.RAW10};
+        else order = new int[]{ImageFormat.RAW_SENSOR, ImageFormat.RAW10, ImageFormat.RAW12};
+        if (map != null) for (int format : order) {
+            Size[] sizes = map.getOutputSizes(format);
+            if (sizes != null && sizes.length > 0) return format;
+        }
+        return ImageFormat.RAW_SENSOR;
+    }
 
     /**
      * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that
@@ -1655,6 +1675,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (map == null) {
             return;
+        }
+        if (isRawFormat(mTargetFormat)) {
+            int resolved = resolveRawFormat(map);
+            if (resolved != mTargetFormat) Log.i(TAG, "RAW stream format " + mTargetFormat + " -> " + resolved + " (" + PreferenceKeys.getRawStreamFormat() + ")");
+            mTargetFormat = resolved;
         }
         ArrayList<Size> allTargets = getAllTargets();
 
@@ -2719,6 +2744,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // Real N gain from the vendor AE (can exceed the Camera2 range at night).
         final double trueIso=VivoStockAe.Plan.vendorIso(preview);
         final float clip=zslClipFraction();
+        mLastZslClipFraction=clip;
         VivoStockAe.Plan plan=VivoStockAe.Plan.scameraPlanner(nShutter==null?0:nShutter,nIso==null?0:nIso,trueIso,clip,
                 PreferenceKeys.niceInternalValue("planner_l_ev",1f),PreferenceKeys.niceInternalValue("planner_s_ev",3f),
                 PreferenceKeys.niceInternalValue("planner_es_ev",6f),PreferenceKeys.isNicePlannerAdaptive(),
@@ -2730,10 +2756,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /** Fraction of clipped RAW samples in the newest buffered ZSL frame (sparse sample). */
+    /** Clipped fraction of the newest buffered RAW at the last plan (the ring is drained before the hybrid plan is built). */
+    private float mLastZslClipFraction;
     private float zslClipFraction() {
         Image newest;
         synchronized (mZslBufferLock) { newest = mZslRingBuffer.peekLast(); }
-        if (newest == null || mCameraCharacteristics == null) return 0f;
+        if (newest == null || mCameraCharacteristics == null || newest.getFormat() != ImageFormat.RAW_SENSOR) return 0f;
         try {
             Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
             int limit = (int) ((white == null ? 1023 : white) * 0.95f);
@@ -2849,7 +2877,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Image img = rawImages.get(i);
             int rowStride = img.getPlanes()[0].getRowStride();
             int pixelStride = img.getPlanes()[0].getPixelStride();
-            int width = img.getFormat() == ImageFormat.RAW10 ? img.getWidth()
+            int width = com.particlesdevs.photoncamera.util.Allocator.isPackedRaw(img.getFormat()) ? img.getWidth()
                     : (pixelStride > 0 ? rowStride / pixelStride : img.getWidth());
             int height = img.getHeight();
             int capacity = img.getPlanes()[0].getBuffer().capacity();
@@ -2998,7 +3026,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Image img = rawImages.get(i);
             int rowStride = img.getPlanes()[0].getRowStride();
             int pixelStride = img.getPlanes()[0].getPixelStride();
-            int width = (img.getFormat() == ImageFormat.RAW10)
+            int width = com.particlesdevs.photoncamera.util.Allocator.isPackedRaw(img.getFormat())
                     ? img.getWidth()
                     : (pixelStride > 0 ? rowStride / pixelStride : img.getWidth());
             int height = img.getHeight();
@@ -3033,8 +3061,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         mImageSaver = new ImageSaver(cameraEventsListener);
         mImageSaver.setFrameCount(actualCount);
-        mImageSaver.setImageFormat(CaptureController.RAW_FORMAT);
-        mImageSaver.implementation = ImageSaverSelector.getImageSaver(CaptureController.RAW_FORMAT, mImageSaver.implementation);
+        mImageSaver.setImageFormat(mTargetFormat);
+        mImageSaver.implementation = ImageSaverSelector.getImageSaver(mTargetFormat, mImageSaver.implementation);
         mImageSaver.implementation.frameCount = actualCount;
 
         SaverImplementation.IMAGE_BUFFER.clear();
@@ -3173,6 +3201,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 }
             } else stockPlan=null;
+            final HybridPlan[] hybridPlanHolder={null};
             final VivoNiceAeSnapshot shutterAe = mNiceShutterAe;
             mNiceShutterAe = null;
             if (niceCapture && shutterAe != null) {
@@ -3405,6 +3434,33 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                     captures.add(captureBuilder.build());
                 }
+            } else if(stockPlan!=null && hybridZsl && PreferenceKeys.isNiceHybridEnabled() && !PreferenceKeys.isNiceMosaic()) {
+                // LMC hybrid: N from the ring, then the ultrashort (Bento) and the bracketed frames (Shasta) of the plan.
+                if(mPendingZslNormalFrames.size()<2)
+                    throw new IllegalStateException("SCAM HDR ZSL: нужны хотя бы два кадра N до нажатия");
+                IsoExpoSelector.fullpairs.clear();
+                final HybridPlan plan=HybridPlan.build(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics);
+                hybridPlanHolder[0]=plan;
+                Log.i("NICE_CAPTURE",plan.description);
+                for(ImageFrame normal:mPendingZslNormalFrames) {
+                    stockPlan.verifyZslNormal(normal.getMatchedCaptureMetadata(),niceZslShutterTimestamp);
+                    IsoExpoSelector.ExpoPair pair=new IsoExpoSelector.ExpoPair(normal.measuredExposure,normal.measuredExposure,normal.measuredExposure,
+                            normal.measuredIso,normal.measuredIso,normal.measuredIso,normal.measuredIso);
+                    IsoExpoSelector.fullpairs.add(pair);
+                }
+                long[] times=new long[plan.requests.size()];
+                for(int i=0;i<plan.requests.size();i++) {
+                    HybridPlan.Request r=plan.requests.get(i);
+                    plan.apply(captureBuilder,i);
+                    captureBuilder.setTag(new ImageFrame.NiceCaptureTag(mShutterGeneration,captures.size(),r.role));
+                    CaptureRequest request=captureBuilder.build();captures.add(request);mCaptureRequest=request;
+                    times[i]=r.shutterNs;
+                    IsoExpoSelector.ExpoPair pair=new IsoExpoSelector.ExpoPair(r.shutterNs,r.shutterNs,r.shutterNs,r.iso,r.iso,r.iso,r.iso);
+                    pair.isLongFrame=r.role==ImageFrame.CaptureRole.LONG;
+                    pair.isHighlightFrame=r.role==ImageFrame.CaptureRole.SHORT||r.role==ImageFrame.CaptureRole.EXTRA_SHORT;
+                    IsoExpoSelector.fullpairs.add(pair);
+                }
+                PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness);
             } else if(stockPlan!=null) {
                 if(hybridZsl && mPendingZslNormalFrames.size()<4)
                     throw new IllegalStateException("SCAM HDR ZSL: четыре кадра N до нажатия обязательны");
@@ -3518,13 +3574,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.d(TAG, "FrameCount:" + frameCount);
             mImageSaver = new ImageSaver(cameraEventsListener);
             final VivoNiceCaptureSequence niceSequence = niceCapture && !calibration
-                    ? (stockPlan!=null && !hybridZsl
+                    ? (hybridPlanHolder[0]!=null
+                        ? VivoNiceCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,niceZslShutterTimestamp)
+                        : stockPlan!=null && !hybridZsl
                         ? VivoNiceCaptureSequence.stockNormalBack(captures,niceZslShutterTimestamp)
                         : VivoNiceCaptureSequence.stockZsl(captures,mPendingZslNormalFrames,niceZslShutterTimestamp)) : null;
             // Buffered RAWs are already present; only submitted requests consume reader slots.
             mImageSaver.setFrameCount(niceSequence != null ? captures.size() : frameCount);
             if (hybridZsl) {
-                mImageSaver.setImageFormat(CaptureController.RAW_FORMAT);
+                mImageSaver.setImageFormat(mTargetFormat);
                 SaverImplementation.IMAGE_BUFFER.addAll(mPendingZslNormalFrames);
                 mImageSaver.implementation.frameCount = frameCount;
             }
@@ -3586,7 +3644,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     if(niceSequence != null) {
-                        if(stockPlan!=null)try{stockPlan.verify(request,result);}
+                        if(hybridPlanHolder[0]!=null)try{hybridPlanHolder[0].verify(request,result);}
+                        catch(RuntimeException mismatch){niceSequence.failed(mismatch.getMessage());}
+                        else if(stockPlan!=null)try{stockPlan.verify(request,result);}
                         catch(RuntimeException mismatch){niceSequence.failed(mismatch.getMessage());}
                         niceSequence.completed(request, result);
                     }

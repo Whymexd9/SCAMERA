@@ -61,6 +61,9 @@ public class Allocator {
  public static ByteBuffer allocateAndCopyConvert(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
  public static ByteBuffer allocateAndCopyBinning(int n,ByteBuffer b,int w,int h,int r){return ByteBuffer.allocate(n);}
  public static ByteBuffer allocateAndCopyConvertBinning(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
+ public static ByteBuffer allocateAndCopyConvert12(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
+ public static ByteBuffer allocateAndCopyConvert12Binning(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
+ public static boolean isPackedRaw(int f){return f==0x25||f==0x26;}
  public static void free(ByteBuffer b){}
 }''',
 'Check.java': '''import android.hardware.camera2.CaptureResult;

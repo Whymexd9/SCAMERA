@@ -924,6 +924,52 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     return out;
 }
 
+// NCH v10 — the hybrid transport written by LmcHybridBurst.java: header 128 B (magic, version 10, w, h, cfa,
+// frameCount, white, black[4], flags, baseIndex), frameCount x 32 B frame table (role, exposure ratio to the
+// base, iso, noise slope, noise offset, order ms, flags, reserved), then the uint16 planes in sensor layout.
+struct MappedHybridBurst {
+    void* address=MAP_FAILED;size_t length=0;HybridInput input;bool hybrid=false;
+    explicit MappedHybridBurst(const std::string& path) {
+        const int fd=openArgument(path,O_RDONLY);
+        if(fd<0)throw std::runtime_error("Cannot open NICE burst");
+        struct stat st{};
+        if(fstat(fd,&st)||st.st_size<128){close(fd);throw std::runtime_error("Invalid NICE file size");}
+        length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
+        if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
+        uint32_t h[32];std::memcpy(h,address,128);
+        if(h[0]!=0x3143484e||h[1]!=10){munmap(address,length);address=MAP_FAILED;return;}
+        try {
+            if(h[2]<64||h[3]<64||h[2]%2||h[3]%2||uint64_t(h[2])*h[3]>16000000||h[4]>3||h[5]<1||h[5]>64)
+                throw std::runtime_error("Unsupported hybrid burst dimensions/CFA/count");
+            input.w=int(h[2]);input.h=int(h[3]);input.cfa=int(h[4]);
+            const int n=int(h[5]);
+            std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
+            const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;
+            if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
+            for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");
+            const size_t pixels=size_t(input.w)*input.h,headerBytes=128+32*size_t(n);
+            if(length!=headerBytes+pixels*2*size_t(n))throw std::runtime_error("Truncated hybrid burst");
+            const auto* table=static_cast<const uint8_t*>(address)+128;
+            const auto* data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+headerBytes);
+            for(int i=0;i<n;++i){
+                const uint8_t* r=table+32*i;
+                HybridFrame f;uint32_t role,iso;
+                std::memcpy(&role,r,4);std::memcpy(&f.exposure,r+4,4);std::memcpy(&iso,r+8,4);
+                std::memcpy(&f.slope,r+12,4);std::memcpy(&f.offset,r+16,4);std::memcpy(&f.orderMs,r+20,4);
+                if(role!=kRoleNormal&&role!=kRoleBracketed&&role!=kRoleUltrashort)throw std::runtime_error("Hybrid frame role");
+                if(!std::isfinite(f.exposure)||f.exposure<1.f/512||f.exposure>512||(i==0&&std::abs(f.exposure-1)>1e-5f))
+                    throw std::runtime_error("Hybrid frame exposure");
+                if(!std::isfinite(f.slope)||f.slope<=0||!std::isfinite(f.offset)||f.offset<0)throw std::runtime_error("Hybrid frame noise");
+                f.role=int(role);f.iso=iso;f.raw=data+size_t(i)*pixels;
+                input.frames.push_back(f);
+            }
+            hybrid=true;
+        }catch(...){munmap(address,length);address=MAP_FAILED;throw;}
+    }
+    MappedHybridBurst(const MappedHybridBurst&)=delete;
+    ~MappedHybridBurst(){if(address!=MAP_FAILED)munmap(address,length);}
+};
+
 // NICE 7-slot transport (N0..N3, L, S, ES + extra N) seen as a hybrid burst: the longest frame is the
 // bracketed one, the shortest of S/ES the ultrashort one, S otherwise dropped.
 inline HybridInput hybridFromNiceBurst(const Burst& b) {

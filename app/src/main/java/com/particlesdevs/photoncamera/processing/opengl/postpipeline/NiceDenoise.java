@@ -14,7 +14,7 @@ import static android.opengl.GLES20.GL_NEAREST;
 
 /**
  * Noise removal on the SCAM HDR RGB after the network, for SoCs whose network is the distilled
- * student (it leaves more noise than the vivo original). White balance multiplies the red and blue
+ * merge-only route (it leaves more noise than the vivo original). White balance multiplies the red and blue
  * noise by about two and the colour matrix spreads it further, which shows as coloured
  * blotches in dark areas, and the luminance noise of dark flat surfaces is about twice the level
  * of a GCam/stock render.

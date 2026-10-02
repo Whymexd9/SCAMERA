@@ -41,6 +41,25 @@ public final class VivoNiceCaptureSequence {
         return sequence;
     }
 
+    /** LMC hybrid: buffered N frames plus any post-shutter requests (ultrashort, bracketed, extra normal), in plan order. */
+    public static VivoNiceCaptureSequence hybridZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp) {
+        if(shutterTimestamp<=0 || past.size()<1 || past.size()>64 || requests.isEmpty() || requests.size()>8)
+            throw new IllegalArgumentException("NICE hybrid ZSL requires 1..64 past N and 1..8 bracket requests");
+        for(CaptureRequest request:requests) {
+            Object tag=request.getTag();
+            if(!(tag instanceof ImageFrame.NiceCaptureTag))throw new IllegalArgumentException("NICE hybrid request has no role");
+        }
+        for(ImageFrame frame:past) {
+            CaptureResult result=frame.getMatchedCaptureMetadata();
+            Long timestamp=result==null?null:result.get(CaptureResult.SENSOR_TIMESTAMP);
+            if(frame.timestamp<=0 || frame.timestamp>shutterTimestamp || timestamp==null || timestamp!=frame.timestamp)
+                throw new IllegalArgumentException("NICE ZSL RAW is not matched to the shutter cutoff");
+        }
+        VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,past);
+        sequence.shutterTimestamp=shutterTimestamp;
+        return sequence;
+    }
+
     // Stock normal-back: all four N and L/S/ES are requested after the shutter.
     public static VivoNiceCaptureSequence stockNormalBack(List<CaptureRequest> requests,long shutterTimestamp) {
         if(shutterTimestamp<=0 || requests.size()!=7)

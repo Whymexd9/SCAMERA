@@ -147,6 +147,28 @@
         <item>camera2</item>
         <item>settings</item>
     </string-array>
+    <string-array name="raw_stream_format_entries">
+        <item>Авто</item>
+        <item>RAW_SENSOR (16 бит)</item>
+        <item>RAW10 (упакованный)</item>
+        <item>RAW12 (упакованный)</item>
+    </string-array>
+    <string-array name="raw_stream_format_values">
+        <item>auto</item>
+        <item>raw16</item>
+        <item>raw10</item>
+        <item>raw12</item>
+    </string-array>
+    <string-array name="vivo_nice_hybrid_bento_entries">
+        <item>Выключено</item>
+        <item>Авто (при клиппинге)</item>
+        <item>Всегда</item>
+    </string-array>
+    <string-array name="vivo_nice_hybrid_bento_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
     <string-array name="vivo_nice_planner_entries">
         <item>Стоковый AE vivo (root)</item>
         <item>SCAMERA (без root)</item>

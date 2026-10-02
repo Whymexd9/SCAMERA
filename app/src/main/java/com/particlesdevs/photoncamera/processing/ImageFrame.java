@@ -119,12 +119,16 @@ public class ImageFrame {
             int height = capacity / row_stride;
             if (format == 0x25) {
                 direct = Allocator.allocateAndCopyConvertBinning(capacity, in, width, row_stride, shift);
+            } else if (format == 0x26) {
+                direct = Allocator.allocateAndCopyConvert12Binning(capacity, in, width, row_stride, shift);
             } else {
                 direct = Allocator.allocateAndCopyBinning(capacity, in, width, height, row_stride);
             }
         } else {
             if(format == 0x25){
                 direct = Allocator.allocateAndCopyConvert(capacity, in, width, row_stride, shift);
+            } else if (format == 0x26) {
+                direct = Allocator.allocateAndCopyConvert12(capacity, in, width, row_stride, shift);
             } else {
                 direct = Allocator.allocateAndCopy(capacity, in, shift);
             }
@@ -163,10 +167,14 @@ public class ImageFrame {
                 int height = pendingCapacity / pendingRowStride;
                 direct = pendingFormat == 0x25
                         ? Allocator.allocateAndCopyConvertBinning(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
+                        : pendingFormat == 0x26
+                        ? Allocator.allocateAndCopyConvert12Binning(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
                         : Allocator.allocateAndCopyBinning(pendingCapacity, in, pendingWidth, height, pendingRowStride);
             } else {
                 direct = pendingFormat == 0x25
                         ? Allocator.allocateAndCopyConvert(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
+                        : pendingFormat == 0x26
+                        ? Allocator.allocateAndCopyConvert12(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
                         : Allocator.allocateAndCopy(pendingCapacity, in, pendingShift);
             }
             direct.position(0);

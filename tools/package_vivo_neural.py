@@ -20,10 +20,9 @@ NICE_PREFIX = 'assets/vivo-nice/arm64-v8a/'
 LIB_PREFIX = 'lib/arm64-v8a/'
 LIB_WORKER = 'libscamera_worker.so'
 # Added after the private bundle was cut: bundled when present in --nice-dir, skipped otherwise
-# (CRE motion runtime for non-vivo phones; QAIRT 2.28 runtime + distilled student for Hexagon v75).
+# (CRE motion runtime for non-vivo phones).
 OPTIONAL_NICE = {'libvivo_nice_cre.so', 'libc++_shared.so', 'libvivolog.so', 'libvivo_platform_common.so',
-                 'libvivo.mempool.so', 'nice-student-v75.bin', 'libQnnHtp228.so', 'libQnnHtpV75Stub.so',
-                 'libQnnHtpV75Skel.so'}
+                 'libvivo.mempool.so'}
 
 
 def pinned_assets(manifest='FILES', expected=5):
@@ -113,8 +112,6 @@ def main():
     # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
     nice_assets = pinned_assets('NICE_FILES', None)
     nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
-    # Hexagon v75 (SM8650) runtime + distilled fp16 student of the NICE forward network
-    nice_assets.update(pinned_assets('NICE75_FILES', 4))
     skipped = sorted(name for name in nice_assets if name in OPTIONAL_NICE and not (args.nice_dir / name).is_file())
     for name in skipped:
         del nice_assets[name]
