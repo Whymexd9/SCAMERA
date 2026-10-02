@@ -213,7 +213,16 @@ public final class VivoNeuralClient {
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException("Не удалось создать маркер CRE");
             }
-            if(niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceMergeOnly()
+            final boolean hybridMerge=niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceHybridEnabled();
+            if(hybridMerge){
+                // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
+                // and the tuning lines written from the SCAM HDR settings.
+                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException("Не удалось создать маркер гибридной склейки");
+                String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
+                if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
+                log.accept("CLIENT: LMC hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
+            }
+            if(!hybridMerge && niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceMergeOnly()
                     && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceStudentTrust()<=0f
                     && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceInternalValue("student_skip",1f)>0f){
                 // No trust in the student: the network output would be discarded, skip the ~2.5 s inference.

@@ -987,6 +987,33 @@ public class PreferenceKeys {
         return !"SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
     }
     /**
+     * SCAM HDR merge engine: the LMC hybrid (GCam 6.1 Sabre kernel, LMC 9.6 rejection and frame weights,
+     * Bento ultrashort highlights, Shasta bracketed shadows) runs on any GLES 3.1 GPU without a neural model.
+     * Off = the vivo NICE network (SM8750) / the former portable route.
+     */
+    public static boolean isNiceHybridEnabled() {
+        Float override = niceDevValue("hybrid"); // nice_dev.txt: "hybrid 0/1" for A/B tests without the UI
+        if (override != null) return override > 0f;
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_hybrid", true);
+    }
+    /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_vivo_nice_hybrid_* preferences. */
+    public static String hybridTuningText() {
+        StringBuilder out = new StringBuilder();
+        String[][] keys = {
+            {"bento", "pref_vivo_nice_hybrid_bento"}, {"shastaEnable", "pref_vivo_nice_hybrid_shasta"},
+            {"cdm", "pref_vivo_nice_hybrid_cdm"}, {"boostEnable", "pref_vivo_nice_hybrid_boost"},
+            {"kernelScale", "pref_vivo_nice_hybrid_kernel"}, {"weightCap", "pref_vivo_nice_hybrid_weight_cap"},
+            {"fwe", "pref_vivo_nice_hybrid_fwe"}, {"dilateScale", "pref_vivo_nice_hybrid_dilate"},
+            {"shastaSharpness", "pref_vivo_nice_hybrid_shasta_sharpness"}, {"bentoUsWeight", "pref_vivo_nice_hybrid_bento_weight"},
+        };
+        for (String[] k : keys) {
+            String v = preferenceKeys.settingsManager.getString("default_scope", k[1], "");
+            if (v == null || v.isEmpty()) continue;
+            try { out.append(k[0]).append(' ').append(Float.parseFloat(v.trim())).append('\n'); } catch (NumberFormatException ignored) {}
+        }
+        return out.toString();
+    }
+    /**
      * Merge only: the network is skipped and the merged burst is demosaiced directly (the student
      * SoCs' portable route). Forced with pref_vivo_nice_force_portable = 1 on the SM8750 as well.
      */

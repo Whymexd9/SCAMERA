@@ -9,6 +9,7 @@
 #include "vivo-nice-probe.cpp"
 #undef NICE_HOST_TEST
 #include "vivo-nice-capture.h"
+#include "vivo-nice-hybrid.h"
 #include "vivo-nice-tone-probe.h"
 #include "vivo-nice-stock-motion.h"
 #include <memory>
@@ -77,6 +78,19 @@ int main(int argc,char** argv) {
             catch(const std::exception& error) { report(std::string("NICE MOTION: SCAMERA tile alignment (")+error.what()+")"); }
             vivo_nice::NiceAlignment alignment;
             if(motion)alignment=[&](vivo_nice::Burst& burst){return motion->align(burst,report);};
+            std::vector<uint16_t> mergedDng;
+            std::vector<uint8_t> effMap;
+            std::vector<float> result;
+            // LMC hybrid merge (GCam 6.1 Sabre kernel + LMC 9.6 front end, Bento, Shasta; any GPU, no model):
+            // requested by the app with the job marker, or SCAM_HYBRID=1 for an offline replay.
+            const bool hybrid=access((std::string(argv[2])+"/hybrid-merge").c_str(),F_OK)==0||std::getenv("SCAM_HYBRID");
+            if(hybrid) {
+                report("HYBRID MERGE: LMC hybrid requested (Sabre kernel, LMC rejection/weights, Bento, Shasta)");
+                const auto tuning=vivo_nice::loadHybridTuning(argv[2],report);
+                vivo_nice::HybridInput hin=vivo_nice::hybridFromNiceBurst(input);
+                if(std::getenv("SCAM_MERGED_DNG"))hin.mergedDng=true;
+                result=vivo_nice::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,&effMap);
+            } else {
             // The forward network ships as Hexagon v79 context binaries (SM8750 only); on any
             // other SoC the burst is reconstructed without a model (vivo-nice-portable.h).
             std::unique_ptr<vivo_nice::Graph> graph;
@@ -84,13 +98,11 @@ int main(int argc,char** argv) {
                 try{graph=std::make_unique<vivo_nice::Graph>(argv[2],report);}
                 catch(const std::exception& error){report(std::string("NICE NPU: neural model unavailable (")+error.what()+"); portable reconstruction");}
             } else report("NICE NPU: portable reconstruction requested");
-            std::vector<uint16_t> mergedDng;
-            std::vector<uint8_t> effMap;
             vivo_nice::NiceExecute forward;
             if(graph)forward=[&](const std::vector<float>& in,std::vector<float>& out){
                 graph->input=in;graph->execute();out=graph->output;
             };
-            auto result=vivo_nice::reconstruct(input,forward,report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
+            result=vivo_nice::reconstruct(input,forward,report,[&](const std::string& name,const std::vector<float>& data,int w,int h){
                 if(!input.diagnostics)return;
                 std::ofstream f(std::string(argv[2])+"/"+name+".pfm",std::ios::binary);
                 if(!f){report("NICE DIAGNOSTIC: cannot open tile dump");return;}
@@ -98,6 +110,7 @@ int main(int argc,char** argv) {
                 for(int y=h-1;y>=0;--y)f.write(reinterpret_cast<const char*>(data.data()+size_t(y)*w*3),w*3*sizeof(float));
                 if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
             },alignment,&mergedDng,&effMap);
+            }
             double sum=0;float maximum=0;
             for(float value:result){sum+=value;maximum=std::max(maximum,value);}
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
