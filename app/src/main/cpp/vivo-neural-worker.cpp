@@ -42,8 +42,10 @@ int main(int argc,char** argv) {
             std::unique_ptr<vivo_nice::MappedNiceBurst> mapped;
             if(!hybridBurst.hybrid)mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
             // Debug: keep the burst (touch <external files>/nice_keep) so the merge can be replayed
-            // offline with `--nice-capture <job dir> <external files>/nice_burst.bin <out>`.
+            // offline with `--nice-capture <job dir> <external files>/nice_burst.bin <out>`. An offline replay
+            // (SCAM_HYBRID / SCAM_NO_KEEP in the environment) never overwrites the kept burst of the app.
             if(std::string(argv[3])!="/sdcard/Android/data/org.codeaurora.snapcam/files/nice_burst.bin"
+                    &&!std::getenv("SCAM_HYBRID")&&!std::getenv("SCAM_NO_KEEP")
                     &&access("/sdcard/Android/data/org.codeaurora.snapcam/files/nice_keep",F_OK)==0){
                 std::ofstream dst("/sdcard/Android/data/org.codeaurora.snapcam/files/nice_burst.bin",std::ios::binary|std::ios::trunc);
                 if(mapped)dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
@@ -85,7 +87,7 @@ int main(int argc,char** argv) {
             vivo_nice::NiceAlignment alignment;
             if(motion)alignment=[&](vivo_nice::Burst& burst){return motion->align(burst,report);};
             std::vector<uint16_t> mergedDng;
-            std::vector<uint8_t> effMap;
+            std::vector<uint8_t> effMap,clipFlags;
             std::vector<float> result;
             // LMC hybrid merge (GCam 6.1 Sabre kernel + LMC 9.6 front end, Bento, Shasta; any GPU, no model):
             // requested by the app with the job marker, or SCAM_HYBRID=1 for an offline replay.
@@ -102,7 +104,12 @@ int main(int argc,char** argv) {
                 const auto tuning=vivo_nice::loadHybridTuning(argv[2],report);
                 vivo_nice::HybridInput hin=hybridBurst.hybrid?hybridBurst.input:vivo_nice::hybridFromNiceBurst(mapped->burst);
                 if(std::getenv("SCAM_MERGED_DNG"))hin.mergedDng=true;
-                result=vivo_nice::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,&effMap);
+                // Clip flags trailer: asked by the request header (flag 4), the job marker `clip-flags` or, in an offline replay
+                // (SCAM_HYBRID) only, the tuning key clipFlags. The app checks the result size exactly: a fallback tuning file
+                // (external files dir, /data/local/tmp) must not add a trailer it did not ask for.
+                const bool wantClipFlags=hin.clipFlags||(tuning.clipFlags&&std::getenv("SCAM_HYBRID"))
+                        ||access((std::string(argv[2])+"/clip-flags").c_str(),F_OK)==0;
+                result=vivo_nice::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);
             } else {
             const auto& input=mapped->burst;
             vivo_nice::NiceExecute forward;
@@ -133,6 +140,9 @@ int main(int argc,char** argv) {
             if(!mergedDng.empty())writeAll(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
             // Optional second trailer: effective merged frames per pixel (uint8, 1/8 frame), w*h bytes.
             if(!effMap.empty()&&effMap.size()*3==result.size())writeAll(effMap.data(),effMap.size());
+            // Optional third trailer (only on request, after the effective map): clip flags, uint8 per output pixel (bits: 0/1/2 R/G/B
+            // from the clipped mean, 3 clip border, 4 Bento mask, 5 ultrashort clipped mean).
+            if(!clipFlags.empty()&&clipFlags.size()==effMap.size())writeAll(clipFlags.data(),clipFlags.size());
             if(close(out))throw std::runtime_error("Incomplete NICE output");
             alarm(0);report("NICE CAPTURE OK");return 0;
         }
