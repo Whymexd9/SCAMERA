@@ -48,6 +48,8 @@ public class ImageAdapter extends PagerAdapter {
     private SSIVListener ssivListener;
     private SubsamplingScaleImageView.OnImageEventListener imageEventListener;
     private HdrStateListener hdrStateListener;
+    /** Set once the host view is gone: late HDR callbacks must not touch the pages any more. */
+    private boolean released;
 
 
     public ImageAdapter(List<GalleryItem> galleryItemList) {
@@ -129,8 +131,40 @@ public class ImageAdapter extends PagerAdapter {
 
     @Override
     public void destroyItem(@NonNull ViewGroup container, int position, @NonNull Object object) {
+        if (object instanceof SubsamplingScaleImageView) {
+            // Tile decodes still in flight would otherwise call the host fragment's listeners on a dead page,
+            // and the page's tile bitmaps would stay alive until the next GC.
+            detachPage((SubsamplingScaleImageView) object);
+        }
         releaseHdrResources(container.getContext(), position);
         container.removeView((View) object);
+    }
+
+    /**
+     * Detaches a page from every host listener and frees its decoder and tile
+     * bitmaps right away. Asynchronous tile loads that finish later see a
+     * recycled view and do not report onReady / scale changes any more.
+     */
+    public static void detachPage(SubsamplingScaleImageView page) {
+        page.setOnImageEventListener(null);
+        page.setOnStateChangedListener(null);
+        page.setOnClickListener(null);
+        if (page instanceof CustomSSIV) {
+            ((CustomSSIV) page).setTouchCallBack(null);
+        }
+        page.recycle();
+    }
+
+    /**
+     * Releases every page's Ultra HDR bitmap (full resolution: ~200 MB at 50 MP)
+     * when the host view is destroyed; pending header scans and decodes are
+     * ignored from then on.
+     */
+    public void releaseAllHdr(@Nullable Context context) {
+        released = true;
+        for (int position = 0; position < hdrTargets.length; position++) {
+            releaseHdrResources(context, position);
+        }
     }
 
     public void setImageViewClickListener(ImageViewClickListener imageViewClickListener) {
@@ -189,7 +223,7 @@ public class ImageAdapter extends PagerAdapter {
             boolean candidate = UltraHdrGalleryUtil.isUltraHdrJpeg(context,
                     galleryItem.getFile().getFileUri());
             scaleImageView.post(() -> {
-                if (!hdrRequested[position] || !inBounds(position)) {
+                if (released || !hdrRequested[position] || !inBounds(position)) {
                     return;
                 }
                 hdrRequested[position] = false;
@@ -237,7 +271,9 @@ public class ImageAdapter extends PagerAdapter {
         Target<Bitmap> target = hdrTargets[position];
         hdrTargets[position] = null;
         if (target != null && context != null) {
-            Glide.with(context).clear(target);
+            // The application RequestManager clears targets of any manager, and unlike an activity one it does not
+            // throw while the activity is being destroyed (onDestroyView during finish()).
+            Glide.with(context.getApplicationContext()).clear(target);
         }
     }
 
@@ -246,7 +282,7 @@ public class ImageAdapter extends PagerAdapter {
         CustomTarget<Bitmap> target = new CustomTarget<Bitmap>(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL) {
             @Override
             public void onResourceReady(@NonNull Bitmap bitmap, @Nullable Transition<? super Bitmap> transition) {
-                if (!hdrRequested[position] || !inBounds(position)) {
+                if (released || !hdrRequested[position] || !inBounds(position)) {
                     return;
                 }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE

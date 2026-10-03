@@ -102,6 +102,45 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         return fragmentGalleryImageViewerBinding.getRoot();
     }
 
+    /**
+     * SubsamplingScaleImageView decodes tiles on background threads and reports
+     * them (onReady / onScaleChanged) on the main thread after this view may be
+     * gone: the pages are detached from every listener and recycled here, and
+     * every callback below checks for a destroyed view. A fragment kept on the
+     * back stack (compare, settings) must also not keep the pages' tile bitmaps
+     * or a full-resolution Ultra HDR bitmap alive.
+     */
+    @Override
+    public void onDestroyView() {
+        if (viewPager != null) {
+            viewPager.clearOnPageChangeListeners();
+            for (int i = 0; i < viewPager.getChildCount(); i++) {
+                View child = viewPager.getChildAt(i);
+                if (child instanceof SubsamplingScaleImageView) {
+                    ImageAdapter.detachPage((SubsamplingScaleImageView) child);
+                }
+            }
+        }
+        if (adapter != null) {
+            adapter.setImageEventListener(null);
+            adapter.setSsivListener(null);
+            adapter.setImageViewClickListener(null);
+            adapter.setHdrStateListener(null);
+            adapter.releaseAllHdr(getContext());
+        }
+        if (fragmentGalleryImageViewerBinding != null) {
+            fragmentGalleryImageViewerBinding.exifLayout.histogramView.setHistogramLoadingListener(null);
+            fragmentGalleryImageViewerBinding.unbind();
+        }
+        fragmentGalleryImageViewerBinding = null;
+        adapter = null;
+        linearGridAdapter = null;
+        viewPager = null;
+        linearRecyclerView = null;
+        lastHdrPosition = -1;
+        super.onDestroyView();
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -122,6 +161,8 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     private void initImageAdapter(List<GalleryItem> galleryItems) {
         if (galleryItems != null) {
             this.galleryItems = galleryItems;
+            // View destroyed (late edit/delete result): the LiveData observer rebuilds the adapter with the view.
+            if (viewPager == null || linearRecyclerView == null) return;
             adapter = new ImageAdapter(this.galleryItems);
             adapter.setImageViewClickListener(ImageViewerFragment.this::onImageViewClicked);
             adapter.setHdrStateListener(this);
@@ -137,8 +178,11 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
             viewPager.setAdapter(adapter);
             initLinearRecyclerAdapter(galleryItems);
             viewPager.setCurrentItem(seek_position);
-            linearRecyclerView.postDelayed(() -> linearRecyclerView.scrollToPosition(seek_position),500);
-            viewPager.post(() -> onPageHdrSelected(seek_position));
+            // Delayed runnables outlive the view: capture the views instead of reading fields nulled in onDestroyView.
+            final RecyclerView recyclerView = linearRecyclerView;
+            final int position = seek_position;
+            recyclerView.postDelayed(() -> recyclerView.scrollToPosition(position), 500);
+            viewPager.post(() -> onPageHdrSelected(position));
         }
     }
 
@@ -198,9 +242,10 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         viewPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
             @Override
             public void onPageSelected(int position) {
+                if (fragmentGalleryImageViewerBinding == null) return;
                 updateExif();
                 updateScaleText();
-                linearRecyclerView.smoothScrollToPosition(position);
+                if (linearRecyclerView != null) linearRecyclerView.smoothScrollToPosition(position);
                 onPageHdrSelected(position);
             }
         });
@@ -324,6 +369,9 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     }
 
     public CustomSSIV getCurrentSSIV() {
+        if (viewPager == null) {
+            return null;
+        }
         return getSsivAt(viewPager.getCurrentItem());
     }
 
@@ -404,6 +452,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     }
 
     private void refreshLinearGridAdapter(List<GalleryItem> galleryItems) {
+        if (linearGridAdapter == null || galleryItems == null) return;
         linearGridAdapter.setGalleryItemList(galleryItems);
         linearGridAdapter.notifyDataSetChanged();
     }
@@ -467,7 +516,15 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         navController.navigate(R.id.action_imageViewerFragment_to_gallerySettingsFragment);
     }
 
+    /**
+     * Also reached from SubsamplingScaleImageView callbacks (tiles finish
+     * loading asynchronously) and from the compare fragment's posted zoom sync,
+     * i.e. possibly after onDestroyView: then there is nothing to update.
+     */
     public void updateScaleText() {
+        if (fragmentGalleryImageViewerBinding == null) {
+            return;
+        }
         SubsamplingScaleImageView view = getCurrentSSIV();
         if (view != null) {
             fragmentGalleryImageViewerBinding.setScale(String.format(Locale.ROOT, "%.0f%%", (view.getScale() * 100)));
@@ -475,12 +532,18 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     }
 
     public void resetScaleText() {
+        if (fragmentGalleryImageViewerBinding == null) {
+            return;
+        }
         fragmentGalleryImageViewerBinding.setScale("");
     }
 
     private void updateExif() {
+        if (viewPager == null || fragmentGalleryImageViewerBinding == null || getContext() == null) {
+            return;
+        }
         int position = viewPager.getCurrentItem();
-        if (!galleryItems.isEmpty()) {
+        if (!galleryItems.isEmpty() && position >= 0 && position < galleryItems.size()) {
             GalleryItem galleryItem = galleryItems.get(position);
             exifDialogViewModel.updateModel(requireContext().getContentResolver(), galleryItem.getFile());
             if (fragmentGalleryImageViewerBinding.getExifDialogVisible()) {
@@ -490,7 +553,11 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     }
 
     private void isHistogramLoading(boolean loading) {
+        // Reported from Histogram.onDraw and posted: the view may be gone when the post runs.
         new Handler(Looper.getMainLooper()).post(() -> {
+            if (fragmentGalleryImageViewerBinding == null) {
+                return;
+            }
             if (loading) {
                 fragmentGalleryImageViewerBinding.exifLayout.histoLoading.setVisibility(View.VISIBLE);
             } else {
@@ -505,20 +572,22 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     }
 
     public void handleImagesDeletedCallback(boolean isDeleted) {
-        if (isDeleted && indexToDelete >= 0) {
+        if (isDeleted && indexToDelete >= 0 && indexToDelete < galleryItems.size()) {
             galleryItems.remove(indexToDelete);
             seek_position=indexToDelete;
             if (!galleryItems.isEmpty()) {
                 initImageAdapter(galleryItems);
             }
             updateExif();
-            Toast.makeText(getContext(), R.string.image_deleted, Toast.LENGTH_SHORT).show();
+            if (getContext() != null) {
+                Toast.makeText(getContext(), R.string.image_deleted, Toast.LENGTH_SHORT).show();
+            }
             indexToDelete = -1;
             if (galleryItems.isEmpty()) {
                 viewModel.setUpdatePending(true);
-                navController.navigateUp();
+                if (fragmentGalleryImageViewerBinding != null) navController.navigateUp();
             }
-        } else {
+        } else if (getContext() != null) {
             Toast.makeText(getContext(), "Deletion Failed!", Toast.LENGTH_SHORT).show();
         }
     }

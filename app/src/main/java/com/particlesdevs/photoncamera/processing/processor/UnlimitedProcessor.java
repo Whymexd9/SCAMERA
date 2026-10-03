@@ -150,8 +150,7 @@ public class UnlimitedProcessor extends ProcessorBase {
         if (PhotonCamera.getSettings().ultraHdr && gm != null) {
             try {
                 GainMapComputer.Result res = GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
-                byte[] uhdr = UltraHdrEncoder.encode(bitmap, res, exifData);
-                Files.write(imageFile, uhdr);
+                UltraHdrEncoder.encodeToFile(imageFile, bitmap, res, exifData);
                 bitmap.recycle();
                 imageSaved = true;
             } catch (Exception e) {

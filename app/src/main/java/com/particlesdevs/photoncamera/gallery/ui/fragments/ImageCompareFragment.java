@@ -104,14 +104,23 @@ public class ImageCompareFragment extends Fragment {
     }
 
     private void onShareClick(View view) {
+        if (binding == null) return;
         hideButtons(true);
+        // Captured here: the binding is cleared when the view is destroyed before the worker runs.
+        final View root = binding.getRoot();
         HandlerThread bmpThread = new HandlerThread("ScreenshotThread", Process.THREAD_PRIORITY_BACKGROUND);
         bmpThread.start();
-        new Handler(bmpThread.getLooper()).post(() -> shareHandler.obtainMessage(0, saveBitmap(screenShot(binding.getRoot()))).sendToTarget());
+        new Handler(bmpThread.getLooper()).post(() -> {
+            Bitmap shot = screenShot(root);
+            Uri uri = shot != null ? saveBitmap(shot) : null;
+            if (shot != null) shot.recycle();
+            shareHandler.obtainMessage(0, uri).sendToTarget();
+        });
         bmpThread.quitSafely();
     }
 
     private void shareUri(Uri uri) {
+        if (!isAdded()) return;
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.putExtra(Intent.EXTRA_STREAM, uri);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -133,18 +142,28 @@ public class ImageCompareFragment extends Fragment {
             stream.flush();
             stream.close();
             uri = FileProvider.getUriForFile(mContext, mContext.getPackageName() + ".provider", file);
-        } catch (IOException | NullPointerException e) {
+        } catch (IOException | NullPointerException | IllegalArgumentException e) {
             e.printStackTrace();
-            Toast.makeText(mContext, "Failed!", Toast.LENGTH_SHORT).show();
+        }
+        if (uri == null) {
+            // Runs on the screenshot thread: the toast belongs on the main thread.
+            new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(mContext, "Failed!", Toast.LENGTH_SHORT).show());
         }
         return uri;
     }
 
     private Bitmap screenShot(View view) {
+        if (view.getWidth() <= 0 || view.getHeight() <= 0) return null;
         Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         view.draw(canvas);
         return bitmap;
+    }
+
+    @Override
+    public void onDestroyView() {
+        binding = null;
+        super.onDestroyView();
     }
 
     @Override
@@ -181,6 +200,7 @@ public class ImageCompareFragment extends Fragment {
         }
 
         public void update(Observable o, Object arg) {
+            // Posted: either pane (or this fragment) may be destroyed when it runs; both helpers tolerate that.
             mainHandler.post(() -> {
                 if (toSync) {
                     copyZoomPan(fragment1.getCurrentSSIV(), fragment2.getCurrentSSIV(), (ScaleAndPan) o);
@@ -191,6 +211,7 @@ public class ImageCompareFragment extends Fragment {
         }
 
         private void copyZoomPan(SubsamplingScaleImageView v1, SubsamplingScaleImageView v2, ScaleAndPan scaleAndPan) {
+            if (v1 == null || v2 == null) return;
             if (v1.getId() == idTouched) v2.setScaleAndCenter(scaleAndPan.getScale(), scaleAndPan.getCenter());
             if (v2.getId() == idTouched) v1.setScaleAndCenter(scaleAndPan.getScale(), scaleAndPan.getCenter());
         }

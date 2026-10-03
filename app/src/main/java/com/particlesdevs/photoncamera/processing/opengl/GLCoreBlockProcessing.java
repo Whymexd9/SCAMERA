@@ -1,7 +1,12 @@
 package com.particlesdevs.photoncamera.processing.opengl;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
 import android.opengl.GLES30;
 import android.opengl.GLUtils;
 import com.particlesdevs.photoncamera.util.Log;
@@ -34,6 +39,14 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
     public ByteBuffer mBlockBuffer;
     public ByteBuffer mOutBuffer;
     private final GLFormat mglFormat;
+    /**
+     * Full-frame readback buffer, allocated at the first full readback instead of with the context: during the
+     * passes it was idle native memory (~200 MB at 50 MP RGBA8), and pipelines that never read the full frame
+     * back (the Ultra HDR gain-map pass: ~400 MB FP16 at 50 MP) never allocate it at all. The allocation kind is
+     * fixed here: {@link #allocation} is reassigned by the sized readback variants.
+     */
+    private final GLDrawParams.Allocate mOutAllocation;
+    private final int mOutCapacity;
 
     public GLDrawParams.Allocate allocation = GLDrawParams.Allocate.Heap;
 
@@ -60,25 +73,13 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
     public GLCoreBlockProcessing(Point size, GLFormat glFormat, GLDrawParams.Allocate alloc) {
         super(size.x, GLDrawParams.TileSize);
         allocation = alloc;
+        mOutAllocation = alloc;
         mglFormat = glFormat;
         mOutWidth = size.x;
         mOutHeight = size.y;
         mBlockBuffer = ByteBuffer.allocateDirect(mOutWidth * GLDrawParams.TileSize * mglFormat.mFormat.mSize * mglFormat.mChannels);
-        glGenFramebuffers(1,bindFB,0);
-        glGenRenderbuffers(1,bindRB,0);
-        glBindRenderbuffer(GL_RENDERBUFFER,bindRB[0]);
-        glRenderbufferStorage(GL_RENDERBUFFER, glFormat.getGLFormatInternal(), size.x, size.y);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,bindFB[0]);
-        glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, bindRB[0]);
-        final int capacity = mOutWidth * mOutHeight * mglFormat.mFormat.mSize * mglFormat.mChannels;
-        if(alloc == GLDrawParams.Allocate.None) return;
-        if(alloc == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(capacity);
-        else {
-            // Full-frame output on the Java heap scales with resolution
-            // (~256 MB at 64 MP) and was a direct OOM source.
-            // From RealJohnGalt/PhotonCamera 6d2291eb.
-            mOutBuffer = ByteBuffer.allocateDirect(capacity);
-        }
+        createTileTarget(glFormat);
+        mOutCapacity = mOutWidth * mOutHeight * mglFormat.mFormat.mSize * mglFormat.mChannels;
     }
     public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat,ByteBuffer output) {
         super(size.x, GLDrawParams.TileSize);
@@ -87,17 +88,45 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         mOutWidth = size.x;
         mOutHeight = size.y;
         mBlockBuffer = ByteBuffer.allocateDirect(mOutWidth * GLDrawParams.TileSize * mglFormat.mFormat.mSize * mglFormat.mChannels);
-        glGenFramebuffers(1,bindFB,0);
-        glGenRenderbuffers(1,bindRB,0);
-        glBindRenderbuffer(GL_RENDERBUFFER,bindRB[0]);
-        glRenderbufferStorage(GL_RENDERBUFFER, glFormat.getGLFormatInternal(), size.x, size.y);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,bindFB[0]);
-        glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, bindRB[0]);
+        createTileTarget(glFormat);
         mOutBuffer = output;
+        mOutAllocation = GLDrawParams.Allocate.None;
+        // A null output was accepted before (texture-only scripts): keep that instead of failing here.
+        mOutCapacity = output != null ? output.capacity() : 0;
         mOut = out;
     }
 
+    /**
+     * Render target of the readbacks: every readback draws one tile of at most TileSize rows at the origin
+     * (viewport 0,0,w,tileRows) and reads it back, so the renderbuffer only needs those rows. A full-frame
+     * renderbuffer was ~200 MB (RGBA8) / ~400 MB (FP16) of GPU memory at 50 MP for the whole pipeline.
+     */
+    private void createTileTarget(GLFormat glFormat) {
+        final int rows = Math.max(1, Math.min(mOutHeight, GLDrawParams.TileSize));
+        glGenFramebuffers(1,bindFB,0);
+        glGenRenderbuffers(1,bindRB,0);
+        glBindRenderbuffer(GL_RENDERBUFFER,bindRB[0]);
+        glRenderbufferStorage(GL_RENDERBUFFER, glFormat.getGLFormatInternal(), mOutWidth, rows);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,bindFB[0]);
+        glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, bindRB[0]);
+    }
+
+    /** Allocates the full-frame readback buffer on first use (see {@link #mOutAllocation}). */
+    private void ensureOutBuffer() {
+        if (mOutBuffer != null || mOutAllocation == GLDrawParams.Allocate.None) return;
+        if (mOutAllocation == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(mOutCapacity);
+        else {
+            // Full-frame output on the Java heap scales with resolution
+            // (~256 MB at 64 MP) and was a direct OOM source.
+            // From RealJohnGalt/PhotonCamera 6d2291eb.
+            mOutBuffer = ByteBuffer.allocateDirect(mOutCapacity);
+        }
+        if (mOutBuffer == null)
+            throw new IllegalStateException("readback buffer allocation of " + mOutCapacity + " bytes failed");
+    }
+
     public void drawBlocksToOutput() {
+        ensureOutBuffer();
         glBindFramebuffer(GL_FRAMEBUFFER, bindFB[0]);
         GLProg program = super.mProgram;
         GLBlockDivider divider = new GLBlockDivider(mOutHeight, GLDrawParams.TileSize);
@@ -130,6 +159,110 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+
+    /** Rows per copy into the destination bitmap: a small strip bitmap instead of a full-frame buffer. */
+    private static final int BITMAP_STRIP_ROWS = 16;
+
+    /**
+     * Renders the output program tile by tile straight into a new ARGB_8888 bitmap of the output size: the same
+     * pixels as {@link #drawBlocksToOutput()} followed by {@code Bitmap.copyPixelsFromBuffer} (raw RGBA8 bytes,
+     * copied with SRC), but without the full-frame readback buffer next to the bitmap (~200 MB at 50 MP). Only
+     * for 4-channel 8-bit output formats.
+     */
+    public Bitmap drawBlocksToBitmap() {
+        if (mglFormat.mChannels != 4 || mglFormat.mFormat.mSize != 1)
+            throw new IllegalStateException("bitmap readback needs an RGBA8 output, not " + mglFormat.mFormat + "x" + mglFormat.mChannels);
+        final int tileRows = GLDrawParams.TileSize;
+        if (mBlockBuffer == null || mBlockBuffer.capacity() < mOutWidth * 4 * Math.min(tileRows, mOutHeight))
+            throw new IllegalStateException("tile buffer does not match TileSize " + tileRows);
+        final int stripRows = tileRows % BITMAP_STRIP_ROWS == 0 ? BITMAP_STRIP_ROWS : tileRows;
+        final Bitmap dst = Bitmap.createBitmap(mOutWidth, mOutHeight, Bitmap.Config.ARGB_8888);
+        try (TileBlitter blitter = new TileBlitter(dst, stripRows)) {
+            glBindFramebuffer(GL_FRAMEBUFFER, bindFB[0]);
+            GLProg program = super.mProgram;
+            GLBlockDivider divider = new GLBlockDivider(mOutHeight, tileRows);
+            int[] row = new int[2];
+            while (divider.nextBlock(row)) {
+                int y = row[0];
+                int height = row[1];
+                glViewport(0, 0, mOutWidth, height);
+                checkEglError("glViewport");
+                program.setVar("yOffset", y);
+                program.draw();
+                checkEglError("program");
+                mBlockBuffer.clear();
+                glReadPixels(0, 0, mOutWidth, height, mglFormat.getGLFormatExternal(), mglFormat.getGLType(), mBlockBuffer);
+                checkEglError("glReadPixels");
+                blitter.blit(mBlockBuffer, y, height);
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            mBlockBuffer = null;
+            return dst;
+        } catch (RuntimeException e) {
+            dst.recycle();
+            throw e;
+        }
+    }
+
+    /**
+     * Copies tightly packed RGBA8 rows (a read-back tile, row 0 first) into rows of a destination bitmap through
+     * a small strip bitmap: raw bytes as {@code Bitmap.copyPixelsFromBuffer} takes them, blitted with SRC (no
+     * blending, filtering or colour conversion between two sRGB ARGB_8888 bitmaps).
+     */
+    static final class TileBlitter implements AutoCloseable {
+        private final Bitmap strip;
+        private final Canvas canvas;
+        private final Paint copy = new Paint();
+        private final Rect from = new Rect();
+        private final Rect to = new Rect();
+        private final int width;
+        private final int rowBytes;
+        private final int stripRows;
+        private final int stripBytes;
+
+        TileBlitter(Bitmap dst, int stripRows) {
+            width = dst.getWidth();
+            rowBytes = width * 4;
+            this.stripRows = Math.max(1, Math.min(stripRows, dst.getHeight()));
+            strip = Bitmap.createBitmap(width, this.stripRows, Bitmap.Config.ARGB_8888);
+            stripBytes = rowBytes * this.stripRows;
+            canvas = new Canvas(dst);
+            copy.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
+            copy.setFilterBitmap(false);
+            copy.setDither(false);
+        }
+
+        /**
+         * Copies {@code height} rows of {@code tile} (from its start, whatever its position) to rows
+         * {@code y .. y+height-1}. copyPixelsFromBuffer always takes a whole strip: the tile buffer must hold
+         * whole strips (TileSize rows); bytes past the tile are stale and never drawn.
+         */
+        void blit(ByteBuffer tile, int y, int height) {
+            final int capacity = tile.capacity();
+            try {
+                for (int r = 0; r < height; r += stripRows) {
+                    final int rows = Math.min(stripRows, height - r);
+                    final int start = r * rowBytes;
+                    if (start + stripBytes > capacity)
+                        throw new IllegalStateException("strip " + start + "+" + stripBytes + " outside the tile buffer " + capacity);
+                    tile.limit(start + stripBytes);
+                    tile.position(start);
+                    strip.copyPixelsFromBuffer(tile);
+                    tile.limit(capacity);
+                    from.set(0, 0, width, rows);
+                    to.set(0, y + r, width, y + r + rows);
+                    canvas.drawBitmap(strip, from, to, copy);
+                }
+            } finally {
+                tile.clear();
+            }
+        }
+
+        @Override
+        public void close() {
+            strip.recycle();
+        }
+    }
 
     public ByteBuffer drawBlocksToOutput(Point size, GLFormat glFormat) {
         return drawBlocksToOutput(size,glFormat, GLDrawParams.Allocate.Heap);

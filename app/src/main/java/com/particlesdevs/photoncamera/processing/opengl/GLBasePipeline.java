@@ -1,5 +1,6 @@
 package com.particlesdevs.photoncamera.processing.opengl;
 
+import android.graphics.Bitmap;
 import android.graphics.Point;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -228,6 +229,27 @@ public class GLBasePipeline implements AutoCloseable {
     }
 
     public GLImage runAll() {
+        runNodes();
+        glint.glProcessing.drawBlocksToOutput();
+        finishRun();
+        return glint.glProcessing.mOut;
+    }
+
+    /**
+     * {@link #runAll()} for an RGBA8 output that ends up in a Bitmap anyway: the last node is rendered tile by
+     * tile straight into a new ARGB_8888 bitmap ({@link GLCoreBlockProcessing#drawBlocksToBitmap()}), so the
+     * full-frame readback buffer (~200 MB at 50 MP) never exists next to the bitmap. Construct the processing
+     * with {@code GLDrawParams.Allocate.None} (or any kind: the buffer is only allocated by a full readback).
+     */
+    public Bitmap runAllToBitmap() {
+        runNodes();
+        Bitmap bitmap = glint.glProcessing.drawBlocksToBitmap();
+        finishRun();
+        return bitmap;
+    }
+
+    /** Runs every node; the last one stays bound for the readback. */
+    private void runNodes() {
         lastI();
         for (int i = 0; i < Nodes.size(); i++) {
             Node node = Nodes.get(i);
@@ -266,7 +288,10 @@ public class GLBasePipeline implements AutoCloseable {
         }else {
             if (main1 != null) main1.close();
         }
-        glint.glProcessing.drawBlocksToOutput();
+    }
+
+    /** Releases the pipeline textures and program after the readback of {@link #runNodes()}. */
+    private void finishRun() {
         if(texnum == 1){
             if (main1 != null) main1.close();
         }else {
@@ -277,7 +302,6 @@ public class GLBasePipeline implements AutoCloseable {
         dumpTimings("runAll");
         Nodes.clear();
         logTimeSummary(getClass().getSimpleName());
-        return glint.glProcessing.mOut;
     }
 
     private static IllegalStateException nodeFailure(Node node, String phase,

@@ -145,21 +145,43 @@ public class ImageSaver {
     }
 
     public static class Util {
+        /** Output buffer of the JPEG writers: Bitmap.compress hands its encoder output over in 4 KB chunks. */
+        public static final int SAVE_BUFFER_BYTES = 256 * 1024;
+
+        /**
+         * Encodes {@code img} straight into the file (no in-memory JPEG copy) and
+         * always recycles it, as soon as the encoder is done and also on failure:
+         * at 50 MP the bitmap is ~200 MB of native memory that must not wait for
+         * a GC. EXIF is written afterwards; the bitmap is gone by then. A file
+         * whose image data could not be written completely is deleted, so a
+         * truncated JPEG never reaches the gallery.
+         */
         public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData) {
             exifData.COMPRESSION = String.valueOf(jpgQuality);
-            try {
-                OutputStream outputStream = Files.newOutputStream(fileToSave);
-                img.compress(Bitmap.CompressFormat.JPEG, jpgQuality, outputStream);
-                outputStream.flush();
-                outputStream.close();
+            boolean encoded = false;
+            try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
+                if (!img.compress(Bitmap.CompressFormat.JPEG, jpgQuality, outputStream))
+                    throw new IOException("JPEG encoder failed for " + img.getWidth() + "x" + img.getHeight());
                 img.recycle();
-                ExifInterface inter = ParseExif.setAllAttributes(fileToSave.toFile(), exifData);
-                inter.saveAttributes();
-                return true;
-            } catch (IOException e) {
-                e.printStackTrace();
+                outputStream.flush();
+                encoded = true;
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "JPEG save failed: " + Log.getStackTraceString(e));
+            } finally {
+                if (!img.isRecycled()) img.recycle();
+            }
+            if (!encoded) {
+                try { Files.deleteIfExists(fileToSave); } catch (IOException ignored) {}
                 return false;
             }
+            try {
+                ExifInterface inter = ParseExif.setAllAttributes(fileToSave.toFile(), exifData);
+                if (inter != null) inter.saveAttributes();
+            } catch (IOException | RuntimeException e) {
+                // The image itself is complete; missing EXIF must not report the shot as lost.
+                Log.e(TAG, "EXIF write failed: " + Log.getStackTraceString(e));
+            }
+            return true;
         }
 
         /*public static boolean saveBitmapAsAVIF(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData) {
