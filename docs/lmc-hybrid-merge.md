@@ -1,32 +1,78 @@
-# SCAM HDR — склейка «LMC‑гибрид» (Sabre 6.1 × LMC 9.6 × Bento × Shasta)
+# LMC‑гибрид — склейка Sabre 6.1 × LMC 9.6 × Bento × Shasta
 
 Вариант склейки серии RAW для любых GPU с GLES 3.1 (Snapdragon 8 Gen 1–3 и другие), без нейросети.
 Собран из разобранных алгоритмов: ядро слияния Sabre из GCam 6.1 (`research/gcam61/SABRE-FULL.md`),
 фронтенд, Bento и Shasta из LMC 9.6 (`research/lmc/LMC96_SpatialRGB_Bento_Shasta_audit.md`),
 проект совмещения — `research/lmc/Sabre61_x_SpatialRGB_Bento_Shasta.md`.
 
-Сделано 3 октября 2026; проверено на OPPO Find X7 Ultra (PHY110, SM8650, Adreno 750, без root).
-Прежняя попытка для 8 Gen 3 (дистиллированный «студент» нейросети на NPU v75 + «портативный» путь без
-модели) удалена: гибрид — единственный путь без модели. Нейросеть vivo NICE на SM8750 осталась и
-выбирается переключателем.
+Сделано 3 октября 2026; проверено на OPPO Find X7 Ultra (PHY110, SM8650, Adreno 750, без root). Раунд 5
+(4 октября 2026: отдельный раздел, тон и шумодав ArkCam, света, горячие пиксели, ядро Sabre 6.1) — ниже и в
+`research/hybrid5/IMPL_STATUS.md`. Прежняя попытка для 8 Gen 3 (дистиллированный «студент» нейросети на NPU v75 +
+«портативный» путь без модели) удалена: гибрид — единственный путь без модели. Нейросеть vivo NICE на SM8750
+осталась в SCAM HDR, это отдельный движок со своим разделом.
 
 ## Где включается
 
-Отдельный раздел «Обработка → **Склейка LMC‑гибрид**» (`lmc_hybrid_screen`). Первый пункт — движок склейки
-SCAM HDR (`pref_vivo_nice_engine`): «Авто» (нейросеть NICE на SM8750, гибрид на остальных чипах), «LMC‑гибрид»,
-«Нейросеть vivo NICE»; `PreferenceKeys.niceEngine()` / `isNiceHybridEnabled()`. Дальше в том же разделе — группы как в
-«Настройках библиотеки» LMC: Shasta, Bento, отбраковка, тон, ядро/веса. Все ключи — `pref_vivo_nice_hybrid_*`
-(гейтятся вместе с остальными настройками SCAM HDR, пер‑модульные; сам SCAM HDR RAW включается в «Обработка Vivo →
-Автономный HDR»); разработческий файл `nice_dev.txt` (ключ без префикса, например `hybrid 0`, `hybrid_cdm 0.1`)
-перекрывает их без пересборки.
+Свой раздел «**LMC‑гибрид**» (`lmc_hybrid_screen`, ключ экрана прежний) с главным переключателем
+`pref_lmc_hybrid_enabled`, не зависящим от SCAM HDR (`pref_vivo_hdr_enabled` / `pref_vivo_nice_enabled`). С 4 октября 2026
+гибрид — отдельный движок, а не вариант SCAM HDR: выбор движка `pref_vivo_nice_engine` удалён, SCAM HDR = только
+нейросеть NICE. Маршрут снимка — `PreferenceKeys.isLmcHybridEnabled()`: переключатель (nice_dev `hybrid 0/1`) ∧
+совместимый RAW (Bayer или ремозаик SCAMERA, без RAW MFSR) ∧ не поток Quad/Tetra мозаики ISZ (его по‑прежнему
+обрабатывает SCAM HDR). Если включены оба, снимает гибрид (лог `NICE_HDR … the LMC hybrid merges this shot`). На чистой
+установке гибрид включён везде, кроме SM8750 (`LmcHybridKeys.defaultOn()`, нужен arm64‑v8a). Миграция
+`SettingsMigration.migrateLmcHybrid` переносит `pref_vivo_nice_hybrid_*` → `pref_lmc_hybrid_*` один раз и копирует ручки
+SCAM HDR, которые гибрид раньше читал (fusion, тон, AE, AgX, резкость, N…), только там, где гибрид реально снимал.
 
-Тон гибрида идёт через AgX + Exposure Fusion («Светотень и тон»); GCam‑подобный «мягкий тон» SCAM HDR
-включается отдельно (`pref_vivo_nice_hybrid_soft_tone`). `HighlightRecovery` пропускается, когда воркер
-применил Bento (света уже настоящие).
+Категории раздела: Основное (переключатель, разрешение, даунсемплер) · Захват (N, Bento, Shasta) · Склейка (отбраковка,
+ядро Sabre и веса, Bento/Shasta в склейке, света и горячие пиксели, выравнивание и модель шума) · Света (поканальное
+восстановление) · Шумоподавление (движок ARK/LMC или NLM) · Тон (тон ARK и его экран; прежний тон SCAMERA — откат) ·
+Резкость (rt | scam | off, множитель RawTherapee) · Диагностика. При выключенном гибриде его пункты неактивны
+(«Включите LMC‑гибрид.»); при включённом этапы, которые маршрут гибрида пропускает (RT/AI‑шумодав, ACES, тональный
+конвейер, алгоритмы склейки HDR+), показаны неактивными с причиной (`SettingsAvailability`).
+
+Все ключи — `pref_lmc_hybrid_*`, пер‑модульные. Обработка снимка идёт под **профилем снимка**
+(`PreferenceKeys.beginShotProfile/endShotProfile` вокруг `HdrxProcessor`, `ThreadLocal` потока обработки — захват следующего
+снимка и видоискатель читают живой маршрут): общие узлы SCAM HDR и гибрида (`niceInternalValue/Switch`, `vivoHdrValue`,
+`profileKey/profileNumber` — AE в `LinearExposure`, колено в `AgxTone`; фьюжн, despeckle, модель шума, CRE) на снимке
+гибрида читают копии `pref_lmc_hybrid_<k>` и никогда — ключи SCAM HDR. `nice_dev.txt` (Android/data/…/files): `hybrid 0/1`
+и `hybrid_<ключ> значение` перекрывают настройки гибрида без пересборки; строка без префикса (`fusion_dark_ev 2`) действует
+на общий узел в обоих движках.
+
+## Раунд 5: вид как у ArkCam 1.23, деталь Sabre (4 октября 2026)
+
+Цель — «как ARK, но детальнее» (`research/hybrid5/PLAN.md`, `research/hybrid5/IMPL_STATUS.md`). Маршрут поста снимка
+гибрида (`PostPipeline.BuildDefaultPipeline`, ветка `vivoNiceRgb != null`, тон ARK — `ArkTone.enabledFor`):
+
+VivoNiceRgb (поканальное восстановление светов) → [HighlightRecovery — на гибриде пропускается] → NiceDenoise
+(→ `LmcDenoise`: шумодав финиша GCam / LMC 9.6 с таблицами ArkCam 2.85) → [LinearExposure — только ради Ultra HDR] →
+ArkStats → ArkFusion → ArkCombine (тон ArkCam: Smart‑HDR AE, фьюжн на guided filter, OKLab, AgX Custom, деталь Sabre) →
+резкость (rt | scam | off) → ArkSharpenGuard → [NiceLocalContrast — только с `ark_texture`] → [LmcCurves — только пресеты
+пользователя, без кривой GCAM_MATCH] → HybridFinalResize → RotateWatermark.
+
+С `pref_lmc_hybrid_ark_tone` = выкл. остаётся прежний тон SCAMERA (LinearExposure → NiceExposureFusion → VivoHdrTone /
+HeadroomRender → LmcCurves → NiceLocalContrast), с `pref_lmc_hybrid_dn_engine` = nlm — прежний NLM‑шумодав.
+
+* **Света** (`VivoNiceRgb`, `vivohdr/nicergb.glsl` режим `hlModeU = 1`, `hlrecovery/chanprep.glsl`): уровень клипа каждого
+  физического канала до WB (пик гистограммы; Bento — k), выбитый канал поднимается по хроматичности локального света
+  (блоки 8/32/128 px сенсора), всё выбитое плавно уходит в нейтральный белый на уровне `top`, одиночный цветной канал
+  (неон, лазер) не трогается. С флагами клипа воркера (ниже) уровень выбирается попиксельно: 1.0 вне маски Bento, k
+  внутри. Настройки: `pref_lmc_hybrid_highlight_recovery` (0–100 %, 100), `pref_lmc_hybrid_highlight_chroma` (0.35).
+  `VivoNiceRgb.lastClipWhite` — уровень белого клипа для тона. SCAM HDR (NICE) не менялся.
+* **Шумодав** (`LmcDenoise`, `assets/shaders/lmcdn/*`): лапласова пирамида яркости kD8 / хромы {1,3,3,1}, BF3x3 + revert,
+  BilateralFilterChroma3x3; пороги — из модели шума кадра и измеренных по уровням G; таблицы по SNR (ArkCam 2.85) с
+  предохранителями (`dn_revert_max` 2, `dn_coarse_stock` 0.5, `dn_chroma_floor` 2.75); на сетке 2× пирамида строится с
+  масштаба сенсора, затем `final2x`. Лог — строка `NICE_PIPELINE lmc-denoise`. Подробно — `research/hybrid5/impl_nr.md`,
+  `review_nr.md`.
+* **Тон** (`ArkStats/ArkFusion/ArkCombine/ArkSharpenGuard`, `assets/shaders/ark/*`): порт `smart_hdr` и
+  `ef_guided_combine` ArkCam 1.23 (`research/hybrid5/tone_port.md` §7); ключи `pref_lmc_hybrid_ark_*` (умолчания ArkCam
+  2.85 X8U), лог `ARK SMART_HDR_STAT …`. Деталь Sabre δ ограничена как у a3 ядра (нет чёрного обода вокруг ламп).
+  Подробно — `research/hybrid5/impl_arktone.md`, `review_arktone.md`.
+* **Слияние** — пункт 8 раздела «Слияние в воркере».
 
 ## Съёмка (CaptureController + `HybridPlan`)
 
-* N‑кадры — из ZSL‑кольца по экспозиции превью (`pref_vivo_nice_zsl_frames`, на Oppo 20).
+* N‑кадры — из ZSL‑кольца по экспозиции превью (`pref_lmc_hybrid_zsl_frames`, 4–44, по умолчанию 20; воркер
+  держит на GPU не больше 32 кадров вместе с Bento и Shasta — лишние дальние N отбрасывает).
 * После нажатия (`HybridPlan.build`, порядок: сначала ультракороткий, затем длинные):
   * **Bento** — один кадр с экспозицией N/8 (`hybrid_bento_factor`, 2–16; при 32 полоса расширения маски вокруг
     светов берётся из кадра с усилением ×32 и шумит), если в последнем ZSL‑кадре есть клиппинг
@@ -67,8 +113,8 @@ NiceSharpen ×2), и только после всего конвейера, вк
 без уменьшения. Порога по памяти нет (по решению пользователя): пик приложения на 50 МП ≈ входная
 текстура float 604 МБ + три рабочие FP16 по 403 МБ + битмапы; буфер результата (604 МБ) освобождается сразу после
 загрузки в текстуру (`VivoNiceRgb`, вместо него остаётся прореженная копия для статистик), `availMem` пишется в
-лог. На PHY110 при 3.6 ГБ свободных первый прогон 2× без этого убил приложение LMK. Настройки: раздел «Склейка LMC‑гибрид» → «Разрешение (сетка Sabre 2×)»
-(`pref_vivo_nice_hybrid_output`: sensor | 12 | 16 | 20 | 2x) и «Даунсемплер» (`pref_vivo_nice_hybrid_downsampler`:
+лог. На PHY110 при 3.6 ГБ свободных первый прогон 2× без этого убил приложение LMK. Настройки: раздел «LMC‑гибрид» → «Разрешение (сетка Sabre 2×)»
+(`pref_lmc_hybrid_output`: sensor | 12 | 16 | 20 | 2x) и «Даунсемплер» (`pref_lmc_hybrid_downsampler`:
 lanczos | bicubic | area | bilinear); те же чипы — в шторке быстрых настроек видоискателя («Разрешение» 1× / 12 / 16 /
 20 / 2×, «Даунсемплер» Lanc / Bicub / Area / Bilin). Нейросеть NICE эти настройки игнорирует. `nice_dev.txt`:
 `hybrid_output 0|12|16|20|2`, `hybrid_downsampler 0..3`; реплей: `grid 2` в `hybrid_tuning.txt`.
@@ -100,14 +146,15 @@ lanczos | bicubic | area | bilinear); те же чипы — в шторке б�
   (а не по базе σ≈40 px): 3 EV контраста внутри окна превращались в 0.4 EV на самом плоском участке сигмоиды,
   а разница окно/стена 4.3 EV — в 0.7 EV (ореол). Теперь, как в финише HDR+, запас k берёт на себя Exposure Fusion:
   тёмная синтетическая экспозиция `NiceExposureFusion` сдвигается на долю log2(k·displayGain) EV
-  (`pref_vivo_nice_hybrid_bento_fusion`), режим «только осветление» снимается, и карта фьюжна локально опускает окно в
+  (`pref_lmc_hybrid_bento_fusion`; только тон SCAMERA — тон ARK ведёт запас Bento сам: потолок 1.35, roll‑off),
+  режим «только осветление» снимается, и карта фьюжна локально опускает окно в
   диапазон с сохранением его контраста. A/B на vivo (ровное небо в окне, k = 7.7): доля 0 — окно 250/255 ровное
   (как раньше, без содержимого); 0.5 — 239 в центре / 242 у рамы, ровное и светлое; 1.0 — 199 в центре / 250 у рамы:
   содержимое в диапазоне, но пирамида Лапласа даёт ореол внутрь окна ≈20 %. По умолчанию 0.5; честное решение для
   1.0 — направляемое (guided) повышение разрешения карты усиления по яркости, чтобы она следовала границе окна. `neutralizeClippedMagenta` для таких снимков пропускается, порог обесцвечивания
   светов — 0.95 (`bentoReal`).
 * Шумодав в окне: карта эффективных кадров внутри маски ≈2–3 против ≈23 снаружи, усиление сигмы ограничено
-  клампом — теперь настраиваемым (`pref_vivo_nice_hybrid_bento_denoise_max`, 3 по умолчанию, до 12).
+  клампом — теперь настраиваемым (`pref_lmc_hybrid_bento_denoise_max`, 3 по умолчанию, до 12).
 
 Про «ARK‑обработку» LMC/ArkCam: разбор libvf_demosaic.so (LMC 9.6 и ArkCam 1.23beta) показал, что ArkCore — только
 видоискатель (Live View): один GLSL‑проход демозаик + 4‑слойный попиксельный «exposure fusion» + AgX/ACES/Uchimura,
@@ -118,14 +165,14 @@ lanczos | bicubic | area | bilinear); те же чипы — в шторке б�
 
 ## Шумоподавление после склейки (настройки)
 
-Раздел «Склейка LMC‑гибрид» → «Шумоподавление после склейки (LMC: Noise Reduction)»: `pref_vivo_nice_hybrid_post_luma`
-(NLM яркости, 0.6), `pref_vivo_nice_hybrid_post_chroma` (билатеральная хрома и пятна, 1.0),
-`pref_vivo_nice_hybrid_despeckle` (одиночные точки), `pref_vivo_nice_hybrid_bento_denoise_max`,
-`pref_vivo_nice_hybrid_bento_fusion`; действуют только для движка «гибрид» (`PreferenceKeys.hybridValue/hybridSwitch`,
-переопределения `hybrid_<ключ>` в `nice_dev.txt`), для NICE остаются внутренние `post_luma`/`post_chroma`. В
-«Отбраковке движения» добавлены `pref_vivo_nice_hybrid_boost_value` (×6) и `pref_vivo_nice_hybrid_boost_threshold` (25),
-в «Ядре Sabre» — `pref_vivo_nice_hybrid_lut_sigma` (1.414); все три идут воркеру через `hybrid_tuning.txt`
-(`boost`, `varianceThreshold`, `lutHiSigma`). В слиянии 9.6 отдельного шумодава нет — шум управляется отбраковкой,
+Раздел «LMC‑гибрид» → «Шумоподавление»: `pref_lmc_hybrid_dn_engine` — `gcam` (по умолчанию, `LmcDenoise`, под‑экран
+«Шумоподавление ARK / LMC (Noise Reduction)»: SNR и модель, множители патчера, предохранители, таблицы яркости t1–t5 и
+цвета t1–t4 строками «a,b,c,d,e») или `nlm` (прежний NLM: `pref_lmc_hybrid_post_luma` 0.6, `pref_lmc_hybrid_post_chroma`
+1.0). Для обоих: `pref_lmc_hybrid_despeckle` (одиночные точки), `pref_lmc_hybrid_bento_denoise_max`. Все читаются через
+`PreferenceKeys.hybridValue/hybridSwitch/hybridList` (переопределения `hybrid_<ключ>` в `nice_dev.txt`); у SCAM HDR (NICE)
+свои внутренние `post_luma`/`post_chroma`. В «Отбраковке движения» — `pref_lmc_hybrid_boost_value` (×6) и
+`pref_lmc_hybrid_boost_threshold` (25), в «Ядре Sabre» — `pref_lmc_hybrid_lut_sigma` (1.414); все три идут воркеру через
+`hybrid_tuning.txt` (`boost`, `varianceThreshold`, `lutHiSigma`). В слиянии 9.6 отдельного шумодава нет — шум управляется отбраковкой,
 пофреймовой LUT шума и весами A/C; финишные таблицы Luma/Chroma Denoise L1–L5 патчера сопоставлены двум силам
 NiceDenoise, а не перенесены числами.
 
@@ -140,13 +187,19 @@ NiceDenoise, а не перенесены числами.
 
 ## Транспорт в воркер (NCH v10, `LmcHybridBurst`)
 
-Заголовок 128 Б: `'NCH1'`, версия 10, w, h, cfa, число кадров, white, black[4], флаги (1 — диагностика,
-2 — вернуть слитый RAW для DNG), индекс базы (0). Таблица кадров по 32 Б: роль (1 normal, 3 bracketed,
+Заголовок 128 Б: `'NCH1'`, версия 11, w, h, cfa, число кадров, white, black[4], флаги (1 — диагностика,
+2 — вернуть слитый RAW для DNG, 4 — вернуть флаги клипа), индекс базы (0), сетка (1 — сенсор, 2 — Sabre 2×). Таблица кадров по 32 Б: роль (1 normal, 3 bracketed,
 5 ultrashort), отношение экспозиции к базе, ISO, slope/offset шумовой модели кадра (нормированные единицы,
 Camera2 `SENSOR_NOISE_PROFILE` своего кадра или выбранный профиль), сдвиг по времени. Далее плоскости uint16
 в раскладке сенсора. Базовый кадр — самый резкий из четырёх новейших N в окне 205 мс (как LMC
 `ChooseBaseFrameZsl`), он первый. Второй короткий кадр отбрасывается (Bento сливает один). Воркер определяет
 формат по версии; серию v9 (старый путь) тоже можно слить гибридом маркером `hybrid-merge`/`SCAM_HYBRID=1`.
+
+Результат: RGB float32 на выходной сетке, затем необязательные трейлеры строго в этом порядке — слитый Bayer RAW
+(w·h uint16, флаг 2), карта эффективных кадров (uint8 на выходной пиксель, гибрид отдаёт всегда), флаги клипа (uint8 на
+выходной пиксель, флаг 4, только после карты). `VivoNeuralClient` подбирает самую полную раскладку, совпавшую с размером
+файла, и раздаёт трейлеры: `VivoNiceBurst.lastMergedDng`, `lastEffectiveFrames`, `VivoNiceRgb.lastClipFlags` (все
+обнуляются в начале каждой склейки).
 
 ## Слияние в воркере (`cpp/vivo-nice-hybrid.h`, GLES 3.1 compute)
 
@@ -180,9 +233,39 @@ Camera2 `SENSOR_NOISE_PROFILE` своего кадра или выбранный
    Выход — линейный RGB float в единицах
    базового кадра (света до 1/factor выше белого), карта эффективных кадров (код 64 = медиана) и слитый
    Bayer RAW для DNG (с клэмпом по белому).
+8. **Раунд 5** (`research/hybrid5/impl_worker.md`; всё включено по умолчанию, у каждой части свой ключ `hybrid_tuning.txt`):
+   * `cellClip` (P2) — ячейка 2×2 кадра с любым выбитым сайтом отдаёт все свои цвета в среднее клипнутых (по краю
+     пересвета зелёный больше не усредняется только с тёмной стороны): пурпурная кайма у ламп ночью 25 % → 9.5 %.
+     Клипнутые отсчёты длинных (bracketed) кадров в среднее клипнутых не входят.
+   * Выбросы сайтов (P5: `hotSigma` 5, `hotBaseSigma` 7, `hotCross` 0.35, `hotMaxLevel` 0.03, `hotMaxKey` 30): фиксированный
+     шум — по среднему 8 обычных кадров на том же сайте сенсора (двусторонний тест), RTS — по одной базе; только в тёмных
+     местах и только ночью; сайт остаётся, если его повторяют соседи других цветов. Флаги сайтов идут в битах 14–15 слов
+     RAW (нужен белый < 16384; при 16‑битном RAW P2/P5 выключаются с записью в лог). Цвет, оставшийся без отсчётов
+     (штатив: все кадры пропускают один сайт), заполняет решётка базы (`baseFill`). Ночь, мост ISO 6400: красные точки
+     > 8σ на МП 38 → 19, синие 17.4 → 2.8; оставшиеся сильные красные — огни сцены.
+   * `bentoLmc` (P3) — откат Bento по проверкам LMC 9.6: ошибка яркости |min(GainUp(us) − база, 0)| ≥ 0.9 сужает маску;
+     отказ — доля клиппинга, затем 8‑связная дыра ≥ 15 ячеек (us недействителен ∧ база белая), затем доля клипа us > 0.62.
+     `largestHole` теперь только метрика; режим Bento 2 пишет `forced; would fall back: …`.
+   * Ядро Sabre 6.1 (`sabre61` 0 выкл / 1 всегда / 2 авто, по умолчанию 2: при ключе SNR 6.1 ≤ `s61MaxKey` 30, то есть
+     ночью; `s61Mode` 7 = 1 ковариация каждого кадра по его RAW + 2 окно ±1.5 px + 4 расширение базы ниже 4 принятых
+     кадров): кривые σ и ключ 6.1. Ночью split‑half SNR выше во всех полосах, днём при одной гомографии на кадр — вдвое
+     ниже (узкие ядра подчёркивают остаточный сдвиг), отсюда «авто». Таблица шума 6.1 (`noise_estimates_texture`) не
+     декодирована: член Винера разности зелёных — амплитуда (`s61GdNoise`), тензор — varU/4 модели кадра (`s61TensorNoise`).
+     К ядру 6.1 не относятся `snrScale` и `rawNoise`; `kernelScale` действует на оба ядра.
+   * GPU держит не больше 32 кадров (`kHybridGpuFrames`: массивы геометрии `kCommonShader`); лишние обычные доноры,
+     дальние по времени от базы, отбрасываются (`HYBRID FRAMES: N normal donors dropped`).
+   * Флаги клипа (A4) — третий трейлер по запросу (флаг заголовка 4, маркер job `clip-flags`, при `SCAM_HYBRID` — ключ
+     `clipFlags 1`): биты 0/1/2 — R/G/B из среднего клипнутых, 3 — граница клипа, 4 — маска Bento, 5 — ультракороткий в
+     среднем клипнутых. Приложение запрашивает их, пока включено восстановление светов (`LmcHybridBurst.clipFlags()`;
+     nice_dev `hybrid_clip_flags 0` — не запрашивать).
+   * Цена: слияние +0.5–0.8 с на снимок, из них ≈0.45 с — компиляция 8 программ (кэша бинарников программ нет). Со всеми
+     новыми частями выключенными выход побайтно равен прежнему воркеру. Униформы на кадр упакованы (программа слияния —
+     304 слота; первая сборка с 544 слотами вешала Adreno 750 до перезагрузки телефона).
 
-Отчёт воркера (`NICE_HDR`): `HYBRID KERNEL`, `HYBRID SHASTA sharpness`, `HYBRID BENTO`, `HYBRID FRAMES`
-(таблица как у LMC: роль, TET, вес, множитель σ), `HYBRID MERGE FACTORS`, `HYBRID STAGES ms`.
+Отчёт воркера (`NICE_HDR`): `HYBRID KERNEL` (ядро 6.1 / раунда 4, ключ SNR, «auto»), `HYBRID SHASTA sharpness`,
+`HYBRID BENTO`, `HYBRID OUTLIERS` (число сайтов фиксированного шума и выбросов базы, cellClip), `HYBRID FRAMES` (таблица как
+у LMC: роль, TET, вес, множитель σ), `HYBRID MERGE FACTORS`, `HYBRID EFFECTIVE MAP`, `HYBRID CLIP FLAGS`, `HYBRID STAGES ms`;
+с `profile 1` — время каждого прохода и гомографии `HYBRID H`.
 
 ## Измерения на PHY110 (ночь, палуба, ISO 6400, 1/60)
 
@@ -203,19 +286,28 @@ ZSL‑кольцо, RAW‑видоискатель и оценка клиппи�
 
 ## Отладка без пересборки
 
-* `touch <ext files>/nice_keep` — воркер сохраняет серию `nice_burst.bin`; прогон из shell на устройстве:
+* `touch <ext files>/nice_keep` — воркер приложения сохраняет серию `nice_burst.bin`; прогон из shell на устройстве:
   `SCAM_HYBRID=1 ./vivo-neural-worker --nice-capture <job dir с libvivo_nice_cre.so и компаньонами> nice_burst.bin out.f32`
-  (job dir: `cre-force-bundled`, `hybrid-merge`, при желании `hybrid_tuning.txt`).
-* `hybrid_tuning.txt` в job dir / ext files / `/data/local/tmp` — «ключ значение» для всех параметров
-  `HybridTuning` (cdm, boost, filterVariance, dilateScale, dilateFloor, kernelScale, weightCap, fwe, bento,
-  bentoHighlight, bentoDilate, bentoSmooth, bentoMinClipped, bentoMaxUsClipped, bentoMaxHole, bentoUsWeight,
-  shastaSharpness, shastaMaxRatio, shastaEnable, snr, snrScale, debugFrame).
-* `nice_dev.txt`: `hybrid 0` — A/B со старым путём той же сборки.
+  (job dir: `cre-force-bundled`, `hybrid-merge`, при желании `hybrid_tuning.txt`, `clip-flags`). Реплей (`SCAM_HYBRID` или
+  `SCAM_NO_KEEP` в окружении) сохранённую серию приложения не перезаписывает.
+* `hybrid_tuning.txt` в job dir / ext files / `/data/local/tmp` (первый найденный) — «ключ значение» для всех параметров
+  `HybridTuning`: cdm, boost, boostEnable, varianceThreshold, filterVariance, dilateOffset, dilateScale, dilateFloor,
+  clipLevel, kernelScale, kernelFloor, widenBelow, widenMul, lutLo, lutHi, lutHiSigma, rawTensor, rawNoise, weightCap, fwe,
+  bento, bentoHighlight, bentoDilate, bentoSmooth, bentoMinClipped, bentoMaxUsClipped, bentoNearClip, bentoMaxHole,
+  bentoUsWeight, bentoUsSigma, bentoLmc, bentoInvalid, bentoInpaintMiddle, bentoInpaintMin, shastaSharpness, shastaMaxRatio,
+  shastaEnable, snr, snrScale, grid, cellClip, hotSigma, hotFrames, hotBaseSigma, hotCross, hotMaxLevel, hotMaxKey,
+  sabre61, s61MaxKey, s61Mode, s61TensorNoise, s61GdNoise, clipFlags (только реплей), subset (split‑half: 1 нечётные,
+  2 чётные доноры), profile, debugFrame. Приложение пишет job‑файл из настроек раздела (`PreferenceKeys.hybridTuningText`,
+  nice_dev `hybrid_<ключ настройки>`, например `hybrid_sabre61 0`, `hybrid_hot_sigma 0`, `hybrid_cell_clip 0`,
+  `hybrid_bento_lmc 0`, `hybrid_s61_max_key 100`).
+* `nice_dev.txt`: `hybrid 0` — A/B со SCAM HDR той же сборки; `hybrid_ark_tone 0` — прежний тон SCAMERA;
+  `hybrid_dn_engine 1` — прежний NLM‑шумодав (0 — ARK/LMC), `hybrid_dn_strength_map 0|1|2` (auto | frames | uniform).
 
 ## Что осталось
 
-* Локальное (тайловое) уточнение выравнивания — пока одна гомография на кадр; усиление отбраковки ×6 по
-  неоднородности потока выключено.
+* Раунд 5 — список открытых пунктов и проверок на телефоне: `research/hybrid5/IMPL_STATUS.md`.
+* Локальное (тайловое) уточнение выравнивания (F6) — пока одна гомография на кадр; из‑за этого ядро 6.1 днём хуже
+  ядра раунда 4 и включается только ночью; усиление отбраковки ×6 по неоднородности потока выключено.
 * Сетка 2×: окна пост‑узлов заданы в пикселях выхода, поэтому все узлы масштабируются по `outputScale`
   (шаг `pxStep` = 2: окна денойза 8×8/3×3/5×5 и NLM, кольца despeckle, окна резкости и Собеля, 5×5 колена AgX;
   стадии хромы/пятен — на 1/(2s) и 1/(4s) сенсорной сетки; база AgX — 1/16 сенсорной; локальный контраст — +1 уровень
