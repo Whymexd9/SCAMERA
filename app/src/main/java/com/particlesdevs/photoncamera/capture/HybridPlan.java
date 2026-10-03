@@ -56,7 +56,7 @@ public final class HybridPlan {
     public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.niceInternalValue("hybrid_shasta_ev", 2f))); }
     /** 0 off, 1 auto (needs clipping in the buffered frame), 2 force. */
     public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.niceInternalValue("hybrid_bento", 1f)))); }
-    public static double ultrashortFactor() { return Math.max(2, Math.min(32, PreferenceKeys.niceInternalValue("hybrid_bento_factor", 8f))); }
+    public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.niceInternalValue("hybrid_bento_factor", 8f))); }
     public static float bentoTriggerClip() { return Math.max(0f, Math.min(0.1f, PreferenceKeys.niceInternalValue("hybrid_bento_trigger", 0.0005f))); }
     public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.niceInternalValue("hybrid_shasta_max_ratio", 32f))); }
 

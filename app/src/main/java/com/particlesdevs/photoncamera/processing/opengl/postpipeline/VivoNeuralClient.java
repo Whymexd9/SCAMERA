@@ -210,7 +210,10 @@ public final class VivoNeuralClient {
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException("Не удалось создать маркер CRE");
             }
-            final boolean hybridMerge=niceBurst instanceof LmcHybridBurst || (niceBurst!=null && com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceHybridEnabled());
+            // Only the hybrid burst asks for the hybrid merge: a VivoNiceBurst reaches the worker when the engine is
+            // the network or the burst is a Quad/Tetra mosaic (HdrxProcessor), and the hybrid would read the mosaic
+            // as plain Bayer (vivo tele in ISZ: blue image, 3 October). Without the model the worker falls back itself.
+            final boolean hybridMerge=niceBurst instanceof LmcHybridBurst;
             if(hybridMerge){
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.

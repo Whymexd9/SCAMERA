@@ -991,10 +991,18 @@ public class PreferenceKeys {
      * Bento ultrashort highlights, Shasta bracketed shadows) runs on any GLES 3.1 GPU without a neural model.
      * Off = the vivo NICE network (SM8750) / the former portable route.
      */
-    public static boolean isNiceHybridEnabled() {
-        Float override = niceDevValue("hybrid"); // nice_dev.txt: "hybrid 0/1" for A/B tests without the UI
-        if (override != null) return override > 0f;
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_hybrid", true);
+    public static boolean isNiceHybridEnabled() { return "hybrid".equals(niceEngine()); }
+    /**
+     * SCAM HDR merge engine (pref_vivo_nice_engine, section "Склейка LMC-гибрид"): "nice" = the vivo network,
+     * "hybrid" = the LMC hybrid, "auto" (default) = NICE on the SoC it was built for, the hybrid elsewhere.
+     * nice_dev.txt "hybrid 0/1" overrides for A/B tests without the UI.
+     */
+    public static String niceEngine() {
+        Float override = niceDevValue("hybrid");
+        if (override != null) return override > 0f ? "hybrid" : "nice";
+        String v = preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_engine", "auto");
+        if ("nice".equals(v) || "hybrid".equals(v)) return v;
+        return isVivoNetSoc() ? "nice" : "hybrid";
     }
     /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_vivo_nice_hybrid_* preferences. */
     public static String hybridTuningText() {
@@ -1006,6 +1014,7 @@ public class PreferenceKeys {
             {"fwe", "pref_vivo_nice_hybrid_fwe"}, {"dilateScale", "pref_vivo_nice_hybrid_dilate"},
             {"shastaSharpness", "pref_vivo_nice_hybrid_shasta_sharpness"}, {"bentoUsWeight", "pref_vivo_nice_hybrid_bento_weight"},
             {"shastaMaxRatio", "pref_vivo_nice_hybrid_shasta_max_ratio"}, {"filterVariance", "pref_vivo_nice_hybrid_filter_variance"},
+            {"bentoUsSigma", "pref_vivo_nice_hybrid_bento_sigma"},
             {"dilateFloor", "pref_vivo_nice_hybrid_dilate_floor"}, {"widenBelow", "pref_vivo_nice_hybrid_widen_below"},
             {"rawNoise", "pref_vivo_nice_hybrid_tensor_noise"}, {"snrScale", "pref_vivo_nice_hybrid_snr_scale"},
         };

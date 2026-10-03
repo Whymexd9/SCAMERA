@@ -46,6 +46,9 @@ struct HybridInput {
 };
 
 // Tuning (LMC-like; a "key value" text file in the job dir or the external files dir overrides it).
+// Frames per burst the shaders hold in uniform arrays (vivo ships 30 N frames + ultrashort + up to 3 bracketed).
+constexpr int kHybridMaxFrames=48;
+
 struct HybridTuning {
     // rejection (LMC 9.6 rejection.cl constants)
     float cdm=0.07f;             // color_difference_multiplier (RGB)
@@ -73,8 +76,12 @@ struct HybridTuning {
     float bentoSmooth=1.f;       // Mask_Smooth sigma (7x7)
     float bentoMinClipped=0.00039f; // HasSufficientClippedPixels
     float bentoMaxUsClipped=0.62f;  // HasHighClippingRatioOnUltrashortFrame
+    float bentoNearClip=0.85f;      // the dilated mask keeps only cells near saturation (any sample >= this, r = 1, sigma = 1):
+                                    // elsewhere in the dilation band the 20 N frames beat the one ultrashort frame (x8..16 gain)
     int bentoMaxHole=15;         // HasLargeHoleNeedingInpainting (connected clipped us cells)
     float bentoUsWeight=1.f;     // A of the ultrashort frame (driver: 1.0)
+    float bentoUsSigma=1.f;      // isotropic kernel sigma (px) of the ultrashort frame: inside the mask it is the only frame,
+                                 // and one Bayer frame needs >= ~0.7 px not to leave R/B holes (LMC: base kernel x2.5 under Bento)
     // Shasta
     float shastaSharpness=0.8f;  // bracketed_sharpness_threshold
     float shastaMaxRatio=32.f;   // max bracketed/base TET ratio
@@ -103,8 +110,8 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("lutHiSigma",&t.lutHiSigma)||set("kernelScale",&t.kernelScale)||set("widenBelow",&t.widenBelow)||set("widenMul",&t.widenMul)
             ||set("kernelFloor",&t.kernelFloor)||set("rawTensor",&t.rawTensor)||set("rawNoise",&t.rawNoise)||set("bento",nullptr,&t.bento)
             ||set("bentoHighlight",&t.bentoHighlight)||set("bentoDilate",nullptr,&t.bentoDilate)||set("bentoSmooth",&t.bentoSmooth)
-            ||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
-            ||set("bentoUsWeight",&t.bentoUsWeight)||set("shastaSharpness",&t.shastaSharpness)||set("shastaMaxRatio",&t.shastaMaxRatio)
+            ||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
+            ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("shastaSharpness",&t.shastaSharpness)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
@@ -121,14 +128,14 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
 static const char* kHybHelpers=R"(
 uniform ivec4 phaseColor;
 uniform vec2 baseNoise;      // slope, offset of the base frame (normalised units)
-uniform float fGain[32];     // 1 / exposure ratio: brings frame f to base units
-uniform float fWeight[32];   // per-frame scalar weight A (0 = frame skipped)
-uniform float fKMul[32];     // covariance multiplier 1/LUTsigma(A)^2
-uniform int fRole[32];       // 1 normal, 3 bracketed, 5 ultrashort
-uniform vec2 fNoise[32];     // slope, offset of frame f in its own exposure
+uniform float fGain[48];     // 1 / exposure ratio: brings frame f to base units
+uniform float fWeight[48];   // per-frame scalar weight A (0 = frame skipped)
+uniform float fKMul[48];     // covariance multiplier 1/LUTsigma(A)^2
+uniform int fRole[48];       // 1 normal, 3 bracketed, 5 ultrashort
+uniform vec2 fNoise[48];     // slope, offset of frame f in its own exposure
 uniform float clipLevel;
-uniform int cellRow0[32];    // first donor cell row held for frame f (even frame row / 2)
-uniform int cellRows[32];
+uniform int cellRow0[48];    // first donor cell row held for frame f (even frame row / 2)
+uniform int cellRows[48];
 float epsU(){ return max(baseNoise.y/max(baseNoise.x,1.0e-9),1.0e-5); }
 // u-domain noise variance of frame f, brought to base units, at scene level L (base units).
 float noiseU(int f,float L){
@@ -227,7 +234,7 @@ void main(){
 // and takes the donor's local texture from the 3x3 neighbourhood without re-reading the RAW.
 static const char* kHybCells=R"(
 layout(std430,binding=5) writeonly buffer Cells{vec4 cells[];};
-uniform uint cellOffset[32];
+uniform uint cellOffset[48];
 void main(){
     int w2=size.x/2;
     int f=int(gl_GlobalInvocationID.z)+1;
@@ -245,7 +252,7 @@ static const char* kHybReject=R"(
 layout(std430,binding=5) readonly buffer Cells{vec4 cells[];};
 layout(std430,binding=7) writeonly buffer RawR{float rawR[];};
 layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
-uniform uint cellOffset[32];
+uniform uint cellOffset[48];
 uniform int ry0;
 uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
@@ -339,7 +346,7 @@ uniform int cy0;
 uniform int cy1;
 uniform int ry0;
 uniform vec4 kD; // widen below, widen multiplier, kernel floor, bento active
-uniform vec4 kE; // debug frame (-1 = all), 0, 0, 0
+uniform vec4 kE; // debug frame (-1 = all), ultrashort kernel precision 1/sigma^2, 0, 0
 struct Acc{vec3 num;vec3 den;float cover;vec3 clipNum;vec3 clipDen;};
 void initAcc(out Acc a){a.num=vec3(0.0);a.den=vec3(0.0);a.cover=0.0;a.clipNum=vec3(0.0);a.clipDen=vec3(0.0);}
 float kernelW(vec2 d,vec3 P){
@@ -354,7 +361,7 @@ void frameSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P){
         for(int dj=0;dj<=2;dj+=2)for(int di=0;di<=2;di+=2){
             int sx=bx+di,sy=by+dj;
             float kw=kernelW(vec2(float(sx),float(sy))-O,P);
-            if(kw<0.002)continue;
+            if(kw<0.002&&f!=0&&fRole[f]!=5)continue;
             float v=sampleRaw(f,sx,sy);
             if(v>=clipLevel){ a.clipNum[c]+=r*kw*v*g;a.clipDen[c]+=r*kw;continue; }
             a.num[c]+=r*kw*v*g;a.den[c]+=r*kw;
@@ -381,7 +388,10 @@ void main(){
             if(kE.x>=0.0&&int(kE.x)!=f)continue;
             vec2 oc=origin(f,2*cx,2*cy);
             vec2 O=oc+(pos-cell);
-            frameSamples(a,f,O,r,r/max(fWeight[f],1.0e-6),P*fKMul[f]);
+            // ultrashort frame: isotropic kernel wide enough for a single Bayer frame (the base guide is an edge
+            // along every highlight border, its across-edge sigma leaves R/B holes = green/magenta zipper)
+            vec3 Pf=fRole[f]==5?vec3(kE.y,kE.y,0.0):P*fKMul[f];
+            frameSamples(a,f,O,r,r/max(fWeight[f],1.0e-6),Pf);
         }
         // Base frame last: inside the Bento mask it yields to the ultrashort frame; where the donors left
         // little coverage its kernel widens (6.1: covariance x0.3 below 4 accumulated frames).
@@ -491,7 +501,7 @@ public:
     void merge(const Frames& in,const HybridTuning& tune,const SuperResTuning& kernel,bool bento,
                std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare){
         const int frames=int(in.frames.size()),w=in.w,h=in.h,w2=w/2,h2=h/2;
-        if(frames<1||frames>32||(w&1)||(h&1)||int(in.homography.size())!=frames)throw std::runtime_error("HYBRID GPU unsupported burst shape");
+        if(frames<1||frames>kHybridMaxFrames||(w&1)||(h&1)||int(in.homography.size())!=frames)throw std::runtime_error("HYBRID GPU unsupported burst shape");
         out.assign(size_t(w)*h*3,0.f);effective.assign(size_t(w)*h,1.f);robustShare.assign(frames,1.0);
         // Uniforms common to all programs.
         std::vector<float> a(size_t(frames)*4),b(size_t(frames)*4),up(frames,1.f);
@@ -532,7 +542,7 @@ public:
         glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bento?1.f:0.f,tune.dilateFloor);
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
-        glUniform4f(loc(mergeProgram,"kE"),float(tune.debugFrame),0,0,0);
+        {const float us=std::max(0.3f,tune.bentoUsSigma);glUniform4f(loc(mergeProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);}
         std::vector<GLuint> zeros(size_t(std::max(frames,1)),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
         reserve(12,16); // mosaic frames: unused
@@ -618,25 +628,32 @@ public:
 // CPU side: sharpness (Shasta gate), Bento mask, per-frame weights, assembly.
 // ---------------------------------------------------------------------------------------------
 
-// Sharpness of a frame on its 1/4 green guide (LMC MeasureSharpnessRaw: squared green gradient per
-// unit exposure over unsaturated pixels, the noise contribution removed).
-inline double hybridSharpness(const Burst& b,int f,float exposure,float slope,float offset) {
-    const auto g=guides(b,f);
-    const Guide& q=g[0];
-    double grad=0;long n=0;
-    const float sat=std::min(1.f,0.9f*exposure);
-    for(int y=1;y<q.h-1;++y)for(int x=1;x<q.w-1;++x){
-        const float c=q.at(x,y);
-        if(c>=sat)continue;
-        const float l=q.at(x-1,y),r=q.at(x+1,y);
-        grad+=double(r-c)*(r-c)+double(l-c)*(l-c);++n;
+// Sharpness of a bracketed frame against the base on the 1/4 green guides (LMC MeasureSharpnessRaw /
+// DiscardBlurryBracketedFrames): squared green gradient per unit exposure^2 with the noise contribution removed,
+// over the pixels that are unsaturated in BOTH frames. A long frame clips the highlights the base still resolves;
+// scoring each frame over its own unsaturated pixels would drop every bracketed frame of a bright scene.
+struct SharpnessPair { double base=0,frame=0; long pixels=0; };
+inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset) {
+    const Guide qb=guides(b,0)[0];
+    const Guide qf=guides(b,f)[0];
+    constexpr float sat=0.9f; // guide values are in the frame's own units (0..1 of white)
+    double gb=0,gf=0,mb=0,mf=0;long n=0;
+    for(int y=1;y<qb.h-1;++y)for(int x=1;x<qb.w-1;++x){
+        const float cb=qb.at(x,y),lb=qb.at(x-1,y),rb=qb.at(x+1,y);
+        const float cf=qf.at(x,y),lf=qf.at(x-1,y),rf=qf.at(x+1,y);
+        if(cb>=sat||lb>=sat||rb>=sat||cf>=sat||lf>=sat||rf>=sat)continue;
+        gb+=double(rb-cb)*(rb-cb)+double(lb-cb)*(lb-cb);
+        gf+=double(rf-cf)*(rf-cf)+double(lf-cf)*(lf-cf);
+        mb+=cb;mf+=cf;++n;
     }
-    if(n==0)return 0;
-    // 16 sites averaged per guide pixel of which 8 are green: variance of the mean = var/8; a difference doubles it.
-    double mean=0;for(int y=0;y<q.h;y+=4)for(int x=0;x<q.w;x+=4)mean+=q.at(x,y);mean/=double((q.h+3)/4)*((q.w+3)/4);
-    const double noise=2.0*2.0*(slope*mean+offset)/8.0;
-    const double e2=double(exposure)*exposure;
-    return std::max(grad/double(n)-noise,0.0)/e2;
+    SharpnessPair p;p.pixels=n;
+    if(n==0)return p;
+    mb/=double(n);mf/=double(n);
+    // 16 sites averaged per guide pixel of which 8 are green: variance of the mean = var/8; a difference doubles it, two differences 4x.
+    const double nb=4.0*(double(baseSlope)*mb+baseOffset)/8.0,nf=4.0*(double(slope)*mf+offset)/8.0;
+    p.base=std::max(gb/double(n)-nb,0.0);
+    p.frame=std::max(gf/double(n)-nf,0.0)/(double(exposure)*exposure);
+    return p;
 }
 
 struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0;std::vector<float> mask; };
@@ -646,14 +663,16 @@ struct BentoResult { bool active=false;std::string reason;double clippedFraction
 inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography& usH,float usExposure,const HybridTuning& t) {
     BentoResult res;
     const int w2=b.w/2,h2=b.h/2;
-    std::vector<uint8_t> clip(size_t(w2)*h2,0),usClip(size_t(w2)*h2,0);
+    std::vector<uint8_t> clip(size_t(w2)*h2,0),usClip(size_t(w2)*h2,0),near(size_t(w2)*h2,0);
     std::atomic<long> clipped{0},usClippedInMask{0};
+    const float nearLevel=std::min(t.bentoNearClip,t.bentoHighlight);
     mergeRowBands(h2,[&](int y0,int y1){
         long lc=0;
         for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
-            bool c=false;
-            for(int p=0;p<4;++p)if(b.sample(0,2*cx+(p&1),2*cy+(p>>1))>=t.bentoHighlight){c=true;break;}
+            bool c=false,nr=false;
+            for(int p=0;p<4;++p){const float v=b.sample(0,2*cx+(p&1),2*cy+(p>>1));if(v>=t.bentoHighlight)c=true;if(v>=nearLevel)nr=true;}
             if(c){clip[size_t(cy)*w2+cx]=1;++lc;}
+            if(nr)near[size_t(cy)*w2+cx]=1;
         }
         clipped+=lc;
     });
@@ -693,6 +712,34 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
             mask[size_t(cy)*w2+cx]=std::clamp(s,0.f,1.f);
         }
     });
+    // Keep the replacement where the base is saturated or nearly so: the dilation band around a highlight also
+    // covers dark neighbours (window rubber next to a white frame), where one ultrashort frame at x8..16 gain is
+    // far noisier than the merged N frames. near := dilate(any sample >= nearLevel, r = 1) smoothed with sigma 1.
+    if(t.bentoNearClip<t.bentoHighlight){
+        std::vector<uint8_t> nd(size_t(w2)*h2,0);
+        mergeRowBands(h2,[&](int y0,int y1){
+            for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                bool on=false;
+                for(int dy=-1;dy<=1&&!on;++dy){const int yy=cy+dy;if(yy<0||yy>=h2)continue;
+                    for(int dx=-1;dx<=1;++dx){const int xx=cx+dx;if(xx<0||xx>=w2)continue;if(near[size_t(yy)*w2+xx]){on=true;break;}}}
+                nd[size_t(cy)*w2+cx]=on?1:0;
+            }
+        });
+        float g[3];float gs=0;for(int i=-1;i<=1;++i){g[i+1]=std::exp(-0.5f*i*i);gs+=g[i+1];}
+        for(float& v:g)v/=gs;
+        mergeRowBands(h2,[&](int y0,int y1){
+            for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                float s=0;for(int i=-1;i<=1;++i)s+=g[i+1]*nd[size_t(cy)*w2+std::clamp(cx+i,0,w2-1)];
+                tmp[size_t(cy)*w2+cx]=s;
+            }
+        });
+        mergeRowBands(h2,[&](int y0,int y1){
+            for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                float s=0;for(int i=-1;i<=1;++i)s+=g[i+1]*tmp[size_t(std::clamp(cy+i,0,h2-1))*w2+cx];
+                mask[size_t(cy)*w2+cx]*=std::clamp(s,0.f,1.f);
+            }
+        });
+    }
     // The aligned ultrashort frame inside the mask: its own clipping (GainUp(us) >= threshold) and holes.
     long inMask=0;
     mergeRowBands(h2,[&](int y0,int y1){
@@ -748,7 +795,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
-    if(input.frames.empty()||input.frames.size()>32)throw std::runtime_error("HYBRID: 1..32 frames");
+    if(input.frames.empty()||int(input.frames.size())>kHybridMaxFrames)throw std::runtime_error("HYBRID: 1.."+std::to_string(kHybridMaxFrames)+" frames");
     const int w=input.w,h=input.h;
     // A Burst view for the shared helpers (sampleRaw, guides, alignment): slot 0 = base.
     Burst b;b.w=w;b.h=h;b.cfa=input.cfa;b.white=input.white;b.black=input.black;b.canonicalRggb=true;
@@ -795,17 +842,16 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
     {
-        const double baseSharp=hybridSharpness(b,0,1.f,baseSlope,baseOffset);
         float maxRatio=1;
         for(int f=1;f<n;++f){
             const auto& fr=input.frames[f];
             if(fr.role!=kRoleBracketed)continue;
             if(!tune.shastaEnable||!aligned[f]){keep[f]=false;++stats.droppedBracketed;continue;}
             Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-            const double s=hybridSharpness(one,1,fr.exposure,fr.slope,fr.offset);
-            const double pct=baseSharp>0?s/baseSharp:1.0;
-            report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(s)+" base="+std::to_string(baseSharp)
-                +" ("+std::to_string(100*pct)+" % of base)");
+            const SharpnessPair sp=hybridSharpnessPair(one,1,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset);
+            const double pct=sp.base>0?sp.frame/sp.base:1.0;
+            report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(sp.frame)+" base="+std::to_string(sp.base)
+                +" pixels="+std::to_string(sp.pixels)+" ("+std::to_string(100*pct)+" % of base)");
             if(pct<tune.shastaSharpness){keep[f]=false;++stats.droppedBracketed;continue;}
             maxRatio=std::max(maxRatio,fr.exposure);
         }

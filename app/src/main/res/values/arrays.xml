@@ -159,6 +159,16 @@
         <item>raw10</item>
         <item>raw12</item>
     </string-array>
+    <string-array name="vivo_nice_engine_entries">
+        <item>Авто (NICE на SM8750, иначе гибрид)</item>
+        <item>LMC-гибрид: Sabre 6.1 × LMC 9.6 (любой GPU)</item>
+        <item>Нейросеть vivo NICE (SM8750)</item>
+    </string-array>
+    <string-array name="vivo_nice_engine_values">
+        <item>auto</item>
+        <item>hybrid</item>
+        <item>nice</item>
+    </string-array>
     <string-array name="vivo_nice_hybrid_bento_entries">
         <item>Выключено</item>
         <item>Авто (при клиппинге)</item>

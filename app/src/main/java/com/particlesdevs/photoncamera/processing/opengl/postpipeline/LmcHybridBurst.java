@@ -26,6 +26,7 @@ public final class LmcHybridBurst implements NiceTransport {
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // LMC: base candidates within 205 ms of the newest frame
     private static final int BASE_CANDIDATES = 4;
+    private static final int WORKER_MAX_FRAMES = 48; // kHybridMaxFrames in vivo-nice-hybrid.h
 
     private final int width, height, cfa;
     private final float white;
@@ -81,7 +82,14 @@ public final class LmcHybridBurst implements NiceTransport {
         base = best;
         final double ref = product(base);
         add(base, ROLE_NORMAL, ref, newest);
-        for (ImageFrame f : normal) if (f != base) add(f, ROLE_NORMAL, ref, newest);
+        // The worker holds at most WORKER_MAX_FRAMES frames (uniform arrays); the oldest N frames go first,
+        // one slot stays for the ultrashort frame and three for the bracketed ones.
+        int normals = 1;
+        for (ImageFrame f : normal) {
+            if (f == base) continue;
+            if (normals >= WORKER_MAX_FRAMES - 4) { Log.w("NICE_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, worker limit " + WORKER_MAX_FRAMES); break; }
+            add(f, ROLE_NORMAL, ref, newest); normals++;
+        }
         // Bracketed frames: only those really longer than the base.
         bracketed.sort(Comparator.comparingDouble(this::product));
         for (ImageFrame f : bracketed) {

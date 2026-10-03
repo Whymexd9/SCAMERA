@@ -24,9 +24,10 @@ public final class SettingsNumericRules {
             case "pref_vivo_nice_hybrid_shasta_sharpness": return new double[]{0.3,1,0};
             case "pref_vivo_nice_hybrid_shasta_max_ratio": return new double[]{2,100,0};
             case "pref_vivo_nice_hybrid_bento": return new double[]{0,2,1};
-            case "pref_vivo_nice_hybrid_bento_factor": return new double[]{2,32,0};
+            case "pref_vivo_nice_hybrid_bento_factor": return new double[]{2,16,0};
             case "pref_vivo_nice_hybrid_bento_trigger": return new double[]{0,0.1,0};
             case "pref_vivo_nice_hybrid_bento_weight": return new double[]{0.1,8,0};
+            case "pref_vivo_nice_hybrid_bento_sigma": return new double[]{0.5,2,0};
             case "pref_vivo_nice_hybrid_cdm": return new double[]{0.01,2,0};
             case "pref_vivo_nice_hybrid_boost": return new double[]{0,1,1};
             case "pref_vivo_nice_hybrid_kernel": return new double[]{0.5,2,0};
