@@ -6,10 +6,12 @@ precision highp sampler2D;
 // are taken one SENSOR pixel apart (pxStep = outputScale) and the block covers 8 x 8 sensor pixels;
 // at pxStep 1 this is the plain 8x8 block / 3x3 neighbourhood statistic.
 uniform sampler2D InputBuffer;
-uniform int block;  // 8 * outputScale: block side in output pixels
-uniform int pxStep;   // outputScale: neighbour distance in output pixels (= one sensor pixel)
+uniform int blockU;  // 8 * outputScale: block side in output pixels
+uniform int pxStepU;   // outputScale: neighbour distance in output pixels (= one sensor pixel)
 out vec4 Output;
 void main() {
+    int block = blockU > 0 ? blockU : 8; // unset uniforms (0) = the 1x statistic
+    int pxStep = max(pxStepU, 1);
     ivec2 origin = ivec2(gl_FragCoord.xy) * block;
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1 + pxStep);
     float sum = 0.0;

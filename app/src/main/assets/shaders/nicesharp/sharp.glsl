@@ -10,11 +10,12 @@ uniform float radius;       // unsharp mask Gaussian sigma in pixels
 uniform float overshoot;    // allowed excursion beyond the local min/max (display units)
 uniform vec2 chromaAA;      // share of the chroma anti-aliasing, luminance tolerance
 uniform vec2 coring;        // detail amplitude (display units) below which the mask does not amplify / above which it is full
-uniform int pxStep;           // outputScale: every window tap is 'pxStep' output pixels = one sensor pixel apart (1 at 1x)
+uniform int pxStepU;           // outputScale: every window tap is 'pxStep' output pixels = one sensor pixel apart (1 at 1x)
 out vec4 Output;
 const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
 float lum(ivec2 p, ivec2 hi) { return dot(texelFetch(InputBuffer, clamp(p, ivec2(0), hi), 0).rgb, LW); }
 void main() {
+    int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
     ivec2 sz = textureSize(InputBuffer, 0), hi = sz - ivec2(1);
     vec3 c = texelFetch(InputBuffer, p, 0).rgb;

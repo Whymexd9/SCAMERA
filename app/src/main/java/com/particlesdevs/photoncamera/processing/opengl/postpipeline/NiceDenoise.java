@@ -123,8 +123,8 @@ public final class NiceDenoise extends Node {
         try {
             glProg.useAssetProgram("chromadn/noiseest", false);
             glProg.setTexture("InputBuffer", noisy);
-            glProg.setVar("block", block);
-            glProg.setVar("pxStep", s);
+            glProg.setVar("blockU", block);
+            glProg.setVar("pxStepU", s);
             glProg.drawBlocks(est);
             android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_READ_FRAMEBUFFER_BINDING, oldRead, 0);
             android.opengl.GLES30.glGenFramebuffers(1, framebuffer, 0);
@@ -195,7 +195,7 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", original);
                 glProg.setVar("sigma", noiseSigma);
                 glProg.setVar("offsetC", offsetC);
-                glProg.setVar("pxStep", s);
+                glProg.setVar("pxStepU", s);
                 glProg.drawBlocks(cleaned);
                 input = cleaned;
             }
@@ -204,7 +204,7 @@ public final class NiceDenoise extends Node {
             pong = new GLTexture(half, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             glProg.useAssetProgram("chromadn/down", false);
             glProg.setTexture("InputBuffer", input);
-            glProg.setVar("factor", 2 * s);
+            glProg.setVar("factorU", 2 * s);
             glProg.drawBlocks(before);
             GLTexture source = before;
             if (chroma > 0f) {
@@ -239,14 +239,14 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", noisy);
                 bindEffectiveFrames(effMap);
                 glProg.setVar("h", h);
-                glProg.setVar("pxStep", 1); // full lattice: a dilated patch/candidate set decouples even/odd pixels of the 2x grid (2x2 blocks, smeared text)
+                glProg.setVar("pxStepU", 1); // full lattice: a dilated patch/candidate set decouples even/odd pixels of the 2x grid (2x2 blocks, smeared text)
                 glProg.drawBlocks(clean);
                 Point quarterSize = new Point((original.mSize.x + 4 * s - 1) / (4 * s), (original.mSize.y + 4 * s - 1) / (4 * s));
                 quarter = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
                 coarse = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
                 glProg.useAssetProgram("chromadn/down4", false);
                 glProg.setTexture("InputBuffer", clean);
-                glProg.setVar("factor", 4 * s);
+                glProg.setVar("factorU", 4 * s);
                 glProg.drawBlocks(quarter);
                 glProg.useAssetProgram("chromadn/coarse", false);
                 glProg.setTexture("InputBuffer", quarter);
@@ -262,7 +262,7 @@ public final class NiceDenoise extends Node {
             glProg.setTexture("Clean", luma > 0f ? clean : noisy);
             glProg.setTexture("Coarse", luma > 0f ? coarse : noisy);
             glProg.setVar("sigma", luma > 0f ? noiseSigma : 0f);
-            glProg.setVar("pxStep", 1); // full lattice for the 3x3 means / residual smoothing (see nlm)
+            glProg.setVar("pxStepU", 1); // full lattice for the 3x3 means / residual smoothing (see nlm)
             glProg.setVar("lowRatio", 2f * s);
             // Share of the removed noise put back: the grain that stays is held near an absolute level
             // (about 0.0002 in u: the merge leaves about half the noise it did before its kernel followed the

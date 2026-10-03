@@ -3,9 +3,10 @@ precision highp sampler2D;
 // Colour noise removal, step 1: factor x factor average of the white-balanced linear RGB
 // (factor = 2 * outputScale: the colour stage runs at half the SENSOR resolution on any grid).
 uniform sampler2D InputBuffer;
-uniform int factor;
+uniform int factorU;
 out vec4 Output;
 void main() {
+    int factor = factorU > 0 ? factorU : 2; // unset uniform (0) = the 1x reduction
     ivec2 origin = ivec2(gl_FragCoord.xy) * factor;
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
     vec3 sum = vec3(0.0);

@@ -100,7 +100,7 @@ with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for name,content in sources.items():
   p=t/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content)
- for name in ['VivoNiceAe.java','VivoNiceBurst.java']:
+ for name in ['VivoNiceAe.java','VivoNiceBurst.java','NiceTransport.java']:
   (t/post/name).write_text((root/'app/src/main/java'/post/name).read_text())
  subprocess.run(['java','-m','jdk.compiler/com.sun.tools.javac.Main','-d',tmp,*map(str,t.rglob('*.java'))],check=True)
  subprocess.run(['java','-cp',tmp,'com.particlesdevs.photoncamera.processing.opengl.postpipeline.Check'],check=True)

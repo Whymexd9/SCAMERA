@@ -86,7 +86,7 @@ public final class HighlightRecovery extends Node {
             glProg.setVar("kFull", kFull);
             glProg.setVar("yRef", yRef);
             glProg.setVar("strength", strength);
-            glProg.setVar("pxStep", s); // 3x3 tint test one sensor pixel apart
+            glProg.setVar("pxStepU", s); // 3x3 tint test one sensor pixel apart
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;

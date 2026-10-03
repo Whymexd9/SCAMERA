@@ -8,13 +8,14 @@ precision highp usampler2D;
 // removal of all noise).
 uniform sampler2D InputBuffer;
 uniform float h;        // filtering strength in u units (about 0.002)
-uniform int pxStep;       // outputScale: output px per sensor px (1 off the Sabre 2x grid)
+uniform int pxStepU;       // outputScale: output px per sensor px (1 off the Sabre 2x grid)
 uniform usampler2D EffMap;  // effective merged frames per pixel (1/8 frame steps, 0 = unknown)
 uniform float effRef;       // median of the map
 uniform float effMax;       // upper clamp of the noise boost (hybrid: Bento denoise limit setting)
 uniform int useEff;
 out float Output;
 void main() {
+    int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
     float centre[9];
@@ -26,7 +27,7 @@ void main() {
     float hp = h;
     if (useEff != 0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, max(effMax, 0.5));
+        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, (effMax > 0.0 ? effMax : 3.0));
     }
     float norm = 1.0 / (hp * hp);
     for (int j = -2; j <= 2; j++) {

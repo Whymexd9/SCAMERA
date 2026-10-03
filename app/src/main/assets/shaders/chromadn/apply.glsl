@@ -22,21 +22,22 @@ uniform float offsetC;
 uniform float lumaAmount;    // 0..1
 uniform float chromaAmount;  // 0..1: 0 keeps the original colour
 uniform vec2 darkFade;       // mean level where colour starts to fade / is fully kept
-uniform int pxStep;            // outputScale: dilates the fixed 3x3 and +-3 px windows to sensor-pixel units
+uniform int pxStepU;            // outputScale: dilates the fixed 3x3 and +-3 px windows to sensor-pixel units
 uniform float lowRatio;      // full-resolution pixels per Before/After texel (2 * outputScale)
 out vec4 Output;
 void main() {
+    int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
     // Noise of this pixel: the measured level scaled by how well the merge covered it.
     float sg = sigma;
     if (useEff != 0 && sigma > 0.0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, max(effMax, 0.5));
+        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, (effMax > 0.0 ? effMax : 3.0));
     }
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
     ivec2 lowSize = textureSize(After, 0);
-    vec2 g = (vec2(p) + 0.5) / lowRatio - 0.5;
+    vec2 g = (vec2(p) + 0.5) / (lowRatio > 0.0 ? lowRatio : 2.0) - 0.5; // unset = 2:1
     ivec2 g0 = ivec2(floor(g));
     vec2 f = g - vec2(g0);
     // The pixel's colour averaged over 3x3 (luminance weighted) has a third of the single-pixel

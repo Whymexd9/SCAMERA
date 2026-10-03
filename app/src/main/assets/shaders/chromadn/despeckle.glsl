@@ -9,10 +9,11 @@ precision highp sampler2D;
 uniform sampler2D InputBuffer;
 uniform float sigma;    // noise sigma of u = sqrt(Y + offsetC), 0 disables the noise-aware test
 uniform float offsetC;
-uniform int pxStep;       // outputScale: output px per sensor px, so the rings stay 4 and 2 SENSOR px away
+uniform int pxStepU;       // outputScale: output px per sensor px, so the rings stay 4 and 2 SENSOR px away
 out vec4 Output;
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 void main() {
+    int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));

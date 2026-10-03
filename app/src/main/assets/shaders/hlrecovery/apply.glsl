@@ -11,10 +11,11 @@ uniform sampler2D Chroma32;
 uniform float kFull;
 uniform float yRef;
 uniform float strength;
-uniform int pxStep;              // outputScale: the 3x3 tint test samples one sensor pixel apart (1 at 1x)
+uniform int pxStepU;              // outputScale: the 3x3 tint test samples one sensor pixel apart (1 at 1x)
 out vec3 Output;
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 void main() {
+    int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
     ivec2 size = textureSize(InputBuffer, 0);
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
