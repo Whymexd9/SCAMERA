@@ -45,14 +45,15 @@ public class LinearExposure extends Node {
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         if (pipeline.mParameters.vivoNiceRgb != null) {
-            // NICE brightness targets are user settings (group "Светотень и тон").
+            // NICE brightness targets are user settings (group "Светотень и тон"); on a hybrid shot its own copies
+            // (pref_lmc_hybrid_ae_*, PreferenceKeys.profileNumber), never the SCAM HDR keys.
             // Gain up to x128 by default: 16 capped every dim indoor/night NICE shot
             // (p50 ~0.001-0.002 needs x25..x50) and pictures came out darker than the scene.
             histSize = 1024;
-            midAnchor = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_mid", 0.050f, 0.005f, 0.200f);
-            highAnchor = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_high", 0.180f, 0.020f, 0.500f);
+            midAnchor = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_mid", 0.050f, 0.005f, 0.200f);
+            highAnchor = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_high", 0.180f, 0.020f, 0.500f);
             gainMin = 1.0f;
-            gainMax = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_gain_max", 128f, 1f, 256f);
+            gainMax = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_gain_max", 128f, 1f, 256f);
         }
         // Keep the linear scene snapshot for the Ultra HDR gain-map pass
         // (this buffer is the post-demosaic/ABLC input Initial used to see).
@@ -152,20 +153,19 @@ public class LinearExposure extends Node {
                     Math.max(1.f, gain50) * Math.max(1.f, gain90));
             boolean highlightLimited = pipeline.mParameters.vivoNiceRgb != null
                     && com.particlesdevs.photoncamera.settings.PreferenceKeys.isVivoNetSoc()
-                    && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_limit_mode", 1f, 0f, 1f) > 0f;
+                    && com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_limit_mode", 1f, 0f, 1f) > 0f;
             if (highlightLimited) {
                 // A dim scene is lifted until its median reaches the mid anchor or its highlights
                 // reach the limit, whichever comes first: lighting a room with a few bright
                 // windows or lamps no longer pushes them far above what a GCam render shows
                 // (the geometric mean with a clamped highlight term lifted such rooms ~0.8 EV
                 // more than GCam and milked the blacks).
-                float limit = com.particlesdevs.photoncamera.settings.RawTherapeeSettings.number("pref_nice_ae_high_limit", 0.40f, 0.05f, 1f);
+                float limit = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_high_limit", 0.40f, 0.05f, 1f);
                 float highGain = Math.max(1.f, limit / Math.max(p90, 1.0e-5f));
                 sceneGain = Math.min(Math.max(1.f, gain50), highGain);
                 // Bright scenes (median above the mid anchor) are lifted towards a mid target, but
                 // never beyond the highlight limit.
-                float brightMid = com.particlesdevs.photoncamera.settings.RawTherapeeSettings
-                        .number("pref_nice_ae_bright_mid", 0.25f, 0f, 1f);
+                float brightMid = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_bright_mid", 0.25f, 0f, 1f);
                 if (brightMid > 0f && p50 >= midAnchor) {
                     sceneGain = Math.max(sceneGain, Math.min(highGain, Math.max(1.f, Math.min(2.2f, brightMid / p50))));
                 }
@@ -175,8 +175,7 @@ public class LinearExposure extends Node {
                 // anchors, so their gain stayed at 1 and the picture came out ~1 EV darker than
                 // stock, sky and windows dull. Lift them towards a mid target; dim scenes keep
                 // their (larger) gain, and nothing is ever darkened.
-                float brightMid = com.particlesdevs.photoncamera.settings.RawTherapeeSettings
-                        .number("pref_nice_ae_bright_mid", 0.25f, 0f, 1f);
+                float brightMid = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_bright_mid", 0.25f, 0f, 1f);
                 if (brightMid > 0f) {
                     float brightLift = Math.max(1.f, Math.min(2.2f, brightMid / Math.max(p50, 1.0e-5f)));
                     sceneGain = Math.max(sceneGain, brightLift);

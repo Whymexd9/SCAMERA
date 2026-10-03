@@ -98,6 +98,8 @@ public final class LmcCurves extends Node {
             tone = null; gamma = null;
         }
         float matchStrength = PreferenceKeys.isVivoNiceEnabled() && !PreferenceKeys.isNiceSoftTone() ? PreferenceKeys.getNiceGcamTone() : 0f;
+        // A hybrid shot rendered with the ARK tone already has the ArkCam/LMC look: only the user's presets apply on top.
+        if (ArkTone.enabledFor((PostPipeline) basePipeline)) matchStrength = 0f;
         if (tone == null && gamma == null && matchStrength <= 0f) {
             WorkingTexture = previousNode.WorkingTexture;
             glProg.closed = true;

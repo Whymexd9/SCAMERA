@@ -1,5 +1,6 @@
 package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.RawTherapeeSettings;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -100,8 +101,9 @@ public final class AgxTone {
         // Local highlight range: 0..100 % (default 50), start bipolar around 3 EV.
         if (nice) {
             // SCAM HDR has its own highlight controls (group "Света в SCAM HDR").
-            p.localStrength = num("pref_agx_nice_local_strength", 70f, 0f, 100f) / 100f;
-            p.localStart = num("pref_agx_nice_knee_start", 0.75f, 0f, 5f);
+            // On a hybrid shot its own copies pref_lmc_hybrid_agx_* (PreferenceKeys.profileKey).
+            p.localStrength = num(PreferenceKeys.profileKey("pref_agx_nice_local_strength"), 70f, 0f, 100f) / 100f;
+            p.localStart = num(PreferenceKeys.profileKey("pref_agx_nice_knee_start"), 0.75f, 0f, 5f);
             p.highlightDesat = num("pref_agx_highlight_desat", 45f, 0f, 100f) / 100f;
             p.desatStart = num("pref_agx_desat_start", 88f, 50f, 95f) / 100f;
         } else {
