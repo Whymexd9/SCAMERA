@@ -22,6 +22,7 @@ import static android.opengl.GLES20.GL_LINEAR;
  * and white balance turns them magenta (the R and B gains exceed G). Their colour is rebuilt
  * from the surrounding unclipped pixels, keeping only their luminance. Runs on the
  * white-balanced linear image right after {@link VivoNiceRgb}; tone and colour stay untouched.
+ * SCAM HDR (NICE network) route only: LMC hybrid shots get the per-channel recovery inside {@link VivoNiceRgb}.
  */
 public final class HighlightRecovery extends Node {
     public HighlightRecovery() { super("", "HighlightRecovery"); }
@@ -52,8 +53,14 @@ public final class HighlightRecovery extends Node {
         float[] wp = pipeline.mParameters.whitePoint;
         // Fully clipped pixel: equal raw channels, so after white balance min(R,B)/G = min(wpG/wpR, wpG/wpB).
         float kFull = Math.min(wp[1] / Math.max(wp[0], 1e-6f), wp[1] / Math.max(wp[2], 1e-6f));
-        // LMC hybrid with Bento: the clipped highlights were replaced by the ultrashort frame, their colour is real.
-        if (LmcHybridBurst.lastBentoApplied) { Log.i("NICE_PIPELINE", "highlightRecovery skipped: Bento highlights"); glProg.closed = true; return; }
+        // LMC hybrid (with or without Bento): the per-channel recovery already ran in VivoNiceRgb, on the camera channels
+        // before WB (G of a white highlight from R and B, all clipped -> neutral white). Propagating the surroundings'
+        // colour into those whites here would undo it.
+        if (PreferenceKeys.isHybridShot() || LmcHybridBurst.lastBentoApplied) {
+            Log.i("NICE_PIPELINE", "highlightRecovery skipped: LMC hybrid, per-channel recovery in VivoNiceRgb");
+            glProg.closed = true;
+            return;
+        }
         if (strength <= 0f || kFull < 1.15f || pipeline.mParameters.vivoNiceRgb == null) { glProg.closed = true; return; }
         float yRef = highlightReference(pipeline.mParameters.vivoNiceRgb, wp);
         if (yRef <= 0f) { glProg.closed = true; return; }
