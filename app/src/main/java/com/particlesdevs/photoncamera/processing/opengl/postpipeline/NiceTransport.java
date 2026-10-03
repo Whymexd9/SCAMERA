@@ -15,6 +15,11 @@ interface NiceTransport {
     /** Whether the worker should also return the merged Bayer RAW for the DNG. */
     boolean mergedDng();
     boolean diagnostics();
+    /**
+     * Whether the worker should append the per-pixel clip flags (uint8 per output pixel, after the effective-frame map;
+     * LMC hybrid only, header flag 4). The client then accepts that third trailer.
+     */
+    default boolean clipFlags() { return false; }
     void write(FileChannel out) throws IOException;
     void write(File file) throws IOException;
 }

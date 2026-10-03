@@ -42,7 +42,7 @@ public final class ModuleProfiles {
     }
     private void restore(Map<String,?> values){
         applying=true;
-        try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();SettingsMigration.migrateMultiFrame(prefs);}
+        try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();SettingsMigration.migrateMultiFrame(prefs);SettingsMigration.migrateLmcHybrid(prefs,false);}
         finally{applying=false;}
         if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings()!=null)com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().loadCache();
     }

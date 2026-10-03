@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Post-shutter requests of the SCAM HDR LMC hybrid: the N frames come from the ZSL ring at the
+ * Post-shutter requests of the LMC hybrid (its own route, not SCAM HDR): the N frames come from the ZSL ring at the
  * preview exposure, after the press the camera exposes
  * <ul>
  * <li>one ultrashort frame (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (LMC: 8),
@@ -50,21 +50,22 @@ public final class HybridPlan {
         this.nShutterNs = nShutterNs; this.nIso = nIso; this.description = description;
     }
 
-    /** Preferences of the plan (pref_vivo_nice_hybrid_*; nice_dev.txt overrides without the prefix). */
-    public static boolean shastaEnabled() { return PreferenceKeys.niceInternalSwitch("hybrid_shasta", true); }
-    public static int bracketCount() { return Math.max(0, Math.min(3, Math.round(PreferenceKeys.niceInternalValue("hybrid_shasta_frames", 2f)))); }
-    public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.niceInternalValue("hybrid_shasta_ev", 2f))); }
+    /** Preferences of the plan: the hybrid's own pref_lmc_hybrid_* (nice_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
+    public static boolean shastaEnabled() { return PreferenceKeys.hybridSwitch("shasta", true); }
+    public static int bracketCount() { return Math.max(0, Math.min(3, Math.round(PreferenceKeys.hybridValue("shasta_frames", 2f)))); }
+    public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 2f))); }
     /** 0 off, 1 auto (needs clipping in the buffered frame), 2 force. */
-    public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.niceInternalValue("hybrid_bento", 1f)))); }
-    public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.niceInternalValue("hybrid_bento_factor", 8f))); }
-    public static float bentoTriggerClip() { return Math.max(0f, Math.min(0.1f, PreferenceKeys.niceInternalValue("hybrid_bento_trigger", 0.0005f))); }
-    public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.niceInternalValue("hybrid_shasta_max_ratio", 32f))); }
+    public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 1f)))); }
+    /** Ultrashort exposure = N / factor; LMC ultrashort_tet_factor 8 (default). */
+    public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.hybridValue("bento_factor", 8f))); }
+    public static float bentoTriggerClip() { return Math.max(0f, Math.min(0.1f, PreferenceKeys.hybridValue("bento_trigger", 0.0005f))); }
+    public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.hybridValue("shasta_max_ratio", 32f))); }
 
     public static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics) {
         Range<Long> times = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
         Range<Integer> isos = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
-            throw new IllegalStateException("SCAM HDR: нет экспозиции превью или диапазонов сенсора");
+            throw new IllegalStateException("LMC-гибрид: нет экспозиции превью или диапазонов сенсора");
         final double n = (double) nShutterNs * nIso;
         List<Request> out = new ArrayList<>();
         StringBuilder why = new StringBuilder();
@@ -122,16 +123,16 @@ public final class HybridPlan {
     /** The result must be the requested exposure (sensor rounding allowed), else the frame is not the planned one. */
     public void verify(CaptureRequest request, CaptureResult result) {
         Object tag = request.getTag();
-        if (!(tag instanceof ImageFrame.NiceCaptureTag)) throw new IllegalStateException("SCAM HDR: запрос без роли");
+        if (!(tag instanceof ImageFrame.NiceCaptureTag)) throw new IllegalStateException("LMC-гибрид: запрос без роли");
         int index = ((ImageFrame.NiceCaptureTag) tag).index;
-        if (index < 0 || index >= requests.size()) throw new IllegalStateException("SCAM HDR: индекс запроса вне плана");
+        if (index < 0 || index >= requests.size()) throw new IllegalStateException("LMC-гибрид: индекс запроса вне плана");
         Request r = requests.get(index);
         Long ns = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-        if (ns == null || iso == null || ns <= 0 || iso <= 0) throw new IllegalStateException("SCAM HDR: нет экспозиции Camera2 в результате");
+        if (ns == null || iso == null || ns <= 0 || iso <= 0) throw new IllegalStateException("LMC-гибрид: нет экспозиции Camera2 в результате");
         double ev = Math.abs(Math.log((double) ns * iso / ((double) r.shutterNs * r.iso)) / Math.log(2));
         if (ev > VERIFY_TOLERANCE_EV)
-            throw new IllegalStateException(String.format(Locale.ROOT, "SCAM HDR: выдержка/ISO RAW не совпали с планом гибрида (%s: ISO %d/%d, shutter %d/%d, %.2f EV)",
+            throw new IllegalStateException(String.format(Locale.ROOT, "LMC-гибрид: выдержка/ISO RAW не совпали с планом гибрида (%s: ISO %d/%d, shutter %d/%d, %.2f EV)",
                     r.role, iso, r.iso, ns, r.shutterNs, ev));
     }
 }

@@ -16,12 +16,14 @@ import java.util.*;
  * kernel, the LMC rejection and frame weights, Bento (ultrashort) and Shasta (bracketed) rules.
  * <pre>
  * header 128 B: magic 'NCH1', version 11, w, h, cfa, frameCount, white f32, black f32[4], flags u32
- *               (1 diagnostics, 2 merged DNG), baseIndex u32 (0), grid u32 (1 = sensor grid, 2 = the Sabre 6.1 2x
+ *               (1 diagnostics, 2 merged DNG, 4 clip flags), baseIndex u32 (0), grid u32 (1 = sensor grid, 2 = the Sabre 6.1 2x
  *               grid: RGB 2w x 2h, four sub-positions +-0.25 px per sensor pixel), reserved
  * frame table:  frameCount x 32 B: role u32 (1 normal, 3 bracketed, 5 ultrashort), exposure f32 (ratio to base),
  *               iso u32, noiseSlope f32, noiseOffset f32, orderMs f32, flags u32, reserved u32
  * planes:       frameCount x w*h uint16 (sensor layout)
  * </pre>
+ * Result: RGB float32 on the output grid, then the optional trailers in this order: merged Bayer RAW (w*h uint16, flag 2),
+ * effective-frame map (uint8 per output pixel, always from the hybrid), clip flags (uint8 per output pixel, flag 4).
  */
 public final class LmcHybridBurst implements NiceTransport {
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
@@ -30,13 +32,19 @@ public final class LmcHybridBurst implements NiceTransport {
     private static final int WORKER_MAX_FRAMES = 48; // kHybridMaxFrames in vivo-nice-hybrid.h
 
     private final int width, height, cfa;
-    /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_vivo_nice_hybrid_output). */
+    /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_lmc_hybrid_output). */
     private final int outWidth, outHeight;
     /** Final JPEG size: the pipeline runs on the worker grid, the bitmap is resized at the very end (after sharpening). */
     private final int finalWidth, finalHeight;
     private final float white;
     private final float[] black;
     private final boolean diagnostics;
+    /**
+     * Ask the worker for the per-pixel clip flags (header flag 4): VivoNiceRgb's per-channel highlight recovery picks the
+     * clip level per pixel from them (base white 1 or the ultrashort's k). Only while that recovery runs
+     * (pref_lmc_hybrid_highlight_recovery &gt; 0); nice_dev.txt "hybrid_clip_flags 0" turns the trailer off.
+     */
+    private final boolean clipFlags;
     private boolean mergedDng;
     private final List<ImageFrame> frames = new ArrayList<>();
     private final List<Integer> roles = new ArrayList<>();
@@ -48,13 +56,14 @@ public final class LmcHybridBurst implements NiceTransport {
 
     private LmcHybridBurst(List<ImageFrame> source, Parameters p) throws IOException {
         width = p.rawSize.x; height = p.rawSize.y; cfa = p.cfaPattern; white = p.whiteLevel; black = p.blackLevel.clone();
-        diagnostics = PreferenceKeys.isNiceDiagnosticsEnabled();
+        diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
+        clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
         if (p.quadCfa || cfa < 0 || cfa > 3 || PreferenceKeys.isRemosaicEnabled() || com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException("SCAM HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
-        if (black.length != 4) throw new IOException("SCAM HDR: нужны четыре уровня чёрного");
+            throw new IOException("LMC-гибрид: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
+        if (black.length != 4) throw new IOException("LMC-гибрид: нужны четыре уровня чёрного");
         if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0 || (long) width * height > 16000000)
-            throw new IOException("SCAM HDR: размер RAW до 16 МП");
-        if (source.size() < 2 || source.size() > 64) throw new IOException("SCAM HDR: нужны 2–64 кадра");
+            throw new IOException("LMC-гибрид: размер RAW до 16 МП");
+        if (source.size() < 2 || source.size() > 64) throw new IOException("LMC-гибрид: нужны 2–64 кадра");
         android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
         final boolean twoX = !"sensor".equals(PreferenceKeys.hybridOutputMode());
         // No memory gate (user's call): the 2x pipeline holds the 2w x 2h float RGB plus the GL working set; availMem is logged.
@@ -67,20 +76,20 @@ public final class LmcHybridBurst implements NiceTransport {
         Set<Long> stamps = new HashSet<>();
         for (ImageFrame f : source) {
             String detail = "frame=" + f.number + " timestamp=" + f.timestamp + " ZSL=" + f.fromZsl;
-            if (f.timestamp <= 0 || !stamps.add(f.timestamp)) throw new IOException("SCAM HDR: повторный или отсутствующий timestamp: " + detail);
-            if (f.measuredIso <= 0 || f.measuredExposure <= 0) throw new IOException("SCAM HDR: нет измеренной экспозиции: " + detail);
+            if (f.timestamp <= 0 || !stamps.add(f.timestamp)) throw new IOException("LMC-гибрид: повторный или отсутствующий timestamp: " + detail);
+            if (f.measuredIso <= 0 || f.measuredExposure <= 0) throw new IOException("LMC-гибрид: нет измеренной экспозиции: " + detail);
             ImageFrame.CaptureRole role = f.getCaptureRole();
-            if (role == null) throw new IOException("SCAM HDR: нет роли из совпавших метаданных RAW: " + detail);
+            if (role == null) throw new IOException("LMC-гибрид: нет роли из совпавших метаданных RAW: " + detail);
             if (f.buffer == null || f.width != width || f.height != height || f.buffer.capacity() != (long) width * height * 2)
-                throw new IOException("SCAM HDR: неполный RAW: " + detail);
+                throw new IOException("LMC-гибрид: неполный RAW: " + detail);
             switch (role) {
                 case NORMAL: normal.add(f); break;
                 case LONG: bracketed.add(f); break;
                 case SHORT: case EXTRA_SHORT: shorts.add(f); break;
-                default: throw new IOException("SCAM HDR: неизвестная роль RAW: " + detail);
+                default: throw new IOException("LMC-гибрид: неизвестная роль RAW: " + detail);
             }
         }
-        if (normal.isEmpty()) throw new IOException("SCAM HDR: нет кадров обычной экспозиции");
+        if (normal.isEmpty()) throw new IOException("LMC-гибрид: нет кадров обычной экспозиции");
         normal.sort(Comparator.comparingLong(f -> -f.timestamp)); // newest first
         // Base frame: the sharpest of the newest candidates within the LMC time window.
         long newest = normal.get(0).timestamp;
@@ -111,7 +120,7 @@ public final class LmcHybridBurst implements NiceTransport {
         }
         // Ultrashort: the short frame closest to base/8 (others are dropped: Bento merges one).
         if (!shorts.isEmpty()) {
-            final double target = ref / PreferenceKeys.niceInternalValue("hybrid_bento_factor", 8f);
+            final double target = ref / com.particlesdevs.photoncamera.capture.HybridPlan.ultrashortFactor();
             shorts.sort(Comparator.comparingDouble(f -> Math.abs(Math.log(product(f) / target))));
             ImageFrame us = shorts.get(0);
             if (product(us) / ref < 0.75) add(us, ROLE_ULTRASHORT, ref, newest);
@@ -123,7 +132,7 @@ public final class LmcHybridBurst implements NiceTransport {
 
     private void add(ImageFrame f, int role, double ref, long newest) throws IOException {
         double ratio = product(f) / ref;
-        if (!(ratio > 1.0 / 512) || !(ratio < 512)) throw new IOException("SCAM HDR: экспозиция вне диапазона frame=" + f.number + " ratio=" + ratio);
+        if (!(ratio > 1.0 / 512) || !(ratio < 512)) throw new IOException("LMC-гибрид: экспозиция вне диапазона frame=" + f.number + " ratio=" + ratio);
         frames.add(f); roles.add(role); exposures.add((float) ratio); noise.add(noiseFor(f));
         orderMs.add((float) ((f.timestamp - newest) / 1e6));
     }
@@ -133,7 +142,7 @@ public final class LmcHybridBurst implements NiceTransport {
     /** Per-frame noise model in normalised units (slope, offset): the frame's own Camera2 profile, or the selected settings profile. */
     private float[] noiseFor(ImageFrame frame) throws IOException {
         float slope = frame.noiseSlope, offset = frame.noiseOffset;
-        String source = PreferenceKeys.getNiceNoiseSource();
+        String source = PreferenceKeys.hybridString("noise_source", "auto");
         com.particlesdevs.photoncamera.processing.render.NoiseModelProfile profile = "settings".equals(source)
                 ? com.particlesdevs.photoncamera.processing.render.NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId()) : null;
         if (profile != null) {
@@ -145,10 +154,10 @@ public final class LmcHybridBurst implements NiceTransport {
             slope = (float) (s / model.length); offset = (float) (o / model.length);
             noiseSource = "settings profile " + profile.id;
         }
-        slope *= PreferenceKeys.niceInternalValue("noise_photon", 1f);
-        offset *= PreferenceKeys.niceInternalValue("noise_readout", 1f);
+        slope *= PreferenceKeys.hybridValue("noise_photon", 1f);
+        offset *= PreferenceKeys.hybridValue("noise_readout", 1f);
         if (!Float.isFinite(slope) || slope <= 0 || !Float.isFinite(offset) || offset < 0)
-            throw new IOException("SCAM HDR: некорректный профиль шума (" + noiseSource + ") для RAW frame=" + frame.number);
+            throw new IOException("LMC-гибрид: некорректный профиль шума (" + noiseSource + ") для RAW frame=" + frame.number);
         return new float[]{slope, offset};
     }
 
@@ -170,12 +179,13 @@ public final class LmcHybridBurst implements NiceTransport {
     @Override public int cfa() { return cfa; }
     @Override public boolean mergedDng() { return mergedDng; }
     @Override public boolean diagnostics() { return diagnostics; }
+    @Override public boolean clipFlags() { return clipFlags; }
 
     private ByteBuffer header() {
         ByteBuffer h = ByteBuffer.allocate(128 + 32 * frames.size()).order(ByteOrder.LITTLE_ENDIAN);
         h.putInt(0x3143484e).putInt(11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
-        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0)).putInt(0)
+        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0)).putInt(0)
          .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(0).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {

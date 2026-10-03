@@ -78,6 +78,8 @@ public class Parameters {
     public static int mergeWhiteLevel = 65535;
     public int realWL = -1;
     public boolean hasGainMap;
+    /** The OPPO PHY110 tuned ISP matrix (bright-scene group) rendered the shot instead of the DNG matrices. */
+    public boolean oppoTunedCcm;
     public Point mapSize;
     public Rect sensorPix;
     public float[] gainMap;
@@ -601,6 +603,7 @@ public class Parameters {
                 Converter.normalizeFM(normalizedForwardTransform1);
                 normalizedForwardTransform2 = normalizedForwardTransform1.clone();
                 oppoTuned = true;
+                oppoTunedCcm = true;
                 Log.d(TAG, "OPPO tuned forward matrix at " + cctK + " K: " + Arrays.toString(normalizedForwardTransform1));
             }
         }

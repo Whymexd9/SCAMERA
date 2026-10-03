@@ -55,6 +55,8 @@ public class HdrxProcessor extends ProcessorBase {
     private ByteBuffer niceOwnedOutput;
     private Parameters niceOutputParameters;
     private boolean niceCapture;
+    /** This shot is merged by the LMC hybrid (its own settings profile), not by SCAM HDR (NICE). */
+    private boolean hybridShot;
 
 
     public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
@@ -96,9 +98,21 @@ public class HdrxProcessor extends ProcessorBase {
         this.captureResult = captureResult;
         this.captureRequest = captureRequest;
         this.niceCapture = PreferenceKeys.isVivoNiceEnabled();
+        // The route of the shot fixes the settings profile of its whole processing: pref_lmc_hybrid_* for a hybrid shot,
+        // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the switches change meanwhile.
+        this.hybridShot = niceCapture && PreferenceKeys.isLmcHybridEnabled();
+        if (hybridShot && PreferenceKeys.isScamHdrSwitchOn())
+            android.util.Log.i("NICE_HDR", "LMC hybrid and SCAM HDR are both on: the LMC hybrid merges this shot");
+        else if (niceCapture && !hybridShot && PreferenceKeys.isLmcHybridSwitchOn())
+            android.util.Log.i("NICE_HDR", "LMC hybrid on, but this Quad/Tetra stream goes to SCAM HDR (the hybrid merges plain Bayer only)");
         this.fullpairs = ownedPairs != null ? ownedPairs : IsoExpoSelector.fullpairs;
         Log.d(TAG, "HdrxProcessor called start()");
-        Run();
+        PreferenceKeys.beginShotProfile(hybridShot);
+        try {
+            Run();
+        } finally {
+            PreferenceKeys.endShotProfile();
+        }
     }
 
     public void Run() {
@@ -520,8 +534,8 @@ public class HdrxProcessor extends ProcessorBase {
                     ParseExif.syncWithParameters(exifData, processingParameters);
                     processingStage = "SCAM HDR neural burst";
                 }
-                final boolean hybrid=PreferenceKeys.isNiceHybridEnabled() && !PreferenceKeys.isNiceMosaic();
-                processingStage=hybrid?"SCAM HDR: LMC hybrid merge":"SCAM HDR neural burst";
+                final boolean hybrid=hybridShot;
+                processingStage=hybrid?"LMC hybrid merge":"SCAM HDR neural burst";
                 niceOwnedOutput=hybrid
                         ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.process(
                         PhotonCamera.getAppContext(),images,processingParameters,
@@ -792,7 +806,14 @@ public class HdrxProcessor extends ProcessorBase {
         if (jpegInput != output) Allocator.free(output);
         if (hexOwnedOutput == output) hexOwnedOutput = null;
 
-        img = overlay(img, pipeline.debugData.toArray(new Bitmap[0]));
+        final Bitmap withDebug = overlay(img, pipeline.debugData.toArray(new Bitmap[0]));
+        if (withDebug != img) { img.recycle(); img = withDebug; }
+        // The EGL context and the rest of the GL state are not needed for the encoding: release them before it.
+        try {
+            pipeline.close();
+        } catch (Exception e) {
+            Log.e(TAG, "PostPipeline close failed (non-fatal): " + Log.getStackTraceString(e));
+        }
         try {
             processingEventsListener.onProcessingFinished("HdrX JPG Processing Finished");
         }
@@ -804,8 +825,7 @@ public class HdrxProcessor extends ProcessorBase {
         if (PhotonCamera.getSettings().ultraHdr && gm != null) {
             try {
                 GainMapComputer.Result res = GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
-                byte[] uhdr = UltraHdrEncoder.encode(img, res, exifData);
-                Files.write(imageFile, uhdr);
+                UltraHdrEncoder.encodeToFile(imageFile, img, res, exifData);
                 img.recycle();
                 imageSaved = true;
             } catch (Exception e) {
@@ -825,13 +845,6 @@ public class HdrxProcessor extends ProcessorBase {
         catch (Exception e){
             Log.d(TAG,"Error in processingEventsListener.notifyImageSavedStatus:"+Log.getStackTraceString(e));
         }
-
-        try {
-            pipeline.close();
-        } catch (Exception e) {
-            Log.e(TAG, "PostPipeline close failed (non-fatal): " + Log.getStackTraceString(e));
-        }
-
 
         Allocator.getMemoryCount();
         callback.onFinished();

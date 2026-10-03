@@ -159,51 +159,87 @@
         <item>raw10</item>
         <item>raw12</item>
     </string-array>
-    <string-array name="vivo_nice_engine_entries">
-        <item>Авто (NICE на SM8750, иначе гибрид)</item>
-        <item>LMC-гибрид: Sabre 6.1 × LMC 9.6 (любой GPU)</item>
-        <item>Нейросеть vivo NICE (SM8750)</item>
-    </string-array>
-    <string-array name="vivo_nice_engine_values">
-        <item>auto</item>
-        <item>hybrid</item>
-        <item>nice</item>
-    </string-array>
-    <string-array name="vivo_nice_hybrid_output_entries">
+    <string-array name="lmc_hybrid_output_entries">
         <item>Сенсор (1×, по умолчанию)</item>
         <item>12 МП (2× → 12)</item>
         <item>16 МП (2× → 16)</item>
         <item>20 МП (2× → 20)</item>
         <item>2× (≈50 МП, без уменьшения)</item>
     </string-array>
-    <string-array name="vivo_nice_hybrid_downsampler_entries">
+    <string-array name="lmc_hybrid_downsampler_entries">
         <item>Lanczos-3</item>
         <item>Bicubic</item>
         <item>Area</item>
         <item>Bilinear</item>
     </string-array>
-    <string-array name="vivo_nice_hybrid_downsampler_values">
+    <string-array name="lmc_hybrid_downsampler_values">
         <item>lanczos</item>
         <item>bicubic</item>
         <item>area</item>
         <item>bilinear</item>
     </string-array>
-    <string-array name="vivo_nice_hybrid_output_values">
+    <string-array name="lmc_hybrid_output_values">
         <item>sensor</item>
         <item>12</item>
         <item>16</item>
         <item>20</item>
         <item>2x</item>
     </string-array>
-    <string-array name="vivo_nice_hybrid_bento_entries">
+    <string-array name="lmc_hybrid_bento_entries">
         <item>Выключено</item>
         <item>Авто (при клиппинге)</item>
         <item>Всегда</item>
     </string-array>
-    <string-array name="vivo_nice_hybrid_bento_values">
+    <string-array name="lmc_hybrid_bento_values">
         <item>0</item>
         <item>1</item>
         <item>2</item>
+    </string-array>
+    <string-array name="lmc_hybrid_sharp_mode_entries">
+        <item>RawTherapee (по умолчанию)</item>
+        <item>SCAM: без ореолов</item>
+        <item>Выключено</item>
+    </string-array>
+    <string-array name="lmc_hybrid_sharp_mode_values">
+        <item>rt</item>
+        <item>scam</item>
+        <item>off</item>
+    </string-array>
+    <string-array name="lmc_hybrid_dn_engine_entries">
+        <item>GCam / LMC 9.6 (ArkCam)</item>
+        <item>NLM (прежний)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_dn_engine_values">
+        <item>gcam</item>
+        <item>nlm</item>
+    </string-array>
+    <string-array name="lmc_hybrid_dn_map_entries">
+        <item>Авто (карта кадров, если склейка её дала)</item>
+        <item>Карта эффективных кадров</item>
+        <item>Равномерно</item>
+    </string-array>
+    <string-array name="lmc_hybrid_dn_map_values">
+        <item>auto</item>
+        <item>frames</item>
+        <item>uniform</item>
+    </string-array>
+    <string-array name="lmc_hybrid_sabre61_entries">
+        <item>Выключено (ядро раунда 4)</item>
+        <item>Всегда</item>
+        <item>Авто (ночью)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_sabre61_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="lmc_hybrid_noise_source_entries">
+        <item>Camera2 SENSOR_NOISE_PROFILE каждого кадра</item>
+        <item>Из настроек «Модель шума сенсора»</item>
+    </string-array>
+    <string-array name="lmc_hybrid_noise_source_values">
+        <item>auto</item>
+        <item>settings</item>
     </string-array>
     <string-array name="vivo_nice_planner_entries">
         <item>Стоковый AE vivo (root)</item>

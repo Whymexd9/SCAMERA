@@ -22,6 +22,16 @@ public final class SettingsAvailability {
         boolean niceMosaic=!text("pref_vivo_nice_mosaic","off").equals("off") && on("pref_vivo_nice_enabled",false);
         boolean incompatible=multi || (!niceMosaic && on("pref_remosaic_enabled_key",false)
                 && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
+        // LMC hybrid (PreferenceKeys.isLmcHybridEnabled): its own switch, plain Bayer or the SCAMERA remosaic without RAW
+        // MFSR; only a Quad/Tetra stream of SCAM HDR's mosaic mode (ISZ modules) stays with SCAM HDR.
+        boolean hybridIncompatible=multi || (on("pref_remosaic_enabled_key",false)
+                && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
+        boolean hybridOn=on("pref_lmc_hybrid_enabled",false);
+        boolean hybrid=hybridOn && !hybridIncompatible && !(niceMosaic && autonomous);
+        if (key.startsWith("pref_lmc_hybrid_") && !key.equals("pref_lmc_hybrid_enabled")) {
+            if (!hybridOn) return "Включите LMC-гибрид.";
+            if (hybridIncompatible) return "LMC-гибрид сливает обычный Bayer: выберите Bayer или ремозаик SCAMERA и отключите RAW MFSR.";
+        }
         if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false)
                 && any(key, "pref_vivo_hdr_luma", "pref_vivo_hdr_chroma"))
             return "С SCAM HDR дополнительный RGB-шумодав отключён. Используйте внутренние параметры SCAM HDR.";
@@ -31,7 +41,7 @@ public final class SettingsAvailability {
         if (key.equals("pref_vivo_nice_route")) {
             return "SCAM HDR использует RAW. Выбор пути больше не применяется.";
         }
-        if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false)
+        if (((autonomous && !incompatible && on("pref_vivo_nice_enabled", false)) || hybrid)
                 && (key.startsWith("rt512_") || key.startsWith("pref_rt_")
                     || key.startsWith("pref_ai_denoise_") || key.startsWith("pref_tunable_esd3d2_")
                     || key.startsWith("pref_tunable_ablc_") || key.startsWith("pref_aces_")
@@ -43,7 +53,8 @@ public final class SettingsAvailability {
                         "expert_detail_screen", "pref_tunable_postpipeline_demosaicingmethod",
                         "pref_contrast_seekbar_key", "pref_saturation_seekbar_key", "pref_shadows_seekbar_key",
                         "pref_compressor_seekbar_key")))
-            return "В RAW-пути SCAM HDR этот этап пропускается. Настройки тона и шума доступны в меню SCAM HDR.";
+            return hybrid ? "В LMC-гибриде этот этап пропускается. Настройки тона и шума — в разделе «LMC-гибрид»."
+                    : "В RAW-пути SCAM HDR этот этап пропускается. Настройки тона и шума доступны в меню SCAM HDR.";
         if(key.startsWith("pref_vivo_hdr_")) {
             if(incompatible) return "Выберите Bayer или ремозаик SCAMERA и отключите MFSR. Автономный HDR использует собственную склейку.";
             if(!key.equals("pref_vivo_hdr_enabled") && !autonomous) return "Включите автономный HDR.";
@@ -52,6 +63,10 @@ public final class SettingsAvailability {
                 "pref_tunable_postpipeline_tonepipeline","pref_gcam_finish","pref_ai_denoise_enabled_key")
                 || key.startsWith("pref_hdrplus_")))
             return "Сейчас используется автономный HDR: настройте его шумоподавление и тональную обработку в отдельном меню.";
+        if(hybrid && (any(key,"pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key",
+                "pref_tunable_postpipeline_tonepipeline","pref_gcam_finish","pref_ai_denoise_enabled_key")
+                || key.startsWith("pref_hdrplus_")))
+            return "Сейчас снимает LMC-гибрид: его склейка, шумоподавление и тон настраиваются в разделе «LMC-гибрид».";
         boolean sabre=multi && text("pref_mfsr_engine_key","native").equals("sabre");
         if(sabre && any(key,"pref_mfsr_fpn_key","pref_mfsr_calibrate_key","pref_mfsr_red_ca_key","pref_mfsr_blue_ca_key"))
             return "Эта настройка относится к Multi-frame Remosaic, а выбран Sabre.";

@@ -100,6 +100,8 @@ public class SettingsManager {
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
         SettingsMigration.migrateMultiFrame(mDefaultPreferences);
         DeviceDefaults.applyOnce(mContext, mDefaultPreferences);
+        // After the device defaults: the LMC hybrid's own section takes over the SCAM HDR engine choice.
+        SettingsMigration.migrateLmcHybrid(mContext, mDefaultPreferences);
     }
 
     public Context getContext() {

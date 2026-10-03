@@ -72,6 +72,41 @@ public class SettingsModelCheck {
         p.put("pref_vivo_nice_enabled",false);active(p,"rt512_chroma");
         p.put("pref_vivo_nice_enabled",true);
         p.put("pref_camera_mode_key","3");p.put("pref_raw_mfsr_enabled_key",true);
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability");
+        // LMC hybrid availability: its rows need its switch and a plain Bayer route; with it on, the stages its route skips
+        // are inactive and SCAM HDR's own rows keep following SCAM HDR's switches.
+        Map<String,Object> h=new HashMap<>();h.put("pref_rt_denoise_backend","rt512");
+        inactive(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_enabled");active(h,"rt512_chroma");active(h,"pref_zsl_merge_algorithm_key");
+        h.put("pref_lmc_hybrid_enabled",true);
+        active(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_sabre61");active(h,"pref_lmc_hybrid_highlight_recovery");
+        inactive(h,"rt512_chroma");inactive(h,"pref_zsl_merge_algorithm_key");inactive(h,"pref_vivo_nice_noise_photon");
+        active(h,"pref_sharp_usm_enabled_key");
+        h.put("pref_raw_mfsr_enabled_key",true);inactive(h,"pref_lmc_hybrid_cdm");active(h,"rt512_chroma");active(h,"pref_lmc_hybrid_enabled");
+        h.put("pref_raw_mfsr_enabled_key",false);h.put("pref_remosaic_enabled_key",true);h.put("pref_remosaic_backend_key","hp9_hexquad");
+        inactive(h,"pref_lmc_hybrid_cdm");
+        h.put("pref_remosaic_backend_key","scamera");active(h,"pref_lmc_hybrid_cdm");
+        // LMC hybrid (own section): pref_lmc_hybrid_* bounds; copies of SCAM HDR knobs keep the original bounds; number lists.
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_sabre61","7",2),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_highlight_recovery","150",100),100);
+        if(SettingsNumericRules.bounds("pref_vivo_nice_hybrid_cdm")!=null)throw new AssertionError("legacy hybrid key still bounded");
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_cdm","9",0.07),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_bento_factor","32",8),16);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_zsl_frames","99",20),44);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_zsl_frames","7.6",20),8);
+        if(SettingsNumericRules.error("pref_lmc_hybrid_zsl_frames","3")==null)throw new AssertionError("hybrid N below 4 accepted");
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_hdr_gamma","0",1),.5);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_hdr_shadows","9",.25),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_fusion_dark_ev","9",1),4);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_noise_photon","0",1),.25);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_tone_key","1",.155),.3);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_agx_knee_start","9",.75),5);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_agx_local_strength","-1",70),0);
+        if(SettingsNumericRules.bounds("pref_lmc_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_lmc_hybrid_enabled")!=null)
+            throw new AssertionError("unbounded hybrid copies got bounds");
+        float[] list=SettingsNumericRules.listValue("pref_lmc_hybrid_x","1; 2.5 3",new float[]{0,0,0});
+        eq(list.length,3);eq(list[0],1);eq(list[1],2.5);eq(list[2],3);
+        if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,NaN,3",new float[]{0,0,0})[0]!=0)throw new AssertionError("NaN list accepted");
+        if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,2",new float[]{0,0,0}).length!=3)throw new AssertionError("short list accepted");
+        if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","",null)!=null)throw new AssertionError("empty list");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds");
     }
 }

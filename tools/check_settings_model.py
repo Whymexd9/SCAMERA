@@ -10,5 +10,5 @@ with tempfile.TemporaryDirectory() as d:
     production=root/'app/src/main/java/com/particlesdevs/photoncamera/settings'
     files=[production/(s+'.java') for s in ('PreferenceNumber','SettingsNumericRules','SettingsAvailability','RawTherapeeSettings')]
     javac=[shutil.which('javac')] if shutil.which('javac') else ['java','--module','jdk.compiler/com.sun.tools.javac.Main']
-    subprocess.run(javac+['-d',str(out)]+[str(x) for x in files+list(stubs.rglob('*.java'))+[root/'tools/java/SettingsModelCheck.java']],check=True)
+    subprocess.run(javac+['-encoding','UTF-8','-d',str(out)]+[str(x) for x in files+list(stubs.rglob('*.java'))+[root/'tools/java/SettingsModelCheck.java']],check=True)
     subprocess.run(['java','-ea','-cp',str(out),'SettingsModelCheck'],check=True)

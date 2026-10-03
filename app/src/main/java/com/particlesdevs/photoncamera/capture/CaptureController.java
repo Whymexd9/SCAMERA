@@ -1876,7 +1876,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     && VivoNicePreview.supported() && !isBurstSession && !mIsRecordingVideo
                     && !PreferenceKeys.isMultiFrameCalibration();
             Log.i("NICE_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
-                    + " route=" + (PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));
+                    + " route=" + (PreferenceKeys.isLmcHybridEnabled() ? "LMC_HYBRID" : PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
                     && mTargetFormat == ImageFormat.RAW_SENSOR && PreferenceKeys.isLiveViewfinderRawEnabled();
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
@@ -3157,11 +3157,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final com.particlesdevs.photoncamera.remosaic.CalibrationSession calSession=calibration?mCalibrationSession:null;
             final int calStep=calibration?calSession.completed:-1;
             final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
+            // The LMC hybrid takes the NICE capture route with its own settings (independent of SCAM HDR; wins over it).
+            final boolean lmcHybridShot = niceCapture && PreferenceKeys.isLmcHybridEnabled();
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
             final VivoStockAe.Plan stockPlan;
             if(niceCapture && !calibration) {
-                if(!hybridZslRequested)throw new IllegalStateException("SCAM HDR требует ZSL RAW-поток");
-                if(!PreferenceKeys.useStockBracketPlanner()) {
+                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridShot?"LMC-гибрид":"SCAM HDR")+" требует ZSL RAW-поток");
+                // The hybrid's N is the ring at the preview exposure: the SCAMERA plan, never the vivo stock solver.
+                if(lmcHybridShot || !PreferenceKeys.useStockBracketPlanner()) {
                     stockPlan=scameraBracketPlan();
                 } else {
                 VivoStockAe stock=mStockAe;
@@ -3328,7 +3331,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // The graph consumes four N; frames beyond four (same exposure,
                 // newest first) are merged into those slots by the worker.
                 mPendingZslNormalFrames = drainZslNormalFrames(
-                        PreferenceKeys.isVivoNiceEnabled() ? PreferenceKeys.getNiceZslFrames() : denoiseFrameCount,stockPlan,
+                        lmcHybridShot ? PreferenceKeys.getHybridZslFrames()
+                                : PreferenceKeys.isVivoNiceEnabled() ? PreferenceKeys.getNiceZslFrames() : denoiseFrameCount,stockPlan,
                         niceZslRequested);
                 if (!mPendingZslNormalFrames.isEmpty()) {
                     denoiseFrameCount = mPendingZslNormalFrames.size();
@@ -3434,10 +3438,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                     captures.add(captureBuilder.build());
                 }
-            } else if(stockPlan!=null && hybridZsl && PreferenceKeys.isNiceHybridEnabled() && !PreferenceKeys.isNiceMosaic()) {
+            } else if(stockPlan!=null && hybridZsl && lmcHybridShot) {
                 // LMC hybrid: N from the ring, then the ultrashort (Bento) and the bracketed frames (Shasta) of the plan.
                 if(mPendingZslNormalFrames.size()<2)
-                    throw new IllegalStateException("SCAM HDR ZSL: нужны хотя бы два кадра N до нажатия");
+                    throw new IllegalStateException("LMC-гибрид ZSL: нужны хотя бы два кадра N до нажатия");
                 IsoExpoSelector.fullpairs.clear();
                 final HybridPlan plan=HybridPlan.build(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics);
                 hybridPlanHolder[0]=plan;

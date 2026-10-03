@@ -296,6 +296,7 @@ public final class VivoNeuralClient {
             if(!process.waitFor(TimeUnit.SECONDS.toMillis(burst!=null||niceBurst!=null?900:niceTone?420:200))){process.destroy();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
+                    niceBurst instanceof LmcHybridBurst?"LMC-гибрид: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
                     niceBurst!=null?"SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
                     (nice?"Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ":"Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ")+
                     (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
@@ -304,12 +305,20 @@ public final class VivoNeuralClient {
             long expected=niceBurst!=null?(long)ow*oh*12:burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
             final long outputBytes=niceOut!=null?niceOut.size():output.length();
-            // Trailers after the RGB: merged Bayer RAW (w*h*2, if requested), then effective frames (w*h).
-            // Trailers: merged Bayer RAW (sensor grid, w*h*2), then the effective-frame map on the OUTPUT grid (ow*oh).
-            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng()&&(outputBytes==expected+(long)w*h*2||outputBytes==expected+(long)w*h*2+(long)ow*oh)?(long)w*h*2:0;
-            final long effBytes=niceBurst!=null&&outputBytes==expected+dngBytes+(long)ow*oh?(long)ow*oh:0;
-            if(outputBytes!=expected+dngBytes+effBytes)throw new IOException("Неверный размер нейрорезультата");
-            if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;
+            // Trailers after the RGB, each optional, in this order: merged Bayer RAW (sensor grid, w*h*2, if requested), the
+            // effective-frame map (OUTPUT grid, ow*oh), the clip flags (OUTPUT grid, ow*oh; LMC hybrid, only if requested and only
+            // after the map). The fullest layout that matches the file size wins.
+            long dngBytes=0,effBytes=0,clipBytes=0;boolean sized=niceBurst==null&&outputBytes==expected;
+            if(niceBurst!=null){
+                final long rawTrailer=(long)w*h*2,outTrailer=(long)ow*oh;
+                search:
+                for(long d:niceBurst.mergedDng()?new long[]{rawTrailer,0}:new long[]{0})
+                    for(long e:new long[]{outTrailer,0})
+                        for(long c:niceBurst.clipFlags()&&e>0?new long[]{outTrailer,0}:new long[]{0})
+                            if(outputBytes==expected+d+e+c){dngBytes=d;effBytes=e;clipBytes=c;sized=true;break search;}
+            }
+            if(!sized)throw new IOException("Неверный размер нейрорезультата");
+            if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;VivoNiceRgb.lastClipFlags=null;
                 LmcHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 LmcHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 LmcHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);}
@@ -342,6 +351,14 @@ public final class VivoNeuralClient {
                     eff.flip();VivoNiceBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
+            if(clipBytes>0){
+                ByteBuffer clip=ByteBuffer.allocateDirect((int)clipBytes);
+                try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
+                    long position=expected+dngBytes+effBytes;
+                    while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException("Неполные флаги клипа");position+=n;}
+                    clip.flip();VivoNiceRgb.lastClipFlags=clip;
+                }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
+            }else if(niceBurst!=null&&niceBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
             if(niceBurst!=null)NiceDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true);
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
