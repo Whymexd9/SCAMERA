@@ -241,7 +241,9 @@ public class HeadroomRender extends Node {
         glProg.setVar("localContrast", localContrast);
         // Set for every tone mode (GCAM, AgX, headroom): render.glsl dilates its 5x5 fusion-map fit and the 5x5
         // pre-tone local-contrast window by it; an unset int uniform reads 0 and would collapse both to one pixel.
-        glProg.setVar("pxStep", outputStep());
+        // Full lattice (1) also on the 2x grid: the dilated 5x5 windows were part of the a-trous set that produced 2x2
+        // blocks / saw-tooth edges in the vivo 27020 test; the 1/16-of-sensor AgX base keeps its 4*step reduction.
+        glProg.setVar("pxStep", 1);
         // Declared outside the tone-mode blocks of render.glsl: set for every mode (0 = clipped highlights are neutralised as before).
         glProg.setVar("bentoReal", LmcHybridBurst.lastBentoApplied ? 1f : 0f);
         glProg.setVar("shadowLift", shadowLift);

@@ -239,7 +239,7 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", noisy);
                 bindEffectiveFrames(effMap);
                 glProg.setVar("h", h);
-                glProg.setVar("pxStep", s);
+                glProg.setVar("pxStep", 1); // full lattice: a dilated patch/candidate set decouples even/odd pixels of the 2x grid (2x2 blocks, smeared text)
                 glProg.drawBlocks(clean);
                 Point quarterSize = new Point((original.mSize.x + 4 * s - 1) / (4 * s), (original.mSize.y + 4 * s - 1) / (4 * s));
                 quarter = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
@@ -262,7 +262,7 @@ public final class NiceDenoise extends Node {
             glProg.setTexture("Clean", luma > 0f ? clean : noisy);
             glProg.setTexture("Coarse", luma > 0f ? coarse : noisy);
             glProg.setVar("sigma", luma > 0f ? noiseSigma : 0f);
-            glProg.setVar("pxStep", s);
+            glProg.setVar("pxStep", 1); // full lattice for the 3x3 means / residual smoothing (see nlm)
             glProg.setVar("lowRatio", 2f * s);
             // Share of the removed noise put back: the grain that stays is held near an absolute level
             // (about 0.0002 in u: the merge leaves about half the noise it did before its kernel followed the

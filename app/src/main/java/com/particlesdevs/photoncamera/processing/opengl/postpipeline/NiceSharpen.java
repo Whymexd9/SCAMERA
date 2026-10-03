@@ -39,7 +39,7 @@ public final class NiceSharpen extends Node {
             glProg.setVar("overshoot", PreferenceKeys.niceInternalValue("sharp_overshoot", 0.015f));
             glProg.setVar("chromaAA", PreferenceKeys.niceInternalValue("sharp_chroma", 0.6f), PreferenceKeys.niceInternalValue("sharp_chroma_tol", 0.04f));
             glProg.setVar("coring", PreferenceKeys.niceInternalValue("sharp_core0", 0.006f), PreferenceKeys.niceInternalValue("sharp_core1", 0.02f));
-            glProg.setVar("pxStep", s);
+            glProg.setVar("pxStep", 1); // full lattice: dilated taps gave saw-tooth edges on the 2x grid (vivo 27020)
             glProg.drawBlocks(sharpened);
             glProg.useAssetProgram("nicesharp/sharp2", false);
             glProg.setTexture("InputBuffer", sharpened);
@@ -47,9 +47,9 @@ public final class NiceSharpen extends Node {
             glProg.setVar("aaGate", PreferenceKeys.niceInternalValue("sharp_coh0", 0.4f), PreferenceKeys.niceInternalValue("sharp_coh1", 0.7f),
                     PreferenceKeys.niceInternalValue("sharp_mag0", 0.006f), PreferenceKeys.niceInternalValue("sharp_mag1", 0.025f));
             // alongSigma is in output pixels; the shader's taps are 0.85 * step apart, so the sigma scales with s too.
-            glProg.setVar("alongSigma", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_along", 1.4f)) * s);
+            glProg.setVar("alongSigma", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_along", 1.4f)));
             glProg.setVar("ditherAmp", PreferenceKeys.niceInternalValue("sharp_dither", 0.6f) / 255f);
-            glProg.setVar("pxStep", s);
+            glProg.setVar("pxStep", 1); // full lattice: dilated taps gave saw-tooth edges on the 2x grid (vivo 27020)
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
         } finally {

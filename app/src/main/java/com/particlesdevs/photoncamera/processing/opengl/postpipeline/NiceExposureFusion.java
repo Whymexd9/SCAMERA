@@ -50,7 +50,7 @@ public final class NiceExposureFusion extends Node {
         float bentoHeadroom = 0f;
         if (bento) {
             final float k = Math.max(1f, LmcHybridBurst.lastBentoFactor);
-            final float share = Math.max(0f, Math.min(1.5f, PreferenceKeys.hybridValue("bento_fusion", 1f)));
+            final float share = Math.max(0f, Math.min(1.5f, PreferenceKeys.hybridValue("bento_fusion", 0.5f)));
             bentoHeadroom = (float) (Math.log(k * exposure) / Math.log(2)) * share;
             if (bentoHeadroom > darkEv) { darkEv = bentoHeadroom; liftOnly = false; }
         }
