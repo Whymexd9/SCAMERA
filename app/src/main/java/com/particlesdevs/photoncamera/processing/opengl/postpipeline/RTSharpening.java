@@ -80,15 +80,18 @@ public class RTSharpening extends Node {
                 + " haloControl=" + PreferenceKeys.isSharpHaloControl());
         glProg.setDefine("INSIZE", basePipeline.mParameters.rawSize);
         glProg.useAssetProgram("sharpening/rtusm");
-        glProg.setVar("radius", PreferenceKeys.getSharpRadius());
+        // Sabre 2x grid (outputScale 2): the radii are RT values in SENSOR pixels, and the contrast mask measures a
+        // per-pixel gradient that halves on the 2x grid; without this the 2x -> 20 MP output came out softer than 1x.
+        final float s = Math.max(1f, Math.round(basePipeline.mParameters.outputScale));
+        glProg.setVar("radius", PreferenceKeys.getSharpRadius() * s);
         glProg.setVar("amount", amount);
-        glProg.setVar("contrastThreshold", PreferenceKeys.getSharpContrast() / 100.0f);
+        glProg.setVar("contrastThreshold", PreferenceKeys.getSharpContrast() / 100.0f / s);
         glProg.setVar("thrBottomLeft", PreferenceKeys.getSharpThresholdBottomLeft() / RT_L_SCALE);
         glProg.setVar("thrTopLeft", PreferenceKeys.getSharpThresholdTopLeft() / RT_L_SCALE);
         glProg.setVar("thrBottomRight", PreferenceKeys.getSharpThresholdBottomRight() / RT_L_SCALE);
         glProg.setVar("thrTopRight", PreferenceKeys.getSharpThresholdTopRight() / RT_L_SCALE);
         glProg.setVar("edgesOnly", PreferenceKeys.isSharpEdgesOnly() ? 1.0f : 0.0f);
-        glProg.setVar("edgesRadius", PreferenceKeys.getSharpEdgesRadius());
+        glProg.setVar("edgesRadius", PreferenceKeys.getSharpEdgesRadius() * s);
         glProg.setVar("edgesTolerance", PreferenceKeys.getSharpEdgesTolerance() / RT_L_SCALE);
         glProg.setVar("haloControl", PreferenceKeys.isSharpHaloControl() ? 1.0f : 0.0f);
         glProg.setVar("haloAmount", PreferenceKeys.getSharpHaloAmount() / 100.0f);

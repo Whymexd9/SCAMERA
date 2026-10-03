@@ -53,7 +53,9 @@ public class HybridFinalResize extends Node {
         glProg.useAssetProgram("hybrid/final_resize", false);
         glProg.setTexture("InputBuffer", in);
         glProg.setVar("kernel", kernelIndex(kernelName));
-        glProg.setVar("scale", (float) in.mSize.x / target.x, (float) in.mSize.y / target.y);
+        // Integer sizes: the shader splits the input-space centre exactly (a float centre lost precision on Adreno).
+        glProg.setVar("inSize", in.mSize.x, in.mSize.y);
+        glProg.setVar("outSize", target.x, target.y);
         WorkingTexture = new GLTexture(target, in.mFormat, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         glProg.drawBlocks(WorkingTexture);
         ((PostPipeline) basePipeline).finalResized = true;
