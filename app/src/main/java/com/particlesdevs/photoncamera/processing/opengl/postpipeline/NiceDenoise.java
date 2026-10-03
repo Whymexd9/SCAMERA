@@ -28,6 +28,9 @@ import static android.opengl.GLES20.GL_NEAREST;
  * then a share of the removed noise is put back so the remaining grain is fine and even (a flat
  * spectrum like a GCam render) instead of a denoiser's cloudy mid-frequency residue.
  * Runs on the white-balanced linear image after {@link HighlightRecovery}.
+ * <p>
+ * LMC hybrid shots go to {@link LmcDenoise} (GCam/LMC 9.6 finish denoise, pref_lmc_hybrid_dn_engine = gcam, default);
+ * this NLM route stays the hybrid's "nlm" engine and the SCAM HDR (NICE) denoise, unchanged.
  */
 public final class NiceDenoise extends Node {
     public NiceDenoise() { super("", "NiceDenoise"); }
@@ -115,7 +118,7 @@ public final class NiceDenoise extends Node {
      * same donor samples, so the neighbour difference is taken s pixels apart and a block covers 8 x 8 sensor
      * pixels; this keeps the reading (and every constant tuned against it) the same as on the 1x grid.
      */
-    private float estimateNoise(GLTexture noisy, int s) {
+    static float estimateNoise(com.particlesdevs.photoncamera.processing.opengl.GLProg glProg, GLTexture noisy, int s) {
         final int block = 8 * s;
         Point blocks = new Point((noisy.mSize.x + block - 1) / block, (noisy.mSize.y + block - 1) / block);
         GLTexture est = new GLTexture(blocks, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
@@ -154,13 +157,40 @@ public final class NiceDenoise extends Node {
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
+        // LMC hybrid shots: the GCam/LMC finish denoise (pref_lmc_hybrid_dn_engine = gcam, default); this NLM route
+        // stays the "nlm" engine and the SCAM HDR (NICE) denoise. A failure there falls back to the NLM route.
+        if (LmcDenoise.enabledFor(pipeline)) {
+            try {
+                dumpInput(pipeline); // developer switch dump-denoise: the linear input for offline replays (tools/check_lmcdn.py)
+                WorkingTexture = LmcDenoise.process(glProg, pipeline, previousNode.WorkingTexture);
+                glProg.closed = true;
+                dumpTexture(pipeline, WorkingTexture, "denoise-out");
+                return;
+            } catch (RuntimeException error) {
+                Log.e("NICE_PIPELINE", "lmc-denoise failed, NLM denoise instead: " + error);
+                if (LmcDenoise.lastMainTaken) {
+                    // The failure came after the output texture was taken: the ping-pong cursor already points past
+                    // this node's input. Taking it once more turns it back (getMain alternates two textures), so the
+                    // NLM pass writes the texture LmcDenoise took and the next node does not get its own input as
+                    // target (which a plain pass-through would have caused).
+                    pipeline.getMain();
+                    LmcDenoise.lastMainTaken = false;
+                }
+            }
+        }
+        runNlm();
+    }
+
+    /** The NLM route (SCAM HDR shots, or the hybrid with dn_engine = nlm). */
+    void runNlm() {
+        PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
         // Output pixels per sensor pixel (2 on the Sabre 2x grid, else 1): every fixed window below is dilated
         // by s and the half/quarter stages run at 1/(2s), 1/(4s), so the processing is the same in sensor
         // pixels on either grid; at s = 1 nothing changes.
         final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
         // The LMC-hybrid engine has its own strengths («Шумоподавление после склейки» in the hybrid section).
-        final boolean hybrid = PreferenceKeys.isNiceHybridEnabled();
+        final boolean hybrid = PreferenceKeys.isHybridShot();
         float chroma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_chroma", 1f) : PreferenceKeys.niceInternalValue("post_chroma", 1f)));
         float luma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_luma", 0.6f) : PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
         boolean despeckle = hybrid ? PreferenceKeys.hybridSwitch("despeckle", true) : PreferenceKeys.isNiceDespeckleEnabled();
@@ -186,7 +216,7 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", original);
                 glProg.setVar("offsetC", offsetC);
                 glProg.drawBlocks(noisy);
-                noiseSigma = estimateNoise(noisy, s);
+                noiseSigma = estimateNoise(glProg, noisy, s);
                 pipeline.niceNoiseSigma = noiseSigma;
             }
             if (despeckle) {
