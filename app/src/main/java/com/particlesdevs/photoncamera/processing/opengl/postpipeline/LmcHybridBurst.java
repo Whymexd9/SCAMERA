@@ -15,8 +15,9 @@ import java.util.*;
  * base frame, ISO and its own noise model; the base frame first. The worker merges them with the Sabre
  * kernel, the LMC rejection and frame weights, Bento (ultrashort) and Shasta (bracketed) rules.
  * <pre>
- * header 128 B: magic 'NCH1', version 10, w, h, cfa, frameCount, white f32, black f32[4], flags u32
- *               (1 diagnostics, 2 merged DNG), baseIndex u32 (0), reserved
+ * header 128 B: magic 'NCH1', version 11, w, h, cfa, frameCount, white f32, black f32[4], flags u32
+ *               (1 diagnostics, 2 merged DNG), baseIndex u32 (0), grid u32 (1 = sensor grid, 2 = the Sabre 6.1 2x
+ *               grid: RGB 2w x 2h, four sub-positions +-0.25 px per sensor pixel), reserved
  * frame table:  frameCount x 32 B: role u32 (1 normal, 3 bracketed, 5 ultrashort), exposure f32 (ratio to base),
  *               iso u32, noiseSlope f32, noiseOffset f32, orderMs f32, flags u32, reserved u32
  * planes:       frameCount x w*h uint16 (sensor layout)
@@ -29,6 +30,10 @@ public final class LmcHybridBurst implements NiceTransport {
     private static final int WORKER_MAX_FRAMES = 48; // kHybridMaxFrames in vivo-nice-hybrid.h
 
     private final int width, height, cfa;
+    /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_vivo_nice_hybrid_output). */
+    private final int outWidth, outHeight;
+    /** Final JPEG size: the pipeline runs on the worker grid, the bitmap is resized at the very end (after sharpening). */
+    private final int finalWidth, finalHeight;
     private final float white;
     private final float[] black;
     private final boolean diagnostics;
@@ -50,6 +55,14 @@ public final class LmcHybridBurst implements NiceTransport {
         if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0 || (long) width * height > 16000000)
             throw new IOException("SCAM HDR: размер RAW до 16 МП");
         if (source.size() < 2 || source.size() > 64) throw new IOException("SCAM HDR: нужны 2–64 кадра");
+        android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
+        final boolean twoX = !"sensor".equals(PreferenceKeys.hybridOutputMode());
+        // No memory gate (user's call): the 2x pipeline holds the 2w x 2h float RGB plus the GL working set; availMem is logged.
+        Log.i("NICE_HDR", "hybrid output mode=" + PreferenceKeys.hybridOutputMode() + " availMem=" + (availableMemory() >> 20) + " MB twoX=" + twoX);
+        outWidth = twoX ? 2 * width : width; outHeight = twoX ? 2 * height : height;
+        finalWidth = fin.x; finalHeight = fin.y;
+        if (twoX) Log.i("NICE_HDR", "hybrid output: Sabre 2x grid " + outWidth + "x" + outHeight + ", final " + finalWidth + "x" + finalHeight
+                + " (resize after the pipeline, " + PreferenceKeys.hybridDownsamplerName() + ")");
         List<ImageFrame> normal = new ArrayList<>(), bracketed = new ArrayList<>(), shorts = new ArrayList<>();
         Set<Long> stamps = new HashSet<>();
         for (ImageFrame f : source) {
@@ -141,15 +154,29 @@ public final class LmcHybridBurst implements NiceTransport {
 
     @Override public int width() { return width; }
     @Override public int height() { return height; }
+    @Override public int outputWidth() { return outWidth; }
+    @Override public int outputHeight() { return outHeight; }
+    /** Scale of the returned RGB against the sensor grid (1 = sensor size). */
+    public float outputScale() { return (float) outWidth / width; }
+    private static long availableMemory() {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+            if (am == null) return 0;
+            am.getMemoryInfo(info);
+            return info.lowMemory ? 0 : info.availMem;
+        } catch (RuntimeException e) { return 0; }
+    }
     @Override public int cfa() { return cfa; }
     @Override public boolean mergedDng() { return mergedDng; }
     @Override public boolean diagnostics() { return diagnostics; }
 
     private ByteBuffer header() {
         ByteBuffer h = ByteBuffer.allocate(128 + 32 * frames.size()).order(ByteOrder.LITTLE_ENDIAN);
-        h.putInt(0x3143484e).putInt(10).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
+        h.putInt(0x3143484e).putInt(11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
-        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0)).putInt(0);
+        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0)).putInt(0)
+         .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(0).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
             h.putInt(roles.get(i)).putFloat(exposures.get(i)).putInt(frames.get(i).measuredIso)
@@ -187,10 +214,18 @@ public final class LmcHybridBurst implements NiceTransport {
 
     /** True when the worker applied Bento in the last shot: the highlights are real data from the ultrashort frame. */
     public static volatile boolean lastBentoApplied;
+    /** Bento factor k of the last shot (the ultrashort content saturates at k in base-frame units) and the share of the mask where the ultrashort itself was clipped. */
+    public static volatile float lastBentoFactor = 1f, lastBentoUsClipped = 0f;
+    /** Size of the RGB returned by the last hybrid merge (sensor size unless the Sabre 2x output is on). */
+    public static volatile android.graphics.Point lastOutputSize;
+    /** Final JPEG size of the last hybrid shot (the bitmap is resized to it after the whole pipeline). */
+    public static volatile android.graphics.Point lastFinalSize;
     /** Merges the frames in the worker; returns linear RGB float32 (w*h*3) in base-frame units, highlights above 1.0 from the ultrashort frame. */
     public static ByteBuffer process(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng) throws Exception {
         LmcHybridBurst burst = new LmcHybridBurst(frames, p);
         burst.mergedDng = mergedDng;
+        lastOutputSize = new android.graphics.Point(burst.outWidth, burst.outHeight);
+        lastFinalSize = new android.graphics.Point(burst.finalWidth, burst.finalHeight);
         if (burst.diagnostics) NiceDiagnostics.begin(context, p, burst.base, VivoNiceScene.fromReference(burst.base));
         return VivoNeuralClient.processNiceBurst(context, burst);
     }

@@ -82,6 +82,11 @@ public class CameraFragmentViewModel extends AndroidViewModel {
             }
         };
     }
+    /** Provisional gallery thumbnail shown the moment a ZSL shot is taken (LMC/GCam: the viewfinder frame), replaced when the JPEG is saved. */
+    public void setProvisionalThumb(@Nullable Bitmap bitmap) {
+        if (bitmap == null) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cameraFragmentModel.setBitmap(bitmap));
+    }
     public void updateGalleryThumb(@Nullable Uri uri) {
         Uri lastImageUri = uri;
         if (lastImageUri == null) {

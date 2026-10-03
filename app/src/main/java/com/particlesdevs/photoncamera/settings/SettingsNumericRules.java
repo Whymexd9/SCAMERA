@@ -39,6 +39,14 @@ public final class SettingsNumericRules {
             case "pref_vivo_nice_hybrid_widen_below": return new double[]{0,16,0};
             case "pref_vivo_nice_hybrid_tensor_noise": return new double[]{0,4,0};
             case "pref_vivo_nice_hybrid_snr_scale": return new double[]{0.05,4,0};
+            case "pref_vivo_nice_hybrid_boost_value": return new double[]{1,10,0};
+            case "pref_vivo_nice_hybrid_boost_threshold": return new double[]{5,100,0};
+            case "pref_vivo_nice_hybrid_lut_sigma": return new double[]{1,2,0};
+            case "pref_vivo_nice_hybrid_post_luma": return new double[]{0,2,0};
+            case "pref_vivo_nice_hybrid_post_chroma": return new double[]{0,2,0};
+            case "pref_vivo_nice_hybrid_despeckle": return new double[]{0,1,1};
+            case "pref_vivo_nice_hybrid_bento_denoise_max": return new double[]{1,12,0};
+            case "pref_vivo_nice_hybrid_bento_fusion": return new double[]{0,1.5,0};
             case "pref_vivo_hdr_highlight_pct": return new double[]{90,99.99,0};
             case "pref_vivo_hdr_adaptive_white": return new double[]{0,1,1};
             case "pref_vivo_hdr_highlight_neutral": return new double[]{0,0.95,0};

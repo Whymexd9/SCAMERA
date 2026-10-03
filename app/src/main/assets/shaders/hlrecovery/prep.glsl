@@ -1,12 +1,12 @@
 precision highp float;
 precision highp sampler2D;
-// Highlight recovery, step 1: per 8x8 block, the sum of the colour ratios c/Y of the
-// pixels that are trustworthy colour sources (bright enough, not clipped) and their
+// Highlight recovery, step 1: per block (8x8 sensor pixels), the sum of the colour ratios c/Y
+// of the pixels that are trustworthy colour sources (bright enough, not clipped) and their
 // weight. rgba = (sum of weight*c/Y, sum of weight), both divided by the block area.
 uniform sampler2D InputBuffer; // linear RGB, white balance applied (neutral = equal channels)
 uniform float kFull;           // min(R,B)/G of a fully clipped pixel (sensor white through WB)
 uniform float yRef;            // luminance of the scene's highlight reference
-uniform int block;
+uniform int block;             // 8 * outputScale output pixels (8 at 1x, 16 on the Sabre 2x grid)
 out vec4 Output;
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 void main() {

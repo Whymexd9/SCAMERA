@@ -33,6 +33,9 @@ public class SettingsBarButtonModel {
     private final int id;
     private View.OnClickListener buttonClickListener;
     private boolean selected;
+    /** Text drawn on the chip instead of an icon (resolution "12", "2x", downsampler "Lanc"). */
+    private String textLabel;
+    public String getTextLabel() { return textLabel; }
 
 
     private SettingsBarButtonModel(@IdRes int id, @DrawableRes int buttonDrawableId, @StringRes int buttonStateNameStringId, int buttonValue) {
@@ -44,6 +47,14 @@ public class SettingsBarButtonModel {
 
     public static SettingsBarButtonModel newButtonModel(@IdRes int id, @DrawableRes int buttonDrawableId, @StringRes int buttonStateNameStringId, int buttonValue, SettingsBarEntryModel entryModel) {
         SettingsBarButtonModel buttonModel = new SettingsBarButtonModel(id, buttonDrawableId, buttonStateNameStringId, buttonValue);
+        buttonModel.setButtonClickListener(v -> entryModel.select(buttonModel));
+        return buttonModel;
+    }
+
+    /** A chip with a short text label instead of an icon. */
+    public static SettingsBarButtonModel newTextButtonModel(@IdRes int id, String textLabel, @StringRes int buttonStateNameStringId, int buttonValue, SettingsBarEntryModel entryModel) {
+        SettingsBarButtonModel buttonModel = new SettingsBarButtonModel(id, 0, buttonStateNameStringId, buttonValue);
+        buttonModel.textLabel = textLabel;
         buttonModel.setButtonClickListener(v -> entryModel.select(buttonModel));
         return buttonModel;
     }

@@ -1,8 +1,10 @@
 precision highp float;
 precision highp sampler2D;
-// AgX local highlight range, step 1: large-scale log2 luminance (1/16 scale,
-// Gaussian sigma 2.5 texels = ~40 px of the full frame). render.glsl compares
-// it with each pixel to decide how far a bright region sits above grey.
+// AgX local highlight range, step 1: large-scale log2 luminance at 1/16 of the
+// SENSOR grid (HeadroomRender.buildAgxBase downsamples by 4*outputScale, then 4,
+// so a texel is 16 sensor px on the 1x and on the Sabre 2x grid alike); Gaussian
+// sigma 2.5 texels = ~40 sensor px. render.glsl compares it with each pixel to
+// decide how far a bright region sits above grey.
 uniform sampler2D InputBuffer; // downsampled linear camera RGB
 uniform vec3 neutral;          // white balance, as in render.glsl
 out float Output;

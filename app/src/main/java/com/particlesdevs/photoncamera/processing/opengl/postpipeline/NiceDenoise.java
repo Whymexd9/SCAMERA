@@ -73,7 +73,6 @@ public final class NiceDenoise extends Node {
         }
     }
 
-    /** Noise level (sigma of u) from the flat, quiet blocks of the frame (25th percentile of the block statistics). */
     /**
      * Effective merged frames per pixel of this shot (uint8, 1/8 frame) as a texture for the filters;
      * null when the merge did not report it (the noise is then taken as uniform). effRef = its median.
@@ -101,19 +100,31 @@ public final class NiceDenoise extends Node {
         return new GLTexture(size, new GLFormat(GLFormat.DataType.UNSIGNED_8, 1), eff, GL_NEAREST, GL_CLAMP_TO_EDGE);
     }
 
+    /** Upper clamp of the per-pixel noise boost derived from the effective-frames map (Bento regions merged from one gained frame). */
+    private float effMax = 3f;
     private void bindEffectiveFrames(GLTexture effMap) {
         if (effMap != null) glProg.setTexture("EffMap", effMap);
         glProg.setVar("useEff", effMap != null ? 1 : 0);
         glProg.setVar("effRef", effRef);
+        glProg.setVar("effMax", effMax);
     }
 
-    private float estimateNoise(GLTexture noisy) {
-        Point blocks = new Point((noisy.mSize.x + 7) / 8, (noisy.mSize.y + 7) / 8);
+    /**
+     * Noise level (sigma of u) from the flat, quiet blocks of the frame (25th percentile of the block statistics).
+     * s = output pixels per sensor pixel: on the Sabre 2x grid adjacent output pixels are kernel averages of the
+     * same donor samples, so the neighbour difference is taken s pixels apart and a block covers 8 x 8 sensor
+     * pixels; this keeps the reading (and every constant tuned against it) the same as on the 1x grid.
+     */
+    private float estimateNoise(GLTexture noisy, int s) {
+        final int block = 8 * s;
+        Point blocks = new Point((noisy.mSize.x + block - 1) / block, (noisy.mSize.y + block - 1) / block);
         GLTexture est = new GLTexture(blocks, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         int[] oldRead = new int[1], framebuffer = new int[1];
         try {
             glProg.useAssetProgram("chromadn/noiseest", false);
             glProg.setTexture("InputBuffer", noisy);
+            glProg.setVar("block", block);
+            glProg.setVar("pxStep", s);
             glProg.drawBlocks(est);
             android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_READ_FRAMEBUFFER_BINDING, oldRead, 0);
             android.opengl.GLES30.glGenFramebuffers(1, framebuffer, 0);
@@ -144,9 +155,16 @@ public final class NiceDenoise extends Node {
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
-        float chroma = Math.max(0f, Math.min(2f, PreferenceKeys.niceInternalValue("post_chroma", 1f)));
-        float luma = Math.max(0f, Math.min(2f, PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
-        boolean despeckle = PreferenceKeys.isNiceDespeckleEnabled();
+        // Output pixels per sensor pixel (2 on the Sabre 2x grid, else 1): every fixed window below is dilated
+        // by s and the half/quarter stages run at 1/(2s), 1/(4s), so the processing is the same in sensor
+        // pixels on either grid; at s = 1 nothing changes.
+        final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
+        // The LMC-hybrid engine has its own strengths («Шумоподавление после склейки» in the hybrid section).
+        final boolean hybrid = PreferenceKeys.isNiceHybridEnabled();
+        float chroma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_chroma", 1f) : PreferenceKeys.niceInternalValue("post_chroma", 1f)));
+        float luma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_luma", 0.6f) : PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
+        boolean despeckle = hybrid ? PreferenceKeys.hybridSwitch("despeckle", true) : PreferenceKeys.isNiceDespeckleEnabled();
+        effMax = hybrid ? Math.max(1f, Math.min(12f, PreferenceKeys.hybridValue("bento_denoise_max", 3f))) : 3f;
         if (chroma <= 0f && luma <= 0f && !despeckle) { glProg.closed = true; return; }
         long started = System.currentTimeMillis();
         dumpInput(pipeline);
@@ -154,7 +172,7 @@ public final class NiceDenoise extends Node {
         GLTexture original = previousNode.WorkingTexture;
         GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4);
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);
-        Point half = new Point((original.mSize.x + 1) / 2, (original.mSize.y + 1) / 2);
+        Point half = new Point((original.mSize.x + 2 * s - 1) / (2 * s), (original.mSize.y + 2 * s - 1) / (2 * s));
         float noiseSigma = 0f;
         pipeline.niceNoiseSigma = 0f;
         GLTexture effMap = loadEffectiveFrames(original.mSize);
@@ -168,7 +186,7 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", original);
                 glProg.setVar("offsetC", offsetC);
                 glProg.drawBlocks(noisy);
-                noiseSigma = estimateNoise(noisy);
+                noiseSigma = estimateNoise(noisy, s);
                 pipeline.niceNoiseSigma = noiseSigma;
             }
             if (despeckle) {
@@ -177,6 +195,7 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", original);
                 glProg.setVar("sigma", noiseSigma);
                 glProg.setVar("offsetC", offsetC);
+                glProg.setVar("pxStep", s);
                 glProg.drawBlocks(cleaned);
                 input = cleaned;
             }
@@ -185,6 +204,7 @@ public final class NiceDenoise extends Node {
             pong = new GLTexture(half, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             glProg.useAssetProgram("chromadn/down", false);
             glProg.setTexture("InputBuffer", input);
+            glProg.setVar("factor", 2 * s);
             glProg.drawBlocks(before);
             GLTexture source = before;
             if (chroma > 0f) {
@@ -219,12 +239,14 @@ public final class NiceDenoise extends Node {
                 glProg.setTexture("InputBuffer", noisy);
                 bindEffectiveFrames(effMap);
                 glProg.setVar("h", h);
+                glProg.setVar("pxStep", s);
                 glProg.drawBlocks(clean);
-                Point quarterSize = new Point((original.mSize.x + 3) / 4, (original.mSize.y + 3) / 4);
+                Point quarterSize = new Point((original.mSize.x + 4 * s - 1) / (4 * s), (original.mSize.y + 4 * s - 1) / (4 * s));
                 quarter = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
                 coarse = new GLTexture(quarterSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
                 glProg.useAssetProgram("chromadn/down4", false);
                 glProg.setTexture("InputBuffer", clean);
+                glProg.setVar("factor", 4 * s);
                 glProg.drawBlocks(quarter);
                 glProg.useAssetProgram("chromadn/coarse", false);
                 glProg.setTexture("InputBuffer", quarter);
@@ -240,6 +262,8 @@ public final class NiceDenoise extends Node {
             glProg.setTexture("Clean", luma > 0f ? clean : noisy);
             glProg.setTexture("Coarse", luma > 0f ? coarse : noisy);
             glProg.setVar("sigma", luma > 0f ? noiseSigma : 0f);
+            glProg.setVar("pxStep", s);
+            glProg.setVar("lowRatio", 2f * s);
             // Share of the removed noise put back: the grain that stays is held near an absolute level
             // (about 0.0002 in u: the merge leaves about half the noise it did before its kernel followed the
             // SNR, and measured against an LMC render of the same scene this level gives the same noise in

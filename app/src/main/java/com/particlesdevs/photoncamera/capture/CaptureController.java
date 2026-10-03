@@ -3600,7 +3600,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final int nativeBaseIndex=denoiseFrameCount/2;
             final TotalCaptureResult[] nativeBaseResult={hybridZsl?mNativeZslBase:null};
 
-            cameraEventsListener.onCaptureStillPictureStarted("CaptureStarted!");
+            // ZSL SCAM HDR: the N frames are already buffered and only the short tail is exposed, so the UI
+            // treats the press as an instant shot (no capture ring, no locked controls, provisional thumbnail).
+            cameraEventsListener.onCaptureStillPictureStarted(hybridZsl ? "NiceZslCaptureStarted" : "CaptureStarted!");
             mMeasuredFrameCnt = 0;
 
             cameraEventsListener.onBurstPrepared(null);

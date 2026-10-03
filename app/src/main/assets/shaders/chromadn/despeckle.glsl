@@ -9,6 +9,7 @@ precision highp sampler2D;
 uniform sampler2D InputBuffer;
 uniform float sigma;    // noise sigma of u = sqrt(Y + offsetC), 0 disables the noise-aware test
 uniform float offsetC;
+uniform int pxStep;       // outputScale: output px per sensor px, so the rings stay 4 and 2 SENSOR px away
 out vec4 Output;
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 void main() {
@@ -24,7 +25,7 @@ void main() {
         ivec2(2, 4), ivec2(-2, 4), ivec2(2, -4), ivec2(-2, -4));
     float sum = 0.0, lo = 1.0e9, hi = 0.0;
     for (int k = 0; k < 16; k++) {
-        float v = luma(max(texelFetch(InputBuffer, clamp(p + ring[k], ivec2(0), last), 0).rgb, vec3(0.0)));
+        float v = luma(max(texelFetch(InputBuffer, clamp(p + ring[k] * pxStep, ivec2(0), last), 0).rgb, vec3(0.0)));
         sum += v;
         lo = min(lo, v);
         hi = max(hi, v);
@@ -38,7 +39,7 @@ void main() {
     if (homog && (darkDot || brightDot)) {
         for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
             if (i == 0 && j == 0) continue;
-            float v = luma(max(texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), last), 0).rgb, vec3(0.0)));
+            float v = luma(max(texelFetch(InputBuffer, clamp(p + ivec2(i, j) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0)));
             if (darkDot ? v < 0.85 * mean : v > 1.18 * mean) offRing++;
         }
     }
@@ -55,7 +56,7 @@ void main() {
         float us = 0.0, ulo = 1.0e9, uhi = 0.0;
         vec3 rgbSum = vec3(0.0);
         for (int k = 0; k < 16; k++) {
-            vec3 rc = max(texelFetch(InputBuffer, clamp(p + ring2[k], ivec2(0), last), 0).rgb, vec3(0.0));
+            vec3 rc = max(texelFetch(InputBuffer, clamp(p + ring2[k] * pxStep, ivec2(0), last), 0).rgb, vec3(0.0));
             rgbSum += rc;
             float v = sqrt(luma(rc) + offsetC);
             us += v;
@@ -66,10 +67,10 @@ void main() {
         float uc = sqrt(y + offsetC);
         // A real thin dark line drags its direct neighbours down with it (the lens blurs it over
         // more than a pixel); a defect leaves them at the level of the ring.
-        float un4 = 0.25 * (sqrt(luma(max(texelFetch(InputBuffer, clamp(p + ivec2(1, 0), ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
-                          + sqrt(luma(max(texelFetch(InputBuffer, clamp(p - ivec2(1, 0), ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
-                          + sqrt(luma(max(texelFetch(InputBuffer, clamp(p + ivec2(0, 1), ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
-                          + sqrt(luma(max(texelFetch(InputBuffer, clamp(p - ivec2(0, 1), ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC));
+        float un4 = 0.25 * (sqrt(luma(max(texelFetch(InputBuffer, clamp(p + ivec2(1, 0) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
+                          + sqrt(luma(max(texelFetch(InputBuffer, clamp(p - ivec2(1, 0) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
+                          + sqrt(luma(max(texelFetch(InputBuffer, clamp(p + ivec2(0, 1) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
+                          + sqrt(luma(max(texelFetch(InputBuffer, clamp(p - ivec2(0, 1) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC));
         if (uhi - ulo < 7.0 * sigma && uc < um - 3.5 * sigma && un4 > um - 1.5 * sigma) {
             c = rgbSum * (1.0 / 16.0);
         } else if (uc > um + 4.5 * sigma && un4 < um + 1.5 * sigma && uhi - ulo < 9.0 * sigma + 0.5 * (uc - um)) {

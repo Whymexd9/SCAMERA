@@ -49,4 +49,15 @@
     <item name="ae_metering_std_center_button" type="id"/>
     <item name="ae_metering_std_average_button" type="id"/>
     <item name="ae_metering_std_spot_button" type="id"/>
+    <item name="hybrid_output_entry_layout" type="id"/>
+    <item name="hybrid_output_sensor_button" type="id"/>
+    <item name="hybrid_output_12_button" type="id"/>
+    <item name="hybrid_output_16_button" type="id"/>
+    <item name="hybrid_output_20_button" type="id"/>
+    <item name="hybrid_output_2x_button" type="id"/>
+    <item name="hybrid_downsampler_entry_layout" type="id"/>
+    <item name="hybrid_ds_lanczos_button" type="id"/>
+    <item name="hybrid_ds_bicubic_button" type="id"/>
+    <item name="hybrid_ds_area_button" type="id"/>
+    <item name="hybrid_ds_bilinear_button" type="id"/>
 </resources>

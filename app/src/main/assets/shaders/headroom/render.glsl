@@ -33,6 +33,8 @@ uniform float outputExposureScale; // Global output exposure (~-0.32 EV at 0.80)
 uniform float highlightNeutralStart; // Shoulder position where highlights start fading to white
 uniform float displayNeutralStart; // Display-linear level where near-white starts losing tint (1 = off)
 uniform ivec4 activeSize;
+uniform int pxStep; // output grid step (2 on the Sabre 2x grid, else 1): the 5x5 windows below are dilated by it so they cover the same sensor area as at 1x
+uniform float bentoReal;      // 1 = highlights come from the Bento ultrashort frame (real colour, nothing clipped at 1.0)
 uniform vec3 castTint; // share of the scene light's colour kept in the picture (1,1,1 = fully white balanced)
 uniform vec4 castRange; // the cast fades out below these luminances (x..y: the dark parts of a night scene are lit by the sky, not by the lamps) and, above the x..y peak channel level (z..w), darkens instead of pushing a channel past white (a lamp-lit white wall stays warm as in the stock render instead of clipping to white)
 
@@ -155,7 +157,7 @@ float localLogLumaMean(ivec2 xy, float exposure, vec3 neutralPoint) {
     float wsum=0.0;
     for(int oy=-2;oy<=2;oy++) {
         for(int ox=-2;ox<=2;ox++) {
-            ivec2 p=clamp(xy+ivec2(ox,oy),ivec2(0),sz-ivec2(1));
+            ivec2 p=clamp(xy+ivec2(ox,oy)*pxStep,ivec2(0),sz-ivec2(1));
             vec3 wb=max(texelFetch(InputBuffer,p,0).rgb,vec3(0.0))*neutralPoint*exposure;
             float y=max(luminance(wb),0.0);
             float r2=float(ox*ox+oy*oy);
@@ -331,8 +333,8 @@ void main() {
     ivec2 sz=textureSize(InputBuffer,0);
     for(int i=-2;i<=2;i++) {
         for(int j=-2;j<=2;j++) {
-            ivec2 p=clamp(xy+ivec2(i,j),ivec2(0),sz-ivec2(1));
-            vec2 offset=vec2(float(i),float(j));
+            ivec2 p=clamp(xy+ivec2(i,j)*pxStep,ivec2(0),sz-ivec2(1));
+            vec2 offset=vec2(float(i),float(j))*float(pxStep);
             float lightness=dot(texelFetch(InputBuffer,p,0).rgb,vec3(1.0/3.0));
             float gain=texture(FusionMap,(gl_FragCoord.xy+offset)/vec2(sz)).r;
             moments+=vec4(lightness,gain,lightness*lightness,lightness*gain);
@@ -440,7 +442,7 @@ void main() {
     linearSrgb=fitDisplayGamut(linearSrgb);
     #endif
 
-    linearSrgb=neutralizeClippedMagenta(linearSrgb);
+    if(bentoReal<0.5)linearSrgb=neutralizeClippedMagenta(linearSrgb);
     #if MANUAL_TONE == 1
     // Exact neutral bypass preserves the previous renderer at defaults.
     if(manualContrast!=1.0 || manualGamma!=1.0 || manualSaturation!=1.0)

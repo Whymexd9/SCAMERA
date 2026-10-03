@@ -1,14 +1,17 @@
 precision highp float;
 precision highp sampler2D;
 precision highp usampler2D;
-// Post-network luma noise, step 2: non-local means on u (3x3 patches, 5x5 candidates spaced
-// two pixels apart). u = sqrt(Y + c) is roughly perceptual, so one absolute strength h gives
-// the same visible result for every noise level (the target is the grain level of a
-// GCam/stock render, not the removal of all noise).
+// Post-network luma noise, pxStep 2: non-local means on u (3x3 patches, 5x5 candidates spaced
+// two pixels apart, all in SENSOR pixels: every offset is dilated by pxStep = outputScale).
+// u = sqrt(Y + c) is roughly perceptual, so one absolute strength h gives the same visible
+// result for every noise level (the target is the grain level of a GCam/stock render, not the
+// removal of all noise).
 uniform sampler2D InputBuffer;
 uniform float h;        // filtering strength in u units (about 0.002)
+uniform int pxStep;       // outputScale: output px per sensor px (1 off the Sabre 2x grid)
 uniform usampler2D EffMap;  // effective merged frames per pixel (1/8 frame steps, 0 = unknown)
 uniform float effRef;       // median of the map
+uniform float effMax;       // upper clamp of the noise boost (hybrid: Bento denoise limit setting)
 uniform int useEff;
 out float Output;
 void main() {
@@ -16,23 +19,23 @@ void main() {
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
     float centre[9];
     for (int k = 0; k < 9; k++)
-        centre[k] = texelFetch(InputBuffer, clamp(p + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).r;
+        centre[k] = texelFetch(InputBuffer, clamp(p + ivec2(k % 3 - 1, k / 3 - 1) * pxStep, ivec2(0), last), 0).r;
     float sum = 0.0, mass = 0.0, best = 0.0;
     // The noise left by the merge follows the number of frames merged at each pixel (rejected areas
     // are noisier, well merged ones cleaner): the filtering strength follows it.
     float hp = h;
     if (useEff != 0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, 3.0);
+        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, max(effMax, 0.5));
     }
     float norm = 1.0 / (hp * hp);
     for (int j = -2; j <= 2; j++) {
         for (int i = -2; i <= 2; i++) {
             if (i == 0 && j == 0) continue;
-            ivec2 q = p + ivec2(i, j) * 2;
+            ivec2 q = p + ivec2(i, j) * (2 * pxStep);
             float d = 0.0;
             for (int k = 0; k < 9; k++) {
-                float v = texelFetch(InputBuffer, clamp(q + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).r;
+                float v = texelFetch(InputBuffer, clamp(q + ivec2(k % 3 - 1, k / 3 - 1) * pxStep, ivec2(0), last), 0).r;
                 float e = v - centre[k];
                 d += e * e;
             }

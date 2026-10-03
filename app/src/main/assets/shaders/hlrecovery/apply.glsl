@@ -1,6 +1,6 @@
 precision highp float;
 precision highp sampler2D;
-// Highlight recovery, step 3 (DaVinci Resolve style colour propagation): a pixel whose
+// Highlight recovery, pxStep 3 (DaVinci Resolve style colour propagation): a pixel whose
 // channels all clipped at the sensor white keeps only its luminance; its colour is taken
 // from the surrounding trustworthy pixels (nearby first, then the wider neighbourhood,
 // neutral when none), so a blown window takes the colour of its surroundings' light
@@ -11,6 +11,7 @@ uniform sampler2D Chroma32;
 uniform float kFull;
 uniform float yRef;
 uniform float strength;
+uniform int pxStep;              // outputScale: the 3x3 tint test samples one sensor pixel apart (1 at 1x)
 out vec3 Output;
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 void main() {
@@ -20,7 +21,7 @@ void main() {
     vec3 mean = vec3(0.0);
     for (int j = -1; j <= 1; j++)
         for (int i = -1; i <= 1; i++)
-            mean += max(texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), size - ivec2(1)), 0).rgb, vec3(0.0));
+            mean += max(texelFetch(InputBuffer, clamp(p + ivec2(i, j) * pxStep, ivec2(0), size - ivec2(1)), 0).rgb, vec3(0.0));
     mean *= 1.0 / 9.0;
     float tint = min(mean.r, mean.b) / max(mean.g, 1.0e-6);
     float clipped = smoothstep(1.0 + 0.45 * (kFull - 1.0), 1.0 + 0.8 * (kFull - 1.0), tint)

@@ -43,6 +43,9 @@ struct HybridInput {
     std::array<float,4> black{};
     std::vector<HybridFrame> frames; // frames[0] = base (normal)
     bool diagnostics=false,mergedDng=false;
+    // Output grid (NCH v11): 1 = sensor grid (today), 2 = the Sabre 6.1 2x grid (four sub-positions +-0.25 px per
+    // sensor pixel, RGB 2w x 2h). The app runs its whole pipeline on that grid and resizes at the end.
+    int grid=1;
 };
 
 // Tuning (LMC-like; a "key value" text file in the job dir or the external files dir overrides it).
@@ -90,7 +93,17 @@ struct HybridTuning {
     int snrFixed=0;
     float snrScale=0.25f;
     int debugFrame=-1;           // merge one donor only (merge_debug_frame_index)
+    int grid=0;                  // replay override of the output grid (0 = header, 1 sensor, 2 = Sabre 2x)
 };
+
+// restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
+inline void shiftOrigin(std::vector<float>& v,int w,int h,int channels,int dx,int dy) {
+    if(dx==0&&dy==0)return;
+    for(int y=h-1;y>=0;--y)for(int x=w-1;x>=0;--x){
+        const size_t src=(size_t(std::max(0,y-dy))*w+std::max(0,x-dx))*channels,dst=(size_t(y)*w+x)*channels;
+        for(int c=0;c<channels;++c)v[dst+c]=v[src+c];
+    }
+}
 
 inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::function<void(const std::string&)>& report) {
     HybridTuning t;
@@ -110,7 +123,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("lutHiSigma",&t.lutHiSigma)||set("kernelScale",&t.kernelScale)||set("widenBelow",&t.widenBelow)||set("widenMul",&t.widenMul)
             ||set("kernelFloor",&t.kernelFloor)||set("rawTensor",&t.rawTensor)||set("rawNoise",&t.rawNoise)||set("bento",nullptr,&t.bento)
             ||set("bentoHighlight",&t.bentoHighlight)||set("bentoDilate",nullptr,&t.bentoDilate)||set("bentoSmooth",&t.bentoSmooth)
-            ||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
+            ||set("grid",nullptr,&t.grid)||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("shastaSharpness",&t.shastaSharpness)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame);
         }
@@ -336,7 +349,7 @@ void main(){
 
 // Accumulation: for every output pixel, the RAW sites of every colour around the aligned position of each
 // frame, weighted by the anisotropic kernel, the frame's robustness and scalar weight; base frame last.
-static const char* kHybMerge=R"(
+static const char* kHybMergeCommon=R"(
 layout(std430,binding=8) readonly buffer Robust{float robust[];};
 layout(std430,binding=3) writeonly buffer Out{float outRgb[];};
 layout(std430,binding=4) writeonly buffer Eff{float eff[];};
@@ -347,6 +360,7 @@ uniform int cy1;
 uniform int ry0;
 uniform vec4 kD; // widen below, widen multiplier, kernel floor, bento active
 uniform vec4 kE; // debug frame (-1 = all), ultrashort kernel precision 1/sigma^2, 0, 0
+uniform ivec4 kG; // output grid (1|2), output row width, sub-position x (0|1), sub-position y (0|1)
 struct Acc{vec3 num;vec3 den;float cover;vec3 clipNum;vec3 clipDen;};
 void initAcc(out Acc a){a.num=vec3(0.0);a.den=vec3(0.0);a.cover=0.0;a.clipNum=vec3(0.0);a.clipDen=vec3(0.0);}
 float kernelW(vec2 d,vec3 P){
@@ -369,6 +383,10 @@ void frameSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P){
         }
     }
 }
+)";
+
+// Grid 1 (sensor grid): one evaluation per sensor pixel.
+static const char* kHybMergeMain1=R"(
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=cy0+int(gl_GlobalInvocationID.y);
@@ -376,11 +394,15 @@ void main(){
     vec4 cv=cov[(cy-ry0)*w2+cx];
     vec3 P=cv.xyz;
     float m=kD.w>0.5?bmask[(cy-cy0)*w2+cx]:0.0;
-    int y0=2*cy0;
+    // Sabre 6.1 2x grid: the output pixel centres fall on sensor positions x/2 - 0.25, i.e. the sub-positions
+    // +-0.25 px of every sensor pixel; one dispatch per sub-position, the kernel stays in sensor pixel units.
+    int g=kG.x,ow=kG.y,sx=kG.z,sy=kG.w;
+    vec2 sub=g==2?vec2(sx==0?-0.25:0.25,sy==0?-0.25:0.25):vec2(0.0);
+    int oy0=2*cy0*g;
     vec2 cell=vec2(float(2*cx),float(2*cy));
     for(int q=0;q<4;q++){
         int x=2*cx+(q&1),y=2*cy+(q>>1);
-        vec2 pos=vec2(float(x),float(y));
+        vec2 pos=vec2(float(x),float(y))+sub;
         Acc a;initAcc(a);
         for(int f=1;f<frameCount;f++){
             float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
@@ -407,9 +429,10 @@ void main(){
             else if(a.clipDen[c]>0.0)col[c]=a.clipNum[c]/a.clipDen[c]; // everything clipped: keep the clipped level
             else col[c]=0.0;
         }
-        int o=((y-y0)*size.x+x)*3;
+        int ox=x*g+sx,oy=y*g+sy;
+        int o=((oy-oy0)*ow+ox)*3;
         outRgb[o]=col.x;outRgb[o+1]=col.y;outRgb[o+2]=col.z;
-        eff[(y-y0)*size.x+x]=a.cover+wb;
+        eff[(oy-oy0)*ow+ox]=a.cover+wb;
     }
 }
 )";
@@ -418,14 +441,15 @@ class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
     EGLSurface surface=EGL_NO_SURFACE;
-    GLuint guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,buffers[14]{};
-    size_t capacity[14]{};
+    static constexpr int kSlots=16; // 0..13 merge, 14 unused, 15 readback staging
+    GLuint guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,buffers[kSlots]{};
+    size_t capacity[kSlots]{};
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("HYBRID GPU ")+where+" GL error="+std::to_string(e));}
     void cleanup() noexcept {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram})if(program)glDeleteProgram(program);
-            glDeleteBuffers(14,buffers);
+            glDeleteBuffers(kSlots,buffers);
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
         }
         if(surface!=EGL_NO_SURFACE)eglDestroySurface(display,surface);
@@ -451,16 +475,56 @@ class HybridGpu {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffers[slot]);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER,GLintptr(offset),GLsizeiptr(bytes),data);
     }
+    // Readback. Adreno 750 returns NULL (no GL error) from glMapBufferRange for some ranges (seen: a 50 MB range,
+    // and the second 8 MB chunk of the same buffer); the ladder below tries the variants and keeps the first that
+    // works for the rest of the run.
+    int mapMethod=-1;
+    const void* tryMap(GLenum target,size_t offset,size_t n,GLbitfield flags){
+        const void* p=glMapBufferRange(target,GLintptr(offset),GLsizeiptr(n),flags);
+        if(!p)glGetError();
+        return p;
+    }
     void get(int slot,void* data,size_t bytes){
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffers[slot]);
-        const void* mapped=glMapBufferRange(GL_SHADER_STORAGE_BUFFER,0,GLsizeiptr(bytes),GL_MAP_READ_BIT);
-        if(!mapped)throw std::runtime_error("HYBRID GPU readback failed");
-        std::memcpy(data,mapped,bytes);
-        if(!glUnmapBuffer(GL_SHADER_STORAGE_BUFFER))throw std::runtime_error("HYBRID GPU storage invalidated");
+        constexpr size_t kChunk=size_t(32)<<20; // strips are sized so that every readback is one map from offset 0
+        for(size_t offset=0;offset<bytes;offset+=kChunk){
+            const size_t n=std::min(kChunk,bytes-offset);
+            bool done=false;
+            for(int method=mapMethod<0?0:mapMethod;method<5&&!done;++method){
+                const void* mapped=nullptr;GLenum target=GL_SHADER_STORAGE_BUFFER;
+                if(method==0){glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffers[slot]);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT);}
+                else if(method==1){glFinish();glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffers[slot]);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT|GL_MAP_UNSYNCHRONIZED_BIT);}
+                else if(method==2){target=GL_COPY_READ_BUFFER;glBindBuffer(target,buffers[slot]);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT);}
+                else if(method==3){ // staging copy into a GL_DYNAMIC_READ buffer, mapped from offset 0
+                    target=GL_COPY_WRITE_BUFFER;
+                    glBindBuffer(GL_COPY_READ_BUFFER,buffers[slot]);glBindBuffer(GL_COPY_WRITE_BUFFER,buffers[kSlots-1]);
+                    if(capacity[kSlots-1]<n){glBufferData(GL_COPY_WRITE_BUFFER,GLsizeiptr(n),nullptr,GL_DYNAMIC_READ);capacity[kSlots-1]=n;}
+                    glCopyBufferSubData(GL_COPY_READ_BUFFER,GL_COPY_WRITE_BUFFER,GLintptr(offset),0,GLsizeiptr(n));
+                    glFinish();
+                    mapped=tryMap(target,0,n,GL_MAP_READ_BIT);
+                } else { // last resort: a fresh buffer object per chunk
+                    target=GL_COPY_WRITE_BUFFER;GLuint tmp=0;glGenBuffers(1,&tmp);
+                    glBindBuffer(GL_COPY_READ_BUFFER,buffers[slot]);glBindBuffer(GL_COPY_WRITE_BUFFER,tmp);
+                    glBufferData(GL_COPY_WRITE_BUFFER,GLsizeiptr(n),nullptr,GL_DYNAMIC_READ);
+                    glCopyBufferSubData(GL_COPY_READ_BUFFER,GL_COPY_WRITE_BUFFER,GLintptr(offset),0,GLsizeiptr(n));
+                    glFinish();
+                    mapped=tryMap(target,0,n,GL_MAP_READ_BIT);
+                    if(mapped){std::memcpy(static_cast<char*>(data)+offset,mapped,n);glUnmapBuffer(target);glDeleteBuffers(1,&tmp);mapMethod=method;done=true;break;}
+                    glDeleteBuffers(1,&tmp);
+                }
+                if(mapped){
+                    std::memcpy(static_cast<char*>(data)+offset,mapped,n);
+                    if(!glUnmapBuffer(target))throw std::runtime_error("HYBRID GPU storage invalidated");
+                    if(mapMethod!=method){mapMethod=method;if(method>0&&trace)trace("HYBRID GPU readback method "+std::to_string(method));}
+                    done=true;
+                }
+            }
+            if(!done)throw std::runtime_error("HYBRID GPU readback failed slot="+std::to_string(slot)+" offset="+std::to_string(offset)+" bytes="+std::to_string(n)+" total="+std::to_string(bytes));
+        }
     }
     static GLint loc(GLuint program,const char* n){return glGetUniformLocation(program,n);}
 public:
-    std::string renderer;
+    std::string renderer,limits;size_t maxStorageBlock=0;
+    std::function<void(const std::string&)> trace;
     struct Frames {
         int w=0,h=0,cfa=0;
         std::array<float,4> black{},inv{};
@@ -485,24 +549,30 @@ public:
             const EGLint size[]={EGL_WIDTH,1,EGL_HEIGHT,1,EGL_NONE};surface=eglCreatePbufferSurface(display,config,size);
             if(surface==EGL_NO_SURFACE||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");
             const auto* name=glGetString(GL_RENDERER);renderer=name?reinterpret_cast<const char*>(name):"unknown";
+            {GLint64 ssbo=0;GLint tex=0,wg=0;glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE,&ssbo);glGetIntegerv(GL_MAX_TEXTURE_SIZE,&tex);
+             glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,1,&wg);maxStorageBlock=size_t(std::max<GLint64>(ssbo,0));
+             limits="ssbo="+std::to_string(ssbo/(1024*1024))+"MB tex="+std::to_string(tex)+" wgY="+std::to_string(wg);}
             guideProgram=compile(kHybGuide);
             cellsProgram=compile(kHybCells);
             rejectProgram=compile(kHybReject);
             dilateProgram=compile(kHybDilate);
-            mergeProgram=compile(kHybMerge);
-            glGenBuffers(14,buffers);check("init");
+            mergeProgram=compile((std::string(kHybMergeCommon)+kHybMergeMain1).c_str());
+            glGenBuffers(kSlots,buffers);check("init");
         }catch(...){cleanup();throw;}
     }
     HybridGpu(const HybridGpu&)=delete;
     ~HybridGpu(){cleanup();}
 
-    // out: RGB w*h*3 (base units); effective: donor coverage per pixel (frames); robustShare[f]: mean
-    // accepted weight of frame f after dilation, scalar weight and Bento mask.
+    // out: RGB (w*g)*(h*g)*3 (base units) on the output grid g (1 = sensor, 2 = Sabre 6.1 2x); effective: donor
+    // coverage per output pixel (frames); robustShare[f]: mean accepted weight of frame f after dilation, scalar
+    // weight and Bento mask; sensorRgb (g = 2): the mean of the four sub-positions, w*h*3, for the merged DNG.
     void merge(const Frames& in,const HybridTuning& tune,const SuperResTuning& kernel,bool bento,
-               std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare){
+               std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare,int grid=1){
         const int frames=int(in.frames.size()),w=in.w,h=in.h,w2=w/2,h2=h/2;
         if(frames<1||frames>kHybridMaxFrames||(w&1)||(h&1)||int(in.homography.size())!=frames)throw std::runtime_error("HYBRID GPU unsupported burst shape");
-        out.assign(size_t(w)*h*3,0.f);effective.assign(size_t(w)*h,1.f);robustShare.assign(frames,1.0);
+        if(grid!=1&&grid!=2)throw std::runtime_error("HYBRID GPU grid");
+        const int g=grid,ow=w*g;
+        out.assign(size_t(ow)*h*g*3,0.f);effective.assign(size_t(ow)*h*g,1.f);robustShare.assign(frames,1.0);
         // Uniforms common to all programs.
         std::vector<float> a(size_t(frames)*4),b(size_t(frames)*4),up(frames,1.f);
         for(int f=0;f<frames;++f){
@@ -543,10 +613,12 @@ public:
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
         {const float us=std::max(0.3f,tune.bentoUsSigma);glUniform4f(loc(mergeProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);}
+        glUniform4i(loc(mergeProgram,"kG"),g,ow,0,0);
         std::vector<GLuint> zeros(size_t(std::max(frames,1)),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
         reserve(12,16); // mosaic frames: unused
-        constexpr int stripCells=128; // 256 output rows per dispatch
+        const int stripCells=128/(g*g); // 256 output rows per dispatch on the sensor grid; on the 2x grid the strip
+                                        // shrinks so the Out readback stays ~12 MB (Adreno refuses larger/offset read maps)
         const int donors=std::max(1,frames-1);
         std::vector<GLuint> offsets(frames),cellOff(frames);std::vector<GLint> row0(frames),rows(frames),crow0(frames),crows(frames);
         std::vector<float> maskStrip;
@@ -608,14 +680,18 @@ public:
                 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
                 check("rejection");
             }
-            reserve(3,size_t(y1-y0)*w*3*4);reserve(4,size_t(y1-y0)*w*4);
+            const int rows2=(y1-y0)*g,oy0=y0*g; // output-grid rows of this strip
+            reserve(3,size_t(rows2)*ow*3*4);reserve(4,size_t(rows2)*ow*4);
             glUseProgram(mergeProgram);
             glUniform1i(loc(mergeProgram,"cy0"),cy0);glUniform1i(loc(mergeProgram,"cy1"),cy1);glUniform1i(loc(mergeProgram,"ry0"),ry0);
-            glDispatchCompute(GLuint((w2+7)/8),GLuint((cy1-cy0+7)/8),1);
-            glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
+            for(int sub=0;sub<g*g;++sub){ // grid 2: one dispatch per sub-position (same registers as 1x; four passes)
+                glUniform4i(loc(mergeProgram,"kG"),g,ow,sub&1,sub>>1);
+                glDispatchCompute(GLuint((w2+7)/8),GLuint((cy1-cy0+7)/8),1);
+                glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
+            }
             check("merge");
-            get(3,out.data()+size_t(y0)*w*3,size_t(y1-y0)*w*3*4);
-            get(4,effective.data()+size_t(y0)*w,size_t(y1-y0)*w*4);
+            get(3,out.data()+size_t(oy0)*ow*3,size_t(rows2)*ow*3*4);
+            get(4,effective.data()+size_t(oy0)*ow,size_t(rows2)*ow*4);
             check("readback");
         }
         std::vector<GLuint> sums(zeros.size());
@@ -920,12 +996,24 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(bento.active)in.mask=&bento.mask;
     // ---- merge
     const auto mergeStarted=Clock::now();
-    std::vector<float> out,effective;std::vector<double> share;
+    std::vector<float> out,effective,sensorRgb;std::vector<double> share;
+    const int grid=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const int outW=w*grid,outH=h*grid;
     {
-        HybridGpu gpu;
-        report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size()));
-        gpu.merge(in,tune,kernel,bento.active,out,effective,share);
+        HybridGpu gpu;gpu.trace=report;
+        report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits);
+        gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid);
     }
+    if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
+        sensorRgb.assign(size_t(w)*h*3,0.f);
+        mergeRowBands(h,[&](int y0,int y1){
+            for(int y=y0;y<y1;++y)for(int x=0;x<w;++x)for(int c=0;c<3;++c){
+                const size_t o=(size_t(2*y)*outW+2*x)*3+c;
+                sensorRgb[(size_t(y)*w+x)*3+c]=0.25f*(out[o]+out[o+3]+out[o+size_t(outW)*3]+out[o+size_t(outW)*3+3]);
+            }
+        });
+    }
+    if(grid==2)report("HYBRID OUTPUT: Sabre 2x grid "+std::to_string(outW)+"x"+std::to_string(outH)+" (sub-positions +-0.25 px, kernel in sensor px)");
     stats.mergeMs=millis(Clock::now()-mergeStarted);
     stats.merged=int(in.frames.size());
     {
@@ -943,23 +1031,26 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
                 int cx=x-dx,cy=y-dy;if(cx<0)cx+=2;if(cy<0)cy+=2;
                 const int phase=((cy&1)<<1)|(cx&1);const int c=phase==0?0:phase==3?2:1;
-                const float m=std::clamp(out[(size_t(cy)*w+cx)*3+c],0.f,1.f);
+                const std::vector<float>& srcRgb=grid==2?sensorRgb:out;
+                const float m=std::clamp(srcRgb[(size_t(cy)*w+cx)*3+c],0.f,1.f);
                 const float black=input.black[((y&1)<<1)|(x&1)];
                 (*mergedDng)[size_t(y)*w+x]=uint16_t(std::clamp(std::lround((black+m*(input.white-black))*k),0L,16383L));
             }
         });
     }
-    restoreSensorOrigin(out,w,h,input.cfa);
+    // CFA phase shift to the canonical RGGB origin, in output-grid pixels.
+    shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
     if(effMap){
         std::vector<float> sample;
         for(size_t i=0;i<effective.size();i+=7)sample.push_back(effective[i]);
         float median=1.f;
         if(!sample.empty()){std::nth_element(sample.begin(),sample.begin()+sample.size()/2,sample.end());median=std::max(sample[sample.size()/2],1.f);}
         const float codeScale=64.f/median;
-        effMap->assign(size_t(w)*h,0);
-        for(int y=0;y<h;++y)for(int x=0;x<w;++x){
-            const size_t src=size_t(std::max(0,y-(input.cfa>>1)))*w+std::max(0,x-(input.cfa&1));
-            (*effMap)[size_t(y)*w+x]=uint8_t(std::clamp(std::lround(effective[src]*codeScale),1L,255L));
+        effMap->assign(size_t(outW)*outH,0);
+        const int dx=(input.cfa&1)*grid,dy=(input.cfa>>1)*grid;
+        for(int y=0;y<outH;++y)for(int x=0;x<outW;++x){
+            const size_t src=size_t(std::max(0,y-dy))*outW+std::max(0,x-dx);
+            (*effMap)[size_t(y)*outW+x]=uint8_t(std::clamp(std::lround(effective[src]*codeScale),1L,255L));
         }
         report("HYBRID EFFECTIVE MAP: median frames="+std::to_string(median)+" code scale="+std::to_string(codeScale));
     }
@@ -983,7 +1074,7 @@ struct MappedHybridBurst {
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         uint32_t h[32];std::memcpy(h,address,128);
-        if(h[0]!=0x3143484e||h[1]!=10){munmap(address,length);address=MAP_FAILED;return;}
+        if(h[0]!=0x3143484e||(h[1]!=10&&h[1]!=11)){munmap(address,length);address=MAP_FAILED;return;}
         try {
             if(h[2]<64||h[3]<64||h[2]%2||h[3]%2||uint64_t(h[2])*h[3]>16000000||h[4]>3||h[5]<1||h[5]>64)
                 throw std::runtime_error("Unsupported hybrid burst dimensions/CFA/count");
@@ -991,6 +1082,10 @@ struct MappedHybridBurst {
             const int n=int(h[5]);
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
             const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;
+            if(h[1]>=11){ // v11: h[12] = base index (0), h[13] = output grid 1|2
+                if(h[13]!=0&&h[13]!=1&&h[13]!=2)throw std::runtime_error("Unsupported hybrid output grid");
+                input.grid=h[13]==0?1:int(h[13]);
+            }
             if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
             for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");
             const size_t pixels=size_t(input.w)*input.h,headerBytes=128+32*size_t(n);

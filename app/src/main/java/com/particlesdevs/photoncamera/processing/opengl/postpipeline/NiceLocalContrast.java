@@ -68,12 +68,17 @@ public final class NiceLocalContrast extends Node {
         glProg.useAssetProgram("nicelc/luma", false);
         glProg.setTexture("InputBuffer", WorkingTexture);
         glProg.drawBlocks(luma);
-        GLUtils.Pyramid pyramid = glUtils.createPyramid(5, 2, luma);
-        // levels 1-3 (2-16 px) and, last, the finest 1-px level 0
+        // Sabre 2x grid (outputScale 2): the bands are defined in SENSOR pixels, so the pyramid gets log2(s) extra fine
+        // levels and every band index shifts by e; the sub-sensor band(s) laplace[0..e-1] (the merge's own extra detail)
+        // stay at gain 1. At s = 1 (e = 0) this is the 1x pyramid unchanged.
+        final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
+        final int e = 31 - Integer.numberOfLeadingZeros(s); // floor(log2(s)): 0 at 1x, 1 on the 2x grid
+        GLUtils.Pyramid pyramid = glUtils.createPyramid(5 + e, 2, luma);
+        // levels e+1..e+3 (2-16 sensor px) and, last, the finest 1-sensor-px level e
         GLTexture[] energy = new GLTexture[4];
         float[] floors = new float[4];
         for (int i = 0; i < 4; i++) {
-            GLTexture lap = pyramid.laplace[i < 3 ? i + 1 : 0];
+            GLTexture lap = pyramid.laplace[i < 3 ? e + i + 1 : e];
             energy[i] = new GLTexture(lap.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
             glProg.useAssetProgram("nicelc/energy", false);
             glProg.setTexture("InputBuffer", lap);
@@ -89,10 +94,11 @@ public final class NiceLocalContrast extends Node {
         float g0 = PreferenceKeys.niceInternalValue("texture_g0", PreferenceKeys.isVivoNetSoc() ? 1.35f : 1.5f);
         glProg.useAssetProgram("nicelc/apply", false);
         glProg.setTexture("InputBuffer", WorkingTexture);
-        glProg.setTexture("Lap0", pyramid.laplace[0]);
-        glProg.setTexture("Lap1", pyramid.laplace[1]);
-        glProg.setTexture("Lap2", pyramid.laplace[2]);
-        glProg.setTexture("Lap3", pyramid.laplace[3]);
+        // apply.glsl samples every band bilinearly by normalised position, so only the level choice moves with e
+        glProg.setTexture("Lap0", pyramid.laplace[e]);
+        glProg.setTexture("Lap1", pyramid.laplace[e + 1]);
+        glProg.setTexture("Lap2", pyramid.laplace[e + 2]);
+        glProg.setTexture("Lap3", pyramid.laplace[e + 3]);
         glProg.setTexture("En0", energy[3]);
         glProg.setTexture("En1", energy[0]);
         glProg.setTexture("En2", energy[1]);
@@ -104,9 +110,10 @@ public final class NiceLocalContrast extends Node {
         WorkingTexture = pipeline.getMain();
         glProg.drawBlocks(WorkingTexture);
         glProg.closed = true;
-        for (GLTexture e : energy) e.close();
+        for (GLTexture en : energy) en.close();
         pyramid.releasePyramid();
         Log.i("NICE_PIPELINE", "localContrast amount=" + amount + " gains=" + g1 + "," + g2 + "," + g3 + " fine=" + g0
-                + " floors=" + floors[0] + "," + floors[1] + "," + floors[2] + "," + floors[3] + " ms=" + (System.currentTimeMillis() - started));
+                + " floors=" + floors[0] + "," + floors[1] + "," + floors[2] + "," + floors[3] + " step=" + s + " subLevels=" + e
+                + " ms=" + (System.currentTimeMillis() - started));
     }
 }

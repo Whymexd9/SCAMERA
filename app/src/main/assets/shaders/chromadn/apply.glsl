@@ -1,7 +1,7 @@
 precision highp float;
 precision highp sampler2D;
 precision highp usampler2D;
-// Post-network denoise, last step. The colour of the full-resolution pixel is replaced by the
+// Post-network denoise, last pxStep. The colour of the full-resolution pixel is replaced by the
 // filtered half-resolution colour (joint bilateral upsampling: the four nearest half-resolution
 // samples are weighted by how close their luminance is to the pixel's own, so colour edges stay
 // on the luminance edges); its luminance follows the non-local-means result. Very dark pixels
@@ -15,12 +15,15 @@ uniform sampler2D Coarse;    // quarter resolution correction of the blotch-scal
 uniform float sigma;         // noise sigma of u (0 = off)
 uniform usampler2D EffMap;   // effective merged frames per pixel (1/8 frame steps, 0 = unknown)
 uniform float effRef;
+uniform float effMax;       // upper clamp of the noise boost (hybrid: Bento denoise limit setting)
 uniform int useEff;
 uniform float grain;         // share of the removed noise put back (a flat, fine grain), 0..1
 uniform float offsetC;
 uniform float lumaAmount;    // 0..1
 uniform float chromaAmount;  // 0..1: 0 keeps the original colour
 uniform vec2 darkFade;       // mean level where colour starts to fade / is fully kept
+uniform int pxStep;            // outputScale: dilates the fixed 3x3 and +-3 px windows to sensor-pixel units
+uniform float lowRatio;      // full-resolution pixels per Before/After texel (2 * outputScale)
 out vec4 Output;
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
@@ -28,12 +31,12 @@ void main() {
     float sg = sigma;
     if (useEff != 0 && sigma > 0.0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, 3.0);
+        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, max(effMax, 0.5));
     }
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
     ivec2 lowSize = textureSize(After, 0);
-    vec2 g = (vec2(p) + 0.5) * 0.5 - 0.5;
+    vec2 g = (vec2(p) + 0.5) / lowRatio - 0.5;
     ivec2 g0 = ivec2(floor(g));
     vec2 f = g - vec2(g0);
     // The pixel's colour averaged over 3x3 (luminance weighted) has a third of the single-pixel
@@ -48,7 +51,7 @@ void main() {
         for (int j = -1; j <= 1; j++) {
             for (int i = -1; i <= 1; i++) {
                 float wgt = ((i == 0) ? 1.0 : 0.3614) * ((j == 0) ? 1.0 : 0.3614);
-                s3 += wgt * max(texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), lastI), 0).rgb, vec3(0.0));
+                s3 += wgt * max(texelFetch(InputBuffer, clamp(p + ivec2(i, j) * pxStep, ivec2(0), lastI), 0).rgb, vec3(0.0));
                 w3 += wgt;
             }
         }
@@ -102,8 +105,8 @@ void main() {
     // only its own mid-frequency residue looks blotchy).
     vec2 cs = (vec2(p) + 0.5) / vec2(textureSize(InputBuffer, 0));
     ivec2 lastC = textureSize(Clean, 0) - ivec2(1);
-    float gx = abs(texelFetch(Clean, clamp(p + ivec2(3, 0), ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(3, 0), ivec2(0), lastC), 0).r);
-    float gy = abs(texelFetch(Clean, clamp(p + ivec2(0, 3), ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(0, 3), ivec2(0), lastC), 0).r);
+    float gx = abs(texelFetch(Clean, clamp(p + ivec2(3, 0) * pxStep, ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(3, 0) * pxStep, ivec2(0), lastC), 0).r);
+    float gy = abs(texelFetch(Clean, clamp(p + ivec2(0, 3) * pxStep, ivec2(0), lastC), 0).r - texelFetch(Clean, clamp(p - ivec2(0, 3) * pxStep, ivec2(0), lastC), 0).r);
     // Only flat areas get the coarse correction and the tail cap; at edges the quarter-resolution
     // correction would leave a stair-stepped rim.
     float flatness = sigma > 0.0 ? 1.0 - smoothstep(3.0 * sg, 6.0 * sg, max(gx, gy)) : 0.0;
@@ -123,7 +126,7 @@ void main() {
         float acc9 = 0.0;
         for (int j = -1; j <= 1; j++) {
             for (int i = -1; i <= 1; i++) {
-                ivec2 t = clamp(p + ivec2(i, j), ivec2(0), lastN);
+                ivec2 t = clamp(p + ivec2(i, j) * pxStep, ivec2(0), lastN);
                 float wgt = ((i == 0) ? 1.0 : 0.3614) * ((j == 0) ? 1.0 : 0.3614);
                 acc9 += wgt * clamp(texelFetch(Noisy, t, 0).r - texelFetch(Clean, clamp(t, ivec2(0), lastC), 0).r, -3.0 * sg, 3.0 * sg);
             }

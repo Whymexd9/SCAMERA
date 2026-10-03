@@ -80,9 +80,19 @@ public class HeadroomRender extends Node {
 
     private GLTexture agxBase;
 
-    /** Large-scale log2 luminance at 1/16 scale for the AgX local highlight range. */
+    /**
+     * Integer output grid step: 2 on the Sabre 2x grid (Parameters.outputScale), else 1. Every pixel-defined window
+     * of this node is dilated by it so the processing covers the same SENSOR area as at 1x (and is unchanged at 1x).
+     */
+    private int outputStep() {
+        return Math.max(1, Math.round(basePipeline.mParameters.outputScale));
+    }
+
+    /** Large-scale log2 luminance at 1/16 of the SENSOR grid (1/(16*step) of the working grid) for the AgX local highlight range. */
     private GLTexture buildAgxBase(GLTexture input) {
-        GLTexture quarter = glUtils.gaussdown(input, 4);
+        // gaussdown(k) is 5x5 taps at stride k/2 with sigma k/2, so 4*step is the same relative low-pass as 4 at 1x:
+        // the base keeps its 40 sensor px sigma (agxbase.glsl) instead of becoming twice as local on the 2x grid.
+        GLTexture quarter = glUtils.gaussdown(input, 4 * outputStep());
         GLTexture sixteenth = glUtils.gaussdown(quarter, 4);
         quarter.close();
         GLTexture base = new GLTexture(sixteenth.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1),
@@ -210,7 +220,9 @@ public class HeadroomRender extends Node {
             AgxTone.Params a = agxParams;
             glProg.setTexture("AgxBase", agxBase != null ? agxBase : gainMapTex);
             glProg.setVar("agxLocal", agxBase != null ? a.localStrength : 0f, a.localStart);
-            glProg.setVar("agxHiDesat", a.highlightDesat, Math.min(a.desatStart, 0.95f));
+            // Bento highlights are real scene content (ultrashort frame): keep their colour longer and do not treat
+            // bright tinted pixels as clipped magenta.
+            glProg.setVar("agxHiDesat", a.highlightDesat, LmcHybridBurst.lastBentoApplied ? 0.95f : Math.min(a.desatStart, 0.95f));
             glProg.setVar("agxInset", a.inset);
             glProg.setVar("agxOutset", a.outset);
             glProg.setVar("agxExposure", a.exposure);
@@ -227,6 +239,11 @@ public class HeadroomRender extends Node {
                 PreferenceKeys.niceInternalValue("warm_peak_lo", 0.35f), PreferenceKeys.niceInternalValue("warm_peak_hi", 0.75f));
         glProg.setVar("toneAmount", toneAmount);
         glProg.setVar("localContrast", localContrast);
+        // Set for every tone mode (GCAM, AgX, headroom): render.glsl dilates its 5x5 fusion-map fit and the 5x5
+        // pre-tone local-contrast window by it; an unset int uniform reads 0 and would collapse both to one pixel.
+        glProg.setVar("pxStep", outputStep());
+        // Declared outside the tone-mode blocks of render.glsl: set for every mode (0 = clipped highlights are neutralised as before).
+        glProg.setVar("bentoReal", LmcHybridBurst.lastBentoApplied ? 1f : 0f);
         glProg.setVar("shadowLift", shadowLift);
         glProg.setVar("highlightNeutralStart", Math.max(0f, Math.min(0.99f, highlightNeutralStart)));
         glProg.setVar("displayNeutralStart", Math.max(0f, Math.min(1f, displayNeutralStart)));

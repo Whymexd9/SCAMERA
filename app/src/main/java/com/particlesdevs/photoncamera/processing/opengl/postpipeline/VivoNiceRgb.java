@@ -16,6 +16,15 @@ public final class VivoNiceRgb extends Node {
      * this level. No plateau (nothing clipped): effectively disabled.
      */
     private static float[] clipLevels(java.nio.ByteBuffer rgb){
+        if(LmcHybridBurst.lastBentoApplied){
+            // Bento highlights are real content (ultrashort frame, values up to the factor k): the plateau heuristic
+            // below would take the brightest sky seen through a window for a clipped plateau and pale it. Only the
+            // level where the ultrashort itself clipped (k in base units) is neutralised, and only if it did clip.
+            float k=LmcHybridBurst.lastBentoFactor,us=LmcHybridBurst.lastBentoUsClipped;
+            float level=us>0f&&k>1f?0.98f*k:1e30f;
+            com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","highlight clip levels: Bento k="+k+" usClipped="+us+" -> "+level);
+            return new float[]{level,level,level};
+        }
         java.nio.FloatBuffer f=rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
         int n=f.limit()/3;float[] max=new float[3];
         for(int i=0;i<n;i+=17)for(int c=0;c<3;c++)max[c]=Math.max(max[c],f.get(i*3+c));
@@ -28,10 +37,27 @@ public final class VivoNiceRgb extends Node {
         if(!plateau)return new float[]{1e30f,1e30f,1e30f};
         return max;
     }
+    /** Every `stride`-th pixel of the linear RGB: enough for the percentile statistics of the later nodes. */
+    private static java.nio.ByteBuffer decimate(java.nio.ByteBuffer rgb,int stride){
+        java.nio.FloatBuffer f=rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+        int n=f.limit()/3,m=(n+stride-1)/stride;
+        java.nio.ByteBuffer out=java.nio.ByteBuffer.allocateDirect(m*12).order(java.nio.ByteOrder.nativeOrder());
+        java.nio.FloatBuffer o=out.asFloatBuffer();
+        for(int i=0,k=0;i<n;i+=stride,k++){o.put(k*3,f.get(i*3));o.put(k*3+1,f.get(i*3+1));o.put(k*3+2,f.get(i*3+2));}
+        return out;
+    }
     @Override public void Run(){
         PostPipeline p=(PostPipeline)basePipeline;
+        // Clip statistics before the upload, so the big buffer can be released right after it (2x grid: 604 MB).
+        float[] clip=clipLevels(p.mParameters.vivoNiceRgb);
         GLTexture input=new GLTexture(p.mParameters.rawSize,new GLFormat(GLFormat.DataType.FLOAT_32,3),
                 p.mParameters.vivoNiceRgb,GL_NEAREST,GL_CLAMP_TO_EDGE);
+        if(p.mParameters.vivoNiceRgbOwned){
+            java.nio.ByteBuffer big=p.mParameters.vivoNiceRgb;
+            p.mParameters.vivoNiceRgb=decimate(big,61);
+            p.mParameters.vivoNiceRgbOwned=false;
+            com.particlesdevs.photoncamera.util.Allocator.free(big);
+        }
         try {
             float[] gm=p.mParameters.gainMap;
             if(gm!=null&&p.mParameters.mapSize!=null&&gm.length>=4*p.mParameters.mapSize.x*p.mParameters.mapSize.y){
@@ -48,7 +74,6 @@ public final class VivoNiceRgb extends Node {
             p.main3=new GLTexture(p.mParameters.rawSize,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             glProg.useAssetProgram("vivohdr/nicergb");glProg.setTexture("InputBuffer",input);glProg.setTexture("GainMap",p.GainMap);
             glProg.setVar("whitePoint",p.mParameters.whitePoint);
-            float[] clip=clipLevels(p.mParameters.vivoNiceRgb);
             glProg.setVar("clipLevel",clip[0],clip[1],clip[2]);
             int ox=0,oy=0;
             if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169){

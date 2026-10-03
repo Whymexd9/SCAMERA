@@ -169,6 +169,32 @@
         <item>hybrid</item>
         <item>nice</item>
     </string-array>
+    <string-array name="vivo_nice_hybrid_output_entries">
+        <item>Сенсор (1×, по умолчанию)</item>
+        <item>12 МП (2× → 12)</item>
+        <item>16 МП (2× → 16)</item>
+        <item>20 МП (2× → 20)</item>
+        <item>2× (≈50 МП, без уменьшения)</item>
+    </string-array>
+    <string-array name="vivo_nice_hybrid_downsampler_entries">
+        <item>Lanczos-3</item>
+        <item>Bicubic</item>
+        <item>Area</item>
+        <item>Bilinear</item>
+    </string-array>
+    <string-array name="vivo_nice_hybrid_downsampler_values">
+        <item>lanczos</item>
+        <item>bicubic</item>
+        <item>area</item>
+        <item>bilinear</item>
+    </string-array>
+    <string-array name="vivo_nice_hybrid_output_values">
+        <item>sensor</item>
+        <item>12</item>
+        <item>16</item>
+        <item>20</item>
+        <item>2x</item>
+    </string-array>
     <string-array name="vivo_nice_hybrid_bento_entries">
         <item>Выключено</item>
         <item>Авто (при клиппинге)</item>

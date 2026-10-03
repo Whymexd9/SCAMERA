@@ -270,6 +270,12 @@ final class CameraUIController implements CameraUIEventsListener,
                         PreferenceKeys.setAeMeteringStd((Integer) value);
                         cameraFragment.captureController.applyAeMetering();
                         break;
+                    case HYBRID_OUTPUT:
+                        PreferenceKeys.setHybridOutputIndex((Integer) value);
+                        break;
+                    case HYBRID_DOWNSAMPLER:
+                        PreferenceKeys.setHybridDownsamplerIndex((Integer) value);
+                        break;
 
                 }
                 cameraFragment.cameraFragmentBinding.layoutTopbar.invalidateAll();

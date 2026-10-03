@@ -39,8 +39,14 @@ public class Parameters {
     /** Frozen for the submitted RAW processing job. */
     public boolean vivoHdrMode = false;
     public float vivoHdrRawScale = 1f;
+    /** Pixel scale of the merged RGB against the sensor grid (SCAM HDR hybrid on the Sabre 2x grid: 0.98..2). */
+    public float outputScale = 1f;
+    /** SCAM HDR hybrid 2x grid: final image size (sensor orientation) produced by the GPU resize node at the end of the pipeline; null = no resize. */
+    public android.graphics.Point hybridFinalSize;
     /** Processor-owned linear sensor RGB; null unless NICE completed a real burst. */
     public java.nio.ByteBuffer vivoNiceRgb;
+    /** vivoNiceRgb is an Allocator buffer the pipeline may free as soon as it is uploaded (replaced by a decimated copy). */
+    public boolean vivoNiceRgbOwned;
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;

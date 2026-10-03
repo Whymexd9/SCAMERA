@@ -10,6 +10,7 @@ uniform float radius;       // unsharp mask Gaussian sigma in pixels
 uniform float overshoot;    // allowed excursion beyond the local min/max (display units)
 uniform vec2 chromaAA;      // share of the chroma anti-aliasing, luminance tolerance
 uniform vec2 coring;        // detail amplitude (display units) below which the mask does not amplify / above which it is full
+uniform int pxStep;           // outputScale: every window tap is 'pxStep' output pixels = one sensor pixel apart (1 at 1x)
 out vec4 Output;
 const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
 float lum(ivec2 p, ivec2 hi) { return dot(texelFetch(InputBuffer, clamp(p, ivec2(0), hi), 0).rgb, LW); }
@@ -24,7 +25,7 @@ void main() {
         vec3 cc = c - vec3(yc);
         vec3 acc = vec3(0.0); float ws = 0.0;
         for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
-            vec3 n = texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), hi), 0).rgb;
+            vec3 n = texelFetch(InputBuffer, clamp(p + ivec2(i, j) * pxStep, ivec2(0), hi), 0).rgb;
             float yn = dot(n, LW);
             vec3 cn = n - vec3(yn);
             float dy = (yn - yc) / chromaAA.y;
@@ -35,11 +36,12 @@ void main() {
         c = vec3(yc) + mix(cc, acc / max(ws, 1.0e-6), chromaAA.x);
     }
     float Y[25];
-    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) Y[(j + 2) * 5 + i + 2] = lum(p + ivec2(i, j), hi);
+    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) Y[(j + 2) * 5 + i + 2] = lum(p + ivec2(i, j) * pxStep, hi);
     float y0 = dot(c, LW);
     float blur = 0.0, bw = 0.0;
     for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
-        float w = exp(-0.5 * float(i * i + j * j) / (radius * radius));
+        // radius is in output pixels and the taps are pxStep pixels apart, so the squared distance carries pxStep^2.
+        float w = exp(-0.5 * float((i * i + j * j) * pxStep * pxStep) / (radius * radius));
         blur += w * Y[(j + 2) * 5 + i + 2]; bw += w;
     }
     blur /= bw;

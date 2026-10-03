@@ -1004,6 +1004,66 @@ public class PreferenceKeys {
         if ("nice".equals(v) || "hybrid".equals(v)) return v;
         return isVivoNetSoc() ? "nice" : "hybrid";
     }
+    /**
+     * Output of the hybrid merge (pref_vivo_nice_hybrid_output): "sensor" (1x grid, default), "12"/"16"/"20" = Sabre 6.1 2x
+     * grid resized to that many megapixels (4:3 of the sensor; the sensor size itself when within 10 %), "2x" = the native
+     * 2x grid. nice_dev.txt: "hybrid_output 0|12|16|20|2".
+     */
+    public static String hybridOutputMode() {
+        Float dev = niceDevValue("hybrid_output");
+        if (dev != null) { int v = Math.round(dev); return v == 2 ? "2x" : v == 12 || v == 16 || v == 20 ? String.valueOf(v) : "sensor"; }
+        String v = preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_hybrid_output", "sensor");
+        return v == null ? "sensor" : v;
+    }
+    /**
+     * Downsampler of the final bitmap after the 2x pipeline (pref_vivo_nice_hybrid_downsampler): "lanczos" (3 lobes),
+     * "bicubic" (Catmull-Rom), "area" (box average), "bilinear". nice_dev.txt: "hybrid_downsampler 0..3".
+     */
+    public static String hybridDownsampler() {
+        Float dev = niceDevValue("hybrid_downsampler");
+        if (dev != null) { int v = Math.round(dev); return v == 1 ? "bicubic" : v == 2 ? "area" : v == 3 ? "bilinear" : "lanczos"; }
+        String v = preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_hybrid_downsampler", "lanczos");
+        return v == null ? "lanczos" : v;
+    }
+    private static final String[] HYBRID_OUTPUT_VALUES = {"sensor", "12", "16", "20", "2x"};
+    private static final String[] HYBRID_DOWNSAMPLER_VALUES = {"lanczos", "bicubic", "area", "bilinear"};
+    /** Index of pref_vivo_nice_hybrid_output in {sensor, 12, 16, 20, 2x} for the quick-settings chips. */
+    public static int hybridOutputIndex() {
+        String m = hybridOutputMode();
+        for (int i = 0; i < HYBRID_OUTPUT_VALUES.length; i++) if (HYBRID_OUTPUT_VALUES[i].equals(m)) return i;
+        return 0;
+    }
+    public static void setHybridOutputIndex(int index) {
+        preferenceKeys.settingsManager.set("default_scope", "pref_vivo_nice_hybrid_output", HYBRID_OUTPUT_VALUES[Math.max(0, Math.min(HYBRID_OUTPUT_VALUES.length - 1, index))]);
+    }
+    public static int hybridDownsamplerIndex() {
+        String m = hybridDownsampler();
+        for (int i = 0; i < HYBRID_DOWNSAMPLER_VALUES.length; i++) if (HYBRID_DOWNSAMPLER_VALUES[i].equals(m)) return i;
+        return 0;
+    }
+    public static void setHybridDownsamplerIndex(int index) {
+        preferenceKeys.settingsManager.set("default_scope", "pref_vivo_nice_hybrid_downsampler", HYBRID_DOWNSAMPLER_VALUES[Math.max(0, Math.min(HYBRID_DOWNSAMPLER_VALUES.length - 1, index))]);
+    }
+    public static String hybridDownsamplerName() {
+        switch (hybridDownsampler()) { case "bicubic": return "Bicubic"; case "area": return "Area"; case "bilinear": return "Bilinear"; default: return "Lanczos-3"; }
+    }
+    /** Final JPEG size for the sensor size w x h: sensor, 12/16/20 MP (4:3 of the sensor) or the native 2x grid. */
+    public static android.graphics.Point hybridFinalSize(int w, int h) {
+        String mode = hybridOutputMode();
+        if ("2x".equals(mode)) return new android.graphics.Point(2 * w, 2 * h);
+        if ("12".equals(mode) || "16".equals(mode) || "20".equals(mode)) return hybridTargetSize(Integer.parseInt(mode), w, h);
+        return new android.graphics.Point(w, h);
+    }
+    public static android.graphics.Point hybridTargetSize(int megapixels, int w, int h) {
+        final double aspect = (double) w / h, pixels = megapixels * 1_000_000.0;
+        // Classic sizes: 4:3 widths on a 64 px step keep both sides on the 16 px JPEG MCU grid (4032x3024, 4608x3456, 5184x3888).
+        final int step = Math.abs(aspect - 4.0 / 3.0) < 0.01 ? 64 : 16;
+        int tw = (int) Math.round(Math.sqrt(pixels * aspect) / step) * step;
+        int th = (int) Math.round(tw / aspect / 16) * 16;
+        if (Math.abs((long) tw * th - (long) w * h) < 0.1 * w * h) { tw = w; th = h; } // the sensor size counts as its own megapixel class
+        tw = Math.max(64, Math.min(2 * w, tw)); th = Math.max(64, Math.min(2 * h, th));
+        return new android.graphics.Point(tw, th);
+    }
     /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_vivo_nice_hybrid_* preferences. */
     public static String hybridTuningText() {
         StringBuilder out = new StringBuilder();
@@ -1017,6 +1077,8 @@ public class PreferenceKeys {
             {"bentoUsSigma", "pref_vivo_nice_hybrid_bento_sigma"},
             {"dilateFloor", "pref_vivo_nice_hybrid_dilate_floor"}, {"widenBelow", "pref_vivo_nice_hybrid_widen_below"},
             {"rawNoise", "pref_vivo_nice_hybrid_tensor_noise"}, {"snrScale", "pref_vivo_nice_hybrid_snr_scale"},
+            {"boost", "pref_vivo_nice_hybrid_boost_value"}, {"varianceThreshold", "pref_vivo_nice_hybrid_boost_threshold"},
+            {"lutHiSigma", "pref_vivo_nice_hybrid_lut_sigma"},
         };
         for (String[] k : keys) {
             Float dev = niceDevValue(k[1].substring("pref_vivo_nice_".length()));
@@ -1119,6 +1181,16 @@ public class PreferenceKeys {
         return niceDevValues.get(key);
     }
     /** Boolean SCAM HDR internal switch (pref_vivo_nice_<key>), nice_dev.txt "key 0/1" overrides it. */
+    /** pref_vivo_nice_hybrid_&lt;key&gt; as a number (nice_dev.txt `hybrid_&lt;key&gt;` overrides), or `fallback` when unset. */
+    public static float hybridValue(String key, float fallback) {
+        Float override = niceDevValue("hybrid_" + key);
+        if (override != null) return override;
+        try {
+            String v = preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_hybrid_" + key, "");
+            return v == null || v.isEmpty() ? fallback : Float.parseFloat(v.trim());
+        } catch (RuntimeException error) { return fallback; }
+    }
+    public static boolean hybridSwitch(String key, boolean fallback) { return niceInternalSwitch("hybrid_" + key, fallback); }
     public static boolean niceInternalSwitch(String key, boolean fallback) {
         Float override = niceDevValue(key);
         if (override != null) return override > 0f;

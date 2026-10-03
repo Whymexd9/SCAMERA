@@ -25,24 +25,31 @@ public final class NiceSharpen extends Node {
         float sigma = pipeline.niceNoiseSigma, ref = Math.max(PreferenceKeys.niceInternalValue("sharp_noise_ref", 0.0012f), 1.0e-5f);
         float amount = PreferenceKeys.niceInternalValue("sharp_amount", 1.2f) / (1f + (sigma / ref) * (sigma / ref));
         float aa = PreferenceKeys.niceInternalValue("sharp_aa", 1.0f);
+        // On the Sabre 2x grid (outputScale 2) every fixed window of the two passes is dilated by s so the 5x5/3x3
+        // neighbourhoods, the Sobel gate and the along-edge taps span the same SENSOR pixels as at 1x (s = 1 there:
+        // the shaders behave exactly as before). The USM sigma 'radius' stays in output pixels (scaled below).
+        final int s = Math.max(1, Math.round(basePipeline.mParameters.outputScale));
         long started = System.currentTimeMillis();
         GLTexture sharpened = new GLTexture(WorkingTexture.mSize, WorkingTexture.mFormat, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         try {
             glProg.useAssetProgram("nicesharp/sharp", false);
             glProg.setTexture("InputBuffer", WorkingTexture);
             glProg.setVar("amount", Math.max(0f, amount));
-            glProg.setVar("radius", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_radius", 0.8f)));
+            glProg.setVar("radius", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_radius", 0.8f) * Math.max(1f, basePipeline.mParameters.outputScale)));
             glProg.setVar("overshoot", PreferenceKeys.niceInternalValue("sharp_overshoot", 0.015f));
             glProg.setVar("chromaAA", PreferenceKeys.niceInternalValue("sharp_chroma", 0.6f), PreferenceKeys.niceInternalValue("sharp_chroma_tol", 0.04f));
             glProg.setVar("coring", PreferenceKeys.niceInternalValue("sharp_core0", 0.006f), PreferenceKeys.niceInternalValue("sharp_core1", 0.02f));
+            glProg.setVar("pxStep", s);
             glProg.drawBlocks(sharpened);
             glProg.useAssetProgram("nicesharp/sharp2", false);
             glProg.setTexture("InputBuffer", sharpened);
             glProg.setVar("aaStrength", Math.max(0f, Math.min(1f, aa)));
             glProg.setVar("aaGate", PreferenceKeys.niceInternalValue("sharp_coh0", 0.4f), PreferenceKeys.niceInternalValue("sharp_coh1", 0.7f),
                     PreferenceKeys.niceInternalValue("sharp_mag0", 0.006f), PreferenceKeys.niceInternalValue("sharp_mag1", 0.025f));
-            glProg.setVar("alongSigma", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_along", 1.4f)));
+            // alongSigma is in output pixels; the shader's taps are 0.85 * step apart, so the sigma scales with s too.
+            glProg.setVar("alongSigma", Math.max(0.4f, PreferenceKeys.niceInternalValue("sharp_along", 1.4f)) * s);
             glProg.setVar("ditherAmp", PreferenceKeys.niceInternalValue("sharp_dither", 0.6f) / 255f);
+            glProg.setVar("pxStep", s);
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
         } finally {

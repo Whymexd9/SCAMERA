@@ -1,6 +1,7 @@
 package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Bitmap;
+import android.graphics.Point;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -131,8 +132,10 @@ public class RotateWatermark extends Node {
         } else {
             glProg.setVar("mirror", 0);
         }
+        // After the hybrid final resize the working image (and cropSize) are already at the final size.
+        Point rawSz = ((PostPipeline) basePipeline).finalSize != null ? previousNode.WorkingTexture.mSize : basePipeline.mParameters.rawSize;
         glProg.setVar("cropSize",((PostPipeline)basePipeline).cropSize);
-        glProg.setVar("rawSize",basePipeline.mParameters.rawSize);
+        glProg.setVar("rawSize",rawSz);
         Log.d(Name,"Crop size:"+((PostPipeline)basePipeline).cropSize);
         Log.d(Name,"Raw size:"+basePipeline.mParameters.rawSize);
 

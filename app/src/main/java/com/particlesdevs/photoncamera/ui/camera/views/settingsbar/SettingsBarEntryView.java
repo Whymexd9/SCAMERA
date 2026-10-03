@@ -85,7 +85,8 @@ public class SettingsBarEntryView extends LinearLayout {
             for (SettingsBarButtonModel buttonModel : entryModel.getSettingsBarButtonModels()) {
                 ImageButton button = new ImageButton(context);
                 button.setId(buttonModel.getId());
-                button.setImageResource(buttonModel.getButtonDrawableId());
+                if (buttonModel.getTextLabel() != null) button.setImageDrawable(textChip(context, buttonModel.getTextLabel()));
+                else button.setImageResource(buttonModel.getButtonDrawableId());
                 button.setImageTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_selected}, new int[]{-android.R.attr.state_selected}}, new int[]{Color.BLACK, Color.WHITE}));
                 button.setBackgroundResource(R.drawable.aux_button_background);
                 button.setCropToPadding(false);
@@ -105,6 +106,25 @@ public class SettingsBarEntryView extends LinearLayout {
                 addView(button, buttonParam);
             }
         }
+    }
+
+    /** Icon-sized bitmap with the chip text (tinted like the icons: the tint list recolours the alpha mask). */
+    private static android.graphics.drawable.Drawable textChip(Context context, String text) {
+        final float density = context.getResources().getDisplayMetrics().density;
+        final int size = Math.round(28 * density);
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(Color.WHITE);
+        paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        float textSize = (text.length() <= 2 ? 13f : text.length() <= 3 ? 11f : 9f) * density;
+        paint.setTextSize(textSize);
+        android.graphics.Paint.FontMetrics fm = paint.getFontMetrics();
+        canvas.drawText(text, size / 2f, size / 2f - (fm.ascent + fm.descent) / 2f, paint);
+        android.graphics.drawable.BitmapDrawable drawable = new android.graphics.drawable.BitmapDrawable(context.getResources(), bitmap);
+        drawable.setBounds(0, 0, size, size);
+        return drawable;
     }
 
     private int dp(float f) {

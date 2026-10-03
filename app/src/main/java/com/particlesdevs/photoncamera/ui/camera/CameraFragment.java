@@ -1144,13 +1144,43 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             mCameraUIView.setCaptureProgressMax(frameCount);
         }
 
+        /** ZSL shot: the frames are already buffered, the press must feel instant (LMC/GCam): no capture ring in the
+         *  viewfinder, controls stay live, the gallery thumbnail shows the viewfinder frame at once. */
+        private boolean instantShot;
+
         @Override
         public void onCaptureStillPictureStarted(Object o) {
+            instantShot = "NiceZslCaptureStarted".equals(o) || "ZSLCaptureStarted!".equals(o);
             if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
-                mCameraUIView.setCaptureProgressBarOpacity(1.0f);
-                mCameraUIView.lockUIForBurst(true);
+                if (instantShot) {
+                    snapshotViewfinderThumb();
+                    if (PreferenceKeys.isCameraSoundsOn()) {
+                        MediaPlayer player = burstPlayer;
+                        if (player != null) { player.seekTo(0); player.start(); }
+                    }
+                } else {
+                    mCameraUIView.setCaptureProgressBarOpacity(1.0f);
+                    mCameraUIView.lockUIForBurst(true);
+                }
             }
             //textureView.post(() -> textureView.setAlpha(0.8f));
+        }
+
+        /** Copies the composited viewfinder into a small bitmap for the provisional gallery thumbnail. */
+        private void snapshotViewfinderThumb() {
+            final com.particlesdevs.photoncamera.ui.camera.views.viewfinder.GLPreview view = textureView;
+            if (view == null || android.os.Build.VERSION.SDK_INT < 24) return;
+            final int vw = view.getWidth(), vh = view.getHeight();
+            if (vw <= 0 || vh <= 0) return;
+            try {
+                final int w = 200, h = Math.max(1, Math.round(200f * vh / vw));
+                final Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                android.view.PixelCopy.request(view, bmp, result -> {
+                    if (result == android.view.PixelCopy.SUCCESS) cameraFragmentViewModel.setProvisionalThumb(bmp);
+                }, new android.os.Handler(android.os.Looper.getMainLooper()));
+            } catch (RuntimeException e) {
+                logD("viewfinder snapshot failed: " + e);
+            }
         }
 
         private long prevPlayTime = 0;
@@ -1175,6 +1205,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onFrameCaptureCompleted(Object o) {
+            if (instantShot) return; // one shutter sound at the press, no per-frame ring
             if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
                 mCameraUIView.incrementCaptureProgressBar(1);
                 if (PreferenceKeys.isCameraSoundsOn()) {
@@ -1191,7 +1222,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onCaptureSequenceCompleted(Object o) {
-            if (PreferenceKeys.isCameraSoundsOn()) {
+            if (PreferenceKeys.isCameraSoundsOn() && !instantShot) {
                 MediaPlayer player = endPlayer;
                 if (player != null) {
                     player.start();

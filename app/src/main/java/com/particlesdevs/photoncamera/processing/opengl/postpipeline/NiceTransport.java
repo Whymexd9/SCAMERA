@@ -8,6 +8,9 @@ import java.nio.channels.FileChannel;
 interface NiceTransport {
     int width();
     int height();
+    /** Size of the RGB the worker returns (the LMC hybrid can merge on the Sabre 2x grid and resize); default = sensor. */
+    default int outputWidth() { return width(); }
+    default int outputHeight() { return height(); }
     int cfa();
     /** Whether the worker should also return the merged Bayer RAW for the DNG. */
     boolean mergedDng();

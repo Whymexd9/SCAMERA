@@ -8,6 +8,7 @@ uniform float aaStrength;   // 0..1 share of the along-edge average on strong co
 uniform vec4 aaGate;        // coherence from/to, gradient from/to (display units per pixel) between which the average fades in
 uniform float alongSigma;   // along-edge Gaussian sigma in pixels
 uniform float ditherAmp;    // dither amplitude in display units
+uniform int pxStep;           // outputScale: Sobel window and along-edge taps dilated to one sensor pixel (1 at 1x)
 out vec4 Output;
 const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
 float lum(ivec2 p, ivec2 hi) { return dot(texelFetch(InputBuffer, clamp(p, ivec2(0), hi), 0).rgb, LW); }
@@ -16,7 +17,8 @@ void main() {
     ivec2 sz = textureSize(InputBuffer, 0), hi = sz - ivec2(1);
     vec3 c = texelFetch(InputBuffer, p, 0).rgb;
     float Y[25];
-    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) Y[(j + 2) * 5 + i + 2] = lum(p + ivec2(i, j), hi);
+    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) Y[(j + 2) * 5 + i + 2] = lum(p + ivec2(i, j) * pxStep, hi);
+    // The dilated Sobel keeps 'mag' a gradient per SENSOR pixel, so aaGate.zw keep their 1x meaning on the 2x grid.
     float jxx = 0.0, jyy = 0.0, jxy = 0.0;
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
         int k = (j + 2) * 5 + i + 2;
@@ -35,8 +37,9 @@ void main() {
         vec2 tang = vec2(-sin(t), cos(t));
         vec3 acc = c; float ws = 1.0;
         for (int k = 1; k <= 3; k++) {
-            float w = exp(-0.5 * float(k * k) * 0.7225 / (alongSigma * alongSigma));
-            vec2 d = tang * float(k) * 0.85;
+            // Taps 0.85 * pxStep output pixels apart; alongSigma is in output pixels (Java scales it by pxStep too).
+            float w = exp(-0.5 * float(k * k * pxStep * pxStep) * 0.7225 / (alongSigma * alongSigma));
+            vec2 d = tang * float(k) * 0.85 * float(pxStep);
             acc += w * (texture(InputBuffer, (gl_FragCoord.xy + d) / vec2(sz)).rgb + texture(InputBuffer, (gl_FragCoord.xy - d) / vec2(sz)).rgb);
             ws += 2.0 * w;
         }

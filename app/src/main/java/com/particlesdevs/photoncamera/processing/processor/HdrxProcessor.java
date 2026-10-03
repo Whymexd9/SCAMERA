@@ -136,8 +136,10 @@ public class HdrxProcessor extends ProcessorBase {
          } finally {
             com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.finish();
             if (niceOwnedOutput != null) {
-                Allocator.free(niceOwnedOutput);niceOwnedOutput=null;
-                if(niceOutputParameters!=null)niceOutputParameters.vivoNiceRgb=null;
+                // VivoNiceRgb may already have freed the big buffer after the GL upload (then vivoNiceRgb is a small copy).
+                if (niceOutputParameters == null || niceOutputParameters.vivoNiceRgb == niceOwnedOutput) Allocator.free(niceOwnedOutput);
+                niceOwnedOutput=null;
+                if(niceOutputParameters!=null){niceOutputParameters.vivoNiceRgb=null;niceOutputParameters.vivoNiceRgbOwned=false;}
                 niceOutputParameters=null;
             }
             if (hexOwnedOutput != null) {
@@ -529,6 +531,7 @@ public class HdrxProcessor extends ProcessorBase {
                         saveRAW>=1 && (alignAlgorithm!=2 || multiCapture));
                 niceOutputParameters=processingParameters;
                 processingParameters.vivoNiceRgb=niceOwnedOutput;
+                processingParameters.vivoNiceRgbOwned=true;
                 processingParameters.vivoHdrRawScale=1f;niceComplete=true;
                 Log.i("NICE_HDR","Original model capture completed; RGB goes directly to WB/LSC/tone. DNG retains the reference RAW.");
             } catch(Exception e) {
@@ -677,6 +680,27 @@ public class HdrxProcessor extends ProcessorBase {
 
         processingStage = "RAW post-processing";
         ByteBuffer jpegInput = output;
+        // SCAM HDR hybrid on the Sabre 2x grid: the RGB is larger than the sensor grid (the DNG above stayed sensor
+        // size). Like mosaic SR, the pipeline size follows the RGB; the LSC map is sampled in normalised coordinates.
+        final Point hybridOut = niceComplete ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastOutputSize : null;
+        processingParameters.hybridFinalSize = null;
+        if (hybridOut != null && (hybridOut.x != width || hybridOut.y != height)) {
+            // 12/16/20 MP from the 2x grid: resized on the GPU at the end of the pipeline (HybridFinalResize); the CPU
+            // resize below only remains as a fallback when the pipeline did not apply it.
+            final Point fin = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastFinalSize;
+            if (fin != null && (long) fin.x * fin.y < (long) hybridOut.x * hybridOut.y) processingParameters.hybridFinalSize = new Point(fin.x, fin.y);
+            final float sx = (float) hybridOut.x / width, sy = (float) hybridOut.y / height;
+            processingParameters.rawSize = new Point(hybridOut.x, hybridOut.y);
+            if (processingParameters.sensorPix != null)
+                processingParameters.sensorPix = new Rect(Math.round(processingParameters.sensorPix.left * sx), Math.round(processingParameters.sensorPix.top * sy),
+                        Math.round(processingParameters.sensorPix.right * sx), Math.round(processingParameters.sensorPix.bottom * sy));
+            processingParameters.XPerMm *= sx; processingParameters.YPerMm *= sy;
+            processingParameters.hotPixels = new Point[0];
+            processingParameters.alignmentSize = new Point(hybridOut.x / processingParameters.tile + 1, hybridOut.y / processingParameters.tile + 1);
+            processingParameters.tilesX = hybridOut.x / 800 + 1;
+            processingParameters.outputScale = sx;
+            Log.i("NICE_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
+        }
         if (mosaicSrForJpeg != null) {
             jpegInput = mosaicSrForJpeg;
             processingParameters.rawSize = new Point(mosaicSrWidth, mosaicSrHeight);
@@ -695,6 +719,21 @@ public class HdrxProcessor extends ProcessorBase {
         pipeline.kernelParamsSize = mosaicSrForJpeg == null && esd4d != null ? esd4d.kernelsMapCPUSize : null;
 
         Bitmap img = pipeline.Run(jpegInput, processingParameters);
+        // SCAM HDR hybrid on the Sabre 2x grid: the whole pipeline (including sharpening) ran on the 2x image; the
+        // final size (12/16/20 MP, or the sensor size) is produced here, keeping the bitmap's aspect and rotation.
+        final Point hybridFinal = hybridOut != null ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastFinalSize : null;
+        if (hybridFinal != null && (long) hybridFinal.x * hybridFinal.y < (long) img.getWidth() * img.getHeight()) {
+            final double s = Math.sqrt((double) hybridFinal.x * hybridFinal.y / ((double) img.getWidth() * img.getHeight()));
+            final int tw = Math.max(2, (int) Math.round(img.getWidth() * s)) & ~1, th = Math.max(2, (int) Math.round(img.getHeight() * s)) & ~1;
+            processingStage = "SCAM HDR: resize " + img.getWidth() + "x" + img.getHeight() + " -> " + tw + "x" + th;
+            try {
+                Bitmap reduced = com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.resizeTo(img, tw, th, PreferenceKeys.hybridDownsampler());
+                if (reduced != img) { img.recycle(); img = reduced; }
+                Log.i("NICE_HDR", "hybrid final size " + tw + "x" + th + " (" + PreferenceKeys.hybridDownsamplerName() + ")");
+            } catch (Throwable resizeError) {
+                Log.e(TAG, "hybrid resize failed; keeping the 2x image", resizeError);
+            }
+        }
         final int beforeVivoWidth = img.getWidth(), beforeVivoHeight = img.getHeight();
         final int downscaleKernel = PreferenceKeys.getVivoDownscaleKernel();
         final String downscaleSize = PreferenceKeys.getVivoDownscaleSize();

@@ -85,6 +85,17 @@
     <string name="perm_rationale_dcim_message">Доступ к папке DCIM требуется для сохранения RAW видео и чтения локальных конфигов</string>
     <string name="session_on_configure_failed">"Системная ошибка конфигурации, попробуйте другой формат превью "</string>
     <string name="exposure_bracketing">Брекетинг экспозиции</string>
+    <string name="hybrid_output_title">Разрешение</string>
+    <string name="hybrid_output_sensor">Сенсор</string>
+    <string name="hybrid_output_12">12 МП (2×)</string>
+    <string name="hybrid_output_16">16 МП (2×)</string>
+    <string name="hybrid_output_20">20 МП (2×)</string>
+    <string name="hybrid_output_2x">2× без уменьшения</string>
+    <string name="hybrid_downsampler_title">Даунсемплер</string>
+    <string name="hybrid_ds_lanczos">Lanczos-3</string>
+    <string name="hybrid_ds_bicubic">Bicubic</string>
+    <string name="hybrid_ds_area">Area</string>
+    <string name="hybrid_ds_bilinear">Bilinear</string>
     <string name="bracketing_off">Выкл (1x)</string>
     <string name="bracketing_normal">Нормальный (1x, 4x)</string>
     <string name="bracketing_high">Высокий (1x, 8x)</string>

@@ -46,6 +46,8 @@ public class SettingsBarEntryProvider extends ViewModel {
     private final SettingsBarEntryModel batterySaverEntry = SettingsBarEntryModel.newEntry(R.id.batterysaver_entry_layout, R.string.energy_saving, SettingType.BATTERY_SAVER);
     private final SettingsBarEntryModel bracketingEntry = SettingsBarEntryModel.newEntry(R.id.bracketing_entry_layout, R.string.exposure_bracketing, SettingType.BRACKETING);
     private final SettingsBarEntryModel aeMeteringStdEntry = SettingsBarEntryModel.newEntry(R.id.ae_metering_std_entry_layout, R.string.ae_metering_std, SettingType.AE_METERING_STD);
+    private final SettingsBarEntryModel hybridOutputEntry = SettingsBarEntryModel.newEntry(R.id.hybrid_output_entry_layout, R.string.hybrid_output_title, SettingType.HYBRID_OUTPUT);
+    private final SettingsBarEntryModel hybridDownsamplerEntry = SettingsBarEntryModel.newEntry(R.id.hybrid_downsampler_entry_layout, R.string.hybrid_downsampler_title, SettingType.HYBRID_DOWNSAMPLER);
     private final List<SettingsBarEntryModel> allEntries = new ArrayList<>(8);
 
     public SettingsBarEntryProvider() {
@@ -60,6 +62,8 @@ public class SettingsBarEntryProvider extends ViewModel {
         allEntries.add(batterySaverEntry);
         allEntries.add(bracketingEntry);
         allEntries.add(aeMeteringStdEntry);
+        allEntries.add(hybridOutputEntry);
+        allEntries.add(hybridDownsamplerEntry);
     }
 
     public void createEntries() {
@@ -74,6 +78,8 @@ public class SettingsBarEntryProvider extends ViewModel {
         createBatterySaverEntry();
         createBracketingEntry();
         createAeMeteringStdEntry();
+        createHybridOutputEntry();
+        createHybridDownsamplerEntry();
         updateAllEntries();
     }
 
@@ -89,6 +95,27 @@ public class SettingsBarEntryProvider extends ViewModel {
         updateEntry(batterySaverEntry, PreferenceKeys.isBatterySaverOn());
         updateEntry(bracketingEntry, PreferenceKeys.getBracketingMode());
         updateEntry(aeMeteringStdEntry, PreferenceKeys.getAeMeteringStd());
+        updateEntry(hybridOutputEntry, PreferenceKeys.hybridOutputIndex());
+        updateEntry(hybridDownsamplerEntry, PreferenceKeys.hybridDownsamplerIndex());
+    }
+
+    private void createHybridOutputEntry() {
+        hybridOutputEntry.addSettingsBarButtonModels(
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_sensor_button, "1\u00d7", R.string.hybrid_output_sensor, 0, hybridOutputEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_12_button, "12", R.string.hybrid_output_12, 1, hybridOutputEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_16_button, "16", R.string.hybrid_output_16, 2, hybridOutputEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_20_button, "20", R.string.hybrid_output_20, 3, hybridOutputEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_2x_button, "2\u00d7", R.string.hybrid_output_2x, 4, hybridOutputEntry)
+        );
+    }
+
+    private void createHybridDownsamplerEntry() {
+        hybridDownsamplerEntry.addSettingsBarButtonModels(
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_ds_lanczos_button, "Lanc", R.string.hybrid_ds_lanczos, 0, hybridDownsamplerEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_ds_bicubic_button, "Bicub", R.string.hybrid_ds_bicubic, 1, hybridDownsamplerEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_ds_area_button, "Area", R.string.hybrid_ds_area, 2, hybridDownsamplerEntry),
+                SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_ds_bilinear_button, "Bilin", R.string.hybrid_ds_bilinear, 3, hybridDownsamplerEntry)
+        );
     }
 
     public void addObserver(Observer<TopBarSettingsData<?, ?>> observer) {

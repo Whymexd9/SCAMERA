@@ -300,15 +300,19 @@ public final class VivoNeuralClient {
                     (nice?"Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ":"Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ")+
                     (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
             if(raw==null&&burst==null&&niceBurst==null)return null;
-            long expected=niceBurst!=null?(long)w*h*12:burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
+            final int ow=niceBurst!=null?niceBurst.outputWidth():w,oh=niceBurst!=null?niceBurst.outputHeight():h;
+            long expected=niceBurst!=null?(long)ow*oh*12:burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
             final long outputBytes=niceOut!=null?niceOut.size():output.length();
             // Trailers after the RGB: merged Bayer RAW (w*h*2, if requested), then effective frames (w*h).
-            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng()&&(outputBytes==expected+(long)w*h*2||outputBytes==expected+(long)w*h*3)?(long)w*h*2:0;
-            final long effBytes=niceBurst!=null&&outputBytes==expected+dngBytes+(long)w*h?(long)w*h:0;
+            // Trailers: merged Bayer RAW (sensor grid, w*h*2), then the effective-frame map on the OUTPUT grid (ow*oh).
+            final long dngBytes=niceBurst!=null&&niceBurst.mergedDng()&&(outputBytes==expected+(long)w*h*2||outputBytes==expected+(long)w*h*2+(long)ow*oh)?(long)w*h*2:0;
+            final long effBytes=niceBurst!=null&&outputBytes==expected+dngBytes+(long)ow*oh?(long)ow*oh:0;
             if(outputBytes!=expected+dngBytes+effBytes)throw new IOException("Неверный размер нейрорезультата");
             if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;
-                LmcHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;}
+                LmcHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
+                LmcHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
+                LmcHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null||niceBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException("Недостаточно памяти для результата");
@@ -338,7 +342,7 @@ public final class VivoNeuralClient {
                     eff.flip();VivoNiceBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
-            if(niceBurst!=null)NiceDiagnostics.buffer("02-after-ivst",result,w,h,3,true);
+            if(niceBurst!=null)NiceDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true);
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
             log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));
@@ -354,5 +358,15 @@ public final class VivoNeuralClient {
             if(niceBurst!=null)NiceDiagnostics.nativeFiles(dir,report.toString());
             deleteTree(dir);
         }
+    }
+
+    /** Number after `key=` on the first report line containing `line` (worker report), or `fallback`. */
+    static float reportNumber(CharSequence rep,String line,String key,float fallback){
+        String report=rep.toString();
+        int at=report.indexOf(line); if(at<0)return fallback;
+        int end=report.indexOf('\n',at); String l=end<0?report.substring(at):report.substring(at,end);
+        int k=l.indexOf(key); if(k<0)return fallback;
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("-?[0-9]+(\\.[0-9]+)?").matcher(l.substring(k+key.length()));
+        try{ return m.find()?Float.parseFloat(m.group()):fallback; }catch(NumberFormatException e){ return fallback; }
     }
 }

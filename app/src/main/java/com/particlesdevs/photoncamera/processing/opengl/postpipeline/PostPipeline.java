@@ -60,6 +60,9 @@ public class PostPipeline extends GLBasePipeline {
     public ArrayList<Bitmap> debugData = new ArrayList<>();
     public ArrayList<ImageFrame> SAGAIN;
     public Point cropSize;
+    /** Final output size of the hybrid 2x pipeline (sensor orientation), produced by {@link HybridFinalResize}; null = output at rawSize. */
+    public Point finalSize;
+    public boolean finalResized;
     public float[] analyzedBL = new float[]{0.f, 0.f, 0.f};
     float regenerationSense = 1.f;
     float totalGain = 1.f;
@@ -199,6 +202,15 @@ public class PostPipeline extends GLBasePipeline {
         rawClipLevel = 1.0f;
         Point rawSliced = parameters.rawSize;
         cropSize = new Point(parameters.rawSize);
+        finalSize = null;
+        finalResized = false;
+        if (!previewMode && !mSettings.ultraHdr && parameters.hybridFinalSize != null
+                && parameters.hybridFinalSize.x < parameters.rawSize.x && parameters.hybridFinalSize.y < parameters.rawSize.y) {
+            // The output image, the crop and the rotation work on the resized image (HybridFinalResize before Rotate).
+            finalSize = new Point(parameters.hybridFinalSize);
+            rawSliced = new Point(finalSize);
+            cropSize = new Point(finalSize);
+        }
         if (PhotonCamera.getSettings().aspect169) {
             if (rawSliced.x > rawSliced.y) {
                 rawSliced = new Point(rawSliced.x, rawSliced.x * 9 / 16);
@@ -229,15 +241,22 @@ public class PostPipeline extends GLBasePipeline {
             BuildDefaultPipeline();
         }
         GLImage resImg = runAll();
-        Bitmap res = resImg.getBufferedImage();
-        // Ownership of the Direct malloc is transferred to this scope.
-        // glFinish ensures Adreno has completed the glReadPixels copy before
-        // we free the underlying malloc; then detach from glProcessing to
-        // avoid pipeline.close() touching freed memory (Direct buffers are
-        // intentionally leaked in GLCoreBlockProcessing.close for safety).
+        // glFinish ensures Adreno has completed the glReadPixels copy into the
+        // output buffer; the GL working set (three FP16 textures = 1.2 GB on the
+        // 50 MP Sabre 2x grid) is released BEFORE the final bitmap is created,
+        // otherwise the peak (textures + output buffer + bitmap) gets the process
+        // killed on phones with ~3 GB free. closeAll must run while the EGL
+        // context is still current; the linear scene buffer was snapshotted to
+        // CPU from inside Initial.Run, so the gain-map pass still works later.
         try {
             GLES30.glFinish();
         } catch (Exception ignored) {}
+        GLTexture.closeAll();
+        Bitmap res = resImg.getBufferedImage();
+        // Ownership of the Direct malloc is transferred to this scope; detach
+        // from glProcessing to avoid pipeline.close() touching freed memory
+        // (Direct buffers are intentionally leaked in GLCoreBlockProcessing.close
+        // for safety).
         ByteBuffer resBuf = resImg.byteBuffer;
         resImg.byteBuffer = null;
         if (glint != null && glint.glProcessing != null) {
@@ -696,6 +715,7 @@ public class PostPipeline extends GLBasePipeline {
             add(new NiceLocalContrast());
             if (PreferenceKeys.isNiceSoftTone() && PreferenceKeys.niceInternalValue("sharp_mode", 1f) > 0f) add(new NiceSharpen());
             else add(new RTSharpening());
+            if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
             add(new RotateWatermark(getRotation()));
             return;
         }

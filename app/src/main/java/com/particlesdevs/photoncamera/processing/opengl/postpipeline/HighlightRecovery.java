@@ -60,7 +60,12 @@ public final class HighlightRecovery extends Node {
         long started = System.currentTimeMillis();
         GLTexture input = previousNode.WorkingTexture;
         GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4);
-        Point near = new Point((input.mSize.x + 7) / 8, (input.mSize.y + 7) / 8);
+        // The colour neighbourhoods are 8x8 and 32x32 SENSOR pixels: on the Sabre 2x grid (outputScale 2) the
+        // blocks are dilated by s so a blown window borrows colour from the same distance as at 1x. At s = 1 the
+        // sizes and the shaders' loops are exactly those of before; the 4x4 reduce needs no change (4 * 8s = 32s).
+        final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
+        final int block = 8 * s;
+        Point near = new Point((input.mSize.x + block - 1) / block, (input.mSize.y + block - 1) / block);
         Point wide = new Point((near.x + 3) / 4, (near.y + 3) / 4);
         GLTexture chromaNear = new GLTexture(near, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         GLTexture chromaWide = new GLTexture(wide, rgba, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
@@ -69,7 +74,7 @@ public final class HighlightRecovery extends Node {
             glProg.setTexture("InputBuffer", input);
             glProg.setVar("kFull", kFull);
             glProg.setVar("yRef", yRef);
-            glProg.setVar("block", 8);
+            glProg.setVar("block", block);
             glProg.drawBlocks(chromaNear);
             glProg.useAssetProgram("hlrecovery/reduce", false);
             glProg.setTexture("InputBuffer", chromaNear);
@@ -81,6 +86,7 @@ public final class HighlightRecovery extends Node {
             glProg.setVar("kFull", kFull);
             glProg.setVar("yRef", yRef);
             glProg.setVar("strength", strength);
+            glProg.setVar("pxStep", s); // 3x3 tint test one sensor pixel apart
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
