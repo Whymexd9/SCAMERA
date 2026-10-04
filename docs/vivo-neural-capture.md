@@ -223,8 +223,9 @@ transport/analysis fixtures; they do not run HTP weights on the host.
 
 ## One final APK from Actions
 
-The test workflow now packages, verifies and signs all 17 pinned model/runtime
-entries inside Actions. The downloadable `SCAMERA-Build-<version>` artifact
+The test workflow now packages, verifies and signs all 28 pinned model/runtime
+entries inside Actions (bundle v2: v1 plus the CRE motion runtime and the Quad/VSR
+contexts; every entry is required, the v1 build silently left those 11 out). The downloadable `SCAMERA-Build-<version>` artifact
 contains the final APK and SHA256SUMS.txt. Deliver that exact APK; never append
 assets or re-sign it locally after downloading. A successful source compile
 without the private bundle must not publish an incomplete APK.
@@ -244,9 +245,10 @@ provision the same pinned bundle again. Artifact redirects do not receive the
 GitHub authorization header. Bundle URLs are omitted from failure messages.
 
 
-An encrypted seed is also available on `codex/encrypted-neural-assets-v1`.
+An encrypted seed v2 is stored on the branch `neural-assets-v2` (keep it; v1 was
+on `codex/encrypted-neural-assets-v1`).
 The source-side `tools/neural-assets-encrypted.json` pins its commit and all
-ciphertext hashes. `SCAMERA_NEURAL_ASSETS_KEY` holds the random 256-bit AES-GCM
+ciphertext hashes. `SCAMERA_NEURAL_ASSETS_KEY_V2` holds the random 256-bit AES-GCM
 key in repository Actions secrets; the key is never committed. GCM authentication
 and the plaintext/file hashes are checked before packaging. This removes the
 need for a public model URL and allows recovery after the Actions cache expires.

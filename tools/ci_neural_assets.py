@@ -16,9 +16,11 @@ import urllib.request
 import zipfile
 from package_vivo_neural import pinned_assets
 
-SHA256 = '7a2c0d642f3fce5dd20f4f5c0bb94cbd9f6216cae7fd504cb380f94b85c54587'
-NAME = 'SCAMERA-neural-assets-v1'
-ARCHIVE = 'scamera-neural-assets-v1.zip'
+# v2 (4 October 2026): v1 plus the CRE motion runtime and the Quad/VSR contexts, which v1 lacked, so the Actions APK
+# shipped without them while local builds had them. All 28 entries are required.
+SHA256 = 'b7698172a5e4d76b0b57b357073e6c8aeb97157c9cae950e54ac683b8db82774'
+NAME = 'SCAMERA-neural-assets-v2'
+ARCHIVE = 'scamera-neural-assets-v2.zip'
 LIMIT = 128 * 1024 * 1024
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -75,7 +77,7 @@ def encrypted_seed(key):
     return decrypt_bundle(manifest, parts, key)
 
 def restore():
-    key = os.environ.get('SCAMERA_NEURAL_ASSETS_KEY', '')
+    key = os.environ.get('SCAMERA_NEURAL_ASSETS_KEY_V2', '')
     if key:
         return encrypted_seed(key)
     seed = os.environ.get('SCAMERA_NEURAL_ASSETS_URL', '')
@@ -96,15 +98,15 @@ def restore():
     if seed:
         return download(seed, redirect=True)
     raise RuntimeError('Private model bundle is not provisioned. Configure the encrypted '
-                       'bundle key SCAMERA_NEURAL_ASSETS_KEY or bootstrap URL '
+                       'bundle key SCAMERA_NEURAL_ASSETS_KEY_V2 or bootstrap URL '
                        'SCAMERA_NEURAL_ASSETS_URL. No incomplete APK will be published.')
 
 def unpack(data, output):
     if hashlib.sha256(data).hexdigest() != SHA256:
         raise ValueError('Private bundle SHA256 mismatch')
-    manifests = {'bundle': pinned_assets(), 'hexquad': pinned_assets('HEX_FILES', 6),
-                 'nice': {**{name: sha for name, sha in pinned_assets('NICE_FILES', None).items()
-                        if name == 'nice-main-forward-v79.bin'}, **pinned_assets('NICE_TONE_FILES', 5)}}
+    manifests = {'bundle': pinned_assets(),
+                 'hexquad': {**pinned_assets('HEX_FILES', 6), **pinned_assets('QUAD_FILES', 3), **pinned_assets('VSR_FILES', 3)},
+                 'nice': {**pinned_assets('NICE_FILES', 6), **pinned_assets('NICE_TONE_FILES', 5)}}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         expected = {group + '/' + name for group, manifest in manifests.items() for name in manifest}
         if len(archive.namelist()) != len(expected) or set(archive.namelist()) != expected:
@@ -118,7 +120,7 @@ def unpack(data, output):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(contents)
     (output / ARCHIVE).write_bytes(data)
-    print('Verified all 17 model/runtime assets; bundle SHA256=' + SHA256)
+    print('Verified all ' + str(sum(len(m) for m in manifests.values())) + ' model/runtime assets; bundle SHA256=' + SHA256)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

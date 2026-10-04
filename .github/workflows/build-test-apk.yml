@@ -263,7 +263,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SCAMERA_NEURAL_ASSETS_URL: ${{ secrets.SCAMERA_NEURAL_ASSETS_URL }}
-          SCAMERA_NEURAL_ASSETS_KEY: ${{ secrets.SCAMERA_NEURAL_ASSETS_KEY }}
+          SCAMERA_NEURAL_ASSETS_KEY_V2: ${{ secrets.SCAMERA_NEURAL_ASSETS_KEY_V2 }}
         run: |
           python3 -m venv "$RUNNER_TEMP/asset-tools"
           "$RUNNER_TEMP/asset-tools/bin/pip" install cryptography==46.0.0
@@ -285,8 +285,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SCAMERA-neural-assets-v1
-          path: ${{ runner.temp }}/neural-assets/scamera-neural-assets-v1.zip
+          name: SCAMERA-neural-assets-v2
+          path: ${{ runner.temp }}/neural-assets/scamera-neural-assets-v2.zip
           if-no-files-found: error
           retention-days: 90
           compression-level: 0

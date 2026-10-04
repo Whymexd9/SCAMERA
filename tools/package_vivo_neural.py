@@ -19,10 +19,6 @@ NICE_PREFIX = 'assets/vivo-nice/arm64-v8a/'
 # Worker without root: executable + QNN/CRE runtime installed into nativeLibraryDir.
 LIB_PREFIX = 'lib/arm64-v8a/'
 LIB_WORKER = 'libscamera_worker.so'
-# Added after the private bundle was cut: bundled when present in --nice-dir, skipped otherwise
-# (CRE motion runtime for non-vivo phones).
-OPTIONAL_NICE = {'libvivo_nice_cre.so', 'libc++_shared.so', 'libvivolog.so', 'libvivo_platform_common.so',
-                 'libvivo.mempool.so'}
 
 
 def pinned_assets(manifest='FILES', expected=5):
@@ -102,21 +98,15 @@ def main():
     hex_assets.update(pinned_assets('QUAD_FILES', 3))
     # Vivo VSR still super-resolution contexts (sr1x/sr2x/sr4x).
     hex_assets.update(pinned_assets('VSR_FILES', 3))
-    # Quad / VSR contexts were added after the private bundle was cut: bundled only when supplied.
-    optional_hex = set(pinned_assets('QUAD_FILES', 3)) | set(pinned_assets('VSR_FILES', 3))
-    missing_hex = sorted(name for name in hex_assets if name in optional_hex and not (args.hexquad_dir / name).is_file())
-    for name in missing_hex:
-        del hex_assets[name]
-    if missing_hex:
-        print('Optional HexQuad assets not supplied, not bundled: ' + ', '.join(missing_hex))
+    # Every pinned file is required (bundle v2 carries the Quad/VSR contexts and the CRE runtime): an APK without
+    # them is not published (the v1 bundle lacked them and the Actions APK silently differed from local builds).
     # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
-    nice_assets = pinned_assets('NICE_FILES', None)
+    nice_assets = pinned_assets('NICE_FILES', 6)
     nice_assets.update(pinned_assets('NICE_TONE_FILES', 5))
-    skipped = sorted(name for name in nice_assets if name in OPTIONAL_NICE and not (args.nice_dir / name).is_file())
-    for name in skipped:
-        del nice_assets[name]
-    if skipped:
-        print('Optional NICE assets not supplied, not bundled: ' + ', '.join(skipped))
+    missing = sorted(str(d / n) for d, m in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets))
+                     for n in m if not (d / n).is_file())
+    if missing:
+        raise ValueError('Required private assets missing (no incomplete APK is published): ' + ', '.join(missing))
     for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.nice_dir, nice_assets)):
         for name, sha in manifest.items():
             if digest_file(directory / name) != sha:
