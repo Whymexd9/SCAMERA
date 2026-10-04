@@ -39,16 +39,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SettingsBarEntryProvider extends ViewModel {
-    private final SettingsBarEntryModel hdrxEntry = SettingsBarEntryModel.newEntry(R.id.hdrx_entry_layout, R.string.hdrx, SettingType.HDRX);
     private final SettingsBarEntryModel timerEntry = SettingsBarEntryModel.newEntry(R.id.timer_entry_layout, R.string.countdown_timer, SettingType.TIMER);
-    private final SettingsBarEntryModel quadEntry = SettingsBarEntryModel.newEntry(R.id.quad_entry_layout, R.string.quad_bayer_toggle_text, SettingType.QUAD);
-    private final SettingsBarEntryModel fpsEntry = SettingsBarEntryModel.newEntry(R.id.fps_entry_layout, R.string.fps_60_toggle_text, SettingType.FPS_60);
     private final SettingsBarEntryModel flashEntry = SettingsBarEntryModel.newEntry(R.id.flash_entry_layout, R.string.flash, SettingType.FLASH);
     private final SettingsBarEntryModel gridEntry = SettingsBarEntryModel.newEntry(R.id.grid_entry_layout, R.string.turn_on_grid, SettingType.GRID);
-    private final SettingsBarEntryModel eisEntry = SettingsBarEntryModel.newEntry(R.id.eis_entry_layout, R.string.eis_toggle_text, SettingType.EIS);
     private final SettingsBarEntryModel saveRawEntry = SettingsBarEntryModel.newEntry(R.id.saveraw_entry_layout, R.string.raw_string, SettingType.RAW);
-    private final SettingsBarEntryModel batterySaverEntry = SettingsBarEntryModel.newEntry(R.id.batterysaver_entry_layout, R.string.energy_saving, SettingType.BATTERY_SAVER);
-    private final SettingsBarEntryModel bracketingEntry = SettingsBarEntryModel.newEntry(R.id.bracketing_entry_layout, R.string.exposure_bracketing, SettingType.BRACKETING);
     private final SettingsBarEntryModel aeMeteringStdEntry = SettingsBarEntryModel.newEntry(R.id.ae_metering_std_entry_layout, R.string.ae_metering_std, SettingType.AE_METERING_STD);
     private final SettingsBarEntryModel hybridOutputEntry = SettingsBarEntryModel.newEntry(R.id.hybrid_output_entry_layout, R.string.hybrid_output_title, SettingType.HYBRID_OUTPUT);
     private final SettingsBarEntryModel hybridDownsamplerEntry = SettingsBarEntryModel.newEntry(R.id.hybrid_downsampler_entry_layout, R.string.hybrid_downsampler_title, SettingType.HYBRID_DOWNSAMPLER);
@@ -56,32 +50,21 @@ public class SettingsBarEntryProvider extends ViewModel {
 
     /** Sheet order: Shoot, then Format, then View; within a group as listed in SHADE_SPEC. */
     public SettingsBarEntryProvider() {
-//        allEntries.add(hdrxEntry);
         allEntries.add(flashEntry);
         allEntries.add(timerEntry);
-        allEntries.add(bracketingEntry);
         allEntries.add(aeMeteringStdEntry);
-        allEntries.add(fpsEntry);
-        allEntries.add(eisEntry);
         allEntries.add(saveRawEntry);
-        allEntries.add(quadEntry);
         allEntries.add(hybridOutputEntry);
         allEntries.add(hybridDownsamplerEntry);
         allEntries.add(gridEntry);
-        allEntries.add(batterySaverEntry);
     }
 
     public void createEntries() {
-        createHdrxEntry();
-        createQuadBayerEntry();
-        createEisEntry();
+        resetRemovedSettings();
         createFlashEntry();
-        createFpsEntry();
         createTimerEntry();
         createSaveRawEntry();
         createGridEntry();
-        createBatterySaverEntry();
-        createBracketingEntry();
         createAeMeteringStdEntry();
         createHybridOutputEntry();
         createHybridDownsamplerEntry();
@@ -92,13 +75,7 @@ public class SettingsBarEntryProvider extends ViewModel {
         updateEntry(gridEntry, PreferenceKeys.getGridValue());
         updateEntry(flashEntry, PreferenceKeys.getAeMode());
         updateEntry(timerEntry, PreferenceKeys.getCountdownTimerIndex());
-        updateEntry(hdrxEntry, PreferenceKeys.isHdrXOn());
-        updateEntry(eisEntry, PreferenceKeys.isEisPhotoOn());
-        updateEntry(fpsEntry, PreferenceKeys.getFpsMode());
-        updateEntry(quadEntry, PreferenceKeys.isQuadBayerOn());
         updateEntry(saveRawEntry, PreferenceKeys.isSaveRaw());
-        updateEntry(batterySaverEntry, PreferenceKeys.isBatterySaverOn());
-        updateEntry(bracketingEntry, PreferenceKeys.getBracketingMode());
         updateEntry(aeMeteringStdEntry, PreferenceKeys.getAeMeteringStd());
         updateEntry(hybridOutputEntry, PreferenceKeys.hybridOutputIndex());
         updateEntry(hybridDownsamplerEntry, PreferenceKeys.hybridDownsamplerIndex());
@@ -117,6 +94,26 @@ public class SettingsBarEntryProvider extends ViewModel {
         entry.setGroup(group);
         entry.setIcon(icon);
         entry.setDefaultValue(defaultValue);
+    }
+
+    /**
+     * Parameters the sheet no longer offers, left over from PhotonCamera: the HDRX switch (read by nothing), EIS (only
+     * while recording video), exposure bracketing (only the old PhotonCamera planner; the hybrid and SCAM HDR plan their
+     * own frames), energy saving (only the GL tile size), Quad Bayer (switches the RAW stream to the full sensor mode,
+     * which the ZSL burst of the hybrid must not) and a fixed preview FPS (caps the exposure of the ZSL frames). They go
+     * back to their defaults, so a value chosen in an older build cannot stay on unseen.
+     */
+    private static void resetRemovedSettings() {
+        boolean hdrx = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_hdrx_mode_default);
+        boolean eis = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_eis_photo_default);
+        boolean energy = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_energy_safe_default);
+        boolean quad = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_quad_bayer_default);
+        if (PreferenceKeys.isHdrXOn() != hdrx) PreferenceKeys.setHdrX(hdrx);
+        if (PreferenceKeys.isEisPhotoOn() != eis) PreferenceKeys.setEisPhoto(eis);
+        if (PreferenceKeys.isBatterySaverOn() != energy) PreferenceKeys.setBatterySaver(energy);
+        if (PreferenceKeys.isQuadBayerOn() != quad) PreferenceKeys.setQuadBayer(quad);
+        if (PreferenceKeys.getFpsMode() != 0) PreferenceKeys.setFpsMode(0);
+        if (PreferenceKeys.getBracketingMode() != 0) PreferenceKeys.setBracketingMode(0);
     }
 
     /** Button value (0/1) of a boolean default from default_prefs.xml. */
@@ -165,30 +162,6 @@ public class SettingsBarEntryProvider extends ViewModel {
         settingsBarLayout.onEntriesAdded();
     }
 
-    private void createHdrxEntry() {
-        describe(hdrxEntry, SettingsBarEntryModel.GROUP_SHOOT, R.drawable.ic_hdrx_on, defaultFlag(R.bool.pref_hdrx_mode_default));
-        hdrxEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.hdrx_off_button, R.drawable.ic_hdrx_off, R.string.off, 0, hdrxEntry).withShortLabel(R.string.sheet_short_off),
-                SettingsBarButtonModel.newButtonModel(R.id.hdrx_on_button, R.drawable.ic_hdrx_on, R.string.on, 1, hdrxEntry).withShortLabel(R.string.sheet_short_on)
-        );
-    }
-
-    private void createQuadBayerEntry() {
-        describe(quadEntry, SettingsBarEntryModel.GROUP_FORMAT, R.drawable.ic_quad_on, defaultFlag(R.bool.pref_quad_bayer_default));
-        quadEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.quad_off_button, R.drawable.ic_quad_off, R.string.off, 0, quadEntry).withShortLabel(R.string.sheet_short_off),
-                SettingsBarButtonModel.newButtonModel(R.id.quad_on_button, R.drawable.ic_quad_on, R.string.on, 1, quadEntry).withShortLabel(R.string.sheet_short_on)
-        );
-    }
-
-    private void createEisEntry() {
-        describe(eisEntry, SettingsBarEntryModel.GROUP_SHOOT, R.drawable.ic_eis_on, defaultFlag(R.bool.pref_eis_photo_default));
-        eisEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.eis_off_button, R.drawable.ic_eis_off, R.string.off, 0, eisEntry).withShortLabel(R.string.sheet_short_off),
-                SettingsBarButtonModel.newButtonModel(R.id.eis_on_button, R.drawable.ic_eis_on, R.string.on, 1, eisEntry).withShortLabel(R.string.sheet_short_on)
-        );
-    }
-
     private void  createSaveRawEntry() {
         describe(saveRawEntry, SettingsBarEntryModel.GROUP_FORMAT, R.drawable.ic_raw, defaultIndex(R.string.pref_raw_mode_default_value));
         saveRawEntry.addSettingsBarButtonModels(
@@ -198,40 +171,11 @@ public class SettingsBarEntryProvider extends ViewModel {
         );
     }
 
-    private void createBatterySaverEntry() {
-        describe(batterySaverEntry, SettingsBarEntryModel.GROUP_VIEW, R.drawable.leaf_icon_15, defaultFlag(R.bool.pref_energy_safe_default));
-        batterySaverEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.btsvr_off_button, R.drawable.ic_round_battery_alert_24, R.string.off, 0, batterySaverEntry).withShortLabel(R.string.sheet_short_off),
-                SettingsBarButtonModel.newButtonModel(R.id.btsvr_on_button, R.drawable.leaf_icon_15, R.string.on, 1, batterySaverEntry).withShortLabel(R.string.sheet_short_on)
-        );
-    }
-
-    private void createBracketingEntry() {
-        // No per-value icons: every value shows the parameter icon.
-        final int icon = R.drawable.ic_sheet_bracketing;
-        describe(bracketingEntry, SettingsBarEntryModel.GROUP_SHOOT, icon, 0);
-        bracketingEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.bracketing_off_button, icon, R.string.bracketing_off, 0, bracketingEntry).withShortLabel(R.string.sheet_short_off),
-                SettingsBarButtonModel.newButtonModel(R.id.bracketing_normal_button, icon, R.string.bracketing_normal, 1, bracketingEntry).withShortLabel(R.string.sheet_short_normal),
-                SettingsBarButtonModel.newButtonModel(R.id.bracketing_high_button, icon, R.string.bracketing_high, 2, bracketingEntry).withShortLabel(R.string.sheet_short_high)
-        );
-    }
-
     private void createFlashEntry() {
         describe(flashEntry, SettingsBarEntryModel.GROUP_SHOOT, R.drawable.ic_flash_on, defaultIndex(R.string.pref_ae_mode_default));
         flashEntry.addSettingsBarButtonModels(
                 SettingsBarButtonModel.newButtonModel(R.id.torch_button, R.drawable.ic_torch, R.string.torch, 0, flashEntry).withShortLabel(R.string.sheet_short_torch),
                 SettingsBarButtonModel.newButtonModel(R.id.flash_odd_button, R.drawable.ic_flash_off, R.string.off, 1, flashEntry).withShortLabel(R.string.sheet_short_off)
-        );
-    }
-
-    private void createFpsEntry() {
-        describe(fpsEntry, SettingsBarEntryModel.GROUP_SHOOT, R.drawable.autofps_select_24px, 0);
-        fpsEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.fps_auto_button, R.drawable.autofps_select_24px, R.string.fps_auto, 0, fpsEntry).withShortLabel(R.string.sheet_short_auto),
-                SettingsBarButtonModel.newButtonModel(R.id.fps24_button, R.drawable.fps24_select_24px, R.string.fps_24, 1, fpsEntry).withShortLabel("24"),
-                SettingsBarButtonModel.newButtonModel(R.id.fps30_button, R.drawable.fps30_select_24px, R.string.fps_30, 2, fpsEntry).withShortLabel("30"),
-                SettingsBarButtonModel.newButtonModel(R.id.fps60_button, R.drawable.fps60_select_24px, R.string.fps_60, 3, fpsEntry).withShortLabel("60")
         );
     }
 

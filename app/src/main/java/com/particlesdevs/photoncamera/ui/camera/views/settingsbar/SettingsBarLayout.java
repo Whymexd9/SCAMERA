@@ -289,6 +289,8 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
      * view itself stays) and the hidden entries are kept across the rebuild.
      */
     public void onEntriesAdded() {
+        // Pins of parameters the sheet no longer has (an older build's choice) would hold a slot with no button.
+        if (quickTypes.removeIf(type -> entryForType(type) == null)) PreferenceKeys.setSheetQuick(String.join(",", quickTypes));
         rebuildQuickRow();
         refreshGroupSummaries();
     }
