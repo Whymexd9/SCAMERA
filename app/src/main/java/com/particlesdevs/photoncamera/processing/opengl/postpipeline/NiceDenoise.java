@@ -157,6 +157,13 @@ public final class NiceDenoise extends Node {
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
+        if (PreferenceKeys.isHybridShot() && !PreferenceKeys.isHybridDenoiseEnabled()) {
+            // The hybrid's master switch «Шумоподавление» is off: the merge goes on untouched.
+            WorkingTexture = previousNode.WorkingTexture;
+            glProg.closed = true;
+            Log.i("NICE_PIPELINE", "denoise off (pref_lmc_hybrid_denoise)");
+            return;
+        }
         // LMC hybrid shots: the GCam/LMC finish denoise (pref_lmc_hybrid_dn_engine = gcam, default); this NLM route
         // stays the "nlm" engine and the SCAM HDR (NICE) denoise. A failure there falls back to the NLM route.
         if (LmcDenoise.enabledFor(pipeline)) {

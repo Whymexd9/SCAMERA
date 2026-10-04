@@ -6,6 +6,7 @@ import com.particlesdevs.photoncamera.processing.opengl.GLDrawParams;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.BufferUtils;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -101,7 +102,7 @@ public final class ArkCombine extends Node {
             glProg.setVar("gammaInvU", 1f / ArkTone.gamma());
             glProg.setVar("macroU", ArkTone.value("macro_contrast", 1.1f));
             glProg.setVar("vibU", ArkTone.value("vibrance", 0f), ArkTone.value("vibrance_sky", 0.40f), ArkTone.value("vibrance_green", 0.20f));
-            glProg.setVar("chromaDnU", ArkTone.value("chroma_denoise", 0f));
+            glProg.setVar("chromaDnU", PreferenceKeys.isHybridDenoiseEnabled() ? ArkTone.value("chroma_denoise", 0f) : 0f);
             glProg.setVar("clarityU", ArkTone.value("clarity", 0f));
             glProg.setVar("flatProtectU", ArkTone.value("flat_protect", 0f));
             glProg.setVar("detailGainU", detail);

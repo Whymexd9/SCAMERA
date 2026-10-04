@@ -1195,6 +1195,14 @@ public class PreferenceKeys {
      * Exposure Fusion and AgX render. pref_lmc_hybrid_ark_tone, on by default; nice_dev.txt "hybrid_ark_tone 0/1".
      * Its knobs are pref_lmc_hybrid_ark_&lt;key&gt; (read with {@link #hybridValue}, defaults = ArkCam 2.85 X8U).
      */
+    /**
+     * Master switch of every noise reduction of the hybrid (pref_lmc_hybrid_denoise, on by default; nice_dev.txt
+     * "hybrid_denoise 0/1"): off skips the denoise after the merge (GCam/LMC finish or NLM, despeckle), the Bento
+     * highlight denoise of the ARK fusion and the chroma denoise of lifted shadows. The merge itself is untouched.
+     */
+    public static boolean isHybridDenoiseEnabled() {
+        return hybridSwitch("denoise", true);
+    }
     public static boolean isArkToneEnabled() {
         return hybridSwitch("ark_tone", true);
     }

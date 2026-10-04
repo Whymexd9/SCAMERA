@@ -5,6 +5,7 @@ import android.graphics.Point;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
 import static android.opengl.GLES20.GL_CLAMP_TO_EDGE;
@@ -70,7 +71,7 @@ public final class ArkFusion extends Node {
         long started = System.currentTimeMillis();
         ArkAe.Result r = st.ae;
         Point lowSize = st.low.mSize;
-        float strength = ArkTone.value("bracket_denoise", 1f);
+        float strength = PreferenceKeys.isHybridDenoiseEnabled() ? ArkTone.value("bracket_denoise", 1f) : 0f;
         st.lowDn = st.low;
         if (r.clip > 1.05f && strength > 0.001f) {
             st.lowDn = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
