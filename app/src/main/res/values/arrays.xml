@@ -195,6 +195,16 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <string-array name="lmc_hybrid_bento_validate_entries">
+        <item>Только первый кадр (как раньше)</item>
+        <item>Каждый ультракороткий кадр</item>
+        <item>Каждый кадр + движение на незасвеченной базе (по умолчанию)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_bento_validate_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
     <string-array name="lmc_hybrid_bento_frames_entries">
         <item>1 кадр (как LMC)</item>
         <item>2 кадра (по умолчанию)</item>

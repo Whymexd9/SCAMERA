@@ -199,6 +199,16 @@ public final class SettingsMigration {
                 changed = true;
             }
         }
+        // Defaults revision 5 (4 October 2026): the rejection colour multiplier 0.07 (LMC) let wind-moved leaves through (luma
+        // zipper); a stored 0.07 is the former XML default and moves to 0.2.
+        if (revision < 5) {
+            Object cdm = values.get(LmcHybridKeys.PREFIX + "cdm");
+            if (cdm != null) {
+                if (isNumber(cdm, 0.07f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "cdm", cdm instanceof String ? PreferenceNumber.format(0.2f, true) : (Object) 0.2f);
+                e.putInt(DEFAULTS_REV, 5);
+                changed = true;
+            }
+        }
         if (changed) e.commit();
         return changed;
     }

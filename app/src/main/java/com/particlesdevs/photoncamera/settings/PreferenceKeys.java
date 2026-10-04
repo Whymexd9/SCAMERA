@@ -1161,7 +1161,8 @@ public class PreferenceKeys {
             {"shastaSharpness", "shasta_sharpness"}, {"bentoUsWeight", "bento_weight"},
             {"shastaMaxRatio", "shasta_max_ratio"}, {"filterVariance", "filter_variance"},
             {"bentoUsSigma", "bento_sigma"}, {"bentoFrames", "bento_frames"}, {"bentoChromaSigma", "bento_chroma_sigma"},
-            {"dilateFloor", "dilate_floor"}, {"widenBelow", "widen_below"},
+            {"dilateFloor", "dilate_floor"}, {"widenBelow", "widen_below"}, {"chromaDiff", "chroma_diff"},
+            {"bentoValidate", "bento_validate"},
             {"rawNoise", "tensor_noise"}, {"snrScale", "snr_scale"},
             {"boost", "boost_value"}, {"varianceThreshold", "boost_threshold"},
             {"lutHiSigma", "lut_sigma"},
@@ -1186,6 +1187,7 @@ public class PreferenceKeys {
         if (!hybridSwitch("shasta", true)) out.append("shastaEnable 0\n");
         // Switches of the worker's round-5 fixes (on by default there): written only when turned off.
         if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
+        if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_lmc", true)) out.append("bentoLmc 0\n");
         return out.toString();
     }

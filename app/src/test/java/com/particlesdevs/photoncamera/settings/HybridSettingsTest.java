@@ -314,6 +314,15 @@ public class HybridSettingsTest {
         assertEquals(3f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_shasta_ev","")),0f);
         assertEquals(4,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        // revision 5: a stored former default cdm 0.07 becomes 0.2; a chosen value stays
+        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true).putInt("pref_lmc_hybrid_defaults_rev",4)
+                .putString("pref_lmc_hybrid_cdm","0.07").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(0.2f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_cdm","")),1e-6f);
+        assertEquals(5,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        prefs.edit().putString("pref_lmc_hybrid_cdm","0.1").putInt("pref_lmc_hybrid_defaults_rev",4).commit();
+        SettingsMigration.migrateLmcHybrid(prefs,false);
+        assertEquals("0.1",prefs.getString("pref_lmc_hybrid_cdm",""));
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {
