@@ -11,8 +11,8 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 /**
  * ARK photo tone of the LMC hybrid: the ArkCam 1.23 / LMC 9.6 tone of libfc_suppressor.so (Smart-HDR AE, exposure
  * fusion on a guided filter, OKLab grading, AgX Custom; research/hybrid5/tone_port.md sections 2 and 7) with the
- * high-frequency detail of the Sabre merge. Route: ArkStats -> ArkFusion -> ArkCombine -> sharpening ->
- * ArkSharpenGuard. This class holds the per-shot state handed between those nodes, their settings and the colour
+ * high-frequency detail of the Sabre merge. Route: ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine ->
+ * [sharpening -> ArkSharpenGuard]. This class holds the per-shot state handed between those nodes, their settings and the colour
  * chain they share with HeadroomRender.
  */
 public final class ArkTone {
@@ -37,6 +37,10 @@ public final class ArkTone {
         public float guard;
         /** ArkCombine's output kept for ArkSharpenGuard (main3; not owned here), null without a guard. */
         public GLTexture preSharpen;
+        /** ArkLumaSharpen: ArkCam's sharpened luminance S(Ya) (.r) on the output grid, null without ARK sharpening. */
+        public GLTexture lumaS;
+        /** Domain multiplier of lumaS: Ya = min(sharpMul * Y709, 1) (1 = G_CLEAN scale, ae = the delta's domain). */
+        public float sharpMul = 1f;
 
         void closeTextures() {
             if (low != null) low.close();
@@ -44,7 +48,8 @@ public final class ArkTone {
             if (mid != null) mid.close();
             if (fused != null) fused.close();
             if (detailRef != null) detailRef.close();
-            low = lowDn = mid = fused = detailRef = null;
+            if (lumaS != null) lumaS.close();
+            low = lowDn = mid = fused = detailRef = lumaS = null;
         }
     }
 

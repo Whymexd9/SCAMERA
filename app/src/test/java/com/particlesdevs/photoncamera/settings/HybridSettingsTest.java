@@ -131,7 +131,7 @@ public class HybridSettingsTest {
         assertEquals(.25f,PreferenceKeys.vivoHdrValue("shadows",.25f),0f);
         assertFalse(PreferenceKeys.isNiceSoftTone());assertFalse(PreferenceKeys.useStockBracketPlanner());
         assertEquals("auto",PreferenceKeys.getNiceCreSource());
-        assertEquals("rt",PreferenceKeys.niceSharpenMode());
+        assertEquals("ark",PreferenceKeys.niceSharpenMode());
         manager.set("default_scope","pref_lmc_hybrid_fusion_dark_ev","2,5");
         manager.set("default_scope","pref_lmc_hybrid_zsl_frames","99");
         manager.set("default_scope","pref_lmc_hybrid_hdr_shadows","0.5");
@@ -256,6 +256,33 @@ public class HybridSettingsTest {
         prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,false).commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,true));
         assertFalse(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true));
+    }
+
+    @Test public void defaultsRevisionThreeMovesTheFormerSharpDefaultToArk() {
+        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true)
+                .putString("pref_lmc_hybrid_sharp_mode","rt").putInt("pref_lmc_hybrid_defaults_rev",2).commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("ark",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
+        assertEquals(3,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true)
+                .putString("pref_lmc_hybrid_sharp_mode","scam").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("scam",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        // after the revision a chosen RawTherapee stays
+        prefs.edit().putString("pref_lmc_hybrid_sharp_mode","rt").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("rt",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
+        // the former noise-reduction safeguards (stored XML defaults) become ArkCam's values; other values stay
+        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true).putInt("pref_lmc_hybrid_defaults_rev",2)
+                .putString("pref_lmc_hybrid_dn_revert_max","2").putString("pref_lmc_hybrid_dn_coarse_stock","0.5")
+                .putString("pref_lmc_hybrid_dn_chroma_floor","1.5").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(9f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_dn_revert_max","")),0f);
+        assertEquals(0f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_dn_coarse_stock","")),0f);
+        assertEquals("1.5",prefs.getString("pref_lmc_hybrid_dn_chroma_floor",""));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {

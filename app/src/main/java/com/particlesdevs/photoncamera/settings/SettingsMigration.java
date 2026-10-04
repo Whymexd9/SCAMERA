@@ -152,11 +152,35 @@ public final class SettingsMigration {
         // Defaults revision 2 (4 October 2026): the Sabre detail of the ARK tone moved from 1 to 2 after the A/B against
         // ArkCam on the Oppo; a stored 1 is the old XML default written by the first round-5 build, not a user choice.
         Object rev = values.get(DEFAULTS_REV);
+        int revision = rev instanceof Integer ? (Integer) rev : 0;
         Object detail = values.get(LmcHybridKeys.PREFIX + "ark_detail_gain");
-        if (detail != null && (!(rev instanceof Integer) || (Integer) rev < 2)) {
+        if (detail != null && revision < 2) {
             if (isNumber(detail, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
             e.putInt(DEFAULTS_REV, 2);
             changed = true;
+        }
+        // Defaults revision 3 (4 October 2026): the hybrid sharpening is ArkCam's own (sharp_mode "ark", ArkLumaSharpen) and
+        // the noise reduction ArkCam's exact tables (no revert cap, no stock coarse luma, no chroma floor); stored values
+        // equal to the former XML defaults ("rt", 2, 0.5, 2.75) are those defaults, not user choices.
+        if (revision < 3) {
+            boolean touched = false;
+            Object sharpMode = values.get(LmcHybridKeys.PREFIX + "sharp_mode");
+            if (sharpMode != null) {
+                if ("rt".equals(sharpMode.toString().trim())) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "sharp_mode", "ark");
+                touched = true;
+            }
+            String[] keys = {"dn_revert_max", "dn_coarse_stock", "dn_chroma_floor"};
+            float[] former = {2f, 0.5f, 2.75f}, ark = {9f, 0f, 0f};
+            for (int i = 0; i < keys.length; i++) {
+                Object v = values.get(LmcHybridKeys.PREFIX + keys[i]);
+                if (v == null) continue;
+                if (isNumber(v, former[i])) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(ark[i], true) : (Object) ark[i]);
+                touched = true;
+            }
+            if (touched) {
+                e.putInt(DEFAULTS_REV, 3);
+                changed = true;
+            }
         }
         if (changed) e.commit();
         return changed;

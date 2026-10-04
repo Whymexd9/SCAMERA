@@ -103,10 +103,10 @@ public final class LmcDenoise extends Node {
         c.gid14Mult = clamp(PreferenceKeys.hybridValue("dn_luma_gid14_mult", 1f), 0f, 4f);
         c.sabreMult = clamp(PreferenceKeys.hybridValue("dn_sabre_luma_mult", 1f), 0f, 4f);
         c.chromaMult = clamp(PreferenceKeys.hybridValue("dn_chroma_mult", 1f), 0f, 4f);
-        c.chromaFloor = clamp(PreferenceKeys.hybridValue("dn_chroma_floor", 2.75f), 0f, 5f);
+        c.chromaFloor = clamp(PreferenceKeys.hybridValue("dn_chroma_floor", 0f), 0f, 5f);
         c.revertMult = clamp(PreferenceKeys.hybridValue("dn_revert_mult", 1f), 0f, 4f);
-        c.revertMax = clamp(PreferenceKeys.hybridValue("dn_revert_max", 2f), 0f, 9f);
-        c.coarseStock = clamp(PreferenceKeys.hybridValue("dn_coarse_stock", 0.5f), 0f, 1f);
+        c.revertMax = clamp(PreferenceKeys.hybridValue("dn_revert_max", 9f), 0f, 9f);
+        c.coarseStock = clamp(PreferenceKeys.hybridValue("dn_coarse_stock", 0f), 0f, 1f);
         return c;
     }
     private static float clamp(float v, float lo, float hi) { return Float.isNaN(v) ? lo : Math.max(lo, Math.min(hi, v)); }

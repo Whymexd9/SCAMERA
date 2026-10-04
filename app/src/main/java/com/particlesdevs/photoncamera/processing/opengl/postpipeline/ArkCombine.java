@@ -48,6 +48,11 @@ public final class ArkCombine extends Node {
                     BufferUtils.getFrom(new float[]{1f, 1f, 1f, 1f}), GL_LINEAR, GL_CLAMP_TO_EDGE);
             gainMap = fallback;
         }
+        // With ArkLumaSharpen the delta is ArkCam's own (cbrt S(Ya) - cbrt ref, x1); without it the Sabre luminance with
+        // the flat ark_detail_gain.
+        final boolean sharp = st.lumaS != null;
+        final float sharpMul = st.sharpMul;
+        final float detail = sharp ? ArkTone.value("sharp_gain", 1.0f) : ArkTone.value("detail_gain", 2.0f);
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -63,10 +68,10 @@ public final class ArkCombine extends Node {
                 colour = st.mid;
                 colourFactor = 2;
             }
-            float detail = ArkTone.value("detail_gain", 2.0f);
             if (detail != 0f) {
-                // Bounded reference of the detail delta (review_arktone F1): box mean of min(ae * Y, 1) on the arkLow
-                // grid. The unbounded delta of a light edge reached -0.7 in OKLab L and drew black rings around lamps.
+                // Bounded reference of the detail delta (review_arktone F1): box mean of min(m * Y, 1) on the arkLow
+                // grid (m = ae, or the domain of ArkLumaSharpen). The unbounded delta of a light edge reached -0.7 in
+                // OKLab L and drew black rings around lamps.
                 st.detailRef = new GLTexture(st.low.mSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null,
                         GL_NEAREST, GL_CLAMP_TO_EDGE);
                 glProg.setDefine("DETAIL_REF", 1);
@@ -74,7 +79,7 @@ public final class ArkCombine extends Node {
                 glProg.setTexture("InputBuffer", input);
                 ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
                 glProg.setVar("factorU", st.factor);
-                glProg.setVar("detailClipU", r.ae);
+                glProg.setVar("detailClipU", sharp ? st.sharpMul : r.ae);
                 glProg.drawBlocks(st.detailRef);
             }
             glProg.useAssetProgram("ark/combine", false);
@@ -85,6 +90,9 @@ public final class ArkCombine extends Node {
             glProg.setTexture("ArkFused", st.fused);
             glProg.setTexture("ArkDetailRef", st.detailRef != null ? st.detailRef : st.low);
             glProg.setVar("detailRefU", st.detailRef != null ? 1 : 0);
+            glProg.setTexture("ArkLumaS", sharp ? st.lumaS : st.low);
+            glProg.setVar("sharpU", sharp ? 1 : 0);
+            glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
             glProg.setVar("fU", st.factor);
             glProg.setVar("colourFU", colourFactor);
             glProg.setVar("aeU", r.ae);
@@ -123,8 +131,8 @@ public final class ArkCombine extends Node {
             if (fallback != null) fallback.close();
         }
         Log.i("NICE_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " grid=" + input.mSize.x + "x" + input.mSize.y
-                + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + ArkTone.value("detail_gain", 2.0f)
-                + " (bounded ref)"
+                + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
+                + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + " guard=" + guard + " ms=" + (System.currentTimeMillis() - started));
     }
 }

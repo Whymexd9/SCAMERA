@@ -30,7 +30,9 @@ public class LmcDenoiseTablesTest {
     }
 
     @Test public void safeguardsAndMultipliers() {
-        LmcDenoiseTables.Config c = new LmcDenoiseTables.Config();       // defaults: revert <= 2, coarse 0.5 stock, floor 2.75
+        LmcDenoiseTables.Config c = new LmcDenoiseTables.Config();       // defaults: ArkCam exactly, no safeguards
+        assertEquals(9f, c.revertMax, 0f); assertEquals(0f, c.coarseStock, 0f); assertEquals(0f, c.chromaFloor, 0f);
+        c.revertMax = 2f; c.coarseStock = 0.5f; c.chromaFloor = 2.75f;   // the optional safeguards
         float[][] l = LmcDenoiseTables.luma(c, 3f, null);
         assertEquals(2f, l[0][1], 0f);
         assertEquals(2f, l[1][1], 0f);
@@ -41,6 +43,7 @@ public class LmcDenoiseTablesTest {
         c.chromaMult = 0f;
         assertEquals(0f, LmcDenoiseTables.chroma(c, 25f, null)[0][0], 0f);  // the multiplier also scales the floor
         c = new LmcDenoiseTables.Config();
+        c.revertMax = 2f; c.coarseStock = 0.5f; c.chromaFloor = 2.75f;
         c.sabreMult = 0f;                                                 // only the GID14 tiers (SNR 10, 80) keep strength
         assertEquals(0f, LmcDenoiseTables.luma(c, 5f, null)[1][0], 0f);
         assertEquals(1f, LmcDenoiseTables.luma(c, 10f, null)[1][0], 1e-6f);

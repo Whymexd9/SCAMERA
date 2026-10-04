@@ -46,7 +46,7 @@ final class LmcDenoiseTables {
         float[] chromaSnr = CHROMA_SNR.clone();
         float[][] chromaStrength = copy(CHROMA_STRENGTH), chromaOutlier = copy(CHROMA_OUTLIER);
         float lumaMult = 1f, sabreMult = 1f, gid14Mult = 1f, chromaMult = 1f;
-        float chromaFloor = 2.75f, revertMult = 1f, revertMax = 2f, coarseStock = 0.5f;
+        float chromaFloor = 0f, revertMult = 1f, revertMax = 9f, coarseStock = 0f;   // ArkCam 2.85 exactly (no safeguards)
     }
 
     static float[][] copy(float[][] a) {

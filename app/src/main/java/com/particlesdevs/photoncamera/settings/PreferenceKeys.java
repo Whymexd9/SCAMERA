@@ -1199,16 +1199,17 @@ public class PreferenceKeys {
         return hybridSwitch("ark_tone", true);
     }
     /**
-     * Sharpening after the SCAM HDR / hybrid render: "rt" (RawTherapee with its own settings), "scam" (NiceSharpen) or
-     * "off". Hybrid: pref_lmc_hybrid_sharp_mode (nice_dev.txt "hybrid_sharp_mode 0|1|2"), default rt. SCAM HDR: NiceSharpen
-     * with its soft tone and sharp_mode > 0, else RawTherapee.
+     * Sharpening of the SCAM HDR / hybrid render: "ark" (hybrid with the ARK tone: ArkCam's own luma sharpening before the
+     * detail delta, ArkLumaSharpen; RawTherapee without the ARK tone), "rt" (RawTherapee with its own settings), "scam"
+     * (NiceSharpen) or "off". Hybrid: pref_lmc_hybrid_sharp_mode (nice_dev.txt "hybrid_sharp_mode 0|1|2|3" = rt, scam,
+     * off, ark), default ark. SCAM HDR: NiceSharpen with its soft tone and sharp_mode > 0, else RawTherapee.
      */
     public static String niceSharpenMode() {
         if (isHybridShot()) {
             Float dev = niceDevValue("hybrid_sharp_mode");
-            if (dev != null) return dev >= 1.5f ? "off" : dev >= 0.5f ? "scam" : "rt";
-            String v = hybridString("sharp_mode", "rt");
-            return "scam".equals(v) || "off".equals(v) ? v : "rt";
+            if (dev != null) return dev >= 2.5f ? "ark" : dev >= 1.5f ? "off" : dev >= 0.5f ? "scam" : "rt";
+            String v = hybridString("sharp_mode", "ark");
+            return "rt".equals(v) || "scam".equals(v) || "off".equals(v) ? v : "ark";
         }
         return isNiceSoftTone() && niceInternalValue("sharp_mode", 1f) > 0f ? "scam" : "rt";
     }

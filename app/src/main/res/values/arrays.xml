@@ -196,11 +196,13 @@
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_sharp_mode_entries">
-        <item>RawTherapee (по умолчанию)</item>
+        <item>ARK: как ArkCam (по умолчанию)</item>
+        <item>RawTherapee</item>
         <item>SCAM: без ореолов</item>
         <item>Выключено</item>
     </string-array>
     <string-array name="lmc_hybrid_sharp_mode_values">
+        <item>ark</item>
         <item>rt</item>
         <item>scam</item>
         <item>off</item>

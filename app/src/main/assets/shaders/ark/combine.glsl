@@ -16,6 +16,9 @@ precision highp sampler2D;
 //     min(ae * Y, 1), with the B-spline of its box mean (ArkDetailRef) as reference, and the delta is scaled by
 //     (L_base / cbrt(ref))^2 where the tone compresses (L_base below the cube-root reference). Without both the
 //     unbounded delta of a lamp edge (|delta| up to 0.7) put black trenches (8 bit 0..5) around every light.
+//     sharpU 1 (ArkLumaSharpen ran): the luminance is ArkCam's own sharpened guide S(Ya), Ya = min(m * Y, 1), as the
+//     kernel takes delta = cbrt(S(a3)) - cbrt(a5) [:1528-1577]; ArkDetailRef is then in the same domain m and the
+//     compression scaling compares against it in the ae domain (x cbrt(ae / m)).
 //  4. display: pure power 1/gamma, film toe below 0.15, optional IGN dither [:1805-1843].
 // Integer grid arithmetic everywhere (the output reaches 8192 px; float pixel coordinates lose precision on Adreno).
 #import interpolation
@@ -24,7 +27,8 @@ uniform sampler2D GainMap;          // lens shading gains
 uniform sampler2D ArkLow;           // arkLow (before bracket_dn): Y_low of the detail
 uniform sampler2D ArkColour;        // colour source (arkLow after bracket_dn, or arkMid on the 2x grid)
 uniform sampler2D ArkFused;         // fused display luma (.r), arkLow size
-uniform sampler2D ArkDetailRef;     // detailRefU 1: box mean of min(ae * Y709, 1) (.r), arkLow size (ark/low.glsl DETAIL_REF)
+uniform sampler2D ArkDetailRef;     // detailRefU 1: box mean of min(m * Y709, 1) (.r), arkLow size (ark/low.glsl DETAIL_REF)
+uniform sampler2D ArkLumaS;         // sharpU 1: S(Ya) of ArkLumaSharpen (.r), output grid
 uniform mat3 sensorToIntermediate;
 uniform mat3 intermediateToSRGB;
 uniform vec3 neutralPointU;         // unset -> 1
@@ -42,6 +46,8 @@ uniform float clarityU;             // delta * (1 + clarity)
 uniform float flatProtectU;         // flat-area protection of the delta (0 = off)
 uniform float detailGainU;          // ark_detail_gain; 0 (unset) = no detail
 uniform int detailRefU;             // 1: bounded, compression-scaled delta against ArkDetailRef; unset -> unbounded delta
+uniform int sharpU;                 // 1: the delta's luminance is ArkLumaS; unset -> the full-size merge
+uniform float sharpToneU;           // sharpU 1: ae / m (ArkLumaS domain -> ae domain); <= 0 -> 1
 uniform float filmToeU;             // film toe (0 = off)
 uniform vec4 agxAU;                 // slope, shoulder power, toe power, saturation; slope <= 0 -> 2.7, 1.35, 1.6, 1
 uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -> -8.5, 3.5, 0.3, 4
@@ -212,16 +218,18 @@ void main() {
     // === 3. detail of the full-size merge (delta), applied after the tone ===
     float delta = 0.0;
     float lRef = 0.0;
+    float sharpTone = sharpU == 1 && sharpToneU > 0.0 ? sharpToneU : 1.0;
     if (detailGainU != 0.0) {
-        float yFull = dot(sceneLinear(xy, size), LUMA);
+        float yS = sharpU == 1 ? max(texelFetch(ArkLumaS, xy, 0).r, 0.0) : 0.0;
+        float yFull = sharpU == 1 ? yS * sharpTone / ae : dot(sceneLinear(xy, size), LUMA);
         if (f == 1) {
             // kernel full-resolution mode: asymmetric clamp against dark trenches [:1538-1548]
             float lBase = cbrtp(max(dot(orig, LUMA) * ae, 0.000001));
             delta = clamp(cbrtp(max(yFull * ae, 0.000001)) - lBase, -min(0.035, lBase * 0.25), 0.050);
         } else if (bounded) {
-            // bounded like the kernel's a3: min(ae * Y, 1) against the B-spline of its box mean
+            // bounded like the kernel's a3: min(m * Y, 1) (or its sharpened S) against the B-spline of its box mean
             lRef = cbrtp(max(yRef, 0.000001));
-            delta = cbrtp(max(min(yFull * ae, 1.0), 0.000001)) - lRef;
+            delta = cbrtp(max(sharpU == 1 ? yS : min(yFull * ae, 1.0), 0.000001)) - lRef;
         } else {
             delta = cbrtp(max(yFull * ae, 0.000001)) - cbrtp(max(yLow * ae, 0.000001));
         }
@@ -289,7 +297,7 @@ void main() {
     if (lRef > 0.0) {
         // Where the tone compresses (Bento roll-off, fusion darkening, AgX shoulder: L_base below the cube-root
         // reference) the delta is scaled down with it; lifted shadows and mid-tones (ratio >= 1) keep the full delta.
-        float compression = min(1.0, post.x / lRef);
+        float compression = min(1.0, post.x / (lRef * (sharpTone != 1.0 ? cbrtp(sharpTone) : 1.0)));
         delta *= compression * compression;
     }
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);

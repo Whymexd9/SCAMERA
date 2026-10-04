@@ -667,9 +667,13 @@ public class PostPipeline extends GLBasePipeline {
                 && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {
             add(new RawTherapeeDenoise());
         }
-        // ARK tone: weight of the post-tone sharpening where the fusion lifted the shadows (ArkSharpenGuard), 0 = none.
-        final float arkGuard = arkTone && !"off".equals(PreferenceKeys.niceSharpenMode())
-                ? Math.max(0f, PreferenceKeys.hybridValue("ark_sharp_guard", 0.5f)) : 0f;
+        // ARK tone: sharpening "ark" = ArkCam's own (ArkLumaSharpen before the delta; RawTherapee after the tone only with
+        // ark_post_sharp), else rt | scam | off after the tone. Weight of the post-tone sharpening where the fusion lifted
+        // the shadows (ArkSharpenGuard), 0 = none.
+        final String hybridSharpen = PreferenceKeys.niceSharpenMode();
+        final boolean arkSharp = arkTone && "ark".equals(hybridSharpen);
+        final boolean arkPostSharp = arkTone && (arkSharp ? PreferenceKeys.hybridSwitch("ark_post_sharp", false) : !"off".equals(hybridSharpen));
+        final float arkGuard = arkPostSharp ? Math.max(0f, PreferenceKeys.hybridValue("ark_sharp_guard", 0.5f)) : 0f;
         if (mParameters.vivoHdrMode && arkTone) {
             // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX replace LinearExposure's gain,
             // NiceExposureFusion and VivoHdrTone/HeadroomRender (castTint, agxLocal, agxHiDesat, shadowLift, pre-tone
@@ -677,6 +681,7 @@ public class PostPipeline extends GLBasePipeline {
             if (captureDemosaic) add(new LinearExposure());
             add(new ArkStats());
             add(new ArkFusion());
+            if (arkSharp) add(new ArkLumaSharpen());
             add(new ArkCombine(arkGuard));
         } else if (mParameters.vivoHdrMode) {
             if (mParameters.vivoNiceRgb == null) add(new VivoHdrDenoise());
@@ -713,16 +718,19 @@ public class PostPipeline extends GLBasePipeline {
             add(new LocalLaplacian());
         }
         if (mParameters.vivoNiceRgb != null && arkTone && mParameters.vivoHdrMode) {
-            // Hybrid with the ARK tone: the sharpening of the hybrid (rt|scam|off, own settings) on the toned image,
-            // weakened in lifted shadows; texture only on request (ArkCam has no mid-frequency boost); LMC curves only
-            // for the user's tone/gamma presets.
-            final String sharpen = PreferenceKeys.niceSharpenMode();
+            // Hybrid with the ARK tone: ArkCam's sharpening ran before the delta (sharp mode "ark"); otherwise, or with
+            // ark_post_sharp, the sharpening of the hybrid (rt|scam, own settings) on the toned image, weakened in
+            // lifted shadows; texture only on request (ArkCam has no mid-frequency boost); LMC curves only for the
+            // user's tone/gamma presets.
             final boolean texture = PreferenceKeys.hybridSwitch("ark_texture", false);
             final boolean curves = (!"off".equals(PreferenceKeys.getLmcToneCurve()) && PreferenceKeys.getLmcToneCurveStrength() > 0f)
                     || (!"off".equals(PreferenceKeys.getLmcGammaCurve()) && PreferenceKeys.getLmcGammaCurveStrength() > 0f);
-            Log.i("NICE_PIPELINE", "ARK tail: sharpen=" + sharpen + " guard=" + arkGuard + " texture=" + texture + " lmcCurves=" + curves);
-            if ("scam".equals(sharpen)) add(new NiceSharpen());
-            else if (!"off".equals(sharpen)) add(new RTSharpening());
+            Log.i("NICE_PIPELINE", "ARK tail: sharpen=" + hybridSharpen + (arkSharp ? " (ArkLumaSharpen, post=" + arkPostSharp + ")" : "")
+                    + " guard=" + arkGuard + " texture=" + texture + " lmcCurves=" + curves);
+            if (arkPostSharp) {
+                if ("scam".equals(hybridSharpen)) add(new NiceSharpen());
+                else add(new RTSharpening());
+            }
             if (arkGuard > 0f) add(new ArkSharpenGuard());
             if (texture) add(new NiceLocalContrast());
             if (curves) add(new LmcCurves());
@@ -734,7 +742,8 @@ public class PostPipeline extends GLBasePipeline {
             Log.i("NICE_PIPELINE", "legacyPost=disabled except=RawTherapee_sharpen; tone=SCAMERA_fallback TCE=not_connected");
             add(new LmcCurves());
             add(new NiceLocalContrast());
-            // LMC hybrid: its own choice (pref_lmc_hybrid_sharp_mode rt|scam|off); SCAM HDR: NiceSharpen with its soft tone.
+            // LMC hybrid: its own choice (pref_lmc_hybrid_sharp_mode ark|rt|scam|off; "ark" needs the ARK tone and means
+            // RawTherapee here); SCAM HDR: NiceSharpen with its soft tone.
             final String sharpen = PreferenceKeys.niceSharpenMode();
             if ("scam".equals(sharpen)) add(new NiceSharpen());
             else if (!"off".equals(sharpen)) add(new RTSharpening());
