@@ -87,6 +87,23 @@ public class HybridSettingsTest {
         }
     }
 
+    /** Every nested screen opens as its own fragment: a dependency on a key of another screen crashes on opening it. */
+    @Test public void dependenciesStayInsideTheirScreen() {
+        PreferenceScreen root=inflate();
+        List<Preference> all=new ArrayList<>();collect(root,all);
+        int checked=0;
+        for(Preference p:all){
+            String dependency=p.getDependency();
+            if(dependency==null)continue;
+            PreferenceGroup screen=p.getParent();
+            while(screen!=null&&!(screen instanceof PreferenceScreen))screen=screen.getParent();
+            assertNotNull(p.getKey(),screen);
+            assertNotNull(p.getKey()+" depends on "+dependency+" outside its screen "+screen.getKey(),screen.findPreference(dependency));
+            checked++;
+        }
+        assertTrue(checked>10);
+    }
+
     @Test public void listSummariesFormatWithTheirEntries() {
         PreferenceScreen hybrid=inflate().findPreference("lmc_hybrid_screen");
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);
