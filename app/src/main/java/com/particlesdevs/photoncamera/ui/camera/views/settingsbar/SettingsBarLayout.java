@@ -58,13 +58,13 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.Vibration;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingType;
 import com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel;
 import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarButtonModel;
 import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarEntryModel;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -144,8 +144,8 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     private final SparseArray<QuickButton> quickButtons = new SparseArray<>();
     /** Entries hidden by {@link #setChildVisibility}: id to GONE/INVISIBLE; kept across rebuilds. */
     private final SparseIntArray hiddenEntries = new SparseIntArray();
-    /** Pinned parameters (SettingType names), oldest first. Kept in memory only for now. */
-    private final List<String> quickTypes = new ArrayList<>(Arrays.asList(DEFAULT_QUICK_BUTTONS.split(",")));
+    /** Pinned parameters (SettingType names), oldest first; stored in ui_sheet_quick (PreferenceKeys.getSheetQuick). */
+    private final List<String> quickTypes = loadQuickTypes();
     private int openGroup = SettingsBarEntryModel.GROUP_SHOOT;
     /** 0 = PEEK look (rows shown, list below them), 1 = FULL look (list only). */
     private float fullness;
@@ -879,7 +879,28 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         entry.select(models[next]);
     }
 
-    /** Pin: adds the parameter to the quick buttons or removes it; a fifth pin drops the oldest. */
+    /**
+     * Stored pins: SettingType names that still exist, without repeats, at most MAX_QUICK_BUTTONS (the newest kept).
+     * Nothing stored yet: the default buttons. An empty string is a valid choice (every pin removed).
+     */
+    private static List<String> loadQuickTypes() {
+        String stored = PreferenceKeys.getSheetQuick();
+        List<String> out = new ArrayList<>();
+        for (String name : (stored != null ? stored : DEFAULT_QUICK_BUTTONS).split(",")) {
+            String type = name.trim();
+            if (type.isEmpty() || out.contains(type)) continue;
+            try {
+                SettingType.valueOf(type);
+            } catch (IllegalArgumentException unknown) {
+                continue;
+            }
+            out.add(type);
+        }
+        while (out.size() > MAX_QUICK_BUTTONS) out.remove(0);
+        return out;
+    }
+
+    /** Pin: adds the parameter to the quick buttons or removes it; a fifth pin drops the oldest. Stored at once. */
     private void togglePin(SettingsBarEntryModel entryModel) {
         String type = typeName(entryModel);
         if (type == null) return;
@@ -887,6 +908,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
             quickTypes.add(type);
             while (quickTypes.size() > MAX_QUICK_BUTTONS) quickTypes.remove(0);
         }
+        PreferenceKeys.setSheetQuick(String.join(",", quickTypes));
         for (SettingsBarEntryModel entry : entries) {
             SettingsBarEntryView entryView = entryViews.get(entry.getId());
             if (entryView != null) entryView.setPinned(quickTypes.contains(typeName(entry)));
