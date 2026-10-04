@@ -113,6 +113,12 @@ struct HybridTuning {
                                  // ultrashort frame is valid (a hand moving through a lamp: one frame shows it, the other does not);
                                  // 2 = also an UNCLIPPED base cell that the gained ultrashort frame shows much brighter is motion (the
                                  // hand left: the base holds real data there). 0 = the first frame only, the second unchecked
+    float bentoMotionMax=4.f;    // Bento is refused (in every mode, "always" included) when more than this percentage of the mask cells
+                                 // shows motion in the best ultrashort frame (the LMC intensity check, with bentoValidate 2 also an
+                                 // unclipped base cell the ultrashort frame shows much brighter): a hand or a screen that changed between
+                                 // the base and the ultrashort frames would come out as noisy fragments of the moving object. 100 = never.
+                                 // Measured (PHY110, 10 bursts): hand in front of a laptop screen at night 8.1 %, static scenes
+                                 // 0..0.13 %, handheld 2x daylight with water 2.2 %.
     int bentoFrames=2;           // ultrashort frames merged inside the mask (the app exposes 1 or 2 at the same exposure): the second
                                  // one halves the x8..16 noise of the replacement and, with the hand shake between them, fills the
                                  // R/B lattice gaps of a single Bayer frame. Each gets bentoUsWeight / count (the mask transition stays).
@@ -230,7 +236,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("kernelFloor",&t.kernelFloor)||set("chromaDiff",&t.chromaDiff)||set("chromaDiffClamp",nullptr,&t.chromaDiffClamp)||set("rawTensor",&t.rawTensor)||set("rawNoise",&t.rawNoise)||set("bento",nullptr,&t.bento)
             ||set("bentoHighlight",&t.bentoHighlight)||set("bentoDilate",nullptr,&t.bentoDilate)||set("bentoSmooth",&t.bentoSmooth)
             ||set("grid",nullptr,&t.grid)||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
-            ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)
+            ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
@@ -1815,7 +1821,7 @@ inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,flo
     return p;
 }
 
-struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0;std::vector<float> mask;
+struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0,maskCells=0;std::vector<float> mask;
     std::vector<float> smooth,valid; /* the mask before the LMC check, and the per-cell (1 - error) factor of the checked frame */ };
 
 // Highlight mask of the base (per 2x2 cell): clipped -> dilate r -> gaussian smooth; checked against the
@@ -1944,7 +1950,7 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
         usClippedInMask+=lu;inMask+=lm;invalidCells+=li;
     });
     res.usClippedRatio=inMask>0?double(usClippedInMask)/double(inMask):0.0;
-    res.invalidCells=invalidCells;
+    res.invalidCells=invalidCells;res.maskCells=inMask;
     // largest connected component (LMC HasLargeHoleNeedingInpainting: cv::connectedComponentsWithStats, 8-connected)
     auto largestComponent=[&](const std::vector<uint8_t>& on,bool eight){
         std::vector<int> stack;int largest=0;
@@ -2416,6 +2422,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             Burst one=b;one.raw[1]=input.frames[us].raw;one.exposure[1]=input.frames[us].exposure;
             bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune);
         }
+        std::vector<long> usInvalid{bento.invalidCells}; // per ultrashort frame (merge order of usFrames), for the motion share
         auto frameLine=[&](int f,const BentoResult& r){
             report("HYBRID BENTO frame="+std::to_string(f)+" invalid="+std::to_string(r.invalidCells)+" hole="+std::to_string(r.inpaintHole)
                 +" largestHole="+std::to_string(r.largestHole)+" usClipped="+std::to_string(r.usClippedRatio));
@@ -2431,7 +2438,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
                 HybridTuning t2=tune;t2.bento=2;
                 BentoResult r=bentoMask(one,1,H[f],input.frames[f].exposure,t2);
-                frameLine(f,r);
+                frameLine(f,r);usInvalid.push_back(r.invalidCells);
                 valids.push_back(r.valid);line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
             }
             long onlyBase=0,anyInvalid=0;
@@ -2443,7 +2450,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             bentoValids=std::move(valids);
             report(line+" | cells invalid in some frame="+std::to_string(anyInvalid)+" in every frame (base stays)="+std::to_string(onlyBase));
         }
-        report("HYBRID BENTO: "+std::string(bento.active?"applied":"not applied")+" ("+bento.reason+") clipped="+std::to_string(bento.clippedFraction)
+        // Motion in the mask: share of its cells the LMC check marks invalid in the BEST ultrashort frame (one frame: that frame).
+        double motionShare=0;
+        if(bento.maskCells>0){
+            long fewest=bento.invalidCells;
+            for(size_t k=1;k<usFrames.size()&&tune.bentoValidate>=1;++k)fewest=std::min(fewest,usInvalid.size()>k?usInvalid[k]:fewest);
+            motionShare=100.0*double(fewest)/double(bento.maskCells);
+        }
+        if(bento.active&&tune.bentoMotionMax<100.f&&motionShare>tune.bentoMotionMax){
+            bento.active=false;
+            bento.reason="motion: "+std::to_string(motionShare)+" % of the mask > "+std::to_string(tune.bentoMotionMax)+" %"+(tune.bento==2?" (refused also in mode always)":"");
+        }
+        report("HYBRID BENTO: "+std::string(bento.active?"applied":"not applied")+" ("+bento.reason+") motion="+std::to_string(motionShare)+"% of "+std::to_string(bento.maskCells)+" cells clipped="+std::to_string(bento.clippedFraction)
             +" usClippedRatio="+std::to_string(bento.usClippedRatio)+" largestHole="+std::to_string(bento.largestHole)
             +" inpaintHole="+std::to_string(bento.inpaintHole)+" invalid="+std::to_string(bento.invalidCells)
             +" checks="+(tune.bentoLmc?"lmc":"round4")+" factor="+std::to_string(1.f/input.frames[us].exposure)
