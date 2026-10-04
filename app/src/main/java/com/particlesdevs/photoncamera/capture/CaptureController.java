@@ -3452,6 +3452,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             normal.measuredIso,normal.measuredIso,normal.measuredIso,normal.measuredIso);
                     IsoExpoSelector.fullpairs.add(pair);
                 }
+                // Focus and stabilisation as the preview that delivered the N frames (ArkCam / LMC 9.6: continuous_picture, no
+                // trigger). The still template above switches to AF_MODE_AUTO with a CANCEL trigger, which moved the lens on
+                // PHY110: every post-shutter frame came out ~26 % softer than the N frames at the same shutter, so the Shasta
+                // gate dropped all bracketed frames and the ultrashort (Bento) highlights were soft.
+                for(CaptureRequest.Key<Integer> key:java.util.Arrays.asList(CaptureRequest.CONTROL_AF_MODE,
+                        CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
+                        CaptureRequest.CONTROL_CAPTURE_INTENT,CaptureRequest.NOISE_REDUCTION_MODE,CaptureRequest.EDGE_MODE,
+                        CaptureRequest.HOT_PIXEL_MODE)) {
+                    Integer v=mPreviewRequestBuilder.get(key);
+                    if(v!=null) captureBuilder.set(key,v);
+                }
+                captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                 long[] times=new long[plan.requests.size()];
                 for(int i=0;i<plan.requests.size();i++) {
                     HybridPlan.Request r=plan.requests.get(i);
