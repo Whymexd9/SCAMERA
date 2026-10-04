@@ -160,6 +160,7 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_agx_sat": return new double[]{0,2,0};
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
+            case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};
             case "pref_vivo_hdr_highlight_pct": return new double[]{90,99.99,0};
             case "pref_vivo_hdr_adaptive_white": return new double[]{0,1,1};
             case "pref_vivo_hdr_highlight_neutral": return new double[]{0,0.95,0};

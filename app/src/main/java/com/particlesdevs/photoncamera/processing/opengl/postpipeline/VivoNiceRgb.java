@@ -292,9 +292,22 @@ public final class VivoNiceRgb extends Node {
             glProg.setVar("inverseSize",1f/size.x,1f/size.y);
             // Keep the ping-pong cursor in sync for every following postprocessing pass.
             WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;p.regenerationSense=1;
+            // Clip band: the dashed orange/blue line where a slanted clip edge alternates between clipped-mean and
+            // unclipped-sample colours (assets/shaders/vivohdr/clipband.glsl). pref_lmc_hybrid_highlight_band 0..1.
+            final float band=perChannel&&flagsTex!=null?Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_band",1f))):0f;
+            if(band>0f){
+                GLTexture banded=p.getMain();
+                glProg.useAssetProgram("vivohdr/clipband",false);
+                glProg.setTexture("InputBuffer",WorkingTexture);
+                glProg.setTexture("ClipFlags",flagsTex);
+                glProg.setVar("radiusU",3*s);glProg.setVar("zoneU",2*s);
+                glProg.setVar("strengthU",band);
+                glProg.drawBlocks(banded);glProg.closed=true;
+                WorkingTexture=banded;
+            }
             if(perChannel)com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","highlight recovery per channel: chroma="
                     +(chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral")
-                    +" limit="+chromaLimit+" gpu ms="+(System.currentTimeMillis()-gpuStart));
+                    +" limit="+chromaLimit+" band="+band+" gpu ms="+(System.currentTimeMillis()-gpuStart));
         }finally{
             input.close();
             if(flagsTex!=null)flagsTex.close();
