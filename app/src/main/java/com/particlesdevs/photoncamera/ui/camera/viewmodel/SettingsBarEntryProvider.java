@@ -109,8 +109,9 @@ public class SettingsBarEntryProvider extends ViewModel {
      * Defaults are only read: default_prefs.xml, PreferenceKeys.setDefaults and the fallbacks of
      * PreferenceKeys.hybridOutputMode() ("sensor") / hybridDownsampler() ("lanczos"), both index 0.
      * Neutral short labels ("24", "R+J", "4x4") are plain strings like the chip texts.
-     * ic_timer3s, ic_exposure, ic_photo_library and ic_tune_black_24dp stand in as parameter icons
-     * until the sheet's own vectors exist.
+     * Parameters without a drawable of their own use the sheet's vectors (ic_sheet_*, mock docs/shade-sheet.html);
+     * grid values show their own pattern (ic_grid_3x3/4x4/golden/diagonal, ic_sheet_grid_off). ic_grid_on/off stay for
+     * the top bar's ic_grid_toggle.
      */
     private static void describe(SettingsBarEntryModel entry, int group, @DrawableRes int icon, int defaultValue) {
         entry.setGroup(group);
@@ -129,7 +130,7 @@ public class SettingsBarEntryProvider extends ViewModel {
     }
 
     private void createHybridOutputEntry() {
-        describe(hybridOutputEntry, SettingsBarEntryModel.GROUP_FORMAT, R.drawable.ic_photo_library, 0);
+        describe(hybridOutputEntry, SettingsBarEntryModel.GROUP_FORMAT, R.drawable.ic_sheet_resolution, 0);
         hybridOutputEntry.addSettingsBarButtonModels(
                 SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_sensor_button, "1\u00d7", R.string.hybrid_output_sensor, 0, hybridOutputEntry),
                 SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_output_12_button, "12", R.string.hybrid_output_12, 1, hybridOutputEntry),
@@ -140,7 +141,7 @@ public class SettingsBarEntryProvider extends ViewModel {
     }
 
     private void createHybridDownsamplerEntry() {
-        describe(hybridDownsamplerEntry, SettingsBarEntryModel.GROUP_FORMAT, R.drawable.ic_tune_black_24dp, 0);
+        describe(hybridDownsamplerEntry, SettingsBarEntryModel.GROUP_FORMAT, R.drawable.ic_sheet_downsampler, 0);
         hybridDownsamplerEntry.addSettingsBarButtonModels(
                 SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_ds_lanczos_button, "Lanc", R.string.hybrid_ds_lanczos, 0, hybridDownsamplerEntry),
                 SettingsBarButtonModel.newTextButtonModel(R.id.hybrid_ds_bicubic_button, "Bicub", R.string.hybrid_ds_bicubic, 1, hybridDownsamplerEntry),
@@ -207,7 +208,7 @@ public class SettingsBarEntryProvider extends ViewModel {
 
     private void createBracketingEntry() {
         // No per-value icons: every value shows the parameter icon.
-        final int icon = R.drawable.ic_exposure;
+        final int icon = R.drawable.ic_sheet_bracketing;
         describe(bracketingEntry, SettingsBarEntryModel.GROUP_SHOOT, icon, 0);
         bracketingEntry.addSettingsBarButtonModels(
                 SettingsBarButtonModel.newButtonModel(R.id.bracketing_off_button, icon, R.string.bracketing_off, 0, bracketingEntry).withShortLabel(R.string.sheet_short_off),
@@ -235,7 +236,7 @@ public class SettingsBarEntryProvider extends ViewModel {
     }
 
     private void createTimerEntry() {
-        describe(timerEntry, SettingsBarEntryModel.GROUP_SHOOT, R.drawable.ic_timer3s, 0);
+        describe(timerEntry, SettingsBarEntryModel.GROUP_SHOOT, R.drawable.ic_sheet_timer, 0);
         timerEntry.addSettingsBarButtonModels(
                 SettingsBarButtonModel.newButtonModel(R.id.timer_off_button, R.drawable.ic_timeroff, R.string.off, 0, timerEntry).withShortLabel(R.string.sheet_short_off),
                 SettingsBarButtonModel.newButtonModel(R.id.timer3s_button, R.drawable.ic_timer3s, R.string.t_3s, 1, timerEntry).withShortLabel(R.string.sheet_short_3s),
@@ -246,17 +247,17 @@ public class SettingsBarEntryProvider extends ViewModel {
     private void createGridEntry() {
         describe(gridEntry, SettingsBarEntryModel.GROUP_VIEW, R.drawable.ic_grid_on, defaultIndex(R.string.pref_show_grid_default));
         gridEntry.addSettingsBarButtonModels(
-                SettingsBarButtonModel.newButtonModel(R.id.grid_off_button, R.drawable.ic_grid_off, R.string.off, 0, gridEntry).withShortLabel(R.string.sheet_short_off),
-                SettingsBarButtonModel.newButtonModel(R.id.grid_33_button, R.drawable.ic_grid_on, R.string.three_x3, 1, gridEntry).withShortLabel("3\u00d73"),
-                SettingsBarButtonModel.newButtonModel(R.id.grid_44_button, R.drawable.ic_grid_on, R.string.four_x4, 2, gridEntry).withShortLabel("4\u00d74"),
-                SettingsBarButtonModel.newButtonModel(R.id.grid_gr_button, R.drawable.ic_grid_on, R.string.golden_ratio, 3, gridEntry).withShortLabel("\u03a6"),
-                SettingsBarButtonModel.newButtonModel(R.id.grid_dt_button, R.drawable.ic_grid_on, R.string.diag_triangle, 4, gridEntry).withShortLabel(R.string.sheet_short_diagonal)
+                SettingsBarButtonModel.newButtonModel(R.id.grid_off_button, R.drawable.ic_sheet_grid_off, R.string.off, 0, gridEntry).withShortLabel(R.string.sheet_short_off),
+                SettingsBarButtonModel.newButtonModel(R.id.grid_33_button, R.drawable.ic_grid_3x3, R.string.three_x3, 1, gridEntry).withShortLabel("3\u00d73"),
+                SettingsBarButtonModel.newButtonModel(R.id.grid_44_button, R.drawable.ic_grid_4x4, R.string.four_x4, 2, gridEntry).withShortLabel("4\u00d74"),
+                SettingsBarButtonModel.newButtonModel(R.id.grid_gr_button, R.drawable.ic_grid_golden, R.string.golden_ratio, 3, gridEntry).withShortLabel("\u03a6"),
+                SettingsBarButtonModel.newButtonModel(R.id.grid_dt_button, R.drawable.ic_grid_diagonal, R.string.diag_triangle, 4, gridEntry).withShortLabel(R.string.sheet_short_diagonal)
         );
     }
 
   private void createAeMeteringStdEntry() {
         // No per-value icons: every value shows the parameter icon. Value -1 (the default) is "Auto".
-        final int icon = R.drawable.ic_exposure;
+        final int icon = R.drawable.ic_sheet_metering;
         describe(aeMeteringStdEntry, SettingsBarEntryModel.GROUP_SHOOT, icon, -1);
         aeMeteringStdEntry.addSettingsBarButtonModels(
                 SettingsBarButtonModel.newButtonModel(R.id.ae_metering_std_off_button, icon, R.string.ae_metering_off, -1, aeMeteringStdEntry).withShortLabel(R.string.sheet_short_auto),
