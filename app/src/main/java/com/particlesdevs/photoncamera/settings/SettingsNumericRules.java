@@ -79,6 +79,8 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_highlight_chroma": return new double[]{0.05,1,0};
             // Worker round 5 (hybrid_tuning.txt): Sabre 6.1 kernel 0/1/2 (auto), its auto threshold, outlier sites, Bento checks.
             case "pref_lmc_hybrid_sabre61": return new double[]{0,2,1};
+            case "pref_lmc_hybrid_local_align": return new double[]{0,2,1};
+            case "pref_lmc_hybrid_s61_min_motion": return new double[]{0,20,0};
             case "pref_lmc_hybrid_s61_max_key": case "pref_lmc_hybrid_hot_max_key": return new double[]{5,100,0};
             case "pref_lmc_hybrid_hot_sigma": case "pref_lmc_hybrid_hot_base_sigma": return new double[]{0,12,0};
             // LMC hybrid ARK tone (ArkCam 1.23 photo tone; defaults ArkCam 2.85 X8U, tone_port.md section 3). The config's
