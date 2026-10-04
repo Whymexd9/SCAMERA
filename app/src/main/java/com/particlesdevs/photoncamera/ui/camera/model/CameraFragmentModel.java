@@ -11,10 +11,17 @@ import com.particlesdevs.photoncamera.BR;
  * Class that holds the ui state, for now the orientation
  */
 public class CameraFragmentModel extends BaseObservable {
+    /** Settings sheet below the edge; only its handle is on screen. */
+    public static final int SHEET_HIDDEN = 0;
+    /** Settings sheet shows the handle, the quick buttons and the group cells. */
+    public static final int SHEET_PEEK = 1;
+    /** Settings sheet shows the full settings list. */
+    public static final int SHEET_FULL = 2;
+
     private int orientation;
     private int duration;
     private Bitmap bitmap;
-    private boolean settingsBarVisibility;
+    private int sheetLevel = SHEET_HIDDEN;
     private float screenAspectRatio = 9f / 16;
     private String dummyAspectRatio = "16:9";
 
@@ -60,14 +67,21 @@ public class CameraFragmentModel extends BaseObservable {
     public void setDuration(int duration) {
         this.duration = duration;
     }
+    /** Settings sheet level: {@link #SHEET_HIDDEN}, {@link #SHEET_PEEK} or {@link #SHEET_FULL}. */
     @Bindable
-    public boolean isSettingsBarVisibility() {
-        return settingsBarVisibility;
+    public int getSheetLevel() {
+        return sheetLevel;
     }
 
-    public void setSettingsBarVisibility(boolean settingsBarVisibility) {
-        this.settingsBarVisibility = settingsBarVisibility;
-        notifyChange();
+    /**
+     * Sets the settings sheet level, clamped to HIDDEN..FULL. Idempotent, and notifies only the
+     * bindings of this property, so the sheet is not asked to move again for the same level.
+     */
+    public void setSheetLevel(int sheetLevel) {
+        sheetLevel = Math.max(SHEET_HIDDEN, Math.min(SHEET_FULL, sheetLevel));
+        if (this.sheetLevel == sheetLevel) return;
+        this.sheetLevel = sheetLevel;
+        notifyPropertyChanged(BR.sheetLevel);
     }
     
     @Bindable

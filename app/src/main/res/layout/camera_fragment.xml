@@ -4,6 +4,7 @@
         xmlns:tools="http://schemas.android.com/tools">
     <data>
         <import type="android.view.View"/>
+        <import type="com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel"/>
         <variable
                 name="uimodel"
                 type="com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel" />
@@ -80,7 +81,7 @@
                     setAuxButtonModel="@{auxmodel}"
                     setActiveId="@{auxmodel.currentCameraId}"
                     bindViewGroupChildrenRotate="@{uimodel}"
-                    hideAuxButtons="@{uimodel.settingsBarVisibility}"
+                    hideAuxButtons="@{uimodel.sheetLevel != CameraFragmentModel.SHEET_HIDDEN}"
                     android:layout_marginBottom="6dp"
                     android:elevation="4dp" />
 
@@ -89,7 +90,7 @@
             <include
                     android:id="@+id/manual_mode"
                     layout="@layout/manual_palette"
-                    android:visibility="@{uimodel.settingsBarVisibility ? View.INVISIBLE : View.VISIBLE}"
+                    android:visibility="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN ? View.VISIBLE : View.INVISIBLE}"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     app:layout_constraintBottom_toTopOf="@+id/aux_buttons_container"
@@ -107,7 +108,7 @@
                 android:layout_width="44dp" android:layout_height="44dp"
                 android:layout_marginStart="20dp" android:layout_marginBottom="8dp"
                 android:elevation="5dp"
-                android:visibility="@{uimodel.settingsBarVisibility ? View.INVISIBLE : View.VISIBLE}"
+                android:visibility="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN ? View.VISIBLE : View.INVISIBLE}"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintBottom_toTopOf="@id/manual_mode" />
 
@@ -162,7 +163,7 @@
                         app:behavior_hideable="true"
                         app:behavior_peekHeight="120dp"
                         app:gestureInsetBottomIgnored="true"
-                        app:sheetLevel="@{uimodel.settingsBarVisibility ? 1 : 0}" />
+                        app:sheetLevel="@{uimodel.sheetLevel}" />
 
                 <!-- Handle shown only while the sheet is HIDDEN (the sheet itself is below the edge then) -->
                 <ImageView
@@ -186,8 +187,6 @@
                 app:adjustTopBar="@{uimodel.screenAspectRatio}"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                android:visibility="@{uimodel.settingsBarVisibility ? View.INVISIBLE : View.VISIBLE}"
-                tools:visibility="visible"
                 app:layout_constraintTop_toTopOf="parent" />
 
         <TextView

@@ -43,7 +43,7 @@ public class CameraFragmentViewModel extends AndroidViewModel {
 
     public void onResume() {
         mCustomOrientationEventListener.enable();
-        cameraFragmentModel.setSettingsBarVisibility(false);
+        cameraFragmentModel.setSheetLevel(CameraFragmentModel.SHEET_HIDDEN);
     }
 
     public void onPause() {
@@ -118,12 +118,38 @@ public class CameraFragmentViewModel extends AndroidViewModel {
         cameraFragmentModel.setScreenAspectRatio(aspectRatio);
     }
 
-    public boolean isSettingsBarVisible() {
-        return cameraFragmentModel.isSettingsBarVisibility();
+    /** Settings sheet level, one of {@link CameraFragmentModel#SHEET_HIDDEN SHEET_*}. */
+    public int getSheetLevel() {
+        return cameraFragmentModel.getSheetLevel();
     }
 
+    public void setSheetLevel(int level) {
+        cameraFragmentModel.setSheetLevel(level);
+    }
+
+    /** One level up: HIDDEN -> PEEK -> FULL; stays at FULL. */
+    public void sheetLevelUp() {
+        setSheetLevel(Math.min(CameraFragmentModel.SHEET_FULL, getSheetLevel() + 1));
+    }
+
+    /** One level down: FULL -> PEEK -> HIDDEN; stays at HIDDEN. */
+    public void sheetLevelDown() {
+        setSheetLevel(Math.max(CameraFragmentModel.SHEET_HIDDEN, getSheetLevel() - 1));
+    }
+
+    // TODO(sheet step 3): remove these two once Swipe and CameraFragment use the levels.
+    /** Temporary: true while the sheet is not HIDDEN. */
+    public boolean isSettingsBarVisible() {
+        return getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN;
+    }
+
+    /** Temporary: false hides the sheet, true opens PEEK from HIDDEN and leaves PEEK/FULL as they are. */
     public void setSettingsBarVisible(boolean visible) {
-        cameraFragmentModel.setSettingsBarVisibility(visible);
+        if (!visible) {
+            setSheetLevel(CameraFragmentModel.SHEET_HIDDEN);
+        } else if (!isSettingsBarVisible()) {
+            setSheetLevel(CameraFragmentModel.SHEET_PEEK);
+        }
     }
 
     @Override

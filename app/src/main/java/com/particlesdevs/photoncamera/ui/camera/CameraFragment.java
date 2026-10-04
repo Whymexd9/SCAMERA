@@ -261,7 +261,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      * {@link CustomBinding}:
      * <ul>
      * <li>{@code uimodel.dummyAspectRatio} -&gt; {@code dummy_reference_view} aspect ratio</li>
-     * <li>{@code uimodel.settingsBarVisibility == false} -&gt; settings sheet HIDDEN</li>
+     * <li>{@code uimodel.sheetLevel == SHEET_HIDDEN} -&gt; settings sheet HIDDEN</li>
      * <li>{@code uimodel.screenAspectRatio} -&gt; topbar notch margin and camera container anchor</li>
      * </ul>
      * The layout editor preview never runs fragments, viewmodels or data binding,
@@ -283,7 +283,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             params.dimensionRatio = "3:4";
             viewfinder.setLayoutParams(params);
         }
-        // settingsBarVisibility defaults to false -> the settings sheet is HIDDEN. Without data
+        // sheetLevel defaults to SHEET_HIDDEN -> the settings sheet is HIDDEN. Without data
         // binding the editor shows the behavior's initial PEEK, so hide the sheet here.
         View settingsBar = rootLayout.findViewById(R.id.settings_bar);
         if (settingsBar != null) {
@@ -370,12 +370,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         settingsBarEntryProvider.addObserver(mCameraUIEventsListener);
         SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
         sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle);
-        // A level reached by a finger (or settled after a request) goes back to the model.
-        sheet.setOnSheetLevelListener(level -> {
-            boolean visible = level != SettingsBarLayout.LEVEL_HIDDEN;
-            if (cameraFragmentViewModel.isSettingsBarVisible() != visible)
-                cameraFragmentViewModel.setSettingsBarVisible(visible);
-        });
+        // A level reached by a finger (or settled after a request) goes back to the model as is,
+        // so a later rebind (invalidateAll on a camera restart or mode switch, notifyChange on
+        // rotation or a new thumbnail) keeps the sheet there.
+        // The model setter is idempotent, so a level the model asked for is not sent again.
+        sheet.setOnSheetLevelListener(cameraFragmentViewModel::setSheetLevel);
         // FULL is at most 66% of the viewfinder height.
         cameraFragmentBinding.layoutViewfinder.getRoot().addOnLayoutChangeListener(
                 (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->

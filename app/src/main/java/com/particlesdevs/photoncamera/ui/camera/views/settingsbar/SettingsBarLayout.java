@@ -42,6 +42,7 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.Vibration;
+import com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel;
 import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarButtonModel;
 import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarEntryModel;
 import com.particlesdevs.photoncamera.ui.settings.SettingsActivity;
@@ -54,9 +55,10 @@ import com.particlesdevs.photoncamera.ui.settings.SettingsActivity;
  * The sheet itself stays VISIBLE; the behavior moves it below the edge when hidden.
  */
 public class SettingsBarLayout extends RelativeLayout implements SettingsBarListener {
-    public static final int LEVEL_HIDDEN = 0;
-    public static final int LEVEL_PEEK = 1;
-    public static final int LEVEL_FULL = 2;
+    // Same values as the model, which app:sheetLevel binds straight to setSheetLevel(int).
+    public static final int LEVEL_HIDDEN = CameraFragmentModel.SHEET_HIDDEN;
+    public static final int LEVEL_PEEK = CameraFragmentModel.SHEET_PEEK;
+    public static final int LEVEL_FULL = CameraFragmentModel.SHEET_FULL;
 
     /** Receives the level the sheet has settled at, whoever moved it (finger or code). */
     public interface OnSheetLevelListener {
@@ -70,6 +72,8 @@ public class SettingsBarLayout extends RelativeLayout implements SettingsBarList
     private int sheetLevel = -1;
     /** Level requested before the behavior was reachable. */
     private int pendingLevel = -1;
+    /** Last level passed to {@link #setSheetLevel(int)}; -1 before the first request. */
+    private int requestedLevel = -1;
     private int maxSheetHeight;
     private OnSheetLevelListener levelListener;
     private View hiddenHandle;
@@ -180,10 +184,18 @@ public class SettingsBarLayout extends RelativeLayout implements SettingsBarList
     /**
      * Moves the sheet to a level ({@code app:sheetLevel} binding). Idempotent: compares with the
      * behavior state, not with {@link #sheetLevel}. Skipped while a finger drags the sheet (its
-     * settle reports the level back); applied while settling, since setState restarts the settle.
+     * settle reports the level back). A new level is applied while settling, since setState
+     * restarts the settle; a repeat of the last request is not (see below).
      */
     public void setSheetLevel(int level) {
         level = Math.max(LEVEL_HIDDEN, Math.min(LEVEL_FULL, level));
+        // Any rebind sends the level again: invalidateAll in CameraUIViewImpl.refresh (camera
+        // restart, mode switch) and notifyChange on rotation or a new thumbnail. After a fling the
+        // model keeps the old level until the sheet settles, so a repeat while settling would pull
+        // the sheet back to where the finger moved it from. A real request (Back, pause, a swipe)
+        // changes the model level, so it is never a repeat and still restarts the settle.
+        boolean repeat = level == requestedLevel;
+        requestedLevel = level;
         BottomSheetBehavior<SettingsBarLayout> sheet = sheetBehavior();
         if (sheet == null) {
             pendingLevel = level;
@@ -192,6 +204,7 @@ public class SettingsBarLayout extends RelativeLayout implements SettingsBarList
         pendingLevel = -1;
         int state = sheet.getState();
         if (state == BottomSheetBehavior.STATE_DRAGGING) return;
+        if (repeat && state == BottomSheetBehavior.STATE_SETTLING) return;
         int target = stateForLevel(level);
         if (state != target) {
             // A hideable=false behavior silently drops a STATE_HIDDEN request.
