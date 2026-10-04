@@ -63,7 +63,9 @@ constexpr int kHybridGpuFrames=32;
 
 struct HybridTuning {
     // rejection (LMC 9.6 rejection.cl constants)
-    float cdm=0.07f;             // color_difference_multiplier (RGB)
+    float cdm=0.2f;              // color_difference_multiplier (RGB; LMC 0.07): at 0.07 wind-moved leaves and branches shifted 0.5-2 px were
+                                 // accepted and their samples interleaved with the base (luma zipper, staircase edges); 0.2 on the
+                                 // synthetic motion burst: moving edges +0.8 dB, moving texture +1.8 dB, static bursts -4..10 % frames
     float boost=6.0f;            // extra_motion_robustness_boost
     float boostEnable=0.f;       // flow inhomogeneity is unknown with one homography per frame: off by default
     float varianceThreshold=25.f;// motion_robustness_boost_variance_threshold
@@ -80,6 +82,18 @@ struct HybridTuning {
     float widenBelow=4.f;        // base-frame kernel widening below this accumulated donor weight (6.1: 4.0)
     float widenMul=1.826f;       // 6.1: covariance x0.3 = sigma x1.826
     float kernelFloor=0.00005f;  // 6.1 kEpsilon: no hole where the kernel is narrower than the lattice
+    // Colour-difference interpolation of the base frame (pass kHybChroma after the merge of a strip): where fewer than widenBelow
+    // donors were accepted (wind-moved branches and leaves: the rejection leaves the base alone), R and B come from one Bayer frame
+    // on a kernel narrower than the R/B lattice even after the x1.826 widening (across-edge sigma 0.25 px): at a non-R row R is the
+    // plain mean of the two R rows across the edge, at an R row the site itself, a period-2 R/B fringe ("zipper") along every such
+    // edge. R - G is smooth across a neutral edge: the base's share of R (B) becomes the merged G plus the kernel-weighted
+    // difference v - G(site) of its unclipped R (B) sites, G at the site interpolated along the edge from the four orthogonal green
+    // neighbours. 0 = off (output byte-identical to the merge without it). The merge program itself is left untouched: on Adreno
+    // 750 any edit of it made the whole merge ~15x slower.
+    float chromaDiff=1.f;
+    int chromaDiffClamp=1;       // 1: the rebuilt value is clamped to the range of the base's own R (B) samples around the pixel (no
+                                 // new extremum): next to a 1 px DIAGONAL line the four orthogonal greens of an R site straddle it and
+                                 // the difference carries half the step. 0: unclamped.
     float rawTensor=1.f,rawNoise=0.75f; // LMC guide: tensor of the base greens, noise bias 0.75 Var
     // Bento
     int bento=1;                 // 0 off, 1 auto (fallback checks), 2 force
@@ -94,6 +108,11 @@ struct HybridTuning {
     float bentoUsWeight=1.f;     // A of the ultrashort frame (driver: 1.0)
     float bentoUsSigma=1.f;      // isotropic kernel sigma (px) of the ultrashort frame: inside the mask it is the only frame,
                                  // and one Bayer frame needs >= ~0.7 px not to leave R/B holes (LMC: base kernel x2.5 under Bento)
+    int bentoValidate=2;         // 1 = the LMC intensity check runs against EVERY ultrashort frame; a frame's robust weight is scaled by
+                                 // its own validity (1 - error) and the mask keeps the best frame's, so the base returns only where no
+                                 // ultrashort frame is valid (a hand moving through a lamp: one frame shows it, the other does not);
+                                 // 2 = also an UNCLIPPED base cell that the gained ultrashort frame shows much brighter is motion (the
+                                 // hand left: the base holds real data there). 0 = the first frame only, the second unchecked
     int bentoFrames=2;           // ultrashort frames merged inside the mask (the app exposes 1 or 2 at the same exposure): the second
                                  // one halves the x8..16 noise of the replacement and, with the hand shake between them, fills the
                                  // R/B lattice gaps of a single Bayer frame. Each gets bentoUsWeight / count (the mask transition stays).
@@ -208,10 +227,10 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
             ||set("lutHiSigma",&t.lutHiSigma)||set("kernelScale",&t.kernelScale)||set("widenBelow",&t.widenBelow)||set("widenMul",&t.widenMul)
-            ||set("kernelFloor",&t.kernelFloor)||set("rawTensor",&t.rawTensor)||set("rawNoise",&t.rawNoise)||set("bento",nullptr,&t.bento)
+            ||set("kernelFloor",&t.kernelFloor)||set("chromaDiff",&t.chromaDiff)||set("chromaDiffClamp",nullptr,&t.chromaDiffClamp)||set("rawTensor",&t.rawTensor)||set("rawNoise",&t.rawNoise)||set("bento",nullptr,&t.bento)
             ||set("bentoHighlight",&t.bentoHighlight)||set("bentoDilate",nullptr,&t.bentoDilate)||set("bentoSmooth",&t.bentoSmooth)
             ||set("grid",nullptr,&t.grid)||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
-            ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)
+            ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
@@ -694,6 +713,7 @@ uniform int ry1;
 uniform int cy0;
 uniform int cy1;
 uniform vec4 dl; // offset, scale, bento active, floor (rejection below it does not spread)
+uniform int validPlanesU; // bentoValidate: per-ultrashort-frame validity planes after the mask plane (0 = none)
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=cy0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
@@ -712,7 +732,11 @@ void main(){
 #endif
     if(dl.z>0.5){
         float m=bmask[(cy-cy0)*w2+cx];
-        if(int(fParam[f].w)==5)r=m*fParam[f].y; else r*=(1.0-m);
+        if(int(fParam[f].w)==5){
+            float v=1.0;
+            if(validPlanesU>0){int k=0;for(int j=1;j<f;j++)if(int(fParam[j].w)==5)k++;if(k<validPlanesU)v=bmask[(k+1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];}
+            r=m*fParam[f].y*v;
+        } else r*=(1.0-m);
     } else if(int(fParam[f].w)==5)r=0.0;
     robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx]=r;
     atomicAdd(sums[f],uint(clamp(r,0.0,1.0)*255.0+0.5));
@@ -842,6 +866,44 @@ void frameSamplesPlain(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool 
     }
 }
 #endif
+#ifdef CHROMA_PASS
+// Colour-difference interpolation of the base frame (pass kHybChroma, HybridTuning::chromaDiff). The base's R (B) samples alone
+// cannot resolve an edge: with the 6.1 window and an across-edge sigma of 0.25 px every output pixel takes the nearest R sites
+// across the edge (a period-2 R/B fringe where the donors were rejected). The difference R - G is smooth across a neutral edge,
+// so for every unclipped, unflagged R (B) site v of the base inside the window, G at the site is interpolated from its four
+// orthogonal green neighbours with the same kernel relative to the site (one weight per axis: d'Pd is even in d, so along the
+// edge they dominate) and v - G(site) is accumulated with the site's kernel weight. A neighbour that is flagged or clipped is
+// left out; a site that lost most of the neighbour weight (both along-edge greens) or is flagged/clipped itself gives no
+// difference, and the pass keeps the plain path for a colour without any. cdLo/cdHi hold the range of the sites that gave a
+// difference (the clamp: no new extremum).
+void baseChromaDiff(inout vec2 cdNum,inout vec2 cdDen,inout vec2 cdLo,inout vec2 cdHi,vec2 O,vec3 P,bool win){
+    float g=fParam[0].x;
+    float wx=kernelW(vec2(1.0,0.0),P),wy=kernelW(vec2(0.0,1.0),P),wMin=0.6*(wx+wy);
+    for(int p=0;p<4;p++){
+        int px=p&1,py=p>>1,c=phaseColor[p];
+        if(c==1)continue;
+        int k=c>>1;
+        int bx=int(floor((O.x-float(px))*0.5))*2+px,by=int(floor((O.y-float(py))*0.5))*2+py;
+        for(int dj=0;dj<=2;dj+=2)for(int di=0;di<=2;di+=2){
+            int sx=bx+di,sy=by+dj;
+            vec2 d=vec2(float(sx),float(sy))-O;
+            if(win&&max(abs(d.x),abs(d.y))>1.5)continue;
+            float kw=kernelW(d,P);
+            uint fl;
+            float v=rawSite(0,sx,sy,fl);
+            if((fl&3u)!=0u||v>=clipLevel)continue;
+            float gs=0.0,gw=0.0;uint f2;
+            float gl=rawSite(0,sx-1,sy,f2);if((f2&3u)==0u&&gl<clipLevel){gs+=wx*gl;gw+=wx;}
+            float gr=rawSite(0,sx+1,sy,f2);if((f2&3u)==0u&&gr<clipLevel){gs+=wx*gr;gw+=wx;}
+            float gu=rawSite(0,sx,sy-1,f2);if((f2&3u)==0u&&gu<clipLevel){gs+=wy*gu;gw+=wy;}
+            float gd=rawSite(0,sx,sy+1,f2);if((f2&3u)==0u&&gd<clipLevel){gs+=wy*gd;gw+=wy;}
+            if(gw<wMin)continue;
+            cdNum[k]+=kw*(v-gs/gw)*g;cdDen[k]+=kw;
+            cdLo[k]=min(cdLo[k],v*g);cdHi[k]=max(cdHi[k],v*g);
+        }
+    }
+}
+#endif
 #ifdef BENTO_PASS
 // Bento colour pass (kHybBento; kE.z = 1/sigma^2 of the wide kernel): the colour sums of an ultrashort frame on a wider isotropic kernel (lattice
 // sites +-2 per axis and phase), clipped samples counted apart per colour. Inside the mask the ultrashort frames are the only ones:
@@ -945,6 +1007,79 @@ void main(){
             if(rimU.x>0.0&&(cfl&8u)!=0u)cfl|=64u;
             cflags[(oy-oy0)*ow+ox]=cfl;
         }
+    }
+}
+)";
+
+// Colour-difference pass of the base frame (after the merge of a strip, before kHybBento and kHybRim; one invocation per output
+// pixel). Only where the merge widened the base kernel (6.1: fewer than widenBelow accepted donor frames; round-4 kernel: donor
+// coverage below widenBelow, from the coverage map the merge wrote) the merge's sums of the pixel are recomputed (as kHybRim)
+// and the base's share of R (B) becomes the merged G plus the base's mean colour difference (baseChromaDiff), clamped (cdU.y) to
+// the range of the base's R (B) samples around the pixel. The donors' share stays as merged.
+static const char* kHybChroma=R"(
+layout(std430,binding=4) readonly buffer EffR{float effR[];}; // the merge's coverage per output pixel (donor cover + base weight)
+uniform vec2 cdU; // x: strength 0..1, y: 1 = clamp to the base's sample range
+void main(){
+    int g=kG.x,ow=kG.y,w2=size.x/2;
+    int ox=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
+    if(ox>=ow||row>=2*(cy1-cy0)*g)return;
+    int x=ox/g,y=2*cy0+row/g,sx=ox-(ox/g)*g,sy=row-(row/g)*g;
+    int cx=x>>1,cy=y>>1;
+    float m=kD.w>0.5?bmask[(cy-cy0)*w2+cx]:0.0;
+    int mode=mergeModeU.x;
+    float wb=1.0-m;
+    if(kE.x>=0.0||mergeModeU.y!=0)wb=0.0;
+    if(wb<=0.0)return;
+    int i=row*ow+ox;
+    // cheap test first: the merge widened the base kernel here
+    if((mode&4)!=0){
+        float frames=0.0;
+        for(int f=1;f<frameCount;f++){
+            if(int(fParam[f].w)==5)continue;
+            float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+            if(r<0.004)continue;
+            frames+=r/max(fParam[f].y,1.0e-6);
+        }
+        if(frames>=kD.x)return;
+    } else if(effR[i]-wb>=kD.x)return;
+    vec2 pos=vec2(float(x),float(y))+(g==2?vec2(sx==0?-0.25:0.25,sy==0?-0.25:0.25):vec2(0.0));
+    vec2 cell=vec2(float(2*cx),float(2*cy));
+    vec3 P=cov[(cy-ry0)*w2+cx].xyz;
+    // the merge's samples of this pixel again (kHybMergeMain1: same weights and kernels), donors first
+    Acc a;initAcc(a);
+    float frames=0.0;
+    for(int f=1;f<frameCount;f++){
+        float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+        if(r<0.004)continue;
+        vec2 O=originM(f,2*cx,2*cy)+(pos-cell);
+        bool us=int(fParam[f].w)==5;
+        vec3 Pf;
+        if(us)Pf=vec3(kE.y,kE.y,0.0);
+        else if((mode&1)!=0){ vec2 dc=floor((O+0.5)*0.5); Pf=dcovAt(f,int(dc.x),int(dc.y))*fParam[f].z; }
+        else Pf=P*fParam[f].z;
+        float rw=r/max(fParam[f].y,1.0e-6);
+        if(!us)frames+=rw;
+        frameSamples(a,f,O,r,rw,Pf,(mode&2)!=0&&!us);
+    }
+    vec3 num0=a.num,den0=a.den;
+    vec3 Pb;float tLow;
+    if((mode&4)!=0){Pb=frames<kD.x?P/(kD.y*kD.y):P;tLow=frames<kD.x?1.0:0.0;}
+    else {float s=smoothstep(0.5*kD.x,kD.x,a.cover);float widen=mix(kD.y,1.0,s);Pb=P/(widen*widen);tLow=1.0-s;}
+    tLow*=cdU.x;
+    if(tLow<=0.0)return;
+    bool win=(mode&2)!=0&&m<=0.0;
+    frameSamples(a,0,pos,wb,wb,Pb,win);
+    if(a.den.y<=1.0e-7)return;
+    vec2 cdNum=vec2(0.0),cdDen=vec2(0.0),cdLo=vec2(1.0e9),cdHi=vec2(-1.0e9);
+    baseChromaDiff(cdNum,cdDen,cdLo,cdHi,pos,Pb,win);
+    float g0=fParam[0].x,G=outRgb[i*3+1];
+    for(int k=0;k<2;k++){
+        int c=2*k;
+        float Db=a.den[c]-den0[c];
+        if(cdDen[k]<=1.0e-7||Db<=1.0e-7||a.den[c]<=1.0e-7)continue;
+        float rec=G+cdNum[k]/cdDen[k];
+        rec=cdU.y>0.0?clamp(rec,cdLo[k],cdHi[k]):clamp(rec,-0.25*g0,g0);
+        outRgb[i*3+c]+=tLow*(Db/a.den[c])*(rec-(a.num[c]-num0[c])/Db);
     }
 }
 )";
@@ -1148,13 +1283,13 @@ class HybridGpu {
     EGLSurface surface=EGL_NO_SURFACE;
     static constexpr int kSlots=18; // 0..16 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance, 15 F6 field,
                                     // 16 F6 offset per strip cell), 17 readback staging
-    GLuint meanProgram=0,flagsProgram=0,markProgram=0,guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,rimProgram=0,bentoProgram=0,buffers[kSlots]{};
+    GLuint meanProgram=0,flagsProgram=0,markProgram=0,guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,rimProgram=0,bentoProgram=0,chromaProgram=0,buffers[kSlots]{};
     size_t capacity[kSlots]{};
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("HYBRID GPU ")+where+" GL error="+std::to_string(e));}
     void cleanup() noexcept {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
-            for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram})if(program)glDeleteProgram(program);
+            for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
             glDeleteBuffers(kSlots,buffers);
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
         }
@@ -1268,6 +1403,7 @@ public:
         std::vector<int> role;
         float baseSlope=0,baseOffset=0,white=0;
         const std::vector<float>* mask=nullptr;         // per cell (w/2 x h/2), 0 = no Bento
+        std::vector<const std::vector<float>*> maskValid; // bentoValidate: per ultrashort frame in merge order, the validity factor per cell
         std::vector<int> hotList;                       // normal frames of the fixed-pattern outlier test (base first); empty = off
         std::array<float,4> k61a{},k61b{},k61c{};      // Sabre 6.1 kernel uniforms (k61a[3] = 0: round-4 kernel)
         int mergeMode=0;                                // 1 per-frame 6.1 covariance, 2 6.1 window, 4 6.1 base widening
@@ -1284,7 +1420,8 @@ public:
     // localAlign: compile the F6 local offsets into the reject / merge / rim programs (Frames::laMode needs it).
     const bool localAlign=false;
     // bentoPass: compile the Bento colour pass (kHybBento) for a shot with Bento and bentoChromaSigma > 0.
-    explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false):localAlign(withLocalAlign){
+    // chromaPass: compile the colour-difference pass of the base frame (kHybChroma) for chromaDiff > 0.
+    explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false):localAlign(withLocalAlign){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -1323,6 +1460,7 @@ public:
             }
             if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
+            if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
             glGenBuffers(kSlots,buffers);check("init");
         }catch(...){cleanup();throw;}
     }
@@ -1357,6 +1495,7 @@ public:
         std::vector<GLuint> programs={meanProgram,flagsProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram};
         if(rimProgram)programs.push_back(rimProgram);
         if(bentoProgram)programs.push_back(bentoProgram);
+        if(chromaProgram)programs.push_back(chromaProgram);
         glUseProgram(markProgram);
         glUniform2i(loc(markProgram,"size"),w,h);glUniform2i(loc(markProgram,"cfaShift"),in.cfa&1,in.cfa>>1);
         glUniform4f(loc(markProgram,"black"),in.black[0],in.black[1],in.black[2],in.black[3]);
@@ -1413,6 +1552,7 @@ public:
         glUniform4f(loc(rejectProgram,"rk"),tune.boostEnable,0,0,0);
         glUseProgram(dilateProgram);
         glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bento?1.f:0.f,tune.dilateFloor);
+        glUniform1i(loc(dilateProgram,"validPlanesU"),bento?int(in.maskValid.size()):0);
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
         {const float us=std::max(0.3f,tune.bentoUsSigma),cs=tune.bentoChromaSigma;
@@ -1433,6 +1573,17 @@ public:
         // program made the whole merge ~18x slower on Adreno 750 even with the switch off, three more accumulators ~12 %).
         const bool rim=tune.rimRatio!=0&&rimProgram!=0;
         const bool bentoColourPass=bento&&bentoProgram!=0&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
+        const bool chromaPass=chromaProgram!=0&&tune.chromaDiff>0.f&&!in.noBase;
+        if(chromaPass){
+            const float us=std::max(0.3f,tune.bentoUsSigma);
+            glUseProgram(chromaProgram);
+            glUniform4f(loc(chromaProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
+            glUniform4f(loc(chromaProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
+            glUniform4i(loc(chromaProgram,"kG"),g,ow,0,0);
+            glUniform4i(loc(chromaProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,0,0);
+            glUniform2f(loc(chromaProgram,"cdU"),std::clamp(tune.chromaDiff,0.f,1.f),tune.chromaDiffClamp?1.f:0.f);
+            glUseProgram(mergeProgram);
+        }
         {const float s=std::max(0.3f,tune.rimSigma);
          const float rimU[4]={rim?1.f:0.f,-0.7213475f/(s*s),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
          glUniform4fv(loc(mergeProgram,"rimU"),1,rimU);
@@ -1522,8 +1673,10 @@ public:
             reserve(2,size_t(ry1-ry0)*w*2*4);           // site flags of the strip rows
             reserve(1,(size_t(ry1-ry0)*2+4)*w*4);       // fixed-pattern mean (rows +-2)
             // Bento mask rows of this strip (per cell).
-            maskStrip.assign(size_t(cy1-cy0)*w2,0.f);
-            if(bento&&in.mask&&in.mask->size()==size_t(w2)*h2)std::memcpy(maskStrip.data(),in.mask->data()+size_t(cy0)*w2,maskStrip.size()*4);
+            const size_t planeSize=size_t(cy1-cy0)*w2;
+            maskStrip.assign(planeSize*(1+in.maskValid.size()),0.f);
+            if(bento&&in.mask&&in.mask->size()==size_t(w2)*h2)std::memcpy(maskStrip.data(),in.mask->data()+size_t(cy0)*w2,planeSize*4);
+            for(size_t k=0;k<in.maskValid.size();++k)if(in.maskValid[k]&&in.maskValid[k]->size()==size_t(w2)*h2)std::memcpy(maskStrip.data()+planeSize*(k+1),in.maskValid[k]->data()+size_t(cy0)*w2,planeSize*4);
             reserve(13,maskStrip.size()*4);put(13,0,maskStrip.data(),maskStrip.size()*4);
             if(stripMode){
                 glUseProgram(flagsProgram);
@@ -1594,6 +1747,11 @@ public:
                 glUniform4i(loc(mergeProgram,"kG"),g,ow,sub&1,sub>>1);
                 dispatchRows(mergeProgram,w2,cy1-cy0,1,64,5);
             }
+            if(chromaPass){ // after all sub-positions: the base's colour where the merge widened its kernel
+                glUseProgram(chromaProgram);
+                glUniform1i(loc(chromaProgram,"cy0"),cy0);glUniform1i(loc(chromaProgram,"cy1"),cy1);glUniform1i(loc(chromaProgram,"ry0"),ry0);
+                dispatchRows(chromaProgram,ow,rows2,1,64,5);
+            }
             if(bentoColourPass){ // after all sub-positions, before the clip-border pass (that one reads the merged colour)
                 glUseProgram(bentoProgram);
                 glUniform1i(loc(bentoProgram,"cy0"),cy0);glUniform1i(loc(bentoProgram,"cy1"),cy1);glUniform1i(loc(bentoProgram,"ry0"),ry0);
@@ -1657,7 +1815,8 @@ inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,flo
     return p;
 }
 
-struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0;std::vector<float> mask; };
+struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0;std::vector<float> mask;
+    std::vector<float> smooth,valid; /* the mask before the LMC check, and the per-cell (1 - error) factor of the checked frame */ };
 
 // Highlight mask of the base (per 2x2 cell): clipped -> dilate r -> gaussian smooth; checked against the
 // aligned ultrashort frame (LMC bento mask.cl + ShouldFallback).
@@ -1748,6 +1907,7 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
     // NOT an error (GainUp = 1 >= base): its cells stay in the mask (the best lower bound; the clip flags mark them).
     std::atomic<long> inMask{0},invalidCells{0};
     std::vector<uint8_t> inpaint(size_t(w2)*h2,0);
+    res.smooth=mask;res.valid.assign(size_t(w2)*h2,1.f);
     const float ratio=1.f/std::max(usExposure,1e-6f);
     mergeRowBands(h2,[&](int y0,int y1){
         long lu=0,lm=0,li=0;
@@ -1766,9 +1926,16 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
             const float us3[3]={std::min(us[0]*ratio,1.f),std::min(0.5f*(us[1]+us[2])*ratio,1.f),std::min(us[3]*ratio,1.f)};
             float e2=0;
             for(int k=0;k<3;++k){const float d=std::min(us3[k]-base3[k],0.f);e2+=d*d;}
-            const float error=std::sqrt(e2);
+            float error=std::sqrt(e2);
+            if(t.bentoValidate>=2&&std::max({base3[0],base3[1],base3[2]})<t.bentoHighlight){
+                // bentoValidate 2: an UNCLIPPED base cell that the gained ultrashort frame shows much BRIGHTER is motion too
+                // (the hand moved away and the lamp shows through): the base holds valid data there, the replacement must not run
+                float p2=0;for(int k=0;k<3;++k){const float d=std::max(us3[k]-base3[k],0.f);p2+=d*d;}
+                error=std::max(error,std::sqrt(p2));
+            }
             if(error<t.bentoInvalid)continue;
             ++li;
+            res.valid[i]=std::clamp(1.f-error,0.f,1.f);
             mask[i]=std::clamp((1.f-error)*mask[i],0.f,1.f);
             const float lo=std::min({base3[0],base3[1],base3[2]}),hi=std::max({base3[0],base3[1],base3[2]});
             const float middle=base3[0]+base3[1]+base3[2]-lo-hi;
@@ -2206,6 +2373,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     report("HYBRID KERNEL: baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" snr="+std::to_string(snr)+" across="+std::to_string(kernel.shrunk)+" base="+std::to_string(kernel.base)
         +" along="+std::to_string(kernel.stretched)+" flat="+std::to_string(kernel.flat)+" thresholds="+std::to_string(kernel.flat0)+"/"+std::to_string(kernel.flat1));
     }
+    if(tune.chromaDiff>0.f)report("HYBRID CHROMA DIFF: base R/B = merged G + <R-G>/<B-G> of the base sites where the base kernel widens (strength "
+        +std::to_string(std::clamp(tune.chromaDiff,0.f,1.f))+((tune.s61Mode&4)&&sabre61?", below "+std::to_string(tune.widenBelow)+" accepted frames":", by donor coverage")
+        +(tune.chromaDiffClamp?", clamped to the base's sample range)":", unclamped)"));
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
     {
@@ -2238,13 +2408,40 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool same=us>=0&&aligned[f]&&std::abs(std::log(input.frames[f].exposure/input.frames[us].exposure))<std::log(1.3f);
         if(same&&int(usFrames.size())<std::clamp(tune.bentoFrames,1,4))usFrames.push_back(f); else keep[f]=false;
     }
-    BentoResult bento;
+    BentoResult bento;std::vector<std::vector<float>> bentoValids;
     const auto maskStarted=Clock::now();
     if(us>=0&&tune.bento>0){
         if(input.frames[us].exposure>=1.f){bento.reason="ultrashort frame is not the shortest";}
         else {
             Burst one=b;one.raw[1]=input.frames[us].raw;one.exposure[1]=input.frames[us].exposure;
             bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune);
+        }
+        auto frameLine=[&](int f,const BentoResult& r){
+            report("HYBRID BENTO frame="+std::to_string(f)+" invalid="+std::to_string(r.invalidCells)+" hole="+std::to_string(r.inpaintHole)
+                +" largestHole="+std::to_string(r.largestHole)+" usClipped="+std::to_string(r.usClippedRatio));
+        };
+        if(us>=0&&input.frames[us].exposure<1.f)frameLine(us,bento);
+        if(bento.active&&tune.bentoValidate>=1&&usFrames.size()>1){
+            // every ultrashort frame checked; mask = smooth x max_k valid_k; per-frame factors for the GPU (dilate pass)
+            std::vector<std::vector<float>> valids;valids.push_back(bento.valid);
+            std::string line="HYBRID BENTO VALIDATE: per-frame invalid cells";
+            line+=" "+std::to_string(us)+":"+std::to_string(bento.invalidCells);
+            for(size_t k=1;k<usFrames.size();++k){
+                const int f=usFrames[k];
+                Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                HybridTuning t2=tune;t2.bento=2;
+                BentoResult r=bentoMask(one,1,H[f],input.frames[f].exposure,t2);
+                frameLine(f,r);
+                valids.push_back(r.valid);line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
+            }
+            long onlyBase=0,anyInvalid=0;
+            for(size_t i=0;i<bento.mask.size();++i){
+                float best=0;for(const auto& v:valids)best=std::max(best,v[i]);
+                if(bento.smooth[i]>0.f){if(best<1.f)++anyInvalid;if(best<=0.f)++onlyBase;}
+                bento.mask[i]=std::clamp(bento.smooth[i]*best,0.f,1.f);
+            }
+            bentoValids=std::move(valids);
+            report(line+" | cells invalid in some frame="+std::to_string(anyInvalid)+" in every frame (base stays)="+std::to_string(onlyBase));
         }
         report("HYBRID BENTO: "+std::string(bento.active?"applied":"not applied")+" ("+bento.reason+") clipped="+std::to_string(bento.clippedFraction)
             +" usClippedRatio="+std::to_string(bento.usClippedRatio)+" largestHole="+std::to_string(bento.largestHole)
@@ -2395,6 +2592,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     report(table);
     if(bento.active)in.mask=&bento.mask;
+    if(bento.active&&!bentoValids.empty()){ // validity planes in merge order of the ultrashort frames
+        for(int f=1;f<n;++f){if(!keep[f]||input.frames[f].role!=kRoleUltrashort)continue;
+            size_t k=0;for(;k<usFrames.size();++k)if(usFrames[k]==f)break;
+            in.maskValid.push_back(k<bentoValids.size()?&bentoValids[k]:nullptr);}
+    }
     // F6 field in merge order (0 = base and frames without a field: zeros)
     std::vector<float> laAll;
     if(laOn){
@@ -2446,7 +2648,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const int outW=w*grid,outH=h*grid;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
-        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
+        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")");
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
