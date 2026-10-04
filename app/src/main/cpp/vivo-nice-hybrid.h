@@ -112,6 +112,9 @@ struct HybridTuning {
     // Shasta
     float shastaSharpness=0.8f;  // bracketed_sharpness_threshold
     float shastaMaxRatio=32.f;   // max bracketed/base TET ratio
+    float shastaSat=0.5f;        // sharpness pixels: guide mean below this share of white in both frames. The guide is a 4x4 mean:
+                                 // at 0.9 blocks along bright edges still held clipped sites of the x2 brighter bracketed frame, their
+                                 // truncated gradients scored it 74-77 % of the base at the same shutter (all dropped); 0.4-0.6: 96-100 %
     int shastaEnable=1;
     // misc
     int snrFixed=0;
@@ -209,7 +212,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoHighlight",&t.bentoHighlight)||set("bentoDilate",nullptr,&t.bentoDilate)||set("bentoSmooth",&t.bentoSmooth)
             ||set("grid",nullptr,&t.grid)||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)
-            ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaMaxRatio",&t.shastaMaxRatio)
+            ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("bentoLmc",nullptr,&t.bentoLmc)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
@@ -1631,10 +1634,10 @@ public:
 // over the pixels that are unsaturated in BOTH frames. A long frame clips the highlights the base still resolves;
 // scoring each frame over its own unsaturated pixels would drop every bracketed frame of a bright scene.
 struct SharpnessPair { double base=0,frame=0; long pixels=0; };
-inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset) {
+inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat) {
     const Guide qb=guides(b,0)[0];
     const Guide qf=guides(b,f)[0];
-    constexpr float sat=0.9f; // guide values are in the frame's own units (0..1 of white)
+    // sat: guide values are in the frame's own units (0..1 of white), a 4x4 mean (HybridTuning::shastaSat)
     double gb=0,gf=0,mb=0,mf=0;long n=0;
     for(int y=1;y<qb.h-1;++y)for(int x=1;x<qb.w-1;++x){
         const float cb=qb.at(x,y),lb=qb.at(x-1,y),rb=qb.at(x+1,y);
@@ -2212,7 +2215,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             if(fr.role!=kRoleBracketed)continue;
             if(!tune.shastaEnable||!aligned[f]){keep[f]=false;++stats.droppedBracketed;continue;}
             Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-            const SharpnessPair sp=hybridSharpnessPair(one,1,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset);
+            const SharpnessPair sp=hybridSharpnessPair(one,1,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,std::clamp(tune.shastaSat,0.05f,0.95f));
             const double pct=sp.base>0?sp.frame/sp.base:1.0;
             report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(sp.frame)+" base="+std::to_string(sp.base)
                 +" pixels="+std::to_string(sp.pixels)+" ("+std::to_string(100*pct)+" % of base)");
