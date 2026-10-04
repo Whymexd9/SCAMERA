@@ -89,6 +89,7 @@ import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.binding.CustomBinding;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.camera.viewmodel.*;
+import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarLayout;
 import com.particlesdevs.photoncamera.ui.camera.views.viewfinder.GLPreview;
 import com.particlesdevs.photoncamera.ui.camera.views.viewfinder.SurfaceViewOverViewfinder;
 import com.particlesdevs.photoncamera.ui.settings.SettingsActivity;
@@ -116,6 +117,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private static final String ACTIVE_BACKCAM_ID = "ACTIVE_BACKCAM_ID"; //key for savedInstanceState
     private static final String ACTIVE_FRONTCAM_ID = "ACTIVE_FRONTCAM_ID"; //key for savedInstanceState
     private static final String NOTIFICATION_CHANNEL_ID = "NOTIFICATION_CHANNEL_ID";
+    /** FULL settings sheet height limit as a share of the viewfinder height. */
+    private static final float SHEET_MAX_HEIGHT_FRACTION = 0.66f;
     /**
      * sActiveBackCamId is either
      * = 0 or camera_id stored in SharedPreferences in case of fresh application Start; or
@@ -258,7 +261,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      * {@link CustomBinding}:
      * <ul>
      * <li>{@code uimodel.dummyAspectRatio} -&gt; {@code dummy_reference_view} aspect ratio</li>
-     * <li>{@code uimodel.settingsBarVisibility == false} -&gt; settings bar hidden</li>
+     * <li>{@code uimodel.settingsBarVisibility == false} -&gt; settings sheet HIDDEN</li>
      * <li>{@code uimodel.screenAspectRatio} -&gt; topbar notch margin and camera container anchor</li>
      * </ul>
      * The layout editor preview never runs fragments, viewmodels or data binding,
@@ -280,7 +283,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             params.dimensionRatio = "3:4";
             viewfinder.setLayoutParams(params);
         }
-        // settingsBarVisibility defaults to false -> the settings bar is hidden
+        // settingsBarVisibility defaults to false -> the settings sheet is HIDDEN. Without data
+        // binding the editor shows the behavior's initial PEEK, so hide the sheet here.
         View settingsBar = rootLayout.findViewById(R.id.settings_bar);
         if (settingsBar != null) {
             settingsBar.setVisibility(View.INVISIBLE);
@@ -364,7 +368,19 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private void initSettingsBar() {
         settingsBarEntryProvider.createEntries();
         settingsBarEntryProvider.addObserver(mCameraUIEventsListener);
-        settingsBarEntryProvider.addEntries(cameraFragmentBinding.settingsBar);
+        SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
+        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle);
+        // A level reached by a finger (or settled after a request) goes back to the model.
+        sheet.setOnSheetLevelListener(level -> {
+            boolean visible = level != SettingsBarLayout.LEVEL_HIDDEN;
+            if (cameraFragmentViewModel.isSettingsBarVisible() != visible)
+                cameraFragmentViewModel.setSettingsBarVisible(visible);
+        });
+        // FULL is at most 66% of the viewfinder height.
+        cameraFragmentBinding.layoutViewfinder.getRoot().addOnLayoutChangeListener(
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+                        sheet.setMaxSheetHeight(Math.round((bottom - top) * SHEET_MAX_HEIGHT_FRACTION)));
+        settingsBarEntryProvider.addEntries(sheet);
     }
 
     public void updateSettingsBar(){

@@ -36,7 +36,9 @@ import android.widget.TextView;
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
 
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.Vibration;
@@ -44,20 +46,66 @@ import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarButtonModel;
 import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarEntryModel;
 import com.particlesdevs.photoncamera.ui.settings.SettingsActivity;
 
+/**
+ * Settings bottom sheet. It lives in a CoordinatorLayout with a {@link BottomSheetBehavior}
+ * and has three levels: {@link #LEVEL_HIDDEN} (STATE_HIDDEN), {@link #LEVEL_PEEK}
+ * (STATE_COLLAPSED) and {@link #LEVEL_FULL} (STATE_EXPANDED). One gesture moves one level:
+ * the sheet is hideable only in PEEK and HIDDEN, so a fling from FULL lands in PEEK.
+ * The sheet itself stays VISIBLE; the behavior moves it below the edge when hidden.
+ */
 public class SettingsBarLayout extends RelativeLayout implements SettingsBarListener {
+    public static final int LEVEL_HIDDEN = 0;
+    public static final int LEVEL_PEEK = 1;
+    public static final int LEVEL_FULL = 2;
+
+    /** Receives the level the sheet has settled at, whoever moved it (finger or code). */
+    public interface OnSheetLevelListener {
+        void onSheetLevelChanged(int level);
+    }
+
     private final LinearLayout optionsContainer;
     private final Vibration vibration;
+    private BottomSheetBehavior<SettingsBarLayout> behavior;
+    /** Last settled level; -1 until the first one, so the first request is always applied. */
+    private int sheetLevel = -1;
+    /** Level requested before the behavior was reachable. */
+    private int pendingLevel = -1;
+    private int maxSheetHeight;
+    private OnSheetLevelListener levelListener;
+    private View hiddenHandle;
+
+    private final BottomSheetBehavior.BottomSheetCallback sheetCallback = new BottomSheetBehavior.BottomSheetCallback() {
+        @Override
+        public void onStateChanged(@NonNull View bottomSheet, int newState) {
+            updateHiddenHandle();
+            int level = levelForState(newState);
+            if (level < 0) return;
+            // One level per gesture: FULL can only be lowered to PEEK, PEEK can be hidden.
+            // HIDDEN must stay hideable too, or the next layout puts the sheet back on screen.
+            behavior.setHideable(level != LEVEL_FULL);
+            sheetLevel = level;
+            if (levelListener != null) levelListener.onSheetLevelChanged(level);
+        }
+
+        @Override
+        public void onSlide(@NonNull View bottomSheet, float slideOffset) {
+        }
+    };
 
     public SettingsBarLayout(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         // In the layout editor (isInEditMode) the PhotonCamera Application instance
         // is never created, so the static sPhotonCamera is null.
         vibration = isInEditMode() ? null : PhotonCamera.getVibration();
-        setBackgroundResource(R.drawable.vf_settings_background);
+        setBackgroundResource(R.drawable.settings_sheet_background);
 
         ScrollView scrollView = new ScrollView(context);
         scrollView.setId(R.id.settings_bar_scroll_view);
         scrollView.setPadding(dp(10), dp(10), dp(10), dp(5));
+        // The BottomSheetBehavior only leaves a list alone if it is a nested scrolling child.
+        // Without this it drags the sheet on every vertical move, so FULL could not scroll the
+        // list; with it the list scrolls and a drag down at its top lowers the sheet.
+        scrollView.setNestedScrollingEnabled(true);
 
         optionsContainer = new LinearLayout(context);
         optionsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -126,6 +174,118 @@ public class SettingsBarLayout extends RelativeLayout implements SettingsBarList
         View view = findViewById(id);
         if (view != null) {
             view.setVisibility(visibility);
+        }
+    }
+
+    /**
+     * Moves the sheet to a level ({@code app:sheetLevel} binding). Idempotent: compares with the
+     * behavior state, not with {@link #sheetLevel}. Skipped while a finger drags the sheet (its
+     * settle reports the level back); applied while settling, since setState restarts the settle.
+     */
+    public void setSheetLevel(int level) {
+        level = Math.max(LEVEL_HIDDEN, Math.min(LEVEL_FULL, level));
+        BottomSheetBehavior<SettingsBarLayout> sheet = sheetBehavior();
+        if (sheet == null) {
+            pendingLevel = level;
+            return;
+        }
+        pendingLevel = -1;
+        int state = sheet.getState();
+        if (state == BottomSheetBehavior.STATE_DRAGGING) return;
+        int target = stateForLevel(level);
+        if (state != target) {
+            // A hideable=false behavior silently drops a STATE_HIDDEN request.
+            if (level != LEVEL_FULL) sheet.setHideable(true);
+            sheet.setState(target);
+        }
+        // Before the first layout setState applies at once and no callback follows.
+        // Once laid out the settle may still be posted, so the old state can be read here.
+        int now = sheet.getState();
+        if (level == LEVEL_FULL && now == BottomSheetBehavior.STATE_EXPANDED) sheet.setHideable(false);
+        int settled = levelForState(now);
+        if (settled >= 0) sheetLevel = settled;
+        updateHiddenHandle();
+    }
+
+    /** Last settled level, or -1 before the first one. */
+    public int getSheetLevel() {
+        return sheetLevel;
+    }
+
+    public void setOnSheetLevelListener(@Nullable OnSheetLevelListener listener) {
+        levelListener = listener;
+    }
+
+    /** The FULL height limit in pixels (a share of the viewfinder height). */
+    public void setMaxSheetHeight(int px) {
+        if (px <= 0 || px == maxSheetHeight) return;
+        maxSheetHeight = px;
+        BottomSheetBehavior<SettingsBarLayout> sheet = sheetBehavior();
+        if (sheet == null) return;
+        sheet.setMaxHeight(px);
+        requestLayout();
+    }
+
+    /** Handle next to the sheet that stays on screen while the sheet is HIDDEN. */
+    public void setHiddenHandle(@Nullable View handle) {
+        hiddenHandle = handle;
+        updateHiddenHandle();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (pendingLevel >= 0) setSheetLevel(pendingLevel);
+    }
+
+    /** The behavior from the CoordinatorLayout params, or null outside a CoordinatorLayout. */
+    @Nullable
+    private BottomSheetBehavior<SettingsBarLayout> sheetBehavior() {
+        if (behavior == null) {
+            ViewGroup.LayoutParams params = getLayoutParams();
+            if (!(params instanceof CoordinatorLayout.LayoutParams)
+                    || !(((CoordinatorLayout.LayoutParams) params).getBehavior() instanceof BottomSheetBehavior)) {
+                return null;
+            }
+            behavior = BottomSheetBehavior.from(this);
+            behavior.addBottomSheetCallback(sheetCallback);
+            if (maxSheetHeight > 0) {
+                behavior.setMaxHeight(maxSheetHeight);
+                requestLayout();
+            }
+        }
+        return behavior;
+    }
+
+    private void updateHiddenHandle() {
+        if (hiddenHandle == null) return;
+        boolean hidden = behavior != null && behavior.getState() == BottomSheetBehavior.STATE_HIDDEN;
+        hiddenHandle.setVisibility(hidden ? View.VISIBLE : View.GONE);
+    }
+
+    private static int stateForLevel(int level) {
+        switch (level) {
+            case LEVEL_FULL:
+                return BottomSheetBehavior.STATE_EXPANDED;
+            case LEVEL_PEEK:
+                return BottomSheetBehavior.STATE_COLLAPSED;
+            default:
+                return BottomSheetBehavior.STATE_HIDDEN;
+        }
+    }
+
+    /** Level of a settled state, -1 for dragging and settling. */
+    private static int levelForState(int state) {
+        switch (state) {
+            case BottomSheetBehavior.STATE_EXPANDED:
+                return LEVEL_FULL;
+            case BottomSheetBehavior.STATE_COLLAPSED:
+            case BottomSheetBehavior.STATE_HALF_EXPANDED:
+                return LEVEL_PEEK;
+            case BottomSheetBehavior.STATE_HIDDEN:
+                return LEVEL_HIDDEN;
+            default:
+                return -1;
         }
     }
 }

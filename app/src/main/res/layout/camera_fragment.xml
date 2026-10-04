@@ -141,23 +141,41 @@
                     app:layout_constraintHorizontal_bias="0.0" />
 
             <!--    Block 1.7-->
-            <!--    floating settings bar menu-->
-            <com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarLayout
-                    android:layout_width="match_parent"
-                    android:id="@+id/settings_bar"
-                    android:layout_marginEnd="16dp"
-                    android:layout_marginStart="16dp"
+            <!--    settings bottom sheet (HIDDEN / PEEK / FULL) above the bottom bar-->
+            <androidx.coordinatorlayout.widget.CoordinatorLayout
+                    android:id="@+id/settings_sheet_container"
+                    android:layout_width="0dp"
                     android:layout_height="0dp"
                     android:elevation="@dimen/standard_20"
-                    app:layout_constraintHeight_max="300dp"
-                    app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
+                    android:clickable="false"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
                     app:layout_constraintStart_toStartOf="parent"
-                    settingsBarVisibility="@{uimodel.settingsBarVisibility}"
-                    bindRotate="@{uimodel}"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="16dp" />
+                    app:layout_constraintEnd_toEndOf="parent">
+
+                <!-- peekHeight is provisional until the quick row and group cells measure it -->
+                <com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarLayout
+                        android:id="@+id/settings_bar"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:layout_behavior="@string/bottom_sheet_behavior"
+                        app:behavior_hideable="true"
+                        app:behavior_peekHeight="120dp"
+                        app:gestureInsetBottomIgnored="true"
+                        app:sheetLevel="@{uimodel.settingsBarVisibility ? 1 : 0}" />
+
+                <!-- Handle shown only while the sheet is HIDDEN (the sheet itself is below the edge then) -->
+                <ImageView
+                        android:id="@+id/settings_sheet_handle"
+                        android:layout_width="72dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:src="@drawable/sheet_handle"
+                        android:scaleType="center"
+                        android:importantForAccessibility="no"
+                        android:visibility="gone"
+                        tools:visibility="visible" />
+            </androidx.coordinatorlayout.widget.CoordinatorLayout>
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <include
@@ -171,25 +189,6 @@
                 android:visibility="@{uimodel.settingsBarVisibility ? View.INVISIBLE : View.VISIBLE}"
                 tools:visibility="visible"
                 app:layout_constraintTop_toTopOf="parent" />
-
-        <ImageButton
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:id="@+id/arrow_top"
-                android:src="@drawable/chevron_up"
-                android:background="@null"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                android:layout_marginTop="0dp"
-                android:padding="10dp"
-                android:rotation="180"
-                android:clickable="true"
-                android:onClick="@{()-> uimodel.setSettingsBarVisibility(!uimodel.settingsBarVisibility)}"
-                app:layout_constraintTop_toBottomOf="@+id/layout_topbar"
-                android:visibility="@{uimodel.settingsBarVisibility ? View.INVISIBLE : View.VISIBLE}"
-                tools:visibility="visible"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintVertical_bias="0" />
 
         <TextView
                 android:id="@+id/video_recording_info"

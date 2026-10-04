@@ -84,20 +84,6 @@ public class CustomBinding {
         }
     }
 
-    @BindingAdapter("settingsBarVisibility")
-    public static void toggleSettingsBarVisibility(ViewGroup viewGroup, boolean visible) {
-        if (viewGroup != null)
-            if (visible)
-                viewGroup.post(() -> {
-                    viewGroup.animate().setDuration(200).alpha(1).translationY(0).scaleX(1).scaleY(1).start();
-                    viewGroup.setVisibility(View.VISIBLE);
-                });
-            else
-                viewGroup.post(() -> viewGroup.animate().setDuration(200).alpha(0).translationY(-viewGroup.getResources().getDimension(R.dimen.standard_125))
-                        .scaleX(0).scaleY(0).withEndAction(() -> viewGroup.setVisibility(View.INVISIBLE))
-                        .start());
-    }
-
     @BindingAdapter("setAuxButtonModel")
     public static void setAuxButtonModel(AuxButtonsLayout layout, AuxButtonsModel auxButtonsModel) {
         if (auxButtonsModel != null)
