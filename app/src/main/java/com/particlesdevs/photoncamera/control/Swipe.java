@@ -15,6 +15,7 @@ import com.particlesdevs.photoncamera.circularbarlib.control.ManualParamModel;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.ui.camera.CameraFragment;
+import com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel;
 import com.particlesdevs.photoncamera.ui.camera.viewmodel.CameraFragmentViewModel;
 
 public class Swipe {
@@ -58,7 +59,10 @@ public class Swipe {
 
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
-                cameraFragmentViewModel.setSettingsBarVisible(false);
+                // A tap on the viewfinder lowers a FULL settings sheet to PEEK; focus works as before.
+                if (cameraFragmentViewModel.getSheetLevel() == CameraFragmentModel.SHEET_FULL) {
+                    cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_PEEK);
+                }
                 startTouchToFocus(e);
                 return false;
             }
@@ -130,21 +134,20 @@ public class Swipe {
         }
     }
 
+    /** Raises the settings sheet one level: HIDDEN -> PEEK -> FULL. */
     public void SwipeUp() {
-        if (cameraFragmentViewModel.isSettingsBarVisible()) {
-            cameraFragmentViewModel.setSettingsBarVisible(false);
-        } else {
-            ocManual.animate().rotation(180).setDuration(250).start();
-            manualModeConsole.setPanelVisibility(true);
-//        cameraFragment.getCaptureController().rebuildPreview();
-            cameraFragment.getTouchFocus().resetFocusCircle();
+        boolean wasHidden = cameraFragmentViewModel.getSheetLevel() == CameraFragmentModel.SHEET_HIDDEN;
+        cameraFragmentViewModel.sheetLevelUp();
+        // With the settings closed, a swipe up has always reset touch focus to auto. Keep that.
+        if (wasHidden) {
+            TouchFocus touchFocus = cameraFragment.getTouchFocus();
+            if (touchFocus != null) touchFocus.resetFocusCircle();
         }
-
     }
 
+    /** Lowers the settings sheet one level: FULL -> PEEK -> HIDDEN. */
     public void SwipeDown() {
-        cameraFragmentViewModel.setSettingsBarVisible(true);
-        // Hide chrome without resetting manual values. Closing settings restores it.
+        cameraFragmentViewModel.sheetLevelDown();
     }
 
 

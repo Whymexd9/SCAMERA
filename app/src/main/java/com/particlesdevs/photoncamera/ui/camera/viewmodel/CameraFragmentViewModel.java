@@ -137,21 +137,6 @@ public class CameraFragmentViewModel extends AndroidViewModel {
         setSheetLevel(Math.max(CameraFragmentModel.SHEET_HIDDEN, getSheetLevel() - 1));
     }
 
-    // TODO(sheet step 3): remove these two once Swipe and CameraFragment use the levels.
-    /** Temporary: true while the sheet is not HIDDEN. */
-    public boolean isSettingsBarVisible() {
-        return getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN;
-    }
-
-    /** Temporary: false hides the sheet, true opens PEEK from HIDDEN and leaves PEEK/FULL as they are. */
-    public void setSettingsBarVisible(boolean visible) {
-        if (!visible) {
-            setSheetLevel(CameraFragmentModel.SHEET_HIDDEN);
-        } else if (!isSettingsBarVisible()) {
-            setSheetLevel(CameraFragmentModel.SHEET_PEEK);
-        }
-    }
-
     @Override
     protected void onCleared() {
         super.onCleared();

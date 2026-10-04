@@ -299,5 +299,8 @@
     <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
     <string-array name="hexquad_model_entries"><item>x2 — текущая модель</item><item>x1 — экспериментальная</item></string-array>
     <string-array name="hexquad_model_values"><item>2</item><item>1</item></string-array>
+    <!-- Settings sheet handles (TalkBack) -->
+    <string name="sheet_handle_open">Open settings panel</string>
+    <string name="sheet_handle_toggle">Expand or collapse settings panel</string>
 </resources>
 

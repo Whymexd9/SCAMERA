@@ -173,7 +173,7 @@
                         android:layout_gravity="bottom|center_horizontal"
                         android:src="@drawable/sheet_handle"
                         android:scaleType="center"
-                        android:importantForAccessibility="no"
+                        android:contentDescription="@string/sheet_handle_open"
                         android:visibility="gone"
                         tools:visibility="visible" />
             </androidx.coordinatorlayout.widget.CoordinatorLayout>

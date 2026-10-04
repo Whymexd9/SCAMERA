@@ -88,6 +88,7 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.binding.CustomBinding;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
+import com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel;
 import com.particlesdevs.photoncamera.ui.camera.viewmodel.*;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarLayout;
 import com.particlesdevs.photoncamera.ui.camera.views.viewfinder.GLPreview;
@@ -369,10 +370,13 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         settingsBarEntryProvider.createEntries();
         settingsBarEntryProvider.addObserver(mCameraUIEventsListener);
         SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
-        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle);
+        // The HIDDEN handle sits over the bottom of the lens strip; touches that start on the
+        // strip stay with the strip.
+        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, cameraFragmentBinding.auxButtonsContainer);
         // A level reached by a finger (or settled after a request) goes back to the model as is,
         // so a later rebind (invalidateAll on a camera restart or mode switch, notifyChange on
-        // rotation or a new thumbnail) keeps the sheet there.
+        // rotation or a new thumbnail) keeps the sheet there. Handle taps and flings ask for
+        // their level the same way.
         // The model setter is idempotent, so a level the model asked for is not sent again.
         sheet.setOnSheetLevelListener(cameraFragmentViewModel::setSheetLevel);
         // FULL is at most 66% of the viewfinder height.
@@ -483,23 +487,22 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             end.release();
             endPlayer = null;
         }
-        mSwipe.SwipeDown();
+        // The settings sheet comes back HIDDEN, whatever level it was left at.
+        cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_HIDDEN);
         manualModeConsole.onPause();
         super.onPause();
     }
 
+    /**
+     * Back lowers the settings sheet one level (FULL -> PEEK -> HIDDEN). With the sheet already
+     * HIDDEN it does nothing, and the app stays open as before.
+     */
     @Override
     public boolean onBackPressed() {
-        boolean handleBack = false;
-        if (cameraFragmentViewModel.isSettingsBarVisible()) {
-            cameraFragmentViewModel.setSettingsBarVisible(false);
-            handleBack = true;
+        if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) {
+            cameraFragmentViewModel.sheetLevelDown();
         }
-        if (manualModeConsole.isPanelVisible()) {
-            mSwipe.SwipeDown();
-            handleBack = true;
-        }
-        return handleBack;
+        return true;
     }
 
     @Override

@@ -104,4 +104,7 @@
     <string name="color_method">Цветовой метод</string>
     <string name="focus_peaking">Пик фокуса</string>
     <string name="focus_peaking_auto">Авто</string>
+    <!-- Settings sheet handles (TalkBack) -->
+    <string name="sheet_handle_open">Открыть панель настроек</string>
+    <string name="sheet_handle_toggle">Развернуть или свернуть панель настроек</string>
 </resources>
