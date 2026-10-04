@@ -15,7 +15,7 @@ import java.util.Locale;
  * Post-shutter requests of the LMC hybrid (its own route, not SCAM HDR): the N frames come from the ZSL ring at the
  * preview exposure, after the press the camera exposes
  * <ul>
- * <li>one ultrashort frame (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (LMC: 8),
+ * <li>one or two ultrashort frames (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (LMC: one at 8),
  *     only when the newest buffered frame clips (or Bento is forced),</li>
  * <li>up to three bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}) at N x 2^ev (LMC: max(long, 4 x short)),
  *     shutter first up to the handheld cap, the rest as gain; skipped when the shutter cannot lengthen by
@@ -58,6 +58,11 @@ public final class HybridPlan {
     public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 1f)))); }
     /** Ultrashort exposure = N / factor; LMC ultrashort_tet_factor 8 (default). */
     public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.hybridValue("bento_factor", 8f))); }
+    /**
+     * Ultrashort frames per shot: 1 = LMC 9.6, 2 (default) = a second one at the same exposure; the worker merges both inside the
+     * mask (half the noise of the x8 replacement, the hand shake between them fills the R/B lattice of a single Bayer frame).
+     */
+    public static int bentoFrames() { return Math.max(1, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento_frames", 2f)))); }
     public static float bentoTriggerClip() { return Math.max(0f, Math.min(0.1f, PreferenceKeys.hybridValue("bento_trigger", 0.0005f))); }
     public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.hybridValue("shasta_max_ratio", 32f))); }
 
@@ -76,7 +81,7 @@ public final class HybridPlan {
             int iso = (int) Math.max(isos.getLower(), Math.min(nIso, Math.round(target / nShutterNs)));
             long ns = Math.max(times.getLower(), Math.min(nShutterNs, Math.round(target / iso)));
             double ratio = (double) ns * iso / n;
-            if (ratio < 0.5) out.add(new Request(ImageFrame.CaptureRole.EXTRA_SHORT, ns, iso, ratio));
+            if (ratio < 0.5) for (int i = bentoFrames(); i > 0; i--) out.add(new Request(ImageFrame.CaptureRole.EXTRA_SHORT, ns, iso, ratio));
             else why.append(" us skipped (sensor floor)");
         } else why.append(bento == 0 ? " bento off" : String.format(Locale.ROOT, " no clipping (%.4f)", clipFraction));
         // Bracketed (Shasta): shutter first within the handheld cap, the rest as gain.

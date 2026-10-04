@@ -105,11 +105,11 @@ public final class LmcHybridBurst implements NiceTransport {
         final double ref = product(base);
         add(base, ROLE_NORMAL, ref, newest);
         // The worker holds at most WORKER_MAX_FRAMES frames (uniform arrays); the oldest N frames go first,
-        // one slot stays for the ultrashort frame and three for the bracketed ones.
+        // two slots stay for the ultrashort frames and three for the bracketed ones.
         int normals = 1;
         for (ImageFrame f : normal) {
             if (f == base) continue;
-            if (normals >= WORKER_MAX_FRAMES - 4) { Log.w("NICE_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, worker limit " + WORKER_MAX_FRAMES); break; }
+            if (normals >= WORKER_MAX_FRAMES - 5) { Log.w("NICE_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, worker limit " + WORKER_MAX_FRAMES); break; }
             add(f, ROLE_NORMAL, ref, newest); normals++;
         }
         // Bracketed frames: only those really longer than the base.
@@ -118,16 +118,24 @@ public final class LmcHybridBurst implements NiceTransport {
             if (product(f) / ref < 1.5) { Log.w("NICE_HDR", "hybrid: bracketed frame " + f.number + " is not longer than the base, dropped"); continue; }
             add(f, ROLE_BRACKETED, ref, newest);
         }
-        // Ultrashort: the short frame closest to base/8 (others are dropped: Bento merges one).
+        // Ultrashort: the short frame closest to base/8 and, with bento_frames 2, one more at the same exposure (within x1.3);
+        // others are dropped.
+        int ultrashort = 0;
         if (!shorts.isEmpty()) {
             final double target = ref / com.particlesdevs.photoncamera.capture.HybridPlan.ultrashortFactor();
             shorts.sort(Comparator.comparingDouble(f -> Math.abs(Math.log(product(f) / target))));
-            ImageFrame us = shorts.get(0);
-            if (product(us) / ref < 0.75) add(us, ROLE_ULTRASHORT, ref, newest);
+            final double first = product(shorts.get(0));
+            final int want = com.particlesdevs.photoncamera.capture.HybridPlan.bentoFrames();
+            for (ImageFrame us : shorts) {
+                if (ultrashort >= want) break;
+                if (product(us) / ref >= 0.75 || Math.abs(Math.log(product(us) / first)) > Math.log(1.3)) continue;
+                add(us, ROLE_ULTRASHORT, ref, newest);
+                ultrashort++;
+            }
         }
         Log.i("NICE_HDR", "hybrid burst: frames=" + frames.size() + " base=" + base.number + " sharpness=" + base.sharpness
-                + " normals=" + normal.size() + " bracketed=" + (frames.size() - normal.size() - (roles.contains(ROLE_ULTRASHORT) ? 1 : 0))
-                + " ultrashort=" + roles.contains(ROLE_ULTRASHORT) + " noise=" + noiseSource + " base slope=" + noise.get(0)[0] + " offset=" + noise.get(0)[1]);
+                + " normals=" + normal.size() + " bracketed=" + (frames.size() - normal.size() - ultrashort)
+                + " ultrashort=" + ultrashort + " noise=" + noiseSource + " base slope=" + noise.get(0)[0] + " offset=" + noise.get(0)[1]);
     }
 
     private void add(ImageFrame f, int role, double ref, long newest) throws IOException {

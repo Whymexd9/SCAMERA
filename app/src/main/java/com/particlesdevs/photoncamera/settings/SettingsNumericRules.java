@@ -29,6 +29,8 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_bento_trigger": return new double[]{0,0.1,0};
             case "pref_lmc_hybrid_bento_weight": return new double[]{0.1,8,0};
             case "pref_lmc_hybrid_bento_sigma": return new double[]{0.5,2,0};
+            case "pref_lmc_hybrid_bento_frames": return new double[]{1,2,1};
+            case "pref_lmc_hybrid_bento_chroma_sigma": return new double[]{0,4,0};
             case "pref_lmc_hybrid_cdm": return new double[]{0.01,2,0};
             case "pref_lmc_hybrid_boost": return new double[]{0,1,1};
             case "pref_lmc_hybrid_kernel": return new double[]{0.5,2,0};
