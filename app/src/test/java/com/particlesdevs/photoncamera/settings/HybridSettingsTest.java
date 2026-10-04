@@ -56,8 +56,14 @@ public class HybridSettingsTest {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("lmc_hybrid_screen");
         assertNotNull(hybrid);assertEquals("LMC-гибрид",hybrid.getTitle().toString());
+        // Grouped like ArkCam 1.23: Функции обработки / Обработка фото / Обработка ArkCore (+ Тон SCAMERA, Диагностика).
+        for(String screen:new String[]{"lmc_hybrid_functions_screen","lmc_hybrid_photo_screen","lmc_hybrid_arkcore_screen",
+                "lmc_hybrid_ark_sharp_screen","lmc_hybrid_ark_rl_screen","lmc_hybrid_ark_tone_screen","lmc_hybrid_ark_vibrance_screen",
+                "lmc_hybrid_scamera_tone_screen"})
+            assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
         for(String category:new String[]{"lmc_hybrid_main_category","lmc_hybrid_capture_category","lmc_hybrid_merge_category",
-                "lmc_hybrid_nr_category","lmc_hybrid_tone_category","lmc_hybrid_sharp_category","lmc_hybrid_diag_category"})
+                "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_tone_category","lmc_hybrid_sharp_category",
+                "lmc_hybrid_ark_artifacts_category","lmc_hybrid_diag_category"})
             assertTrue(category,hybrid.findPreference(category) instanceof PreferenceCategory);
         assertTrue(hybrid.findPreference(PreferenceKeys.HYBRID_ENABLED_KEY) instanceof SwitchPreferenceCompat);
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);
