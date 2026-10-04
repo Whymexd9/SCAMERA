@@ -123,6 +123,9 @@
     <string name="sheet_short_average">Сред.</string>
     <string name="sheet_short_spot">Точка</string>
     <string name="sheet_short_diagonal">Диаг.</string>
+    <!-- Settings sheet row pin (TalkBack, tooltip) -->
+    <string name="sheet_pin_add">В быстрые кнопки</string>
+    <string name="sheet_pin_remove">Убрать из быстрых кнопок</string>
     <!-- AE metering -->
     <string name="ae_metering_off">Авто</string>
     <string name="ae_metering_center">Центровзвешенный</string>

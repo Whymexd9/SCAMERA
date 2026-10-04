@@ -36,7 +36,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.ScrollView;
-import android.widget.TextView;
 
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
@@ -181,10 +180,11 @@ public class SettingsBarLayout extends RelativeLayout implements SettingsBarList
     @Override
     public void onEntryUpdated(SettingsBarEntryModel entryModel, SettingsBarButtonModel buttonModel) {
         vibration.Click();
-        for (SettingsBarButtonModel model : entryModel.getSettingsBarButtonModels()) {
-            findViewById(entryModel.getId()).findViewById(model.getId()).setSelected(model.isSelected());
+        // The row shows the chosen value as its checked segment (no summary text any more).
+        View entryView = findViewById(entryModel.getId());
+        if (entryView instanceof SettingsBarEntryView) {
+            ((SettingsBarEntryView) entryView).setChecked(buttonModel.getId());
         }
-        ((TextView) findViewById(entryModel.getId()).findViewById(android.R.id.summary)).setText(entryModel.getStateTextStringId());
     }
 
     public void removeEntries() {

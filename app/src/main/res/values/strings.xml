@@ -318,5 +318,8 @@
     <string name="sheet_short_average">Average</string>
     <string name="sheet_short_spot">Spot</string>
     <string name="sheet_short_diagonal">Diag.</string>
+    <!-- Settings sheet row pin (TalkBack, tooltip) -->
+    <string name="sheet_pin_add">Add to quick buttons</string>
+    <string name="sheet_pin_remove">Remove from quick buttons</string>
 </resources>
 

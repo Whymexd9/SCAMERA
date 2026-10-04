@@ -8,4 +8,9 @@
     <color name="white">#FFFFFF</color>
     <color name="grid_thumbnail_background">#AAAAAA</color>
     <color name="white_theme_background">#F0EEE9</color>
+    <!-- Settings sheet (SHADE_SPEC): text, dim text and icons, accent, text on a light chip. -->
+    <color name="sheet_fg">#F2F5F7</color>
+    <color name="sheet_dim">#9AA6AD</color>
+    <color name="sheet_accent">#90C7FF</color>
+    <color name="sheet_on_fg">#111111</color>
 </resources>
