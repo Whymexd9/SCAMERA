@@ -17,9 +17,12 @@ import java.util.Locale;
  * <ul>
  * <li>one or two ultrashort frames (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (LMC: one at 8),
  *     only when the newest buffered frame clips (or Bento is forced),</li>
- * <li>up to three bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}) at N x 2^ev (LMC: max(long, 4 x short)),
- *     shutter first up to the handheld cap, the rest as gain; skipped when the shutter cannot lengthen by
- *     1.2x (LMC "no benefit") or the ratio exceeds the limit.</li>
+ * <li>up to five bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}) at N x 2^ev, gain first at the N shutter,
+ *     the shutter lengthens only where the sensor's gain range ends (up to the handheld cap); skipped when the ratio is below
+ *     1.5 or above the limit. As ArkCam 1.23 / LMC 9.6 on the same Oppo by day (research/lmc/device/oppo_debug_20261004):
+ *     5 frames at 10 ms x analog gain 2.22 (TET x1.9 of N), sharpness 97-106 % of the base, none discarded, 82 % of the
+ *     pixels weighted from them. The former shutter-first rule (33 ms x ISO 145 for N = 10 ms) blurred them by hand shake
+ *     and ship vibration: 33-82 % of the base sharpness, below the 80 % gate in every shot, never merged.</li>
  * </ul>
  * Capture order: ultrashort first (closest in time to the buffered base), bracketed frames after it.
  */
@@ -52,8 +55,8 @@ public final class HybridPlan {
 
     /** Preferences of the plan: the hybrid's own pref_lmc_hybrid_* (nice_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
     public static boolean shastaEnabled() { return PreferenceKeys.hybridSwitch("shasta", true); }
-    public static int bracketCount() { return Math.max(0, Math.min(3, Math.round(PreferenceKeys.hybridValue("shasta_frames", 2f)))); }
-    public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 2f))); }
+    public static int bracketCount() { return Math.max(0, Math.min(5, Math.round(PreferenceKeys.hybridValue("shasta_frames", 5f)))); }
+    public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 1f))); }
     /** 0 off, 1 auto (needs clipping in the buffered frame), 2 force. */
     public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 1f)))); }
     /** Ultrashort exposure = N / factor; LMC ultrashort_tet_factor 8 (default). */
@@ -84,17 +87,19 @@ public final class HybridPlan {
             if (ratio < 0.5) for (int i = bentoFrames(); i > 0; i--) out.add(new Request(ImageFrame.CaptureRole.EXTRA_SHORT, ns, iso, ratio));
             else why.append(" us skipped (sensor floor)");
         } else why.append(bento == 0 ? " bento off" : String.format(Locale.ROOT, " no clipping (%.4f)", clipFraction));
-        // Bracketed (Shasta): shutter first within the handheld cap, the rest as gain.
+        // Bracketed (Shasta): gain first at the N shutter (no extra motion blur), the shutter lengthens only beyond the sensor's
+        // gain range, within the handheld cap.
         final int count = shastaEnabled() ? bracketCount() : 0;
         if (count > 0) {
             final double ev = bracketEv(), target = n * Math.pow(2, ev);
-            final long cap = Math.min(times.getUpper(), Math.max(nShutterNs, HANDHELD_SHUTTER_CAP_NS));
-            long ns = Math.max(times.getLower(), Math.min(cap, Math.round(target / nIso)));
-            ns = snapAntibanding(ns, nShutterNs);
-            int iso = (int) Math.max(isos.getLower(), Math.min(isos.getUpper(), Math.round(target / ns)));
+            int iso = (int) Math.max(isos.getLower(), Math.min(isos.getUpper(), Math.round(target / nShutterNs)));
+            long ns = nShutterNs;
+            if ((double) ns * iso < target * 0.95) {
+                final long cap = Math.min(times.getUpper(), Math.max(nShutterNs, HANDHELD_SHUTTER_CAP_NS));
+                ns = snapAntibanding(Math.max(nShutterNs, Math.min(cap, Math.round(target / iso))), nShutterNs);
+            }
             double ratio = (double) ns * iso / n;
-            if (ns < nShutterNs * 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (shutter %.2fx < 1.2x)", (double) ns / nShutterNs));
-            else if (ratio > maxBracketRatio()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
+            if (ratio > maxBracketRatio()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
             else if (ratio < 1.5) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
             else for (int i = 0; i < count; i++) out.add(new Request(ImageFrame.CaptureRole.LONG, ns, iso, ratio));
         } else why.append(" shasta off");

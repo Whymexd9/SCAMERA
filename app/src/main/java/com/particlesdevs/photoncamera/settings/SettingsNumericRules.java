@@ -20,7 +20,7 @@ public final class SettingsNumericRules {
             case "pref_vivo_nice_planner_l_ev": return new double[]{0,3,0};
             case "pref_vivo_nice_planner_s_ev": return new double[]{1,5,0};
             case "pref_vivo_nice_planner_es_ev": return new double[]{2,9,0};
-            case "pref_lmc_hybrid_shasta_frames": return new double[]{1,3,1};
+            case "pref_lmc_hybrid_shasta_frames": return new double[]{1,5,1};
             case "pref_lmc_hybrid_shasta_ev": return new double[]{1,4,0};
             case "pref_lmc_hybrid_shasta_sharpness": return new double[]{0.3,1,0};
             case "pref_lmc_hybrid_shasta_max_ratio": return new double[]{2,100,0};

@@ -306,6 +306,14 @@ public class HybridSettingsTest {
         assertEquals(0f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_dn_coarse_stock","")),0f);
         assertEquals("1.5",prefs.getString("pref_lmc_hybrid_dn_chroma_floor",""));
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        // revision 4: the former Shasta defaults (2 frames, EV 2) become ArkCam's (5 frames at x2); a chosen value stays
+        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true).putInt("pref_lmc_hybrid_defaults_rev",3)
+                .putString("pref_lmc_hybrid_shasta_frames","2").putString("pref_lmc_hybrid_shasta_ev","3").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(5f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_shasta_frames","")),0f);
+        assertEquals(3f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_shasta_ev","")),0f);
+        assertEquals(4,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {

@@ -182,6 +182,23 @@ public final class SettingsMigration {
                 changed = true;
             }
         }
+        // Defaults revision 4 (4 October 2026): Shasta as ArkCam on the same phone, 5 bracketed frames at x2 by gain (the
+        // shutter-first x4 frames were blurred and never merged); stored former XML defaults (2 frames, EV 2) move along.
+        if (revision < 4) {
+            boolean touched = false;
+            String[] keys = {"shasta_frames", "shasta_ev"};
+            float[] former = {2f, 2f}, now = {5f, 1f};
+            for (int i = 0; i < keys.length; i++) {
+                Object v = values.get(LmcHybridKeys.PREFIX + keys[i]);
+                if (v == null) continue;
+                if (isNumber(v, former[i])) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(now[i], i == 1) : (Object) now[i]);
+                touched = true;
+            }
+            if (touched) {
+                e.putInt(DEFAULTS_REV, 4);
+                changed = true;
+            }
+        }
         if (changed) e.commit();
         return changed;
     }
