@@ -205,16 +205,22 @@
                     tools:visibility="visible"
                     />
 
+            <!-- The only general way into SettingsActivity (the settings sheet has no gear). -->
             <ImageButton
                     android:id="@+id/settings_button"
                     style="@style/Widget.AppCompat.ImageButton"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:minWidth="0dp" android:minHeight="0dp"
+                    android:layout_marginHorizontal="6dp"
                     android:onClick="@{top_bar_click_listener}"
-                    android:background="@drawable/ic_settings"
+                    android:background="@drawable/top_control_background"
                     android:src="@drawable/ic_settings"
-                    android:visibility="gone"
+                    android:scaleType="fitCenter"
+                    android:padding="@dimen/topbar_button_inset"
+                    android:contentDescription="@string/sheet_all_settings"
+                    android:tooltipText="@string/sheet_all_settings"
+                    android:visibility="visible"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintDimensionRatio="1:1"
                     app:layout_constraintEnd_toEndOf="parent"

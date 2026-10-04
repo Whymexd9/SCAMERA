@@ -207,10 +207,19 @@ public class SettingsBarEntryView extends LinearLayout {
         return pinned;
     }
 
-    /** The pin only reacts while a listener is set. */
+    /** The pin only reacts while a listener is set (and the row is enabled). */
     public void setOnPinClickListener(@Nullable OnPinClickListener listener) {
         pinClickListener = listener;
-        pinButton.setEnabled(listener != null);
+        pinButton.setEnabled(listener != null && isEnabled());
+    }
+
+    /** A disabled row (the sheet locked during a burst) takes no value change and no pin. */
+    @Override
+    public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        // The toggle group passes the state on to its segments.
+        segmentGroup.setEnabled(enabled);
+        pinButton.setEnabled(enabled && pinClickListener != null);
     }
 
     private MaterialButton createSegment(Context context, SettingsBarButtonModel model, boolean valueIcon) {

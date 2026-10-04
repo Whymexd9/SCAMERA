@@ -126,6 +126,8 @@
     <!-- Settings sheet row pin (TalkBack, tooltip) -->
     <string name="sheet_pin_add">В быстрые кнопки</string>
     <string name="sheet_pin_remove">Убрать из быстрых кнопок</string>
+    <!-- Top bar gear that opens SettingsActivity (TalkBack, tooltip) -->
+    <string name="sheet_all_settings">Все настройки</string>
     <!-- AE metering -->
     <string name="ae_metering_off">Авто</string>
     <string name="ae_metering_center">Центровзвешенный</string>

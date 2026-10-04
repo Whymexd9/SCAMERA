@@ -67,6 +67,11 @@ public class SettingsBarEntryModel {
         this.type = type;
     }
 
+    /** The setting this entry changes; its name identifies the entry among the sheet's quick buttons. */
+    public Enum<SettingType> getType() {
+        return type;
+    }
+
     public void setTypeAndData(Enum<SettingType> type) {
         this.type = type;
         this.topBarSettingsData.setValue(new TopBarSettingsData<>(type));

@@ -160,6 +160,8 @@ public class SettingsBarEntryProvider extends ViewModel {
     public void addEntries(SettingsBarLayout settingsBarLayout) {
         settingsBarLayout.removeEntries();
         allEntries.forEach(settingsBarLayout::addEntry);
+        // End of the batch: the sheet builds its quick buttons and group summaries.
+        settingsBarLayout.onEntriesAdded();
     }
 
     private void createHdrxEntry() {

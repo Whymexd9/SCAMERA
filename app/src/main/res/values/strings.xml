@@ -321,5 +321,7 @@
     <!-- Settings sheet row pin (TalkBack, tooltip) -->
     <string name="sheet_pin_add">Add to quick buttons</string>
     <string name="sheet_pin_remove">Remove from quick buttons</string>
+    <!-- Top bar gear that opens SettingsActivity (TalkBack, tooltip) -->
+    <string name="sheet_all_settings">All settings</string>
 </resources>
 
