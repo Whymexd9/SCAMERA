@@ -106,6 +106,7 @@ public final class ArkCombine extends Node {
             glProg.setVar("clarityU", ArkTone.value("clarity", 0f));
             glProg.setVar("flatProtectU", ArkTone.value("flat_protect", 0f));
             glProg.setVar("detailGainU", detail);
+            glProg.setVar("deltaChromaU", Math.max(0f, Math.min(1f, ArkTone.value("delta_chroma", 1f))));
             glProg.setVar("filmToeU", ArkTone.value("film_toe", 0.10f));
             glProg.setVar("agxAU", r.slope, r.sp, r.tp, r.sat);
             glProg.setVar("agxBU", r.minEv, r.maxEv, r.ev, (float) r.look);

@@ -48,6 +48,7 @@ uniform float detailGainU;          // ark_detail_gain; 0 (unset) = no detail
 uniform int detailRefU;             // 1: bounded, compression-scaled delta against ArkDetailRef; unset -> unbounded delta
 uniform int sharpU;                 // 1: the delta's luminance is ArkLumaS; unset -> the full-size merge
 uniform float sharpToneU;           // sharpU 1: ae / m (ArkLumaS domain -> ae domain); <= 0 -> 1
+uniform float deltaChromaU;         // 0..1: a darkening delta scales a, b with L (hue and relative chroma kept); 0 = kernel
 uniform float filmToeU;             // film toe (0 = off)
 uniform vec4 agxAU;                 // slope, shoulder power, toe power, saturation; slope <= 0 -> 2.7, 1.35, 1.6, 1
 uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -> -8.5, 3.5, 0.3, 4
@@ -300,7 +301,12 @@ void main() {
         float compression = min(1.0, post.x / (lRef * (sharpTone != 1.0 ? cbrtp(sharpTone) : 1.0)));
         delta *= compression * compression;
     }
+    float lBefore = post.x;
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);
+    // The kernel keeps a, b while the delta moves L. At a strong edge the colour is the B-spline mix of both sides, and
+    // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling
+    // a, b with L there (a uniform linear scale of the colour) keeps the hue and the relative chroma instead.
+    if (deltaChromaU > 0.0 && post.x < lBefore) post.yz *= mix(1.0, post.x / max(lBefore, 0.0001), clamp(deltaChromaU, 0.0, 1.0));
     graded = clamp(fromOklab(post), 0.0, 1.0);
 
     // === display: power 1/gamma, film toe [:1805-1825], dither [:1836-1843] ===

@@ -116,6 +116,7 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_clarity": return new double[]{-1,2,0};
             case "pref_lmc_hybrid_ark_flat_protect": return new double[]{0,10,0};
             case "pref_lmc_hybrid_ark_detail_gain": return new double[]{0,3,0};
+            case "pref_lmc_hybrid_ark_delta_chroma": return new double[]{0,1,0};
             case "pref_lmc_hybrid_ark_sharp_guard": return new double[]{0,1,0};
             case "pref_lmc_hybrid_ark_sharp_gain": return new double[]{0,3,0};
             case "pref_lmc_hybrid_ark_sharp_domain": return new double[]{0,1,1};
