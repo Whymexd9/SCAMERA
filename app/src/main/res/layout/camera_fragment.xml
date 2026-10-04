@@ -82,7 +82,7 @@
                     setActiveId="@{auxmodel.currentCameraId}"
                     bindViewGroupChildrenRotate="@{uimodel}"
                     hideAuxButtons="@{uimodel.sheetLevel != CameraFragmentModel.SHEET_HIDDEN}"
-                    android:layout_marginBottom="6dp"
+                    android:layout_marginBottom="18dp"
                     android:elevation="4dp" />
 
             <!--    Block 1.4-->
