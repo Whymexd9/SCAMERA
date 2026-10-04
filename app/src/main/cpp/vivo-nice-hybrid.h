@@ -23,6 +23,10 @@
 #include <fstream>
 #include <mutex>
 #include <sstream>
+#include <thread>
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 
 namespace vivo_nice {
 
@@ -119,12 +123,18 @@ struct HybridTuning {
     // Sabre 6.1 kernel (research/hybrid5/sabre2x_61.md F1-F4): 6.1 sigma curves and SNR key, kernel covariance of every frame from
     // its own RAW (tensor of the quad luma, Wiener noise from the frame's noise model), the 6.1 window (+-1.5 px) and the base
     // widening below 4 accepted frames. 0 = the round-4 kernel (old NICE super-res curves, base-frame tensor for all frames),
-    // 1 = always, 2 = auto: only when the 6.1 SNR key is at most s61MaxKey (night). Replays (impl_worker.md): at night (key 12.6)
-    // the 6.1 kernel raises the split-half SNR in every band; in daylight (key 67) its narrow kernels double the frame-to-frame
-    // differences of textured areas (residual misregistration with one homography per frame) until a local alignment exists.
+    // 1 = always, 2 = auto: at night (6.1 SNR key <= s61MaxKey) and, with the F6 local alignment on, in daylight on a handheld burst
+    // (RMS shift of the donors at the frame centre >= s61MinMotion RAW px). Replays (f6_local_align.md): at night the 6.1 kernel
+    // raises the split-half SNR in every band; in daylight with one homography per frame its narrow kernels doubled the frame-to-frame
+    // differences (misregistration), with F6 it adds detail in every band (x1.7 above the 1x Nyquist on the handheld day burst);
+    // on a static burst (no sub-pixel diversity) it only adds noise (x2-3), so the round-4 kernel stays there.
     int sabre61=2;
     float s61MaxKey=30.f;
+    float s61MinMotion=2.f;
     float s61TensorNoise=1.f,s61GdNoise=1.f; // multipliers of the emulated 6.1 noise LUT (tensor, green difference)
+    // ... in daylight (key > s61MaxKey) instead: the emulated LUT leaves flat areas on the narrow "structure" kernel at ISO 100-200
+    // (smooth-area noise x2.3 against the round-4 kernel); 16 / 4 keep the detail (-1 %) at x1.45 (f6_local_align.md)
+    float s61DayTensorNoise=16.f,s61DayGdNoise=4.f;
     int s61Mode=7;               // parts of the 6.1 merge on top of its kernel curves: 1 covariance of every frame from its own RAW,
                                  // 2 window +-1.5 px, 4 base widening below widenBelow accepted frames
     int subset=0;                // diagnostics (split half): 1 = odd normal donors, 2 = even ones; no base, no Bento, no long frames
@@ -138,6 +148,21 @@ struct HybridTuning {
     float rimSigma=1.5f;         // isotropic kernel of the ratio sites (sensor px)
     float rimLo=0.02f,rimHi=0.2f;// ramp of the largest excluded (clipped) weight share of a colour
     int rimStride=4;             // donors used for the ratios: every rimStride-th (the base and the ultrashort always)
+    // F6 local alignment (research/hybrid5/f6_local_align.md): a per-tile residual offset of every donor on top of its homography,
+    // Lucas-Kanade on a two-level gray pyramid. 0 = off (output byte-identical to the merge without it), 1 = field interpolated
+    // bilinearly between tile centres, 2 = constant per tile (NEAREST, as GCam 6.1 / 11).
+    int localAlign=1;
+    int laWin=16;                // L0 window, gray px (2 RAW px each): 16 = 32x32 RAW windows (6.1 tile, GCam 11 window)
+    int laStride=8;              // L0 tile stride, gray px: 8 = 16x16 RAW output tiles (GCam 11 grid)
+    int laIters=3,laItersCoarse=3; // LK iterations on L0 / L1
+    float laMu=0.1f;             // Levenberg-Marquardt damping (share of the mean tensor eigenvalue)
+    float laKappa=2.f;           // noise damping (x window pixels x gray noise variance)
+    float laMaxShift=6.f;        // larger residuals (RAW px) are motion, not misregistration: the tile keeps the homography
+    int laMedian=2;              // 3x3 median passes over the L0 field
+    int laUltrashort=0;          // 1: refine the ultrashort (Bento) frame too (x8..16 gain: noisy, isotropic 1 px kernel)
+    int laThreads=6;             // worker threads (one frame each; ~15 MB per thread)
+    int isoKernel=0;             // diagnostics, round-4 kernel only (sabre61 off): 1 = isotropic sigma = base (no edge shaping), 2 = also no
+                                 // flat widening: a "spatial RGB"-like isotropic Gaussian (LMC 9.6 spatial_rgb: sigma 0.28..0.40 px)
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -173,8 +198,12 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("cellClip",nullptr,&t.cellClip)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("bentoLmc",nullptr,&t.bentoLmc)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)
-            ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
-            ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride);
+            ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
+            ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
+            ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
+            ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
+            ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
+            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -263,6 +292,34 @@ vec3 dcovAt(int f,int i,int j){
 // own RAW: quad luma Y = (sqrt r + sqrt g1 + sqrt g2 + sqrt b)/4 of the 3x3 quads, four diagonal gradient pairs /8 rotated by
 // 45 degrees, Wiener-filtered strength (noise from the frame's own model in place of the 6.1 LUT), green-difference blur, 6.1
 // sigma mixing. Returns P for kernelW() (exp2(-0.72135 d'Pd) == exp2(-0.5 d'Cd)), divided by kernelScale^2.
+// F6 local alignment (vivo-nice-hybrid.h laFrameField): per-tile residual offset of every frame (RAW px) on top of its homography.
+// Compiled only when the merge uses it (HybridGpu(.., localAlign)): without LOCAL_ALIGN the programs are the ones before F6. Every
+// index stays inside the buffer for any uniform values: the compiler may execute the loads of a branch it does not take
+// (if-conversion), and an out-of-bounds SSBO read faults the GPU (a phone reboot with an earlier draft).
+#ifdef LOCAL_ALIGN
+layout(std430,binding=15) readonly buffer LaFlow{vec2 laFlow[];}; // [frame][tile row][tile column]
+uniform ivec4 laU;   // x: 1 bilinear between tile centres, 2 constant per tile (NEAREST); y, z = tiles per row / column (>= 1)
+uniform vec4 laG;    // xy = RAW position of the centre of tile (0,0), z = tile stride (RAW px), w = 1 / stride
+// Local offset of frame f at the cell whose origin is (x, y) (0 for the base).
+vec2 laFlowAt(int f,int x,int y){
+    int nx=max(laU.y,1),ny=max(laU.z,1);
+    uint fb=uint(clamp(f,0,frameCount-1)*nx*ny);
+    vec2 p=(vec2(float(x),float(y))+0.5-laG.xy)*laG.w;
+    p=clamp(p,vec2(0.0),vec2(float(nx-1),float(ny-1)));
+    ivec2 i0=clamp(ivec2(p),ivec2(0),ivec2(nx-1,ny-1)),i1=min(i0+1,ivec2(nx-1,ny-1));
+    vec2 a=laU.x==2?vec2(greaterThanEqual(p-vec2(i0),vec2(0.5))):p-vec2(i0); // NEAREST: the closer centre
+    vec2 v00=laFlow[fb+uint(i0.y*nx+i0.x)],v10=laFlow[fb+uint(i0.y*nx+i1.x)];
+    vec2 v01=laFlow[fb+uint(i1.y*nx+i0.x)],v11=laFlow[fb+uint(i1.y*nx+i1.x)];
+    vec2 d=mix(mix(v00,v10,a.x),mix(v01,v11,a.x),a.y);
+    return f==0?vec2(0.0):d;
+}
+// origin() of kCommonShader plus the local offset (rejection: once per frame and cell). The merge and the rim pass read the
+// offsets the dilation pass stored per cell (four loads and the interpolation inside the merge loop made it 20x slower on
+// Adreno 750: the GPU hang detection reset the context).
+vec2 originL(int f,int x,int y){return origin(f,x,y)+laFlowAt(f,x,y);}
+#else
+#define originL(f,x,y) origin(f,x,y)
+#endif
 uniform vec4 k61aU; // covariance_parameters1: f5/f0 (shrunk), 1/(f0 f4) (stretched), f2 (gradient clip), 1/f0 (base); w = 0: off
 uniform vec4 k61bU; // 1/(f0 f1) (blurred), 1/f3 (transition), 1/kernelScale^2, tensor noise multiplier
 uniform vec4 k61cU; // green difference noise multiplier
@@ -572,7 +629,7 @@ void main(){
     vec4 G=guide[(cy-ry0)*w2+cx];
     float w=0.0;
     if(fParam[f].y>0.0){
-        vec2 o=origin(f,2*cx,2*cy)*0.5;
+        vec2 o=originL(f,2*cx,2*cy)*0.5;
         int ix=int(floor(o.x)),iy=int(floor(o.y));
         float fx=o.x-float(ix),fy=o.y-float(iy);
         vec4 c00=cellAt(f,ix,iy),c10=cellAt(f,ix+1,iy),c01=cellAt(f,ix,iy+1),c11=cellAt(f,ix+1,iy+1);
@@ -610,6 +667,9 @@ layout(std430,binding=7) readonly buffer RawR{float rawR[];};
 layout(std430,binding=8) writeonly buffer Robust{float robust[];};
 layout(std430,binding=9) buffer Sums{uint sums[];};
 layout(std430,binding=13) readonly buffer Mask{float bmask[];};
+#ifdef LOCAL_ALIGN
+layout(std430,binding=16) writeonly buffer LaCell{uint laCell[];}; // F6 offset per donor and cell of the strip (half2)
+#endif
 uniform int ry0;
 uniform int ry1;
 uniform int cy0;
@@ -628,6 +688,9 @@ void main(){
     }
     float rej=clamp((s-dl.x)/max(dl.y,1.0e-3),0.0,1.0);
     float r=min(wc,1.0-rej)*fParam[f].y;
+#ifdef LOCAL_ALIGN
+    laCell[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx]=packHalf2x16(laFlowAt(f,2*cx,2*cy)); // read by the merge and the rim pass
+#endif
     if(dl.z>0.5){
         float m=bmask[(cy-cy0)*w2+cx];
         if(int(fParam[f].w)==5)r=m*fParam[f].y; else r*=(1.0-m);
@@ -672,6 +735,17 @@ void initAcc(out Acc a){a.num=vec3(0.0);a.den=vec3(0.0);a.cover=0.0;a.clipNum=ve
 float kernelW(vec2 d,vec3 P){
     return exp2(-0.72135*(d.x*d.x*P.x+d.y*d.y*P.y+2.0*d.x*d.y*P.z))+kD.z; // exp(-0.5 d'Pd) + floor
 }
+#ifdef LOCAL_ALIGN
+layout(std430,binding=16) readonly buffer LaCell{uint laCell[];};
+// origin() plus the F6 offset kHybDilate stored for donor f (>= 1) and the strip cell (x/2, y/2). Indices clamped: a load the
+// compiler hoists out of a branch (f = 0 in the rim loop) stays inside the buffer.
+vec2 originM(int f,int x,int y){
+    int w2=size.x/2,f1=clamp(f,1,max(frameCount-1,1))-1,cx=clamp(x>>1,0,w2-1),cy=clamp((y>>1)-cy0,0,max(cy1-cy0-1,0));
+    return origin(f,x,y)+unpackHalf2x16(laCell[uint(f1*(cy1-cy0)*w2+cy*w2+cx)]);
+}
+#else
+#define originM(f,x,y) origin(f,x,y)
+#endif
 // Sites of frame f around position O (frame coordinates): the two lattice sites per axis of every colour phase. Site flags come
 // with the RAW word: an outlier site gives no sample; a site of a clipped cell sends its value to the clipped mean (used only
 // where nothing valid is left), so a clip border does not average one colour from one side only. win = the 6.1 window
@@ -778,7 +852,7 @@ void main(){
             float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
             if(r<0.004)continue;
             if(kE.x>=0.0&&int(kE.x)!=f)continue;
-            vec2 oc=origin(f,2*cx,2*cy);
+            vec2 oc=originM(f,2*cx,2*cy);
             vec2 O=oc+(pos-cell);
             // ultrashort frame: isotropic kernel wide enough for a single Bayer frame (the base guide is an edge
             // along every highlight border, its across-edge sigma leaves R/B holes = green/magenta zipper)
@@ -917,7 +991,7 @@ void main(){
             r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
             if(r<0.004)continue;
             if(kE.x>=0.0&&int(kE.x)!=f)continue;
-            O=origin(f,2*cx,2*cy)+(pos-cell);
+            O=originM(f,2*cx,2*cy)+(pos-cell);
             bool us=int(fParam[f].w)==5;
             if(us)Pf=vec3(kE.y,kE.y,0.0);
             else if((mode&1)!=0){ vec2 dc=floor((O+0.5)*0.5); Pf=dcovAt(f,int(dc.x),int(dc.y))*fParam[f].z; }
@@ -943,7 +1017,7 @@ void main(){
             if(r<0.004)continue;
             if(kE.x>=0.0&&int(kE.x)!=f)continue;
             if(int(fParam[f].w)!=5&&rimStrideU>1&&(f%rimStrideU)!=0)continue;
-            O=origin(f,2*cx,2*cy)+(pos-cell);
+            O=originM(f,2*cx,2*cy)+(pos-cell);
         } else {
             if(wb<=0.0)continue;
             r=wb;O=pos;
@@ -990,7 +1064,8 @@ class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
     EGLSurface surface=EGL_NO_SURFACE;
-    static constexpr int kSlots=16; // 0..14 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance), 15 readback staging
+    static constexpr int kSlots=18; // 0..16 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance, 15 F6 field,
+                                    // 16 F6 offset per strip cell), 17 readback staging
     GLuint meanProgram=0,flagsProgram=0,markProgram=0,guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,rimProgram=0,buffers[kSlots]{};
     size_t capacity[kSlots]{};
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("HYBRID GPU ")+where+" GL error="+std::to_string(e));}
@@ -1005,9 +1080,10 @@ class HybridGpu {
         if(context!=EGL_NO_CONTEXT)eglDestroyContext(display,context);
         eglTerminate(display);display=EGL_NO_DISPLAY;
     }
+    const char* helpersPrefix=""; // "#define LOCAL_ALIGN 1\n" when the F6 field is used
     GLuint compile(const char* body,bool standalone=false){
-        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kCommonShader,kHybHelpers,body};
-        if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,3,sources,nullptr);
+        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kCommonShader,helpersPrefix,kHybHelpers,body};
+        if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,4,sources,nullptr);
         glCompileShader(shader);
         GLint ok=0;glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
         if(!ok){char msg[4096]{};glGetShaderInfoLog(shader,sizeof(msg),nullptr,msg);glDeleteShader(shader);throw std::runtime_error(std::string("HYBRID GPU shader: ")+msg);}
@@ -1084,10 +1160,19 @@ class HybridGpu {
         }
         glFlush();
         if(barrier)glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        if(profile){glFinish();passMs[pass]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();}
+        if(profile){
+            glFinish();const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();passMs[pass]+=ms;
+            if(profilePasses&&trace){
+                // glGetError clears the flag: an error read here is thrown as check() would have done after the pass
+                const GLenum err=glGetError();
+                char l[96];std::snprintf(l,sizeof(l),"HYBRID GPU pass %d rows=%d z=%d ms=%.1f err=%d",pass,rows,gz,ms,int(err));trace(l);
+                if(err!=GL_NO_ERROR)throw std::runtime_error("HYBRID GPU pass "+std::to_string(pass)+" GL error="+std::to_string(err));
+            }
+        }
     }
 public:
     bool profile=false;            // glFinish after every pass and add its time to passMs
+    bool profilePasses=false;      // with profile: one report line per pass (profile 2; finds a pass that hangs)
     double passMs[8]{};            // flags, guide, cells, reject, dilate, merge, readback, mark
     std::string renderer,limits,compileMs;size_t maxStorageBlock=0;
     std::function<void(const std::string&)> trace;
@@ -1105,11 +1190,19 @@ public:
         std::array<float,4> k61a{},k61b{},k61c{};      // Sabre 6.1 kernel uniforms (k61a[3] = 0: round-4 kernel)
         int mergeMode=0;                                // 1 per-frame 6.1 covariance, 2 6.1 window, 4 6.1 base widening
         bool noBase=false;                              // split-half diagnostics: the base is not accumulated
+        // F6 local alignment: per merge frame (0 = base, zeros) ny x nx tiles of (dx, dy) RAW px; laMode 0 = off
+        const std::vector<float>* laField=nullptr;
+        int laMode=0,laNx=0,laNy=0;
+        float laOx=0,laOy=0,laStride=16;
+        std::vector<float> laMaxY;                      // per frame: largest |dy| of the field (rows uploaded beyond the homography)
     };
     long fixedOutliers=0,baseOutliers=0;                // sites flagged by the last merge
     long rimPixels=0;                                   // output pixels whose R/B the clip-border ratios rebuilt
     // rimPass: compile the clip-border colour pass (kHybRim, ~0.14 s on Adreno 750); without it merge() runs as before the pass.
-    explicit HybridGpu(bool rimPass=true){
+    // localAlign: compile the F6 local offsets into the reject / merge / rim programs (Frames::laMode needs it).
+    const bool localAlign=false;
+    explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false):localAlign(withLocalAlign){
+        if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
             if(display==EGL_NO_DISPLAY||!eglInitialize(display,nullptr,nullptr)||!eglBindAPI(EGL_OPENGL_ES_API))throw std::runtime_error("EGL unavailable");
@@ -1201,7 +1294,19 @@ public:
             glUniform4f(loc(program,"k61aU"),in.k61a[0],in.k61a[1],in.k61a[2],in.k61a[3]);
             glUniform4f(loc(program,"k61bU"),in.k61b[0],in.k61b[1],in.k61b[2],in.k61b[3]);
             glUniform4f(loc(program,"k61cU"),in.k61c[0],in.k61c[1],in.k61c[2],in.k61c[3]);
+            if(localAlign){
+                glUniform4i(loc(program,"laU"),in.laMode,in.laNx,in.laNy,0);
+                glUniform4f(loc(program,"laG"),in.laOx,in.laOy,in.laStride,1.f/std::max(in.laStride,1e-3f));
+            }
         }
+        // F6 field: the whole burst once (frames x tiles x 8 B, ~12 MB for 32 frames of 12 MP). The programs compiled with it read
+        // binding 15 for every donor: they need the field (zeros = the homography).
+        const bool la=localAlign;
+        if(la){
+            if(in.laMode==0||!in.laField||in.laNx<1||in.laNy<1||in.laField->size()!=size_t(frames)*in.laNx*in.laNy*2)
+                throw std::runtime_error("HYBRID GPU local alignment field");
+            reserve(15,in.laField->size()*4);put(15,0,in.laField->data(),in.laField->size()*4);
+        } else if(in.laMode!=0)throw std::runtime_error("HYBRID GPU compiled without local alignment");
         const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0);
         // Site flags ride in the two spare top bits of the uploaded words: needs white < 16384 (RAW10/12/14) and no word above
         // 16383 (checked below with the clip scan: a white level below the codes the sensor really sends would turn bits 14/15 of
@@ -1288,7 +1393,9 @@ public:
                     DonorPoint p=in.homography[f].project(x,y);
                     const float py=p.y/in.homography[f].upRatio;lo=std::min(lo,py);hi=std::max(hi,py);
                 }
-                int r0=std::max(0,int(std::floor(lo))-8)&~1,r1=std::min(h,(int(std::ceil(hi))+9)&~1);
+                // F6: the local offsets move the samples beyond the homography's rows by up to the field's largest |dy|
+                const int extra=la&&f<int(in.laMaxY.size())?int(std::ceil(in.laMaxY[f]))+1:0;
+                int r0=std::max(0,int(std::floor(lo))-8-extra)&~1,r1=std::min(h,(int(std::ceil(hi))+9+extra)&~1);
                 if(r1<=r0){r0=0;r1=std::min(h,8);}
                 row0[f]=r0;rows[f]=r1-r0;offsets[f]=GLuint(total);total+=size_t(rows[f])*w;
                 crow0[f]=r0/2;crows[f]=rows[f]/2;cellOff[f]=GLuint(cellTotal);cellTotal+=size_t(crows[f])*w2;
@@ -1313,6 +1420,7 @@ public:
             reserve(14,(in.mergeMode&1)?std::max<size_t>(cellTotal,1)*8:16);
             reserve(7,size_t(donors)*(ry1-ry0)*w2*4);
             reserve(8,size_t(donors)*(cy1-cy0)*w2*4);
+            if(la)reserve(16,size_t(donors)*(cy1-cy0)*w2*4);
             reserve(9,zeros.size()*4);
             reserve(2,size_t(ry1-ry0)*w*2*4);           // site flags of the strip rows
             reserve(1,(size_t(ry1-ry0)*2+4)*w*4);       // fixed-pattern mean (rows +-2)
@@ -1599,7 +1707,288 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
     return res;
 }
 
-struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0; int merged=0,droppedBracketed=0; bool bento=false; };
+// ---------------------------------------------------------------------------------------------
+// F6: tile-local refinement of the per-frame homography (research/hybrid5/f6_local_align.md).
+// One homography per frame (CRE, 8-bit 1/4 guide) leaves 0.3-0.9 px RMS of local misregistration on handheld bursts (parallax of
+// near objects, rolling shutter, lens): narrow Sabre kernels then merge frames that disagree. Per tile, the residual offset of
+// every donor against the base is estimated on a two-level gray pyramid (GCam 11 spatial path: Lucas-Kanade, 16x16 RAW output
+// tiles from 32x32 RAW windows, median filtering; GCam 6.1: 32x32 RAW tiles) and added to the homography in every GPU pass.
+//   gray     2x2 quad mean (canonical cell), gain-normalised to base units, sqrt domain (noise variance ~ slope/16 everywhere);
+//            sites >= 0.95 of white in the frame's own units mark the quad clipped (excluded from the sums)
+//   L1       gray/2, windows 16 px (64 RAW) every 8 px (32 RAW), LK from the homography
+//   L0       gray, windows laWin px (2 laWin RAW) every laStride px; start = the better (window SSD) of the homography and the L1
+//            field; LK; the result stands only where it lowers the SSD of the homography and |r| <= laMaxShift, else the tile
+//            keeps the homography (flat, clipped, occluded or moving tiles); then laMedian 3x3 medians
+//   LK step  (A + lambda I) d = sum grad(B) (B - D(x + t)) on mean-normalised windows, lambda = laMu tr(A)/2 + laKappa n v:
+//            Levenberg-Marquardt damping keeps the along-edge component of an edge tile (aperture problem) from drifting,
+//            the noise term keeps flat noisy tiles at the start; steps clamped to 1 level px
+// The window is a pure translation (the homography's Jacobian differs from 1 by < 0.5 %: < 0.06 px at the window edge, zero mean).
+struct LaImage {
+    int w=0,h=0;
+    std::vector<float> v;       // sqrt-domain gray; < 0 = no sample (clipped quad; base: also next to one, its gradient is not real)
+    std::vector<float> gx,gy;   // central differences (base only)
+};
+// Rows of a level image, in parallel (the base, once) or not (a frame inside the per-frame worker pool).
+template<class F> inline void laRows(bool parallel,int h,const F& body){if(parallel)mergeRowBands(h,body); else body(0,h);}
+// Gray of a frame: canonical quad (i, j) = sensor sites (2i + cfa&1 .. +1, 2j + cfa>>1 .. +1), normalised by black / white of each
+// phase and clamped to [0, 1] like Burst::sampleRaw (which handles the reflected border quads); -1 where a site >= 0.95 of white.
+inline void laGray(const Burst& b,const uint16_t* raw,float gain,float eps,LaImage& out,bool parallel){
+    out.w=b.w/2;out.h=b.h/2;out.v.resize(size_t(out.w)*out.h);
+    const int sx=b.cfa&1,sy=b.cfa>>1;
+    float inv[4];for(int p=0;p<4;++p)inv[p]=1.f/(b.white-b.black[p]);
+    laRows(parallel,out.h,[&](int y0,int y1){
+        for(int j=y0;j<y1;++j){
+            const int Y=2*j+sy;
+            const bool rowsIn=Y+1<b.h;
+            const uint16_t* r0=raw+size_t(std::min(Y,b.h-1))*b.w;const uint16_t* r1=rowsIn?r0+b.w:r0;
+            const int p0=(Y&1)<<1,p1=((Y+1)&1)<<1;
+            float* o=out.v.data()+size_t(j)*out.w;
+            int i=0;
+#if defined(__aarch64__)
+            if(rowsIn){ // four quads per step, the same arithmetic in the same order as the scalar loop (identical floats)
+                const int q0=sx&1,q1=(sx+1)&1;
+                const float32x4_t b00=vdupq_n_f32(b.black[p0|q0]),b01=vdupq_n_f32(b.black[p0|q1]),b10=vdupq_n_f32(b.black[p1|q0]),b11=vdupq_n_f32(b.black[p1|q1]);
+                const float32x4_t i00=vdupq_n_f32(inv[p0|q0]),i01=vdupq_n_f32(inv[p0|q1]),i10=vdupq_n_f32(inv[p1|q0]),i11=vdupq_n_f32(inv[p1|q1]);
+                const float32x4_t zero=vdupq_n_f32(0.f),one=vdupq_n_f32(1.f),quarter=vdupq_n_f32(0.25f),gv=vdupq_n_f32(gain),ev=vdupq_n_f32(eps);
+                const float32x4_t clipLv=vdupq_n_f32(0.95f),none=vdupq_n_f32(-1.f);
+                auto site=[&](uint16x4_t v,float32x4_t bl,float32x4_t iv){
+                    return vminq_f32(vmaxq_f32(vmulq_f32(vsubq_f32(vcvtq_f32_u32(vmovl_u16(v)),bl),iv),zero),one);
+                };
+                for(;i+4<=out.w&&2*i+sx+7<b.w;i+=4){
+                    const int X=2*i+sx;
+                    const uint16x4x2_t a=vld2_u16(r0+X),c=vld2_u16(r1+X);
+                    const float32x4_t u0=site(a.val[0],b00,i00),u1=site(a.val[1],b01,i01),u2=site(c.val[0],b10,i10),u3=site(c.val[1],b11,i11);
+                    const float32x4_t sum=vaddq_f32(vaddq_f32(vaddq_f32(u0,u1),u2),u3),mx=vmaxq_f32(vmaxq_f32(u0,u1),vmaxq_f32(u2,u3));
+                    const float32x4_t val=vsqrtq_f32(vaddq_f32(vmaxq_f32(vmulq_f32(vmulq_f32(quarter,sum),gv),zero),ev));
+                    vst1q_f32(o+i,vbslq_f32(vcgeq_f32(mx,clipLv),none,val));
+                }
+            }
+#endif
+            for(;i<out.w;++i){
+                const int X=2*i+sx;
+                float s=0,m=0;
+                if(rowsIn&&X+1<b.w){
+                    const int q0=X&1,q1=(X+1)&1;
+                    const float v[4]={(float(r0[X])-b.black[p0|q0])*inv[p0|q0],(float(r0[X+1])-b.black[p0|q1])*inv[p0|q1],
+                                      (float(r1[X])-b.black[p1|q0])*inv[p1|q0],(float(r1[X+1])-b.black[p1|q1])*inv[p1|q1]};
+                    for(float u:v){u=std::clamp(u,0.f,1.f);s+=u;m=std::max(m,u);}
+                } else for(int p=0;p<4;++p){const float u=b.sampleRaw(raw,2*i+(p&1),2*j+(p>>1));s+=u;m=std::max(m,u);}
+                o[i]=m>=0.95f?-1.f:std::sqrt(std::max(0.25f*s*gain,0.f)+eps);
+            }
+        }
+    });
+}
+inline void laDown(const LaImage& in,LaImage& out,bool parallel){
+    out.w=in.w/2;out.h=in.h/2;out.v.resize(size_t(out.w)*out.h);
+    laRows(parallel,out.h,[&](int y0,int y1){
+        for(int j=y0;j<y1;++j)for(int i=0;i<out.w;++i){
+            const size_t a=size_t(2*j)*in.w+2*i,b=a+in.w;
+            const float p=in.v[a],q=in.v[a+1],r=in.v[b],s=in.v[b+1];
+            out.v[size_t(j)*out.w+i]=std::min(std::min(p,q),std::min(r,s))<0.f?-1.f:0.25f*(p+q+r+s);
+        }
+    });
+}
+// Base level: central differences, then every pixel whose difference stencil touches a clipped quad loses its sample.
+inline void laBaseLevel(LaImage& im,bool parallel){
+    im.gx.assign(im.v.size(),0.f);im.gy.assign(im.v.size(),0.f);
+    std::vector<float> masked(im.v.size());
+    laRows(parallel,im.h,[&](int y0,int y1){
+        for(int j=y0;j<y1;++j)for(int i=0;i<im.w;++i){
+            const size_t k=size_t(j)*im.w+i;
+            const int il=std::max(i-1,0),ir=std::min(i+1,im.w-1),ju=std::max(j-1,0),jd=std::min(j+1,im.h-1);
+            const float l=im.v[size_t(j)*im.w+il],r=im.v[size_t(j)*im.w+ir],u=im.v[size_t(ju)*im.w+i],d=im.v[size_t(jd)*im.w+i];
+            im.gx[k]=(r-l)/float(std::max(ir-il,1));im.gy[k]=(d-u)/float(std::max(jd-ju,1));
+            masked[k]=std::min(std::min(std::min(l,r),std::min(u,d)),im.v[k])<0.f?-1.f:im.v[k];
+        }
+    });
+    im.v.swap(masked);
+}
+// One window: donor samples at translation (tx, ty) level px (bilinear, constant weights), residual e = (B - mean B) - (D - mean D)
+// over the pixels with a base sample and four donor samples (m = 1): its energy (SSD per pixel) and the LK system, from one pass of
+// sums (values taken relative to the base at the window centre, so the differences of moments keep their precision in float):
+//   n SSD = sum m (b - d)^2 - n (mb - md)^2,  bx = sum m gx b - sum m gx d - (mb - md) sum m gx  (by alike),  A = sum m g g'.
+struct LaTile { float n=0,ssd=0,axx=0,ayy=0,axy=0,bx=0,by=0; };
+constexpr int kLaMaxWin=32;
+struct LaSums { float n=0,sb=0,sd=0,sbb=0,sdd=0,sbd=0,gx=0,gy=0,gxb=0,gyb=0,gxd=0,gyd=0,axx=0,ayy=0,axy=0; };
+inline LaTile laTilePass(const LaImage& B,const LaImage& D,int ox,int oy,int win,float tx,float ty,bool system){
+    const float fx0=std::floor(tx),fy0=std::floor(ty);
+    const int ix=int(fx0),iy=int(fy0);
+    const float fx=tx-fx0,fy=ty-fy0,w00=(1-fx)*(1-fy),w10=fx*(1-fy),w01=(1-fx)*fy,w11=fx*fy;
+    const float c=std::max(B.v[size_t(oy+win/2)*B.w+ox+win/2],0.f);
+    LaSums S;
+    const bool inside=ox+ix>=0&&ox+ix+win<D.w&&oy+iy>=0&&oy+iy+win<D.h;
+    bool done=false;
+#if defined(__aarch64__)
+    if(inside&&(win&3)==0){
+        const float32x4_t zero=vdupq_n_f32(0);
+        float32x4_t n=zero,sb=zero,sd=zero,sbb=zero,sdd=zero,sbd=zero,gx=zero,gy=zero,gxb=zero,gyb=zero,gxd=zero,gyd=zero,axx=zero,ayy=zero,axy=zero;
+        const uint32x4_t one=vreinterpretq_u32_f32(vdupq_n_f32(1.f));
+        const float32x4_t cc=vdupq_n_f32(c),v00=vdupq_n_f32(w00),v10=vdupq_n_f32(w10),v01=vdupq_n_f32(w01),v11=vdupq_n_f32(w11);
+        for(int wy=0;wy<win;++wy){
+            const size_t kb=size_t(oy+wy)*B.w+ox,k0=size_t(oy+wy+iy)*D.w+size_t(ox+ix),k1=k0+D.w;
+            const float *br=B.v.data()+kb,*d0=D.v.data()+k0,*d1=D.v.data()+k1,*g1r=B.gx.data()+kb,*g2r=B.gy.data()+kb;
+            for(int x=0;x<win;x+=4){
+                const float32x4_t bv=vld1q_f32(br+x),a00=vld1q_f32(d0+x),a10=vld1q_f32(d0+x+1),a01=vld1q_f32(d1+x),a11=vld1q_f32(d1+x+1);
+                const float32x4_t mn=vminq_f32(vminq_f32(bv,vminq_f32(a00,a10)),vminq_f32(a01,a11));
+                const float32x4_t m=vreinterpretq_f32_u32(vandq_u32(vcgeq_f32(mn,zero),one));
+                const float32x4_t b=vsubq_f32(bv,cc);
+                float32x4_t d=vmulq_f32(v00,a00);d=vfmaq_f32(d,v10,a10);d=vfmaq_f32(d,v01,a01);d=vfmaq_f32(d,v11,a11);d=vsubq_f32(d,cc);
+                const float32x4_t mb=vmulq_f32(m,b),md=vmulq_f32(m,d);
+                n=vaddq_f32(n,m);sb=vaddq_f32(sb,mb);sd=vaddq_f32(sd,md);
+                sbb=vfmaq_f32(sbb,mb,b);sdd=vfmaq_f32(sdd,md,d);sbd=vfmaq_f32(sbd,mb,d);
+                if(system){
+                    const float32x4_t g1=vld1q_f32(g1r+x),g2=vld1q_f32(g2r+x),mg1=vmulq_f32(m,g1),mg2=vmulq_f32(m,g2);
+                    gx=vaddq_f32(gx,mg1);gy=vaddq_f32(gy,mg2);
+                    gxb=vfmaq_f32(gxb,mg1,b);gyb=vfmaq_f32(gyb,mg2,b);gxd=vfmaq_f32(gxd,mg1,d);gyd=vfmaq_f32(gyd,mg2,d);
+                    axx=vfmaq_f32(axx,mg1,g1);ayy=vfmaq_f32(ayy,mg2,g2);axy=vfmaq_f32(axy,mg1,g2);
+                }
+            }
+        }
+        S.n=vaddvq_f32(n);S.sb=vaddvq_f32(sb);S.sd=vaddvq_f32(sd);S.sbb=vaddvq_f32(sbb);S.sdd=vaddvq_f32(sdd);S.sbd=vaddvq_f32(sbd);
+        S.gx=vaddvq_f32(gx);S.gy=vaddvq_f32(gy);S.gxb=vaddvq_f32(gxb);S.gyb=vaddvq_f32(gyb);S.gxd=vaddvq_f32(gxd);S.gyd=vaddvq_f32(gyd);
+        S.axx=vaddvq_f32(axx);S.ayy=vaddvq_f32(ayy);S.axy=vaddvq_f32(axy);
+        done=true;
+    }
+#endif
+    if(!done)for(int wy=0;wy<win;++wy){ // scalar: borders (clamped donor reads) and other architectures
+        const int Y=oy+wy;
+        const size_t kb=size_t(Y)*B.w+ox;
+        const int y0=std::clamp(Y+iy,0,D.h-1),y1=std::clamp(Y+iy+1,0,D.h-1);
+        const size_t a=size_t(y0)*D.w,e=size_t(y1)*D.w;
+        for(int wx=0;wx<win;++wx){
+            const int x0=std::clamp(ox+wx+ix,0,D.w-1),x1=std::clamp(ox+wx+ix+1,0,D.w-1);
+            const float bv=B.v[kb+wx],a00=D.v[a+x0],a10=D.v[a+x1],a01=D.v[e+x0],a11=D.v[e+x1];
+            const float m=std::min(std::min(bv,std::min(a00,a10)),std::min(a01,a11))>=0.f?1.f:0.f;
+            const float b=bv-c,d=w00*a00+w10*a10+w01*a01+w11*a11-c;
+            S.n+=m;S.sb+=m*b;S.sd+=m*d;S.sbb+=m*b*b;S.sdd+=m*d*d;S.sbd+=m*b*d;
+            if(system){
+                const float g1=B.gx[kb+wx],g2=B.gy[kb+wx];
+                S.gx+=m*g1;S.gy+=m*g2;S.gxb+=m*g1*b;S.gyb+=m*g2*b;S.gxd+=m*g1*d;S.gyd+=m*g2*d;S.axx+=m*g1*g1;S.ayy+=m*g2*g2;S.axy+=m*g1*g2;
+            }
+        }
+    }
+    LaTile t;t.n=S.n;
+    if(S.n<1)return t;
+    const float mb=S.sb/S.n,md=S.sd/S.n,dm=mb-md;
+    t.ssd=std::max((S.sbb-2.f*S.sbd+S.sdd)/S.n-dm*dm,0.f);
+    t.axx=S.axx;t.ayy=S.ayy;t.axy=S.axy;
+    t.bx=S.gxb-S.gxd-dm*S.gx;t.by=S.gyb-S.gyd-dm*S.gy;
+    return t;
+}
+struct LaGrid {
+    int nx=0,ny=0,win=16,stride=8,s=2; // tiles, window and stride (level px), RAW px per level px
+    float centre(int i) const {return float(stride*i)+0.5f*float(win-1);}  // level px
+    float raw(float c) const {return float(s)*c+0.5f*float(s-1);}         // level px -> RAW px
+};
+inline LaGrid laGrid(const LaImage& im,int win,int stride,int s){
+    LaGrid g;g.win=win;g.stride=stride;g.s=s;g.nx=std::max(1,(im.w-win)/stride+1);g.ny=std::max(1,(im.h-win)/stride+1);return g;
+}
+// Translation of the homography at the centre of tile (i, j), level px.
+inline void laT0(const LaGrid& g,const BackwardHomography& H,int i,int j,float& tx,float& ty){
+    const float cx=g.centre(i),cy=g.centre(j);
+    const float X=g.raw(cx),Y=g.raw(cy);
+    const float den=H.h[6]*X+H.h[7]*Y+1.f;
+    const float hx=(H.h[0]*X+H.h[1]*Y+H.h[2])/den/H.upRatio,hy=(H.h[3]*X+H.h[4]*Y+H.h[5])/den/H.upRatio;
+    tx=(hx-0.5f*float(g.s-1))/float(g.s)-cx;ty=(hy-0.5f*float(g.s-1))/float(g.s)-cy;
+}
+// Lucas-Kanade iterations on every tile of a level: r (RAW px, ny*nx*2) in/out.
+inline void laLK(const LaImage& B,const LaImage& D,const LaGrid& g,const BackwardHomography& H,float v,float mu,float kappa,int iters,
+                 std::vector<float>& r){
+    const float minN=0.5f*float(g.win*g.win);
+    for(int j=0;j<g.ny;++j)for(int i=0;i<g.nx;++i){
+        float tx0,ty0;laT0(g,H,i,j,tx0,ty0);
+        float* rr=r.data()+(size_t(j)*g.nx+i)*2;
+        for(int it=0;it<iters;++it){
+            const LaTile t=laTilePass(B,D,g.stride*i,g.stride*j,g.win,tx0+rr[0]/float(g.s),ty0+rr[1]/float(g.s),true);
+            if(t.n<minN)break;
+            const float lam=mu*0.5f*(t.axx+t.ayy)+kappa*t.n*v;
+            const float a=t.axx+lam,c=t.ayy+lam,b=t.axy,det=a*c-b*b;
+            if(!(det>1e-30f))break;
+            const float dx=std::clamp((c*t.bx-b*t.by)/det,-1.f,1.f),dy=std::clamp((a*t.by-b*t.bx)/det,-1.f,1.f);
+            rr[0]+=dx*float(g.s);rr[1]+=dy*float(g.s);
+        }
+    }
+}
+// 3x3 median of each component (borders replicated), 19-comparator network.
+inline void laMedian3(std::vector<float>& r,int nx,int ny){
+    const std::vector<float> src=r;
+    auto cx=[](float& a,float& b){const float lo=std::min(a,b);b=std::max(a,b);a=lo;};
+    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i)for(int c=0;c<2;++c){
+        float p[9];int k=0;
+        for(int dj=-1;dj<=1;++dj)for(int di=-1;di<=1;++di)
+            p[k++]=src[(size_t(std::clamp(j+dj,0,ny-1))*nx+std::clamp(i+di,0,nx-1))*2+c];
+        cx(p[1],p[2]);cx(p[4],p[5]);cx(p[7],p[8]);cx(p[0],p[1]);cx(p[3],p[4]);cx(p[6],p[7]);cx(p[1],p[2]);cx(p[4],p[5]);cx(p[7],p[8]);
+        cx(p[0],p[3]);cx(p[5],p[8]);cx(p[4],p[7]);cx(p[3],p[6]);cx(p[1],p[4]);cx(p[2],p[5]);cx(p[4],p[7]);cx(p[4],p[2]);cx(p[6],p[4]);cx(p[4],p[2]);
+        r[(size_t(j)*nx+i)*2+c]=p[4];
+    }
+}
+// Bilinear sample of a level-L field (RAW px) at RAW position (X, Y).
+inline void laFieldAt(const std::vector<float>& r,const LaGrid& g,float X,float Y,float& fx,float& fy){
+    const float u=std::clamp(((X-0.5f*float(g.s-1))/float(g.s)-0.5f*float(g.win-1))/float(g.stride),0.f,float(g.nx-1));
+    const float w=std::clamp(((Y-0.5f*float(g.s-1))/float(g.s)-0.5f*float(g.win-1))/float(g.stride),0.f,float(g.ny-1));
+    const int i0=std::min(int(u),g.nx-1),j0=std::min(int(w),g.ny-1),i1=std::min(i0+1,g.nx-1),j1=std::min(j0+1,g.ny-1);
+    const float a=u-float(i0),b=w-float(j0);
+    for(int c=0;c<2;++c){
+        const float v=(r[(size_t(j0)*g.nx+i0)*2+c]*(1-a)+r[(size_t(j0)*g.nx+i1)*2+c]*a)*(1-b)
+                     +(r[(size_t(j1)*g.nx+i0)*2+c]*(1-a)+r[(size_t(j1)*g.nx+i1)*2+c]*a)*b;
+        (c?fy:fx)=v;
+    }
+}
+struct LaFrameStats { float median=0,p90=0,maxAbsY=0,accepted=0,fromCoarse=0; double ms[7]{}; }; // ms: gray, down, L1, start, L0, accept, median
+// Base pyramid (built once) and the per-frame field on the L0 grid. One worker thread per frame (no nested parallelism).
+struct LaBase { LaImage l0,l1; LaGrid g0,g1; float v0=0; };
+inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomography& H,const HybridTuning& t,
+                         std::vector<float>& field,LaFrameStats& st){
+    using LaClock=std::chrono::steady_clock;
+    auto tick=LaClock::now();
+    auto lap=[&](int k){const auto now=LaClock::now();st.ms[k]+=std::chrono::duration<double,std::milli>(now-tick).count();tick=now;};
+    LaImage D1;laDown(D0,D1,false);lap(1);
+    const LaGrid& g0=base.g0;const LaGrid& g1=base.g1;
+    std::vector<float> r1(size_t(g1.nx)*g1.ny*2,0.f);
+    laLK(base.l1,D1,g1,H,base.v0*0.25f,t.laMu,t.laKappa,std::max(0,t.laItersCoarse),r1);
+    laMedian3(r1,g1.nx,g1.ny);lap(2);
+    field.assign(size_t(g0.nx)*g0.ny*2,0.f);
+    std::vector<float> s0(size_t(g0.nx)*g0.ny,0.f);
+    std::vector<uint8_t> ok(s0.size(),0),coarse(s0.size(),0);
+    const float minN=0.5f*float(g0.win*g0.win);
+    // start: the better of the homography and the L1 field (window SSD)
+    for(int j=0;j<g0.ny;++j)for(int i=0;i<g0.nx;++i){
+        const size_t k=size_t(j)*g0.nx+i;
+        float tx0,ty0;laT0(g0,H,i,j,tx0,ty0);
+        const LaTile a=laTilePass(base.l0,D0,g0.stride*i,g0.stride*j,g0.win,tx0,ty0,false);
+        s0[k]=a.n>=minN?a.ssd:-1.f;
+        float ux,uy;laFieldAt(r1,g1,g0.raw(g0.centre(i)),g0.raw(g0.centre(j)),ux,uy);
+        if(a.n>=minN&&(ux!=0.f||uy!=0.f)){
+            const LaTile u=laTilePass(base.l0,D0,g0.stride*i,g0.stride*j,g0.win,tx0+ux/float(g0.s),ty0+uy/float(g0.s),false);
+            if(u.n>=minN&&u.ssd<a.ssd){field[k*2]=ux;field[k*2+1]=uy;coarse[k]=1;}
+        }
+    }
+    lap(3);
+    laLK(base.l0,D0,g0,H,base.v0,t.laMu,t.laKappa,std::max(0,t.laIters),field);lap(4);
+    // keep the refinement only where it lowers the SSD of the homography
+    for(int j=0;j<g0.ny;++j)for(int i=0;i<g0.nx;++i){
+        const size_t k=size_t(j)*g0.nx+i;
+        float* rr=field.data()+k*2;
+        bool keep=s0[k]>=0.f&&std::isfinite(rr[0])&&std::isfinite(rr[1])&&std::hypot(rr[0],rr[1])<=t.laMaxShift;
+        if(keep&&(rr[0]!=0.f||rr[1]!=0.f)){
+            float tx0,ty0;laT0(g0,H,i,j,tx0,ty0);
+            const LaTile f=laTilePass(base.l0,D0,g0.stride*i,g0.stride*j,g0.win,tx0+rr[0]/float(g0.s),ty0+rr[1]/float(g0.s),false);
+            keep=f.n>=minN&&f.ssd<s0[k];
+        }
+        if(!keep){rr[0]=0;rr[1]=0;} else ok[k]=1;
+    }
+    lap(5);
+    for(int m=0;m<std::max(0,t.laMedian);++m)laMedian3(field,g0.nx,g0.ny);
+    lap(6);
+    std::vector<float> mag(s0.size());float maxY=0;long acc=0,fromCoarse=0;
+    for(size_t k=0;k<mag.size();++k){mag[k]=std::hypot(field[k*2],field[k*2+1]);maxY=std::max(maxY,std::abs(field[k*2+1]));acc+=ok[k];fromCoarse+=coarse[k];}
+    const size_t mid=mag.size()/2,p90=std::min(mag.size()-1,mag.size()*9/10);
+    std::nth_element(mag.begin(),mag.begin()+mid,mag.end());st.median=mag[mid];
+    std::nth_element(mag.begin(),mag.begin()+p90,mag.end());st.p90=mag[p90];
+    st.maxAbsY=maxY;st.accepted=float(acc)/float(std::max<size_t>(1,mag.size()));st.fromCoarse=float(fromCoarse)/float(std::max<size_t>(1,mag.size()));
+}
+
+struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0,localAlignMs=0; int merged=0,droppedBracketed=0; bool bento=false; };
 
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
 // frames beyond six are aligned in groups like the extra ZSL frames of the NICE path.
@@ -1660,11 +2049,25 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const float snr=tune.snrFixed>0?float(tune.snrFixed):sabreSnr(baseSlope,baseOffset,tune.snrScale);
     snrKernel(kernel,snr);
     kernel.base*=tune.kernelScale;kernel.shrunk*=tune.kernelScale;kernel.stretched*=tune.kernelScale;kernel.flat*=tune.kernelScale;
+    if(tune.isoKernel){kernel.shrunk=kernel.stretched=kernel.base;if(tune.isoKernel>=2)kernel.flat=kernel.base;}
     // Sabre 6.1 kernel (sabre2x_61.md F1): key = 0.18/sqrt(O + 0.18 S) of the base frame (no snrScale), GCam 6.1 curves f0..f3
     // (research/gcam61/sabre_curves.json), f4 = 4, f5 = 2.2; uniforms exactly as libgcam 0x723f04-0x724008.
     std::array<float,4> k61a{},k61b{},k61c{};
     const float key61=tune.snrFixed>0?float(tune.snrFixed):sabreSnr(baseSlope,baseOffset,1.f);
-    const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&key61<=tune.s61MaxKey);
+    // Hand motion of the burst: RMS shift of the aligned normal donors at the frame centre (sub-pixel diversity for the 6.1 kernel).
+    double motion=0;
+    {
+        int cnt=0;
+        for(int f=1;f<n;++f){
+            if(input.frames[f].role!=kRoleNormal||!aligned[f])continue;
+            const DonorPoint p=H[f].project(w/2,h/2);
+            const double dx=p.x/H[f].upRatio-w/2,dy=p.y/H[f].upRatio-h/2;
+            motion+=dx*dx+dy*dy;++cnt;
+        }
+        motion=cnt?std::sqrt(motion/cnt):0.0;
+    }
+    const bool night61=key61<=tune.s61MaxKey,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
+    const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&(night61||handheld61));
     const bool outliers=(tune.hotSigma>0||tune.hotBaseSigma>0)&&key61<=tune.hotMaxKey;
     if(sabre61){
         static const float kf0[]={8.f,16.f},vf0[]={0.33f,0.25f};
@@ -1675,17 +2078,23 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float f0=sabreCurve(key,kf0,vf0),f1=sabreCurve(key,kf1,vf1),f2=sabreCurve(key,kf2,vf2),f3=sabreCurve(key,kf3,vf3),f4=4.f,f5=2.2f;
         const float ks=std::max(tune.kernelScale,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
-        k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tune.s61TensorNoise>0?tune.s61TensorNoise:1.f};
-        k61c={tune.s61GdNoise>0?tune.s61GdNoise:1.f,0,0,0};
+        // daylight multipliers only with the local alignment (they were measured with it): localAlign 0 keeps the merge before F6
+        // for every sabre61 setting, forced 6.1 in daylight included
+        const bool dayNoise=!night61&&tune.localAlign>0;
+        const float tn=dayNoise?tune.s61DayTensorNoise:tune.s61TensorNoise,gn=dayNoise?tune.s61DayGdNoise:tune.s61GdNoise;
+        k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tn>0?tn:1.f};
+        k61c={gn>0?gn:1.f,0,0,0};
         auto sigma=[&](float p){return std::to_string(ks/(p*std::sqrt(std::log(2.f))));};
         report("HYBRID KERNEL: Sabre 6.1 baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" key="+std::to_string(key)
             +" f0="+std::to_string(f0)+" f1="+std::to_string(f1)+" f2="+std::to_string(f2)+" f3="+std::to_string(f3)
             +" sigma across="+sigma(k61a[0])+" base="+sigma(k61a[3])+" along="+sigma(k61a[1])+" blurred="+sigma(k61b[0])
             +" ("+((tune.s61Mode&1)?"per-frame covariance":"base covariance for all frames")+((tune.s61Mode&2)?", window 1.5 px":"")
             +((tune.s61Mode&4)?", base x0.3 below "+std::to_string(tune.widenBelow)+" frames":", base widening by donor coverage")+")"
-            +(tune.sabre61==2?" auto":""));
+            +(tune.sabre61==2?std::string(" auto (")+(night61?"night key":"handheld with local alignment")+")":std::string())
+            +" noise x"+std::to_string(k61b[3])+"/x"+std::to_string(k61c[0])+" motion="+std::to_string(motion)+" px");
     } else {
-    if(tune.sabre61==2)report("HYBRID KERNEL: Sabre 6.1 kernel off (auto: key "+std::to_string(key61)+" > "+std::to_string(tune.s61MaxKey)+")");
+    if(tune.sabre61==2)report("HYBRID KERNEL: Sabre 6.1 kernel off (auto: key "+std::to_string(key61)+" > "+std::to_string(tune.s61MaxKey)
+        +", motion "+std::to_string(motion)+" px "+(tune.localAlign>0?"< "+std::to_string(tune.s61MinMotion):std::string("without local alignment"))+")");
     report("HYBRID KERNEL: baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" snr="+std::to_string(snr)+" across="+std::to_string(kernel.shrunk)+" base="+std::to_string(kernel.base)
         +" along="+std::to_string(kernel.stretched)+" flat="+std::to_string(kernel.flat)+" thresholds="+std::to_string(kernel.flat0)+"/"+std::to_string(kernel.flat1));
     }
@@ -1754,6 +2163,83 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     stats.maskMs=millis(Clock::now()-maskStarted);
     stats.bento=bento.active;
+    // ---- F6: tile-local refinement of the homographies (frames that are merged; the ultrashort frame keeps its homography)
+    std::vector<std::vector<float>> laFields(n);std::vector<float> laMaxY(n,0.f);
+    LaGrid laG0;bool laOn=false;
+    if(tune.localAlign>0&&n>1){
+        const auto laStarted=Clock::now();
+        LaBase laBase; // ~40 MB on 12 MP, freed before the GPU merge
+        const float eps=std::max(baseOffset/std::max(baseSlope,1e-9f),1e-5f);
+        laGray(b,input.frames[0].raw,1.f,eps,laBase.l0,true);
+        laDown(laBase.l0,laBase.l1,true);laBaseLevel(laBase.l1,true);laBaseLevel(laBase.l0,true);
+        const double baseMs=millis(Clock::now()-laStarted);
+        const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
+        laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
+        laBase.v0=baseSlope/16.f;
+        std::vector<int> jobs;
+        for(int f=1;f<n;++f){
+            if(!keep[f]||!aligned[f])continue;
+            if(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort)continue;
+            jobs.push_back(f);
+        }
+        // One worker per frame at a time (gray 12 MB + L1 3 MB each): long-lived threads, so the scheduler moves them to the big
+        // cores (short parallel sections per pass stayed on the small ones: 3.3 s for 19 frames against 0.8 s for this pool on Adreno 750 phones (SM8650)).
+        std::vector<LaFrameStats> fstats(n);
+        // An exception must not leave a worker thread (std::terminate: the shot is lost): it stops the pool, the merge then uses
+        // the homographies only.
+        std::atomic<bool> laFailed{false};std::string laFailure;std::mutex laFailureMutex;
+        {
+            const int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
+            std::atomic<int> next{0};
+            auto work=[&]{
+                try{
+                    LaImage D0;
+                    for(int k=next.fetch_add(1);k<int(jobs.size())&&!laFailed;k=next.fetch_add(1)){
+                        const int f=jobs[k];
+                        const auto g0=Clock::now();
+                        laGray(b,input.frames[f].raw,1.f/input.frames[f].exposure,eps,D0,false);
+                        fstats[f].ms[0]=millis(Clock::now()-g0);
+                        laFrameField(laBase,D0,H[f],tune,laFields[f],fstats[f]);
+                    }
+                }catch(const std::exception& error){
+                    std::lock_guard<std::mutex> lock(laFailureMutex);if(!laFailed.exchange(true))laFailure=error.what();
+                }catch(...){
+                    std::lock_guard<std::mutex> lock(laFailureMutex);if(!laFailed.exchange(true))laFailure="unknown error";
+                }
+            };
+            std::vector<std::thread> pool;
+            for(int t=1;t<std::min<int>(threads,int(jobs.size()));++t){
+                try{pool.emplace_back(work);}catch(const std::exception&){break;} // fewer threads: the others take the frames
+            }
+            work();
+            for(auto& th:pool)th.join();
+        }
+        if(laFailed){
+            for(auto& fld:laFields)fld.clear();
+            jobs.clear();
+            report("HYBRID LOCAL ALIGN: failed ("+laFailure+"); merging with the homographies only");
+        }
+        std::string per;double partMs[7]{};
+        for(int f:jobs){
+            const LaFrameStats& st=fstats[f];
+            laMaxY[f]=st.maxAbsY;
+            for(int k=0;k<7;++k)partMs[k]+=st.ms[k];
+            char v[80];std::snprintf(v,sizeof(v)," %d:%.2f/%.2f/%.0f%%",f,st.median,st.p90,100.f*st.accepted);per+=v;
+        }
+        const int done=int(jobs.size());
+        const double grayMs=partMs[0];
+        stats.localAlignMs=millis(Clock::now()-laStarted);
+        laOn=done>0;laG0=laBase.g0;
+        char line[320];
+        std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN: %s, %d frames, tiles %dx%d (%d RAW px, window %d RAW px), %.0f ms (gray %.0f ms thread sum) mu=%.2f kappa=%.1f maxShift=%.1f medians=%d; per frame |r| median/p90 RAW px / refined tiles:",
+            tune.localAlign==2?"constant per tile":"bilinear field",done,laBase.g0.nx,laBase.g0.ny,2*stride,2*win,stats.localAlignMs,grayMs,tune.laMu,tune.laKappa,tune.laMaxShift,tune.laMedian);
+        report(line+per);
+        if(tune.profile){
+            std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN ms (thread sums): base=%.0f gray=%.0f down=%.0f L1=%.0f start=%.0f L0=%.0f accept=%.0f median=%.0f",
+                baseMs,partMs[0],partMs[1],partMs[2],partMs[3],partMs[4],partMs[5],partMs[6]);
+            report(line);
+        }
+    } else report("HYBRID LOCAL ALIGN: off");
     // ---- per-frame weights (LMC driver): A = min(cap, ((TET_f/TET_b)^2 read_b/read_f)^fwe), LUTsigma(A)
     HybridGpu::Frames in;
     in.w=w;in.h=h;in.cfa=input.cfa;
@@ -1793,8 +2279,37 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     report(table);
     if(bento.active)in.mask=&bento.mask;
+    // F6 field in merge order (0 = base and frames without a field: zeros)
+    std::vector<float> laAll;
+    if(laOn){
+        const size_t tiles=size_t(laG0.nx)*laG0.ny*2;
+        laAll.assign(index.size()*tiles,0.f);in.laMaxY.assign(index.size(),0.f);
+        for(size_t i=0;i<index.size();++i){
+            const auto& fld=laFields[index[i]];
+            if(fld.size()==tiles){std::copy(fld.begin(),fld.end(),laAll.begin()+i*tiles);in.laMaxY[i]=laMaxY[index[i]];}
+        }
+        in.laField=&laAll;in.laMode=tune.localAlign==2?2:1;in.laNx=laG0.nx;in.laNy=laG0.ny;
+        // tile (i, j) centre: level px stride*i + (win-1)/2 -> RAW 2c + 0.5
+        in.laOx=in.laOy=laG0.raw(laG0.centre(0));in.laStride=float(2*laG0.stride);
+        if(const char* dump=std::getenv("SCAM_LA_DUMP")){ // replay diagnostics: the field of every merged frame
+            std::ofstream fdump(dump,std::ios::binary);
+            const int32_t hd[8]={0x3641414c,int32_t(index.size()),laG0.nx,laG0.ny,2*laG0.stride,2*laG0.win,0,0};
+            fdump.write(reinterpret_cast<const char*>(hd),sizeof(hd));
+            for(size_t i=0;i<index.size();++i){const int32_t idx=index[i];fdump.write(reinterpret_cast<const char*>(&idx),4);}
+            fdump.write(reinterpret_cast<const char*>(laAll.data()),std::streamsize(laAll.size()*4));
+            report(std::string("HYBRID LOCAL ALIGN: field dumped to ")+dump);
+        }
+    }
     in.k61a=k61a;in.k61b=k61b;in.k61c=k61c;
     in.mergeMode=sabre61?(tune.s61Mode&7):0;
+    // A daylight 6.1 kernel is chosen for the local alignment (it loses without it): where the field is missing (F6 failed) or
+    // the GPU cannot use it, the round-4 kernel instead.
+    auto dropDay61=[&](const char* why){
+        if(!(sabre61&&tune.sabre61==2&&!night61))return;
+        in.k61a={};in.k61b={};in.k61c={};in.mergeMode=0;
+        report(std::string("HYBRID KERNEL: Sabre 6.1 kernel off (")+why+")");
+    };
+    if(tune.localAlign>0&&!laOn)dropDay61("it was chosen for the local alignment, which gave no field");
     in.noBase=tune.subset==1||tune.subset==2;
     // Fixed-pattern outlier test: the base and up to hotFrames-1 more normal frames spread over the burst.
     if(outliers){
@@ -1813,9 +2328,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<float> out,effective,sensorRgb;std::vector<double> share;std::vector<uint8_t> flagsRaw;
     const int grid=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     const int outW=w*grid,outH=h*grid;
-    {
+    auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
-        HybridGpu gpu(tune.rimRatio!=0);gpu.trace=report;gpu.profile=tune.profile!=0;
+        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")");
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
@@ -1834,7 +2349,19 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpu.rimPixels,100.0*double(gpu.rimPixels)/(double(outW)*outH),tune.rimSigma,tune.rimLo,tune.rimHi,tune.rimStride);
         else std::snprintf(line,sizeof(line),"HYBRID RIM: off");
         report(line);
-    }
+    };
+    if(laOn){
+        // The F6 programs need two more storage bindings (15, 16) and change the reject / dilate / merge / rim passes: a GPU that
+        // refuses them (compile/link, bindings) or a pass that fails must not lose the shot. Merge again with the homographies
+        // only (the context of the failed attempt is destroyed first); a 6.1 kernel chosen only for the alignment goes as well.
+        try{gpuMerge(true);}
+        catch(const std::exception& error){
+            report(std::string("HYBRID LOCAL ALIGN: GPU merge with the local offsets failed (")+error.what()+"); merging with the homographies only");
+            in.laField=nullptr;in.laMode=0;in.laMaxY.clear();laOn=false;
+            dropDay61("it was chosen for the local alignment");
+            gpuMerge(false);
+        }
+    } else gpuMerge(false);
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
         sensorRgb.assign(size_t(w)*h*3,0.f);
         mergeRowBands(h,[&](int y0,int y1){
@@ -1905,7 +2432,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +std::to_string(counts[0])+" G="+std::to_string(counts[1])+" B="+std::to_string(counts[2])+" border="+std::to_string(counts[3])
             +" bento="+std::to_string(counts[4])+" ultrashort="+std::to_string(counts[5])+(counts[6]?" rimChecked="+std::to_string(counts[6]):std::string()));
     }
-    report("HYBRID STAGES ms: align="+std::to_string(stats.alignMs)+" mask="+std::to_string(stats.maskMs)+" merge="+std::to_string(stats.mergeMs)
+    report("HYBRID STAGES ms: align="+std::to_string(stats.alignMs)+" localAlign="+std::to_string(stats.localAlignMs)+" mask="+std::to_string(stats.maskMs)+" merge="+std::to_string(stats.mergeMs)
         +" total="+std::to_string(millis(Clock::now()-started))+" merged="+std::to_string(stats.merged)+" droppedBracketed="+std::to_string(stats.droppedBracketed)
         +" bento="+std::to_string(stats.bento));
     if(statsOut)*statsOut=stats;
