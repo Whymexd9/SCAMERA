@@ -20,14 +20,22 @@
 
 package com.particlesdevs.photoncamera.ui.camera.model;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.IdRes;
 import androidx.annotation.StringRes;
 import androidx.lifecycle.MutableLiveData;
 
+import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.settings.SettingType;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarListener;
 
 public class SettingsBarEntryModel {
+    /** Sheet groups, in display order. */
+    public static final int GROUP_SHOOT = 0;
+    public static final int GROUP_FORMAT = 1;
+    public static final int GROUP_VIEW = 2;
+    public static final int GROUP_COUNT = 3;
+
     private final int id;
     private final MutableLiveData<TopBarSettingsData<?, ?>> topBarSettingsData = new MutableLiveData<>();
     private int titleStringId;
@@ -35,6 +43,11 @@ public class SettingsBarEntryModel {
     private SettingsBarButtonModel[] settingsBarButtonModels;
     private SettingsBarListener settingsBarListener;
     private Enum<SettingType> type;
+    private int group = GROUP_SHOOT;
+    /** Icon of the parameter itself (row header; value icon of text chips). */
+    private int icon;
+    /** Button value of the default setting: a different selection counts as changed. */
+    private int defaultValue;
 
     public SettingsBarEntryModel(@IdRes int id) {
         this.id = id;
@@ -93,6 +106,58 @@ public class SettingsBarEntryModel {
 
     public void addSettingsBarButtonModels(SettingsBarButtonModel... settingsBarButtonModels) {
         this.settingsBarButtonModels = settingsBarButtonModels;
+    }
+
+    public int getGroup() {
+        return group;
+    }
+
+    public void setGroup(int group) {
+        this.group = group;
+    }
+
+    @DrawableRes
+    public int getIcon() {
+        return icon;
+    }
+
+    public void setIcon(@DrawableRes int icon) {
+        this.icon = icon;
+    }
+
+    public int getDefaultValue() {
+        return defaultValue;
+    }
+
+    public void setDefaultValue(int defaultValue) {
+        this.defaultValue = defaultValue;
+    }
+
+    /** The selected button, or null before the entry has been updated from the settings. */
+    public SettingsBarButtonModel getSelectedButtonModel() {
+        if (settingsBarButtonModels != null) {
+            for (SettingsBarButtonModel model : settingsBarButtonModels)
+                if (model.isSelected()) return model;
+        }
+        return null;
+    }
+
+    /** True when the selected value differs from the default. */
+    public boolean isChanged() {
+        SettingsBarButtonModel selected = getSelectedButtonModel();
+        return selected != null && selected.getButtonValue() != defaultValue;
+    }
+
+    @StringRes
+    public static int getGroupTitleStringId(int group) {
+        switch (group) {
+            case GROUP_FORMAT:
+                return R.string.sheet_group_format;
+            case GROUP_VIEW:
+                return R.string.sheet_group_view;
+            default:
+                return R.string.sheet_group_shoot;
+        }
     }
 
     public void select(SettingsBarButtonModel buttonModel) {

@@ -107,4 +107,26 @@
     <!-- Settings sheet handles (TalkBack) -->
     <string name="sheet_handle_open">Открыть панель настроек</string>
     <string name="sheet_handle_toggle">Развернуть или свернуть панель настроек</string>
+    <!-- Settings sheet groups and short value labels (segments, quick buttons) -->
+    <string name="sheet_group_shoot">Съёмка</string>
+    <string name="sheet_group_format">Формат</string>
+    <string name="sheet_group_view">Вид</string>
+    <string name="sheet_short_off">Выкл</string>
+    <string name="sheet_short_on">Вкл</string>
+    <string name="sheet_short_auto">Авто</string>
+    <string name="sheet_short_torch">Фонарик</string>
+    <string name="sheet_short_3s">3 с</string>
+    <string name="sheet_short_10s">10 с</string>
+    <string name="sheet_short_normal">Норм.</string>
+    <string name="sheet_short_high">Высок.</string>
+    <string name="sheet_short_center">Центр</string>
+    <string name="sheet_short_average">Сред.</string>
+    <string name="sheet_short_spot">Точка</string>
+    <string name="sheet_short_diagonal">Диаг.</string>
+    <!-- AE metering -->
+    <string name="ae_metering_off">Авто</string>
+    <string name="ae_metering_center">Центровзвешенный</string>
+    <string name="ae_metering_average">Среднее по кадру</string>
+    <string name="ae_metering_spot">Точечный</string>
+    <string name="ae_metering_std">Замер AE</string>
 </resources>
