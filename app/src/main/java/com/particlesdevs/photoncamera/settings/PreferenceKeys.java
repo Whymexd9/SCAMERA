@@ -1162,7 +1162,7 @@ public class PreferenceKeys {
             {"shastaMaxRatio", "shasta_max_ratio"}, {"filterVariance", "filter_variance"},
             {"bentoUsSigma", "bento_sigma"}, {"bentoFrames", "bento_frames"}, {"bentoChromaSigma", "bento_chroma_sigma"},
             {"dilateFloor", "dilate_floor"}, {"widenBelow", "widen_below"}, {"chromaDiff", "chroma_diff"},
-            {"bentoValidate", "bento_validate"},
+            {"bentoValidate", "bento_validate"}, {"bentoMotionMax", "bento_motion_max"},
             {"rawNoise", "tensor_noise"}, {"snrScale", "snr_scale"},
             {"boost", "boost_value"}, {"varianceThreshold", "boost_threshold"},
             {"lutHiSigma", "lut_sigma"},
