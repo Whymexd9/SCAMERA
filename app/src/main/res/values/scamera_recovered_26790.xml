@@ -259,17 +259,6 @@
     <string name="pref_hdrplus_denoise_strength_key">pref_hdrplus_denoise_strength_key</string>
     <string name="pref_hdrplus_high_denoise_key">pref_hdrplus_high_denoise_key</string>
     <string name="pref_hdrplus_low_denoise_key">pref_hdrplus_low_denoise_key</string>
-    <string name="pref_raisr_aliasing_default">60</string>
-    <string name="pref_raisr_aliasing_key">pref_raisr_aliasing_key</string>
-    <string name="pref_raisr_enabled_key">pref_raisr_enabled_key</string>
-    <string name="pref_raisr_filter_scale_key">pref_raisr_filter_scale_key</string>
-    <string name="pref_raisr_halo_default">70</string>
-    <string name="pref_raisr_halo_key">pref_raisr_halo_key</string>
-    <string name="pref_raisr_mode_key">pref_raisr_mode_key</string>
-    <string name="pref_raisr_output_scale_default">10</string>
-    <string name="pref_raisr_output_scale_key">pref_raisr_output_scale_key</string>
-    <string name="pref_raisr_strength_default">50</string>
-    <string name="pref_raisr_strength_key">pref_raisr_strength_key</string>
     <string name="pref_raw_mfsr_enabled_key">pref_raw_mfsr_enabled_key</string>
     <string name="snr_verylow_low">Очень низкий SNR (&lt; 8): низкие частоты</string>
     <string name="snr_verylow_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
@@ -318,12 +307,6 @@
     <string name="pref_rt_nr_moire_default">50</string>
     <string name="pref_rt_nr_moire_key">pref_rt_nr_moire_key</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
-    <string name="raisr">Апскейл Vivo — экспериментальный</string>
-    <string name="raisr_aliasing">Подавление мелких артефактов, %</string>
-    <string name="raisr_halo">Защита от ореолов, %</string>
-    <string name="raisr_output_scale">Конечный масштаб</string>
-    <string name="raisr_strength">Сила эффекта, %</string>
-    <string name="raisr_summary">Фирменный апскейл Vivo X200 Ultra. Требуется root; качество ещё проверяется. При ошибке сохраняется исходный снимок.</string>
     <string name="rt_nr_chroma">Цветовой шум</string>
     <string name="rt_nr_detail">Сохранение деталей</string>
     <string name="rt_nr_luma">Шум яркости</string>
@@ -366,72 +349,6 @@
     <string-array name="merge_algorithm_values">
         <item>legacy</item>
         <item>hdrplus</item>
-    </string-array>
-    <string-array name="raisr_output_scale_entries">
-        <item>1.0×</item>
-        <item>1.1×</item>
-        <item>1.2×</item>
-        <item>1.3×</item>
-        <item>1.4×</item>
-        <item>1.5×</item>
-        <item>1.6×</item>
-        <item>1.7×</item>
-        <item>1.8×</item>
-        <item>1.9×</item>
-        <item>2.0×</item>
-        <item>2.1×</item>
-        <item>2.2×</item>
-        <item>2.3×</item>
-        <item>2.4×</item>
-        <item>2.5×</item>
-        <item>2.6×</item>
-        <item>2.7×</item>
-        <item>2.8×</item>
-        <item>2.9×</item>
-        <item>3.0×</item>
-        <item>3.1×</item>
-        <item>3.2×</item>
-        <item>3.3×</item>
-        <item>3.4×</item>
-        <item>3.5×</item>
-        <item>3.6×</item>
-        <item>3.7×</item>
-        <item>3.8×</item>
-        <item>3.9×</item>
-        <item>4.0×</item>
-    </string-array>
-    <string-array name="raisr_output_scale_values">
-        <item>10</item>
-        <item>11</item>
-        <item>12</item>
-        <item>13</item>
-        <item>14</item>
-        <item>15</item>
-        <item>16</item>
-        <item>17</item>
-        <item>18</item>
-        <item>19</item>
-        <item>20</item>
-        <item>21</item>
-        <item>22</item>
-        <item>23</item>
-        <item>24</item>
-        <item>25</item>
-        <item>26</item>
-        <item>27</item>
-        <item>28</item>
-        <item>29</item>
-        <item>30</item>
-        <item>31</item>
-        <item>32</item>
-        <item>33</item>
-        <item>34</item>
-        <item>35</item>
-        <item>36</item>
-        <item>37</item>
-        <item>38</item>
-        <item>39</item>
-        <item>40</item>
     </string-array>
     <string-array name="aces_gamma_curve_entries">
         <item>sRGB</item>
@@ -497,7 +414,6 @@
     <bool name="mtrl_btn_textappearance_all_caps">true</bool>
     <bool name="pref_capture_one_enabled_default">false</bool>
     <bool name="pref_false_color_enabled_default">true</bool>
-    <bool name="pref_raisr_enabled_default">false</bool>
     <string name="highlight_recovery">Восстановление светов</string>
     <string name="highlight_recovery_summary">Если выбит не весь квад, слияние идёт по уцелевшим каналам, а не отбраковывается целиком. Зелёные пиксели клиппятся раньше красных и синих</string>
     <string name="highlight_recovery_min_ok">Восстановление: минимум каналов</string>
@@ -681,10 +597,6 @@
     <string name="noise_model_profile_desc">Профиль шума сенсора. Задаёт, какой уровень отклонения считается шумом, а какой реальным сигналом</string>
     <string name="zsl_merge_algorithm_desc">Алгоритм склейки обычных ZSL-кадров</string>
     <string name="night_merge_algorithm_desc">Алгоритм склейки в ночном режиме</string>
-    <string name="raisr_output_scale_desc">Во сколько раз RAISR увеличивает изображение</string>
-    <string name="raisr_strength_desc">Доля результата Vivo: 0 — обычная интерполяция; 100 — полный эффект с выбранной защитой</string>
-    <string name="raisr_halo_desc">Ограничивает светлые и тёмные ореолы. 0 — без защиты; 100 — без новых локальных перепадов</string>
-    <string name="raisr_aliasing_desc">Подавляет усиление шума и «червивых» деталей по структуре исходного кадра. Высокие значения уменьшают и мелкую детализацию</string>
     <string name="ai_denoise_model_desc">Нейросетевая модель шумоподавления. Более крупные чище, но медленнее</string>
     <string name="ai_denoise_strength_desc">Общая сила ИИ-шумодава. Избыток стирает фактуру</string>
     <string name="ai_denoise_luma_desc">Сила ИИ-шумодава по яркости: зерно</string>

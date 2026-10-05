@@ -48,15 +48,6 @@ public final class VivoNeuralWorker {
         // Tele above ISO 2000 (vendor maxiso switch): roi_quad_x1_highdrc context.
         {"quad-hp9-highdrc-x1-v79.bin","7c09eca4b1522fed690631cc86174bf9a75a14dde8e3279d935d3f253974d812"}
     };
-    /** Vivo VSR still SR contexts (vendor sr1x_m4, sr2x_m24, sr4x_m24; /vendor/camera3rd/nti/VSR). */
-    public static final String[][] VSR_FILES = {
-        {"vsr1x-v79.bin","db7eec6b89c9040e05be84bfacebb9d7dacb725817998047f7c51e199027b72c"},
-        {"vsr2x-v79.bin","d392f3c23181bd792f766ab21b7635f966edbc188ff323d166ed6859a395d118"},
-        {"vsr4x-v79.bin","cc6d236a3f6da5214c687d93e16f35715fbeffd36c52eef417ad68f2a0dcb83e"}
-    };
-    public static String[] vsrFile(int scale) {
-        return VSR_FILES[scale==4?2:scale==2?1:0];
-    }
     public static void main(String[] args) {
         int exit=1;
         try {
@@ -64,18 +55,14 @@ public final class VivoNeuralWorker {
             boolean niceTone=args.length==2 && args[1].equals("--nice-tone-check");
             boolean nice=niceTone || niceCapture || (args.length==2 && args[1].equals("--nice"));
             boolean quad=args.length==4 && args[1].equals("--quad-capture");
-            boolean vsr=args.length==8 && args[1].equals("--vsr-capture");
             boolean capture=quad || (args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached")));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
             System.out.println("SCAMERA Vivo Neural bundled; path="+(niceTone?"NICE tone runtime check":niceCapture?"SCAM HDR capture":nice?"SCAM HDR runtime check":quad?"Quad 2x2 capture":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
-            if(!nice && !hex && !vsr && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
+            if(!nice && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
             if(nice){
                 java.util.Collections.addAll(required,niceTone?NICE_TONE_FILES:NICE_FILES);
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
-            } else if(vsr){
-                for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
-                required.add(vsrFile(Integer.parseInt(args[2])));
             } else if(quad){
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
                 java.util.Collections.addAll(required,QUAD_FILES);
@@ -98,8 +85,7 @@ public final class VivoNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(vsr){command.add("--vsr-capture");command.add(args[0]);for(int i=2;i<8;i++)command.add(args[i]);}
-            else if(niceTone){command.add("--nice-tone-check");command.add(args[0]);}
+            if(niceTone){command.add("--nice-tone-check");command.add(args[0]);}
             else if(niceCapture){command.add("--nice-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(nice){command.add("--nice-check");command.add(args[0]);}
             else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}

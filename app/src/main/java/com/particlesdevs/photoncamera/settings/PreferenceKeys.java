@@ -1707,46 +1707,6 @@ public class PreferenceKeys {
         return Math.max(0f, Math.min(1f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_STRENGTH, 1.0f)));
     }
 
-    public static boolean isRaisrEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAISR_ENABLED, false);
-    }
-
-    public static String getVivoUpscaleBackend() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_UPSCALE_BACKEND, "raisr");
-    }
-
-    public static int getVivoDownscaleKernel() {
-        int value = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_VIVO_DOWNSCALE_KERNEL, 0);
-        return value >= 2 && value <= 5 ? value : 0;
-    }
-
-    public static String getVivoDownscaleSize() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIVO_DOWNSCALE_SIZE, "original");
-    }
-
-    public static int getRaisrFilterScale() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_FILTER_SCALE, 2).intValue();
-    }
-
-    public static int getRaisrOutputScale() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_OUTPUT_SCALE, 10).intValue();
-    }
-
-    public static int getRaisrStrength() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_STRENGTH, 50).intValue();
-    }
-
-    public static int getRaisrHaloProtection() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_HALO, 70).intValue();
-    }
-
-    public static int getRaisrAliasingSuppression() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RAISR_ALIASING, 60).intValue();
-    }
-
-    public static String getRaisrMode() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_RAISR_MODE, "quality");
-    }
 
     public static int getRtLumaDenoise() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RT_NR_LUMA).intValue();
@@ -2131,16 +2091,6 @@ public class PreferenceKeys {
         KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),
         KEY_HIGHLIGHT_PROTECTION_KNEE(R.string.pref_highlight_protection_knee_key),
         KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
-        KEY_VIVO_DOWNSCALE_KERNEL(R.string.pref_vivo_downscale_kernel_key),
-        KEY_VIVO_DOWNSCALE_SIZE(R.string.pref_vivo_downscale_size_key),
-        KEY_VIVO_UPSCALE_BACKEND(R.string.pref_vivo_upscale_backend_key),
-        KEY_RAISR_ENABLED(R.string.pref_raisr_enabled_key),
-        KEY_RAISR_FILTER_SCALE(R.string.pref_raisr_filter_scale_key),
-        KEY_RAISR_OUTPUT_SCALE(R.string.pref_raisr_output_scale_key),
-        KEY_RAISR_STRENGTH(R.string.pref_raisr_strength_key),
-        KEY_RAISR_HALO(R.string.pref_raisr_halo_key),
-        KEY_RAISR_ALIASING(R.string.pref_raisr_aliasing_key),
-        KEY_RAISR_MODE(R.string.pref_raisr_mode_key),
         KEY_RT_NR_LUMA(R.string.pref_rt_nr_luma_key),
         KEY_RT_NR_CHROMA(R.string.pref_rt_nr_chroma_key),
         KEY_RT_NR_DETAIL(R.string.pref_rt_nr_detail_key),

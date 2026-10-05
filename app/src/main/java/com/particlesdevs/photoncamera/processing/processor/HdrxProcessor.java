@@ -19,8 +19,6 @@ import com.particlesdevs.photoncamera.processing.ImageFrame;
 import com.particlesdevs.photoncamera.processing.ImageFrameDeblur;
 import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ml.AiBayerDenoiseProcessor;
-import com.particlesdevs.photoncamera.processing.ml.VivoRaisrProcessor;
-import com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostPipeline;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
@@ -746,42 +744,6 @@ public class HdrxProcessor extends ProcessorBase {
                 Log.i("NICE_HDR", "hybrid final size " + tw + "x" + th + " (" + PreferenceKeys.hybridDownsamplerName() + ")");
             } catch (Throwable resizeError) {
                 Log.e(TAG, "hybrid resize failed; keeping the 2x image", resizeError);
-            }
-        }
-        final int beforeVivoWidth = img.getWidth(), beforeVivoHeight = img.getHeight();
-        final int downscaleKernel = PreferenceKeys.getVivoDownscaleKernel();
-        final String downscaleSize = PreferenceKeys.getVivoDownscaleSize();
-        boolean vivoSucceeded = false;
-        // VSR works on the finished bitmap, so it also follows NICE / vivo HDR.
-        if ((!processingParameters.vivoHdrMode || "vsr".equals(PreferenceKeys.getVivoUpscaleBackend()))
-                && PreferenceKeys.isRaisrEnabled()) {
-            final String upscaleBackend = PreferenceKeys.getVivoUpscaleBackend();
-            processingStage = "softpqe".equals(upscaleBackend) ? "Vivo SoftPQE" : "vsr".equals(upscaleBackend) ? "Vivo VSR" : "Vivo RAISR";
-            try {
-                Bitmap enhanced = "vsr".equals(upscaleBackend)
-                        ? com.particlesdevs.photoncamera.processing.ml.VivoVsrProcessor.process(PhotonCamera.getAppContext(), img,
-                                PreferenceKeys.getRaisrOutputScale(), PreferenceKeys.getRaisrStrength())
-                        : VivoRaisrProcessor.process(PhotonCamera.getAppContext(), img,
-                        processingParameters.cameraID, processingParameters.iso, PreferenceKeys.getRaisrOutputScale(), upscaleBackend);
-                if (enhanced != img) {
-                    img.recycle();
-                    img = enhanced;
-                }
-                vivoSucceeded = true;
-            } catch (Throwable raisrError) {
-                Log.e(TAG, "Vivo upscale failed; preserving original image", raisrError);
-            }
-        }
-        if (vivoSucceeded && downscaleKernel != 0) {
-            processingStage = "Lanczos " + downscaleKernel + " after Vivo";
-            try {
-                Bitmap reduced = VivoPostDownscale.process(img, beforeVivoWidth, beforeVivoHeight, downscaleKernel, downscaleSize);
-                if (reduced != img) {
-                    img.recycle();
-                    img = reduced;
-                }
-            } catch (Throwable downscaleError) {
-                Log.e(TAG, "Lanczos failed; preserving successful Vivo result", downscaleError);
             }
         }
         final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();

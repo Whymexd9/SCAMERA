@@ -188,15 +188,6 @@ public final class SettingsAvailability {
         }
         if (key.equals("pref_compressor_seekbar_key") && !tone.equals("fusion")) return "Доступно только с Exposure Fusion.";
         if (key.equals("pref_false_color_strength_key") && !on("pref_false_color_enabled_key",true)) return "Включите автокоррекцию цветных граней.";
-        if (key.equals("pref_vivo_upscale_backend_key") && !on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
-        if (key.equals("pref_raisr_output_scale_key") && "softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "SoftPQE использует увеличение ×2.";
-        if ((key.equals("pref_raisr_strength_key") || key.equals("pref_raisr_aliasing_key") || key.equals("pref_raisr_halo_key")) && "softpqe".equals(text("pref_vivo_upscale_backend_key","raisr"))) return "Настройка применяется только к RAISR.";
-        if (key.startsWith("pref_vivo_downscale_")) {
-            if (!on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
-            if (key.equals("pref_vivo_downscale_size_key") && text("pref_vivo_downscale_kernel_key","0").equals("0"))
-                return "Выберите Lanczos 2–5.";
-        }
-        if (key.startsWith("pref_raisr_") && !key.equals("pref_raisr_enabled_key") && !on("pref_raisr_enabled_key",false)) return "Включите апскейл Vivo.";
         if (key.startsWith("pref_mfsr_") && !on("pref_raw_mfsr_enabled_key",false)) return "Включите RAW MFSR.";
         if (hex && (key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
                 || key.startsWith("pref_mfsr_") || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")

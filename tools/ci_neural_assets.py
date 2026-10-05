@@ -22,6 +22,12 @@ SHA256 = 'b7698172a5e4d76b0b57b357073e6c8aeb97157c9cae950e54ac683b8db82774'
 NAME = 'SCAMERA-neural-assets-v2'
 ARCHIVE = 'scamera-neural-assets-v2.zip'
 LIMIT = 128 * 1024 * 1024
+# Entries of bundle v2 that are verified but no longer packaged (the vivo VSR upscale was removed in the settings cleanup;
+# the encrypted bundle and its secret stay unchanged).
+BUNDLE_ONLY = {'hexquad': {
+    'vsr1x-v79.bin': 'db7eec6b89c9040e05be84bfacebb9d7dacb725817998047f7c51e199027b72c',
+    'vsr2x-v79.bin': 'd392f3c23181bd792f766ab21b7635f966edbc188ff323d166ed6859a395d118',
+    'vsr4x-v79.bin': 'cc6d236a3f6da5214c687d93e16f35715fbeffd36c52eef417ad68f2a0dcb83e'}}
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -105,7 +111,7 @@ def unpack(data, output):
     if hashlib.sha256(data).hexdigest() != SHA256:
         raise ValueError('Private bundle SHA256 mismatch')
     manifests = {'bundle': pinned_assets(),
-                 'hexquad': {**pinned_assets('HEX_FILES', 6), **pinned_assets('QUAD_FILES', 3), **pinned_assets('VSR_FILES', 3)},
+                 'hexquad': {**pinned_assets('HEX_FILES', 6), **pinned_assets('QUAD_FILES', 3), **BUNDLE_ONLY['hexquad']},
                  'nice': {**pinned_assets('NICE_FILES', 6), **pinned_assets('NICE_TONE_FILES', 5)}}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         expected = {group + '/' + name for group, manifest in manifests.items() for name in manifest}

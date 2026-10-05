@@ -4,7 +4,6 @@
 #include "vivo-hexquad-capture.h"
 #include "vivo-hexquad-profile-check.h"
 #include "vivo-quad-capture.h"
-#include "vivo-vsr.h"
 #define NICE_HOST_TEST 1
 #include "vivo-nice-probe.cpp"
 #undef NICE_HOST_TEST
@@ -194,22 +193,6 @@ int main(int argc,char** argv) {
                 vivo_hexquad::captureHex(session,burst,argv[4]);
             }
             alarm(0);vivo_nn::log("HEXQUAD CAPTURE OK");return 0;
-        }
-        if(argc==9 && std::string(argv[1])=="--vsr-capture") {
-            signal(SIGALRM,SIG_DFL);alarm(300);
-            {
-                const int scale=integer(argv[3]),w=integer(argv[6]),h=integer(argv[7]);
-                const float blend=std::strtof(argv[8],nullptr);
-                if(w<64||h<64||uint64_t(w)*h*scale*scale>100000000ULL||!(blend>=0&&blend<=1))throw std::runtime_error("Invalid VSR request");
-                vivo_nn::log("VIVO VSR: scale="+std::to_string(scale)+" "+std::to_string(w)+"x"+std::to_string(h)+" blend="+std::to_string(blend));
-                std::vector<uint8_t> rgb=vivo_nn::read(argv[4]);
-                if(rgb.size()!=size_t(w)*h*3)throw std::runtime_error("VSR input size");
-                vivo_vsr::VsrSession session(vivo_vsr::spec(scale));session.init(argv[2]);
-                auto out=vivo_vsr::upscale(session,rgb,w,h,blend);
-                std::ofstream f(argv[5],std::ios::binary|std::ios::trunc);f.write(reinterpret_cast<const char*>(out.data()),out.size());
-                if(!f)throw std::runtime_error("VSR output write failed");
-            }
-            alarm(0);vivo_nn::log("VSR CAPTURE OK");return 0;
         }
         if(argc==5 && std::string(argv[1])=="--quad-capture") {
             signal(SIGALRM,SIG_DFL);alarm(600);

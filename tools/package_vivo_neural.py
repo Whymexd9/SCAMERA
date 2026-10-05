@@ -96,8 +96,6 @@ def main():
     hex_assets = pinned_assets('HEX_FILES', 6)
     # 2x2 Quad (2x ISZ) models: main IMX06C and tele HP9 ROI; runs on the same QNN runtime as HexQuad.
     hex_assets.update(pinned_assets('QUAD_FILES', 3))
-    # Vivo VSR still super-resolution contexts (sr1x/sr2x/sr4x).
-    hex_assets.update(pinned_assets('VSR_FILES', 3))
     # Every pinned file is required (bundle v2 carries the Quad/VSR contexts and the CRE runtime): an APK without
     # them is not published (the v1 bundle lacked them and the Actions APK silently differed from local builds).
     # NICE model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)

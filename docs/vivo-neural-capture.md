@@ -224,8 +224,9 @@ transport/analysis fixtures; they do not run HTP weights on the host.
 ## One final APK from Actions
 
 The test workflow now packages, verifies and signs all 28 pinned model/runtime
-entries inside Actions (bundle v2: v1 plus the CRE motion runtime and the Quad/VSR
-contexts; every entry is required, the v1 build silently left those 11 out). The downloadable `SCAMERA-Build-<version>` artifact
+entries of bundle v2 inside Actions (v1 plus the CRE motion runtime and the Quad/VSR
+contexts; every entry is required, the v1 build silently left those 11 out). The three VSR
+contexts are verified but no longer packaged since the vivo upscale was removed (25 packaged). The downloadable `SCAMERA-Build-<version>` artifact
 contains the final APK and SHA256SUMS.txt. Deliver that exact APK; never append
 assets or re-sign it locally after downloading. A successful source compile
 without the private bundle must not publish an incomplete APK.

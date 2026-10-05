@@ -251,40 +251,19 @@ public class SettingsMenuTest {
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
     }
-    @Test public void vivoLanczosChoicesPersistPerModuleAndHaveCorrectSizes() {
+    @Test public void removedVivoUpscaleSettingsAreGoneAndTheirStoredValuesCleared() {
         PreferenceScreen screen=inflate();
-        ListPreference kernel=screen.findPreference("pref_vivo_downscale_kernel_key");
-        ListPreference size=screen.findPreference("pref_vivo_downscale_size_key");
-        assertNotNull(kernel);assertNotNull(size);
-        assertEquals(0,PreferenceKeys.getVivoDownscaleKernel());
-        assertEquals("original",PreferenceKeys.getVivoDownscaleSize());
-        assertTrue(ModuleProfiles.isLocal(kernel.getKey()));assertTrue(ModuleProfiles.isLocal(size.getKey()));
-        Map<String,Object> values=new HashMap<>();
-        assertNotNull(new SettingsAvailability(values).reason(kernel.getKey()));
-        values.put("pref_raisr_enabled_key",true);
-        assertNull(new SettingsAvailability(values).reason(kernel.getKey()));
-        assertNotNull(new SettingsAvailability(values).reason(size.getKey()));
-        for (int a=2;a<=5;a++) {
-            kernel.setValue(Integer.toString(a));
-            assertEquals(a,PreferenceKeys.getVivoDownscaleKernel());
-            values.put(kernel.getKey(),Integer.toString(a));
-            assertNull(new SettingsAvailability(values).reason(size.getKey()));
-        }
-        for (String option:new String[]{"original","75","67","50","33","25"}) {
-            size.setValue(option);assertEquals(option,PreferenceKeys.getVivoDownscaleSize());
-        }
-        assertArrayEquals(new int[]{4096,3072},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"original"));
-        assertArrayEquals(new int[]{4096,3072},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"50"));
-        assertArrayEquals(new int[]{6144,4608},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(8192,6144,4096,3072,"75"));
-        assertArrayEquals(new int[]{13,10},com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.outputSize(49,37,49,37,"25"));
-    }
-    @Test public void softPqeExposesUpscaleWithoutLegacyNoiseAndSharpControls() {
-        PreferenceScreen screen=inflate();
-        assertNotNull(screen.findPreference("softpqe_sr_only_info"));
-        assertNull(screen.findPreference("softpqe_settings_screen"));
-        for (String name:Arrays.asList("luma","chroma","sharpen","strength"))
-            assertNull(screen.findPreference("pref_softpqe_"+name+"_key"));
-        assertNotNull(screen.findPreference("pref_vivo_downscale_kernel_key"));
+        for (String key:Arrays.asList("raisr_settings_screen","pref_raisr_enabled_key","pref_vivo_upscale_backend_key",
+                "pref_vivo_downscale_kernel_key","pref_vivo_downscale_size_key","softpqe_sr_only_info","vivo_downscale_explanation"))
+            assertNull(key,screen.findPreference(key));
+        android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
+                org.robolectric.RuntimeEnvironment.getApplication());
+        prefs.edit().putBoolean("pref_raisr_enabled_key",true).putString("pref_vivo_upscale_backend_key","vsr")
+                .putString("pref_vivo_downscale_kernel_key","3").putString("pref_lmc_hybrid_cdm","0.2").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertFalse(prefs.contains("pref_raisr_enabled_key"));assertFalse(prefs.contains("pref_vivo_upscale_backend_key"));
+        assertFalse(prefs.contains("pref_vivo_downscale_kernel_key"));assertEquals("0.2",prefs.getString("pref_lmc_hybrid_cdm",""));
+        assertFalse(SettingsMigration.removeObsolete(prefs));
     }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){

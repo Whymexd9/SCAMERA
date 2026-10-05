@@ -73,6 +73,49 @@ public final class SettingsMigration {
         e.remove("pref_mfsr_calibrate_key");e.commit();
     }
 
+    /**
+     * Settings of removed features (settings cleanup, October 2026). Their stored values are dropped from the main
+     * preferences, every module profile and the baseline, and from the favourites, so that a getter or an old config can
+     * never bring them back invisibly. Keys listed here have no getter and no XML row any more.
+     */
+    static final java.util.Set<String> OBSOLETE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
+            // P1: vivo upscale (RAISR, SoftPQE, VSR) and the Lanczos after it
+            "pref_vivo_upscale_backend_key", "pref_vivo_downscale_kernel_key", "pref_vivo_downscale_size_key"));
+    static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_"};
+    static boolean isObsolete(String key) {
+        if (OBSOLETE_KEYS.contains(key)) return true;
+        for (String prefix : OBSOLETE_PREFIXES) if (key.startsWith(prefix)) return true;
+        return false;
+    }
+
+    /** Removes the obsolete keys from one preference set and from its favourites list; returns whether anything changed. */
+    public static boolean removeObsolete(SharedPreferences prefs) {
+        SharedPreferences.Editor e = prefs.edit();
+        boolean changed = false;
+        for (String key : prefs.getAll().keySet())
+            if (isObsolete(key)) { e.remove(key); changed = true; }
+        String favourites = prefs.getString("settings_favorite_keys", null);
+        if (favourites != null) {
+            try {
+                org.json.JSONArray in = new org.json.JSONArray(favourites), out = new org.json.JSONArray();
+                for (int i = 0; i < in.length(); i++) if (!isObsolete(in.getString(i))) out.put(in.getString(i));
+                if (out.length() != in.length()) { e.putString("settings_favorite_keys", out.toString()); changed = true; }
+            } catch (org.json.JSONException ignored) {}
+        }
+        if (changed) e.commit();
+        return changed;
+    }
+
+    /** {@link #removeObsolete(SharedPreferences)} over the main preferences, every stored module profile and the baseline. */
+    public static void removeObsolete(Context context, SharedPreferences main) {
+        removeObsolete(main);
+        SharedPreferences meta = context.getSharedPreferences("module_profiles_meta", Context.MODE_PRIVATE);
+        for (Map.Entry<String, ?> e : meta.getAll().entrySet())
+            if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue()))
+                removeObsolete(context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE));
+        removeObsolete(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE));
+    }
+
     private static final String LEGACY_HYBRID = LmcHybridKeys.LEGACY_PREFIX;
     /** SCAM HDR knobs (pref_vivo_nice_&lt;k&gt;) the hybrid route read until it got its own settings. */
     private static final java.util.Set<String> SHARED_NICE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(

@@ -106,13 +106,6 @@ jobs:
           grep -q 'bool support_batch;' app/src/main/cpp/ncnn/arm64-v8a/include/ncnn/layer.h
           ls -l app/src/main/cpp/ncnn/arm64-v8a/lib
 
-      - name: Check Vivo upscale failure handling
-        run: |
-          python3 tools/vivo-upscale/check_softpqe_worker.py
-          python3 tools/vivo-upscale/check_softpqe_controls.py
-          python3 tools/vivo-upscale/check_raisr_controls.py
-          python3 tools/vivo-upscale/check_loader_order.py
-
       - name: Check original Multi-frame Remosaic binary
         run: |
           python3 -m venv /tmp/multiframe-check
@@ -237,16 +230,6 @@ jobs:
             echo "Root helper must have a static C++ runtime"
             exit 1
           fi
-          unzip -p "$APK" assets/vivo-upscale/arm64-v8a/vivo-upscale-worker > /tmp/vivo-upscale-worker-android
-          readelf -h /tmp/vivo-upscale-worker-android | grep AArch64
-          readelf -l /tmp/vivo-upscale-worker-android | grep /system/bin/linker64
-          readelf -d /tmp/vivo-upscale-worker-android > /tmp/upscale-deps.txt
-          grep -q PIE /tmp/upscale-deps.txt
-          if grep -q 'libc++_shared.so' /tmp/upscale-deps.txt; then
-            echo "Upscale helper must have a static C++ runtime"
-            exit 1
-          fi
-          unzip -p "$APK" assets/vivo-upscale/softpqe-master.sha256 | grep -q libvivo_softpqe.so
           # The shipped (non-debuggable) variant shortens resource paths: resolve the real one.
           PREFS_PATH=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump resources "$APK" | grep -A1 'xml/preferences$' | grep -o 'res/[^ ]*\.xml' | head -1)
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file "$PREFS_PATH" > /tmp/apk-preferences.txt
