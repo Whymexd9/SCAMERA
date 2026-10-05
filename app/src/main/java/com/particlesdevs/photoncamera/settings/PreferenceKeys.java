@@ -572,7 +572,7 @@ public class PreferenceKeys {
 
     /** Raw preferences only: this is consulted by isRemosaicEnabled() and isVivoHdrEnabled(). */
     public static boolean isNiceMosaic() {
-        return !"off".equals(niceMosaicMode()) && isGcamStageEnabled("pref_vivo_hdr_enabled")
+        return !isMediaTekSoc() && !"off".equals(niceMosaicMode()) && isGcamStageEnabled("pref_vivo_hdr_enabled")
                 && isGcamStageEnabled("pref_vivo_nice_enabled") && !isRawMfsrEnabled();
     }
 
@@ -622,14 +622,35 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
     }
 
-    /** Separate six-frame experimental HP9 path, before ordinary RAW fusion. */
+    /** Separate six-frame experimental HP9 path, before ordinary RAW fusion. Never on MediaTek (no Qualcomm NPU). */
     public static boolean isHexQuadCaptureEnabled() {
-        return isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
+        return !isMediaTekSoc() && isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
     }
 
-    /** Main camera 2x2 Quad (2x ISZ): vendor IMX06C quad model, four equal RAWs. */
+    /** Main camera 2x2 Quad (2x ISZ): vendor IMX06C quad model, four equal RAWs. Never on MediaTek (no Qualcomm NPU). */
     public static boolean isQuadNeuralCaptureEnabled() {
-        return isRemosaicEnabled() && "imx06c_quad".equals(getRemosaicBackend());
+        return !isMediaTekSoc() && isRemosaicEnabled() && "imx06c_quad".equals(getRemosaicBackend());
+    }
+
+    private static Boolean mediaTekSoc;
+    /**
+     * MediaTek SoC. The vivo networks (SCAM HDR / NICE, the neural remosaic) are QNN contexts for the Qualcomm Hexagon
+     * NPU: on MediaTek the LMC hybrid is the route, and SCAM HDR, its mosaic modes and the neural remosaic stay off
+     * whatever the stored settings say (the hybrid itself runs on Mali; user, 2026-10-05).
+     */
+    public static boolean isMediaTekSoc() {
+        if (mediaTekSoc == null) {
+            boolean mtk = false;
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                String maker = android.os.Build.SOC_MANUFACTURER;
+                mtk = maker != null && maker.toLowerCase(java.util.Locale.ROOT).contains("mediatek");
+            }
+            String hardware = android.os.Build.HARDWARE == null ? "" : android.os.Build.HARDWARE.toLowerCase(java.util.Locale.ROOT);
+            String board = android.os.Build.BOARD == null ? "" : android.os.Build.BOARD.toLowerCase(java.util.Locale.ROOT);
+            mtk |= hardware.contains("mediatek") || hardware.matches("mt\\d{4}.*") || board.matches("mt\\d{4}.*");
+            mediaTekSoc = mtk;
+        }
+        return mediaTekSoc;
     }
 
     /** Either NPU burst remosaic: the burst is equal-exposure and owned by the worker. */
@@ -910,9 +931,12 @@ public class PreferenceKeys {
     public static boolean isVivoHdrEnabled() {
         return isLmcHybridEnabled() || isAutonomousHdrSwitchOn();
     }
-    /** pref_vivo_hdr_enabled on a RAW path the autonomous HDR can merge (SCAM HDR's own switch, without the hybrid). */
+    /**
+     * pref_vivo_hdr_enabled on a RAW path the autonomous HDR can merge (SCAM HDR's own switch, without the hybrid). Never on
+     * MediaTek: there the hybrid is the only route of this family (see {@link #isMediaTekSoc()}).
+     */
     private static boolean isAutonomousHdrSwitchOn() {
-        return isGcamStageEnabled("pref_vivo_hdr_enabled") && isVivoRouteCompatible();
+        return !isMediaTekSoc() && isGcamStageEnabled("pref_vivo_hdr_enabled") && isVivoRouteCompatible();
     }
     /** Plain Bayer or the SCAMERA remosaic, no RAW MFSR: what both the hybrid and SCAM HDR merge. */
     private static boolean isVivoRouteCompatible() {
