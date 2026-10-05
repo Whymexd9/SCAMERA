@@ -80,7 +80,9 @@ public final class SettingsMigration {
      */
     static final java.util.Set<String> OBSOLETE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             // P1: vivo upscale (RAISR, SoftPQE, VSR) and the Lanczos after it
-            "pref_vivo_upscale_backend_key", "pref_vivo_downscale_kernel_key", "pref_vivo_downscale_size_key"));
+            "pref_vivo_upscale_backend_key", "pref_vivo_downscale_kernel_key", "pref_vivo_downscale_size_key",
+            // P2: "Кадрирование DNG" (the 16:9 crop is always centred now)
+            "pref_tunable_imagesaversettings_croptype"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;

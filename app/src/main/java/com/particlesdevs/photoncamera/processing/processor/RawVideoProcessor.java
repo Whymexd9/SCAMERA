@@ -135,12 +135,8 @@ public class RawVideoProcessor extends ProcessorBase {
                 // Crop to 16:9
                 if(PreferenceKeys.isRawVideoCrop169()) {
                     height = width * 9 / 16;
-                    if (ImageSaver.SETTINGS.cropType) {
-                        shift = 0;
-                    } else {
-                        shift = (image.getHeight() - height) / 2;
-                        shift -= shift % 2;
-                    }
+                    shift = (image.getHeight() - height) / 2;
+                    shift -= shift % 2;
                     shift *= image.getPlanes()[0].getRowStride();
                 } else {
                     height = image.getHeight();

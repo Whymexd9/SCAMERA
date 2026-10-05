@@ -51,48 +51,6 @@ public class TunableSettingsManager {
     }
     
     /**
-     * Reset all tunable preferences to their default values by removing persisted values.
-     * This allows annotation defaults to always be used for non-customized values.
-     */
-    public static void resetAllToDefaults(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        SharedPreferences.Editor editor = prefs.edit();
-        
-        int resetCount = 0;
-        
-        for (Class<?> clazz : REGISTERED_CLASSES) {
-            String className = clazz.getSimpleName();
-            
-            for (Field field : clazz.getDeclaredFields()) {
-                if (field.isAnnotationPresent(Tunable.class)) {
-                    Tunable annotation = field.getAnnotation(Tunable.class);
-                    if (annotation == null) continue;
-                    
-                    String prefKey = "pref_tunable_" + className.toLowerCase(java.util.Locale.ROOT) + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
-                    
-                    // Remove the persisted value instead of setting to default
-                    // This ensures the annotation's current default is always used
-                    if (prefs.contains(prefKey)) {
-                        editor.remove(prefKey);
-                        resetCount++;
-                        
-                        // Get default value for logging
-                        float defaultValue = annotation.defaultValue();
-                        if (defaultValue == -999999f) {
-                            defaultValue = annotation.min();
-                        }
-                        
-                        Log.d(TAG, "Reset " + prefKey + " (removed persisted value, will use annotation default: " + defaultValue + ")");
-                    }
-                }
-            }
-        }
-        
-        editor.apply();
-        Log.d(TAG, "Reset " + resetCount + " tunable preferences (removed persisted values)");
-    }
-    
-    /**
      * Get count of registered tunable classes
      */
     public static int getRegisteredClassCount() {

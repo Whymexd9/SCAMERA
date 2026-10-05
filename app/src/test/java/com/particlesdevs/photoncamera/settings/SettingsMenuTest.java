@@ -265,6 +265,25 @@ public class SettingsMenuTest {
         assertFalse(prefs.contains("pref_vivo_downscale_kernel_key"));assertEquals("0.2",prefs.getString("pref_lmc_hybrid_cdm",""));
         assertFalse(SettingsMigration.removeObsolete(prefs));
     }
+    @Test public void configScreenKeepsOnlyOutputBackupAndReset() {
+        PreferenceScreen screen=inflate();
+        PreferenceScreen config=screen.findPreference("output_settings_screen");assertNotNull(config);
+        // RAW mode stays a quick bar setting; DNG crop and the tunable reset page are gone.
+        for (String key:Arrays.asList("pref_save_raw_key","expert_output_screen","pref_tunable_submenu","pref_tunable_imagesaversettings_croptype"))
+            assertNull(key,screen.findPreference(key));
+        for (String key:Arrays.asList("pref_ultrahdr_key","pref_wide169_key","pref_show_watermark_key","pref_watermark_line1",
+                "pref_backup_preferences_key","pref_restore_preferences_key","pref_reset_preferences_key"))
+            assertNotNull(key,config.findPreference(key));
+        // The remaining dynamic pages are still filled without pref_tunable_submenu.
+        for (String key:Arrays.asList("expert_viewfinder_screen","expert_sensor_screen")) {
+            PreferenceScreen page=screen.findPreference(key);assertNotNull(key,page);assertTrue(key,page.getPreferenceCount()>0);
+        }
+        android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
+                org.robolectric.RuntimeEnvironment.getApplication());
+        prefs.edit().putBoolean("pref_tunable_imagesaversettings_croptype",true).putString("pref_save_raw_key","1").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertFalse(prefs.contains("pref_tunable_imagesaversettings_croptype"));assertEquals("1",prefs.getString("pref_save_raw_key",""));
+    }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();

@@ -217,7 +217,6 @@ public final class SettingsAvailability {
         }
         if (key.startsWith("pref_tunable_pyramidalignment_") && (!on("pref_tunable_esd4d_enablealignment",true)
                 || on("pref_tunable_esd4d_usencnnflow",false))) return "Параметры блочного выравнивания. При FlowNet применяются только при возврате к пирамиде.";
-        if (key.equals("pref_tunable_imagesaversettings_croptype") && !on("pref_wide169_key",false)) return "Выберите формат 16:9.";
         if (key.equals("pref_show_gradient_key") && text("pref_theme_accent_key","default").equals("eszdman")) return "Оформление задаётся выбранной темой.";
         return null;
     }

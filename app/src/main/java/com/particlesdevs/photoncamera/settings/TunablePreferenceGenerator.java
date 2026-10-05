@@ -42,24 +42,13 @@ public class TunablePreferenceGenerator {
     }
     
     /**
-     * Generate and add preferences to the preference screen.
-     * ONLY adds to tunable submenu - won't pollute main settings.
+     * Generate the @Tunable controls into their expert_* screens of the full settings tree (see {@link #destination}).
      */
     public static void generatePreferences(Context context, PreferenceScreen preferenceScreen) {
-        // Try to find the tunable submenu
-        PreferenceScreen tunableSubmenu = preferenceScreen.findPreference("pref_tunable_submenu");
-        
-        if (tunableSubmenu == null) {
-            Log.w(TAG, "Tunable submenu not found! Tunable preferences will not be generated.");
-            return;
-        }
-        
-        Log.d(TAG, "Target screen: Tunable Submenu (found!)");
         try {
             Log.d(TAG, "=== generatePreferences START ===");
             Log.d(TAG, "TUNABLE_CLASSES size: " + TUNABLE_CLASSES.size());
             Log.d(TAG, "Context: " + (context != null ? "OK" : "NULL"));
-            Log.d(TAG, "PreferenceScreen: " + (tunableSubmenu != null ? "OK" : "NULL"));
             
             if (TUNABLE_CLASSES.isEmpty()) {
                 Log.w(TAG, "No tunable classes registered - UI will not be generated!");
@@ -87,9 +76,12 @@ public class TunablePreferenceGenerator {
                 // Sort by order
                 // Registry and declaration order are stable; do not interleave unrelated classes.
                 
-                // Find or create category in the tunable submenu
+                // Find or create the category on its expert screen. A missing screen skips only this category.
                 PreferenceScreen destination = preferenceScreen.findPreference(destination(fields.get(0).className));
-                if (destination == null) throw new IllegalStateException("Missing settings destination: " + categoryName);
+                if (destination == null) {
+                    Log.e(TAG, "Missing settings destination for " + categoryName + ", its controls are not generated");
+                    continue;
+                }
                 PreferenceCategory category = findOrCreateCategory(context, destination, categoryName);
                 Log.d(TAG, "Category created/found: " + categoryName);
                 
@@ -115,7 +107,6 @@ public class TunablePreferenceGenerator {
             case "LocalLaplacian": return "expert_detail_screen";
             case "Bayer2Float": case "Amaze": return "expert_raw_screen";
             case "Parameters": return "expert_sensor_screen";
-            case "ImageSaverSettings": return "expert_output_screen";
             case "CameraUIViewImpl": return "expert_viewfinder_screen";
             default: return "expert_tone_screen";
         }

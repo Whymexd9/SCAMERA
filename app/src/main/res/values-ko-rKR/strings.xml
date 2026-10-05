@@ -14,7 +14,6 @@
     <string name="saturation">채도</string>
     <string name="hdrx" translatable="false">HDRX</string>
     <string name="turn_on_grid">그리드 표시</string>
-    <string name="raw">저장</string>
     <string name="turn_on_round_edges">라운드 엣지 활성화</string>
     <string name="telegram">텔레그램 그룹 ↗</string>
     <string name="turn_on_watermark">워터마크</string>

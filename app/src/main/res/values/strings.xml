@@ -26,7 +26,6 @@
     <string name="ai_denoise_chroma">ИИ Chroma, %</string>
     <string name="ai_denoise_model">Модель ИИ-шумоподавления</string>
     <string name="turn_on_grid">Show Grid</string>
-    <string name="raw">Save</string>
     <string name="turn_on_round_edges">Enable Round Edges</string>
     <string name="telegram">Telegram Group ↗</string>
     <string name="turn_on_watermark">Watermark</string>

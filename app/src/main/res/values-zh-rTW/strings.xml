@@ -6,7 +6,6 @@
 
     <string name="saturation">飽和度</string>
     <string name="turn_on_grid">顯示網格</string>
-    <string name="raw">儲存為</string>
     <string name="turn_on_round_edges">啟用圓角</string>
     <string name="telegram">Telegram 群組 ↗</string>
     <string name="turn_on_watermark">浮水印</string>

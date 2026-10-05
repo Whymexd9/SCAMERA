@@ -5,7 +5,6 @@
     <string name="frame_count">Antal Bilder:</string>
     <string name="saturation">Mättnad</string>
     <string name="turn_on_grid">Visa Rutmönster</string>
-    <string name="raw">Spara</string>
     <string name="turn_on_round_edges">Aktivera runda kanter</string>
     <string name="telegram">Telegram-grupp</string>
     <string name="turn_on_watermark">Aktivera vattenstämpel</string>

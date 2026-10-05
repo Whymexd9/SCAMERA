@@ -653,7 +653,6 @@
     <string name="peak_method_desc">Подсветка областей в фокусе на видоискателе</string>
     <string name="show_afdata_desc">Показ данных автофокуса на видоискателе</string>
     <string name="frame_count_desc">Сколько кадров объединяется в один снимок. Больше — чище, но дольше и выше риск смаза</string>
-    <string name="save_raw_desc">Сохранение исходного DNG вместе с готовым снимком</string>
     <string name="saturation_seekbar_desc">Насыщенность цвета итогового снимка</string>
     <string name="contrast_seekbar_desc">Контраст итогового снимка</string>
     <string name="cfa_desc">Шаблон цветового фильтра сенсора. Неверный даёт ломаные цвета</string>

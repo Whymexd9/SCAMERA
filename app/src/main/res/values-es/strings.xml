@@ -5,7 +5,6 @@
     <string name="frame_count">"Número de Frames "</string>
     <string name="saturation">Saturacion</string>
     <string name="turn_on_grid">Mostrar cuadricula</string>
-    <string name="raw">Guardar</string>
     <string name="turn_on_round_edges">Activar bordes redondos</string>
     <string name="telegram">"Grupo de Telegram "</string>
     <string name="turn_on_watermark">"Activar marca de agua "</string>

@@ -46,14 +46,9 @@ public class SaverImplementation {
         if(PhotonCamera.getSettings().aspect169){
             if(width > height){
                 height = width * 9 / 16;
-                int offsetH;
-                if (ImageSaver.SETTINGS.cropType) {
-                    // Do nothing
-                } else {
-                    offsetH = (image.getHeight() - height) / 2;
-                    offsetH -= offsetH % 2;
-                    offset = image.getPlanes()[0].getRowStride() * offsetH;
-                }
+                int offsetH = (image.getHeight() - height) / 2;
+                offsetH -= offsetH % 2;
+                offset = image.getPlanes()[0].getRowStride() * offsetH;
                 capacity = image.getPlanes()[0].getRowStride() * height;
             }
         }

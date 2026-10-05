@@ -458,11 +458,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
             Log.d("SettingsFragment", "onCreate with rootKey: " + rootKey);
             
-            if ("pref_tunable_submenu".equals(rootKey)) {
-                Log.d("SettingsFragment", "This is the tunable submenu fragment, generating preferences now");
-                generateTunablePreferences();
-            }
-
             if ("pref_sensor_config_submenu".equals(rootKey)) {
                 Log.d("SettingsFragment", "This is the sensor config submenu fragment, generating preferences now");
                 generateSensorConfigPreferences();
@@ -517,10 +512,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 TunablePreferenceGenerator.generatePreferences(mContext, screen);
                 
                 Log.d("SettingsActivity", "Generated preferences (count after: " + screen.getPreferenceCount() + ")");
-                
-                // Add reset button for tunable preferences
-                addTunableResetButton();
-                
+
                 Log.d("SettingsActivity", "=== generateTunablePreferences completed (final count: " + screen.getPreferenceCount() + ") ===");
             } catch (Exception e) {
                 Log.e("SettingsActivity", "ERROR in generateTunablePreferences", e);
@@ -591,45 +583,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 Log.d("SettingsActivity", "Added sensor config reset button (preferenceCount after: " + submenu.getPreferenceCount() + ")");
             } catch (Exception e) {
                 Log.e("SettingsActivity", "Error adding sensor config reset button", e);
-            }
-        }
-
-        private void addTunableResetButton() {
-            try {
-                // When we're inside the tunable submenu fragment, getPreferenceScreen() IS the tunable submenu
-                androidx.preference.PreferenceScreen tunableSubmenu = findPreference("pref_tunable_submenu");
-                
-                if (tunableSubmenu != null) {
-                    Log.d("SettingsActivity", "Adding reset button to tunable submenu (preferenceCount before: " + tunableSubmenu.getPreferenceCount() + ")");
-                    
-                    // Create reset button preference
-                    androidx.preference.Preference resetButton = new androidx.preference.Preference(mContext);
-                    resetButton.setKey("pref_reset_tunable_settings");
-                    resetButton.setTitle("Reset All to Defaults");
-                    resetButton.setSummary("Reset all tunable parameters to their default values");
-                    resetButton.setIcon(android.R.drawable.ic_menu_revert);
-                    resetButton.setOrder(9999); // Force to the end
-                    
-                    resetButton.setOnPreferenceClickListener(preference -> {
-                        // Reset all tunable settings
-                        com.particlesdevs.photoncamera.settings.TunableSettingsManager.resetAllToDefaults(mContext);
-                        
-                        // Restart the settings activity to refresh UI
-                        if (getActivity() != null) {
-                            getActivity().recreate();
-                        }
-                        
-                        com.particlesdevs.photoncamera.app.PhotonCamera.showToast("Tunable settings reset to defaults");
-                        return true;
-                    });
-                    
-                    tunableSubmenu.addPreference(resetButton);
-                    Log.d("SettingsActivity", "Added reset button (preferenceCount after: " + tunableSubmenu.getPreferenceCount() + ")");
-                } else {
-                    Log.w("SettingsActivity", "PreferenceScreen is null, cannot add reset button");
-                }
-            } catch (Exception e) {
-                Log.e("SettingsActivity", "Error adding reset button", e);
             }
         }
 
@@ -1114,8 +1067,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // only dynamically generated pages are handled here. Static pages
             // such as ACES must fall through to PreferenceFragmentCompat,
             // otherwise some AndroidX/vendor combinations dispatch them twice.
-            if ("pref_tunable_submenu".equals(preference.getKey())
-                    || "pref_sensor_config_submenu".equals(preference.getKey())) {
+            if ("pref_sensor_config_submenu".equals(preference.getKey())) {
                 Log.d("SettingsFragment", "Submenu clicked, navigating: " + preference.getKey());
                 if (preference instanceof PreferenceScreen && activity instanceof SettingsActivity) {
                     ((SettingsActivity) activity).onPreferenceStartScreen(this, (PreferenceScreen) preference);
