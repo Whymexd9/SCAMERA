@@ -65,7 +65,8 @@ public class HybridSettingsTest {
                 "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_tone_category","lmc_hybrid_sharp_category",
                 "lmc_hybrid_ark_artifacts_category","lmc_hybrid_diag_category"})
             assertTrue(category,hybrid.findPreference(category) instanceof PreferenceCategory);
-        assertTrue(hybrid.findPreference(PreferenceKeys.HYBRID_ENABLED_KEY) instanceof SwitchPreferenceCompat);
+        assertNull(root.findPreference("pref_lmc_hybrid_enabled"));
+        assertTrue(root.findPreference(PreferenceKeys.ROUTE_KEY) instanceof androidx.preference.ListPreference);
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);
         Set<String> insideKeys=new HashSet<>();
         for(Preference p:inside){
@@ -120,22 +121,19 @@ public class HybridSettingsTest {
         assertTrue(lists>=6);
     }
 
-    @Test public void switchIsIndependentOfScamHdrAndWinsOverIt() {
-        assertFalse(PreferenceKeys.isLmcHybridEnabled());assertFalse(PreferenceKeys.isVivoNiceEnabled());
-        assertFalse(PreferenceKeys.isVivoHdrEnabled());
-        manager.set("default_scope",PreferenceKeys.HYBRID_ENABLED_KEY,true);
+    @Test public void routeSelectsOneMergeAndTheHybridIsTheDefault() {
+        // nothing stored: the hybrid, on every phone
+        assertEquals("hybrid",PreferenceKeys.mergeRoute());
         assertTrue(PreferenceKeys.isLmcHybridEnabled());assertTrue(PreferenceKeys.isVivoNiceEnabled());
         assertTrue(PreferenceKeys.isVivoHdrEnabled());assertFalse(PreferenceKeys.isScamHdrNiceEnabled());
         assertTrue(PreferenceKeys.isHybridShot());
         assertTrue(PreferenceKeys.getFrameCountValue()>=4);
-        manager.set("default_scope","pref_vivo_hdr_enabled",true);manager.set("default_scope","pref_vivo_nice_enabled",true);
-        assertTrue(PreferenceKeys.isScamHdrSwitchOn());assertFalse(PreferenceKeys.isScamHdrNiceEnabled());
-        assertTrue(PreferenceKeys.isLmcHybridEnabled());
-        manager.set("default_scope",PreferenceKeys.HYBRID_ENABLED_KEY,false);
-        assertTrue(PreferenceKeys.isScamHdrNiceEnabled());assertFalse(PreferenceKeys.isHybridShot());
-        manager.set("default_scope","pref_vivo_hdr_enabled",false);manager.set("default_scope",PreferenceKeys.HYBRID_ENABLED_KEY,true);
-        manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
-        assertFalse(PreferenceKeys.isLmcHybridEnabled());assertFalse(PreferenceKeys.isVivoNiceEnabled());
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
+        assertTrue(PreferenceKeys.isScamHdrSwitchOn());assertTrue(PreferenceKeys.isScamHdrNiceEnabled());
+        assertFalse(PreferenceKeys.isLmcHybridEnabled());assertFalse(PreferenceKeys.isHybridShot());
+        assertTrue(PreferenceKeys.isVivoNiceEnabled());
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"something else");
+        assertEquals("hybrid",PreferenceKeys.mergeRoute());
     }
 
     @Test public void hybridShotReadsItsOwnCopiesNeverScamHdrKeys() {
@@ -185,7 +183,7 @@ public class HybridSettingsTest {
     @Test public void rawTherapeeStrengthScalesOnlyWhileAHybridShotIsProcessed() {
         float plain=PreferenceKeys.getSharpAmount();
         manager.set("default_scope","pref_lmc_hybrid_sharp_strength","0.5");
-        manager.set("default_scope",PreferenceKeys.HYBRID_ENABLED_KEY,true);
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
         assertEquals(plain,PreferenceKeys.getSharpAmount(),0f);
         PreferenceKeys.beginShotProfile(true);
         assertEquals(plain*.5f,PreferenceKeys.getSharpAmount(),1e-6f);
@@ -243,7 +241,8 @@ public class HybridSettingsTest {
                 .putString("pref_lmc_hybrid_cdm","0.2").putString("pref_vivo_nice_hybrid_cdm","0.9")
                 .commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
-        assertTrue(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,false));
+        assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
+        for(String old:new String[]{"pref_lmc_hybrid_enabled","pref_vivo_hdr_enabled","pref_vivo_nice_enabled"})assertFalse(old,prefs.contains(old));
         assertEquals("0.3",prefs.getString("pref_lmc_hybrid_post_luma",""));
         assertFalse(prefs.contains("pref_lmc_hybrid_bento_factor"));assertFalse(prefs.contains("pref_lmc_hybrid_soft_tone"));
         assertFalse(prefs.getBoolean("pref_lmc_hybrid_shasta",true));assertEquals("20",prefs.getString("pref_lmc_hybrid_output",""));
@@ -266,29 +265,37 @@ public class HybridSettingsTest {
         prefs.edit().clear().putBoolean("pref_vivo_hdr_enabled",true).putBoolean("pref_vivo_nice_enabled",true)
                 .putString("pref_vivo_nice_engine","nice").commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
-        assertFalse(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true));
+        assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         prefs.edit().clear().putBoolean("pref_vivo_hdr_enabled",true).putBoolean("pref_vivo_nice_enabled",true).commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
-        assertEquals(!PreferenceKeys.isVivoNetSoc(),prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,false));
+        assertEquals(PreferenceKeys.isVivoNetSoc()?"scamhdr":"hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
+        // SCAM HDR off and the hybrid off: the plain legacy route is gone, the hybrid takes it
         prefs.edit().clear().putBoolean("pref_vivo_hdr_enabled",false).putString("pref_vivo_nice_engine","hybrid").commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
-        assertFalse(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true));
+        assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         prefs.edit().clear().commit();
         SettingsMigration.migrateLmcHybrid(prefs,true);
-        assertEquals(PreferenceKeys.hybridDefaultOn(),prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,!PreferenceKeys.hybridDefaultOn()));
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,false).commit();
+        assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
+        // after the separation: an explicit hybrid switch off with SCAM HDR on keeps SCAM HDR
+        prefs.edit().clear().putBoolean("pref_lmc_hybrid_enabled",false).putBoolean("pref_vivo_hdr_enabled",true)
+                .putBoolean("pref_vivo_nice_enabled",true).commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,true));
+        assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));assertFalse(prefs.contains("pref_lmc_hybrid_enabled"));
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,true));
-        assertFalse(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true));
+        prefs.edit().clear().putBoolean("pref_lmc_hybrid_enabled",true).putBoolean("pref_vivo_hdr_enabled",true)
+                .putBoolean("pref_vivo_nice_enabled",true).commit();
+        SettingsMigration.migrateLmcHybrid(prefs,false);
+        assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
     }
 
     @Test public void defaultsRevisionThreeMovesTheFormerSharpDefaultToArk() {
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid")
                 .putString("pref_lmc_hybrid_sharp_mode","rt").putInt("pref_lmc_hybrid_defaults_rev",2).commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("ark",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
         assertEquals(3,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid")
                 .putString("pref_lmc_hybrid_sharp_mode","scam").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("scam",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
@@ -298,7 +305,7 @@ public class HybridSettingsTest {
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("rt",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
         // the former noise-reduction safeguards (stored XML defaults) become ArkCam's values; other values stay
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true).putInt("pref_lmc_hybrid_defaults_rev",2)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",2)
                 .putString("pref_lmc_hybrid_dn_revert_max","2").putString("pref_lmc_hybrid_dn_coarse_stock","0.5")
                 .putString("pref_lmc_hybrid_dn_chroma_floor","1.5").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
@@ -307,7 +314,7 @@ public class HybridSettingsTest {
         assertEquals("1.5",prefs.getString("pref_lmc_hybrid_dn_chroma_floor",""));
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         // revision 4: the former Shasta defaults (2 frames, EV 2) become ArkCam's (5 frames at x2); a chosen value stays
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true).putInt("pref_lmc_hybrid_defaults_rev",3)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",3)
                 .putString("pref_lmc_hybrid_shasta_frames","2").putString("pref_lmc_hybrid_shasta_ev","3").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals(5f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_shasta_frames","")),0f);
@@ -315,7 +322,7 @@ public class HybridSettingsTest {
         assertEquals(4,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         // revision 5: a stored former default cdm 0.07 becomes 0.2; a chosen value stays
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true).putInt("pref_lmc_hybrid_defaults_rev",4)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",4)
                 .putString("pref_lmc_hybrid_cdm","0.07").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals(0.2f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_cdm","")),1e-6f);
@@ -326,8 +333,7 @@ public class HybridSettingsTest {
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {
-        manager.set("default_scope","pref_vivo_hdr_enabled",true);manager.set("default_scope","pref_vivo_nice_enabled",true);
-        manager.set("default_scope",PreferenceKeys.HYBRID_ENABLED_KEY,false);
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         PreferenceKeys.beginShotProfile(true);
         assertTrue(PreferenceKeys.isHybridShot());assertTrue(PreferenceKeys.isHybridShotProcessing());
         // The camera thread captures the next (SCAM HDR) shot meanwhile: it must see the live route, not this profile.
@@ -337,7 +343,7 @@ public class HybridSettingsTest {
         assertFalse(other[0]);assertFalse(other[1]);
         PreferenceKeys.endShotProfile();
         assertFalse(PreferenceKeys.isHybridShot());
-        manager.set("default_scope",PreferenceKeys.HYBRID_ENABLED_KEY,true);
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
         assertTrue(PreferenceKeys.isHybridShot());assertFalse(PreferenceKeys.isHybridShotProcessing());
     }
 
@@ -347,7 +353,7 @@ public class HybridSettingsTest {
                 .putString("pref_vivo_nice_engine","nice").putString("pref_vivo_nice_zsl_frames","4")
                 .putString("pref_vivo_nice_fusion_dark_ev","2").commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
-        assertFalse(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,true));
+        assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         assertFalse(prefs.contains("pref_lmc_hybrid_zsl_frames"));assertFalse(prefs.contains("pref_lmc_hybrid_fusion_dark_ev"));
         assertEquals(20,PreferenceKeys.getHybridZslFrames());
         // A later run (engine key gone, "auto" off SM8750 would read as the hybrid) copies nothing either.
@@ -359,7 +365,7 @@ public class HybridSettingsTest {
                 .putString("pref_vivo_nice_engine","hybrid").putString("pref_vivo_nice_noise_source","imx06c")
                 .putString("pref_vivo_nice_fusion_dark_ev","2").commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
-        assertTrue(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,false));
+        assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         assertEquals("2",prefs.getString("pref_lmc_hybrid_fusion_dark_ev",""));
         assertFalse(prefs.contains("pref_lmc_hybrid_noise_source"));
         prefs.edit().putString("pref_vivo_nice_fusion_detail","0.7").putString("pref_vivo_nice_fusion_dark_ev","3").commit();
@@ -372,18 +378,17 @@ public class HybridSettingsTest {
         assertEquals("settings",prefs.getString("pref_lmc_hybrid_noise_source",""));
     }
 
-    @Test public void freshInstallResetKeepsTheHybridSwitchState() {
+    @Test public void freshInstallResetKeepsTheHybridRoute() {
         // A fresh install has no stored preference version: MigrationManager wipes the main preferences right after
         // SettingsManager migrated them; the hybrid's fresh-install state must be written again, before the XML defaults.
         context.getSharedPreferences(context.getPackageName()+PreferenceKeys.Key.KEY_PREF_VERSION.mValue,Context.MODE_PRIVATE)
                 .edit().clear().commit();
         context.getSharedPreferences("_has_set_default_values",Context.MODE_PRIVATE).edit().clear().commit();
-        prefs.edit().clear().putBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,PreferenceKeys.hybridDefaultOn()).commit();
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").commit();
         boolean readAgain=MigrationManager.readAgain;
         try {
             MigrationManager.migrate(manager);
-            assertTrue(prefs.contains(PreferenceKeys.HYBRID_ENABLED_KEY));
-            assertEquals(PreferenceKeys.hybridDefaultOn(),prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,!PreferenceKeys.hybridDefaultOn()));
+            assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         } finally { MigrationManager.readAgain=readAgain; }
     }
 
@@ -394,12 +399,12 @@ public class HybridSettingsTest {
         profiles.activate("back0");
         prefs.edit().putBoolean("pref_vivo_hdr_enabled",true).putBoolean("pref_vivo_nice_enabled",true)
                 .putString("pref_vivo_nice_engine","hybrid").putString("pref_vivo_nice_hybrid_kernel","1.5")
-                .remove(PreferenceKeys.HYBRID_ENABLED_KEY).commit();
+                .remove(PreferenceKeys.ROUTE_KEY).commit();
         profiles.changed("pref_vivo_nice_hybrid_kernel");
         profiles.activate("back1");
         profiles.activate("back0");
         assertEquals("1.5",prefs.getString("pref_lmc_hybrid_kernel",""));
         assertFalse(prefs.contains("pref_vivo_nice_hybrid_kernel"));
-        assertTrue(prefs.getBoolean(PreferenceKeys.HYBRID_ENABLED_KEY,false));
+        assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
     }
 }

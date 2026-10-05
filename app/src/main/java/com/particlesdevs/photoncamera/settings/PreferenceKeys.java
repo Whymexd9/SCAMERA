@@ -572,8 +572,7 @@ public class PreferenceKeys {
 
     /** Raw preferences only: this is consulted by isRemosaicEnabled() and isVivoHdrEnabled(). */
     public static boolean isNiceMosaic() {
-        return !isMediaTekSoc() && !"off".equals(niceMosaicMode()) && isGcamStageEnabled("pref_vivo_hdr_enabled")
-                && isGcamStageEnabled("pref_vivo_nice_enabled") && !isRawMfsrEnabled();
+        return isScamHdrRoute() && !"off".equals(niceMosaicMode()) && !isRawMfsrEnabled();
     }
 
     /** Colour block of the module's mosaic: from its forced sensor mode (7 = Tetra 4x4, 5 = Quad 2x2), else the remosaic block. */
@@ -931,12 +930,25 @@ public class PreferenceKeys {
     public static boolean isVivoHdrEnabled() {
         return isLmcHybridEnabled() || isAutonomousHdrSwitchOn();
     }
-    /**
-     * pref_vivo_hdr_enabled on a RAW path the autonomous HDR can merge (SCAM HDR's own switch, without the hybrid). Never on
-     * MediaTek: there the hybrid is the only route of this family (see {@link #isMediaTekSoc()}).
-     */
+    /** The SCAM HDR route is selected and the RAW path is one SCAM HDR can merge. */
     private static boolean isAutonomousHdrSwitchOn() {
-        return !isMediaTekSoc() && isGcamStageEnabled("pref_vivo_hdr_enabled") && isVivoRouteCompatible();
+        return isScamHdrRoute() && isVivoRouteCompatible();
+    }
+
+    /**
+     * The merge route (pref_merge_route): "hybrid" (LMC hybrid, the default on every phone) or "scamhdr" (the vivo NICE
+     * network). MediaTek has no Qualcomm NPU: always the hybrid there (see {@link #isMediaTekSoc()}). nice_dev.txt
+     * "hybrid 1/0" picks the route for A/B tests.
+     */
+    public static String mergeRoute() {
+        Float override = niceDevValue("hybrid");
+        if (override != null) return override > 0f ? LmcHybridKeys.ROUTE_HYBRID : isMediaTekSoc() ? LmcHybridKeys.ROUTE_HYBRID : LmcHybridKeys.ROUTE_SCAM_HDR;
+        if (isMediaTekSoc()) return LmcHybridKeys.ROUTE_HYBRID;
+        String route = preferenceKeys.settingsManager.getString("default_scope", LmcHybridKeys.ROUTE, LmcHybridKeys.ROUTE_HYBRID);
+        return LmcHybridKeys.ROUTE_SCAM_HDR.equals(route) ? LmcHybridKeys.ROUTE_SCAM_HDR : LmcHybridKeys.ROUTE_HYBRID;
+    }
+    public static boolean isScamHdrRoute() {
+        return LmcHybridKeys.ROUTE_SCAM_HDR.equals(mergeRoute());
     }
     /** Plain Bayer or the SCAMERA remosaic, no RAW MFSR: what both the hybrid and SCAM HDR merge. */
     private static boolean isVivoRouteCompatible() {
@@ -1041,8 +1053,8 @@ public class PreferenceKeys {
      * {@link #hybridValue}, {@link #hybridSwitch}, {@link #hybridString} or {@link #hybridList}.
      */
     public static final String HYBRID_PREFIX = LmcHybridKeys.PREFIX;
-    /** Master switch of the LMC hybrid; independent of SCAM HDR (pref_vivo_hdr_enabled / pref_vivo_nice_enabled). */
-    public static final String HYBRID_ENABLED_KEY = LmcHybridKeys.ENABLED;
+    /** The merge route selector (hybrid | scamhdr), see {@link #mergeRoute()}. */
+    public static final String ROUTE_KEY = LmcHybridKeys.ROUTE;
     /** Hybrid defaults that differ from the fallback the shared nodes pass; any other key keeps the caller's fallback. */
     private static final Map<String, Float> HYBRID_DEFAULTS = new HashMap<>();
     static {
@@ -1051,28 +1063,20 @@ public class PreferenceKeys {
         HYBRID_DEFAULTS.put("bento_factor", 8f); // LMC ultrashort_tet_factor
     }
 
-    /** Fresh-install state of the hybrid's switch (written once by SettingsMigration), see {@link LmcHybridKeys#defaultOn()}. */
-    public static boolean hybridDefaultOn() {
-        return LmcHybridKeys.defaultOn();
-    }
-    /** The hybrid's own switch, pref_lmc_hybrid_enabled; nice_dev.txt "hybrid 0/1" overrides it for A/B tests. */
+    /** The hybrid route is selected (pref_merge_route, see {@link #mergeRoute()}). */
     public static boolean isLmcHybridSwitchOn() {
-        Float override = niceDevValue("hybrid");
-        if (override != null) return override > 0f;
-        return preferenceKeys.settingsManager.getBoolean("default_scope", HYBRID_ENABLED_KEY, false);
+        return LmcHybridKeys.ROUTE_HYBRID.equals(mergeRoute());
     }
     /**
-     * The LMC hybrid (Sabre 6.1 kernel x LMC 9.6 rejection x Bento x Shasta, any GLES 3.1 GPU) takes the shot: its switch
-     * is on and the RAW path is plain Bayer or the SCAMERA remosaic without RAW MFSR. Independent of SCAM HDR and wins over
-     * it when both are on; only a Quad/Tetra stream of SCAM HDR's mosaic mode (ISZ modules) stays with the network route,
-     * which converts the mosaic to Bayer first (the hybrid merges plain Bayer only).
+     * The LMC hybrid (Sabre 6.1 kernel x LMC 9.6 rejection x Bento x Shasta, any GLES 3.1 GPU) takes the shot: its route is
+     * selected and the RAW path is plain Bayer or the SCAMERA remosaic without RAW MFSR.
      */
     public static boolean isLmcHybridEnabled() {
-        return isLmcHybridSwitchOn() && isVivoRouteCompatible() && !isNiceMosaic();
+        return isLmcHybridSwitchOn() && isVivoRouteCompatible();
     }
-    /** SCAM HDR's switches are on (autonomous HDR + SCAM HDR RAW), whether or not the hybrid takes the shot. */
+    /** The SCAM HDR route is selected on a RAW path it can merge. */
     public static boolean isScamHdrSwitchOn() {
-        return isAutonomousHdrSwitchOn() && isGcamStageEnabled("pref_vivo_nice_enabled");
+        return isAutonomousHdrSwitchOn();
     }
     /** SCAM HDR (the vivo NICE network) takes the shot: its switches are on and the hybrid does not take it. */
     public static boolean isScamHdrNiceEnabled() {

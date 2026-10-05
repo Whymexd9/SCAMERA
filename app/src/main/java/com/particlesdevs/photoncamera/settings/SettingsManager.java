@@ -99,10 +99,11 @@ public class SettingsManager {
         mPackageName = mContext.getPackageName();
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
         SettingsMigration.migrateMultiFrame(mDefaultPreferences);
-        SettingsMigration.removeObsolete(mContext, mDefaultPreferences);
         DeviceDefaults.applyOnce(mContext, mDefaultPreferences);
         // After the device defaults: the LMC hybrid's own section takes over the SCAM HDR engine choice.
         SettingsMigration.migrateLmcHybrid(mContext, mDefaultPreferences);
+        // After the route migration, which reads the former route switches before they become obsolete.
+        SettingsMigration.removeObsolete(mContext, mDefaultPreferences);
     }
 
     public Context getContext() {

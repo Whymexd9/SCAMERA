@@ -33,22 +33,10 @@ public class SettingsModelCheck {
         p.put("hexquad_model","1");inactive(p,"hexquad_full_resolution");p.put("hexquad_model","2");active(p,"hexquad_full_resolution");
         p.put("hexquad_post_denoise",true);p.put("pref_rt_denoise_backend","rt512");active(p,"rt512_luma");inactive(p,"pref_rt_nr_luma_key");
         p.put("rt512_auto","1");inactive(p,"rt512_chroma");p.put("rt512_auto","0");active(p,"rt512_chroma");
-        p.put("pref_remosaic_enabled_key",false);p.put("pref_rt_denoise_backend","legacy");
-        p.put("pref_camera_mode_key","4");p.put("pref_night_merge_algorithm_key","hdrplus");inactive(p,"pref_rt_nr_luma_key");
-        p.put("pref_camera_mode_key","2");active(p,"pref_rt_nr_luma_key");
-        for(String tone:new String[]{"fusion","curve","opendrt","sky","off"}){
-            p.put("pref_tunable_postpipeline_tonepipeline",tone);
-            if(tone.equals("sky"))active(p,"pref_tunable_headroomrender_outputexposurescale");else inactive(p,"pref_tunable_headroomrender_outputexposurescale");
-            if(tone.equals("fusion")||tone.equals("curve"))active(p,"pref_tunable_initial_gammax1");else inactive(p,"pref_tunable_initial_gammax1");
-        }
-        p.put("pref_tunable_postpipeline_tonepipeline","fusion");p.put("pref_aces_enabled_key",true);
-        inactive(p,"pref_tunable_initial_gammax1");active(p,"pref_aces_gamma_curve_key");
-        inactive(p,"pref_noise_iso_manual_key");p.put("pref_noise_model_profile_key","hp9");active(p,"pref_noise_iso_manual_key");
-        p.put("pref_noise_dynamic_enabled_key",false);inactive(p,"pref_tunable_esd4d_enablenoisestore");
-        p.put("pref_sharp_usm_enabled_key",false);inactive(p,"pref_sharp_amount_key");active(p,"pref_sharp_usm_enabled_key");
+        // (The plain legacy route and its tone / denoise availability are gone: every shot is the hybrid or SCAM HDR.)
         p.clear();
         p.put("pref_camera_mode_key", "3");
-        p.put("pref_vivo_hdr_enabled", true);p.put("pref_vivo_nice_enabled", true);
+        p.put("pref_merge_route", "scamhdr");
         p.put("pref_rt_denoise_backend", "rt512");p.put("rt512_chroma", 15);
         p.put("pref_vivo_nice_route", "vcf2");
         Map<String,Object> saved = new HashMap<>(p);
@@ -69,18 +57,18 @@ public class SettingsModelCheck {
         p.clear();p.putAll(saved);
         new SettingsAvailability(p).reason("pref_vivo_nice_route");
         if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
-        p.put("pref_vivo_nice_enabled",false);active(p,"rt512_chroma");
-        p.put("pref_vivo_nice_enabled",true);
+        p.put("pref_merge_route","hybrid");inactive(p,"rt512_chroma");inactive(p,"pref_vivo_nice_noise_scale");
+        p.put("pref_merge_route","scamhdr");
         p.put("pref_camera_mode_key","3");p.put("pref_raw_mfsr_enabled_key",true);
-        // LMC hybrid availability: its rows need its switch and a plain Bayer route; with it on, the stages its route skips
-        // are inactive and SCAM HDR's own rows keep following SCAM HDR's switches.
+        // LMC hybrid availability: its rows need the hybrid route (the default) and a plain Bayer route; then the stages its
+        // route skips are inactive and SCAM HDR's own rows are inactive too.
         Map<String,Object> h=new HashMap<>();h.put("pref_rt_denoise_backend","rt512");
-        inactive(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_enabled");active(h,"rt512_chroma");active(h,"pref_zsl_merge_algorithm_key");
-        h.put("pref_lmc_hybrid_enabled",true);
+        h.put("pref_merge_route","scamhdr");inactive(h,"pref_lmc_hybrid_cdm");inactive(h,"rt512_chroma");
+        h.remove("pref_merge_route");
         active(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_sabre61");active(h,"pref_lmc_hybrid_highlight_recovery");
         inactive(h,"rt512_chroma");inactive(h,"pref_zsl_merge_algorithm_key");inactive(h,"pref_vivo_nice_noise_photon");
         active(h,"pref_sharp_usm_enabled_key");
-        h.put("pref_raw_mfsr_enabled_key",true);inactive(h,"pref_lmc_hybrid_cdm");active(h,"rt512_chroma");active(h,"pref_lmc_hybrid_enabled");
+        h.put("pref_raw_mfsr_enabled_key",true);inactive(h,"pref_lmc_hybrid_cdm");active(h,"rt512_chroma");
         h.put("pref_raw_mfsr_enabled_key",false);h.put("pref_remosaic_enabled_key",true);h.put("pref_remosaic_backend_key","hp9_hexquad");
         inactive(h,"pref_lmc_hybrid_cdm");
         h.put("pref_remosaic_backend_key","scamera");active(h,"pref_lmc_hybrid_cdm");

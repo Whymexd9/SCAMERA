@@ -177,6 +177,15 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
+            ListPreference route = findPreference(PreferenceKeys.ROUTE_KEY);
+            if (route != null && PreferenceKeys.isMediaTekSoc()) {
+                // No Qualcomm NPU: SCAM HDR cannot run, the hybrid is the only route (PreferenceKeys.mergeRoute).
+                route.setEntries(new CharSequence[]{"LMC-гибрид"});
+                route.setEntryValues(new CharSequence[]{"hybrid"});
+                route.setValue("hybrid");
+                route.setEnabled(false);
+                route.setSummary("MediaTek: только LMC-гибрид (SCAM HDR и нейроремозаик работают на NPU Snapdragon)");
+            }
             Preference toneReset=findPreference("pref_vivo_hdr_reset_tone");
             if(toneReset!=null) toneReset.setOnPreferenceClickListener(p -> {
                 // Everything SCAM HDR light/shadow: Fusion, highlights, shadows and levels.

@@ -53,6 +53,7 @@ public class SettingsMenuTest {
     }
     @Test public void niceInternalTuningKeepsValidatedValues() {
         PreferenceScreen screen=inflate();
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr"); // SCAM HDR keys (the hybrid reads its own copies)
         assertNotNull(screen.findPreference("vivo_nice_internal_screen"));
         for(String key:new String[]{"norm","noise_scale"}) {
             assertNotNull(screen.findPreference("pref_vivo_nice_"+key));
@@ -69,6 +70,7 @@ public class SettingsMenuTest {
     }
     @Test public void manualToneControlsKeepRangesAndDefaults() {
         PreferenceScreen screen=inflate();
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr"); // SCAM HDR keys (the hybrid reads its own copies)
         assertNotNull(screen.findPreference("agx_screen"));
         // Exposure, contrast and saturation are the AgX group's; SCAM HDR keeps gamma and the endpoints.
         String[] keys={"gamma","black","white"};
@@ -91,17 +93,18 @@ public class SettingsMenuTest {
         manager.set("default_scope","pref_vivo_hdr_gamma","1,25");
         assertEquals(1.25f,PreferenceKeys.vivoHdrValue("gamma",1),0f);
     }
-    @Test public void autonomousHdrControlsPersistAndRestorePreviousPipeline() {
+    @Test public void scamHdrControlsPersistAndEveryRouteIsAVivoRoute() {
         PreferenceScreen screen=inflate();
         assertNotNull(screen.findPreference("vivo_hdr_screen"));
-        assertFalse(PreferenceKeys.isVivoHdrEnabled());
+        // the hybrid by default: no state without a vivo route any more
+        assertTrue(PreferenceKeys.isVivoHdrEnabled());
         manager.set("default_scope","pref_frame_count_key","1");
         manager.set("default_scope","pref_short_frame_count_key","0");
         manager.set("default_scope","pref_zsl_merge_algorithm_key","hdrplus");
-        manager.set("default_scope","pref_vivo_hdr_enabled",true);
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         assertTrue(PreferenceKeys.isVivoHdrEnabled());
         assertFalse(PreferenceKeys.isHdrPlusMergeEnabled());
-        assertEquals(3,PreferenceKeys.getFrameCountValue());
+        assertEquals(4,PreferenceKeys.getFrameCountValue());
         assertEquals(1,PreferenceKeys.getShortFrameCountValue());
         for(String control:new String[]{"luma","chroma","shadows","local","sharpen"}) {
             String key="pref_vivo_hdr_"+control;
@@ -122,11 +125,9 @@ public class SettingsMenuTest {
         assertFalse(PreferenceKeys.isVivoHdrEnabled());
         manager.set("default_scope","pref_remosaic_backend_key","scamera");
         assertTrue(PreferenceKeys.isVivoHdrEnabled());
-        manager.set("default_scope","pref_vivo_hdr_enabled",false);
-        assertFalse(PreferenceKeys.isVivoHdrEnabled());
-        assertTrue(PreferenceKeys.isHdrPlusMergeEnabled());
-        assertEquals(1,PreferenceKeys.getFrameCountValue());
-        assertEquals(0,PreferenceKeys.getShortFrameCountValue());
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
+        assertTrue(PreferenceKeys.isVivoHdrEnabled());assertTrue(PreferenceKeys.isLmcHybridEnabled());
+        assertFalse(PreferenceKeys.isHdrPlusMergeEnabled());
     }
     @After public void tearDown(){if(camera!=null)camera.close();}
     private PreferenceScreen inflate(){
@@ -396,7 +397,7 @@ public class SettingsMenuTest {
     }
 
     @Test public void manualTonePageOpensAndResetsWithoutParentDependency() {
-        manager.set("default_scope","pref_vivo_hdr_enabled",true);
+        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         manager.set("default_scope","pref_vivo_hdr_exposure","-1.25");
         manager.set("default_scope","pref_vivo_hdr_local","0.65");
         manager.set("default_scope","pref_vivo_hdr_luma","1.75");

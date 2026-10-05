@@ -24,8 +24,8 @@ public class MigrationManager {
             camerasPreference.edit().clear().apply();
             settingsManager.set(KEY_PREF_VERSION.mValue, KEY_PREF_VERSION, PREFERENCES_VERSION);
             readAgain = true;
-            // This reset also runs on a fresh install (no stored version), after SettingsManager wrote the LMC hybrid's
-            // switch: write it again now, or the XML default (off) would replace its fresh-install state.
+            // This reset also runs on a fresh install (no stored version), after SettingsManager wrote the route: write it
+            // again now (hybrid on a fresh install).
             SettingsMigration.migrateLmcHybrid(settingsManager.getContext(), defaultPreferences);
         }
     }

@@ -18,30 +18,30 @@ public final class SettingsAvailability {
     }
     public String reason(String key) {
         boolean multi = on("pref_raw_mfsr_enabled_key", false);
-        boolean autonomous=on("pref_vivo_hdr_enabled",false);
-        boolean niceMosaic=!text("pref_vivo_nice_mosaic","off").equals("off") && on("pref_vivo_nice_enabled",false);
+        // Route selector pref_merge_route (PreferenceKeys.mergeRoute): hybrid (default) or scamhdr.
+        boolean autonomous=text("pref_merge_route","hybrid").equals("scamhdr");
+        boolean niceMosaic=!text("pref_vivo_nice_mosaic","off").equals("off") && autonomous;
         boolean incompatible=multi || (!niceMosaic && on("pref_remosaic_enabled_key",false)
                 && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
         // LMC hybrid (PreferenceKeys.isLmcHybridEnabled): its own switch, plain Bayer or the SCAMERA remosaic without RAW
         // MFSR; only a Quad/Tetra stream of SCAM HDR's mosaic mode (ISZ modules) stays with SCAM HDR.
         boolean hybridIncompatible=multi || (on("pref_remosaic_enabled_key",false)
                 && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
-        boolean hybridOn=on("pref_lmc_hybrid_enabled",false);
-        boolean hybrid=hybridOn && !hybridIncompatible && !(niceMosaic && autonomous);
-        if (key.startsWith("pref_lmc_hybrid_") && !key.equals("pref_lmc_hybrid_enabled")) {
-            if (!hybridOn) return "Включите LMC-гибрид.";
+        boolean hybridOn=!autonomous;
+        boolean hybrid=hybridOn && !hybridIncompatible;
+        if (key.startsWith("pref_lmc_hybrid_")) {
+            if (!hybridOn) return "Выберите склейку «LMC-гибрид».";
             if (hybridIncompatible) return "LMC-гибрид сливает обычный Bayer: выберите Bayer или ремозаик SCAMERA и отключите RAW MFSR.";
         }
-        if (autonomous && !incompatible && on("pref_vivo_nice_enabled", false)
+        if (autonomous && !incompatible
                 && any(key, "pref_vivo_hdr_luma", "pref_vivo_hdr_chroma"))
             return "С SCAM HDR дополнительный RGB-шумодав отключён. Используйте внутренние параметры SCAM HDR.";
-        if (key.startsWith("pref_vivo_nice_") && !any(key, "pref_vivo_nice_enabled", "pref_vivo_nice_route")
-                && (!autonomous || incompatible || !on("pref_vivo_nice_enabled", false)))
-            return "Включите совместимый RAW-путь SCAM HDR.";
+        if (key.startsWith("pref_vivo_nice_") && !key.equals("pref_vivo_nice_route") && (!autonomous || incompatible))
+            return autonomous ? "Выберите Bayer или ремозаик SCAMERA и отключите RAW MFSR." : "Выберите склейку «SCAM HDR».";
         if (key.equals("pref_vivo_nice_route")) {
             return "SCAM HDR использует RAW. Выбор пути больше не применяется.";
         }
-        if (((autonomous && !incompatible && on("pref_vivo_nice_enabled", false)) || hybrid)
+        if (((autonomous && !incompatible) || hybrid)
                 && (key.startsWith("rt512_") || key.startsWith("pref_rt_")
                     || key.startsWith("pref_ai_denoise_") || key.startsWith("pref_tunable_esd3d2_")
                     || key.startsWith("pref_tunable_ablc_") || key.startsWith("pref_aces_")
@@ -57,7 +57,7 @@ public final class SettingsAvailability {
                     : "В RAW-пути SCAM HDR этот этап пропускается. Настройки тона и шума доступны в меню SCAM HDR.";
         if(key.startsWith("pref_vivo_hdr_")) {
             if(incompatible) return "Выберите Bayer или ремозаик SCAMERA и отключите MFSR. Автономный HDR использует собственную склейку.";
-            if(!key.equals("pref_vivo_hdr_enabled") && !autonomous) return "Включите автономный HDR.";
+            if(!autonomous) return "Выберите склейку «SCAM HDR».";
         }
         if(autonomous && !incompatible && (any(key,"pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key",
                 "pref_tunable_postpipeline_tonepipeline","pref_gcam_finish","pref_ai_denoise_enabled_key")

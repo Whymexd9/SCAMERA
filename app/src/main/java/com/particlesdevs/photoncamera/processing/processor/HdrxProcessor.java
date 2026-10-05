@@ -97,12 +97,9 @@ public class HdrxProcessor extends ProcessorBase {
         this.captureRequest = captureRequest;
         this.niceCapture = PreferenceKeys.isVivoNiceEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_lmc_hybrid_* for a hybrid shot,
-        // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the switches change meanwhile.
+        // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
         this.hybridShot = niceCapture && PreferenceKeys.isLmcHybridEnabled();
-        if (hybridShot && PreferenceKeys.isScamHdrSwitchOn())
-            android.util.Log.i("NICE_HDR", "LMC hybrid and SCAM HDR are both on: the LMC hybrid merges this shot");
-        else if (niceCapture && !hybridShot && PreferenceKeys.isLmcHybridSwitchOn())
-            android.util.Log.i("NICE_HDR", "LMC hybrid on, but this Quad/Tetra stream goes to SCAM HDR (the hybrid merges plain Bayer only)");
+        android.util.Log.i("NICE_HDR", "route=" + PreferenceKeys.mergeRoute() + (hybridShot ? " (LMC hybrid merges)" : niceCapture ? " (SCAM HDR merges)" : " (no NICE route)"));
         this.fullpairs = ownedPairs != null ? ownedPairs : IsoExpoSelector.fullpairs;
         Log.d(TAG, "HdrxProcessor called start()");
         PreferenceKeys.beginShotProfile(hybridShot);

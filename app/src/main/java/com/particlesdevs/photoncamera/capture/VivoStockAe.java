@@ -621,7 +621,7 @@ public final class VivoStockAe implements AutoCloseable {
                 String detail=" (slot "+slot+": ISO "+sensitivity+"/"+iso[slot]+", shutter "+ns+"/"+shutter[slot]
                         +String.format(java.util.Locale.ROOT,", %.2f EV)",ev);
                 if(ev>tolerance)
-                    throw new IllegalStateException("SCAM HDR: выдержка/ISO RAW не совпали с планом SCAMERA"+detail);
+                    throw new IllegalStateException((com.particlesdevs.photoncamera.settings.PreferenceKeys.isHybridShot()?"LMC-гибрид":"SCAM HDR")+": выдержка/ISO RAW не совпали с планом SCAMERA"+detail);
                 android.util.Log.w("NICE_CAPTURE","sensor rounding accepted"+detail);
                 return;
             }

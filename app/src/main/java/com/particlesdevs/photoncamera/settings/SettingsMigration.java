@@ -82,7 +82,9 @@ public final class SettingsMigration {
             // P1: vivo upscale (RAISR, SoftPQE, VSR) and the Lanczos after it
             "pref_vivo_upscale_backend_key", "pref_vivo_downscale_kernel_key", "pref_vivo_downscale_size_key",
             // P2: "Кадрирование DNG" (the 16:9 crop is always centred now)
-            "pref_tunable_imagesaversettings_croptype"));
+            "pref_tunable_imagesaversettings_croptype",
+            // P3: the route switches, replaced by pref_merge_route (migrateLmcHybrid converts them first)
+            "pref_lmc_hybrid_enabled", "pref_vivo_hdr_enabled", "pref_vivo_nice_enabled"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;
@@ -135,7 +137,8 @@ public final class SettingsMigration {
     public static void migrateLmcHybrid(Context context, SharedPreferences main) {
         // Fresh install: androidx has never written the XML defaults and nothing set the autonomous HDR switch.
         boolean fresh = !context.getSharedPreferences("_has_set_default_values", Context.MODE_PRIVATE)
-                .getBoolean("_has_set_default_values", false) && !main.contains("pref_vivo_hdr_enabled");
+                .getBoolean("_has_set_default_values", false) && !main.contains(LmcHybridKeys.LEGACY_HDR)
+                && !main.contains(LmcHybridKeys.ROUTE);
         migrateLmcHybrid(main, fresh);
         SharedPreferences meta = context.getSharedPreferences("module_profiles_meta", Context.MODE_PRIVATE);
         for (Map.Entry<String, ?> e : meta.getAll().entrySet())
@@ -164,7 +167,7 @@ public final class SettingsMigration {
         SharedPreferences.Editor e = prefs.edit();
         java.util.Set<String> written = new java.util.HashSet<>();
         boolean changed = false;
-        final boolean firstRun = !values.containsKey(LmcHybridKeys.ENABLED);
+        final boolean firstRun = !values.containsKey(LmcHybridKeys.ENABLED) && !values.containsKey(LmcHybridKeys.ROUTE);
         final boolean hybridShots = firstRun && !freshInstall && legacyHybridShots(values);
         for (Map.Entry<String, ?> entry : values.entrySet()) {
             String key = entry.getKey();
@@ -188,10 +191,19 @@ public final class SettingsMigration {
             ModuleProfiles.put(e, target, entry.getValue());
             changed = true;
         }
-        if (firstRun) {
-            e.putBoolean(LmcHybridKeys.ENABLED, freshInstall ? LmcHybridKeys.defaultOn() : hybridShots);
+        // Route selector (October 2026): the three switches become pref_merge_route. The hybrid switch on (or the hybrid
+        // took the shots before its separation, or a fresh install) -> hybrid; otherwise SCAM HDR's two switches on ->
+        // scamhdr; otherwise -> hybrid (the plain legacy route is gone). The hybrid is the default on every phone: the
+        // former SM8750 exclusion (d875840, SCAM HDR stayed the default where the NICE network runs) is dropped.
+        if (!values.containsKey(LmcHybridKeys.ROUTE)) {
+            boolean hybrid = firstRun ? freshInstall || hybridShots : PreferenceNumber.bool(values.get(LmcHybridKeys.ENABLED), false);
+            boolean scam = PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_HDR), false)
+                    && PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_NICE), false);
+            e.putString(LmcHybridKeys.ROUTE, hybrid || !scam ? LmcHybridKeys.ROUTE_HYBRID : LmcHybridKeys.ROUTE_SCAM_HDR);
             changed = true;
         }
+        for (String old : new String[]{LmcHybridKeys.ENABLED, LmcHybridKeys.LEGACY_HDR, LmcHybridKeys.LEGACY_NICE})
+            if (values.containsKey(old)) { e.remove(old); changed = true; }
         for (String old : new String[]{"pref_vivo_nice_engine", "pref_vivo_nice_hybrid"})
             if (values.containsKey(old)) { e.remove(old); changed = true; }
         // Defaults revision 2 (4 October 2026): the Sabre detail of the ARK tone moved from 1 to 2 after the A/B against
@@ -291,8 +303,8 @@ public final class SettingsMigration {
 
     /** The hybrid merged the shots before the separation: SCAM HDR on and the engine "hybrid", or "auto" away from the NICE SoC. */
     private static boolean legacyHybridShots(Map<String, ?> values) {
-        if (!PreferenceNumber.bool(values.get("pref_vivo_hdr_enabled"), false)
-                || !PreferenceNumber.bool(values.get("pref_vivo_nice_enabled"), false)) return false;
+        if (!PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_HDR), false)
+                || !PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_NICE), false)) return false;
         Object engine = values.get("pref_vivo_nice_engine");
         if (engine == null && values.containsKey("pref_vivo_nice_hybrid"))
             return PreferenceNumber.bool(values.get("pref_vivo_nice_hybrid"), true);

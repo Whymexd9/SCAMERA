@@ -10,11 +10,11 @@ import java.util.Map;
 /**
  * Factory configuration of the devices SCAM HDR is tuned for. Applied once per defaults version (marker
  * {@code device_defaults_version}, not a per-module key) when the app first runs after install or update: on the main
- * preferences, the shared baseline and every module profile that already exists, so the camera starts with SCAM HDR on
- * instead of the plain-photo route. The user changes anything afterwards; a newer defaults version applies again.
+ * preferences, the shared baseline and every module profile that already exists. These are SCAM HDR's tuning values; the
+ * route itself is not chosen here (the LMC hybrid is the default on every phone, SCAM HDR is the user's choice). The user
+ * changes anything afterwards; a newer defaults version applies again.
  *
- * <p>OPPO Find X7 Ultra (PHY110) and Find X8 Ultra (PKJ110): Autonomous HDR + SCAM HDR RAW on (plain Bayer RAW, remosaic
- * off), the bracket planned by SCAMERA (the stock vivo AE needs a vivo root observer), 20 N frames from the ZSL ring and
+ * <p>OPPO Find X7 Ultra (PHY110) and Find X8 Ultra (PKJ110), for when SCAM HDR is selected: the bracket planned by SCAMERA (the stock vivo AE needs a vivo root observer), 20 N frames from the ZSL ring and
  * the merge / denoise / tone set tuned on the vivo main camera (Sabre-style SNR-adaptive merge, Luma/Chroma of the network
  * at 0 so the merge does the denoising).
  */
@@ -27,8 +27,6 @@ public final class DeviceDefaults {
     private static final Map<String, Object> OPPO = new LinkedHashMap<>();
     private static void put(String key, Object value) { OPPO.put(key, value); }
     static {
-        put("pref_vivo_hdr_enabled", true);
-        put("pref_vivo_nice_enabled", true);
         put("pref_vivo_nice_planner", "scamera");
         put("pref_vivo_nice_zsl_frames", "20");
         put("pref_vivo_nice_diagnostics", false);

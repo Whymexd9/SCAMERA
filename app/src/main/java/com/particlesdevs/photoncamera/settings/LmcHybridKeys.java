@@ -9,8 +9,13 @@ public final class LmcHybridKeys {
     private LmcHybridKeys() {}
     /** Prefix of every LMC hybrid preference: pref_lmc_hybrid_&lt;key&gt;. */
     public static final String PREFIX = "pref_lmc_hybrid_";
-    /** Master switch of the LMC hybrid; independent of SCAM HDR. */
+    /** The merge route of the shot: {@link #ROUTE_HYBRID} (default on every phone) or {@link #ROUTE_SCAM_HDR}. */
+    public static final String ROUTE = "pref_merge_route";
+    public static final String ROUTE_HYBRID = "hybrid", ROUTE_SCAM_HDR = "scamhdr";
+    /** Former master switch of the hybrid (until the route selector, October 2026); read by the migration only. */
     public static final String ENABLED = "pref_lmc_hybrid_enabled";
+    /** Former switches of SCAM HDR (autonomous HDR + SCAM HDR RAW); read by the migration only. */
+    public static final String LEGACY_HDR = "pref_vivo_hdr_enabled", LEGACY_NICE = "pref_vivo_nice_enabled";
     /** Keys of the hybrid while it was a SCAM HDR engine (until 3 October 2026). */
     public static final String LEGACY_PREFIX = "pref_vivo_nice_hybrid_";
 
@@ -31,16 +36,5 @@ public final class LmcHybridKeys {
     /** The SoC the vivo NICE network was built for (Snapdragon 8 Elite SM8750, Hexagon v79). */
     public static boolean vivoNetSoc() {
         return "SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
-    }
-
-    /**
-     * Fresh-install state of the hybrid's switch: on wherever the NICE network does not run and the hybrid's worker (an
-     * arm64-v8a executable with GLES 3.1 compute) can; SCAM HDR stays the default on SM8750.
-     */
-    public static boolean defaultOn() {
-        if (vivoNetSoc()) return false;
-        String[] abis = android.os.Build.SUPPORTED_64_BIT_ABIS;
-        if (abis != null) for (String abi : abis) if ("arm64-v8a".equals(abi)) return true;
-        return false;
     }
 }
