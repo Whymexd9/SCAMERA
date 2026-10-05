@@ -76,7 +76,23 @@ public class Check {
   latePreview.completed(tail.get(1),result(tail.get(1),82));
   latePreview.completed(tail.get(2),result(tail.get(2),83));
   rejects(latePreview::requireCompleteMetadata);
-  System.out.println("PASS: "+checks+" NICE request/result/RAW checks, including reordering, missing frames, stale series, invalid metadata and HAL failure");
+  // LMC hybrid: post-shutter frames are optional extras (lost buffer / HAL failure / missing RAW drop that frame only)
+  var hq=List.of(request(4,0,ImageFrame.CaptureRole.EXTRA_SHORT),request(4,1,ImageFrame.CaptureRole.EXTRA_SHORT),request(4,2,ImageFrame.CaptureRole.LONG));
+  var hz=List.of(past(91),past(92),past(93));
+  var hyb=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);
+  hyb.lost(hq.get(0),"RAW buffer lost frame=34");hyb.completed(hq.get(0),result(hq.get(0),100));
+  hyb.completed(hq.get(2),result(hq.get(2),102));hyb.requireCompleteMetadata();
+  var hframes=new ArrayList<ImageFrame>(hz);hframes.add(raw(102));hframes.add(raw(100));
+  var unmatched=hyb.bindAndValidate(hframes);
+  check(unmatched.size()==1&&unmatched.get(0).timestamp==100&&hyb.boundFutureCount()==1&&hyb.droppedCount()==1);
+  check(hframes.get(3).getCaptureRole()==ImageFrame.CaptureRole.LONG);
+  var hyb2=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb2.completed(hq.get(1),result(hq.get(1),101));
+  var hf2=new ArrayList<ImageFrame>(hz);check(hyb2.bindAndValidate(hf2).isEmpty()&&hyb2.boundFutureCount()==0&&hyb2.droppedCount()==1);
+  var hyb3=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb3.lost(hq.get(2),"HAL capture failure=0");
+  rejects(()->hyb3.bindAndValidate(List.of(hz.get(0),hz.get(1)))); // a buffered N frame is still required
+  var hyb4=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb4.completed(hq.get(0),result(hq.get(1),100));rejects(hyb4::requireCompleteMetadata);
+  var strict=VivoNiceCaptureSequence.stockZsl(tail,p4,70);strict.lost(tail.get(0),"RAW buffer lost frame=7");rejects(strict::requireCompleteMetadata);
+  System.out.println("PASS: "+checks+" NICE request/result/RAW checks, including reordering, missing frames, stale series, invalid metadata and HAL failure; hybrid drops lost post-shutter frames");
  }
 }'''
 with tempfile.TemporaryDirectory() as d:

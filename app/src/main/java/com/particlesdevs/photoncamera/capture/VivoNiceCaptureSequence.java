@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public final class VivoNiceCaptureSequence {
     private final List<ImageFrame.NiceCaptureTag> tags = new ArrayList<>();
@@ -17,6 +18,12 @@ public final class VivoNiceCaptureSequence {
     private String failure;
     private long shutterTimestamp;
     public final int futureCount, frameCount;
+    // LMC hybrid: the post-shutter frames (Bento ultrashort, Shasta bracketed) are extras on top of the buffered N frames. A
+    // request whose RAW the HAL lost or failed, or whose exposure missed the plan, is dropped and the shot goes on (vivo X300
+    // Ultra ultrawide: the HAL returned 1 of 5 post-shutter RAWs and the whole shot was discarded). SCAM HDR stays strict.
+    private boolean optionalFuture;
+    private final TreeMap<Integer, String> dropped = new TreeMap<>();
+    private int boundFuture;
 
     public static VivoNiceCaptureSequence stockZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp) {
         if(shutterTimestamp<=0 || past.size()<4 || past.size()>50 || requests.size()<2 || requests.size()>3)
@@ -57,6 +64,7 @@ public final class VivoNiceCaptureSequence {
         }
         VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,past);
         sequence.shutterTimestamp=shutterTimestamp;
+        sequence.optionalFuture=true;
         return sequence;
     }
 
@@ -103,6 +111,31 @@ public final class VivoNiceCaptureSequence {
         if (failure == null) failure = reason;
     }
 
+    /**
+     * A submitted request lost its RAW buffer, failed in the HAL or missed its planned exposure. A strict series fails; the
+     * hybrid drops that frame (its result, if any, is ignored) and merges the frames that arrived.
+     */
+    public synchronized void lost(CaptureRequest request, String reason) {
+        Object value = request == null ? null : request.getTag();
+        if (!optionalFuture || !(value instanceof ImageFrame.NiceCaptureTag)) { failed(reason); return; }
+        ImageFrame.NiceCaptureTag tag = (ImageFrame.NiceCaptureTag) value;
+        if (tag.index >= tags.size() || tags.get(tag.index) != tag) { failed("lost frame from another request/series"); return; }
+        if (!dropped.containsKey(tag.index)) dropped.put(tag.index, tag.role + ": " + reason);
+        results.remove(tag.index);
+    }
+
+    public synchronized boolean isOptionalFuture() { return optionalFuture; }
+    public synchronized int droppedCount() { return dropped.size(); }
+    /** Post-shutter frames bound to a RAW by the last bindAndValidate. */
+    public synchronized int boundFutureCount() { return boundFuture; }
+    public synchronized String droppedSummary() {
+        if (dropped.isEmpty()) return "";
+        StringBuilder out = new StringBuilder();
+        for (Map.Entry<Integer, String> e : dropped.entrySet())
+            out.append(out.length() == 0 ? "" : "; ").append('#').append(e.getKey()).append(' ').append(e.getValue());
+        return out.toString();
+    }
+
     public synchronized void completed(CaptureRequest request, CaptureResult result) {
         Object value = request.getTag();
         if (!(value instanceof ImageFrame.NiceCaptureTag)) {
@@ -113,6 +146,7 @@ public final class VivoNiceCaptureSequence {
                 || result.getRequest() == null || result.getRequest().getTag() != tag) {
             failed("result from another request/series"); return;
         }
+        if (optionalFuture && dropped.containsKey(tag.index)) return; // dropped frame: its metadata is not used
         Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
         Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
@@ -126,15 +160,22 @@ public final class VivoNiceCaptureSequence {
     }
 
     public synchronized void requireCompleteMetadata() {
-        if (failure != null || results.size() != futureCount)
+        if (failure != null || (!optionalFuture && results.size() != futureCount))
             throw new IllegalStateException("NICE: incomplete results " + results.size() + "/"
                     + futureCount + (failure == null ? "" : "; " + failure));
     }
 
-    public synchronized void bindAndValidate(List<ImageFrame> frames) {
+    /**
+     * Binds every post-shutter RAW to its request result. Returns the RAWs to discard: none for a strict series (any mismatch
+     * throws); for the hybrid the post-shutter RAWs without a usable result (dropped or never reported). The buffered N
+     * frames are required in both modes.
+     */
+    public synchronized List<ImageFrame> bindAndValidate(List<ImageFrame> frames) {
         requireCompleteMetadata();
-        if (frames.size() != frameCount)
+        if (!optionalFuture && frames.size() != frameCount)
             throw new IllegalStateException("NICE: incomplete RAW series " + frames.size() + "/" + frameCount);
+        List<ImageFrame> discard = new ArrayList<>();
+        int bound = 0;
         Map<Long, CaptureResult> byTimestamp = new HashMap<>();
         for (CaptureResult result : results.values())
             byTimestamp.put(result.get(CaptureResult.SENSOR_TIMESTAMP), result);
@@ -146,11 +187,22 @@ public final class VivoNiceCaptureSequence {
                     throw new IllegalStateException("NICE: unexpected buffered RAW");
             } else {
                 CaptureResult result = byTimestamp.remove(frame.timestamp);
-                if (result == null) throw new IllegalStateException("NICE: RAW has no matching request result");
+                if (result == null) {
+                    if (!optionalFuture) throw new IllegalStateException("NICE: RAW has no matching request result");
+                    discard.add(frame);
+                    continue;
+                }
                 frame.setCaptureMetadata(result);
+                bound++;
             }
         }
-        if (!byTimestamp.isEmpty() || !seen.containsAll(zslTimestamps))
+        if (!seen.containsAll(zslTimestamps) || (!optionalFuture && !byTimestamp.isEmpty()))
             throw new IllegalStateException("NICE: missing requested RAW");
+        // hybrid: a result whose RAW never arrived is a dropped frame as well
+        for (Map.Entry<Integer, CaptureResult> e : results.entrySet())
+            if (optionalFuture && byTimestamp.containsValue(e.getValue()) && !dropped.containsKey(e.getKey()))
+                dropped.put(e.getKey(), tags.get(e.getKey()).role + ": RAW missing");
+        boundFuture = bound;
+        return discard;
     }
 }

@@ -98,6 +98,11 @@ public class ImageSaver {
         return path.resolveSibling(dot < 0 ? name + suffix : name.substring(0, dot) + suffix + name.substring(dot));
     }
 
+    /** Removes and closes the given frames of this burst (post-shutter RAWs the hybrid dropped). */
+    public synchronized void removeFrames(java.util.Collection<ImageFrame> frames) {
+        for (ImageFrame frame : frames) if (SaverImplementation.IMAGE_BUFFER.remove(frame)) frame.close();
+    }
+
     public synchronized void discardFrames() {
         desiredFrameCount = 0;
         for (ImageFrame frame : SaverImplementation.IMAGE_BUFFER) frame.close();

@@ -3663,7 +3663,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     if(niceSequence != null) {
                         if(hybridPlanHolder[0]!=null)try{hybridPlanHolder[0].verify(request,result);}
-                        catch(RuntimeException mismatch){niceSequence.failed(mismatch.getMessage());}
+                        catch(RuntimeException mismatch){niceSequence.lost(request,mismatch.getMessage());}
                         else if(stockPlan!=null)try{stockPlan.verify(request,result);}
                         catch(RuntimeException mismatch){niceSequence.failed(mismatch.getMessage());}
                         niceSequence.completed(request, result);
@@ -3721,7 +3721,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 public void onCaptureFailed(@NonNull CameraCaptureSession session,
                                             @NonNull CaptureRequest request,
                                             @NonNull android.hardware.camera2.CaptureFailure failure) {
-                    if (niceSequence != null) niceSequence.failed("HAL capture failure=" + failure.getReason());
+                    if (niceSequence != null) niceSequence.lost(request, "HAL capture failure=" + failure.getReason());
                 }
 
                 @Override
@@ -3729,7 +3729,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                 @NonNull CaptureRequest request,
                                                 @NonNull Surface target, long frameNumber) {
                     if (niceSequence != null && target == niceRawSurface)
-                        niceSequence.failed("RAW buffer lost frame=" + frameNumber);
+                        niceSequence.lost(request, "RAW buffer lost frame=" + frameNumber);
                 }
 
                 @Override
@@ -3781,7 +3781,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         processExecutor.execute(() -> {
                             int cnt = 0;
                             //int captureNumber = PhotonCamera.getGyro().capturingNumber;
-                            while (PhotonCamera.getGyro().capturingNumber < finalFrameCount || mImageSaver.bufferSize() < zslNormalCount + finalFrameCount){
+                            while (PhotonCamera.getGyro().capturingNumber < finalFrameCount - (niceSequence != null ? niceSequence.droppedCount() : 0)
+                                    || mImageSaver.bufferSize() < zslNormalCount + finalFrameCount - (niceSequence != null ? niceSequence.droppedCount() : 0)){
                                 if(cnt > 1000) {
                                     Log.d(TAG, "GyroBurstTimeout");
                                     break;
@@ -3807,9 +3808,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             });
                             try{
                             if (niceSequence != null) {
-                                niceSequence.bindAndValidate(mImageSaver.snapshotFrames());
-                                Log.i("NICE_CAPTURE", "complete matched RAWs=" + niceSequence.frameCount
-                                        + " futureRequests=" + niceSequence.futureCount + " stockAePlan=" + (stockPlan!=null));
+                                java.util.List<ImageFrame> unmatched = niceSequence.bindAndValidate(mImageSaver.snapshotFrames());
+                                if (!unmatched.isEmpty()) mImageSaver.removeFrames(unmatched);
+                                if (niceSequence.droppedCount() > 0)
+                                    Log.w("NICE_CAPTURE", "hybrid: " + niceSequence.droppedCount() + " of " + niceSequence.futureCount
+                                            + " post-shutter frames dropped, merging without them: " + niceSequence.droppedSummary());
+                                Log.i("NICE_CAPTURE", "complete matched RAWs=" + mImageSaver.bufferSize()
+                                        + " futureRequests=" + niceSequence.futureCount + " bound=" + niceSequence.boundFutureCount()
+                                        + " stockAePlan=" + (stockPlan!=null));
                             }
                             if(mImageSaver.bufferSize() == 0){
                                 cameraEventsListener.onProcessingError("Камера не передала RAW-кадры. Повторите снимок.");
@@ -3820,7 +3826,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 boolean useZslBase = niceZslRequested && (hybridZsl || niceNormalBack);
                                 if((nativePsl || useZslBase) && nativeBaseResult[0]==null)
                                     throw new IllegalStateException("RAW: отсутствуют метаданные основного кадра");
-                                if (niceZslRequested && mImageSaver.bufferSize() < zslNormalCount + finalFrameCount)
+                                if (niceZslRequested && mImageSaver.bufferSize() < zslNormalCount
+                                        + (niceSequence != null && niceSequence.isOptionalFuture() ? niceSequence.boundFutureCount() : finalFrameCount))
                                     throw new IllegalStateException("SCAM HDR: камера передала неполную серию RAW");
                                 final ImageSaver saver = mImageSaver;
                                 final CameraCharacteristics shotCharacteristics = mCameraCharacteristics;
