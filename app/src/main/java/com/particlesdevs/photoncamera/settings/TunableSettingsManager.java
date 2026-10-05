@@ -10,7 +10,6 @@ import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -55,82 +54,6 @@ public class TunableSettingsManager {
      */
     public static int getRegisteredClassCount() {
         return REGISTERED_CLASSES.size();
-    }
-    
-    /**
-     * Export tunable settings to a map (only values that differ from defaults)
-     * @param context Context for SharedPreferences
-     * @return Map of tunable settings with format: "ClassName.fieldName" -> value
-     */
-    public static Map<String, Object> exportTunableSettings(Context context) {
-        Map<String, Object> tunableSettings = new HashMap<>();
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        
-        for (Class<?> clazz : REGISTERED_CLASSES) {
-            String className = clazz.getSimpleName();
-            
-            for (Field field : clazz.getDeclaredFields()) {
-                if (field.isAnnotationPresent(Tunable.class)) {
-                    Tunable annotation = field.getAnnotation(Tunable.class);
-                    if (annotation == null) continue;
-                    
-                    String prefKey = "pref_tunable_" + className.toLowerCase(java.util.Locale.ROOT) + "_" + field.getName().toLowerCase(java.util.Locale.ROOT);
-                    String settingKey = className + "." + field.getName();
-                    
-                    // Get default value from annotation
-                    float defaultValue = annotation.defaultValue();
-                    if (defaultValue == -999999f) {
-                        defaultValue = annotation.min();
-                    }
-                    
-                    Class<?> fieldType = field.getType();
-
-                    if (fieldType == File.class) {
-                        // File type: export filename string if set
-                        String currentValue = prefs.getString(prefKey, null);
-                        if (currentValue != null && !currentValue.isEmpty()) {
-                            tunableSettings.put(settingKey, currentValue);
-                            Log.d(TAG, "Exporting tunable File: " + settingKey + " = " + currentValue);
-                        }
-                    } else if (fieldType == String.class) {
-                        // String type (list selector / free text): export string if set
-                        String currentValue = prefs.getString(prefKey, null);
-                        if (currentValue != null && !currentValue.isEmpty()) {
-                            tunableSettings.put(settingKey, currentValue);
-                            Log.d(TAG, "Exporting tunable String: " + settingKey + " = " + currentValue);
-                        }
-                    } else {
-                        // Auto-detect if float based on step value
-                        float step = annotation.step();
-                        boolean isFloat = PreferenceNumber.floating(fieldType);
-
-                        // Get current value as native type
-                        float currentValue;
-                        boolean hasValue;
-                        if (isFloat) {
-                            hasValue = prefs.contains(prefKey);
-                            currentValue = (float) PreferenceNumber.read(prefs.getAll().get(prefKey), defaultValue);
-                        } else {
-                            hasValue = prefs.contains(prefKey);
-                            currentValue = (float) PreferenceNumber.read(prefs.getAll().get(prefKey), defaultValue);
-                        }
-
-                        // Only export if value differs from default
-                        if (hasValue && Float.compare(currentValue, defaultValue) != 0) {
-                            tunableSettings.put(settingKey, currentValue);
-                            Log.d(TAG, "Exporting tunable: " + settingKey + " = " + currentValue +
-                                " (default: " + defaultValue + ")");
-                        } else {
-                            Log.d(TAG, "Skipping default: " + settingKey + " (current: " + currentValue +
-                                ", default: " + defaultValue + ")");
-                        }
-                    }
-                }
-            }
-        }
-        
-        Log.d(TAG, "Exported " + tunableSettings.size() + " non-default tunable settings");
-        return tunableSettings;
     }
     
     /**

@@ -52,10 +52,8 @@
     <string name="reset">모든 설정 초기화</string>
     <string name="reset_preferences_warning">모든 설정이 기본값으로 초기화됩니다. 계속하시겠습니까?</string>
     <string name="backup">백업</string>
-    <string name="backup_summary_json">모든 설정을 JSON으로 내보내기 (렌즈별 설정 포함)</string>
     <string name="app_will_restart">앱이 재시작됩니다</string>
     <string name="restore">복원</string>
-    <string name="restore_summary_json">JSON 또는 XML 파일에서 설정 가져오기</string>
     <string name="empty_file_name_error">파일 이름은 비워둘 수 없습니다</string>
     <string name="device_unsupport">경고: 보정되지 않은 기기입니다</string>
     <string name="af_mode">자동 초점 모드</string>

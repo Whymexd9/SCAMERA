@@ -9,7 +9,7 @@ import android.widget.Toast;
 import androidx.preference.EditTextPreference;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.util.FileManager;
+import com.particlesdevs.photoncamera.util.ConfigFolder;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -19,8 +19,8 @@ public class BackupPreferences extends EditTextPreference {
     public BackupPreferences(Context context, AttributeSet attributeSet) {
         super(context, attributeSet);
         setPersistent(false);
-        setSummary(FileManager.sPHOTON_DIR.toString());
-        setDialogMessage("Settings will be exported to JSON format (includes per-lens settings)");
+        setSummary(ConfigFolder.RELATIVE);
+        setDialogMessage("Все настройки и профили модулей сохраняются в XML-файл в папке " + ConfigFolder.RELATIVE);
 
         setOnBindEditTextListener(editText -> {
             editText.setText(getContext().getString(R.string.backup_file_name,

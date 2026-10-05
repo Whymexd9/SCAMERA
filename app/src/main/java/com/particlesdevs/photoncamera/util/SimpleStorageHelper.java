@@ -15,8 +15,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -65,60 +63,6 @@ public final class SimpleStorageHelper {
             android.util.Log.e(TAG, "hasStorageAccess: " + t.getMessage());
             return false;
         }
-    }
-
-    /**
-     * Gets the PhotonCamera folder (DCIM/PhotonCamera) for backup/restore. Returns null if no access.
-     */
-    public static DocumentFile getPhotonCameraFolder(Context context) {
-        if (!SimpleStorageHelper.hasStorageAccess(context)) {
-            return null;
-        }
-        return DocumentFileCompat.fromSimplePath(
-                context,
-                StorageId.PRIMARY,
-                SimpleStorageHelper.PHOTON_CAMERA_RELATIVE_PATH,
-                DocumentFileType.FOLDER,
-                true
-        );
-    }
-
-    /** Lists .json and .xml backup file names in DCIM/PhotonCamera. */
-    public static String[] listBackupFileNames(Context context) {
-        DocumentFile folder = getPhotonCameraFolder(context);
-        if (folder == null || !folder.exists()) return new String[0];
-        DocumentFile[] files = folder.listFiles();
-        if (files == null) return new String[0];
-        List<String> names = new ArrayList<>();
-        for (DocumentFile f : files) {
-            if (f == null || f.isDirectory()) continue;
-            String name = f.getName();
-            if (name != null && (name.endsWith(".json") || name.endsWith(".xml")))
-                names.add(name);
-        }
-        names.sort(String::compareToIgnoreCase);
-        return names.toArray(new String[0]);
-    }
-
-    /** Opens an OutputStream to create/overwrite a file in DCIM/PhotonCamera. Caller must close it. */
-    public static OutputStream openOutputStream(Context context, String fileName) throws Exception {
-        DocumentFile folder = getPhotonCameraFolder(context);
-        if (folder == null || !folder.exists())
-            throw new SecurityException("No storage access to DCIM/PhotonCamera");
-        if (fileName == null || fileName.isEmpty())
-            throw new IllegalArgumentException("fileName is empty");
-        DocumentFile file = folder.findFile(fileName);
-        if (file != null && file.exists()) file.delete();
-        file = folder.createFile("application/json", fileName);
-        if (file == null) throw new IOException("Failed to create file: " + fileName);
-        OutputStream os = context.getContentResolver().openOutputStream(file.getUri(), "w");
-        if (os == null) throw new IOException("Failed to open output stream for: " + fileName);
-        return os;
-    }
-
-    /** Opens an InputStream to read a file from DCIM/PhotonCamera. Caller must close it. */
-    public static InputStream openInputStream(Context context, String fileName) throws Exception {
-        return openInputStreamByPath(context, PHOTON_CAMERA_RELATIVE_PATH + "/" + fileName);
     }
 
     /** Updates FileManager static paths from SAF accessible paths. */

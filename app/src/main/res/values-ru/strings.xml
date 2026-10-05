@@ -41,10 +41,10 @@
     <string name="unprocessed_raw">Необработанный RAW</string>
     <string name="backup">Сохранить</string>
     <string name="reset_preferences_warning">Это сбросит настройки на стандартные, продолжить?</string>
-    <string name="backup_summary_json">Экспортировать настройки как JSON (включая настройки сенсоров)</string>
+    <string name="backup_summary_json">Сохранить все настройки и профили модулей в XML-файл в Download/SCAMERA/XML</string>
     <string name="app_will_restart">Приложение перезапустится</string>
     <string name="restore">Восстановить</string>
-    <string name="restore_summary_json">Импортировать настройки из JSON или XML</string>
+    <string name="restore_summary_json">Загрузить настройки из XML-файла в Download/SCAMERA/XML или выбрать файл</string>
     <string name="empty_file_name_error">Название не может быть пустым</string>
     <string name="reset">Сбросить всё</string>
     <string name="backup_restore">Сохранение/Восстановление настроек</string>

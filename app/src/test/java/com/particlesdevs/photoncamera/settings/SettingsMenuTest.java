@@ -284,6 +284,39 @@ public class SettingsMenuTest {
         assertTrue(SettingsMigration.removeObsolete(prefs));
         assertFalse(prefs.contains("pref_tunable_imagesaversettings_croptype"));assertEquals("1",prefs.getString("pref_save_raw_key",""));
     }
+    @Test public void configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhone() throws Exception {
+        android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
+        android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        android.content.SharedPreferences meta=app.getSharedPreferences(BackupRestoreUtil.META,0);
+        android.content.SharedPreferences main1=app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"main1",0);
+        main.edit().clear().putString("pref_lmc_hybrid_cdm","0.2").putBoolean("pref_wide169_key",true).putInt("pref_tunable_esd3d2_x",7)
+                .putLong("scamera_long",1L<<40).putFloat("pref_tunable_initial_gammax1",7.18973f)
+                .putStringSet("hidden_camera_ids",new HashSet<>(Arrays.asList("2","5"))).putString("pref_watermark_line1","<SHOT & \"ON\">").commit();
+        meta.edit().clear().putBoolean("exists_main1",true).putString("active","main1").commit();
+        main1.edit().clear().putString("pref_lmc_hybrid_cdm","0.3").commit();
+        java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+        ConfigXml.write(out,BackupRestoreUtil.header(app),BackupRestoreUtil.collect(app));
+        ConfigXml.Config config=ConfigXml.read(new java.io.ByteArrayInputStream(out.toByteArray()));
+        assertEquals(BackupRestoreUtil.device(),config.attributes.get("device"));
+        assertEquals(new HashMap<>(main.getAll()),new HashMap<>(config.files.get(ConfigXml.MAIN)));
+        assertEquals("0.3",config.files.get(BackupRestoreUtil.PROFILE_PREFIX+"main1").get("pref_lmc_hybrid_cdm"));
+        // same phone: everything comes back, including the module profile
+        main.edit().clear().putString("stale","x").commit();main1.edit().clear().commit();
+        assertEquals("Загружено: ",BackupRestoreUtil.apply(app,config));
+        assertFalse(main.contains("stale"));assertEquals(1L<<40,main.getLong("scamera_long",0));
+        assertEquals(7.18973f,main.getFloat("pref_tunable_initial_gammax1",0),0f);assertEquals(7,main.getInt("pref_tunable_esd3d2_x",0));
+        assertEquals(new HashSet<>(Arrays.asList("2","5")),main.getStringSet("hidden_camera_ids",null));
+        assertEquals("<SHOT & \"ON\">",main.getString("pref_watermark_line1",""));
+        assertEquals("0.3",main1.getString("pref_lmc_hybrid_cdm",""));
+        // another phone: main settings only, module profiles stay as they are
+        config.attributes.put("device","oppo/op627cl1");main1.edit().clear().putString("pref_lmc_hybrid_cdm","0.5").commit();
+        assertTrue(BackupRestoreUtil.apply(app,config).startsWith("Загружены общие настройки"));
+        assertEquals("0.5",main1.getString("pref_lmc_hybrid_cdm",""));assertEquals("0.2",main.getString("pref_lmc_hybrid_cdm",""));
+        // an old plain shared_prefs XML reads as the main settings
+        ConfigXml.Config legacy=ConfigXml.read(new java.io.ByteArrayInputStream(("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
+                +"<map><boolean name=\"pref_wide169_key\" value=\"false\" /><string name=\"pref_save_raw_key\">1</string></map>").getBytes("UTF-8")));
+        assertTrue(legacy.legacyMap);assertEquals(false,legacy.files.get(ConfigXml.MAIN).get("pref_wide169_key"));
+    }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();

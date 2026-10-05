@@ -159,6 +159,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private boolean sensorConfigPreferencesGenerated = false;
         private ActivityResultLauncher<String[]> lutImportLauncher;
         private ActivityResultLauncher<String[]> noiseModelImportLauncher;
+        private ActivityResultLauncher<String[]> configImportLauncher;
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
@@ -453,6 +454,26 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         PhotonCamera.showToast(result);
                     }
             );
+
+            // Config import from any folder (a file copied from another phone is not listed by MediaStore);
+            // the picker starts in Download/SCAMERA/XML.
+            configImportLauncher = registerForActivityResult(
+                    new ActivityResultContracts.OpenDocument() {
+                        @NonNull @Override
+                        public Intent createIntent(@NonNull android.content.Context context, @NonNull String[] input) {
+                            Intent intent = super.createIntent(context, input);
+                            intent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                                    com.particlesdevs.photoncamera.util.ConfigFolder.initialPickerUri());
+                            return intent;
+                        }
+                    },
+                    uri -> {
+                        if (uri == null) return;
+                        String result = BackupRestoreUtil.restoreFromUri(mContext, uri);
+                        if (mRootView != null) Snackbar.make(mRootView, result, Snackbar.LENGTH_LONG).show();
+                        else PhotonCamera.showToast(result);
+                    }
+            );
             
             // Check if we're opening the tunable submenu specifically
             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
@@ -726,6 +747,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (restorePref != null) {
                 restorePref.setSummary(mContext.getString(R.string.restore_summary_json));
                 restorePref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    if (com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference.PICK.equals(newValue.toString())) {
+                        if (configImportLauncher != null) configImportLauncher.launch(new String[]{"*/*"});
+                        return false;
+                    }
                     String restoreResult = BackupRestoreUtil.restorePreferences(mContext, newValue.toString());
                     Snackbar.make(mRootView, restoreResult, Snackbar.LENGTH_LONG).show();
                     return true;

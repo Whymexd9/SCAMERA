@@ -5,29 +5,30 @@ import android.util.AttributeSet;
 
 import androidx.preference.ListPreference;
 
-import com.particlesdevs.photoncamera.util.FileManager;
-import com.particlesdevs.photoncamera.util.SimpleStorageHelper;
+import com.particlesdevs.photoncamera.util.ConfigFolder;
 
-import org.apache.commons.io.FileUtils;
-
-import java.util.Arrays;
-
+/**
+ * Configs in Download/SCAMERA/XML, plus {@link #PICK}: the system picker, for a config this app did not save there
+ * (copied from another phone), which MediaStore does not list.
+ */
 public class RestorePreference extends ListPreference {
+    public static final String PICK = "__pick_config_file__";
+
     public RestorePreference(Context context, AttributeSet attrs) {
         super(context, attrs);
         setPersistent(false);
         setOnPreferenceClickListener(preference -> {
-            String[] fileNames = SimpleStorageHelper.listBackupFileNames(context);
-            if (fileNames == null || fileNames.length == 0) {
-                fileNames = FileManager.sPHOTON_DIR.list((dir, name) -> {
-                    String ext = FileUtils.getExtension(name);
-                    return ext != null && (ext.equalsIgnoreCase("xml") || ext.equalsIgnoreCase("json"));
-                });
+            String[] names = ConfigFolder.list(context);
+            String[] entries = new String[names.length + 1];
+            String[] values = new String[names.length + 1];
+            entries[0] = "Выбрать файл…";
+            values[0] = PICK;
+            for (int i = 0; i < names.length; i++) {
+                entries[i + 1] = names[names.length - 1 - i]; // newest names (dated) first
+                values[i + 1] = entries[i + 1];
             }
-            fileNames = fileNames != null ? fileNames : new String[0];
-            Arrays.sort(fileNames);
-            setEntries(fileNames);
-            setEntryValues(fileNames);
+            setEntries(entries);
+            setEntryValues(values);
             return true;
         });
     }
