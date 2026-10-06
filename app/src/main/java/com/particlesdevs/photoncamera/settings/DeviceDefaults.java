@@ -21,7 +21,11 @@ import java.util.Map;
 public final class DeviceDefaults {
     private static final String TAG = "DeviceDefaults";
     private static final String MARKER = "device_defaults_version";
-    static final int VERSION = 1;
+    /**
+     * 1: the SCAM HDR set of both OPPO phones. 2 (owner, 2026-10-06): the Find X8 Ultra streams RAW10 by default. A phone
+     * whose marker is older gets only the entries of the newer versions, so an update never resets the user's other settings.
+     */
+    static final int VERSION = 2;
     private DeviceDefaults() {}
 
     private static final Map<String, Object> OPPO = new LinkedHashMap<>();
@@ -66,18 +70,31 @@ public final class DeviceDefaults {
 
     /** The defaults that apply to this device, or null. A file "force-oppo-defaults" in the app's external files dir tests them on any device. */
     static Map<String, Object> forDevice(Context context) {
+        return forDevice(context, 0);
+    }
+
+    /** The defaults of this device introduced after defaults version {@code since}; null when the device has none. */
+    static Map<String, Object> forDevice(Context context, int since) {
+        boolean forced = false;
         try {
             java.io.File external = context.getExternalFilesDir(null);
-            if (external != null && new java.io.File(external, "force-oppo-defaults").exists()) return OPPO;
+            forced = external != null && new java.io.File(external, "force-oppo-defaults").exists();
         } catch (RuntimeException ignored) {}
-        if (!"OPPO".equalsIgnoreCase(Build.MANUFACTURER)) return null;
         String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(java.util.Locale.ROOT);
-        return model.equals("PHY110") || model.equals("PKJ110") ? OPPO : null;
+        final boolean oppo = "OPPO".equalsIgnoreCase(Build.MANUFACTURER) && (model.equals("PHY110") || model.equals("PKJ110"));
+        if (!forced && !oppo) return null;
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (since < 1) out.putAll(OPPO);
+        // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit on copy; the RAW viewfinder needs RAW_SENSOR and is off).
+        if (since < 2 && oppo && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
+        return out;
     }
 
     public static void applyOnce(Context context, SharedPreferences main) {
-        Map<String, Object> defaults = forDevice(context);
-        if (defaults == null || main.getInt(MARKER, 0) >= VERSION) return;
+        final int stored = main.getInt(MARKER, 0);
+        if (stored >= VERSION) return;
+        Map<String, Object> defaults = forDevice(context, stored);
+        if (defaults == null) return;
         try {
             write(main, defaults);
             // Module profiles that already exist (and the baseline new ones start from) hold their own copy.
@@ -89,7 +106,7 @@ public final class DeviceDefaults {
             if (meta.getBoolean("baseline", false))
                 write(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE), defaults);
             main.edit().putInt(MARKER, VERSION).apply();
-            Log.i(TAG, "OPPO " + Build.MODEL + ": SCAM HDR configuration v" + VERSION + " applied (" + defaults.size() + " settings)");
+            Log.i(TAG, "OPPO " + Build.MODEL + ": device configuration v" + stored + " -> v" + VERSION + " applied (" + defaults.size() + " settings)");
         } catch (RuntimeException failure) {
             Log.e(TAG, "device defaults not applied: " + failure);
         }
