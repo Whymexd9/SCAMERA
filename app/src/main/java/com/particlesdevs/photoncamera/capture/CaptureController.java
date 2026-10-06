@@ -1268,6 +1268,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     
     /** Digital/optical zoom of the current module: CONTROL_ZOOM_RATIO (R+) or SCALER_CROP_REGION. */
     private void applyZoom(CaptureRequest.Builder builder, boolean force) {
+        // P17: the Xiaomi 17 Ultra tele zooms optically (75-100 mm) and by ISZ (150-200 mm) over vendor keys
+        if (builder != null && mCameraCharacteristics != null) {
+            try {
+                boolean wasIsz = XiaomiTeleZoom.isz();
+                XiaomiTeleZoom.Plan plan = XiaomiTeleZoom.apply(builder, mCameraCharacteristics,
+                        PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(XiaomiTeleZoom.PREF, true),
+                        com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()),
+                        com.particlesdevs.photoncamera.control.ZoomController.zoom(), physicalID);
+                if (plan != null) {
+                    com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(plan.residual);
+                    if (plan.isz != wasIsz) onSensorModeChangedInSession(plan.isz);
+                    return;
+                }
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Xiaomi tele zoom: " + e.getMessage());
+            }
+        }
         final float z = com.particlesdevs.photoncamera.control.ZoomController.residual();
         if (builder == null || (z <= 1.001f && !force)) return;
         try {
@@ -1290,15 +1307,35 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /**
+     * The stream changed its sensor mode inside the session (Xiaomi ISZ): the buffered ZSL frames belong to the other mode and
+     * are dropped as on a module switch, and the colour block of the stream is measured again (ISZ may deliver a Quad mosaic).
+     */
+    private void onSensorModeChangedInSession(boolean isz) {
+        clearZslPreviewFrames();
+        com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mosaicStreamKey() + "|isz=" + isz);
+        if (mMosaicPreview && com.particlesdevs.photoncamera.processing.MosaicStream.block() <= 1) {
+            mMosaicPreview = false;
+            LiveRawFrame.setMosaicPreview(false);
+            if (!mLiveRawSession) LiveRawFrame.setEnabled(false);
+        }
+        Log.i(TAG, "sensor mode changed in session (ISZ " + (isz ? "on" : "off") + "): ZSL ring dropped, colour block measured again");
+    }
+
+    /** One zoom update waits at a time: the slider sends many, the request is rebuilt at most once per pending update. */
+    private final java.util.concurrent.atomic.AtomicBoolean mZoomPending = new java.util.concurrent.atomic.AtomicBoolean();
+
     /** Zoom changed inside the current module: push it to the repeating preview request. */
     public void onZoomChanged() {
         Handler handler = mBackgroundHandler;
         Runnable update = () -> {
+            mZoomPending.set(false);
             if (mPreviewRequestBuilder == null || mCaptureSession == null) return;
             applyZoom(mPreviewRequestBuilder, true);
             rebuildPreviewBuilder();
         };
-        if (handler != null) handler.post(update); else update.run();
+        if (handler == null) { update.run(); return; }
+        if (mZoomPending.compareAndSet(false, true)) handler.post(update); // the pending one reads the newest zoom
     }
 
     public void rebuildPreviewBuilder() {

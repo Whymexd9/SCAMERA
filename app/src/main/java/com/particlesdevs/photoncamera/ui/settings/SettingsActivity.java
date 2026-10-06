@@ -189,6 +189,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // MediaTek: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
             Preference scamHdr = findPreference("vivo_hdr_screen");
             if (scamHdr != null && PreferenceKeys.isMediaTekSoc()) scamHdr.setVisible(false);
+            // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
+            Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
+            if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
             setupRemosaicBackend();
             updateHexQuadDenoiseControls();
         }

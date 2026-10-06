@@ -38,6 +38,11 @@ public final class ZoomController {
     /** Centre-crop factor of the frame being processed (recorded at the shutter). */
     public static float shotResidual() { return shotResidual; }
     public static void markShot() { shotResidual = residual; }
+    /**
+     * The crop the camera does not do itself, when a module zooms optically (Xiaomi 17 Ultra tele, XiaomiTeleZoom): set after
+     * every zoom change of that module, in place of zoom / nativeRatio.
+     */
+    public static void overrideResidual(float crop) { residual = Math.max(1f, crop); }
 
     /** Visible modules of the active side, ascending by zoom ratio. */
     public static List<String> lenses() {
