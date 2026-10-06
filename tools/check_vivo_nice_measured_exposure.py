@@ -38,6 +38,7 @@ pkg+'processing/render/NoiseModelProfile.java':'''package com.particlesdevs.phot
 public class NoiseModelProfile {public int id=0;public static NoiseModelProfile byId(int id){return null;}
 @SuppressWarnings("unchecked") public android.util.Pair<Double,Double>[] evaluate(int iso,int max){return new android.util.Pair[]{new android.util.Pair<Double,Double>(1.0,0.0)};}}''',
 pkg+'util/Allocator.java':'package com.particlesdevs.photoncamera.util; public class Allocator {public static boolean binning;}',
+pkg+'util/Lang.java':'package com.particlesdevs.photoncamera.util; public final class Lang {public static boolean ru(){return true;}public static String t(String ru,String en){return ru;}public static String t(Object context,String ru,String en){return ru;}}',
 'android/os/ParcelFileDescriptor.java':'package android.os; public class ParcelFileDescriptor {}',
 post+'VivoNiceScene.java':'''package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 public class VivoNiceScene {static VivoNiceScene fromReference(com.particlesdevs.photoncamera.processing.ImageFrame f){return new VivoNiceScene();}

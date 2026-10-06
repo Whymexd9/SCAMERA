@@ -6,13 +6,22 @@ import static org.junit.Assert.assertTrue;
 
 import com.particlesdevs.photoncamera.settings.LensProfileMatcher.Lens;
 
+import org.junit.After;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class LensProfileMatcherTest {
+    /** The summary text follows the UI language (plain JVM: the default locale); restored after each test. */
+    private final Locale defaultLocale = Locale.getDefault();
+
+    @After public void restoreLocale() {
+        Locale.setDefault(defaultLocale);
+    }
+
     /** vivo X200 Ultra slots (2026-10-01): 2.4x tele (85 mm), 1x main (35 mm), 10x ISZ Tetra and 6.7x ISZ Quad on the tele, 0.4x UW, front. */
     private static final List<Lens> VIVO = Arrays.asList(
             new Lens("back0", false, 85f, 2.4f, false, "2.4×"),
@@ -49,12 +58,23 @@ public class LensProfileMatcherTest {
     }
 
     @Test public void fewerSourceLensesAndNoFrontLeaveTheBaseline() {
+        Locale.setDefault(new Locale("ru"));
+        fewerSourceLensesAndNoFrontLeaveTheBaseline("Фронт ← общие");
+    }
+
+    /** The same on an English system («Фронт» is the module's own label, user data). */
+    @Test public void fewerSourceLensesAndNoFrontLeaveTheBaselineInEnglish() {
+        Locale.setDefault(Locale.ENGLISH);
+        fewerSourceLensesAndNoFrontLeaveTheBaseline("Фронт ← shared");
+    }
+
+    private void fewerSourceLensesAndNoFrontLeaveTheBaseline(String unmatchedFront) {
         List<Lens> src = Arrays.asList(new Lens("back0", false, 24f, 1f, false, "1×"));
         Map<String, String> m = LensProfileMatcher.match(src, OPPO);
         for (String slot : new String[]{"back0", "back1", "back2", "back3"}) assertEquals(slot, "back0", m.get(slot));
         assertNull(m.get("front0"));
         String summary = LensProfileMatcher.describe(m, src, OPPO);
-        assertTrue(summary, summary.contains("Фронт ← общие"));
+        assertTrue(summary, summary.contains(unmatchedFront));
         assertTrue(summary, summary.startsWith("0.6× ← 1×"));
     }
 

@@ -242,7 +242,14 @@ public class SettingsMenuTest {
         assertTrue(SettingsMigration.removeObsolete(prefs));
         assertFalse(prefs.contains("pref_tunable_imagesaversettings_croptype"));assertEquals("1",prefs.getString("pref_save_raw_key",""));
     }
-    @Test public void configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhone() throws Exception {
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhone() throws Exception {
+        configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhone("Загружено: ","Загружены общие настройки");
+    }
+    /** The same on an English system: the import messages are English (i18n). */
+    @Test public void configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhoneInEnglish() throws Exception {
+        configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhone("Imported: ","Imported the shared settings");
+    }
+    private void configXmlKeepsTypesAndAppliesModuleProfilesOnlyOnTheSamePhone(String samePhone,String otherPhone) throws Exception {
         android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
         android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
         android.content.SharedPreferences meta=app.getSharedPreferences(BackupRestoreUtil.META,0);
@@ -260,7 +267,7 @@ public class SettingsMenuTest {
         assertEquals("0.3",config.files.get(BackupRestoreUtil.PROFILE_PREFIX+"main1").get("pref_lmc_hybrid_cdm"));
         // same phone: everything comes back, including the module profile
         main.edit().clear().putString("stale","x").commit();main1.edit().clear().commit();
-        assertEquals("Загружено: ",BackupRestoreUtil.apply(app,config));
+        assertEquals(samePhone,BackupRestoreUtil.apply(app,config));
         assertFalse(main.contains("stale"));assertEquals(1L<<40,main.getLong("scamera_long",0));
         assertEquals(7.18973f,main.getFloat("pref_lmc_hybrid_gamma_x",0),0f);assertEquals(7,main.getInt("pref_lmc_hybrid_frames_x",0));
         assertEquals(new HashSet<>(Arrays.asList("2","5")),main.getStringSet("hidden_camera_ids",null));
@@ -268,14 +275,23 @@ public class SettingsMenuTest {
         assertEquals("0.3",main1.getString("pref_lmc_hybrid_cdm",""));
         // another phone: main settings only, module profiles stay as they are
         config.attributes.put("device","oppo/op627cl1");main1.edit().clear().putString("pref_lmc_hybrid_cdm","0.5").commit();
-        assertTrue(BackupRestoreUtil.apply(app,config).startsWith("Загружены общие настройки"));
+        assertTrue(BackupRestoreUtil.apply(app,config).startsWith(otherPhone));
         assertEquals("0.5",main1.getString("pref_lmc_hybrid_cdm",""));assertEquals("0.2",main.getString("pref_lmc_hybrid_cdm",""));
         // an old plain shared_prefs XML reads as the main settings
         ConfigXml.Config legacy=ConfigXml.read(new java.io.ByteArrayInputStream(("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
                 +"<map><boolean name=\"pref_wide169_key\" value=\"false\" /><string name=\"pref_save_raw_key\">1</string></map>").getBytes("UTF-8")));
         assertTrue(legacy.legacyMap);assertEquals(false,legacy.files.get(ConfigXml.MAIN).get("pref_wide169_key"));
     }
-    @Test public void configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLenses() throws Exception {
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLenses() throws Exception {
+        configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLenses(
+                "Загружено с oppo/op627cl1. Модули: 1× ← 1×, 3× ← 3×, Фронт ← общие; не перенесены: 0.6×","общие настройки на все модули");
+    }
+    /** The same on an English system («Фронт» is the module's own label, user data). */
+    @Test public void configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLensesInEnglish() throws Exception {
+        configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLenses(
+                "Imported from oppo/op627cl1. Modules: 1× ← 1×, 3× ← 3×, Фронт ← shared; not applied: 0.6×","shared settings for all modules");
+    }
+    private void configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLenses(String mapped,String allModules) throws Exception {
         android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
         android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
         // this phone: 1x and 3x on the back, a front camera (no camera service here: focal = 26 mm x zoom)
@@ -300,7 +316,7 @@ public class SettingsMenuTest {
             lenses.put(l[0]+".zoom",Float.parseFloat(l[2]));lenses.put(l[0]+".crop",false);lenses.put(l[0]+".label",l[3]);}
         config.files.put(BackupRestoreUtil.LENSES,lenses);
         String message=BackupRestoreUtil.apply(app,config);
-        assertTrue(message,message.startsWith("Загружено с oppo/op627cl1. Модули: 1× ← 1×, 3× ← 3×, Фронт ← общие; не перенесены: 0.6×"));
+        assertTrue(message,message.startsWith(mapped));
         // 1x <- the source's active 1x (its values are in the source's main settings); 3x <- the source's 3x, which had no
         // saved profile: the baseline; the front has no source lens: the baseline
         assertEquals("0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).getString("pref_lmc_hybrid_cdm",""));
@@ -318,7 +334,7 @@ public class SettingsMenuTest {
         // per-lens settings off on the source: its main settings go to every module
         srcMain.put("pref_save_per_lens_settings",false);
         message=BackupRestoreUtil.apply(app,config);
-        assertTrue(message,message.contains("общие настройки на все модули"));
+        assertTrue(message,message.contains(allModules));
         for(String slot:new String[]{"back0","back1","front0"})
             assertEquals(slot,"0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+slot,0).getString("pref_lmc_hybrid_cdm",""));
         assertEquals("0.2",main.getString("pref_lmc_hybrid_cdm",""));
@@ -358,25 +374,32 @@ public class SettingsMenuTest {
         java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
         try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
     }
-    @Test public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch() throws Exception {
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch() throws Exception {
+        conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch("Копировать настройки между модулями","частично","");
+    }
+    /** The same on an English system: the row titles and the partial-selection hint are English. */
+    @Test public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitchInEnglish() throws Exception {
+        conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch("Copy settings between modules","partly selected","-en");
+    }
+    private void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch(String copyRow,String partly,String png) throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
         prefs.edit().putString("module_active","back0").putFloat("pref_sharp_amount_key",42f).putFloat("pref_sharp_micro_amount_key",14f).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
-            var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules");
+            var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
             assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
-            modules.requireView().findViewWithTag("Копировать настройки между модулями").performClick();fm.executePendingTransactions();
-            var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy");
+            modules.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
+            var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             copy.requireView().findViewWithTag("group_photo_processing_screen").performClick();
-            copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key").performClick();renderPage(copy.requireView(),"noise");
+            copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key").performClick();renderPage(copy.requireView(),"noise"+png);
             copy.requireView().findViewWithTag("primary_action").performClick();
-            var check=copy.requireView().findViewWithTag("group_check_photo_processing_screen");assertTrue(check.getContentDescription().toString().contains("частично"));
+            var check=copy.requireView().findViewWithTag("group_check_photo_processing_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
             assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_sharp_amount_key"),0),0);
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
             var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestDialog();if(dialog!=null)dialog.dismiss();
-            var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent");
+            var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent"+png);
             accent.requireView().findViewWithTag("accent_blue").performClick();
             assertEquals("blue",prefs.getString(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.KEY,""));
             assertFalse(ModuleProfiles.isLocal(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.KEY));
@@ -479,7 +502,14 @@ public class SettingsMenuTest {
 
 
     /** P6a: the engine is «Hybrid» in Latin letters everywhere the user can read it; no «LMC», no Russian «гибрид». */
-    @Test public void noLmcOrRussianHybridInTheSettingsTexts(){
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void noLmcOrRussianHybridInTheSettingsTexts(){
+        noLmcOrRussianHybridInTheSettingsTexts("Выберите склейку «Hybrid».");
+    }
+    /** The same check over the English texts. */
+    @Test public void noLmcOrRussianHybridInTheSettingsTextsInEnglish(){
+        noLmcOrRussianHybridInTheSettingsTexts("Select the “Hybrid” merge.");
+    }
+    private void noLmcOrRussianHybridInTheSettingsTexts(String selectHybrid){
         PreferenceScreen screen=inflate();SensorConfigPreferenceGenerator.generatePreferences(context,screen);
         List<String> found=new ArrayList<>();int checked=0;
         java.util.ArrayDeque<Preference> queue=new java.util.ArrayDeque<>();queue.add(screen);
@@ -498,7 +528,7 @@ public class SettingsMenuTest {
         assertTrue(found.toString(),found.isEmpty());assertTrue(checked>500);
         assertEquals("Hybrid",((ListPreference)screen.findPreference(PreferenceKeys.ROUTE_KEY)).getEntries()[0].toString());
         java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
-        assertEquals("Выберите склейку «Hybrid».",new SettingsAvailability(values).reason("pref_lmc_hybrid_cdm"));
+        assertEquals(selectHybrid,new SettingsAvailability(values).reason("pref_lmc_hybrid_cdm"));
     }
 
     private android.view.View row(Preference p){
@@ -561,7 +591,14 @@ public class SettingsMenuTest {
     }
 
     /** P6b: the route card switches the route with its segments; the root shows the chip and dims the other route's page. */
-    @Test public void routeSegmentsSwitchTheRouteAndDimTheOtherSection(){
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void routeSegmentsSwitchTheRouteAndDimTheOtherSection(){
+        routeSegmentsSwitchTheRouteAndDimTheOtherSection("Активна: ","");
+    }
+    /** The same on an English system: the chip reads «Active: …». */
+    @Test public void routeSegmentsSwitchTheRouteAndDimTheOtherSectionInEnglish(){
+        routeSegmentsSwitchTheRouteAndDimTheOtherSection("Active: ","-en");
+    }
+    private void routeSegmentsSwitchTheRouteAndDimTheOtherSection(String active,String png){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
@@ -571,13 +608,13 @@ public class SettingsMenuTest {
                     android.view.View.MeasureSpec.makeMeasureSpec(1600,exact));view.layout(0,0,view.getMeasuredWidth(),1600);
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             android.widget.TextView chip=view.findViewWithTag("settings_chip");
-            assertNotNull(chip);assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Активна: Hybrid"));
+            assertNotNull(chip);assertTrue(chip.getText().toString(),chip.getText().toString().startsWith(active+"Hybrid"));
             android.view.View scam=view.findViewWithTag("route_scamhdr");assertNotNull(tags(view),scam);scam.performClick();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals("scamhdr",PreferenceKeys.mergeRoute());
             view.measure(android.view.View.MeasureSpec.makeMeasureSpec(view.getMeasuredWidth(),exact),android.view.View.MeasureSpec.makeMeasureSpec(1600,exact));
             view.layout(0,0,view.getMeasuredWidth(),1600);
-            chip=view.findViewWithTag("settings_chip");assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Активна: SCAM HDR"));
+            chip=view.findViewWithTag("settings_chip");assertTrue(chip.getText().toString(),chip.getText().toString().startsWith(active+"SCAM HDR"));
             androidx.recyclerview.widget.RecyclerView list=root.getListView();
             androidx.preference.PreferenceGroupAdapter adapter=(androidx.preference.PreferenceGroupAdapter)list.getAdapter();
             int hybrid=adapter.getPreferenceAdapterPosition("lmc_hybrid_screen"),scamRow=adapter.getPreferenceAdapterPosition("vivo_hdr_screen");
@@ -585,7 +622,7 @@ public class SettingsMenuTest {
             assertEquals(1f,list.findViewHolderForAdapterPosition(scamRow).itemView.getAlpha(),1e-3);
             android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(view.getMeasuredWidth(),1600,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
             java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
-            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"settings-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"settings-root"+png+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
             catch(java.io.IOException e){throw new RuntimeException(e);}
         }
     }
