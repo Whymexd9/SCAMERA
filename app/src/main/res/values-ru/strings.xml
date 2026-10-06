@@ -1,4 +1,6 @@
 <resources>
+    <!-- UI language marker read by util/Lang.java: "ru" only in values-ru. -->
+    <string name="ui_language">ru</string>
     <string name="request_permission">Этому приложению требуется разрешение камеры.</string>
     <string name="camera_error">Это устройство не поддерживает Camera2 API.</string>
     <string name="frame_count">Количество кадров</string>

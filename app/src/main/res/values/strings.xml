@@ -1,4 +1,6 @@
 <resources>
+    <!-- UI language marker read by util/Lang.java: "ru" only in values-ru. -->
+    <string name="ui_language">en</string>
     <string name="version_summary" translatable="false">v%1$s\n%2$s</string>
     <string name="icon_string" translatable="false">Icon</string>
     <string name="backup_file_name" translatable="false">SCAMERA_%1$s</string>
