@@ -72,7 +72,10 @@ public final class LmcHybridBurst implements NiceTransport {
      * {@code conservative}: the retry after a failed merge (sensor grid, at most 16 N frames, the round-5 extras off).
      */
     private LmcHybridBurst(List<ImageFrame> source, Parameters p, boolean conservative) throws IOException {
-        width = p.rawSize.x; height = p.rawSize.y; cfa = p.cfaPattern; white = p.whiteLevel; black = p.blackLevel.clone();
+        width = p.rawSize.x; height = p.rawSize.y; white = p.whiteLevel; black = p.blackLevel.clone();
+        // P27 (H14): a direct Quad Bayer stream is marked cfaPattern -2 (Parameters.quadCfa); its colour order is the
+        // sensor's (baseCfaPattern) and the hybrid measures the colour block itself.
+        cfa = p.quadCfa && p.cfaPattern < 0 ? p.baseCfaPattern : p.cfaPattern;
         this.conservative = conservative;
         diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;

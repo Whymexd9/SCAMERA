@@ -107,6 +107,24 @@ public class LmcHybridBurstRolesTest {
         assertEquals(1, (int) list(b, "roles").get(0));
     }
 
+    @Test public void directQuadBayerStreamIsMergedWithTheSensorColourOrder() throws Exception {
+        // P27 (H14): Parameters marks a direct Quad Bayer stream cfaPattern -2 (quadCfa); the hybrid takes the sensor's
+        // colour order (baseCfaPattern) and measures the colour block itself, instead of refusing the shot.
+        Parameters p = parameters();
+        p.cfaPattern = -2; p.baseCfaPattern = 3;
+        Constructor<LmcHybridBurst> c = LmcHybridBurst.class.getDeclaredConstructor(List.class, Parameters.class, boolean.class);
+        c.setAccessible(true);
+        LmcHybridBurst b = c.newInstance(List.of(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100)), p, false);
+        assertEquals(3, b.cfa());
+        p.quadCfa = false;   // a negative pattern without the Quad mark is still refused
+        try {
+            c.newInstance(List.of(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100)), p, false);
+            fail("cfaPattern -2 without quadCfa must be refused");
+        } catch (InvocationTargetException expected) {
+            assertTrue(expected.getCause() instanceof java.io.IOException);
+        }
+    }
+
     @Test public void oneFrameIsEnoughAndBadFramesAreDroppedNotFatal() throws Exception {
         assertEquals(1, list(burst(List.of(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100))), "frames").size());
         List<ImageFrame> frames = new ArrayList<>();
