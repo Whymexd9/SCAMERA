@@ -40,6 +40,8 @@ public class ImageFrame {
     public long measuredExposure;
     public int measuredIso;
     public float noiseSlope = Float.NaN, noiseOffset = Float.NaN;
+    /** P27: sensor samples averaged into one sample of this frame (RawBin; 1 = as captured). Divides the noise model. */
+    public int binnedSamples = 1;
     public float focusDiopters = Float.NaN;
     public boolean lensMoving;
     public double blurPixels = Double.NaN;

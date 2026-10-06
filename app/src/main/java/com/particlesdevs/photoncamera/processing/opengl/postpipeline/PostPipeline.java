@@ -208,7 +208,13 @@ public class PostPipeline extends GLBasePipeline {
         // i.e. 16 B/pixel: ~768 MB at 50 MP - above the Java heap growth
         // limit, so the snapshot is allocated in native memory instead
         // (same backing as the pipeline's other large I/O buffers).
-        int size = tex.mSize.x * tex.mSize.y * 4 * 4;
+        // P27 any resolution: in long; above one 2 GB buffer (~134 MP) the snapshot is skipped like a failed allocation.
+        final long bytes = 16L * tex.mSize.x * tex.mSize.y;
+        if (bytes > Integer.MAX_VALUE) {
+            Log.e("PostPipeline", "Linear scene snapshot of " + (bytes >> 20) + " MB is above 2 GB; Ultra HDR will fall back to SDR");
+            return;
+        }
+        int size = (int) bytes;
         ByteBuffer buf = Allocator.allocate(size);
         if (buf == null) {
             Log.e("PostPipeline", "Linear scene snapshot allocation of " + size + " B failed; Ultra HDR will fall back to SDR");

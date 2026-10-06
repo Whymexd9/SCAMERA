@@ -327,7 +327,11 @@ public final class VivoNeuralClient {
                 catch(IOException e){log.accept("READ: "+e);}
             },"vivo-neural-output");
             reader.setDaemon(true);reader.start();
-            if(!process.waitFor(TimeUnit.SECONDS.toMillis(burst!=null||niceBurst!=null?900:niceTone?420:200))){process.destroy();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
+            // P27 any resolution: a Hybrid merge above 16 MP gets a wait in proportion to its pixels (900 s up to 16 MP, unchanged).
+            final long timeoutS=niceBurst instanceof LmcHybridBurst?LmcHybridBurst.workerTimeoutSeconds(niceBurst.width(),niceBurst.height())
+                    :burst!=null||niceBurst!=null?900:niceTone?420:200;
+            if(timeoutS>900)log.accept("CLIENT: worker timeout "+timeoutS+" s for "+niceBurst.width()+"x"+niceBurst.height());
+            if(!process.waitFor(TimeUnit.SECONDS.toMillis(timeoutS))){process.destroy();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
             if(process.exitValue()!=0||!completed[0]){
                 // P26: the X200 Pro (Mali) worker vanished mid-merge with nothing in the log; say how it ended.
@@ -384,16 +388,20 @@ public final class VivoNeuralClient {
                     }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
                 }
             }
-            if(effBytes>0){
-                ByteBuffer eff=ByteBuffer.allocateDirect((int)effBytes);
+            // P27 any resolution: the two optional trailers live on the Java heap (1 B per output pixel each); a failed allocation
+            // (OutOfMemoryError, not an Exception) skips the trailer instead of the shot.
+            ByteBuffer eff=null;
+            if(effBytes>0)try{eff=ByteBuffer.allocateDirect((int)effBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: effective-frame map skipped: "+oom);}
+            if(eff!=null){
                 try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
                     long position=expected+dngBytes;
                     while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException("Неполная карта кадров");position+=n;}
                     eff.flip();VivoNiceBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
-            if(clipBytes>0){
-                ByteBuffer clip=ByteBuffer.allocateDirect((int)clipBytes);
+            ByteBuffer clip=null;
+            if(clipBytes>0)try{clip=ByteBuffer.allocateDirect((int)clipBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: clip flags skipped: "+oom);}
+            if(clip!=null){
                 try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
                     long position=expected+dngBytes+effBytes;
                     while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException("Неполные флаги клипа");position+=n;}
