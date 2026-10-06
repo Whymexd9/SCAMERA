@@ -175,12 +175,15 @@ public final class LmcHybridBurst implements NiceTransport {
         int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - 7;
         String limitReason = "worker limit";
         final long available = (long) width * height > SABRE_2X_MAX_INPUT ? memoryAvailable() : -1;
-        final int budget = memoryFrameBudget(width, height, mosaicBlock, available);
+        // RAW CA "every frame" (rawCa 2) keeps a corrected copy of every plain-Bayer frame in the worker.
+        final boolean caCopies = PreferenceKeys.hybridValue("rawca_mode", 0f) >= 2f;
+        final int budget = memoryFrameBudget(width, height, mosaicBlock, available, caCopies);
         if (budget != Integer.MAX_VALUE) {
             final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(7, bracketed.size() + shorts.size()));
             Log.i("NICE_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
                     + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * width * height) / (1 << 20) + " MB, "
-                    + (long) perFrameBytes(width, height, mosaicBlock) / (1 << 20) + " MB per frame) -> at most "
+                    + (long) perFrameBytes(width, height, mosaicBlock, caCopies) / (1 << 20) + " MB per frame"
+                    + (caCopies ? ", RAW CA copies" : "") + ") -> at most "
                     + Math.min(byMemory, normalLimit) + " N");
             if (byMemory < normalLimit) { normalLimit = byMemory; limitReason = "memory budget"; }
         }
@@ -360,10 +363,17 @@ public final class LmcHybridBurst implements NiceTransport {
 
     /** Worker memory of one more frame of a w x h stream (see {@link #STRIP_BYTES_PER_COLUMN}); a mosaic adds its worker copy. */
     static double perFrameBytes(int w, int h, int mosaicBlock) {
+        return perFrameBytes(w, h, mosaicBlock, false);
+    }
+
+    /** {@code caCopies}: RAW CA corrects every frame (rawCa 2): a plain-Bayer frame adds its corrected copy (2 B per pixel). */
+    static double perFrameBytes(int w, int h, int mosaicBlock, boolean caCopies) {
         final double px = (double) w * h;
         double bytes = STRIP_BYTES_PER_COLUMN * w + FIELD_BYTES_PER_PIXEL * px;
         // A Quad / Tetra stream: the worker keeps each picked frame and its binned copy (2 B + 2/b^2 B per pixel).
         if (mosaicBlock >= 2) bytes += 2.0 * px * (1 + 1.0 / ((double) mosaicBlock * mosaicBlock));
+        // A mosaic is corrected in place; a plain-Bayer frame gets a corrected copy.
+        else if (caCopies) bytes += 2.0 * px;
         return bytes;
     }
 
@@ -373,10 +383,14 @@ public final class LmcHybridBurst implements NiceTransport {
      * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
      */
     static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes) {
+        return memoryFrameBudget(w, h, mosaicBlock, availableBytes, false);
+    }
+
+    static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes, boolean caCopies) {
         final long px = (long) w * h;
         if (px <= SABRE_2X_MAX_INPUT || availableBytes <= 0) return Integer.MAX_VALUE;
         final double free = MEMORY_SHARE * availableBytes - FIXED_BYTES_PER_PIXEL * px;
-        return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock))));
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock, caCopies))));
     }
 
     /**
@@ -538,7 +552,10 @@ public final class LmcHybridBurst implements NiceTransport {
             final String report = VivoNeuralClient.lastJobReport;
             final String why = String.valueOf(first.getMessage());
             final boolean timeout = why.contains("Тайм-аут");
-            final boolean gpuInitDeath = report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
+            // Only a stream of 16 MP or less marks the GPU unusable for the session: a larger one runs memory-heavy CPU stages
+            // before the GPU context, where the low-memory killer can stop the worker; it takes the conservative retry instead.
+            final boolean gpuInitDeath = (long) burst.width * burst.height <= SABRE_2X_MAX_INPUT
+                    && report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
             Log.e("NICE_HDR", "Hybrid merge failed (" + why + ")" + (gpuInitDeath ? ", worker died before the GPU context" : ""));
             if (gpuInitDeath) {
                 gpuUnusable = "worker died at GPU init: " + lastLine(report, "WORKER EXIT:");
