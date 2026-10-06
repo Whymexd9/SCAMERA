@@ -63,8 +63,9 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
     }
 
     private void initPaints() {
-        whitePaint.setColor(Color.WHITE);
-        whitePaint.setStrokeWidth(1.5f);
+        // Grid lines at ~15 % white (P25), one dp wide.
+        whitePaint.setColor(0x26FFFFFF);
+        whitePaint.setStrokeWidth(Math.max(1f, getResources().getDisplayMetrics().density));
 
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(25);

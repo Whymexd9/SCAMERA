@@ -1,3 +1,5 @@
+> **Superseded (2026-10-06).** This is concept E of the settings sheet. It is replaced by plan item P25: `docs/settings-plan/SHADE_TASK.md` (the owner's task) and the P25 section of `docs/settings-plan/SETTINGS_CLEANUP_PLAN.md` (key table, steps a-g, the owner's answers). Kept for history only.
+
 # Задача: нижняя шторка быстрых настроек (концепт E)
 
 Макет: `shade-sheet.html` (открыть в браузере, он интерактивный). Заменить текущую верхнюю шторку `SettingsBarLayout` на нижний лист с секциями. Камеру, сессию, AE и обработку не трогать — изменение только UI.

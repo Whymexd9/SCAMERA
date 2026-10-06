@@ -979,21 +979,6 @@ public class PreferenceKeys {
      * Its knobs are pref_lmc_hybrid_ark_&lt;key&gt; (read with {@link #hybridValue}, defaults = ArkCam 2.85 X8U).
      */
     /**
-     * Quick buttons of the settings sheet (pinned parameters): SettingType names, comma separated, oldest first; null when
-     * the user never pinned anything. Key ui_sheet_quick: a "pref_" key would be a per-module setting that ModuleProfiles
-     * swaps on a lens change, the pins would then follow the lens.
-     */
-    public static String getSheetQuick() {
-        try {
-            return preferenceKeys.settingsManager.getString("default_scope", "ui_sheet_quick", null);
-        } catch (RuntimeException error) { return null; }
-    }
-    public static void setSheetQuick(String types) {
-        try {
-            preferenceKeys.settingsManager.set("default_scope", "ui_sheet_quick", types);
-        } catch (RuntimeException ignored) {}
-    }
-    /**
      * Master switch of every noise reduction of the hybrid (pref_lmc_hybrid_denoise, on by default; nice_dev.txt
      * "hybrid_denoise 0/1"): off skips the denoise after the merge (GCam/LMC finish or NLM, despeckle), the Bento
      * highlight denoise of the ARK fusion and the chroma denoise of lifted shadows. The merge itself is untouched.
@@ -1042,6 +1027,11 @@ public class PreferenceKeys {
     public static boolean niceDevSwitch(String key, boolean fallback) {
         Float v = niceDevValue(key);
         return v == null ? fallback : v != 0f;
+    }
+
+    /** True when nice_dev.txt sets this line (an A/B override that wins over the stored setting). */
+    public static boolean niceDevOverrides(String key) {
+        return niceDevValue(key) != null;
     }
 
     private static Float niceDevValue(String key) {

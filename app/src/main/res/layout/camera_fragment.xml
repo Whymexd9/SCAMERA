@@ -17,7 +17,7 @@
             android:id="@+id/textureHolder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#000000"
+            android:background="@color/settings_bg"
             android:animateLayoutChanges="true">
 
         <!--    Block 1-->
@@ -65,26 +65,6 @@
                     app:layout_constraintBaseline_toBottomOf="parent"
                     app:layout_constraintVertical_bias="0.0" />
 
-            <!--    Block 1.3-->
-            <!--   includes the Layout resource of Aux Buttons palette-->
-            <com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout
-                    android:id="@+id/aux_buttons_container"
-                    android:orientation="horizontal"
-                    android:gravity="center"
-                    android:background="@drawable/aux_container_background"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    app:layout_constraintWidth_percent="0.546"
-                    app:layout_constraintBottom_toBottomOf="@id/dummy_reference_view"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    setAuxButtonModel="@{auxmodel}"
-                    setActiveId="@{auxmodel.currentCameraId}"
-                    bindViewGroupChildrenRotate="@{uimodel}"
-                    hideAuxButtons="@{uimodel.sheetLevel != CameraFragmentModel.SHEET_HIDDEN}"
-                    android:layout_marginBottom="18dp"
-                    android:elevation="4dp" />
-
             <!--    Block 1.4-->
             <!--   includes the Layout resource of Manual Mode palette-->
             <include
@@ -93,46 +73,39 @@
                     android:visibility="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN ? View.VISIBLE : View.INVISIBLE}"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    app:layout_constraintBottom_toTopOf="@+id/aux_buttons_container"
+                    app:layout_constraintBottom_toTopOf="@+id/layout_bottombar"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     android:layout_marginStart="20dp"
                     android:layout_marginEnd="20dp"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginBottom="36dp"
                     tools:visibility="visible"
                     app:layout_constraintHorizontal_bias="0.0"
                     app:layout_constraintVertical_bias="1.0" />
 
-            <com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton
-                android:tag="favorite_settings"
-                android:layout_width="44dp" android:layout_height="44dp"
-                android:layout_marginStart="20dp" android:layout_marginBottom="8dp"
-                android:elevation="5dp"
-                android:visibility="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN ? View.VISIBLE : View.INVISIBLE}"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintBottom_toTopOf="@id/manual_mode" />
-
             <!--    Block 1.5-->
-            <!--   arrow-->
-
-            <ImageView
-                    android:id="@+id/open_close_manual"
-                    android:layout_width="@dimen/arrow_size"
-                    android:layout_height="@dimen/arrow_size"
-                    android:background="@drawable/chevron_up"
-                    android:elevation="8dp"
-                    android:contentDescription="Arrow"
+            <!--    scrim of the FULL settings sheet over the viewfinder (shade_scrim_top covers the top bar);
+                    above the viewfinder controls, below the sheet. Its top margin follows the top bar
+                    (CameraFragment.initSettingsBar), so the two pieces never overlap. -->
+            <View
+                    android:id="@+id/shade_scrim"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:background="@color/shade_scrim"
+                    android:elevation="10dp"
                     android:visibility="gone"
+                    app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
-                    app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
-                    android:layout_marginBottom="8dp" />
+                    app:layout_constraintEnd_toEndOf="parent" />
 
             <!--    Block 1.6-->
             <!--    includes the Layout resource of BottomBar-->
             <include
                     android:id="@+id/layout_bottombar"
                     layout="@layout/layout_main_bottombar"
+                    app:uimodel="@{uimodel}"
+                    app:auxmodel="@{auxmodel}"
                     android:layout_width="0dp"
                     android:layout_height="0dp"
                     app:layout_constraintBottom_toBottomOf="parent"
@@ -154,7 +127,7 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent">
 
-                <!-- peekHeight is provisional until the quick row and group cells measure it -->
+                <!-- peekHeight is provisional until the tile grid measures it -->
                 <com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarLayout
                         android:id="@+id/settings_bar"
                         android:layout_width="match_parent"
@@ -163,13 +136,15 @@
                         app:behavior_hideable="true"
                         app:behavior_peekHeight="120dp"
                         app:gestureInsetBottomIgnored="true"
-                        app:sheetLevel="@{uimodel.sheetLevel}" />
+                        app:sheetLevel="@{uimodel.sheetLevel}"
+                        app:iconRotation="@{uimodel.orientation}" />
 
-                <!-- Handle shown only while the sheet is HIDDEN (the sheet itself is below the edge then) -->
+                <!-- Handle shown only while the sheet is HIDDEN (the sheet itself is below the edge then): the sheet's
+                     28dp top edge with its grip, as in the concept -->
                 <ImageView
                         android:id="@+id/settings_sheet_handle"
-                        android:layout_width="72dp"
-                        android:layout_height="20dp"
+                        android:layout_width="match_parent"
+                        android:layout_height="28dp"
                         android:layout_gravity="bottom|center_horizontal"
                         android:src="@drawable/sheet_handle"
                         android:scaleType="center"
@@ -177,6 +152,30 @@
                         android:visibility="gone"
                         tools:visibility="visible" />
             </androidx.coordinatorlayout.widget.CoordinatorLayout>
+            <!--    Block 1.8-->
+            <!--    card toast of the shade and the camera screen, over the sheet, above the bottom bar -->
+            <TextView
+                    android:id="@+id/shade_toast"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="@drawable/shade_card"
+                    android:elevation="30dp"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp"
+                    android:textColor="@color/settings_muted"
+                    android:textSize="14sp"
+                    android:accessibilityLiveRegion="polite"
+                    android:visibility="gone"
+                    app:layout_constrainedWidth="true"
+                    app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <include
@@ -188,6 +187,18 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- The FULL sheet's scrim over the top bar (outside camera_container); see shade_scrim. -->
+        <View
+                android:id="@+id/shade_scrim_top"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@color/shade_scrim"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="@id/layout_topbar"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
 
         <TextView
                 android:id="@+id/video_recording_info"

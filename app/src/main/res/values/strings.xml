@@ -300,24 +300,7 @@
     <string name="sheet_handle_open">Open settings panel</string>
     <string name="sheet_handle_toggle">Expand or collapse settings panel</string>
     <!-- Settings sheet groups and short value labels (segments, quick buttons) -->
-    <string name="sheet_group_shoot">Capture</string>
-    <string name="sheet_group_format">Format</string>
-    <string name="sheet_group_view">View</string>
-    <string name="sheet_short_off">Off</string>
-    <string name="sheet_short_on">On</string>
-    <string name="sheet_short_auto">Auto</string>
-    <string name="sheet_short_torch">Torch</string>
-    <string name="sheet_short_3s">3 s</string>
-    <string name="sheet_short_10s">10 s</string>
-    <string name="sheet_short_normal">Normal</string>
-    <string name="sheet_short_high">High</string>
-    <string name="sheet_short_center">Center</string>
-    <string name="sheet_short_average">Average</string>
-    <string name="sheet_short_spot">Spot</string>
-    <string name="sheet_short_diagonal">Diag.</string>
     <!-- Settings sheet row pin (TalkBack, tooltip) -->
-    <string name="sheet_pin_add">Add to quick buttons</string>
-    <string name="sheet_pin_remove">Remove from quick buttons</string>
     <!-- Top bar gear that opens SettingsActivity (TalkBack, tooltip) -->
     <string name="sheet_all_settings">All settings</string>
 </resources>

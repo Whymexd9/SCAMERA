@@ -231,10 +231,11 @@ public class SettingsMenuTest {
         for (String key:Arrays.asList("pref_jpeg_quality","pref_ultrahdr_key","pref_wide169_key","pref_show_watermark_key","pref_watermark_line1",
                 "pref_backup_preferences_key","pref_restore_preferences_key","pref_reset_preferences_key"))
             assertNotNull(key,config.findPreference(key));
-        // The remaining dynamic pages are still filled without pref_tunable_submenu.
-        for (String key:Arrays.asList("expert_viewfinder_screen","expert_sensor_screen")) {
-            PreferenceScreen page=screen.findPreference(key);assertNotNull(key,page);assertTrue(key,page.getPreferenceCount()>0);
-        }
+        // The remaining dynamic page is still filled without pref_tunable_submenu. «Кнопки видоискателя» held only the
+        // Quad toggle's tunable; the toggle is gone (P25), so are the page and the tunable.
+        PreferenceScreen page=screen.findPreference("expert_sensor_screen");assertNotNull(page);assertTrue(page.getPreferenceCount()>0);
+        assertNull(screen.findPreference("expert_viewfinder_screen"));
+        assertNull(screen.findPreference("pref_tunable_camerauiviewimpl_enablequadres"));
         android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
                 org.robolectric.RuntimeEnvironment.getApplication());
         prefs.edit().putBoolean("pref_tunable_imagesaversettings_croptype",true).putString("pref_save_raw_key","1").commit();

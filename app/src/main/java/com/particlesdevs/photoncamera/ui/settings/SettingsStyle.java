@@ -66,7 +66,7 @@ public final class SettingsStyle {
     /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
-    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "settings_favorites", "pref_theme_accent_key", "vivo_hdr_ark_link"));
+    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key", "vivo_hdr_ark_link"));
 
     public static int dp(Context c, float v) { return Math.round(v * c.getResources().getDisplayMetrics().density); }
 
@@ -361,8 +361,24 @@ public final class SettingsStyle {
     }
 
     static BottomSheetDialog listSheet(Context c, ListPreference p) {
-        int accent = accent(c);
-        LinearLayout body = sheetBody(c, p.getDialogTitle() != null ? p.getDialogTitle() : p.getTitle());
+        CharSequence[] entries = p.getEntries(), values = p.getEntryValues();
+        if (entries == null || values == null) entries = values = new CharSequence[0];
+        final CharSequence[] tags = values;
+        return optionSheet(c, p.getDialogTitle() != null ? p.getDialogTitle() : p.getTitle(), entries, tags,
+                p.findIndexOfValue(p.getValue()), accent(c), i -> {
+                    String v = tags[i].toString();
+                    if (!v.equals(p.getValue()) && p.callChangeListener(v)) p.setValue(v);
+                });
+    }
+
+    /**
+     * The list picker: a bottom sheet with a radio row per option (tag "option_" + the option's tag), the selected one
+     * tinted. A tap reports the option's index and closes the sheet. Also the list sheet of the camera's quick-settings
+     * shade (P25), there with the camera accent.
+     */
+    public static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
+                                                int selected, int accent, java.util.function.IntConsumer onPick) {
+        LinearLayout body = sheetBody(c, title);
         LinearLayout options = new LinearLayout(c);
         options.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(c);
@@ -370,22 +386,20 @@ public final class SettingsStyle {
         int max = (int) (c.getResources().getDisplayMetrics().heightPixels * .6f);
         body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         BottomSheetDialog d = sheet(c, body);
-        CharSequence[] entries = p.getEntries(), values = p.getEntryValues();
-        int selected = p.findIndexOfValue(p.getValue());
-        for (int i = 0; entries != null && values != null && i < entries.length; i++) {
-            final String v = values[i].toString();
+        for (int i = 0; labels != null && i < labels.length; i++) {
+            final int index = i;
             LinearLayout row = new LinearLayout(c);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(c, 6), dp(c, 13), dp(c, 6), dp(c, 13));
             row.setMinimumHeight(dp(c, 52));
             row.setBackground(shape(c, i == selected ? tint(accent, .10f) : 0, 0, 14));
             row.addView(radio(c, i == selected, accent), new LinearLayout.LayoutParams(dp(c, 24), dp(c, 24)));
-            TextView label = text(c, entries[i], 16, TEXT);
+            TextView label = text(c, labels[i], 16, TEXT);
             label.setPadding(dp(c, 14), 0, 0, 0);
             row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
-            row.setTag("option_" + v);
+            row.setTag("option_" + (tags != null && i < tags.length ? tags[i] : String.valueOf(i)));
             row.setOnClickListener(x -> {
-                if (!v.equals(p.getValue()) && p.callChangeListener(v)) p.setValue(v);
+                onPick.accept(index);
                 d.dismiss();
             });
             options.addView(row);

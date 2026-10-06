@@ -77,7 +77,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         
         if (savedInstanceState == null) getSupportFragmentManager()
                 .beginTransaction()
-                .replace(R.id.settings_container, getIntent().getBooleanExtra("open_favorites",false) ? new FavoritesSettingsFragment() : new SettingsFragment())
+                .replace(R.id.settings_container, new SettingsFragment())
                 .commit();
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
@@ -1018,9 +1018,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 PreferenceScreen ark = fullPreferenceScreen.findPreference("lmc_hybrid_arkcore_screen");
                 if (ark != null && activity instanceof SettingsActivity) ((SettingsActivity) activity).onPreferenceStartScreen(this, ark);
                 return true;
-            }
-            if ("settings_favorites".equals(preference.getKey())) {
-                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new FavoritesSettingsFragment()).addToBackStack("favorites").commit();return true;
             }
             if ("module_copy_settings".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();

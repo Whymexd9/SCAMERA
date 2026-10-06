@@ -10,7 +10,6 @@ import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView;
 import com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo;
 import com.particlesdevs.photoncamera.circularbarlib.camera.ManualWhiteBalance;
-import com.particlesdevs.photoncamera.ui.camera.views.ModeTabsView;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.MockedStatic;
@@ -44,10 +43,13 @@ public class ViewfinderUiTest {
         screen.setBackgroundColor(0xFF101316);screen.setPadding(12,12,12,12);
         View top=LayoutInflater.from(context).inflate(R.layout.layout_main_topbar,screen,false);
         com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding tb=com.particlesdevs.photoncamera.databinding.LayoutMainTopbarBinding.bind(top);
-        tb.setTimerVisible(true);tb.setFlashVisible(true);tb.executePendingBindings();
+        tb.executePendingBindings();
+        // P25 top bar: the route and format badges, filled as the camera screen fills them.
+        com.particlesdevs.photoncamera.ui.camera.CameraUIViewImpl.bindBadges(tb);
         screen.addView(top,new LinearLayout.LayoutParams(-1,64));
+        // The 3:4 preview of a 400dp-wide phone; the bottom bar gets what an 880dp-tall 20:9 screen leaves it.
         FrameLayout preview=new FrameLayout(context);preview.setBackgroundColor(0xFF45525B);
-        screen.addView(preview,new LinearLayout.LayoutParams(-1,500));
+        screen.addView(preview,new LinearLayout.LayoutParams(-1,533));
         View manual=LayoutInflater.from(context).inflate(R.layout.manual_palette,preview,false);
         FrameLayout.LayoutParams mp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);mp.setMargins(16,0,16,52);
         preview.addView(manual,mp);
@@ -64,23 +66,39 @@ public class ViewfinderUiTest {
         ((TextView)manual.findViewById(R.id.wb_option_tv)).setSelected(true);
         String[] labels={"Экспокоррекция","Выдержка","ISO","Баланс белого","Фокус"};int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
         for(int i=0;i<ids.length;i++)assertEquals(labels[i],manual.findViewById(ids[i]).getContentDescription().toString());
-        var lenses=new com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout(context,null);
-        lenses.setBackgroundResource(R.drawable.aux_container_background);lenses.setGravity(Gravity.CENTER);
+        // P25: the lens strip lives in the bottom bar now (above the shutter row, under the zoom ruler's place).
+        View bottom=LayoutInflater.from(context).inflate(R.layout.layout_main_bottombar,screen,false);screen.addView(bottom,new LinearLayout.LayoutParams(-1,259));
+        var lenses=(com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)bottom.findViewById(R.id.aux_buttons_container);
         var lensModel=new com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel();
         java.util.List<com.particlesdevs.photoncamera.ui.camera.data.CameraLensData> cameraData=new ArrayList<>();
         float[] zoom={2.4f,1f,.4f};for(int i=0;i<zoom.length;i++){var lens=new com.particlesdevs.photoncamera.ui.camera.data.CameraLensData(""+i);lens.setZoomFactor(zoom[i]);cameraData.add(lens);}
         lensModel.setBackCameras(cameraData);lensModel.setFrontCameras(new ArrayList<>());lenses.setAuxButtonsModel(lensModel);lenses.setActiveId("1");
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(218,35,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);lp.bottomMargin=6;preview.addView(lenses,lp);
-        View bottom=LayoutInflater.from(context).inflate(R.layout.layout_main_bottombar,screen,false);screen.addView(bottom,new LinearLayout.LayoutParams(-1,172));
-        ModeTabsView modes=bottom.findViewById(R.id.mode_picker_view);modes.setValues(new String[]{"Фото","Ночь"});modes.setSelectedItem(0);
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
-        int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(760,exact));screen.layout(0,0,400,760);
+        int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
         assertTrue(manual.getHeight()<=152);assertEquals(48,manual.findViewById(R.id.buttons_container).getHeight());
-        assertEquals(top.findViewById(R.id.countdown_timer_button).getWidth(),top.findViewById(R.id.countdown_timer_button).getHeight());
+        // Top bar: the settings gear is a 44dp square card at the end, the badges stay clear of it.
+        View gear=top.findViewById(R.id.settings_button),badges=top.findViewById(R.id.topbar_badges);
+        assertEquals(44,gear.getWidth());assertEquals(gear.getWidth(),gear.getHeight());
+        assertTrue("badges must not run under the gear",badges.getRight()<=gear.getLeft());
+        TextView route=top.findViewById(R.id.route_badge),format=top.findViewById(R.id.format_badge);
+        assertTrue(route.getText().toString().endsWith("Hybrid"));assertEquals("JPEG",format.getText().toString());
+        assertNotNull(route.getCompoundDrawables()[0]);assertNotNull(format.getCompoundDrawables()[0]);
+        assertTrue("badge icon has its space",route.getCompoundPaddingLeft()>route.getPaddingLeft());
+        for(TextView badge:new TextView[]{route,format})assertTrue("badge text must fit",badge.getLayout().getEllipsisCount(0)==0&&badge.getLayout().getLineCount()==1);
         assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
-        for(int i=0;i<lenses.getChildCount();i++){TextView t=(TextView)lenses.getChildAt(i);assertFalse(t.getText().toString().isEmpty());assertTrue("Lens label must stay within its button",t.getLayout().getWidth()<=t.getWidth());}
-        Bitmap image=Bitmap.createBitmap(400,760,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));
+        // Shutter row: gallery card | shutter exactly in the centre | front / back switch, none overlapping.
+        View shutterBox=bottom.findViewById(R.id.shutter_button_container),gallery=bottom.findViewById(R.id.galery_button_container),
+                flipBox=bottom.findViewById(R.id.camera_switch_container),row=(View)shutterBox.getParent();
+        assertEquals(row.getWidth()/2f,(shutterBox.getLeft()+shutterBox.getRight())/2f,1f);
+        assertTrue(gallery.getRight()<=shutterBox.getLeft());assertTrue(flipBox.getLeft()>=shutterBox.getRight());
+        assertEquals(52,gallery.getWidth());assertEquals(52,flipBox.getWidth());
+        // The strip: a centred pill above the shutter row, the ruler's place above it, all inside the bottom bar.
+        View slot=bottom.findViewById(R.id.zoom_ruler_slot),rowRoot=bottom.findViewById(R.id.bottom_buttons);
+        assertEquals(bottom.getWidth()/2f,(lenses.getLeft()+lenses.getRight())/2f,1f);
+        assertTrue(lenses.getBottom()<=rowRoot.getTop());assertTrue(slot.getBottom()<=lenses.getTop());assertTrue(slot.getTop()>=0);
+        for(int i=0;i<lenses.getChildCount();i++){TextView t=(TextView)lenses.getChildAt(i);assertFalse(t.getText().toString().isEmpty());assertFalse("decimal comma",t.getText().toString().contains("."));assertTrue("Lens label must stay within its button",t.getLayout().getWidth()<=t.getWidth());}
+        Bitmap image=Bitmap.createBitmap(400,880,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));
         java.io.File dir=new java.io.File("build/reports/viewfinder");dir.mkdirs();
         try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls.png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}
         scale.setListener(new LinearScaleView.OnValueChangedListener(){
@@ -97,8 +115,21 @@ public class ViewfinderUiTest {
         assertEquals(0,scale.getSelected().value,0);
         panel.setExpanded(false,false);assertEquals(View.GONE,container.getVisibility());assertEquals(0,scale.getSelected().value,0);
         panel.setExpanded(true,false);assertEquals(View.VISIBLE,container.getVisibility());
-        int[] calls={0};modes.setOnItemSelectedListener(i->calls[0]++);modes.getChildAt(1).performClick();
-        assertEquals(1,modes.getSelectedItem());assertEquals(1,calls[0]);modes.setEnabled(false);modes.getChildAt(0).performClick();assertEquals(1,calls[0]);
+        // The front / back switch took the place of «Фото | Ночь»: a tap reaches it once, a disabled switch ignores taps.
+        try(var controller=Robolectric.buildActivity(android.app.Activity.class)){
+            controller.setup();
+            View bar=LayoutInflater.from(context).inflate(R.layout.layout_main_bottombar,null,false);
+            controller.get().setContentView(bar);
+            bar.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(259,exact));bar.layout(0,0,400,259);
+            View flip=bar.findViewById(R.id.flip_camera_button);int[] calls={0};flip.setOnClickListener(v->calls[0]++);
+            assertTrue(flip.isClickable());assertFalse(flip.getContentDescription().toString().isEmpty());
+            float fx=flip.getWidth()/2f,fy=flip.getHeight()/2f;
+            flip.dispatchTouchEvent(MotionEvent.obtain(0,0,MotionEvent.ACTION_DOWN,fx,fy,0));flip.dispatchTouchEvent(MotionEvent.obtain(0,10,MotionEvent.ACTION_UP,fx,fy,0));
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertEquals(1,calls[0]);
+            flip.setEnabled(false);
+            flip.dispatchTouchEvent(MotionEvent.obtain(0,20,MotionEvent.ACTION_DOWN,fx,fy,0));flip.dispatchTouchEvent(MotionEvent.obtain(0,30,MotionEvent.ACTION_UP,fx,fy,0));
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertEquals(1,calls[0]);
+        }
     }
     @Test public void animatedManualControlsRemainVisibleAndReceiveTouchesAfterReversal(){
         try(var controller=Robolectric.buildActivity(android.app.Activity.class)){

@@ -1,24 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Flat white disc, as in the concept: no ring. The shutter is the only fully
-     white element on screen, which is what marks it out; a ring around it added a
-     second edge competing with the glass outlines everywhere else. -->
+<!-- P25 shutter: a ring in TEXT with a filled centre (concept). CameraUIViewImpl replaces it with the same shape in the
+     camera accent for the pressed and self-timer states; this is the fallback and the layout preview. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
-        <shape android:shape="oval">
-            <solid android:color="#D8D8D8"/>
-            <size android:width="80dp" android:height="80dp"/>
-        </shape>
-    </item>
-    <item android:state_activated="true">
-        <shape android:shape="oval">
-            <solid android:color="#FFFFFF"/>
-            <size android:width="80dp" android:height="80dp"/>
-        </shape>
+        <layer-list>
+            <item><shape android:shape="oval"><stroke android:width="3dp" android:color="@color/settings_text"/></shape></item>
+            <item android:top="8dp" android:bottom="8dp" android:left="8dp" android:right="8dp">
+                <shape android:shape="oval"><solid android:color="#D8D8D8"/></shape></item>
+        </layer-list>
     </item>
     <item>
-        <shape android:shape="oval">
-            <solid android:color="#FFFFFF"/>
-            <size android:width="80dp" android:height="80dp"/>
-        </shape>
+        <layer-list>
+            <item><shape android:shape="oval"><stroke android:width="3dp" android:color="@color/settings_text"/></shape></item>
+            <item android:top="8dp" android:bottom="8dp" android:left="8dp" android:right="8dp">
+                <shape android:shape="oval"><solid android:color="@color/settings_text"/></shape></item>
+        </layer-list>
     </item>
 </selector>

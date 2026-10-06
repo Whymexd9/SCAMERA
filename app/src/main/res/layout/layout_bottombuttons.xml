@@ -19,100 +19,47 @@
 
     </data>
 
+    <!-- P25 shutter row, three columns: the gallery card on the left, the shutter exactly in the centre, the front /
+         back switch on the right (where «Фото | Ночь» was; Night is gone). The side items stay inside their halves. -->
     <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="5dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
             >
 
         <FrameLayout
-                android:id="@+id/camera_switch_container"
-                android:layout_width="@dimen/vf_side_button_size"
-                android:layout_height="0dp"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintDimensionRatio="1.0"
-                app:layout_constraintEnd_toStartOf="@id/shutter_button_container"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent">
-
-            <ImageButton
-                    android:layout_gravity="center"
-                    android:id="@+id/flip_camera_button"
-                    android:background="@drawable/glass_circle"
-                    android:clickable="true"
-                    android:onClick="@{bottom_bar_click_listener}"
-                    android:contentDescription="Lens Switch Button"
-                    android:scaleType="centerInside"
-                    android:src="@drawable/vf_flip_camera"
-                    android:padding="12dp"
-                    android:textAppearance="@style/TextAppearance.AppCompat"
-                    android:visibility="visible"
-                    tools:ignore="HardcodedText"
-                    android:layout_height="match_parent"
-                    android:layout_width="match_parent"/>
-
-        </FrameLayout>
-
-        <FrameLayout
-                android:layout_width="@dimen/vf_shutter_size"
-                android:layout_height="0dp"
-                app:layout_constraintDimensionRatio="1.0"
-                android:id="@+id/shutter_button_container"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintStart_toEndOf="@+id/camera_switch_container"
-                app:layout_constraintEnd_toStartOf="@id/galery_button_container"
-                app:layout_constraintBottom_toBottomOf="parent"
-                >
-
-            <ImageButton
-                    android:id="@+id/shutter_button"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@drawable/roundbutton"
-                    android:backgroundTint="@null"
-                    android:clickable="true"
-                    android:contentDescription="Shutter Button"
-                    android:onClick="@{bottom_bar_click_listener}"
-                    android:textAppearance="@style/TextAppearance.AppCompat"
-                    android:visibility="visible"
-                    tools:ignore="HardcodedText"
-                    tools:text="Shot"/>
-
-            <TextView
-                    android:id="@+id/frameCount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    tools:text="25"
-                    android:text="@{timermodel.frameCount}"
-                    android:textColor="#303438"
-                    android:textSize="22sp"
-                    android:textAlignment="center"
-                    android:typeface="normal"
-                    android:visibility="visible"
-                    android:layout_gravity="center"/>
-        </FrameLayout>
-
-        <FrameLayout
-                android:layout_width="@dimen/vf_side_button_size"
-                android:layout_height="0dp"
-                app:layout_constraintDimensionRatio="1.0"
                 android:id="@+id/galery_button_container"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintStart_toEndOf="@id/shutter_button_container"
+                android:layout_width="@dimen/vf_side_button_size"
+                android:layout_height="@dimen/vf_side_button_size"
+                android:background="@drawable/shade_gallery_card"
+                app:layout_constraintHorizontal_bias="0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/shutter_button_container"
+                app:layout_constraintTop_toTopOf="@id/shutter_button_container"
+                app:layout_constraintBottom_toBottomOf="@id/shutter_button_container">
 
-                >
+            <!-- Shown until the first thumbnail: the gallery icon in the accent. -->
+            <ImageView
+                    android:id="@+id/gallery_placeholder"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_shade_jpeg"
+                    android:importantForAccessibility="no"/>
 
-            <de.hdodenhof.circleimageview.CircleImageView
+            <com.google.android.material.imageview.ShapeableImageView
                     android:id="@+id/gallery_image_button"
                     android:layout_gravity="center"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/round"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_margin="3dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="@string/shade_gallery"
                     android:onClick="@{bottom_bar_click_listener}"
                     imageFromBitmap="@{uimodel.bitmap}"
                     bindRotate="@{uimodel}"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearance.Scamera.Thumb"
                     />
 
             <ProgressBar
@@ -132,18 +79,72 @@
                     android:scaleX="1"
                     android:scaleY="1"
                     />
+        </FrameLayout>
 
-            <ImageView
+        <!-- The shutter: a ring with a filled centre (P25 concept); the state drawable comes from CameraUIViewImpl. -->
+        <FrameLayout
+                android:layout_width="@dimen/vf_shutter_size"
+                android:layout_height="0dp"
+                app:layout_constraintDimensionRatio="1.0"
+                android:id="@+id/shutter_button_container"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                >
+
+            <ImageButton
+                    android:id="@+id/shutter_button"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:layout_gravity="center"
+                    android:background="@drawable/roundbutton"
+                    android:backgroundTint="@null"
+                    android:clickable="true"
+                    android:contentDescription="@string/shade_shutter"
+                    android:onClick="@{bottom_bar_click_listener}"
+                    android:textAppearance="@style/TextAppearance.AppCompat"
                     android:visibility="visible"
-                    android:src="@drawable/ic_gallery_ring"
-                    android:clickable="false"
-                    android:focusable="false"
-                    android:contentDescription="@null"
-                    android:importantForAccessibility="no"
-                    />
+                    tools:text="Shot"/>
+
+            <TextView
+                    android:id="@+id/frameCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    tools:text="25"
+                    android:text="@{timermodel.frameCount}"
+                    android:textColor="#303438"
+                    android:textSize="22sp"
+                    android:textAlignment="center"
+                    android:typeface="normal"
+                    android:visibility="visible"
+                    android:layout_gravity="center"/>
+        </FrameLayout>
+
+        <FrameLayout
+                android:id="@+id/camera_switch_container"
+                android:layout_width="@dimen/vf_side_button_size"
+                android:layout_height="@dimen/vf_side_button_size"
+                app:layout_constraintHorizontal_bias="1"
+                app:layout_constraintStart_toEndOf="@id/shutter_button_container"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/shutter_button_container"
+                app:layout_constraintBottom_toBottomOf="@id/shutter_button_container">
+
+            <ImageButton
+                    android:layout_gravity="center"
+                    android:id="@+id/flip_camera_button"
+                    android:background="@drawable/shade_gallery_card"
+                    android:clickable="true"
+                    android:onClick="@{bottom_bar_click_listener}"
+                    android:contentDescription="@string/shade_flip_camera"
+                    android:tooltipText="@string/shade_flip_camera"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/vf_flip_camera"
+                    android:padding="13dp"
+                    android:visibility="visible"
+                    android:layout_height="match_parent"
+                    android:layout_width="match_parent"/>
+
         </FrameLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>
