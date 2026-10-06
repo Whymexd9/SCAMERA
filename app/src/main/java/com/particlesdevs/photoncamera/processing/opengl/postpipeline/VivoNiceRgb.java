@@ -32,6 +32,9 @@ public final class VivoNiceRgb extends Node {
      * nothing could clip. For the tone stages that place the brightest data at white.
      */
     public static volatile float lastClipWhite;
+    /** The shot's RGB has real clipped highlights (a clip plateau of the base or Bento frames): the ARK tone may use the
+     *  Bento ceiling. False when the data only exceeds 1 by the white balance of unclipped saturated colour. */
+    public static volatile boolean lastRealClip;
 
     /**
      * Per-channel level where the NICE output saturates (the plateau of blown
@@ -191,6 +194,7 @@ public final class VivoNiceRgb extends Node {
             float white=0f;
             if(top[1]>0f)for(int c=0;c<3;c++)white=Math.max(white,top[c]/Math.max(wp[c],1e-6f));
             lastClipWhite=white;
+            lastRealClip=cc.enabled();
             com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","highlight recovery per channel: strength="+strength
                     +" bento="+bento+" k="+LmcHybridBurst.lastBentoFactor+" usClipped="+LmcHybridBurst.lastBentoUsClipped
                     +" flags="+(flags!=null)+" "+cc.log+" nearClip="+cc.nearClip+" clipWhite="+white
@@ -198,6 +202,7 @@ public final class VivoNiceRgb extends Node {
         } else {
             lastClipWhite=0f;
             clip=clipLevels(p.mParameters.vivoNiceRgb);
+            lastRealClip=clip[1]<1e29f;
         }
         final boolean perChannel=cc!=null&&strength>0f&&cc.enabled();
         GLTexture input=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_32,3),

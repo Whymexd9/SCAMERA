@@ -150,6 +150,7 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_agx_max_ev": return new double[]{1,8,0};
             case "pref_lmc_hybrid_ark_agx_ev": return new double[]{-2,2,0};
             case "pref_lmc_hybrid_ark_agx_sat": return new double[]{0,2,0};
+            case "pref_lmc_hybrid_ark_hl_white": return new double[]{0,1,0};
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};

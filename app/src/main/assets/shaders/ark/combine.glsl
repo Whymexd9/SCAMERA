@@ -54,6 +54,8 @@ uniform vec4 agxAU;                 // slope, shoulder power, toe power, saturat
 uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -> -8.5, 3.5, 0.3, 4
 uniform int ditherU;                // 1 = interleaved-gradient dither +-0.5 LSB (as the kernel); unset -> none
 uniform float guardU;               // alpha = gain^-guard: the sharpening weight read by ArkSharpenGuard; <= 0 -> alpha 1
+uniform int headroomU;              // 1: real headroom above 1 (clipped RAW recovered / Bento); 0: the excess is WB headroom
+uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
 out vec4 Output;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -118,6 +120,23 @@ vec3 toOklab(vec3 c) {
 }
 
 // OKLab -> linear sRGB without the final clamp (the kernel clamps or floors at the call site).
+vec3 fromOklab(vec3 lab);
+
+// OKLab -> linear sRGB inside [0, 1]: L is kept, the chroma is reduced (hue kept) until every channel fits, so a bright
+// saturated colour does not lose its texture to a per-channel clamp (a positive detail delta lowers its chroma instead).
+vec3 fromOklabInGamut(vec3 lab) {
+    lab.x = clamp(lab.x, 0.0, 1.0);
+    vec3 c = fromOklab(lab);
+    if (all(greaterThanEqual(c, vec3(-0.0005))) && all(lessThanEqual(c, vec3(1.0005)))) return clamp(c, 0.0, 1.0);
+    float lo = 0.0, hi = 1.0;
+    for (int i = 0; i < 10; i++) {
+        float mid = 0.5 * (lo + hi);
+        vec3 t = fromOklab(vec3(lab.x, lab.yz * mid));
+        if (all(greaterThanEqual(t, vec3(-0.0005))) && all(lessThanEqual(t, vec3(1.0005)))) lo = mid; else hi = mid;
+    }
+    return clamp(fromOklab(vec3(lab.x, lab.yz * lo)), 0.0, 1.0);
+}
+
 vec3 fromOklab(vec3 lab) {
     float l = max(lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z, 0.0);
     float m = max(lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z, 0.0);
@@ -207,9 +226,16 @@ void main() {
     float origLuma = max(max(dot(orig, LUMA), max3(orig) * 0.5), 0.0001);
     float gain = targetLin / max(origLuma * ae, 0.0001);
     vec3 lin = orig * ae * gain;
-    // Bento headroom ceiling: everything above 1 softly into <= 1.35 [:1515-1526]
-    if (clipCeiling > 1.05) {
-        float mf = max3(lin);
+    // Saturation of the light (0 neutral .. 1 one channel): the shoulders below act on the max channel for low-saturation
+    // colours (as the kernel) and on the luminance for saturated ones, so a saturated light keeps its tonal separation
+    // instead of being pinned at its max channel (P11: the LED wall band of the X9 Ultra collapsed to one flat colour).
+    float satLight = (max3(lin) - min(lin.r, min(lin.g, lin.b))) / max(max3(lin), 0.000001);
+    float satW = smoothstep(0.50, 0.85, satLight);
+    bool headroom = clipCeiling > 1.05 && headroomU != 0;
+    // Bento headroom ceiling: everything above 1 softly into <= 1.35 [:1515-1526]; only with real headroom (clipped data
+    // or Bento), not for the WB headroom of unclipped saturated colour.
+    if (headroom) {
+        float mf = mix(max3(lin), dot(lin, LUMA), satW);
         if (mf > 1.0) {
             float ex = mf - 1.0;
             lin *= (1.0 + ex * 0.35 / (ex + 0.35)) / mf;
@@ -258,14 +284,22 @@ void main() {
     float inChroma = length(lab.yz);
     vec2 hueDir = inChroma > 0.000001 ? lab.yz / inChroma : vec2(0.0);
     vec3 scene = max(fromOklab(lab), vec3(0.0));
-    // Bento roll-off of the linear maximum above 0.5 [:1673-1681]
-    if (clipCeiling > 1.05) {
-        float ml = max3(scene);
+    // Bento roll-off of the linear maximum above 0.5 [:1673-1681] (same shoulder measure as the ceiling)
+    if (headroom) {
+        float ml = mix(max3(scene), dot(scene, LUMA), satW);
         if (ml > 0.5) {
             float ex = ml - 0.5;
-            float headroom = max((clipCeiling - 0.5) * 0.35, 1.5);
-            scene *= (0.5 + ex / (1.0 + ex / headroom)) / ml;
+            float room = max((clipCeiling - 0.5) * 0.35, 1.5);
+            scene *= (0.5 + ex / (1.0 + ex / room)) / ml;
         }
+    }
+    // Path to white: saturated light whose max channel enters the AgX shoulder fades towards its luminance, as a bright
+    // coloured light does on film / in HDR+ (the input here is linear camera RGB, not an already desaturated render).
+    if (hlWhiteU > 0.0) {
+        float mx = max3(scene);
+        float yS = dot(scene, LUMA);
+        float w = hlWhiteU * satW * smoothstep(0.6, 2.4, mx);
+        scene = mix(scene, vec3(yS), clamp(w, 0.0, 0.9));
     }
 
     // === AgX (Blender 4 / Kraken matrices of the kernel) [:1079-1094, :1687-1730] ===
@@ -290,7 +324,8 @@ void main() {
         float ol = dot(graded, LUMA);
         graded = vec3(ol) + (graded - vec3(ol)) * agxA.w;
     }
-    graded = clamp(graded, 0.0, 1.0);
+    // In gamut by chroma, not per channel: a channel of a saturated light over 1 would otherwise stop its brightening.
+    graded = fromOklabInGamut(toOklab(max(graded, vec3(0.0))));
 
     // === hue lock and post-tone detail [:1763-1802] ===
     vec3 post = toOklab(graded);
@@ -307,7 +342,7 @@ void main() {
     // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling
     // a, b with L there (a uniform linear scale of the colour) keeps the hue and the relative chroma instead.
     if (deltaChromaU > 0.0 && post.x < lBefore) post.yz *= mix(1.0, post.x / max(lBefore, 0.0001), clamp(deltaChromaU, 0.0, 1.0));
-    graded = clamp(fromOklab(post), 0.0, 1.0);
+    graded = fromOklabInGamut(post);
 
     // === display: power 1/gamma, film toe [:1805-1825], dither [:1836-1843] ===
     vec3 outRgb = pow(max(graded, vec3(0.000001)), vec3(gammaInv));

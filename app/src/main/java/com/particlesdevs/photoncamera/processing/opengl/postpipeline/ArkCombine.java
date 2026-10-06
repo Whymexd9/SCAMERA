@@ -98,6 +98,9 @@ public final class ArkCombine extends Node {
             glProg.setVar("colourFU", colourFactor);
             glProg.setVar("aeU", r.ae);
             glProg.setVar("clipU", r.clip);
+            // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.
+            glProg.setVar("headroomU", VivoNiceRgb.lastRealClip || LmcHybridBurst.lastBentoUsClipped > 0f ? 1 : 0);
+            glProg.setVar("hlWhiteU", Math.max(0f, Math.min(1f, ArkTone.value("hl_white", 0.15f))));
             glProg.setVar("toeU", ArkTone.value("aces_toe", 0.05f));
             glProg.setVar("gammaInvU", 1f / ArkTone.gamma());
             glProg.setVar("macroU", ArkTone.value("macro_contrast", 1.1f));
@@ -132,7 +135,8 @@ public final class ArkCombine extends Node {
             st.closeTextures();
             if (fallback != null) fallback.close();
         }
-        Log.i("NICE_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " grid=" + input.mSize.x + "x" + input.mSize.y
+        Log.i("NICE_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " headroom=" + (VivoNiceRgb.lastRealClip || LmcHybridBurst.lastBentoUsClipped > 0f)
+                + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + " guard=" + guard + " ms=" + (System.currentTimeMillis() - started));
