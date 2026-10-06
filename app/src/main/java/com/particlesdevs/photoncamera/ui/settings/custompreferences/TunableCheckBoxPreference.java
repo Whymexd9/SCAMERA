@@ -57,6 +57,11 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
         Log.d(TAG, "Set default value: " + defaultValue + " (boolean: " + (defaultValue != 0) + ")");
     }
 
+    /** The tunable default, 0 or 1. */
+    public int defaultInt() {
+        return mDefaultValue;
+    }
+
     @Override
     public void onBindViewHolder(@NonNull PreferenceViewHolder holder) {
         isUserInteraction = false;

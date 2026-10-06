@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quick-settings shade (P25): group titles, tile names and short values. Short values are at most 8 characters
+     (ShadeCatalogTest), except the ones listed there. -->
+<resources>
+    <string name="shade_group_shoot">Capture</string>
+    <string name="shade_group_format">Format</string>
+    <string name="shade_group_hybrid">Hybrid</string>
+    <string name="shade_group_scamhdr">SCAM HDR</string>
+    <string name="shade_group_color">Colour and sharpness</string>
+    <string name="shade_group_view">Viewfinder</string>
+
+    <string name="shade_on">On</string>
+    <string name="shade_off">Off</string>
+
+    <!-- Camera controls without a row in the settings tree -->
+    <string name="shade_title_flash">Flash</string>
+    <string name="shade_title_timer">Timer</string>
+    <string name="shade_title_format">File format</string>
+    <string name="shade_title_metering_std">Camera2 metering</string>
+    <string-array name="shade_l_flash">
+        <item>Torch</item>
+        <item>Off</item>
+    </string-array>
+    <string-array name="shade_l_timer">
+        <item>Off</item>
+        <item>3 seconds</item>
+        <item>10 seconds</item>
+    </string-array>
+    <string-array name="shade_l_format">
+        <item>JPEG</item>
+        <item>RAW + JPEG</item>
+        <item>RAW</item>
+    </string-array>
+    <string-array name="shade_l_metering_std">
+        <item>Auto</item>
+        <item>Center-weighted</item>
+        <item>Average</item>
+        <item>Spot</item>
+    </string-array>
+
+    <!-- Tile names -->
+    <string name="shade_t_flash">Flash</string>
+    <string name="shade_t_timer">Timer</string>
+    <string name="shade_t_format">Format</string>
+    <string name="shade_t_metering_std">Camera2 metering</string>
+    <string name="shade_t_metering">Metering</string>
+    <string name="shade_t_route">Merge</string>
+    <string name="shade_t_output">Resolution</string>
+    <string name="shade_t_downsampler">Downsampler</string>
+    <string name="shade_t_ultrahdr">Ultra HDR</string>
+    <string name="shade_t_wide169">16:9</string>
+    <string name="shade_t_watermark">Watermark</string>
+    <string name="shade_t_bento">Bento</string>
+    <string name="shade_t_bento_frames">Bento frames</string>
+    <string name="shade_t_shasta">Shasta</string>
+    <string name="shade_t_hybrid_frames">N frames Hybrid</string>
+    <string name="shade_t_luma">Luma</string>
+    <string name="shade_t_chroma">Chroma</string>
+    <string name="shade_t_sharp">Sharpening</string>
+    <string name="shade_t_rejection">Rejection</string>
+    <string name="shade_t_scam_frames">N frames SCAM</string>
+    <string name="shade_t_long_boost">L boost</string>
+    <string name="shade_t_mosaic">ISZ mosaic</string>
+    <string name="shade_t_tone_curve">Curve</string>
+    <string name="shade_t_usm">USM</string>
+    <string name="shade_t_grid">Grid</string>
+    <string name="shade_t_peak">Focus peak</string>
+    <string name="shade_t_live_raw">Live RAW</string>
+    <string name="shade_t_debug">Debug</string>
+
+    <!-- Short values on tiles and segments -->
+    <string-array name="shade_s_flash">
+        <item>Torch</item>
+        <item>Off</item>
+    </string-array>
+    <string-array name="shade_s_timer">
+        <item>Off</item>
+        <item>3 s</item>
+        <item>10 s</item>
+    </string-array>
+    <string-array name="shade_s_format">
+        <item>JPEG</item>
+        <item>R+J</item>
+        <item>RAW</item>
+    </string-array>
+    <string-array name="shade_s_metering_std">
+        <item>Auto</item>
+        <item>Center</item>
+        <item>Average</item>
+        <item>Spot</item>
+    </string-array>
+    <string-array name="shade_s_route">
+        <item>Hybrid</item>
+        <item>SCAM HDR</item>
+    </string-array>
+    <string-array name="shade_s_output">
+        <item>1×</item>
+        <item>12 MP</item>
+        <item>16 MP</item>
+        <item>20 MP</item>
+        <item>2×</item>
+    </string-array>
+    <string-array name="shade_s_downsampler">
+        <item>Lanczos</item>
+        <item>Bicubic</item>
+        <item>Area</item>
+        <item>Bilinear</item>
+    </string-array>
+    <string-array name="shade_s_bento">
+        <item>Off</item>
+        <item>Auto</item>
+        <item>Always</item>
+    </string-array>
+    <string-array name="shade_s_bento_frames">
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="shade_s_sharp">
+        <item>ARK</item>
+        <item>RT</item>
+        <item>SCAM</item>
+        <item>Off</item>
+    </string-array>
+    <string-array name="shade_s_mosaic">
+        <item>Bayer</item>
+        <item>GPU</item>
+        <item>Tetra</item>
+        <item>MFR</item>
+        <item>Neural</item>
+        <item>Sabre</item>
+        <item>Neural+Sabre</item>
+    </string-array>
+    <string-array name="shade_s_grid">
+        <item>Off</item>
+        <item>3×3</item>
+        <item>4×4</item>
+        <item>Φ</item>
+        <item>Diag.</item>
+    </string-array>
+    <string-array name="shade_s_peak">
+        <item>Off</item>
+        <item>On</item>
+        <item>Auto</item>
+    </string-array>
+    <string-array name="shade_s_debug">
+        <item>Off</item>
+        <item>HUD</item>
+        <item>HUD+hist</item>
+        <item>Full</item>
+    </string-array>
+
+    <string name="shade_scrim">Lower the settings panel</string>
+
+    <!-- Tiles, rows, toasts -->
+    <string name="shade_pinned">Pinned</string>
+    <string name="shade_add">Add</string>
+    <string name="shade_add_description">Add to the panel</string>
+    <string name="shade_toast_value">%1$s: %2$s</string>
+    <string name="shade_changed">changed</string>
+    <string name="shade_added">Added: %1$s</string>
+    <string name="shade_removed">Removed: %1$s</string>
+    <string name="shade_full">At most %1$d tiles in the panel</string>
+    <string name="shade_pin">Pin %1$s</string>
+    <string name="shade_unpin">Unpin %1$s</string>
+    <string name="shade_group_extra">Added from settings</string>
+
+    <!-- Catalog «Добавить в шторку» -->
+    <string name="shade_catalog_title">Add to the panel</string>
+    <string name="shade_catalog_close">Close</string>
+    <string name="shade_catalog_search">Search all settings</string>
+    <string name="shade_catalog_clear">Clear the search</string>
+    <string name="shade_catalog_count">In the panel: %1$d of %2$d · settings: %3$d</string>
+    <string name="shade_catalog_found">Found: %1$d · in the panel: %2$d of %3$d</string>
+    <string name="shade_catalog_nothing">Nothing found</string>
+    <string name="shade_catalog_note">Text fields (captions, denoise tables, Camera ID) change in the settings only.</string>
+    <string name="shade_catalog_pinned">Pinned</string>
+    <string name="shade_catalog_row_add">Add to the panel: %1$s</string>
+    <string name="shade_catalog_row_pinned">In the panel, remove: %1$s</string>
+    <string name="shade_more">Other settings</string>
+    <string name="shade_more_summary">Any setting into the panel (%1$d in all)</string>
+
+    <!-- Edit mode, reorder -->
+    <string name="shade_edit">Edit</string>
+    <string name="shade_done">Done</string>
+    <string name="shade_drag_title">Drag the tiles</string>
+    <string name="shade_place">%1$s: place %2$d of %3$d</string>
+    <string name="shade_action_earlier">Move earlier</string>
+    <string name="shade_action_later">Move later</string>
+    <string name="shade_action_remove">Remove from the panel</string>
+    <string name="shade_remove_description">Remove %1$s</string>
+
+    <!-- Viewfinder chrome -->
+    <string name="shade_badge_route">Merge %1$s</string>
+    <string name="shade_shutter">Take a photo</string>
+    <string name="shade_flip_camera">Front / back camera</string>
+    <string name="shade_gallery">Gallery</string>
+    <string name="shade_all_settings_summary">Hybrid, SCAM HDR, colour, capture, config</string>
+    <string name="shade_all_settings_summary_mtk">Hybrid, colour, capture, config</string>
+    <string name="shade_hint">Swipe up for the panel\nHold a tile to move it</string>
+
+    <!-- Why a tile is dimmed -->
+    <string name="shade_reason_no_flash">This lens has no flash</string>
+    <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>
+    <string name="shade_reason_nice_dev">Set by nice_dev.txt</string>
+    <string name="shade_reason_dependency">Turn on “%1$s”.</string>
+</resources>

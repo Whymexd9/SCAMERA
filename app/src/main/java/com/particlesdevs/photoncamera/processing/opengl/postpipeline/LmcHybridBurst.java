@@ -9,6 +9,7 @@ import java.io.*;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.util.*;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /**
  * LMC hybrid burst transport (NCH v10): any number of frames, each with its role, exposure ratio to the
@@ -72,17 +73,20 @@ public final class LmcHybridBurst implements NiceTransport {
      * {@code conservative}: the retry after a failed merge (sensor grid, at most 16 N frames, the round-5 extras off).
      */
     private LmcHybridBurst(List<ImageFrame> source, Parameters p, boolean conservative) throws IOException {
-        width = p.rawSize.x; height = p.rawSize.y; cfa = p.cfaPattern; white = p.whiteLevel; black = p.blackLevel.clone();
+        width = p.rawSize.x; height = p.rawSize.y; white = p.whiteLevel; black = p.blackLevel.clone();
+        // P27 (H14): a direct Quad Bayer stream is marked cfaPattern -2 (Parameters.quadCfa); its colour order is the
+        // sensor's (baseCfaPattern) and the hybrid measures the colour block itself.
+        cfa = p.quadCfa && p.cfaPattern < 0 ? p.baseCfaPattern : p.cfaPattern;
         this.conservative = conservative;
         diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
         // P27 (H14): p.quadCfa does not stop the hybrid: it measures the colour block of the stream itself (header word 14).
         if (cfa < 0 || cfa > 3 || com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException("Hybrid: нужен RAW с порядком CFA 2×2, без программного биннинга");
-        if (black.length != 4) throw new IOException("Hybrid: нужны четыре уровня чёрного");
+            throw new IOException(Lang.t("Hybrid: нужен RAW с порядком CFA 2×2, без программного биннинга", "Hybrid: needs a RAW with a 2×2 CFA order, without software binning"));
+        if (black.length != 4) throw new IOException(Lang.t("Hybrid: нужны четыре уровня чёрного", "Hybrid: needs four black levels"));
         if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0 || (long) width * height > 16000000)
-            throw new IOException("Hybrid: размер RAW до 16 МП");
-        if (source.isEmpty() || source.size() > 64) throw new IOException("Hybrid: нужны 1–64 кадра");
+            throw new IOException(Lang.t("Hybrid: размер RAW до 16 МП", "Hybrid: RAW size up to 16 MP"));
+        if (source.isEmpty() || source.size() > 64) throw new IOException(Lang.t("Hybrid: нужны 1–64 кадра", "Hybrid: needs 1–64 frames"));
         android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
         List<ImageFrame> usable = new ArrayList<>();
         Set<Long> stamps = new HashSet<>();
@@ -101,7 +105,7 @@ public final class LmcHybridBurst implements NiceTransport {
             }
             usable.add(f);
         }
-        if (usable.isEmpty()) throw new IOException("Hybrid: ни одного пригодного RAW-кадра (" + source.size() + " получено)");
+        if (usable.isEmpty()) throw new IOException(Lang.t("Hybrid: ни одного пригодного RAW-кадра (", "Hybrid: no usable RAW frame (") + source.size() + Lang.t(" получено)", " received)"));
         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result mosaic =
                 com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(usable.get(0).buffer, width, height, width * 2,
                         (black[0] + black[1] + black[2] + black[3]) / 4f, white, 8);
@@ -214,7 +218,7 @@ public final class LmcHybridBurst implements NiceTransport {
     private boolean add(ImageFrame f, int role, double ref, long newest) throws IOException {
         double ratio = product(f) / ref;
         if (!(ratio > 1.0 / 512) || !(ratio < 512)) {
-            if (f == base) throw new IOException("Hybrid: экспозиция базового кадра вне диапазона frame=" + f.number);
+            if (f == base) throw new IOException(Lang.t("Hybrid: экспозиция базового кадра вне диапазона frame=", "Hybrid: base frame exposure out of range frame=") + f.number);
             Log.w("NICE_HDR", "hybrid: frame " + f.number + " dropped, exposure x" + ratio + " of the base is outside the merge range");
             return false;
         }
@@ -401,7 +405,7 @@ public final class LmcHybridBurst implements NiceTransport {
         } catch (Exception first) {
             final String report = VivoNeuralClient.lastJobReport;
             final String why = String.valueOf(first.getMessage());
-            final boolean timeout = why.contains("Тайм-аут");
+            final boolean timeout = first instanceof VivoNeuralClient.WorkerTimeoutException;
             final boolean gpuInitDeath = report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
             Log.e("NICE_HDR", "Hybrid merge failed (" + why + ")" + (gpuInitDeath ? ", worker died before the GPU context" : ""));
             if (gpuInitDeath) {
@@ -448,7 +452,7 @@ public final class LmcHybridBurst implements NiceTransport {
         final long start = android.os.SystemClock.elapsedRealtime();
         final int w = burst.width, h = burst.height;
         ByteBuffer out = com.particlesdevs.photoncamera.util.Allocator.allocate(w * h * 12);
-        if (out == null) throw new IOException("Hybrid: недостаточно памяти для одиночного кадра");
+        if (out == null) throw new IOException(Lang.t("Hybrid: недостаточно памяти для одиночного кадра", "Hybrid: not enough memory for the single frame"));
         out.order(ByteOrder.nativeOrder());
         final int block = Math.max(1, burst.mosaicBlock);
         final int[] channel = cfaChannels(burst.cfa);
@@ -501,7 +505,7 @@ public final class LmcHybridBurst implements NiceTransport {
                         view.put(row);
                     }
                 } catch (RuntimeException e) {
-                    synchronized (failure) { failure[0] = new IOException("Hybrid: одиночный кадр не проявлен: " + e, e); }
+                    synchronized (failure) { failure[0] = new IOException(Lang.t("Hybrid: одиночный кадр не проявлен: ", "Hybrid: the single frame was not developed: ") + e, e); }
                 }
             }, "hybrid-cpu-" + t);
             workers[t].start();

@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.CountDownTimer;
 
 import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 import android.view.View;
 
@@ -19,8 +20,6 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingType;
 import com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData;
 import com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout;
-import com.particlesdevs.photoncamera.ui.camera.views.FlashButton;
-import com.particlesdevs.photoncamera.ui.camera.views.TimerButton;
 
 /**
  * Implementation of {@link CameraUIEventsListener}
@@ -76,64 +75,18 @@ final class CameraUIController implements CameraUIEventsListener,
                 cameraFragment.launchSettings();
                 break;
 
-            case R.id.hdrx_toggle_button:
-                PreferenceKeys.setHdrX(!PreferenceKeys.isHdrXOn());
-                if (PreferenceKeys.isHdrXOn())
-                    CaptureController.setTargetFormat(CaptureController.RAW_FORMAT);
-                else
-                    CaptureController.setTargetFormat(CaptureController.YUV_FORMAT);
-                cameraFragment.showSnackBar(cameraFragment.getString(R.string.hdrx) + ':' + onOff(PreferenceKeys.isHdrXOn()));
-                this.restartCamera();
-                break;
-
             case R.id.gallery_image_button:
                 cameraFragment.launchGallery();
                 break;
 
-            case R.id.eis_toggle_button:
-                PreferenceKeys.setEisPhoto(!PreferenceKeys.isEisPhotoOn());
-                cameraFragment.showSnackBar(cameraFragment.getString(R.string.eis_toggle_text) + ':' + onOff(PreferenceKeys.isEisPhotoOn()));
-                cameraFragment.updateSettingsBar();
-                break;
-
-            case R.id.fps_toggle_button:
-                PreferenceKeys.setFpsMode((PreferenceKeys.getFpsMode() + 1) % 4);
-                cameraFragment.captureController.applyFpsRange();
-                cameraFragment.updateSettingsBar();
-                break;
-
-            case R.id.quad_res_toggle_button:
-                PreferenceKeys.setQuadBayer(!PreferenceKeys.isQuadBayerOn());
-                cameraFragment.showSnackBar(cameraFragment.getString(R.string.quad_bayer_toggle_text) + ':' + onOff(PreferenceKeys.isQuadBayerOn()));
-                this.restartCamera();
-                cameraFragment.updateSettingsBar();
-                break;
-
+            // Flash, self-timer and grid are quick-settings tiles now (P25); HDRX, EIS, FPS and the Quad toggle are gone.
             case R.id.flip_camera_button:
+                cameraFragment.onLensSwitch();
                 view.animate().rotationBy(180).setDuration(450).start();
                 //cameraFragment.textureView.animate().rotationBy(360).setDuration(450).start();
                 //PreferenceKeys.setCameraID(cycler(PreferenceKeys.getCameraID()));
                 setID(cameraFragment.cycler(PreferenceKeys.getCameraID()));
                 this.restartCamera();
-                break;
-            case R.id.grid_toggle_button:
-                PreferenceKeys.setGridValue((PreferenceKeys.getGridValue() + 1) % view.getResources().getStringArray(R.array.vf_grid_entryvalues).length);
-                view.setSelected(PreferenceKeys.getGridValue() != 0);
-                cameraFragment.invalidateSurfaceView();
-                cameraFragment.updateSettingsBar();
-                break;
-
-            case R.id.flash_button:
-                PreferenceKeys.setAeMode((PreferenceKeys.getAeMode() + 1) % 2); //cycles in 0 (torch), 1 (off)
-                ((FlashButton) view).setFlashValueState(PreferenceKeys.getAeMode());
-                cameraFragment.captureController.setPreviewAEModeRebuild(PreferenceKeys.getAeMode());
-                cameraFragment.updateSettingsBar();
-                break;
-
-            case R.id.countdown_timer_button:
-                PreferenceKeys.setCountdownTimerIndex((PreferenceKeys.getCountdownTimerIndex() + 1) % view.getResources().getIntArray(R.array.countdowntimer_entryvalues).length);
-                ((TimerButton) view).setTimerIconState(PreferenceKeys.getCountdownTimerIndex());
-                cameraFragment.updateSettingsBar();
                 break;
         }
     }
@@ -170,9 +123,11 @@ final class CameraUIController implements CameraUIEventsListener,
                 (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE), id)) {
             // Not opened: the camera stays on the current module (see CameraManager2.isAuxiliarySensor).
             Log.w(TAG, "camera " + id + " is a MONO / NIR auxiliary stream, not opened");
-            cameraFragment.showSnackBar("Камера " + id + " — монохромный служебный поток, снимать с неё нельзя");
+            cameraFragment.showSnackBar(Lang.t(context, "Камера " + id + " — монохромный служебный поток, снимать с неё нельзя",
+                    "Camera " + id + " is a monochrome auxiliary stream and cannot take photos"));
             return;
         }
+        cameraFragment.onLensSwitch();
         setID(id);
         this.restartCamera();
 
@@ -211,10 +166,6 @@ final class CameraUIController implements CameraUIEventsListener,
         cameraFragment.captureController.restartCamera();
     }
 
-    private String onOff(boolean value) {
-        return value ? "On" : "Off";
-    }
-
     private void onTimerFinished() {
         cameraFragment.sounds().timerStop(); // cut at the timer's end; the shutter sound follows at the shot
         this.shutterButton.setHovered(false);
@@ -237,9 +188,8 @@ final class CameraUIController implements CameraUIEventsListener,
                 Object value = topBarSettingsData.getValue();
                 switch (type) {
                     case FLASH:
-                        PreferenceKeys.setAeMode((Integer) value); //cycles in 0,1,2,3
+                        PreferenceKeys.setAeMode((Integer) value); // 0 torch, 1 off
                         cameraFragment.captureController.setPreviewAEModeRebuild(PreferenceKeys.getAeMode());
-                        cameraFragment.cameraFragmentBinding.layoutTopbar.flashButton.setFlashValueState((Integer) value);
                         break;
                     case HDRX:
                         PreferenceKeys.setHdrX(value.equals(1));
@@ -263,7 +213,6 @@ final class CameraUIController implements CameraUIEventsListener,
                         break;
                     case TIMER:
                         PreferenceKeys.setCountdownTimerIndex((Integer) value);
-                        cameraFragment.cameraFragmentBinding.layoutTopbar.countdownTimerButton.setTimerIconState((Integer) value);
                         break;
                     case EIS:
                         PreferenceKeys.setEisPhoto(value.equals(1));

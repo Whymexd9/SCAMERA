@@ -4,33 +4,6 @@
         xmlns:android="http://schemas.android.com/apk/res/android">
 
     <data>
-
-        <import type="com.particlesdevs.photoncamera.settings.PreferenceKeys"/>
-
-        <import type="android.view.View"/>
-
-        <variable
-                name="hdrx_visible"
-                type="boolean"/>
-
-        <variable
-                name="eis_visible"
-                type="boolean"/>
-
-        <variable
-                name="fps_visible"
-                type="boolean"/>
-
-        <variable
-                name="flash_visible"
-                type="boolean"/>
-
-        <variable
-                name="timer_visible"
-                type="boolean"/>
-        <variable
-                name="quad_visible"
-                type="boolean"/>
         <variable
                 name="top_bar_click_listener"
                 type="android.view.View.OnClickListener"/>
@@ -40,194 +13,60 @@
                 type="com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel"/>
     </data>
 
+    <!-- P25 top bar: two card badges (the merge route in effect, the save format) and the settings gear. Flash,
+         self-timer and grid live in the quick-settings shade; the Quad toggle is gone. -->
     <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:visibility="visible"
-            tools:visibility="visible"
-            >
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            tools:visibility="visible">
 
-        <!-- Three independent controls with original line icons. -->
-        <androidx.constraintlayout.widget.ConstraintLayout
-                android:background="@null"
-                android:layout_width="wrap_content"
+        <LinearLayout
+                android:id="@+id/topbar_badges"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="4dp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="@dimen/topbar_padding"
-                android:paddingBottom="@dimen/topbar_padding"
-                android:visibility="visible"
-                tools:visibility="visible"
-                app:layout_constraintBottom_toBottomOf="parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="8dp"
+                app:layout_constrainedWidth="true"
+                app:layout_constraintHorizontal_bias="0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/settings_button"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent">
+
+            <TextView
+                    android:id="@+id/route_badge"
+                    style="@style/ShadeBadge"
+                    tools:drawableLeft="@drawable/settings_ic_layers"
+                    tools:text="Merge Hybrid"/>
+
+            <TextView
+                    android:id="@+id/format_badge"
+                    style="@style/ShadeBadge"
+                    android:layout_marginStart="8dp"
+                    tools:drawableLeft="@drawable/ic_shade_jpeg"
+                    tools:text="JPEG"/>
+        </LinearLayout>
+
+        <!-- The settings entry at every level (in FULL under the scrim: a tap there lowers the shade first). -->
+        <ImageButton
+                android:id="@+id/settings_button"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:minWidth="0dp" android:minHeight="0dp"
+                android:onClick="@{top_bar_click_listener}"
+                android:background="@drawable/shade_gear_card"
+                android:src="@drawable/settings_ic_gear"
+                android:scaleType="fitCenter"
+                android:padding="11dp"
+                android:contentDescription="@string/sheet_all_settings"
+                android:tooltipText="@string/sheet_all_settings"
+                bindRotate="@{uimodel}"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                bindViewGroupChildrenRotate="@{uimodel}"
-                >
-
-            <ToggleButton
-                    android:id="@+id/hdrx_toggle_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    android:background="@drawable/raw_button"
-                    android:checked="@{PreferenceKeys.isHdrXOn()}"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    android:visibility="@{hdrx_visible ? View.GONE : View.GONE}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintDimensionRatio="1:1"
-                    app:layout_constraintEnd_toStartOf="@id/eis_toggle_button"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"
-                    tools:visibility="visible"/>
-
-            <ToggleButton
-                    android:id="@+id/eis_toggle_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/eis_button"
-                    android:checked="@{PreferenceKeys.isEisPhotoOn()}"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    android:visibility="@{eis_visible ? View.GONE : View.GONE}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/hdrx_toggle_button"
-                    app:layout_constraintEnd_toStartOf="@id/countdown_timer_button"
-                    app:layout_constraintTop_toTopOf="parent"
-                    tools:visibility="visible"
-                    />
-
-            <com.particlesdevs.photoncamera.ui.camera.views.TimerButton
-                    android:id="@+id/countdown_timer_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/top_control_background"
-                    android:foreground="@drawable/ic_timer"
-                    android:layout_marginHorizontal="6dp"
-                    android:backgroundTint="@null"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    android:visibility="@{timer_visible ? View.VISIBLE : View.GONE}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/eis_toggle_button"
-                    app:layout_constraintEnd_toStartOf="@id/quad_res_toggle_button"
-                    app:layout_constraintTop_toTopOf="parent"
-                    tools:visibility="visible"
-                    />
-
-            <ToggleButton
-                    android:id="@+id/quad_res_toggle_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
-                    android:checked="@{PreferenceKeys.isQuadBayerOn()}"
-                    android:background="@drawable/quad_button"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    android:visibility="@{quad_visible ? View.VISIBLE : View.GONE}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/countdown_timer_button"
-                    app:layout_constraintEnd_toStartOf="@id/fps_toggle_button"
-                    app:layout_constraintTop_toTopOf="parent"
-                    tools:visibility="visible"
-                    />
-
-            <ToggleButton
-                    android:id="@+id/fps_toggle_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/fps_button"
-                    android:checked="@{PreferenceKeys.getFpsMode() > 0}"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    android:visibility="@{fps_visible ? View.GONE : View.GONE}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/quad_res_toggle_button"
-                    app:layout_constraintEnd_toStartOf="@id/grid_toggle_button"
-                    app:layout_constraintTop_toTopOf="parent"
-                    tools:visibility="visible"
-                    />
-
-            <Button
-                    android:id="@+id/grid_toggle_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/top_control_background"
-                    android:foreground="@drawable/ic_grid_toggle"
-                    android:layout_marginHorizontal="6dp"
-                    android:selected="@{PreferenceKeys.getGridValue() != 0}"
-                    app:backgroundTint="@null"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/fps_toggle_button"
-                    app:layout_constraintEnd_toStartOf="@id/flash_button"
-                    app:layout_constraintTop_toTopOf="parent"
-                    tools:visibility="visible"
-                    />
-
-            <com.particlesdevs.photoncamera.ui.camera.views.FlashButton
-                    android:id="@+id/flash_button"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
-                    android:background="@drawable/top_control_background"
-                    android:foreground="@drawable/ic_flash"
-                    android:layout_marginHorizontal="6dp"
-                    android:backgroundTint="@null"
-                    android:textOff=""
-                    android:textOn=""
-                    android:onClick="@{top_bar_click_listener}"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/grid_toggle_button"
-                    app:layout_constraintEnd_toStartOf="@id/settings_button"
-                    app:layout_constraintTop_toTopOf="parent"
-                    android:visibility='@{flash_visible ? View.VISIBLE:View.GONE, default=visible}'
-                    tools:visibility="visible"
-                    />
-
-            <!-- The only general way into SettingsActivity (the settings sheet has no gear). -->
-            <ImageButton
-                    android:id="@+id/settings_button"
-                    style="@style/Widget.AppCompat.ImageButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:minWidth="0dp" android:minHeight="0dp"
-                    android:layout_marginHorizontal="6dp"
-                    android:onClick="@{top_bar_click_listener}"
-                    android:background="@drawable/top_control_background"
-                    android:src="@drawable/ic_settings"
-                    android:scaleType="fitCenter"
-                    android:padding="@dimen/topbar_button_inset"
-                    android:contentDescription="@string/sheet_all_settings"
-                    android:tooltipText="@string/sheet_all_settings"
-                    android:visibility="visible"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintDimensionRatio="1:1"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toEndOf="@id/flash_button"
-                    app:layout_constraintTop_toTopOf="parent"/>
-
-        </androidx.constraintlayout.widget.ConstraintLayout>
+                app:layout_constraintBottom_toBottomOf="parent"/>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>

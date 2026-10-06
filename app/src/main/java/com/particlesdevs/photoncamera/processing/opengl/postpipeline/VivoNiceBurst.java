@@ -9,6 +9,7 @@ import java.io.*;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.util.*;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Camera2 burst transport for the original forward NICE model; calibration comes from Camera2. */
 public final class VivoNiceBurst implements NiceTransport {
@@ -51,32 +52,32 @@ public final class VivoNiceBurst implements NiceTransport {
         physicalId = p.physicalID;
         trainedSensor = stockDevice && (p.physicalID == 3 || p.physicalID == 4);
         if(p.quadCfa||cfa<0||cfa>3||com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException("SCAM HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
-        if(black.length!=4)throw new IOException("SCAM HDR: нужны четыре уровня чёрного");
+            throw new IOException(Lang.t("SCAM HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга","SCAM HDR: needs a plain Bayer RAW, without Quad/Tetra, remosaic or software binning"));
+        if(black.length!=4)throw new IOException(Lang.t("SCAM HDR: нужны четыре уровня чёрного","SCAM HDR: needs four black levels"));
         if(width<64||height<64||(width&1)!=0||(height&1)!=0||(long)width*height>16000000)
-            throw new IOException("SCAM HDR: размер RAW до 16 МП");
-        if(source.size()<6||source.size()>53)throw new IOException("SCAM HDR: нужны 4–50 N и кадры S/ES (и L)");
+            throw new IOException(Lang.t("SCAM HDR: размер RAW до 16 МП","SCAM HDR: RAW size up to 16 MP"));
+        if(source.size()<6||source.size()>53)throw new IOException(Lang.t("SCAM HDR: нужны 4–50 N и кадры S/ES (и L)","SCAM HDR: needs 4–50 N and the S/ES frames (and L)"));
         Set<Long> sourceTimestamps=new HashSet<>();
         List<ImageFrame> normal=new ArrayList<>(),shorts=new ArrayList<>(),longs=new ArrayList<>();
         for(ImageFrame f:source){
             String detail="frame="+f.number+" timestamp="+f.timestamp+" ZSL="+f.fromZsl;
             if(f.timestamp<=0 || !sourceTimestamps.add(f.timestamp))
-                throw new IOException("SCAM HDR 4+3: повторный или отсутствующий timestamp: "+detail);
+                throw new IOException(Lang.t("SCAM HDR 4+3: повторный или отсутствующий timestamp: ","SCAM HDR 4+3: repeated or missing timestamp: ")+detail);
             if(f.measuredIso<=0||f.measuredExposure<=0)
-                throw new IOException("SCAM HDR: нет измеренной экспозиции: "+detail
+                throw new IOException(Lang.t("SCAM HDR: нет измеренной экспозиции: ","SCAM HDR: no measured exposure: ")+detail
                         +" exposureNs="+f.measuredExposure+" ISO="+f.measuredIso);
             ImageFrame.CaptureRole role=f.getCaptureRole();
-            if(role==null)throw new IOException("SCAM HDR: нет роли из совпавших метаданных RAW: "+detail);
+            if(role==null)throw new IOException(Lang.t("SCAM HDR: нет роли из совпавших метаданных RAW: ","SCAM HDR: no role from the matched RAW metadata: ")+detail);
             if(f.buffer==null||f.width!=width||f.height!=height||f.buffer.capacity()!=(long)width*height*2)
-                throw new IOException("SCAM HDR: неполный RAW: "+detail+" size="+f.width+"x"+f.height
+                throw new IOException(Lang.t("SCAM HDR: неполный RAW: ","SCAM HDR: incomplete RAW: ")+detail+" size="+f.width+"x"+f.height
                         +" bytes="+(f.buffer==null?0:f.buffer.capacity())+" expected="+width+"x"+height+"/"+((long)width*height*2));
             if(f.rawPayloadError!=null)
-                throw new IOException("SCAM HDR: RAW-кадр не в 16-битном формате, снимок не сохранён: "+detail+" ("+f.rawPayloadError+")");
+                throw new IOException(Lang.t("SCAM HDR: RAW-кадр не в 16-битном формате, снимок не сохранён: ","SCAM HDR: the RAW frame is not 16-bit, the shot was not saved: ")+detail+" ("+f.rawPayloadError+")");
             switch(role) {
                 case SHORT: case EXTRA_SHORT: shorts.add(f); break;
                 case LONG: longs.add(f); break;
                 case NORMAL: normal.add(f); break;
-                default: throw new IOException("SCAM HDR: неизвестная роль RAW: "+detail);
+                default: throw new IOException(Lang.t("SCAM HDR: неизвестная роль RAW: ","SCAM HDR: unknown RAW role: ")+detail);
             }
         }
         int vendorFrames=0;
@@ -88,7 +89,7 @@ public final class VivoNiceBurst implements NiceTransport {
         // Keep one radiometric domain for the entire burst; never mix ISO and linear gain (P27: such a burst is merged by the
         // Hybrid, HdrxProcessor).
         if(vendorFrames!=0 && vendorFrames!=source.size())
-            throw new IOException("SCAM HDR: неполные измеренные vendor AE в серии");
+            throw new IOException(Lang.t("SCAM HDR: неполные измеренные vendor AE в серии","SCAM HDR: incomplete measured vendor AE in the burst"));
         vendorExposureDomain=vendorFrames==source.size();
         Log.i("NICE_PIPELINE","exposureDomain="+(vendorExposureDomain
                 ?"matched_vendor_exposure_times_gain":"Camera2_exposure_times_ISO_fallback"));
@@ -100,7 +101,7 @@ public final class VivoNiceBurst implements NiceTransport {
         syntheticLong=longs.isEmpty()&&!normal.isEmpty()?normal.get(0).syntheticLongRatio:0;
         if(syntheticLong>0)longs.add(normal.get(0));
         if(normal.size()!=4 || shorts.size()!=2 || longs.size()!=1)
-            throw new IOException("SCAM HDR 4+3: нужны 4 N, 1 L, 1 S и 1 ES; получено N="
+            throw new IOException(Lang.t("SCAM HDR 4+3: нужны 4 N, 1 L, 1 S и 1 ES; получено N=","SCAM HDR 4+3: needs 4 N, 1 L, 1 S and 1 ES; got N=")
                     +normal.size()+", L="+longs.size()+", S/ES="+shorts.size());
         // CRE SelectFrame sorts the chosen reference to vector index zero
         // (0x3617e8). XML ref/refn select radiometric exposure levels,
@@ -146,7 +147,7 @@ public final class VivoNiceBurst implements NiceTransport {
         }
         if(!(product(ordered[6])<product(ordered[5]) && product(ordered[5])<ref
                 && ref<=product(ordered[4])))
-            throw new IOException("SCAM HDR 4+3: измеренные экспозиции должны удовлетворять ES < S < N <= L");
+            throw new IOException(Lang.t("SCAM HDR 4+3: измеренные экспозиции должны удовлетворять ES < S < N <= L","SCAM HDR 4+3: the measured exposures must satisfy ES < S < N <= L"));
         for(int i=0;i<7;++i){
             ae[i]=measuredAe.get(ordered[i]);
             Log.i("NICE_HDR","slot="+i+" "+ae[i].describe());
@@ -154,7 +155,7 @@ public final class VivoNiceBurst implements NiceTransport {
             // The worker takes x1/256..x256 (vivo-nice-capture.h); a burst outside it is merged by the Hybrid (P27) instead of
             // failing in the worker.
             if(!Float.isFinite(exposure[i])||exposure[i]<1f/256||exposure[i]>256||ordered[i].measuredIso<=0)
-                throw new IOException("SCAM HDR: экспозиция/ISO вне диапазона");
+                throw new IOException(Lang.t("SCAM HDR: экспозиция/ISO вне диапазона","SCAM HDR: exposure/ISO out of range"));
             Log.i("NICE_HDR","slot="+i+" role="+new String[]{"N-ref","N","N","N","L","S","ES"}[i]
                     +" frame="+ordered[i].number+" timestamp="+ordered[i].timestamp+" exposureNs="+ordered[i].measuredExposure
                     +" exposure_ratio="+exposure[i]+" ISO="+ordered[i].measuredIso);
@@ -199,7 +200,7 @@ public final class VivoNiceBurst implements NiceTransport {
         } else if(imx06c) {
             noiseSource="IMX06C built-in";
             int iso=frame.measuredIso;
-            if(iso<50||iso>12800)throw new IOException("SCAM HDR: ISO вне проверенного профиля IMX06C");
+            if(iso<50||iso>12800)throw new IOException(Lang.t("SCAM HDR: ISO вне проверенного профиля IMX06C","SCAM HDR: ISO outside the verified IMX06C profile"));
             slope=Math.fma(0.0001242085f,iso,-0.0014234833f)/255f;
             offset=Math.max(0.0272538637f+Math.fma(0.0000000158f*iso,iso,0.0000376323f*iso),0.000001f)/65025f;
         } else if(hp9) {
@@ -209,7 +210,7 @@ public final class VivoNiceBurst implements NiceTransport {
             offset=Math.max(0.0410039589f+Math.fma(0.0000000224f*iso,iso,0.0000105126f*iso),0.000001f)/65025f;
         } else noiseSource="Camera2 SENSOR_NOISE_PROFILE";
         if(!Float.isFinite(slope)||slope<=0||!Float.isFinite(offset)||offset<0)
-            throw new IOException("SCAM HDR: некорректный профиль шума ("+noiseSource+") для RAW frame="+frame.number);
+            throw new IOException(Lang.t("SCAM HDR: некорректный профиль шума (","SCAM HDR: invalid noise profile (")+noiseSource+Lang.t(") для RAW frame=",") for RAW frame=")+frame.number);
         return new float[]{slope,offset};
     }
     private double product(ImageFrame f) {

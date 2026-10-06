@@ -2,7 +2,7 @@
 <!-- Tone and gamma curve presets from the LMC 9.6 mod (assets/curves). -->
 <resources>
     <string-array name="lmc_tone_curve_entries">
-        <item>Выкл.</item>
+        <item>Off</item>
         <item>ALICE</item>
         <item>Arcide</item>
         <item>Ateist (r0m10)</item>
@@ -160,7 +160,7 @@
         <item>Tone/Zeta 2g (r0m10).txt</item>
     </string-array>
     <string-array name="lmc_gamma_curve_entries">
-        <item>Выкл.</item>
+        <item>Off</item>
         <item>Alice</item>
         <item>DPS</item>
         <item>F03W15T18 (UserX)</item>

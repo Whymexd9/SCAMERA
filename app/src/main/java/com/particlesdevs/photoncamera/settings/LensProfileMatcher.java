@@ -1,5 +1,7 @@
 package com.particlesdevs.photoncamera.settings;
 
+import com.particlesdevs.photoncamera.util.Lang;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,7 +12,8 @@ import java.util.Map;
  * Maps the module slots of a saved config onto the module slots of another phone by what the lens is, not by its slot
  * name or Camera ID: same facing, nearest 35 mm equivalent focal length (in log), the same role (main, ultra wide, tele,
  * sensor crop) preferred. Many-to-one is allowed (one source tele can feed a 3× and a 6× slot); a target with no lens of
- * its facing in the source gets none (the caller gives it the baseline). Pure Java: no Android types.
+ * its facing in the source gets none (the caller gives it the baseline). Pure Java: no Android types (the summary text
+ * of {@link #describe} follows the UI language through Lang).
  */
 public final class LensProfileMatcher {
     private LensProfileMatcher() {}
@@ -77,7 +80,7 @@ public final class LensProfileMatcher {
         return Float.compare(a.zoom, b.zoom);
     }
 
-    /** "Основная 1× ← 1×, 3× ← 2.4×, Фронтальная ← Фронтальная"; unmatched targets read "← общие". */
+    /** "Основная 1× ← 1×, 3× ← 2.4×, Фронтальная ← Фронтальная"; unmatched targets read "← общие" ("← shared" in English). */
     public static String describe(Map<String, String> mapping, List<Lens> sources, List<Lens> targets) {
         Map<String, Lens> src = new LinkedHashMap<>();
         for (Lens s : sources) src.put(s.slot, s);
@@ -85,7 +88,7 @@ public final class LensProfileMatcher {
         for (Lens t : targets) {
             String from = mapping.get(t.slot);
             Lens s = from == null ? null : src.get(from);
-            parts.add(t.label + " ← " + (s == null ? "общие" : s.label));
+            parts.add(t.label + " ← " + (s == null ? Lang.t("общие", "shared") : s.label));
         }
         return String.join(", ", parts);
     }

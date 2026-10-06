@@ -80,6 +80,11 @@ public class ManagedSwitchPreference extends SwitchPreferenceCompat {
         }
     }
 
+    /** The XML default (isChecked() reflects the stored value, which this class reads from the main settings). */
+    public boolean defaultChecked() {
+        return fallback_value;
+    }
+
     private void set(boolean value) {
         setChecked(value);
     }

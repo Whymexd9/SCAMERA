@@ -49,6 +49,7 @@ import com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPrefere
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunablePngPreference;
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.util.log.FragmentLifeCycleMonitor;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.text.SimpleDateFormat;
 import java.util.Collections;
@@ -77,7 +78,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         
         if (savedInstanceState == null) getSupportFragmentManager()
                 .beginTransaction()
-                .replace(R.id.settings_container, getIntent().getBooleanExtra("open_favorites",false) ? new FavoritesSettingsFragment() : new SettingsFragment())
+                .replace(R.id.settings_container, new SettingsFragment())
                 .commit();
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
@@ -184,7 +185,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 route.setEntryValues(new CharSequence[]{"hybrid"});
                 route.setValue("hybrid");
                 route.setEnabled(false);
-                route.setSummary("MediaTek: только Hybrid (SCAM HDR и нейроремозаик работают на NPU Snapdragon)");
+                route.setSummary(Lang.t(getContext(),"MediaTek: только Hybrid (SCAM HDR и нейроремозаик работают на NPU Snapdragon)","MediaTek: Hybrid only (SCAM HDR and the neural remosaic run on the Snapdragon NPU)"));
             }
             // MediaTek: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
             Preference scamHdr = findPreference("vivo_hdr_screen");
@@ -257,15 +258,15 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (header == null || !isAdded()) return;
             PreferenceScreen screen = getPreferenceScreen();
             CharSequence title = screen == null ? null : screen.getTitle();
-            header.heading.setText(title == null || title.length() == 0 ? "Настройки камеры" : title);
+            header.heading.setText(title == null || title.length() == 0 ? Lang.t(getContext(),"Настройки камеры","Camera settings") : title);
             header.subtitle.setVisibility(View.GONE);
             chipBox.removeAllViews();
             String chip = null;
             if (screen != null && KEY_MAIN_PARENT_SCREEN.equals(screen.getKey()))
-                chip = "Активна: " + ("hybrid".equals(PreferenceKeys.mergeRoute()) ? "Hybrid" : "SCAM HDR") + " · по умолчанию Hybrid";
+                chip = Lang.t(getContext(),"Активна: ","Active: ") + ("hybrid".equals(PreferenceKeys.mergeRoute()) ? "Hybrid" : "SCAM HDR") + Lang.t(getContext()," · по умолчанию Hybrid"," · Hybrid by default");
             else if (screen != null && PreferenceKeys.isPerLensSettingsOn() && SettingsStyle.hasModuleSettings(screen)) {
                 String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
-                chip = "Настраивается: " + com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)
+                chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)
                         + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
             }
             if (chip != null) {
@@ -570,8 +571,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
                 Preference resetButton = new Preference(mContext);
                 resetButton.setKey("pref_reset_sensor_config_settings");
-                resetButton.setTitle("Сбросить настройки выбранного модуля");
-                resetButton.setSummary("Остальные модули сохранят свои значения");
+                resetButton.setTitle(Lang.t(getContext(),"Сбросить настройки выбранного модуля","Reset the selected module settings"));
+                resetButton.setSummary(Lang.t(getContext(),"Остальные модули сохранят свои значения","Other modules keep their values"));
                 resetButton.setIcon(android.R.drawable.ic_menu_revert);
                 resetButton.setOrder(9999); // Force to the end
 
@@ -579,10 +580,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     androidx.preference.ListPreference selector=submenu.findPreference("pref_sensor_config_selector");
                     String slot=selector!=null?selector.getValue():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
                     new androidx.appcompat.app.AlertDialog.Builder(mContext)
-                        .setTitle("Сбросить настройки модуля?")
+                        .setTitle(Lang.t(getContext(),"Сбросить настройки модуля?","Reset the module settings?"))
                         .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
-                        .setNegativeButton("Отмена",null)
-                        .setPositiveButton("Сбросить",(d,w)->{
+                        .setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null)
+                        .setPositiveButton(Lang.t(getContext(),"Сбросить","Reset"),(d,w)->{
                             com.particlesdevs.photoncamera.settings.ModuleSensorSettings.reset(slot);
                             if(getActivity()!=null)getActivity().recreate();
                         }).show();
@@ -964,7 +965,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private String importNoiseModel(android.net.Uri uri) {
             try (java.io.InputStream in = requireContext().getContentResolver().openInputStream(uri)) {
                 if (in == null) {
-                    return "Не удалось открыть файл";
+                    return Lang.t(getContext(),"Не удалось открыть файл","Couldn't open the file");
                 }
                 java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
                 byte[] chunk = new byte[8192];
@@ -973,17 +974,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     buffer.write(chunk, 0, read);
                 }
                 String source = buffer.toString("UTF-8");
-                NoiseModelProfile profile = NoiseModelProfile.parse(source, "imported", "Импортированный");
+                NoiseModelProfile profile = NoiseModelProfile.parse(source, "imported", Lang.t(getContext(),"Импортированный","Imported"));
                 if (profile == null) {
-                    return "Файл не содержит noise_model_A/B/C/D";
+                    return Lang.t(getContext(),"Файл не содержит noise_model_A/B/C/D","The file has no noise_model_A/B/C/D");
                 }
                 NoiseModelProfile.setImported(profile);
                 mSettingsManager.set(PreferenceKeys.SCOPE_GLOBAL,
                         "pref_noise_model_profile_key", NoiseModelProfile.IMPORTED_ID);
-                return "Модель шума импортирована";
+                return Lang.t(getContext(),"Модель шума импортирована","Noise model imported");
             } catch (Exception e) {
                 Log.e("SettingsFragment", "Noise model import failed", e);
-                return "Ошибка импорта: " + e;
+                return Lang.t(getContext(),"Ошибка импорта: ","Import error: ") + e;
             }
         }
 
@@ -992,15 +993,15 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             NoiseModelProfile profile =
                     NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId());
             if (profile == null) {
-                return "Активен автоматический профиль, экспортировать нечего";
+                return Lang.t(getContext(),"Активен автоматический профиль, экспортировать нечего","The automatic profile is active, nothing to export");
             }
             java.io.File dir = new java.io.File(
                     android.os.Environment.getExternalStoragePublicDirectory(
                             android.os.Environment.DIRECTORY_DOWNLOADS), "SCAMERA");
             java.io.File written = profile.exportTo(dir);
             return written != null
-                    ? "Сохранено: " + written.getName()
-                    : "Не удалось записать файл";
+                    ? Lang.t(getContext(),"Сохранено: ","Saved: ") + written.getName()
+                    : Lang.t(getContext(),"Не удалось записать файл","Couldn't write the file");
         }
 
         @Override
@@ -1018,9 +1019,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 PreferenceScreen ark = fullPreferenceScreen.findPreference("lmc_hybrid_arkcore_screen");
                 if (ark != null && activity instanceof SettingsActivity) ((SettingsActivity) activity).onPreferenceStartScreen(this, ark);
                 return true;
-            }
-            if ("settings_favorites".equals(preference.getKey())) {
-                getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new FavoritesSettingsFragment()).addToBackStack("favorites").commit();return true;
             }
             if ("module_copy_settings".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();

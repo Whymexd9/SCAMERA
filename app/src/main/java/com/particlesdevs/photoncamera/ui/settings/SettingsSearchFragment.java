@@ -12,6 +12,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.content.res.XmlResourceParser;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -24,9 +27,12 @@ import androidx.preference.PreferenceScreen;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.particlesdevs.photoncamera.R;
+import com.particlesdevs.photoncamera.util.Lang;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
+import org.xmlpull.v1.XmlPullParser;
 
 /** Search keeps navigation separate from editing: a hit opens the real preference page. */
 public class SettingsSearchFragment extends Fragment {
@@ -36,13 +42,57 @@ public class SettingsSearchFragment extends Fragment {
         Entry(String key, String page, String title, String path, String summary) {
             this.key=key; this.page=page; this.title=title; this.path=path; this.summary=summary;
         }
-        public boolean matches(String query) {
-            String haystack=normalize(title+" "+path+" "+summary+" "+key);
+        public boolean matches(String query) { return matches(query, null); }
+        /** As {@link #matches(String)}, also looking in {@code other}: the words of this setting in the other UI language. */
+        public boolean matches(String query, String other) {
+            String haystack=normalize(title+" "+path+" "+summary+" "+key+(other==null ? "" : " "+other));
             for(String word:normalize(query).trim().split("\\s+")) if(!haystack.contains(word)) return false;
             return true;
         }
     }
     private static String normalize(String value) { return value.toLowerCase(Locale.ROOT).replace('ё','е'); }
+    /**
+     * Title, summary and page titles of every XML setting in the other UI language (English on a Russian UI, Russian
+     * otherwise), by key: the search finds a setting by its Russian and by its English words whatever the UI language.
+     * Read straight from {@code R.xml.preferences} with the resources of the other locale, so no preference is built;
+     * settings generated in code have no entry and are found by their shown words only.
+     */
+    static HashMap<String,String> otherLanguage(Context context) {
+        HashMap<String,String> words=new HashMap<>();
+        if(context==null) return words;
+        try {
+            Configuration config=new Configuration(context.getResources().getConfiguration());
+            config.setLocale(Lang.ru(context) ? Locale.ENGLISH : Locale.forLanguageTag("ru"));
+            Resources res=context.createConfigurationContext(config).getResources();
+            try(XmlResourceParser xml=res.getXml(R.xml.preferences)) {
+                ArrayList<String> pages=new ArrayList<>();
+                for(int event=xml.next(); event!=XmlPullParser.END_DOCUMENT; event=xml.next()) {
+                    if(event==XmlPullParser.START_TAG) {
+                        String key=null, title="", summary="";
+                        for(int i=0;i<xml.getAttributeCount();i++) {
+                            String name=xml.getAttributeName(i);
+                            if("key".equals(name)) key=attribute(res, xml, i);
+                            else if("title".equals(name)) title=attribute(res, xml, i);
+                            else if("summary".equals(name)) summary=attribute(res, xml, i);
+                        }
+                        if(key!=null && !title.isEmpty()) words.put(key, title+" "+String.join(" ", pages)+" "+summary);
+                        pages.add(xml.getDepth()==1 ? "" : title); // as index(): the root title is not part of a path
+                    } else if(event==XmlPullParser.END_TAG && !pages.isEmpty()) pages.remove(pages.size()-1);
+                }
+            }
+        } catch(Exception | LinkageError ignored) {
+            // no words of the other language: the shown words are still searched
+        }
+        return words;
+    }
+    private static String attribute(Resources res, XmlResourceParser xml, int index) {
+        int id=xml.getAttributeResourceValue(index, 0);
+        if(id!=0) {
+            try { return res.getString(id); } catch(RuntimeException notText) { return ""; }
+        }
+        String value=xml.getAttributeValue(index);
+        return value==null ? "" : value;
+    }
     public static ArrayList<Entry> index(PreferenceGroup root) {
         ArrayList<Entry> entries=new ArrayList<>();
         collect(root, root.getKey(), "", entries);
@@ -71,6 +121,7 @@ public class SettingsSearchFragment extends Fragment {
     }
     private String query="";
     private ArrayList<Entry> entries;
+    private HashMap<String,String> other=new HashMap<>(); // the words of the other UI language, by key
     private final ArrayList<Entry> results=new ArrayList<>();
     private EditText input;
     private TextView count;
@@ -85,23 +136,24 @@ public class SettingsSearchFragment extends Fragment {
         entries=(ArrayList<Entry>)requireArguments().getSerializable("entries");
         if(entries==null) entries=new ArrayList<>();
         if(state!=null) query=state.getString("query", "");
+        other=otherLanguage(getContext());
     }
     @Override public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup parent, Bundle state) {
         LinearLayout root=new LinearLayout(requireContext());root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16),dp(12),dp(16),0); root.setBackgroundColor(SettingsStyle.BG);
         // P6b: the shared header and a field in the card style
         SettingsStyle.Header header=SettingsStyle.header(requireContext(),()->requireActivity().getOnBackPressedDispatcher().onBackPressed(),null);
-        header.heading.setText("Поиск настройки");header.subtitle.setVisibility(View.GONE);root.addView(header.view);
+        header.heading.setText(Lang.t(getContext(),"Поиск настройки","Search settings"));header.subtitle.setVisibility(View.GONE);root.addView(header.view);
         LinearLayout search=new LinearLayout(requireContext());search.setGravity(android.view.Gravity.CENTER_VERTICAL);
         search.setBackground(SettingsStyle.shape(requireContext(),SettingsStyle.FIELD,SettingsStyle.LINE,14));search.setPadding(dp(14),0,dp(4),0);
         android.widget.ImageView glass=new android.widget.ImageView(requireContext());glass.setImageResource(R.drawable.settings_ic_search);
         glass.setColorFilter(SettingsStyle.MUTED);search.addView(glass,new LinearLayout.LayoutParams(dp(22),dp(22)));
         input=new EditText(requireContext());input.setSingleLine(true);input.setTextColor(SettingsStyle.TEXT);input.setBackground(null);
-        input.setHintTextColor(SettingsStyle.MUTED);input.setTextSize(17);input.setHint("Поиск настройки");
-        input.setContentDescription("Поиск настройки");input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        input.setHintTextColor(SettingsStyle.MUTED);input.setTextSize(17);input.setHint(Lang.t(getContext(),"Поиск настройки","Search settings"));
+        input.setContentDescription(Lang.t(getContext(),"Поиск настройки","Search settings"));input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         search.addView(input,new LinearLayout.LayoutParams(0,dp(56),1));
         TextView clear=label("×",28,com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext()));clear.setGravity(android.view.Gravity.CENTER);
-        clear.setContentDescription("Очистить поиск");clear.setOnClickListener(v->input.setText(""));
+        clear.setContentDescription(Lang.t(getContext(),"Очистить поиск","Clear the search"));clear.setOnClickListener(v->input.setText(""));
         search.addView(clear,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(search);
         count=label("",13,SettingsStyle.MUTED);count.setPadding(0,dp(14),0,dp(12));root.addView(count);
         list=new RecyclerView(requireContext());list.setLayoutManager(new LinearLayoutManager(requireContext()));
@@ -116,9 +168,9 @@ public class SettingsSearchFragment extends Fragment {
     }
     private void filter(String text) {
         results.clear();
-        if(!text.trim().isEmpty()) for(Entry e:entries) if(e.matches(text))results.add(e);
-        count.setText(text.trim().isEmpty() ? "Введите название или описание настройки" :
-                results.isEmpty() ? "Ничего не найдено" : "Найдено: "+results.size());
+        if(!text.trim().isEmpty()) for(Entry e:entries) if(e.matches(text, other.get(e.key)))results.add(e);
+        count.setText(text.trim().isEmpty() ? Lang.t(getContext(),"Введите название или описание настройки","Type the name or description of a setting") :
+                results.isEmpty() ? Lang.t(getContext(),"Ничего не найдено","Nothing found") : Lang.t(getContext(),"Найдено: ","Found: ")+results.size());
         list.getAdapter().notifyDataSetChanged();
     }
     @Override public void onResume() {

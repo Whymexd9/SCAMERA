@@ -51,6 +51,9 @@ public interface CameraUIView {
 
     void showFlashButton(boolean flashAvailable);
 
+    /** The top bar's badges (merge route in effect, save format) after a setting changed. */
+    void updateBadges();
+
     /**
      * Lock UI elements during burst capture (except shutter button)
      *

@@ -6,6 +6,7 @@ import android.graphics.Paint;
 import android.view.*;
 import android.widget.OverScroller;
 import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Relative ruler: changing the step never changes or quantizes the current value. */
 public final class PrecisionRuler extends View {
@@ -19,7 +20,7 @@ public final class PrecisionRuler extends View {
     private long lastTick;
     private VelocityTracker velocity;
     private Listener listener;
-    public PrecisionRuler(Context c,double min,double max,double value,double step){super(c);this.min=min;this.max=max;this.value=value;this.step=step;scroller=new OverScroller(c);setFocusable(true);setContentDescription("Точная шкала");}
+    public PrecisionRuler(Context c,double min,double max,double value,double step){super(c);this.min=min;this.max=max;this.value=value;this.step=step;scroller=new OverScroller(c);setFocusable(true);setContentDescription(Lang.t(c,"Точная шкала","Fine scale"));}
     public void setListener(Listener l){listener=l;}
     public double getValue(){return value;}
     public void setStep(double s){scroller.forceFinished(true);if(Double.isFinite(s)&&s>0)step=s;invalidate();}

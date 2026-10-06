@@ -31,6 +31,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import com.particlesdevs.photoncamera.util.Lang;
 
 public class HdrxProcessor extends ProcessorBase {
     private static final String TAG = "HdrxProcessor";
@@ -204,7 +205,7 @@ public class HdrxProcessor extends ProcessorBase {
             exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);
         }
         if (mImageFramesToProcess.isEmpty())
-            throw new IllegalStateException((hybridShot ? "Hybrid" : "SCAM HDR") + ": нет ни одного RAW с ролью и экспозицией");
+            throw new IllegalStateException((hybridShot ? "Hybrid" : "SCAM HDR") + Lang.t(": нет ни одного RAW с ролью и экспозицией", ": no RAW with a role and an exposure"));
 
         if (BurstShakiness.isEmpty()) {
             BurstShakiness.add(new GyroBurst(1));
@@ -359,7 +360,7 @@ public class HdrxProcessor extends ProcessorBase {
                 images.add(0, niceReference);
                 CaptureResult referenceMetadata = niceReference.getMatchedCaptureMetadata();
                 if (referenceMetadata == null)
-                    throw new IllegalStateException("SCAM HDR: нет метаданных опорного RAW timestamp="
+                    throw new IllegalStateException(Lang.t("SCAM HDR: нет метаданных опорного RAW timestamp=", "SCAM HDR: no metadata of the reference RAW timestamp=")
                             + niceReference.timestamp);
                 captureResult = referenceMetadata;
                 captureRequest = referenceMetadata.getRequest();
@@ -377,7 +378,7 @@ public class HdrxProcessor extends ProcessorBase {
                     try {
                         if (PreferenceKeys.isNiceMosaic() && niceMosaicStream(images, processingParameters)) {
                             // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
-                            processingStage = "SCAM HDR: ремозаик мозаики";
+                            processingStage = Lang.t("SCAM HDR: ремозаик мозаики", "SCAM HDR: mosaic remosaic");
                             images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceMosaic.prepare(
                                     PhotonCamera.getAppContext(), images, processingParameters));
                             ParseExif.syncWithParameters(exifData, processingParameters);

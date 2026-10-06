@@ -9,6 +9,7 @@ import com.particlesdevs.photoncamera.processing.render.Converter;
 import java.io.*;
 import java.security.MessageDigest;
 import java.util.*;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Private, content-addressed imports; the selected filename is part of the module profile. */
 public final class DcpProfiles {
@@ -17,18 +18,26 @@ public final class DcpProfiles {
     private static DcpProfile cached;
     private static File dir(Context c){File f=new File(c.getFilesDir(),"dcp");f.mkdirs();return f;}
     private static SharedPreferences names(Context c){return c.getSharedPreferences("dcp_import_names",0);}
+    // Stored with the import name (unchanged format: Russian parts); shown in the UI language by label().
+    private static final String DEFAULT_NAME="Профиль DCP",MATRICES_ONLY=" · только матрицы";
+    private static String label(String stored){
+        boolean matricesOnly=stored.endsWith(MATRICES_ONLY);
+        String name=matricesOnly?stored.substring(0,stored.length()-MATRICES_ONLY.length()):stored;
+        if(name.equals(DEFAULT_NAME))name=Lang.t("Профиль DCP","DCP profile");
+        return matricesOnly?name+Lang.t(" · только матрицы"," · matrices only"):name;
+    }
     public static Map<String,String> list(Context c){
-        Map<String,String> result=new LinkedHashMap<>();result.put("","Камерная матрица");
+        Map<String,String> result=new LinkedHashMap<>();result.put("",Lang.t("Камерная матрица","Camera matrix"));
         File[] files=dir(c).listFiles((d,n)->n.matches("[0-9a-f]{64}\\.dcp"));
-        if(files!=null){Arrays.sort(files);for(File f:files)result.put(f.getName(),names(c).getString(f.getName(),f.getName()));}
+        if(files!=null){Arrays.sort(files);for(File f:files)result.put(f.getName(),label(names(c).getString(f.getName(),f.getName())));}
         return result;
     }
     public static String importFile(Context c,Uri uri)throws Exception{
         byte[] bytes;
-        try(InputStream in=c.getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Файл не открыт");bytes=read(in);}
+        try(InputStream in=c.getContentResolver().openInputStream(uri)){if(in==null)throw new IOException(Lang.t("Файл не открыт","The file did not open"));bytes=read(in);}
         DcpProfile profile=DcpProfile.parse(bytes);
         StringBuilder hash=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))hash.append(String.format(Locale.ROOT,"%02x",b&255));
-        String id=hash+".dcp",name="Профиль DCP";
+        String id=hash+".dcp",name=DEFAULT_NAME;
         try(android.database.Cursor cursor=c.getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){
             if(cursor!=null&&cursor.moveToFirst())name=cursor.getString(0);
         }
@@ -36,15 +45,15 @@ public final class DcpProfiles {
         if(!target.isFile()){
             File temp=File.createTempFile("import-",".tmp",dir(c));
             try {try(FileOutputStream out=new FileOutputStream(temp)){out.write(bytes);out.getFD().sync();}
-                if(!temp.renameTo(target))throw new IOException("Не удалось сохранить DCP");
+                if(!temp.renameTo(target))throw new IOException(Lang.t("Не удалось сохранить DCP","Could not save the DCP"));
             }finally{temp.delete();}
         }
-        names(c).edit().putString(id,name+(profile.hasLookTables?" · только матрицы":"")).apply();
+        names(c).edit().putString(id,name+(profile.hasLookTables?MATRICES_ONLY:"")).apply();
         return id;
     }
     private static byte[] read(InputStream in)throws IOException{
         ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int n;
-        while((n=in.read(buffer))!=-1){if(out.size()+n>DcpProfile.MAX_BYTES)throw new IOException("DCP больше 16 МБ");out.write(buffer,0,n);}return out.toByteArray();
+        while((n=in.read(buffer))!=-1){if(out.size()+n>DcpProfile.MAX_BYTES)throw new IOException(Lang.t("DCP больше 16 МБ","DCP larger than 16 MB"));out.write(buffer,0,n);}return out.toByteArray();
     }
     public static synchronized float[] activeToXyz(float[] neutral){
         if(PhotonCamera.getSettingsManagerStatic()==null)return null;

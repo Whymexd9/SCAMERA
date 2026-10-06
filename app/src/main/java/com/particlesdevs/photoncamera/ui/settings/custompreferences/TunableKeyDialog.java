@@ -11,6 +11,7 @@ import android.widget.TextView;
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.settings.TunableKeyManager;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.util.List;
 
@@ -34,17 +35,17 @@ public class TunableKeyDialog {
         int pad = dp(context, 20);
         container.setPadding(pad, pad / 2, pad, 0);
 
-        EditText nameEdit = addEdit(context, container, "Имя ключа", existing != null ? existing.name : "");
-        Spinner valueTypeSpinner = addSpinner(context, container, "Тип значения", VALUE_TYPES, existing != null ? existing.valueType : "Integer");
-        EditText valueEdit = addEdit(context, container, "Значение", existing != null ? existing.value : "0");
+        EditText nameEdit = addEdit(context, container, Lang.t(context,"Имя ключа","Key name"), existing != null ? existing.name : "");
+        Spinner valueTypeSpinner = addSpinner(context, container, Lang.t(context,"Тип значения","Value type"), VALUE_TYPES, existing != null ? existing.valueType : "Integer");
+        EditText valueEdit = addEdit(context, container, Lang.t(context,"Значение","Value"), existing != null ? existing.value : "0");
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle(isNew ? "Новый vendor tag" : "Vendor tag");
+        builder.setTitle(isNew ? Lang.t(context,"Новый vendor tag","New vendor tag") : "Vendor tag");
         builder.setView(container);
-        builder.setPositiveButton("Сохранить", (dialog, which) -> {
+        builder.setPositiveButton(Lang.t(context,"Сохранить","Save"), (dialog, which) -> {
             String name = nameEdit.getText().toString().trim();
             if (name.isEmpty()) {
-                PhotonCamera.showToast("Имя ключа не может быть пустым");
+                PhotonCamera.showToast(Lang.t(context,"Имя ключа не может быть пустым","The key name can't be empty"));
                 return;
             }
             VendorTagUtils.TunableKey key = new VendorTagUtils.TunableKey();
@@ -65,7 +66,7 @@ public class TunableKeyDialog {
             if (onDone != null) onDone.run();
         });
         if (!isNew) {
-            builder.setNeutralButton("Удалить", (dialog, which) -> {
+            builder.setNeutralButton(Lang.t(context,"Удалить","Delete"), (dialog, which) -> {
                 List<VendorTagUtils.TunableKey> list = TunableKeyManager.loadKeys(context, sensorId);
                 if (editIndex >= 0 && editIndex < list.size()) {
                     list.remove(editIndex);
@@ -74,7 +75,7 @@ public class TunableKeyDialog {
                 if (onDone != null) onDone.run();
             });
         }
-        builder.setNegativeButton("Отмена", (dialog, which) -> dialog.cancel());
+        builder.setNegativeButton(Lang.t(context,"Отмена","Cancel"), (dialog, which) -> dialog.cancel());
 
         AlertDialog dialog = builder.create();
         dialog.show();

@@ -1,4 +1,6 @@
 <resources>
+    <!-- UI language marker read by util/Lang.java: "ru" only in values-ru. -->
+    <string name="ui_language">ru</string>
     <string name="request_permission">Этому приложению требуется разрешение камеры.</string>
     <string name="camera_error">Это устройство не поддерживает Camera2 API.</string>
     <string name="frame_count">Количество кадров</string>
@@ -105,24 +107,7 @@
     <string name="sheet_handle_open">Открыть панель настроек</string>
     <string name="sheet_handle_toggle">Развернуть или свернуть панель настроек</string>
     <!-- Settings sheet groups and short value labels (segments, quick buttons) -->
-    <string name="sheet_group_shoot">Съёмка</string>
-    <string name="sheet_group_format">Формат</string>
-    <string name="sheet_group_view">Вид</string>
-    <string name="sheet_short_off">Выкл</string>
-    <string name="sheet_short_on">Вкл</string>
-    <string name="sheet_short_auto">Авто</string>
-    <string name="sheet_short_torch">Фонарик</string>
-    <string name="sheet_short_3s">3 с</string>
-    <string name="sheet_short_10s">10 с</string>
-    <string name="sheet_short_normal">Норм.</string>
-    <string name="sheet_short_high">Высок.</string>
-    <string name="sheet_short_center">Центр</string>
-    <string name="sheet_short_average">Сред.</string>
-    <string name="sheet_short_spot">Точка</string>
-    <string name="sheet_short_diagonal">Диаг.</string>
     <!-- Settings sheet row pin (TalkBack, tooltip) -->
-    <string name="sheet_pin_add">В быстрые кнопки</string>
-    <string name="sheet_pin_remove">Убрать из быстрых кнопок</string>
     <!-- Top bar gear that opens SettingsActivity (TalkBack, tooltip) -->
     <string name="sheet_all_settings">Все настройки</string>
     <!-- AE metering -->
@@ -132,4 +117,101 @@
     <string name="ae_metering_spot">Точечный</string>
     <string name="ae_metering_std">Замер AE</string>
     <string name="ultrahdr_summary">Карта усиления Ultra HDR в JPEG (второй, лёгкий проход тона)</string>
+    <string name="ai_denoise">ИИ-шумоподавление Bayer</string>
+    <string name="ai_denoise_strength">Сила ИИ-шумоподавления</string>
+    <string name="ai_denoise_luma">ИИ Luma, %</string>
+    <string name="ai_denoise_chroma">ИИ Chroma, %</string>
+    <string name="ai_denoise_model">Модель ИИ-шумоподавления</string>
+    <string name="show_horizon_on_preview">Показывать горизонт в превью</string>
+    <string name="sensor_configurations">Настройки сенсоров по модулям</string>
+    <string name="sensor_configurations_summary">Уровни RAW, экспозиция, стабилизация и сессия каждого модуля</string>
+    <string name="options">Параметры</string>
+    <string name="ok">ОК</string>
+    <string name="perm_open_settings">Открыть настройки</string>
+    <string name="perm_rationale_camera_title">Доступ к камере и микрофону</string>
+    <string name="perm_rationale_media_title">Доступ к фото и видео</string>
+    <string name="sharp_radius">Радиус</string>
+    <string name="sharp_radius_desc">Радиус размытия в пикселях. RawTherapee: 0.5</string>
+    <string name="sharp_amount">Сила, %</string>
+    <string name="sharp_amount_desc">Доля разницы, возвращаемая в изображение. RawTherapee: 200</string>
+    <string name="sharp_contrast">Порог контраста, %</string>
+    <string name="sharp_contrast_desc">Резкость гасится там, где локальный контраст ниже порога — плоские участки и шум не усиливаются. RawTherapee: 20</string>
+    <string name="sharp_threshold_bl">Узел 1 (начало нарастания)</string>
+    <string name="sharp_threshold_tl">Узел 2 (полная сила)</string>
+    <string name="sharp_threshold_tr">Узел 3 (начало спада)</string>
+    <string name="sharp_threshold_br">Узел 4 (конец спада)</string>
+    <string name="sharp_edges_only">Включить</string>
+    <string name="sharp_edges_only_desc">RawTherapee: выключено</string>
+    <string name="sharp_edges_radius">Радиус детектора</string>
+    <string name="sharp_edges_tolerance">Допуск</string>
+    <string name="sharp_edges_tolerance_desc">В шкале 0–32768. RawTherapee: 1800</string>
+    <string name="sharp_halo_control">Включить</string>
+    <string name="sharp_halo_control_desc">RawTherapee: выключено</string>
+    <string name="sharp_halo_amount">Сила, %</string>
+    <string name="sharp_micro_amount">Сила</string>
+    <string name="sharp_micro_uniformity">Однородность</string>
+    <string name="sharp_micro_uniformity_desc">Выбирает набор ограничений по яркости, 0–10. RawTherapee: 5</string>
+    <string name="sharp_micro_contrast">Порог контраста, %</string>
+    <string name="sharp_micro_matrix">Матрица 3x3</string>
+    <string name="sharp_micro_matrix_desc">Выключено — 5x5, как в RawTherapee по умолчанию</string>
+    <string name="sharp_usm_enabled">Включить Unsharp Mask</string>
+    <string name="sharp_deconv_enabled">Включить RL-деконволюцию</string>
+    <string name="sharp_micro_enabled">Включить микроконтраст</string>
+    <string name="sharp_deconv_halo">Сила, %</string>
+    <string name="sharp_deconv_halo_margin">Запас на текстуру</string>
+    <string name="sharp_deconv_halo_margin_desc">Доля локального размаха, которую разрешено пройти свободно — мелкая фактура не ограничивается</string>
+    <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
+    <string name="sharp_deconv_halo_macro_desc">Локальный контраст, выше которого подавление работает в полную силу</string>
+    <string name="sharp_deconv_kernel">Тип ядра PSF</string>
+    <string name="sharp_deconv_kernel_desc">Форма функции рассеяния точки для этой ступени</string>
+    <string-array name="sharp_deconv_kernel_entries">
+        <item>Гаусс (классика)</item>
+        <item>Оптика / линза (Pillbox)</item>
+        <item>Диск Эйри (волновая дифракция)</item>
+    </string-array>
+    <string name="sharp_deconv_radius">Радиус</string>
+    <string name="sharp_deconv_amount">Сила, %</string>
+    <string name="sharp_deconv_iterations">Итерации</string>
+    <string name="sharp_deconv_iterations_desc">0 отключает ступень. Каждая итерация — два полноразмерных прохода</string>
+    <string name="sharp_deconv_damping">Затухание</string>
+    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом</string>
+    <string name="live_viewfinder_raw">Живой видоискатель</string>
+    <string name="live_viewfinder_raw_summary">Предпросмотр с проявлением RAW. При выключении или недоступности RAW — стандартное превью камеры. Полная обработка снимка выполняется после съёмки.</string>
+    <string name="remosaic_enabled">Включить ремозаик</string>
+    <string name="remosaic_enabled_desc">Только для камер, отдающих quad или tetra мозаику</string>
+    <string name="remosaic_phase_x">Фаза по X</string>
+    <string name="remosaic_phase_y">Фаза по Y</string>
+    <string name="remosaic_phase_desc">Смещение сетки блоков. Неверная фаза даёт цветную сетку — подбирается по снимку</string>
+    <string name="remosaic_profile">Характер интерполяции</string>
+    <string name="remosaic_profile_desc">Сколько сглаживания вносит ремозаик</string>
+    <string-array name="remosaic_profile_entries">
+        <item>Ближайший отсчёт — без сглаживания</item>
+        <item>Резкий — узкое ядро</item>
+        <item>Сбалансированный</item>
+        <item>Мягкий — широкое ядро и медиана</item>
+    </string-array>
+    <string name="remosaic_steered">Интерполяция по направлению</string>
+    <string name="remosaic_steered_desc">Зелёный достраивается вдоль кромки, а не поперёк. Усреднение через кромку даёт промежуточное значение, а по нему считаются цветовые разности — отсюда цветная кайма у букв и контуров</string>
+    <string name="remosaic_clamp">Ограничение цветовых разностей</string>
+    <string name="remosaic_clamp_desc">Интерполированная разность не выходит за пределы измеренных рядом. На ровной поверхности не меняет ничего, на кромке срезает выброс — тот самый розовый ореол</string>
+    <string name="remosaic_dump">Сохранять выход ремозаика</string>
+    <string name="remosaic_dump_desc">Кладёт рядом с обычным DNG ещё один — ровно то, что записал узел, до демозаика. Нужен, чтобы отличить ошибку самого ремозаика от ошибки стадий после него. Каждый снимок занимает ещё 24 МБ</string>
+    <string name="remosaic_flatfield">Плоское поле блока</string>
+    <string name="remosaic_flatfield_desc">Фотосайты внутри блока отличаются откликом — на этом сенсоре до 12 %, и по-своему для каждого цвета. Профиль снимается с самого кадра и делится обратно, иначе он входит в зелёное поле и с обратным знаком в цветовые разности: цветной налёт на мелкой структуре. Эталонное приложение этого не делает, поэтому по умолчанию выключено — включать как эксперимент</string>
+    <string name="remosaic_backend_title">Алгоритм ремозаика</string>
+    <string-array name="remosaic_backend_entries">
+        <item>SCAMERA</item>
+        <item>Tetra Detail v2 — по мотивам Vivo</item>
+        <item>Vivo Neural — NPU, root (эксперимент)</item>
+        <item>HP9 HexQuad — NPU, 6 кадров (тест)</item>
+        <item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item>
+    </string-array>
+    <string name="remosaic_vivo_probe_desc">Проверка совместимости на этом телефоне. Обработка снимков не запускается.</string>
+    <string name="remosaic_vivo_checking">Проверка…</string>
+    <string name="remosaic_vivo_result">Результат проверки Vivo</string>
+    <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
+    <string-array name="hexquad_model_entries">
+        <item>x2 — текущая модель</item>
+        <item>x1 — экспериментальная</item>
+    </string-array>
 </resources>

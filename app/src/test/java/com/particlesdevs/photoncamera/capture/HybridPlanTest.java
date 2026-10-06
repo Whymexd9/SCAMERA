@@ -99,6 +99,23 @@ public class HybridPlanTest {
         assertEquals(12000, night.requests.get(0).iso);
     }
 
+    @Test public void learnedGainCapMovesTheBracketToTheShutter() {
+        ExposureLimits.resetForTest();
+        ExposureLimits limits = ExposureLimits.of("2", 4096, 3072, false);
+        CaptureRequest q = mock(CaptureRequest.class);
+        when(q.get(CaptureRequest.CONTROL_AE_MODE)).thenReturn(CaptureRequest.CONTROL_AE_MODE_OFF);
+        when(q.get(CaptureRequest.SENSOR_EXPOSURE_TIME)).thenReturn(10_000_000L);
+        when(q.get(CaptureRequest.SENSOR_SENSITIVITY)).thenReturn(640);
+        // without a learned cap: today's plan (gain first)
+        assertEquals(640, HybridPlan.build(10_000_000L, 320, 0f, camera(12000), limits).requests.get(0).iso);
+        limits.observeManual(q, result(10_000_000L, 320));
+        limits.observeManual(q, result(10_000_000L, 320));
+        HybridPlan.Request r = HybridPlan.build(10_000_000L, 320, 0f, camera(12000), limits).requests.get(0);
+        assertEquals(ImageFrame.CaptureRole.LONG, r.role);
+        assertEquals(320, r.iso);
+        assertEquals(20_000_000L, r.shutterNs);
+    }
+
     @Test public void normalBackTakesNAfterTheShutterThenTheExtras() {
         HybridPlan plan = HybridPlan.buildNormalBack(10_000_000L, 20000, 0f, camera(12000), 4);
         for (int i = 0; i < 4; i++) {

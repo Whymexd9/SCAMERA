@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quick-settings shade (P25): group titles, tile names and short values. Short values are at most 8 characters
+     (ShadeCatalogTest), except the ones listed there. -->
+<resources>
+    <string name="shade_group_shoot">Съёмка</string>
+    <string name="shade_group_format">Формат</string>
+    <string name="shade_group_hybrid">Hybrid</string>
+    <string name="shade_group_scamhdr">SCAM HDR</string>
+    <string name="shade_group_color">Цвет и резкость</string>
+    <string name="shade_group_view">Видоискатель</string>
+
+    <string name="shade_on">Вкл.</string>
+    <string name="shade_off">Выкл.</string>
+
+    <!-- Camera controls without a row in the settings tree -->
+    <string name="shade_title_flash">Вспышка</string>
+    <string name="shade_title_timer">Таймер</string>
+    <string name="shade_title_format">Формат файла</string>
+    <string name="shade_title_metering_std">Замер Camera2</string>
+    <string-array name="shade_l_flash">
+        <item>Фонарик</item>
+        <item>Выключена</item>
+    </string-array>
+    <string-array name="shade_l_timer">
+        <item>Выключен</item>
+        <item>3 секунды</item>
+        <item>10 секунд</item>
+    </string-array>
+    <string-array name="shade_l_format">
+        <item>JPEG</item>
+        <item>RAW + JPEG</item>
+        <item>RAW</item>
+    </string-array>
+    <string-array name="shade_l_metering_std">
+        <item>Авто</item>
+        <item>Центровзвешенный</item>
+        <item>Средний</item>
+        <item>Точечный</item>
+    </string-array>
+
+    <!-- Tile names -->
+    <string name="shade_t_flash">Вспышка</string>
+    <string name="shade_t_timer">Таймер</string>
+    <string name="shade_t_format">Формат</string>
+    <string name="shade_t_metering_std">Замер Camera2</string>
+    <string name="shade_t_metering">Замер</string>
+    <string name="shade_t_route">Склейка</string>
+    <string name="shade_t_output">Разрешение</string>
+    <string name="shade_t_downsampler">Даунсемплер</string>
+    <string name="shade_t_ultrahdr">Ultra HDR</string>
+    <string name="shade_t_wide169">16:9</string>
+    <string name="shade_t_watermark">Водяной знак</string>
+    <string name="shade_t_bento">Bento</string>
+    <string name="shade_t_bento_frames">Bento: кадров</string>
+    <string name="shade_t_shasta">Shasta</string>
+    <string name="shade_t_hybrid_frames">N-кадров Hybrid</string>
+    <string name="shade_t_luma">Luma</string>
+    <string name="shade_t_chroma">Chroma</string>
+    <string name="shade_t_sharp">Резкость</string>
+    <string name="shade_t_rejection">Отбраковка</string>
+    <string name="shade_t_scam_frames">N-кадров SCAM</string>
+    <string name="shade_t_long_boost">Удлинение L</string>
+    <string name="shade_t_mosaic">Мозаика ISZ</string>
+    <string name="shade_t_tone_curve">Кривая</string>
+    <string name="shade_t_usm">USM</string>
+    <string name="shade_t_grid">Сетка</string>
+    <string name="shade_t_peak">Пик фокуса</string>
+    <string name="shade_t_live_raw">Живой RAW</string>
+    <string name="shade_t_debug">Отладка</string>
+
+    <!-- Short values on tiles and segments -->
+    <string-array name="shade_s_flash">
+        <item>Фонарик</item>
+        <item>Выкл.</item>
+    </string-array>
+    <string-array name="shade_s_timer">
+        <item>Выкл.</item>
+        <item>3 с</item>
+        <item>10 с</item>
+    </string-array>
+    <string-array name="shade_s_format">
+        <item>JPEG</item>
+        <item>R+J</item>
+        <item>RAW</item>
+    </string-array>
+    <string-array name="shade_s_metering_std">
+        <item>Авто</item>
+        <item>Центр</item>
+        <item>Сред.</item>
+        <item>Точка</item>
+    </string-array>
+    <string-array name="shade_s_route">
+        <item>Hybrid</item>
+        <item>SCAM HDR</item>
+    </string-array>
+    <string-array name="shade_s_output">
+        <item>1×</item>
+        <item>12 МП</item>
+        <item>16 МП</item>
+        <item>20 МП</item>
+        <item>2×</item>
+    </string-array>
+    <string-array name="shade_s_downsampler">
+        <item>Lanczos</item>
+        <item>Bicubic</item>
+        <item>Area</item>
+        <item>Bilinear</item>
+    </string-array>
+    <string-array name="shade_s_bento">
+        <item>Выкл.</item>
+        <item>Авто</item>
+        <item>Всегда</item>
+    </string-array>
+    <string-array name="shade_s_bento_frames">
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="shade_s_sharp">
+        <item>ARK</item>
+        <item>RT</item>
+        <item>SCAM</item>
+        <item>Выкл.</item>
+    </string-array>
+    <string-array name="shade_s_mosaic">
+        <item>Bayer</item>
+        <item>GPU</item>
+        <item>Tetra</item>
+        <item>MFR</item>
+        <item>Нейро</item>
+        <item>Sabre</item>
+        <item>Нейро+Sabre</item>
+    </string-array>
+    <string-array name="shade_s_grid">
+        <item>Выкл.</item>
+        <item>3×3</item>
+        <item>4×4</item>
+        <item>Φ</item>
+        <item>Диаг.</item>
+    </string-array>
+    <string-array name="shade_s_peak">
+        <item>Выкл.</item>
+        <item>Вкл.</item>
+        <item>Авто</item>
+    </string-array>
+    <string-array name="shade_s_debug">
+        <item>Выкл.</item>
+        <item>HUD</item>
+        <item>HUD+гист</item>
+        <item>Полная</item>
+    </string-array>
+
+    <string name="shade_scrim">Опустить шторку</string>
+
+    <!-- Tiles, rows, toasts -->
+    <string name="shade_pinned">Закреплено</string>
+    <string name="shade_add">Добавить</string>
+    <string name="shade_add_description">Добавить в шторку</string>
+    <string name="shade_toast_value">%1$s: %2$s</string>
+    <string name="shade_changed">изменено</string>
+    <string name="shade_added">Добавлено: %1$s</string>
+    <string name="shade_removed">Убрано: %1$s</string>
+    <string name="shade_full">В шторке максимум %1$d плиток</string>
+    <string name="shade_pin">Закрепить %1$s</string>
+    <string name="shade_unpin">Открепить %1$s</string>
+    <string name="shade_group_extra">Добавлено из настроек</string>
+
+    <!-- Catalog «Добавить в шторку» -->
+    <string name="shade_catalog_title">Добавить в шторку</string>
+    <string name="shade_catalog_close">Закрыть</string>
+    <string name="shade_catalog_search">Поиск по всем настройкам</string>
+    <string name="shade_catalog_clear">Очистить поиск</string>
+    <string name="shade_catalog_count">В шторке %1$d из %2$d · всего настроек: %3$d</string>
+    <string name="shade_catalog_found">Найдено: %1$d · в шторке %2$d из %3$d</string>
+    <string name="shade_catalog_nothing">Ничего не найдено</string>
+    <string name="shade_catalog_note">Текстовые поля (подписи, таблицы шумодава, Camera ID) меняются только в настройках.</string>
+    <string name="shade_catalog_pinned">В шторке</string>
+    <string name="shade_catalog_row_add">Добавить в шторку: %1$s</string>
+    <string name="shade_catalog_row_pinned">В шторке, убрать: %1$s</string>
+    <string name="shade_more">Другие настройки</string>
+    <string name="shade_more_summary">Любую настройку — в шторку (всего %1$d)</string>
+
+    <!-- Edit mode, reorder -->
+    <string name="shade_edit">Изменить</string>
+    <string name="shade_done">Готово</string>
+    <string name="shade_drag_title">Перетащи плитки</string>
+    <string name="shade_place">%1$s: место %2$d из %3$d</string>
+    <string name="shade_action_earlier">Раньше</string>
+    <string name="shade_action_later">Позже</string>
+    <string name="shade_action_remove">Убрать из шторки</string>
+    <string name="shade_remove_description">Убрать %1$s</string>
+
+    <!-- Viewfinder chrome -->
+    <string name="shade_badge_route">Склейка %1$s</string>
+    <string name="shade_shutter">Снимок</string>
+    <string name="shade_flip_camera">Фронтальная / основная камера</string>
+    <string name="shade_gallery">Галерея</string>
+    <string name="shade_all_settings_summary">Hybrid, SCAM HDR, цвет, захват, конфиг</string>
+    <string name="shade_all_settings_summary_mtk">Hybrid, цвет, захват, конфиг</string>
+    <string name="shade_hint">Свайп вверх — шторка\nЗажми плитку — переставить</string>
+
+    <!-- Why a tile is dimmed -->
+    <string name="shade_reason_no_flash">У этого объектива нет вспышки</string>
+    <string name="shade_reason_mediatek">MediaTek: только Hybrid (SCAM HDR работает на NPU Snapdragon)</string>
+    <string name="shade_reason_nice_dev">Задано в nice_dev.txt</string>
+    <string name="shade_reason_dependency">Включите «%1$s».</string>
+</resources>

@@ -11,12 +11,12 @@
     <string name="mosaic_sr_scale">Output resolution scale</string>
     <string name="mosaic_sr_kernel">CFA reconstruction kernel</string>
     <string-array name="quad_bayer_mode_entries"><item>Auto: HAL remosaic, direct Quad fallback</item><item>Sensor remosaic (normal Bayer)</item><item>Direct Quad CFA (GPU demosaic)</item></string-array>
-    <string-array name="quad_bayer_mode_values"><item>auto</item><item>sensor_remosaic</item><item>direct_quad</item></string-array>
+    <string-array name="quad_bayer_mode_values" translatable="false"><item>auto</item><item>sensor_remosaic</item><item>direct_quad</item></string-array>
     <string-array name="quad_dng_metadata_entries"><item>Auto</item><item>QBCFA 4x4</item><item>Compatible Bayer 2x2</item></string-array>
-    <string-array name="quad_dng_metadata_values"><item>auto</item><item>qbcfa_4x4</item><item>bayer_2x2</item></string-array>
+    <string-array name="quad_dng_metadata_values" translatable="false"><item>auto</item><item>qbcfa_4x4</item><item>bayer_2x2</item></string-array>
     <string-array name="mosaic_sr_scale_entries"><item>1.225× — approximately 18 MP</item><item>1.414× — approximately 24 MP</item><item>2.000× — approximately 48 MP</item></string-array>
-    <string-array name="mosaic_sr_scale_values"><item>1.22474487</item><item>1.41421356</item><item>2.0</item></string-array>
+    <string-array name="mosaic_sr_scale_values" translatable="false"><item>1.22474487</item><item>1.41421356</item><item>2.0</item></string-array>
     <string-array name="mosaic_sr_kernel_entries"><item>Bilinear — fastest</item><item>Catmull-Rom — balanced</item><item>Lanczos2 — maximum detail</item></string-array>
-    <string-array name="mosaic_sr_kernel_values"><item>bilinear</item><item>catmull_rom</item><item>lanczos2</item></string-array>
+    <string-array name="mosaic_sr_kernel_values" translatable="false"><item>bilinear</item><item>catmull_rom</item><item>lanczos2</item></string-array>
     <string name="full_debug_summary">Write a detailed diagnostic log to Download/SCAMERA/SCAMERA-debug.log</string>
 </resources>

@@ -24,6 +24,8 @@ android {
     // avoids AGP wrapping the 43 MB binary in a temporary single-entry JAR.
     androidResources {
         noCompress += ['bin', 'param', 'tflite']
+        // UI languages: English (default values/) and Russian (values-ru/); library translations for others are dropped.
+        localeFilters += ['en', 'ru']
     }
 
     packagingOptions {

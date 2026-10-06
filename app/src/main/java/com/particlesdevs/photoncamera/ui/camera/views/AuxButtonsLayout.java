@@ -35,6 +35,7 @@ import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,6 +45,10 @@ import java.util.Locale;
 
 /**
  * Container for multi-camera buttons.
+ * <p>
+ * P25 look: one pill-shaped CARD with a LINE stroke (aux_container_background) under the bottom bar's zoom ruler, the
+ * active lens filled with the camera accent (INK text), the others MUTED, three dots between them, decimal commas
+ * («0,6×», «2,5×»). The gestures are unchanged (owner's answer 2): tap selects a lens, a horizontal drag zooms.
  * <p>
  * This layout's functionality is dependent on {@link AuxButtonsModel} which is provided
  * through DataBinding {@link CustomBinding#setAuxButtonModel(AuxButtonsLayout, AuxButtonsModel)}.
@@ -59,7 +64,6 @@ public class AuxButtonsLayout extends LinearLayout {
     private final LinearLayout.LayoutParams buttonParams;
     private AuxButtonListener auxButtonListener;
     private AuxButtonsModel auxButtonsModel;
-    private boolean hiddenBySettings;
     private long lastSwitch = -500;
     private int labelRotation;
     private final List<String> displayedSlots = new ArrayList<>();
@@ -69,10 +73,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         setWillNotDraw(false);
 
-        int margin = (int) context.getResources().getDimension(R.dimen.aux_button_internal_margin);
-        int size = (int) context.getResources().getDimension(R.dimen.vf_lens_height);
-        buttonParams = new LinearLayout.LayoutParams(0, size, 1f);
-        buttonParams.setMargins(margin, margin, margin, margin);
+        float density = context.getResources().getDisplayMetrics().density;
+        // 8dp between two lenses: room for the three dots.
+        buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, Math.round(40 * density));
+        int gap = Math.round(4 * density);
+        buttonParams.setMargins(gap, 0, gap, 0);
 
         // The layout editor runs this constructor but not the data-binding adapters,
         // so populate a few sample buttons so the host preview shows the aux palette.
@@ -150,20 +155,23 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             button.setSelected(ModuleRegistry.active().equals(auxButtonsMap.get(button.getId())) ||
                     (!ModuleRegistry.slots().contains(ModuleRegistry.active()) && activeId.equals(ModuleRegistry.camera(auxButtonsMap.get(button.getId())))));
         }
+        styleSelection();
     }
 
     private void updateVisibility() {
-        setVisibility(hiddenBySettings || getChildCount() <= 1 ? View.INVISIBLE : View.VISIBLE);
+        setVisibility(getChildCount() <= 1 ? View.INVISIBLE : View.VISIBLE);
     }
 
-    public void setAuxButtonsHidden(boolean hidden) {
-        hiddenBySettings = hidden;
-        if (hidden) {
-            animate().setDuration(200).alpha(0).scaleX(0).scaleY(0)
-                    .withEndAction(() -> setVisibility(View.INVISIBLE)).start();
-        } else {
-            updateVisibility();
-            animate().setDuration(200).alpha(1).scaleX(1).scaleY(1).start();
+    /** «0.6×» -> «0,6×»: the decimal comma on the strip (owner's answer 11); labels are stored as they are. */
+    static String display(String label) {
+        return label == null ? "" : label.replaceAll("(\\d)\\.(\\d)", "$1,$2");
+    }
+
+    /** The active lens in bold; the colours follow the selected state. */
+    private void styleSelection() {
+        for (int i = 0; i < getChildCount(); i++) {
+            View v = getChildAt(i);
+            if (v instanceof Button) ((Button) v).setTypeface(null, v.isSelected() ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         }
     }
 
@@ -181,6 +189,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
                 View child = getChildAt(i);
                 child.setSelected(view.equals(child));
             }
+            styleSelection();
             if (auxButtonListener != null)
             {
                 String slot=auxButtonsMap.get(view.getId());
@@ -195,27 +204,27 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     private void addNewButton(String cameraId, String buttonText) {
         Button b = new Button(getContext());
         b.setLayoutParams(buttonParams);
-        b.setMinimumWidth(0);
-        b.setMinWidth(0);
+        float density = getResources().getDisplayMetrics().density;
+        b.setMinimumWidth(Math.round(48 * density));
+        b.setMinWidth(Math.round(48 * density));
         b.setMinHeight(0);
         b.setMinimumHeight(0);
-        int padding = Math.round(getResources().getDisplayMetrics().density * 6f);
+        int padding = Math.round(density * 9f);
         b.setPadding(padding, 0, padding, 0);
         b.setGravity(android.view.Gravity.CENTER);
         b.setIncludeFontPadding(false);
         b.setMaxLines(1);
         b.setHorizontallyScrolling(false);
-        b.setText(buttonText);
+        b.setText(display(buttonText));
         b.setRotation(labelRotation);
-        b.setContentDescription("Объектив " + buttonText);
-        b.setTextSize(13);
-        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext()),0xFFFFFFFF}));
-        android.graphics.drawable.Drawable selected = new android.graphics.drawable.Drawable() {
-            final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-            @Override public void draw(android.graphics.Canvas c){p.setColor(0x99000000);android.graphics.Rect r=getBounds();c.drawCircle(r.exactCenterX(),r.exactCenterY(),Math.min(r.width(),r.height())/2f,p);}
-            @Override public void setAlpha(int a){} @Override public void setColorFilter(android.graphics.ColorFilter f){}
-            @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
-        };
+        b.setContentDescription(Lang.t(getContext(), "Объектив ", "Lens ") + display(buttonText));
+        b.setTextSize(14);
+        int accent = com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext());
+        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},
+                new int[]{com.particlesdevs.photoncamera.ui.settings.SettingsStyle.INK, com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED}));
+        android.graphics.drawable.GradientDrawable selected = new android.graphics.drawable.GradientDrawable();
+        selected.setColor(accent);
+        selected.setCornerRadius(100 * density);
         android.graphics.drawable.StateListDrawable states=new android.graphics.drawable.StateListDrawable();
         states.addState(new int[]{android.R.attr.state_selected},selected);
         states.addState(new int[]{},new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
@@ -239,8 +248,9 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             boolean selected = slot.equals(active);
             v.setSelected(selected);
             ((Button) v).setText(selected && Math.abs(zoom - ModuleRegistry.zoom(slot)) >= 0.05f
-                    ? String.format(Locale.US, "%.1f×", zoom).replace(".0×", "×") : ModuleRegistry.label(slot));
+                    ? String.format(Locale.US, "%.1f×", zoom).replace(".0×", "×").replace('.', ',') : display(ModuleRegistry.label(slot)));
         }
+        styleSelection();
     }
 
     private Runnable dialRefresh;
@@ -282,22 +292,16 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         }
         return true;
     }
-    @Override protected void onMeasure(int widthSpec,int heightSpec) {
-        int screen=getResources().getDisplayMetrics().widthPixels;
-        int height=Math.round(screen * .088f);
-        for(int i=0;i<getChildCount();i++){
-            View v=getChildAt(i);LinearLayout.LayoutParams lp=(LinearLayout.LayoutParams)v.getLayoutParams();
-            lp.height=Math.round(screen*.077f);v.setLayoutParams(lp);
-            if(v instanceof Button)((Button)v).setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,screen*.028f);
-        }
-        super.onMeasure(widthSpec,MeasureSpec.makeMeasureSpec(height,MeasureSpec.EXACTLY));
-    }
-
+    /** Three dots between two lenses (MUTED at 60 %). */
     @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
         super.dispatchDraw(canvas);
-        android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);p.setColor(0x99FFFFFF);
+        android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setColor((com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED&0x00FFFFFF)|0x99000000);
         float d=getResources().getDisplayMetrics().density;
-        for(int i=1;i<getChildCount();i++) {float x=getChildAt(i).getLeft();for(int t=-1;t<=1;t++)canvas.drawCircle(x+t*3*d,getHeight()/2f,.6f*d,p);}
+        for(int i=1;i<getChildCount();i++) {
+            float x=(getChildAt(i-1).getRight()+getChildAt(i).getLeft())/2f;
+            for(int t=-1;t<=1;t++)canvas.drawCircle(x+t*2.5f*d,getHeight()/2f,.9f*d,p);
+        }
     }
     public interface AuxButtonListener {
         void onAuxButtonClicked(String cameraId);

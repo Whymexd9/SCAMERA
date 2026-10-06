@@ -7,6 +7,7 @@ import androidx.preference.ListPreference;
 import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceScreen;
 
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableCheckBoxPreference;
@@ -104,7 +105,6 @@ public class TunablePreferenceGenerator {
     private static String destination(String className) {
         switch (className) {
             case "Parameters": return "expert_sensor_screen";
-            case "CameraUIViewImpl": return "expert_viewfinder_screen";
             default: return null; // unknown class: logged as a missing destination below
         }
     }
@@ -162,7 +162,7 @@ public class TunablePreferenceGenerator {
         // Create new category
         PreferenceCategory category = new PreferenceCategory(context);
         category.setKey(categoryKey);
-        category.setTitle(categoryName.isEmpty() ? "Параметры" : categoryName);
+        category.setTitle(categoryName.isEmpty() ? Lang.t(context, "Параметры", "Parameters") : categoryName);
         screen.addPreference(category);
         
         return category;
@@ -205,7 +205,7 @@ public class TunablePreferenceGenerator {
                 checkBox.setTitle(annotation.title());
 
                 if (!annotation.description().isEmpty()) {
-                    checkBox.setSummary(annotation.description());
+                    checkBox.setSummary(description(annotation.description()));
                 }
 
                 // Get default value and convert to int (0 or 1)
@@ -223,7 +223,7 @@ public class TunablePreferenceGenerator {
                 seekBar.setTitle(annotation.title());
 
                 if (!annotation.description().isEmpty()) {
-                    seekBar.setSummary(annotation.description());
+                    seekBar.setSummary(description(annotation.description()));
                 }
 
                 // Set min/max/step
@@ -265,7 +265,7 @@ public class TunablePreferenceGenerator {
             pngPref.setAllowedPngSizes(annotation.allowedPngSizes());
 
             if (!annotation.description().isEmpty()) {
-                pngPref.setSummary(annotation.description());
+                pngPref.setSummary(description(annotation.description()));
             } else {
                 pngPref.setSummary("None selected");
             }
@@ -316,11 +316,12 @@ public class TunablePreferenceGenerator {
             double number = PreferenceNumber.read(input, Double.NaN);
             boolean valid = Double.isFinite(number) && number >= annotation.min() && number <= annotation.max()
                     && (PreferenceNumber.floating(fieldType) || number == Math.rint(number));
-            if (!valid) android.widget.Toast.makeText(context, "Число от " + annotation.min() + " до " + annotation.max(), android.widget.Toast.LENGTH_LONG).show();
+            if (!valid) android.widget.Toast.makeText(context, Lang.t(context, "Число от " + annotation.min() + " до " + annotation.max(),
+                    "Number from " + annotation.min() + " to " + annotation.max()), android.widget.Toast.LENGTH_LONG).show();
             return valid;
         });
 
-        String description = annotation.description();
+        String description = description(annotation.description());
         editText.setSummaryProvider(preference -> {
             String value = editText.getText();
             String display = value != null ? value : formatDefault(defaultValue, fieldType);
@@ -372,6 +373,16 @@ public class TunablePreferenceGenerator {
             listPref.setValue(defaultValue);
         }
         Log.d(TAG, "Added list preference: " + prefKey + " with default: " + defaultValue);
+    }
+
+    /** English text of a @Tunable description (the annotations hold the Russian text); other texts as they are. */
+    static String description(String text) {
+        switch (text) {
+            case "Брать динамический уровень чёрного из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)": return Lang.t(text, "Take the dynamic black level from the Camera2 capture result when there is one (unstable on some devices)");
+            case "Брать динамический уровень белого из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)": return Lang.t(text, "Take the dynamic white level from the Camera2 capture result when there is one (unstable on some devices)");
+            case "Не зеркалить снимки фронтальной камеры": return Lang.t(text, "Do not mirror front camera photos");
+            default: return text;
+        }
     }
 
     private static String formatDefault(float defaultValue, Class<?> fieldType) {

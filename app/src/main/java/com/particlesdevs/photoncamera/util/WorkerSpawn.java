@@ -87,7 +87,7 @@ public final class WorkerSpawn {
         int[] raw = new int[fds.length];
         for (int i = 0; i < fds.length; i++) raw[i] = fds[i].getFd();
         int[] r = spawn(argv, env, raw);
-        if (r == null) throw new IOException("Не удалось запустить обработчик");
+        if (r == null) throw new IOException(Lang.t("Не удалось запустить обработчик", "Could not start the processor"));
         return new Child(r[0], r[1]);
     }
 }

@@ -291,6 +291,8 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     public float maximum(){return mMax;}
     public boolean decimal(){return isFloat;}
     public float defaultNumber(){return parseValue(fallback_value,mMin);}
+    /** Steps per unit of the bar (1 for integer sliders); the quick-settings shade uses the same grid. */
+    public float stepPerUnit(){return mStepPerUnit;}
     private void showPreciseValueDialog() {
         if (!isEnabled()) return;
         com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),String.valueOf(getTitle()),

@@ -117,8 +117,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private static final String ACTIVE_BACKCAM_ID = "ACTIVE_BACKCAM_ID"; //key for savedInstanceState
     private static final String ACTIVE_FRONTCAM_ID = "ACTIVE_FRONTCAM_ID"; //key for savedInstanceState
     private static final String NOTIFICATION_CHANNEL_ID = "NOTIFICATION_CHANNEL_ID";
-    /** FULL settings sheet height limit as a share of the viewfinder height. */
-    private static final float SHEET_MAX_HEIGHT_FRACTION = 0.66f;
+    /** FULL settings sheet height as a share of the viewfinder height (P25, owner's answer 3). */
+    private static final float SHEET_MAX_HEIGHT_FRACTION = 0.86f;
     /**
      * sActiveBackCamId is either
      * = 0 or camera_id stored in SharedPreferences in case of fresh application Start; or
@@ -157,7 +157,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private NotificationManagerCompat notificationManager;
     private SettingsManager settingsManager;
     private SupportedDevice supportedDevice;
-    private SettingsBarEntryProvider settingsBarEntryProvider;
     private ManualModeConsole manualModeConsole;
     public float displayAspectRatio;
     private HorizonIndicatorView mHorizonIndicatorView;
@@ -237,7 +236,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         timerFrameCountViewModel = new ViewModelProvider(this).get(TimerFrameCountViewModel.class);
         manualModeConsole = ManualInstanceProvider.getNewManualModeConsole();
-        settingsBarEntryProvider = new ViewModelProvider(this).get(SettingsBarEntryProvider.class);
         auxButtonsViewModel = new ViewModelProvider(this).get(AuxButtonsViewModel.class);
         surfaceView = cameraFragmentBinding.layoutViewfinder.surfaceView;
         textureView = cameraFragmentBinding.layoutViewfinder.texture;
@@ -321,25 +319,22 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
         initSettingsBar();
         initZoomDial(view);
-        com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton favorites = view.findViewWithTag("favorite_settings");
-        favorites.setOnApplied(() -> {
-            PhotonCamera.getSettings().loadCache();
-            captureController.restartCamera();
-        });
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
 
-    /** Zoom ruler above the lens strip; dragging the strip or the ruler zooms continuously. */
+    /**
+     * Zoom ruler above the lens strip, a small card in the bottom bar's ruler slot (P25: never over the shade's tiles);
+     * dragging the strip or the ruler zooms continuously.
+     */
     private void initZoomDial(View root) {
-        View viewfinder = root.findViewById(R.id.layout_viewfinder);
-        if (!(viewfinder instanceof android.widget.FrameLayout)) return;
+        View slot = root.findViewById(R.id.zoom_ruler_slot);
+        if (!(slot instanceof android.widget.FrameLayout)) return;
         zoomDial = new com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView(requireContext());
-        int screen = getResources().getDisplayMetrics().widthPixels;
-        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(Math.round(screen * .86f), Math.round(screen * .15f),
-                android.view.Gravity.BOTTOM | android.view.Gravity.CENTER_HORIZONTAL);
-        lp.bottomMargin = Math.round(screen * .01f);
-        ((android.widget.FrameLayout) viewfinder).addView(zoomDial, lp);
+        float density = getResources().getDisplayMetrics().density;
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(Math.round(232 * density), Math.round(48 * density),
+                android.view.Gravity.CENTER);
+        ((android.widget.FrameLayout) slot).addView(zoomDial, lp);
         zoomDial.setListener(this::zoomTo);
         View strip = root.findViewById(R.id.aux_buttons_container);
         if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
@@ -366,28 +361,199 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     private void initSettingsBar() {
-        settingsBarEntryProvider.createEntries();
-        settingsBarEntryProvider.addObserver(mCameraUIEventsListener);
+        com.particlesdevs.photoncamera.settings.SettingsMigration.resetRemovedSettings(getResources());
         SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
-        // The HIDDEN handle sits over the bottom of the lens strip; touches that start on the
-        // strip stay with the strip.
-        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, cameraFragmentBinding.auxButtonsContainer);
+        sheet.attach(shadeHost);
+        // The HIDDEN handle is the sheet's top edge (the strip lives in the bottom bar now, so nothing passes through).
+        cameraFragmentBinding.settingsSheetHandle.setBackground(
+                com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheet(requireContext()));
+        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, null);
         // A level reached by a finger (or settled after a request) goes back to the model as is,
         // so a later rebind (invalidateAll on a camera restart or mode switch, notifyChange on
         // rotation or a new thumbnail) keeps the sheet there. Handle taps and flings ask for
         // their level the same way.
         // The model setter is idempotent, so a level the model asked for is not sent again.
-        sheet.setOnSheetLevelListener(cameraFragmentViewModel::setSheetLevel);
-        // FULL is at most 66% of the viewfinder height.
+        sheet.setOnSheetLevelListener(level -> {
+            cameraFragmentViewModel.setSheetLevel(level);
+            if (level != CameraFragmentModel.SHEET_HIDDEN) hideHint();
+        });
+        // FULL: a scrim over the viewfinder and the top bar; the viewfinder piece starts under the top bar.
+        View scrim = cameraFragmentBinding.shadeScrim, scrimTop = cameraFragmentBinding.shadeScrimTop;
+        sheet.setScrim(scrim, scrimTop);
+        cameraFragmentBinding.getRoot().addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int overlap = Math.max(0, cameraFragmentBinding.layoutTopbar.getRoot().getBottom() - cameraFragmentBinding.cameraContainer.getTop());
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) scrim.getLayoutParams();
+            if (params.topMargin != overlap) {
+                params.topMargin = overlap;
+                scrim.post(() -> scrim.setLayoutParams(params));
+            }
+        });
+        // FULL is 86% of the viewfinder height.
         cameraFragmentBinding.layoutViewfinder.getRoot().addOnLayoutChangeListener(
                 (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
                         sheet.setMaxSheetHeight(Math.round((bottom - top) * SHEET_MAX_HEIGHT_FRACTION)));
-        settingsBarEntryProvider.addEntries(sheet);
+        // The tiles inflate the settings tree once: build them when the camera screen is idle, before the first swipe.
+        android.os.Looper.myQueue().addIdleHandler(() -> {
+            if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.prewarm();
+            return false;
+        });
+    }
+
+    /** What the quick-settings shade needs from the camera screen. */
+    private final com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeHost shadeHost =
+            new com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeHost() {
+        @Override
+        public void applyCameraControl(com.particlesdevs.photoncamera.settings.SettingType type, int value) {
+            if (mCameraUIEventsListener != null)
+                mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(type, value));
+        }
+
+        @Override
+        public void onSettingWritten(com.particlesdevs.photoncamera.settings.ShadeCatalog.Entry entry) {
+            if ("pref_show_grid_key".equals(entry.key)) invalidateSurfaceView();
+            // Read when the session is built (live RAW, 16:9, ...): restart now (owner's answer 7).
+            if (entry.sessionTime && captureController != null) captureController.restartCamera();
+        }
+
+        @Override
+        public void showMessage(CharSequence text) {
+            showCardToast(text);
+        }
+
+        @Override
+        public void openCatalog() {
+            CameraFragment.this.openCatalog();
+        }
+
+        @Override
+        public void openSettings() {
+            launchSettings();
+        }
+
+        @Override
+        public void onValuesChanged() {
+            if (mCameraUIView != null) mCameraUIView.updateBadges();
+        }
+    };
+
+    /** First-run hint (once ever, owner's answer 11): how to open the shade and move a tile. */
+    private android.widget.TextView hint;
+    private static final String HINT_SHOWN = "ui_shade_hint_shown";
+
+    private void showHintOnce() {
+        android.content.SharedPreferences prefs = settingsManager.getDefaultPreferences();
+        if (prefs.getBoolean(HINT_SHOWN, false) || cameraFragmentBinding == null) return;
+        prefs.edit().putBoolean(HINT_SHOWN, true).apply();
+        hint = new android.widget.TextView(requireContext());
+        hint.setText(R.string.shade_hint);
+        hint.setBackgroundResource(R.drawable.shade_card);
+        hint.setTextColor(com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.MUTED);
+        hint.setTextSize(13);
+        hint.setGravity(android.view.Gravity.CENTER);
+        hint.setLineSpacing(0, 1.3f);
+        float density = getResources().getDisplayMetrics().density;
+        hint.setPadding(Math.round(16 * density), Math.round(12 * density), Math.round(16 * density), Math.round(12 * density));
+        hint.setElevation(25 * density);
+        hint.setTag("shade_hint");
+        ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(ConstraintLayout.LayoutParams.WRAP_CONTENT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
+        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.bottomToTop = R.id.layout_bottombar;
+        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.verticalBias = 0.62f;
+        cameraFragmentBinding.cameraContainer.addView(hint, lp);
+        hint.setAlpha(0f);
+        hint.animate().alpha(1f).setDuration(300).start();
+        hint.postDelayed(this::hideHint, 6000);
+    }
+
+    private void hideHint() {
+        android.widget.TextView view = hint;
+        if (view == null) return;
+        hint = null;
+        view.animate().alpha(0f).setDuration(300).withEndAction(() -> {
+            if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+        }).start();
+    }
+
+    private com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeCatalogView catalogView;
+
+    /**
+     * The catalog «Добавить в шторку»: a full-screen page over the camera screen, the camera keeps running (an Activity
+     * would close it and drop the shade to HIDDEN). Built on the first open.
+     */
+    void openCatalog() {
+        if (cameraFragmentBinding == null || activity == null) return;
+        ViewGroup root = (ViewGroup) cameraFragmentBinding.getRoot();
+        if (catalogView == null) {
+            catalogView = new com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeCatalogView(activity,
+                    com.particlesdevs.photoncamera.settings.ShadeCatalog.get(activity), cameraFragmentBinding.settingsBar.pins(), this::closeCatalog);
+            catalogView.setElevation(getResources().getDisplayMetrics().density * 40);
+            // Below the status bar and above the navigation bar, wherever the camera screen draws.
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(catalogView, (v, insets) -> {
+                androidx.core.graphics.Insets bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                        | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+                int base = Math.round(getResources().getDisplayMetrics().density * 12);
+                v.setPadding(v.getPaddingLeft(), base + bars.top, v.getPaddingRight(), bars.bottom);
+                return insets;
+            });
+            ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(0, 0);
+            lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+            root.addView(catalogView, lp);
+            androidx.core.view.ViewCompat.requestApplyInsets(catalogView);
+        } else {
+            catalogView.reset();
+        }
+        catalogView.animate().cancel();
+        catalogView.setVisibility(View.VISIBLE);
+        catalogView.setTranslationY(root.getHeight() > 0 ? root.getHeight() : 2000);
+        catalogView.animate().translationY(0).setDuration(300)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+    }
+
+    private boolean isCatalogOpen() {
+        return catalogView != null && catalogView.getVisibility() == View.VISIBLE;
+    }
+
+    private void closeCatalog() {
+        if (!isCatalogOpen()) return;
+        View view = catalogView;
+        view.animate().cancel();
+        view.animate().translationY(view.getHeight()).setDuration(250)
+                .withEndAction(() -> view.setVisibility(View.GONE)).start();
+        if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
+    }
+
+    private final Runnable hideCardToast = () -> {
+        View toast = cameraFragmentBinding == null ? null : cameraFragmentBinding.shadeToast;
+        if (toast != null) toast.animate().alpha(0f).setDuration(250).withEndAction(() -> toast.setVisibility(View.GONE)).start();
+    };
+
+    /** A short message in the card style (CARD, LINE, MUTED text) above the bottom bar. */
+    public void showCardToast(CharSequence text) {
+        if (cameraFragmentBinding == null) return;
+        android.widget.TextView toast = cameraFragmentBinding.shadeToast;
+        toast.removeCallbacks(hideCardToast);
+        toast.animate().cancel();
+        toast.setText(text);
+        if (toast.getVisibility() != View.VISIBLE) {
+            toast.setAlpha(0f);
+            toast.setVisibility(View.VISIBLE);
+        }
+        toast.animate().alpha(1f).setDuration(200).start();
+        toast.postDelayed(hideCardToast, 1500);
+    }
+
+    /** A lens or camera switch: the shade closes its slider card. */
+    void onLensSwitch() {
+        if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.onLensSwitch();
     }
 
     public void updateSettingsBar(){
-        settingsBarEntryProvider.updateAllEntries();
-        settingsBarEntryProvider.addEntries(cameraFragmentBinding.settingsBar);
+        cameraFragmentBinding.settingsBar.refresh();
         this.mCameraUIView.refresh(CaptureController.isProcessing);
     }
 
@@ -441,10 +607,15 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             cameraFragmentViewModel.updateGalleryThumb(null);
         });
         cameraFragmentViewModel.onResume();
+        // Back from the settings: the shade comes back at the level it was opened from (owner's answer 11).
+        if (levelBeforeSettings > CameraFragmentModel.SHEET_HIDDEN) cameraFragmentViewModel.setSheetLevel(levelBeforeSettings);
+        levelBeforeSettings = -1;
+        showHintOnce();
         auxButtonsViewModel.setAuxButtonListener(mCameraUIEventsListener);
         if (mHorizonIndicatorView != null) {
             mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
         }
+        cameraFragmentBinding.settingsBar.setLive(true);
         captureController.startBackgroundThread();
         textureView.onResume();
         captureController.resumeCamera();
@@ -475,6 +646,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         cameraFragmentViewModel.onPause();
         mCameraUIEventsListener.onPause();
         auxButtonsViewModel.setAuxButtonListener(null);
+        cameraFragmentBinding.settingsBar.setLive(false);
         // The sounds are loaded asynchronously in onResume; release() handles what is there.
         sounds().release();
         // The settings sheet comes back HIDDEN, whatever level it was left at.
@@ -484,11 +656,17 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     /**
-     * Back lowers the settings sheet one level (FULL -> PEEK -> HIDDEN). With the sheet already
+     * Back closes the catalog, else lowers the settings sheet one level (FULL -> PEEK -> HIDDEN). With the sheet already
      * HIDDEN it does nothing, and the app stays open as before.
      */
     @Override
     public boolean onBackPressed() {
+        // Back order (P25): the catalog, then the sheet's own states, then one level down.
+        if (isCatalogOpen()) {
+            catalogView.close();
+            return true;
+        }
+        if (cameraFragmentBinding != null && cameraFragmentBinding.settingsBar.onBackPressed()) return true;
         if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) {
             cameraFragmentViewModel.sheetLevelDown();
         }
@@ -510,7 +688,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             } catch (ExecutionException | InterruptedException ignored) {
             }
         }
-        settingsBarEntryProvider.removeObserver(mCameraUIEventsListener);
+        if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.setLive(false);
         cameraFragmentBinding = null;
         mCameraUIView.destroy();
         mCameraUIView = null;
@@ -922,7 +1100,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      */
     public void showToast(final String text) {
         if (activity != null) {
-            activity.runOnUiThread(() -> Toast.makeText(activity, text, Toast.LENGTH_SHORT).show());
+            // The card style of the camera screen (P25); a plain toast once the views are gone.
+            activity.runOnUiThread(() -> {
+                if (cameraFragmentBinding != null) showCardToast(text);
+                else Toast.makeText(activity, text, Toast.LENGTH_SHORT).show();
+            });
         }
     }
 
@@ -996,7 +1178,12 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         startActivity(galleryIntent, null);
     }
 
+    /** Shade level when the settings were opened, restored on the way back; -1 otherwise. */
+    private int levelBeforeSettings = -1;
+
+    /** The settings screen; the three entry points (top-bar gear, shade header gear, «Все настройки») all come here. */
     public void launchSettings() {
+        levelBeforeSettings = cameraFragmentViewModel.getSheetLevel();
         Intent settingsIntent = new Intent(activity, SettingsActivity.class);
         // Pass current camera mode to settings
         settingsIntent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());

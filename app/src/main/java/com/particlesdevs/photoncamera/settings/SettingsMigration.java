@@ -45,6 +45,25 @@ public final class SettingsMigration {
         }
         editor.apply();
     }
+    /**
+     * Parameters the camera screen no longer offers, left over from PhotonCamera: the HDRX switch (read by nothing), EIS
+     * (only while recording video), exposure bracketing (only the old PhotonCamera planner; the hybrid and SCAM HDR plan
+     * their own frames), Quad Bayer (switches the RAW stream to the full sensor mode, which the ZSL burst of the hybrid
+     * must not) and a fixed preview FPS (caps the exposure of the ZSL frames). They go back to their defaults, so a value
+     * chosen in an older build cannot stay on unseen. Capture still reads EIS, FPS and Quad, so these resets stay even
+     * though the settings bar that showed them is gone (P25: moved here from SettingsBarEntryProvider).
+     */
+    public static void resetRemovedSettings(android.content.res.Resources res) {
+        boolean hdrx = res.getBoolean(R.bool.pref_hdrx_mode_default);
+        boolean eis = res.getBoolean(R.bool.pref_eis_photo_default);
+        boolean quad = res.getBoolean(R.bool.pref_quad_bayer_default);
+        if (PreferenceKeys.isHdrXOn() != hdrx) PreferenceKeys.setHdrX(hdrx);
+        if (PreferenceKeys.isEisPhotoOn() != eis) PreferenceKeys.setEisPhoto(eis);
+        if (PreferenceKeys.isQuadBayerOn() != quad) PreferenceKeys.setQuadBayer(quad);
+        if (PreferenceKeys.getFpsMode() != 0) PreferenceKeys.setFpsMode(0);
+        if (PreferenceKeys.getBracketingMode() != 0) PreferenceKeys.setBracketingMode(0);
+    }
+
     /** ZSL ring capacity 50 once for each restored module snapshot (the RAW MFSR keys go with removeObsolete). */
     public static void migrateMultiFrame(SharedPreferences preferences) {
         Map<String, ?> values=preferences.getAll();
@@ -54,8 +73,8 @@ public final class SettingsMigration {
 
     /**
      * Settings of removed features (settings cleanup, October 2026). Their stored values are dropped from the main
-     * preferences, every module profile and the baseline, and from the favourites, so that a getter or an old config can
-     * never bring them back invisibly. Keys listed here have no getter and no XML row any more.
+     * preferences, every module profile and the baseline, and from the shade's tiles, so that a getter or an old config
+     * can never bring them back invisibly. Keys listed here have no getter and no XML row any more.
      */
     static final java.util.Set<String> OBSOLETE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             // P1: vivo upscale (RAISR, SoftPQE, VSR) and the Lanczos after it
@@ -99,7 +118,10 @@ public final class SettingsMigration {
             // P8: the retired VCF2 route selector and the unreachable RAW video mode
             "pref_vivo_nice_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
             // P12b: the old texture boost switch never reached the worker; pref_lmc_hybrid_motion_boost replaces it
-            "pref_lmc_hybrid_boost"));
+            "pref_lmc_hybrid_boost",
+            // P25: the Quad toggle of the top bar is gone, and with it its tunable «Enable Quad Resolution»; the quick
+            // buttons of concept E and the ☆ favourites became the shade's tiles (migrateShadeTiles reads them first)
+            "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -117,19 +139,18 @@ public final class SettingsMigration {
         return false;
     }
 
-    /** Removes the obsolete keys from one preference set and from its favourites list; returns whether anything changed. */
+    /** Removes the obsolete keys from one preference set and from the shade tiles; returns whether anything changed. */
     public static boolean removeObsolete(SharedPreferences prefs) {
         SharedPreferences.Editor e = prefs.edit();
         boolean changed = false;
         for (String key : prefs.getAll().keySet())
             if (isObsolete(key)) { e.remove(key); changed = true; }
-        String favourites = prefs.getString("settings_favorite_keys", null);
-        if (favourites != null) {
-            try {
-                org.json.JSONArray in = new org.json.JSONArray(favourites), out = new org.json.JSONArray();
-                for (int i = 0; i < in.length(); i++) if (!isObsolete(in.getString(i))) out.put(in.getString(i));
-                if (out.length() != in.length()) { e.putString("settings_favorite_keys", out.toString()); changed = true; }
-            } catch (org.json.JSONException ignored) {}
+        // The shade's tiles (P25): a removed setting leaves the list too.
+        String tiles = prefs.getString(ShadeTiles.KEY, null);
+        if (tiles != null) {
+            java.util.List<String> in = ShadeTiles.split(tiles), out = new java.util.ArrayList<>();
+            for (String key : in) if (!isObsolete(key)) out.add(key);
+            if (out.size() != in.size()) { e.putString(ShadeTiles.KEY, ShadeTiles.join(out)); changed = true; }
         }
         if (changed) e.commit();
         return changed;
@@ -143,6 +164,59 @@ public final class SettingsMigration {
             if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue()))
                 removeObsolete(context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE));
         removeObsolete(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE));
+    }
+
+    /** Quick buttons of the concept E sheet: SettingType names, comma separated, oldest first. */
+    static final String LEGACY_QUICK = "ui_sheet_quick";
+    /** The ☆ favourites of the viewfinder: a JSON array of preference keys. */
+    static final String LEGACY_FAVOURITES = "settings_favorite_keys";
+    /** The concept E quick buttons that have a key; HDRX, EIS, Quad, FPS and bracketing are gone. */
+    private static final Map<String, String> QUICK_KEYS = new java.util.LinkedHashMap<>();
+    static {
+        QUICK_KEYS.put("FLASH", ShadeCatalog.FLASH);
+        QUICK_KEYS.put("TIMER", ShadeCatalog.TIMER);
+        QUICK_KEYS.put("RAW", ShadeCatalog.FORMAT);
+        QUICK_KEYS.put("GRID", "pref_show_grid_key");
+        QUICK_KEYS.put("AE_METERING_STD", ShadeCatalog.METERING_STD);
+        QUICK_KEYS.put("HYBRID_OUTPUT", "pref_lmc_hybrid_output");
+        QUICK_KEYS.put("HYBRID_DOWNSAMPLER", "pref_lmc_hybrid_downsampler");
+    }
+
+    /**
+     * P25: the first value of the shade's tiles (ui_shade_tiles) is the user's old pins, then the 8 defaults (owner's
+     * answer 10): the concept E quick buttons (ui_sheet_quick, mapped to their keys, other names dropped), then the ☆
+     * favourites (settings_favorite_keys, obsolete keys dropped), then ShadeCatalog.DEFAULT_TILES, without repeats.
+     * Keys the catalog does not know and everything after 12 are dropped on read (ShadeTiles.load). A stored tile list
+     * is never overwritten. Both old keys are removed; a second run changes nothing.
+     *
+     * @return whether anything changed
+     */
+    public static boolean migrateShadeTiles(SharedPreferences prefs) {
+        Map<String, ?> values = prefs.getAll();
+        if (!values.containsKey(LEGACY_QUICK) && !values.containsKey(LEGACY_FAVOURITES)) return false;
+        SharedPreferences.Editor e = prefs.edit();
+        if (!values.containsKey(ShadeTiles.KEY)) {
+            java.util.List<String> tiles = new java.util.ArrayList<>();
+            Object quick = values.get(LEGACY_QUICK);
+            if (quick != null) for (String name : quick.toString().split(",")) {
+                String key = QUICK_KEYS.get(name.trim());
+                if (key != null && !tiles.contains(key)) tiles.add(key);
+            }
+            Object favourites = values.get(LEGACY_FAVOURITES);
+            if (favourites != null) {
+                try {
+                    org.json.JSONArray keys = new org.json.JSONArray(favourites.toString());
+                    for (int i = 0; i < keys.length(); i++) {
+                        String key = keys.getString(i);
+                        if (!isObsolete(key) && !tiles.contains(key)) tiles.add(key);
+                    }
+                } catch (org.json.JSONException ignored) {}
+            }
+            for (String key : ShadeCatalog.DEFAULT_TILES) if (!tiles.contains(key)) tiles.add(key);
+            e.putString(ShadeTiles.KEY, ShadeTiles.join(tiles));
+        }
+        e.remove(LEGACY_QUICK).remove(LEGACY_FAVOURITES).commit();
+        return true;
     }
 
     private static final String LEGACY_HYBRID = LmcHybridKeys.LEGACY_PREFIX;

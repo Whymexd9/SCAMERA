@@ -10,6 +10,7 @@ import java.nio.*;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
+import com.particlesdevs.photoncamera.util.Lang;
 
 public final class VivoStockAe implements AutoCloseable {
     private static final String DONOR="b2e3e12469a05cf62c2a5892b2b619228fb29a3ccb8fa9fe5f934df0dd5842e9";
@@ -25,7 +26,7 @@ public final class VivoStockAe implements AutoCloseable {
     private int firstEnter=-1;
     private Plan latest;
     private final TreeMap<Long,Plan> plans=new TreeMap<>();
-    private String failure="Ожидание стокового AE";
+    private String failure=Lang.t("Ожидание стокового AE","Waiting for the stock AE");
     private static native byte[] nativeSolve(byte[] snapshot);
 
     // One injected observer per app process, shared by camera sessions. Attaching
@@ -56,7 +57,7 @@ public final class VivoStockAe implements AutoCloseable {
         this.generation=generation;
         // Calibration was measured separately on all three rear RAW cameras.
         if(!supportedDevice() || !("3".equals(cameraId)||"4".equals(cameraId)||"5".equals(cameraId))) {
-            failure="Стоковый AE: gain-калибровка этой камеры ещё не проверена";return;
+            failure=Lang.t("Стоковый AE: gain-калибровка этой камеры ещё не проверена","Stock AE: the gain calibration of this camera is not verified yet");return;
         }
         subscribed=true;listeners.add(this);warmUp(context);
     }
@@ -76,7 +77,7 @@ public final class VivoStockAe implements AutoCloseable {
             float[] d=result.get(DEBUG);Long timestamp=result.get(CaptureResult.SENSOR_TIMESTAMP);
             if(d==null || d.length<11 || timestamp==null || timestamp<=0 || d[0]<0 || d[0]>=16777216 || d[0]!=(long)d[0])return;
             long id=(long)d[0];previews.put(id,new Preview(d,timestamp));trim(previews);bind(id);
-        }catch(RuntimeException unavailable){failure="Стоковый AE: vendor-метаданные недоступны";}
+        }catch(RuntimeException unavailable){failure=Lang.t("Стоковый AE: vendor-метаданные недоступны","Stock AE: vendor metadata unavailable");}
     }
     private static <T> void trim(LinkedHashMap<Long,T> map) {while(map.size()>48)map.remove(map.keySet().iterator().next());}
     private synchronized void bind(long id) {
@@ -88,7 +89,7 @@ public final class VivoStockAe implements AutoCloseable {
                Float.floatToRawIntBits(p.getFloat(8))!=Float.floatToRawIntBits(preview.debug[2]) ||
                Float.floatToRawIntBits(p.getFloat(12))!=Float.floatToRawIntBits(preview.debug[8]) ||
                Float.floatToRawIntBits(p.getFloat(0x5c))!=Float.floatToRawIntBits(preview.debug[9]))
-                throw new IOException("Несовпадение Camera2/native AE кадра");
+                throw new IOException(Lang.t("Несовпадение Camera2/native AE кадра","Camera2/native AE frame mismatch"));
             VivoNiceAeContext niceContext=new VivoNiceAeContext(p.array(),sample.data.get(0x298),sample.plan);
             Plan next=new Plan(sample.plan,niceContext,id,preview.timestamp,preview.received,generation);
             plans.put(next.timestamp,next);while(plans.size()>48)plans.pollFirstEntry();
@@ -103,7 +104,7 @@ public final class VivoStockAe implements AutoCloseable {
         Map.Entry<Long,Plan> entry=plans.floorEntry(shutterTimestamp);
         Plan selected=entry==null?null:entry.getValue();
         if(closed || latest==null || selected==null || SystemClock.elapsedRealtimeNanos()-selected.received>800_000_000L)
-            throw new IllegalStateException(failure==null?"Стоковый AE устарел":failure);
+            throw new IllegalStateException(failure==null?Lang.t("Стоковый AE устарел","Stock AE is stale"):failure);
         return selected;
     }
     // Frames after the shutter may stand in only when no pre-shutter plan can
@@ -311,10 +312,10 @@ public final class VivoStockAe implements AutoCloseable {
                 }
             }
             finally{if(dump!=null)try{dump.close();}catch(IOException ignored){}}
-        }catch(Exception|LinkageError error){failure="Стоковый AE: "+error;}
+        }catch(Exception|LinkageError error){failure=Lang.t("Стоковый AE: ","Stock AE: ")+error;}
         finally{
             synchronized(SHARED){closeSharedProcess();}
-            broadcastReset(failure==null?"Ожидание стокового AE":failure);
+            broadcastReset(failure==null?Lang.t("Ожидание стокового AE","Waiting for the stock AE"):failure);
         }
     }
     private static void closeSharedProcess() {
@@ -351,7 +352,7 @@ public final class VivoStockAe implements AutoCloseable {
         public boolean longBeyondSensor;
         private double longTarget;
         Plan(byte[] data,VivoNiceAeContext niceContext,long frameId,long timestamp,long received,int generation)throws IOException {
-            if(niceContext==null)throw new IOException("SCAM HDR AE: контекст сцены не проверен");
+            if(niceContext==null)throw new IOException(Lang.t("SCAM HDR AE: контекст сцены не проверен","SCAM HDR AE: scene context not verified"));
             sceneDescription=niceContext.describe();
             this.frameId=frameId;this.timestamp=timestamp;this.received=received;this.generation=generation;
             ByteBuffer p=ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
@@ -397,14 +398,14 @@ public final class VivoStockAe implements AutoCloseable {
             if(!degenerate)return this;
             android.util.Range<Long> times=characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
             android.util.Range<Integer> isos=characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-            if(times==null||isos==null)throw new IllegalStateException("SCAM HDR: диапазоны сенсора недоступны");
+            if(times==null||isos==null)throw new IllegalStateException(Lang.t("SCAM HDR: диапазоны сенсора недоступны","SCAM HDR: sensor ranges unavailable"));
             String before=describePlan();
             Plan p=new Plan(this);p.degenerate=false;
             if(p.product[3]<p.product[0]){p.shutter[3]=p.shutter[0];p.iso[3]=p.iso[0];p.gain[3]=p.gain[0];p.product[3]=p.product[0];}
             if(p.product[1]>=p.product[0]*DISTINCT)p.setProduct(1,p.product[0]*BRACKET_STEP,times,isos);
             if(p.product[2]>=p.product[1]*DISTINCT)p.setProduct(2,p.product[1]*BRACKET_STEP,times,isos);
             if(!(p.product[2]<p.product[1]&&p.product[1]<p.product[0]&&p.product[0]<=p.product[3]))
-                throw new IllegalStateException("SCAM HDR: сцена слишком яркая для раздельных S/ES даже на минимальной выдержке");
+                throw new IllegalStateException(Lang.t("SCAM HDR: сцена слишком яркая для раздельных S/ES даже на минимальной выдержке","SCAM HDR: the scene is too bright for separate S/ES even at the shortest shutter"));
             android.util.Log.w("NICE_CAPTURE","degenerate stock plan repaired: "+before+" -> "+p.describePlan());
             return p;
         }
@@ -445,7 +446,7 @@ public final class VivoStockAe implements AutoCloseable {
                 boolean adaptive,CameraCharacteristics characteristics,long timestamp,int generation) {
             android.util.Range<Long> times=characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
             android.util.Range<Integer> isos=characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-            if(times==null||isos==null||nShutter<=0||nIso<=0)throw new IllegalStateException("SCAM HDR: нет экспозиции превью или диапазонов сенсора");
+            if(times==null||isos==null||nShutter<=0||nIso<=0)throw new IllegalStateException(Lang.t("SCAM HDR: нет экспозиции превью или диапазонов сенсора","SCAM HDR: no preview exposure or sensor ranges"));
             if(adaptive) {
                 if(clipFraction<0.0005f){sEv=Math.min(sEv,2);esEv=Math.min(esEv,4);}
                 else if(clipFraction>0.02f){esEv=Math.max(esEv,7);}
@@ -484,7 +485,7 @@ public final class VivoStockAe implements AutoCloseable {
                         Math.log(n/p.product[1])/Math.log(2),Math.log(n/p.product[2])/Math.log(2)));
             }
             if(!(p.product[2]<p.product[1]&&p.product[1]<p.product[0]))
-                throw new IllegalStateException("SCAM HDR: сцена слишком яркая для раздельных S/ES даже на минимальной выдержке");
+                throw new IllegalStateException(Lang.t("SCAM HDR: сцена слишком яркая для раздельных S/ES даже на минимальной выдержке","SCAM HDR: the scene is too bright for separate S/ES even at the shortest shutter"));
             p.longTarget=n*Math.pow(2,lEv);
             if(!(p.product[0]<=p.product[3])) {
                 p.longBeyondSensor=true;
@@ -499,7 +500,7 @@ public final class VivoStockAe implements AutoCloseable {
          * HDR S/ES/L planner, whose throws (bright scene, missing ranges, L beyond the sensor) cost Hybrid shots before.
          */
         public static Plan nOnly(long nShutter,int nIso,long timestamp,int generation) {
-            if(nShutter<=0||nIso<=0)throw new IllegalStateException("Hybrid: нет экспозиции N");
+            if(nShutter<=0||nIso<=0)throw new IllegalStateException(Lang.t("Hybrid: нет экспозиции N","Hybrid: no N exposure"));
             Plan p=new Plan(timestamp,generation,"planner=HYBRID_N");
             for(int i=0;i<4;i++){p.shutter[i]=nShutter;p.iso[i]=nIso;p.gain[i]=nIso/50f;p.product[i]=(double)nShutter*nIso/50;}
             return p;
@@ -551,11 +552,11 @@ public final class VivoStockAe implements AutoCloseable {
         private static final long SHUTTER_ROUNDING_TOLERANCE_NS=100_000L;
         private static long clampNear(long value,long lower,long upper,long tolerance,String what) {
             if(value<lower) {
-                if(lower-value>tolerance)throw new IllegalStateException("Стоковая экспозиция вне диапазона Camera2: "+what);
+                if(lower-value>tolerance)throw new IllegalStateException(Lang.t("Стоковая экспозиция вне диапазона Camera2: ","Stock exposure outside the Camera2 range: ")+what);
                 return lower;
             }
             if(value>upper) {
-                if(value-upper>tolerance)throw new IllegalStateException("Стоковая экспозиция вне диапазона Camera2: "+what);
+                if(value-upper>tolerance)throw new IllegalStateException(Lang.t("Стоковая экспозиция вне диапазона Camera2: ","Stock exposure outside the Camera2 range: ")+what);
                 return upper;
             }
             return value;
@@ -582,8 +583,8 @@ public final class VivoStockAe implements AutoCloseable {
             int slot=slot(index);
             android.util.Range<Long> times=characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
             android.util.Range<Integer> gains=characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-            if(times==null||gains==null)throw new IllegalStateException("Стоковая экспозиция вне диапазона Camera2: диапазон недоступен");
-            long clampedShutter=clampNear(shutter[slot],times.getLower(),times.getUpper(),SHUTTER_ROUNDING_TOLERANCE_NS,"выдержка");
+            if(times==null||gains==null)throw new IllegalStateException(Lang.t("Стоковая экспозиция вне диапазона Camera2: диапазон недоступен","Stock exposure outside the Camera2 range: range unavailable"));
+            long clampedShutter=clampNear(shutter[slot],times.getLower(),times.getUpper(),SHUTTER_ROUNDING_TOLERANCE_NS,Lang.t("выдержка","shutter"));
             int clampedIso=(int)clampNear(iso[slot],gains.getLower(),gains.getUpper(),ISO_ROUNDING_TOLERANCE,"ISO");
             builder.set(CaptureRequest.CONTROL_AE_MODE,CaptureRequest.CONTROL_AE_MODE_OFF);
             builder.set(CaptureRequest.CONTROL_AE_LOCK,false);builder.set(CaptureRequest.CONTROL_ENABLE_ZSL,false);
@@ -597,14 +598,14 @@ public final class VivoStockAe implements AutoCloseable {
                 case SHORT:slot=1;break;
                 case EXTRA_SHORT:slot=2;break;
                 case LONG:slot=3;break;
-                default:throw new IllegalStateException("SCAM HDR: неизвестная роль RAW");
+                default:throw new IllegalStateException(Lang.t("SCAM HDR: неизвестная роль RAW","SCAM HDR: unknown RAW role"));
             }
             verifyExposure(result,slot,BRACKET_TOLERANCE_EV);
         }
         public void verifyZslNormal(CaptureResult result,long shutterTimestamp) {
             Long timestamp=result==null?null:result.get(CaptureResult.SENSOR_TIMESTAMP);
             if(timestamp==null || timestamp<=0 || timestamp>shutterTimestamp)
-                throw new IllegalStateException("SCAM HDR ZSL: RAW не предшествует нажатию");
+                throw new IllegalStateException(Lang.t("SCAM HDR ZSL: RAW не предшествует нажатию","SCAM HDR ZSL: the RAW does not precede the shutter press"));
             verifyExposure(result,0,ZSL_TOLERANCE_EV);
         }
         /**
@@ -624,20 +625,20 @@ public final class VivoStockAe implements AutoCloseable {
         private void verifyExposure(CaptureResult result,int slot,double tolerance) {
             if(camera2Domain) {
                 Long ns=result.get(CaptureResult.SENSOR_EXPOSURE_TIME);Integer sensitivity=result.get(CaptureResult.SENSOR_SENSITIVITY);
-                if(ns==null||sensitivity==null||ns<=0||sensitivity<=0)throw new IllegalStateException("SCAM HDR: нет экспозиции Camera2 в результате");
+                if(ns==null||sensitivity==null||ns<=0||sensitivity<=0)throw new IllegalStateException(Lang.t("SCAM HDR: нет экспозиции Camera2 в результате","SCAM HDR: no Camera2 exposure in the result"));
                 boolean exact=Math.abs((double)ns/shutter[slot]-1.)<=.015 && Math.abs(sensitivity-iso[slot])<=Math.max(2,iso[slot]*.015);
                 if(exact)return;
                 double ev=Math.abs(Math.log((double)ns*sensitivity/((double)shutter[slot]*iso[slot]))/Math.log(2));
                 String detail=" (slot "+slot+": ISO "+sensitivity+"/"+iso[slot]+", shutter "+ns+"/"+shutter[slot]
                         +String.format(java.util.Locale.ROOT,", %.2f EV)",ev);
                 if(ev>tolerance)
-                    throw new IllegalStateException((com.particlesdevs.photoncamera.settings.PreferenceKeys.isHybridShot()?"Hybrid":"SCAM HDR")+": выдержка/ISO RAW не совпали с планом SCAMERA"+detail);
+                    throw new IllegalStateException((com.particlesdevs.photoncamera.settings.PreferenceKeys.isHybridShot()?"Hybrid":"SCAM HDR")+Lang.t(": выдержка/ISO RAW не совпали с планом SCAMERA",": RAW shutter/ISO do not match the SCAMERA plan")+detail);
                 android.util.Log.w("NICE_CAPTURE","sensor rounding accepted"+detail);
                 return;
             }
             float[] aec=result.get(AEC);
             if(aec==null||aec.length<35||!Float.isFinite(aec[2])||!Float.isFinite(aec[14])||aec[2]<=0||aec[14]<=0)
-                throw new IllegalStateException("SCAM HDR: измеренный vendor gain отсутствует");
+                throw new IllegalStateException(Lang.t("SCAM HDR: измеренный vendor gain отсутствует","SCAM HDR: measured vendor gain missing"));
             double actual=(double)aec[2]*aec[14];
             boolean exact=Math.abs(actual/product[slot]-1.)<=.015 && Math.abs((double)aec[2]/gain[slot]-1.)<=.015
                     && Math.abs((double)aec[14]/shutter[slot]-1.)<=.015;
@@ -646,7 +647,7 @@ public final class VivoStockAe implements AutoCloseable {
             String detail=" (slot "+slot+": gain "+aec[2]+"/"+gain[slot]+", shutter "+aec[14]+"/"+shutter[slot]
                     +String.format(java.util.Locale.ROOT,", %.2f EV)",ev);
             if(ev>tolerance)
-                throw new IllegalStateException("SCAM HDR: выдержка/gain RAW не совпали со стоковым планом"+detail);
+                throw new IllegalStateException(Lang.t("SCAM HDR: выдержка/gain RAW не совпали со стоковым планом","SCAM HDR: RAW shutter/gain do not match the stock plan")+detail);
             android.util.Log.w("NICE_CAPTURE","sensor rounding accepted"+detail);
         }
     }

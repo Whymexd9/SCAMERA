@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import com.particlesdevs.photoncamera.util.Lang;
 
 public final class VivoNiceCaptureSequence {
     private final List<ImageFrame.NiceCaptureTag> tags = new ArrayList<>();
@@ -312,7 +313,7 @@ public final class VivoNiceCaptureSequence {
         zslPresent = zslCount;
         // The only case without a photo: not a single RAW of the series arrived.
         if (optionalFuture && zslCount + boundCount == 0)
-            throw new IllegalStateException("NICE: камера не передала ни одного RAW-кадра"
+            throw new IllegalStateException(Lang.t("NICE: камера не передала ни одного RAW-кадра", "NICE: the camera delivered no RAW frame")
                     + (dropped.isEmpty() ? "" : " (" + droppedSummary() + ")"));
         return discard;
     }

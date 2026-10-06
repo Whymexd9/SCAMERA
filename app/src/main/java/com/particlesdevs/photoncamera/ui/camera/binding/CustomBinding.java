@@ -90,12 +90,6 @@ public class CustomBinding {
             layout.setAuxButtonsModel(auxButtonsModel);
     }
 
-    @BindingAdapter("hideAuxButtons")
-    public static void setAuxButtonsHidden(AuxButtonsLayout layout, boolean hidden) {
-        if (layout != null)
-            layout.setAuxButtonsHidden(hidden);
-    }
-
     @BindingAdapter("setActiveId")
     public static void setActiveCameraId(AuxButtonsLayout layout, String cameraId) {
         if (cameraId != null)
