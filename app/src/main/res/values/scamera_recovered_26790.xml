@@ -27,9 +27,9 @@
     <string name="abc_shareactionprovider_share_with">Share with</string>
     <string name="abc_shareactionprovider_share_with_application">Share with %s</string>
     <string name="abc_toolbar_collapse_description">Collapse</string>
-    <string name="androidx_startup">androidx.startup</string>
-    <string name="appbar_scrolling_view_behavior">com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior</string>
-    <string name="bottom_sheet_behavior">com.google.android.material.bottomsheet.BottomSheetBehavior</string>
+    <string name="androidx_startup" translatable="false">androidx.startup</string>
+    <string name="appbar_scrolling_view_behavior" translatable="false">com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior</string>
+    <string name="bottom_sheet_behavior" translatable="false">com.google.android.material.bottomsheet.BottomSheetBehavior</string>
     <string name="bottomsheet_action_collapse">Collapse the bottom sheet</string>
     <string name="bottomsheet_action_expand">Expand the bottom sheet</string>
     <string name="bottomsheet_action_expand_halfway">Expand halfway</string>
@@ -43,22 +43,22 @@
     <string name="call_notification_screening_text">Screening an incoming call</string>
     <string name="character_counter_content_description">Characters entered %1$d of %2$d</string>
     <string name="character_counter_overflowed_content_description">Character limit exceeded %1$d of %2$d</string>
-    <string name="character_counter_pattern">%1$d/%2$d</string>
+    <string name="character_counter_pattern" translatable="false">%1$d/%2$d</string>
     <string name="clear_text_end_icon_content_description">Clear text</string>
     <string name="copy">Copy</string>
     <string name="error_a11y_label">Error: invalid</string>
     <string name="error_icon_content_description">Error</string>
     <string name="expand_button_title">Advanced</string>
     <string name="exposed_dropdown_menu_content_description">Show dropdown menu</string>
-    <string name="fab_transformation_scrim_behavior">com.google.android.material.transformation.FabTransformationScrimBehavior</string>
-    <string name="fab_transformation_sheet_behavior">com.google.android.material.transformation.FabTransformationSheetBehavior</string>
+    <string name="fab_transformation_scrim_behavior" translatable="false">com.google.android.material.transformation.FabTransformationScrimBehavior</string>
+    <string name="fab_transformation_sheet_behavior" translatable="false">com.google.android.material.transformation.FabTransformationSheetBehavior</string>
     <string name="hdrplus_chroma_denoise">HDR+ chroma denoise</string>
     <string name="hdrplus_chroma_denoise_summary">Suppress colour disagreement between aligned RAW frames</string>
     <string name="hdrplus_high_denoise">HDR+ high-frequency denoise</string>
     <string name="hdrplus_high_denoise_summary">Fine grain and pixel-level noise</string>
     <string name="hdrplus_low_denoise">HDR+ low-frequency denoise</string>
     <string name="hdrplus_low_denoise_summary">Smooth noise and broad luminance variations</string>
-    <string name="hide_bottom_view_on_scroll_behavior">com.google.android.material.behavior.HideBottomViewOnScrollBehavior</string>
+    <string name="hide_bottom_view_on_scroll_behavior" translatable="false">com.google.android.material.behavior.HideBottomViewOnScrollBehavior</string>
     <string name="icon_content_description">Dialog Icon</string>
     <string name="item_view_role_description">Tab</string>
     <string name="lens_custom_label">Viewfinder label (blank = automatic)</string>
@@ -77,37 +77,37 @@
     <string name="lens_menu_names">Rename and reorder lenses</string>
     <string name="lens_menu_visibility">Lens visibility</string>
     <string name="lens_settings_saved">Lens settings saved. Restart SCAMERA to apply.</string>
-    <string name="m3_exceed_max_badge_text_suffix">%1$s%2$s</string>
+    <string name="m3_exceed_max_badge_text_suffix" translatable="false">%1$s%2$s</string>
     <string name="m3_loading_indicator_content_description">Loading</string>
-    <string name="m3_ref_typeface_brand_medium">sans-serif-medium</string>
-    <string name="m3_ref_typeface_brand_regular">sans-serif</string>
-    <string name="m3_ref_typeface_plain_medium">sans-serif-medium</string>
-    <string name="m3_ref_typeface_plain_regular">sans-serif</string>
-    <string name="m3_sys_motion_easing_emphasized">path(M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1)</string>
-    <string name="m3_sys_motion_easing_emphasized_accelerate">cubic-bezier(0.3, 0, 0.8, 0.2)</string>
-    <string name="m3_sys_motion_easing_emphasized_decelerate">cubic-bezier(0.1, 0.7, 0.1, 1)</string>
-    <string name="m3_sys_motion_easing_emphasized_path_data">M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1</string>
-    <string name="m3_sys_motion_easing_legacy">cubic-bezier(0.4, 0, 0.2, 1)</string>
-    <string name="m3_sys_motion_easing_legacy_accelerate">cubic-bezier(0.4, 0, 1, 1)</string>
-    <string name="m3_sys_motion_easing_legacy_decelerate">cubic-bezier(0, 0, 0.2, 1)</string>
-    <string name="m3_sys_motion_easing_linear">cubic-bezier(0, 0, 1, 1)</string>
-    <string name="m3_sys_motion_easing_standard">cubic-bezier(0.2, 0, 0, 1)</string>
-    <string name="m3_sys_motion_easing_standard_accelerate">cubic-bezier(0.3, 0, 1, 1)</string>
-    <string name="m3_sys_motion_easing_standard_decelerate">cubic-bezier(0, 0, 0, 1)</string>
+    <string name="m3_ref_typeface_brand_medium" translatable="false">sans-serif-medium</string>
+    <string name="m3_ref_typeface_brand_regular" translatable="false">sans-serif</string>
+    <string name="m3_ref_typeface_plain_medium" translatable="false">sans-serif-medium</string>
+    <string name="m3_ref_typeface_plain_regular" translatable="false">sans-serif</string>
+    <string name="m3_sys_motion_easing_emphasized" translatable="false">path(M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1)</string>
+    <string name="m3_sys_motion_easing_emphasized_accelerate" translatable="false">cubic-bezier(0.3, 0, 0.8, 0.2)</string>
+    <string name="m3_sys_motion_easing_emphasized_decelerate" translatable="false">cubic-bezier(0.1, 0.7, 0.1, 1)</string>
+    <string name="m3_sys_motion_easing_emphasized_path_data" translatable="false">M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1</string>
+    <string name="m3_sys_motion_easing_legacy" translatable="false">cubic-bezier(0.4, 0, 0.2, 1)</string>
+    <string name="m3_sys_motion_easing_legacy_accelerate" translatable="false">cubic-bezier(0.4, 0, 1, 1)</string>
+    <string name="m3_sys_motion_easing_legacy_decelerate" translatable="false">cubic-bezier(0, 0, 0.2, 1)</string>
+    <string name="m3_sys_motion_easing_linear" translatable="false">cubic-bezier(0, 0, 1, 1)</string>
+    <string name="m3_sys_motion_easing_standard" translatable="false">cubic-bezier(0.2, 0, 0, 1)</string>
+    <string name="m3_sys_motion_easing_standard_accelerate" translatable="false">cubic-bezier(0.3, 0, 1, 1)</string>
+    <string name="m3_sys_motion_easing_standard_decelerate" translatable="false">cubic-bezier(0, 0, 0, 1)</string>
     <string name="manual_mode_auto">Auto</string>
     <string name="manual_mode_fixed">Fixed</string>
-    <string name="material_clock_display_divider">:</string>
+    <string name="material_clock_display_divider" translatable="false">:</string>
     <string name="material_clock_toggle_content_description">Select AM or PM</string>
     <string name="material_hour_24h_suffix">%1$s hours</string>
     <string name="material_hour_selection">Select hour</string>
     <string name="material_hour_suffix">%1$s o\'clock</string>
     <string name="material_minute_selection">Select minutes</string>
     <string name="material_minute_suffix">%1$s minutes</string>
-    <string name="material_motion_easing_accelerated">cubic-bezier(0.4, 0.0, 1.0, 1.0)</string>
-    <string name="material_motion_easing_decelerated">cubic-bezier(0.0, 0.0, 0.2, 1.0)</string>
-    <string name="material_motion_easing_emphasized">path(M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1)</string>
-    <string name="material_motion_easing_linear">cubic-bezier(0.0, 0.0, 1.0, 1.0)</string>
-    <string name="material_motion_easing_standard">cubic-bezier(0.4, 0.0, 0.2, 1.0)</string>
+    <string name="material_motion_easing_accelerated" translatable="false">cubic-bezier(0.4, 0.0, 1.0, 1.0)</string>
+    <string name="material_motion_easing_decelerated" translatable="false">cubic-bezier(0.0, 0.0, 0.2, 1.0)</string>
+    <string name="material_motion_easing_emphasized" translatable="false">path(M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1)</string>
+    <string name="material_motion_easing_linear" translatable="false">cubic-bezier(0.0, 0.0, 1.0, 1.0)</string>
+    <string name="material_motion_easing_standard" translatable="false">cubic-bezier(0.4, 0.0, 0.2, 1.0)</string>
     <string name="material_slider_range_end">Range end</string>
     <string name="material_slider_range_start">Range start</string>
     <string name="material_slider_value">Value</string>
@@ -123,20 +123,20 @@
     <string name="mtrl_badge_numberless_content_description">New notification</string>
     <string name="mtrl_button_collapsed_content_description">Collapsed</string>
     <string name="mtrl_button_expanded_content_description">Expanded</string>
-    <string name="mtrl_checkbox_button_icon_path_checked">M14,18.2 11.4,15.6 10,17 14,21 22,13 20.6,11.6z</string>
-    <string name="mtrl_checkbox_button_icon_path_group_name">icon</string>
-    <string name="mtrl_checkbox_button_icon_path_indeterminate">M13.4,15 11,15 11,17 13.4,17 21,17 21,15z</string>
-    <string name="mtrl_checkbox_button_icon_path_name">icon path</string>
-    <string name="mtrl_checkbox_button_path_checked">M23,7H9C7.9,7,7,7.9,7,9v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9C25,7.9,24.1,7,23,7z</string>
-    <string name="mtrl_checkbox_button_path_group_name">button</string>
-    <string name="mtrl_checkbox_button_path_name">button path</string>
-    <string name="mtrl_checkbox_button_path_unchecked">M23,7H9C7.9,7,7,7.9,7,9v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9C25,7.9,24.1,7,23,7z M23,23H9V9h14V23z</string>
+    <string name="mtrl_checkbox_button_icon_path_checked" translatable="false">M14,18.2 11.4,15.6 10,17 14,21 22,13 20.6,11.6z</string>
+    <string name="mtrl_checkbox_button_icon_path_group_name" translatable="false">icon</string>
+    <string name="mtrl_checkbox_button_icon_path_indeterminate" translatable="false">M13.4,15 11,15 11,17 13.4,17 21,17 21,15z</string>
+    <string name="mtrl_checkbox_button_icon_path_name" translatable="false">icon path</string>
+    <string name="mtrl_checkbox_button_path_checked" translatable="false">M23,7H9C7.9,7,7,7.9,7,9v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9C25,7.9,24.1,7,23,7z</string>
+    <string name="mtrl_checkbox_button_path_group_name" translatable="false">button</string>
+    <string name="mtrl_checkbox_button_path_name" translatable="false">button path</string>
+    <string name="mtrl_checkbox_button_path_unchecked" translatable="false">M23,7H9C7.9,7,7,7.9,7,9v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9C25,7.9,24.1,7,23,7z M23,23H9V9h14V23z</string>
     <string name="mtrl_checkbox_state_description_checked">Checked</string>
     <string name="mtrl_checkbox_state_description_indeterminate">Partially checked</string>
     <string name="mtrl_checkbox_state_description_unchecked">Not checked</string>
     <string name="mtrl_chip_close_icon_content_description">Remove %1$s</string>
     <string name="mtrl_exceed_max_badge_number_content_description">More than %1$d new notifications</string>
-    <string name="mtrl_exceed_max_badge_number_suffix">%1$d%2$s</string>
+    <string name="mtrl_exceed_max_badge_number_suffix" translatable="false">%1$d%2$s</string>
     <string name="mtrl_picker_a11y_next_month">Change to next month</string>
     <string name="mtrl_picker_a11y_prev_month">Change to previous month</string>
     <string name="mtrl_picker_announce_current_range_selection">Start date selection: %1$s – End date selection: %2$s</string>
@@ -176,65 +176,65 @@
     <string name="mtrl_picker_toggle_to_year_selection">Switch to year view</string>
     <string name="mtrl_picker_toggled_to_day_selection">Switched to Calendar view</string>
     <string name="mtrl_picker_toggled_to_year_selection">Switched to year view</string>
-    <string name="mtrl_switch_thumb_group_name">circle_group</string>
-    <string name="mtrl_switch_thumb_path_checked">M4,16 A12,12 0 0,1 16,4 H16 A12,12 0 0,1 16,28 H16 A12,12 0 0,1 4,16</string>
-    <string name="mtrl_switch_thumb_path_morphing">M0,16 A11,11 0 0,1 11,5 H21 A11,11 0 0,1 21,27 H11 A11,11 0 0,1 0,16</string>
-    <string name="mtrl_switch_thumb_path_name">circle</string>
-    <string name="mtrl_switch_thumb_path_pressed">M2,16 A14,14 0 0,1 16,2 H16 A14,14 0 0,1 16,30 H16 A14,14 0 0,1 2,16</string>
-    <string name="mtrl_switch_thumb_path_unchecked">M8,16 A8,8 0 0,1 16,8 H16 A8,8 0 0,1 16,24 H16 A8,8 0 0,1 8,16</string>
-    <string name="mtrl_switch_track_decoration_path">M1,16 A15,15 0 0,1 16,1 H36 A15,15 0 0,1 36,31 H16 A15,15 0 0,1 1,16</string>
-    <string name="mtrl_switch_track_path">M0,16 A16,16 0 0,1 16,0 H36 A16,16 0 0,1 36,32 H16 A16,16 0 0,1 0,16</string>
+    <string name="mtrl_switch_thumb_group_name" translatable="false">circle_group</string>
+    <string name="mtrl_switch_thumb_path_checked" translatable="false">M4,16 A12,12 0 0,1 16,4 H16 A12,12 0 0,1 16,28 H16 A12,12 0 0,1 4,16</string>
+    <string name="mtrl_switch_thumb_path_morphing" translatable="false">M0,16 A11,11 0 0,1 11,5 H21 A11,11 0 0,1 21,27 H11 A11,11 0 0,1 0,16</string>
+    <string name="mtrl_switch_thumb_path_name" translatable="false">circle</string>
+    <string name="mtrl_switch_thumb_path_pressed" translatable="false">M2,16 A14,14 0 0,1 16,2 H16 A14,14 0 0,1 16,30 H16 A14,14 0 0,1 2,16</string>
+    <string name="mtrl_switch_thumb_path_unchecked" translatable="false">M8,16 A8,8 0 0,1 16,8 H16 A8,8 0 0,1 16,24 H16 A8,8 0 0,1 8,16</string>
+    <string name="mtrl_switch_track_decoration_path" translatable="false">M1,16 A15,15 0 0,1 16,1 H36 A15,15 0 0,1 36,31 H16 A15,15 0 0,1 1,16</string>
+    <string name="mtrl_switch_track_path" translatable="false">M0,16 A16,16 0 0,1 16,0 H36 A16,16 0 0,1 36,32 H16 A16,16 0 0,1 0,16</string>
     <string name="mtrl_timepicker_cancel">Cancel</string>
     <string name="mtrl_timepicker_confirm">OK</string>
     <string name="not_set">Not set</string>
     <string name="password_toggle_content_description">Show password</string>
-    <string name="pref_hdrplus_denoise_strength_key">pref_hdrplus_denoise_strength_key</string>
-    <string name="snr_verylow_low">Очень низкий SNR (&lt; 8): низкие частоты</string>
-    <string name="snr_verylow_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
-    <string name="snr_verylow_high">Очень низкий SNR (&lt; 8): высокие частоты</string>
-    <string name="snr_verylow_high_sum">Мелкое зерно и фактура. Низкие и высокие частоты смешиваются по их отношению, поэтому менять их надо по отдельности</string>
-    <string name="snr_verylow_chroma">Очень низкий SNR (&lt; 8): цвет</string>
-    <string name="snr_verylow_chroma_sum">Цветные пятна. Цветной шум хуже усредняется по кадрам, поэтому обычно выше яркостного</string>
-    <string name="snr_low_low">Низкий SNR (8–20): низкие частоты</string>
-    <string name="snr_low_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
-    <string name="snr_low_high">Низкий SNR (8–20): высокие частоты</string>
-    <string name="snr_low_high_sum">Мелкое зерно и фактура. Низкие и высокие частоты смешиваются по их отношению, поэтому менять их надо по отдельности</string>
-    <string name="snr_low_chroma">Низкий SNR (8–20): цвет</string>
-    <string name="snr_low_chroma_sum">Цветные пятна. Цветной шум хуже усредняется по кадрам, поэтому обычно выше яркостного</string>
-    <string name="snr_med_low">Средний SNR (20–45): низкие частоты</string>
-    <string name="snr_med_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
-    <string name="snr_med_high">Средний SNR (20–45): высокие частоты</string>
-    <string name="snr_med_high_sum">Мелкое зерно и фактура. Низкие и высокие частоты смешиваются по их отношению, поэтому менять их надо по отдельности</string>
-    <string name="snr_med_chroma">Средний SNR (20–45): цвет</string>
-    <string name="snr_med_chroma_sum">Цветные пятна. Цветной шум хуже усредняется по кадрам, поэтому обычно выше яркостного</string>
-    <string name="snr_high_low">Высокий SNR (45–90): низкие частоты</string>
-    <string name="snr_high_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
-    <string name="snr_high_high">Высокий SNR (45–90): высокие частоты</string>
-    <string name="snr_high_high_sum">Мелкое зерно и фактура. Низкие и высокие частоты смешиваются по их отношению, поэтому менять их надо по отдельности</string>
-    <string name="snr_high_chroma">Высокий SNR (45–90): цвет</string>
-    <string name="snr_high_chroma_sum">Цветные пятна. Цветной шум хуже усредняется по кадрам, поэтому обычно выше яркостного</string>
-    <string name="snr_veryhigh_low">Очень высокий SNR (&gt; 90): низкие частоты</string>
-    <string name="snr_veryhigh_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
-    <string name="snr_veryhigh_high">Очень высокий SNR (&gt; 90): высокие частоты</string>
-    <string name="snr_veryhigh_high_sum">Мелкое зерно и фактура. Низкие и высокие частоты смешиваются по их отношению, поэтому менять их надо по отдельности</string>
-    <string name="snr_veryhigh_chroma">Очень высокий SNR (&gt; 90): цвет</string>
-    <string name="snr_veryhigh_chroma_sum">Цветные пятна. Цветной шум хуже усредняется по кадрам, поэтому обычно выше яркостного</string>
-    <string name="hdrplus_snr_target">HDR+: целевой SNR</string>
-    <string name="hdrplus_snr_target_summary">К какому отношению сигнал/шум стремится склейка. Сила шумодава масштабируется тем, насколько кадр до него не дотягивает. У GCam на светлой сцене оценка после склейки около 110</string>
-    <string name="pref_live_viewfinder_look_key">pref_live_viewfinder_look_key</string>
+    <string name="pref_hdrplus_denoise_strength_key" translatable="false">pref_hdrplus_denoise_strength_key</string>
+    <string name="snr_verylow_low">Very low SNR (&lt; 8): low frequencies</string>
+    <string name="snr_verylow_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
+    <string name="snr_verylow_high">Very low SNR (&lt; 8): high frequencies</string>
+    <string name="snr_verylow_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
+    <string name="snr_verylow_chroma">Very low SNR (&lt; 8): colour</string>
+    <string name="snr_verylow_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
+    <string name="snr_low_low">Low SNR (8–20): low frequencies</string>
+    <string name="snr_low_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
+    <string name="snr_low_high">Low SNR (8–20): high frequencies</string>
+    <string name="snr_low_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
+    <string name="snr_low_chroma">Low SNR (8–20): colour</string>
+    <string name="snr_low_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
+    <string name="snr_med_low">Medium SNR (20–45): low frequencies</string>
+    <string name="snr_med_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
+    <string name="snr_med_high">Medium SNR (20–45): high frequencies</string>
+    <string name="snr_med_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
+    <string name="snr_med_chroma">Medium SNR (20–45): colour</string>
+    <string name="snr_med_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
+    <string name="snr_high_low">High SNR (45–90): low frequencies</string>
+    <string name="snr_high_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
+    <string name="snr_high_high">High SNR (45–90): high frequencies</string>
+    <string name="snr_high_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
+    <string name="snr_high_chroma">High SNR (45–90): colour</string>
+    <string name="snr_high_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
+    <string name="snr_veryhigh_low">Very high SNR (&gt; 90): low frequencies</string>
+    <string name="snr_veryhigh_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
+    <string name="snr_veryhigh_high">Very high SNR (&gt; 90): high frequencies</string>
+    <string name="snr_veryhigh_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
+    <string name="snr_veryhigh_chroma">Very high SNR (&gt; 90): colour</string>
+    <string name="snr_veryhigh_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
+    <string name="hdrplus_snr_target">HDR+: target SNR</string>
+    <string name="hdrplus_snr_target_summary">The signal-to-noise ratio the merge aims for. Noise reduction strength scales with how far the frame falls short of it. GCam estimates about 110 after the merge on a bright scene</string>
+    <string name="pref_live_viewfinder_look_key" translatable="false">pref_live_viewfinder_look_key</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
-    <string name="searchbar_scrolling_view_behavior">com.google.android.material.search.SearchBar$ScrollingViewBehavior</string>
+    <string name="searchbar_scrolling_view_behavior" translatable="false">com.google.android.material.search.SearchBar$ScrollingViewBehavior</string>
     <string name="side_sheet_accessibility_pane_title">Side Sheet</string>
-    <string name="side_sheet_behavior">com.google.android.material.sidesheet.SideSheetBehavior</string>
+    <string name="side_sheet_behavior" translatable="false">com.google.android.material.sidesheet.SideSheetBehavior</string>
     <string name="status_bar_notification_info_overflow">999+</string>
     <string name="summary_collapsed_preference_list">%1$s, %2$s</string>
     <string name="v7_preference_off">OFF</string>
     <string name="v7_preference_on">ON</string>
-    <string-array name="merge_algorithm_entries">
+    <string-array name="merge_algorithm_entries" translatable="false">
         <item>@string/merge_algorithm_legacy</item>
         <item>@string/merge_algorithm_hdrplus</item>
     </string-array>
-    <string-array name="merge_algorithm_values">
+    <string-array name="merge_algorithm_values" translatable="false">
         <item>legacy</item>
         <item>hdrplus</item>
     </string-array>
@@ -242,16 +242,16 @@
     <bool name="abc_config_actionMenuItemAllCaps">true</bool>
     <bool name="config_materialPreferenceIconSpaceReserved">false</bool>
     <bool name="mtrl_btn_textappearance_all_caps">true</bool>
-    <string name="highlight_recovery">Восстановление светов</string>
-    <string name="highlight_recovery_summary">Если выбит не весь квад, слияние идёт по уцелевшим каналам, а не отбраковывается целиком. Зелёные пиксели клиппятся раньше красных и синих</string>
-    <string name="highlight_recovery_min_ok">Восстановление: минимум каналов</string>
-    <string name="highlight_recovery_min_ok_summary">Сколько из четырёх каналов должно остаться неклиппнутым, чтобы восстанавливать. Меньше — агрессивнее, выше риск цветовых сдвигов</string>
-    <string name="highlight_protection">Защита светов</string>
-    <string name="highlight_protection_summary">Обесцвечивание при подходе к упору. Убирает цветной оттенок на выбитых участках, возникающий из-за разных порогов насыщения каналов</string>
-    <string name="highlight_protection_knee">Защита светов: колено</string>
-    <string name="highlight_protection_knee_summary">Доля порога клиппинга, с которой начинается обесцвечивание. 0.8 — с 80%</string>
-    <string name="highlight_protection_strength">Защита светов: сила</string>
-    <string name="highlight_protection_strength_summary">Насколько сильно тянуть к среднему по кваду у самого упора. 1.0 — полностью серый, 0 — без эффекта</string>
+    <string name="highlight_recovery">Highlight recovery</string>
+    <string name="highlight_recovery_summary">If only part of a quad is clipped, the merge uses the surviving channels instead of rejecting the whole quad. Green pixels clip before red and blue</string>
+    <string name="highlight_recovery_min_ok">Recovery: minimum channels</string>
+    <string name="highlight_recovery_min_ok_summary">How many of the four channels must stay unclipped for recovery. Fewer is more aggressive, with a higher risk of colour shifts</string>
+    <string name="highlight_protection">Highlight protection</string>
+    <string name="highlight_protection_summary">Desaturates near the clipping point. Removes the colour tint in blown areas caused by the different saturation points of the channels</string>
+    <string name="highlight_protection_knee">Highlight protection: knee</string>
+    <string name="highlight_protection_knee_summary">Share of the clipping point where desaturation starts. 0.8 means from 80%</string>
+    <string name="highlight_protection_strength">Highlight protection: strength</string>
+    <string name="highlight_protection_strength_summary">How strongly to pull towards the quad average right at the clipping point. 1.0 is fully grey, 0 is no effect</string>
     <integer name="abc_config_activityDefaultDur">220</integer>
     <integer name="abc_config_activityShortDur">150</integer>
     <integer name="bottom_sheet_slide_duration">150</integer>
@@ -329,78 +329,78 @@
     <integer name="mtrl_view_visible">0</integer>
     <integer name="status_bar_notification_info_maxnum">999</integer>
     <string-array name="noise_model_profile_entries">
-        <item>Авто (профиль сенсора Camera2)</item>
+        <item>Auto (Camera2 sensor profile)</item>
         <item>IMX363_0 (LG V50)</item>
-        <item>Импортированный файл</item>
+        <item>Imported file</item>
     </string-array>
-    <string-array name="noise_model_profile_values">
+    <string-array name="noise_model_profile_values" translatable="false">
         <item>auto</item>
         <item>lgv50_imx363_0</item>
         <item>imported</item>
     </string-array>
-    <string name="noise_model_profile">Профиль модели шума</string>
-    <string name="noise_model_import">Импорт модели шума</string>
-    <string name="noise_model_import_summary">Загрузить файл калибровки (.c) с коэффициентами A/B/C/D</string>
-    <string name="noise_model_export">Экспорт модели шума</string>
-    <string name="noise_model_export_summary">Сохранить активный профиль в Download/SCAMERA</string>
-    <string name="merge_robustness">Робастность склейки</string>
-    <string name="merge_robustness_summary">Допуск по шумовой модели; больше — сильнее шумодав, меньше — меньше призраков (HDR+ = 8)</string>
-    <string name="merge_clip_level">Порог выбитых светов</string>
-    <string name="merge_clip_level_summary">Доля полной шкалы, выше которой отсчёт считается клипованным и не подмешивается (0.99)</string>
-    <string name="merge_tiling_tolerance">Допуск рассогласования тайлов</string>
-    <string name="merge_tiling_tolerance_summary">Расхождение соседних тайлов выравнивания в пикселях, при котором поле считается негодным (4.0)</string>
-    <string name="merge_floor_sigmas">Порог шумового дна</string>
-    <string name="merge_floor_sigmas_summary">Отсчёты короткого кадра ниже стольких сигм шума не подмешиваются; 0 — без проверки (2.0)</string>
-    <string name="merge_max_exposure_ratio">Предел разброса экспозиции</string>
-    <string name="merge_max_exposure_ratio_summary">Кадры с отличием от опорного больше этого не склеиваются; 0 — без предела (64)</string>
-    <string name="long_frame_shutter_cap">Потолок выдержки длинного кадра</string>
-    <string name="long_frame_shutter_cap_summary">В периодах считывания сенсора (1/30 c); остаток EV уходит в усиление. 0 — без потолка (2.0)</string>
-    <string name="hdrplus_luma_gain_slope">Люма-шумодав: рост с ISO</string>
-    <string name="hdrplus_luma_gain_slope_desc">Насколько сильнее работает яркостный шумодав склейки на каждое удвоение ISO. 0 — фиксированная сила, как раньше</string>
-    <string name="hdrplus_chroma_gain_slope">Хрома-шумодав: рост с ISO</string>
-    <string name="hdrplus_chroma_gain_slope_desc">То же для цветового шумодава. Обычно выше яркостного: цветная рябь мешает раньше, чем зерно, а её подавление почти не стоит деталей</string>
-    <string name="max_hdr_ratio">Потолок HDR ratio</string>
-    <string name="max_hdr_ratio_summary">Предел отношения самого длинного кадра к самому короткому; короткий поджимается вверх. GCam: 9.8 (ночь 15.3). 0 — без потолка</string>
-    <string name="antibanding_hz">Частота мерцания, Гц</string>
-    <string name="antibanding_hz_summary">Выдержка TET-модели округляется до целого числа периодов. 120 для сети 60 Гц, 100 для 50 Гц, 0 — без округления. Действует только при включённой TET-модели</string>
-    <string name="tet_model_enabled">TET-модель экспозиций</string>
-    <string name="tet_model_enabled_summary">Выдержка выбирается по ломаной выдержка/усиление из дампа GCam и держится единой для всей серии; брекет разносится только усилением. Выключено — прежние эвристики</string>
-    <string name="mosaic_sr_enabled_desc">Супер-разрешение по мозаике Байера: масштабирование выполняется до дебайера, по сырым отсчётам</string>
-    <string name="mosaic_sr_scale_desc">Во сколько раз увеличивается итоговое разрешение. Больше — резче, но заметно дольше и больше памяти</string>
-    <string name="mosaic_sr_kernel_desc">Ядро интерполяции при масштабировании. Влияет на резкость кромок и склонность к звону</string>
-    <string name="quad_bayer_enabled_desc">Съёмка с матрицы Quad Bayer в полном разрешении вместо биннинга 4:1</string>
-    <string name="quad_bayer_mode_desc">Способ разбора quad-мозаики: биннинг для чистоты или ремозаик для детализации</string>
-    <string name="quad_dng_metadata_desc">Какой шаблон CFA писать в DNG. Неверный вариант даёт пурпурный или ломаный цвет в редакторе</string>
-    <string name="noise_model_profile_desc">Профиль шума сенсора. Задаёт, какой уровень отклонения считается шумом, а какой реальным сигналом</string>
-    <string name="zsl_merge_algorithm_desc">Алгоритм склейки обычных ZSL-кадров</string>
-    <string name="night_merge_algorithm_desc">Алгоритм склейки в ночном режиме</string>
-    <string name="ai_denoise_model_desc">Нейросетевая модель шумоподавления. Более крупные чище, но медленнее</string>
-    <string name="ai_denoise_strength_desc">Общая сила ИИ-шумодава. Избыток стирает фактуру</string>
-    <string name="ai_denoise_luma_desc">Сила ИИ-шумодава по яркости: зерно</string>
-    <string name="ai_denoise_chroma_desc">Сила ИИ-шумодава по цвету: цветные пятна</string>
-    <string name="wide169_desc">Съёмка в 16:9 вместо полного поля сенсора. Кадр обрезается сверху и снизу</string>
-    <string name="short_frame_count_desc">Сколько коротких кадров снимать для спасения светов. 0 — не снимать</string>
-    <string name="short_exposure_ev_desc">Насколько короткий кадр темнее базового, в стопах</string>
-    <string name="long_frame_count_desc">Сколько длинных кадров снимать для проработки теней. 0 — не снимать</string>
-    <string name="long_exposure_ev_desc">Насколько длинный кадр светлее базового, в стопах</string>
-    <string name="highlight_suppression_desc">Подавление светов при слиянии: насколько сильно поджимаются яркие участки</string>
-    <string name="binning_desc">Объединение соседних пикселей 4:1. Меньше разрешение, чище картинка в темноте</string>
-    <string name="energy_safe_desc">Экономия энергии: снижает нагрузку и нагрев ценой скорости обработки</string>
-    <string name="camera_sounds_desc">Звук затвора при съёмке</string>
-    <string name="hide_gallery_icon_desc">Скрыть кнопку галереи с экрана съёмки</string>
-    <string name="show_grid_desc">Сетка кадрирования поверх видоискателя</string>
-    <string name="show_roundedge_desc">Скруглённые углы у видоискателя</string>
-    <string name="show_watermark_desc">Подпись на сохранённых снимках</string>
-    <string name="af_mode_desc">Режим автофокуса</string>
-    <string name="peak_method_desc">Подсветка областей в фокусе на видоискателе</string>
-    <string name="show_afdata_desc">Показ данных автофокуса на видоискателе</string>
-    <string name="frame_count_desc">Сколько кадров объединяется в один снимок. Больше — чище, но дольше и выше риск смаза</string>
-    <string name="cfa_desc">Шаблон цветового фильтра сенсора. Неверный даёт ломаные цвета</string>
-    <string name="color_method_desc">Метод цветопередачи: как сырые отсчёты переводятся в цвет</string>
-    <string name="horizon_desc">Указатель горизонта на видоискателе</string>
-    <string name="preview_format_desc">Формат потока видоискателя. Влияет на точность превью и нагрузку</string>
-    <string name="theme_desc">Оформление приложения</string>
-    <string name="show_gradient_desc">Градиентная подложка в интерфейсе</string>
+    <string name="noise_model_profile">Noise model profile</string>
+    <string name="noise_model_import">Import noise model</string>
+    <string name="noise_model_import_summary">Load a calibration file (.c) with A/B/C/D coefficients</string>
+    <string name="noise_model_export">Export noise model</string>
+    <string name="noise_model_export_summary">Save the active profile to Download/SCAMERA</string>
+    <string name="merge_robustness">Merge robustness</string>
+    <string name="merge_robustness_summary">Tolerance from the noise model; higher gives stronger noise reduction, lower gives fewer ghosts (HDR+ = 8)</string>
+    <string name="merge_clip_level">Clipped highlight threshold</string>
+    <string name="merge_clip_level_summary">Share of full scale above which a sample counts as clipped and is not merged in (0.99)</string>
+    <string name="merge_tiling_tolerance">Tile mismatch tolerance</string>
+    <string name="merge_tiling_tolerance_summary">Disagreement between neighbouring alignment tiles, in pixels, at which the field counts as invalid (4.0)</string>
+    <string name="merge_floor_sigmas">Noise floor threshold</string>
+    <string name="merge_floor_sigmas_summary">Short-frame samples below this many noise sigmas are not merged in; 0: no check (2.0)</string>
+    <string name="merge_max_exposure_ratio">Exposure spread limit</string>
+    <string name="merge_max_exposure_ratio_summary">Frames that differ from the reference by more than this are not merged; 0: no limit (64)</string>
+    <string name="long_frame_shutter_cap">Long-frame shutter cap</string>
+    <string name="long_frame_shutter_cap_summary">In sensor readout periods (1/30 s); the rest of the EV goes to gain. 0: no cap (2.0)</string>
+    <string name="hdrplus_luma_gain_slope">Luma noise reduction: growth with ISO</string>
+    <string name="hdrplus_luma_gain_slope_desc">How much stronger the luma noise reduction of the merge gets per doubling of ISO. 0: a fixed strength, as before</string>
+    <string name="hdrplus_chroma_gain_slope">Chroma noise reduction: growth with ISO</string>
+    <string name="hdrplus_chroma_gain_slope_desc">The same for the chroma noise reduction. Usually higher than for luma: colour speckle bothers sooner than grain, and removing it costs almost no detail</string>
+    <string name="max_hdr_ratio">HDR ratio cap</string>
+    <string name="max_hdr_ratio_summary">Limit on the ratio of the longest frame to the shortest; the short one is raised. GCam: 9.8 (night 15.3). 0: no cap</string>
+    <string name="antibanding_hz">Flicker frequency, Hz</string>
+    <string name="antibanding_hz_summary">The TET model shutter is rounded to a whole number of periods. 120 for 60 Hz mains, 100 for 50 Hz, 0: no rounding. Works only with the TET model on</string>
+    <string name="tet_model_enabled">TET exposure model</string>
+    <string name="tet_model_enabled_summary">The shutter comes from the shutter/gain curve of the GCam dump and stays the same for the whole burst; the bracket differs only in gain. Off: the previous heuristics</string>
+    <string name="mosaic_sr_enabled_desc">Super-resolution on the Bayer mosaic: scaling runs before demosaicing, on the raw samples</string>
+    <string name="mosaic_sr_scale_desc">How many times the output resolution grows. Higher is sharper, but much slower and needs more memory</string>
+    <string name="mosaic_sr_kernel_desc">Interpolation kernel for scaling. Affects edge sharpness and ringing</string>
+    <string name="quad_bayer_enabled_desc">Capture from the Quad Bayer sensor at full resolution instead of 4:1 binning</string>
+    <string name="quad_bayer_mode_desc">How the quad mosaic is handled: binning for a cleaner image or remosaic for detail</string>
+    <string name="quad_dng_metadata_desc">Which CFA pattern to write to the DNG. A wrong one gives purple or broken colour in an editor</string>
+    <string name="noise_model_profile_desc">Sensor noise profile. Sets which deviation counts as noise and which as real signal</string>
+    <string name="zsl_merge_algorithm_desc">Merge algorithm for normal ZSL frames</string>
+    <string name="night_merge_algorithm_desc">Merge algorithm in night mode</string>
+    <string name="ai_denoise_model_desc">Neural network model for noise reduction. Larger ones are cleaner but slower</string>
+    <string name="ai_denoise_strength_desc">Overall strength of the AI noise reduction. Too much wipes out texture</string>
+    <string name="ai_denoise_luma_desc">AI noise reduction strength for luma: grain</string>
+    <string name="ai_denoise_chroma_desc">AI noise reduction strength for chroma: colour blotches</string>
+    <string name="wide169_desc">Shoot in 16:9 instead of the full sensor area. The frame is cropped at the top and bottom</string>
+    <string name="short_frame_count_desc">How many short frames to capture to save highlights. 0: none</string>
+    <string name="short_exposure_ev_desc">How much darker the short frame is than the base one, in stops</string>
+    <string name="long_frame_count_desc">How many long frames to capture for shadow detail. 0: none</string>
+    <string name="long_exposure_ev_desc">How much brighter the long frame is than the base one, in stops</string>
+    <string name="highlight_suppression_desc">Highlight suppression in the merge: how strongly bright areas are compressed</string>
+    <string name="binning_desc">Combines neighbouring pixels 4:1. Lower resolution, cleaner image in the dark</string>
+    <string name="energy_safe_desc">Saves power: less load and heat at the cost of processing speed</string>
+    <string name="camera_sounds_desc">Shutter sound when shooting</string>
+    <string name="hide_gallery_icon_desc">Hide the gallery button on the camera screen</string>
+    <string name="show_grid_desc">Composition grid over the viewfinder</string>
+    <string name="show_roundedge_desc">Rounded viewfinder corners</string>
+    <string name="show_watermark_desc">Caption on saved photos</string>
+    <string name="af_mode_desc">Autofocus mode</string>
+    <string name="peak_method_desc">Highlights in-focus areas in the viewfinder</string>
+    <string name="show_afdata_desc">Autofocus data in the viewfinder</string>
+    <string name="frame_count_desc">How many frames are merged into one photo. More is cleaner but slower, with a higher risk of blur</string>
+    <string name="cfa_desc">Colour filter pattern of the sensor. A wrong one gives broken colours</string>
+    <string name="color_method_desc">Colour method: how raw samples are turned into colour</string>
+    <string name="horizon_desc">Horizon indicator in the viewfinder</string>
+    <string name="preview_format_desc">Viewfinder stream format. Affects preview accuracy and load</string>
+    <string name="theme_desc">App appearance</string>
+    <string name="show_gradient_desc">Gradient background in the interface</string>
     <string name="zsl_merge_algorithm">ZSL merge algorithm</string>
     <string name="night_merge_algorithm">Night merge algorithm</string>
 </resources>

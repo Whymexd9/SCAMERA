@@ -17,14 +17,14 @@
     <string name="highlight_suppression">Highlight recovery (0–200)</string>
 
     <string name="hdrx" translatable="false">HDRX</string>
-    <string name="ultrahdr">Ultra HDR</string>
+    <string name="ultrahdr" translatable="false">Ultra HDR</string>
     <string name="ultrahdr_summary">Encode JPEGs with an Ultra HDR gain map (requires a second, lightweight tone pass)</string>
-    <string name="ai_denoise">ИИ-шумоподавление Bayer</string>
-    <string name="ai_denoise_available">UNet Fast или NAFNet Quality · NPU через NNAPI, с явным CPU fallback</string>
-    <string name="ai_denoise_strength">Сила ИИ-шумоподавления</string>
-    <string name="ai_denoise_luma">ИИ Luma, %</string>
-    <string name="ai_denoise_chroma">ИИ Chroma, %</string>
-    <string name="ai_denoise_model">Модель ИИ-шумоподавления</string>
+    <string name="ai_denoise">AI Bayer noise reduction</string>
+    <string name="ai_denoise_available">UNet Fast or NAFNet Quality · NPU via NNAPI, with an explicit CPU fallback</string>
+    <string name="ai_denoise_strength">AI noise reduction strength</string>
+    <string name="ai_denoise_luma">AI luma, %</string>
+    <string name="ai_denoise_chroma">AI chroma, %</string>
+    <string name="ai_denoise_model">AI noise reduction model</string>
     <string name="turn_on_grid">Show Grid</string>
     <string name="turn_on_round_edges">Enable Round Edges</string>
     <string name="telegram">Telegram Group ↗</string>
@@ -32,7 +32,7 @@
     <string name="sure_delete">Are you sure to delete this image?</string>
     <string name="sure_delete_multiple">Are you sure to delete %1$s image(s)? %2$s will be cleared.</string>
     <string name="cancel">Cancel</string>
-    <string name="yes" translatable="false">Yes</string>
+    <string name="yes">Yes</string>
     <string name="image_deleted">Image Deleted</string>
     <string name="turn_on_afdata">Viewfinder HUD / Debug</string>
     <string name="cfa">Bayer Filter Pattern</string>
@@ -78,14 +78,14 @@
     <string name="list_not_loaded" translatable="false"><![CDATA[<list not loaded>]]></string>
     <string name="fetch_configurations">Fetch Configurations</string>
     <string name="fetch_configurations_summary">Download device-specific tuning from the network and update cached settings</string>
-    <string name="sensor_configurations">Настройки сенсоров по модулям</string>
-    <string name="sensor_configurations_summary">Уровни RAW, экспозиция, стабилизация и сессия каждого модуля</string>
+    <string name="sensor_configurations">Sensor settings per module</string>
+    <string name="sensor_configurations_summary">RAW levels, exposure, stabilization and session of each module</string>
     <string name="this_device">Your Device - %1$s</string>
     <string name="sync_on">Sync. On</string>
     <string name="sync_off">Sync. Off</string>
     <string name="mode_unlimited">Unlimited</string>
     <string name="mode_rawvideo">RAW Video</string>
-    <string name="mode_motion">Фото</string>
+    <string name="mode_motion">Photo</string>
     <string name="mode_photo">Photo</string>
     <string name="mode_night">Night</string>
     <string name="mode_video">Video</string>
@@ -97,7 +97,7 @@
     <string name="t_10s">10s</string>
     <string name="raw_string" translatable="false">RAW</string>
     <string name="raw_plus_jpg" translatable="false">RAW + JPEG</string>
-    <string name="jpg_only" translatable="false">JPEG</string>
+    <string name="jpg_only">JPEG</string>
     <string name="off">Off</string>
     <string name="golden_ratio">Golden Ratio</string>
     <string name="diag_triangle">Diag. Triangles</string>
@@ -155,123 +155,123 @@
     <string name="perm_rationale_dcim_message">Access to the DCIM folder is required for saving RAW video files and reading device custom configs.</string>
 
     <!-- Sharpening, RawTherapee algorithms -->
-    <string name="pref_sharp_radius_default">0.5</string>
-    <string name="pref_sharp_amount_default">75</string>
-    <string name="pref_sharp_contrast_default">20</string>
-    <string name="pref_sharp_threshold_bl_default">20</string>
-    <string name="pref_sharp_threshold_tl_default">80</string>
-    <string name="pref_sharp_threshold_tr_default">1200</string>
-    <string name="pref_sharp_threshold_br_default">2000</string>
-    <string name="pref_sharp_edges_radius_default">1.9</string>
-    <string name="pref_sharp_edges_tolerance_default">1800</string>
-    <string name="pref_sharp_halo_amount_default">85</string>
-    <string name="pref_sharp_micro_amount_default">20</string>
-    <string name="pref_sharp_micro_uniformity_default">5</string>
-    <string name="pref_sharp_micro_contrast_default">20</string>
+    <string name="pref_sharp_radius_default" translatable="false">0.5</string>
+    <string name="pref_sharp_amount_default" translatable="false">75</string>
+    <string name="pref_sharp_contrast_default" translatable="false">20</string>
+    <string name="pref_sharp_threshold_bl_default" translatable="false">20</string>
+    <string name="pref_sharp_threshold_tl_default" translatable="false">80</string>
+    <string name="pref_sharp_threshold_tr_default" translatable="false">1200</string>
+    <string name="pref_sharp_threshold_br_default" translatable="false">2000</string>
+    <string name="pref_sharp_edges_radius_default" translatable="false">1.9</string>
+    <string name="pref_sharp_edges_tolerance_default" translatable="false">1800</string>
+    <string name="pref_sharp_halo_amount_default" translatable="false">85</string>
+    <string name="pref_sharp_micro_amount_default" translatable="false">20</string>
+    <string name="pref_sharp_micro_uniformity_default" translatable="false">5</string>
+    <string name="pref_sharp_micro_contrast_default" translatable="false">20</string>
     <bool name="pref_sharp_edges_only_default">false</bool>
     <bool name="pref_sharp_halo_control_default">true</bool>
     <bool name="pref_sharp_micro_matrix_default">false</bool>
 
 
-    <string name="sharp_radius">Радиус</string>
-    <string name="sharp_radius_desc">Радиус размытия в пикселях. RawTherapee: 0.5</string>
-    <string name="sharp_amount">Сила, %</string>
-    <string name="sharp_amount_desc">Доля разницы, возвращаемая в изображение. RawTherapee: 200</string>
-    <string name="sharp_contrast">Порог контраста, %</string>
-    <string name="sharp_contrast_desc">Резкость гасится там, где локальный контраст ниже порога — плоские участки и шум не усиливаются. RawTherapee: 20</string>
-    <string name="sharp_threshold_bl">Узел 1 (начало нарастания)</string>
-    <string name="sharp_threshold_tl">Узел 2 (полная сила)</string>
-    <string name="sharp_threshold_tr">Узел 3 (начало спада)</string>
-    <string name="sharp_threshold_br">Узел 4 (конец спада)</string>
-    <string name="sharp_edges_only">Включить</string>
-    <string name="sharp_edges_only_desc">RawTherapee: выключено</string>
-    <string name="sharp_edges_radius">Радиус детектора</string>
-    <string name="sharp_edges_radius_desc">RawTherapee: 1.9</string>
-    <string name="sharp_edges_tolerance">Допуск</string>
-    <string name="sharp_edges_tolerance_desc">В шкале 0–32768. RawTherapee: 1800</string>
-    <string name="sharp_halo_control">Включить</string>
-    <string name="sharp_halo_control_desc">RawTherapee: выключено</string>
-    <string name="sharp_halo_amount">Сила, %</string>
-    <string name="sharp_halo_amount_desc">RawTherapee: 85</string>
-    <string name="sharp_micro_amount">Сила</string>
-    <string name="sharp_micro_amount_desc">RawTherapee: 20</string>
-    <string name="sharp_micro_uniformity">Однородность</string>
-    <string name="sharp_micro_uniformity_desc">Выбирает набор ограничений по яркости, 0–10. RawTherapee: 5</string>
-    <string name="sharp_micro_contrast">Порог контраста, %</string>
-    <string name="sharp_micro_contrast_desc">RawTherapee: 20</string>
-    <string name="sharp_micro_matrix">Матрица 3x3</string>
-    <string name="sharp_micro_matrix_desc">Выключено — 5x5, как в RawTherapee по умолчанию</string>
+    <string name="sharp_radius">Radius</string>
+    <string name="sharp_radius_desc">Blur radius in pixels. RawTherapee: 0.5</string>
+    <string name="sharp_amount">Amount, %</string>
+    <string name="sharp_amount_desc">Share of the difference added back to the image. RawTherapee: 200</string>
+    <string name="sharp_contrast">Contrast threshold, %</string>
+    <string name="sharp_contrast_desc">Sharpening fades where local contrast is below the threshold, so flat areas and noise are not boosted. RawTherapee: 20</string>
+    <string name="sharp_threshold_bl">Point 1 (ramp-up starts)</string>
+    <string name="sharp_threshold_tl">Point 2 (full strength)</string>
+    <string name="sharp_threshold_tr">Point 3 (fall-off starts)</string>
+    <string name="sharp_threshold_br">Point 4 (fall-off ends)</string>
+    <string name="sharp_edges_only">Enable</string>
+    <string name="sharp_edges_only_desc">RawTherapee: off</string>
+    <string name="sharp_edges_radius">Detector radius</string>
+    <string name="sharp_edges_radius_desc" translatable="false">RawTherapee: 1.9</string>
+    <string name="sharp_edges_tolerance">Tolerance</string>
+    <string name="sharp_edges_tolerance_desc">On a 0–32768 scale. RawTherapee: 1800</string>
+    <string name="sharp_halo_control">Enable</string>
+    <string name="sharp_halo_control_desc">RawTherapee: off</string>
+    <string name="sharp_halo_amount">Amount, %</string>
+    <string name="sharp_halo_amount_desc" translatable="false">RawTherapee: 85</string>
+    <string name="sharp_micro_amount">Strength</string>
+    <string name="sharp_micro_amount_desc" translatable="false">RawTherapee: 20</string>
+    <string name="sharp_micro_uniformity">Uniformity</string>
+    <string name="sharp_micro_uniformity_desc">Selects the set of brightness limits, 0–10. RawTherapee: 5</string>
+    <string name="sharp_micro_contrast">Contrast threshold, %</string>
+    <string name="sharp_micro_contrast_desc" translatable="false">RawTherapee: 20</string>
+    <string name="sharp_micro_matrix">3x3 matrix</string>
+    <string name="sharp_micro_matrix_desc">Off: 5x5, the RawTherapee default</string>
     <string name="wide169" translatable="false">16:9</string>
     <bool name="pref_sharp_usm_enabled_default">true</bool>
     <bool name="pref_sharp_deconv_enabled_default">false</bool>
     <bool name="pref_sharp_micro_enabled_default">false</bool>
-    <string name="sharp_usm_enabled">Включить Unsharp Mask</string>
-    <string name="sharp_deconv_enabled">Включить RL-деконволюцию</string>
-    <string name="sharp_micro_enabled">Включить микроконтраст</string>
+    <string name="sharp_usm_enabled">Enable Unsharp Mask</string>
+    <string name="sharp_deconv_enabled">Enable RL deconvolution</string>
+    <string name="sharp_micro_enabled">Enable microcontrast</string>
 
     <!-- Richardson-Lucy, three staged PSFs -->
-    <string name="pref_sharp_deconv_halo_default">100</string>
-    <string name="pref_sharp_deconv_halo_margin_default">0.15</string>
-    <string name="pref_sharp_deconv_halo_macro_default">0.4</string>
-    <string name="pref_sharp_deconv_kernel_1_default">2</string>
-    <string name="pref_sharp_deconv_radius_1_default">1.0</string>
-    <string name="pref_sharp_deconv_amount_1_default">100</string>
-    <string name="pref_sharp_deconv_iterations_1_default">3</string>
-    <string name="pref_sharp_deconv_damping_1_default">0</string>
-    <string name="pref_sharp_deconv_kernel_2_default">1</string>
-    <string name="pref_sharp_deconv_radius_2_default">0.0</string>
-    <string name="pref_sharp_deconv_amount_2_default">0</string>
-    <string name="pref_sharp_deconv_iterations_2_default">0</string>
-    <string name="pref_sharp_deconv_damping_2_default">0</string>
-    <string name="pref_sharp_deconv_kernel_3_default">0</string>
-    <string name="pref_sharp_deconv_radius_3_default">0.5</string>
-    <string name="pref_sharp_deconv_amount_3_default">150</string>
-    <string name="pref_sharp_deconv_iterations_3_default">3</string>
-    <string name="pref_sharp_deconv_damping_3_default">0</string>
-    <string name="sharp_deconv_halo">Сила, %</string>
-    <string name="sharp_deconv_halo_margin">Запас на текстуру</string>
-    <string name="sharp_deconv_halo_margin_desc">Доля локального размаха, которую разрешено пройти свободно — мелкая фактура не ограничивается</string>
-    <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
-    <string name="sharp_deconv_halo_macro_desc">Локальный контраст, выше которого подавление работает в полную силу</string>
-    <string name="sharp_deconv_kernel">Тип ядра PSF</string>
-    <string name="sharp_deconv_kernel_desc">Форма функции рассеяния точки для этой ступени</string>
+    <string name="pref_sharp_deconv_halo_default" translatable="false">100</string>
+    <string name="pref_sharp_deconv_halo_margin_default" translatable="false">0.15</string>
+    <string name="pref_sharp_deconv_halo_macro_default" translatable="false">0.4</string>
+    <string name="pref_sharp_deconv_kernel_1_default" translatable="false">2</string>
+    <string name="pref_sharp_deconv_radius_1_default" translatable="false">1.0</string>
+    <string name="pref_sharp_deconv_amount_1_default" translatable="false">100</string>
+    <string name="pref_sharp_deconv_iterations_1_default" translatable="false">3</string>
+    <string name="pref_sharp_deconv_damping_1_default" translatable="false">0</string>
+    <string name="pref_sharp_deconv_kernel_2_default" translatable="false">1</string>
+    <string name="pref_sharp_deconv_radius_2_default" translatable="false">0.0</string>
+    <string name="pref_sharp_deconv_amount_2_default" translatable="false">0</string>
+    <string name="pref_sharp_deconv_iterations_2_default" translatable="false">0</string>
+    <string name="pref_sharp_deconv_damping_2_default" translatable="false">0</string>
+    <string name="pref_sharp_deconv_kernel_3_default" translatable="false">0</string>
+    <string name="pref_sharp_deconv_radius_3_default" translatable="false">0.5</string>
+    <string name="pref_sharp_deconv_amount_3_default" translatable="false">150</string>
+    <string name="pref_sharp_deconv_iterations_3_default" translatable="false">3</string>
+    <string name="pref_sharp_deconv_damping_3_default" translatable="false">0</string>
+    <string name="sharp_deconv_halo">Strength, %</string>
+    <string name="sharp_deconv_halo_margin">Texture margin</string>
+    <string name="sharp_deconv_halo_margin_desc">Share of the local range that passes freely, so fine texture is not limited</string>
+    <string name="sharp_deconv_halo_macro">Macro edge threshold</string>
+    <string name="sharp_deconv_halo_macro_desc">Local contrast above which the suppression works at full strength</string>
+    <string name="sharp_deconv_kernel">PSF kernel type</string>
+    <string name="sharp_deconv_kernel_desc">Shape of the point spread function for this stage</string>
     <string-array name="sharp_deconv_kernel_entries">
-        <item>Гаусс (классика)</item>
-        <item>Оптика / линза (Pillbox)</item>
-        <item>Диск Эйри (волновая дифракция)</item>
+        <item>Gaussian (classic)</item>
+        <item>Optics / lens (Pillbox)</item>
+        <item>Airy disk (wave diffraction)</item>
     </string-array>
-    <string-array name="sharp_deconv_kernel_values">
+    <string-array name="sharp_deconv_kernel_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
-    <string name="sharp_deconv_radius">Радиус</string>
-    <string name="sharp_deconv_amount">Сила, %</string>
-    <string name="sharp_deconv_iterations">Итерации</string>
-    <string name="sharp_deconv_iterations_desc">0 отключает ступень. Каждая итерация — два полноразмерных прохода</string>
-    <string name="sharp_deconv_damping">Затухание</string>
-    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом</string>
-    <string name="pref_zsl_buffer_count_default">50</string>
-    <string name="zsl_buffer_count">Кадров в буфере ZSL</string>
-    <string name="zsl_buffer_count_summary">Размер RAW-буфера до нажатия: 1–100 кадров, по умолчанию 50 (~25 МБ на кадр; 100 не запускает камеру на X200 Ultra). Один размер для всех модулей и режимов фото/ночь, включая MFSR. Число кадров склейки задаётся отдельно.</string>
-    <string name="live_viewfinder_raw">Живой видоискатель</string>
-    <string name="live_viewfinder_raw_summary">Предпросмотр с проявлением RAW. При выключении или недоступности RAW — стандартное превью камеры. Полная обработка снимка выполняется после съёмки.</string>
-    <string name="pref_remosaic_phase_default">0</string>
-    <string name="remosaic_enabled">Включить ремозаик</string>
-    <string name="remosaic_enabled_desc">Только для камер, отдающих quad или tetra мозаику</string>
-    <string name="remosaic_phase_x">Фаза по X</string>
-    <string name="remosaic_phase_y">Фаза по Y</string>
-    <string name="remosaic_phase_desc">Смещение сетки блоков. Неверная фаза даёт цветную сетку — подбирается по снимку</string>
-    <string name="pref_remosaic_profile_default">2</string>
-    <string name="remosaic_profile">Характер интерполяции</string>
-    <string name="remosaic_profile_desc">Сколько сглаживания вносит ремозаик</string>
+    <string name="sharp_deconv_radius">Radius</string>
+    <string name="sharp_deconv_amount">Amount, %</string>
+    <string name="sharp_deconv_iterations">Iterations</string>
+    <string name="sharp_deconv_iterations_desc">0 turns the stage off. Each iteration is two full-size passes</string>
+    <string name="sharp_deconv_damping">Damping</string>
+    <string name="sharp_deconv_damping_desc">Fades the correction where noise explains the difference</string>
+    <string name="pref_zsl_buffer_count_default" translatable="false">50</string>
+    <string name="zsl_buffer_count">ZSL buffer frames</string>
+    <string name="zsl_buffer_count_summary">RAW buffer before the shutter press: 1–100 frames, 50 by default (~25 MB per frame; with 100 the camera does not start on the X200 Ultra). One size for all modules and for the photo and night modes, MFSR included. The number of merged frames is set separately.</string>
+    <string name="live_viewfinder_raw">Live viewfinder</string>
+    <string name="live_viewfinder_raw_summary">Preview developed from RAW. When it is off or RAW is unavailable, the standard camera preview is shown. The full processing of the shot runs after capture.</string>
+    <string name="pref_remosaic_phase_default" translatable="false">0</string>
+    <string name="remosaic_enabled">Enable remosaic</string>
+    <string name="remosaic_enabled_desc">Only for cameras that output a quad or tetra mosaic</string>
+    <string name="remosaic_phase_x">X phase</string>
+    <string name="remosaic_phase_y">Y phase</string>
+    <string name="remosaic_phase_desc">Offset of the block grid. A wrong phase gives a colour grid; tune it on a shot</string>
+    <string name="pref_remosaic_profile_default" translatable="false">2</string>
+    <string name="remosaic_profile">Interpolation style</string>
+    <string name="remosaic_profile_desc">How much smoothing the remosaic adds</string>
     <string-array name="remosaic_profile_entries">
-        <item>Ближайший отсчёт — без сглаживания</item>
-        <item>Резкий — узкое ядро</item>
-        <item>Сбалансированный</item>
-        <item>Мягкий — широкое ядро и медиана</item>
+        <item>Nearest sample — no smoothing</item>
+        <item>Sharp — narrow kernel</item>
+        <item>Balanced</item>
+        <item>Soft — wide kernel and median</item>
     </string-array>
-    <string-array name="remosaic_profile_values">
+    <string-array name="remosaic_profile_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
@@ -281,23 +281,23 @@
     <bool name="pref_remosaic_clamp_default">true</bool>
     <bool name="pref_remosaic_flatfield_default">false</bool>
     <bool name="pref_remosaic_dump_default">false</bool>
-    <string name="remosaic_steered">Интерполяция по направлению</string>
-    <string name="remosaic_steered_desc">Зелёный достраивается вдоль кромки, а не поперёк. Усреднение через кромку даёт промежуточное значение, а по нему считаются цветовые разности — отсюда цветная кайма у букв и контуров</string>
-    <string name="remosaic_clamp">Ограничение цветовых разностей</string>
-    <string name="remosaic_clamp_desc">Интерполированная разность не выходит за пределы измеренных рядом. На ровной поверхности не меняет ничего, на кромке срезает выброс — тот самый розовый ореол</string>
-    <string name="remosaic_dump">Сохранять выход ремозаика</string>
-    <string name="remosaic_dump_desc">Кладёт рядом с обычным DNG ещё один — ровно то, что записал узел, до демозаика. Нужен, чтобы отличить ошибку самого ремозаика от ошибки стадий после него. Каждый снимок занимает ещё 24 МБ</string>
-    <string name="remosaic_flatfield">Плоское поле блока</string>
-    <string name="remosaic_flatfield_desc">Фотосайты внутри блока отличаются откликом — на этом сенсоре до 12 %, и по-своему для каждого цвета. Профиль снимается с самого кадра и делится обратно, иначе он входит в зелёное поле и с обратным знаком в цветовые разности: цветной налёт на мелкой структуре. Эталонное приложение этого не делает, поэтому по умолчанию выключено — включать как эксперимент</string>
-    <string name="remosaic_backend_title">Алгоритм ремозаика</string>
-    <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — по мотивам Vivo</item><item>Vivo Neural — NPU, root (эксперимент)</item><item>HP9 HexQuad — NPU, 6 кадров (тест)</item><item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item></string-array>
-    <string-array name="remosaic_backend_values"><item>scamera</item><item>tetra_detail</item><item>vivo_neural</item><item>hp9_hexquad</item><item>imx06c_quad</item></string-array>
-    <string name="remosaic_vivo_probe_desc">Проверка совместимости на этом телефоне. Обработка снимков не запускается.</string>
-    <string name="remosaic_vivo_checking">Проверка…</string>
-    <string name="remosaic_vivo_result">Результат проверки Vivo</string>
-    <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
-    <string-array name="hexquad_model_entries"><item>x2 — текущая модель</item><item>x1 — экспериментальная</item></string-array>
-    <string-array name="hexquad_model_values"><item>2</item><item>1</item></string-array>
+    <string name="remosaic_steered">Directional interpolation</string>
+    <string name="remosaic_steered_desc">Green is filled in along an edge, not across it. Averaging across an edge gives an in-between value, and the colour differences are computed from it: hence the colour fringes on letters and outlines</string>
+    <string name="remosaic_clamp">Colour difference clamp</string>
+    <string name="remosaic_clamp_desc">An interpolated difference stays within the ones measured nearby. On a flat surface it changes nothing; on an edge it cuts the overshoot, that very pink halo</string>
+    <string name="remosaic_dump">Save the remosaic output</string>
+    <string name="remosaic_dump_desc">Saves one more DNG next to the normal one: exactly what the node wrote, before demosaicing. It tells an error of the remosaic itself from an error of the later stages. Each shot takes 24 MB more</string>
+    <string name="remosaic_flatfield">Block flat field</string>
+    <string name="remosaic_flatfield_desc">Photosites inside a block differ in response, by up to 12 % on this sensor and differently for each colour. The profile is measured on the frame itself and divided out; otherwise it goes into the green field, and with the opposite sign into the colour differences: a colour cast on fine structure. The reference app does not do this, so it is off by default; turn it on as an experiment</string>
+    <string name="remosaic_backend_title">Remosaic algorithm</string>
+    <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — after Vivo</item><item>Vivo Neural — NPU, root (experimental)</item><item>HP9 HexQuad — NPU, 6 frames (test)</item><item>Quad 2×2 — NPU, 4 frames (main, 2x ISZ)</item></string-array>
+    <string-array name="remosaic_backend_values" translatable="false"><item>scamera</item><item>tetra_detail</item><item>vivo_neural</item><item>hp9_hexquad</item><item>imx06c_quad</item></string-array>
+    <string name="remosaic_vivo_probe_desc">Compatibility check on this phone. No shot processing runs.</string>
+    <string name="remosaic_vivo_checking">Checking…</string>
+    <string name="remosaic_vivo_result">Vivo check result</string>
+    <string name="tetra_response_summary">Estimates the 4×4 pixel response and its smooth change across the frame. With too little data a common correction is used. If texture or colour changes, compare with the correction off.</string>
+    <string-array name="hexquad_model_entries"><item>x2 — current model</item><item>x1 — experimental</item></string-array>
+    <string-array name="hexquad_model_values" translatable="false"><item>2</item><item>1</item></string-array>
     <!-- Settings sheet handles (TalkBack) -->
     <string name="sheet_handle_open">Open settings panel</string>
     <string name="sheet_handle_toggle">Expand or collapse settings panel</string>

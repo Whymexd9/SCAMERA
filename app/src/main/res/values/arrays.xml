@@ -5,9 +5,9 @@
         <item>CPU (AI models)</item>
         <item>GPU (Vulkan + OpenGL)</item>
         <item>NPU (experimental, reported fallback)</item>
-        <item>GPU — включая RAISR</item>
+        <item>GPU — including RAISR</item>
     </string-array>
-    <string-array name="processing_backend_entry_values">
+    <string-array name="processing_backend_entry_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
@@ -15,10 +15,10 @@
         <item>4</item>
     </string-array>
     <string-array name="ai_denoise_model_entries">
-        <item>Быстродействие — UNet Bayer Fast</item>
-        <item>Качество — NAFNet Bayer Small</item>
+        <item>Speed — UNet Bayer Fast</item>
+        <item>Quality — NAFNet Bayer Small</item>
     </string-array>
-    <string-array name="ai_denoise_model_values">
+    <string-array name="ai_denoise_model_values" translatable="false">
         <item>fast</item>
         <item>quality</item>
     </string-array>
@@ -31,7 +31,7 @@
         <item>MONO</item>
         <item>QUAD</item>
     </string-array>
-    <string-array name="cfapat_entryValues">
+    <string-array name="cfapat_entryValues" translatable="false">
         <item>-1</item>
         <item>0</item>
         <item>3</item>
@@ -56,28 +56,28 @@
         <item>HEIC</item>
         <item>None</item>
     </string-array>
-    <string-array name="colorset_entryValues">
+    <string-array name="colorset_entryValues" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
-    <string-array name="focuspeakset_entryValues">
+    <string-array name="focuspeakset_entryValues" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
-    <string-array name="preview_format_entryValues">
+    <string-array name="preview_format_entryValues" translatable="false">
         <item>35</item>
         <item>256</item>
         <item>1212500294</item>
         <item>0</item>
     </string-array>
-    <string-array name="theme_entries">
+    <string-array name="theme_entries" translatable="false">
         <item>@string/theme_follow_system</item>
         <item>@string/theme_light</item>
         <item>@string/theme_dark</item>
     </string-array>
-    <string-array name="theme_entryValues">
+    <string-array name="theme_entryValues" translatable="false">
         <item>-1</item>
         <item>1</item>
         <item>2</item>
@@ -87,19 +87,19 @@
         <item>Continuous Video</item>
         <item>Auto</item>
     </string-array>
-    <string-array name="af_mode_entryvalues">
+    <string-array name="af_mode_entryvalues" translatable="false">
         <item>4</item>
         <item>3</item>
         <item>1</item>
     </string-array>
-    <string-array name="vf_grid_entries">
+    <string-array name="vf_grid_entries" translatable="false">
         <item>@string/off</item>
         <item>@string/three_x3</item>
         <item>@string/four_x4</item>
         <item>@string/golden_ratio</item>
         <item>@string/diag_triangle</item>
     </string-array>
-    <string-array name="vf_grid_entryvalues">
+    <string-array name="vf_grid_entryvalues" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
@@ -117,20 +117,20 @@
         <item>HUD + Histogram</item>
         <item>Full Debug</item>
     </string-array>
-    <string-array name="afdata_entryValues">
+    <string-array name="afdata_entryValues" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
         <item>3</item>
     </string-array>
     <string-array name="vivo_nice_noise_source_entries">
-        <item>Авто (по камере)</item>
-        <item>IMX06C — стоковый (основная и широкоугольная)</item>
-        <item>HP9 — стоковый (телевик)</item>
+        <item>Auto (by camera)</item>
+        <item>IMX06C — stock (main and wide)</item>
+        <item>HP9 — stock (tele)</item>
         <item>Camera2 SENSOR_NOISE_PROFILE</item>
-        <item>Из настроек «Модель шума сенсора»</item>
+        <item>From settings: “Sensor noise model”</item>
     </string-array>
-    <string-array name="vivo_nice_noise_source_values">
+    <string-array name="vivo_nice_noise_source_values" translatable="false">
         <item>auto</item>
         <item>imx06c</item>
         <item>hp9</item>
@@ -138,37 +138,37 @@
         <item>settings</item>
     </string-array>
     <string-array name="raw_stream_format_entries">
-        <item>Авто</item>
-        <item>RAW_SENSOR (16 бит)</item>
-        <item>RAW10 (упакованный)</item>
-        <item>RAW12 (упакованный)</item>
+        <item>Auto</item>
+        <item>RAW_SENSOR (16-bit)</item>
+        <item>RAW10 (packed)</item>
+        <item>RAW12 (packed)</item>
     </string-array>
-    <string-array name="raw_stream_format_values">
+    <string-array name="raw_stream_format_values" translatable="false">
         <item>auto</item>
         <item>raw16</item>
         <item>raw10</item>
         <item>raw12</item>
     </string-array>
     <string-array name="lmc_hybrid_output_entries">
-        <item>Сенсор (1×, по умолчанию)</item>
-        <item>12 МП (2× → 12)</item>
-        <item>16 МП (2× → 16)</item>
-        <item>20 МП (2× → 20)</item>
-        <item>2× (≈50 МП, без уменьшения)</item>
+        <item>Sensor (1×, default)</item>
+        <item>12 MP (2× → 12)</item>
+        <item>16 MP (2× → 16)</item>
+        <item>20 MP (2× → 20)</item>
+        <item>2× (≈50 MP, no downscale)</item>
     </string-array>
-    <string-array name="lmc_hybrid_downsampler_entries">
+    <string-array name="lmc_hybrid_downsampler_entries" translatable="false">
         <item>Lanczos-3</item>
         <item>Bicubic</item>
         <item>Area</item>
         <item>Bilinear</item>
     </string-array>
-    <string-array name="lmc_hybrid_downsampler_values">
+    <string-array name="lmc_hybrid_downsampler_values" translatable="false">
         <item>lanczos</item>
         <item>bicubic</item>
         <item>area</item>
         <item>bilinear</item>
     </string-array>
-    <string-array name="lmc_hybrid_output_values">
+    <string-array name="lmc_hybrid_output_values" translatable="false">
         <item>sensor</item>
         <item>12</item>
         <item>16</item>
@@ -176,40 +176,40 @@
         <item>2x</item>
     </string-array>
     <string-array name="lmc_hybrid_bento_entries">
-        <item>Выключено</item>
-        <item>Авто (при клиппинге)</item>
-        <item>Всегда</item>
+        <item>Off</item>
+        <item>Auto (on clipping)</item>
+        <item>Always</item>
     </string-array>
-    <string-array name="lmc_hybrid_bento_values">
+    <string-array name="lmc_hybrid_bento_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_bento_validate_entries">
-        <item>Только первый кадр (как раньше)</item>
-        <item>Каждый ультракороткий кадр</item>
-        <item>Каждый кадр + движение на незасвеченной базе (по умолчанию)</item>
+        <item>First frame only (as before)</item>
+        <item>Every ultra-short frame</item>
+        <item>Every frame + motion on the unclipped base (default)</item>
     </string-array>
-    <string-array name="lmc_hybrid_bento_validate_values">
+    <string-array name="lmc_hybrid_bento_validate_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_bento_frames_entries">
-        <item>1 кадр</item>
-        <item>2 кадра (по умолчанию)</item>
+        <item>1 frame</item>
+        <item>2 frames (default)</item>
     </string-array>
-    <string-array name="lmc_hybrid_bento_frames_values">
+    <string-array name="lmc_hybrid_bento_frames_values" translatable="false">
         <item>1</item>
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_sharp_mode_entries">
-        <item>ARK: как ArkCam (по умолчанию)</item>
+        <item>ARK: as in ArkCam (default)</item>
         <item>RawTherapee</item>
-        <item>SCAM: без ореолов</item>
-        <item>Выключено</item>
+        <item>SCAM: no halos</item>
+        <item>Off</item>
     </string-array>
-    <string-array name="lmc_hybrid_sharp_mode_values">
+    <string-array name="lmc_hybrid_sharp_mode_values" translatable="false">
         <item>ark</item>
         <item>rt</item>
         <item>scam</item>
@@ -217,88 +217,88 @@
     </string-array>
     <string-array name="lmc_hybrid_dn_engine_entries">
         <item>GCam / Hybrid (ArkCam)</item>
-        <item>NLM (прежний)</item>
+        <item>NLM (previous)</item>
     </string-array>
-    <string-array name="lmc_hybrid_dn_engine_values">
+    <string-array name="lmc_hybrid_dn_engine_values" translatable="false">
         <item>gcam</item>
         <item>nlm</item>
     </string-array>
     <string-array name="lmc_hybrid_dn_map_entries">
-        <item>Авто (карта кадров, если склейка её дала)</item>
-        <item>Карта эффективных кадров</item>
-        <item>Равномерно</item>
+        <item>Auto (frame map, if the merge made one)</item>
+        <item>Effective frame map</item>
+        <item>Uniform</item>
     </string-array>
-    <string-array name="lmc_hybrid_dn_map_values">
+    <string-array name="lmc_hybrid_dn_map_values" translatable="false">
         <item>auto</item>
         <item>frames</item>
         <item>uniform</item>
     </string-array>
     <string-array name="lmc_hybrid_local_align_entries">
-        <item>Выкл.</item>
-        <item>Поле по тайлам (по умолчанию)</item>
-        <item>Постоянное на тайл (как 6.1)</item>
+        <item>Off</item>
+        <item>Per-tile field (default)</item>
+        <item>Constant per tile (as in 6.1)</item>
     </string-array>
-    <string-array name="lmc_hybrid_local_align_values">
+    <string-array name="lmc_hybrid_local_align_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_rawca_entries">
-        <item>Выкл.</item>
-        <item>Оценка по базовому кадру</item>
-        <item>Коррекция каждого кадра (GPU)</item>
+        <item>Off</item>
+        <item>Estimate from the base frame</item>
+        <item>Correct every frame (GPU)</item>
     </string-array>
-    <string-array name="lmc_hybrid_rawca_values">
+    <string-array name="lmc_hybrid_rawca_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_sabre61_entries">
-        <item>Выключено (ядро раунда 4)</item>
-        <item>Всегда</item>
-        <item>Авто (ночью)</item>
+        <item>Off (round 4 core)</item>
+        <item>Always</item>
+        <item>Auto (at night)</item>
     </string-array>
-    <string-array name="lmc_hybrid_sabre61_values">
+    <string-array name="lmc_hybrid_sabre61_values" translatable="false">
         <item>0</item>
         <item>1</item>
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_noise_source_entries">
-        <item>Camera2 SENSOR_NOISE_PROFILE каждого кадра</item>
-        <item>Из настроек «Модель шума сенсора»</item>
+        <item>Camera2 SENSOR_NOISE_PROFILE of each frame</item>
+        <item>From settings: “Sensor noise model”</item>
     </string-array>
-    <string-array name="lmc_hybrid_noise_source_values">
+    <string-array name="lmc_hybrid_noise_source_values" translatable="false">
         <item>auto</item>
         <item>settings</item>
     </string-array>
     <string-array name="vivo_nice_planner_entries">
-        <item>Стоковый AE vivo (root)</item>
-        <item>SCAMERA (без root)</item>
+        <item>Stock vivo AE (root)</item>
+        <item>SCAMERA (no root)</item>
     </string-array>
-    <string-array name="vivo_nice_planner_values">
+    <string-array name="vivo_nice_planner_values" translatable="false">
         <item>stock</item>
         <item>scamera</item>
     </string-array>
     <string-array name="vivo_nice_cre_entries">
-        <item>Авто (системная, иначе встроенная)</item>
-        <item>Системная (/vendor, только vivo)</item>
-        <item>Встроенная в приложение</item>
+        <item>Auto (system, else bundled)</item>
+        <item>System (/vendor, vivo only)</item>
+        <item>Bundled with the app</item>
     </string-array>
-    <string-array name="vivo_nice_cre_values">
+    <string-array name="vivo_nice_cre_values" translatable="false">
         <item>auto</item>
         <item>vendor</item>
         <item>bundled</item>
     </string-array>
     <string-array name="vivo_nice_mosaic_entries">
-        <item>Выключено (только обычный Bayer)</item>
-        <item>GPU-ремозаик SCAMERA — каждый кадр</item>
-        <item>GPU Tetra Detail v2 — каждый кадр (только Tetra 4×4)</item>
-        <item>Multi-frame Remosaic — слияние N-кадров (CPU)</item>
-        <item>Нейроремозаик (NPU) — слияние N-кадров</item>
-        <item>Sabre по сырым точкам мозаики (сеть — GPU-ремозаик)</item>
-        <item>Нейроремозаик + Sabre по сырым точкам мозаики</item>
+        <item>Off (plain Bayer only)</item>
+        <item>SCAMERA GPU remosaic — every frame</item>
+        <item>GPU Tetra Detail v2 — every frame (Tetra 4×4 only)</item>
+        <item>Multi-frame Remosaic — N-frame merge (CPU)</item>
+        <item>Neural remosaic (NPU) — N-frame merge</item>
+        <item>Sabre on raw mosaic samples (grid: GPU remosaic)</item>
+        <item>Neural remosaic + Sabre on raw mosaic samples</item>
     </string-array>
-    <string-array name="vivo_nice_mosaic_values">
+    <string-array name="vivo_nice_mosaic_values" translatable="false">
         <item>off</item>
         <item>scamera</item>
         <item>detail</item>
@@ -309,16 +309,16 @@
     </string-array>
 
     <string-array name="raw_lsc_mode_entries">
-        <item>Авто (применять)</item>
-        <item>Всегда применять</item>
-        <item>Не применять (HAL уже исправил)</item>
+        <item>Auto (apply)</item>
+        <item>Always apply</item>
+        <item>Do not apply (HAL already corrected)</item>
     </string-array>
-    <string-array name="raw_lsc_mode_values">
+    <string-array name="raw_lsc_mode_values" translatable="false">
         <item>auto</item>
         <item>apply</item>
         <item>skip</item>
     </string-array>
-    <string-array name="merge_route_entries">
+    <string-array name="merge_route_entries" translatable="false">
         <item>Hybrid</item>
         <item>SCAM HDR</item>
     </string-array>

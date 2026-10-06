@@ -1,4 +1,4 @@
 <resources>
-    <string-array name="audit_block_entries"><item>2 × 2 — Quad Bayer</item><item>4 × 4 — Tetra²</item></string-array>
-    <string-array name="audit_block_values"><item>2</item><item>4</item></string-array>
+    <string-array name="audit_block_entries" translatable="false"><item>2 × 2 — Quad Bayer</item><item>4 × 4 — Tetra²</item></string-array>
+    <string-array name="audit_block_values" translatable="false"><item>2</item><item>4</item></string-array>
 </resources>

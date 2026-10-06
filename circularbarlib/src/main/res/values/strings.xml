@@ -3,4 +3,20 @@
     <string name="version_summary" translatable="false">v%1$s\n%2$s</string>
     <string name="manual_mode_auto" translatable="false">Auto</string>
     <string name="manual_mode_fixed" translatable="false">Fixed</string>
+    <!-- Manual controls and accent names; Russian in values-ru/strings.xml under the same names. -->
+    <string name="manual_tab_ev">Exposure compensation</string>
+    <string name="manual_tab_shutter">Shutter</string>
+    <string name="manual_tab_wb">White balance</string>
+    <string name="manual_tab_focus">Focus</string>
+    <string name="manual_wb_unavailable">Manual white balance is not available for this camera</string>
+    <string name="manual_panel_open">Open manual controls</string>
+    <string name="manual_panel_close">Collapse manual controls</string>
+    <string name="accent_name_lavender">Lavender</string>
+    <string name="accent_name_blue">Blue</string>
+    <string name="accent_name_green">Green</string>
+    <string name="accent_name_amber">Amber</string>
+    <string name="accent_name_red">Coral</string>
+    <string name="accent_name_pink">Pink</string>
+    <string name="accent_name_cyan">Turquoise</string>
+    <string name="accent_name_white">White</string>
 </resources>
