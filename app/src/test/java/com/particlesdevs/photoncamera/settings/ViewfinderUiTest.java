@@ -104,7 +104,7 @@ public class ViewfinderUiTest {
         View slot=bottom.findViewById(R.id.zoom_ruler_slot),rowRoot=bottom.findViewById(R.id.bottom_buttons);
         assertEquals(bottom.getWidth()/2f,(lenses.getLeft()+lenses.getRight())/2f,1f);
         assertTrue(lenses.getBottom()<=rowRoot.getTop());assertTrue(slot.getBottom()<=lenses.getTop());assertTrue(slot.getTop()>=0);
-        for(int i=0;i<lenses.getChildCount();i++){TextView t=(TextView)lenses.getChildAt(i);assertFalse(t.getText().toString().isEmpty());assertFalse("decimal comma",t.getText().toString().contains("."));assertTrue("Lens label must stay within its button",t.getLayout().getWidth()<=t.getWidth());}
+        for(int i=0;i<lenses.getChildCount();i++){TextView t=(TextView)lenses.getChildAt(i);assertFalse(t.getText().toString().isEmpty());if(png.isEmpty())assertFalse("decimal comma in Russian",t.getText().toString().contains("."));else assertFalse("decimal point in English",t.getText().toString().matches(".*\\d,\\d.*"));assertTrue("Lens label must stay within its button",t.getLayout().getWidth()<=t.getWidth());}
         Bitmap image=Bitmap.createBitmap(400,880,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));
         java.io.File dir=new java.io.File("build/reports/viewfinder");dir.mkdirs();
         try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}

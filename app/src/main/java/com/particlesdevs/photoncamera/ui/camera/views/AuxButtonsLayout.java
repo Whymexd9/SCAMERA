@@ -162,9 +162,13 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         setVisibility(getChildCount() <= 1 ? View.INVISIBLE : View.VISIBLE);
     }
 
-    /** «0.6×» -> «0,6×»: the decimal comma on the strip (owner's answer 11); labels are stored as they are. */
+    /**
+     * «0.6×» -> «0,6×»: the decimal comma on the strip in the Russian UI (owner's answer 11), the point in English; labels are
+     * stored as they are.
+     */
     static String display(String label) {
-        return label == null ? "" : label.replaceAll("(\\d)\\.(\\d)", "$1,$2");
+        if (label == null) return "";
+        return Lang.ru() ? label.replaceAll("(\\d)\\.(\\d)", "$1,$2") : label;
     }
 
     /** The active lens in bold; the colours follow the selected state. */
@@ -248,7 +252,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             boolean selected = slot.equals(active);
             v.setSelected(selected);
             ((Button) v).setText(selected && Math.abs(zoom - ModuleRegistry.zoom(slot)) >= 0.05f
-                    ? String.format(Locale.US, "%.1f×", zoom).replace(".0×", "×").replace('.', ',') : display(ModuleRegistry.label(slot)));
+                    ? display(String.format(Locale.US, "%.1f×", zoom).replace(".0×", "×")) : display(ModuleRegistry.label(slot)));
         }
         styleSelection();
     }
