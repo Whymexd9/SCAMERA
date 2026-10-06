@@ -633,7 +633,7 @@ Check: grep every `res/values*/*.xml`, `preferences.xml`, and the string literal
 - **Order:** P24 + jpegli + LJ92 DNG first; then FP16 final pass with half-float readback (feeds jpegli 16-bit or JXL); then
   the optional «Формат: JPEG XL» with «также сохранять JPEG»; DNG 1.7 JXL opt-in last.
 
-### P25 — Quick-settings shade and viewfinder chrome (owner's SHADE_TASK.md, 2026-10-06; not started)
+### P25 — Quick-settings shade and viewfinder chrome (owner's SHADE_TASK.md, 2026-10-06; done, local)
 
 - **Source:** `Downloads/SHADE_TASK.md` (copy to `docs/settings-plan/SHADE_TASK.md` when the work starts) and the concept
   https://claude.ai/artifact/B8KCemNX8QeNyyR1rGx2fQ. It supersedes `docs/SHADE_SPEC.md` / `docs/shade-sheet.html` (concept E,
@@ -864,6 +864,89 @@ The settings live in different places now; the curated groups use these keys.
 - The shade never covers the shutter, the strip or the mode switch.
 - Shade ↔ settings stay in sync both ways; lens switch with per-lens mode on.
 - Config save / restore keeps the tile order.
+
+#### Done (2026-10-06, branch `shade` from 0bf8d62, local, not pushed): ef96bd0 a, 468fa85 b, 85781e0 c, b667e68 d, f22deae e, 3766a45 f, this commit g
+
+- **a) Data model:**
+  - `settings/ShadeCatalog`: the virtual entries (flash, timer, format, Camera2 metering) plus the inflated settings tree with
+    the tunables, walked with a data store that reads defaults and writes nothing (built once per process).
+  - Per key: kind, short title, short values, icons, section path, default (DeviceDefaults, then XML / tunable /
+    setDefaults), dependency, session-time flag.
+  - The curated groups follow the key table with the owner's answers; 8 default tiles.
+  - Not pinnable: sensor configs, device-only, DCP, spoof, theme, Quad, free text except «удлинение L», actions, screens.
+  - The MediaTek / Xiaomi visibility rules, the effective route, nice_dev.txt and the dependencies live in ShadeCatalog.
+  - `settings/ShadeTiles`: `ui_shade_tiles`, at most 12, unknown keys and repeats dropped on read, a `removeObsolete`
+    block; it travels in the config's main file.
+  - Short values in both locales (at most 8 characters, except «Нейро+Sabre»). New 24dp icons: JPEG, RAW, R+J,
+    metering, focus, plus, slash.
+- **b) Levels:**
+  - FULL is 86 %; PEEK shows only the tiles.
+  - The handle goes HIDDEN -> PEEK -> FULL -> HIDDEN.
+  - Scrim in two pieces, over the viewfinder and over the top bar; under FULL there is no focus and no pinch.
+- **c) Tiles:**
+  - Grid: RecyclerView with GridLayoutManager(4), DiffUtil, rebinds in place.
+  - Tile kinds: list (next value), toggle («Вкл./Выкл.»), slider (inline card). Lists with more than 5 values open the
+    list sheet (`SettingsStyle.optionSheet`, now shared with ListPreference).
+  - A toast «Имя: значение» after each change. An unavailable tile is dimmed to 45 % and a tap shows the reason.
+  - Writes: virtual keys through CameraUIController, tree keys through the settings storage; session-time keys (live RAW,
+    16:9, RAW stream format, ZSL buffer, AF mode, preview format) restart the camera.
+  - FULL rows: a segmented control, switch or slider per setting, plus a pin.
+  - One settings listener for the shade.
+  - The old settings bar classes and their resources are gone. `resetRemovedSettings` moved unchanged to
+    `SettingsMigration` and still runs when the camera screen is built.
+- **d) Catalog:** a full-screen overlay «Добавить в шторку»: search with keywords in both languages, sections, counter,
+  «Добавить» / «В шторке». It opens from the «Добавить» tile and from «Другие настройки».
+- **e) Reorder:**
+  - Long press (~400 ms + haptic) or «Изменить», then a ~120 ms press-drag.
+  - ItemTouchHelper with notifyItemMoved only; the order is saved on the drop; the grid never auto-scrolls.
+  - Edit mode: wobble (off when animations are off), ×, TalkBack «Раньше / Позже / Убрать».
+  - Back order: catalog -> drag -> edit mode -> one level down. A lens switch and HIDDEN end the edit mode.
+- **f) Chrome:**
+  - Preview: a 26dp frame (the screen background is BG now, was black), LINE stroke, corner marks, grid at 15 % white.
+  - Top bar: route badge (effective value), format badge, 44dp gear.
+  - Strip: a CARD + LINE pill in the bottom bar with decimal commas; the zoom ruler is a small card in a slot above it.
+    The hide rule and the pass-through are gone.
+  - Shutter row: ring shutter (pressed / self-timer / busy states); gallery card | shutter | front / back switch.
+  - Night removed: a stored Night reads and is stored as Photo, and the tripod detection runs in Photo.
+  - The Quad toggle went together with its tunable and the page «Кнопки видоискателя» (the stored value is obsolete).
+  - Three settings entries; the shade level is restored after the settings.
+  - Card toasts; the first-run hint shows once.
+- **g) Migration and tests:**
+  - `ui_sheet_quick` and the ☆ favourites become the first value of `ui_shade_tiles`: old pins, then favourites, then the
+    defaults. It runs in SettingsManager and in a config restore, before `removeObsolete`.
+  - The ☆ button, `FavoriteSettings`, its fragment and its settings row are removed.
+  - New tests, also on the CI list: `ShadeCatalogTest` (7), `ShadeTilesTest` (6, incl. config round-trip on the same and
+    another phone), `ShadeUiTest` (10 Robolectric: render, highlight, dimming, slider card, max 12, catalog «Luma», long
+    press and edit drag, TalkBack, settings entries, Russian at 360dp without ellipsis).
+  - `ViewfinderUiTest` and `SettingsMenuTest` follow the new UI; each removed assertion was replaced by an equally strict
+    one (listed in f's commit message).
+- **Checks:** unit tests 206, only the known `CaptureControllerTest.testGetCameraOutputSize_withTwoParameter` fails;
+  `check_settings_model.py` PASS. No APK built.
+- **Decided here (owner may change):**
+  - Shade strings in both locales (values = English, values-ru = Russian).
+  - The settings tree is inflated when the camera screen is idle, because tree tiles need it at PEEK. The plan said:
+    on the first catalog open.
+  - The session-time key set listed in c.
+  - The long-list threshold is more than 5 values.
+  - A slider writes on release.
+  - «A tile pressed -> not draggable» is read as «a tile lifted»: a plain press on a tile still swipes the sheet, as in
+    the concept.
+  - The ruler slot is reserved inside the bottom bar. On 16:9 phones, and with the 16:9 setting on, the slot sticks out
+    above the bar, behind the shade.
+  - The badges are not clickable.
+  - The HIDDEN handle is the sheet's full-width 28dp top edge.
+  - Switch tiles that are off show a struck-through icon.
+- **Device check (in addition to the checklist above):**
+  - The first open of the shade: inflating the tree costs time once.
+  - Ring shutter states and the frame counter.
+  - Session-time tiles restart the camera without a sensor-mode switch.
+  - Tripod / OIS in Photo.
+  - Badges on notch phones.
+  - Settings level restore.
+  - The first-run hint shows once.
+  - Landscape tile icons.
+  - TalkBack actions.
+  - Card toasts.
 
 ### P26 — vivo X200 Pro (pd2405): every Hybrid shot fails (owner's log 2026-10-06; not started)
 

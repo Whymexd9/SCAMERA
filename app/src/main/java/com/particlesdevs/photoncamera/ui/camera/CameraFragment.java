@@ -319,11 +319,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
         initSettingsBar();
         initZoomDial(view);
-        com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton favorites = view.findViewWithTag("favorite_settings");
-        favorites.setOnApplied(() -> {
-            PhotonCamera.getSettings().loadCache();
-            captureController.restartCamera();
-        });
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;

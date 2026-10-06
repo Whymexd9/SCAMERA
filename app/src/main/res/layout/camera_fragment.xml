@@ -83,15 +83,6 @@
                     app:layout_constraintHorizontal_bias="0.0"
                     app:layout_constraintVertical_bias="1.0" />
 
-            <com.particlesdevs.photoncamera.ui.camera.views.FavoriteSettingsButton
-                android:tag="favorite_settings"
-                android:layout_width="44dp" android:layout_height="44dp"
-                android:layout_marginStart="20dp" android:layout_marginBottom="8dp"
-                android:elevation="5dp"
-                android:visibility="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN ? View.VISIBLE : View.INVISIBLE}"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintBottom_toTopOf="@id/manual_mode" />
-
             <!--    Block 1.5-->
             <!--    scrim of the FULL settings sheet over the viewfinder (shade_scrim_top covers the top bar);
                     above the viewfinder controls, below the sheet. Its top margin follows the top bar

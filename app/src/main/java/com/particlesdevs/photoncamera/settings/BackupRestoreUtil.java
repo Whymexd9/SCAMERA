@@ -247,6 +247,7 @@ public class BackupRestoreUtil {
     private static void migrate(SharedPreferences prefs) {
         SettingsMigration.migrateMultiFrame(prefs);
         SettingsMigration.migrateLmcHybrid(prefs, false);
+        SettingsMigration.migrateShadeTiles(prefs);
         SettingsMigration.removeObsolete(prefs);
     }
 
