@@ -246,17 +246,27 @@ struct HybridTuning {
     // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
     // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
     // kHybMergeMosaic over the raw mosaic itself.
-    // DEFAULTS: step S0 (numpy reference, run by a parallel agent) and the device sweep S4 set the defaults of the keys below. Until
-    // then every default keeps today's output: mosaicPath 0, and with mosaicPath 1 the parity point of S1 (window 3, kernel scale 1).
+    // DEFAULTS: mosaicPath stays 0 (today's output) until the device sweep S4 passes on the phone. The keys below only act with
+    // mosaicPath 1; their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
+    // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill, Tetra T2). The S1 parity point (the split's sites and kernel):
+    // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1.
     int mosaicPath=0;
-    int mosaicWindow=3;          // half-width r of the native window (native px; 1..6): |d| <= r with the 6.1 window, d in
-                                 // (-4r/3, 4r/3] without it. Quad 3 = parity with the split (its 6.1 window +-1.5 sub-frame px = +-3 px,
-                                 // its two lattice sites per axis and phase = (-4, 4]); Tetra parity is 6; 2 = ArkCam's 5x5
+    int mosaicWindow=3;          // half-width r of the native window (native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites around
+                                 // the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the 6.1
+                                 // window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split (its
+                                 // 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]); Tetra
+                                 // T1 parity is 6; 2 = ArkCam's 5x5
+    int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
     float mosaicKernelScale=1.f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
                                  // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5)
+    // mosaicEdgeScale of the native path (across the edge and the base kernel; along the edge and flat areas stay). Its own key so that
+    // the split keeps 0.6. S0 (synthetic Quad, 16 frames): 0.4 gave zone plate +1.0, bars +1.4 / +3.2, edges +1.2 dB at unchanged
+    // flat noise; 0.3 more detail but +57 % colour error on neutral edges.
+    float mosaicNativeEdgeScale=0.4f;
     // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
-    // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites)
-    float mosaicKernelG=1.f,mosaicKernelRB=1.f;
+    // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
+    // (false colour on bars -7 %)
+    float mosaicKernelG=1.f,mosaicKernelRB=0.85f;
     // S5: per-frame R / B fill (M5b) before the frame weight: 0 off (parity), 1 ArkCam's colour difference of the 3x3 block means
     // (a colour whose kernel weight in the frame is below mosaicFillSupport x the green weight is topped up to it with G + (R - G)).
     // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (GCam 11 directional) is step S7, not built.
@@ -264,7 +274,7 @@ struct HybridTuning {
     float mosaicFillSupport=0.25f;
     // S8 Tetra route of the native path: 2 = T2 (default): every 2x2 sub-block of a Tetra block, gained and clip-aware, is one site of
     // a true Quad mosaic at W/2 x H/2 merged by the Quad pass, output 2x to the sensor grid; 1 = T1: the Tetra mosaic merged natively
-    // (block 4; mosaicWindow 6 reproduces the split's sites, 196 taps per frame)
+    // (block 4; mosaicWindow 6 with mosaicWindowFull 0 reproduces the split's sites, 196 taps per frame)
     int mosaicTetra=2;
 };
 
@@ -335,6 +345,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
+            ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)
@@ -1460,7 +1471,7 @@ layout(std140,binding=1) uniform NatTable{uvec4 nGeo[128];}; // [kHybridGpuFrame
                                                               // sensor row held, z = rows held (>= 1)
 uniform ivec4 natU;   // x = colour block b (2 | 4), y = W, z = H (native sensor sites), w = window half-width r (native px)
 uniform ivec4 natV;   // x = log2 b, y = 1: the words are the sensor RAW (site gains applied here), 0: built like the split's sub-frames;
-                      // z = first Sums counter of the native outlier counts, w = 0
+                      // z = first Sums counter of the native outlier counts, w = 1: the merge's full (2r+1)^2 window (mosaicWindowFull)
 uniform int natMarkU; // 1: the words carry the site flags of kHybNatMark in bits 14 (outlier) / 15 (cell clipped)
 uniform vec4 natW;    // x = white, y = the RAW code from which a site is clipped (white - 1)
 uniform vec4 natGain[16]; // site-class gains (hybridMosaicGains), class (y & 7) * 8 + (x & 7) of the SENSOR site: natGain[k >> 2][k & 3]
@@ -1709,9 +1720,10 @@ void natFill(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
 }
 // The native sites of frame f around O (canonical native px), weighted by the kernel P (native px), into a: as frameSamples (outlier
 // site: no sample; clipped site or a site of a clipped cell: the clipped mean; a clipped longer frame: nothing) with the frame's
-// weight r. Window: win = the 6.1 window |d| <= r per axis (r = 1.5 b: the split's +-1.5 sub-frame px); otherwise d in (-4r/3, 4r/3]
-// per axis (r = 1.5 b: the two lattice sites per axis and phase of frameSamples on the split's sub-frames, +-2 sub-frame px). Quad
-// r = 3 and Tetra r = 6 reproduce the split's sites exactly.
+// weight r. Window: natV.w = 1 (mosaicWindowFull, S0's full window): the (2r+1)^2 sites around the nearest site N = floor(O + 0.5),
+// d in (-r-1/2, r+1/2] per axis; otherwise as the split: win = the 6.1 window |d| <= r per axis (r = 1.5 b: the split's +-1.5
+// sub-frame px), else d in (-4r/3, 4r/3] per axis (r = 1.5 b: the two lattice sites per axis and phase of frameSamples on the split's
+// sub-frames, +-2 sub-frame px). With natV.w = 0, Quad r = 3 and Tetra r = 6 reproduce the split's sites exactly.
 // The frame's sums are formed first and weighted by r once (the colour fill of S5 works on them).
 void natSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool win){
     float g=fParam[f].x;
@@ -1721,7 +1733,8 @@ void natSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool win){
     float R=float(natU.w);
     int x0,y0,x1,y1;
     float Rn=R*(4.0/3.0);
-    if(win){x0=int(ceil(O.x-R));y0=int(ceil(O.y-R));x1=int(floor(O.x+R));y1=int(floor(O.y+R));}
+    if(natV.w!=0){ivec2 N=ivec2(floor(O+0.5));x0=N.x-natU.w;y0=N.y-natU.w;x1=N.x+natU.w;y1=N.y+natU.w;}
+    else if(win){x0=int(ceil(O.x-R));y0=int(ceil(O.y-R));x1=int(floor(O.x+R));y1=int(floor(O.y+R));}
     else{x0=int(floor(O.x-Rn))+1;y0=int(floor(O.y-Rn))+1;x1=int(floor(O.x+Rn));y1=int(floor(O.y+Rn));}
     // at most ceil(8r/3) sites per axis whatever O is (a non-finite position must not make the loop unbounded)
     int span=int(ceil(2.0*Rn))-1;
@@ -1760,7 +1773,8 @@ float natSelfCover(vec2 O,vec3 P,bool win){
     float R=float(natU.w);
     int x0,y0,x1,y1;
     float Rn=R*(4.0/3.0);
-    if(win){x0=int(ceil(O.x-R));y0=int(ceil(O.y-R));x1=int(floor(O.x+R));y1=int(floor(O.y+R));}
+    if(natV.w!=0){ivec2 N=ivec2(floor(O+0.5));x0=N.x-natU.w;y0=N.y-natU.w;x1=N.x+natU.w;y1=N.y+natU.w;}
+    else if(win){x0=int(ceil(O.x-R));y0=int(ceil(O.y-R));x1=int(floor(O.x+R));y1=int(floor(O.y+R));}
     else{x0=int(floor(O.x-Rn))+1;y0=int(floor(O.y-Rn))+1;x1=int(floor(O.x+Rn));y1=int(floor(O.y+Rn));}
     int span=int(ceil(2.0*Rn))-1;
     x1=min(x1,x0+span);y1=min(y1,y0+span);
@@ -1877,6 +1891,7 @@ struct HybridMosaicNative {
     bool rawGains=false;                 // the frames are the sensor RAW: gains[] apply at read time
     std::array<float,64> gains{};        // site-class gains (sensor class (y&7)*8 + (x&7)), with rawGains
     int window=3;                        // HybridTuning::mosaicWindow
+    bool fullWindow=false;               // HybridTuning::mosaicWindowFull: the (2r+1)^2 sites around the nearest one (S0), else the split's
     float kernelScale=1.f;               // HybridTuning::mosaicKernelScale
     float ksG=1.f,ksRB=1.f;              // HybridTuning::mosaicKernelG / RB (distance multipliers per colour)
     float fillSupport=0.f;               // S5 R / B fill: minimum support relative to green (0 = off)
@@ -2387,6 +2402,7 @@ public:
             glUniform4f(loc(natFlagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
             glUniform2f(loc(natFlagsProgram,"natNoise"),nat->siteSlope,nat->siteOffset);
             glUseProgram(mosaicProgram);
+            glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,frames+3,nat->fullWindow?1:0); // w: the merge's window rule
             const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
             glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
             glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
@@ -4534,14 +4550,16 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
+    const bool fullWindow=tune.mosaicWindowFull!=0;
     // The mosaic the merge reads: the sensor's (Quad; Tetra T1), or for Tetra T2 the Quad mosaic of its 2x2 sub-blocks.
     const bool t2=b==4&&tune.mosaicTetra!=1;
     const int mb=t2?2:b,MW=t2?W/2:W,MH=t2?Ht/2:Ht,sub=b/mb; // merge block, size, sensor sites per merge site and axis
     if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (GCam directional, S7) is not built: fill off");
     {
-        char head[260];
-        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d%s, %d of %d frames (one GPU slot each, binned %dx%d, merged mosaic %dx%d block %d), window %d px, kernel scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",
-            b,t2?" (Tetra T2: 2x2 sub-blocks binned into a Quad mosaic)":b==4?" (Tetra T1: native)":"",int(pick.size()),n,vw,vh,MW,MH,mb,window,kernelScale,ksG,ksRB,fill);
+        char head[400];
+        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d%s, %d of %d frames (one GPU slot each, binned %dx%d, merged mosaic %dx%d block %d), window %d px %s, kernel scale %.3f, edge scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",
+            b,t2?" (Tetra T2: 2x2 sub-blocks binned into a Quad mosaic)":b==4?" (Tetra T1: native)":"",int(pick.size()),n,vw,vh,MW,MH,mb,window,fullWindow?"full":"split",kernelScale,
+            tune.mosaicNativeEdgeScale,ksG,ksRB,fill);
         std::string line=head;
         for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
         report(line);
@@ -4591,7 +4609,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     // ---- the binned burst through hybridReconstruct with the native merge pass
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb;bin.mosaic=1;bin.subFrames=0;
-    HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
+    HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
     nat.rawGains=!t2;nat.gains=gain;
     // a binned pixel averages b^2 sites, a merged site sub^2: the kernel keys follow the merged sites (noise x mb^2 of the binned one)
     nat.keyNoise=float(mb*mb);
@@ -4604,6 +4622,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
         nat.frames.push_back(t2?quad.data()+k*qpix:input.frames[pick[k]].raw);
     }
     HybridTuning vt=tune;vt.grid=mb;vt.mosaicBlock=1;vt.caCorrect=0;
+    vt.mosaicEdgeScale=tune.mosaicNativeEdgeScale; // the native path's own edge scale (hybridReconstruct applies it with `native`)
     if(vt.rawCa==2){ // the frames mode would correct the binned frames only, not the mosaic the merge reads
         vt.rawCa=1;
         report("HYBRID MOSAIC NATIVE: RAW CA frames mode is not available on the native mosaic path; base mode instead");
