@@ -10,7 +10,6 @@ public final class TunableRegistry {
     private TunableRegistry() {}
 
     public static final Class<?>[] TUNABLE_CLASSES = {
-        com.particlesdevs.photoncamera.ui.camera.CameraUIViewImpl.class,
         com.particlesdevs.photoncamera.processing.render.Parameters.class,
     };
 }

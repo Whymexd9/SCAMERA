@@ -113,9 +113,9 @@ public final class ShadeCatalog {
     static {
         NUMERIC_TEXT.put("pref_vivo_nice_long_boost_ev", 0.1f);
     }
-    /** Never pinnable: switches a sensor mode (the retired Quad toggle) or belongs to one phone only. */
+    /** Never pinnable: switches a sensor mode (Quad) or belongs to one phone only. */
     private static final Set<String> NOT_PINNABLE = new HashSet<>(Arrays.asList(
-            "pref_tunable_camerauiviewimpl_enablequadres", PreferenceKeys.Key.KEY_QUAD_BAYER.mValue,
+            PreferenceKeys.Key.KEY_QUAD_BAYER.mValue,
             PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue, PreferenceKeys.Key.CAMERA_MODE.mValue));
 
     /** Curated look of a key: short tile name, short value labels, icon of the setting and of each value. */
@@ -455,7 +455,7 @@ public final class ShadeCatalog {
         e.defaultValue = Math.max(min, Math.min(max, def));
     }
 
-    /** False for screens of one phone only, the sensor configs, the DCP file, spoofing, themes and the retired Quad toggle. */
+    /** False for screens of one phone only, the sensor configs, the DCP file, spoofing, themes and Quad. */
     static boolean pinnable(String key) {
         if (key.startsWith("pref_sensorconfig_") || key.startsWith("settings_") || key.startsWith("module_")
                 || key.startsWith("lens_") || key.startsWith("pref_theme") || key.contains("spoof")) return false;

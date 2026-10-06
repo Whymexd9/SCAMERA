@@ -189,6 +189,16 @@
     <string name="shade_action_remove">Remove from the panel</string>
     <string name="shade_remove_description">Remove %1$s</string>
 
+    <!-- Viewfinder chrome -->
+    <string name="shade_badge_route">Merge %1$s</string>
+    <string name="shade_shutter">Take a photo</string>
+    <string name="shade_flip_camera">Front / back camera</string>
+    <string name="shade_gallery">Gallery</string>
+    <string name="shade_all_settings_summary">Hybrid, SCAM HDR, colour, capture, config</string>
+    <string name="shade_all_settings_summary_mtk">Hybrid, colour, capture, config</string>
+    <string name="shade_hint">Swipe up for the panel
+Hold a tile to move it</string>
+
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
     <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>

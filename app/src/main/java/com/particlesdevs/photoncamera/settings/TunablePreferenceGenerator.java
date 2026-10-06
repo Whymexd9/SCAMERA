@@ -104,7 +104,6 @@ public class TunablePreferenceGenerator {
     private static String destination(String className) {
         switch (className) {
             case "Parameters": return "expert_sensor_screen";
-            case "CameraUIViewImpl": return "expert_viewfinder_screen";
             default: return null; // unknown class: logged as a missing destination below
         }
     }

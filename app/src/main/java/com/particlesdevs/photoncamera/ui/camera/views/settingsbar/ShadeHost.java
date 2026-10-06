@@ -16,4 +16,10 @@ public interface ShadeHost {
 
     /** The catalog «Добавить в шторку» over the camera screen. */
     void openCatalog();
+
+    /** The settings screen (the shade header's gear and «Все настройки»): CameraFragment.launchSettings. */
+    void openSettings();
+
+    /** Values may have changed (a write, a refresh): the camera screen updates what shows them (top bar badges). */
+    void onValuesChanged();
 }

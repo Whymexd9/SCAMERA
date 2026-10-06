@@ -17,6 +17,9 @@ import java.util.Locale;
 /**
  * Zoom ruler: a logarithmic scale that slides under a fixed pointer. Module ratios are the
  * labelled marks. It appears while the zoom changes (drag, pinch, lens strip) and fades out.
+ * <p>
+ * P25 look: a small CARD with a LINE stroke above the lens strip in the bottom bar (never over the shade's tiles), the
+ * zoom value in the camera accent with a decimal comma, MUTED ticks.
  */
 public class ZoomDialView extends View {
     public interface Listener { void onZoom(float zoom); }
@@ -26,7 +29,10 @@ public class ZoomDialView extends View {
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pointer = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint backdrop = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint outline = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path triangle = new Path();
+    private final Path clip = new Path();
+    private final android.graphics.RectF card = new android.graphics.RectF();
     private final List<Float> marks = new ArrayList<>();
     private final List<String> markLabels = new ArrayList<>();
     private float min = 1f, max = 4f, zoom = 1f;
@@ -39,12 +45,14 @@ public class ZoomDialView extends View {
 
     public ZoomDialView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        tick.setColor(0xCCFFFFFF);
+        tick.setColor(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED);
         tick.setStrokeCap(Paint.Cap.ROUND);
-        text.setColor(0xFFFFFFFF);
+        text.setColor(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED);
         text.setTextAlign(Paint.Align.CENTER);
         pointer.setColor(AccentPalette.camera(context));
-        backdrop.setColor(0x66000000);
+        backdrop.setColor(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.CARD);
+        outline.setStyle(Paint.Style.STROKE);
+        outline.setColor(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.LINE);
         setVisibility(INVISIBLE);
         setAlpha(0f);
     }
@@ -113,46 +121,63 @@ public class ZoomDialView extends View {
         }
     }
 
+    /** «2,5», «1»: the decimal comma (owner's answer 11). */
     private static String format(float v) {
-        return String.format(Locale.US, "%.1f", v).replace(".0", "");
+        return String.format(Locale.US, "%.1f", v).replace(".0", "").replace('.', ',');
     }
 
     @Override protected void onDraw(Canvas canvas) {
         final int w = getWidth(), h = getHeight();
         final float d = getResources().getDisplayMetrics().density;
-        final float cx = w / 2f, baseline = h * 0.72f, ppo = pxPerOctave();
-        canvas.drawRoundRect(0, h * 0.06f, w, h, h * 0.4f, h * 0.4f, backdrop);
-        text.setTextSize(Math.max(11f * d, h * 0.20f));
-        tick.setStrokeWidth(1.4f * d);
+        final float cx = w / 2f, ppo = pxPerOctave(), radius = 16 * d;
+        // The card.
+        card.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f);
+        canvas.drawRoundRect(card, radius, radius, backdrop);
+        outline.setStrokeWidth(d);
+        canvas.drawRoundRect(card, radius, radius, outline);
+        canvas.save();
+        clip.reset();
+        clip.addRoundRect(card, radius, radius, Path.Direction.CW);
+        canvas.clipPath(clip);
+        // The value, in the accent.
+        text.setTextSize(14 * getResources().getDisplayMetrics().scaledDensity);
+        text.setFakeBoldText(true);
+        text.setColor(pointer.getColor());
+        text.setAlpha(255);
+        canvas.drawText(format(zoom) + "×", cx, 18 * d, text);
+        text.setFakeBoldText(false);
+        final float baseline = h - 9 * d;
         final double logZoom = Math.log(zoom) / Math.log(2);
+        tick.setStrokeWidth(1.2f * d);
         // Minor ticks every 1/4 octave, drawn between the visible range limits.
         for (int q = (int) Math.floor((Math.log(min) / Math.log(2)) * 4); q <= (int) Math.ceil((Math.log(max) / Math.log(2)) * 4); q++) {
             float x = cx + (float) ((q / 4.0 - logZoom) * ppo);
             if (x < 0 || x > w) continue;
             boolean octave = q % 4 == 0;
-            float len = (octave ? 0.16f : 0.08f) * h;
+            float len = (octave ? 7f : 4f) * d;
+            tick.setColor(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED);
             tick.setAlpha(octave ? 200 : 110);
             canvas.drawLine(x, baseline - len, x, baseline, tick);
         }
         // Module marks with labels.
+        text.setTextSize(9 * getResources().getDisplayMetrics().scaledDensity);
         for (int i = 0; i < marks.size(); i++) {
             float x = cx + (float) ((Math.log(marks.get(i)) / Math.log(2) - logZoom) * ppo);
             if (x < -d * 20 || x > w + d * 20) continue;
+            boolean current = Math.abs(marks.get(i) - zoom) < 0.05f;
+            tick.setColor(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.TEXT);
             tick.setAlpha(255);
-            canvas.drawLine(x, baseline - 0.26f * h, x, baseline, tick);
-            text.setAlpha(Math.abs(marks.get(i) - zoom) < 0.05f ? 255 : 200);
-            canvas.drawText(markLabels.get(i), x, baseline - 0.29f * h, text);
+            canvas.drawLine(x, baseline - 9 * d, x, baseline, tick);
+            text.setColor(current ? com.particlesdevs.photoncamera.ui.settings.SettingsStyle.TEXT : com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED);
+            canvas.drawText(AuxButtonsLayout.display(markLabels.get(i)), x, baseline - 11 * d, text);
         }
-        // Fixed pointer and the numeric value.
+        // Fixed pointer under the scale.
         triangle.reset();
-        triangle.moveTo(cx, baseline + 0.02f * h);
-        triangle.lineTo(cx - 0.07f * h, baseline + 0.2f * h);
-        triangle.lineTo(cx + 0.07f * h, baseline + 0.2f * h);
+        triangle.moveTo(cx, baseline + d);
+        triangle.lineTo(cx - 4 * d, baseline + 6 * d);
+        triangle.lineTo(cx + 4 * d, baseline + 6 * d);
         triangle.close();
         canvas.drawPath(triangle, pointer);
-        text.setAlpha(255);
-        text.setColor(pointer.getColor());
-        canvas.drawText(format(zoom) + "×", cx, h * 0.25f, text);
-        text.setColor(0xFFFFFFFF);
+        canvas.restore();
     }
 }

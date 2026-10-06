@@ -100,6 +100,8 @@ public class SettingsBarLayout extends LinearLayout {
     private final TextView headTitle;
     /** «Изменить» / «Готово». */
     private final TextView editButton;
+    /** The header's settings gear (hidden in the edit mode). */
+    private final ImageView headGear;
     private final RecyclerView tiles;
     private final ItemTouchHelper dragHelper;
     private final ShadeTileAdapter adapter;
@@ -228,6 +230,20 @@ public class SettingsBarLayout extends LinearLayout {
         editButton.setTag("shade_edit");
         editButton.setOnClickListener(v -> setEditing(!editing));
         head.addView(editButton);
+        headGear = new ImageView(context);
+        headGear.setImageResource(R.drawable.settings_ic_gear);
+        headGear.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        headGear.setPadding(dp(8), dp(8), dp(8), dp(8));
+        headGear.setBackground(ShadeStyle.pressable(context, ShadeStyle.CARD, ShadeStyle.LINE, 12));
+        headGear.setContentDescription(context.getString(R.string.sheet_all_settings));
+        headGear.setTooltipText(context.getString(R.string.sheet_all_settings));
+        headGear.setTag("shade_settings");
+        headGear.setOnClickListener(v -> {
+            if (host != null) host.openSettings();
+        });
+        LayoutParams gearParams = new LayoutParams(dp(36), dp(36));
+        gearParams.setMarginStart(dp(10));
+        head.addView(headGear, gearParams);
         content.addView(head, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
         tiles = new RecyclerView(context);
@@ -321,6 +337,7 @@ public class SettingsBarLayout extends LinearLayout {
 
         ShadeStyle.label(headTitle, accent);
         styleEditButton(accent);
+        headGear.setImageTintList(ColorStateList.valueOf(accent));
     }
 
     private void styleEditButton(int accent) {
@@ -376,6 +393,51 @@ public class SettingsBarLayout extends LinearLayout {
         for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extraRows.add(key);
         rows.build(fullList, catalog().visibleGroups(), extraRows);
         fullList.addView(moreRow(), moreRowParams());
+        fullList.addView(allSettingsCard(), moreRowParams());
+    }
+
+    /** «Все настройки» at the very end of FULL: the settings screen, as the gears do. */
+    private View allSettingsCard() {
+        Context c = getContext();
+        int accent = ShadeStyle.accent(c);
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(14), dp(14), dp(14));
+        row.setMinimumHeight(dp(66));
+        row.setBackground(ShadeStyle.pressable(c, ShadeStyle.CARD, ShadeStyle.LINE, 20));
+        row.setTag("shade_all_settings");
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.settings_ic_gear);
+        icon.setImageTintList(ColorStateList.valueOf(accent));
+        icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LayoutParams ip = new LayoutParams(dp(26), dp(26));
+        ip.setMarginEnd(dp(14));
+        row.addView(icon, ip);
+        LinearLayout texts = new LinearLayout(c);
+        texts.setOrientation(VERTICAL);
+        TextView title = new TextView(c);
+        title.setText(R.string.sheet_all_settings);
+        title.setTextColor(ShadeStyle.TEXT);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        texts.addView(title);
+        TextView summary = new TextView(c);
+        // No SCAM HDR on MediaTek (its settings screen is hidden there).
+        summary.setText(com.particlesdevs.photoncamera.settings.PreferenceKeys.isMediaTekSoc()
+                ? R.string.shade_all_settings_summary_mtk : R.string.shade_all_settings_summary);
+        summary.setTextColor(ShadeStyle.MUTED);
+        summary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        texts.addView(summary);
+        row.addView(texts, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView chevron = new TextView(c);
+        chevron.setText("\u203a");
+        chevron.setTextColor(ShadeStyle.MUTED);
+        chevron.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(chevron);
+        row.setOnClickListener(v -> {
+            if (host != null) host.openSettings();
+        });
+        return row;
     }
 
     private LayoutParams moreRowParams() {
@@ -444,6 +506,7 @@ public class SettingsBarLayout extends LinearLayout {
     }
 
     private void refreshNow() {
+        if (host != null) host.onValuesChanged();
         if (!contentBuilt) return;
         // Never mid-drag: the pressed view keeps its touch stream; the drop runs the refresh.
         if (dragging) {
@@ -561,6 +624,7 @@ public class SettingsBarLayout extends LinearLayout {
             host.onSettingWritten(e);
         }
         rebindValues();
+        host.onValuesChanged();
     }
 
     private void toastValue(ShadeCatalog.Entry e) {
@@ -681,6 +745,7 @@ public class SettingsBarLayout extends LinearLayout {
         if (on) openSlider = null;
         headTitle.setText(on ? R.string.shade_drag_title : R.string.shade_pinned);
         styleEditButton(ShadeStyle.accent(getContext()));
+        headGear.setVisibility(on ? GONE : VISIBLE);
         fullList.setVisibility(on ? GONE : VISIBLE);
         for (int i = 0; i < tiles.getChildCount(); i++) {
             View child = tiles.getChildAt(i);

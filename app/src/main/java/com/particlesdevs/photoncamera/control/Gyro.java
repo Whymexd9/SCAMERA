@@ -327,8 +327,9 @@ public class Gyro {
     public int getFilteredShakiness() {
         return filter;
     }
+    /** On a tripod in a photo mode (P25: the detection moved from the retired Night mode to Photo). */
     public boolean getTripod(){
-        return (tripodShakiness < 25) && PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT;
+        return (tripodShakiness < 25) && CameraMode.isStill(PhotonCamera.getSettings().selectedMode);
     }
 
     private void updateOrientationHistory() {
