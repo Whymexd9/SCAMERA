@@ -63,6 +63,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         if (!isFloat && mStepPerUnit > 1)
             mStepPerUnit = 1.0f;
         a.recycle();
+        setLayoutResource(R.layout.preference_seekbar); // P6b: the card slider row, also where SettingsStyle does not run
         // Rounded, not truncated: (1.0f - -0.2f) * 20 evaluates to 24.00000095 in float32,
         // and a range like 0.3f * 10 would truncate to 2 instead of 3.
         mSeekBarMax = Math.max(1, (int) Math.round(((double) mMax - (double) mMin) * (double) mStepPerUnit));

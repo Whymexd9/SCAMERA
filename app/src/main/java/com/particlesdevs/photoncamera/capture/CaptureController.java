@@ -2957,14 +2957,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             SensorConfigInjector.applyToSensor(physicalID, this);
             // Every photo is merged by the LMC hybrid or SCAM HDR, both from the ZSL RAW stream (Photo and Night).
             if (!PreferenceKeys.isVivoNiceEnabled() || !isZslMode())
-                throw new IllegalStateException("Нет маршрута склейки: LMC-гибрид и SCAM HDR снимают из ZSL RAW-потока (режимы Фото и Ночь)");
+                throw new IllegalStateException("Нет маршрута склейки: Hybrid и SCAM HDR снимают из ZSL RAW-потока (режимы Фото и Ночь)");
             final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
             // The LMC hybrid takes the NICE capture route with its own settings (independent of SCAM HDR; wins over it).
             final boolean lmcHybridShot = niceCapture && PreferenceKeys.isLmcHybridEnabled();
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
             final VivoStockAe.Plan stockPlan;
             {
-                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridShot?"LMC-гибрид":"SCAM HDR")+" требует ZSL RAW-поток");
+                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridShot?"Hybrid":"SCAM HDR")+" требует ZSL RAW-поток");
                 // The hybrid's N is the ring at the preview exposure: the SCAMERA plan, never the vivo stock solver.
                 if(lmcHybridShot || !PreferenceKeys.useStockBracketPlanner()) {
                     stockPlan=scameraBracketPlan();
@@ -3190,7 +3190,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if(hybridZsl && lmcHybridShot) {
                 // LMC hybrid: N from the ring, then the ultrashort (Bento) and the bracketed frames (Shasta) of the plan.
                 if(mPendingZslNormalFrames.size()<2)
-                    throw new IllegalStateException("LMC-гибрид ZSL: нужны хотя бы два кадра N до нажатия");
+                    throw new IllegalStateException("Hybrid ZSL: нужны хотя бы два кадра N до нажатия");
                 IsoExpoSelector.fullpairs.clear();
                 final HybridPlan plan=HybridPlan.build(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics);
                 hybridPlanHolder[0]=plan;

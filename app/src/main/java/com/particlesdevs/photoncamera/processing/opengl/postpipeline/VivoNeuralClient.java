@@ -216,7 +216,7 @@ public final class VivoNeuralClient {
             if(hybridMerge){
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
-                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException("Не удалось создать маркер гибридной склейки");
+                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException("Не удалось создать маркер склейки Hybrid");
                 String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
                 if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
                 log.accept("CLIENT: LMC hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
@@ -295,7 +295,7 @@ public final class VivoNeuralClient {
             if(!process.waitFor(TimeUnit.SECONDS.toMillis(burst!=null||niceBurst!=null?900:niceTone?420:200))){process.destroy();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
-                    niceBurst instanceof LmcHybridBurst?"LMC-гибрид: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
+                    niceBurst instanceof LmcHybridBurst?"Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
                     niceBurst!=null?"SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
                     (nice?"Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ":"Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ")+
                     (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");

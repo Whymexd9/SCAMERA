@@ -17,7 +17,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceGroup;
@@ -89,16 +88,22 @@ public class SettingsSearchFragment extends Fragment {
     }
     @Override public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup parent, Bundle state) {
         LinearLayout root=new LinearLayout(requireContext());root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16),0,dp(16),0); root.setBackgroundColor(0xFF111116);
+        root.setPadding(dp(16),dp(12),dp(16),0); root.setBackgroundColor(SettingsStyle.BG);
+        // P6b: the shared header and a field in the card style
+        SettingsStyle.Header header=SettingsStyle.header(requireContext(),()->requireActivity().getOnBackPressedDispatcher().onBackPressed(),null);
+        header.heading.setText("Поиск настройки");header.subtitle.setVisibility(View.GONE);root.addView(header.view);
         LinearLayout search=new LinearLayout(requireContext());search.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        input=new EditText(requireContext());input.setSingleLine(true);input.setTextColor(0xFFF5F3F8);
-        input.setHintTextColor(0xFFACA8BC);input.setTextSize(18);input.setHint("Поиск настройки");
+        search.setBackground(SettingsStyle.shape(requireContext(),SettingsStyle.FIELD,SettingsStyle.LINE,14));search.setPadding(dp(14),0,dp(4),0);
+        android.widget.ImageView glass=new android.widget.ImageView(requireContext());glass.setImageResource(R.drawable.settings_ic_search);
+        glass.setColorFilter(SettingsStyle.MUTED);search.addView(glass,new LinearLayout.LayoutParams(dp(22),dp(22)));
+        input=new EditText(requireContext());input.setSingleLine(true);input.setTextColor(SettingsStyle.TEXT);input.setBackground(null);
+        input.setHintTextColor(SettingsStyle.MUTED);input.setTextSize(17);input.setHint("Поиск настройки");
         input.setContentDescription("Поиск настройки");input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         search.addView(input,new LinearLayout.LayoutParams(0,dp(56),1));
         TextView clear=label("×",28,com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext()));clear.setGravity(android.view.Gravity.CENTER);
         clear.setContentDescription("Очистить поиск");clear.setOnClickListener(v->input.setText(""));
         search.addView(clear,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(search);
-        count=label("",13,0xFFACA8BC);count.setPadding(0,dp(14),0,dp(12));root.addView(count);
+        count=label("",13,SettingsStyle.MUTED);count.setPadding(0,dp(14),0,dp(12));root.addView(count);
         list=new RecyclerView(requireContext());list.setLayoutManager(new LinearLayoutManager(requireContext()));
         list.setAdapter(new ResultsAdapter());root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
         input.setText(query);input.setSelection(input.length());filter(query);
@@ -117,9 +122,8 @@ public class SettingsSearchFragment extends Fragment {
         list.getAdapter().notifyDataSetChanged();
     }
     @Override public void onResume() {
-        super.onResume();Toolbar toolbar=requireActivity().findViewById(R.id.settings_toolbar);
-        toolbar.setTitle("Поиск настройки");toolbar.setSubtitle(null);toolbar.getMenu().clear();
-        toolbar.setNavigationOnClickListener(v->requireActivity().onBackPressed());
+        super.onResume();View toolbar=requireActivity().findViewById(R.id.settings_toolbar);
+        if(toolbar!=null)toolbar.setVisibility(View.GONE);
     }
     @Override public void onSaveInstanceState(@NonNull Bundle state){super.onSaveInstanceState(state);state.putString("query",query);}
     @Override public void onDestroyView(){input=null;count=null;list=null;super.onDestroyView();}
@@ -139,10 +143,12 @@ public class SettingsSearchFragment extends Fragment {
         }
         @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent,int type){
             LinearLayout row=new LinearLayout(requireContext());row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(0,dp(14),dp(8),dp(14));row.setMinimumHeight(dp(72));row.setFocusable(true);
-            TextView title=label("",17,Color.WHITE),path=label("",13,0xFFACA8BC);
+            row.setPadding(dp(16),dp(13),dp(12),dp(13));row.setMinimumHeight(dp(64));row.setFocusable(true);
+            row.setBackgroundResource(R.drawable.settings_card); // the same card as the preference rows
+            TextView title=label("",16,SettingsStyle.TEXT),path=label("",12,SettingsStyle.MUTED);
             path.setPadding(0,dp(5),0,0);row.addView(title);row.addView(path);
-            row.setLayoutParams(new RecyclerView.LayoutParams(-1,-2));return new Holder(row,title,path);
+            RecyclerView.LayoutParams lp=new RecyclerView.LayoutParams(-1,-2);lp.topMargin=dp(10);
+            row.setLayoutParams(lp);return new Holder(row,title,path);
         }
         @Override public void onBindViewHolder(@NonNull Holder h,int position){
             Entry e=results.get(position);h.title.setText(highlighted(e.title));h.path.setText(e.path);

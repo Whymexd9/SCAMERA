@@ -55,17 +55,19 @@ public class HybridSettingsTest {
     @Test public void hybridSectionOwnsAllHybridKeysAndScamHdrHasNone() {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("lmc_hybrid_screen");
-        assertNotNull(hybrid);assertEquals("LMC-гибрид",hybrid.getTitle().toString());
-        // Grouped like ArkCam 1.23: Функции обработки / Обработка фото (+ Диагностика); the ArkCore tone and sharpening
-        // are a top-level screen shared with SCAM HDR (P6 / P10).
+        assertNotNull(hybrid);assertEquals("Hybrid",hybrid.getTitle().toString());
+        // The concept tree (P6 / P6b): Кадры и захват / Модель шума / Склейка / Шумоподавление / Обработка ArkCore (+ Диагностика).
+        // ArkCore is shared with SCAM HDR, which links to the same page.
         PreferenceScreen ark=root.findPreference("lmc_hybrid_arkcore_screen");
-        assertNotNull(ark);assertNull(hybrid.findPreference("lmc_hybrid_arkcore_screen"));
-        for(String screen:new String[]{"lmc_hybrid_functions_screen","lmc_hybrid_photo_screen"})
+        assertNotNull(ark);assertTrue(hybrid.findPreference("lmc_hybrid_arkcore_screen") instanceof PreferenceScreen);
+        assertNotNull(root.findPreference("vivo_hdr_ark_link"));
+        for(String screen:new String[]{"lmc_hybrid_capture_screen","lmc_hybrid_noise_screen","lmc_hybrid_merge_screen","lmc_hybrid_photo_screen",
+                "lmc_hybrid_nr_snr_screen","lmc_hybrid_nr_mult_screen","lmc_hybrid_nr_safe_screen","lmc_hybrid_rejection_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
         for(String screen:new String[]{"lmc_hybrid_ark_sharp_screen","lmc_hybrid_ark_rl_screen","lmc_hybrid_ark_tone_screen","lmc_hybrid_ark_vibrance_screen"})
             assertTrue(screen,ark.findPreference(screen) instanceof PreferenceScreen);
-        for(String category:new String[]{"lmc_hybrid_main_category","lmc_hybrid_capture_category","lmc_hybrid_merge_category",
-                "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_diag_category"})
+        for(String category:new String[]{"lmc_hybrid_capture_category","lmc_hybrid_shasta_category","lmc_hybrid_boost_category",
+                "lmc_hybrid_zipper_category","lmc_hybrid_weights_category","lmc_hybrid_diag_category"})
             assertTrue(category,hybrid.findPreference(category) instanceof PreferenceCategory);
         for(String category:new String[]{"lmc_hybrid_sharp_category","lmc_hybrid_ark_artifacts_category"})
             assertTrue(category,ark.findPreference(category) instanceof PreferenceCategory);

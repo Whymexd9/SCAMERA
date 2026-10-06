@@ -2,14 +2,13 @@
 <LinearLayout
         xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
         android:orientation="vertical"
-        android:background="#111116"
+        android:background="@color/settings_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingStart="?android:scrollbarSize"
-        android:paddingEnd="?android:scrollbarSize"
 >
     <androidx.appcompat.widget.Toolbar
             android:id="@+id/settings_toolbar"
+            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:title="Настройки камеры"

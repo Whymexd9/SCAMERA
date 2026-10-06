@@ -170,7 +170,7 @@ public class HdrxProcessor extends ProcessorBase {
         processingParameters.vivoHdrMode = PreferenceKeys.isVivoHdrEnabled();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
         // Every shot is merged by the LMC hybrid or SCAM HDR (the legacy merge routes are gone).
-        if (!niceCapture) throw new IllegalStateException("no merge route: the LMC hybrid or SCAM HDR needs the ZSL RAW stream");
+        if (!niceCapture) throw new IllegalStateException("no merge route: Hybrid or SCAM HDR needs the ZSL RAW stream");
         // sort by timestamp first
         mImageFramesToProcess.sort(Comparator.comparingLong(ImageFrame::getTimestamp));
         if(PhotonCamera.getCaptureController()!=null) for(ImageFrame frame:mImageFramesToProcess)
@@ -180,7 +180,7 @@ public class HdrxProcessor extends ProcessorBase {
         for (ImageFrame frame : mImageFramesToProcess) {
             if (!seen.add(frame.timestamp) || frame.getCaptureRole() == null
                     || frame.measuredExposure <= 0 || frame.measuredIso <= 0)
-                throw new IllegalStateException((hybridShot ? "LMC-гибрид" : "SCAM HDR") + ": нет однозначной роли/экспозиции RAW timestamp="
+                throw new IllegalStateException((hybridShot ? "Hybrid" : "SCAM HDR") + ": нет однозначной роли/экспозиции RAW timestamp="
                         + frame.timestamp);
             exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);
         }
@@ -349,7 +349,7 @@ public class HdrxProcessor extends ProcessorBase {
                     processingStage = "SCAM HDR neural burst";
                 }
                 final boolean hybrid=hybridShot;
-                processingStage=hybrid?"LMC hybrid merge":"SCAM HDR neural burst";
+                processingStage=hybrid?"Hybrid merge":"SCAM HDR neural burst";
                 niceOwnedOutput=hybrid
                         ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.process(
                         PhotonCamera.getAppContext(),images,processingParameters,

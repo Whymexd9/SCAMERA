@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings concept icon «aperture»: white outline, tinted with the accent at runtime. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M3,12 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="m14.3 3.3-5.7 9.9M20.3 9h-11.4M17.7 18.7l-5.7-9.9M9.7 20.7l5.7-9.9M3.7 15h11.4M6.3 5.3l5.7 9.9" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>

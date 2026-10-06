@@ -180,11 +180,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             ListPreference route = findPreference(PreferenceKeys.ROUTE_KEY);
             if (route != null && PreferenceKeys.isMediaTekSoc()) {
                 // No Qualcomm NPU: SCAM HDR cannot run, the hybrid is the only route (PreferenceKeys.mergeRoute).
-                route.setEntries(new CharSequence[]{"LMC-гибрид"});
+                route.setEntries(new CharSequence[]{"Hybrid"});
                 route.setEntryValues(new CharSequence[]{"hybrid"});
                 route.setValue("hybrid");
                 route.setEnabled(false);
-                route.setSummary("MediaTek: только LMC-гибрид (SCAM HDR и нейроремозаик работают на NPU Snapdragon)");
+                route.setSummary("MediaTek: только Hybrid (SCAM HDR и нейроремозаик работают на NPU Snapdragon)");
             }
             // MediaTek: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
             Preference scamHdr = findPreference("vivo_hdr_screen");
@@ -194,6 +194,90 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
             setupRemosaicBackend();
             updateHexQuadDenoiseControls();
+            SettingsStyle.apply(getPreferenceScreen());
+        }
+
+        // ───── P6b: the card look of «Камеры и сенсоры» on every page ─────
+        private SettingsStyle.Header header;
+        private android.widget.LinearLayout chipBox;
+
+        @NonNull @Override
+        public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle state) {
+            View list = super.onCreateView(inflater, container, state);
+            Context c = requireContext();
+            android.widget.LinearLayout page = new android.widget.LinearLayout(c);
+            page.setOrientation(android.widget.LinearLayout.VERTICAL);
+            page.setBackgroundColor(SettingsStyle.BG);
+            page.setPadding(SettingsStyle.dp(c, 16), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 16), 0);
+            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), this::openSearch);
+            page.addView(header.view, new android.widget.LinearLayout.LayoutParams(-1, -2));
+            chipBox = new android.widget.LinearLayout(c);
+            page.addView(chipBox, new android.widget.LinearLayout.LayoutParams(-1, -2));
+            page.addView(list, new android.widget.LinearLayout.LayoutParams(-1, 0, 1));
+            return page;
+        }
+
+        @NonNull @Override
+        public androidx.recyclerview.widget.RecyclerView onCreateRecyclerView(@NonNull LayoutInflater inflater, @NonNull ViewGroup parent, @Nullable Bundle state) {
+            androidx.recyclerview.widget.RecyclerView list = super.onCreateRecyclerView(inflater, parent, state);
+            list.setClipToPadding(false);
+            list.setPadding(0, 0, 0, SettingsStyle.dp(requireContext(), 28));
+            list.setVerticalScrollBarEnabled(false);
+            return list;
+        }
+
+        /** Three columns only so that the «Конфиг» tiles share a row; every other row spans all three. */
+        @NonNull @Override
+        public androidx.recyclerview.widget.RecyclerView.LayoutManager onCreateLayoutManager() {
+            androidx.recyclerview.widget.GridLayoutManager grid = new androidx.recyclerview.widget.GridLayoutManager(requireContext(), 3);
+            grid.setSpanSizeLookup(new androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup() {
+                @Override public int getSpanSize(int position) {
+                    androidx.recyclerview.widget.RecyclerView list = getListView();
+                    if (list == null || !(list.getAdapter() instanceof androidx.preference.PreferenceGroupAdapter)) return 3;
+                    Preference p = ((androidx.preference.PreferenceGroupAdapter) list.getAdapter()).getItem(position);
+                    return p != null && p.getKey() != null && SettingsStyle.TILES.contains(p.getKey()) ? 1 : 3;
+                }
+            });
+            return grid;
+        }
+
+        @NonNull @Override
+        protected androidx.recyclerview.widget.RecyclerView.Adapter onCreateAdapter(@NonNull PreferenceScreen screen) {
+            return new androidx.preference.PreferenceGroupAdapter(screen) {
+                @Override public void onBindViewHolder(@NonNull androidx.preference.PreferenceViewHolder holder, int position) {
+                    super.onBindViewHolder(holder, position);
+                    Preference p = getItem(position);
+                    if (p != null) SettingsStyle.bind(holder, p);
+                }
+            };
+        }
+
+        /** Title, and the chip: the active route on the root page, the module being edited on pages with per-module values. */
+        private void updateHeader() {
+            if (header == null || !isAdded()) return;
+            PreferenceScreen screen = getPreferenceScreen();
+            CharSequence title = screen == null ? null : screen.getTitle();
+            header.heading.setText(title == null || title.length() == 0 ? "Настройки камеры" : title);
+            header.subtitle.setVisibility(View.GONE);
+            chipBox.removeAllViews();
+            String chip = null;
+            if (screen != null && KEY_MAIN_PARENT_SCREEN.equals(screen.getKey()))
+                chip = "Активна: " + ("hybrid".equals(PreferenceKeys.mergeRoute()) ? "Hybrid" : "SCAM HDR") + " · по умолчанию Hybrid";
+            else if (screen != null && PreferenceKeys.isPerLensSettingsOn() && SettingsStyle.hasModuleSettings(screen)) {
+                String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+                chip = "Настраивается: " + com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)
+                        + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
+            }
+            if (chip != null) {
+                android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
+                lp.bottomMargin = SettingsStyle.dp(requireContext(), 4);
+                chipBox.addView(SettingsStyle.chip(requireContext(), chip), lp);
+            }
+        }
+
+        private void openSearch() {
+            SettingsSearchFragment fragment = SettingsSearchFragment.create(SettingsSearchFragment.index(fullPreferenceScreen));
+            getParentFragmentManager().beginTransaction().replace(R.id.settings_container, fragment).addToBackStack("settings_search").commit();
         }
 
         private void setupScalarInputs(PreferenceGroup group) {
@@ -388,6 +472,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if ("pref_sensor_config_submenu".equals(rootKey)) {
                 Log.d("SettingsFragment", "This is the sensor config submenu fragment, generating preferences now");
                 generateSensorConfigPreferences();
+                SettingsStyle.apply(getPreferenceScreen());
             }
             
             // Generators add ListPreferences after onCreatePreferences() ran, so re-run the
@@ -528,35 +613,15 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
+        /** The activity toolbar stays hidden: every page has the shared header (SettingsStyle.header). */
         private void setupToolbar() {
             if (activity != null) {
-                Toolbar toolbar = activity.findViewById(R.id.settings_toolbar);
-                if (toolbar != null) {
-                    CharSequence title = getPreferenceScreen().getTitle();
-                    // Default to "Settings" if title is null
-                    if (title == null || title.toString().isEmpty()) {
-                        title = "Settings";
-                    }
-                    toolbar.setTitle(title);
-                    toolbar.setSubtitle(KEY_MAIN_PARENT_SCREEN.equals(getPreferenceScreen().getKey())
-                            ? "Активная камера: " + PreferenceKeys.getCameraID() : null);
-                    toolbar.setSubtitleTextColor(0xFFACA8BC);
-                    toolbar.setNavigationOnClickListener(v -> activity.onBackPressed());
-                    toolbar.getMenu().clear();
-                    android.view.MenuItem search = toolbar.getMenu().add("Поиск настройки");
-                    search.setIcon(R.drawable.settings_concept_search);
-                    search.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
-                    search.setOnMenuItemClickListener(item -> {
-                        SettingsSearchFragment fragment = SettingsSearchFragment.create(
-                                SettingsSearchFragment.index(fullPreferenceScreen));
-                        getParentFragmentManager().beginTransaction()
-                                .replace(R.id.settings_container, fragment).addToBackStack("settings_search").commit();
-                        return true;
-                    });
-                }
+                View toolbar = activity.findViewById(R.id.settings_toolbar);
+                if (toolbar != null) toolbar.setVisibility(View.GONE);
             }
+            updateHeader();
         }
-        
+
         @Override
         public void onResume() {
             super.onResume();
@@ -735,6 +800,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             
             Log.d("SettingsFragment", "onSharedPreferenceChanged: key=" + key);
+            if (key.equals(PreferenceKeys.ROUTE_KEY)) {
+                // the chip and the dimmed root row of the other route follow the selection
+                updateHeader();
+                if (getListView() != null && getListView().getAdapter() != null) getListView().getAdapter().notifyDataSetChanged();
+            }
             if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
                 boolean on = sharedPreferences.getBoolean(key, false);
                 // Only bind the context here. Calling init() would itself call
@@ -943,6 +1013,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
             }
+            if ("vivo_hdr_ark_link".equals(preference.getKey())) {
+                // SCAM HDR shares the ArkCore finish of the Hybrid: one page, opened from both routes
+                PreferenceScreen ark = fullPreferenceScreen.findPreference("lmc_hybrid_arkcore_screen");
+                if (ark != null && activity instanceof SettingsActivity) ((SettingsActivity) activity).onPreferenceStartScreen(this, ark);
+                return true;
+            }
             if ("settings_favorites".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new FavoritesSettingsFragment()).addToBackStack("favorites").commit();return true;
             }
@@ -983,6 +1059,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         @Override
         public void onDisplayPreferenceDialog(@NonNull Preference preference) {
+            if (SettingsStyle.showDialog(requireContext(), preference)) return;
             if (preference instanceof ResetPreferences) {
                 DialogFragment dialogFragment = ResetPreferences.Dialog.newInstance(preference);
                 dialogFragment.setTargetFragment(this, 0);

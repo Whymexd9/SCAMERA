@@ -131,4 +131,5 @@
     <string name="ae_metering_average">Среднее по кадру</string>
     <string name="ae_metering_spot">Точечный</string>
     <string name="ae_metering_std">Замер AE</string>
+    <string name="ultrahdr_summary">Карта усиления Ultra HDR в JPEG (второй, лёгкий проход тона)</string>
 </resources>

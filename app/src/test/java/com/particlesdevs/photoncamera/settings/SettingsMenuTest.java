@@ -98,6 +98,7 @@ public class SettingsMenuTest {
         PreferenceScreen screen=pm.inflateFromResource(context,R.xml.preferences,null);pm.setPreferences(screen);
         for(Class<?> type:TunableRegistry.TUNABLE_CLASSES)TunablePreferenceGenerator.registerTunableClass(type);
         TunablePreferenceGenerator.generatePreferences(context,screen);
+        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.apply(screen); // the rows bind with the P6b layouts
         return screen;
     }
     @Test public void legacyCaptureControlsAreGoneAndTheZslRingIsUpgradedOnce() {
@@ -124,7 +125,9 @@ public class SettingsMenuTest {
             else {
                 // Binding calls the actual widget and summary code, not just the XML parser.
                 android.view.View row=LayoutInflater.from(context).inflate(p.getLayoutResource(),null,false);
-                p.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+                PreferenceViewHolder holder=PreferenceViewHolder.createInstanceForTests(row);
+                p.onBindViewHolder(holder);
+                com.particlesdevs.photoncamera.ui.settings.SettingsStyle.bind(holder,p);
                 p.getSummary();
                 if(p instanceof ListPreference && !(p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference)){
                     ListPreference l=(ListPreference)p;
@@ -324,12 +327,13 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var copy=new com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
-            android.view.View processing=copy.requireView().findViewWithTag("group_lmc_group_processing");
+            // P6: the root pages are the groups (no categories at the root any more)
+            android.view.View processing=copy.requireView().findViewWithTag("group_photo_processing_screen");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
             assertNotNull(copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key"));
             activity.getOnBackPressedDispatcher().onBackPressed();
-            assertNotNull(copy.requireView().findViewWithTag("group_lmc_group_processing"));
+            assertNotNull(copy.requireView().findViewWithTag("group_photo_processing_screen"));
         }
     }
 
@@ -363,10 +367,10 @@ public class SettingsMenuTest {
             modules.requireView().findViewWithTag("Копировать настройки между модулями").performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy");
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
-            copy.requireView().findViewWithTag("group_lmc_group_processing").performClick();
+            copy.requireView().findViewWithTag("group_photo_processing_screen").performClick();
             copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key").performClick();renderPage(copy.requireView(),"noise");
             copy.requireView().findViewWithTag("primary_action").performClick();
-            var check=copy.requireView().findViewWithTag("group_check_lmc_group_processing");assertTrue(check.getContentDescription().toString().contains("частично"));
+            var check=copy.requireView().findViewWithTag("group_check_photo_processing_screen");assertTrue(check.getContentDescription().toString().contains("частично"));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
             assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_sharp_amount_key"),0),0);
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
@@ -451,9 +455,9 @@ public class SettingsMenuTest {
                 org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
             controller.setup();
             var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
-            androidx.appcompat.widget.Toolbar toolbar=activity.findViewById(R.id.settings_toolbar);
-            android.view.MenuItem item=toolbar.getMenu().getItem(0);
-            toolbar.getMenu().performIdentifierAction(item.getItemId(),0);fm.executePendingTransactions();
+            // P6b: search is the button of the page header (the toolbar stays hidden)
+            assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
+            fm.findFragmentById(R.id.settings_container).requireView().findViewWithTag("settings_search").performClick();fm.executePendingTransactions();
             var search=fm.findFragmentById(R.id.settings_container);
             assertTrue(search instanceof com.particlesdevs.photoncamera.ui.settings.SettingsSearchFragment);
             android.widget.EditText input=descendant(search.requireView(),android.widget.EditText.class);
@@ -472,6 +476,165 @@ public class SettingsMenuTest {
         }
     }
 
+
+    /** P6a: the engine is «Hybrid» in Latin letters everywhere the user can read it; no «LMC», no Russian «гибрид». */
+    @Test public void noLmcOrRussianHybridInTheSettingsTexts(){
+        PreferenceScreen screen=inflate();SensorConfigPreferenceGenerator.generatePreferences(context,screen);
+        List<String> found=new ArrayList<>();int checked=0;
+        java.util.ArrayDeque<Preference> queue=new java.util.ArrayDeque<>();queue.add(screen);
+        while(!queue.isEmpty()){
+            Preference p=queue.poll();
+            if(p instanceof PreferenceGroup)for(int i=0;i<((PreferenceGroup)p).getPreferenceCount();i++)queue.add(((PreferenceGroup)p).getPreference(i));
+            List<CharSequence> texts=new ArrayList<>(Arrays.asList(p.getTitle(),p.getSummary()));
+            if(p instanceof ListPreference&&((ListPreference)p).getEntries()!=null)texts.addAll(Arrays.asList(((ListPreference)p).getEntries()));
+            if(p instanceof DialogPreference)texts.add(((DialogPreference)p).getDialogTitle());
+            for(CharSequence t:texts){
+                if(t==null)continue;checked++;
+                String s=t.toString();
+                if(s.contains("LMC")||s.toLowerCase(Locale.ROOT).contains("гибрид"))found.add(p.getKey()+": "+s);
+            }
+        }
+        assertTrue(found.toString(),found.isEmpty());assertTrue(checked>500);
+        assertEquals("Hybrid",((ListPreference)screen.findPreference(PreferenceKeys.ROUTE_KEY)).getEntries()[0].toString());
+        java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
+        assertEquals("Выберите склейку «Hybrid».",new SettingsAvailability(values).reason("pref_lmc_hybrid_cdm"));
+    }
+
+    private android.view.View row(Preference p){
+        android.widget.FrameLayout parent=new android.widget.FrameLayout(context);
+        android.view.View row=LayoutInflater.from(context).inflate(p.getLayoutResource(),parent,false);
+        android.view.ViewGroup widget=row.findViewById(android.R.id.widget_frame);
+        if(widget!=null&&p.getWidgetLayoutResource()!=0)LayoutInflater.from(context).inflate(p.getWidgetLayoutResource(),widget);
+        PreferenceViewHolder holder=PreferenceViewHolder.createInstanceForTests(row);
+        p.onBindViewHolder(holder);com.particlesdevs.photoncamera.ui.settings.SettingsStyle.bind(holder,p);
+        return row;
+    }
+
+    /** P6b: one row of each preference type renders as a card in the user's accent, with the expected widgets. */
+    @Test public void everyRowTypeRendersInTheModuleCardStyle(){
+        prefs.edit().putString(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.KEY,"blue").commit();
+        int accent=com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(context);
+        PreferenceManager pm=new PreferenceManager(context);PreferenceScreen screen=pm.createPreferenceScreen(context);
+        PreferenceScreen page=pm.createPreferenceScreen(context);page.setKey("t_page");page.setTitle("Страница");screen.addPreference(page);
+        PreferenceCategory category=new PreferenceCategory(context);category.setKey("t_cat");category.setTitle("Группа");screen.addPreference(category);
+        SwitchPreferenceCompat sw=new SwitchPreferenceCompat(context);sw.setKey("t_switch");sw.setTitle("Переключатель");sw.setWidgetLayoutResource(androidx.preference.R.layout.preference_widget_switch_compat); // what the fragment theme gives it
+        category.addPreference(sw);sw.setChecked(true);
+        ListPreference list=new ListPreference(context);list.setKey("t_list");list.setTitle("Список");list.setSummary("%s. Описание");
+        list.setEntries(new CharSequence[]{"Первый","Второй"});list.setEntryValues(new CharSequence[]{"a","b"});category.addPreference(list);list.setValue("b");
+        EditTextPreference edit=new EditTextPreference(context);edit.setKey("t_edit");edit.setTitle("Поле");category.addPreference(edit);edit.setText("42");
+        com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference seek=
+                new com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference(context);
+        seek.setKey("t_seek");seek.setTitle("Ползунок");category.addPreference(seek);
+        Preference info=new Preference(context);info.setKey("t_info");info.setSelectable(false);info.setSummary("Пояснение");category.addPreference(info);
+        Preference action=new Preference(context);action.setKey("t_action");action.setTitle("Действие");category.addPreference(action);
+        Preference tile=new Preference(context);tile.setKey("pref_reset_preferences_key");tile.setTitle("Сбросить всё");tile.setIcon(R.drawable.settings_ic_reset);category.addPreference(tile);
+        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.apply(screen);
+        for(Preference p:new Preference[]{page,sw,list,edit,seek,action,tile}){
+            android.view.View r=row(p);
+            assertTrue(p.getKey()+" is a card",r.getBackground() instanceof android.graphics.drawable.RippleDrawable);
+            android.widget.ImageView icon=r.findViewById(android.R.id.icon);
+            assertNotNull(p.getKey(),icon);assertNotNull(p.getKey()+" has an icon",icon.getDrawable());assertNotNull(p.getKey()+" tinted",icon.getColorFilter());
+        }
+        assertNotNull("pages end in a chevron",row(page).findViewById(R.id.settings_chevron));
+        android.widget.TextView label=row(category).findViewById(android.R.id.title);assertEquals(accent,label.getCurrentTextColor());
+        android.view.View lr=row(list);android.widget.TextView value=lr.findViewById(R.id.settings_value);
+        assertEquals("Второй",value.getText().toString());assertEquals(accent,value.getCurrentTextColor());
+        assertEquals("the value is not repeated in the summary","Описание",((android.widget.TextView)lr.findViewById(android.R.id.summary)).getText().toString());
+        assertEquals("42",((android.widget.TextView)row(edit).findViewById(R.id.settings_value)).getText().toString());
+        android.view.View sr=row(seek);android.widget.SeekBar bar=sr.findViewById(R.id.seekbar);
+        assertEquals(accent,bar.getProgressTintList().getDefaultColor());
+        assertEquals(accent,((android.widget.TextView)sr.findViewById(R.id.seekbar_value)).getCurrentTextColor());
+        android.view.ViewGroup holder=new android.widget.FrameLayout(context);
+        android.view.View swr=LayoutInflater.from(context).inflate(sw.getLayoutResource(),holder,false);
+        LayoutInflater.from(context).inflate(sw.getWidgetLayoutResource(),(android.view.ViewGroup)swr.findViewById(android.R.id.widget_frame));
+        PreferenceViewHolder h=PreferenceViewHolder.createInstanceForTests(swr);sw.onBindViewHolder(h);
+        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.bind(h,sw);
+        androidx.appcompat.widget.SwitchCompat toggle=swr.findViewById(androidx.preference.R.id.switchWidget);
+        assertEquals(accent,toggle.getTrackTintList().getColorForState(new int[]{android.R.attr.state_checked},0));
+        assertNotNull("info rows are notes",row(info).findViewById(R.id.settings_info_icon));
+        assertNull("notes are not cards",row(info).getBackground());
+        assertEquals(R.layout.preference_tile,tile.getLayoutResource());
+        assertEquals(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.WARN,((android.widget.TextView)row(tile).findViewById(android.R.id.title)).getCurrentTextColor());
+        assertEquals("actions are written in the accent",accent,((android.widget.TextView)row(action).findViewById(android.R.id.title)).getCurrentTextColor());
+        list.setEnabled(false);assertEquals(.45f,row(list).getAlpha(),1e-3);
+    }
+
+    /** P6b: the route card switches the route with its segments; the root shows the chip and dims the other route's page. */
+    @Test public void routeSegmentsSwitchTheRouteAndDimTheOtherSection(){
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            android.view.View view=root.requireView();
+            int exact=android.view.View.MeasureSpec.EXACTLY;
+            view.measure(android.view.View.MeasureSpec.makeMeasureSpec(360*(int)context.getResources().getDisplayMetrics().density,exact),
+                    android.view.View.MeasureSpec.makeMeasureSpec(1600,exact));view.layout(0,0,view.getMeasuredWidth(),1600);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            android.widget.TextView chip=view.findViewWithTag("settings_chip");
+            assertNotNull(chip);assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Активна: Hybrid"));
+            android.view.View scam=view.findViewWithTag("route_scamhdr");assertNotNull(tags(view),scam);scam.performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals("scamhdr",PreferenceKeys.mergeRoute());
+            view.measure(android.view.View.MeasureSpec.makeMeasureSpec(view.getMeasuredWidth(),exact),android.view.View.MeasureSpec.makeMeasureSpec(1600,exact));
+            view.layout(0,0,view.getMeasuredWidth(),1600);
+            chip=view.findViewWithTag("settings_chip");assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Активна: SCAM HDR"));
+            androidx.recyclerview.widget.RecyclerView list=root.getListView();
+            androidx.preference.PreferenceGroupAdapter adapter=(androidx.preference.PreferenceGroupAdapter)list.getAdapter();
+            int hybrid=adapter.getPreferenceAdapterPosition("lmc_hybrid_screen"),scamRow=adapter.getPreferenceAdapterPosition("vivo_hdr_screen");
+            assertEquals(.45f,list.findViewHolderForAdapterPosition(hybrid).itemView.getAlpha(),1e-3);
+            assertEquals(1f,list.findViewHolderForAdapterPosition(scamRow).itemView.getAlpha(),1e-3);
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(view.getMeasuredWidth(),1600,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+            java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"settings-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            catch(java.io.IOException e){throw new RuntimeException(e);}
+        }
+    }
+
+    /** P6b: inner pages (sliders, lists, tiles) render at 360 dp; the PNGs are kept for a look (build/reports/module-concept). */
+    @Test public void innerPagesRenderAsCards() throws Exception {
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            for(String key:new String[]{"lmc_hybrid_screen","lmc_hybrid_capture_screen","output_settings_screen","lmc_hybrid_ark_sharp_screen","vivo_hdr_screen"}){
+                var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+                PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
+                    root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}
+                assertNotNull(key,target);activity.onPreferenceStartScreen(root,target);fm.executePendingTransactions();
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+                android.view.View view=fm.findFragmentById(R.id.settings_container).requireView();int exact=android.view.View.MeasureSpec.EXACTLY;
+                view.measure(android.view.View.MeasureSpec.makeMeasureSpec(360,exact),android.view.View.MeasureSpec.makeMeasureSpec(1800,exact));view.layout(0,0,360,1800);
+                android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(360,1800,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+                java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+                try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-"+key+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+                fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
+            }
+        }
+    }
+
+    /** P6b pickers: a list opens a bottom sheet with radio rows, a text field a sheet with the same validation. */
+    @Test public void listAndTextPickersAreBottomSheets(){
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();
+            PreferenceManager pm=new PreferenceManager(activity);PreferenceScreen screen=pm.createPreferenceScreen(activity);
+            ListPreference list=new ListPreference(activity);list.setKey("t_sheet_list");list.setTitle("Список");
+            list.setEntries(new CharSequence[]{"Первый","Второй"});list.setEntryValues(new CharSequence[]{"a","b"});screen.addPreference(list);list.setValue("a");
+            assertTrue(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.showDialog(activity,list));
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertNotNull(sheet);sheet.findViewById(android.R.id.content).findViewWithTag("option_b").performClick();
+            assertEquals("b",list.getValue());assertFalse(sheet.isShowing());
+            EditTextPreference edit=new EditTextPreference(activity);edit.setKey("t_sheet_edit");edit.setTitle("Поле");screen.addPreference(edit);edit.setText("1");
+            edit.setOnBindEditTextListener(field->field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER));
+            edit.setOnPreferenceChangeListener((p,v)->!v.toString().isEmpty());
+            assertTrue(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.showDialog(activity,edit));
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            android.widget.EditText field=sheet.findViewById(android.R.id.content).findViewWithTag("sheet_field");
+            assertEquals(android.text.InputType.TYPE_CLASS_NUMBER,field.getInputType());
+            field.setText("");sheet.findViewById(android.R.id.content).findViewWithTag("sheet_save").performClick();
+            assertEquals("a rejected value keeps the sheet open","1",edit.getText());assertTrue(sheet.isShowing());
+            field.setText("7");sheet.findViewById(android.R.id.content).findViewWithTag("sheet_save").performClick();
+            assertEquals("7",edit.getText());assertFalse(sheet.isShowing());
+        }
+    }
 
     @Test public void sensorOverridesMigrateToIndependentSlotsAndResetDoesNotRestoreLegacy(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","3")

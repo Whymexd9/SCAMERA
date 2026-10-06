@@ -31,20 +31,20 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
 
     public TunableCheckBoxPreference(Context context) {
         super(context);
-        setLayoutResource(R.layout.preference_tunable_checkbox); // Use custom layout with reduced margin
-        setIconSpaceReserved(false); // Don't reserve icon space
+        setLayoutResource(R.layout.preference_card);
+        setIconSpaceReserved(true);
     }
 
     public TunableCheckBoxPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
-        setLayoutResource(R.layout.preference_tunable_checkbox); // Use custom layout with reduced margin
-        setIconSpaceReserved(false); // Don't reserve icon space
+        setLayoutResource(R.layout.preference_card);
+        setIconSpaceReserved(true);
     }
 
     public TunableCheckBoxPreference(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        setLayoutResource(R.layout.preference_tunable_checkbox); // Use custom layout with reduced margin
-        setIconSpaceReserved(false); // Don't reserve icon space
+        setLayoutResource(R.layout.preference_card);
+        setIconSpaceReserved(true);
     }
 
     /**

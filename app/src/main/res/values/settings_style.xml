@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings look (P6b): the tokens of «Камеры и сенсоры». SettingsStyle.java holds the same values for views built in code. -->
+<resources>
+    <color name="settings_bg">#FF101416</color>
+    <color name="settings_card">#FF1B2023</color>
+    <color name="settings_text">#FFF4F3F7</color>
+    <color name="settings_muted">#FFB2BAC9</color>
+    <color name="settings_line">#FF30363C</color>
+    <color name="settings_field">#FF121417</color>
+    <color name="settings_sheet">#FF202428</color>
+    <color name="settings_warn">#FFFFB4A8</color>
+    <dimen name="settings_card_radius">12dp</dimen>
+    <dimen name="settings_card_gap">10dp</dimen>
+    <dimen name="settings_icon">27dp</dimen>
+</resources>

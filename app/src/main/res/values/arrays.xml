@@ -196,7 +196,7 @@
         <item>2</item>
     </string-array>
     <string-array name="lmc_hybrid_bento_frames_entries">
-        <item>1 кадр (как LMC)</item>
+        <item>1 кадр</item>
         <item>2 кадра (по умолчанию)</item>
     </string-array>
     <string-array name="lmc_hybrid_bento_frames_values">
@@ -216,7 +216,7 @@
         <item>off</item>
     </string-array>
     <string-array name="lmc_hybrid_dn_engine_entries">
-        <item>GCam / LMC 9.6 (ArkCam)</item>
+        <item>GCam / Hybrid (ArkCam)</item>
         <item>NLM (прежний)</item>
     </string-array>
     <string-array name="lmc_hybrid_dn_engine_values">
@@ -309,7 +309,7 @@
         <item>skip</item>
     </string-array>
     <string-array name="merge_route_entries">
-        <item>LMC-гибрид</item>
+        <item>Hybrid</item>
         <item>SCAM HDR</item>
     </string-array>
     <string-array name="merge_route_values" translatable="false">

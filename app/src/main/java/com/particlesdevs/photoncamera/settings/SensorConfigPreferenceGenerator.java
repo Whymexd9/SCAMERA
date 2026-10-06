@@ -143,7 +143,7 @@ public class SensorConfigPreferenceGenerator {
 
         androidx.preference.Preference addButton = new androidx.preference.Preference(context);
         addButton.setKey("pref_sensorconfig_" + physicalId + "_add_tunablekey");
-        addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_with_margin);
+        addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
         addButton.setTitle("Добавить vendor tag");
         addButton.setSummary("Параметр сессии выбранного модуля: тип, имя и значение");
         addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.ic_add);

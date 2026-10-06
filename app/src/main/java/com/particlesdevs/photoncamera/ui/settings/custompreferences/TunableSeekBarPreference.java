@@ -25,8 +25,8 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
 
     public TunableSeekBarPreference(Context context) {
         super(context);
-        setLayoutResource(R.layout.preference_tunable_seekbar);
-        setIconSpaceReserved(false);
+        setLayoutResource(R.layout.preference_seekbar);
+        setIconSpaceReserved(true);
     }
     public void setMinValue(float value) { mMin = value; }
     public void setMaxValue(float value) { mMax = value; }

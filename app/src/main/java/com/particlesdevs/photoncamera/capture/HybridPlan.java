@@ -73,7 +73,7 @@ public final class HybridPlan {
         Range<Long> times = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
         Range<Integer> isos = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
-            throw new IllegalStateException("LMC-гибрид: нет экспозиции превью или диапазонов сенсора");
+            throw new IllegalStateException("Hybrid: нет экспозиции превью или диапазонов сенсора");
         final double n = (double) nShutterNs * nIso;
         List<Request> out = new ArrayList<>();
         StringBuilder why = new StringBuilder();
@@ -133,16 +133,16 @@ public final class HybridPlan {
     /** The result must be the requested exposure (sensor rounding allowed), else the frame is not the planned one. */
     public void verify(CaptureRequest request, CaptureResult result) {
         Object tag = request.getTag();
-        if (!(tag instanceof ImageFrame.NiceCaptureTag)) throw new IllegalStateException("LMC-гибрид: запрос без роли");
+        if (!(tag instanceof ImageFrame.NiceCaptureTag)) throw new IllegalStateException("Hybrid: запрос без роли");
         int index = ((ImageFrame.NiceCaptureTag) tag).index;
-        if (index < 0 || index >= requests.size()) throw new IllegalStateException("LMC-гибрид: индекс запроса вне плана");
+        if (index < 0 || index >= requests.size()) throw new IllegalStateException("Hybrid: индекс запроса вне плана");
         Request r = requests.get(index);
         Long ns = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-        if (ns == null || iso == null || ns <= 0 || iso <= 0) throw new IllegalStateException("LMC-гибрид: нет экспозиции Camera2 в результате");
+        if (ns == null || iso == null || ns <= 0 || iso <= 0) throw new IllegalStateException("Hybrid: нет экспозиции Camera2 в результате");
         double ev = Math.abs(Math.log((double) ns * iso / ((double) r.shutterNs * r.iso)) / Math.log(2));
         if (ev > VERIFY_TOLERANCE_EV)
-            throw new IllegalStateException(String.format(Locale.ROOT, "LMC-гибрид: выдержка/ISO RAW не совпали с планом гибрида (%s: ISO %d/%d, shutter %d/%d, %.2f EV)",
+            throw new IllegalStateException(String.format(Locale.ROOT, "Hybrid: выдержка/ISO RAW не совпали с планом Hybrid (%s: ISO %d/%d, shutter %d/%d, %.2f EV)",
                     r.role, iso, r.iso, ns, r.shutterNs, ev));
     }
 }

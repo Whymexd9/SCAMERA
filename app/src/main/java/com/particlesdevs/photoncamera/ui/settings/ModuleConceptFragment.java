@@ -13,7 +13,7 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
 
 /** Shared native layout for the approved module-settings mockup. */
 public abstract class ModuleConceptFragment extends Fragment {
-    protected static final int BG=0xFF101416,CARD=0xFF1B2023,TEXT=0xFFF4F3F7,MUTED=0xFFB2BAC9,LINE=0xFF30363C;
+    protected static final int BG=SettingsStyle.BG,CARD=SettingsStyle.CARD,TEXT=SettingsStyle.TEXT,MUTED=SettingsStyle.MUTED,LINE=SettingsStyle.LINE;
     protected LinearLayout root,body;
     protected FrameLayout footer;
     protected TextView heading,subtitle;
@@ -23,26 +23,22 @@ public abstract class ModuleConceptFragment extends Fragment {
     @Override public View onCreateView(LayoutInflater i,ViewGroup p,Bundle b){
         accent=AccentPalette.color(requireContext());
         root=column();root.setBackgroundColor(BG);root.setPadding(dp(16),dp(12),dp(16),dp(16));
-        FrameLayout header=new FrameLayout(requireContext());root.addView(header,new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout titles=column();titles.setPadding(dp(42),0,dp(42),dp(16));
-        TextView brand=text("SCAMERA",10,MUTED);brand.setLetterSpacing(.16f);brand.setGravity(Gravity.CENTER);titles.addView(brand);
-        heading=text("",20,TEXT);heading.setTypeface(null,1);heading.setGravity(Gravity.CENTER);titles.addView(heading,space(-1,-2,8));
-        subtitle=text("",13,MUTED);subtitle.setGravity(Gravity.CENTER);titles.addView(subtitle,space(-1,-2,6));header.addView(titles,new FrameLayout.LayoutParams(-1,-2));
-        ImageView back=icon("back");back.setPadding(dp(9),dp(9),dp(9),dp(9));back.setContentDescription("Назад");back.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);back.setFocusable(true);back.setOnClickListener(v->back());header.addView(back,new FrameLayout.LayoutParams(dp(40),dp(44),Gravity.START|Gravity.TOP));
+        SettingsStyle.Header header=SettingsStyle.header(requireContext(),this::back,null); // P6b: the header shared with the preference pages
+        heading=header.heading;subtitle=header.subtitle;root.addView(header.view,new LinearLayout.LayoutParams(-1,-2));
         ScrollView scroll=new ScrollView(requireContext());scroll.setFillViewport(false);scroll.setClipToPadding(false);scroll.setVerticalScrollBarEnabled(false);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));body=column();body.setPadding(0,dp(4),0,dp(18));scroll.addView(body);
         footer=new FrameLayout(requireContext());footer.setPadding(0,dp(12),0,0);root.addView(footer,new LinearLayout.LayoutParams(-1,-2));
         render();return root;
     }
     @Override public void onResume(){super.onResume();View toolbar=requireActivity().findViewById(R.id.settings_toolbar);if(toolbar!=null)toolbar.setVisibility(View.GONE);if(root!=null){accent=AccentPalette.color(requireContext());render();}}
-    @Override public void onDestroyView(){View toolbar=requireActivity().findViewById(R.id.settings_toolbar);if(toolbar!=null)toolbar.setVisibility(View.VISIBLE);root=null;super.onDestroyView();}
+    @Override public void onDestroyView(){root=null;super.onDestroyView();}
     protected void back(){requireActivity().getOnBackPressedDispatcher().onBackPressed();}
     protected void page(String title,String sub){heading.setText(title);subtitle.setText(sub);subtitle.setVisibility(sub==null||sub.isEmpty()?View.GONE:View.VISIBLE);body.removeAllViews();footer.removeAllViews();}
     protected LinearLayout column(){LinearLayout v=new LinearLayout(requireContext());v.setOrientation(LinearLayout.VERTICAL);return v;}
     protected LinearLayout row(){LinearLayout v=new LinearLayout(requireContext());v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     protected LinearLayout.LayoutParams space(int w,int h,int top){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(w,h);lp.topMargin=dp(top);return lp;}
     protected TextView text(String value,float size,int color){TextView t=new TextView(requireContext());t.setText(value);t.setTextSize(size);t.setTextColor(color);t.setFontFeatureSettings("kern");t.setIncludeFontPadding(false);return t;}
-    protected GradientDrawable shape(int color,int stroke,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
+    protected GradientDrawable shape(int color,int stroke,int radius){return SettingsStyle.shape(requireContext(),color,stroke,radius);}
     protected LinearLayout card(){LinearLayout c=column();c.setBackground(shape(CARD,LINE,12));c.setPadding(dp(2),dp(2),dp(2),dp(2));body.addView(c,space(-1,-2,10));return c;}
     protected void caption(String title){TextView t=text(title,13,MUTED);body.addView(t,space(-1,-2,18));}
     protected void note(String value){LinearLayout n=row();TextView icon=text("ⓘ",18,MUTED);n.addView(icon,new LinearLayout.LayoutParams(dp(28),dp(36)));TextView label=text(value,12,MUTED);label.setLineSpacing(dp(3),1);n.addView(label,new LinearLayout.LayoutParams(0,-2,1));body.addView(n,space(-1,-2,16));}
@@ -52,14 +48,19 @@ public abstract class ModuleConceptFragment extends Fragment {
     protected void divider(LinearLayout parent){View v=new View(requireContext());v.setBackgroundColor(LINE);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));lp.leftMargin=dp(48);parent.addView(v,lp);}
     protected ImageView icon(String name){
         ImageView v=new ImageView(requireContext());int resource;
-        switch(name){
-            case "▣":resource=R.drawable.module_camera;break;
-            case "☷":resource=R.drawable.module_list;break;
-            case "◇":resource=R.drawable.module_tag;break;
-            case "▢":resource=R.drawable.module_copy;break;
-            case "back":resource=R.drawable.ic_baseline_arrow_back_24;break;
-            case "◉":resource=R.drawable.settings_concept_color;break;
-            default:resource=R.drawable.ic_settings;
+        switch(name){ // P6b: the concept icon set shared with the preference pages
+            case "▣":resource=R.drawable.settings_ic_camera;break;
+            case "☷":resource=R.drawable.settings_ic_list;break;
+            case "◇":resource=R.drawable.settings_ic_tag;break;
+            case "▢":case "⧉":resource=R.drawable.settings_ic_copy;break;
+            case "back":resource=R.drawable.settings_ic_back;break;
+            case "◉":resource=R.drawable.settings_ic_palette;break;
+            case "⌕":resource=R.drawable.settings_ic_zoom;break;
+            case "⚙︎":resource=R.drawable.settings_ic_chip;break;
+            case "●":resource=R.drawable.settings_ic_eye;break;
+            case "○":resource=R.drawable.settings_ic_view;break;
+            case "✕":resource=R.drawable.settings_ic_reset;break;
+            default:resource=R.drawable.settings_ic_gear;
         }
         v.setImageResource(resource);v.setColorFilter(accent);v.setScaleType(ImageView.ScaleType.FIT_CENTER);v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);return v;
     }

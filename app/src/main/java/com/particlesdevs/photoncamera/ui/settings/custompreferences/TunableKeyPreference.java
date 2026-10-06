@@ -30,7 +30,7 @@ public class TunableKeyPreference extends Preference {
         super(context);
         this.sensorId = sensorId;
         this.index = index;
-        setLayoutResource(R.layout.preference_with_margin);
+        setLayoutResource(R.layout.preference_card);
         setIconSpaceReserved(true);
         bindData();
         setOnPreferenceClickListener(preference -> {

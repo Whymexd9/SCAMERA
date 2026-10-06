@@ -65,11 +65,11 @@ public final class LmcHybridBurst implements NiceTransport {
         diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
         if (p.quadCfa || cfa < 0 || cfa > 3 ||  com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException("LMC-гибрид: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
-        if (black.length != 4) throw new IOException("LMC-гибрид: нужны четыре уровня чёрного");
+            throw new IOException("Hybrid: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
+        if (black.length != 4) throw new IOException("Hybrid: нужны четыре уровня чёрного");
         if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0 || (long) width * height > 16000000)
-            throw new IOException("LMC-гибрид: размер RAW до 16 МП");
-        if (source.size() < 2 || source.size() > 64) throw new IOException("LMC-гибрид: нужны 2–64 кадра");
+            throw new IOException("Hybrid: размер RAW до 16 МП");
+        if (source.size() < 2 || source.size() > 64) throw new IOException("Hybrid: нужны 2–64 кадра");
         android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result mosaic = null;
         for (ImageFrame f : source) {
@@ -93,20 +93,20 @@ public final class LmcHybridBurst implements NiceTransport {
         Set<Long> stamps = new HashSet<>();
         for (ImageFrame f : source) {
             String detail = "frame=" + f.number + " timestamp=" + f.timestamp + " ZSL=" + f.fromZsl;
-            if (f.timestamp <= 0 || !stamps.add(f.timestamp)) throw new IOException("LMC-гибрид: повторный или отсутствующий timestamp: " + detail);
-            if (f.measuredIso <= 0 || f.measuredExposure <= 0) throw new IOException("LMC-гибрид: нет измеренной экспозиции: " + detail);
+            if (f.timestamp <= 0 || !stamps.add(f.timestamp)) throw new IOException("Hybrid: повторный или отсутствующий timestamp: " + detail);
+            if (f.measuredIso <= 0 || f.measuredExposure <= 0) throw new IOException("Hybrid: нет измеренной экспозиции: " + detail);
             ImageFrame.CaptureRole role = f.getCaptureRole();
-            if (role == null) throw new IOException("LMC-гибрид: нет роли из совпавших метаданных RAW: " + detail);
+            if (role == null) throw new IOException("Hybrid: нет роли из совпавших метаданных RAW: " + detail);
             if (f.buffer == null || f.width != width || f.height != height || f.buffer.capacity() != (long) width * height * 2)
-                throw new IOException("LMC-гибрид: неполный RAW: " + detail);
+                throw new IOException("Hybrid: неполный RAW: " + detail);
             switch (role) {
                 case NORMAL: normal.add(f); break;
                 case LONG: bracketed.add(f); break;
                 case SHORT: case EXTRA_SHORT: shorts.add(f); break;
-                default: throw new IOException("LMC-гибрид: неизвестная роль RAW: " + detail);
+                default: throw new IOException("Hybrid: неизвестная роль RAW: " + detail);
             }
         }
-        if (normal.isEmpty()) throw new IOException("LMC-гибрид: нет кадров обычной экспозиции");
+        if (normal.isEmpty()) throw new IOException("Hybrid: нет кадров обычной экспозиции");
         normal.sort(Comparator.comparingLong(f -> -f.timestamp)); // newest first
         // Base frame: the sharpest of the newest candidates within the LMC time window.
         long newest = normal.get(0).timestamp;
@@ -157,7 +157,7 @@ public final class LmcHybridBurst implements NiceTransport {
 
     private void add(ImageFrame f, int role, double ref, long newest) throws IOException {
         double ratio = product(f) / ref;
-        if (!(ratio > 1.0 / 512) || !(ratio < 512)) throw new IOException("LMC-гибрид: экспозиция вне диапазона frame=" + f.number + " ratio=" + ratio);
+        if (!(ratio > 1.0 / 512) || !(ratio < 512)) throw new IOException("Hybrid: экспозиция вне диапазона frame=" + f.number + " ratio=" + ratio);
         frames.add(f); roles.add(role); exposures.add((float) ratio); noise.add(noiseFor(f));
         orderMs.add((float) ((f.timestamp - newest) / 1e6));
     }
@@ -182,7 +182,7 @@ public final class LmcHybridBurst implements NiceTransport {
         slope *= PreferenceKeys.hybridValue("noise_photon", 1f);
         offset *= PreferenceKeys.hybridValue("noise_readout", 1f);
         if (!Float.isFinite(slope) || slope <= 0 || !Float.isFinite(offset) || offset < 0)
-            throw new IOException("LMC-гибрид: некорректный профиль шума (" + noiseSource + ") для RAW frame=" + frame.number);
+            throw new IOException("Hybrid: некорректный профиль шума (" + noiseSource + ") для RAW frame=" + frame.number);
         return new float[]{slope, offset};
     }
 

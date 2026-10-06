@@ -483,7 +483,7 @@ public class PostPipeline extends GLBasePipeline {
 
     private void BuildDefaultPipeline() {
         if (mParameters.vivoNiceRgb == null)
-            throw new IllegalStateException("no merge route: the photo pipeline takes the RGB of the LMC hybrid or SCAM HDR");
+            throw new IllegalStateException("no merge route: the photo pipeline takes the RGB of Hybrid or SCAM HDR");
         remosaicApplied = mParameters.remosaicDone;
         // One tone for both routes: the ARK tone (ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine).
         Log.i("NICE_PIPELINE","route="+(PreferenceKeys.isHybridShot()?"LMC_hybrid":"SCAM_HDR")
