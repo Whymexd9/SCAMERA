@@ -215,6 +215,11 @@ struct HybridTuning {
     // plain; 1 = always plain Bayer; 2 / 4 = force Quad / Tetra (replays).
     int mosaicBlock=0;
     int mosaicGain=1;            // 1: divide out the response of every site class inside the colour block (64 classes, y&7, x&7)
+    // P19 lateral CA of R / B against G (research/RAW_CA_Correction_SABRE.md, librtprocess CA_correct idea): 0 off, 1 auto (a
+    // radial model fitted on the base frame, applied to every frame's R / B sites on the GPU before any pass reads them, when it
+    // moves R or B by at least caMinShift RAW px at the corner)
+    int caCorrect=1;
+    float caMinShift=0.25f;
     int mosaicChroma=1;          // 1: chroma median of the mosaic result (GCam 11 remosaicked: chroma_median dual_5_point), 0: off
     int mosaicFrames=16;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
                                  // merge time grows with the sub-frames; 16 Quad frames (64 sub-frames) cost about what 25 plain frames
@@ -262,7 +267,8 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma);
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)
+            ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -2388,6 +2394,148 @@ inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomo
 
 struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0,localAlignMs=0; int merged=0,droppedBracketed=0; bool bento=false; };
 
+// P19 lateral CA of one frame (tools/quad/measure_raw_ca.py is the reference): G interpolated at the R and B sites from their
+// four green neighbours; per 64 x 64-cell tile with gradient and nothing clipped, R (B) matched to G by gain / offset and the
+// displacement solved by two Lucas-Kanade steps; the radial model d = (k1 + k2 r^2) p (p from the centre over the half diagonal,
+// canonical cells) fitted by least squares, refitted without the worst 20 % of the tiles.
+struct HybridCa { bool ok=false; float k1[2]{},k2[2]{},cornerPx[2]{},rmsPx[2]{}; int tiles[2]{}; float cx=0,cy=0,invHalf=0; };
+// Lateral CA removed from a merged RGB (canonical geometry, grid g): R and B at output pixel X are taken at the canonical position
+// of X plus the model displacement 2 d (RAW px), bilinear; G stays. The merge has aligned the frames and every frame carries the
+// same lens CA, so the merged R / B planes are displaced exactly as one frame's; their alignment (gray) does not depend on it.
+struct HybridCa;
+inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const HybridCa& ca);
+inline HybridCa hybridRawCa(const HybridInput& in){
+    HybridCa ca;
+    const int w2=in.w/2,h2=in.h/2,ox=in.cfa&1,oy=in.cfa>>1;
+    if(w2<256||h2<256)return ca;
+    const uint16_t* raw=in.frames[0].raw;
+    const float bl=0.25f*(in.black[0]+in.black[1]+in.black[2]+in.black[3]);
+    const float clip=0.95f*(in.white-bl);
+    auto px=[&](int x,int y){x=std::clamp(x+ox,0,in.w-1);y=std::clamp(y+oy,0,in.h-1);return float(raw[size_t(y)*in.w+x])-bl;};
+    std::vector<float> R(size_t(w2)*h2),B(R.size()),gR(R.size()),gB(R.size());
+    mergeRowBands(h2,[&](int j0,int j1){for(int j=j0;j<j1;++j)for(int i=0;i<w2;++i){
+        const size_t k=size_t(j)*w2+i;const int x=2*i,y=2*j;
+        R[k]=px(x,y);B[k]=px(x+1,y+1);
+        gR[k]=0.25f*(px(x-1,y)+px(x+1,y)+px(x,y-1)+px(x,y+1));
+        gB[k]=0.25f*(px(x,y+1)+px(x+2,y+1)+px(x+1,y)+px(x+1,y+2));
+    }});
+    constexpr int T=64;
+    struct Obs{float x,y,dx,dy;};
+    std::vector<Obs> obs[2];
+    std::mutex m;
+    std::vector<std::pair<int,int>> tiles;
+    for(int ty=T;ty+2*T<=h2;ty+=T)for(int tx=T;tx+2*T<=w2;tx+=T)tiles.push_back({tx,ty});
+    mergeRowBands(int(tiles.size()),[&](int t0,int t1){
+        std::vector<float> c(T*T),g(T*T),cs(T*T);
+        for(int t=t0;t<t1;++t){
+            const int tx=tiles[t].first,ty=tiles[t].second;
+            for(int ch=0;ch<2;++ch){
+                const std::vector<float>& C=ch?B:R;const std::vector<float>& G=ch?gB:gR;
+                float cmax=-1e9f,gmax=-1e9f;double gmean=0,grad=0;
+                for(int y=0;y<T;++y)for(int x=0;x<T;++x){const size_t k=size_t(ty+y)*w2+tx+x;c[y*T+x]=C[k];g[y*T+x]=G[k];cmax=std::max(cmax,C[k]);gmax=std::max(gmax,G[k]);gmean+=G[k];}
+                gmean/=T*T;
+                if(cmax>=clip||gmax>=clip||gmean<20)continue;
+                double mxx=0,mxy=0,myy=0;
+                for(int y=1;y<T-1;++y)for(int x=1;x<T-1;++x){const float gx=0.5f*(g[y*T+x+1]-g[y*T+x-1]),gy=0.5f*(g[(y+1)*T+x]-g[(y-1)*T+x]);mxx+=gx*gx;mxy+=gx*gy;myy+=gy*gy;}
+                grad=(mxx+myy)/((T-2)*(T-2));
+                if(grad<4.0)continue;
+                const double det=mxx*myy-mxy*mxy,tr=mxx+myy;
+                if(det<=0||tr*tr/det>2*50.0)continue; // condition number
+                float dx=0,dy=0;bool good=true;
+                for(int it=0;it<2&&good;++it){
+                    for(int y=0;y<T;++y)for(int x=0;x<T;++x){ // c sampled at +d (bilinear, clamped)
+                        const float sx=std::clamp(x+dx,0.f,float(T-1)),sy=std::clamp(y+dy,0.f,float(T-1));
+                        const int x0=std::min(int(sx),T-2),y0=std::min(int(sy),T-2);const float fx=sx-x0,fy=sy-y0;
+                        cs[y*T+x]=(c[y0*T+x0]*(1-fx)+c[y0*T+x0+1]*fx)*(1-fy)+(c[(y0+1)*T+x0]*(1-fx)+c[(y0+1)*T+x0+1]*fx)*fy;
+                    }
+                    double sg=0,sc=0,sgg=0,sgc=0;const double n=T*T;
+                    for(int k=0;k<T*T;++k){sg+=g[k];sc+=cs[k];sgg+=double(g[k])*g[k];sgc+=double(g[k])*cs[k];}
+                    const double kk=(n*sgc-sg*sc)/std::max(n*sgg-sg*sg,1e-9),bb=(sc-kk*sg)/n;
+                    if(!(kk>0.05)){good=false;break;}
+                    double bx=0,by=0;
+                    for(int y=1;y<T-1;++y)for(int x=1;x<T-1;++x){
+                        const float gx=0.5f*(g[y*T+x+1]-g[y*T+x-1]),gy=0.5f*(g[(y+1)*T+x]-g[(y-1)*T+x]);
+                        const double e=(cs[y*T+x]-bb)/kk-g[y*T+x];bx+=gx*e;by+=gy*e;
+                    }
+                    // R(x + d) ~ G(x): e = -grad G . step
+                    dx+=float(-(myy*bx-mxy*by)/det);dy+=float(-(mxx*by-mxy*bx)/det);
+                }
+                if(!good||std::abs(dx)>=2.f||std::abs(dy)>=2.f)continue;
+                std::lock_guard<std::mutex> lock(m);obs[ch].push_back({tx+T*0.5f,ty+T*0.5f,dx,dy});
+            }
+        }
+    });
+    ca.cx=w2*0.5f;ca.cy=h2*0.5f;const float half=std::hypot(ca.cx,ca.cy);ca.invHalf=1.f/half;
+    bool all=true;
+    for(int ch=0;ch<2;++ch){
+        const auto& o=obs[ch];ca.tiles[ch]=int(o.size());
+        if(o.size()<40){all=false;continue;}
+        // the measured shift is where R sits against G; the model d holds the opposite sign for the rebuild at s + 2d
+        auto fit=[&](const std::vector<bool>& use,double& k1,double& k2){
+            double a11=0,a12=0,a22=0,b1=0,b2=0;
+            for(size_t i=0;i<o.size();++i){if(!use[i])continue;
+                const double px_=(o[i].x-ca.cx)/half,py_=(o[i].y-ca.cy)/half,r2=px_*px_+py_*py_;
+                for(int a=0;a<2;++a){const double p=a?py_:px_,y=a?o[i].dy:o[i].dx,f1=p,f2=p*r2;a11+=f1*f1;a12+=f1*f2;a22+=f2*f2;b1+=f1*y;b2+=f2*y;}}
+            const double det=a11*a22-a12*a12;if(std::abs(det)<1e-12){k1=k2=0;return;}
+            k1=(a22*b1-a12*b2)/det;k2=(a11*b2-a12*b1)/det;
+        };
+        std::vector<bool> use(o.size(),true);double k1=0,k2=0;fit(use,k1,k2);
+        std::vector<double> res(o.size());
+        for(size_t i=0;i<o.size();++i){const double px_=(o[i].x-ca.cx)/half,py_=(o[i].y-ca.cy)/half,r2=px_*px_+py_*py_,s=k1+k2*r2;
+            res[i]=std::hypot(o[i].dx-s*px_,o[i].dy-s*py_);}
+        std::vector<double> sorted=res;std::nth_element(sorted.begin(),sorted.begin()+sorted.size()*8/10,sorted.end());const double cut=sorted[sorted.size()*8/10];
+        for(size_t i=0;i<o.size();++i)use[i]=res[i]<=cut;
+        fit(use,k1,k2);
+        double ss=0;int n=0;
+        for(size_t i=0;i<o.size();++i){if(!use[i])continue;const double px_=(o[i].x-ca.cx)/half,py_=(o[i].y-ca.cy)/half,r2=px_*px_+py_*py_,s=k1+k2*r2;
+            ss+=std::pow(o[i].dx-s*px_,2)+std::pow(o[i].dy-s*py_,2);n+=2;}
+        ca.k1[ch]=float(k1);ca.k2[ch]=float(k2);ca.cornerPx[ch]=float(2*(k1+k2));ca.rmsPx[ch]=float(2*std::sqrt(ss/std::max(n,1)));
+    }
+    ca.ok=all;
+    return ca;
+}
+inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const HybridCa& ca){
+    // Bands of 512 rows, top to bottom. A band reads the original R / B of its rows +- margin: the rows above it come from the
+    // copy kept before the previous band wrote them, the rest from the image (not written yet). Only R and B are held (no copy
+    // of the whole RGB: 600 MB on the 2x grid).
+    const float g=float(grid);
+    const int margin=int(std::ceil(4.f*g))+2,band=512;
+    std::vector<float> rx(w),ry(h);
+    for(int X=0;X<w;++X)rx[X]=(0.5f*((X+0.5f)/g-0.5f)-ca.cx)*ca.invHalf;
+    for(int Y=0;Y<h;++Y)ry[Y]=(0.5f*((Y+0.5f)/g-0.5f)-ca.cy)*ca.invHalf;
+    std::vector<float> buf,saved;int savedFrom=0;
+    for(int y0=0;y0<h;y0+=band){
+        const int y1=std::min(h,y0+band),b0=std::max(0,y0-margin),b1=std::min(h,y1+margin);
+        buf.resize(size_t(b1-b0)*w*2);
+        mergeRowBands(b1-b0,[&](int a0,int a1){for(int y=b0+a0;y<b0+a1;++y){
+            float* d=buf.data()+size_t(y-b0)*w*2;
+            if(y<y0){const float* sv=saved.data()+size_t(y-savedFrom)*w*2;std::copy(sv,sv+size_t(w)*2,d);continue;}
+            const float* r=rgb.data()+size_t(y)*w*3;
+            for(int X=0;X<w;++X){d[2*X]=r[3*X];d[2*X+1]=r[3*X+2];}
+        }});
+        mergeRowBands(y1-y0,[&](int a0,int a1){
+            for(int Y=y0+a0;Y<y0+a1;++Y){
+                float* o=rgb.data()+size_t(Y)*w*3;
+                const float yy=ry[Y];
+                for(int X=0;X<w;++X){
+                    const float xx=rx[X],r2=xx*xx+yy*yy;
+                    for(int ch=0;ch<2;++ch){
+                        const float k=ca.k1[ch]+ca.k2[ch]*r2;
+                        const float dx=std::clamp(2.f*k*xx*g,-4.f*g,4.f*g),dy=std::clamp(2.f*k*yy*g,-4.f*g,4.f*g);
+                        const float sx=std::clamp(X+dx,0.f,float(w-1)),sy=std::clamp(Y+dy,float(b0),float(b1-1));
+                        const int x0=std::min(int(sx),w-2),yq=std::min(int(sy),b1-2);const float fx=sx-x0,fy=sy-yq;
+                        const float* p0=buf.data()+(size_t(yq-b0)*w+x0)*2+ch;const float* p1=p0+size_t(w)*2;
+                        o[3*X+(ch?2:0)]=(p0[0]*(1-fx)+p0[2]*fx)*(1-fy)+(p1[0]*(1-fx)+p1[2]*fx)*fy;
+                    }
+                }
+            }
+        });
+        // the original rows the next band needs above it
+        savedFrom=std::max(b0,y1-margin);
+        saved.assign(buf.begin()+size_t(savedFrom-b0)*w*2,buf.begin()+size_t(y1-b0)*w*2);
+    }
+}
+
 // RAW Bracket 0.2.5 (research/rawbracket/NOTES.md) measured gain: the exposure ratio of a bracketed / ultrashort frame to the
 // base from the data, to check the metadata ratio the merge normalises with (a wrong ratio leaves a step where the other
 // exposure replaces the base). A grid of up to 32 x 32 tiles of 16 x 16 RAW px; a tile counts when neither frame clips in it,
@@ -2834,6 +2982,19 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     in.k61a=k61a;in.k61b=k61b;in.k61c=k61c;
     in.mergeMode=sabre61?(tune.s61Mode&7):0;
+    HybridCa caModel;
+    if(tune.caCorrect){ // P19 lateral CA of R / B, measured on the base frame, corrected on the merged RGB
+        const auto caStarted=Clock::now();
+        const HybridCa ca=hybridRawCa(input);
+        char line[260];
+        const bool worth=ca.ok&&(std::abs(ca.cornerPx[0])>=tune.caMinShift||std::abs(ca.cornerPx[1])>=tune.caMinShift)
+                &&ca.rmsPx[0]<0.4f&&ca.rmsPx[1]<0.4f;
+        std::snprintf(line,sizeof(line),"HYBRID RAW CA: R corner %+.2f px (rms %.2f, %d tiles) B corner %+.2f px (rms %.2f, %d tiles) -> %s, %.0f ms",
+            ca.cornerPx[0],ca.rmsPx[0],ca.tiles[0],ca.cornerPx[1],ca.rmsPx[1],ca.tiles[1],
+            worth?"corrected":!ca.ok?"not measurable":"below the threshold",millis(Clock::now()-caStarted));
+        report(line);
+        if(worth)caModel=ca;
+    }
     // A daylight 6.1 kernel is chosen for the local alignment (it loses without it): where the field is missing (F6 failed) or
     // the GPU cannot use it, the round-4 kernel instead.
     auto dropDay61=[&](const char* why){
@@ -2895,6 +3056,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpuMerge(false);
         }
     } else gpuMerge(false);
+    if(caModel.ok){ // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it)
+        const auto caStarted=Clock::now();
+        hybridCorrectCa(out,outW,outH,grid,caModel);
+        report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms");
+    }
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
         sensorRgb.assign(size_t(w)*h*3,0.f);
         mergeRowBands(h,[&](int y0,int y1){
@@ -3256,7 +3422,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
         }
     }
     // the sub-frames' grid of b x their size is the sensor grid of the stream: Quad 2x, Tetra 4x
-    HybridTuning vt=tune;vt.grid=b;vt.mosaicBlock=1;
+    HybridTuning vt=tune;vt.grid=b;vt.mosaicBlock=1;vt.caCorrect=0;
     vt.bentoFrames=std::min(4,per); // every sub-frame of the one ultrashort frame (the merge holds at most four)
     report("HYBRID MOSAIC: binned alignment "+std::to_string(int(alignMs))+" ms; merging "+std::to_string(vin.frames.size())+" sub-frames on their "+std::to_string(b)+"x grid -> "
         +std::to_string(b*vw)+"x"+std::to_string(b*vh));
