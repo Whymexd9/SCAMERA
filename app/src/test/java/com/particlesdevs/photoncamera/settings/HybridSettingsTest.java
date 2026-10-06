@@ -56,13 +56,12 @@ public class HybridSettingsTest {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("lmc_hybrid_screen");
         assertNotNull(hybrid);assertEquals("LMC-гибрид",hybrid.getTitle().toString());
-        // Grouped like ArkCam 1.23: Функции обработки / Обработка фото / Обработка ArkCore (+ Тон SCAMERA, Диагностика).
+        // Grouped like ArkCam 1.23: Функции обработки / Обработка фото / Обработка ArkCore (+ Диагностика).
         for(String screen:new String[]{"lmc_hybrid_functions_screen","lmc_hybrid_photo_screen","lmc_hybrid_arkcore_screen",
-                "lmc_hybrid_ark_sharp_screen","lmc_hybrid_ark_rl_screen","lmc_hybrid_ark_tone_screen","lmc_hybrid_ark_vibrance_screen",
-                "lmc_hybrid_scamera_tone_screen"})
+                "lmc_hybrid_ark_sharp_screen","lmc_hybrid_ark_rl_screen","lmc_hybrid_ark_tone_screen","lmc_hybrid_ark_vibrance_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
         for(String category:new String[]{"lmc_hybrid_main_category","lmc_hybrid_capture_category","lmc_hybrid_merge_category",
-                "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_tone_category","lmc_hybrid_sharp_category",
+                "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_sharp_category",
                 "lmc_hybrid_ark_artifacts_category","lmc_hybrid_diag_category"})
             assertTrue(category,hybrid.findPreference(category) instanceof PreferenceCategory);
         assertNull(root.findPreference("pref_lmc_hybrid_enabled"));
@@ -136,31 +135,24 @@ public class HybridSettingsTest {
     }
 
     @Test public void hybridShotReadsItsOwnCopiesNeverScamHdrKeys() {
-        manager.set("default_scope","pref_vivo_nice_fusion_dark_ev","3");
+        manager.set("default_scope","pref_vivo_nice_noise_photon","3");
         manager.set("default_scope","pref_vivo_nice_zsl_frames","8");
-        manager.set("default_scope","pref_vivo_nice_fusion_enabled",false);
         manager.set("default_scope","pref_vivo_nice_post_despeckle",false);
-        manager.set("default_scope","pref_vivo_hdr_shadows","1.5");
-        manager.set("default_scope","pref_vivo_nice_soft_tone","1");
         manager.set("default_scope","pref_vivo_nice_cre_source","bundled");
         PreferenceKeys.beginShotProfile(true);
         assertTrue(PreferenceKeys.isHybridShot());assertTrue(PreferenceKeys.isNiceHybridEnabled());
-        assertEquals(1f,PreferenceKeys.niceInternalValue("fusion_dark_ev",1f),0f);
+        assertEquals(1f,PreferenceKeys.niceInternalValue("noise_photon",1f),0f);
         assertEquals(20,PreferenceKeys.getNiceZslFrames());assertEquals(20,PreferenceKeys.getHybridZslFrames());
-        assertTrue(PreferenceKeys.isNiceFusionEnabled());assertTrue(PreferenceKeys.isNiceDespeckleEnabled());
-        assertEquals(.25f,PreferenceKeys.vivoHdrValue("shadows",.25f),0f);
-        assertFalse(PreferenceKeys.isNiceSoftTone());assertFalse(PreferenceKeys.useStockBracketPlanner());
+        assertTrue(PreferenceKeys.isNiceDespeckleEnabled());
+        assertFalse(PreferenceKeys.useStockBracketPlanner());
         assertEquals("auto",PreferenceKeys.getNiceCreSource());
         assertEquals("ark",PreferenceKeys.niceSharpenMode());
-        manager.set("default_scope","pref_lmc_hybrid_fusion_dark_ev","2,5");
+        manager.set("default_scope","pref_lmc_hybrid_noise_photon","2,5");
         manager.set("default_scope","pref_lmc_hybrid_zsl_frames","99");
-        manager.set("default_scope","pref_lmc_hybrid_hdr_shadows","0.5");
         manager.set("default_scope","pref_lmc_hybrid_sharp_mode","off");
-        manager.set("default_scope","pref_lmc_hybrid_fusion_enabled",false);
-        assertEquals(2.5f,PreferenceKeys.niceInternalValue("fusion_dark_ev",1f),0f);
+        assertEquals(2.5f,PreferenceKeys.niceInternalValue("noise_photon",1f),0f);
         assertEquals(44,PreferenceKeys.getNiceZslFrames());
-        assertEquals(.5f,PreferenceKeys.vivoHdrValue("shadows",.25f),0f);
-        assertEquals("off",PreferenceKeys.niceSharpenMode());assertFalse(PreferenceKeys.isNiceFusionEnabled());
+        assertEquals("off",PreferenceKeys.niceSharpenMode());
         // "hybrid_<key>" always names a hybrid setting, in any profile.
         manager.set("default_scope","pref_lmc_hybrid_bento_factor","12");
         assertEquals(12f,PreferenceKeys.niceInternalValue("hybrid_bento_factor",8f),0f);
@@ -169,10 +161,11 @@ public class HybridSettingsTest {
         assertEquals("pref_lmc_hybrid_hdr_gamma",PreferenceKeys.profileKey("pref_vivo_hdr_gamma"));
         PreferenceKeys.beginShotProfile(false);
         assertFalse(PreferenceKeys.isHybridShot());
-        assertEquals(3f,PreferenceKeys.niceInternalValue("fusion_dark_ev",1f),0f);
+        assertEquals(3f,PreferenceKeys.niceInternalValue("noise_photon",1f),0f);
         assertEquals(8,PreferenceKeys.getNiceZslFrames());
-        assertFalse(PreferenceKeys.isNiceFusionEnabled());assertFalse(PreferenceKeys.isNiceDespeckleEnabled());
-        assertEquals(1.5f,PreferenceKeys.vivoHdrValue("shadows",.25f),0f);
+        assertFalse(PreferenceKeys.isNiceDespeckleEnabled());
+        // the ARK sharpening is shared by both routes
+        assertEquals("off",PreferenceKeys.niceSharpenMode());
         assertEquals("bundled",PreferenceKeys.getNiceCreSource());
         assertEquals("pref_nice_ae_mid",PreferenceKeys.profileKey("pref_nice_ae_mid"));
         assertEquals(12f,PreferenceKeys.niceInternalValue("hybrid_bento_factor",8f),0f);

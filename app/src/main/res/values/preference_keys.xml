@@ -30,7 +30,6 @@
     <string name="pref_sharpness_seekbar_key" translatable="false">pref_sharpness_seekbar_key</string>
     <string name="pref_nr_luma_enabled_key" translatable="false">pref_nr_luma_enabled_key</string>
     <string name="pref_nr_chroma_enabled_key" translatable="false">pref_nr_chroma_enabled_key</string>
-    <string name="pref_expocompensation_seekbar_key" translatable="false">pref_expocompensation_seekbar_key</string>
     <string name="pref_align_method_key" translatable="false">pref_align_method_key</string>
     <string name="pref_color_method_key" translatable="false">pref_color_method_key</string>
     <string name="pref_peak_method_key" translatable="false">pref_peak_method_key</string>

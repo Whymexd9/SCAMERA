@@ -15,7 +15,7 @@ import java.util.Map;
  * changes anything afterwards; a newer defaults version applies again.
  *
  * <p>OPPO Find X7 Ultra (PHY110) and Find X8 Ultra (PKJ110), for when SCAM HDR is selected: the bracket planned by SCAMERA (the stock vivo AE needs a vivo root observer), 20 N frames from the ZSL ring and
- * the merge / denoise / tone set tuned on the vivo main camera (Sabre-style SNR-adaptive merge, Luma/Chroma of the network
+ * the merge / denoise set tuned on the vivo main camera (Sabre-style SNR-adaptive merge, Luma/Chroma of the network
  * at 0 so the merge does the denoising).
  */
 public final class DeviceDefaults {
@@ -30,54 +30,38 @@ public final class DeviceDefaults {
         put("pref_vivo_nice_planner", "scamera");
         put("pref_vivo_nice_zsl_frames", "20");
         put("pref_vivo_nice_diagnostics", false);
-        put("pref_vivo_nice_fusion_detail", "1.5");
         put("pref_vivo_nice_chroma_iso1", "0.00");
         put("pref_vivo_nice_chroma_iso2", "0.00");
         put("pref_vivo_nice_chroma_iso3", "0.00");
         put("pref_vivo_nice_chroma_iso4", "0.00");
         put("pref_vivo_nice_chroma_iso5", "0.00");
-        put("pref_nice_ae_mid", "0.05");
         put("pref_vivo_nice_noise_scale", "0.25");
         put("pref_vivo_nice_noise_photon", "1.00");
         put("pref_vivo_nice_merge", "100");
-        put("pref_nice_ae_high", "0.18");
         put("pref_vivo_nice_chroma_radius", "1.00");
         put("pref_vivo_nice_planner_s_ev", "3");
         put("pref_vivo_nice_post_despeckle", true);
-        put("pref_vivo_nice_fusion_dark_ev", "1");
-        put("pref_vivo_nice_warm_retention", "-1");
         put("pref_vivo_nice_noise_readout", "1.00");
-        put("pref_vivo_nice_fusion_strength", "1");
-        put("pref_vivo_nice_fusion_enabled", true);
         put("pref_vivo_nice_norm", "1.1");
-        put("pref_vivo_nice_gcam_tone", "-1");
-        put("pref_agx_nice_knee_start", "0.75");
         put("pref_vivo_nice_noise_source", "auto");
         put("pref_vivo_nice_planner_l_ev", "2");
         put("pref_nice_zsl_long", true);
         put("pref_vivo_nice_planner_es_ev", "6");
-        put("pref_vivo_nice_fusion_lift_only", true);
-        put("pref_agx_nice_local_start", "2");
         put("pref_vivo_nice_post_chroma", "0.40");
         put("pref_vivo_nice_luma", "0.00");
         put("pref_vivo_nice_chroma", "0.00");
         put("pref_vivo_nice_post_luma", "0.10");
-        put("pref_vivo_nice_texture", "1.00");
         put("pref_vivo_nice_long_boost_ev", "1.1");
         put("pref_vivo_nice_luma_radius", "1.00");
         put("pref_vivo_nice_luma_iso1", "0.00");
         put("pref_vivo_nice_luma_iso3", "0.00");
         put("pref_vivo_nice_luma_iso2", "0.00");
         put("pref_vivo_nice_luma_iso5", "0.00");
-        put("pref_vivo_nice_fusion_sigma", "0.2");
         put("pref_vivo_nice_luma_iso4", "0.00");
         put("pref_vivo_nice_cre_source", "auto");
-        put("pref_vivo_nice_fusion_bright_ev", "0.3");
         put("pref_vivo_nice_grain_level", "0.0002");
-        put("pref_nice_ae_gain_max", "128");
         put("pref_vivo_nice_planner_adaptive", true);
         put("pref_nice_fast_capture", true);
-        put("pref_agx_nice_local_strength", "70");
     }
 
     /** The defaults that apply to this device, or null. A file "force-oppo-defaults" in the app's external files dir tests them on any device. */

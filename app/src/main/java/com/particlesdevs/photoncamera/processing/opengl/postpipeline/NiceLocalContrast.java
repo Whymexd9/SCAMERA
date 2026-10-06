@@ -60,8 +60,8 @@ public final class NiceLocalContrast extends Node {
     @Override public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
-        float amount = PreferenceKeys.getNiceTexture();
-        if (amount <= 0f) { glProg.closed = true; return; }
+        // Texture on top of the ARK tone (hybrid switch ark_texture), at the strength matched to a GCam/LMC render.
+        final float amount = 1f;
         long started = System.currentTimeMillis();
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);
         GLTexture luma = new GLTexture(WorkingTexture.mSize, mono, null, GL_LINEAR, GL_CLAMP_TO_EDGE);

@@ -36,16 +36,11 @@ public class PostPipeline extends GLBasePipeline {
     public GLTexture FusionMap;
     public GLTexture GainMap;
     /**
-     * Linear display gain estimated by {@link LinearExposure} from the linear
-     * histogram (motionv2 percentile scheme); consumed by {@link HeadroomRender}.
+     * Linear display gain of the shot: the ARK exposure (ArkStats / ArkAe).
      */
     public float linearDisplayGain = 1.0f;
-    /** Dynamic range of the scene in stops (99th over 10th percentile of green), measured by LinearExposure's soft tone metering; 0 = unknown. */
-    public float sceneDynamicRange = 0f;
     /** Noise sigma of the frame (variance stabilised units) estimated by NiceDenoise; 0 = not measured. */
     public float niceNoiseSigma = 0f;
-    /** Vivo HDR: high percentile of the unscaled HDR input (its own units), 0 when unknown. */
-    public float linearHighlight = 0.0f;
     /** ARK tone of the LMC hybrid: state handed from ArkStats to ArkCombine / ArkSharpenGuard; null outside that route. */
     public ArkTone.State ark;
     /**
@@ -152,7 +147,6 @@ public class PostPipeline extends GLBasePipeline {
         captureDemosaic = mSettings.ultraHdr;
         mCaptured = false;
         linearDisplayGain = 1.0f;
-        sceneDynamicRange = 0f;
         niceNoiseSigma = 0f;
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
@@ -163,7 +157,7 @@ public class PostPipeline extends GLBasePipeline {
         cropSize = new Point(parameters.rawSize);
         finalSize = null;
         finalResized = false;
-        if (!previewMode && !mSettings.ultraHdr && parameters.hybridFinalSize != null
+        if (!mSettings.ultraHdr && parameters.hybridFinalSize != null
                 && parameters.hybridFinalSize.x < parameters.rawSize.x && parameters.hybridFinalSize.y < parameters.rawSize.y) {
             // The output image, the crop and the rotation work on the resized image (HybridFinalResize before Rotate).
             finalSize = new Point(parameters.hybridFinalSize);
@@ -192,11 +186,7 @@ public class PostPipeline extends GLBasePipeline {
         stackFrame = inBuffer;
         glint.parameters = parameters;
 
-        if (previewMode) {
-            BuildPreviewPipeline();
-        } else {
-            BuildDefaultPipeline();
-        }
+        BuildDefaultPipeline();
         // The last pass is rendered tile by tile straight into the bitmap (GLCoreBlockProcessing.drawBlocksToBitmap):
         // the peak is the GL working set + the bitmap, without the full-frame readback buffer (~200 MB at 50 MP) that
         // used to sit next to one or the other (textures + buffer, then buffer + bitmap).
@@ -491,94 +481,48 @@ public class PostPipeline extends GLBasePipeline {
         }
     }
 
-    /**
-     * When true, {@link #Run} assembles the short preview pipeline instead of the
-     * full one. Set by {@link com.particlesdevs.photoncamera.processing.PreviewProcessor}
-     * before each preview frame.
-     */
-    public boolean previewMode = false;
-
-    /**
-     * The live viewfinder pipeline: enough to show what the colour and tone
-     * processing will do, and nothing that needs a burst.
-     *
-     * Deliberately excluded, because they are either impossible or too slow at
-     * viewfinder rates: alignment and merging (need several frames), MFSR, the
-     * AMaZE demosaic (replaced by the binned one, which is a quarter of the
-     * pixels), all sharpening, and local laplacian tonemapping.
-     *
-     * So the viewfinder will always be noisier and softer than the saved photo -
-     * it shows the look, not the final detail. That is the same trade GCam makes:
-     * its own postview runs a downsampled single frame and lands at about 28 ms
-     * of raw processing, against seconds for the merged shot.
-     */
-    private void BuildPreviewPipeline() {
-        add(new Bayer2Float());
-        add(new BinnedDemosaic());
-        add(new ABLC());
-        add(new LinearExposure());
-        add(new VivoHdrTone());
-    }
-
     private void BuildDefaultPipeline() {
         if (mParameters.vivoNiceRgb == null)
             throw new IllegalStateException("no merge route: the photo pipeline takes the RGB of the LMC hybrid or SCAM HDR");
         remosaicApplied = mParameters.remosaicDone;
-        // LMC hybrid with the ARK tone (hybrid setting ark_tone): ArkStats -> ArkFusion -> ArkCombine replace the
-        // SCAMERA exposure, fusion and AgX/headroom render.
-        final boolean arkTone = ArkTone.enabledFor(this);
+        // One tone for both routes: the ARK tone (ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine).
         Log.i("NICE_PIPELINE","route="+(PreferenceKeys.isHybridShot()?"LMC_hybrid":"SCAM_HDR")
                 +" import=NICE_linear_RGB WB_LSC=SCAMERA TCE=not_connected"
                 +" postDenoise=bypassed"
-                +" postSharpen=RawTherapee (own settings)"
-                +" tone="+(arkTone?"ARK (ArkStats/ArkFusion/ArkCombine)":"VivoHdrTone_SCAMERA")
+                +" tone=ARK (ArkStats/ArkFusion/ArkCombine)"
                 +"; actual node order/timings follow in Pipeline log");
         add(new VivoNiceRgb());
         add(new HighlightRecovery());
         add(new NiceDenoise());
-        // ARK tone: sharpening "ark" = ArkCam's own (ArkLumaSharpen before the delta; RawTherapee after the tone only with
+        // Sharpening "ark" = ArkCam's own (ArkLumaSharpen before the delta; RawTherapee after the tone only with
         // ark_post_sharp), else rt | scam | off after the tone. Weight of the post-tone sharpening where the fusion lifted
         // the shadows (ArkSharpenGuard), 0 = none.
-        final String hybridSharpen = PreferenceKeys.niceSharpenMode();
-        if (arkTone) {
-            final boolean arkSharp = "ark".equals(hybridSharpen);
-            final boolean arkPostSharp = arkSharp ? PreferenceKeys.hybridSwitch("ark_post_sharp", false) : !"off".equals(hybridSharpen);
-            final float arkGuard = arkPostSharp ? Math.max(0f, PreferenceKeys.hybridValue("ark_sharp_guard", 0.5f)) : 0f;
-            // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX replace LinearExposure's gain,
-            // NiceExposureFusion and VivoHdrTone/HeadroomRender (castTint, agxLocal, agxHiDesat, shadowLift, pre-tone
-            // local contrast, bento_fusion). LinearExposure stays only for the Ultra HDR linear snapshot.
-            if (captureDemosaic) add(new LinearExposure());
-            add(new ArkStats());
-            add(new ArkFusion());
-            if (arkSharp) add(new ArkLumaSharpen());
-            add(new ArkCombine(arkGuard));
-            // ArkCam's sharpening ran before the delta (sharp mode "ark"); otherwise, or with ark_post_sharp, the
-            // sharpening of the hybrid (rt|scam, own settings) on the toned image, weakened in lifted shadows; texture
-            // only on request (ArkCam has no mid-frequency boost); LMC curves only for the user's tone/gamma presets.
-            final boolean texture = PreferenceKeys.hybridSwitch("ark_texture", false);
-            final boolean curves = (!"off".equals(PreferenceKeys.getLmcToneCurve()) && PreferenceKeys.getLmcToneCurveStrength() > 0f)
-                    || (!"off".equals(PreferenceKeys.getLmcGammaCurve()) && PreferenceKeys.getLmcGammaCurveStrength() > 0f);
-            Log.i("NICE_PIPELINE", "ARK tail: sharpen=" + hybridSharpen + (arkSharp ? " (ArkLumaSharpen, post=" + arkPostSharp + ")" : "")
-                    + " guard=" + arkGuard + " texture=" + texture + " lmcCurves=" + curves);
-            if (arkPostSharp) {
-                if ("scam".equals(hybridSharpen)) add(new NiceSharpen());
-                else add(new RTSharpening());
-            }
-            if (arkGuard > 0f) add(new ArkSharpenGuard());
-            if (texture) add(new NiceLocalContrast());
-            if (curves) add(new LmcCurves());
-        } else {
-            add(new LinearExposure());
-            // NICE tone: optional exposure fusion feeding HeadroomRender's FusionMap.
-            if (PreferenceKeys.isNiceFusionEnabled()) add(new NiceExposureFusion());
-            add(new VivoHdrTone());
-            add(new LmcCurves());
-            add(new NiceLocalContrast());
-            // LMC hybrid: its own choice (pref_lmc_hybrid_sharp_mode ark|rt|scam|off; "ark" needs the ARK tone and means
-            // RawTherapee here); SCAM HDR: NiceSharpen with its soft tone.
-            if ("scam".equals(hybridSharpen)) add(new NiceSharpen());
-            else if (!"off".equals(hybridSharpen)) add(new RTSharpening());
+        final String sharpen = PreferenceKeys.niceSharpenMode();
+        final boolean arkSharp = "ark".equals(sharpen);
+        final boolean arkPostSharp = arkSharp ? PreferenceKeys.hybridSwitch("ark_post_sharp", false) : !"off".equals(sharpen);
+        final float arkGuard = arkPostSharp ? Math.max(0f, PreferenceKeys.hybridValue("ark_sharp_guard", 0.5f)) : 0f;
+        // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
+        // Ultra HDR linear snapshot.
+        if (captureDemosaic) add(new LinearExposure());
+        add(new ArkStats());
+        add(new ArkFusion());
+        if (arkSharp) add(new ArkLumaSharpen());
+        add(new ArkCombine(arkGuard));
+        // ArkCam's sharpening ran before the delta (sharp mode "ark"); otherwise, or with ark_post_sharp, the chosen
+        // sharpening (rt|scam, own settings) on the toned image, weakened in lifted shadows; texture only on request
+        // (ArkCam has no mid-frequency boost); LMC curves only for the user's tone/gamma presets.
+        final boolean texture = PreferenceKeys.hybridSwitch("ark_texture", false);
+        final boolean curves = (!"off".equals(PreferenceKeys.getLmcToneCurve()) && PreferenceKeys.getLmcToneCurveStrength() > 0f)
+                || (!"off".equals(PreferenceKeys.getLmcGammaCurve()) && PreferenceKeys.getLmcGammaCurveStrength() > 0f);
+        Log.i("NICE_PIPELINE", "ARK tail: sharpen=" + sharpen + (arkSharp ? " (ArkLumaSharpen, post=" + arkPostSharp + ")" : "")
+                + " guard=" + arkGuard + " texture=" + texture + " lmcCurves=" + curves);
+        if (arkPostSharp) {
+            if ("scam".equals(sharpen)) add(new NiceSharpen());
+            else add(new RTSharpening());
         }
+        if (arkGuard > 0f) add(new ArkSharpenGuard());
+        if (texture) add(new NiceLocalContrast());
+        if (curves) add(new LmcCurves());
         if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
         add(new RotateWatermark(getRotation()));
     }

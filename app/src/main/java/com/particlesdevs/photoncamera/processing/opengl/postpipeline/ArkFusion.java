@@ -61,6 +61,11 @@ public final class ArkFusion extends Node {
         return v;
     }
 
+    /** The ARK tone's own denoise (bracket_denoise, chroma_denoise): on SCAM HDR always, on the hybrid with its denoise switch. */
+    static boolean arkDenoise() {
+        return !PreferenceKeys.isHybridShot() || PreferenceKeys.isHybridDenoiseEnabled();
+    }
+
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
@@ -71,7 +76,7 @@ public final class ArkFusion extends Node {
         long started = System.currentTimeMillis();
         ArkAe.Result r = st.ae;
         Point lowSize = st.low.mSize;
-        float strength = PreferenceKeys.isHybridDenoiseEnabled() ? ArkTone.value("bracket_denoise", 1f) : 0f;
+        float strength = arkDenoise() ? ArkTone.value("bracket_denoise", 1f) : 0f;
         st.lowDn = st.low;
         if (r.clip > 1.05f && strength > 0.001f) {
             st.lowDn = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);

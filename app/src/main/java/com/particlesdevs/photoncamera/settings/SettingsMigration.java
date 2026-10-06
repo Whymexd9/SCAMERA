@@ -89,7 +89,13 @@ public final class SettingsMigration {
             "pref_contrast_seekbar_key", "pref_shadows_seekbar_key", "pref_compressor_seekbar_key",
             "pref_sensor_sharpening_enabled", "pref_noise_disable_digital_gain_key", "pref_noise_model_coefficient_key",
             "pref_noise_iso_curve_key", "pref_noise_iso_min_key", "pref_noise_iso_max_key", "pref_noise_iso_manual_key",
-            "pref_noise_seekbar_key", "pref_agx_local_highlights", "pref_agx_local_start"));
+            "pref_noise_seekbar_key", "pref_agx_local_highlights", "pref_agx_local_start",
+            // P10: one tone (ARK) for both routes; the SCAMERA tone of SCAM HDR and the hybrid's «Тон SCAMERA» go
+            "pref_expocompensation_seekbar_key", "pref_nice_ae_mid", "pref_nice_ae_high", "pref_nice_ae_gain_max",
+            "pref_vivo_nice_soft_tone", "pref_vivo_nice_tone_key", "pref_vivo_nice_sharp_amount", "pref_vivo_nice_texture",
+            "pref_vivo_nice_warm_retention", "pref_vivo_nice_gcam_tone", "pref_lmc_hybrid_ae_mid", "pref_lmc_hybrid_ae_high",
+            "pref_lmc_hybrid_ae_gain_max", "pref_lmc_hybrid_bento_fusion", "pref_lmc_hybrid_texture", "pref_lmc_hybrid_ark_tone",
+            "pref_lmc_hybrid_soft_tone", "pref_lmc_hybrid_tone_key", "pref_lmc_hybrid_warm_retention", "pref_lmc_hybrid_gcam_tone"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -97,7 +103,10 @@ public final class SettingsMigration {
             "pref_tunable_postpipeline_", "pref_tunable_esd3d2_", "pref_tunable_ablc_", "pref_tunable_initial_",
             "pref_tunable_autoexposurecurve_", "pref_tunable_opendrt_", "pref_tunable_locallaplacian_",
             "pref_tunable_linearexposure_", "pref_tunable_headroomrender_", "pref_tunable_bayer2float_",
-            "pref_tunable_amaze_"};
+            "pref_tunable_amaze_",
+            // P10: AgX, Exposure Fusion and the headroom tone of both routes (and the hybrid's copies)
+            "pref_agx_", "pref_vivo_hdr_", "pref_vivo_nice_fusion_", "pref_lmc_hybrid_hdr_", "pref_lmc_hybrid_fusion_",
+            "pref_lmc_hybrid_agx_"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;
         for (String prefix : OBSOLETE_PREFIXES) if (key.startsWith(prefix)) return true;

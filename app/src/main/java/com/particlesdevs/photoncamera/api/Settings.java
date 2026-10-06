@@ -22,7 +22,6 @@ public class Settings {
     public boolean hdrx;
     public boolean hdrxNR;
     public boolean ultraHdr;
-    public double exposureCompensation;
     public double sharpness;
     public int contrastConst = 0;//TODO
     public double mergeStrength;
@@ -62,7 +61,6 @@ public class Settings {
         roundEdge = PreferenceKeys.isRoundEdgeOn();
         sharpness = PreferenceKeys.getSharpnessValue();
 //        contrastConst = get(contrastConst, "ContrastConst");///////TODO
-        exposureCompensation = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_EXPOCOMPENSATE_SEEKBAR);
         mergeStrength = 1f;
         gain = PreferenceKeys.getGainValue();
         hdrx = PreferenceKeys.isHdrxNrOn();

@@ -114,12 +114,11 @@ public final class LmcDenoise extends Node {
     /**
      * Linear display gain the tone stage will apply, mirrored from {@link LinearExposure} on block means of the frame
      * (p50/p90 of the white-balanced luminance): the denoise runs before it, GCam's EstimateSnr needs it for the mean
-     * signal 0.18 / gain. The AE knobs are read from the shot's profile (the hybrid's copies on a hybrid shot).
+     * signal 0.18 / gain. The mid / high anchors and the cap are the former LinearExposure defaults (their settings went
+     * with the SCAMERA tone).
      */
     static float displayGain(float p50, float p90, boolean vivoSoc) {
-        final float mid = PreferenceKeys.profileNumber("pref_nice_ae_mid", 0.050f, 0.005f, 0.200f);
-        final float high = PreferenceKeys.profileNumber("pref_nice_ae_high", 0.180f, 0.020f, 0.500f);
-        final float gainMax = PreferenceKeys.profileNumber("pref_nice_ae_gain_max", 128f, 1f, 256f);
+        final float mid = 0.050f, high = 0.180f, gainMax = 128f;
         p50 = Math.max(p50, 1.0e-5f); p90 = Math.max(p90, 1.0e-5f);
         float gain50 = mid / p50, gain90 = high / p90;
         float sceneGain = (float) Math.sqrt(Math.max(1f, gain50) * Math.max(1f, gain90));

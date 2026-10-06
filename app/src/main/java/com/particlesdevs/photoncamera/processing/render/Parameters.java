@@ -806,7 +806,6 @@ public class Parameters {
                 "\n CameraID=" + cameraID +
                 "\n DenoiseOn=" + PhotonCamera.getSettings().hdrxNR +
                 "\n Sharp=" + FltFormat(PreferenceKeys.getSharpnessValue()) +
-                "\n ExpoCorrect=" + FltFormat(PhotonCamera.getSettings().exposureCompensation) +
                 "\n Noise Merging=" + FltFormat(PhotonCamera.getSettings().mergeStrength) +
                 "\n Align=" + PhotonCamera.getSettings().alignAlgorithm +
                 "\n Color=" + PhotonCamera.getSettings().colorMethod +

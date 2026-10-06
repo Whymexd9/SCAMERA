@@ -9,11 +9,11 @@ import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 
 /**
- * ARK photo tone of the LMC hybrid: the ArkCam 1.23 / LMC 9.6 tone of libfc_suppressor.so (Smart-HDR AE, exposure
+ * ARK photo tone of the LMC hybrid and SCAM HDR (the one tonemap of both routes): the ArkCam 1.23 / LMC 9.6 tone of libfc_suppressor.so (Smart-HDR AE, exposure
  * fusion on a guided filter, OKLab grading, AgX Custom; research/hybrid5/tone_port.md sections 2 and 7) with the
  * high-frequency detail of the Sabre merge. Route: ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine ->
  * [sharpening -> ArkSharpenGuard]. This class holds the per-shot state handed between those nodes, their settings and the colour
- * chain they share with HeadroomRender.
+ * chain of ark/low.glsl and ark/combine.glsl.
  */
 public final class ArkTone {
     private ArkTone() {}
@@ -51,12 +51,6 @@ public final class ArkTone {
             if (lumaS != null) lumaS.close();
             low = lowDn = mid = fused = detailRef = lumaS = null;
         }
-    }
-
-    /** The shot is a hybrid shot rendered with the ARK tone (hybrid setting ark_tone, on by default). */
-    public static boolean enabledFor(PostPipeline p) {
-        return p != null && !p.previewMode && p.mParameters != null && p.mParameters.vivoNiceRgb != null
-                && p.mParameters.vivoHdrMode && PreferenceKeys.isHybridShot() && PreferenceKeys.isArkToneEnabled();
     }
 
     /** Hybrid ARK setting pref_lmc_hybrid_ark_&lt;key&gt; (nice_dev.txt "hybrid_ark_&lt;key&gt;" overrides it). */
@@ -120,7 +114,7 @@ public final class ArkTone {
         return new Point((size.x + f - 1) / f, (size.y + f - 1) / f);
     }
 
-    /** ProPhoto -> sRGB matrix of the render, exactly as HeadroomRender.Run picks it. */
+    /** ProPhoto -> sRGB matrix of the render. */
     static float[] intermediateToSRGB(Parameters p) {
         float[] m = p.CCT.matrix;
         if (p.CCT.correctionMode == ColorCorrectionTransform.CorrectionMode.MATRIXES) m = p.CCT.combineMatrix(p.whitePoint);

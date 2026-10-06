@@ -423,7 +423,9 @@ public class HdrxProcessor extends ProcessorBase {
         ByteBuffer jpegInput = output;
         // SCAM HDR hybrid on the Sabre 2x grid: the RGB is larger than the sensor grid (the DNG above stayed sensor
         // size). Like mosaic SR, the pipeline size follows the RGB; the LSC map is sampled in normalised coordinates.
-        final Point hybridOut = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastOutputSize;
+        // Only a hybrid shot has the hybrid's output size: the static keeps the last hybrid shot's size, which a SCAM HDR
+        // shot (sensor size) must not take (it rendered the SCAM HDR RGB at the 2x size, black).
+        final Point hybridOut = hybridShot ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastOutputSize : null;
         processingParameters.hybridFinalSize = null;
         if (hybridOut != null && (hybridOut.x != width || hybridOut.y != height)) {
             // 12/16/20 MP from the 2x grid: resized on the GPU at the end of the pipeline (HybridFinalResize); the CPU

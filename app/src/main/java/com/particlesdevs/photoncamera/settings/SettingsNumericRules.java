@@ -14,7 +14,6 @@ public final class SettingsNumericRules {
             case "pref_vivo_nice_luma": case "pref_vivo_nice_chroma": return new double[]{0,2,0};
             case "pref_vivo_nice_merge": return new double[]{0,100,1};
             case "pref_vivo_nice_luma_radius": return new double[]{1,4,1};
-            case "pref_vivo_nice_fusion_strength": return new double[]{0,1,0};
             case "pref_vivo_nice_planner_l_ev": return new double[]{0,3,0};
             case "pref_vivo_nice_planner_s_ev": return new double[]{1,5,0};
             case "pref_vivo_nice_planner_es_ev": return new double[]{2,9,0};
@@ -61,22 +60,12 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_dn_coarse_stock": return new double[]{0,1,0};
             case "pref_lmc_hybrid_dn_chroma_floor": return new double[]{0,5,0};
             case "pref_lmc_hybrid_dn_chroma_2x_keep": return new double[]{0,1,0};
-            case "pref_lmc_hybrid_bento_fusion": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_zsl_frames": return new double[]{4,44,1};
             case "pref_lmc_hybrid_sharp_strength": return new double[]{0,2,0};
             case "pref_lmc_hybrid_sharp_amount": return new double[]{0,2,0};
-            case "pref_lmc_hybrid_fusion_strength": return new double[]{0,1,0};
-            case "pref_lmc_hybrid_fusion_dark_ev": return new double[]{0,4,0};
-            case "pref_lmc_hybrid_fusion_bright_ev": return new double[]{0,2,0};
-            case "pref_lmc_hybrid_fusion_detail": return new double[]{0.5,2,0};
-            case "pref_lmc_hybrid_fusion_sigma": return new double[]{0.1,0.4,0};
-            case "pref_lmc_hybrid_texture": return new double[]{0,2,0};
-            case "pref_lmc_hybrid_ae_mid": return new double[]{0.005,0.2,0};
             case "pref_lmc_hybrid_ae_high": return new double[]{0.02,0.5,0};
             case "pref_lmc_hybrid_ae_gain_max": return new double[]{1,256,0};
             case "pref_lmc_hybrid_noise_photon": case "pref_lmc_hybrid_noise_readout": return new double[]{0.25,4,0};
-            case "pref_lmc_hybrid_agx_local_strength": return new double[]{0,100,0};
-            case "pref_lmc_hybrid_agx_knee_start": return new double[]{0,5,0};
             // Per-channel highlight recovery of the hybrid (VivoNiceRgb clamps the strength to 100 %).
             case "pref_lmc_hybrid_highlight_recovery": return new double[]{0,100,0};
             case "pref_lmc_hybrid_highlight_chroma": return new double[]{0.05,1,0};
@@ -164,44 +153,25 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};
-            case "pref_vivo_hdr_highlight_pct": return new double[]{90,99.99,0};
-            case "pref_vivo_hdr_adaptive_white": return new double[]{0,1,1};
-            case "pref_vivo_hdr_highlight_neutral": return new double[]{0,0.95,0};
-            case "pref_vivo_hdr_white_neutral": return new double[]{0.3,1,0};
-            case "pref_vivo_nice_fusion_dark_ev": return new double[]{0,4,0};
-            case "pref_vivo_nice_fusion_bright_ev": return new double[]{0,2,0};
-            case "pref_vivo_nice_texture": return new double[]{0,2,1};
-            case "pref_vivo_nice_soft_tone": return new double[]{0,1,1};
-            case "pref_vivo_nice_tone_key": return new double[]{0.08,0.30,0};
             case "pref_vivo_nice_sharp_amount": return new double[]{0,2,0};
-            case "pref_vivo_nice_fusion_detail": return new double[]{0.5,2,0};
-            case "pref_vivo_nice_fusion_sigma": return new double[]{0.1,0.4,0};
             case "pref_vivo_nice_chroma_radius": return new double[]{1,12,1};
             case "pref_vivo_nice_post_chroma": case "pref_vivo_nice_post_luma": return new double[]{0,2,0};
-            case "pref_vivo_nice_warm_retention": return new double[]{-1,100,0};
             case "pref_watermark_size": return new double[]{3,20,0};
             case "pref_watermark_opacity": return new double[]{10,100,1};
-            case "pref_vivo_nice_gcam_tone": return new double[]{-1,100,-1};
             case "pref_vivo_nice_luma_iso1": case "pref_vivo_nice_chroma_iso1": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso2": case "pref_vivo_nice_chroma_iso2": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso3": case "pref_vivo_nice_chroma_iso3": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso4": case "pref_vivo_nice_chroma_iso4": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso5": case "pref_vivo_nice_chroma_iso5": return new double[]{0,2,0};
-            case "pref_vivo_hdr_exposure": return new double[]{-2,2,0};
-            case "pref_vivo_hdr_contrast": case "pref_vivo_hdr_gamma": return new double[]{0.5,2,0};
-            case "pref_vivo_hdr_black": return new double[]{0,0.1,0};
-            case "pref_vivo_hdr_white": return new double[]{0.7,1,0};
         }
         // LMC hybrid noise reduction: the SNR keys of the luma (t1..t5) and chroma (t1..t4) tier tables.
         if (key.matches("pref_lmc_hybrid_dn_(luma_t[1-5]|chroma_t[1-4])_snr")) return new double[]{0.1,500,0};
         // The LMC hybrid's copies of SCAM HDR knobs (PreferenceKeys.hybridCopyKey) keep the bounds of the original key.
         if (key.startsWith(HYBRID)) {
             String k = key.substring(HYBRID.length());
-            if (k.startsWith("hdr_")) return bounds("pref_vivo_hdr_" + k.substring(4));
             if (k.startsWith("agx_") || k.startsWith("ae_") || k.equals("enabled")) return null;
             return bounds("pref_vivo_nice_" + k);
         }
-        if (key.startsWith("pref_vivo_hdr_") && !key.equals("pref_vivo_hdr_enabled")) return new double[]{0,2,0};
         switch (key) {
             case "pref_antibanding_hz_key": return new double[]{0,1000,1};
             default: return null;

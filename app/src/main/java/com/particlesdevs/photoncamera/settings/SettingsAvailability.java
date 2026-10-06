@@ -23,13 +23,14 @@ public final class SettingsAvailability {
         boolean niceMosaic=!mosaicMode.equals("off") && autonomous;
         boolean neuralMosaic=niceMosaic && mosaicMode.startsWith("neural");
         boolean hybrid=!autonomous;
-        if (key.startsWith("pref_lmc_hybrid_") && !hybrid) return "Выберите склейку «LMC-гибрид».";
+        // The ARK tone (ArkCore) and its sharpening are shared by both routes.
+        boolean arkShared = key.startsWith("pref_lmc_hybrid_ark_") || key.equals("pref_lmc_hybrid_sharp_mode");
+        if (key.startsWith("pref_lmc_hybrid_") && !hybrid && !arkShared) return "Выберите склейку «LMC-гибрид».";
         if (key.startsWith("pref_vivo_nice_") && !key.equals("pref_vivo_nice_route") && !autonomous)
             return "Выберите склейку «SCAM HDR».";
         if (key.equals("pref_vivo_nice_route")) {
             return "SCAM HDR использует RAW. Выбор пути больше не применяется.";
         }
-        if(key.startsWith("pref_vivo_hdr_") && !autonomous) return "Выберите склейку «SCAM HDR».";
         // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.
         if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
             if (!neuralMosaic) return "Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).";

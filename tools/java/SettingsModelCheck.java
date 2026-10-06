@@ -19,12 +19,6 @@ public class SettingsModelCheck {
         // the legacy post-processing keys (ACES, noise-model ISO overrides) are gone and unbounded
         if(SettingsNumericRules.bounds("pref_aces_gamut_key")!=null||SettingsNumericRules.bounds("pref_noise_iso_manual_key")!=null)
             throw new AssertionError("removed legacy post-processing key still bounded");
-        eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-1,25",0),-1.25);
-        eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-9",0),-2);
-        eq(SettingsNumericRules.value("pref_vivo_hdr_gamma","0",1),.5);
-        eq(SettingsNumericRules.value("pref_vivo_hdr_white","9",1),1);
-        eq(SettingsNumericRules.value("pref_vivo_hdr_black","9",0),.1);
-        eq(SettingsNumericRules.value("pref_vivo_hdr_contrast","NaN",1),1);
         eq(SettingsNumericRules.value("pref_vivo_nice_noise_photon","0",1),.25);
         eq(SettingsNumericRules.value("pref_vivo_nice_noise_readout","NaN",1),1);
         eq(SettingsNumericRules.value("pref_vivo_nice_noise_readout","8",1),4);
@@ -49,7 +43,7 @@ public class SettingsModelCheck {
             for (String route : new String[]{"raw", "vcf2", "invalid"}) {
                 p.put("pref_vivo_nice_route", route);
                 inactive(p,"pref_vivo_nice_route");
-                active(p,"pref_vivo_nice_noise_scale");active(p,"pref_vivo_hdr_contrast");
+                active(p,"pref_vivo_nice_noise_scale");
                 active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
                 active(p,"pref_sharp_usm_enabled_key");
             }
@@ -78,13 +72,13 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_zsl_frames","99",20),44);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_zsl_frames","7.6",20),8);
         if(SettingsNumericRules.error("pref_lmc_hybrid_zsl_frames","3")==null)throw new AssertionError("hybrid N below 4 accepted");
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_hdr_gamma","0",1),.5);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_hdr_shadows","9",.25),2);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_fusion_dark_ev","9",1),4);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_noise_photon","0",1),.25);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_tone_key","1",.155),.3);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_agx_knee_start","9",.75),5);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_agx_local_strength","-1",70),0);
+        // P10: the SCAMERA tone keys (headroom, AgX, Exposure Fusion) and their hybrid copies are gone and unbounded
+        if(SettingsNumericRules.bounds("pref_vivo_hdr_gamma")!=null||SettingsNumericRules.bounds("pref_lmc_hybrid_hdr_shadows")!=null
+                ||SettingsNumericRules.bounds("pref_lmc_hybrid_fusion_dark_ev")!=null)throw new AssertionError("removed tone key still bounded");
+        // the ARK tone and its sharpening stay active on SCAM HDR (one tone for both routes)
+        Map<String,Object> s=new HashMap<>();s.put("pref_merge_route","scamhdr");
+        active(s,"pref_lmc_hybrid_ark_ae_target");active(s,"pref_lmc_hybrid_sharp_mode");inactive(s,"pref_lmc_hybrid_cdm");
         if(SettingsNumericRules.bounds("pref_lmc_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_lmc_hybrid_enabled")!=null)
             throw new AssertionError("unbounded hybrid copies got bounds");
         float[] list=SettingsNumericRules.listValue("pref_lmc_hybrid_x","1; 2.5 3",new float[]{0,0,0});

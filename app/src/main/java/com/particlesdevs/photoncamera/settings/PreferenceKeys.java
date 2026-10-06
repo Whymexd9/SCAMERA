@@ -746,19 +746,10 @@ public class PreferenceKeys {
     public static boolean isRawBlackFromData() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_raw_black_from_data", true);
     }
-    /** Exposure Fusion may only brighten; highlights are left to the tone shoulder. */
-    public static boolean isNiceFusionLiftOnly() {
-        if (isHybridShot()) return hybridSwitch("fusion_lift_only", true);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_fusion_lift_only", true);
-    }
     /** NICE motion (CRE) source: auto (vendor, else APK copy) | bundled (always APK copy). */
     public static String getNiceCreSource() {
         if (isHybridShot()) return hybridString("cre_source", "auto");
         return preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_cre_source", "auto");
-    }
-    public static boolean isNiceFusionEnabled() {
-        if (isHybridShot()) return hybridSwitch("fusion_enabled", true);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_fusion_enabled", true);
     }
     /** ISO level 1..5 of the NICE normal reference, as in the settings screen. */
     public static int niceIsoLevel(int iso) {
@@ -983,60 +974,20 @@ public class PreferenceKeys {
     public static boolean isHybridDenoiseEnabled() {
         return hybridSwitch("denoise", true);
     }
-    public static boolean isArkToneEnabled() {
-        return hybridSwitch("ark_tone", true);
-    }
     /**
-     * Sharpening of the SCAM HDR / hybrid render: "ark" (hybrid with the ARK tone: ArkCam's own luma sharpening before the
-     * detail delta, ArkLumaSharpen; RawTherapee without the ARK tone), "rt" (RawTherapee with its own settings), "scam"
-     * (NiceSharpen) or "off". Hybrid: pref_lmc_hybrid_sharp_mode (nice_dev.txt "hybrid_sharp_mode 0|1|2|3" = rt, scam,
-     * off, ark), default ark. SCAM HDR: NiceSharpen with its soft tone and sharp_mode > 0, else RawTherapee.
+     * Sharpening of the ARK render, shared by both routes: "ark" (ArkCam's own luma sharpening before the detail delta,
+     * ArkLumaSharpen), "rt" (RawTherapee with its own settings), "scam" (NiceSharpen) or "off" after the tone.
+     * pref_lmc_hybrid_sharp_mode (nice_dev.txt "hybrid_sharp_mode 0|1|2|3" = rt, scam, off, ark), default ark.
      */
     public static String niceSharpenMode() {
-        if (isHybridShot()) {
-            Float dev = niceDevValue("hybrid_sharp_mode");
-            if (dev != null) return dev >= 2.5f ? "ark" : dev >= 1.5f ? "off" : dev >= 0.5f ? "scam" : "rt";
-            String v = hybridString("sharp_mode", "ark");
-            return "rt".equals(v) || "scam".equals(v) || "off".equals(v) ? v : "ark";
-        }
-        return isNiceSoftTone() && niceInternalValue("sharp_mode", 1f) > 0f ? "scam" : "rt";
+        Float dev = niceDevValue("hybrid_sharp_mode");
+        if (dev != null) return dev >= 2.5f ? "ark" : dev >= 1.5f ? "off" : dev >= 0.5f ? "scam" : "rt";
+        String v = hybridString("sharp_mode", "ark");
+        return "rt".equals(v) || "scam".equals(v) || "off".equals(v) ? v : "ark";
     }
     /** RawTherapee USM / microcontrast amount multiplier on a hybrid shot (pref_lmc_hybrid_sharp_strength), 1 elsewhere. */
     private static float hybridSharpStrength() {
         return isHybridShotProcessing() ? Math.max(0f, Math.min(2f, hybridValue("sharp_strength", 1f))) : 1f;
-    }
-    /**
-     * Share of the scene illuminant's colour kept in SCAM HDR (0..1). -1 = auto: 30 % on the 8 Gen 3
-     * (matches GCam/stock there); 35 % where the original network runs (vivo, the colour temperature
-     * from the shot's white balance): a lamp-lit scene stays a little warmer than the stock render.
-     */
-    public static float getNiceWarmRetention() {
-        float v = niceInternalValue("warm_retention", -1f);
-        if (v < 0f) v = !isVivoNetSoc() ? 30f : 35f;
-        return Math.max(-0.6f, Math.min(1f, v / 100f));
-    }
-    /**
-     * How far the SCAM HDR tone is pulled to a GCam/LMC render (0..1): darker shadows, brighter whites.
-     * -1 = auto: on where the original network runs (vivo), where the fused tone is much brighter
-     * than GCam; the 8 Gen 3 render already agrees with it.
-     */
-    public static float getNiceGcamTone() {
-        float v = niceInternalValue("gcam_tone", -1f);
-        if (v < 0f) v = !isVivoNetSoc() ? 0f : 100f;
-        return Math.max(0f, Math.min(1f, v / 100f));
-    }
-    /** Mid-frequency local contrast (texture) of the SCAM HDR render, 0..2 (1 = matched to a GCam/LMC render). */
-    public static float getNiceTexture() {
-        return Math.max(0f, Math.min(2f, niceInternalValue("texture", 1f)));
-    }
-    /**
-     * SCAM HDR soft tone (a GCam/LMC-like render: scene-keyed exposure, toe + soft shoulder, no clipping of the
-     * whites, shadows lifted only when the scene needs it). 0 = the former AgX/fusion/LMC-curve stack.
-     */
-    public static boolean isNiceSoftTone() {
-        // The LMC hybrid renders through AgX + Exposure Fusion with the Bento headroom (until the ARK tone replaces it).
-        if (isHybridShot()) return false;
-        return niceInternalValue("soft_tone", 1f) > 0f;
     }
     /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
     public static float getNiceMerge() {
@@ -1211,18 +1162,6 @@ public class PreferenceKeys {
             return (float)SettingsNumericRules.value(fullKey,
                     preferenceKeys.settingsManager.getString("default_scope",fullKey,String.valueOf(fallback)),fallback);
         } catch(RuntimeException error) { return fallback; }
-    }
-    /** SCAM HDR tone value pref_vivo_hdr_&lt;key&gt;; on a hybrid shot the hybrid's pref_lmc_hybrid_hdr_&lt;key&gt; (nice_dev "hybrid_hdr_&lt;key&gt;"). */
-    public static float vivoHdrValue(String key, float fallback) {
-        if (isHybridShot()) {
-            Float override = niceDevValue("hybrid_hdr_" + key);
-            return override != null ? override : hybridStored("hdr_" + key, fallback);
-        }
-        String fullKey = "pref_vivo_hdr_" + key;
-        try {
-            return (float) SettingsNumericRules.value(fullKey,
-                    preferenceKeys.settingsManager.getString("default_scope", fullKey, String.valueOf(fallback)), fallback);
-        } catch (RuntimeException error) { return fallback; }
     }
 
     /** RAW stream format: auto | raw16 (RAW_SENSOR) | raw10 | raw12 — the camera must offer it, else auto order. */
@@ -1561,7 +1500,6 @@ public class PreferenceKeys {
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
-        KEY_EXPOCOMPENSATE_SEEKBAR(R.string.pref_expocompensation_seekbar_key),
         KEY_ALIGN_METHOD(R.string.pref_align_method_key),
         KEY_COLOR_METHOD(R.string.pref_color_method_key),
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),

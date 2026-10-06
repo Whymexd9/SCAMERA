@@ -2,7 +2,7 @@ precision highp float;
 precision highp sampler2D;
 // ARK tone, step 1 (ArkStats): the G_CLEAN equivalent "arkLow" - the box mean (factorU x factorU output pixels) of the
 // linear Rec.709 scene, i.e. Google's ds_linear_rgb that the ArkCam / LMC 9.6 photo tone reads (half the sensor:
-// factor 2 on the 1x grid, 4 on the Sabre 2x grid). Same colour chain as headroom/render.glsl
+// factor 2 on the 1x grid, 4 on the Sabre 2x grid). Same colour chain as the former headroom/render.glsl
 // (intermediateToSRGB * sensorToIntermediate * (in * NEUTRALPOINT * LSC)) with the FULL lens-shading gain and
 // without any clip: Bento content above 1 is kept. Factor 2 on the 2x grid gives "arkMid", the 1x-equivalent colour
 // source of ArkCombine. Keep sceneLinear() identical to ark/combine.glsl (the detail there is measured against it).
@@ -13,8 +13,8 @@ precision highp sampler2D;
 #import interpolation
 uniform sampler2D InputBuffer;      // white-balanced linear camera RGB (VivoNiceRgb .. NiceDenoise), output grid
 uniform sampler2D GainMap;          // lens shading gains (r, g_even, g_odd, b)
-uniform mat3 sensorToIntermediate;  // sensor -> ProPhoto, as HeadroomRender
-uniform mat3 intermediateToSRGB;    // ProPhoto -> linear sRGB / Rec.709, as HeadroomRender
+uniform mat3 sensorToIntermediate;  // sensor -> ProPhoto
+uniform mat3 intermediateToSRGB;    // ProPhoto -> linear sRGB / Rec.709
 uniform vec3 neutralPointU;         // white point (NEUTRALPOINT of render.glsl); unset -> 1
 uniform float inScaleU;             // one multiplier to the G_CLEAN scale (ark_input_ev); <= 0 -> 1
 uniform int factorU;                // box size in output pixels; <= 0 -> 2
