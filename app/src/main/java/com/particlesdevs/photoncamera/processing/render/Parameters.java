@@ -429,6 +429,13 @@ public class Parameters {
     }
 
     private java.nio.ByteBuffer blackFloorSource;
+    /** Where the black and white levels of the shot came from (diagnostics): override / data floor / dynamic / static. */
+    public String levelSources() {
+        String black = blackLevelOverride >= 0 ? "override" : blackFloorSource != null ? "data floor (" + blackFloorEstimate + ")"
+                : usedDynamic ? "dynamic" : "static";
+        String white = whiteLevelOverride >= 0 ? "override" : useDynamicWhiteLevel ? "dynamic if reported" : "static";
+        return "black=" + black + " white=" + white;
+    }
     private float blackFloorEstimate;
 
     private void applyBlackFloor(float estimate) {

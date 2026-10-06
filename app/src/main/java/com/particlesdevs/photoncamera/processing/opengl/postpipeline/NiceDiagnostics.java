@@ -34,6 +34,29 @@ public final class NiceDiagnostics {
             dir=new File(c.getCacheDir(),name);if(!dir.mkdir())throw new IOException("diagnostic directory");
         }
     }
+    private static Object rollingSkew(ImageFrame f) {
+        android.hardware.camera2.CaptureResult r=f==null?null:f.getMatchedCaptureMetadata();
+        return r==null?null:r.get(android.hardware.camera2.CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW);
+    }
+    /**
+     * frames.txt of the diagnostic job: every frame of the burst with its role, exposure, ISO, rolling shutter skew and the
+     * gap of its exposure start and midpoint to the base frame (RAW Bracket's pairing metadata).
+     */
+    public static void frames(java.util.List<ImageFrame> frames,ImageFrame base) {
+        Job j=active.get();
+        if(j==null||frames==null||base==null)return;
+        StringBuilder out=new StringBuilder("frame role timestampNs exposureNs iso skewNs startGapMs midGapMs\n");
+        double baseMid=base.timestamp+base.measuredExposure/2.0;
+        for(int i=0;i<frames.size();i++){
+            ImageFrame f=frames.get(i);
+            double mid=f.timestamp+f.measuredExposure/2.0;
+            out.append(i).append(' ').append(f.getCaptureRole()).append(' ').append(f.timestamp).append(' ').append(f.measuredExposure)
+               .append(' ').append(f.measuredIso).append(' ').append(rollingSkew(f))
+               .append(String.format(Locale.ROOT," %.3f %.3f%n",(f.timestamp-base.timestamp)/1e6,(mid-baseMid)/1e6));
+        }
+        try{Files.write(new File(j.dir,"frames.txt").toPath(),out.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+        catch(Exception e){Log.e("NICE_DIAG","frames.txt failed",e);}
+    }
     public static void begin(Context context,Parameters p,ImageFrame ref,VivoNiceScene scene) {
         try {
             Job j=new Job(context);active.set(j);
@@ -42,6 +65,8 @@ public final class NiceDiagnostics {
                     +"\nCamera2 noise slope="+ref.noiseSlope+" offset="+ref.noiseOffset
                     +"\n"+scene.describe()
                     +"\nwhite="+p.whiteLevel+" black="+Arrays.toString(p.blackLevel)+" neutral="+Arrays.toString(p.whitePoint)
+                    +"\nlevel sources: "+p.levelSources()
+                    +"\nrolling shutter skew ns="+rollingSkew(ref)
                     +"\nsensorToProPhoto="+Arrays.toString(p.sensorToProPhoto)
                     +"\nPFM: little-endian float32 RGB; rows bottom first. Thumbnails are nearest sampled, sensor orientation."
                     +"\nPNG: clipped preview only; linear stages use gamma 1/2.2. PFM retains negative/HDR values."

@@ -97,7 +97,9 @@ public final class SettingsMigration {
             "pref_lmc_hybrid_ae_gain_max", "pref_lmc_hybrid_bento_fusion", "pref_lmc_hybrid_texture", "pref_lmc_hybrid_ark_tone",
             "pref_lmc_hybrid_soft_tone", "pref_lmc_hybrid_tone_key", "pref_lmc_hybrid_warm_retention", "pref_lmc_hybrid_gcam_tone",
             // P8: the retired VCF2 route selector and the unreachable RAW video mode
-            "pref_vivo_nice_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key"));
+            "pref_vivo_nice_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
+            // P12b: the old texture boost switch never reached the worker; pref_lmc_hybrid_motion_boost replaces it
+            "pref_lmc_hybrid_boost"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes

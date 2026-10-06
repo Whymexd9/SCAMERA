@@ -244,7 +244,10 @@ public final class LmcHybridBurst implements NiceTransport {
         burst.mergedDng = mergedDng;
         lastOutputSize = new android.graphics.Point(burst.outWidth, burst.outHeight);
         lastFinalSize = new android.graphics.Point(burst.finalWidth, burst.finalHeight);
-        if (burst.diagnostics) NiceDiagnostics.begin(context, p, burst.base, VivoNiceScene.fromReference(burst.base));
+        if (burst.diagnostics) {
+            NiceDiagnostics.begin(context, p, burst.base, VivoNiceScene.fromReference(burst.base));
+            NiceDiagnostics.frames(burst.frames, burst.base);
+        }
         return VivoNeuralClient.processNiceBurst(context, burst);
     }
 }

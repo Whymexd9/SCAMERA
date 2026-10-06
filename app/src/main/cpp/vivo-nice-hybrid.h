@@ -67,8 +67,10 @@ struct HybridTuning {
                                  // accepted and their samples interleaved with the base (luma zipper, staircase edges); 0.2 on the
                                  // synthetic motion burst: moving edges +0.8 dB, moving texture +1.8 dB, static bursts -4..10 % frames
     float boost=6.0f;            // extra_motion_robustness_boost
-    float boostEnable=0.f;       // flow inhomogeneity is unknown with one homography per frame: off by default
+    float boostEnable=1.f;       // 1: boost where the F6 local motion varies (GCam 11 Z channel); 2: everywhere (LMC without a
+                                 // motion test, the old switch); 0: off. Without the local alignment 1 does nothing.
     float varianceThreshold=25.f;// motion_robustness_boost_variance_threshold
+    float motionThreshold=1.5f;  // extra_motion_robustness_motion_threshold: min-max extent of the raw LK flow over the 3x3 tiles (RAW px)
     float filterVariance=0.5f;   // variance scale of the bilinear donor sample (kFilterVarianceScale analogue)
     float dilateOffset=0.2f,dilateScale=2.f; // DilateMask: rej = (sum25 - 0.2) / 2
     float dilateFloor=0.15f;     // per-cell rejection below this is noise, not motion: it does not spread
@@ -230,6 +232,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
         };
         while(f>>key>>v){
             set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("varianceThreshold",&t.varianceThreshold)
+            ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
             ||set("lutHiSigma",&t.lutHiSigma)||set("kernelScale",&t.kernelScale)||set("widenBelow",&t.widenBelow)||set("widenMul",&t.widenMul)
@@ -342,6 +345,7 @@ vec3 dcovAt(int f,int i,int j){
 // (if-conversion), and an out-of-bounds SSBO read faults the GPU (a phone reboot with an earlier draft).
 #ifdef LOCAL_ALIGN
 layout(std430,binding=15) readonly buffer LaFlow{vec2 laFlow[];}; // [frame][tile row][tile column]
+layout(std430,binding=17) readonly buffer LaMotion{float laZ[];};  // GCam 11 Z channel: local motion extent per tile (RAW px)
 uniform ivec4 laU;   // x: 1 bilinear between tile centres, 2 constant per tile (NEAREST); y, z = tiles per row / column (>= 1)
 uniform vec4 laG;    // xy = RAW position of the centre of tile (0,0), z = tile stride (RAW px), w = 1 / stride
 // Local offset of frame f at the cell whose origin is (x, y) (0 for the base).
@@ -361,6 +365,14 @@ vec2 laFlowAt(int f,int x,int y){
 // offsets the dilation pass stored per cell (four loads and the interpolation inside the merge loop made it 20x slower on
 // Adreno 750: the GPU hang detection reset the context).
 vec2 originL(int f,int x,int y){return origin(f,x,y)+laFlowAt(f,x,y);}
+// Z channel of frame f at the cell whose origin is (x, y): the nearest tile (the extent already spans 3x3 tiles).
+float laMotionAt(int f,int x,int y){
+    int nx=max(laU.y,1),ny=max(laU.z,1);
+    uint fb=uint(clamp(f,0,frameCount-1)*nx*ny);
+    vec2 p=(vec2(float(x),float(y))+0.5-laG.xy)*laG.w;
+    ivec2 i=clamp(ivec2(p+0.5),ivec2(0),ivec2(nx-1,ny-1));
+    return f==0?0.0:laZ[fb+uint(i.y*nx+i.x)];
+}
 #else
 #define originL(f,x,y) origin(f,x,y)
 #endif
@@ -665,15 +677,18 @@ layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
 uniform int ry0;
 uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
-uniform vec4 rk; // boost enable, 0, 0, 0
+uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), 0, 0
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=ry0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
     if(cx>=w2||cy>=ry1||f>=frameCount)return;
     vec4 G=guide[(cy-ry0)*w2+cx];
     float w=0.0;
-    if(fParam[f].y>0.0){
-        vec2 o=originL(f,2*cx,2*cy)*0.5;
+    vec2 o=originL(f,2*cx,2*cy)*0.5;
+    // P12: a donor cell warped beyond the donor's own frame has no sample there; the clamped edge cell it would read made
+    // the vertical streaks of the X200 Ultra hand test. Such cells get weight 0, not the edge.
+    bool inside=o.x>=0.0&&o.y>=0.0&&o.x<=float(w2-1)&&o.y<=float(size.y/2-1);
+    if(fParam[f].y>0.0&&inside){
         int ix=int(floor(o.x)),iy=int(floor(o.y));
         float fx=o.x-float(ix),fy=o.y-float(iy);
         vec4 c00=cellAt(f,ix,iy),c10=cellAt(f,ix+1,iy),c01=cellAt(f,ix,iy+1),c11=cellAt(f,ix+1,iy+1);
@@ -696,7 +711,12 @@ void main(){
         vec3 D2=max(d*d-nv,vec3(0.0));
         float varc=max(2.0*min(G.w,Vcur),nvMean);
         float dist=rj.x*(D2.x+D2.y+D2.z)*(1.0/3.0)/varc;
-        float boost=(rk.x>0.5&&G.w>rj.z*nvMean)?rj.y:1.0;
+        // LMC / GCam 11 extra motion robustness: textured base and, with the local alignment, varying local motion
+        bool moving=rk.x>1.5;
+#ifdef LOCAL_ALIGN
+        if(rk.x>0.5&&rk.x<1.5)moving=laMotionAt(f,2*cx,2*cy)>rk.y;
+#endif
+        float boost=(moving&&G.w>rj.z*nvMean)?rj.y:1.0;
         w=exp2(-dist*boost);
         // A longer (bracketed) frame clips where the base does not: its clipped cells carry no signal.
         if(int(fParam[f].w)==3&&dclip)w=0.0;
@@ -1287,8 +1307,8 @@ class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
     EGLSurface surface=EGL_NO_SURFACE;
-    static constexpr int kSlots=18; // 0..16 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance, 15 F6 field,
-                                    // 16 F6 offset per strip cell), 17 readback staging
+    static constexpr int kSlots=19; // 0..17 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance, 15 F6 field,
+                                    // 16 F6 offset per strip cell, 17 F6 Z channel), 18 readback staging (kSlots - 1)
     GLuint meanProgram=0,flagsProgram=0,markProgram=0,guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,rimProgram=0,bentoProgram=0,chromaProgram=0,buffers[kSlots]{};
     size_t capacity[kSlots]{};
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("HYBRID GPU ")+where+" GL error="+std::to_string(e));}
@@ -1416,6 +1436,7 @@ public:
         bool noBase=false;                              // split-half diagnostics: the base is not accumulated
         // F6 local alignment: per merge frame (0 = base, zeros) ny x nx tiles of (dx, dy) RAW px; laMode 0 = off
         const std::vector<float>* laField=nullptr;
+        const std::vector<float>* laMotion=nullptr;     // per merge frame ny x nx tiles: local motion extent (RAW px), Z channel
         int laMode=0,laNx=0,laNy=0;
         float laOx=0,laOy=0,laStride=16;
         std::vector<float> laMaxY;                      // per frame: largest |dy| of the field (rows uploaded beyond the homography)
@@ -1536,6 +1557,10 @@ public:
             if(in.laMode==0||!in.laField||in.laNx<1||in.laNy<1||in.laField->size()!=size_t(frames)*in.laNx*in.laNy*2)
                 throw std::runtime_error("HYBRID GPU local alignment field");
             reserve(15,in.laField->size()*4);put(15,0,in.laField->data(),in.laField->size()*4);
+            // Z channel: zeros without it (no boost from the motion test)
+            const size_t zn=in.laField->size()/2;
+            if(in.laMotion&&in.laMotion->size()==zn){reserve(17,zn*4);put(17,0,in.laMotion->data(),zn*4);}
+            else{std::vector<float> z(zn,0.f);reserve(17,zn*4);put(17,0,z.data(),zn*4);}
         } else if(in.laMode!=0)throw std::runtime_error("HYBRID GPU compiled without local alignment");
         const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0);
         // Site flags ride in the two spare top bits of the uploaded words: needs white < 16384 (RAW10/12/14) and no word above
@@ -1555,7 +1580,9 @@ public:
         glUniform1i(loc(cellsProgram,"dcovU"),(in.mergeMode&1)?1:0); // DCov (slot 14) is sized for the cells only in this mode
         glUseProgram(rejectProgram);
         glUniform4f(loc(rejectProgram,"rj"),tune.cdm,tune.boost,tune.varianceThreshold,tune.filterVariance);
-        glUniform4f(loc(rejectProgram,"rk"),tune.boostEnable,0,0,0);
+        // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
+        const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
+        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,0,0);
         glUseProgram(dilateProgram);
         glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bento?1.f:0.f,tune.dilateFloor);
         glUniform1i(loc(dilateProgram,"validPlanesU"),bento?int(in.maskValid.size()):0);
@@ -2209,11 +2236,28 @@ inline void laFieldAt(const std::vector<float>& r,const LaGrid& g,float X,float 
         (c?fy:fx)=v;
     }
 }
-struct LaFrameStats { float median=0,p90=0,maxAbsY=0,accepted=0,fromCoarse=0; double ms[7]{}; }; // ms: gray, down, L1, start, L0, accept, median
+struct LaFrameStats { float median=0,p90=0,maxAbsY=0,accepted=0,fromCoarse=0,motionShare=0; double ms[7]{}; }; // ms: gray, down, L1, start, L0, accept, median
 // Base pyramid (built once) and the per-frame field on the L0 grid. One worker thread per frame (no nested parallelism).
 struct LaBase { LaImage l0,l1; LaGrid g0,g1; float v0=0; };
+// GCam 11 Z channel (rejection.cl motion prior): per tile the length of the min-max extent of the raw LK flow over its 3x3
+// tile neighbourhood, taken before the acceptance test (a moving hand is exactly where LK is rejected and the kept field
+// stays 0) and before any median. A tile whose LK diverged (non-finite or beyond maxShift) counts as maxShift.
+inline void laMotionExtent(const std::vector<float>& raw,int nx,int ny,float maxShift,std::vector<float>& z){
+    z.assign(size_t(nx)*ny,0.f);
+    auto at=[&](int i,int j,float& x,float& y){
+        const size_t k=size_t(std::clamp(j,0,ny-1))*nx+std::clamp(i,0,nx-1);
+        x=raw[k*2];y=raw[k*2+1];
+        if(!std::isfinite(x)||!std::isfinite(y)||std::hypot(x,y)>maxShift){const float m=std::hypot(x,y);const float s=std::isfinite(m)&&m>0.f?maxShift/m:0.f;
+            x=std::isfinite(x)?x*s:maxShift;y=std::isfinite(y)?y*s:0.f;}
+    };
+    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i){
+        float x0=1e9f,x1=-1e9f,y0=1e9f,y1=-1e9f;
+        for(int dj=-1;dj<=1;++dj)for(int di=-1;di<=1;++di){float x,y;at(i+di,j+dj,x,y);x0=std::min(x0,x);x1=std::max(x1,x);y0=std::min(y0,y);y1=std::max(y1,y);}
+        z[size_t(j)*nx+i]=std::hypot(x1-x0,y1-y0);
+    }
+}
 inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomography& H,const HybridTuning& t,
-                         std::vector<float>& field,LaFrameStats& st){
+                         std::vector<float>& field,LaFrameStats& st,std::vector<float>* motion=nullptr){
     using LaClock=std::chrono::steady_clock;
     auto tick=LaClock::now();
     auto lap=[&](int k){const auto now=LaClock::now();st.ms[k]+=std::chrono::duration<double,std::milli>(now-tick).count();tick=now;};
@@ -2240,6 +2284,11 @@ inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomo
     }
     lap(3);
     laLK(base.l0,D0,g0,H,base.v0,t.laMu,t.laKappa,std::max(0,t.laIters),field);lap(4);
+    if(motion){
+        laMotionExtent(field,g0.nx,g0.ny,t.laMaxShift,*motion);
+        long over=0;for(float v:*motion)over+=v>t.motionThreshold;
+        st.motionShare=float(over)/float(std::max<size_t>(1,motion->size()));
+    }
     // keep the refinement only where it lowers the SSD of the homography
     for(int j=0;j<g0.ny;++j)for(int i=0;i<g0.nx;++i){
         const size_t k=size_t(j)*g0.nx+i;
@@ -2264,6 +2313,50 @@ inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomo
 }
 
 struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0,localAlignMs=0; int merged=0,droppedBracketed=0; bool bento=false; };
+
+// RAW Bracket 0.2.5 (research/rawbracket/NOTES.md) measured gain: the exposure ratio of a bracketed / ultrashort frame to the
+// base from the data, to check the metadata ratio the merge normalises with (a wrong ratio leaves a step where the other
+// exposure replaces the base). A grid of up to 32 x 32 tiles of 16 x 16 RAW px; a tile counts when neither frame clips in it,
+// both means are above the noise (8 DN) and the brighter one is below 80 % of the range; its ratio must lie within 0.5..2 x the
+// metadata. Median and relative MAD over at least 64 tiles. Translation between the frames is not compensated: tiles at moving
+// edges are what the MAD rejects.
+struct HybridGain { float measured=0,mad=0; int tiles=0; bool ok=false; };
+inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
+    HybridGain g;
+    const uint16_t* base=in.frames[0].raw;const uint16_t* other=in.frames[f].raw;
+    const float expected=in.frames[f].exposure;
+    if(!base||!other||!(expected>0.f)||in.w<64||in.h<64||!(in.white>0.f))return g;
+    const int tile=16,nx=std::min(32,in.w/tile),ny=std::min(32,in.h/tile);
+    const int sx=(in.w-tile)/std::max(1,nx-1),sy=(in.h-tile)/std::max(1,ny-1);
+    const float clip=0.98f*in.white;
+    std::vector<float> ratios;ratios.reserve(size_t(nx)*ny);
+    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i){
+        const int x0=(i*sx)&~1,y0=(j*sy)&~1;
+        double sb=0,so=0;bool clipped=false;
+        for(int y=y0;y<y0+tile&&!clipped;++y)for(int x=x0;x<x0+tile;++x){
+            const size_t k=size_t(y)*in.w+x;
+            const float bl=in.black[(y&1)*2+(x&1)];
+            if(base[k]>=clip||other[k]>=clip){clipped=true;break;}
+            sb+=double(base[k])-bl;so+=double(other[k])-bl;
+        }
+        if(clipped)continue;
+        const double n=double(tile)*tile,mb=sb/n,mo=so/n,range=in.white-in.black[0];
+        if(mb<8.0||mo<8.0||std::max(mb,mo)>0.8*range)continue;
+        const float r=float(mo/mb);
+        if(r<0.5f*expected||r>2.f*expected)continue;
+        ratios.push_back(r);
+    }
+    g.tiles=int(ratios.size());
+    if(g.tiles<64)return g;
+    std::nth_element(ratios.begin(),ratios.begin()+ratios.size()/2,ratios.end());
+    g.measured=ratios[ratios.size()/2];
+    std::vector<float> dev(ratios.size());
+    for(size_t k=0;k<ratios.size();++k)dev[k]=std::abs(ratios[k]-g.measured);
+    std::nth_element(dev.begin(),dev.begin()+dev.size()/2,dev.end());
+    g.mad=dev[dev.size()/2]/std::max(g.measured,1e-6f);
+    g.ok=g.mad<0.15f;
+    return g;
+}
 
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
 // frames beyond six are aligned in groups like the extra ZSL frames of the NICE path.
@@ -2382,6 +2475,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(tune.chromaDiff>0.f)report("HYBRID CHROMA DIFF: base R/B = merged G + <R-G>/<B-G> of the base sites where the base kernel widens (strength "
         +std::to_string(std::clamp(tune.chromaDiff,0.f,1.f))+((tune.s61Mode&4)&&sabre61?", below "+std::to_string(tune.widenBelow)+" accepted frames":", by donor coverage")
         +(tune.chromaDiffClamp?", clamped to the base's sample range)":", unclamped)"));
+    // ---- measured gain of the other exposures against their metadata ratio (report only; P12c)
+    for(int f=1;f<n;++f){
+        const auto& fr=input.frames[f];
+        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
+        const HybridGain g=hybridMeasuredGain(input,f);
+        char line[200];
+        if(g.tiles<64)std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f: insufficient signal or overlap (%d tiles)",f,fr.role,fr.exposure,g.tiles);
+        else std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f measured=%.4f (%+.1f %%) tiles=%d mad=%.1f %% -> %s",f,fr.role,fr.exposure,g.measured,
+            100.0*(g.measured/fr.exposure-1.0),g.tiles,100.0*g.mad,!g.ok?"inconsistent ratios":std::abs(g.measured/fr.exposure-1.f)>0.05f?"metadata differs":"ok");
+        report(line);
+    }
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
     {
@@ -2495,7 +2599,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     stats.maskMs=millis(Clock::now()-maskStarted);
     stats.bento=bento.active;
     // ---- F6: tile-local refinement of the homographies (frames that are merged; the ultrashort frame keeps its homography)
-    std::vector<std::vector<float>> laFields(n);std::vector<float> laMaxY(n,0.f);
+    std::vector<std::vector<float>> laFields(n),laMotions(n);std::vector<float> laMaxY(n,0.f);
     LaGrid laG0;bool laOn=false;
     if(tune.localAlign>0&&n>1){
         const auto laStarted=Clock::now();
@@ -2530,7 +2634,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                         const auto g0=Clock::now();
                         laGray(b,input.frames[f].raw,1.f/input.frames[f].exposure,eps,D0,false);
                         fstats[f].ms[0]=millis(Clock::now()-g0);
-                        laFrameField(laBase,D0,H[f],tune,laFields[f],fstats[f]);
+                        laFrameField(laBase,D0,H[f],tune,laFields[f],fstats[f],&laMotions[f]);
                     }
                 }catch(const std::exception& error){
                     std::lock_guard<std::mutex> lock(laFailureMutex);if(!laFailed.exchange(true))laFailure=error.what();
@@ -2547,6 +2651,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         if(laFailed){
             for(auto& fld:laFields)fld.clear();
+            for(auto& z:laMotions)z.clear();
             jobs.clear();
             report("HYBRID LOCAL ALIGN: failed ("+laFailure+"); merging with the homographies only");
         }
@@ -2555,14 +2660,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             const LaFrameStats& st=fstats[f];
             laMaxY[f]=st.maxAbsY;
             for(int k=0;k<7;++k)partMs[k]+=st.ms[k];
-            char v[80];std::snprintf(v,sizeof(v)," %d:%.2f/%.2f/%.0f%%",f,st.median,st.p90,100.f*st.accepted);per+=v;
+            char v[96];std::snprintf(v,sizeof(v)," %d:%.2f/%.2f/%.0f%%/z%.0f%%",f,st.median,st.p90,100.f*st.accepted,100.f*st.motionShare);per+=v;
         }
         const int done=int(jobs.size());
         const double grayMs=partMs[0];
         stats.localAlignMs=millis(Clock::now()-laStarted);
         laOn=done>0;laG0=laBase.g0;
         char line[320];
-        std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN: %s, %d frames, tiles %dx%d (%d RAW px, window %d RAW px), %.0f ms (gray %.0f ms thread sum) mu=%.2f kappa=%.1f maxShift=%.1f medians=%d; per frame |r| median/p90 RAW px / refined tiles:",
+        std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN: %s, %d frames, tiles %dx%d (%d RAW px, window %d RAW px), %.0f ms (gray %.0f ms thread sum) mu=%.2f kappa=%.1f maxShift=%.1f medians=%d; per frame |r| median/p90 RAW px / refined tiles / tiles over the motion threshold (rejection boost):",
             tune.localAlign==2?"constant per tile":"bilinear field",done,laBase.g0.nx,laBase.g0.ny,2*stride,2*win,stats.localAlignMs,grayMs,tune.laMu,tune.laKappa,tune.laMaxShift,tune.laMedian);
         report(line+per);
         if(tune.profile){
@@ -2616,15 +2721,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             in.maskValid.push_back(k<bentoValids.size()?&bentoValids[k]:nullptr);}
     }
     // F6 field in merge order (0 = base and frames without a field: zeros)
-    std::vector<float> laAll;
+    std::vector<float> laAll,laZAll;
     if(laOn){
         const size_t tiles=size_t(laG0.nx)*laG0.ny*2;
         laAll.assign(index.size()*tiles,0.f);in.laMaxY.assign(index.size(),0.f);
+        laZAll.assign(index.size()*(tiles/2),0.f);
         for(size_t i=0;i<index.size();++i){
             const auto& fld=laFields[index[i]];
             if(fld.size()==tiles){std::copy(fld.begin(),fld.end(),laAll.begin()+i*tiles);in.laMaxY[i]=laMaxY[index[i]];}
+            const auto& z=laMotions[index[i]];
+            if(z.size()==tiles/2)std::copy(z.begin(),z.end(),laZAll.begin()+i*(tiles/2));
         }
-        in.laField=&laAll;in.laMode=tune.localAlign==2?2:1;in.laNx=laG0.nx;in.laNy=laG0.ny;
+        in.laField=&laAll;in.laMotion=&laZAll;in.laMode=tune.localAlign==2?2:1;in.laNx=laG0.nx;in.laNy=laG0.ny;
         // tile (i, j) centre: level px stride*i + (win-1)/2 -> RAW 2c + 0.5
         in.laOx=in.laOy=laG0.raw(laG0.centre(0));in.laStride=float(2*laG0.stride);
         if(const char* dump=std::getenv("SCAM_LA_DUMP")){ // replay diagnostics: the field of every merged frame
@@ -2693,7 +2801,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         try{gpuMerge(true);}
         catch(const std::exception& error){
             report(std::string("HYBRID LOCAL ALIGN: GPU merge with the local offsets failed (")+error.what()+"); merging with the homographies only");
-            in.laField=nullptr;in.laMode=0;in.laMaxY.clear();laOn=false;
+            in.laField=nullptr;in.laMotion=nullptr;in.laMode=0;in.laMaxY.clear();laOn=false;
             dropDay61("it was chosen for the local alignment");
             gpuMerge(false);
         }

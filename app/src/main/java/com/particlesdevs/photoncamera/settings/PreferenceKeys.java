@@ -902,7 +902,7 @@ public class PreferenceKeys {
         StringBuilder out = new StringBuilder();
         String[][] keys = {
             {"bento", "bento"},
-            {"cdm", "cdm"}, {"boostEnable", "boost"},
+            {"cdm", "cdm"},
             {"kernelScale", "kernel"}, {"weightCap", "weight_cap"},
             {"fwe", "fwe"}, {"dilateScale", "dilate"},
             {"shastaSharpness", "shasta_sharpness"}, {"bentoUsWeight", "bento_weight"},
@@ -911,7 +911,7 @@ public class PreferenceKeys {
             {"dilateFloor", "dilate_floor"}, {"widenBelow", "widen_below"}, {"chromaDiff", "chroma_diff"},
             {"bentoValidate", "bento_validate"}, {"bentoMotionMax", "bento_motion_max"},
             {"rawNoise", "tensor_noise"}, {"snrScale", "snr_scale"},
-            {"boost", "boost_value"}, {"varianceThreshold", "boost_threshold"},
+            {"boost", "boost_value"}, {"varianceThreshold", "boost_threshold"}, {"motionThreshold", "motion_threshold"},
             {"lutHiSigma", "lut_sigma"},
             // Round 5 (research/hybrid5/impl_worker.md): Sabre 6.1 kernel 0 off / 1 always / 2 auto (night: 6.1 SNR key <= s61MaxKey),
             // highlights and outliers (hot*), LMC 9.6 Bento fallback checks. Absent keys keep the worker defaults.
@@ -932,6 +932,9 @@ public class PreferenceKeys {
             try { out.append(k[0]).append(' ').append(Float.parseFloat(v.trim())).append('\n'); } catch (NumberFormatException ignored) {}
         }
         if (!hybridSwitch("shasta", true)) out.append("shastaEnable 0\n");
+        // Rejection boost where the local motion varies (GCam 11 Z channel of the F6 field); a switch, not a number.
+        Float boostDev = niceDevValue("hybrid_motion_boost");
+        out.append("boostEnable ").append(boostDev != null ? boostDev : hybridSwitch("motion_boost", true) ? 1f : 0f).append('\n');
         // Switches of the worker's round-5 fixes (on by default there): written only when turned off.
         if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");

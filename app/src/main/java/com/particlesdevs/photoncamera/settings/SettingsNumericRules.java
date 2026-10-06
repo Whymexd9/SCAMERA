@@ -29,7 +29,6 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_bento_frames": return new double[]{1,2,1};
             case "pref_lmc_hybrid_bento_chroma_sigma": return new double[]{0,4,0};
             case "pref_lmc_hybrid_cdm": return new double[]{0.01,2,0};
-            case "pref_lmc_hybrid_boost": return new double[]{0,1,1};
             case "pref_lmc_hybrid_kernel": return new double[]{0.5,2,0};
             case "pref_lmc_hybrid_weight_cap": return new double[]{1,50,0};
             case "pref_lmc_hybrid_fwe": return new double[]{0,1,0};
@@ -151,6 +150,7 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_agx_ev": return new double[]{-2,2,0};
             case "pref_lmc_hybrid_ark_agx_sat": return new double[]{0,2,0};
             case "pref_lmc_hybrid_ark_hl_white": return new double[]{0,1,0};
+            case "pref_lmc_hybrid_motion_threshold": return new double[]{0.25,8,0};
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};
