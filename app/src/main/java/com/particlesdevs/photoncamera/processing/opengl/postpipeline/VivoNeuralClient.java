@@ -220,6 +220,10 @@ public final class VivoNeuralClient {
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
                 if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException("Не удалось создать маркер склейки Hybrid");
+                // P30: the worker keeps its compiled GPU programs in the app's cache (−0.6 s per shot after the first).
+                File glCache=new File(context.getCacheDir(),"hybrid-gl");
+                if(glCache.isDirectory()||glCache.mkdirs())
+                    try(java.io.FileWriter cw=new java.io.FileWriter(new File(dir,"gl-cache"))){cw.write(glCache.getAbsolutePath());}
                 String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText()+((LmcHybridBurst)niceBurst).tuningOverride();
                 if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
                 log.accept("CLIENT: LMC hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));

@@ -76,6 +76,7 @@ int main(int argc,char** argv) {
             // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
             // fall back to SCAMERA's own tile alignment instead of failing.
             std::unique_ptr<vivo_nice::StockMotion> motion;
+            if(std::getenv("SCAM_NO_CRE"))report("NICE MOTION: SCAMERA tile alignment (SCAM_NO_CRE replay)"); else
             try {
                 const bool forceBundled=access((std::string(argv[2])+"/cre-force-bundled").c_str(),F_OK)==0;
                 const bool vendorOnly=access((std::string(argv[2])+"/cre-vendor-only").c_str(),F_OK)==0;
@@ -100,6 +101,11 @@ int main(int argc,char** argv) {
             }
             if(hybrid) {
                 report("HYBRID MERGE: LMC hybrid requested (Sabre kernel, LMC rejection/weights, Bento, Shasta)");
+                { // P30: GPU program binary cache (app cache dir from the job; SCAM_GL_CACHE in an offline replay)
+                    std::ifstream cache(std::string(argv[2])+"/gl-cache");std::string dir;
+                    if(cache&&std::getline(cache,dir)&&!dir.empty())vivo_nice::hybridProgramCacheDir()=dir;
+                    else if(const char* env=std::getenv("SCAM_GL_CACHE"))vivo_nice::hybridProgramCacheDir()=env;
+                }
                 const auto tuning=vivo_nice::loadHybridTuning(argv[2],report);
                 vivo_nice::HybridInput hin=hybridBurst.hybrid?hybridBurst.input:vivo_nice::hybridFromNiceBurst(mapped->burst);
                 if(std::getenv("SCAM_MERGED_DNG"))hin.mergedDng=true;
@@ -124,8 +130,16 @@ int main(int argc,char** argv) {
                 if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
             },alignment,&mergedDng,&effMap);
             }
+            // P30: the log line's mean and max on all cores (the sum was ~60 ms on one core at 12 MP, 4x that on the 2x grid).
             double sum=0;float maximum=0;
-            for(float value:result){sum+=value;maximum=std::max(maximum,value);}
+            {
+                std::mutex lock;
+                vivo_nice::mergeRowBands(int((result.size()+65535)/65536),[&](int b0,int b1){
+                    double s=0;float m=0;
+                    for(size_t i=size_t(b0)*65536;i<std::min(result.size(),size_t(b1)*65536);++i){s+=result[i];m=std::max(m,result[i]);}
+                    std::lock_guard<std::mutex> guard(lock);sum+=s;maximum=std::max(maximum,m);
+                });
+            }
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
             const int out=vivo_nice::openArgument(outputPath,O_WRONLY|O_CREAT|O_TRUNC);
             if(out<0)throw std::runtime_error("Cannot open NICE output");

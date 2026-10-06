@@ -56,6 +56,9 @@ class StockMotion {
             raw[size_t(y)*b.w+x]=uint16_t(std::floor(1024.f+std::min(b.sample(frame,x,y),ceiling)*15359.f+.5f));
         return stockMotionGuide4(raw.data(),b.w,b.h,b.w,14,1.f/b.exposure[frame],.6f);
     }
+    // P30: the clipped reference of a brighter frame depends only on its exposure (the Shasta frames share one): kept per burst.
+    std::vector<uint8_t> clippedRefCache;std::vector<Point> clippedCornersCache;int clippedCountCache=0;
+    float clippedExposureCache=0;const uint16_t* clippedRawCache=nullptr;
     std::vector<void*> compat;
     // Same pinned CRE file shipped in the APK, for devices without it in /vendor.
     // Its vivo-only dependencies are replaced by vivo-cre-compat stubs, preloaded
@@ -207,15 +210,17 @@ public:
             auto donorPixels=donorGuides[frame].get();auto donor=image(donorPixels,w,h);
             // A brighter L clips where the reference does not (windows): track it
             // against a reference clipped at the same scene level, with its own corners.
-            std::vector<uint8_t> clippedRef;std::vector<Point> clippedCorners;int clippedCount=0;
             const bool brighter=burst.exposure[frame]>1.5f;
-            if(brighter) {
-                clippedRef=guide(burst,0,1.f/burst.exposure[frame]);
-                auto clipped=image(clippedRef,w,h);Features local;
-                clippedCorners.assign(local.maxCorners,Point{});
-                if(detect(&local,&clipped,nullptr,clippedCorners.data(),&clippedCount,0)
-                        || clippedCount<0 || clippedCount>local.maxCorners)clippedCount=0;
+            if(brighter && !(clippedRawCache==burst.raw[0] && clippedExposureCache==burst.exposure[frame] && !clippedRefCache.empty())) {
+                clippedRefCache=guide(burst,0,1.f/burst.exposure[frame]);
+                auto clipped=image(clippedRefCache,w,h);Features local;
+                clippedCornersCache.assign(local.maxCorners,Point{});clippedCountCache=0;
+                if(detect(&local,&clipped,nullptr,clippedCornersCache.data(),&clippedCountCache,0)
+                        || clippedCountCache<0 || clippedCountCache>local.maxCorners)clippedCountCache=0;
+                clippedRawCache=burst.raw[0];clippedExposureCache=burst.exposure[frame];
             }
+            std::vector<uint8_t>& clippedRef=clippedRefCache;std::vector<Point>& clippedCorners=clippedCornersCache;
+            const int clippedCount=clippedCountCache;
             const int n=brighter?clippedCount:count;
             auto refImage=brighter?image(clippedRef,w,h):ref;
             std::copy_n((brighter?clippedCorners:original).begin(),n,src.begin());

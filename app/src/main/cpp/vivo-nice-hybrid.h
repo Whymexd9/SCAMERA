@@ -26,6 +26,8 @@
 #include <thread>
 #if defined(__aarch64__)
 #include <arm_neon.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 namespace vivo_nice {
@@ -237,10 +239,32 @@ struct HybridTuning {
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
 inline void shiftOrigin(std::vector<float>& v,int w,int h,int channels,int dx,int dy) {
     if(dx==0&&dy==0)return;
-    for(int y=h-1;y>=0;--y)for(int x=w-1;x>=0;--x){
-        const size_t src=(size_t(std::max(0,y-dy))*w+std::max(0,x-dx))*channels,dst=(size_t(y)*w+x)*channels;
-        for(int c=0;c<channels;++c)v[dst+c]=v[src+c];
+    // P30: bands of rows on all cores, each bottom-up as before; the dy rows above a band (another band writes them) are read
+    // from a copy taken first. Every pixel gets the same source value as in the single pass.
+    const int threads=std::max(1,std::min(8,int(std::thread::hardware_concurrency())));
+    const int bands=std::max(1,std::min(threads,h/std::max(64,4*dy+4)));
+    const size_t row=size_t(w)*channels;
+    std::vector<std::vector<float>> above(bands);
+    for(int b=1;b<bands;++b){
+        const int y0=int(int64_t(h)*b/bands),from=std::max(0,y0-dy);
+        above[b].assign(v.begin()+ptrdiff_t(size_t(from)*row),v.begin()+ptrdiff_t(size_t(y0)*row));
     }
+    std::vector<std::thread> pool;
+    auto band=[&](int b){
+        const int y0=int(int64_t(h)*b/bands),y1=int(int64_t(h)*(b+1)/bands),from=std::max(0,y0-dy);
+        for(int y=y1-1;y>=y0;--y){
+            const int sy=std::max(0,y-dy);
+            const float* srcRow=sy>=y0||b==0?v.data()+size_t(sy)*row:above[b].data()+size_t(sy-from)*row;
+            float* dstRow=v.data()+size_t(y)*row;
+            for(int x=w-1;x>=0;--x){
+                const size_t src=size_t(std::max(0,x-dx))*channels,dst=size_t(x)*channels;
+                for(int c=0;c<channels;++c)dstRow[dst+c]=srcRow[src+c];
+            }
+        }
+    };
+    for(int b=1;b<bands;++b)pool.emplace_back(band,b);
+    band(0);
+    for(auto& t:pool)t.join();
 }
 
 inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::function<void(const std::string&)>& report) {
@@ -1380,6 +1404,11 @@ void main(){
 }
 )";
 
+// P30: directory of the GPU program binary cache (empty = no cache), set by the worker from the job's "gl-cache" file.
+// Compiling the merge programs cost ~0.6 s of every shot (OPPO Adreno 750: 637 ms of a 702 ms init); a program loaded from
+// its own driver binary runs the identical code.
+inline std::string& hybridProgramCacheDir(){static std::string dir;return dir;}
+
 class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
@@ -1395,13 +1424,37 @@ class HybridGpu {
         glBufferSubData(GL_UNIFORM_BUFFER,GLintptr(array*kHybridGpuFrames*16),GLsizeiptr(size_t(frames)*16),data);
     }
     size_t capacity[kSlots]{};
+    // P30: strips alternate between two banks of the buffers the CPU writes or reads per strip (RAW rows 0, outputs 3 / 4 / 6,
+    // Bento mask 13, the frame table): strip k+1 is uploaded and dispatched while strip k is read back (fence), instead of the
+    // GPU idling during every upload and the CPU during every pass. Bank 0 is buffers[] itself. The shaders are unchanged.
+    GLuint bankBuffers[kSlots]{},bankTable=0;
+    size_t bankCapacity[kSlots]{};
+    GLuint& bankBuffer(int slot,int bank){return bank?bankBuffers[slot]:buffers[slot];}
+    void reserveBank(int slot,size_t bytes,int bank){
+        GLuint& buffer=bankBuffer(slot,bank);size_t& cap=bank?bankCapacity[slot]:capacity[slot];
+        if(!buffer)glGenBuffers(1,&buffer);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffer);
+        if(cap<bytes){glBufferData(GL_SHADER_STORAGE_BUFFER,GLsizeiptr(bytes),nullptr,GL_DYNAMIC_DRAW);cap=bytes;}
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER,GLuint(slot),buffer);
+    }
+    void putBank(int slot,int bank,size_t offset,const void* data,size_t bytes){
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER,bankBuffer(slot,bank));
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER,GLintptr(offset),GLsizeiptr(bytes),data);
+    }
+    GLuint tableOf(int bank){return bank?bankTable:frameTable;}
+    void putTableBank(size_t array,const void* data,int frames,int bank){
+        glBindBuffer(GL_UNIFORM_BUFFER,tableOf(bank));
+        glBufferSubData(GL_UNIFORM_BUFFER,GLintptr(array*kHybridGpuFrames*16),GLsizeiptr(size_t(frames)*16),data);
+    }
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("HYBRID GPU ")+where+" GL error="+std::to_string(e));}
     void cleanup() noexcept {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
             glDeleteBuffers(kSlots,buffers);
+            glDeleteBuffers(kSlots,bankBuffers);
             if(frameTable)glDeleteBuffers(1,&frameTable);
+            if(bankTable)glDeleteBuffers(1,&bankTable);
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
         }
         if(surface!=EGL_NO_SURFACE)eglDestroySurface(display,surface);
@@ -1409,15 +1462,76 @@ class HybridGpu {
         eglTerminate(display);display=EGL_NO_DISPLAY;
     }
     const char* helpersPrefix=""; // "#define LOCAL_ALIGN 1\n" when the F6 field is used
+    std::string driver;            // GL_RENDERER + GL_VERSION: part of the program cache key
+    int cacheHits=0,cacheStores=0;
+    // Cache file of a program: FNV-1a 64 of the driver and the whole source; "" without a cache directory or binary formats.
+    std::string programCacheFile(const std::string& source){
+        const std::string& dir=hybridProgramCacheDir();
+        if(dir.empty())return "";
+        GLint formats=0;glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS,&formats);
+        if(formats<=0)return "";
+        uint64_t hash=1469598103934665603ULL;
+        auto mix=[&](const std::string& text){for(unsigned char c:text){hash^=c;hash*=1099511628211ULL;}hash^=0xff;hash*=1099511628211ULL;};
+        mix(driver);mix(source);
+        char name[40];std::snprintf(name,sizeof(name),"hyb-%016llx.bin",static_cast<unsigned long long>(hash));
+        return dir+"/"+name;
+    }
+    GLuint loadProgramBinary(const std::string& file){
+        std::ifstream in(file,std::ios::binary);
+        if(!in)return 0;
+        std::vector<char> data((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+        if(data.size()<=sizeof(GLenum))return 0;
+        GLenum format=0;std::memcpy(&format,data.data(),sizeof(format));
+        GLuint program=glCreateProgram();
+        glProgramBinary(program,format,data.data()+sizeof(format),GLsizei(data.size()-sizeof(format)));
+        GLint ok=0;glGetProgramiv(program,GL_LINK_STATUS,&ok);
+        if(!ok||glGetError()!=GL_NO_ERROR){glDeleteProgram(program);std::remove(file.c_str());return 0;} // driver changed: compile again
+        ++cacheHits;
+        return program;
+    }
+    void storeProgramBinary(GLuint program,const std::string& file){
+        GLint length=0;glGetProgramiv(program,GL_PROGRAM_BINARY_LENGTH,&length);
+        if(length<=0){glGetError();return;}
+        std::vector<char> data(sizeof(GLenum)+size_t(length));
+        GLenum format=0;GLsizei written=0;
+        glGetProgramBinary(program,length,&written,&format,data.data()+sizeof(GLenum));
+        if(glGetError()!=GL_NO_ERROR||written<=0)return;
+        std::memcpy(data.data(),&format,sizeof(format));
+        const std::string tmp=file+".tmp"+std::to_string(getpid());
+        {std::ofstream out(tmp,std::ios::binary|std::ios::trunc);if(!out)return;out.write(data.data(),std::streamsize(sizeof(GLenum)+size_t(written)));if(!out){std::remove(tmp.c_str());return;}}
+        if(std::rename(tmp.c_str(),file.c_str())!=0){std::remove(tmp.c_str());return;}
+        ++cacheStores;
+    }
+    // Old builds leave their binaries behind: keep the newest 48 files of the cache directory.
+    static void trimProgramCache(){
+        const std::string& dir=hybridProgramCacheDir();
+        if(dir.empty())return;
+        DIR* d=opendir(dir.c_str());if(!d)return;
+        std::vector<std::pair<time_t,std::string>> files;
+        while(dirent* e=readdir(d)){
+            std::string name=e->d_name;if(name.rfind("hyb-",0)!=0)continue;
+            struct stat st{};if(stat((dir+"/"+name).c_str(),&st)==0)files.emplace_back(st.st_mtime,dir+"/"+name);
+        }
+        closedir(d);
+        if(files.size()<=48)return;
+        std::sort(files.begin(),files.end());
+        for(size_t i=0;i+48<files.size();++i)std::remove(files[i].second.c_str());
+    }
     GLuint compile(const char* body,bool standalone=false){
+        std::string source=standalone?std::string(body):std::string(kHybCommon)+helpersPrefix+kHybHelpers+body;
+        const std::string cacheFile=programCacheFile(source);
+        if(!cacheFile.empty())if(GLuint cached=loadProgramBinary(cacheFile))return cached;
         GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,kHybHelpers,body};
         if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,4,sources,nullptr);
         glCompileShader(shader);
         GLint ok=0;glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
         if(!ok){char msg[4096]{};glGetShaderInfoLog(shader,sizeof(msg),nullptr,msg);glDeleteShader(shader);throw std::runtime_error(std::string("HYBRID GPU shader: ")+msg);}
-        GLuint program=glCreateProgram();glAttachShader(program,shader);glLinkProgram(program);glDeleteShader(shader);
+        GLuint program=glCreateProgram();glAttachShader(program,shader);
+        if(!cacheFile.empty())glProgramParameteri(program,GL_PROGRAM_BINARY_RETRIEVABLE_HINT,GL_TRUE);
+        glLinkProgram(program);glDeleteShader(shader);
         glGetProgramiv(program,GL_LINK_STATUS,&ok);
         if(!ok){char msg[4096]{};glGetProgramInfoLog(program,sizeof(msg),nullptr,msg);glDeleteProgram(program);throw std::runtime_error(std::string("HYBRID GPU link: ")+msg);}
+        if(!cacheFile.empty())storeProgramBinary(program,cacheFile);
         return program;
     }
     void reserve(int slot,size_t bytes){
@@ -1438,26 +1552,39 @@ class HybridGpu {
         if(!p)glGetError();
         return p;
     }
-    void get(int slot,void* data,size_t bytes){
+    void get(int slot,void* data,size_t bytes){getBuffer(buffers[slot],slot,data,bytes,false);}
+    // fenced: the caller waited for the fence of the commands that wrote the buffer, so an unsynchronized map (no implicit
+    // wait for the commands submitted after them) is tried first; the method ladder below stays the fallback.
+    int fencedMapFails=0;
+    void getBuffer(GLuint source,int slot,void* data,size_t bytes,bool fenced){
         constexpr size_t kChunk=size_t(32)<<20; // strips are sized so that every readback is one map from offset 0
         for(size_t offset=0;offset<bytes;offset+=kChunk){
             const size_t n=std::min(kChunk,bytes-offset);
             bool done=false;
+            if(fenced&&fencedMapFails<2){
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER,source);
+                if(const void* mapped=tryMap(GL_SHADER_STORAGE_BUFFER,offset,n,GL_MAP_READ_BIT|GL_MAP_UNSYNCHRONIZED_BIT)){
+                    std::memcpy(static_cast<char*>(data)+offset,mapped,n);
+                    if(!glUnmapBuffer(GL_SHADER_STORAGE_BUFFER))throw std::runtime_error("HYBRID GPU storage invalidated");
+                    continue;
+                }
+                ++fencedMapFails;
+            }
             for(int method=mapMethod<0?0:mapMethod;method<5&&!done;++method){
                 const void* mapped=nullptr;GLenum target=GL_SHADER_STORAGE_BUFFER;
-                if(method==0){glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffers[slot]);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT);}
-                else if(method==1){glFinish();glBindBuffer(GL_SHADER_STORAGE_BUFFER,buffers[slot]);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT|GL_MAP_UNSYNCHRONIZED_BIT);}
-                else if(method==2){target=GL_COPY_READ_BUFFER;glBindBuffer(target,buffers[slot]);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT);}
+                if(method==0){glBindBuffer(GL_SHADER_STORAGE_BUFFER,source);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT);}
+                else if(method==1){glFinish();glBindBuffer(GL_SHADER_STORAGE_BUFFER,source);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT|GL_MAP_UNSYNCHRONIZED_BIT);}
+                else if(method==2){target=GL_COPY_READ_BUFFER;glBindBuffer(target,source);mapped=tryMap(target,offset,n,GL_MAP_READ_BIT);}
                 else if(method==3){ // staging copy into a GL_DYNAMIC_READ buffer, mapped from offset 0
                     target=GL_COPY_WRITE_BUFFER;
-                    glBindBuffer(GL_COPY_READ_BUFFER,buffers[slot]);glBindBuffer(GL_COPY_WRITE_BUFFER,buffers[kSlots-1]);
+                    glBindBuffer(GL_COPY_READ_BUFFER,source);glBindBuffer(GL_COPY_WRITE_BUFFER,buffers[kSlots-1]);
                     if(capacity[kSlots-1]<n){glBufferData(GL_COPY_WRITE_BUFFER,GLsizeiptr(n),nullptr,GL_DYNAMIC_READ);capacity[kSlots-1]=n;}
                     glCopyBufferSubData(GL_COPY_READ_BUFFER,GL_COPY_WRITE_BUFFER,GLintptr(offset),0,GLsizeiptr(n));
                     glFinish();
                     mapped=tryMap(target,0,n,GL_MAP_READ_BIT);
                 } else { // last resort: a fresh buffer object per chunk
                     target=GL_COPY_WRITE_BUFFER;GLuint tmp=0;glGenBuffers(1,&tmp);
-                    glBindBuffer(GL_COPY_READ_BUFFER,buffers[slot]);glBindBuffer(GL_COPY_WRITE_BUFFER,tmp);
+                    glBindBuffer(GL_COPY_READ_BUFFER,source);glBindBuffer(GL_COPY_WRITE_BUFFER,tmp);
                     glBufferData(GL_COPY_WRITE_BUFFER,GLsizeiptr(n),nullptr,GL_DYNAMIC_READ);
                     glCopyBufferSubData(GL_COPY_READ_BUFFER,GL_COPY_WRITE_BUFFER,GLintptr(offset),0,GLsizeiptr(n));
                     glFinish();
@@ -1550,6 +1677,7 @@ public:
             const EGLint size[]={EGL_WIDTH,1,EGL_HEIGHT,1,EGL_NONE};surface=eglCreatePbufferSurface(display,config,size);
             if(surface==EGL_NO_SURFACE||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");
             const auto* name=glGetString(GL_RENDERER);renderer=name?reinterpret_cast<const char*>(name):"unknown";
+            {const auto* version=glGetString(GL_VERSION);driver=renderer+"|"+(version?reinterpret_cast<const char*>(version):"");}
             {GLint64 ssbo=0;GLint tex=0,wg=0;glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE,&ssbo);glGetIntegerv(GL_MAX_TEXTURE_SIZE,&tex);
              glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,1,&wg);maxStorageBlock=size_t(std::max<GLint64>(ssbo,0));
              GLint blocks=0,bindings=0;glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,&blocks);glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS,&bindings);
@@ -1579,6 +1707,8 @@ public:
             if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
             if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
+            if(cacheStores>0)trimProgramCache();
+            if(!hybridProgramCacheDir().empty())compileMs+=" cache="+std::to_string(cacheHits)+"/"+std::to_string(cacheHits+cacheStores)+" hits";
             glGenBuffers(kSlots,buffers);
             glGenBuffers(1,&frameTable);glBindBuffer(GL_UNIFORM_BUFFER,frameTable);
             glBufferData(GL_UNIFORM_BUFFER,GLsizeiptr(6*size_t(kHybridGpuFrames)*16),nullptr,GL_DYNAMIC_DRAW);
@@ -1619,6 +1749,11 @@ public:
             for(int f=0;f<frames;++f){float u=up[f];std::memcpy(&geo[f*4+3],&u,4);}
             putTable(kTableGeo,geo.data(),frames);putTable(kTableHA,a.data(),frames);putTable(kTableHB,b.data(),frames);
             putTable(kTableParam,param.data(),frames);putTable(kTableNoise,noise4.data(),frames);
+            if(!bankTable){glGenBuffers(1,&bankTable);glBindBuffer(GL_UNIFORM_BUFFER,bankTable);
+                glBufferData(GL_UNIFORM_BUFFER,GLsizeiptr(6*size_t(kHybridGpuFrames)*16),nullptr,GL_DYNAMIC_DRAW);}
+            for(size_t array:{kTableGeo,kTableHA,kTableHB,kTableParam,kTableNoise})
+                putTableBank(array,array==kTableGeo?static_cast<const void*>(geo.data()):array==kTableHA?static_cast<const void*>(a.data())
+                    :array==kTableHB?static_cast<const void*>(b.data()):array==kTableParam?static_cast<const void*>(param.data()):static_cast<const void*>(noise4.data()),frames,1);
             glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
             check("frame table");
         }
@@ -1762,7 +1897,33 @@ public:
                     +" leave no spare bits: cell clip and outlier sites off");
             }
         }
-        for(int cy0=0;cy0<h2;cy0+=stripCells){
+        // P30: the readback of strip k runs after strip k+1 is submitted (fence), from the other bank.
+        struct PendingStrip{bool active=false;int bank=0,oy0=0,rows2=0;GLsync fence=nullptr;};
+        PendingStrip pending;
+        auto readStrip=[&](PendingStrip& p){
+            if(!p.active)return;
+            const auto readStarted=std::chrono::steady_clock::now();
+            bool waited=false;
+            if(p.fence){
+                const GLenum r=glClientWaitSync(p.fence,GL_SYNC_FLUSH_COMMANDS_BIT,GLuint64(120)*1000000000ULL);
+                waited=r==GL_ALREADY_SIGNALED||r==GL_CONDITION_SATISFIED;
+                glDeleteSync(p.fence);p.fence=nullptr;
+            }
+            getBuffer(bankBuffer(3,p.bank),3,out.data()+size_t(p.oy0)*ow*3,size_t(p.rows2)*ow*3*4,waited);
+            getBuffer(bankBuffer(4,p.bank),4,effective.data()+size_t(p.oy0)*ow,size_t(p.rows2)*ow*4,waited);
+            if(clipFlags){
+                flagStrip.resize(size_t(p.rows2)*ow);
+                getBuffer(bankBuffer(6,p.bank),6,flagStrip.data(),flagStrip.size()*4,waited);
+                uint8_t* dst=clipFlags->data()+size_t(p.oy0)*ow;
+                for(size_t i=0;i<flagStrip.size();++i)dst[i]=uint8_t(flagStrip[i]);
+            }
+            check("readback");
+            passMs[6]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-readStarted).count();
+            p.active=false;
+        };
+        int stripIndex=0;
+        for(int cy0=0;cy0<h2;cy0+=stripCells,++stripIndex){
+            const int bank=stripIndex&1;
             const int cy1=std::min(h2,cy0+stripCells),y0=2*cy0,y1=2*cy1;
             const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3); // reject/guide margin for the 5x5 dilation
             // Upload the rows of every frame that output rows [y0-6, y1+6) map into (kernel + margins), even-aligned.
@@ -1780,14 +1941,14 @@ public:
                 row0[f]=r0;rows[f]=r1-r0;offsets[f]=GLuint(total);total+=size_t(rows[f])*w;
                 crow0[f]=r0/2;crows[f]=rows[f]/2;cellOff[f]=GLuint(cellTotal);cellTotal+=size_t(crows[f])*w2;
             }
-            reserve(0,total*2);
-            for(int f=0;f<frames;++f)put(0,size_t(offsets[f])*2,in.frames[f]+size_t(row0[f])*w,size_t(rows[f])*w*2);
+            reserveBank(0,total*2,bank);
+            for(int f=0;f<frames;++f)putBank(0,bank,size_t(offsets[f])*2,in.frames[f]+size_t(row0[f])*w,size_t(rows[f])*w*2);
             for(int f=0;f<frames;++f){cellGeom[f*4]=crow0[f];cellGeom[f*4+1]=crows[f];cellGeom[f*4+2]=GLint(cellOff[f]);cellGeom[f*4+3]=0;}
             { // strip geometry of every frame into the frame table (all programs read it from there)
                 std::vector<GLuint> geo(size_t(frames)*4);
                 for(int f=0;f<frames;++f){geo[f*4]=offsets[f];geo[f*4+1]=GLuint(row0[f]);geo[f*4+2]=GLuint(rows[f]);float u=up[f];std::memcpy(&geo[f*4+3],&u,4);}
-                putTable(kTableGeo,geo.data(),frames);putTable(kTableCells,cellGeom.data(),frames);
-                glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
+                putTableBank(kTableGeo,geo.data(),frames,bank);putTableBank(kTableCells,cellGeom.data(),frames,bank);
+                glBindBufferBase(GL_UNIFORM_BUFFER,0,tableOf(bank));
             }
             bool clipHere=false;
             for(int f=0;f<frames&&!clipHere;++f)
@@ -1808,7 +1969,7 @@ public:
             maskStrip.assign(planeSize*(1+in.maskValid.size()),0.f);
             if(bento&&in.mask&&in.mask->size()==size_t(w2)*h2)std::memcpy(maskStrip.data(),in.mask->data()+size_t(cy0)*w2,planeSize*4);
             for(size_t k=0;k<in.maskValid.size();++k)if(in.maskValid[k]&&in.maskValid[k]->size()==size_t(w2)*h2)std::memcpy(maskStrip.data()+planeSize*(k+1),in.maskValid[k]->data()+size_t(cy0)*w2,planeSize*4);
-            reserve(13,maskStrip.size()*4);put(13,0,maskStrip.data(),maskStrip.size()*4);
+            reserveBank(13,maskStrip.size()*4,bank);putBank(13,bank,0,maskStrip.data(),maskStrip.size()*4);
             if(stripMode){
                 glUseProgram(flagsProgram);
                 glUniform1i(loc(flagsProgram,"ry0"),ry0);glUniform1i(loc(flagsProgram,"ry1"),ry1);
@@ -1866,8 +2027,8 @@ public:
                 check("rejection");
             }
             const int rows2=(y1-y0)*g,oy0=y0*g; // output-grid rows of this strip
-            reserve(3,size_t(rows2)*ow*3*4);reserve(4,size_t(rows2)*ow*4);
-            reserve(6,(clipFlags||rim||bentoColourPass)?size_t(rows2)*ow*4:16);
+            reserveBank(3,size_t(rows2)*ow*3*4,bank);reserveBank(4,size_t(rows2)*ow*4,bank);
+            reserveBank(6,(clipFlags||rim||bentoColourPass)?size_t(rows2)*ow*4:16,bank);
             glUseProgram(mergeProgram);
             glUniform1i(loc(mergeProgram,"cy0"),cy0);glUniform1i(loc(mergeProgram,"cy1"),cy1);glUniform1i(loc(mergeProgram,"ry0"),ry0);
             for(int sub=0;sub<g*g;++sub){ // grid 2 / 4: one dispatch per sub-position (same registers as 1x; g^2 passes)
@@ -1891,18 +2052,12 @@ public:
             }
             glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
             check("merge");
-            const auto readStarted=std::chrono::steady_clock::now();
-            get(3,out.data()+size_t(oy0)*ow*3,size_t(rows2)*ow*3*4);
-            get(4,effective.data()+size_t(oy0)*ow,size_t(rows2)*ow*4);
-            if(clipFlags){
-                flagStrip.resize(size_t(rows2)*ow);
-                get(6,flagStrip.data(),flagStrip.size()*4);
-                uint8_t* dst=clipFlags->data()+size_t(oy0)*ow;
-                for(size_t i=0;i<flagStrip.size();++i)dst[i]=uint8_t(flagStrip[i]);
-            }
-            check("readback");
-            passMs[6]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-readStarted).count();
+            GLsync fence=glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0);
+            glFlush();
+            readStrip(pending);                      // the previous strip, while the GPU runs this one
+            pending.active=true;pending.bank=bank;pending.oy0=oy0;pending.rows2=rows2;pending.fence=fence;
         }
+        readStrip(pending);
         std::vector<GLuint> sums(zeros.size());
         get(9,sums.data(),sums.size()*4);
         for(int f=1;f<frames;++f)robustShare[f]=double(sums[f])/(255.0*double(w2)*h2);
@@ -1919,9 +2074,24 @@ public:
 // over the pixels that are unsaturated in BOTH frames. A long frame clips the highlights the base still resolves;
 // scoring each frame over its own unsaturated pixels would drop every bracketed frame of a bright scene.
 struct SharpnessPair { double base=0,frame=0; long pixels=0; };
+// The full-resolution level of guides(b, f) alone (the same arithmetic, without the pyramid above it).
+inline Guide guideLevel0(const Burst& b,int f){
+    Guide g{b.w/4,b.h/4,{}};g.v.resize(size_t(g.w)*g.h);
+    for(int y=0;y<g.h;++y)for(int x=0;x<g.w;++x){
+        float sum=0;int count=0;
+        for(int dy=0;dy<4;++dy)for(int dx=0;dx<4;++dx)
+            if(b.color(4*x+dx,4*y+dy)==1){sum+=b.sample(f,4*x+dx,4*y+dy);++count;}
+        g.v[size_t(y)*g.w+x]=sum/count;
+    }
+    return g;
+}
+inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat);
 inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat) {
-    const Guide qb=guides(b,0)[0];
-    const Guide qf=guides(b,f)[0];
+    return hybridSharpnessPair(guideLevel0(b,0),b,f,exposure,baseSlope,baseOffset,slope,offset,sat);
+}
+// P30: the base guide is computed once per burst by the caller (it was rebuilt, with its whole pyramid, for every frame).
+inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat) {
+    const Guide qf=guideLevel0(b,f);
     // sat: guide values are in the frame's own units (0..1 of white), a 4x4 mean (HybridTuning::shastaSat)
     double gb=0,gf=0,mb=0,mf=0;long n=0;
     for(int y=1;y<qb.h-1;++y)for(int x=1;x<qb.w-1;++x){
@@ -2686,14 +2856,23 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             }
         }
     } else {
-        // No corner tracker: global translation from the guide pyramids.
+        // No corner tracker: global translation from the guide pyramids. P30: frames are independent, on all cores (the same
+        // per-frame result; 904 ms for 26 frames on one core on the X100 Ultra).
         const auto ref=guides(b,0);
-        for(int f=1;f<n;++f){
-            Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
-            const auto donor=guides(one,1);
-            const Shift s=globalShift(ref,donor,input.frames[f].exposure);
-            BackwardHomography t;t.h={1,0,s.x,0,1,s.y,0,0};H[f]=t;
-        }
+        std::atomic<int> next{1};
+        auto work=[&]{
+            for(int f=next++;f<n;f=next++){
+                Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                const auto donor=guides(one,1);
+                const Shift s=globalShift(ref,donor,input.frames[f].exposure);
+                BackwardHomography t;t.h={1,0,s.x,0,1,s.y,0,0};H[f]=t;
+            }
+        };
+        std::vector<std::thread> pool;
+        const int threads=std::max(1,std::min(n-1,std::min(8,int(std::thread::hardware_concurrency()))));
+        for(int t=1;t<threads;++t)pool.emplace_back(work);
+        work();
+        for(auto& th:pool)th.join();
     }
     stats.alignMs=millis(Clock::now()-alignStarted);
     if(tune.profile){ // the homographies, so the residual alignment error can be measured offline (sabre2x_61.md F7b / R4)
@@ -2773,11 +2952,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(tune.chromaDiff>0.f)report("HYBRID CHROMA DIFF: base R/B = merged G + <R-G>/<B-G> of the base sites where the base kernel widens (strength "
         +std::to_string(std::clamp(tune.chromaDiff,0.f,1.f))+((tune.s61Mode&4)&&sabre61?", below "+std::to_string(tune.widenBelow)+" accepted frames":", by donor coverage")
         +(tune.chromaDiffClamp?", clamped to the base's sample range)":", unclamped)"));
-    // ---- measured gain of the other exposures against their metadata ratio (report only; P12c)
+    // ---- measured gain of the other exposures against their metadata ratio (report only; P12c). P30: frames in parallel.
+    std::vector<std::future<HybridGain>> gains(n);
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
         if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
-        const HybridGain g=hybridMeasuredGain(input,f);
+        gains[f]=std::async(std::launch::async,[&input,f]{return hybridMeasuredGain(input,f);});
+    }
+    for(int f=1;f<n;++f){
+        const auto& fr=input.frames[f];
+        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
+        const HybridGain g=gains[f].get();
         char line[200];
         if(g.tiles<64)std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f: insufficient signal or overlap (%d tiles)",f,fr.role,fr.exposure,g.tiles);
         else std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f measured=%.4f (%+.1f %%) tiles=%d mad=%.1f %% -> %s",f,fr.role,fr.exposure,g.measured,
@@ -2788,12 +2973,24 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<bool> keep(n,true);
     {
         float maxRatio=1;
+        // P30: the base guide once, the frames' sharpness in parallel; decisions and report in frame order as before.
+        std::vector<std::future<SharpnessPair>> sharp(n);
+        std::shared_ptr<Guide> baseGuide;
+        for(int f=1;f<n;++f){
+            const auto& fr=input.frames[f];
+            if(fr.role!=kRoleBracketed||!tune.shastaEnable||!aligned[f])continue;
+            if(!baseGuide)baseGuide=std::make_shared<Guide>(guideLevel0(b,0));
+            sharp[f]=std::async(std::launch::async,[&,f,baseGuide]{
+                const auto& frame=input.frames[f];
+                Burst one=b;one.raw[1]=frame.raw;one.exposure[1]=frame.exposure;
+                return hybridSharpnessPair(*baseGuide,one,1,frame.exposure,baseSlope,baseOffset,frame.slope,frame.offset,std::clamp(tune.shastaSat,0.05f,0.95f));
+            });
+        }
         for(int f=1;f<n;++f){
             const auto& fr=input.frames[f];
             if(fr.role!=kRoleBracketed)continue;
             if(!tune.shastaEnable||!aligned[f]){keep[f]=false;++stats.droppedBracketed;continue;}
-            Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-            const SharpnessPair sp=hybridSharpnessPair(one,1,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,std::clamp(tune.shastaSat,0.05f,0.95f));
+            const SharpnessPair sp=sharp[f].get();
             const double pct=sp.base>0?sp.frame/sp.base:1.0;
             report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(sp.frame)+" base="+std::to_string(sp.base)
                 +" pixels="+std::to_string(sp.pixels)+" ("+std::to_string(100*pct)+" % of base)");
@@ -2819,11 +3016,27 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     BentoResult bento;std::vector<std::vector<float>> bentoValids;
     const auto maskStarted=Clock::now();
     if(us>=0&&tune.bento>0){
+        // P30: the masks of the other ultrashort frames (validation) are built alongside the first one.
+        std::vector<std::future<BentoResult>> otherMasks(usFrames.size());
+        if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1)
+            for(size_t k=1;k<usFrames.size();++k)otherMasks[k]=std::async(std::launch::async,[&,k]{
+                const int f=usFrames[k];
+                Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                HybridTuning t2=tune;t2.bento=2;
+                return bentoMask(one,1,H[f],input.frames[f].exposure,t2);
+            });
         if(input.frames[us].exposure>=1.f){bento.reason="ultrashort frame is not the shortest";}
         else {
             Burst one=b;one.raw[1]=input.frames[us].raw;one.exposure[1]=input.frames[us].exposure;
             bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune);
         }
+        auto otherMask=[&](size_t k){
+            if(otherMasks[k].valid())return otherMasks[k].get();
+            const int f=usFrames[k];
+            Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+            HybridTuning t2=tune;t2.bento=2;
+            return bentoMask(one,1,H[f],input.frames[f].exposure,t2);
+        };
         std::vector<long> usInvalid{bento.invalidCells}; // per ultrashort frame (merge order of usFrames), for the motion share
         auto frameLine=[&](int f,const BentoResult& r){
             report("HYBRID BENTO frame="+std::to_string(f)+" invalid="+std::to_string(r.invalidCells)+" hole="+std::to_string(r.inpaintHole)
@@ -2837,9 +3050,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             line+=" "+std::to_string(us)+":"+std::to_string(bento.invalidCells);
             for(size_t k=1;k<usFrames.size();++k){
                 const int f=usFrames[k];
-                Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
-                HybridTuning t2=tune;t2.bento=2;
-                BentoResult r=bentoMask(one,1,H[f],input.frames[f].exposure,t2);
+                BentoResult r=otherMask(k);
                 frameLine(f,r);usInvalid.push_back(r.invalidCells);
                 valids.push_back(r.valid);line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
             }
@@ -3171,10 +3382,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float codeScale=64.f/median;
         effMap->assign(size_t(outW)*outH,0);
         const int dx=(input.cfa&1)*grid,dy=(input.cfa>>1)*grid;
-        for(int y=0;y<outH;++y)for(int x=0;x<outW;++x){
-            const size_t src=size_t(std::max(0,y-dy))*outW+std::max(0,x-dx);
-            (*effMap)[size_t(y)*outW+x]=uint8_t(std::clamp(std::lround(effective[src]*codeScale),1L,255L));
-        }
+        mergeRowBands(outH,[&](int y0,int y1){ // P30: rows on all cores (the same codes)
+            for(int y=y0;y<y1;++y)for(int x=0;x<outW;++x){
+                const size_t src=size_t(std::max(0,y-dy))*outW+std::max(0,x-dx);
+                (*effMap)[size_t(y)*outW+x]=uint8_t(std::clamp(std::lround(effective[src]*codeScale),1L,255L));
+            }
+        });
         report("HYBRID EFFECTIVE MAP: median frames="+std::to_string(median)+" code scale="+std::to_string(codeScale));
     }
     // Clip flags trailer (uint8 per output pixel, same grid and origin as the effective map): bit 0/1/2 = R/G/B came from the
@@ -3187,11 +3400,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         clipFlags->assign(size_t(outW)*outH,0);
         const int dx=(input.cfa&1)*grid,dy=(input.cfa>>1)*grid;
         long counts[7]{},hist[256]{};
-        for(int y=0;y<outH;++y)for(int x=0;x<outW;++x){
-            const uint8_t v=flagsRaw.empty()?0:flagsRaw[size_t(std::max(0,y-dy))*outW+std::max(0,x-dx)];
-            (*clipFlags)[size_t(y)*outW+x]=v;
-            ++hist[v]; // 50 M pixels on the 2x grid: one increment each, the bit counts from the histogram
-        }
+        std::mutex histLock;
+        mergeRowBands(outH,[&](int y0,int y1){ // P30: rows on all cores, one histogram per band
+            long local[256]{};
+            for(int y=y0;y<y1;++y)for(int x=0;x<outW;++x){
+                const uint8_t v=flagsRaw.empty()?0:flagsRaw[size_t(std::max(0,y-dy))*outW+std::max(0,x-dx)];
+                (*clipFlags)[size_t(y)*outW+x]=v;
+                ++local[v]; // 50 M pixels on the 2x grid: one increment each, the bit counts from the histogram
+            }
+            std::lock_guard<std::mutex> lock(histLock);
+            for(int v=0;v<256;++v)hist[v]+=local[v];
+        });
         for(int v=1;v<256;++v)for(int k=0;k<7;++k)if(v&(1<<k))counts[k]+=hist[v];
         report("HYBRID CLIP FLAGS: trailer "+std::to_string(outW)+"x"+std::to_string(outH)+" uint8 (bits R,G,B clipped mean, border, Bento, ultrashort) R="
             +std::to_string(counts[0])+" G="+std::to_string(counts[1])+" B="+std::to_string(counts[2])+" border="+std::to_string(counts[3])
@@ -3309,9 +3528,18 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     // Chroma as ratios to green (camera RGB before WB: differences R-G of a bright neighbour put on a dark line drove R and B
     // below zero, a green rim on every thin dark line). e keeps the ratio of black pixels finite.
     const float e=0.002f;
-    for(size_t i=0;i<u.size();++i){const float g=rgb[i*3+1]+e;u[i]=(rgb[i*3]+e)/g;v[i]=(rgb[i*3+2]+e)/g;}
-    auto med5=[](float a,float b,float c,float e,float f){
-        float x[5]={a,b,c,e,f};std::nth_element(x,x+2,x+5);return x[2];
+    // P30: the element-wise loops run on all cores (1.6 s for 12.6 MP on one core, the same values).
+    auto rows=[&](const std::function<void(size_t,size_t)>& body){
+        mergeRowBands(h,[&](int y0,int y1){body(size_t(y0)*w,size_t(y1)*w);});
+    };
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=rgb[i*3+1]+e;u[i]=(rgb[i*3]+e)/g;v[i]=(rgb[i*3+2]+e)/g;}});
+    // Median of five by selection only (no arithmetic: the same value nth_element picked, ~10x faster): x, y = the 2nd and 3rd
+    // of a..d, the median is e clamped to [x, y].
+    auto med5=[](float a,float b,float c,float d,float e){
+        const float t1=std::min(a,b),t2=std::max(a,b),t3=std::min(c,d),t4=std::max(c,d);
+        const float lo=std::max(t1,t3),hi=std::min(t2,t4);
+        const float x=std::min(lo,hi),y=std::max(lo,hi);
+        return std::max(x,std::min(y,e));
     };
     for(std::vector<float>* ch:{&u,&v}){
         std::vector<float>& c=*ch;
@@ -3336,14 +3564,22 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
             for(int x=-r;x<=r;++x)acc+=a[std::clamp(x,0,w-1)];
             for(int x=0;x<w;++x){o[x]=float(acc/(2*r+1));acc+=a[std::min(x+r+1,w-1)]-a[std::max(x-r,0)];}}});
         out.resize(in.size());
-        mergeRowBands(w,[&](int x0,int x1){for(int x=x0;x<x1;++x){double acc=0;
-            for(int y=-r;y<=r;++y)acc+=tmp[size_t(std::clamp(y,0,h-1))*w+x];
-            for(int y=0;y<h;++y){out[size_t(y)*w+x]=float(acc/(2*r+1));acc+=tmp[size_t(std::min(y+r+1,h-1))*w+x]-tmp[size_t(std::max(y-r,0))*w+x];}}});
+        // P30: the column sums run down the rows for a band of columns at once (the same per-column additions in the same
+        // order; one column at a time read a new cache line for every sample).
+        mergeRowBands(w,[&](int x0,int x1){
+            std::vector<double> acc(size_t(x1-x0),0.0);
+            for(int x=x0;x<x1;++x){double a=0;for(int y=-r;y<=r;++y)a+=tmp[size_t(std::clamp(y,0,h-1))*w+x];acc[size_t(x-x0)]=a;}
+            for(int y=0;y<h;++y){
+                const float* add=tmp.data()+size_t(std::min(y+r+1,h-1))*w;const float* sub=tmp.data()+size_t(std::max(y-r,0))*w;
+                float* o=out.data()+size_t(y)*w;
+                for(int x=x0;x<x1;++x){double& a=acc[size_t(x-x0)];o[x]=float(a/(2*r+1));a+=add[x]-sub[x];}
+            }
+        });
     };
     std::vector<float> L(size_t(w)*h),hp,sc(size_t(w)*h,0.f),z;
-    for(size_t i=0;i<L.size();++i)L[i]=0.25f*rgb[i*3]+0.5f*rgb[i*3+1]+0.25f*rgb[i*3+2];
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i)L[i]=0.25f*rgb[i*3]+0.5f*rgb[i*3+1]+0.25f*rgb[i*3+2];});
     box(L,hp,r1);
-    for(size_t i=0;i<L.size();++i)hp[i]=L[i]-hp[i];
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i)hp[i]=L[i]-hp[i];});
     mergeRowBands(h,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
         const size_t i=size_t(y)*w+x;const float a=hp[i],gate=0.04f*std::max(L[i],1e-4f);float c=0;
         if(x+1<w){const float b2=hp[i+1];if(a*b2<0&&std::abs(a)+std::abs(b2)>gate)c+=0.5f;}
@@ -3354,7 +3590,7 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     const float z0=0.6f/(2*block),z1=1.2f/(2*block);
     const int bw=w/block,bh=h/block;
     const bool rawOsc=osc&&int(osc->size())==bw*bh;
-    for(size_t i=0;i<u.size();++i){
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){
         const float t=std::clamp((z[i]-z0)/(z1-z0),0.f,1.f);float k=t*t*(3.f-2.f*t);
         if(rawOsc){ // detail the merge already smoothed in the luma but the sites still show
             const int X=int(i%size_t(w)),Y=int(i/size_t(w));
@@ -3362,8 +3598,8 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
             const float t2=std::clamp((o-0.25f)/0.25f,0.f,1.f);k=std::max(k,t2*t2*(3.f-2.f*t2));
         }
         u[i]+=k*(ul[i]-u[i]);v[i]+=k*(vl[i]-v[i]);
-    }
-    for(size_t i=0;i<u.size();++i){const float g=rgb[i*3+1]+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}
+    }});
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=rgb[i*3+1]+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
 }
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
                                                   const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
