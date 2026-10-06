@@ -360,7 +360,7 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules");
             assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
-            modules.requireView().findViewWithTag("Копировать настройки").performClick();fm.executePendingTransactions();
+            modules.requireView().findViewWithTag("Копировать настройки между модулями").performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy");
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             copy.requireView().findViewWithTag("group_lmc_group_processing").performClick();
@@ -498,6 +498,7 @@ public class SettingsMenuTest {
     }
     @Test public void sensorEditorStartsAtActiveModuleAndDoesNotSwitchCamera(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
+            .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true) // shown modules (hidden fillers are not listed)
             .putString("module_active","back1").commit();
         PreferenceScreen screen=inflate();SensorConfigPreferenceGenerator.generatePreferences(context,screen);
         ListPreference selector=screen.findPreference("pref_sensor_config_selector");

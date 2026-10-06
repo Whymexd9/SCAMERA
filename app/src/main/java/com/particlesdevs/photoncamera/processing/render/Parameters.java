@@ -128,26 +128,26 @@ public class Parameters {
     public int logicalID = 0;
 
     @Tunable(title = "Use Dynamic Black Level", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
-            description = "Use dynamic black level from the camera2api capture result if available (may cause instability on some devices)"
+            description = "Брать динамический уровень чёрного из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)"
     )
     boolean useDynamicBlackLevel;
 
     @Tunable(title = "Use Dynamic White Level", category = "Parameters", defaultValue = 1, min = 0, max = 1, step = 1,
-            description = "Use dynamic white level from the camera2api capture result if available (may cause instability on some devices)"
+            description = "Брать динамический уровень белого из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)"
     )
     boolean useDynamicWhiteLevel;
 
     @SensorConfig(title = "White Level Override",
             defaultValue = -1, min = -1, max = 65535, step = 1,
-            description = "Override white level for all channels -1 is disabled")
+            description = "Уровень белого для всех каналов вручную (-1 = из метаданных)")
     int whiteLevelOverride;
 
     @Tunable(title = "Disable front mirror", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
-            description = "Disable front camera mirroring")
+            description = "Не зеркалить снимки фронтальной камеры")
     boolean disableMirror;
 
     @SensorConfig(title = "Black Level Override",
-            description = "Override black level for this sensor (-1 = auto)",
+            description = "Уровень чёрного этого сенсора вручную (-1 = авто)",
             min = -1.0f, max = 8192.0f, step = 1.0f, defaultValue = -1.0f
     )
     float blackLevelOverride;

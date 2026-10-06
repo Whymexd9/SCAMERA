@@ -227,12 +227,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(title = "Session Type",
             defaultValue = 0, min = 0, max = 65535, step = 0,
-            description = "Camera capture session type (0 = regular)")
+            description = "Тип capture-сессии Camera2 (0 = обычная)")
     public int sessionType = 0;
 
     @SensorConfig(
             title = "OIS Mode",
-            description = "Controls optical stabilization. Auto mode disables OIS on a tripod and in Unlimited to prevent drift",
+            description = "Оптическая стабилизация. В режиме «Авто» OIS выключается на штативе и в Unlimited, чтобы кадр не дрейфовал",
             entries = {"On", "Auto", "Off"},
             entryValues = {"0", "1", "2"},
             defaultValue = 0
@@ -241,7 +241,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(
             title = "Exposure Balance",
-            description = "Shift balance between shutter speed and ISO. Photo and Night modes only",
+            description = "Сдвиг баланса между выдержкой и ISO. Только режимы «Фото» и «Ночь»",
             entries = {
                     "0.25x (Max SNR Bias)",
                     "0.35x (High SNR Bias)",
@@ -260,7 +260,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(
             title = "ISO Limit",
-            description = "Limit the maximum sensitivity allowed",
+            description = "Ограничение наибольшей чувствительности",
             entries = {"400", "800", "1600", "3200", "6400", "12800", "Max Analog ISO / 4", "Max Analog ISO / 2", "Max Analog ISO", "Sensor Max ISO"},
             entryValues = {"400", "800", "1600", "3200", "6400", "12800", "-4", "-3", "-2", "-1"},
             defaultValue = -1
@@ -269,7 +269,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(
             title = "Shutter Limit",
-            description = "Limit the maximum exposure duration allowed",
+            description = "Ограничение наибольшей выдержки",
             entries = {
                     "1/500", "1/250", "1/125", "1/90", "1/60", "1/45", "1/30", "1/20", 
                     "1/15", "1/10", "1/8", "1/6", "1/4", 

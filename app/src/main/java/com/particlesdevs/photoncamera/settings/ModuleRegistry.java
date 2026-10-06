@@ -74,6 +74,36 @@ public final class ModuleRegistry {
         for(String other:slots())if(visible(other)&&!sensorCrop(other)&&camera(other).equals(id))min=Math.min(min,zoom(other));
         return min;
     }
+    /** P21: the source module of a duplicate, or null for an original. */
+    public static String duplicateOf(String slot){return ModuleDuplicates.sourceOf(prefs().getAll(),slot);}
+    /**
+     * P21: a second button on the same lens (own name, zoom, vendor requests and profile) in a free slot of the same side;
+     * returns the new slot, or null when the side has no free slot.
+     */
+    public static String duplicate(String source){
+        java.util.Map<String,?> all=prefs().getAll();
+        String target=ModuleDuplicates.freeSlot(all,source);
+        if(target==null)return null;
+        SharedPreferences.Editor e=prefs().edit();
+        for(java.util.Map.Entry<String,Object> w:ModuleDuplicates.copyOf(all,source,target,label(source),zoom(source)).entrySet())ModuleProfiles.put(e,w.getKey(),w.getValue());
+        e.apply();
+        try{
+            java.util.Set<String> keys=new java.util.HashSet<>(PreferenceKeys.profiles().snapshot(source).keySet());
+            PreferenceKeys.profiles().copy(source,java.util.Collections.singletonList(target),keys);
+        }catch(RuntimeException noProfiles){/* per-module profiles off or not created yet: the slot settings are copied */}
+        return target;
+    }
+    /** P21: delete a duplicate (an original cannot be deleted); the active module falls back to its source. */
+    public static boolean remove(String slot){
+        java.util.Map<String,?> all=prefs().getAll();
+        String source=ModuleDuplicates.sourceOf(all,slot);
+        if(source==null)return false;
+        SharedPreferences.Editor e=prefs().edit();
+        for(String k:ModuleDuplicates.removalOf(all,slot))e.remove(k);
+        e.putBoolean("module_visible_"+slot,false).apply();
+        if(slot.equals(active()))select(source);
+        return true;
+    }
     private static volatile String pendingSlot="";
     private static volatile long pendingAt;
     public static void select(String slot){

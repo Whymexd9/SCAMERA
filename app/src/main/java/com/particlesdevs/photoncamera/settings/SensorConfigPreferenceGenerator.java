@@ -53,7 +53,10 @@ public class SensorConfigPreferenceGenerator {
 
         try {
             List<String> physicalIds = new ArrayList<>(ModuleRegistry.slots());
-            physicalIds.sort(java.util.Comparator.comparingDouble(ModuleRegistry::zoom));
+            // P21: the modules the zoom bar shows (and the active one); hidden filler slots only cluttered the list
+            String activeSlot = ModuleRegistry.active();
+            physicalIds.removeIf(slot -> !ModuleRegistry.visible(slot) && !slot.equals(activeSlot));
+            physicalIds.sort(java.util.Comparator.comparing((String slot) -> slot.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
             for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
             submenu.setTitle("Настройки сенсоров по модулям");
@@ -191,8 +194,8 @@ public class SensorConfigPreferenceGenerator {
         try {
             androidx.preference.Preference info = new androidx.preference.Preference(context);
             info.setKey("pref_sensor_config_no_sensors");
-            info.setTitle("No sensors found");
-            info.setSummary("Camera ids have not been scanned yet. Open the camera once and return to this menu.");
+            info.setTitle("Сенсоры не найдены");
+            info.setSummary("Камеры ещё не определены. Откройте видоискатель и вернитесь в это меню.");
             info.setSelectable(false);
             submenu.addPreference(info);
         } catch (Exception e) {

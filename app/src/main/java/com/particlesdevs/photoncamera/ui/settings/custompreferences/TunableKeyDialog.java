@@ -34,17 +34,17 @@ public class TunableKeyDialog {
         int pad = dp(context, 20);
         container.setPadding(pad, pad / 2, pad, 0);
 
-        EditText nameEdit = addEdit(context, container, "Key name", existing != null ? existing.name : "");
-        Spinner valueTypeSpinner = addSpinner(context, container, "Value type", VALUE_TYPES, existing != null ? existing.valueType : "Integer");
-        EditText valueEdit = addEdit(context, container, "Value", existing != null ? existing.value : "0");
+        EditText nameEdit = addEdit(context, container, "Имя ключа", existing != null ? existing.name : "");
+        Spinner valueTypeSpinner = addSpinner(context, container, "Тип значения", VALUE_TYPES, existing != null ? existing.valueType : "Integer");
+        EditText valueEdit = addEdit(context, container, "Значение", existing != null ? existing.value : "0");
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle(isNew ? "Add Tunable Key" : "Edit Tunable Key");
+        builder.setTitle(isNew ? "Новый vendor tag" : "Vendor tag");
         builder.setView(container);
-        builder.setPositiveButton("Set", (dialog, which) -> {
+        builder.setPositiveButton("Сохранить", (dialog, which) -> {
             String name = nameEdit.getText().toString().trim();
             if (name.isEmpty()) {
-                PhotonCamera.showToast("Key name cannot be empty");
+                PhotonCamera.showToast("Имя ключа не может быть пустым");
                 return;
             }
             VendorTagUtils.TunableKey key = new VendorTagUtils.TunableKey();
@@ -65,7 +65,7 @@ public class TunableKeyDialog {
             if (onDone != null) onDone.run();
         });
         if (!isNew) {
-            builder.setNeutralButton("Delete", (dialog, which) -> {
+            builder.setNeutralButton("Удалить", (dialog, which) -> {
                 List<VendorTagUtils.TunableKey> list = TunableKeyManager.loadKeys(context, sensorId);
                 if (editIndex >= 0 && editIndex < list.size()) {
                     list.remove(editIndex);
@@ -74,7 +74,7 @@ public class TunableKeyDialog {
                 if (onDone != null) onDone.run();
             });
         }
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.setNegativeButton("Отмена", (dialog, which) -> dialog.cancel());
 
         AlertDialog dialog = builder.create();
         dialog.show();
