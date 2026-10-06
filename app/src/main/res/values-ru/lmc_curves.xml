@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="lmc_tone_curve_entries">
+        <item>Выкл.</item>
+        <item>ALICE</item>
+        <item>Arcide</item>
+        <item>Ateist (r0m10)</item>
+        <item>Burial</item>
+        <item>D.S01.v2.n (domonikNF)</item>
+        <item>Discovery (r0m10)</item>
+        <item>DPS</item>
+        <item>Etalon (r0m10)</item>
+        <item>Etalon b (r0m10)</item>
+        <item>Etalon E (r0m10)</item>
+        <item>Etalon e2 (r0m10)</item>
+        <item>F05W17T18 (User_X)</item>
+        <item>FriggAndSo</item>
+        <item>GCAM 8.6</item>
+        <item>GMM-X2 (CSeUs)</item>
+        <item>GMMR2 (CSeUs)</item>
+        <item>GMMR5 (CSeUs)</item>
+        <item>GMMu5g4 (CSeUs)</item>
+        <item>GMMU6 (CSeUs)</item>
+        <item>GMMW12 (CSeUs)</item>
+        <item>GMMW8 (CSeUs)</item>
+        <item>GMMw9 (CSeUs)</item>
+        <item>GMMX10 (CSeUs)</item>
+        <item>GMMX4 (CSeUs)</item>
+        <item>GMMX7 (CSeUs)</item>
+        <item>Google Stock</item>
+        <item>GPT_Canon_Portrait</item>
+        <item>GPT_Contrast_HighUp_v1</item>
+        <item>GPT_Contrast_HighUp_v2</item>
+        <item>GPT_FilmToe</item>
+        <item>GPT_LDR_Flat_Light</item>
+        <item>GPT_LDR_Flat_Medium</item>
+        <item>GPT_LDR_Flat_Strong</item>
+        <item>GPT_LDR_LiftedHighs</item>
+        <item>GPT_Matte_Blacks</item>
+        <item>GPT_Nikon_Vivid</item>
+        <item>GPT_Smooth_Adaptive</item>
+        <item>GPT_Smooth_SCurve</item>
+        <item>GPT_SoftHighlightRolloff</item>
+        <item>GPT_Sony_Standard</item>
+        <item>Hasli</item>
+        <item>HDRQuality</item>
+        <item>IQ</item>
+        <item>Linear</item>
+        <item>N04W15T26 (User_X)</item>
+        <item>N05W17T22 (User_X)</item>
+        <item>N06W17T25 (User_X)</item>
+        <item>Odin 2</item>
+        <item>Odin</item>
+        <item>R1 (r0m10)</item>
+        <item>R1_01_1.9 (r0m10)</item>
+        <item>R1_01_1.94 (r0m10)</item>
+        <item>R1_01_Final (r0m10)</item>
+        <item>R1_02_JoyA-B-C-D-X</item>
+        <item>RHv3.0 (Rtemkich)</item>
+        <item>Sunset</item>
+        <item>T10 (User_X)</item>
+        <item>T12 (User_X)</item>
+        <item>T17 (User_X)</item>
+        <item>T27A (User_X)</item>
+        <item>T27B (User_X)</item>
+        <item>T27C (User_X)</item>
+        <item>T28 (User_X)</item>
+        <item>T34 (User_X)</item>
+        <item>TapTapLDR</item>
+        <item>tgRHv17_FINAL_(v7)</item>
+        <item>tgRHv21_FINAL_(v1)</item>
+        <item>TN0606 (TinNeun)</item>
+        <item>TN0606_TN2505 Combo (TinNeun)</item>
+        <item>TN0606_TN2505 Mix25 (TinNeun)</item>
+        <item>TN0606_TN2505 Mix50 (TinNeun)</item>
+        <item>TN0606_TN2505 Mix75 (TinNeun)</item>
+        <item>TN2505 (TinNeun)</item>
+        <item>xHDRv2 (r0m10)</item>
+        <item>Zeta 2e (r0m10)</item>
+        <item>Zeta 2g (r0m10)</item>
+    </string-array>
+    <string-array name="lmc_gamma_curve_entries">
+        <item>Выкл.</item>
+        <item>Alice</item>
+        <item>DPS</item>
+        <item>F03W15T18 (UserX)</item>
+        <item>Flat</item>
+        <item>GMM A4 (CSeUs)</item>
+        <item>GMM A5 (CSeUs)</item>
+        <item>Google Stock</item>
+        <item>GPT_Canon_Portrait</item>
+        <item>GPT_Contrast_HighUp_v1</item>
+        <item>GPT_Contrast_HighUp_v2</item>
+        <item>GPT_FilmToe</item>
+        <item>GPT_Gamma_0p95</item>
+        <item>GPT_Gamma_1p05</item>
+        <item>GPT_LDR_Flat_Light</item>
+        <item>GPT_LDR_Flat_Medium</item>
+        <item>GPT_LDR_Flat_Strong</item>
+        <item>GPT_LDR_LiftedHighs</item>
+        <item>GPT_Matte_Blacks</item>
+        <item>GPT_Nikon_Vivid</item>
+        <item>GPT_SoftHighlightRolloff</item>
+        <item>GPT_Sony_Standard</item>
+        <item>Hassel curv3 linearized bwpointfix</item>
+        <item>HDR Quality</item>
+        <item>IQ</item>
+        <item>Linear</item>
+        <item>Odin</item>
+        <item>R1_01_1.8re (r0m10)</item>
+        <item>R1_01_Final (r0m10)</item>
+        <item>R1_02_JoyA-B-C-D</item>
+        <item>Sunset</item>
+        <item>TapTapLDR</item>
+        <item>TN2505 (TinNeun)</item>
+        <item>W15 (UserX)</item>
+        <item>W17 (UserX)</item>
+        <item>W19 (UserX)</item>
+        <item>W20 (UserX)</item>
+        <item>W30 (UserX)</item>
+        <item>Zeta 2e (r0m10)</item>
+    </string-array>
+</resources>

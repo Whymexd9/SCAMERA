@@ -49,6 +49,8 @@ public class CaptureResult {
 }''',
 BASE+'util/Log.java': '''package com.particlesdevs.photoncamera.util;
 public class Log {public static void d(String a,String b){}}''',
+# UI language (i18n): the Russian text, so the checks' Russian message assertions keep holding
+BASE+'util/Lang.java': 'package com.particlesdevs.photoncamera.util; public final class Lang {public static boolean ru(){return true;}public static String t(String ru,String en){return ru;}public static String t(Object context,String ru,String en){return ru;}}',
 BASE+'control/GyroBurst.java': 'package com.particlesdevs.photoncamera.control; public class GyroBurst {}',
 BASE+'processing/parameters/IsoExpoSelector.java': '''package com.particlesdevs.photoncamera.processing.parameters;
 public class IsoExpoSelector {public static class ExpoPair {}}''',

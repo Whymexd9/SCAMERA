@@ -9,6 +9,7 @@ import com.particlesdevs.photoncamera.util.Log;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.List;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Original APK JNI ABI. Buffers use SCAMERA's allocator, never Java-owned memory. */
 public final class MobileRemosaicProcessor {
@@ -17,17 +18,17 @@ public final class MobileRemosaicProcessor {
             float redCaScale, float blueCaScale, ByteBuffer output);
     static void load() {
         try { System.loadLibrary("mobileRemosaic"); }
-        catch (LinkageError e) { throw new IllegalStateException("Не удалось загрузить Multi-frame Remosaic", e); }
+        catch (LinkageError e) { throw new IllegalStateException(Lang.t("Не удалось загрузить Multi-frame Remosaic", "Could not load Multi-frame Remosaic"), e); }
     }
     private MobileRemosaicProcessor() {}
     static ByteBuffer[] validate(List<ImageFrame> frames, Parameters p, int block, int minimum) {
         int width=p.rawSize.x, height=p.rawSize.y;
         int allowed=BurstPolicy.frameCount(frames.size(),width,height);
-        if (frames.size()<minimum || frames.size()>allowed) throw new IllegalArgumentException("MFSR: размер серии превышает лимит памяти");
+        if (frames.size()<minimum || frames.size()>allowed) throw new IllegalArgumentException(Lang.t("MFSR: размер серии превышает лимит памяти", "MFSR: the burst size exceeds the memory limit"));
         if (Allocator.binning || PhotonCamera.getSettings().aspect169)
-            throw new IllegalArgumentException("MFSR: выберите 4:3 и отключите программный биннинг");
+            throw new IllegalArgumentException(Lang.t("MFSR: выберите 4:3 и отключите программный биннинг", "MFSR: choose 4:3 and turn off software binning"));
         if (width%(block*2)!=0 || height%(block*2)!=0)
-            throw new IllegalArgumentException("MFSR: размеры не кратны периоду мозаики");
+            throw new IllegalArgumentException(Lang.t("MFSR: размеры не кратны периоду мозаики", "MFSR: the size is not a multiple of the mosaic period"));
         ByteBuffer[] inputs=new ByteBuffer[frames.size()];
         HashSet<Long> timestamps=new HashSet<>();
         ImageFrame ref=frames.get(0);
@@ -35,11 +36,11 @@ public final class MobileRemosaicProcessor {
             ImageFrame f=frames.get(i);
             if(f.width!=width || f.height!=height || f.buffer==null || !f.buffer.isDirect()
                     || f.buffer.capacity()!=(long)width*height*2 || f.buffer.position()!=0)
-                throw new IllegalArgumentException("MFSR: неполный RAW или неизвестный шаг строки");
+                throw new IllegalArgumentException(Lang.t("MFSR: неполный RAW или неизвестный шаг строки", "MFSR: incomplete RAW or unknown row stride"));
             if(!timestamps.add(f.timestamp) || f.pair==null || ref.pair==null
                     || f.pair.exposure!=ref.pair.exposure || f.pair.iso!=ref.pair.iso
                     || f.pair.isHighlightFrame!=ref.pair.isHighlightFrame || f.pair.isLongFrame!=ref.pair.isLongFrame)
-                throw new IllegalArgumentException("MFSR: нужны разные кадры одинаковой экспозиции");
+                throw new IllegalArgumentException(Lang.t("MFSR: нужны разные кадры одинаковой экспозиции", "MFSR: needs distinct frames of the same exposure"));
             inputs[i]=f.buffer;
         }
         return inputs;
@@ -51,13 +52,13 @@ public final class MobileRemosaicProcessor {
         // FPN profiles recorded by the former CAL capture still apply when present.
         RemosaicCalibrationStore.Profile cal=RemosaicCalibrationStore.load(key,frames.get(0).pair.iso,frames.get(0).pair.exposure,inputs[0].capacity());
         ByteBuffer out=Allocator.allocate(inputs[0].capacity());
-        if(out==null) throw new IllegalStateException("MFSR: не удалось выделить выходной RAW");
+        if(out==null) throw new IllegalStateException(Lang.t("MFSR: не удалось выделить выходной RAW", "MFSR: could not allocate the output RAW"));
         boolean ok=false;long start=System.nanoTime();
         try {
             ok=nativeProcess(inputs,p.rawSize.x,p.rawSize.y,block,cfa,inputs.length,
                     cal==null?null:cal.map,cal==null?0:cal.scale,
                     1f,1f,out);
-            if(!ok) throw new IllegalStateException("Multi-frame Remosaic: ошибка nativeProcess");
+            if(!ok) throw new IllegalStateException(Lang.t("Multi-frame Remosaic: ошибка nativeProcess", "Multi-frame Remosaic: nativeProcess error"));
             p.cfaPattern=(byte)java.util.Arrays.asList("RGGB","GRBG","GBRG","BGGR").indexOf(cfa);
             p.baseCfaPattern=p.cfaPattern;p.quadCfa=false;p.remosaicDone=true;
             // Keep original RAW levels: native reconstruction does not normalize them.

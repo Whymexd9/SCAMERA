@@ -36,7 +36,14 @@ public class ViewfinderUiTest {
         PreferenceKeys.initialise(manager);
     }
     @After public void teardown(){camera.close();}
-    @Test public void compactControlsRenderAndResetWithoutChangingTabLabels() throws Exception {
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void compactControlsRenderAndResetWithoutChangingTabLabels() throws Exception {
+        compactControlsRenderAndResetWithoutChangingTabLabels(new String[]{"Экспокоррекция","Выдержка","ISO","Баланс белого","Фокус"},"");
+    }
+    /** The same on an English system: the tab labels (content descriptions) are English. */
+    @Test public void compactControlsRenderAndResetWithoutChangingTabLabelsInEnglish() throws Exception {
+        compactControlsRenderAndResetWithoutChangingTabLabels(new String[]{"Exposure compensation","Shutter","ISO","White balance","Focus"},"-en");
+    }
+    private void compactControlsRenderAndResetWithoutChangingTabLabels(String[] labels,String png) throws Exception {
         // Render the production XML controls. The scene is a neutral placeholder;
         // no camera or neural processing is simulated by this screenshot.
         LinearLayout screen=new LinearLayout(context);screen.setOrientation(LinearLayout.VERTICAL);
@@ -64,7 +71,7 @@ public class ViewfinderUiTest {
         scale.setTemperatureMode(true);scale.setItems(items,17);
         scale.setSelectedItem(items.get(17));assertEquals("3600K",scale.getSelected().text);
         ((TextView)manual.findViewById(R.id.wb_option_tv)).setSelected(true);
-        String[] labels={"Экспокоррекция","Выдержка","ISO","Баланс белого","Фокус"};int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
+        int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
         for(int i=0;i<ids.length;i++)assertEquals(labels[i],manual.findViewById(ids[i]).getContentDescription().toString());
         // P25: the lens strip lives in the bottom bar now (above the shutter row, under the zoom ruler's place).
         View bottom=LayoutInflater.from(context).inflate(R.layout.layout_main_bottombar,screen,false);screen.addView(bottom,new LinearLayout.LayoutParams(-1,259));
@@ -100,7 +107,7 @@ public class ViewfinderUiTest {
         for(int i=0;i<lenses.getChildCount();i++){TextView t=(TextView)lenses.getChildAt(i);assertFalse(t.getText().toString().isEmpty());assertFalse("decimal comma",t.getText().toString().contains("."));assertTrue("Lens label must stay within its button",t.getLayout().getWidth()<=t.getWidth());}
         Bitmap image=Bitmap.createBitmap(400,880,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));
         java.io.File dir=new java.io.File("build/reports/viewfinder");dir.mkdirs();
-        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls.png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}
         scale.setListener(new LinearScaleView.OnValueChangedListener(){
             public void onValueChanged(KnobItemInfo item,boolean user){}
             public void onDragStateChanged(boolean dragging){}

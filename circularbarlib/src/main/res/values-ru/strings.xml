@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="manual_tab_ev">Экспокоррекция</string>
+    <string name="manual_tab_shutter">Выдержка</string>
+    <string name="manual_tab_wb">Баланс белого</string>
+    <string name="manual_tab_focus">Фокус</string>
+    <string name="manual_wb_unavailable">Ручной баланс белого недоступен для этой камеры</string>
+    <string name="manual_panel_open">Открыть ручные настройки</string>
+    <string name="manual_panel_close">Свернуть ручные настройки</string>
+    <string name="accent_name_lavender">Сиреневый</string>
+    <string name="accent_name_blue">Голубой</string>
+    <string name="accent_name_green">Зелёный</string>
+    <string name="accent_name_amber">Янтарный</string>
+    <string name="accent_name_red">Коралловый</string>
+    <string name="accent_name_pink">Розовый</string>
+    <string name="accent_name_cyan">Бирюзовый</string>
+    <string name="accent_name_white">Белый</string>
+</resources>

@@ -8,6 +8,7 @@ import java.io.*;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.util.*;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Six real sensor frames, before any remosaic/merge. Native worker owns registration. */
 public final class HexQuadBurst {
@@ -30,45 +31,45 @@ public final class HexQuadBurst {
         width=p.rawSize.x;height=p.rawSize.y;
         this.quad=quad;
         if(com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException(quad?"Quad 2×2 требует исходный Quad RAW: отключите программный биннинг":"HexQuad требует исходный Tetra RAW: отключите программный биннинг");
+            throw new IOException(quad?Lang.t("Quad 2×2 требует исходный Quad RAW: отключите программный биннинг","Quad 2×2 needs the original Quad RAW: turn off software binning"):Lang.t("HexQuad требует исходный Tetra RAW: отключите программный биннинг","HexQuad needs the original Tetra RAW: turn off software binning"));
         if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169)
-            throw new IOException("Выберите 4:3: обрезка 16:9 меняет фазу мозаики");
+            throw new IOException(Lang.t("Выберите 4:3: обрезка 16:9 меняет фазу мозаики","Choose 4:3: the 16:9 crop shifts the mosaic phase"));
         int[] phase=PreferenceKeys.getRemosaicPhase();
         if(quad){
             if(Math.floorMod(phase[0],4)!=0 || Math.floorMod(phase[1],4)!=0)
-                throw new IOException("Quad 2×2: нужна фаза 0,0");
+                throw new IOException(Lang.t("Quad 2×2: нужна фаза 0,0","Quad 2×2: needs phase 0,0"));
             if(frames.size()<4 || frames.size()>50 || width<544 || height<544 || width%8!=0 || height%8!=0 || (long)width*height>16000000)
-                throw new IOException("Нужны 4–50 RAW Quad 2×2, до 16 МП. Используйте режим Фото и 2× ISZ");
+                throw new IOException(Lang.t("Нужны 4–50 RAW Quad 2×2, до 16 МП. Используйте режим Фото и 2× ISZ","Needs 4–50 Quad 2×2 RAWs, up to 16 MP. Use the Photo mode and 2× ISZ"));
         } else {
         if(PreferenceKeys.getRemosaicBlockSize()!=4 || Math.floorMod(phase[0],8)!=0 || Math.floorMod(phase[1],8)!=0)
-            throw new IOException("Нужны Tetra 4×4 и фаза 0,0");
+            throw new IOException(Lang.t("Нужны Tetra 4×4 и фаза 0,0","Needs Tetra 4×4 and phase 0,0"));
         if(frames.size()<6 || frames.size()>50 || width<288 || height<288 || width%8!=0 || height%8!=0 || (long)width*height>16000000)
-            throw new IOException("Нужны 6–50 RAW Tetra, до 16 МП. Используйте режим Фото и 4× ISZ телевика");
+            throw new IOException(Lang.t("Нужны 6–50 RAW Tetra, до 16 МП. Используйте режим Фото и 4× ISZ телевика","Needs 6–50 Tetra RAWs, up to 16 MP. Use the Photo mode and the telephoto 4× ISZ"));
         }
         quadModel=quad&&isHp9(p.cameraID)?1:0;
         red=RemosaicCore.emittedCfaPattern(p.cfaPattern);
         black=(p.blackLevel[0]+p.blackLevel[1]+p.blackLevel[2]+p.blackLevel[3])*.25f;
         white=p.whiteLevel;response=PreferenceKeys.isTetraResponseCorrection();
 
-        if(p.whitePoint==null||p.whitePoint.length!=3)throw new IOException("Нет точки белого для HexQuad");
+        if(p.whitePoint==null||p.whitePoint.length!=3)throw new IOException(Lang.t("Нет точки белого для HexQuad","No white point for HexQuad"));
         neutral=p.whitePoint.clone();
-        for(float v:neutral)if(!Float.isFinite(v)||v<.0001f||v>10000f)throw new IOException("Неверная точка белого HexQuad");
+        for(float v:neutral)if(!Float.isFinite(v)||v<.0001f||v>10000f)throw new IOException(Lang.t("Неверная точка белого HexQuad","Invalid HexQuad white point"));
         ImageFrame ref=frames.get(0);
         zsl=ref.fromZsl;exposureSeconds=p.exposureTime;
-        if(ref.pair==null)throw new IOException("Нет параметров экспозиции RAW");
+        if(ref.pair==null)throw new IOException(Lang.t("Нет параметров экспозиции RAW","No RAW exposure parameters"));
         iso=p.iso; // Measured sensor ISO from CaptureResult, not normalized UI ISO.
         if(iso<50||iso>12800||!Float.isFinite(black)||!Float.isFinite(white)||white<=black+1)
-            throw new IOException("Неподдерживаемые ISO/уровни RAW");
+            throw new IOException(Lang.t("Неподдерживаемые ISO/уровни RAW","Unsupported ISO/RAW levels"));
         // Inside SCAM HDR the network output stays at the input size and exposure (the mosaic feeds the N slots).
         options=(quad?PreferenceKeys.getQuadOptions(iso):PreferenceKeys.getHexQuadOptions(iso)).sameSizeIf(true);
         lumaPercent=options.lumaPercent;chromaPercent=options.chromaPercent;
         Set<Long> timestamps=new HashSet<>();
         for(ImageFrame frame:frames){
             if(frame.buffer==null || frame.width!=width || frame.height!=height || frame.buffer.capacity()!=(long)width*height*2)
-                throw new IOException("Неполный RAW или неизвестный шаг строки");
+                throw new IOException(Lang.t("Неполный RAW или неизвестный шаг строки","Incomplete RAW or unknown row stride"));
             if(!timestamps.add(frame.timestamp)||frame.pair==null||frame.pair.isHighlightFrame||frame.pair.isLongFrame||
                     frame.pair.iso!=ref.pair.iso||frame.pair.exposure!=ref.pair.exposure)
-                throw new IOException("Нужны "+frames.size()+" разных кадра с одинаковыми ISO и выдержкой");
+                throw new IOException(Lang.t("Нужны ","Needs ")+frames.size()+Lang.t(" разных кадра с одинаковыми ISO и выдержкой"," distinct frames with the same ISO and shutter"));
         }
     }
     void write(File file) throws IOException {

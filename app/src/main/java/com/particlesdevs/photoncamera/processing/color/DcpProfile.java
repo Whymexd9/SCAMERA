@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashSet;
 import java.util.Set;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Matrix-only DNG camera profile. Matrices are row-major; output is camera RAW to XYZ D50. */
 public final class DcpProfile {
@@ -16,18 +17,18 @@ public final class DcpProfile {
     private static final float[] BRADFORD = {.8951f,.2664f,-.1614f,-.7502f,1.7135f,.0367f,.0389f,-.0685f,1.0296f};
 
     public static DcpProfile parse(byte[] bytes) throws IOException {
-        if (bytes.length < 8 || bytes.length > MAX_BYTES) throw invalid("Размер файла");
+        if (bytes.length < 8 || bytes.length > MAX_BYTES) throw invalid(Lang.t("Размер файла","file size"));
         ByteOrder order;
         if (bytes[0]=='I' && bytes[1]=='I') order=ByteOrder.LITTLE_ENDIAN;
         else if (bytes[0]=='M' && bytes[1]=='M') order=ByteOrder.BIG_ENDIAN;
-        else throw invalid("Заголовок TIFF/DCP");
+        else throw invalid(Lang.t("Заголовок TIFF/DCP","TIFF/DCP header"));
         ByteBuffer b=ByteBuffer.wrap(bytes).order(order);
         int magic=b.getShort(2)&65535;
-        if (magic!=42 && magic!=0x4352) throw invalid("Сигнатура DCP");
+        if (magic!=42 && magic!=0x4352) throw invalid(Lang.t("Сигнатура DCP","DCP signature"));
         DcpProfile p=new DcpProfile();
         long offset=u32(b,4); Set<Long> visited=new HashSet<>();
         while(offset!=0) {
-            if (visited.size()>=16 || !visited.add(offset)) throw invalid("Цикл IFD");
+            if (visited.size()>=16 || !visited.add(offset)) throw invalid(Lang.t("Цикл IFD","IFD loop"));
             int pos=range(offset,2,bytes.length), count=b.getShort(pos)&65535;
             range(offset+2,12L*count+4,bytes.length);
             for(int i=0;i<count;i++) {
@@ -35,42 +36,42 @@ public final class DcpProfile {
                 long n=u32(b,e+4);
                 if(tag==50937 || tag==50938 || tag==50939 || tag==50940 || tag==50981 || tag==50982) p.hasLookTables=true;
                 if(tag==50778 || tag==50779) {
-                    if(type!=3 || n!=1) throw invalid("Тип источника освещения");
+                    if(type!=3 || n!=1) throw invalid(Lang.t("Тип источника освещения","illuminant type"));
                     int light=b.getShort(e+8)&65535;
                     temperature(light); // reject unsupported custom illuminants, never guess silently
                     if(tag==50778)p.light1=light;else p.light2=light;
                 }
                 if(tag==50721 || tag==50722 || tag==50964 || tag==50965) {
-                    if(n!=9 || (type!=5 && type!=10)) throw invalid("Требуется матрица 3×3");
+                    if(n!=9 || (type!=5 && type!=10)) throw invalid(Lang.t("Требуется матрица 3×3","a 3×3 matrix is required"));
                     int at=range(u32(b,e+8),72,bytes.length); float[] matrix=new float[9];
                     for(int j=0;j<9;j++) {
                         double num=type==10?b.getInt(at+j*8):u32(b,at+j*8);
                         double den=type==10?b.getInt(at+j*8+4):u32(b,at+j*8+4);
-                        if(den==0 || !Double.isFinite(num/den) || Math.abs(num/den)>100)throw invalid("Число в матрице");
+                        if(den==0 || !Double.isFinite(num/den) || Math.abs(num/den)>100)throw invalid(Lang.t("Число в матрице","matrix value"));
                         matrix[j]=(float)(num/den);
                     }
-                    try { inverse(matrix); } catch(IllegalArgumentException ex) { throw invalid("Вырожденная матрица"); }
+                    try { inverse(matrix); } catch(IllegalArgumentException ex) { throw invalid(Lang.t("Вырожденная матрица","singular matrix")); }
                     if(tag==50721)p.color1=matrix;else if(tag==50722)p.color2=matrix;
                     else if(tag==50964)p.forward1=matrix;else p.forward2=matrix;
                 }
             }
             offset=u32(b,pos+2+count*12);
         }
-        if(p.color1==null)throw invalid("Нет ColorMatrix1");
+        if(p.color1==null)throw invalid(Lang.t("Нет ColorMatrix1","no ColorMatrix1"));
         if(p.color2==null){p.color2=p.color1;p.light2=p.light1;p.forward2=p.forward1;}
         return p;
     }
-    private static IOException invalid(String why){return new IOException("Неверный DCP: "+why);}
+    private static IOException invalid(String why){return new IOException(Lang.t("Неверный DCP: ","Invalid DCP: ")+why);}
     private static long u32(ByteBuffer b,int p){return b.getInt(p)&0xffffffffL;}
     private static int range(long p,long n,int limit)throws IOException{
-        if(p<0 || n<0 || p>limit || n>limit-p)throw invalid("Данные за границей файла");return (int)p;
+        if(p<0 || n<0 || p>limit || n>limit-p)throw invalid(Lang.t("Данные за границей файла","data beyond the end of the file"));return (int)p;
     }
     private static int temperature(int light)throws IOException{
         switch(light){case 1:case 21:return 6504;case 17:case 3:return 2856;case 18:return 4874;
             case 19:return 6774;case 20:return 5503;case 22:return 7504;case 23:return 5003;
             case 9:return 5500;case 10:return 6500;case 11:return 7500;case 12:return 6430;
             case 13:return 5000;case 14:return 4230;case 15:return 3450;case 16:return 2925;
-            default:throw invalid("Неизвестный источник освещения: "+light);}
+            default:throw invalid(Lang.t("Неизвестный источник освещения: ","unknown illuminant: ")+light);}
     }
     /** Camera neutral before white balance, e.g. [green/red,1,green/blue]. */
     public float[] cameraToXyz(float[] neutral) {

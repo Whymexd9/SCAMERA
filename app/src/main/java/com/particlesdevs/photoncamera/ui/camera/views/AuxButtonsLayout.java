@@ -35,6 +35,7 @@ import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -216,7 +217,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setHorizontallyScrolling(false);
         b.setText(display(buttonText));
         b.setRotation(labelRotation);
-        b.setContentDescription("Объектив " + display(buttonText));
+        b.setContentDescription(Lang.t(getContext(), "Объектив ", "Lens ") + display(buttonText));
         b.setTextSize(14);
         int accent = com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext());
         b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},

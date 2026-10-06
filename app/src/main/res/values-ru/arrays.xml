@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="processing_backend_entries">
+        <item>Auto</item>
+        <item>CPU (AI models)</item>
+        <item>GPU (Vulkan + OpenGL)</item>
+        <item>NPU (experimental, reported fallback)</item>
+        <item>GPU — включая RAISR</item>
+    </string-array>
+    <string-array name="ai_denoise_model_entries">
+        <item>Быстродействие — UNet Bayer Fast</item>
+        <item>Качество — NAFNet Bayer Small</item>
+    </string-array>
+    <string-array name="cfapat_entries">
+        <item>Авто</item>
+        <item>RGGB</item>
+        <item>BGGR</item>
+        <item>GRBG</item>
+        <item>GBRG</item>
+        <item>MONO</item>
+        <item>QUAD</item>
+    </string-array>
+    <string-array name="colorset_entries">
+        <item>Авто</item>
+        <item>Характеристики</item>
+        <item>Захват</item>
+    </string-array>
+    <string-array name="focuspeakset_entries">
+        <item>Выкл.</item>
+        <item>Вкл.</item>
+        <item>@string/focus_peaking_auto</item>
+    </string-array>
+    <string-array name="preview_format_entries">
+        <item>YUV_420_888</item>
+        <item>JPEG</item>
+        <item>HEIC</item>
+        <item>Нет</item>
+    </string-array>
+    <string-array name="af_mode_entries">
+        <item>Непрерывный (фото)</item>
+        <item>Непрерывный (видео)</item>
+        <item>Авто</item>
+    </string-array>
+    <string-array name="afdata_entries">
+        <item>Выкл.</item>
+        <item>HUD</item>
+        <item>HUD + гистограмма</item>
+        <item>Полная отладка</item>
+    </string-array>
+    <string-array name="vivo_nice_noise_source_entries">
+        <item>Авто (по камере)</item>
+        <item>IMX06C — стоковый (основная и широкоугольная)</item>
+        <item>HP9 — стоковый (телевик)</item>
+        <item>Camera2 SENSOR_NOISE_PROFILE</item>
+        <item>Из настроек «Модель шума сенсора»</item>
+    </string-array>
+    <string-array name="raw_stream_format_entries">
+        <item>Авто</item>
+        <item>RAW_SENSOR (16 бит)</item>
+        <item>RAW10 (упакованный)</item>
+        <item>RAW12 (упакованный)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_output_entries">
+        <item>Сенсор (1×, по умолчанию)</item>
+        <item>12 МП (2× → 12)</item>
+        <item>16 МП (2× → 16)</item>
+        <item>20 МП (2× → 20)</item>
+        <item>2× (≈50 МП, без уменьшения)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_bento_entries">
+        <item>Выключено</item>
+        <item>Авто (при клиппинге)</item>
+        <item>Всегда</item>
+    </string-array>
+    <string-array name="lmc_hybrid_bento_validate_entries">
+        <item>Только первый кадр (как раньше)</item>
+        <item>Каждый ультракороткий кадр</item>
+        <item>Каждый кадр + движение на незасвеченной базе (по умолчанию)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_bento_frames_entries">
+        <item>1 кадр</item>
+        <item>2 кадра (по умолчанию)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_sharp_mode_entries">
+        <item>ARK: как ArkCam (по умолчанию)</item>
+        <item>RawTherapee</item>
+        <item>SCAM: без ореолов</item>
+        <item>Выключено</item>
+    </string-array>
+    <string-array name="lmc_hybrid_dn_engine_entries">
+        <item>GCam / Hybrid (ArkCam)</item>
+        <item>NLM (прежний)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_dn_map_entries">
+        <item>Авто (карта кадров, если склейка её дала)</item>
+        <item>Карта эффективных кадров</item>
+        <item>Равномерно</item>
+    </string-array>
+    <string-array name="lmc_hybrid_local_align_entries">
+        <item>Выкл.</item>
+        <item>Поле по тайлам (по умолчанию)</item>
+        <item>Постоянное на тайл (как 6.1)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_rawca_entries">
+        <item>Выкл.</item>
+        <item>Оценка по базовому кадру</item>
+        <item>Коррекция каждого кадра (GPU)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_sabre61_entries">
+        <item>Выключено (ядро раунда 4)</item>
+        <item>Всегда</item>
+        <item>Авто (ночью)</item>
+    </string-array>
+    <string-array name="lmc_hybrid_noise_source_entries">
+        <item>Camera2 SENSOR_NOISE_PROFILE каждого кадра</item>
+        <item>Из настроек «Модель шума сенсора»</item>
+    </string-array>
+    <string-array name="vivo_nice_planner_entries">
+        <item>Стоковый AE vivo (root)</item>
+        <item>SCAMERA (без root)</item>
+    </string-array>
+    <string-array name="vivo_nice_cre_entries">
+        <item>Авто (системная, иначе встроенная)</item>
+        <item>Системная (/vendor, только vivo)</item>
+        <item>Встроенная в приложение</item>
+    </string-array>
+    <string-array name="vivo_nice_mosaic_entries">
+        <item>Выключено (только обычный Bayer)</item>
+        <item>GPU-ремозаик SCAMERA — каждый кадр</item>
+        <item>GPU Tetra Detail v2 — каждый кадр (только Tetra 4×4)</item>
+        <item>Multi-frame Remosaic — слияние N-кадров (CPU)</item>
+        <item>Нейроремозаик (NPU) — слияние N-кадров</item>
+        <item>Sabre по сырым точкам мозаики (сеть — GPU-ремозаик)</item>
+        <item>Нейроремозаик + Sabre по сырым точкам мозаики</item>
+    </string-array>
+    <string-array name="raw_lsc_mode_entries">
+        <item>Авто (применять)</item>
+        <item>Всегда применять</item>
+        <item>Не применять (HAL уже исправил)</item>
+    </string-array>
+</resources>

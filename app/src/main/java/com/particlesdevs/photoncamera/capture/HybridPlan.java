@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /**
  * Post-shutter requests of the LMC hybrid (its own route, not SCAM HDR): the N frames come from the ZSL ring at the
@@ -96,7 +97,7 @@ public final class HybridPlan {
         Range<Long> times = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE), limits == null ? Long.MAX_VALUE : limits.shutterCap());
         Range<Integer> isos = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), limits == null ? Integer.MAX_VALUE : limits.isoCap());
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
-            throw new IllegalStateException("Hybrid: нет экспозиции превью или диапазонов сенсора");
+            throw new IllegalStateException(Lang.t("Hybrid: нет экспозиции превью или диапазонов сенсора", "Hybrid: no preview exposure or sensor ranges"));
         final double n = (double) nShutterNs * nIso;
         List<Request> out = new ArrayList<>();
         StringBuilder why = new StringBuilder();

@@ -124,6 +124,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
 import com.particlesdevs.photoncamera.processing.ImageSaverSelector;
 import com.particlesdevs.photoncamera.processing.SaverImplementation;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import static android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_ON;
 import static android.hardware.camera2.CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO;
@@ -808,10 +809,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
             if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
-                showToast("Сбой камеры (код " + error + "), перезапуск");
+                showToast(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
                 scheduleRecovery("onError " + error);
             } else {
-                showToast("Камера недоступна (код " + error + ")");
+                showToast(Lang.t("Камера недоступна (код ", "Camera unavailable (code ") + error + ")");
             }
         }
     };
@@ -828,7 +829,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             while (!mRecoveries.isEmpty() && now - mRecoveries.peekFirst() > 60_000) mRecoveries.pollFirst();
             if (mRecoveries.size() >= 3) {
                 Log.e(TAG, "camera recovery stopped after three restarts within a minute (" + reason + ")");
-                showToast("Камера не отвечает. Выберите другой модуль или перезапустите приложение");
+                showToast(Lang.t("Камера не отвечает. Выберите другой модуль или перезапустите приложение", "The camera is not responding. Choose another module or restart the app"));
                 return;
             }
             mRecoveries.addLast(now);
@@ -2163,7 +2164,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mLiveRawRouter.clear();
         mLiveMetadata.clear();
         session.close();
-        showToast("RAW-превью недоступно с текущими потоками. Переключаемся на обычный видоискатель.");
+        showToast(Lang.t("RAW-превью недоступно с текущими потоками. Переключаемся на обычный видоискатель.", "RAW preview is not available with the current streams. Switching to the normal viewfinder."));
         createCameraPreviewSession(false);
         return true;
     }
@@ -2288,13 +2289,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 return true;
             }
             if (mZslCapturing || processingBlocks || mShotInProgress || burst) {
-                showToast("Предыдущий снимок ещё обрабатывается. Дождитесь завершения.");
+                showToast(Lang.t("Предыдущий снимок ещё обрабатывается. Дождитесь завершения.", "The previous shot is still processing. Wait until it finishes."));
                 return false;
             }
             if (!isCurrentPreviewSession(mCaptureSession) ||
                     mCameraDevice == null || mPreviewCaptureResult == null) {
                 Log.w(TAG, "takePicture(): waiting for current-session preview after resume");
-                cameraEventsListener.onProcessingError("Камера ещё готовится. Повторите снимок.");
+                cameraEventsListener.onProcessingError(Lang.t("Камера ещё готовится. Повторите снимок.", "The camera is still getting ready. Take the shot again."));
                 return false;
             }
             Long previewTimestamp = mPreviewCaptureResult.get(CaptureResult.SENSOR_TIMESTAMP);
@@ -2497,7 +2498,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mShotInProgress = false;
         mState = STATE_PREVIEW;
         Log.e(TAG, "SHUTTER failed camera=" + physicalID, error);
-        cameraEventsListener.onProcessingError("Не удалось запустить съёмку: " + error.getMessage());
+        cameraEventsListener.onProcessingError(Lang.t("Не удалось запустить съёмку: ", "Could not start the capture: ") + error.getMessage());
     }
 
     /**
@@ -3240,13 +3241,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         com.particlesdevs.photoncamera.control.ZoomController.markShot();
         try {
             if (null == mCameraDevice) {
-                failPendingShutter(new IllegalStateException("Камера закрыта"));
+                failPendingShutter(new IllegalStateException(Lang.t("Камера закрыта", "Camera closed")));
                 return;
             }
             SensorConfigInjector.applyToSensor(physicalID, this);
             // Every photo is merged by the LMC hybrid or SCAM HDR, both from the ZSL RAW stream (Photo and Night).
             if (!PreferenceKeys.isVivoNiceEnabled() || !isZslMode())
-                throw new IllegalStateException("Нет маршрута склейки: Hybrid и SCAM HDR снимают из ZSL RAW-потока (режимы Фото и Ночь)");
+                throw new IllegalStateException(Lang.t("Нет маршрута склейки: Hybrid и SCAM HDR снимают из ZSL RAW-потока (режимы Фото и Ночь)", "No merge route: Hybrid and SCAM HDR shoot from the ZSL RAW stream (Photo and Night modes)"));
             final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
             // The LMC hybrid takes the NICE capture route with its own settings (independent of SCAM HDR; wins over it).
             final boolean lmcHybridSelected = niceCapture && PreferenceKeys.isLmcHybridEnabled();
@@ -3254,7 +3255,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             VivoStockAe.Plan planned;
             boolean scamToHybrid=false;
             {
-                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridSelected?"Hybrid":"SCAM HDR")+" требует ZSL RAW-поток");
+                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridSelected?"Hybrid":"SCAM HDR")+Lang.t(" требует ZSL RAW-поток"," needs the ZSL RAW stream"));
                 // The hybrid's N is the ring at the preview exposure (P27: its own N, never the SCAM HDR planner).
                 if(lmcHybridSelected) {
                     planned=hybridNPlan();
@@ -3279,7 +3280,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 VivoStockAe.Plan solved;
                 try {
                     if(stock==null || stock.generation!=mSessionGeneration.get())
-                        throw new IllegalStateException("Стоковый AE ещё не готов");
+                        throw new IllegalStateException(Lang.t("Стоковый AE ещё не готов","Stock AE is not ready yet"));
                     VivoStockAe.Plan ready=stock.tryFreeze(niceZslShutterTimestamp,mayWait);
                     if(ready==null){mBackgroundHandler.postDelayed(this::captureStillPicture,50);return;}
                     solved=ready.withDistinctBracket(mCameraCharacteristics)
@@ -3782,7 +3783,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mHybridZslCapture=false;
                     Log.w(TAG, "SHUTTER sequence aborted camera=" + physicalID + " sequence=" + sequenceId);
                     cameraEventsListener.onCaptureSequenceCompleted(null);
-                    cameraEventsListener.onProcessingError("Серия RAW прервана камерой. Повторите снимок.");
+                    cameraEventsListener.onProcessingError(Lang.t("Серия RAW прервана камерой. Повторите снимок.", "The camera interrupted the RAW burst. Take the shot again."));
                     unlockFocus();
                 }
 
@@ -3874,7 +3875,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                         if (frame.getCaptureRole() == ImageFrame.CaptureRole.NORMAL) frame.syntheticLongRatio = normalBackLongRatio[0];
                             }
                             if(shotSaver.bufferSize() == 0){
-                                cameraEventsListener.onProcessingError("Камера не передала RAW-кадры. Повторите снимок.");
+                                cameraEventsListener.onProcessingError(Lang.t("Камера не передала RAW-кадры. Повторите снимок.", "The camera delivered no RAW frames. Take the shot again."));
                                 return;
                             }
                             shotSaver.updateFrameCount(shotSaver.bufferSize());
@@ -3891,7 +3892,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     }
                                     Log.w("NICE_CAPTURE", "base metadata from the newest frame of the burst");
                                 }
-                                if (baseMetadata == null) throw new IllegalStateException("RAW: отсутствуют метаданные основного кадра");
+                                if (baseMetadata == null) throw new IllegalStateException(Lang.t("RAW: отсутствуют метаданные основного кадра", "RAW: base frame metadata missing"));
                                 if (niceSequence != null && shotSaver.bufferSize() != niceSequence.presentCount())
                                     Log.w("NICE_CAPTURE", "RAWs in the saver " + shotSaver.bufferSize() + ", in the series " + niceSequence.presentCount());
                                 final ImageSaver saver = shotSaver;

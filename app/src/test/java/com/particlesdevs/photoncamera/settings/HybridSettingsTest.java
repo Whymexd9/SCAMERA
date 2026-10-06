@@ -226,7 +226,16 @@ public class HybridSettingsTest {
         assertNotNull(hybrid.findPreference("pref_lmc_hybrid_hot_base_sigma"));
     }
 
-    @Test public void rawCaKeysReachTheTuningFileAndDefaultOff() {
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void rawCaKeysReachTheTuningFileAndDefaultOff() {
+        rawCaKeysReachTheTuningFileAndDefaultOff("Хроматическая аберрация RAW");
+    }
+
+    /** The same on an English system: the page title is English (i18n). */
+    @Test public void rawCaKeysReachTheTuningFileAndDefaultOffInEnglish() {
+        rawCaKeysReachTheTuningFileAndDefaultOff("RAW chromatic aberration");
+    }
+
+    private void rawCaKeysReachTheTuningFileAndDefaultOff(String pageTitle) {
         // P28: unset, nothing is written (worker default rawCa 0 = off, P19 as before)
         String tuning=PreferenceKeys.hybridTuningText();
         for(String k:new String[]{"rawCa","rawCaAuto","rawCaPasses","rawCaRed","rawCaBlue","rawCaAvoidShift"})assertFalse(tuning,tuning.contains(k+" "));
@@ -243,7 +252,7 @@ public class HybridSettingsTest {
         // the page: «Hybrid -> Склейка -> Хроматическая аберрация RAW», XML defaults = worker defaults (off, auto, 2 passes, avoid)
         PreferenceScreen settings=inflate(),merge=settings.findPreference("lmc_hybrid_merge_screen");
         PreferenceScreen page=merge.findPreference("lmc_hybrid_rawca_screen");
-        assertNotNull(page);assertEquals("Хроматическая аберрация RAW",page.getTitle().toString());
+        assertNotNull(page);assertEquals(pageTitle,page.getTitle().toString());
         ListPreference mode=page.findPreference("pref_lmc_hybrid_rawca_mode");
         assertArrayEquals(new CharSequence[]{"0","1","2"},mode.getEntryValues());
         prefs.edit().clear().commit();

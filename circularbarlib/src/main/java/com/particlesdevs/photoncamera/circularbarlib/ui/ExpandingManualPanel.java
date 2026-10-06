@@ -34,7 +34,7 @@ public class ExpandingManualPanel extends RelativeLayout {
             }
         };
         LayoutParams lp=new LayoutParams(dp(48),dp(48));lp.addRule(ALIGN_BOTTOM,R.id.buttons_container);addView(toggle,lp);
-        toggle.setFocusable(true);toggle.setContentDescription("Открыть ручные настройки");
+        toggle.setFocusable(true);toggle.setContentDescription(getContext().getString(R.string.manual_panel_open));
         toggle.setOnClickListener(v -> setExpanded(!expanded,true));
     }
     public boolean isExpanded(){return expanded;}
@@ -44,7 +44,7 @@ public class ExpandingManualPanel extends RelativeLayout {
         if(!value){restoreScale=scale.getVisibility()==VISIBLE;scale.setVisibility(GONE);}
         else if(restoreScale)scale.setVisibility(VISIBLE);
         tabs.setVisibility(VISIBLE);tabs.setImportantForAccessibility(value?IMPORTANT_FOR_ACCESSIBILITY_AUTO:IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        toggle.setContentDescription(value?"Свернуть ручные настройки":"Открыть ручные настройки");toggle.invalidate();
+        toggle.setContentDescription(getContext().getString(value?R.string.manual_panel_close:R.string.manual_panel_open));toggle.invalidate();
         if(!animate){progress=value?1:0;updateFrame();return;}
         animator=ValueAnimator.ofFloat(progress,value?1:0);animator.setDuration(value?330:250);
         animator.setInterpolator(value?new OvershootInterpolator(0.25f):new android.view.animation.DecelerateInterpolator());

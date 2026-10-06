@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.CountDownTimer;
 
 import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 import android.view.View;
 
@@ -122,7 +123,8 @@ final class CameraUIController implements CameraUIEventsListener,
                 (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE), id)) {
             // Not opened: the camera stays on the current module (see CameraManager2.isAuxiliarySensor).
             Log.w(TAG, "camera " + id + " is a MONO / NIR auxiliary stream, not opened");
-            cameraFragment.showSnackBar("Камера " + id + " — монохромный служебный поток, снимать с неё нельзя");
+            cameraFragment.showSnackBar(Lang.t(context, "Камера " + id + " — монохромный служебный поток, снимать с неё нельзя",
+                    "Camera " + id + " is a monochrome auxiliary stream and cannot take photos"));
             return;
         }
         cameraFragment.onLensSwitch();

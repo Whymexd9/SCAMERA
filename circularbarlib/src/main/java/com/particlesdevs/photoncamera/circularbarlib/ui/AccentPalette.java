@@ -7,7 +7,12 @@ import android.content.SharedPreferences;
 public final class AccentPalette {
     public static final String KEY="pref_theme_accent_key";
     public static final String[] VALUES={"lavender","blue","green","amber","red","pink","cyan","white"};
-    public static final String[] NAMES={"Сиреневый","Голубой","Зелёный","Янтарный","Коралловый","Розовый","Бирюзовый","Белый"};
+    /** The names shown for {@link #VALUES} (string resources: English, Russian in values-ru). */
+    public static final int[] NAMES={com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_lavender,
+            com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_blue,com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_green,
+            com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_amber,com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_red,
+            com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_pink,com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_cyan,
+            com.particlesdevs.photoncamera.circularbarlib.R.string.accent_name_white};
     public static String selected(Context c){return android.preference.PreferenceManager.getDefaultSharedPreferences(c.getApplicationContext()).getString(KEY,"default");}
     public static int color(Context c){return color(selected(c));}
     public static int color(String value){

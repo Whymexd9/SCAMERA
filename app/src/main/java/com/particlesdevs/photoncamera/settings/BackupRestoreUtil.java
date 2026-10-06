@@ -14,6 +14,7 @@ import com.google.gson.JsonParser;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.util.ConfigFolder;
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 
 import org.apache.commons.io.FileUtils;
@@ -56,10 +57,10 @@ public class BackupRestoreUtil {
             if (base.isEmpty()) throw new IOException(context.getString(R.string.empty_file_name_error));
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ConfigXml.write(out, header(context), collect(context));
-            return "Сохранено: " + ConfigFolder.save(context, base + ".xml", out.toByteArray());
+            return Lang.t(context, "Сохранено: ", "Saved: ") + ConfigFolder.save(context, base + ".xml", out.toByteArray());
         } catch (Exception e) {
             Log.e(TAG, "Config save failed", e);
-            return "Ошибка сохранения: " + e.getLocalizedMessage();
+            return Lang.t(context, "Ошибка сохранения: ", "Save failed: ") + e.getLocalizedMessage();
         }
     }
 
@@ -69,7 +70,7 @@ public class BackupRestoreUtil {
             return restore(context, readAll(in), fileName);
         } catch (Exception e) {
             Log.e(TAG, "Config import failed", e);
-            return "Ошибка загрузки: " + e.getLocalizedMessage();
+            return Lang.t(context, "Ошибка загрузки: ", "Import failed: ") + e.getLocalizedMessage();
         }
     }
 
@@ -82,7 +83,7 @@ public class BackupRestoreUtil {
             return restore(context, readAll(in), name == null ? "config" : name);
         } catch (Exception e) {
             Log.e(TAG, "Config import failed", e);
-            return "Ошибка загрузки: " + e.getLocalizedMessage();
+            return Lang.t(context, "Ошибка загрузки: ", "Import failed: ") + e.getLocalizedMessage();
         }
     }
 
@@ -96,7 +97,7 @@ public class BackupRestoreUtil {
             try (InputStreamReader reader = new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8)) {
                 applyRestoredJson(context, JsonParser.parseReader(reader).getAsJsonObject());
             }
-            result = "Загружено (старый JSON): " + label;
+            result = Lang.t(context, "Загружено (старый JSON): ", "Imported (old JSON): ") + label;
         } else {
             result = apply(context, ConfigXml.read(new ByteArrayInputStream(data))) + label;
         }
@@ -273,7 +274,8 @@ public class BackupRestoreUtil {
             } catch (IOException e) {
                 Log.e(TAG, "Pending lens profiles not stored", e);
             }
-            return "профили модулей будут перенесены при первом открытии камеры";
+            return Lang.t(context, "профили модулей будут перенесены при первом открытии камеры",
+                    "module profiles will be applied when the camera first opens");
         }
         Map<String, String> mapping = LensProfileMatcher.match(sources, targets);
         Map<String, Object> srcMain = config.files.get(ConfigXml.MAIN);
@@ -313,8 +315,10 @@ public class BackupRestoreUtil {
         StringBuilder unused = new StringBuilder();
         for (LensProfileMatcher.Lens s : sources) if (!used.contains(s.slot)) unused.append(unused.length() == 0 ? "" : ", ").append(s.label);
         Log.i(TAG, "Lens profiles mapped: " + mapping + " sources=" + sources + " targets=" + targets);
-        if (!perLens) return "общие настройки на все модули (отдельные настройки модулей в конфиге выключены)";
-        return LensProfileMatcher.describe(mapping, sources, targets) + (unused.length() > 0 ? "; не перенесены: " + unused : "");
+        if (!perLens) return Lang.t(context, "общие настройки на все модули (отдельные настройки модулей в конфиге выключены)",
+                "shared settings for all modules (per-module settings are off in the config)");
+        return LensProfileMatcher.describe(mapping, sources, targets)
+                + (unused.length() > 0 ? Lang.t(context, "; не перенесены: ", "; not applied: ") + unused : "");
     }
 
     private static void writeProfile(Context context, String slot, Map<String, Object> values) {
@@ -362,7 +366,7 @@ public class BackupRestoreUtil {
                 replace(name.equals(PER_LENS) ? perLens(context) : context.getSharedPreferences(name, Context.MODE_PRIVATE), file.getValue());
             }
             Log.d(TAG, "Config applied on the same phone: main=" + main.size() + " keys, files=" + config.files.size());
-            return "Загружено: ";
+            return Lang.t(context, "Загружено: ", "Imported: ");
         }
         Map<String, Object> merged = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : main.entrySet()) if (!deviceOnly(e.getKey())) merged.put(e.getKey(), e.getValue());
@@ -376,8 +380,10 @@ public class BackupRestoreUtil {
         String lenses = applyLensProfiles(context, config);
         Log.d(TAG, "Config from " + from + " applied: main=" + merged.size() + " keys, lenses: " + lenses);
         return lenses == null
-                ? "Загружены общие настройки (профили модулей не перенесены: в конфиге с " + from + " нет описания объективов): "
-                : "Загружено с " + from + ". Модули: " + lenses + ". Файл: ";
+                ? Lang.t(context, "Загружены общие настройки (профили модулей не перенесены: в конфиге с " + from + " нет описания объективов): ",
+                        "Imported the shared settings (module profiles not applied: the config from " + from + " has no lens descriptions): ")
+                : Lang.t(context, "Загружено с " + from + ". Модули: " + lenses + ". Файл: ",
+                        "Imported from " + from + ". Modules: " + lenses + ". File: ");
     }
 
     private static void replace(SharedPreferences prefs, Map<String, ?> values) {

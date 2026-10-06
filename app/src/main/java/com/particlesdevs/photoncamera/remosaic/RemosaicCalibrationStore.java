@@ -8,6 +8,7 @@ import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Signed FPN residuals; profiles are isolated by module, mosaic, dimensions and exposure. */
 public final class RemosaicCalibrationStore {
@@ -16,7 +17,7 @@ public final class RemosaicCalibrationStore {
     static final class Profile { ByteBuffer map; float scale; }
     static File dir() throws IOException {
         File d=new File(PhotonCamera.getAppContext().getFilesDir(),"mfsr-calibration-v2");
-        if(!d.isDirectory() && !d.mkdirs())throw new IOException("Не удалось создать каталог калибровки");
+        if(!d.isDirectory() && !d.mkdirs())throw new IOException(Lang.t("Не удалось создать каталог калибровки","Could not create the calibration folder"));
         return d;
     }
     static String key(String camera,int block,String cfa,int w,int h) {
@@ -24,10 +25,10 @@ public final class RemosaicCalibrationStore {
     }
     static void save(File directory,String key,ByteBuffer[] frames,int w,int h,int iso,long exposure) throws IOException {
         ByteBuffer map=Allocator.allocate(w*h*2);
-        if(map==null)throw new IOException("Нет памяти для калибровки");
+        if(map==null)throw new IOException(Lang.t("Нет памяти для калибровки","No memory for the calibration"));
         File tmp=null;
         try {
-            if(!nativeCalibrate(frames,w,h,map))throw new IOException("Ошибка тёмной калибровки");
+            if(!nativeCalibrate(frames,w,h,map))throw new IOException(Lang.t("Ошибка тёмной калибровки","Dark calibration failed"));
             File file=new File(directory,key+"_"+iso+"_"+exposure+".fpn");
             tmp=File.createTempFile("profile-",".tmp",directory);
             try(FileOutputStream stream=new FileOutputStream(tmp); DataOutputStream header=new DataOutputStream(stream)) {

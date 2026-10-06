@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /**
  * SCAM HDR on a Quad / Tetra stream (the ISZ modules). The NICE transport, the merge and the network read plain
@@ -81,16 +82,16 @@ public final class VivoNiceMosaic {
 
     private static void validate(List<ImageFrame> images, Parameters p, int block) throws IOException {
         if (p.cfaPattern < 0 || p.cfaPattern > 3)
-            throw new IOException("SCAM HDR: для мозаики нужен порядок CFA 2×2 (RGGB/GRBG/GBRG/BGGR), сейчас " + p.cfaPattern);
+            throw new IOException(Lang.t("SCAM HDR: для мозаики нужен порядок CFA 2×2 (RGGB/GRBG/GBRG/BGGR), сейчас ", "SCAM HDR: the mosaic needs a 2×2 CFA order (RGGB/GRBG/GBRG/BGGR), now ") + p.cfaPattern);
         if (Allocator.binning)
-            throw new IOException("SCAM HDR: для мозаики отключите программный биннинг");
+            throw new IOException(Lang.t("SCAM HDR: для мозаики отключите программный биннинг", "SCAM HDR: turn off software binning for the mosaic"));
         int w = p.rawSize.x, h = p.rawSize.y;
         if (w % 8 != 0 || h % 8 != 0 || (long) w * h > 16000000)
-            throw new IOException("SCAM HDR: мозаика — размер кадра кратный 8, до 16 МП (сейчас " + w + "x" + h + ")");
-        if (block != 2 && block != 4) throw new IOException("SCAM HDR: неизвестный размер блока мозаики " + block);
+            throw new IOException(Lang.t("SCAM HDR: мозаика — размер кадра кратный 8, до 16 МП (сейчас ", "SCAM HDR: mosaic — frame size a multiple of 8, up to 16 MP (now ") + w + "x" + h + ")");
+        if (block != 2 && block != 4) throw new IOException(Lang.t("SCAM HDR: неизвестный размер блока мозаики ", "SCAM HDR: unknown mosaic block size ") + block);
         for (ImageFrame f : images)
             if (f.buffer == null || f.width != w || f.height != h || f.buffer.capacity() != (long) w * h * 2)
-                throw new IOException("SCAM HDR: неполный RAW кадра " + f.number);
+                throw new IOException(Lang.t("SCAM HDR: неполный RAW кадра ", "SCAM HDR: incomplete RAW of frame ") + f.number);
     }
 
     /** Short / extra-short / long frames, by the capture role of their matched metadata (as the transport sorts them). */
@@ -141,14 +142,14 @@ public final class VivoNiceMosaic {
         final boolean neural = "neural".equals(mode);
         final int minimum = neural ? (block == 2 ? 4 : 6) : 3;
         if (normals.size() < Math.max(4, minimum))
-            throw new IOException("нужно не меньше " + Math.max(4, minimum) + " кадров N (увеличьте «SCAM HDR — N-кадров из ZSL»), есть " + normals.size());
+            throw new IOException(Lang.t("нужно не меньше ", "needs at least ") + Math.max(4, minimum) + Lang.t(" кадров N (увеличьте «SCAM HDR — N-кадров из ZSL»), есть ", " N frames (raise “SCAM HDR — N frames from ZSL”), has ") + normals.size());
         // The models and the merge need equal exposures: the frames of the newest N's exposure and ISO.
         ImageFrame newest = normals.get(normals.size() - 1);
         List<ImageFrame> same = new ArrayList<>();
         for (ImageFrame f : normals)
             if (f.measuredExposure == newest.measuredExposure && f.measuredIso == newest.measuredIso) same.add(f);
         if (same.size() < minimum)
-            throw new IOException("нужно не меньше " + minimum + " кадров N с одной выдержкой и ISO, есть " + same.size() + " из " + normals.size());
+            throw new IOException(Lang.t("нужно не меньше ", "needs at least ") + minimum + Lang.t(" кадров N с одной выдержкой и ISO, есть ", " N frames with one shutter and ISO, has ") + same.size() + Lang.t(" из ", " of ") + normals.size());
         // With the Sabre merge the other N frames are donors of the merge itself: the model gets just the frames it needs.
         int cap = neural ? (keepExtras ? minimum : 50) : BurstPolicy.frameCount(same.size(), p.rawSize.x, p.rawSize.y);
         List<ImageFrame> use = new ArrayList<>(same.subList(Math.max(0, same.size() - cap), same.size()));
@@ -159,7 +160,7 @@ public final class VivoNiceMosaic {
         if (!use.contains(reference)) {
             reference = null;
             for (ImageFrame f : normals.subList(normals.size() - 4, normals.size())) if (use.contains(f)) { reference = f; break; }
-            if (reference == null) throw new IOException("опорный кадр N не входит в серию одной экспозиции");
+            if (reference == null) throw new IOException(Lang.t("опорный кадр N не входит в серию одной экспозиции", "the N reference frame is not in the single-exposure series"));
         }
         use.remove(reference);
         use.add(neural ? 0 : use.size() / 2, reference);
@@ -171,7 +172,7 @@ public final class VivoNiceMosaic {
             String name = new String[]{"RGGB", "GRBG", "GBRG", "BGGR"}[emitted];
             result = MobileRemosaicProcessor.mergeForNice(use, p, block, name);
         }
-        if (result == null) throw new IOException("пустой результат");
+        if (result == null) throw new IOException(Lang.t("пустой результат", "empty result"));
         Log.i(TAG, mode + ": " + use.size() + " N frames -> 1, ms=" + (SystemClock.elapsedRealtime() - start));
         // The four newest N are the transport's slots; its reference is the oldest of them.
         List<ImageFrame> kept = keepExtras ? new ArrayList<>(normals) : new ArrayList<>(normals.subList(normals.size() - 4, normals.size()));

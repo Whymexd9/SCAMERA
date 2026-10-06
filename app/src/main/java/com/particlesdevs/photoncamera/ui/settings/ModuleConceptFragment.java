@@ -10,6 +10,7 @@ import android.widget.*;
 import androidx.fragment.app.Fragment;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Shared native layout for the approved module-settings mockup. */
 public abstract class ModuleConceptFragment extends Fragment {
@@ -43,7 +44,7 @@ public abstract class ModuleConceptFragment extends Fragment {
     protected void caption(String title){TextView t=text(title,13,MUTED);body.addView(t,space(-1,-2,18));}
     protected void note(String value){LinearLayout n=row();TextView icon=text("ⓘ",18,MUTED);n.addView(icon,new LinearLayout.LayoutParams(dp(28),dp(36)));TextView label=text(value,12,MUTED);label.setLineSpacing(dp(3),1);n.addView(label,new LinearLayout.LayoutParams(0,-2,1));body.addView(n,space(-1,-2,16));}
     protected TextView button(String title,boolean filled,Runnable action){TextView t=text(title,14,filled?0xFF15131D:accent);t.setGravity(Gravity.CENTER);t.setPadding(dp(8),dp(12),dp(8),dp(12));t.setMinHeight(dp(44));t.setBackground(shape(filled?accent:BG,filled?0:0xFF626974,10));t.setOnClickListener(v->action.run());t.setFocusable(true);t.setAccessibilityDelegate(new View.AccessibilityDelegate(){@Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName("android.widget.Button");}});return t;}
-    protected void actions(Runnable all,Runnable none){LinearLayout r=row();TextView a=button("Выбрать всё",false,all),b=button("Отменить выбор",false,none);a.setTag("select_all");b.setTag("clear_selection");LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.rightMargin=dp(10);r.addView(a,lp);r.addView(b,new LinearLayout.LayoutParams(0,-2,1));body.addView(r,space(-1,-2,12));}
+    protected void actions(Runnable all,Runnable none){LinearLayout r=row();TextView a=button(Lang.t(getContext(),"Выбрать всё","Select all"),false,all),b=button(Lang.t(getContext(),"Отменить выбор","Clear selection"),false,none);a.setTag("select_all");b.setTag("clear_selection");LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.rightMargin=dp(10);r.addView(a,lp);r.addView(b,new LinearLayout.LayoutParams(0,-2,1));body.addView(r,space(-1,-2,12));}
     protected void primary(String title,boolean enabled,Runnable action){TextView t=button(title,true,action);t.setTypeface(null,1);t.setMinHeight(dp(52));t.setEnabled(enabled);t.setAlpha(enabled?1:.4f);t.setTag("primary_action");footer.addView(t,new FrameLayout.LayoutParams(-1,-2));}
     protected void divider(LinearLayout parent){View v=new View(requireContext());v.setBackgroundColor(LINE);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));lp.leftMargin=dp(48);parent.addView(v,lp);}
     protected ImageView icon(String name){
@@ -70,6 +71,6 @@ public abstract class ModuleConceptFragment extends Fragment {
         @Override protected void onDraw(Canvas canvas){float cx=getWidth()/2f,cy=getHeight()/2f,h=dp(10);RectF rect=new RectF(cx-h,cy-h,cx+h,cy+h);paint.setStyle(state==0?Paint.Style.STROKE:Paint.Style.FILL);paint.setStrokeWidth(dp(1.5f));paint.setColor(state==0?MUTED:accent);canvas.drawRoundRect(rect,dp(4),dp(4),paint);
             if(state!=0){paint.setStyle(Paint.Style.STROKE);paint.setColor(0xFF17141F);paint.setStrokeWidth(dp(2));paint.setStrokeCap(Paint.Cap.ROUND);if(state==1)canvas.drawLine(cx-dp(4),cy,cx+dp(4),cy,paint);else{canvas.drawLine(cx-dp(5),cy,cx-dp(1),cy+dp(4),paint);canvas.drawLine(cx-dp(1),cy+dp(4),cx+dp(6),cy-dp(5),paint);}}}
         @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(info);info.setClassName("android.widget.CheckBox");info.setCheckable(true);info.setChecked(state>0);}
-    };v.setContentDescription(label+(state==1?", выбрано частично":""));v.setFocusable(true);v.setOnClickListener(w->action.run());return v;}
+    };v.setContentDescription(label+(state==1?Lang.t(getContext(),", выбрано частично",", partly selected"):""));v.setFocusable(true);v.setOnClickListener(w->action.run());return v;}
     protected void open(Fragment fragment){getParentFragmentManager().beginTransaction().replace(R.id.settings_container,fragment).addToBackStack(null).commit();}
 }

@@ -153,7 +153,18 @@ public class ShadeCatalogTest {
     }
 
     @Test
+    @Config(qualifiers = "ru-w400dp-h880dp-mdpi")
     public void valuesFollowTheSettingsKeysAndHighlightDiffersFromDefault() {
+        valuesFollowTheSettingsKeysAndHighlightDiffersFromDefault(',');
+    }
+
+    /** The same on an English system: numbers use the decimal point (display only). */
+    @Test
+    public void valuesFollowTheSettingsKeysAndHighlightDiffersFromDefaultInEnglish() {
+        valuesFollowTheSettingsKeysAndHighlightDiffersFromDefault('.');
+    }
+
+    private void valuesFollowTheSettingsKeysAndHighlightDiffersFromDefault(char point) {
         ShadeCatalog.Entry grid = catalog.entry("pref_show_grid_key");
         assertEquals(ShadeCatalog.LIST, grid.kind);
         assertFalse(catalog.changed(grid));
@@ -177,10 +188,10 @@ public class ShadeCatalogTest {
         ShadeCatalog.Entry luma = catalog.entry("pref_lmc_hybrid_dn_luma_mult");
         assertEquals(ShadeCatalog.SLIDER, luma.kind);
         assertEquals(0.01f, luma.step, 1e-6f);
-        assertEquals("1,00", catalog.valueText(luma, true));
+        assertEquals("1" + point + "00", catalog.valueText(luma, true));
         catalog.write(luma, 0.6f);
         assertEquals("0.6", prefs.getString("pref_lmc_hybrid_dn_luma_mult", null));
-        assertEquals("0,60", catalog.valueText(luma, true));
+        assertEquals("0" + point + "60", catalog.valueText(luma, true));
         assertTrue(catalog.changed(luma));
 
         // «Удлинение L» is free text in the settings; the shade shows it as a 0-2 slider (owner's answer 8).
@@ -189,7 +200,7 @@ public class ShadeCatalogTest {
         assertEquals(0f, boost.min, 0f);
         assertEquals(2f, boost.max, 0f);
         assertEquals(0.1f, boost.step, 1e-6f);
-        assertEquals("1,1", catalog.valueText(boost, true));
+        assertEquals("1" + point + "1", catalog.valueText(boost, true));
         catalog.write(boost, 1.5f);
         assertEquals("1.5", prefs.getString("pref_vivo_nice_long_boost_ev", null));
 
@@ -253,7 +264,18 @@ public class ShadeCatalogTest {
     }
 
     @Test
+    @Config(qualifiers = "ru-w400dp-h880dp-mdpi")
     public void searchFindsTitlesSectionsAndTheOtherLanguage() {
+        searchFindsTitlesSectionsAndTheOtherLanguage("Кадры и захват");
+    }
+
+    /** The same on an English system: the Russian synonyms still find the rows, the crumb is English. */
+    @Test
+    public void searchFindsTitlesSectionsAndTheOtherLanguageInEnglish() {
+        searchFindsTitlesSectionsAndTheOtherLanguage("Frames and capture");
+    }
+
+    private void searchFindsTitlesSectionsAndTheOtherLanguage(String captureSection) {
         List<ShadeCatalog.Entry> luma = catalog.search("Luma");
         Set<String> keys = new HashSet<>();
         for (ShadeCatalog.Entry e : luma) keys.add(e.key);
@@ -269,7 +291,7 @@ public class ShadeCatalogTest {
         // Sections come from the tree: the hybrid's Bento rows are under «Hybrid › Кадры и захват».
         ShadeCatalog.Entry bento = catalog.entry("pref_lmc_hybrid_bento");
         assertEquals("Hybrid", bento.section(context));
-        assertTrue(bento.crumb().startsWith("Кадры и захват"));
+        assertTrue(bento.crumb(), bento.crumb().startsWith(captureSection));
         assertEquals(context.getString(R.string.shade_group_shoot), catalog.entry(ShadeCatalog.ROUTE).section(context));
     }
 }
