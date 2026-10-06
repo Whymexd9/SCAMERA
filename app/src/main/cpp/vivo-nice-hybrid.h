@@ -254,6 +254,9 @@ struct HybridTuning {
                                  // its two lattice sites per axis and phase = (-4, 4]); Tetra parity is 6; 2 = ArkCam's 5x5
     float mosaicKernelScale=1.f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
                                  // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5)
+    // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
+    // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites)
+    float mosaicKernelG=1.f,mosaicKernelRB=1.f;
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -323,6 +326,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
+            ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue);
@@ -1643,7 +1647,8 @@ void main(){
 // Geometry (the split's convention, which the app and tools/quad/eval_mosaic_burst.py expect): output pixel X sits at native
 // sensor position X - (b-1)/2; binned pixel B holds the block b B .. b B + b-1 (centre b B + (b-1)/2).
 static const char* kHybMergeMosaic=R"(
-uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (distance multipliers), w = 0
+uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (ArkCam's distance multipliers per
+                   // colour, mosaicKernelG / RB), w = 0
 // The native sites of frame f around O (canonical native px), weighted by the kernel P (native px), into a: as frameSamples (outlier
 // site: no sample; clipped site or a site of a clipped cell: the clipped mean; a clipped longer frame: nothing) with the frame's
 // weight r. Window: win = the 6.1 window |d| <= r per axis (r = 1.5 b: the split's +-1.5 sub-frame px); otherwise d in (-4r/3, 4r/3]
@@ -1812,6 +1817,7 @@ struct HybridMosaicNative {
                                          // split's sub-frames (vb + (raw - black) x site gain, clip-aware)
     int window=3;                        // HybridTuning::mosaicWindow
     float kernelScale=1.f;               // HybridTuning::mosaicKernelScale
+    float ksG=1.f,ksRB=1.f;              // HybridTuning::mosaicKernelG / RB (distance multipliers per colour)
     float keyNoise=1.f;                  // the binned frames' noise model x this = the noise of one merged site: the SNR keys of the kernel
                                          // curves (Sabre 6.1 / round 4) follow the merged sites, not the binned averages
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
@@ -2322,7 +2328,8 @@ public:
             glUniform4i(loc(mosaicProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);
             const float rimU[4]={rim?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
             glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
-            glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),1.f,1.f,0.f);
+            const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
+            glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,0.f);
             // 6.1 widening rule (mergeMode bit 2): the native merge counts every frame as the split's b^2 sub-frames plus the base's
             // own b^2-1 (b^2 F + b^2-1 < widenBelow); the chroma and rim passes on the binned frames count frames F, so their
             // threshold becomes (widenBelow - b^2 + 1) / b^2 and they widen the base where the merge did.
@@ -4452,10 +4459,11 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
     const int window=std::clamp(tune.mosaicWindow,1,6);
     const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
+    const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     {
-        char head[200];
-        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d, %d of %d frames (one GPU slot each, binned %dx%d, mosaic %dx%d), window %d px, kernel scale %.3f:",
-            b,int(pick.size()),n,vw,vh,W,Ht,window,kernelScale);
+        char head[240];
+        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d, %d of %d frames (one GPU slot each, binned %dx%d, mosaic %dx%d), window %d px, kernel scale %.3f, ks G %.3f R/B %.3f:",
+            b,int(pick.size()),n,vw,vh,W,Ht,window,kernelScale,ksG,ksRB);
         std::string line=head;
         for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
         report(line);
@@ -4500,7 +4508,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     // ---- the binned burst through hybridReconstruct with the native merge pass
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=b;bin.mosaic=1;bin.subFrames=0;
-    HybridMosaicNative nat;nat.block=b;nat.W=W;nat.H=Ht;nat.window=window;nat.kernelScale=kernelScale;
+    HybridMosaicNative nat;nat.block=b;nat.W=W;nat.H=Ht;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;
     nat.keyNoise=float(bb);
     nat.siteSlope=std::max(input.frames[0].slope,1e-9f);nat.siteOffset=std::max(input.frames[0].offset,0.f);
     for(size_t k=0;k<pick.size();++k){
