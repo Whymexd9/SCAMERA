@@ -104,6 +104,7 @@ public class PreferenceKeys {
         COMMON_KEYS.add(Key.KEY_SHOW_WATERMARK.mValue);
         COMMON_KEYS.add(Key.KEY_SHOW_ROUND_EDGE.mValue);
         COMMON_KEYS.add(Key.KEY_CAMERA_SOUNDS.mValue);
+        COMMON_KEYS.add(Key.KEY_TIMER_SOUND.mValue);
         COMMON_KEYS.add(Key.KEY_SHOW_GRADIENT.mValue);
         COMMON_KEYS.add(Key.KEY_AF_MODE.mValue);
         COMMON_KEYS.add(Key.KEY_FOCUS_PEAK.mValue);
@@ -325,6 +326,11 @@ public class PreferenceKeys {
 
     public static boolean isCameraSoundsOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_CAMERA_SOUNDS);
+    }
+
+    /** «Звук таймера» (P16): the countdown sound of the self-timer, independent of the shutter sound. */
+    public static boolean isTimerSoundOn() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_TIMER_SOUND, true);
     }
 
     public static int getChromaNrValue() {
@@ -1436,6 +1442,7 @@ public class PreferenceKeys {
         KEY_SHOW_ROUND_EDGE(R.string.pref_show_roundedge_key),
         KEY_SHOW_GRID(R.string.pref_show_grid_key),
         KEY_CAMERA_SOUNDS(R.string.pref_camera_sounds_key),
+        KEY_TIMER_SOUND(R.string.pref_timer_sound_key),
         KEY_CHROMA_NR_SEEKBAR(R.string.pref_chroma_nr_seekbar_key),
         KEY_LUMA_NR_SEEKBAR(R.string.pref_luma_nr_seekbar_key),
         KEY_GAIN_SEEKBAR(R.string.pref_gain_seekbar_key),

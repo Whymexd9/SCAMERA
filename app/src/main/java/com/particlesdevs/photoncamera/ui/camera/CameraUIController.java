@@ -146,15 +146,19 @@ final class CameraUIController implements CameraUIEventsListener,
     private void startTimer() {
         if (this.shutterButton != null) {
             this.shutterButton.setHovered(true);
+            final int seconds = getTimerValue(this.shutterButton.getContext());
+            // Before start(): a 0 s timer (no self-timer) finishes inside start() and takes the shot at once.
+            if (seconds > 0) cameraFragment.sounds().timerStart();
             this.countdownTimer = new CountdownTimer(
                     cameraFragment.findViewById(R.id.frameTimer),
-                    getTimerValue(this.shutterButton.getContext()) * 1000L, 1000,
+                    seconds * 1000L, 1000,
                     this::onTimerFinished).start();
         }
     }
 
     private void resetTimer() {
         if (this.countdownTimer != null) this.countdownTimer.cancel();
+        cameraFragment.sounds().timerStop();
         if (this.shutterButton != null) this.shutterButton.setHovered(false);
     }
 
@@ -204,6 +208,7 @@ final class CameraUIController implements CameraUIEventsListener,
     }
 
     private void onTimerFinished() {
+        cameraFragment.sounds().timerStop(); // cut at the timer's end; the shutter sound follows at the shot
         this.shutterButton.setHovered(false);
         this.shutterButton.setActivated(false);
         this.shutterButton.setClickable(false);
