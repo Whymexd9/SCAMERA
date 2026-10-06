@@ -18,8 +18,6 @@
     <string name="pref_save_per_lens_settings" translatable="false">pref_save_per_lens_settings</string>
     <string name="pref_disable_aligning_key" translatable="false">pref_disable_aligning_key</string>
     <string name="pref_show_watermark_key" translatable="false">pref_show_watermark_key</string>
-    <string name="pref_energy_safe_key" translatable="false">pref_energy_safe_key</string>
-    <string name="pref_binning_key" translatable="false">pref_binning_key</string>
     <string name="pref_enhanced_processing_key" translatable="false">pref_enhanced_processing_key</string>
     <string name="pref_hdrx_nr_key" translatable="false">pref_hdrx_nr_key</string>
     <string name="pref_save_raw_key" translatable="false">pref_save_raw_key</string>
@@ -30,25 +28,12 @@
     <string name="pref_luma_nr_seekbar_key" translatable="false">pref_luma_nr_seekbar_key</string>
     <string name="pref_compressor_seekbar_key" translatable="false">pref_compressor_seekbar_key</string>
     <string name="pref_noise_seekbar_key" translatable="false">pref_noise_seekbar_key</string>
-    <string name="pref_merge_seekbar_key" translatable="false">pref_merge_seekbar_key</string>
     <string name="pref_gain_seekbar_key" translatable="false">pref_gain_seekbar_key</string>
     <string name="pref_shadows_seekbar_key" translatable="false">pref_shadows_seekbar_key</string>
-    <string name="pref_frame_count_key" translatable="false">pref_frame_count_key</string>
-    <string name="pref_short_frame_count_key" translatable="false">pref_short_frame_count_key</string>
-    <string name="pref_long_frame_count_key" translatable="false">pref_long_frame_count_key</string>
-    <string name="pref_short_exposure_ev_key" translatable="false">pref_short_exposure_ev_key</string>
-    <string name="pref_long_exposure_ev_key" translatable="false">pref_long_exposure_ev_key</string>
-    <string name="pref_highlight_suppression_key" translatable="false">pref_highlight_suppression_key</string>
-    <string name="pref_processing_backend_key" translatable="false">pref_processing_backend_key</string>
     <string name="pref_contrast_seekbar_key" translatable="false">pref_contrast_seekbar_key</string>
     <string name="pref_sharpness_seekbar_key" translatable="false">pref_sharpness_seekbar_key</string>
     <string name="pref_nr_luma_enabled_key" translatable="false">pref_nr_luma_enabled_key</string>
     <string name="pref_nr_chroma_enabled_key" translatable="false">pref_nr_chroma_enabled_key</string>
-    <string name="pref_ai_denoise_enabled_key" translatable="false">pref_ai_denoise_enabled_key</string>
-    <string name="pref_ai_denoise_strength_key" translatable="false">pref_ai_denoise_strength_key</string>
-    <string name="pref_ai_denoise_luma_key" translatable="false">pref_ai_denoise_luma_key</string>
-    <string name="pref_ai_denoise_chroma_key" translatable="false">pref_ai_denoise_chroma_key</string>
-    <string name="pref_ai_denoise_model_key" translatable="false">pref_ai_denoise_model_key</string>
     <string name="pref_saturation_seekbar_key" translatable="false">pref_saturation_seekbar_key</string>
     <string name="pref_expocompensation_seekbar_key" translatable="false">pref_expocompensation_seekbar_key</string>
     <string name="pref_align_method_key" translatable="false">pref_align_method_key</string>
@@ -139,7 +124,6 @@
     <string name="pref_sharp_deconv_damping_3_key" translatable="false">pref_sharp_deconv_damping_3_key</string>
     <string name="pref_zsl_buffer_count_key" translatable="false">pref_zsl_buffer_count_key</string>
     <string name="pref_live_viewfinder_raw_key" translatable="false">pref_live_viewfinder_raw_key</string>
-    <string name="pref_remosaic_enabled_key" translatable="false">pref_remosaic_enabled_key</string>
     <string name="pref_remosaic_block_key" translatable="false">pref_remosaic_block_key</string>
     <string name="pref_remosaic_phase_x_key" translatable="false">pref_remosaic_phase_x_key</string>
     <string name="pref_remosaic_phase_y_key" translatable="false">pref_remosaic_phase_y_key</string>
@@ -147,6 +131,4 @@
     <string name="pref_remosaic_steered_key" translatable="false">pref_remosaic_steered_key</string>
     <string name="pref_remosaic_clamp_key" translatable="false">pref_remosaic_clamp_key</string>
     <string name="pref_remosaic_flatfield_key" translatable="false">pref_remosaic_flatfield_key</string>
-    <string name="pref_remosaic_dump_key" translatable="false">pref_remosaic_dump_key</string>
-    <string name="pref_remosaic_backend_key" translatable="false">pref_remosaic_backend_key</string>
 </resources>

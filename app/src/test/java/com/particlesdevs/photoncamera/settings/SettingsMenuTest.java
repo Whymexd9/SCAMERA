@@ -42,13 +42,9 @@ public class SettingsMenuTest {
         camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
     }
     @Test public void researchOptionsAreOptInAndModuleLocal() {
-        assertFalse(PreferenceKeys.isZslQualitySelectionEnabled());
         assertFalse(PreferenceKeys.isSaliencyProtectionEnabled());
-        assertTrue(ModuleProfiles.isLocal("pref_zsl_quality_selection_key"));
         assertTrue(ModuleProfiles.isLocal("pref_saliency_protection_key"));
-        prefs.edit().putBoolean("pref_zsl_quality_selection_key",true)
-                .putBoolean("pref_saliency_protection_key",true).commit();
-        assertTrue(PreferenceKeys.isZslQualitySelectionEnabled());
+        prefs.edit().putBoolean("pref_saliency_protection_key",true).commit();
         assertTrue(PreferenceKeys.isSaliencyProtectionEnabled());
     }
     @Test public void niceInternalTuningKeepsValidatedValues() {
@@ -98,15 +94,11 @@ public class SettingsMenuTest {
         assertNotNull(screen.findPreference("vivo_hdr_screen"));
         // the hybrid by default: no state without a vivo route any more
         assertTrue(PreferenceKeys.isVivoHdrEnabled());
-        manager.set("default_scope","pref_frame_count_key","1");
-        manager.set("default_scope","pref_short_frame_count_key","0");
-        manager.set("default_scope","pref_zsl_merge_algorithm_key","hdrplus");
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         assertTrue(PreferenceKeys.isVivoHdrEnabled());
-        assertFalse(PreferenceKeys.isHdrPlusMergeEnabled());
-        assertEquals(4,PreferenceKeys.getFrameCountValue());
-        assertEquals(1,PreferenceKeys.getShortFrameCountValue());
-        for(String control:new String[]{"luma","chroma","shadows","local","sharpen"}) {
+        // P4: the extra RGB luma / chroma denoise and sharpen rows are gone, SCAM HDR keeps its own NICE controls
+        for(String control:new String[]{"luma","chroma","sharpen"}) assertNull(screen.findPreference("pref_vivo_hdr_"+control));
+        for(String control:new String[]{"shadows","local"}) {
             String key="pref_vivo_hdr_"+control;
             assertNotNull(screen.findPreference(key));
             assertTrue(ModuleProfiles.isLocal(key));
@@ -117,17 +109,12 @@ public class SettingsMenuTest {
             manager.set("default_scope",key,"NaN");
             assertEquals(1f,PreferenceKeys.vivoHdrValue(control,1f),0f);
         }
+        // the removed legacy switches no longer take a shot off the vivo routes
         manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
-        assertFalse(PreferenceKeys.isVivoHdrEnabled());
-        manager.set("default_scope","pref_raw_mfsr_enabled_key",false);
         manager.set("default_scope","pref_remosaic_enabled_key",true);
-        manager.set("default_scope","pref_remosaic_backend_key","hp9_hexquad");
-        assertFalse(PreferenceKeys.isVivoHdrEnabled());
-        manager.set("default_scope","pref_remosaic_backend_key","scamera");
         assertTrue(PreferenceKeys.isVivoHdrEnabled());
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
         assertTrue(PreferenceKeys.isVivoHdrEnabled());assertTrue(PreferenceKeys.isLmcHybridEnabled());
-        assertFalse(PreferenceKeys.isHdrPlusMergeEnabled());
     }
     @After public void tearDown(){if(camera!=null)camera.close();}
     private PreferenceScreen inflate(){
@@ -138,38 +125,20 @@ public class SettingsMenuTest {
         TunablePreferenceGenerator.generatePreferences(context,screen);
         return screen;
     }
-    @Test public void multiFrameReplacesLegacyControlsAndPersistsSource() {
+    @Test public void legacyCaptureControlsAreGoneAndTheZslRingIsUpgradedOnce() {
         PreferenceScreen root=inflate();
-        assertNotNull(root.findPreference("pref_raw_mfsr_enabled_key"));
-        for(String old:new String[]{"k_detail","k_denoise","k_stretch","k_shrink","dth","dtr","tensor_stride","grad_k"})
-            assertNull(root.findPreference("pref_mfsr_"+old+"_key"));
-        ListPreference source=root.findPreference("pref_mfsr_source_key");
-        assertArrayEquals(new CharSequence[]{"1","2","4"},source.getEntryValues());
-        for(String v:new String[]{"1","2","4"}) {
-            manager.set("default_scope","pref_mfsr_source_key",v);
-            assertEquals(Integer.parseInt(v),PreferenceKeys.getMultiFrameBlock());
-        }
-        manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
-        manager.set("default_scope","pref_remosaic_enabled_key",true);
-        manager.set("default_scope","pref_remosaic_backend_key","hp9_hexquad");
-        assertFalse(PreferenceKeys.isHexQuadCaptureEnabled());
-        manager.set("default_scope","pref_mfsr_calibrate_key",true);
-        assertTrue(PreferenceKeys.isMultiFrameCalibration());PreferenceKeys.finishMultiFrameCalibration();
-        assertFalse(PreferenceKeys.isMultiFrameCalibration());
-    }
-    @Test public void multiFrameUpgradePreservesMosaicButNeverCopiesCalibrationAction() {
-        prefs.edit().clear().putBoolean("pref_remosaic_enabled_key",true)
-                .putString("pref_remosaic_block_key","4").putString("pref_mfsr_k_detail_key","0.8")
-                .putBoolean("pref_mfsr_calibrate_key",true).commit();
+        for(String old:new String[]{"pref_raw_mfsr_enabled_key","pref_mfsr_source_key","pref_remosaic_enabled_key",
+                "pref_frame_count_key","pref_zsl_merge_algorithm_key","pref_binning_key","mfsr_settings_screen"})
+            assertNull(old,root.findPreference(old));
+        assertNotNull(root.findPreference("pref_zsl_buffer_count_key"));
+        prefs.edit().clear().putString("pref_mfsr_k_detail_key","0.8").putBoolean("pref_mfsr_calibrate_key",true).commit();
         SettingsMigration.migrateMultiFrame(prefs);
-        assertEquals("4",prefs.getString("pref_mfsr_source_key",""));
-        assertFalse(prefs.contains("pref_mfsr_k_detail_key"));
-        assertFalse(prefs.contains("pref_mfsr_calibrate_key"));
-        assertFalse(ModuleProfiles.isLocal("pref_mfsr_calibrate_key"));
-        assertTrue(ModuleProfiles.isLocal("pref_mfsr_source_key"));
-        prefs.edit().putString("pref_mfsr_source_key","2").commit();
+        assertEquals("50",prefs.getString("pref_zsl_buffer_count_key",""));
+        prefs.edit().putString("pref_zsl_buffer_count_key","20").commit();
         SettingsMigration.migrateMultiFrame(prefs);
-        assertEquals("2",prefs.getString("pref_mfsr_source_key",""));
+        assertEquals("20",prefs.getString("pref_zsl_buffer_count_key",""));
+        SettingsMigration.removeObsolete(prefs);
+        assertFalse(prefs.contains("pref_mfsr_k_detail_key"));assertFalse(prefs.contains("pref_mfsr_calibrate_key"));
     }
     private void visit(PreferenceGroup group,Set<String> seen,List<String> pages){
         for(int i=0;i<group.getPreferenceCount();i++){
@@ -211,12 +180,6 @@ public class SettingsMenuTest {
         assertEquals(.00390625f,prefs.getFloat("pref_tunable_esd3d2_noisetarget",0),0f);
         assertEquals("7.18973",prefs.getString("pref_tunable_initial_gammax1",""));assertEquals("37.12345",prefs.getString("hexquad_luma",""));
         assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_tunable_esd3d2_enable"),true));
-    }
-    @Test public void duplicateNoiseToggleMigrationPreservesDisabledState(){
-        prefs.edit().putInt("pref_tunable_esd4d_enableadaptivenoise",0).putString("pref_noise_dynamic_enabled_key","1").commit();
-        SettingsMigration.prepare(context,prefs);assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_noise_dynamic_enabled_key"),true));
-        prefs.edit().putBoolean("pref_noise_dynamic_enabled_key",true).commit();SettingsMigration.prepare(context,prefs);
-        assertTrue(PreferenceNumber.bool(prefs.getAll().get("pref_noise_dynamic_enabled_key"),false));
     }
     @Test public void perLensRestorePreservesBooleanTypesAndSharedSettings(){
         prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").commit();

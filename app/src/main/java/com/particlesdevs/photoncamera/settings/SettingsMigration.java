@@ -14,14 +14,7 @@ public final class SettingsMigration {
     public static void prepare(Context context, SharedPreferences preferences) {
         Map<String, ?> values = preferences.getAll();
         SharedPreferences.Editor editor = preferences.edit();
-        Object old = values.get("pref_tunable_esd4d_enableadaptivenoise");
-        boolean migrateDisabledNoise = !values.containsKey("settings_audit_schema") && old != null && !PreferenceNumber.bool(old,true);
-        if (!values.containsKey("settings_audit_schema")) {
-            if (!values.containsKey("pref_tunable_esd4d_usencnnflow")
-                    && PreferenceNumber.read(values.get("pref_processing_backend_key"),0)!=0)
-                editor.putInt("pref_tunable_esd4d_usencnnflow",1); // preserve the old implicit default
-            editor.putInt("settings_audit_schema",1);
-        }
+        if (!values.containsKey("settings_audit_schema")) editor.putInt("settings_audit_schema",1);
         try (XmlResourceParser parser = context.getResources().getXml(R.xml.preferences)) {
             while (parser.next() != XmlPullParser.END_DOCUMENT) {
                 if (parser.getEventType() != XmlPullParser.START_TAG) continue;
@@ -50,27 +43,13 @@ public final class SettingsMigration {
         } catch (Exception e) {
             throw new IllegalStateException("Cannot normalize settings schema",e);
         }
-        // Apply semantic migration after type normalization, which uses the original snapshot.
-        if (migrateDisabledNoise) editor.putBoolean("pref_noise_dynamic_enabled_key",false);
         editor.apply();
     }
-    /** Upgrade obsolete MFSR controls once for each restored module snapshot. */
+    /** ZSL ring capacity 50 once for each restored module snapshot (the RAW MFSR keys go with removeObsolete). */
     public static void migrateMultiFrame(SharedPreferences preferences) {
         Map<String, ?> values=preferences.getAll();
-        SharedPreferences.Editor e=preferences.edit();
-        if(!values.containsKey("settings_zsl_capacity_v2")) {
-            e.putString("pref_zsl_buffer_count_key","50");
-            e.putBoolean("settings_zsl_capacity_v2",true);
-        }
-        if(!values.containsKey("pref_mfsr_source_key")) {
-            boolean clustered=PreferenceNumber.bool(values.get("pref_remosaic_enabled_key"),false);
-            int block=clustered ? (PreferenceNumber.read(values.get("pref_remosaic_block_key"),4)==2 ? 2 : 4) : 1;
-            e.putString("pref_mfsr_source_key",String.valueOf(block));
-        }
-        for(String old:new String[]{"k_detail","k_denoise","k_stretch","k_shrink","dth","dtr","tensor_stride","grad_k"})
-            e.remove("pref_mfsr_"+old+"_key");
-        // Calibration is a one-shot action, never a saved or copied camera profile.
-        e.remove("pref_mfsr_calibrate_key");e.commit();
+        if(values.containsKey("settings_zsl_capacity_v2")) return;
+        preferences.edit().putString("pref_zsl_buffer_count_key","50").putBoolean("settings_zsl_capacity_v2",true).commit();
     }
 
     /**
@@ -84,8 +63,26 @@ public final class SettingsMigration {
             // P2: "Кадрирование DNG" (the 16:9 crop is always centred now)
             "pref_tunable_imagesaversettings_croptype",
             // P3: the route switches, replaced by pref_merge_route (migrateLmcHybrid converts them first)
-            "pref_lmc_hybrid_enabled", "pref_vivo_hdr_enabled", "pref_vivo_nice_enabled"));
-    static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_"};
+            "pref_lmc_hybrid_enabled", "pref_vivo_hdr_enabled", "pref_vivo_nice_enabled",
+            // P4: the legacy capture and merge (frame counts / brackets, HDR+ / ESD4D merge, RAW MFSR, mosaic SR, the
+            // standalone remosaic and neural bursts, AI Bayer denoise, software binning)
+            "pref_frame_count_key", "pref_short_frame_count_key", "pref_short_exposure_ev_key",
+            "pref_long_frame_count_key", "pref_long_exposure_ev_key", "pref_highlight_suppression_key",
+            "pref_zsl_quality_selection_key", "pref_max_hdr_ratio_key", "pref_tet_model_enabled_key",
+            "pref_long_frame_shutter_cap_key", "pref_zsl_merge_algorithm_key", "pref_night_merge_algorithm_key",
+            "pref_processing_backend_key", "pref_merge_robustness_key", "pref_merge_clip_level_key",
+            "pref_merge_max_exposure_ratio_key", "pref_merge_floor_sigmas_key", "pref_merge_tiling_tolerance_key",
+            "pref_merge_seekbar_key", "pref_highlight_recovery_key", "pref_highlight_recovery_min_ok_key",
+            "pref_highlight_protection_key", "pref_highlight_protection_knee_key",
+            "pref_highlight_protection_strength_key", "pref_binning_key", "pref_energy_safe_key",
+            "pref_raw_mfsr_enabled_key", "pref_remosaic_enabled_key", "pref_remosaic_backend_key",
+            "pref_hexquad_frames", "pref_quad_frames", "hexquad_exposure_ev", "hexquad_full_resolution",
+            "hexquad_post_denoise", "quad2x2_exposure_ev", "quad2x2_post_denoise", "pref_vivo_hdr_luma",
+            "pref_vivo_hdr_chroma", "pref_vivo_hdr_sharpen", "pref_ai_denoise_enabled_key",
+            "pref_ai_denoise_strength_key", "pref_ai_denoise_luma_key", "pref_ai_denoise_chroma_key",
+            "pref_ai_denoise_model_key", "pref_remosaic_dump_key", "pref_noise_dynamic_enabled_key"));
+    static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
+            "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;
         for (String prefix : OBSOLETE_PREFIXES) if (key.startsWith(prefix)) return true;

@@ -35,28 +35,9 @@ public final class ScameraPreferences {
         return "qbcfa_4x4".equals(mode) || ("auto".equals(mode) && isDirectQuad);
     }
 
-    public static boolean mosaicSrEnabled() {
-        return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_mosaic_sr_enabled"), false);
-    }
 
-    public static boolean mosaicSrUseForJpeg() {
-        return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_mosaic_sr_jpeg"), true);
-    }
 
-    public static float mosaicSrScale() {
-        try {
-            return PreferenceNumber.bounded(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_mosaic_sr_scale"),1.41421356f,1f,2f);
-        } catch (NumberFormatException ignored) {
-            return 1.41421356f;
-        }
-    }
 
-    public static int mosaicSrKernel() {
-        String value = text("scamera_mosaic_sr_kernel", "lanczos2");
-        if ("bilinear".equals(value)) return 0;
-        if ("catmull_rom".equals(value)) return 1;
-        return 2;
-    }
 
     public static boolean darktableEnabled() { return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_darktable_enabled"), false); }
     public static float darktableExposure() { return intValue("scamera_darktable_exposure", 0) / 10.0f; }

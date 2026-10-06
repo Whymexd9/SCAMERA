@@ -9,7 +9,6 @@ public enum SettingType {
     GRID,
     EIS,
     RAW,
-    BATTERY_SAVER,
     BRACKETING,
     AE_METERING_STD,
     /** SCAM HDR hybrid: output grid / final size (1x, 12, 16, 20 MP, 2x). */

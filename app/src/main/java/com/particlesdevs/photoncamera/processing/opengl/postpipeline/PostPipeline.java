@@ -222,7 +222,7 @@ public class PostPipeline extends GLBasePipeline {
             cropSize =  new Point(rawSliced);
         }
         Point rotatedSize = getRotatedCoords(rawSliced);
-        if (PhotonCamera.getSettings().energySaving || mParameters.rawSize.x * mParameters.rawSize.y < ResolutionSolution.smallRes) {
+        if (mParameters.rawSize.x * mParameters.rawSize.y < ResolutionSolution.smallRes) {
             GLDrawParams.TileSize = 8;
         } else {
             GLDrawParams.TileSize = 256;
@@ -611,27 +611,13 @@ public class PostPipeline extends GLBasePipeline {
             add(new HighlightRecovery());
             add(new NiceDenoise());
         } else {
-        if (PreferenceKeys.isRemosaicEnabled()) {
-            if (mParameters.remosaicDone) {
-                // The merge rearranged every frame as it loaded them, so the
-                // stack is already plain bayer. Adding the node would leave it
-                // first in the pipeline with nothing before it to take a
-                // texture from, which is the IllegalStateException a capture
-                // died on; and there is nothing for it to do either.
-                remosaicApplied = true;
-            } else {
-                add(new Remosaic());
-            }
-        }
         add(new Bayer2Float());
         if (!mParameters.vivoHdrMode && "fusion".equals(tonePipeline)) {
             add(new ExposureFusionBayer2());
         }
         // A remosaiced frame is plain bayer, so it takes the ordinary demosaic
         // even though the sensor is a quad one.
-        int demosaicPattern = mParameters.remosaicDone ? mParameters.cfaPattern : PreferenceKeys.isRemosaicEnabled()
-                ? Math.max(PhotonCamera.getSettings().cfaPattern, 0)
-                : PhotonCamera.getSettings().cfaPattern;
+        int demosaicPattern = mParameters.remosaicDone ? mParameters.cfaPattern : PhotonCamera.getSettings().cfaPattern;
         switch (demosaicPattern) {
             case -2: {
                 add(new DemosaicQUAD());
@@ -650,9 +636,8 @@ public class PostPipeline extends GLBasePipeline {
                 // The user-facing component switches are authoritative.  The
                 // old hdrxNR flag is device/profile dependent and made these
                 // controls no-ops on profiles where it was false.
-                if (!mParameters.vivoHdrMode && (!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
+                if (!mParameters.vivoHdrMode
                         && !com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()
-                        && !PreferenceKeys.isHdrPlusMergeEnabled()
                         && (PreferenceKeys.getRtLumaDenoise() > 0
                         || PreferenceKeys.getRtChromaDenoise() > 0 || PreferenceKeys.getRtMoireDenoise() > 0)) {
                     add(new ESD3D2(true));
@@ -663,7 +648,7 @@ public class PostPipeline extends GLBasePipeline {
         } // Bayer import/demosaic: NICE already produces RGB.
         if (mParameters.vivoNiceRgb == null) add(new ABLC());
         if (!mParameters.vivoHdrMode) add(new GcamFinish());
-        if (!mParameters.vivoHdrMode && (!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise)
+        if (!mParameters.vivoHdrMode
                 && com.particlesdevs.photoncamera.settings.RawTherapeeSettings.original()) {
             add(new RawTherapeeDenoise());
         }
@@ -754,11 +739,6 @@ public class PostPipeline extends GLBasePipeline {
         add(new CorrectingFlow());
         add(new FalseColorSuppression());
         add(new CaptureOneProcessing());
-        // Apply the saved per-shot correction after tone/AE and before sharpening/watermark.
-        // Zero EV adds no pass, preserving the previous rendering exactly.
-        if (mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f) {
-            add(new HexQuadExposure("off".equals(tonePipeline)));
-        }
         // LMC tone/gamma presets act on display-encoded RGB; the "off" route stays linear.
         if (!"off".equals(tonePipeline)) add(new LmcCurves());
         if (PreferenceKeys.isSensorSharpeningEnabled())

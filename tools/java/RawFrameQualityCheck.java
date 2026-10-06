@@ -1,7 +1,6 @@
 import java.nio.*;
 import java.util.*;
 import com.particlesdevs.photoncamera.capture.RawFrameQuality;
-import com.particlesdevs.photoncamera.capture.HexQuadZslSelector;
 public class RawFrameQualityCheck {
     static ByteBuffer scene(int block,boolean blur,boolean noise) {
         int w=640,h=480,stride=w*2+32;ByteBuffer b=ByteBuffer.allocateDirect(stride*h).order(ByteOrder.LITTLE_ENDIAN);
@@ -27,19 +26,6 @@ public class RawFrameQualityCheck {
             assert sharp.position()==position && sharp.order()==ByteOrder.LITTLE_ENDIAN;
         }
         assert Double.isNaN(RawFrameQuality.score(ByteBuffer.allocate(20),640,480,1312,2,1));
-        List<HexQuadZslSelector.Sample> f=new ArrayList<>();
-        for(int i=0;i<12;i++)f.add(new HexQuadZslSelector.Sample(1_000_000_000L+i*33_000_000L,10_000_000L,800,i<9?1:.05));
-        int[] chosen=HexQuadZslSelector.select(f,6,true);
-        assert Arrays.equals(chosen,new int[]{3,4,5,6,7,8}):Arrays.toString(chosen);
-        assert Arrays.equals(HexQuadZslSelector.select(f,6,false),new int[]{6,7,8,9,10,11});
-        // Metadata is a hard boundary, even if an older frame looks sharper.
-        f.set(4,new HexQuadZslSelector.Sample(f.get(4).timestamp,20_000_000L,800,100));
-        chosen=HexQuadZslSelector.select(f,6,true);assert chosen[0]>=5;
-        f.set(11,new HexQuadZslSelector.Sample(f.get(11).timestamp,10_000_000L,800,Double.NaN));
-        assert Arrays.equals(HexQuadZslSelector.select(f,6,true),new int[]{6,7,8,9,10,11});
-        // Long exposure series cannot drift several captures behind the shutter.
-        f.clear();for(int i=0;i<12;i++)f.add(new HexQuadZslSelector.Sample(1_000_000_000L+i*300_000_000L,100_000_000L,800,i<9?1:.05));
-        assert HexQuadZslSelector.select(f,6,true).length==0; // outside hard age bound
-        System.out.println("RAW quality + ZSL window selection PASS");
+        System.out.println("RAW quality PASS");
     }
 }

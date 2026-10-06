@@ -36,11 +36,6 @@ public class PreferenceKeys {
         return getAcesString("pref_noise_model_profile_key", "auto");
     }
 
-    /** Master switch for the observed-sigma multiplier computed in ESD4D (tag DynamicNoise). */
-    public static boolean isDynamicNoiseModelEnabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", "pref_noise_dynamic_enabled_key", true);
-    }
 
     /** Scales the whole noise model. 1.0 leaves the calibration untouched. */
     public static float getNoiseModelCoefficient() {
@@ -64,10 +59,6 @@ public class PreferenceKeys {
         return Integer.parseInt(getAcesString("pref_antibanding_hz_key", "120"));
     }
 
-    public static boolean isTetModelEnabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", "pref_tet_model_enabled_key", false);
-    }
 
     /** Clamp the O term's digital gain to 1, i.e. ignore gain applied above the analogue ISO. */
     public static boolean isNoiseDigitalGainDisabled() {
@@ -75,64 +66,12 @@ public class PreferenceKeys {
                 "default_scope", "pref_noise_disable_digital_gain_key", false);
     }
 
-    /**
-     * Tuning factor on the noise variance in the merge shrinkage operator. Larger accepts
-     * more of the aligned frame (more denoising, less robustness). HDR+ fixes this to 8.
-     */
-    public static float getMergeRobustness() {
-        return Float.parseFloat(getAcesString("pref_merge_robustness_key", "8.0"));
-    }
 
-    /**
-     * A sample of the alternate frame below this many noise sigmas carries no usable signal
-     * (it is under the sensor's noise and quantisation floor) and is not merged. 0 disables
-     * the check. This is the counterpart of the highlight mask for very short frames.
-     */
-    public static float getMergeFloorSigmas() {
-        return Float.parseFloat(getAcesString("pref_merge_floor_sigmas_key", "2.0"));
-    }
 
-    /**
-     * Frames whose exposure ratio to the reference exceeds this are dropped from the merge
-     * entirely; 0 disables the limit. Google's own bursts stay around 33x.
-     */
-    public static float getMergeMaxExposureRatio() {
-        return Float.parseFloat(getAcesString("pref_merge_max_exposure_ratio_key", "64.0"));
-    }
 
-    /**
-     * Upper bound on the long frame's shutter, in sensor readout periods (1/30 s each).
-     * GCam's equivalent, camera.shasta_zsl.max_exptime_ms, runs at two periods. 0 removes
-     * the cap; any EV the cap leaves unspent is taken from gain instead.
-     */
-    public static float getLongFrameShutterCapPeriods() {
-        return Float.parseFloat(getAcesString("pref_long_frame_shutter_cap_key", "2.0"));
-    }
 
-    /**
-     * Hard ceiling on the ratio between the longest and shortest frame of the burst.
-     * GCam's tuning caps this at max_hdr_ratio_default = 9.8 (15.3 in Night Sight) and
-     * raises the short exposure until the burst fits, rather than letting the user pick an
-     * arbitrary spread: past this point the short frame holds nothing but noise and the
-     * long frame nothing but clipping, and alignment between them stops working. 0 removes
-     * the ceiling.
-     */
-    public static float getMaxHdrRatio() {
-        return Float.parseFloat(getAcesString("pref_max_hdr_ratio_key", "9.8"));
-    }
 
-    /** Samples at or above this fraction of full scale are treated as clipped and not merged. */
-    public static float getMergeClipLevel() {
-        return Float.parseFloat(getAcesString("pref_merge_clip_level_key", "0.99"));
-    }
 
-    /**
-     * Disagreement between the four alignment tiles blended at a pixel, in pixels, at which
-     * the local alignment field is considered unusable and the unaligned frame is used.
-     */
-    public static float getMergeTilingTolerance() {
-        return Float.parseFloat(getAcesString("pref_merge_tiling_tolerance_key", "4.0"));
-    }
 
     /** Noise ISO curve: off, soft, medium or strong compression of the model's ISO response. */
     public static String getNoiseIsoCurve() {
@@ -443,17 +382,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SAVE_RAW).intValue();
     }
 
-    public static boolean isBatterySaverOn() {
-        return getBool(Key.KEY_ENERGY_SAVING);
-    }
-
-    public static boolean isBinningOn() {
-        return getBool(Key.KEY_BINNING);
-    }
-
-    public static void setBatterySaver(boolean value) {
-        preferenceKeys.settingsManager.set("default_scope", Key.KEY_ENERGY_SAVING, value);
-    }
 
     public static void setSaveRaw(int value) {
         preferenceKeys.settingsManager.set("default_scope", Key.KEY_SAVE_RAW, value);
@@ -483,44 +411,13 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LUMA_NR_SEEKBAR).intValue();
     }
 
-    public static int getFrameCountValue() {
-        return Math.max(isVivoNiceEnabled() ? 4 : isVivoHdrEnabled() ? 3 : 1, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FRAME_COUNT).intValue());
-    }
 
-    public static int getShortFrameCountValue() {
-        return Math.max(isVivoHdrEnabled() ? 1 : 0, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SHORT_FRAME_COUNT).intValue());
-    }
 
-    public static int getLongFrameCountValue() {
-        return Math.max(isVivoNiceEnabled() ? 1 : 0, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LONG_FRAME_COUNT).intValue());
-    }
 
-    public static int getShortExposureEvValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SHORT_EXPOSURE_EV).intValue();
-    }
 
-    public static int getLongExposureEvValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LONG_EXPOSURE_EV).intValue();
-    }
 
-    public static int getHighlightSuppressionValue() {
-        return Math.max(isVivoHdrEnabled() ? 100 : 0, preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HIGHLIGHT_SUPPRESSION).intValue());
-    }
 
-    public static int getProcessingBackendValue() {
-        if (preferenceKeys == null || preferenceKeys.settingsManager == null) {
-            return 0;
-        }
-        int stored = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_PROCESSING_BACKEND).intValue();
-        if (stored == 4) {
-            return 2;
-        }
-        return stored;
-    }
 
-    public static boolean isFullGpuProcessing() {
-        return (preferenceKeys == null || preferenceKeys.settingsManager == null || preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_PROCESSING_BACKEND).intValue() != 4) ? false : true;
-    }
 
     public static float getSharpnessValue() {
         return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_SHARPNESS_SEEKBAR).floatValue();
@@ -534,18 +431,11 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", key).intValue();
     }
 
-    public static boolean isRemosaicEnabled() {
-        // SCAM HDR on a mosaic stream owns the remosaic itself (VivoNiceMosaic): the stored switches of the module
-        // stay as they are, but every other branch sees a plain-bayer pipeline.
-        if (isNiceMosaic()) return false;
-        return isSabreEnabled() ? getMultiFrameBlock() > 1
-                : !isRawMfsrEnabled() && getBool(Key.KEY_REMOSAIC_ENABLED);
-    }
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
     public static int getRemosaicBlockSize() {
         if (isNiceMosaic()) return niceMosaicBlock();
-        return isSabreEnabled() ? getMultiFrameBlock() : sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
+        return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
     /**
@@ -572,7 +462,7 @@ public class PreferenceKeys {
 
     /** Raw preferences only: this is consulted by isRemosaicEnabled() and isVivoHdrEnabled(). */
     public static boolean isNiceMosaic() {
-        return isScamHdrRoute() && !"off".equals(niceMosaicMode()) && !isRawMfsrEnabled();
+        return isScamHdrRoute() && !"off".equals(niceMosaicMode());
     }
 
     /** Colour block of the module's mosaic: from its forced sensor mode (7 = Tetra 4x4, 5 = Quad 2x2), else the remosaic block. */
@@ -587,7 +477,7 @@ public class PreferenceKeys {
 
     /** Colour-block side of the RAW stream for statistics and the raw viewfinder: 1 for plain bayer. */
     public static int mosaicBlock() {
-        return isRawMfsrEnabled() ? getMultiFrameBlock() : (isRemosaicEnabled() || isNiceMosaic()) ? getRemosaicBlockSize() : 1;
+        return isNiceMosaic() ? getRemosaicBlockSize() : 1;
     }
 
     /** Interpolate green along edges instead of across them. */
@@ -600,10 +490,6 @@ public class PreferenceKeys {
         return getBool(Key.KEY_REMOSAIC_CLAMP);
     }
 
-    /** Save the node's own output as a DNG, for isolating it from later stages. */
-    public static boolean isRemosaicDump() {
-        return getBool(Key.KEY_REMOSAIC_DUMP);
-    }
 
     /** Divide out the per-site response profile inside a colour block. */
     public static boolean isRemosaicFlatField() {
@@ -616,20 +502,10 @@ public class PreferenceKeys {
     }
 
     public static String getRemosaicBackend() {
-        if(isNiceMosaic()) return "detail".equals(niceMosaicMode()) && niceMosaicBlock() == 4 ? "tetra_detail" : "scamera";
-        if(isSabreEnabled()) return "scamera";
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_REMOSAIC_BACKEND, "scamera");
+        return isNiceMosaic() && "detail".equals(niceMosaicMode()) && niceMosaicBlock() == 4 ? "tetra_detail" : "scamera";
     }
 
-    /** Separate six-frame experimental HP9 path, before ordinary RAW fusion. Never on MediaTek (no Qualcomm NPU). */
-    public static boolean isHexQuadCaptureEnabled() {
-        return !isMediaTekSoc() && isRemosaicEnabled() && "hp9_hexquad".equals(getRemosaicBackend());
-    }
 
-    /** Main camera 2x2 Quad (2x ISZ): vendor IMX06C quad model, four equal RAWs. Never on MediaTek (no Qualcomm NPU). */
-    public static boolean isQuadNeuralCaptureEnabled() {
-        return !isMediaTekSoc() && isRemosaicEnabled() && "imx06c_quad".equals(getRemosaicBackend());
-    }
 
     private static Boolean mediaTekSoc;
     /**
@@ -652,14 +528,7 @@ public class PreferenceKeys {
         return mediaTekSoc;
     }
 
-    /** Either NPU burst remosaic: the burst is equal-exposure and owned by the worker. */
-    public static boolean isNeuralBurstRemosaic() {
-        return isHexQuadCaptureEnabled() || isQuadNeuralCaptureEnabled();
-    }
 
-    public static int neuralBurstFrames() {
-        return isQuadNeuralCaptureEnabled() ? getQuadFrames() : getHexQuadFrames();
-    }
 
     /** Hybrid reconstruction weights; not exposed parameters of the closed neural model. */
     public static float getHexQuadLuma() {
@@ -668,10 +537,6 @@ public class PreferenceKeys {
 
     public static float getHexQuadChroma() {
         return RawTherapeeSettings.number("hexquad_chroma",100,0,100);
-    }
-
-    public static float getHexQuadExposureEv() {
-        return RawTherapeeSettings.number("hexquad_exposure_ev",0,-2,2);
     }
 
     public static int getHexQuadModelScale() {
@@ -684,7 +549,7 @@ public class PreferenceKeys {
 
     public static HexQuadOptions getHexQuadOptions(int iso) {
         return new HexQuadOptions(iso,getHexQuadModelScale(),
-                preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_full_resolution",false),
+                false, // SCAM HDR keeps the network output at the input size
                 RawTherapeeSettings.number("hexquad_noise_overall",1,.5f,2),
                 RawTherapeeSettings.number("hexquad_noise_photon",1,.5f,2),
                 RawTherapeeSettings.number("hexquad_noise_readout",1,.5f,2),
@@ -713,17 +578,8 @@ public class PreferenceKeys {
                 0f,false);
     }
 
-    public static float getQuadExposureEv() {
-        return RawTherapeeSettings.number("quad2x2_exposure_ev",0,-2,2);
-    }
 
-    public static boolean isQuadPostDenoiseEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope","quad2x2_post_denoise",false);
-    }
 
-    public static boolean isHexQuadPostDenoiseEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_post_denoise",false);
-    }
 
     public static int getRemosaicProfile() {
         return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
@@ -858,9 +714,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_nice_fast_capture", true);
     }
 
-    public static boolean isZslQualitySelectionEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_zsl_quality_selection_key", false);
-    }
 
     public static boolean isSaliencyProtectionEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_saliency_protection_key", false);
@@ -890,37 +743,13 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_CA_BLUE);
     }
 
-    public static boolean isNrLumaEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_NR_LUMA_ENABLED, true);
-    }
 
-    public static boolean isNrChromaEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_NR_CHROMA_ENABLED, true);
-    }
 
-    public static boolean isAiDenoiseEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_AI_DENOISE_ENABLED, false);
-    }
 
-    public static int getAiDenoiseStrength() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_AI_DENOISE_STRENGTH).intValue();
-    }
 
-    public static int getAiDenoiseLuma() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_AI_DENOISE_LUMA).intValue();
-    }
 
-    public static int getAiDenoiseChroma() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_AI_DENOISE_CHROMA).intValue();
-    }
 
-    public static String getAiDenoiseModel() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_AI_DENOISE_MODEL, "fast");
-    }
 
-    public static boolean isRawMfsrEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAW_MFSR_ENABLED, false);
-    }
 
     /**
      * The vivo-style processing route (own merge, SCAMERA tone, no second HDR+ denoise): the LMC hybrid (its own switch,
@@ -932,7 +761,7 @@ public class PreferenceKeys {
     }
     /** The SCAM HDR route is selected and the RAW path is one SCAM HDR can merge. */
     private static boolean isAutonomousHdrSwitchOn() {
-        return isScamHdrRoute() && isVivoRouteCompatible();
+        return isScamHdrRoute();
     }
 
     /**
@@ -949,10 +778,6 @@ public class PreferenceKeys {
     }
     public static boolean isScamHdrRoute() {
         return LmcHybridKeys.ROUTE_SCAM_HDR.equals(mergeRoute());
-    }
-    /** Plain Bayer or the SCAMERA remosaic, no RAW MFSR: what both the hybrid and SCAM HDR merge. */
-    private static boolean isVivoRouteCompatible() {
-        return !isRawMfsrEnabled() && (!isRemosaicEnabled() || "scamera".equals(getRemosaicBackend()));
     }
     public static boolean isNiceDespeckleEnabled() {
         if (isHybridShot()) return hybridSwitch("despeckle", true);
@@ -1072,7 +897,7 @@ public class PreferenceKeys {
      * selected and the RAW path is plain Bayer or the SCAMERA remosaic without RAW MFSR.
      */
     public static boolean isLmcHybridEnabled() {
-        return isLmcHybridSwitchOn() && isVivoRouteCompatible();
+        return isLmcHybridSwitchOn();
     }
     /** The SCAM HDR route is selected on a RAW path it can merge. */
     public static boolean isScamHdrSwitchOn() {
@@ -1320,16 +1145,7 @@ public class PreferenceKeys {
         return Math.round(niceInternalValue("zsl_frames", 4f));
     }
 
-    /** Equal-exposure RAWs for the neural remosaics: HP9 HexQuad 6..50, Quad 2x2 4..50. */
-    public static int getHexQuadFrames() {
-        return (int)Math.round(SettingsNumericRules.value("pref_hexquad_frames",
-                preferenceKeys.settingsManager.getString("default_scope","pref_hexquad_frames","6"),6));
-    }
 
-    public static int getQuadFrames() {
-        return (int)Math.round(SettingsNumericRules.value("pref_quad_frames",
-                preferenceKeys.settingsManager.getString("default_scope","pref_quad_frames","4"),4));
-    }
 
     private static long niceDevStamp = -1, niceDevChecked;
     private static java.util.Map<String, Float> niceDevValues = java.util.Collections.emptyMap();
@@ -1463,18 +1279,6 @@ public class PreferenceKeys {
     }
 
     /**
-     * Boolean SCAM HDR internal switch pref_vivo_nice_&lt;key&gt; (nice_dev.txt "key 0/1" overrides it). On a hybrid shot
-     * the hybrid's copy pref_lmc_hybrid_&lt;key&gt;; keys starting with "hybrid_" always name a hybrid setting.
-     */
-    public static boolean niceInternalSwitch(String key, boolean fallback) {
-        if (key.startsWith("hybrid_")) return hybridSwitch(key.substring("hybrid_".length()), fallback);
-        if (isHybridShot()) {
-            Float override = hybridDevValue(key);
-            return override != null ? override > 0f : hybridStoredSwitch(key, fallback);
-        }
-        return scamInternalSwitch(key, fallback);
-    }
-    /**
      * SCAM HDR internal value pref_vivo_nice_&lt;key&gt;, clamped by SettingsNumericRules (nice_dev.txt "key v" overrides it).
      * On a hybrid shot the same call reads the hybrid's copy pref_lmc_hybrid_&lt;key&gt; (nice_dev.txt "hybrid_&lt;key&gt;",
      * then "key") and never the SCAM HDR key; keys starting with "hybrid_" always name a hybrid setting.
@@ -1529,35 +1333,7 @@ public class PreferenceKeys {
         } catch(RuntimeException error) { return fallback; }
     }
 
-    public static boolean isSabreEnabled() {
-        return isRawMfsrEnabled() && "sabre".equals(multiFrameText("pref_mfsr_engine_key", "native"));
-    }
 
-    private static String multiFrameText(String key, String fallback) {
-        return preferenceKeys.settingsManager.getString("default_scope", key, fallback);
-    }
-    public static int getMultiFrameBlock() {
-        return com.particlesdevs.photoncamera.remosaic.BurstPolicy.block(multiFrameText("pref_mfsr_source_key","1"));
-    }
-    public static String getMultiFrameCfa() { return multiFrameText("pref_mfsr_cfa_key","auto"); }
-    public static int getMultiFrameCount() {
-        return (int)SettingsNumericRules.value("pref_mfsr_frames_key",multiFrameText("pref_mfsr_frames_key","15"),15);
-    }
-    public static boolean isMultiFrameFpnEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_fpn_key",true);
-    }
-    public static boolean isMultiFrameCalibration() {
-        return isRawMfsrEnabled() && !isSabreEnabled() && preferenceKeys.settingsManager.getBoolean("default_scope","pref_mfsr_calibrate_key",false);
-    }
-    public static void finishMultiFrameCalibration() {
-        preferenceKeys.settingsManager.set("default_scope","pref_mfsr_calibrate_key",false);
-    }
-    public static float getMultiFrameRedCa() {
-        return (float)SettingsNumericRules.value("pref_mfsr_red_ca_key",multiFrameText("pref_mfsr_red_ca_key","1"),1);
-    }
-    public static float getMultiFrameBlueCa() {
-        return (float)SettingsNumericRules.value("pref_mfsr_blue_ca_key",multiFrameText("pref_mfsr_blue_ca_key","1"),1);
-    }
 
     public static boolean isSensorSharpeningEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_sensor_sharpening_enabled", true);
@@ -1584,21 +1360,7 @@ public class PreferenceKeys {
      * and shadow/highlight placement of the result; cannot show detail that needs
      * a burst.
      */
-    /**
-     * How much the HDR+ luma and chroma denoise strengths follow the gain, per
-     * stop above base ISO. 0 keeps the old fixed behaviour; 0.25 means a strength
-     * set in daylight is a quarter stronger at each doubling of ISO.
-     *
-     * Chroma defaults higher than luma: colour speckle is objectionable well
-     * before luma grain is, and smoothing chroma costs almost no detail.
-     */
-    public static float getHdrPlusLumaGainSlope() {
-        return Float.parseFloat(getAcesString("pref_hdrplus_luma_gain_slope_key", "0.15"));
-    }
 
-    public static float getHdrPlusChromaGainSlope() {
-        return Float.parseFloat(getAcesString("pref_hdrplus_chroma_gain_slope_key", "0.30"));
-    }
 
     /**
      * Signal-to-noise ratio the merged frame is aimed at. Denoise strength is
@@ -1606,35 +1368,7 @@ public class PreferenceKeys {
      * less than a noisy one without touching the sliders. GCam's dumps show a
      * merged estimate around 110 on a well-lit shot.
      */
-    /**
-     * Denoise multipliers per SNR band. GCam's tuning is laid out the same way -
-     * a separate set of levels for Very Low, Low, Med, High and Very High - rather
-     * than one number scaled continuously, because what a frame needs at SNR 5 is
-     * not a scaled version of what it needs at SNR 100.
-     *
-     * <p>Each band carries three multipliers: low frequency, high frequency and
-     * chroma. Low and high are separate on purpose: the merge shader mixes the two
-     * by their ratio, so scaling both by the same amount cancels out and changes
-     * nothing - which is why the earlier single-scale attempt had no visible
-     * effect.
-     */
-    public static int snrBandOf(float snr) {
-        if (snr < 8f) return 0;      // Very Low
-        if (snr < 20f) return 1;     // Low
-        if (snr < 45f) return 2;     // Med
-        if (snr < 90f) return 3;     // High
-        return 4;                    // Very High
-    }
 
-    public static String snrBandName(int band) {
-        switch (band) {
-            case 0: return "VeryLow";
-            case 1: return "Low";
-            case 2: return "Med";
-            case 3: return "High";
-            default: return "VeryHigh";
-        }
-    }
 
     private static final String[] SNR_BANDS = {"verylow", "low", "med", "high", "veryhigh"};
     // Defaults fall from heavy at low SNR to light at high SNR. Chroma stays
@@ -1644,38 +1378,11 @@ public class PreferenceKeys {
     private static final float[] DEF_HIGH   = {0.70f, 0.85f, 1.00f, 1.10f, 1.20f};
     private static final float[] DEF_CHROMA = {2.00f, 1.60f, 1.20f, 0.90f, 0.70f};
 
-    public static float getSnrBandLow(int band) {
-        return Float.parseFloat(getAcesString(
-                "pref_snr_" + SNR_BANDS[band] + "_low_key", String.valueOf(DEF_LOW[band])));
-    }
 
-    public static float getSnrBandHigh(int band) {
-        return Float.parseFloat(getAcesString(
-                "pref_snr_" + SNR_BANDS[band] + "_high_key", String.valueOf(DEF_HIGH[band])));
-    }
 
-    public static float getSnrBandChroma(int band) {
-        return Float.parseFloat(getAcesString(
-                "pref_snr_" + SNR_BANDS[band] + "_chroma_key", String.valueOf(DEF_CHROMA[band])));
-    }
 
-    public static float getHdrPlusSnrTarget() {
-        return Float.parseFloat(getAcesString("pref_hdrplus_snr_target_key", "110"));
-    }
 
-    /**
-     * How hard the SNR scale bites on luma and on chroma. 0 pins that channel to
-     * the slider and ignores SNR; 1 follows it fully. Chroma defaults higher
-     * because colour noise survives frame averaging better than luma noise and is
-     * the more objectionable of the two.
-     */
-    public static float getHdrPlusSnrLumaExp() {
-        return Float.parseFloat(getAcesString("pref_hdrplus_snr_luma_exp_key", "0.6"));
-    }
 
-    public static float getHdrPlusSnrChromaExp() {
-        return Float.parseFloat(getAcesString("pref_hdrplus_snr_chroma_exp_key", "1.0"));
-    }
 
     /** Develop the preview RAW stream as the viewfinder instead of showing the ISP image. */
     public static boolean isLiveViewfinderRawEnabled() {
@@ -1689,27 +1396,10 @@ public class PreferenceKeys {
         return false;
     }
 
-    public static boolean isHighlightRecoveryEnabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", Key.KEY_HIGHLIGHT_RECOVERY, false);
-    }
 
-    public static int getHighlightRecoveryMinOk() {
-        return Math.max(1, Math.min(4, (int) mfsrFloat(Key.KEY_HIGHLIGHT_RECOVERY_MIN_OK, 2f)));
-    }
 
-    public static boolean isHighlightProtectionEnabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", Key.KEY_HIGHLIGHT_PROTECTION, false);
-    }
 
-    public static float getHighlightProtectionKnee() {
-        return Math.max(0f, Math.min(0.99f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_KNEE, 0.8f)));
-    }
 
-    public static float getHighlightProtectionStrength() {
-        return Math.max(0f, Math.min(1f, mfsrFloat(Key.KEY_HIGHLIGHT_PROTECTION_STRENGTH, 1.0f)));
-    }
 
 
     public static int getRtLumaDenoise() {
@@ -1792,21 +1482,9 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_C1_HIGHLIGHTS);
     }
 
-    public static int getHdrPlusDenoiseStrength() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_DENOISE_STRENGTH, 100).intValue();
-    }
 
-    public static int getHdrPlusLowDenoise() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_LOW_DENOISE, 100).intValue();
-    }
 
-    public static int getHdrPlusHighDenoise() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_HIGH_DENOISE, 100).intValue();
-    }
 
-    public static int getHdrPlusChromaDenoise() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_HDRPLUS_CHROMA_DENOISE, 100).intValue();
-    }
 
     /**
      * Global pre-shutter RAW capacity, independent of mode, lens and merge count.
@@ -1816,19 +1494,8 @@ public class PreferenceKeys {
                 preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ZSL_BUFFER_COUNT, 50).intValue()));
     }
 
-    public static String getZslMergeAlgorithm() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_ZSL_MERGE_ALGORITHM, "legacy");
-    }
 
-    public static String getNightMergeAlgorithm() {
-        return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_NIGHT_MERGE_ALGORITHM, "legacy");
-    }
 
-    public static boolean isHdrPlusMergeEnabled() {
-        if (isRawMfsrEnabled() || isVivoHdrEnabled()) return false; // Native base + exposure-aware bracket merge, no second HDR+ denoise.
-        CameraMode mode = CameraMode.valueOf(getCameraModeOrdinal());
-        return "hdrplus".equals(mode == CameraMode.NIGHT ? getNightMergeAlgorithm() : getZslMergeAlgorithm());
-    }
 
     public static float getCompressorValue() {
         return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_COMPRESSOR_SEEKBAR).floatValue();
@@ -1982,9 +1649,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getString("default_scope", Key.KEY_VIDEO_RESOLUTION, "1920x1080");
     }
 
-    public static void setVideoResolution(String value) {
-        preferenceKeys.settingsManager.set("default_scope", Key.KEY_VIDEO_RESOLUTION, value);
-    }
 
     public static boolean isRawVideoDownscale4x() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAWVIDEO_DOWNSCALE_4X);
@@ -2004,8 +1668,6 @@ public class PreferenceKeys {
         KEY_SAVE_PER_LENS_SETTINGS(R.string.pref_save_per_lens_settings),
         KEY_DISABLE_ALIGNINIG(R.string.pref_disable_aligning_key),
         KEY_SHOW_WATERMARK(R.string.pref_show_watermark_key),
-        KEY_ENERGY_SAVING(R.string.pref_energy_safe_key),
-        KEY_BINNING(R.string.pref_binning_key),
         KEY_ENHANCED_PROCESSING(R.string.pref_enhanced_processing_key),
         KEY_HDRX_NR(R.string.pref_hdrx_nr_key),
         KEY_SHOW_ROUND_EDGE(R.string.pref_show_roundedge_key),
@@ -2015,26 +1677,15 @@ public class PreferenceKeys {
         KEY_LUMA_NR_SEEKBAR(R.string.pref_luma_nr_seekbar_key),
         KEY_COMPRESSOR_SEEKBAR(R.string.pref_compressor_seekbar_key),
         KEY_NOISESTR_SEEKBAR(R.string.pref_noise_seekbar_key),
-        KEY_MERGE_SEEKBAR(R.string.pref_merge_seekbar_key),
         KEY_GAIN_SEEKBAR(R.string.pref_gain_seekbar_key),
         KEY_SHADOWS_SEEKBAR(R.string.pref_shadows_seekbar_key),
-        KEY_FRAME_COUNT(R.string.pref_frame_count_key),
-        KEY_SHORT_FRAME_COUNT(R.string.pref_short_frame_count_key),
-        KEY_LONG_FRAME_COUNT(R.string.pref_long_frame_count_key),
-        KEY_SHORT_EXPOSURE_EV(R.string.pref_short_exposure_ev_key),
-        KEY_LONG_EXPOSURE_EV(R.string.pref_long_exposure_ev_key),
-        KEY_HIGHLIGHT_SUPPRESSION(R.string.pref_highlight_suppression_key),
-        KEY_PROCESSING_BACKEND(R.string.pref_processing_backend_key),
         KEY_CONTRAST_SEEKBAR(R.string.pref_contrast_seekbar_key),
         KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
-        KEY_REMOSAIC_ENABLED(R.string.pref_remosaic_enabled_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
         KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
-        KEY_REMOSAIC_BACKEND(R.string.pref_remosaic_backend_key),
         KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
         KEY_REMOSAIC_CLAMP(R.string.pref_remosaic_clamp_key),
         KEY_REMOSAIC_FLATFIELD(R.string.pref_remosaic_flatfield_key),
-        KEY_REMOSAIC_DUMP(R.string.pref_remosaic_dump_key),
         KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
         KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
         KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),
@@ -2082,26 +1733,13 @@ public class PreferenceKeys {
         KEY_CA_BLUE(R.string.pref_ca_blue_key),
         KEY_NR_LUMA_ENABLED(R.string.pref_nr_luma_enabled_key),
         KEY_NR_CHROMA_ENABLED(R.string.pref_nr_chroma_enabled_key),
-        KEY_AI_DENOISE_ENABLED(R.string.pref_ai_denoise_enabled_key),
-        KEY_AI_DENOISE_STRENGTH(R.string.pref_ai_denoise_strength_key),
-        KEY_AI_DENOISE_LUMA(R.string.pref_ai_denoise_luma_key),
-        KEY_AI_DENOISE_CHROMA(R.string.pref_ai_denoise_chroma_key),
-        KEY_AI_DENOISE_MODEL(R.string.pref_ai_denoise_model_key),
-        KEY_RAW_MFSR_ENABLED(R.string.pref_raw_mfsr_enabled_key),
         KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
-        KEY_HIGHLIGHT_RECOVERY(R.string.pref_highlight_recovery_key),
-        KEY_HIGHLIGHT_RECOVERY_MIN_OK(R.string.pref_highlight_recovery_min_ok_key),
-        KEY_HIGHLIGHT_PROTECTION(R.string.pref_highlight_protection_key),
-        KEY_HIGHLIGHT_PROTECTION_KNEE(R.string.pref_highlight_protection_knee_key),
-        KEY_HIGHLIGHT_PROTECTION_STRENGTH(R.string.pref_highlight_protection_strength_key),
         KEY_RT_NR_LUMA(R.string.pref_rt_nr_luma_key),
         KEY_RT_NR_CHROMA(R.string.pref_rt_nr_chroma_key),
         KEY_RT_NR_DETAIL(R.string.pref_rt_nr_detail_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
-        KEY_ZSL_MERGE_ALGORITHM(R.string.pref_zsl_merge_algorithm_key),
-        KEY_NIGHT_MERGE_ALGORITHM(R.string.pref_night_merge_algorithm_key),
         KEY_RT_NR_MOIRE(R.string.pref_rt_nr_moire_key),
         KEY_CAPTURE_ONE_ENABLED(R.string.pref_capture_one_enabled_key),
         KEY_C1_LCC(R.string.pref_c1_lcc_key),
@@ -2119,10 +1757,6 @@ public class PreferenceKeys {
         KEY_C1_SHADOWS(R.string.pref_c1_shadows_key),
         KEY_C1_MIDTONES(R.string.pref_c1_midtones_key),
         KEY_C1_HIGHLIGHTS(R.string.pref_c1_highlights_key),
-        KEY_HDRPLUS_DENOISE_STRENGTH(R.string.pref_hdrplus_denoise_strength_key),
-        KEY_HDRPLUS_LOW_DENOISE(R.string.pref_hdrplus_low_denoise_key),
-        KEY_HDRPLUS_HIGH_DENOISE(R.string.pref_hdrplus_high_denoise_key),
-        KEY_HDRPLUS_CHROMA_DENOISE(R.string.pref_hdrplus_chroma_denoise_key),
         KEY_EXPOCOMPENSATE_SEEKBAR(R.string.pref_expocompensation_seekbar_key),
         KEY_SATURATION_SEEKBAR(R.string.pref_saturation_seekbar_key),
         KEY_ALIGN_METHOD(R.string.pref_align_method_key),

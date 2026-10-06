@@ -17,126 +17,64 @@ public final class SettingsAvailability {
         return false;
     }
     public String reason(String key) {
-        boolean multi = on("pref_raw_mfsr_enabled_key", false);
-        // Route selector pref_merge_route (PreferenceKeys.mergeRoute): hybrid (default) or scamhdr.
+        // Route selector pref_merge_route (PreferenceKeys.mergeRoute): hybrid (default) or scamhdr. Every shot is one of them.
         boolean autonomous=text("pref_merge_route","hybrid").equals("scamhdr");
-        boolean niceMosaic=!text("pref_vivo_nice_mosaic","off").equals("off") && autonomous;
-        boolean incompatible=multi || (!niceMosaic && on("pref_remosaic_enabled_key",false)
-                && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
-        // LMC hybrid (PreferenceKeys.isLmcHybridEnabled): its own switch, plain Bayer or the SCAMERA remosaic without RAW
-        // MFSR; only a Quad/Tetra stream of SCAM HDR's mosaic mode (ISZ modules) stays with SCAM HDR.
-        boolean hybridIncompatible=multi || (on("pref_remosaic_enabled_key",false)
-                && !text("pref_remosaic_backend_key","scamera").equals("scamera"));
-        boolean hybridOn=!autonomous;
-        boolean hybrid=hybridOn && !hybridIncompatible;
-        if (key.startsWith("pref_lmc_hybrid_")) {
-            if (!hybridOn) return "Выберите склейку «LMC-гибрид».";
-            if (hybridIncompatible) return "LMC-гибрид сливает обычный Bayer: выберите Bayer или ремозаик SCAMERA и отключите RAW MFSR.";
-        }
-        if (autonomous && !incompatible
-                && any(key, "pref_vivo_hdr_luma", "pref_vivo_hdr_chroma"))
-            return "С SCAM HDR дополнительный RGB-шумодав отключён. Используйте внутренние параметры SCAM HDR.";
-        if (key.startsWith("pref_vivo_nice_") && !key.equals("pref_vivo_nice_route") && (!autonomous || incompatible))
-            return autonomous ? "Выберите Bayer или ремозаик SCAMERA и отключите RAW MFSR." : "Выберите склейку «SCAM HDR».";
+        String mosaicMode=text("pref_vivo_nice_mosaic","off");
+        boolean niceMosaic=!mosaicMode.equals("off") && autonomous;
+        boolean neuralMosaic=niceMosaic && mosaicMode.startsWith("neural");
+        boolean hybrid=!autonomous;
+        if (key.startsWith("pref_lmc_hybrid_") && !hybrid) return "Выберите склейку «LMC-гибрид».";
+        if (key.startsWith("pref_vivo_nice_") && !key.equals("pref_vivo_nice_route") && !autonomous)
+            return "Выберите склейку «SCAM HDR».";
         if (key.equals("pref_vivo_nice_route")) {
             return "SCAM HDR использует RAW. Выбор пути больше не применяется.";
         }
-        if (((autonomous && !incompatible) || hybrid)
-                && (key.startsWith("rt512_") || key.startsWith("pref_rt_")
-                    || key.startsWith("pref_ai_denoise_") || key.startsWith("pref_tunable_esd3d2_")
+        if ((key.startsWith("rt512_") || key.startsWith("pref_rt_")
+                    || key.startsWith("pref_tunable_esd3d2_")
                     || key.startsWith("pref_tunable_ablc_") || key.startsWith("pref_aces_")
                     || key.startsWith("scamera_darktable_") || key.startsWith("pref_tunable_initial_")
                     || key.startsWith("pref_tunable_autoexposurecurve_") || key.startsWith("pref_tunable_opendrt_")
                     || key.startsWith("pref_tunable_locallaplacian_")
-                    || any(key, "rt_original_controls", "legacy_denoise_screen", "ai_bayer_denoise_screen",
+                    || any(key, "rt_original_controls", "legacy_denoise_screen",
                         "expert_noise_screen", "aces_group_screen", "scamera_darktable_screen",
                         "expert_detail_screen", "pref_tunable_postpipeline_demosaicingmethod",
                         "pref_contrast_seekbar_key", "pref_saturation_seekbar_key", "pref_shadows_seekbar_key",
                         "pref_compressor_seekbar_key")))
             return hybrid ? "В LMC-гибриде этот этап пропускается. Настройки тона и шума — в разделе «LMC-гибрид»."
                     : "В RAW-пути SCAM HDR этот этап пропускается. Настройки тона и шума доступны в меню SCAM HDR.";
-        if(key.startsWith("pref_vivo_hdr_")) {
-            if(incompatible) return "Выберите Bayer или ремозаик SCAMERA и отключите MFSR. Автономный HDR использует собственную склейку.";
-            if(!autonomous) return "Выберите склейку «SCAM HDR».";
-        }
-        if(autonomous && !incompatible && (any(key,"pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key",
-                "pref_tunable_postpipeline_tonepipeline","pref_gcam_finish","pref_ai_denoise_enabled_key")
-                || key.startsWith("pref_hdrplus_")))
-            return "Сейчас используется автономный HDR: настройте его шумоподавление и тональную обработку в отдельном меню.";
-        if(hybrid && (any(key,"pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key",
-                "pref_tunable_postpipeline_tonepipeline","pref_gcam_finish","pref_ai_denoise_enabled_key")
-                || key.startsWith("pref_hdrplus_")))
-            return "Сейчас снимает LMC-гибрид: его склейка, шумоподавление и тон настраиваются в разделе «LMC-гибрид».";
-        boolean sabre=multi && text("pref_mfsr_engine_key","native").equals("sabre");
-        if(sabre && any(key,"pref_mfsr_fpn_key","pref_mfsr_calibrate_key","pref_mfsr_red_ca_key","pref_mfsr_blue_ca_key"))
-            return "Эта настройка относится к Multi-frame Remosaic, а выбран Sabre.";
-        if(key.equals("pref_gcam_cyclops") && !sabre) return "Маска Cyclops подключена к Sabre RAW — выберите этот алгоритм MFSR.";
+        if(key.startsWith("pref_vivo_hdr_") && !autonomous) return "Выберите склейку «SCAM HDR».";
+        if(any(key,"pref_tunable_postpipeline_tonepipeline","pref_gcam_finish"))
+            return hybrid ? "Сейчас снимает LMC-гибрид: его склейка, шумоподавление и тон настраиваются в разделе «LMC-гибрид»."
+                    : "Сейчас снимает SCAM HDR: его шумоподавление и тон настраиваются в его меню.";
+        if(key.equals("pref_gcam_cyclops")) return "Маска Cyclops относилась к Sabre RAW, этот путь удалён.";
         if(key.startsWith("pref_gcam_") && !any(key,"pref_gcam_finish","pref_gcam_cyclops","pref_gcam_scene_ae")
                 && !on("pref_gcam_finish",false)) return "Включите тональную обработку и резкость в меню GCam.";
-        boolean remosaic = !multi && on("pref_remosaic_enabled_key", false);
-        String backend = text("pref_remosaic_backend_key", "scamera");
-        boolean hex = remosaic && backend.equals("hp9_hexquad");
-        boolean quad2x2 = remosaic && backend.equals("imx06c_quad");
-        boolean post = hex ? on("hexquad_post_denoise", false) : !quad2x2 || on("quad2x2_post_denoise", false);
         boolean original = text("pref_rt_denoise_backend", "legacy").equals("rt512");
         String tone = text("pref_tunable_postpipeline_tonepipeline", "fusion");
         boolean initial = tone.equals("fusion") || tone.equals("curve");
         boolean aces = on("pref_aces_enabled_key", false);
-        boolean hdr = text("pref_camera_mode_key", "2").equals("4")
-                ? text("pref_night_merge_algorithm_key", "legacy").equals("hdrplus")
-                : text("pref_zsl_merge_algorithm_key", "legacy").equals("hdrplus");
-        if (multi && any(key,"pref_short_frame_count_key","pref_long_frame_count_key",
-                "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
-                "pref_highlight_recovery_key","pref_highlight_protection_key"))
-            return !sabre && on("pref_mfsr_calibrate_key",false) ? "При тёмной калибровке брекетинг отключён." : null;
-        boolean multiBracket=multi && !on("pref_mfsr_calibrate_key",false)
-                && (PreferenceNumber.read(values.get("pref_short_frame_count_key"),0)>0
-                || PreferenceNumber.read(values.get("pref_long_frame_count_key"),0)>0);
-        if(multiBracket && ((key.startsWith("pref_merge_") && !key.equals("pref_merge_seekbar_key"))
-                || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")))
-            return null; // These now align/fuse the native base with exposure donors.
-        if(multi)hdr=false;
-        if (multi && (key.startsWith("pref_remosaic_") || key.startsWith("hexquad_") || key.startsWith("quad2x2_")
-                || key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
-                || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
-                || any(key,"pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key",
-                "pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key",
-                "pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key","pref_highlight_recovery_key",
-                "pref_highlight_protection_key","scamera_quad_bayer_enabled")))
-            return "Multi-frame Remosaic использует свою склейку и выбранный в его меню тип мозаики.";
-        // Both per-mode selectors remain editable even while a different mode is open.
-        if (key.startsWith("quad2x2_") && !key.endsWith("screen")) {
-            if (!quad2x2) return "Доступно: включите ремозаик и выберите Quad 2×2.";
-            boolean auto = on("quad2x2_auto_iso", false);
-            if (any(key,"quad2x2_luma","quad2x2_chroma") && auto) return "Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.";
-            if (key.startsWith("quad2x2_iso_") && !auto) return "Включите «Люма и хрома по ISO».";
-        }
-        if (key.startsWith("hexquad_") && !key.endsWith("screen")) {
-            if (!hex) return "Доступно: включите ремозаик и выберите HP9 HexQuad.";
-            if (key.equals("hexquad_full_resolution") && !text("hexquad_model", "2").equals("2")) return "Полный выход доступен только для модели x2.";
-            boolean auto = on("hexquad_auto_iso", false);
-            if (any(key,"hexquad_luma","hexquad_chroma") && auto) return "Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.";
-            if (key.startsWith("hexquad_iso_") && !auto) return "Включите «Люма и хрома по ISO».";
+        // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.
+        if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
+            if (!neuralMosaic) return "Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).";
+            String p = key.startsWith("quad2x2_") ? "quad2x2_" : "hexquad_";
+            boolean auto = on(p + "auto_iso", false);
+            if (any(key, p + "luma", p + "chroma") && auto) return "Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.";
+            if (key.startsWith(p + "iso_") && !auto) return "Включите «Люма и хрома по ISO».";
         }
         if ((key.startsWith("pref_noise_iso_") || key.equals("pref_noise_disable_digital_gain_key"))
                 && text("pref_noise_model_profile_key","auto").equals("auto") && !calibratedSensor)
             return "Для изменения ISO модели выберите калиброванный профиль шума. Camera2 Auto использует измеренный шум текущего кадра.";
-        if (key.startsWith("scamera_mosaic_sr_") && !key.equals("scamera_mosaic_sr_enabled") && !on("scamera_mosaic_sr_enabled",false))
-            return "Включите увеличение RAW-мозаики.";
-        if (key.equals("scamera_quad_bayer_enabled") && remosaic) return "При ремозаике используется выбранный выше размер блока и исходный порядок CFA.";
         if (key.equals("pref_tunable_opendrt_greyboost") || key.equals("pref_tunable_opendrt_hdrpurity")) {
             if (PreferenceNumber.read(values.get("pref_tunable_opendrt_displaypeak"),100)==100)
                 return "Этот параметр начинает влиять при Display Peak выше 100 нит.";
         }
-        if (key.startsWith("pref_remosaic_") && !key.equals("pref_remosaic_enabled_key")) {
-            if (!remosaic) return "Включите ремозаик.";
-            if (any(key,"pref_remosaic_profile_key","pref_remosaic_steered_key","pref_remosaic_clamp_key","pref_remosaic_flatfield_key") && !backend.equals("scamera")) return "Эта настройка относится к алгоритму SCAMERA.";
-        }
-        if (key.equals("pref_tetra_response_key") && (!remosaic || backend.equals("scamera"))) return "Коррекция для Tetra Detail / HP9 HexQuad.";
+        // GPU remosaic of SCAM HDR's mosaic modes (S / ES / L always, N in «SCAMERA» / «Sabre»).
+        if (key.startsWith("pref_remosaic_") && !niceMosaic) return "Используется в SCAM HDR с мозаикой Quad / Tetra (модули ISZ).";
+        if (key.equals("pref_tetra_response_key") && !(niceMosaic && (mosaicMode.equals("detail") || mosaicMode.startsWith("neural"))))
+            return "Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.";
         if (any(key,"scamera_quad_bayer_mode","scamera_quad_dng_metadata") && !on("scamera_quad_bayer_enabled", false)) return "Включите обработку Quad Bayer.";
-        if (key.equals("pref_tunable_postpipeline_demosaicingmethod") && !remosaic && any(text("pref_cfa_key","-1"),"-2","4")) return "Для Quad и монохромного сенсора используется специальная демозаика.";
+        if (key.equals("pref_tunable_postpipeline_demosaicingmethod") && any(text("pref_cfa_key","-1"),"-2","4")) return "Для Quad и монохромного сенсора используется специальная демозаика.";
         if (key.startsWith("rt512_") || key.startsWith("pref_rt_nr_") || key.startsWith("pref_ai_denoise_") || key.startsWith("pref_tunable_esd3d2_") || key.equals("pref_rt_denoise_backend")) {
-            if (!post) return "HexQuad: включите дополнительный шумодав после нейроремозаика.";
             if (key.startsWith("rt512_")) {
                 if (!original) return "Выберите RawTherapee 5.12 в алгоритме шумоподавления.";
                 if (any(key,"rt512_chroma","rt512_red","rt512_blue") && !text("rt512_auto","0").equals("0")) return "Цветовой шум оценивается автоматически.";
@@ -150,10 +88,8 @@ public final class SettingsAvailability {
             }
             if (key.startsWith("pref_rt_nr_") || key.startsWith("pref_tunable_esd3d2_")) {
                 if (original) return "Здесь параметры ESD3D. Сейчас выбран RawTherapee 5.12.";
-                if (hdr && !hex) return "В режиме HDR+ этот дополнительный ESD3D-проход пропускается.";
                 if (!key.equals("pref_tunable_esd3d2_enable") && !on("pref_tunable_esd3d2_enable",true)) return "Включите ESD3D в дополнительных параметрах шумоподавления.";
             }
-            if (key.startsWith("pref_ai_denoise_") && !key.equals("pref_ai_denoise_enabled_key") && !on("pref_ai_denoise_enabled_key",false)) return "Включите ИИ-шумоподавление Bayer.";
         }
         if (key.startsWith("pref_sharp_")) {
             String master = key.contains("deconv") ? "pref_sharp_deconv_enabled_key"
@@ -188,35 +124,14 @@ public final class SettingsAvailability {
         }
         if (key.equals("pref_compressor_seekbar_key") && !tone.equals("fusion")) return "Доступно только с Exposure Fusion.";
         if (key.equals("pref_false_color_strength_key") && !on("pref_false_color_enabled_key",true)) return "Включите автокоррекцию цветных граней.";
-        if (key.startsWith("pref_mfsr_") && !on("pref_raw_mfsr_enabled_key",false)) return "Включите RAW MFSR.";
-        if (hex && (key.startsWith("pref_merge_") || key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")
-                || key.startsWith("pref_mfsr_") || key.startsWith("pref_tunable_esd4d_") || key.startsWith("pref_tunable_pyramidalignment_")
-                || any(key,"pref_raw_mfsr_enabled_key","pref_frame_count_key","pref_short_frame_count_key","pref_long_frame_count_key","pref_short_exposure_ev_key","pref_long_exposure_ev_key","pref_highlight_suppression_key","pref_tet_model_enabled_key","pref_zsl_merge_algorithm_key","pref_night_merge_algorithm_key")))
-            return "HexQuad использует свою склейку шести кадров одинаковой экспозиции.";
-        if ((key.startsWith("pref_hdrplus_") || key.startsWith("pref_snr_")) && !hdr) return "Эти регуляторы применяются при склейке HDR+ в соответствующем режиме Фото/Ночь.";
-        if (key.equals("pref_merge_seekbar_key") && hdr) return "HDR+ использует отдельные регуляторы частот и цвета.";
-        if (key.equals("pref_highlight_recovery_min_ok_key") && !on("pref_highlight_recovery_key",false)) return "Включите восстановление светов при склейке.";
-        if (any(key,"pref_highlight_protection_knee_key","pref_highlight_protection_strength_key") && !on("pref_highlight_protection_key",false)) return "Включите защиту светов при склейке.";
-        if (key.equals("pref_antibanding_hz_key") && !on("pref_tet_model_enabled_key",false)) return "Частота применяется в TET-модели экспозиций.";
         if (key.startsWith("pref_tunable_ablc_") && !key.endsWith("_enable") && !on("pref_tunable_ablc_enable",true)) return "Включите коррекцию чёрного ABLC.";
         if (key.equals("pref_tunable_bayer2float_hlclip") && !on("pref_tunable_bayer2float_hlinpaintopposed",true)) return "Включите восстановление светов RAW.";
-        if (key.equals("pref_tunable_esd4d_flowrefinemaxdisp") && !on("pref_tunable_esd4d_enableflowrefinement",true)) return "Включите уточнение оптического потока.";
         if (key.startsWith("pref_tunable_autoexposurecurve_")) {
             if (any(key,"pref_tunable_autoexposurecurve_whiteapply","pref_tunable_autoexposurecurve_adaptivewhitepointenable")
                     && !on("pref_tunable_autoexposurecurve_enablewp",true)) return "Включите поиск точки белого.";
             if (any(key,"pref_tunable_autoexposurecurve_kneemax","pref_tunable_autoexposurecurve_kneemin","pref_tunable_autoexposurecurve_kneeref","pref_tunable_autoexposurecurve_cliptolerance")
                     && !on("pref_tunable_autoexposurecurve_highlightcompression",true)) return "Включите сжатие светов.";
         }
-        if (key.startsWith("pref_tunable_esd4d_")) {
-            if (any(key,"pref_tunable_esd4d_usencnnflow","pref_tunable_esd4d_enableflowrefinement")
-                    && !on("pref_tunable_esd4d_enablealignment",true)) return "Включите выравнивание кадров.";
-            if (any(key,"pref_tunable_esd4d_detectthr","pref_tunable_esd4d_max_hot_pixels","pref_tunable_esd4d_max_reasonable_hotpixels")
-                    && !on("pref_tunable_esd4d_enablehotpixelcorrection",true)) return "Включите коррекцию горячих пикселей.";
-            if (any(key,"pref_tunable_esd4d_enablenoisestore","pref_tunable_esd4d_noiseblendmaxframes","pref_tunable_esd4d_noiseblendcalmpy","pref_tunable_esd4d_noisescansubsample","pref_tunable_esd4d_noisefitvarbins","pref_tunable_esd4d_noisefitgatempy","pref_tunable_esd4d_enablefitocorrection","pref_tunable_esd4d_adaptivefallbackmin","pref_tunable_esd4d_adaptivefallbackmax")
-                    && !on("pref_noise_dynamic_enabled_key",true)) return "Включите динамическую оценку модели шума.";
-        }
-        if (key.startsWith("pref_tunable_pyramidalignment_") && (!on("pref_tunable_esd4d_enablealignment",true)
-                || on("pref_tunable_esd4d_usencnnflow",false))) return "Параметры блочного выравнивания. При FlowNet применяются только при возврате к пирамиде.";
         if (key.equals("pref_show_gradient_key") && text("pref_theme_accent_key","default").equals("eszdman")) return "Оформление задаётся выбранной темой.";
         return null;
     }

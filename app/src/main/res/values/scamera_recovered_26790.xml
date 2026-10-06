@@ -255,11 +255,7 @@
     <string name="pref_false_color_enabled_key">pref_false_color_enabled_key</string>
     <string name="pref_false_color_strength_default">75</string>
     <string name="pref_false_color_strength_key">pref_false_color_strength_key</string>
-    <string name="pref_hdrplus_chroma_denoise_key">pref_hdrplus_chroma_denoise_key</string>
     <string name="pref_hdrplus_denoise_strength_key">pref_hdrplus_denoise_strength_key</string>
-    <string name="pref_hdrplus_high_denoise_key">pref_hdrplus_high_denoise_key</string>
-    <string name="pref_hdrplus_low_denoise_key">pref_hdrplus_low_denoise_key</string>
-    <string name="pref_raw_mfsr_enabled_key">pref_raw_mfsr_enabled_key</string>
     <string name="snr_verylow_low">Очень низкий SNR (&lt; 8): низкие частоты</string>
     <string name="snr_verylow_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
     <string name="snr_verylow_high">Очень низкий SNR (&lt; 8): высокие частоты</string>
@@ -293,11 +289,6 @@
     <string name="hdrplus_snr_target">HDR+: целевой SNR</string>
     <string name="hdrplus_snr_target_summary">К какому отношению сигнал/шум стремится склейка. Сила шумодава масштабируется тем, насколько кадр до него не дотягивает. У GCam на светлой сцене оценка после склейки около 110</string>
     <string name="pref_live_viewfinder_look_key">pref_live_viewfinder_look_key</string>
-    <string name="pref_highlight_recovery_key">pref_highlight_recovery_key</string>
-    <string name="pref_highlight_recovery_min_ok_key">pref_highlight_recovery_min_ok_key</string>
-    <string name="pref_highlight_protection_key">pref_highlight_protection_key</string>
-    <string name="pref_highlight_protection_knee_key">pref_highlight_protection_knee_key</string>
-    <string name="pref_highlight_protection_strength_key">pref_highlight_protection_strength_key</string>
     <string name="pref_rt_nr_chroma_default">50</string>
     <string name="pref_rt_nr_chroma_key">pref_rt_nr_chroma_key</string>
     <string name="pref_rt_nr_detail_default">50</string>
@@ -515,8 +506,6 @@
     <string name="noise_model_import_summary">Загрузить файл калибровки (.c) с коэффициентами A/B/C/D</string>
     <string name="noise_model_export">Экспорт модели шума</string>
     <string name="noise_model_export_summary">Сохранить активный профиль в Download/SCAMERA</string>
-    <string name="noise_dynamic_enabled">Динамическая ISO-модель шума</string>
-    <string name="noise_dynamic_enabled_summary">Корректировать модель по измеренной сигме кадра</string>
     <string name="noise_disable_digital_gain">Отключить цифровой ISO gain</string>
     <string name="noise_disable_digital_gain_summary">Считать член O без усиления выше аналогового ISO</string>
     <string name="noise_model_coefficient">Коэффициент модели шума</string>
@@ -661,8 +650,6 @@
     <string name="preview_format_desc">Формат потока видоискателя. Влияет на точность превью и нагрузку</string>
     <string name="theme_desc">Оформление приложения</string>
     <string name="show_gradient_desc">Градиентная подложка в интерфейсе</string>
-    <string name="pref_zsl_merge_algorithm_key">pref_zsl_merge_algorithm_key</string>
     <string name="zsl_merge_algorithm">ZSL merge algorithm</string>
-    <string name="pref_night_merge_algorithm_key">pref_night_merge_algorithm_key</string>
     <string name="night_merge_algorithm">Night merge algorithm</string>
 </resources>

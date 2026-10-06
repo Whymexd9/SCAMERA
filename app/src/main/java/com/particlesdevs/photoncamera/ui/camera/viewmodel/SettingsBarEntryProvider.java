@@ -99,18 +99,16 @@ public class SettingsBarEntryProvider extends ViewModel {
     /**
      * Parameters the sheet no longer offers, left over from PhotonCamera: the HDRX switch (read by nothing), EIS (only
      * while recording video), exposure bracketing (only the old PhotonCamera planner; the hybrid and SCAM HDR plan their
-     * own frames), energy saving (only the GL tile size), Quad Bayer (switches the RAW stream to the full sensor mode,
+     * own frames),  Quad Bayer (switches the RAW stream to the full sensor mode,
      * which the ZSL burst of the hybrid must not) and a fixed preview FPS (caps the exposure of the ZSL frames). They go
      * back to their defaults, so a value chosen in an older build cannot stay on unseen.
      */
     private static void resetRemovedSettings() {
         boolean hdrx = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_hdrx_mode_default);
         boolean eis = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_eis_photo_default);
-        boolean energy = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_energy_safe_default);
         boolean quad = PhotonCamera.getResourcesStatic().getBoolean(R.bool.pref_quad_bayer_default);
         if (PreferenceKeys.isHdrXOn() != hdrx) PreferenceKeys.setHdrX(hdrx);
         if (PreferenceKeys.isEisPhotoOn() != eis) PreferenceKeys.setEisPhoto(eis);
-        if (PreferenceKeys.isBatterySaverOn() != energy) PreferenceKeys.setBatterySaver(energy);
         if (PreferenceKeys.isQuadBayerOn() != quad) PreferenceKeys.setQuadBayer(quad);
         if (PreferenceKeys.getFpsMode() != 0) PreferenceKeys.setFpsMode(0);
         if (PreferenceKeys.getBracketingMode() != 0) PreferenceKeys.setBracketingMode(0);

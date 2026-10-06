@@ -50,8 +50,7 @@ public final class VivoNiceBurst implements NiceTransport {
                 && "PD2454".equalsIgnoreCase(android.os.Build.DEVICE);
         physicalId = p.physicalID;
         trainedSensor = stockDevice && (p.physicalID == 3 || p.physicalID == 4);
-        if(p.quadCfa||cfa<0||cfa>3||PreferenceKeys.isRemosaicEnabled()
-                ||com.particlesdevs.photoncamera.util.Allocator.binning)
+        if(p.quadCfa||cfa<0||cfa>3||com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException("SCAM HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
         if(black.length!=4)throw new IOException("SCAM HDR: нужны четыре уровня чёрного");
         if(width<64||height<64||(width&1)!=0||(height&1)!=0||(long)width*height>16000000)

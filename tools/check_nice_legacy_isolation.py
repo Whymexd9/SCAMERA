@@ -34,10 +34,7 @@ public static void main(String[] a){
 var cc=new CaptureController();var b=new CaptureRequest.Builder(); double ref=(double)cc.mPreviewExposureTime*cc.mPreviewIso;
 IsoExpoSelector.HDR=true;
 for(int step=0;step<4;step++){var p=IsoExpoSelector.GenerateExpoPair(step,cc);check(p.iso==547 && p.exposure==8333326);}
-for(int ev=1;ev<=8;ev++) {PreferenceKeys.ev=ev;IsoExpoSelector.setHdrPlusExpo(b,0,cc);check(product(b)==ref);IsoExpoSelector.setLongExpo(b,cc);check(Math.abs(product(b)/ref/Math.scalb(1.,ev)-1)<.002);check(b.get(CaptureRequest.SENSOR_EXPOSURE_TIME)<=1000000000L);check(IsoExpoSelector.setUltraShortExpo(b,cc));check(Math.abs(product(b)/ref*Math.scalb(1.,ev)-1)<.02);}
-PreferenceKeys.ev=4;IsoExpoSelector.setMeasuredBracketBase(10000000,100,cc);IsoExpoSelector.setLongExpo(b,cc);check(product(b)==16000000000.);
-PreferenceKeys.nice=false;PreferenceKeys.poison=false;IsoExpoSelector.setMeasuredBracketBase(8333326,547,cc);IsoExpoSelector.setLongExpo(b,cc);check(Math.abs(product(b)/ref-9.8)<.01);IsoExpoSelector.setUltraShortExpo(b,cc);check(Math.abs(product(b)/ref-1/16.0)<.001);
-System.out.println("PASS: production IsoExpoSelector, NICE EV 1..8, poisoned legacy settings, measured base, legacy long ratio and unclamped short frame");}}
+System.out.println("PASS: production IsoExpoSelector: the metered exposure for every step, poisoned legacy settings never read");}}
 '''
 }
 keys = {
@@ -57,6 +54,6 @@ with tempfile.TemporaryDirectory() as d:
  p=Path(d)
  for name,content in STUBS.items():
   target=p/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(content)
- sources=[ROOT/'app/src/main/java'/BASE/'processing/parameters'/n for n in ['IsoExpoSelector.java','HdrBracketFactors.java','TetModel.java']]
+ sources=[ROOT/'app/src/main/java'/BASE/'processing/parameters'/n for n in ['IsoExpoSelector.java']]
  subprocess.run(['java','-m','jdk.compiler/com.sun.tools.javac.Main','-d',d,*map(str,p.rglob('*.java')),*map(str,sources)],check=True)
  subprocess.run(['java','-cp',d,'Check'],check=True)

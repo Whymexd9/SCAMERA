@@ -318,12 +318,9 @@ public class Camera2ApiAutoFix {
         }
     }
 
-    public static void applyEnergySaving() {
-        if (PhotonCamera.getSettings().energySaving) {
-            GLDrawParams.TileSize = 8;
-        } else {
-            GLDrawParams.TileSize = 256;
-        }
+    /** Full-size GL tiles for a capture (PostPipeline drops them to 8 only for small RAW sizes). */
+    public static void resetTileSize() {
+        GLDrawParams.TileSize = 256;
     }
 
     public static void applyPrev(CaptureRequest.Builder captureBuilder) {

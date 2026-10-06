@@ -15,42 +15,20 @@ for key, default, method in [('hexquad_luma', '50', 'getHexQuadLuma'), ('hexquad
     assert elements[0].get(a+'defaultValue') == default
     assert f'RawTherapeeSettings.number("{key}",{default},0,100)' in settings
     assert method+'()' in settings
-assert next(e for e in screen.iter() if e.get(a+'key') == 'hexquad_post_denoise').get(a+'defaultValue') == 'false'
+# P4: the standalone HexQuad burst is gone; inside SCAM HDR the network output keeps the input size and exposure and
+# SCAM HDR denoises its own merge, so the post-denoise, display-EV and full-resolution rows are removed.
+for gone in ['hexquad_post_denoise','hexquad_exposure_ev','hexquad_full_resolution','quad2x2_post_denoise','quad2x2_exposure_ev']:
+    assert not [e for e in xml.iter() if e.get(a+'key') == gone], gone
 burst = (java/'processing/opengl/postpipeline/HexQuadBurst.java').read_text()
 options=(java/'settings/HexQuadOptions.java').read_text()
 assert 'HEADER_BYTES=112' in options and 'putInt(0x32515848).putInt(gpu?4:3)' in options
-assert 'options.header(width,height,iso,red,black,white,response,neutral,frames.size(),quadModel)' in burst
 assert '.putFloat(lumaPercent/100f).putFloat(chromaPercent/100f)' in options
-assert 'p.hexQuadProcessed=true;p.hexQuadPostDenoise=burst.postDenoise' in burst
+assert '.sameSizeIf(true)' in burst
 pipeline = (java/'processing/opengl/postpipeline/PostPipeline.java').read_text()
-assert pipeline.count('!mParameters.hexQuadProcessed || mParameters.hexQuadPostDenoise') == 2
-assert re.search(r'hexQuadPostDenoise\).*?add\(new ESD3D2', pipeline, re.S)
-assert re.search(r'hexQuadPostDenoise\).*?add\(new RawTherapeeDenoise', pipeline, re.S)
-hdr = (java/'processing/processor/HdrxProcessor.java').read_text()
-assert '!processingParameters.hexQuadProcessed || processingParameters.hexQuadPostDenoise' in hdr
-assert 'if (allowPostDenoise && PreferenceKeys.isAiDenoiseEnabled()' in hdr
-assert 'params.hexQuadPostDenoise = hexQuadPostDenoise;' in (java/'processing/render/Parameters.java').read_text()
-print('HexQuad controls: visible screen, matching defaults, versioned header, captured policy, three NR consumers PASS')
+assert 'hexQuad' not in pipeline and not (java/'processing/opengl/postpipeline/HexQuadExposure.java').exists()
+print('HexQuad controls: visible screen, matching defaults, versioned header, removed legacy rows PASS')
 
-# Display EV is a per-shot control, applied after AE; it is not sent into VST/NPU.
-ev = [e for e in screen.iter() if e.get(a+'key') == 'hexquad_exposure_ev']
-app = '{http://schemas.android.com/apk/res-auto}'
-assert len(ev) == 1 and ev[0].get(a+'defaultValue') == '0'
-assert ev[0].get(app+'minValue') == '-2' and ev[0].get(app+'maxValue') == '2'
-assert 'RawTherapeeSettings.number("hexquad_exposure_ev",0,-2,2)' in settings
-assert 'exposureEv=PreferenceKeys.getHexQuadExposureEv()' in burst
-assert 'p.hexQuadExposureEv=burst.exposureEv' in burst
-params=(java/'processing/render/Parameters.java').read_text()
-assert 'params.hexQuadExposureEv = hexQuadExposureEv;' in params
-assert 'mParameters.hexQuadProcessed && mParameters.hexQuadExposureEv != 0f' in pipeline
-assert pipeline.index('add(new Initial())',pipeline.index('private void BuildDefaultPipeline')) < pipeline.index('add(new HexQuadExposure')
-assert pipeline.index('add(new CaptureOneProcessing())') < pipeline.index('add(new HexQuadExposure') < pipeline.index('add(new CaptureSharpening())')
-exposure=(java/'processing/opengl/postpipeline/HexQuadExposure.java').read_text()
-assert 'basePipeline.mParameters.hexQuadExposureEv' in exposure and 'PreferenceKeys' not in exposure
-assert 'display_exposure_ev=' in (java/'processing/opengl/postpipeline/VivoNeuralClient.java').read_text()
-print('HexQuad display exposure: bounded UI, shot snapshot, post-AE placement, zero bypass PASS')
-
-expected={'hexquad_model':'2','hexquad_full_resolution':'false','hexquad_noise_overall':'1','hexquad_noise_photon':'1','hexquad_noise_readout':'1','hexquad_auto_iso':'false','hexquad_texture':'0','hexquad_iso_low_luma':'35','hexquad_iso_low_chroma':'85','hexquad_iso_high_luma':'70','hexquad_iso_high_chroma':'100'}
+expected={'hexquad_model':'2','hexquad_noise_overall':'1','hexquad_noise_photon':'1','hexquad_noise_readout':'1','hexquad_auto_iso':'false','hexquad_texture':'0','hexquad_iso_low_luma':'35','hexquad_iso_low_chroma':'85','hexquad_iso_high_luma':'70','hexquad_iso_high_chroma':'100'}
 activity=(java/'ui/settings/SettingsActivity.java').read_text()
 for key,default in expected.items():
     es=[e for e in xml.iter() if e.get(a+'key')==key]
@@ -58,7 +36,6 @@ for key,default in expected.items():
     assert key in settings and key in activity
 assert 'burst.options.profileKey(burst.iso,burst.red)' in (java/'processing/opengl/postpipeline/VivoNeuralClient.java').read_text()
 assert 'burst.options.outputBytes(w,h)' in (java/'processing/opengl/postpipeline/VivoNeuralClient.java').read_text()
-assert 'width=processingParameters.rawSize.x;height=processingParameters.rawSize.y;' in hdr
 print('HexQuad v14: model, output dimensions, ISO policy, profile cache, texture and UI wiring PASS')
 
 # UniversalSeekBar stepPerUnit is steps per ONE UNIT, not the step size.

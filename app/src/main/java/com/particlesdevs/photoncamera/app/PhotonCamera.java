@@ -29,7 +29,6 @@ import com.particlesdevs.photoncamera.debugclient.Debugger;
 import com.particlesdevs.photoncamera.pro.SensorSpecifics;
 import com.particlesdevs.photoncamera.pro.Specific;
 import com.particlesdevs.photoncamera.pro.SupportedDevice;
-import com.particlesdevs.photoncamera.processing.ml.FlowNetNcnnProcessor;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.processing.render.PreviewParameters;
 import com.particlesdevs.photoncamera.settings.MigrationManager;
@@ -251,11 +250,6 @@ public class PhotonCamera extends Application {
 
         PreferenceKeys.initialise(mSettingsManager);
 
-        // Backend selection is stored in PreferenceKeys, so FlowNet must only
-        // start after the settings facade has been initialized. Starting it at
-        // the top of initModules caused a launch-time NullPointerException in
-        // getProcessingBackendValue() before the first Activity was displayed.
-        FlowNetNcnnProcessor.start(this);
 
         mSettings = new Settings();
 

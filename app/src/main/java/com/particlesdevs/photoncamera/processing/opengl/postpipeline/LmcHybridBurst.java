@@ -58,7 +58,7 @@ public final class LmcHybridBurst implements NiceTransport {
         width = p.rawSize.x; height = p.rawSize.y; cfa = p.cfaPattern; white = p.whiteLevel; black = p.blackLevel.clone();
         diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
-        if (p.quadCfa || cfa < 0 || cfa > 3 || PreferenceKeys.isRemosaicEnabled() || com.particlesdevs.photoncamera.util.Allocator.binning)
+        if (p.quadCfa || cfa < 0 || cfa > 3 ||  com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException("LMC-гибрид: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга");
         if (black.length != 4) throw new IOException("LMC-гибрид: нужны четыре уровня чёрного");
         if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0 || (long) width * height > 16000000)

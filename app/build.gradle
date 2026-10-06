@@ -28,10 +28,6 @@ android {
 
     packagingOptions {
         jniLibs {
-            // The recovered 26790 libncnnMl.so contains the complete, tested
-            // FlowNet/KernelNet/RAISR JNI surface.  Keep the source fallback
-            // out of the APK so System.loadLibrary("ncnnMl") resolves to it.
-            excludes += ['**/libncnnMlSource.so']
             // Extracted to nativeLibraryDir: the NICE/neural worker and its QNN
             // runtime (added by tools/package_vivo_neural.py) run from there without root.
             useLegacyPackaging true

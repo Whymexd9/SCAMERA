@@ -21,8 +21,6 @@ public final class TunableRegistry {
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.OpenDRT.class,
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.Amaze.class,
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.Bayer2Float.class,
-        com.particlesdevs.photoncamera.processing.opengl.scripts.PyramidAlignment.class,
-        com.particlesdevs.photoncamera.processing.opengl.scripts.ESD4D.class,
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ABLC.class,
         com.particlesdevs.photoncamera.processing.render.Parameters.class,
     };

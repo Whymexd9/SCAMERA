@@ -127,7 +127,6 @@ public class HybridSettingsTest {
         assertTrue(PreferenceKeys.isLmcHybridEnabled());assertTrue(PreferenceKeys.isVivoNiceEnabled());
         assertTrue(PreferenceKeys.isVivoHdrEnabled());assertFalse(PreferenceKeys.isScamHdrNiceEnabled());
         assertTrue(PreferenceKeys.isHybridShot());
-        assertTrue(PreferenceKeys.getFrameCountValue()>=4);
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         assertTrue(PreferenceKeys.isScamHdrSwitchOn());assertTrue(PreferenceKeys.isScamHdrNiceEnabled());
         assertFalse(PreferenceKeys.isLmcHybridEnabled());assertFalse(PreferenceKeys.isHybridShot());

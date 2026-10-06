@@ -103,7 +103,6 @@ public class TunablePreferenceGenerator {
     private static String destination(String className) {
         switch (className) {
             case "ESD3D2": case "ABLC": return "expert_noise_screen";
-            case "ESD4D": case "PyramidAlignment": return "expert_merge_screen";
             case "LocalLaplacian": return "expert_detail_screen";
             case "Bayer2Float": case "Amaze": return "expert_raw_screen";
             case "Parameters": return "expert_sensor_screen";

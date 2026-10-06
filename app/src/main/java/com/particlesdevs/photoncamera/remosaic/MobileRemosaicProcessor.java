@@ -44,24 +44,19 @@ public final class MobileRemosaicProcessor {
         }
         return inputs;
     }
-    public static ByteBuffer process(List<ImageFrame> frames, Parameters p) {
-        int block=PreferenceKeys.getMultiFrameBlock();
-        String cfa=BurstPolicy.cfa(PreferenceKeys.getMultiFrameCfa(),p.baseCfaPattern);
-        return processGroup(frames,p,block,cfa,3);
-    }
     private static ByteBuffer processGroup(List<ImageFrame> frames,Parameters p,int block,String cfa,int minimum) {
         ByteBuffer[] inputs=validate(frames,p,block,minimum);
         load();
         String key=RemosaicCalibrationStore.key(p.cameraID,block,cfa,p.rawSize.x,p.rawSize.y);
-        RemosaicCalibrationStore.Profile cal=PreferenceKeys.isMultiFrameFpnEnabled()
-                ? RemosaicCalibrationStore.load(key,frames.get(0).pair.iso,frames.get(0).pair.exposure,inputs[0].capacity()) : null;
+        // FPN profiles recorded by the former CAL capture still apply when present.
+        RemosaicCalibrationStore.Profile cal=RemosaicCalibrationStore.load(key,frames.get(0).pair.iso,frames.get(0).pair.exposure,inputs[0].capacity());
         ByteBuffer out=Allocator.allocate(inputs[0].capacity());
         if(out==null) throw new IllegalStateException("MFSR: не удалось выделить выходной RAW");
         boolean ok=false;long start=System.nanoTime();
         try {
             ok=nativeProcess(inputs,p.rawSize.x,p.rawSize.y,block,cfa,inputs.length,
                     cal==null?null:cal.map,cal==null?0:cal.scale,
-                    PreferenceKeys.getMultiFrameRedCa(),PreferenceKeys.getMultiFrameBlueCa(),out);
+                    1f,1f,out);
             if(!ok) throw new IllegalStateException("Multi-frame Remosaic: ошибка nativeProcess");
             p.cfaPattern=(byte)java.util.Arrays.asList("RGGB","GRBG","GBRG","BGGR").indexOf(cfa);
             p.baseCfaPattern=p.cfaPattern;p.quadCfa=false;p.remosaicDone=true;
@@ -79,35 +74,5 @@ public final class MobileRemosaicProcessor {
      */
     public static ByteBuffer mergeForNice(List<ImageFrame> frames, Parameters p, int block, String cfa) {
         return processGroup(frames,p,block,cfa,3);
-    }
-    /** Fuse each equal-exposure group independently; never feed a bracket to nativeProcess. */
-    public static java.util.ArrayList<ImageFrame> prepareBracket(List<ImageFrame> frames,Parameters p) {
-        int block=PreferenceKeys.getMultiFrameBlock();
-        String cfa=BurstPolicy.cfa(PreferenceKeys.getMultiFrameCfa(),p.baseCfaPattern);
-        java.util.ArrayList<ExposureGroups.Sample> samples=new java.util.ArrayList<>();
-        for(ImageFrame f:frames) samples.add(new ExposureGroups.Sample(f.timestamp,f.pair.exposure,f.pair.iso,
-                f.pair.isHighlightFrame ? 1 : f.pair.isLongFrame ? 2 : 0));
-        java.util.ArrayList<ImageFrame> result=new java.util.ArrayList<>();
-        for(java.util.List<Integer> indices:ExposureGroups.split(samples)) {
-            java.util.ArrayList<ImageFrame> group=new java.util.ArrayList<>();
-            for(int i:indices)group.add(frames.get(i));
-            boolean normal=!group.get(0).pair.isHighlightFrame && !group.get(0).pair.isLongFrame;
-            ByteBuffer output=processGroup(group,p,block,cfa,normal?3:1);
-            // The binary aligns to index floor(N/2); retain that frame's timestamp and gyro.
-            ImageFrame ref=group.get(group.size()/2);
-            for(ImageFrame f:group)f.close();
-            ref.buffer=output;ref.computeSharpness();result.add(ref);
-            if(normal) {p.iso=ref.pair.iso;p.exposureTime=ref.pair.exposure/1e9;p.multiFrameCount=group.size();}
-        }
-        Log.i("RAW_MFSR","HDR donors="+(result.size()-1)+" normalFrames="+p.multiFrameCount);
-        return result;
-    }
-    public static void calibrate(List<ImageFrame> frames, Parameters p, CalibrationSession session) throws Exception {
-        int block=PreferenceKeys.getMultiFrameBlock();
-        String cfa=BurstPolicy.cfa(PreferenceKeys.getMultiFrameCfa(),p.baseCfaPattern);
-        ByteBuffer[] inputs=validate(frames,p,block,3);load();
-        if(session==null || !session.camera.equals(p.cameraID))throw new IllegalStateException("Отсутствует план CAL для этого модуля");
-        session.save(RemosaicCalibrationStore.key(p.cameraID,block,cfa,p.rawSize.x,p.rawSize.y),
-                inputs,p.rawSize.x,p.rawSize.y,frames.get(0).pair.iso,frames.get(0).pair.exposure);
     }
 }

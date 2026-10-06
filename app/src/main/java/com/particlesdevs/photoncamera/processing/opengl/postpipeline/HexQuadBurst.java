@@ -17,8 +17,6 @@ public final class HexQuadBurst {
     final boolean zsl;
     final double exposureSeconds;
     final float lumaPercent,chromaPercent;
-    final float exposureEv;
-    final boolean postDenoise;
     final com.particlesdevs.photoncamera.settings.HexQuadOptions options;
     final float[] neutral;
     /** Main camera 2x2 Quad (2x ISZ, vendor IMX06C model): four frames, x1 output. */
@@ -26,14 +24,11 @@ public final class HexQuadBurst {
     /** 0 main IMX06C quad model, 1 tele HP9 ROI quad model (200 MP sensor). */
     final int quadModel;
     private final List<ImageFrame> frames;
-    private HexQuadBurst(List<ImageFrame> frames,Parameters p) throws IOException {
-        this(frames,p,null);
-    }
-    /** forceQuad: null = the module's backend setting; otherwise the model of a SCAM HDR mosaic (true Quad 2x2, false Tetra 4x4). */
-    private HexQuadBurst(List<ImageFrame> frames,Parameters p,Boolean forceQuad) throws IOException {
+    /** quad: the model of the SCAM HDR mosaic (true Quad 2x2, false Tetra 4x4). */
+    private HexQuadBurst(List<ImageFrame> frames,Parameters p,boolean quad) throws IOException {
         this.frames=new ArrayList<>(frames);
         width=p.rawSize.x;height=p.rawSize.y;
-        quad=forceQuad!=null?forceQuad:PreferenceKeys.isQuadNeuralCaptureEnabled();
+        this.quad=quad;
         if(com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException(quad?"Quad 2×2 требует исходный Quad RAW: отключите программный биннинг":"HexQuad требует исходный Tetra RAW: отключите программный биннинг");
         if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169)
@@ -55,7 +50,6 @@ public final class HexQuadBurst {
         black=(p.blackLevel[0]+p.blackLevel[1]+p.blackLevel[2]+p.blackLevel[3])*.25f;
         white=p.whiteLevel;response=PreferenceKeys.isTetraResponseCorrection();
 
-        postDenoise=quad?PreferenceKeys.isQuadPostDenoiseEnabled():PreferenceKeys.isHexQuadPostDenoiseEnabled();
         if(p.whitePoint==null||p.whitePoint.length!=3)throw new IOException("Нет точки белого для HexQuad");
         neutral=p.whitePoint.clone();
         for(float v:neutral)if(!Float.isFinite(v)||v<.0001f||v>10000f)throw new IOException("Неверная точка белого HexQuad");
@@ -65,8 +59,8 @@ public final class HexQuadBurst {
         iso=p.iso; // Measured sensor ISO from CaptureResult, not normalized UI ISO.
         if(iso<50||iso>12800||!Float.isFinite(black)||!Float.isFinite(white)||white<=black+1)
             throw new IOException("Неподдерживаемые ISO/уровни RAW");
-        options=(quad?PreferenceKeys.getQuadOptions(iso):PreferenceKeys.getHexQuadOptions(iso)).sameSizeIf(forceQuad!=null);
-        exposureEv=quad?PreferenceKeys.getQuadExposureEv():PreferenceKeys.getHexQuadExposureEv();
+        // Inside SCAM HDR the network output stays at the input size and exposure (the mosaic feeds the N slots).
+        options=(quad?PreferenceKeys.getQuadOptions(iso):PreferenceKeys.getHexQuadOptions(iso)).sameSizeIf(true);
         lumaPercent=options.lumaPercent;chromaPercent=options.chromaPercent;
         Set<Long> timestamps=new HashSet<>();
         for(ImageFrame frame:frames){
@@ -115,28 +109,6 @@ public final class HexQuadBurst {
                 +String.format(java.util.Locale.US,"%.1f -> %.1f",sumIn/Math.max(1,(n+63)/64),sumOut/Math.max(1,(n+63)/64))
                 +" (black "+black+", white "+burst.white+")");
         result.position(0);
-        return result;
-    }
-    public static ByteBuffer process(Context context,List<ImageFrame> frames,Parameters p) throws Exception {
-        HexQuadBurst burst=new HexQuadBurst(frames,p);
-        ByteBuffer result=VivoNeuralClient.processBurst(context,burst);
-        // Native output preserves reconstruction precision in normalized Bayer16.
-        // Sensor white balance and lens shading are applied once, downstream.
-        if(burst.options.fullResolution){
-            p.rawSize=new android.graphics.Point(burst.width*2,burst.height*2);
-            if(p.sensorPix!=null)p.sensorPix=new android.graphics.Rect(p.sensorPix.left*2,p.sensorPix.top*2,p.sensorPix.right*2,p.sensorPix.bottom*2);
-            p.XPerMm*=2;p.YPerMm*=2;
-            p.alignmentSize=new android.graphics.Point(p.rawSize.x/p.tile+1,p.rawSize.y/p.tile+1);
-            p.tilesX=p.rawSize.x/800+1;
-            // Sensor defect coordinates no longer address the reconstructed lattice.
-            p.hotPixels=new android.graphics.Point[0];
-        }
-        p.cfaPattern=(byte)burst.red;p.quadCfa=false;p.remosaicDone=true;
-        p.hexQuadProcessed=true;p.hexQuadPostDenoise=burst.postDenoise;
-        p.hexQuadExposureEv=burst.exposureEv;
-        p.whiteLevel=65535;
-        Arrays.fill(p.blackLevel,0f);
-        p.iso=burst.iso; // Keep measured exposureTime from CaptureResult.
         return result;
     }
 }

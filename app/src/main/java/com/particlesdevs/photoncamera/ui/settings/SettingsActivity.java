@@ -202,7 +202,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             });
             setupRemosaicBackend();
             setupOriginalNoiseReduction();
-            updateHexQuadDenoiseControls(PreferenceKeys.getRemosaicBackend());
+            updateHexQuadDenoiseControls();
         }
 
         private void setupScalarInputs(PreferenceGroup group) {
@@ -224,13 +224,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
-        private void updateQuadDenoiseControls(String backend) {
-            boolean active=PreferenceKeys.isRemosaicEnabled() && "imx06c_quad".equals(backend);
+        /** SCAM HDR mosaic «neural» (Quad 2x2 model): manual Luma / Chroma or the ISO table. */
+        private void updateQuadDenoiseControls() {
+            boolean active=true;
             boolean auto=com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic()!=null
                     && com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic().getBoolean("default_scope","quad2x2_auto_iso",false);
-            for(String key:new String[]{"quad2x2_exposure_ev","quad2x2_noise_overall","quad2x2_noise_photon","quad2x2_noise_readout",
+            for(String key:new String[]{"quad2x2_noise_overall","quad2x2_noise_photon","quad2x2_noise_readout",
                     "quad2x2_auto_iso","quad2x2_luma","quad2x2_chroma","quad2x2_iso_low_luma","quad2x2_iso_low_chroma",
-                    "quad2x2_iso_high_luma","quad2x2_iso_high_chroma","quad2x2_post_denoise"}){
+                    "quad2x2_iso_high_luma","quad2x2_iso_high_chroma"}){
                 Preference p=findPreference(key);if(p==null)continue;
                 boolean enabled=active;
                 if(key.equals("quad2x2_luma")||key.equals("quad2x2_chroma"))enabled &= !auto;
@@ -239,17 +240,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
-        private void updateHexQuadDenoiseControls(String backend) {
-            updateQuadDenoiseControls(backend);
-            boolean active=PreferenceKeys.isRemosaicEnabled() && "hp9_hexquad".equals(backend);
+        /** SCAM HDR mosaic «neural» (HexQuad model on Tetra 4x4): manual Luma / Chroma or the ISO table. */
+        private void updateHexQuadDenoiseControls() {
+            updateQuadDenoiseControls();
+            boolean active=true;
             boolean auto=PreferenceKeys.isHexQuadAutoIso();
-            for(String key:new String[]{"hexquad_compute","hexquad_exposure_ev","hexquad_model","hexquad_full_resolution","hexquad_noise_overall",
+            for(String key:new String[]{"hexquad_compute","hexquad_model","hexquad_noise_overall",
                     "hexquad_noise_photon","hexquad_noise_readout","hexquad_auto_iso","hexquad_luma","hexquad_chroma",
                     "hexquad_iso_low_luma","hexquad_iso_low_chroma","hexquad_iso_high_luma","hexquad_iso_high_chroma",
-                    "hexquad_texture","hexquad_post_denoise"}){
+                    "hexquad_texture"}){
                 Preference p=findPreference(key);if(p==null)continue;
                 boolean enabled=active;
-                if(key.equals("hexquad_full_resolution"))enabled &= PreferenceKeys.getHexQuadModelScale()==2;
                 if(key.equals("hexquad_luma")||key.equals("hexquad_chroma"))enabled &= !auto;
                 if(key.startsWith("hexquad_iso_"))enabled &= auto;
                 p.setEnabled(enabled);
@@ -298,7 +299,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (controls != null) controls.setEnabled(original);
             for (String key : new String[]{"pref_rt_nr_luma_key", "pref_rt_nr_chroma_key", "pref_rt_nr_detail_key", "pref_rt_nr_moire_key"}) {
                 Preference pref = findPreference(key);
-                if (pref != null) pref.setEnabled(!original && !PreferenceKeys.isHdrPlusMergeEnabled());
+                if (pref != null) pref.setEnabled(!original);
             }
         }
 
@@ -339,19 +340,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 startActivity(new android.content.Intent(requireContext(), VivoNeuralActivity.class));
                 return true;
             });
-            ListPreference backend = findPreference(getString(R.string.pref_remosaic_backend_key));
-            if (backend != null) {
-                backend.setOnPreferenceChangeListener((pref, value) -> {
-                    // The displayed entryValues define the selectable backends.
-                    // A second hard-coded list previously rejected HP9 HexQuad
-                    // even though it was offered in this very dialog.
-                    String selected = String.valueOf(value);
-                    if (backend.findIndexOfValue(selected) < 0) return false;
-                    updateRemosaicControls(selected);
-                    return true;
-                });
-            }
-            if (backend != null) updateRemosaicControls(backend.getValue());
             Preference probe = findPreference("remosaic_vivo_probe");
             if (probe == null) return;
             probe.setOnPreferenceClickListener(pref -> {
@@ -383,19 +371,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             });
         }
 
-        private void updateRemosaicControls(String backend) {
-            updateHexQuadDenoiseControls(backend);
-            boolean detail = "tetra_detail".equals(backend) || "vivo_neural".equals(backend)
-                    || "hp9_hexquad".equals(backend) || "imx06c_quad".equals(backend);
-            int[] legacy = {R.string.pref_remosaic_profile_key, R.string.pref_remosaic_steered_key,
-                    R.string.pref_remosaic_clamp_key, R.string.pref_remosaic_flatfield_key};
-            for (int key : legacy) {
-                Preference p = findPreference(getString(key));
-                if (p != null) p.setEnabled(!detail);
-            }
-            Preference response = findPreference("pref_tetra_response_key");
-            if (response != null) response.setEnabled(detail);
-        }
 
         /**
          * ListPreference.SimpleSummaryProvider calls getEntry() while binding the row, and
@@ -498,7 +473,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             seedMissingListValues(getPreferenceScreen());
 
             // Keep every category reachable regardless of the last camera mode.
-            setFramesSummary();
             setVersionDetails();
             setHdrxTitle();
             checkEszdTheme();
@@ -876,9 +850,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue)) {
                 restartActivity();
             }
-            if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_FRAME_COUNT.mValue)) {
-                setFramesSummary();
-            }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue)) {
                 Log.d("SettingsFragment", "Hide gallery icon changed, expected key: " + PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue);
                 try {
@@ -914,16 +885,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             else preference.setSummary(summary);
         }
 
-        private void setFramesSummary() {
-            Preference frameCountPreference = findPreference(PreferenceKeys.Key.KEY_FRAME_COUNT.mValue);
-            if (frameCountPreference != null) {
-                if (mSettingsManager.getInteger(PreferenceKeys.SCOPE_GLOBAL, PreferenceKeys.Key.KEY_FRAME_COUNT) == 1) {
-                    setBaseSummary(frameCountPreference, mContext.getString(R.string.unprocessed_raw));
-                } else {
-                    setBaseSummary(frameCountPreference, mContext.getString(R.string.frame_count_summary));
-                }
-            }
-        }
 
         private void toggleGalleryIconVisibility(boolean hideIcon) {
             try {

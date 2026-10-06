@@ -157,10 +157,9 @@ public final class VivoNeuralClient {
         try {
             if(burst!=null)log.accept("HEX SOURCE: "+(burst.zsl?"ZSL":"PSL")+" ISO="+burst.iso+
                     " exposure_s="+burst.exposureSeconds+" black="+burst.black+" white="+burst.white+
-                    " display_exposure_ev="+burst.exposureEv+" neutral="+java.util.Arrays.toString(burst.neutral)+
+                    " neutral="+java.util.Arrays.toString(burst.neutral)+
                     " profile_cache="+cachedProfile+" luma="+burst.lumaPercent+" chroma="+burst.chromaPercent+
-                    " additional_NR="+burst.postDenoise+" model=x"+burst.options.modelScale+
-                    " full_resolution="+burst.options.fullResolution+" auto_ISO="+burst.options.autoIso+
+                    " model=x"+burst.options.modelScale+" auto_ISO="+burst.options.autoIso+
                     (burst.quad?" quad_model="+(burst.quadModel==1?"HP9 ROI (tele)":"IMX06C (main)"):"")+
                     " noise_variance_factors="+burst.options.noiseOverall+","+burst.options.noisePhoton+","+burst.options.noiseReadout+
                     " texture="+(burst.options.texture*100)+" compute="+(burst.options.gpu?"HYBRID CPU + GPU + NPU":"CPU + NPU"));

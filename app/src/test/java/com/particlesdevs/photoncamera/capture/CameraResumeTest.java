@@ -246,8 +246,6 @@ public class CameraResumeTest {
         SettingsManager manager=PhotonCamera.getSettingsManagerStatic();
         assertEquals(50,CaptureController.zslRingCapacity());
         assertFalse(ModuleProfiles.isLocal("pref_zsl_buffer_count_key"));
-        manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
-        manager.set("default_scope","pref_mfsr_frames_key","3");
         assertEquals(50,CaptureController.zslRingCapacity());
         manager.set("default_scope","pref_zsl_buffer_count_key","32");
         assertEquals(32,CaptureController.zslRingCapacity());
@@ -255,8 +253,7 @@ public class CameraResumeTest {
         assertEquals(32,CaptureController.zslRingCapacity());
         assertNull(new SettingsAvailability(manager.getDefaultPreferences().getAll()).reason("pref_zsl_buffer_count_key"));
     }
-    @Test public void nativeMfsrUsesRollingRawAcrossStillModes() throws Exception {
-        PhotonCamera.getSettingsManagerStatic().set("default_scope","pref_raw_mfsr_enabled_key",true);
+    @Test public void stillModesUseRollingRaw() throws Exception {
         for(com.particlesdevs.photoncamera.api.CameraMode mode:new com.particlesdevs.photoncamera.api.CameraMode[]{
                 com.particlesdevs.photoncamera.api.CameraMode.MOTION,com.particlesdevs.photoncamera.api.CameraMode.PHOTO,
                 com.particlesdevs.photoncamera.api.CameraMode.NIGHT}) {

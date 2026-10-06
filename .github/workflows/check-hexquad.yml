@@ -8,7 +8,6 @@ on:
       - 'app/src/main/assets/shaders/Initial/*.glsl'
       - 'app/src/main/assets/shaders/ESD3D/flow.glsl'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/HexQuadBurst.java'
-      - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/HexQuadExposure.java'
       - 'app/src/main/assets/shaders/HexQuad/*.glsl'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/render/Parameters.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/PostPipeline.java'
@@ -23,7 +22,6 @@ on:
       - 'app/src/main/java/com/particlesdevs/photoncamera/settings/PreferenceKeys.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java'
       - 'app/src/main/res/values/strings.xml'
-      - 'app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java'
       - '.github/workflows/check-hexquad.yml'
   workflow_dispatch:
 permissions:
@@ -67,10 +65,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Check HexQuad ZSL metadata selection
-        run: |
-          javac -d /tmp/hex-zsl-test app/src/main/java/com/particlesdevs/photoncamera/capture/HexQuadZslSelector.java tools/java/HexQuadZslSelectorCheck.java
-          java -ea -cp /tmp/hex-zsl-test HexQuadZslSelectorCheck
       - name: Check model selection, noise controls, texture and native full output
         run: |
           g++ -pthread -std=c++14 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/check_vivo_hexquad_options.cpp -ldl -o /tmp/check-hex-options
@@ -91,8 +85,6 @@ jobs:
           sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev
           g++ -pthread -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_gpu.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hex-gpu
           python tools/check_vivo_hexquad_gpu.py /tmp/check-hex-gpu
-          g++ -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_exposure.cpp -lEGL -lGLESv2 -o /tmp/check-hex-exposure
-          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/check-hex-exposure
           g++ -std=c++14 -O2 -Wall -Wextra -Werror tools/check_vivo_hexquad_fusion.cpp -lEGL -lGLESv2 -o /tmp/check-hex-fusion
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/check-hex-fusion
           g++ -std=c++14 -O2 -Wall -Wextra -Werror tools/check_settings_shaders.cpp -lEGL -lGLESv2 -o /tmp/check-settings-shaders

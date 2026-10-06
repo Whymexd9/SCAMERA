@@ -64,10 +64,7 @@ public class Parameters {
      */
     public boolean remosaicDone;
     // Per-capture policy, not a live settings lookup during asynchronous processing.
-    public boolean hexQuadProcessed;
-    public boolean hexQuadPostDenoise;
     /** Per-shot display correction; never changes sensor exposure, VST or Bayer DNG. */
-    public float hexQuadExposureEv;
     public Point rawSize;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
@@ -189,9 +186,7 @@ public class Parameters {
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
                 && !VendorTagUtils.wasRemosaicApplied()
-                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRemosaicEnabled()
-                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceMosaic()
-                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRawMfsrEnabled();
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceMosaic();
         if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         if (flen == null || flen.length <= 0) {
@@ -789,9 +784,6 @@ public class Parameters {
         Parameters params = new Parameters();
         params.multiFrameCount = multiFrameCount;
         params.remosaicDone = remosaicDone;
-        params.hexQuadProcessed = hexQuadProcessed;
-        params.hexQuadPostDenoise = hexQuadPostDenoise;
-        params.hexQuadExposureEv = hexQuadExposureEv;
         params.cfaPattern = cfaPattern;
         params.baseCfaPattern = baseCfaPattern;
         params.quadCfa = quadCfa;

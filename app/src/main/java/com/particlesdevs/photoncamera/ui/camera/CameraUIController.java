@@ -258,9 +258,6 @@ final class CameraUIController implements CameraUIEventsListener,
                     case RAW:
                         PreferenceKeys.setSaveRaw((Integer) value);
                         break;
-                    case BATTERY_SAVER:
-                        PreferenceKeys.setBatterySaver(value.equals(1));
-                        break;
                     case BRACKETING:
                         PreferenceKeys.setBracketingMode((Integer) value);
                         // Update HDR class to use the new bracketing mode

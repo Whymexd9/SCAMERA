@@ -14,7 +14,6 @@ public class Settings {
     public int chromaCount;
     public boolean enhancedProcess;
     public boolean watermark;
-    public boolean energySaving;
     public boolean aspect169;
     public boolean binning;
     public boolean DebugData;
@@ -55,15 +54,14 @@ public class Settings {
 
     public void loadCache() {
         noiseReduction = PreferenceKeys.isSystemNrOn();
-        frameCount = PreferenceKeys.getFrameCountValue();
+        frameCount = 4; // both routes take at least four N frames (the legacy frame-count setting is gone)
         align = PreferenceKeys.isDisableAligningOn();
         lumenCount = PreferenceKeys.getLumaNrValue();
         chromaCount = PreferenceKeys.getChromaNrValue();
         enhancedProcess = PreferenceKeys.isEnhancedProcessionOn();
         watermark = PreferenceKeys.isShowWatermarkOn();
-        energySaving = PreferenceKeys.getBool(PreferenceKeys.Key.KEY_ENERGY_SAVING);
         aspect169 = PreferenceKeys.getBool(PreferenceKeys.Key.KEY_WIDE169);
-        binning = PreferenceKeys.isBinningOn();
+        binning = false; // both routes merge the full-resolution RAW (software binning was a legacy option)
         Allocator.binning = binning;
         DebugData = PreferenceKeys.isFullDebugOn();
         roundEdge = PreferenceKeys.isRoundEdgeOn();
@@ -75,7 +73,7 @@ public class Settings {
         exposureCompensation = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_EXPOCOMPENSATE_SEEKBAR);
         compressor = PreferenceKeys.getCompressorValue();
         noiseRstr = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_NOISESTR_SEEKBAR);
-        mergeStrength = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_MERGE_SEEKBAR);
+        mergeStrength = 1f;
         gain = PreferenceKeys.getGainValue();
         shadows = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_SHADOWS_SEEKBAR);
         hdrx = PreferenceKeys.isHdrxNrOn();

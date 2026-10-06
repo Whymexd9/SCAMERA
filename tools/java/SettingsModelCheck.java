@@ -13,7 +13,7 @@ public class SettingsModelCheck {
         if(!PreferenceNumber.format(.00390625f,true).equals("0.00390625"))throw new AssertionError("precision lost");
         eq(PreferenceNumber.progress(.30f,.10f,100,100),20);
         if(SettingsNumericRules.error("pref_noise_iso_manual_key","300.5")==null)throw new AssertionError("integer validation");
-        if(SettingsNumericRules.error("pref_mfsr_frames_key","2")==null)throw new AssertionError("short burst accepted");
+        if(SettingsNumericRules.bounds("pref_mfsr_frames_key")!=null)throw new AssertionError("removed RAW MFSR key still bounded");
         eq(Double.parseDouble(SettingsNumericRules.normalized("pref_aces_gamut_key","98.25","100")),98.25);
         eq(Double.parseDouble(SettingsNumericRules.normalized("pref_noise_model_coefficient_key","NaN","1.0")),1);
         eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-1,25",0),-1.25);
@@ -26,13 +26,13 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_vivo_nice_noise_readout","NaN",1),1);
         eq(SettingsNumericRules.value("pref_vivo_nice_noise_readout","8",1),4);
         Map<String,Object> p=new HashMap<>();
-        inactive(p,"hexquad_luma");active(p,"pref_remosaic_enabled_key");
-        p.put("pref_remosaic_enabled_key",true);p.put("pref_remosaic_backend_key","hp9_hexquad");
-        active(p,"hexquad_luma"); inactive(p,"pref_frame_count_key");inactive(p,"rt512_luma");
+        // HexQuad / Quad network rows: only for SCAM HDR's mosaic «neural» modes (ISZ modules).
+        inactive(p,"hexquad_luma");inactive(p,"pref_remosaic_block_key");
+        p.put("pref_merge_route","scamhdr");inactive(p,"hexquad_luma");
+        p.put("pref_vivo_nice_mosaic","scamera");inactive(p,"hexquad_luma");active(p,"pref_remosaic_block_key");
+        p.put("pref_vivo_nice_mosaic","neural");active(p,"hexquad_luma");active(p,"quad2x2_luma");
         p.put("hexquad_auto_iso",true);inactive(p,"hexquad_luma");active(p,"hexquad_iso_low_luma");
-        p.put("hexquad_model","1");inactive(p,"hexquad_full_resolution");p.put("hexquad_model","2");active(p,"hexquad_full_resolution");
-        p.put("hexquad_post_denoise",true);p.put("pref_rt_denoise_backend","rt512");active(p,"rt512_luma");inactive(p,"pref_rt_nr_luma_key");
-        p.put("rt512_auto","1");inactive(p,"rt512_chroma");p.put("rt512_auto","0");active(p,"rt512_chroma");
+        p.put("pref_merge_route","hybrid");inactive(p,"hexquad_iso_low_luma");inactive(p,"pref_remosaic_block_key");
         // (The plain legacy route and its tone / denoise availability are gone: every shot is the hybrid or SCAM HDR.)
         p.clear();
         p.put("pref_camera_mode_key", "3");
@@ -48,7 +48,6 @@ public class SettingsModelCheck {
                 p.put("pref_vivo_nice_route", route);
                 inactive(p,"pref_vivo_nice_route");
                 inactive(p,"rt512_chroma");
-                inactive(p,"pref_vivo_hdr_luma");inactive(p,"pref_vivo_hdr_chroma");
                 active(p,"pref_vivo_nice_noise_scale");active(p,"pref_vivo_hdr_contrast");
                 active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
                 active(p,"pref_sharp_usm_enabled_key");
@@ -59,19 +58,16 @@ public class SettingsModelCheck {
         if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
         p.put("pref_merge_route","hybrid");inactive(p,"rt512_chroma");inactive(p,"pref_vivo_nice_noise_scale");
         p.put("pref_merge_route","scamhdr");
-        p.put("pref_camera_mode_key","3");p.put("pref_raw_mfsr_enabled_key",true);
         // LMC hybrid availability: its rows need the hybrid route (the default) and a plain Bayer route; then the stages its
         // route skips are inactive and SCAM HDR's own rows are inactive too.
         Map<String,Object> h=new HashMap<>();h.put("pref_rt_denoise_backend","rt512");
         h.put("pref_merge_route","scamhdr");inactive(h,"pref_lmc_hybrid_cdm");inactive(h,"rt512_chroma");
         h.remove("pref_merge_route");
         active(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_sabre61");active(h,"pref_lmc_hybrid_highlight_recovery");
-        inactive(h,"rt512_chroma");inactive(h,"pref_zsl_merge_algorithm_key");inactive(h,"pref_vivo_nice_noise_photon");
+        inactive(h,"rt512_chroma");inactive(h,"pref_vivo_nice_noise_photon");
         active(h,"pref_sharp_usm_enabled_key");
-        h.put("pref_raw_mfsr_enabled_key",true);inactive(h,"pref_lmc_hybrid_cdm");active(h,"rt512_chroma");
-        h.put("pref_raw_mfsr_enabled_key",false);h.put("pref_remosaic_enabled_key",true);h.put("pref_remosaic_backend_key","hp9_hexquad");
-        inactive(h,"pref_lmc_hybrid_cdm");
-        h.put("pref_remosaic_backend_key","scamera");active(h,"pref_lmc_hybrid_cdm");
+        // the removed legacy switches (RAW MFSR, standalone remosaic) no longer take the hybrid off
+        h.put("pref_raw_mfsr_enabled_key",true);h.put("pref_remosaic_enabled_key",true);active(h,"pref_lmc_hybrid_cdm");
         // LMC hybrid (own section): pref_lmc_hybrid_* bounds; copies of SCAM HDR knobs keep the original bounds; number lists.
         eq(SettingsNumericRules.value("pref_lmc_hybrid_sabre61","7",2),2);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_highlight_recovery","150",100),100);
