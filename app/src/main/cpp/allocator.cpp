@@ -227,12 +227,31 @@ Java_com_particlesdevs_photoncamera_util_Allocator_reconstructMosaicSr(
     return result;
 }
 
+// A direct buffer over malloc memory, or null (the Java side's null checks then work): a negative capacity (an int product that
+// overflowed) or a failed malloc used to reach NewDirectByteBuffer, which aborts the process on either (JNI check), and a
+// failed NewDirectByteBuffer leaked the memory.
+static jobject directBuffer(JNIEnv* env, void* allocation, size_t bytes) {
+    if (allocation == nullptr && bytes > 0) return nullptr;
+    jobject buffer = env->NewDirectByteBuffer(allocation, jlong(bytes));
+    if (buffer == nullptr) free(allocation);
+    return buffer;
+}
+// width x height x bytes per pixel in size_t (the int products overflowed above 1 GP / 2 GiB); a direct buffer holds at most
+// INT32_MAX bytes, the callers refuse more.
+static size_t outputBytes(int width, int height, size_t bytesPerPixel) {
+    return size_t(std::max(width, 0)) * size_t(std::max(height, 0)) * bytesPerPixel;
+}
+
 extern "C"
 JNIEXPORT jobject JNICALL
 Java_com_particlesdevs_photoncamera_util_Allocator_allocate(JNIEnv *env, jclass clazz,
                                                             jint capacity) {
     // Allocate a direct ByteBuffer of the specified size
-    jobject buffer = env->NewDirectByteBuffer(malloc(capacity), capacity);
+    if (capacity < 0) {
+        LOGD("Failed to allocate buffer of size %d (negative)", capacity);
+        return nullptr;
+    }
+    jobject buffer = directBuffer(env, malloc(size_t(capacity)), size_t(capacity));
     if (buffer == nullptr) {
         // Handle allocation failure
         LOGD("Failed to allocate buffer of size %d", capacity);
@@ -249,14 +268,15 @@ JNIEXPORT jobject JNICALL
 Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopy(JNIEnv *env, jclass clazz,
                                                             jint capacity, jobject originBuffer, jint offset) {
     // Allocate a direct ByteBuffer of the specified size
-    void* allocation = malloc(capacity);
-    jobject buffer = env->NewDirectByteBuffer(allocation, capacity);
+    if (capacity < 0) {
+        LOGD("Failed to allocate buffer of size %d (negative)", capacity);
+        return nullptr;
+    }
+    void* allocation = malloc(size_t(capacity));
+    jobject buffer = directBuffer(env, allocation, size_t(capacity));
     if (buffer == nullptr) {
-        // Handle allocation failure
-        LOGD("Failed to allocate buffer of size %ld", capacity);
-        if (allocation != nullptr) {
-            free(allocation);
-        }
+        // Handle allocation failure (directBuffer freed the allocation)
+        LOGD("Failed to allocate buffer of size %d", capacity);
         return nullptr;
     }
     void* ptr = env->GetDirectBufferAddress(originBuffer);
@@ -280,15 +300,18 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert(JNIEnv
                                                                           jint width, jint row_stride, jint offset) {
     // Calculate output buffer size (width * height * 2 bytes per pixel)
     int height = capacity / row_stride;
-    int output_size = width * height * sizeof(uint16_t);
+    const size_t output_size = outputBytes(width, height, sizeof(uint16_t));
+    if (output_size > size_t(INT32_MAX)) {
+        LOGD("Output of %dx%d above 2 GiB", width, height);
+        return nullptr;
+    }
 
     // Allocate output buffer
     auto* allocation = static_cast<uint16_t *>(malloc(output_size));
-    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
+    jobject buffer = directBuffer(env, allocation, output_size);
 
     if (buffer == nullptr) {
-        LOGD("Failed to allocate buffer of size %d", output_size);
-        free(allocation);
+        LOGD("Failed to allocate buffer of size %zu", output_size);
         return nullptr;
     }
 
@@ -307,7 +330,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert(JNIEnv
 
     // Process each row
     for (int row = 0; row < height; row++) {
-        uint8_t* row_start = input + (row * row_stride);
+        uint8_t* row_start = input + size_t(row) * row_stride;
 
         // Process each group of 4 pixels (5 bytes) in the row
         for (int col = 0; col < bytes_per_row; col += 5) {
@@ -329,7 +352,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert(JNIEnv
     }
 
     LOGD("Buffer allocated and converted successfully with padding handling");
-    memoryCount += output_size;
+    memoryCount += long(output_size);
     LOGD("Current memory count: %ld MB", (memoryCount / 1024) / 1024);
     return buffer;
 }
@@ -368,13 +391,15 @@ static void applyBayerBinning(const uint16_t* input, uint16_t* output,
             int inCol  = blockStartCol + dc;
             int inCol2 = (inCol + 2 < srcWidth) ? inCol + 2 : srcWidth - 1;
 
+            // size_t indices: an int row offset overflowed above 2^31 sites
+            const size_t row1 = size_t(inRow) * srcWidth, row2 = size_t(inRow2) * srcWidth;
             uint32_t sum =
-                (uint32_t)input[inRow  * srcWidth + inCol ] +
-                (uint32_t)input[inRow  * srcWidth + inCol2] +
-                (uint32_t)input[inRow2 * srcWidth + inCol ] +
-                (uint32_t)input[inRow2 * srcWidth + inCol2];
+                (uint32_t)input[row1 + inCol ] +
+                (uint32_t)input[row1 + inCol2] +
+                (uint32_t)input[row2 + inCol ] +
+                (uint32_t)input[row2 + inCol2];
 
-            output[oy * outWidth + ox] = (uint16_t)(sum > 65535u ? 65535u : sum);
+            output[size_t(oy) * outWidth + ox] = (uint16_t)(sum > 65535u ? 65535u : sum);
         }
     }
 }
@@ -389,13 +414,16 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvertBinning
     int height = capacity / row_stride;
     int out_width  = width  / 2;
     int out_height = height / 2;
-    int output_size = out_width * out_height * (int)sizeof(uint16_t);
+    const size_t output_size = outputBytes(out_width, out_height, sizeof(uint16_t));
+    if (output_size > size_t(INT32_MAX)) {
+        LOGD("allocateAndCopyConvertBinning: output of %dx%d above 2 GiB", out_width, out_height);
+        return nullptr;
+    }
 
     auto* allocation = static_cast<uint16_t*>(malloc(output_size));
-    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
+    jobject buffer = directBuffer(env, allocation, output_size);
     if (buffer == nullptr) {
         LOGD("allocateAndCopyConvertBinning: failed to allocate output");
-        free(allocation);
         return nullptr;
     }
 
@@ -407,7 +435,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvertBinning
     }
 
     // Decode entire RAW10 image into a packed uint16 buffer (no row padding)
-    int full_size = width * height * (int)sizeof(uint16_t);
+    const size_t full_size = outputBytes(width, height, sizeof(uint16_t));
     auto* decoded = static_cast<uint16_t*>(malloc(full_size));
     if (decoded == nullptr) {
         LOGD("allocateAndCopyConvertBinning: failed to allocate decode buffer");
@@ -416,13 +444,13 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvertBinning
     }
     uint8_t* input = static_cast<uint8_t*>(ptr) + offset;
     for (int row = 0; row < height; row++) {
-        decodeRaw10Row(input + row * row_stride, decoded + row * width, width);
+        decodeRaw10Row(input + size_t(row) * row_stride, decoded + size_t(row) * width, width);
     }
 
     applyBayerBinning(decoded, allocation, width, height, out_width, out_height);
     free(decoded);
 
-    memoryCount += output_size;
+    memoryCount += long(output_size);
     LOGD("allocateAndCopyConvertBinning: %dx%d -> %dx%d, memory %ld MB",
          width, height, out_width, out_height, (memoryCount / 1024) / 1024);
     return buffer;
@@ -447,15 +475,16 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert12(JNIE
                                                                             jint capacity, jobject originBuffer,
                                                                             jint width, jint row_stride, jint offset) {
     int height = capacity / row_stride;
-    int output_size = width * height * (int)sizeof(uint16_t);
+    const size_t output_size = outputBytes(width, height, sizeof(uint16_t));
+    if (output_size > size_t(INT32_MAX)) { LOGD("allocateAndCopyConvert12: output of %dx%d above 2 GiB", width, height); return nullptr; }
     auto* allocation = static_cast<uint16_t*>(malloc(output_size));
-    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
-    if (buffer == nullptr) { LOGD("allocateAndCopyConvert12: failed to allocate output"); free(allocation); return nullptr; }
+    jobject buffer = directBuffer(env, allocation, output_size);
+    if (buffer == nullptr) { LOGD("allocateAndCopyConvert12: failed to allocate output"); return nullptr; }
     void* ptr = env->GetDirectBufferAddress(originBuffer);
     if (ptr == nullptr) { LOGD("allocateAndCopyConvert12: failed to get buffer address"); free(allocation); return nullptr; }
     uint8_t* input = static_cast<uint8_t*>(ptr) + offset;
-    for (int row = 0; row < height; row++) decodeRaw12Row(input + row * row_stride, allocation + (size_t)row * width, width);
-    memoryCount += output_size;
+    for (int row = 0; row < height; row++) decodeRaw12Row(input + size_t(row) * row_stride, allocation + (size_t)row * width, width);
+    memoryCount += long(output_size);
     LOGD("allocateAndCopyConvert12: %dx%d, memory %ld MB", width, height, (memoryCount / 1024) / 1024);
     return buffer;
 }
@@ -468,19 +497,20 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert12Binni
                                                                                    jint width, jint row_stride, jint offset) {
     int height = capacity / row_stride;
     int out_width = width / 2, out_height = height / 2;
-    int output_size = out_width * out_height * (int)sizeof(uint16_t);
+    const size_t output_size = outputBytes(out_width, out_height, sizeof(uint16_t));
+    if (output_size > size_t(INT32_MAX)) { LOGD("allocateAndCopyConvert12Binning: output of %dx%d above 2 GiB", out_width, out_height); return nullptr; }
     auto* allocation = static_cast<uint16_t*>(malloc(output_size));
-    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
-    if (buffer == nullptr) { LOGD("allocateAndCopyConvert12Binning: failed to allocate output"); free(allocation); return nullptr; }
+    jobject buffer = directBuffer(env, allocation, output_size);
+    if (buffer == nullptr) { LOGD("allocateAndCopyConvert12Binning: failed to allocate output"); return nullptr; }
     void* ptr = env->GetDirectBufferAddress(originBuffer);
     if (ptr == nullptr) { LOGD("allocateAndCopyConvert12Binning: failed to get buffer address"); free(allocation); return nullptr; }
-    auto* decoded = static_cast<uint16_t*>(malloc((size_t)width * height * sizeof(uint16_t)));
+    auto* decoded = static_cast<uint16_t*>(malloc(outputBytes(width, height, sizeof(uint16_t))));
     if (decoded == nullptr) { free(allocation); return nullptr; }
     uint8_t* input = static_cast<uint8_t*>(ptr) + offset;
-    for (int row = 0; row < height; row++) decodeRaw12Row(input + row * row_stride, decoded + (size_t)row * width, width);
+    for (int row = 0; row < height; row++) decodeRaw12Row(input + size_t(row) * row_stride, decoded + (size_t)row * width, width);
     applyBayerBinning(decoded, allocation, width, height, out_width, out_height);
     free(decoded);
-    memoryCount += output_size;
+    memoryCount += long(output_size);
     return buffer;
 }
 
@@ -493,13 +523,16 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyBinning(JNIEnv
                                                                            jint width, jint height, jint row_stride) {
     int out_width  = width  / 2;
     int out_height = height / 2;
-    int output_size = out_width * out_height * (int)sizeof(uint16_t);
+    const size_t output_size = outputBytes(out_width, out_height, sizeof(uint16_t));
+    if (output_size > size_t(INT32_MAX)) {
+        LOGD("allocateAndCopyBinning: output of %dx%d above 2 GiB", out_width, out_height);
+        return nullptr;
+    }
 
     auto* allocation = static_cast<uint16_t*>(malloc(output_size));
-    jobject buffer = env->NewDirectByteBuffer(allocation, output_size);
+    jobject buffer = directBuffer(env, allocation, output_size);
     if (buffer == nullptr) {
         LOGD("allocateAndCopyBinning: failed to allocate output");
-        free(allocation);
         return nullptr;
     }
 
@@ -517,7 +550,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyBinning(JNIEnv
                           width, height, out_width, out_height);
     } else {
         // De-stride into a packed buffer first
-        int full_size = width * height * (int)sizeof(uint16_t);
+        const size_t full_size = outputBytes(width, height, sizeof(uint16_t));
         auto* packed = static_cast<uint16_t*>(malloc(full_size));
         if (packed == nullptr) {
             LOGD("allocateAndCopyBinning: failed to allocate pack buffer");
@@ -526,13 +559,13 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyBinning(JNIEnv
         }
         const uint8_t* src = static_cast<const uint8_t*>(ptr);
         for (int row = 0; row < height; row++) {
-            memcpy(packed + row * width, src + row * row_stride, width * sizeof(uint16_t));
+            memcpy(packed + size_t(row) * width, src + size_t(row) * row_stride, width * sizeof(uint16_t));
         }
         applyBayerBinning(packed, allocation, width, height, out_width, out_height);
         free(packed);
     }
 
-    memoryCount += output_size;
+    memoryCount += long(output_size);
     LOGD("allocateAndCopyBinning: %dx%d -> %dx%d, memory %ld MB",
          width, height, out_width, out_height, (memoryCount / 1024) / 1024);
     return buffer;
@@ -616,6 +649,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopyUnpack(JNIEnv* env, 
     const long rowBytes = format == 0x25 ? long(width) * 10 / 8 : long(width) * 12 / 8;
     if (rowStride < rowBytes || long(originOffset) + long(height - 1) * rowStride + rowBytes > srcCapacity) return nullptr;
     const size_t bytes = size_t(width) * size_t(height) * 2;
+    if (bytes > size_t(INT32_MAX)) return nullptr; // a direct buffer view holds at most 2 GiB (ART aborts above it)
     uint8_t* dst;
     {
         std::lock_guard<std::mutex> lock(arenaLock);
