@@ -924,6 +924,8 @@ public class PreferenceKeys {
             {"hotSigma", "hot_sigma"}, {"hotBaseSigma", "hot_base_sigma"}, {"hotFrames", "hot_frames"},
             {"hotCross", "hot_cross"}, {"hotMaxLevel", "hot_max_level"}, {"hotMaxKey", "hot_max_key"},
             {"bentoInvalid", "bento_invalid"},
+            // P14: frames of a Quad / Tetra burst merged (4 / 16 sub-frames each; worker default 16)
+            {"mosaicFrames", "mosaic_frames"}, {"mosaicBlock", "mosaic_block"},
         };
         for (String[] k : keys) {
             Float dev = niceDevValue("hybrid_" + k[1]);

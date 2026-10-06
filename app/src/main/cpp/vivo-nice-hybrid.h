@@ -57,12 +57,12 @@ struct HybridInput {
 };
 
 // Tuning (LMC-like; a "key value" text file in the job dir or the external files dir overrides it).
-// Frames per burst the shaders hold in uniform arrays (vivo ships 30 N frames + ultrashort + up to 3 bracketed).
-constexpr int kHybridMaxFrames=48;
-// Frames one merge can hold on the GPU: the per-frame geometry of kCommonShader (vivo-nice-superres-gpu.h: frameOffset,
-// frameRow0, frameRows, hA, hB, upRatio) is declared [32]; a frame index past it reads undefined offsets (SSBO reads out of
-// bounds). hybridReconstruct drops the normal donors farthest in time beyond this.
-constexpr int kHybridGpuFrames=32;
+// Frames one hybrid merge takes (the app sends up to 48; a Quad / Tetra burst becomes 4 / 16 plain-Bayer sub-frames per frame).
+constexpr int kHybridMaxFrames=128;
+// Frames one merge can hold on the GPU: the per-frame tables of kHybCommon live in the uniform block FrameTable, declared [128]
+// (6 x 128 x 16 B = 12 KB, within the 16 KB every GLES 3.1 GPU gives a block); a frame index past it reads undefined offsets
+// (SSBO reads out of bounds). hybridReconstruct drops the normal donors farthest in time beyond this.
+constexpr int kHybridGpuFrames=128;
 
 struct HybridTuning {
     // rejection (LMC 9.6 rejection.cl constants)
@@ -215,6 +215,9 @@ struct HybridTuning {
     // plain; 1 = always plain Bayer; 2 / 4 = force Quad / Tetra (replays).
     int mosaicBlock=0;
     int mosaicGain=1;            // 1: divide out the response of every site class inside the colour block (64 classes, y&7, x&7)
+    int mosaicFrames=16;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
+                                 // merge time grows with the sub-frames; 16 Quad frames (64 sub-frames) cost about what 25 plain frames
+                                 // on the 2x grid do
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -258,7 +261,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain);
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -271,27 +274,72 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
 // (canonical RGGB coordinates, normalised by black/white, clipped at 1.0) and origin() (the backward
 // homography of frame f at reference pixel (x,y)).
 // ---------------------------------------------------------------------------------------------
+// The common part of every hybrid program (kCommonShader of vivo-nice-superres-gpu.h without its mosaic sampling, which only
+// SCAM HDR uses). P14b: the per-frame tables are one std140 uniform block instead of default-block arrays: those were limited to
+// 32 frames (48 for fParam) by the uniform slots of the merge program, and a mosaic burst merges 4 sub-frames per frame.
+static const char* kHybCommon=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=0) readonly buffer Frames{uint frames[];};
+uniform ivec2 size;
+uniform int frameCount;
+// HybridGpu::kTable* offsets; [128] = kHybridGpuFrames
+layout(std140,binding=0) uniform FrameTable{
+    uvec4 frameGeo[128]; // x = first site of frame f in Frames, y = first sensor row held, z = rows held, w = upRatio (float bits)
+    vec4 hA[128];
+    vec4 hB[128];
+    vec4 fParam[128];    // x = 1 / exposure ratio (brings frame f to base units), y = scalar weight A (0 = frame skipped),
+                         // z = covariance multiplier 1/LUTsigma(A)^2, w = role (1 normal, 3 bracketed, 5 ultrashort)
+    vec4 fNoiseP[128];   // xy = slope, offset of frame f in its own exposure
+    ivec4 fCells[128];   // x = first donor cell row held for frame f (even frame row / 2), y = rows held, z = first cell in Cells / DCov
+};
+uniform ivec2 cfaShift;
+uniform vec4 black;
+uniform vec4 inv;
+int reflectCfa(int x,int n){
+    for(int i=0;i<8 && (x<0||x>=n);i++){ if(x<0)x=-x; else x=2*(n-1)-x; }
+    return clamp(x,0,n-1);
+}
+float sampleRaw(int f,int x,int y){
+    x+=cfaShift.x;y+=cfaShift.y;
+    if(x<0||y<0||x>=size.x||y>=size.y){x=reflectCfa(x,size.x);y=reflectCfa(y,size.y);}
+    uvec4 geo=frameGeo[f];
+    int ry=clamp(y-int(geo.y),0,int(geo.z)-1);
+    uint idx=geo.x+uint(ry*size.x+x);
+    uint word=frames[idx>>1];
+    uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
+    int phase=((y&1)<<1)|(x&1);
+    // Not clipped at black: the merges average signed noise, the result is clipped once (a clipped average kept the positive
+    // bias of the cut-off negative noise: magenta haze in high-ISO shadows).
+    return clamp((float(v)-black[phase])*inv[phase],-0.25,1.0);
+}
+vec2 origin(int f,int x,int y){
+    vec4 a=hA[f],b=hB[f];
+    float fx=float(x),fy=float(y);
+    float den=b.z*fx+b.w*fy+1.0;
+    vec2 p=vec2(a.x*fx+a.y*fy+a.z,a.w*fx+b.x*fy+b.y)/den;
+    return p/uintBitsToFloat(frameGeo[f].w);
+}
+)";
+
 static const char* kHybHelpers=R"(
 uniform ivec4 phaseColor;
 uniform vec2 baseNoise;      // slope, offset of the base frame (normalised units)
-// Per-frame parameters packed four to a vector (scalar uniform arrays take a whole vector slot each on some GPUs; with the
-// kCommonShader arrays the merge program went past 512 slots).
-uniform vec4 fParam[48];     // x = 1 / exposure ratio (brings frame f to base units), y = scalar weight A (0 = frame skipped),
-                             // z = covariance multiplier 1/LUTsigma(A)^2, w = role (1 normal, 3 bracketed, 5 ultrashort)
-uniform vec4 fNoiseP[48];    // xy = slope, offset of frame f in its own exposure
-uniform ivec4 fCells[48];    // x = first donor cell row held for frame f (even frame row / 2), y = rows held, z = first cell in Cells / DCov
+// Per-frame parameters (fParam, fNoiseP, fCells) are in the FrameTable block of kHybCommon.
 uniform float clipLevel;
 layout(std430,binding=5) buffer Cells{vec4 cells[];};    // donor cell colours (u domain) and clip flag, donor geometry
 layout(std430,binding=14) buffer DCov{uvec2 dcov[];};    // Sabre 6.1 kernel precision of every donor cell (half floats)
 uniform int chunkU;          // first row of this dispatch inside the pass (passes are split into short dispatches)
 uniform int markU;           // 1: the uploaded RAW words carry site flags in bits 14 (outlier site) and 15 (its cell is clipped)
-// sampleRaw() of kCommonShader that also returns the site flags (bit 0 outlier: no sample; bit 1 the 2x2 cell of this frame is
+// sampleRaw() of kHybCommon that also returns the site flags (bit 0 outlier: no sample; bit 1 the 2x2 cell of this frame is
 // clipped: every colour of it goes to the clipped mean). Without marking (white >= 16384) the words are plain.
 float rawSite(int f,int x,int y,out uint fl){
     x+=cfaShift.x;y+=cfaShift.y;
     if(x<0||y<0||x>=size.x||y>=size.y){x=reflectCfa(x,size.x);y=reflectCfa(y,size.y);}
-    int ry=clamp(y-frameRow0[f],0,frameRows[f]-1);
-    uint idx=frameOffset[f]+uint(ry*size.x+x);
+    uvec4 geo=frameGeo[f];
+    int ry=clamp(y-int(geo.y),0,int(geo.z)-1);
+    uint idx=geo.x+uint(ry*size.x+x);
     uint word=frames[idx>>1];
     uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
     fl=markU!=0?(v>>14):0u;v&=markU!=0?0x3FFFu:0xFFFFu;
@@ -533,8 +581,14 @@ uniform ivec2 size;
 uniform ivec2 cfaShift;
 uniform vec4 black;
 uniform vec4 inv;
-uniform uint mOffset[48];    // first site of frame f in Frames
-uniform ivec2 mRows[48];     // first sensor row held, rows held
+layout(std140,binding=0) uniform FrameTable{ // kHybCommon's block: frameGeo.x = first site of frame f, .y / .z = first row / rows held
+    uvec4 frameGeo[128];
+    vec4 hA[128];
+    vec4 hB[128];
+    vec4 fParam[128];
+    vec4 fNoiseP[128];
+    ivec4 fCells[128];
+};
 uniform int frameIdx;        // first frame of this dispatch (+ z)
 uniform int chunkU;
 uniform ivec4 mFlagsU;       // x,y = cell rows of the strip (SiteFlags holds the site rows [2x, 2y)), z: 1 cell clip, 2 outliers
@@ -545,8 +599,8 @@ uint siteOutlier(int f,int x,int y){ // canonical site
     return (s&1u)|(f==0?((s>>1)&1u):0u);
 }
 uint rawAt(int f,int X,int Y){ // sensor site inside the frame's rows; flag bits masked off (other invocations write them)
-    X=clamp(X,0,size.x-1);Y=clamp(Y-mRows[f].x,0,mRows[f].y-1);
-    uint idx=mOffset[f]+uint(Y*size.x+X);
+    X=clamp(X,0,size.x-1);Y=clamp(Y-int(frameGeo[f].y),0,int(frameGeo[f].z)-1);
+    uint idx=frameGeo[f].x+uint(Y*size.x+X);
     uint word=frames[idx>>1];
     return ((idx&1u)==0u?(word&0xFFFFu):(word>>16))&0x3FFFu;
 }
@@ -563,9 +617,9 @@ bool cellClipped(int f,int ci,int cj){ // canonical cell
 void main(){
     int f=frameIdx+int(gl_GlobalInvocationID.z);
     int wx=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
-    if(wx>=size.x/2||row>=mRows[f].y)return;
-    int Y=mRows[f].x+row;
-    uint idx=mOffset[f]+uint(row*size.x+2*wx);
+    if(wx>=size.x/2||row>=int(frameGeo[f].z))return;
+    int Y=int(frameGeo[f].y)+row;
+    uint idx=frameGeo[f].x+uint(row*size.x+2*wx);
     uint word=frames[idx>>1];
     int lastCell=-2;bool clip=false;
     for(int k=0;k<2;k++){
@@ -1318,6 +1372,13 @@ class HybridGpu {
     static constexpr int kSlots=19; // 0..17 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance, 15 F6 field,
                                     // 16 F6 offset per strip cell, 17 F6 Z channel), 18 readback staging (kSlots - 1)
     GLuint meanProgram=0,flagsProgram=0,markProgram=0,guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,rimProgram=0,bentoProgram=0,chromaProgram=0,buffers[kSlots]{};
+    // FrameTable (std140, uniform buffer binding 0): six arrays of kHybridGpuFrames 16-byte entries
+    GLuint frameTable=0;
+    static constexpr size_t kTableGeo=0,kTableHA=1,kTableHB=2,kTableParam=3,kTableNoise=4,kTableCells=5;
+    void putTable(size_t array,const void* data,int frames){
+        glBindBuffer(GL_UNIFORM_BUFFER,frameTable);
+        glBufferSubData(GL_UNIFORM_BUFFER,GLintptr(array*kHybridGpuFrames*16),GLsizeiptr(size_t(frames)*16),data);
+    }
     size_t capacity[kSlots]{};
     void check(const char* where){GLenum e=glGetError();if(e!=GL_NO_ERROR)throw std::runtime_error(std::string("HYBRID GPU ")+where+" GL error="+std::to_string(e));}
     void cleanup() noexcept {
@@ -1325,6 +1386,7 @@ class HybridGpu {
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
             glDeleteBuffers(kSlots,buffers);
+            if(frameTable)glDeleteBuffers(1,&frameTable);
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
         }
         if(surface!=EGL_NO_SURFACE)eglDestroySurface(display,surface);
@@ -1333,7 +1395,7 @@ class HybridGpu {
     }
     const char* helpersPrefix=""; // "#define LOCAL_ALIGN 1\n" when the F6 field is used
     GLuint compile(const char* body,bool standalone=false){
-        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kCommonShader,helpersPrefix,kHybHelpers,body};
+        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,kHybHelpers,body};
         if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,4,sources,nullptr);
         glCompileShader(shader);
         GLint ok=0;glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
@@ -1496,7 +1558,11 @@ public:
             if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
             if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
-            glGenBuffers(kSlots,buffers);check("init");
+            glGenBuffers(kSlots,buffers);
+            glGenBuffers(1,&frameTable);glBindBuffer(GL_UNIFORM_BUFFER,frameTable);
+            glBufferData(GL_UNIFORM_BUFFER,GLsizeiptr(6*size_t(kHybridGpuFrames)*16),nullptr,GL_DYNAMIC_DRAW);
+            glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
+            check("init");
         }catch(...){cleanup();throw;}
     }
     HybridGpu(const HybridGpu&)=delete;
@@ -1527,6 +1593,14 @@ public:
             noise4[f*4]=in.noiseSlope[f];noise4[f*4+1]=in.noiseOffset[f];
             param[f*4]=in.gain[f];param[f*4+1]=in.weight[f];param[f*4+2]=in.kmul[f];param[f*4+3]=float(in.role[f]);
         }
+        { // the frame table: homographies, parameters and noise for the whole merge; the geometry follows per strip
+            std::vector<GLuint> geo(size_t(frames)*4,0);
+            for(int f=0;f<frames;++f){float u=up[f];std::memcpy(&geo[f*4+3],&u,4);}
+            putTable(kTableGeo,geo.data(),frames);putTable(kTableHA,a.data(),frames);putTable(kTableHB,b.data(),frames);
+            putTable(kTableParam,param.data(),frames);putTable(kTableNoise,noise4.data(),frames);
+            glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
+            check("frame table");
+        }
         std::vector<GLuint> programs={meanProgram,flagsProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram};
         if(rimProgram)programs.push_back(rimProgram);
         if(bentoProgram)programs.push_back(bentoProgram);
@@ -1543,12 +1617,8 @@ public:
             glUniform2i(loc(program,"cfaShift"),in.cfa&1,in.cfa>>1);
             glUniform4f(loc(program,"black"),in.black[0],in.black[1],in.black[2],in.black[3]);
             glUniform4f(loc(program,"inv"),in.inv[0],in.inv[1],in.inv[2],in.inv[3]);
-            glUniform4fv(loc(program,"hA"),frames,a.data());glUniform4fv(loc(program,"hB"),frames,b.data());glUniform1fv(loc(program,"upRatio"),frames,up.data());
-            glUniform1i(loc(program,"mosaicBlock"),0);
             glUniform4i(loc(program,"phaseColor"),in.phaseColor[0],in.phaseColor[1],in.phaseColor[2],in.phaseColor[3]);
             glUniform2f(loc(program,"baseNoise"),in.baseSlope,in.baseOffset);
-            glUniform4fv(loc(program,"fParam"),frames,param.data());
-            glUniform4fv(loc(program,"fNoiseP"),frames,noise4.data());
             glUniform1f(loc(program,"clipLevel"),tune.clipLevel);
             glUniform4f(loc(program,"k61aU"),in.k61a[0],in.k61a[1],in.k61a[2],in.k61a[3]);
             glUniform4f(loc(program,"k61bU"),in.k61b[0],in.k61b[1],in.k61b[2],in.k61b[3]);
@@ -1692,12 +1762,11 @@ public:
             reserve(0,total*2);
             for(int f=0;f<frames;++f)put(0,size_t(offsets[f])*2,in.frames[f]+size_t(row0[f])*w,size_t(rows[f])*w*2);
             for(int f=0;f<frames;++f){cellGeom[f*4]=crow0[f];cellGeom[f*4+1]=crows[f];cellGeom[f*4+2]=GLint(cellOff[f]);cellGeom[f*4+3]=0;}
-            for(GLuint program:programs){
-                glUseProgram(program);
-                glUniform1uiv(loc(program,"frameOffset"),frames,offsets.data());
-                glUniform1iv(loc(program,"frameRow0"),frames,row0.data());
-                glUniform1iv(loc(program,"frameRows"),frames,rows.data());
-                glUniform4iv(loc(program,"fCells"),frames,cellGeom.data());
+            { // strip geometry of every frame into the frame table (all programs read it from there)
+                std::vector<GLuint> geo(size_t(frames)*4);
+                for(int f=0;f<frames;++f){geo[f*4]=offsets[f];geo[f*4+1]=GLuint(row0[f]);geo[f*4+2]=GLuint(rows[f]);float u=up[f];std::memcpy(&geo[f*4+3],&u,4);}
+                putTable(kTableGeo,geo.data(),frames);putTable(kTableCells,cellGeom.data(),frames);
+                glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
             }
             bool clipHere=false;
             for(int f=0;f<frames&&!clipHere;++f)
@@ -1742,11 +1811,7 @@ public:
                 } // without outlier tests the mark pass does not read the site flags
                 check("flags");
                 // write the flags into the RAW words of every frame (after kHybFlags, which reads the plain values)
-                glUseProgram(markProgram);
-                std::vector<GLint> mrows(size_t(frames)*2);
-                for(int f=0;f<frames;++f){mrows[f*2]=row0[f];mrows[f*2+1]=rows[f];}
-                glUniform1uiv(loc(markProgram,"mOffset"),frames,offsets.data());
-                glUniform2iv(loc(markProgram,"mRows"),frames,mrows.data());
+                glUseProgram(markProgram); // frame offsets and rows: the frame table
                 glUniform4i(loc(markProgram,"mFlagsU"),ry0,ry1,stripMode,0);
                 const GLint frameIdx=loc(markProgram,"frameIdx");
                 int maxRows=1;for(int f=0;f<frames;++f)maxRows=std::max(maxRows,rows[f]);
@@ -3007,7 +3072,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
     // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, one
     // ultrashort (Bento) and one bracketed (Shasta) frame when there is room
-    const int budget=std::max(1,kHybridGpuFrames/per);
+    const int budget=std::max(1,std::min(kHybridGpuFrames/per,std::max(2,tune.mosaicFrames)));
     std::vector<int> normals;int us=-1,br=-1;
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
