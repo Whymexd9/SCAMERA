@@ -44,6 +44,20 @@ public class TunableKeyManager {
         }
     }
 
+    /**
+     * The request keys a session of this physical sensor applies, as "name=value;" pairs ("" without any): the sensor mode of
+     * the stream depends on them (OPPO engineer-mode select, vendor remosaic switches), so they key its measured colour block.
+     */
+    public static String signature(String physicalId) {
+        Context context = PhotonCamera.getSettingsManagerStatic() != null
+                ? PhotonCamera.getSettingsManagerStatic().getContext() : null;
+        if (context == null || physicalId == null || physicalId.isEmpty()) return "";
+        StringBuilder out = new StringBuilder();
+        for (VendorTagUtils.TunableKey k : loadKeys(context, ModuleSensorSettings.runtimeScope(physicalId)))
+            if (k != null && "CaptureRequest".equals(k.type)) out.append(k.name).append('=').append(k.value).append(';');
+        return out.toString();
+    }
+
     public static void saveKeys(Context context, String sensorId, List<VendorTagUtils.TunableKey> keys) {
         if (context == null || sensorId == null || keys == null) return;
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);

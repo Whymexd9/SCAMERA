@@ -51,6 +51,12 @@ public final class LiveRawFrame {
     private static float[] shading = {1,1,1};
     private static int shadingWidth=1,shadingHeight=1;
     private static volatile boolean enabled = false;
+    /** P13: frames are published because the stream is a colour-block mosaic (shown even with the live RAW switch off). */
+    private static volatile boolean mosaicPreview = false;
+
+    public static void setMosaicPreview(boolean value) { mosaicPreview = value; }
+
+    public static boolean isMosaicPreview() { return mosaicPreview && enabled; }
 
     private LiveRawFrame() {}
 

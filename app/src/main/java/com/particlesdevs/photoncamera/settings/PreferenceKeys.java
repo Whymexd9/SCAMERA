@@ -1011,6 +1011,12 @@ public class PreferenceKeys {
      * dir (key without the pref_vivo_nice_ prefix) replace the preference for the next shot. Re-read when the file
      * changes, at most every 2 s.
      */
+    /** Developer switch from nice_dev.txt ("key 0" = off); {@code fallback} without the line. */
+    public static boolean niceDevSwitch(String key, boolean fallback) {
+        Float v = niceDevValue(key);
+        return v == null ? fallback : v != 0f;
+    }
+
     private static Float niceDevValue(String key) {
         long now = System.nanoTime();
         if (niceDevStamp == -1 || now - niceDevChecked > 2_000_000_000L) {

@@ -51,6 +51,9 @@ struct HybridInput {
     // Output grid (NCH v11): 1 = sensor grid (today), 2 = the Sabre 6.1 2x grid (four sub-positions +-0.25 px per
     // sensor pixel, RGB 2w x 2h). The app runs its whole pipeline on that grid and resizes at the end.
     int grid=1;
+    // Colour block of the stream (NCH v11 word 14, P14): 0 = unknown (the worker measures it), 1 = plain Bayer, 2 = Quad (2x2
+    // same-colour sites, a sensor mode without remosaic), 4 = Tetra (4x4). A block mosaic goes through hybridReconstructMosaic.
+    int mosaic=0;
 };
 
 // Tuning (LMC-like; a "key value" text file in the job dir or the external files dir overrides it).
@@ -208,6 +211,10 @@ struct HybridTuning {
     int laThreads=6;             // worker threads (one frame each; ~15 MB per thread)
     int isoKernel=0;             // diagnostics, round-4 kernel only (sabre61 off): 1 = isotropic sigma = base (no edge shaping), 2 = also no
                                  // flat widening: a "spatial RGB"-like isotropic Gaussian (LMC 9.6 spatial_rgb: sigma 0.28..0.40 px)
+    // P14 / P15 colour-block mosaic: 0 = the header's block, measured from the base frame when the header has none or says
+    // plain; 1 = always plain Bayer; 2 / 4 = force Quad / Tetra (replays).
+    int mosaicBlock=0;
+    int mosaicGain=1;            // 1: divide out the response of every site class inside the colour block (64 classes, y&7, x&7)
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -250,7 +257,8 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
-            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel);
+            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -2360,11 +2368,23 @@ inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
 
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
 // frames beyond six are aligned in groups like the extra ZSL frames of the NICE path.
+struct HybridPresetAlignment { std::vector<BackwardHomography> h; std::vector<bool> aligned; };
+inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
+                                                  const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                  std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags);
+inline int hybridMosaicBlock(const HybridInput& input,const HybridTuning& tune,const std::function<void(const std::string&)>& report);
+
 inline std::vector<float> hybridReconstruct(const HybridInput& input,const HybridTuning& tune,
                                             const NiceAlignment& alignment,
                                             const std::function<void(const std::string&)>& report,
                                             std::vector<uint16_t>* mergedDng,std::vector<uint8_t>* effMap,
-                                            HybridStats* statsOut=nullptr,std::vector<uint8_t>* clipFlags=nullptr) {
+                                            HybridStats* statsOut=nullptr,std::vector<uint8_t>* clipFlags=nullptr,
+                                            const HybridPresetAlignment* preset=nullptr) {
+    // P14 / P15: a colour-block mosaic (sensor mode without remosaic) is merged through its plain-Bayer sub-frames
+    if(input.mosaic!=1&&!input.frames.empty()){
+        const int block=hybridMosaicBlock(input,tune,report);
+        if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+    }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
@@ -2379,7 +2399,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<BackwardHomography> H(n);
     std::vector<bool> aligned(n,true);
     const auto alignStarted=Clock::now();
-    if(alignment){
+    if(preset&&int(preset->h.size())==n&&int(preset->aligned.size())==n){
+        H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
+    } else if(alignment){
         for(int first=1;first<n;first+=6){
             Burst group=b;
             const int count=std::min(6,n-first);
@@ -2883,6 +2905,274 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// P14 / P15: colour-block mosaics (Quad 2x2, Tetra 4x4: a sensor mode without remosaic) merged straight into RGB.
+// GCam 11 QuadBayerRgbMerge (research/gcam11/map/kernels_03/quad_bayer_rgb_merge.cl): align on the binned image, accumulate every
+// frame's own raw sites into RGB. Here without a new merge program (kHybMergeMain1 stays untouched): a block-b mosaic frame is b^2
+// plain Bayer frames of (w/b) x (h/b), one per site position (a, c) inside the colour block. Sub-frame (a, c) holds site
+// (b I + a, b J + c) of every block (I, J), which carries the Bayer colour of the block. The sub-frames are one exposure at known
+// offsets, so their homographies are the binned frame's homography plus the site offset. The plain-Bayer merge of these sub-frames
+// on its 2x grid accumulates exactly the raw sites at their sensor positions into an RGB of w x h (Quad) or w/2 x h/2 (Tetra), and
+// its kernel works on the colour lattice of the mosaic (the Bayer lattice of the sub-frames), so the 6.1 window never misses a
+// colour. Output pixel X sits at sensor position b (X/2 - 0.25): a constant offset of (b-1)/2 px against the binned grid.
+struct MosaicDetect { int block=1; double residual[3]{}; double between[3]{}; bool confident=false; };
+// 8x8 phase means of the centre of the frame (black subtracted) against the colour-block models of block 1 / 2 / 4: the mean of
+// every phase class of the model. A mosaic fits its own model to the noise and every other model badly (the colour step between
+// classes); plain Bayer fits block 1 only.
+inline MosaicDetect detectMosaicBlock(const uint16_t* raw,int w,int h,const std::array<float,4>& black){
+    MosaicDetect d;
+    if(!raw||w<64||h<64)return d;
+    const int x0=(w/10)&~7,x1=(w*9/10)&~7,y0=(h/10)&~7,y1=(h*9/10)&~7;
+    std::array<double,64> sum{};std::array<long,64> cnt{};
+    const double bl=0.25*(black[0]+black[1]+black[2]+black[3]);
+    for(int y=y0;y<y1;y+=1){
+        const uint16_t* row=raw+size_t(y)*w;
+        const int py=(y&7)<<3;
+        for(int x=x0;x<x1;++x){sum[py|(x&7)]+=double(row[x])-bl;++cnt[py|(x&7)];}
+    }
+    std::array<double,64> m{};double mean=0;
+    for(int k=0;k<64;++k){m[k]=cnt[k]?sum[k]/cnt[k]:0;mean+=m[k]/64;}
+    const int blocks[3]={1,2,4};
+    for(int i=0;i<3;++i){
+        const int b=blocks[i];
+        std::array<double,4> cs{},cn{};
+        auto cls=[&](int k){return ((((k>>3)/b)&1)<<1)|(((k&7)/b)&1);};
+        for(int k=0;k<64;++k){cs[cls(k)]+=m[k];cn[cls(k)]+=1;}
+        double res=0,bet=0;
+        for(int k=0;k<64;++k){const double pr=cs[cls(k)]/cn[cls(k)];res+=(m[k]-pr)*(m[k]-pr)/64;bet+=(pr-mean)*(pr-mean)/64;}
+        d.residual[i]=res;d.between[i]=bet;
+    }
+    int best=0;for(int i=1;i<3;++i)if(d.residual[i]<d.residual[best])best=i;
+    double second=1e300;for(int i=0;i<3;++i)if(i!=best)second=std::min(second,d.residual[i]);
+    // the best model explains the colour classes (between >= 0.5 % of the level squared) and the others leave >= 20x its residual
+    d.confident=mean>2.0&&d.between[best]>2.5e-5*mean*mean&&d.residual[best]*20.0<second;
+    d.block=d.confident?blocks[best]:1;
+    return d;
+}
+inline int hybridMosaicBlock(const HybridInput& input,const HybridTuning& tune,const std::function<void(const std::string&)>& report){
+    if(tune.mosaicBlock==1||tune.mosaicBlock==2||tune.mosaicBlock==4){
+        if(tune.mosaicBlock>1)report("HYBRID MOSAIC: block "+std::to_string(tune.mosaicBlock)+" forced by tuning");
+        return tune.mosaicBlock;
+    }
+    const MosaicDetect d=detectMosaicBlock(input.frames[0].raw,input.w,input.h,input.black);
+    char line[240];
+    std::snprintf(line,sizeof(line),"HYBRID MOSAIC: header block %d, measured block %d (%s; residual b1/b2/b4 %.3g/%.3g/%.3g, class contrast %.3g)",
+        input.mosaic,d.block,d.confident?"confident":"no clear model",d.residual[0],d.residual[1],d.residual[2],
+        d.between[d.block==4?2:d.block==2?1:0]);
+    report(line);
+    if(input.mosaic==2||input.mosaic==4)return input.mosaic; // the app measured it on the same frame
+    return d.block;
+}
+// Relative response of the 64 site classes (y&7, x&7) of the mosaic, from the normal frames given: the class mean against the mean
+// of all classes of its colour over mid-tone sites (mosaicSiteGain of the SCAM HDR mosaic path); returned as the factor that
+// brings a class to its colour's mean.
+inline std::array<float,64> hybridMosaicGains(const HybridInput& in,const std::vector<int>& frames,int block,float& spread){
+    std::array<double,64> sum{},cnt{};
+    for(int f:frames){
+        const uint16_t* data=in.frames[f].raw;
+        for(int y=0;y<in.h;y+=1){
+            const uint16_t* row=data+size_t(y)*in.w;
+            for(int x=0;x<in.w;++x){
+                const float bl=in.black[((y&1)<<1)|(x&1)];
+                const float v=(float(row[x])-bl)/(in.white-bl);
+                if(v<0.03f||v>0.8f)continue;
+                const int k=((y&7)<<3)|(x&7);sum[k]+=v;cnt[k]+=1;
+            }
+        }
+    }
+    // colour of the block a class belongs to: block phase p (sensor coordinates) is red at the CFA's red phase
+    auto colourOf=[&](int k){const int bx=((k&7)/block)&1,by=((k>>3)/block)&1;const int p=(by<<1)|bx;return p==in.cfa?0:p==(in.cfa^3)?2:1;};
+    std::array<double,3> colSum{},colCnt{};
+    for(int k=0;k<64;++k){const int c=colourOf(k);colSum[c]+=sum[k];colCnt[c]+=cnt[k];}
+    std::array<float,64> gain;gain.fill(1.f);
+    float lo=1.f,hi=1.f;
+    for(int k=0;k<64;++k){
+        const int c=colourOf(k);
+        if(cnt[k]<1000||colCnt[c]<1000)continue;
+        const double mean=colSum[c]/colCnt[c],own=sum[k]/cnt[k];
+        if(own>1e-6)gain[k]=float(std::clamp(mean/own,0.75,1.33));
+        lo=std::min(lo,gain[k]);hi=std::max(hi,gain[k]);
+    }
+    spread=hi-lo;
+    return gain;
+}
+inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
+                                                  const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                  std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
+    using Clock=std::chrono::steady_clock;
+    const auto started=Clock::now();
+    auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
+    const int b=block,W=input.w,Ht=input.h;
+    if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
+    const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
+    // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, one
+    // ultrashort (Bento) and one bracketed (Shasta) frame when there is room
+    const int budget=std::max(1,kHybridGpuFrames/per);
+    std::vector<int> normals;int us=-1,br=-1;
+    for(int f=1;f<n;++f){
+        const auto& fr=input.frames[f];
+        if(fr.role==kRoleNormal)normals.push_back(f);
+        else if(fr.role==kRoleUltrashort&&tune.bento>0&&(us<0||fr.exposure<input.frames[us].exposure))us=f;
+        else if(fr.role==kRoleBracketed&&tune.shastaEnable&&(br<0||std::abs(fr.orderMs-input.frames[0].orderMs)<std::abs(input.frames[br].orderMs-input.frames[0].orderMs)))br=f;
+    }
+    const float t0=input.frames[0].orderMs;
+    std::stable_sort(normals.begin(),normals.end(),[&](int a,int c){return std::abs(input.frames[a].orderMs-t0)<std::abs(input.frames[c].orderMs-t0);});
+    const int extras=(us>=0&&budget>=4?1:0)+(br>=0&&budget>=6?1:0);
+    std::vector<int> pick{0};
+    for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
+    if(us>=0&&budget>=4&&int(pick.size())<budget)pick.push_back(us);
+    if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
+    {
+        std::string line="HYBRID MOSAIC: block "+std::to_string(b)+", "+std::to_string(per)+" plain-Bayer sub-frames "+std::to_string(vw)+"x"+std::to_string(vh)
+            +" per frame, "+std::to_string(pick.size())+" of "+std::to_string(n)+" frames (GPU holds "+std::to_string(kHybridGpuFrames)+" sub-frames):";
+        for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
+        report(line);
+    }
+    // ---- response of the site classes (the normal frames picked, up to 4)
+    std::array<float,64> gain;gain.fill(1.f);
+    if(tune.mosaicGain){
+        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<4)gf.push_back(f);
+        float spread=0;gain=hybridMosaicGains(input,gf,b,spread);
+        char line[160];std::snprintf(line,sizeof(line),"HYBRID MOSAIC: site-class response from %d frames, gain range %.4f..%.4f (spread %.2f %%)",int(gf.size()),
+            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread);
+        report(line);
+    }
+    // ---- sub-frames and binned frames (alignment). Canonical class of sensor site (x, y): the gain table is indexed in sensor
+    // coordinates (the classes repeat every 8 sites in both). A clipped site stays clipped whatever its gain.
+    const size_t vpix=size_t(vw)*vh;
+    std::vector<uint16_t> sub(vpix*per*pick.size()),binned(vpix*pick.size());
+    const float clipAt=input.white-1.f;
+    mergeRowBands(vh,[&](int j0,int j1){
+        for(size_t k=0;k<pick.size();++k){
+            const uint16_t* raw=input.frames[pick[k]].raw;
+            for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
+                const int vphase=((J&1)<<1)|(I&1);
+                const float vb=input.black[vphase];
+                double acc=0;
+                for(int c=0;c<b;++c)for(int a=0;a<b;++a){
+                    const int x=b*I+a,y=b*J+c;
+                    const float v=float(raw[size_t(y)*W+x]);
+                    const float sb=input.black[((y&1)<<1)|(x&1)];
+                    const float lin=(v-sb)*gain[((y&7)<<3)|(x&7)];
+                    const float out=v>=clipAt?input.white:std::clamp(vb+lin,0.f,input.white);
+                    sub[(k*per+size_t(c*b+a))*vpix+size_t(J)*vw+I]=uint16_t(std::lround(out));
+                    acc+=out;
+                }
+                binned[k*vpix+size_t(J)*vw+I]=uint16_t(std::lround(acc/per));
+            }
+        }
+    });
+    // ---- alignment of the binned frames against the binned base (groups of six, as hybridReconstruct)
+    const auto alignStarted=Clock::now();
+    const int m=int(pick.size());
+    std::vector<BackwardHomography> Hr(m);std::vector<bool> ok(m,true);
+    Burst bb;bb.w=vw;bb.h=vh;bb.cfa=input.cfa;bb.white=input.white;bb.black=input.black;bb.canonicalRggb=true;
+    for(int s=0;s<7;++s){bb.raw[s]=binned.data();bb.exposure[s]=1;bb.iso[s]=std::max(1u,input.frames[0].iso);}
+    if(alignment){
+        for(int first=1;first<m;first+=6){
+            Burst group=bb;const int count=std::min(6,m-first);
+            for(int j=0;j<count;++j){const auto& fr=input.frames[pick[first+j]];group.raw[1+j]=binned.data()+size_t(first+j)*vpix;group.exposure[1+j]=fr.exposure;group.iso[1+j]=fr.iso;}
+            const auto hs=alignment(group);
+            for(int j=0;j<count;++j){
+                Hr[first+j]=hs[1+j];
+                try{Hr[first+j].validate();}catch(const std::exception&){ok[first+j]=false;}
+                if(group.raw[1+j]!=binned.data()+size_t(first+j)*vpix)ok[first+j]=false;
+            }
+        }
+    } else {
+        const auto ref=guides(bb,0);
+        for(int k=1;k<m;++k){
+            Burst one=bb;one.raw[1]=binned.data()+size_t(k)*vpix;one.exposure[1]=input.frames[pick[k]].exposure;
+            const Shift sh=globalShift(ref,guides(one,1),input.frames[pick[k]].exposure);
+            BackwardHomography t;t.h={1,0,sh.x,0,1,sh.y,0,0};Hr[k]=t;
+        }
+    }
+    const double alignMs=millis(Clock::now()-alignStarted);
+    // ---- the sub-frame input. Coordinates: base sub-frame (0,0) pixel V = sensor b V. Binned pixel B = sensor b B + o, o = (b-1)/2.
+    // Frame k binned: B_k = Hr(B_0); its sub-frame (a, c): V_k = B_k + (o - (a, c)) / b, with B_0 = V_0 - o / b.
+    HybridInput vin;vin.w=vw;vin.h=vh;vin.cfa=input.cfa;vin.white=input.white;vin.black=input.black;vin.diagnostics=input.diagnostics;
+    vin.mergedDng=false;vin.clipFlags=input.clipFlags;vin.grid=2;vin.mosaic=1;
+    HybridPresetAlignment preset;
+    const double o=0.5*(b-1);
+    auto compose=[&](const BackwardHomography& h,double ax,double ay){
+        // M(V) = (1/u) P(V - o/b) + (o - a) / b with P the projective map of h: A = T(t2) S(1/u) P T(t1)
+        const auto& q=h.h;const double u=h.upRatio>0?h.upRatio:1.0;
+        const double t1=-o/b,t2x=(o-ax)/b,t2y=(o-ay)/b;
+        double P[3][3]={{q[0],q[1],q[2]},{q[3],q[4],q[5]},{q[6],q[7],1.0}};
+        double A[3][3];
+        for(int r=0;r<3;++r){ // P T(t1): column 2 += t1 (col0 + col1)
+            A[r][0]=P[r][0];A[r][1]=P[r][1];A[r][2]=P[r][2]+t1*(P[r][0]+P[r][1]);
+        }
+        for(int c=0;c<3;++c){A[0][c]=A[0][c]/u+t2x*A[2][c];A[1][c]=A[1][c]/u+t2y*A[2][c];} // T(t2) S(1/u)
+        BackwardHomography r;const double z=A[2][2];
+        r.h={float(A[0][0]/z),float(A[0][1]/z),float(A[0][2]/z),float(A[1][0]/z),float(A[1][1]/z),float(A[1][2]/z),float(A[2][0]/z),float(A[2][1]/z)};
+        r.upRatio=1;return r;
+    };
+    for(int k=0;k<m;++k){
+        const HybridFrame& fr=input.frames[pick[k]];
+        for(int c=0;c<b;++c)for(int a=0;a<b;++a){
+            HybridFrame v=fr;v.raw=sub.data()+(size_t(k)*per+size_t(c*b+a))*vpix;
+            vin.frames.push_back(v);
+            if(k==0&&a==0&&c==0){preset.h.push_back(BackwardHomography{});preset.aligned.push_back(true);continue;}
+            preset.h.push_back(k==0?compose(BackwardHomography{},a,c):compose(Hr[k],a,c));
+            preset.aligned.push_back(ok[k]);
+        }
+    }
+    HybridTuning vt=tune;vt.grid=2;vt.mosaicBlock=1;
+    vt.bentoFrames=std::min(4,per); // every sub-frame of the one ultrashort frame (the merge holds at most four)
+    report("HYBRID MOSAIC: binned alignment "+std::to_string(int(alignMs))+" ms; merging "+std::to_string(vin.frames.size())+" sub-frames on their 2x grid -> "
+        +std::to_string(2*vw)+"x"+std::to_string(2*vh));
+    std::vector<uint8_t> vEff,vClip;
+    HybridStats st;
+    std::vector<float> rgb=hybridReconstruct(vin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,&preset);
+    st.alignMs+=alignMs;
+    // ---- to the requested output: sensor grid w x h, or the 2x grid (bilinear: output X sits on sensor position X/2 - 0.25)
+    const int ow=2*vw,oh=2*vh;                    // what the sub-frame merge gives (w x h for Quad)
+    const int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2)); // replays: the tuning grid
+    const int tw=W*gridOut,th=Ht*gridOut;
+    std::vector<float> out;std::vector<uint8_t> eOut,cOut;
+    if(tw==ow&&th==oh){out.swap(rgb);eOut.swap(vEff);cOut.swap(vClip);}
+    else {
+        out.assign(size_t(tw)*th*3,0.f);
+        if(!vEff.empty())eOut.assign(size_t(tw)*th,0);
+        if(!vClip.empty())cOut.assign(size_t(tw)*th,0);
+        const double sx=double(ow)/tw,sy=double(oh)/th;
+        mergeRowBands(th,[&](int y0,int y1){
+            for(int Y=y0;Y<y1;++Y){
+                const double fy=std::clamp((Y+0.5)*sy-0.5,0.0,double(oh-1));const int iy=std::min(int(fy),oh-2);const float wy=float(fy-iy);
+                for(int X=0;X<tw;++X){
+                    const double fx=std::clamp((X+0.5)*sx-0.5,0.0,double(ow-1));const int ix=std::min(int(fx),ow-2);const float wx=float(fx-ix);
+                    const size_t a=(size_t(iy)*ow+ix)*3,o2=(size_t(Y)*tw+X)*3;
+                    for(int c=0;c<3;++c)out[o2+c]=(rgb[a+c]*(1-wx)+rgb[a+3+c]*wx)*(1-wy)+(rgb[a+size_t(ow)*3+c]*(1-wx)+rgb[a+size_t(ow)*3+3+c]*wx)*wy;
+                    const size_t ns=size_t(std::min(oh-1,int(fy+0.5)))*ow+std::min(ow-1,int(fx+0.5));
+                    if(!eOut.empty())eOut[size_t(Y)*tw+X]=vEff[ns];
+                    if(!cOut.empty())cOut[size_t(Y)*tw+X]=vClip[ns];
+                }
+            }
+        });
+        report("HYBRID MOSAIC: "+std::to_string(ow)+"x"+std::to_string(oh)+" resampled to the requested "+std::to_string(tw)+"x"+std::to_string(th));
+    }
+    if(effMap)effMap->swap(eOut);
+    if(clipFlags)clipFlags->swap(cOut);
+    // ---- merged Bayer RAW for the DNG (sensor layout, 14-bit scale): the colour of every sensor Bayer phase from the RGB
+    if(mergedDng&&input.mergedDng){
+        const float k=16383.f/input.white;
+        const int red=input.cfa;
+        mergedDng->assign(size_t(W)*Ht,0);
+        mergeRowBands(Ht,[&](int y0,int y1){
+            for(int y=y0;y<y1;++y)for(int x=0;x<W;++x){
+                const int p=((y&1)<<1)|(x&1),c=p==red?0:p==(red^3)?2:1;
+                const size_t src=(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c;
+                const float v=std::clamp(out[src],0.f,1.f),black=input.black[p];
+                (*mergedDng)[size_t(y)*W+x]=uint16_t(std::clamp(std::lround((black+v*(input.white-black))*k),0L,16383L));
+            }
+        });
+    }
+    report("HYBRID MOSAIC: total "+std::to_string(int(millis(Clock::now()-started)))+" ms");
+    if(statsOut)*statsOut=st;
+    return out;
+}
+
 // NCH v10 — the hybrid transport written by LmcHybridBurst.java: header 128 B (magic, version 10, w, h, cfa,
 // frameCount, white, black[4], flags, baseIndex), frameCount x 32 B frame table (role, exposure ratio to the
 // base, iso, noise slope, noise offset, order ms, flags, reserved), then the uint16 planes in sensor layout.
@@ -2904,9 +3194,11 @@ struct MappedHybridBurst {
             const int n=int(h[5]);
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
             const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;input.clipFlags=flags&4;
-            if(h[1]>=11){ // v11: h[12] = base index (0), h[13] = output grid 1|2
+            if(h[1]>=11){ // v11: h[12] = base index (0), h[13] = output grid 1|2, h[14] = colour block 0 (unknown) | 1 | 2 | 4
                 if(h[13]!=0&&h[13]!=1&&h[13]!=2)throw std::runtime_error("Unsupported hybrid output grid");
                 input.grid=h[13]==0?1:int(h[13]);
+                if(h[14]!=0&&h[14]!=1&&h[14]!=2&&h[14]!=4)throw std::runtime_error("Unsupported hybrid colour block");
+                input.mosaic=int(h[14]);
             }
             if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
             for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");

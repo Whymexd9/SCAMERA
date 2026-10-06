@@ -18,6 +18,7 @@ final class LiveRawRenderer {
     private String photoDefines;
     private long settingsCheck;
     private final com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve photoMeter=new com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve();
+    { photoMeter.quiet=true; } // per frame: its debug lines would exhaust the per-process log quota
     private FloatBuffer curveBuffer;
     private float[] response;
     private float whitePoint=1;

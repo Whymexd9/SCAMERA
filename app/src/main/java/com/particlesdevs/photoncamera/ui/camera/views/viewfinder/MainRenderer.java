@@ -76,8 +76,10 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // rendering. Falls through to the ISP path whenever a frame is missing,
         // the shaders failed, or the setting is off - the viewfinder must never
         // go blank because of this.
+        // P13: a colour-block mosaic stream (sensor mode without remosaic) has a purple ISP preview: developed RAW then too
         final boolean rawLook =
-                com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled();
+                com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled()
+                        || com.particlesdevs.photoncamera.processing.LiveRawFrame.isMosaicPreview();
         boolean rawActive = rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
         if (mLastRawActive == null || mLastRawActive != rawActive) {
             Log.d("MainRenderer", "viewfinder requestedRAW="+rawLook+" displaying="+(rawActive?"developed RAW":"ISP (RAW disabled, waiting, stale or unavailable)"));

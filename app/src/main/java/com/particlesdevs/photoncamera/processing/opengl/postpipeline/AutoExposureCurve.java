@@ -117,7 +117,7 @@
                 extent[1] = gCeiling;
                 histogram.exposure[1] = 1.f / gCeiling;
             }
-            Log.d(Name, "Histogram extent:" + extent[0] + "," + extent[1] + "," + extent[2]
+            debug("Histogram extent:" + extent[0] + "," + extent[1] + "," + extent[2]
                     + " exposure:" + histogram.exposure[0] + "," + histogram.exposure[1] + "," + histogram.exposure[2]
                     + " whitePoint:" + (sensorWP != null ? sensorWP[0] + "," + sensorWP[1] + "," + sensorWP[2] : "null"));
             int[][] result;
@@ -139,6 +139,12 @@
         }
 
         public float previewWhitePoint=1f;
+        /**
+         * The live RAW viewfinder runs this per frame: its debug lines (about 150 a second) went past OPPO's per-process log quota
+         * (LOG_FLOWCTRL), which then dropped the capture controller's own lines. The viewfinder sets it.
+         */
+        public boolean quiet;
+        private void debug(String message){if(!quiet)Log.d(Name,message);}
         private double meteringNoiseS,meteringNoiseO;
         /** Shared CPU response for still capture and sampled RAW preview; no GL operations. */
         public float[] calculateCurve(int[][] result,float[] extent,double noiseS,double noiseO){
@@ -172,12 +178,12 @@
             // the frame alone rather than applying one made from nothing.
             // From RealJohnGalt/PhotonCamera ad0cbc75.
             if (!Float.isFinite(avg) || avg <= 0.0f) {
-                Log.d(Name, "Skipping auto exposure: histogram has no positive samples");
+                debug("Skipping auto exposure: histogram has no positive samples");
                 return null;
             }
             float mpy = clampGain((bins / 256.0f) * target / Math.max(avg, 1.0e-4f));
             if (!Float.isFinite(mpy) || mpy <= 0.0f) {
-                Log.d(Name, "Skipping auto exposure: invalid multiplier " + mpy);
+                debug("Skipping auto exposure: invalid multiplier " + mpy);
                 return null;
             }
             float sceneWhite = searchWhite(result, mapped, bins, histNormR, histNormG, histNormB, mpy);
@@ -207,7 +213,7 @@
                 // than the same capture without reconstruction.
                 mpy = clampGain((bins / 256.0f) * target / Math.max(avg, 1.0e-4f));
                 sceneWhite = searchWhite(result, mapped, bins, histNormR, histNormG, histNormB, mpy);
-                Log.d(Name, "Adaptive white point:" + adaptiveWhitePoint
+                debug("Adaptive white point:" + adaptiveWhitePoint
                         + " scene white after division:" + sceneWhite);
             }
             this.previewWhitePoint = adaptiveWhitePoint;
@@ -219,17 +225,17 @@
                 normL += Math.min(val, 1.0f);
                 normR += (val * (1.0f + (val / (mpy * mpy)))) / (1.0f + val);
             }
-            Log.d(Name, "Reinhard normalizer:" + normR + " normL:" + normL + " base Mpy:" + mpy);
+            debug("Reinhard normalizer:" + normR + " normL:" + normL + " base Mpy:" + mpy);
             if (!Float.isFinite(normR) || normR <= 0.0f || !Float.isFinite(normL)) {
-                Log.d(Name, "Skipping auto exposure: invalid Reinhard normalizer");
+                debug("Skipping auto exposure: invalid Reinhard normalizer");
                 return null;
             }
             mpy *= normL / normR;
 
             float whiteMax = sceneWhite * mpy;
             float whiteEff = enableWP ? Math2.mix(mpy, whiteMax, whiteApply) : mpy;
-            Log.d(Name, "Reinhard white max (top 0.5%): " + whiteMax + " effective:" + whiteEff);
-            Log.d(Name, "Average brightness: " + avg + ", multiplier: " + mpy);
+            debug("Reinhard white max (top 0.5%): " + whiteMax + " effective:" + whiteEff);
+            debug("Average brightness: " + avg + ", multiplier: " + mpy);
 
             // Adaptive highlight shoulder: measure the image fraction whose
             // response lands above 1.0 under the estimated gain/white point -
@@ -258,7 +264,7 @@
                 }
                 float clippedFrac = totalCnt > 0 ? clipped / (float) totalCnt : 0.0f;
                 knee = Math2.mix(kneeMax, kneeLo, Math.min(clippedFrac / Math.max(kneeRef, 1.0e-4f), 1.0f));
-                Log.d(Name, "Highlight shoulder: clipped:" + clippedFrac + " knee:" + knee + " tolerance:" + clipTolerance);
+                debug("Highlight shoulder: clipped:" + clippedFrac + " knee:" + knee + " tolerance:" + clipTolerance);
             }
 
             // Bake the per-channel exposure response into a 1D curve over the
@@ -273,7 +279,7 @@
                 if (knee < 1.0f) o = softShoulder(o, knee);
                 curve[i] = Math.min(Math.max(o, 0.0f), 1.0f);
             }
-            Log.d(Name, "Exposure curve: " + (CURVE_SIZE - 1) + " -> " + curve[CURVE_SIZE - 1]);
+            debug("Exposure curve: " + (CURVE_SIZE - 1) + " -> " + curve[CURVE_SIZE - 1]);
 
             return curve;
         }
@@ -306,7 +312,7 @@
             int cnt = 0;
             for (int i = 0; i < bins - 1; i++) {
                 if (cnt > (histNormR + histNormG + histNormB) * fillCoefficient) {
-                    Log.d(Name, "Histogram already full, coefficient:" + fillCoefficient);
+                    debug("Histogram already full, coefficient:" + fillCoefficient);
                     break;
                 }
                 sum += result[0][i] * Math.min(mapped[0][i], cap)
@@ -355,11 +361,11 @@
             float gainNoiseMax = (float) (noiseMax / Math.sqrt(meteringNoiseS * 0.5 + meteringNoiseO));
             gainNoiseMax = Math.max(gainNoiseMax, 1.0f);
             if (mpy > gainNoiseMax) {
-                Log.d(Name, "Clamping gain by noise from " + mpy + " to " + gainNoiseMax);
+                debug("Clamping gain by noise from " + mpy + " to " + gainNoiseMax);
                 mpy = gainNoiseMax;
             }
             if (mpy > gainMax) {
-                Log.d(Name, "Clamping gain by max from " + mpy + " to " + gainMax);
+                debug("Clamping gain by max from " + mpy + " to " + gainMax);
                 mpy = gainMax;
             }
             return mpy;

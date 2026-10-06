@@ -17,7 +17,8 @@ import java.util.*;
  * <pre>
  * header 128 B: magic 'NCH1', version 11, w, h, cfa, frameCount, white f32, black f32[4], flags u32
  *               (1 diagnostics, 2 merged DNG, 4 clip flags), baseIndex u32 (0), grid u32 (1 = sensor grid, 2 = the Sabre 6.1 2x
- *               grid: RGB 2w x 2h, four sub-positions +-0.25 px per sensor pixel), reserved
+ *               grid: RGB 2w x 2h, four sub-positions +-0.25 px per sensor pixel), colour block u32 (0 = unknown: the worker
+ *               measures it, 1 plain Bayer, 2 Quad, 4 Tetra: a mosaic is merged from its own sites), reserved
  * frame table:  frameCount x 32 B: role u32 (1 normal, 3 bracketed, 5 ultrashort), exposure f32 (ratio to base),
  *               iso u32, noiseSlope f32, noiseOffset f32, orderMs f32, flags u32, reserved u32
  * planes:       frameCount x w*h uint16 (sensor layout)
@@ -38,6 +39,11 @@ public final class LmcHybridBurst implements NiceTransport {
     private final int finalWidth, finalHeight;
     private final float white;
     private final float[] black;
+    /**
+     * P14: colour block of the stream measured on the first frame (MosaicBlockDetector): 1 plain Bayer, 2 Quad, 4 Tetra, 0 = no
+     * clear model (the worker measures it). A mosaic is merged from its own sites on the sensor grid (header word 14).
+     */
+    private final int mosaicBlock;
     private final boolean diagnostics;
     /**
      * Ask the worker for the per-pixel clip flags (header flag 4): VivoNiceRgb's per-channel highlight recovery picks the
@@ -65,7 +71,18 @@ public final class LmcHybridBurst implements NiceTransport {
             throw new IOException("LMC-гибрид: размер RAW до 16 МП");
         if (source.size() < 2 || source.size() > 64) throw new IOException("LMC-гибрид: нужны 2–64 кадра");
         android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
-        final boolean twoX = !"sensor".equals(PreferenceKeys.hybridOutputMode());
+        com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result mosaic = null;
+        for (ImageFrame f : source) {
+            if (f.buffer == null || f.width != width || f.height != height || f.buffer.capacity() != (long) width * height * 2) continue;
+            mosaic = com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(f.buffer, width, height, width * 2,
+                    (black[0] + black[1] + black[2] + black[3]) / 4f, 8);
+            break;
+        }
+        mosaicBlock = mosaic == null || !mosaic.confident ? 0 : mosaic.block;
+        if (mosaic != null) Log.i("NICE_HDR", "hybrid stream colour block: " + mosaic);
+        // A mosaic's own sites already fill the sensor grid of the stream (the worker merges them on the 2x grid of its plain-Bayer
+        // sub-frames): its output is the sensor grid.
+        final boolean twoX = !"sensor".equals(PreferenceKeys.hybridOutputMode()) && mosaicBlock <= 1;
         // No memory gate (user's call): the 2x pipeline holds the 2w x 2h float RGB plus the GL working set; availMem is logged.
         Log.i("NICE_HDR", "hybrid output mode=" + PreferenceKeys.hybridOutputMode() + " availMem=" + (availableMemory() >> 20) + " MB twoX=" + twoX);
         outWidth = twoX ? 2 * width : width; outHeight = twoX ? 2 * height : height;
@@ -194,7 +211,7 @@ public final class LmcHybridBurst implements NiceTransport {
         h.putInt(0x3143484e).putInt(11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
         h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0)).putInt(0)
-         .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(0).putInt(0).putInt(0);
+         .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
             h.putInt(roles.get(i)).putFloat(exposures.get(i)).putInt(frames.get(i).measuredIso)

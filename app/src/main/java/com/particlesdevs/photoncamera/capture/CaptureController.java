@@ -381,6 +381,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private static final java.util.concurrent.atomic.AtomicInteger sNicePending = new java.util.concurrent.atomic.AtomicInteger();
     private long mShutterGeneration;
     private volatile boolean mLiveRawSession;
+    /**
+     * P13: the stream of this session is a colour-block mosaic (a sensor mode without remosaic, MosaicStream): its ISP preview
+     * is purple, so the ZSL frames also go to the developed-RAW viewfinder, whose shader bins the colour blocks.
+     */
+    private volatile boolean mMosaicPreview;
+    /** nice_dev.txt "mosaic_preview 0": no measurement and no mosaic preview (diagnostics). */
+    private volatile boolean mMosaicMeasure = true;
     private volatile boolean mNativeRawPslCapture;
     private TotalCaptureResult mNativeZslBase;
     private boolean mLiveRawRejected;
@@ -475,6 +482,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mLiveMetadata.image(img.getTimestamp(), img);
                     return;
                 }
+                observeMosaic(img);
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
                     mZslRingBuffer.addLast(img);
@@ -1169,7 +1177,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         clearZslPreviewFrames();
         LiveRawFrame.setEnabled(false);
+        LiveRawFrame.setMosaicPreview(false);
         mLiveRawSession = false;
+        mMosaicPreview = false;
         mNativeRawPslCapture = false;
         mLiveRawRouter.clear();
         mLiveMetadata.clear();
@@ -1609,6 +1619,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // camera instead of on the first NICE preview frame.
             if (PreferenceKeys.isVivoNiceEnabled() && PreferenceKeys.useStockBracketPlanner()) VivoStockAe.warmUp(PhotonCamera.getAppContext());
             cameraEventsListener.onOpenCamera(this.mCameraManager);
+            // The package spoof first: a module only the spoof lists (OPPO tele 5, a "system only device" otherwise) has no
+            // characteristics without it, so no reader was set up when the previous module ran without the spoof.
+            com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof.apply(activity, mCameraManager);
             setUpCameraOutputs(width, height);
             configureTransform(width, height);
             if (!isCameraResumed) {
@@ -1632,7 +1645,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     //isDualSession = true;
                 }
 
-                com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof.apply(activity, mCameraManager);
                 this.mCameraManager.openCamera(logicalID, mStateCallback, mBackgroundHandler);
                 mOpenRetries = 0;
             } catch (CameraAccessException e) {
@@ -1659,6 +1671,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public void UpdateCameraCharacteristics(String cameraId) {
         PhotonCamera.getSpecificSensor().selectSpecifics(Integer.parseInt(cameraId));
         CameraCharacteristics characteristics = this.mCameraCharacteristicsMap.get(cameraId);
+        if (characteristics == null) {
+            // A camera ID the list filled at start did not have: a hidden module that only the package spoof lists (OPPO tele
+            // 5 when the app started on a lens without the spoof). Without its characteristics no reader was set up and the
+            // session start failed on a null ImageReader, leaving the device open and unconfigured (frozen viewfinder).
+            try {
+                characteristics = mCameraManager.getCameraCharacteristics(cameraId);
+                mCameraCharacteristicsMap.put(cameraId, characteristics);
+                Log.i(TAG, "characteristics of camera " + cameraId + " fetched on demand");
+            } catch (CameraAccessException | IllegalArgumentException e) {
+                Log.w(TAG, "no characteristics for camera " + cameraId + ": " + e.getMessage());
+            }
+        }
         mCameraCharacteristics = characteristics;
         //Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
 
@@ -1806,13 +1830,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mMediaRecorder = new MediaRecorder();
 //            setUpMediaRecorder();
         }
+        final CameraCharacteristics updated = characteristics;
         activity.runOnUiThread(() -> {
             //Preview drawing size changing
             mPreviewSize = getTextureOutputSize(getSafeDisplay(), PhotonCamera.getSettings().selectedMode);
             mTextureView.setAspectRatio(
                     mPreviewSize.getHeight(), mPreviewSize.getWidth());
             updatePreviewMirror();
-            cameraEventsListener.onCharacteristicsUpdated(characteristics);
+            cameraEventsListener.onCharacteristicsUpdated(updated);
             if (PhotonCamera.getSettings().DebugData)
                 showToast("preview:" + new Point(mPreviewWidth, mPreviewHeight));
         });
@@ -1874,6 +1899,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     && mTargetFormat == ImageFormat.RAW_SENSOR && PreferenceKeys.isLiveViewfinderRawEnabled();
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
+            // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
+            mMosaicMeasure = PreferenceKeys.niceDevSwitch("mosaic_preview", true);
+            com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
+            mMosaicPreview = mMosaicMeasure && !mLiveRawSession && photoMode && !isBurstSession && !mIsRecordingVideo && isZslMode()
+                    && mTargetFormat == ImageFormat.RAW_SENSOR && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1;
+            if (mMosaicPreview) LiveRawFrame.setEnabled(true);
+            LiveRawFrame.setMosaicPreview(mMosaicPreview);
             setCaptureRequestBuilder();
 
             // Here, we create a CameraCaptureSession for camera preview.
@@ -2553,6 +2585,55 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } finally { if (!retained) img.close(); }
     }
 
+    /** Key of the stream's sensor mode for MosaicStream: the physical sensor, its vendor requests and the RAW size. */
+    private String mosaicStreamKey() {
+        String size = mImageReaderRaw == null ? "" : mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight();
+        return physicalID + "|" + size + "|" + com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID)
+                + "|" + com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
+    }
+
+    /**
+     * P13: colour block of the ZSL stream from its first frames (MosaicStream: three agreeing measurements). A mosaic stream
+     * switches the viewfinder to the developed RAW; its frames are published with the latest matching result (the colour
+     * parameters of the viewfinder change slowly, the ZSL frames are not paired one by one outside the live RAW session).
+     */
+    private void observeMosaic(Image img) {
+        try {
+            if (!mMosaicMeasure || img.getFormat() != ImageFormat.RAW_SENSOR || !isCameraResumed) return;
+            if (com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) {
+                Image.Plane plane = img.getPlanes()[0];
+                float black = 0;
+                CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+                if (c == null) c = mCameraCharacteristics;
+                BlackLevelPattern blp = c == null ? null : c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+                if (blp != null) { int[] bl = new int[4]; blp.copyTo(bl, 0); black = (bl[0] + bl[1] + bl[2] + bl[3]) / 4f; }
+                int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
+                        com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(plane.getBuffer(), img.getWidth(), img.getHeight(),
+                                plane.getRowStride(), black, 32));
+                if (block > 1 && !mMosaicPreview && !mLiveRawSession) {
+                    mMosaicPreview = true;
+                    LiveRawFrame.setEnabled(true);
+                    LiveRawFrame.setMosaicPreview(true);
+                    Log.i(TAG, "mosaic stream (block " + block + "): developed RAW viewfinder");
+                } else if (block == 1 && mMosaicPreview) {
+                    mMosaicPreview = false;
+                    LiveRawFrame.setMosaicPreview(false);
+                    LiveRawFrame.setEnabled(false);
+                }
+            }
+            if (mMosaicPreview && !mZslCapturing && !mHybridZslCapture && !mNiceRingFrozen) {
+                TotalCaptureResult r;
+                synchronized (mZslBufferLock) { r = mHexZslResults.get(img.getTimestamp()); }
+                CaptureResult latest = mPreviewCaptureResult;
+                if (r == null && latest instanceof TotalCaptureResult) r = (TotalCaptureResult) latest;
+                publishLiveRawFrame(img, r);
+                if (mTextureView != null) mTextureView.requestRender();
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "mosaic preview: " + e.getMessage());
+        }
+    }
+
     private void publishLiveRawFrame(Image img, TotalCaptureResult matchedResult) {
         if (!LiveRawFrame.isEnabled() || img == null) return;
         if (img.getFormat() != ImageFormat.RAW_SENSOR) return;
@@ -2635,7 +2716,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
                     plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh,crop,
-                    PreferenceKeys.mosaicBlock(),
+                    com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
+                            ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
                     !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise);
