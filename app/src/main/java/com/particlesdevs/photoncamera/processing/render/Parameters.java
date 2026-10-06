@@ -66,6 +66,8 @@ public class Parameters {
     // Per-capture policy, not a live settings lookup during asynchronous processing.
     /** Per-shot display correction; never changes sensor exposure, VST or Bayer DNG. */
     public Point rawSize;
+    /** P27: linear factor the RAW frames were binned by (RawBin) before the merge; 1 = as captured. Set before FillConstParameters. */
+    public int rawBinning = 1;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];
@@ -247,6 +249,9 @@ public class Parameters {
         sensorPix = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         if (sensorPix == null) {
             sensorPix = new Rect(0, 0, rawSize.x, rawSize.y);
+        } else if (rawBinning > 1) {
+            sensorPix = new Rect(sensorPix.left / rawBinning, sensorPix.top / rawBinning,
+                    sensorPix.right / rawBinning, sensorPix.bottom / rawBinning);
         }
         var facing = characteristics.get(CameraCharacteristics.LENS_FACING);
         if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
@@ -347,6 +352,7 @@ public class Parameters {
                 hasGainMap = false;
             }
             hotPixels = result.get(CaptureResult.STATISTICS_HOT_PIXEL_MAP);
+            if (rawBinning > 1) hotPixels = new Point[0]; // sensor coordinates; a binned site averages it away
             ReCalcColor(false, result);
         }
         if (!usedDynamic)
@@ -800,6 +806,7 @@ public class Parameters {
         params.hasGainMap = hasGainMap;
         params.mapSize = new Point(mapSize);
         params.sensorPix = new Rect(sensorPix);
+        params.rawBinning = rawBinning;
         params.gainMap = gainMap.clone();
         params.proPhotoToSRGB = proPhotoToSRGB.clone();
         params.sensorToProPhoto = sensorToProPhoto.clone();

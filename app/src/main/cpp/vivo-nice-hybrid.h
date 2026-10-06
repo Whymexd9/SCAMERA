@@ -69,6 +69,19 @@ constexpr int kHybridMaxFrames=128;
 // (6 x 128 x 16 B = 12 KB, within the 16 KB every GLES 3.1 GPU gives a block); a frame index past it reads undefined offsets
 // (SSBO reads out of bounds). hybridReconstruct drops the normal donors farthest in time beyond this.
 constexpr int kHybridGpuFrames=128;
+// Any RAW size (owner 2026-10-07): the hybrid takes every stream whose sensor-grid RGB fits the app's result buffer (12 B/px
+// <= 2 GiB, ~178 MP). Up to this many pixels (the old cap) every path is exactly the one before, bit for bit; above it the GPU
+// strips, dispatches, the output grid and the memory held follow the real limits (storage block size, readback size, available
+// memory), each reported.
+constexpr int64_t kHybridClassicPixels=16000000;
+// MemAvailable of /proc/meminfo in bytes (0: unknown).
+inline uint64_t hybridMemAvailable(){
+    std::ifstream f("/proc/meminfo");
+    std::string key,rest;uint64_t kb=0;
+    while(f>>key>>kb){std::getline(f,rest);if(key=="MemAvailable:")return kb*1024;}
+    return 0;
+}
+inline std::string hybridMB(uint64_t bytes){return std::to_string((bytes+(1u<<19))>>20);}
 
 struct HybridTuning {
     // rejection (LMC 9.6 rejection.cl constants)
@@ -233,6 +246,9 @@ struct HybridTuning {
     // colour shift. rawCaGpu 0: frames mode on the CPU (diagnostics).
     int rawCa=0,rawCaAuto=1,rawCaPasses=2,rawCaAvoidShift=1,rawCaGpu=1;
     float rawCaRed=0,rawCaBlue=0;
+    // P27 (VERIFY-11): 1 = a bracketed / ultrashort frame whose data disagrees with its metadata exposure ratio by more than 5 %
+    // (consistent tiles, hybridMeasuredGain) is merged with the measured ratio. 0 (default) = report only (HYBRID GAIN CHECK).
+    int gainMeasured=0;
     int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
     // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
@@ -351,7 +367,9 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
-            ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue);
+            ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
+            // P27
+            ||set("gainMeasured",nullptr,&t.gainMeasured);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -2126,6 +2144,7 @@ public:
     bool profilePasses=false;      // with profile: one report line per pass (profile 2; finds a pass that hangs)
     double passMs[8]{};            // flags, guide, cells, reject, dilate, merge, readback, mark
     std::string renderer,limits,compileMs;size_t maxStorageBlock=0;
+    int64_t maxGroupsX=0;          // GL_MAX_COMPUTE_WORK_GROUP_COUNT[0] (>= 65535): every dispatch's x extent / 8 must stay within it
     std::function<void(const std::string&)> trace;
     struct Frames {
         int w=0,h=0,cfa=0;
@@ -2151,6 +2170,9 @@ public:
         // P29: the raw mosaic behind these (binned) frames; null = every other merge. nativeFrames: its frames in merge order.
         const HybridMosaicNative* native=nullptr;
         std::vector<const uint16_t*> nativeFrames;
+        // The stream is above kHybridClassicPixels (any RAW size): strips sized by the readback, the storage block and the
+        // available memory, dispatch chunks scaled by the width. false: the merge exactly as before.
+        bool large=false;
     };
     long fixedOutliers=0,baseOutliers=0;                // sites flagged by the last merge
     long natFixedOutliers=0,natBaseOutliers=0;          // P29: native sites flagged by the last native mosaic merge
@@ -2162,9 +2184,13 @@ public:
     // chromaPass: compile the colour-difference pass of the base frame (kHybChroma) for chromaDiff > 0.
     // early: optional report of the context and, off Adreno, of every program before it compiles (P26: the vivo X200 Pro's
     // Mali worker died between "HYBRID FRAMES" and the init report, so the failing step was unknown).
+    // sumsCarry (any RAW size): the per-frame accepted-weight sums of kHybDilate (up to 255 per cell, uint32) carry into a second
+    // word per frame; without it they wrap above 2^32 / 255 cells (67 MP). Report only (robustShare); false = the program as before.
+    const bool sumsCarry=false;
     // nativeMosaic (P29): also compile the native mosaic programs (Frames::native needs them).
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
-                       const std::function<void(const std::string&)>& early=nullptr,bool nativeMosaic=false):localAlign(withLocalAlign){
+                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false)
+            :localAlign(withLocalAlign),sumsCarry(withSumsCarry){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -2183,7 +2209,8 @@ public:
              glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,1,&wg);maxStorageBlock=size_t(std::max<GLint64>(ssbo,0));
              GLint blocks=0,bindings=0;glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,&blocks);glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS,&bindings);
              limits="ssbo="+std::to_string(ssbo/(1024*1024))+"MB tex="+std::to_string(tex)+" wgY="+std::to_string(wg)
-                 +" blocks="+std::to_string(blocks)+" bindings="+std::to_string(bindings);}
+                 +" blocks="+std::to_string(blocks)+" bindings="+std::to_string(bindings);
+             GLint wgX=0;glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,0,&wgX);maxGroupsX=std::max<GLint>(wgX,0);}
             const bool adreno=renderer.find("Adreno")!=std::string::npos;
             if(early)early("HYBRID GPU: context "+renderer+" "+limits+(adreno?"":"; compiling program by program"));
             auto timed=[&](const char* name,const char* body,bool standalone=false){
@@ -2198,7 +2225,15 @@ public:
             guideProgram=timed("guide",kHybGuide);
             cellsProgram=timed("cells",kHybCells);
             rejectProgram=timed("reject",kHybReject);
-            dilateProgram=timed("dilate",kHybDilate);
+            if(sumsCarry){ // the same program with a carry word per frame (the source without it stays byte-identical: same cache entry)
+                std::string body=kHybDilate;
+                const std::string plain="atomicAdd(sums[f],uint(clamp(r,0.0,1.0)*255.0+0.5));";
+                const size_t at=body.find(plain);
+                if(at==std::string::npos)throw std::runtime_error("HYBRID GPU: dilate program without its sum");
+                body.replace(at,plain.size(),"{uint v=uint(clamp(r,0.0,1.0)*255.0+0.5);uint old=atomicAdd(sums[f],v);"
+                    "if(old>0xFFFFFFFFu-v)atomicAdd(sums[frameCount+3+f],1u);}");
+                dilateProgram=timed("dilate",body.c_str());
+            } else dilateProgram=timed("dilate",kHybDilate);
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
@@ -2239,6 +2274,9 @@ public:
         if(frames<1||frames>kHybridGpuFrames||(w&1)||(h&1)||int(in.homography.size())!=frames)throw std::runtime_error("HYBRID GPU unsupported burst shape");
         if(grid!=1&&grid!=2&&grid!=4)throw std::runtime_error("HYBRID GPU grid");
         const int g=grid,ow=w*g;
+        // The widest dispatch runs (ow + 7) / 8 work groups in x (the output passes; the site passes w).
+        if(maxGroupsX>0&&(int64_t(std::max(ow,w))+7)/8>maxGroupsX)
+            throw std::runtime_error("HYBRID GPU: output row "+std::to_string(std::max(ow,w))+" px > work-group limit "+std::to_string(maxGroupsX*8)+" px");
         out.assign(size_t(ow)*h*g*3,0.f);effective.assign(size_t(ow)*h*g,1.f);robustShare.assign(frames,1.0);
         if(clipFlags)clipFlags->assign(size_t(ow)*h*g,0);
         // Uniforms common to all programs.
@@ -2308,6 +2346,9 @@ public:
         if(la){
             if(in.laMode==0||!in.laField||in.laNx<1||in.laNy<1||in.laField->size()!=size_t(frames)*in.laNx*in.laNy*2)
                 throw std::runtime_error("HYBRID GPU local alignment field");
+            // the whole burst's field is one storage block (12 MB at 12 MP x 32 frames; the caller then merges without it)
+            if(maxStorageBlock>0&&in.laField->size()*4>maxStorageBlock)
+                throw std::runtime_error("HYBRID GPU: local alignment field "+hybridMB(in.laField->size()*4)+" MB > storage block "+hybridMB(maxStorageBlock)+" MB");
             reserve(15,in.laField->size()*4);put(15,0,in.laField->data(),in.laField->size()*4);
             // Z channel: zeros without it (no boost from the motion test)
             const size_t zn=in.laField->size()/2;
@@ -2381,6 +2422,9 @@ public:
          {const float us=std::max(0.3f,tune.bentoUsSigma);glUniform4f(loc(rimProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);}
          glUniform4i(loc(rimProgram,"kG"),g,ow,0,0);
          glUniform4i(loc(rimProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);}}
+        // Sums (slot 9): per-frame accepted weight, the two outlier counts, rim pixels (sumsCarry: then the carry word of every frame's
+        // weight); P29: then the two native outlier counts (natSum0)
+        const size_t natSum0=size_t(std::max(frames,1))*(sumsCarry?2:1)+3;
         if(nat){ // P29: uniforms of the native programs
             const int nb=nat->block,ns=nb==4?2:1,nr=std::clamp(nat->window,1,6);
             const float ks=std::clamp(nat->kernelScale,0.1f,4.f);
@@ -2389,7 +2433,7 @@ public:
             for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram}){
                 glUseProgram(program);
                 glUniform4i(loc(program,"natU"),nb,nat->W,nat->H,nr);
-                glUniform4i(loc(program,"natV"),ns,nat->rawGains?1:0,frames+3,0); // z: native outlier counters after the plain ones
+                glUniform4i(loc(program,"natV"),ns,nat->rawGains?1:0,int(natSum0),0); // z: native outlier counters after the plain ones
                 glUniform4f(loc(program,"natW"),in.white,in.white-1.f,0.f,0.f);
                 glUniform4fv(loc(program,"natGain"),16,ng.data());
             }
@@ -2402,7 +2446,7 @@ public:
             glUniform4f(loc(natFlagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
             glUniform2f(loc(natFlagsProgram,"natNoise"),nat->siteSlope,nat->siteOffset);
             glUseProgram(mosaicProgram);
-            glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,frames+3,nat->fullWindow?1:0); // w: the merge's window rule
+            glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
             const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
             glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
             glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
@@ -2423,12 +2467,30 @@ public:
             glUseProgram(mergeProgram);
             check("native uniforms");
         }
-        std::vector<GLuint> zeros(size_t(std::max(frames,1))+3,0); // per-frame accepted weight, the two outlier counts, rim pixels
-        if(nat)zeros.resize(zeros.size()+2,0);                     // P29: the native outlier counts
+        std::vector<GLuint> zeros(natSum0+(nat?2:0),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
         reserve(12,16); // mosaic frames: unused
-        const int stripCells=128/(g*g); // 256 output rows per dispatch on the sensor grid; on the 2x grid the strip
-                                        // shrinks so the Out readback stays ~12 MB (Adreno refuses larger/offset read maps)
+        int stripCells=128/(g*g); // 256 output rows per dispatch on the sensor grid; on the 2x grid the strip
+                                  // shrinks so the Out readback stays ~12 MB (Adreno refuses larger/offset read maps)
+        // Any RAW size: the limits of a strip (in.large only; up to 16 MP the strips and dispatches are exactly as before).
+        //   readback  the Out strip stays within today's largest (256 rows x 4624 px x 12 B, 14.2 MB): wider rows, fewer of them
+        //   storage   every buffer bound to a program within GL_MAX_SHADER_STORAGE_BLOCK_SIZE (beyond it the reads are undefined;
+        //             an earlier out-of-bounds SSBO read rebooted the phone): the strip halves until it fits, an 8-cell strip that
+        //             still does not is an error
+        //   memory    all strip buffers (both banks) within a quarter of MemAvailable: halved as well, down to 8 cells (soft)
+        //   dispatch  rows per dispatch scaled by 4624 / width: the work of one dispatch stays within today's (GPU hang detection)
+        const bool large=in.large;
+        constexpr int64_t kReadbackCap=int64_t(256)*4624*12;
+        const size_t blockLimit=maxStorageBlock>0?maxStorageBlock:(size_t(128)<<20);
+        uint64_t gpuBudget=0;
+        if(large){
+            stripCells=std::max(8,std::min(stripCells,int(kReadbackCap/(2*int64_t(g)*ow*12))&~7));
+            gpuBudget=hybridMemAvailable()/4;
+        }
+        auto chunkOf=[&](int chunk){return large?std::min(chunk,std::max(8,int(int64_t(chunk)*4624/std::max(w,1))&~7)):chunk;};
+        if(large&&trace)trace("HYBRID GPU: large frame "+std::to_string(w)+"x"+std::to_string(h)+" grid "+std::to_string(g)+": strips of "
+            +std::to_string(stripCells)+" cells (readback "+hybridMB(uint64_t(2)*stripCells*g*ow*12)+" MB), dispatch rows x"+std::to_string(chunkOf(64))
+            +"/64, storage block "+hybridMB(blockLimit)+" MB, strip memory budget "+(gpuBudget?hybridMB(gpuBudget)+" MB":std::string("unknown")));
         const int donors=std::max(1,frames-1);
         std::vector<GLuint> offsets(frames),cellOff(frames);std::vector<GLint> row0(frames),rows(frames),crow0(frames),crows(frames),cellGeom(size_t(frames)*4);
         std::vector<float> maskStrip;std::vector<GLuint> flagStrip;
@@ -2518,13 +2580,11 @@ public:
             passMs[6]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-readStarted).count();
             p.active=false;
         };
-        int stripIndex=0;
-        for(int cy0=0;cy0<h2;cy0+=stripCells,++stripIndex){
-            const int bank=stripIndex&1;
-            const int cy1=std::min(h2,cy0+stripCells),y0=2*cy0,y1=2*cy1;
-            const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3); // reject/guide margin for the 5x5 dilation
-            // Upload the rows of every frame that output rows [y0-6, y1+6) map into (kernel + margins), even-aligned.
-            size_t total=0,cellTotal=0;
+        // Upload the rows of every frame that output rows [y0-6, y1+6) map into (kernel + margins), even-aligned: the plan of the
+        // strip of cells [cy0, cy1) (row0 / rows / offsets of every frame, its RAW words and donor cells).
+        auto planStrip=[&](int cy0,int cy1,size_t& total,size_t& cellTotal){
+            const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3);
+            total=0;cellTotal=0;
             for(int f=0;f<frames;++f){
                 float lo=1e9f,hi=-1e9f;
                 for(int y:{std::max(0,2*ry0-4),std::min(h,2*ry1+4)})for(int x:{0,w-2}){
@@ -2538,6 +2598,54 @@ public:
                 row0[f]=r0;rows[f]=r1-r0;offsets[f]=GLuint(total);total+=size_t(rows[f])*w;
                 crow0[f]=r0/2;crows[f]=rows[f]/2;cellOff[f]=GLuint(cellTotal);cellTotal+=size_t(crows[f])*w2;
             }
+        };
+        // Bytes the strip binds per storage slot (the reserve() calls below; slots 0, 3, 4, 6 and 13 exist in both banks).
+        auto stripSlots=[&](int cy0,int cy1,size_t total,size_t cellTotal,std::array<size_t,kSlots>& s){
+            const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3),rows2=2*(cy1-cy0)*g;
+            s.fill(0);
+            s[0]=total*2;
+            s[1]=(size_t(ry1-ry0)*2+4)*w*4;
+            s[2]=size_t(ry1-ry0)*w*2*4;
+            s[3]=size_t(rows2)*ow*3*4;
+            s[4]=size_t(rows2)*ow*4;
+            s[5]=std::max<size_t>(cellTotal,1)*16;
+            s[6]=(clipFlags||rim||bentoColourPass)?size_t(rows2)*ow*4:16;
+            s[7]=size_t(donors)*(ry1-ry0)*w2*4;
+            s[8]=size_t(donors)*(cy1-cy0)*w2*4;
+            s[10]=s[11]=size_t(ry1-ry0)*w2*16;
+            s[13]=size_t(cy1-cy0)*w2*(1+in.maskValid.size())*4;
+            s[14]=(in.mergeMode&1)?std::max<size_t>(cellTotal,1)*8:16;
+            s[16]=la?size_t(donors)*(cy1-cy0)*w2*4:0;
+        };
+        int stripIndex=0,stripsShrunk=0,smallestStrip=stripCells;
+        for(int cy0=0,cy1=0;cy0<h2;cy0=cy1,++stripIndex){
+            const int bank=stripIndex&1;
+            cy1=std::min(h2,cy0+stripCells);
+            size_t total=0,cellTotal=0;
+            planStrip(cy0,cy1,total,cellTotal);
+            if(large){ // halve the strip until every slot fits the storage block and the strip memory the budget
+                bool shrunk=false;
+                for(;;){
+                    std::array<size_t,kSlots> slot{};stripSlots(cy0,cy1,total,cellTotal,slot);
+                    int worst=0;uint64_t sum=0;
+                    for(int k=0;k<kSlots;++k){
+                        if(slot[k]>slot[worst])worst=k;
+                        sum+=uint64_t(slot[k])*((k==0||k==3||k==4||k==6||k==13)?2:1);
+                    }
+                    const bool overBlock=slot[worst]>blockLimit,overMemory=gpuBudget>0&&sum>gpuBudget;
+                    if(!overBlock&&!overMemory)break;
+                    if(cy1-cy0<=8){
+                        if(overBlock)throw std::runtime_error("HYBRID GPU: strip needs "+hybridMB(slot[worst])+" MB in storage slot "+std::to_string(worst)
+                            +", GPU block limit "+hybridMB(blockLimit)+" MB");
+                        break; // the memory budget is a target, not a limit: the smallest strip goes on
+                    }
+                    cy1=cy0+std::max(8,(cy1-cy0)/2);shrunk=true;
+                    planStrip(cy0,cy1,total,cellTotal);
+                }
+                if(shrunk){++stripsShrunk;smallestStrip=std::min(smallestStrip,cy1-cy0);}
+            }
+            const int y0=2*cy0,y1=2*cy1;
+            const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3); // reject/guide margin for the 5x5 dilation
             reserveBank(0,total*2,bank);
             for(int f=0;f<frames;++f)putBank(0,bank,size_t(offsets[f])*2,in.frames[f]+size_t(row0[f])*w,size_t(rows[f])*w*2);
             for(int f=0;f<frames;++f){cellGeom[f*4]=crow0[f];cellGeom[f*4+1]=crows[f];cellGeom[f*4+2]=GLint(cellOff[f]);cellGeom[f*4+3]=0;}
@@ -2606,10 +2714,10 @@ public:
                     if(nh>0)glUniform1iv(loc(meanProgram,"hotList"),nh,list.data());
                     glUniform4i(loc(meanProgram,"hotU"),nh,0,0,0);
                     glUniform1i(loc(meanProgram,"ry0"),ry0);glUniform1i(loc(meanProgram,"ry1"),ry1);
-                    dispatchRows(meanProgram,w,2*(ry1-ry0)+4,1,512,0);
+                    dispatchRows(meanProgram,w,2*(ry1-ry0)+4,1,chunkOf(512),0);
                     glUseProgram(flagsProgram);
                     glUniform4i(loc(flagsProgram,"hotU"),nh,(tune.hotSigma>0?1:0)|(tune.hotBaseSigma>0?2:0),0,0);
-                    dispatchRows(flagsProgram,w,2*(ry1-ry0),1,128,0);
+                    dispatchRows(flagsProgram,w,2*(ry1-ry0),1,chunkOf(128),0);
                 } // without outlier tests the mark pass does not read the site flags
                 check("flags");
                 // write the flags into the RAW words of every frame (after kHybFlags, which reads the plain values)
@@ -2618,7 +2726,7 @@ public:
                 const GLint frameIdx=loc(markProgram,"frameIdx");
                 int maxRows=1;for(int f=0;f<frames;++f)maxRows=std::max(maxRows,rows[f]);
                 glUniform1i(frameIdx,0);
-                dispatchRows(markProgram,w2,maxRows,frames,128,7);
+                dispatchRows(markProgram,w2,maxRows,frames,chunkOf(128),7);
                 check("mark");
             }
             if(nat&&natStripMode){ // P29: the same flags on the native sites (kHybNatMean / kHybNatFlags / kHybNatMark)
@@ -2652,27 +2760,27 @@ public:
             }
             glUseProgram(guideProgram);
             glUniform1i(loc(guideProgram,"ry0"),ry0);glUniform1i(loc(guideProgram,"ry1"),ry1);
-            dispatchRows(guideProgram,w2,ry1-ry0,1,256,1);
+            dispatchRows(guideProgram,w2,ry1-ry0,1,chunkOf(256),1);
             check("guide");
             if(frames>1){
                 glUseProgram(cellsProgram);
                 const GLint cellFrame=loc(cellsProgram,"cellFrameU");
                 if(in.mergeMode&1){ // 6.1 covariance (36 RAW sites a cell): one donor per dispatch keeps the reads of a frame together
-                    for(int f=1;f<frames;++f){glUniform1i(cellFrame,f-1);dispatchRows(cellsProgram,w2,crows[f],1,256,2,false);}
+                    for(int f=1;f<frames;++f){glUniform1i(cellFrame,f-1);dispatchRows(cellsProgram,w2,crows[f],1,chunkOf(256),2,false);}
                     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
                 } else {
                     int maxRows=1;for(int f=1;f<frames;++f)maxRows=std::max(maxRows,crows[f]);
                     glUniform1i(cellFrame,0);
-                    dispatchRows(cellsProgram,w2,maxRows,frames-1,256,2);
+                    dispatchRows(cellsProgram,w2,maxRows,frames-1,chunkOf(256),2);
                 }
                 check("cells");
                 glUseProgram(rejectProgram);
                 glUniform1i(loc(rejectProgram,"ry0"),ry0);glUniform1i(loc(rejectProgram,"ry1"),ry1);
-                dispatchRows(rejectProgram,w2,ry1-ry0,frames-1,256,3);
+                dispatchRows(rejectProgram,w2,ry1-ry0,frames-1,chunkOf(256),3);
                 glUseProgram(dilateProgram);
                 glUniform1i(loc(dilateProgram,"ry0"),ry0);glUniform1i(loc(dilateProgram,"ry1"),ry1);
                 glUniform1i(loc(dilateProgram,"cy0"),cy0);glUniform1i(loc(dilateProgram,"cy1"),cy1);
-                dispatchRows(dilateProgram,w2,cy1-cy0,frames-1,256,4);
+                dispatchRows(dilateProgram,w2,cy1-cy0,frames-1,chunkOf(256),4);
                 check("rejection");
             }
             const int rows2=(y1-y0)*g,oy0=y0*g; // output-grid rows of this strip
@@ -2688,23 +2796,23 @@ public:
             glUniform1i(loc(mergeProgram,"cy0"),cy0);glUniform1i(loc(mergeProgram,"cy1"),cy1);glUniform1i(loc(mergeProgram,"ry0"),ry0);
             for(int sub=0;sub<g*g;++sub){ // grid 2 / 4: one dispatch per sub-position (same registers as 1x; g^2 passes)
                 glUniform4i(loc(mergeProgram,"kG"),g,ow,sub%g,sub/g);
-                dispatchRows(mergeProgram,w2,cy1-cy0,1,64,5);
+                dispatchRows(mergeProgram,w2,cy1-cy0,1,chunkOf(64),5);
             }
             } // P29: end of the plain merge dispatch (else branch of the native one)
             if(chromaPass){ // after all sub-positions: the base's colour where the merge widened its kernel
                 glUseProgram(chromaProgram);
                 glUniform1i(loc(chromaProgram,"cy0"),cy0);glUniform1i(loc(chromaProgram,"cy1"),cy1);glUniform1i(loc(chromaProgram,"ry0"),ry0);
-                dispatchRows(chromaProgram,ow,rows2,1,64,5);
+                dispatchRows(chromaProgram,ow,rows2,1,chunkOf(64),5);
             }
             if(bentoColourPass){ // after all sub-positions, before the clip-border pass (that one reads the merged colour)
                 glUseProgram(bentoProgram);
                 glUniform1i(loc(bentoProgram,"cy0"),cy0);glUniform1i(loc(bentoProgram,"cy1"),cy1);glUniform1i(loc(bentoProgram,"ry0"),ry0);
-                dispatchRows(bentoProgram,ow,rows2,1,64,5);
+                dispatchRows(bentoProgram,ow,rows2,1,chunkOf(64),5);
             }
             if(rim){ // after all sub-positions: the pass reads the merged colour and the border statistics
                 glUseProgram(rimProgram);
                 glUniform1i(loc(rimProgram,"cy0"),cy0);glUniform1i(loc(rimProgram,"cy1"),cy1);glUniform1i(loc(rimProgram,"ry0"),ry0);
-                dispatchRows(rimProgram,ow,rows2,1,64,5);
+                dispatchRows(rimProgram,ow,rows2,1,chunkOf(64),5);
             }
             glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
             check("merge");
@@ -2714,11 +2822,14 @@ public:
             pending.active=true;pending.bank=bank;pending.oy0=oy0;pending.rows2=rows2;pending.fence=fence;
         }
         readStrip(pending);
+        if(stripsShrunk&&trace)trace("HYBRID GPU: "+std::to_string(stripsShrunk)+" of "+std::to_string(stripIndex)+" strips shrunk to fit the storage block / memory budget (smallest "
+            +std::to_string(smallestStrip)+" cells)");
         std::vector<GLuint> sums(zeros.size());
         get(9,sums.data(),sums.size()*4);
-        for(int f=1;f<frames;++f)robustShare[f]=double(sums[f])/(255.0*double(w2)*h2);
+        if(sumsCarry)for(int f=1;f<frames;++f)robustShare[f]=(double(sums[size_t(frames)+3+f])*4294967296.0+double(sums[f]))/(255.0*double(w2)*h2);
+        else for(int f=1;f<frames;++f)robustShare[f]=double(sums[f])/(255.0*double(w2)*h2);
         fixedOutliers=long(sums[size_t(frames)]);baseOutliers=long(sums[size_t(frames)+1]);rimPixels=long(sums[size_t(frames)+2]);
-        if(nat){natFixedOutliers=long(sums[size_t(frames)+3]);natBaseOutliers=long(sums[size_t(frames)+4]);}
+        if(nat){natFixedOutliers=long(sums[natSum0]);natBaseOutliers=long(sums[natSum0+1]);}
     }
 };
 
@@ -3296,13 +3407,12 @@ inline HybridCa hybridRawCa(const HybridInput& in){
     const float bl=0.25f*(in.black[0]+in.black[1]+in.black[2]+in.black[3]);
     const float clip=0.95f*(in.white-bl);
     auto px=[&](int x,int y){x=std::clamp(x+ox,0,in.w-1);y=std::clamp(y+oy,0,in.h-1);return float(raw[size_t(y)*in.w+x])-bl;};
-    std::vector<float> R(size_t(w2)*h2),B(R.size()),gR(R.size()),gB(R.size());
-    mergeRowBands(h2,[&](int j0,int j1){for(int j=j0;j<j1;++j)for(int i=0;i<w2;++i){
-        const size_t k=size_t(j)*w2+i;const int x=2*i,y=2*j;
-        R[k]=px(x,y);B[k]=px(x+1,y+1);
-        gR[k]=0.25f*(px(x-1,y)+px(x+1,y)+px(x,y-1)+px(x,y+1));
-        gB[k]=0.25f*(px(x,y+1)+px(x+2,y+1)+px(x+1,y)+px(x+1,y+2));
-    }});
+    // R, B and G interpolated at them per cell (i, j), computed where a tile reads them: the same expressions as the w/2 x h/2
+    // planes they replace (4 B per pixel, 800 MB at 200 MP), the same values.
+    auto cellR=[&](int i,int j){const int x=2*i,y=2*j;return px(x,y);};
+    auto cellB=[&](int i,int j){const int x=2*i,y=2*j;return px(x+1,y+1);};
+    auto cellGR=[&](int i,int j){const int x=2*i,y=2*j;return 0.25f*(px(x-1,y)+px(x+1,y)+px(x,y-1)+px(x,y+1));};
+    auto cellGB=[&](int i,int j){const int x=2*i,y=2*j;return 0.25f*(px(x,y+1)+px(x+2,y+1)+px(x+1,y)+px(x+1,y+2));};
     constexpr int T=64;
     struct Obs{float x,y,dx,dy;};
     std::vector<Obs> obs[2];
@@ -3314,9 +3424,12 @@ inline HybridCa hybridRawCa(const HybridInput& in){
         for(int t=t0;t<t1;++t){
             const int tx=tiles[t].first,ty=tiles[t].second;
             for(int ch=0;ch<2;++ch){
-                const std::vector<float>& C=ch?B:R;const std::vector<float>& G=ch?gB:gR;
                 float cmax=-1e9f,gmax=-1e9f;double gmean=0,grad=0;
-                for(int y=0;y<T;++y)for(int x=0;x<T;++x){const size_t k=size_t(ty+y)*w2+tx+x;c[y*T+x]=C[k];g[y*T+x]=G[k];cmax=std::max(cmax,C[k]);gmax=std::max(gmax,G[k]);gmean+=G[k];}
+                for(int y=0;y<T;++y)for(int x=0;x<T;++x){
+                    const int i=tx+x,j=ty+y;
+                    const float cv=ch?cellB(i,j):cellR(i,j),gv=ch?cellGB(i,j):cellGR(i,j);
+                    c[y*T+x]=cv;g[y*T+x]=gv;cmax=std::max(cmax,cv);gmax=std::max(gmax,gv);gmean+=gv;
+                }
                 gmean/=T*T;
                 if(cmax>=clip||gmax>=clip||gmean<20)continue;
                 double mxx=0,mxy=0,myy=0;
@@ -3464,6 +3577,26 @@ inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
     return g;
 }
 
+// P27 (VERIFY-11, tuning gainMeasured 1): every bracketed / ultrashort frame whose data disagrees with its metadata exposure ratio
+// by more than 5 % (consistent tiles, hybridMeasuredGain) takes the measured ratio. Returns the number of frames changed.
+inline int hybridApplyMeasuredGains(HybridInput& in,const std::function<void(const std::string&)>& report){
+    const HybridInput original=in;
+    int changed=0;
+    for(int f=1;f<int(in.frames.size());++f){
+        HybridFrame& fr=in.frames[f];
+        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
+        const HybridGain g=hybridMeasuredGain(original,f);
+        if(!g.ok||std::abs(g.measured/fr.exposure-1.f)<=0.05f)continue;
+        char line[160];
+        std::snprintf(line,sizeof(line),"HYBRID GAIN: frame=%d role=%d metadata ratio %.4f replaced by the measured %.4f (tiles=%d mad=%.1f %%)",
+            f,fr.role,fr.exposure,g.measured,g.tiles,100.0*g.mad);
+        if(report)report(line);
+        fr.exposure=g.measured;
+        ++changed;
+    }
+    return changed;
+}
+
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
 // frames beyond six are aligned in groups like the extra ZSL frames of the NICE path.
 struct HybridPresetAlignment { std::vector<BackwardHomography> h; std::vector<bool> aligned; };
@@ -3489,6 +3622,16 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(block>1&&tune.mosaicPath==1)return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
     }
+    if(tune.gainMeasured>0&&input.frames.size()>1){
+        // P27 (VERIFY-11): the measured ratio replaces a metadata ratio the data disagrees with (see HybridTuning::gainMeasured);
+        // then the merge as usual, with the key off. The data of both frames is compared without alignment, as in the report. A
+        // colour-block mosaic gets here with its plain-Bayer sub-frames (measured per sub-frame, as the GAIN CHECK lines).
+        HybridInput measured=input;
+        measured.mosaic=1; // past the colour-block dispatch: plain Bayer (or the sub-frames of one), not detected again
+        hybridApplyMeasuredGains(measured,report);
+        HybridTuning t2=tune;t2.gainMeasured=0;
+        return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+    }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
@@ -3502,6 +3645,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
     }
     const int w=input.w,h=input.h;
+    // Any RAW size: pixels of the stream (a mosaic's sub-frames: b^2 per stream frame). Above kHybridClassicPixels the merge follows
+    // the real limits (memory, GPU strips, output grid); up to it every step is exactly as before.
+    const bool large=int64_t(w)*h*std::max(1,input.subFrames)>kHybridClassicPixels;
+    // The Sabre 2x grid (and any finer one) of a plain stream only up to 16 MP: its RGB (48 B/px) is 768 MB there and the app takes
+    // at most 2 GiB. The header refuses it (MappedHybridBurst); a replay's tuning grid falls back to the sensor grid. A mosaic's
+    // sub-frames take their b x grid: it is the sensor grid of the stream.
+    const bool fineGridRefused=input.subFrames<=1&&int64_t(w)*h>kHybridClassicPixels;
     // A Burst view for the shared helpers (sampleRaw, guides, alignment): slot 0 = base.
     Burst b;b.w=w;b.h=h;b.cfa=input.cfa;b.white=input.white;b.black=input.black;b.canonicalRggb=true;
     for(int s=0;s<7;++s){b.raw[s]=input.frames[0].raw;b.exposure[s]=1;b.iso[s]=std::max(1u,input.frames[0].iso);}
@@ -3514,11 +3664,26 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(preset&&int(preset->h.size())==n&&int(preset->aligned.size())==n){
         H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
     } else if(alignment){
+        std::vector<Guide> fallbackRef; // base pyramid of the translation fallback, built on the first failed group
         for(int first=1;first<n;first+=6){
             Burst group=b;
             const int count=std::min(6,n-first);
             for(int j=0;j<count;++j){group.raw[1+j]=input.frames[first+j].raw;group.exposure[1+j]=input.frames[first+j].exposure;group.iso[1+j]=input.frames[first+j].iso;}
-            const auto hs=alignment(group);
+            std::array<BackwardHomography,7> hs;
+            try{hs=alignment(group);}
+            catch(const std::exception& error){
+                // A CRE failure (corner detector, singular matrix, guide input) must not lose the shot: this group is aligned by
+                // the global translation of the guide pyramids, as without a corner tracker.
+                report(std::string("HYBRID ALIGN: CRE failed (")+error.what()+"); global translation for frames "+std::to_string(first)+".."+std::to_string(first+count-1));
+                if(fallbackRef.empty())fallbackRef=guides(b,0);
+                for(int j=0;j<count;++j){
+                    const int f=first+j;
+                    Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                    const Shift t=globalShift(fallbackRef,guides(one,1),input.frames[f].exposure);
+                    BackwardHomography m;m.h={1,0,t.x,0,1,t.y,0,0};H[f]=m;aligned[f]=true;
+                }
+                continue;
+            }
             for(int j=0;j<count;++j){
                 H[first+j]=hs[1+j];
                 try{H[first+j].validate();}catch(const std::exception&){aligned[first+j]=false;}
@@ -3583,7 +3748,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     const bool night61=key61<=tune.s61MaxKey,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
     const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&(night61||handheld61));
-    const int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const int gridOut=fineGridRefused?1:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     if(!sabre61&&gridOut==1&&tune.dayKernelScale>0.f&&tune.dayKernelScale!=1.f&&key61>tune.s61MaxKey){
         const float lo=std::max(tune.s61MaxKey,1.f),t=std::clamp((key61-lo)/lo,0.f,1.f),s=1.f+(tune.dayKernelScale-1.f)*t*t*(3.f-2.f*t);
         kernel.base*=s;kernel.shrunk*=s;kernel.stretched*=s;kernel.flat*=s;
@@ -3691,9 +3856,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     BentoResult bento;std::vector<std::vector<float>> bentoValids;
     const auto maskStarted=Clock::now();
     if(us>=0&&tune.bento>0){
-        // P30: the masks of the other ultrashort frames (validation) are built alongside the first one.
+        // P30: the masks of the other ultrashort frames (validation) are built alongside the first one. Any RAW size: above 16 MP
+        // one after the other (each mask holds ~5.5 B per pixel while it is built; otherMask() below computes it on demand).
         std::vector<std::future<BentoResult>> otherMasks(usFrames.size());
-        if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1)
+        if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1&&!large)
             for(size_t k=1;k<usFrames.size();++k)otherMasks[k]=std::async(std::launch::async,[&,k]{
                 const int f=usFrames[k];
                 Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
@@ -3754,6 +3920,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" inpaintHole="+std::to_string(bento.inpaintHole)+" invalid="+std::to_string(bento.invalidCells)
             +" checks="+(tune.bentoLmc?"lmc":"round4")+" factor="+std::to_string(1.f/input.frames[us].exposure)
             +" frames="+std::to_string(usFrames.size())+" chroma sigma="+std::to_string(tune.bentoChromaSigma));
+        // the mask before the check and the first frame's validity were for the validation only (bentoValids holds its copy)
+        std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);
     } else if(us>=0)report("HYBRID BENTO: disabled by tuning");
     // Split-half diagnostics: odd or even normal donors only, no base, no Bento, no long frames (the base noise would be common
     // to both halves).
@@ -3808,7 +3976,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // the homographies only.
         std::atomic<bool> laFailed{false};std::string laFailure;std::mutex laFailureMutex;
         {
-            const int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
+            int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
+            if(large){ // any RAW size: every worker holds its frame's gray pyramid (1.25 B per pixel), together within MemAvailable / 4
+                const uint64_t avail=hybridMemAvailable();
+                const double perThread=1.25*double(w)*h;
+                if(avail>0){
+                    const int byMemory=std::clamp(int(std::min(64.0,double(avail)*0.25/perThread)),1,threads);
+                    if(byMemory<threads)report("HYBRID LOCAL ALIGN: "+std::to_string(byMemory)+" of "+std::to_string(threads)+" threads (gray pyramid "
+                        +hybridMB(uint64_t(perThread))+" MB each, MemAvailable "+hybridMB(avail)+" MB)");
+                    threads=byMemory;
+                }
+            }
             std::atomic<int> next{0};
             auto work=[&]{
                 try{
@@ -3920,6 +4098,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             const auto& z=laMotions[index[i]];
             if(z.size()==tiles/2)std::copy(z.begin(),z.end(),laZAll.begin()+i*(tiles/2));
         }
+        std::vector<std::vector<float>>().swap(laFields);std::vector<std::vector<float>>().swap(laMotions); // copied in merge order
         in.laField=&laAll;in.laMotion=&laZAll;in.laMode=tune.localAlign==2?2:1;in.laNx=laG0.nx;in.laNy=laG0.ny;
         // tile (i, j) centre: level px stride*i + (win-1)/2 -> RAW 2c + 0.5
         in.laOx=in.laOy=laG0.raw(laG0.centre(0));in.laStride=float(2*laG0.stride);
@@ -3978,11 +4157,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const auto mergeStarted=Clock::now();
     std::vector<float> out,effective,sensorRgb;std::vector<double> share;std::vector<uint8_t> flagsRaw;
     // grid 4 only for the Tetra sub-frames of hybridReconstructMosaic (their 4x grid is the sensor grid of the stream)
-    const int grid=tune.grid==4?4:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    int grid=tune.grid==4?4:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    if(grid>1&&fineGridRefused){
+        report("HYBRID OUTPUT: "+std::to_string(grid)+"x grid refused for "+std::to_string(w)+"x"+std::to_string(h)+" ("+std::to_string(grid)+"x RGB "
+            +hybridMB(uint64_t(w)*h*grid*grid*12)+" MB, only up to 16 MP); sensor grid");
+        grid=1;
+    }
     const int outW=w*grid,outH=h*grid;
+    in.large=large;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
-        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f,report,native!=nullptr);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
+        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f,report,large,native!=nullptr);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")");
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
@@ -4060,10 +4245,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             }
         });
     }
+    std::vector<float>().swap(sensorRgb); // the output stage holds no more than it needs (any RAW size: ~16 B per output pixel)
     // CFA phase shift to the canonical RGGB origin, in output-grid pixels.
     shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
     if(effMap){
-        std::vector<float> sample;
+        std::vector<float> sample;sample.reserve(effective.size()/7+1);
         for(size_t i=0;i<effective.size();i+=7)sample.push_back(effective[i]);
         float median=1.f;
         if(!sample.empty()){std::nth_element(sample.begin(),sample.begin()+sample.size()/2,sample.end());median=std::max(sample[sample.size()/2],1.f);}
@@ -4078,6 +4264,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         });
         report("HYBRID EFFECTIVE MAP: median frames="+std::to_string(median)+" code scale="+std::to_string(codeScale));
     }
+    std::vector<float>().swap(effective);
     // Clip flags trailer (uint8 per output pixel, same grid and origin as the effective map): bit 0/1/2 = R/G/B came from the
     // clipped mean (no sample of that colour outside clipped cells in the kernel window: a lower bound where that colour itself
     // clipped; with cellClip the other colours of a clipped cell keep their real values, so consumers still compare the value
@@ -4104,6 +4291,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +std::to_string(counts[0])+" G="+std::to_string(counts[1])+" B="+std::to_string(counts[2])+" border="+std::to_string(counts[3])
             +" bento="+std::to_string(counts[4])+" ultrashort="+std::to_string(counts[5])+(counts[6]?" rimChecked="+std::to_string(counts[6]):std::string()));
     }
+    std::vector<uint8_t>().swap(flagsRaw);
     report("HYBRID STAGES ms: align="+std::to_string(stats.alignMs)+" localAlign="+std::to_string(stats.localAlignMs)+" mask="+std::to_string(stats.maskMs)+" merge="+std::to_string(stats.mergeMs)
         +" total="+std::to_string(millis(Clock::now()-started))+" merged="+std::to_string(stats.merged)+" droppedBracketed="+std::to_string(stats.droppedBracketed)
         +" bento="+std::to_string(stats.bento));
@@ -4240,6 +4428,7 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
                 c[size_t(y)*w+x]=med5(at(-2),at(-1),at(0),at(1),at(2));}
         });
     }
+    std::vector<float>().swap(t); // any RAW size: every temporary goes once used (~40 B per pixel at the peak before)
     // False-colour suppression (GCam 11 enable_false_color_suppression for remosaicked streams): where the luma oscillates faster
     // than the colour lattice can follow, the colour is aliased (zone-plate rings, fabric moire) and becomes the wide average
     // colour around. Oscillation: sign changes of the luma high-pass between neighbours, counted only where its swing exceeds 4 %
@@ -4273,7 +4462,9 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
         if(x+1<w){const float b2=hp[i+1];if(a*b2<0&&std::abs(a)+std::abs(b2)>gate)c+=0.5f;}
         if(y+1<h){const float b2=hp[i+w];if(a*b2<0&&std::abs(a)+std::abs(b2)>gate)c+=0.5f;}
         sc[i]=c;}});
+    std::vector<float>().swap(L);std::vector<float>().swap(hp);
     box(sc,z,r2);
+    std::vector<float>().swap(sc);
     std::vector<float> ul,vl;box(u,ul,r3);box(ul,ul,r3);box(v,vl,r3);box(vl,vl,r3);
     const float z0=0.6f/(2*block),z1=1.2f/(2*block);
     const int bw=w/block,bh=h/block;
@@ -4287,6 +4478,7 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
         }
         u[i]+=k*(ul[i]-u[i]);v[i]+=k*(vl[i]-v[i]);
     }});
+    std::vector<float>().swap(z);std::vector<float>().swap(ul);std::vector<float>().swap(vl);
     rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=rgb[i*3+1]+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
 }
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
@@ -4300,7 +4492,22 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
     // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, one
     // ultrashort (Bento) and one bracketed (Shasta) frame when there is room
-    const int budget=std::max(1,std::min(kHybridGpuFrames/per,std::max(2,tune.mosaicFrames)));
+    int budget=std::max(1,std::min(kHybridGpuFrames/per,std::max(2,tune.mosaicFrames)));
+    if(int64_t(W)*Ht>kHybridClassicPixels){
+        // Any RAW size: the worker copies every picked frame (its b^2 sub-frames, 2 B per stream pixel, and the binned frame of
+        // the alignment, 2/b^2 B); the sub-frame merge then adds ~20 B per stream pixel (RGB, coverage, flags, Bento, F6). The
+        // frames stay within half of MemAvailable, at least two (the base and one donor).
+        const uint64_t avail=hybridMemAvailable();
+        if(avail>0){
+            const double P=double(W)*Ht,perFrame=2.0*P*(1.0+1.0/per);
+            const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
+            if(byMemory<budget){
+                report("HYBRID MOSAIC: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
+                    +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
+                budget=byMemory;
+            }
+        }
+    }
     std::vector<int> normals;int us=-1,br=-1;
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
@@ -4362,10 +4569,23 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     Burst bb;bb.w=vw;bb.h=vh;bb.cfa=input.cfa;bb.white=input.white;bb.black=input.black;bb.canonicalRggb=true;
     for(int s=0;s<7;++s){bb.raw[s]=binned.data();bb.exposure[s]=1;bb.iso[s]=std::max(1u,input.frames[0].iso);}
     if(alignment){
+        std::vector<Guide> fallbackRef; // as hybridReconstruct: a failed CRE group takes the global translation
         for(int first=1;first<m;first+=6){
             Burst group=bb;const int count=std::min(6,m-first);
             for(int j=0;j<count;++j){const auto& fr=input.frames[pick[first+j]];group.raw[1+j]=binned.data()+size_t(first+j)*vpix;group.exposure[1+j]=fr.exposure;group.iso[1+j]=fr.iso;}
-            const auto hs=alignment(group);
+            std::array<BackwardHomography,7> hs;
+            try{hs=alignment(group);}
+            catch(const std::exception& error){
+                report(std::string("HYBRID ALIGN: CRE failed (")+error.what()+"); global translation for binned frames "+std::to_string(first)+".."+std::to_string(first+count-1));
+                if(fallbackRef.empty())fallbackRef=guides(bb,0);
+                for(int j=0;j<count;++j){
+                    const int k=first+j;
+                    Burst one=bb;one.raw[1]=binned.data()+size_t(k)*vpix;one.exposure[1]=input.frames[pick[k]].exposure;
+                    const Shift sh=globalShift(fallbackRef,guides(one,1),input.frames[pick[k]].exposure);
+                    BackwardHomography t;t.h={1,0,sh.x,0,1,sh.y,0,0};Hr[k]=t;ok[k]=true;
+                }
+                continue;
+            }
             for(int j=0;j<count;++j){
                 Hr[first+j]=hs[1+j];
                 try{Hr[first+j].validate();}catch(const std::exception&){ok[first+j]=false;}
@@ -4381,6 +4601,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
         }
     }
     const double alignMs=millis(Clock::now()-alignStarted);
+    std::vector<uint16_t>().swap(binned); // the alignment's only input (bb above): not held through the merge
     // ---- the sub-frame input. Coordinates: base sub-frame (0,0) pixel V = sensor b V. Binned pixel B = sensor b B + o, o = (b-1)/2.
     // Frame k binned: B_k = Hr(B_0); its sub-frame (a, c): V_k = B_k + (o - (a, c)) / b, with B_0 = V_0 - o / b.
     HybridInput vin;vin.w=vw;vin.h=vh;vin.cfa=input.cfa;vin.white=input.white;vin.black=input.black;vin.diagnostics=input.diagnostics;
@@ -4419,6 +4640,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     std::vector<uint8_t> vEff,vClip;
     HybridStats st;
     std::vector<float> rgb=hybridReconstruct(vin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,&preset);
+    std::vector<uint16_t>().swap(sub); // the sub-frames (vin) are merged: not held through the chroma median and the output
     st.alignMs+=alignMs;
     // ---- to the requested output: sensor grid w x h, or the 2x grid (bilinear: output X sits on sensor position X/2 - 0.25)
     const int ow=b*vw,oh=b*vh;                    // what the sub-frame merge gives (w x h)
@@ -4461,7 +4683,12 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
         mosaicChromaMedian(rgb,ow,oh,b,osc.empty()?nullptr:&osc);
         report("HYBRID MOSAIC: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px) "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
     }
-    const int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2)); // replays: the tuning grid
+    int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2)); // replays: the tuning grid
+    if(gridOut==2&&int64_t(W)*Ht>kHybridClassicPixels){ // any RAW size: the 2x grid only up to 16 MP (see hybridReconstruct)
+        report("HYBRID OUTPUT: 2x grid refused for "+std::to_string(W)+"x"+std::to_string(Ht)+" (2x RGB "+hybridMB(uint64_t(W)*Ht*48)
+            +" MB, only up to 16 MP); sensor grid");
+        gridOut=1;
+    }
     const int tw=W*gridOut,th=Ht*gridOut;
     std::vector<float> out;std::vector<uint8_t> eOut,cOut;
     if(tw==ow&&th==oh){out.swap(rgb);eOut.swap(vEff);cOut.swap(vClip);}
@@ -4741,8 +4968,14 @@ struct MappedHybridBurst {
         uint32_t h[32];std::memcpy(h,address,128);
         if(h[0]!=0x3143484e||(h[1]!=10&&h[1]!=11&&h[1]!=12)){munmap(address,length);address=MAP_FAILED;return;}
         try {
-            if(h[2]<64||h[3]<64||h[2]%2||h[3]%2||uint64_t(h[2])*h[3]>16000000||h[4]>3||h[5]<1||h[5]>64)
+            // Any RAW size (owner 2026-10-07): no megapixel cap. The real limit is the result: the sensor-grid RGB (12 B per pixel)
+            // must fit the app's direct buffer (2 GiB, ~178 MP); beyond it the app bins the frames first (RawBin).
+            if(h[2]<64||h[3]<64||h[2]>65534||h[3]>65534||h[2]%2||h[3]%2||h[4]>3||h[5]<1||h[5]>64)
                 throw std::runtime_error("Unsupported hybrid burst dimensions/CFA/count");
+            const uint64_t streamPixels=uint64_t(h[2])*h[3];
+            if(streamPixels*12>uint64_t(INT32_MAX))
+                throw std::runtime_error("Hybrid: "+std::to_string(h[2])+"x"+std::to_string(h[3])+" needs a "+hybridMB(streamPixels*12)
+                    +" MB result, above 2 GiB: bin the frames");
             input.w=int(h[2]);input.h=int(h[3]);input.cfa=int(h[4]);
             const int n=int(h[5]);
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
@@ -4752,6 +4985,9 @@ struct MappedHybridBurst {
                 input.grid=h[13]==0?1:int(h[13]);
                 if(h[14]!=0&&h[14]!=1&&h[14]!=2&&h[14]!=4)throw std::runtime_error("Unsupported hybrid colour block");
                 input.mosaic=int(h[14]);
+                // the 2x grid (48 B per pixel) only up to 16 MP: today's largest result (768 MB). The worker does not switch the grid
+                // itself: the app checks the result size exactly.
+                if(input.grid==2&&int64_t(streamPixels)>kHybridClassicPixels)throw std::runtime_error("Hybrid: Sabre 2x grid only up to 16 MP");
             }
             if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
             for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");

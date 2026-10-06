@@ -211,6 +211,8 @@ public final class VivoNiceBurst implements NiceTransport {
         } else noiseSource="Camera2 SENSOR_NOISE_PROFILE";
         if(!Float.isFinite(slope)||slope<=0||!Float.isFinite(offset)||offset<0)
             throw new IOException(Lang.t("SCAM HDR: некорректный профиль шума (","SCAM HDR: invalid noise profile (")+noiseSource+Lang.t(") для RAW frame=",") for RAW frame=")+frame.number);
+        // P27: a binned frame (RawBin) averages binnedSamples sensor samples: variance / binnedSamples.
+        if(frame.binnedSamples>1){slope/=frame.binnedSamples;offset/=frame.binnedSamples;}
         return new float[]{slope,offset};
     }
     private double product(ImageFrame f) {

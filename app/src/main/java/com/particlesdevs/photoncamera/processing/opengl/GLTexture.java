@@ -198,13 +198,13 @@ public class GLTexture implements AutoCloseable {
         // they are the GC pressure and OOM risk that shows up as a crash after
         // a few shots in a row. Always allocate off-heap.
         // From RealJohnGalt/PhotonCamera 919bc667.
-        buffer = ByteBuffer.allocateDirect(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
+        buffer = ByteBuffer.allocateDirect(GLLimits.bufferBytes(mSize.x, mSize.y, (long) bytesPerCh * outputFormat.mChannels, "texture readback"));
         glReadPixels(0, 0, mSize.x, mSize.y, outputFormat.getGLFormatExternal(), outputFormat.getGLType(), buffer);
         return buffer;
     }
     public ByteBuffer textureBuffer(GLFormat outputFormat) {
         int bytesPerCh = outputFormat.mFormat == GLFormat.DataType.FLOAT_16 ? 4 : outputFormat.mFormat.mSize;
-        ByteBuffer buffer = ByteBuffer.allocateDirect(mSize.x * mSize.y * bytesPerCh * outputFormat.mChannels);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(GLLimits.bufferBytes(mSize.x, mSize.y, (long) bytesPerCh * outputFormat.mChannels, "texture readback"));
         glReadPixels(0, 0, mSize.x, mSize.y, outputFormat.getGLFormatExternal(), outputFormat.getGLType(), buffer);
         return buffer;
     }

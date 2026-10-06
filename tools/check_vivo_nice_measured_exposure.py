@@ -13,7 +13,7 @@ public class CaptureResult {public float[] aec; public static class Key<T> {publ
 @SuppressWarnings("unchecked") public <T>T get(Key<T> k){return k.name.endsWith("AECFrameControl")?(T)aec:null;}}''',
 pkg+'processing/ImageFrame.java':'''package com.particlesdevs.photoncamera.processing;
 import android.hardware.camera2.CaptureResult;import java.nio.ByteBuffer;
-public class ImageFrame {public int number,width=64,height=64,measuredIso=100;public long timestamp,measuredExposure=1000000;
+public class ImageFrame {public int number,width=64,height=64,measuredIso=100,binnedSamples=1;public long timestamp,measuredExposure=1000000;
 public boolean fromZsl;public String rawPayloadError;public float noiseSlope=1,noiseOffset=0,syntheticLongRatio=0;public ByteBuffer buffer=ByteBuffer.allocate(8192),mosaic;
 public enum CaptureRole {NORMAL,SHORT,LONG,EXTRA_SHORT}
 public CaptureRole role=CaptureRole.NORMAL;public CaptureRole getCaptureRole(){return role;}

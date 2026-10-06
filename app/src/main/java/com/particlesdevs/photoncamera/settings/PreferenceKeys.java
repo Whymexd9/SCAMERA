@@ -956,6 +956,8 @@ public class PreferenceKeys {
             // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
             // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
+            // P27: the measured exposure ratio instead of a disagreeing metadata ratio (worker default 0 = report only)
+            {"gainMeasured", "gain_measured"},
         };
         for (String[] k : keys) {
             Float dev = niceDevValue("hybrid_" + k[1]);

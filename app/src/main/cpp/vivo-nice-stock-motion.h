@@ -48,7 +48,10 @@ class StockMotion {
     // ceiling: clip the frame's normalised signal (reference against a brighter L:
     // 1/ratio, so both guides saturate at the same scene level and the window
     // frames the corners sit on look alike in both).
-    static std::vector<uint8_t> guide(const Burst& b,int frame,float ceiling=1.f) {
+    // scale (any RAW size, owner 2026-10-07): the guide's input is the scale x scale block mean of the samples (colour-mixed, as
+    // the guide's own 4x4 mean), (w/scale) x (h/scale). 1 = the frame itself, exactly as before.
+    static std::vector<uint8_t> guide(const Burst& b,int frame,float ceiling=1.f,int scale=1) {
+        if(scale>1)return binnedGuide(b,frame,ceiling,scale);
         // Camera2 adaptation: canonical CFA and calibrated sensor black/white
         // are expressed in the original guide's RAW14 black=1024 convention.
         std::vector<uint16_t> raw(size_t(b.w)*b.h);
@@ -56,6 +59,26 @@ class StockMotion {
             raw[size_t(y)*b.w+x]=uint16_t(std::floor(1024.f+std::min(b.sample(frame,x,y),ceiling)*15359.f+.5f));
         return stockMotionGuide4(raw.data(),b.w,b.h,b.w,14,1.f/b.exposure[frame],.6f);
     }
+    static std::vector<uint8_t> binnedGuide(const Burst& b,int frame,float ceiling,int s) {
+        const int gw=b.w/s,gh=b.h/s;
+        std::vector<uint16_t> raw(size_t(gw)*gh);
+        const float inv=1.f/float(s*s);
+        for(int y=0;y<gh;++y)for(int x=0;x<gw;++x){
+            float sum=0;
+            for(int j=0;j<s;++j)for(int i=0;i<s;++i)sum+=std::min(b.sample(frame,x*s+i,y*s+j),ceiling);
+            raw[size_t(y)*gw+x]=uint16_t(std::floor(1024.f+sum*inv*15359.f+.5f));
+        }
+        return stockMotionGuide4(raw.data(),gw,gh,gw,14,1.f/b.exposure[frame],.6f);
+    }
+public:
+    // Scale of the guide input: stockMotionGuide4 takes at most 16 MP (a 1 MP guide, the size the CRE corner detector and LK were
+    // built for) and 32760 px a side. A larger frame is reduced by the smallest power of two that fits; 1 up to 16 MP (unchanged).
+    static int guideScale(int w,int h) {
+        int s=1;
+        while(s<(1<<12)&&(int64_t(w/s)*(h/s)>16000000||w/s>32760||h/s>32760))s*=2;
+        return s;
+    }
+private:
     // P30: the clipped reference of a brighter frame depends only on its exposure (the Shasta frames share one): kept per burst.
     std::vector<uint8_t> clippedRefCache;std::vector<Point> clippedCornersCache;int clippedCountCache=0;
     float clippedExposureCache=0;const uint16_t* clippedRawCache=nullptr;
@@ -151,7 +174,8 @@ public:
     }
     StockMotion(const StockMotion&)=delete;
     ~StockMotion(){if(library)dlclose(library);for(auto it=compat.rbegin();it!=compat.rend();++it)dlclose(*it);}
-    static BackwardHomography inverseToRaw(const std::array<float,9>& input) {
+    // scale: RAW px per guide px (4, or 4 x the guideScale of a frame above 16 MP).
+    static BackwardHomography inverseToRaw(const std::array<float,9>& input,int scale=4) {
         for(float v:input)if(!std::isfinite(v))throw std::runtime_error("Unwritten NICE alignment matrix");
         const double a=input[0],b=input[1],c=input[2],d=input[3],e=input[4],f=input[5],g=input[6],h=input[7],i=input[8];
         const std::array<double,9> inverse{e*i-f*h,c*h-b*i,b*f-c*e,
@@ -163,7 +187,8 @@ public:
         for(int k=0;k<8;++k)result.h[k]=float(inverse[k]/inverse[8]);
         // H returned by the wrapper maps donor guide -> reference guide.
         // Samplers need reference RAW -> donor RAW, at 4x guide coordinates.
-        result.h[2]*=4;result.h[5]*=4;result.h[6]/=4;result.h[7]/=4;
+        const float k=float(scale);
+        result.h[2]*=k;result.h[5]*=k;result.h[6]/=k;result.h[7]/=k;
         result.validate();return result;
     }
     static void replaceFailed(Burst& burst,const std::array<bool,7>& failed,
@@ -196,17 +221,22 @@ public:
         }
     }
     std::array<BackwardHomography,7> align(Burst& burst,const std::function<void(const std::string&)>& report) {
-        const int w=burst.w/4,h=burst.h/4;
+        // s: guideScale of the frame (1 up to 16 MP); the guide is (w / 4s) x (h / 4s), the homography scaled by 4s. The cached
+        // reference is keyed on w and h, which fix s.
+        const int s=guideScale(burst.w,burst.h);
+        const int w=burst.w/(4*s),h=burst.h/(4*s);
         if(w<16||h<16)throw std::runtime_error("NICE guide too small for original LK");
+        if(s>1)report("NICE STOCK MOTION: guide from x"+std::to_string(s)+" binned RAW ("+std::to_string(burst.w)+"x"+std::to_string(burst.h)
+            +" -> guide "+std::to_string(w)+"x"+std::to_string(h)+")");
         // Donor guides are independent: build them in parallel with the reference.
         std::array<std::future<std::vector<uint8_t>>,7> donorGuides;
         for(int frame=1;frame<7;++frame)
             if(!(burst.raw[frame]==burst.raw[0] && burst.exposure[frame]==1))
-                donorGuides[frame]=std::async(std::launch::async,[&burst,frame]{return guide(burst,frame);});
+                donorGuides[frame]=std::async(std::launch::async,[&burst,frame,s]{return guide(burst,frame,1.f,s);});
         Features features;
         if(cachedRaw!=burst.raw[0] || cachedExposure!=burst.exposure[0] || cachedW!=burst.w || cachedH!=burst.h
                 || cachedRef.empty()) {
-            cachedRef=guide(burst,0);
+            cachedRef=guide(burst,0,1.f,s);
             auto reference=image(cachedRef,w,h);
             cachedCorners.assign(features.maxCorners,Point{});
             cachedCount=0;
@@ -234,8 +264,9 @@ public:
             // A brighter L clips where the reference does not (windows): track it
             // against a reference clipped at the same scene level, with its own corners.
             const bool brighter=burst.exposure[frame]>1.5f;
-            if(brighter && !(clippedRawCache==burst.raw[0] && clippedExposureCache==burst.exposure[frame] && !clippedRefCache.empty())) {
-                clippedRefCache=guide(burst,0,1.f/burst.exposure[frame]);
+            if(brighter && !(clippedRawCache==burst.raw[0] && clippedExposureCache==burst.exposure[frame] && !clippedRefCache.empty()
+                    && clippedRefCache.size()==size_t(w)*h)) {
+                clippedRefCache=guide(burst,0,1.f/burst.exposure[frame],s);
                 auto clipped=image(clippedRefCache,w,h);Features local;
                 clippedCornersCache.assign(local.maxCorners,Point{});clippedCountCache=0;
                 if(detect(&local,&clipped,nullptr,clippedCornersCache.data(),&clippedCountCache,0)
@@ -257,7 +288,7 @@ public:
             failed[frame]=status!=0 || accepted>n || accepted<50 || accepted<float(n)*.35f;
             if(!failed[frame]) {
                 try {
-                    result[frame]=inverseToRaw(homography);
+                    result[frame]=inverseToRaw(homography,4*s);
                     validateFrameMap(result[frame],burst.w,burst.h);
                 } catch(const std::exception&) {failed[frame]=true;}
             }

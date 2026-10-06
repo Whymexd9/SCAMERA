@@ -121,9 +121,10 @@ public class ZoomDialView extends View {
         }
     }
 
-    /** «2,5», «1»: the decimal comma (owner's answer 11). */
-    private static String format(float v) {
-        return String.format(Locale.US, "%.1f", v).replace(".0", "").replace('.', ',');
+    /** «2,5», «1»: the decimal comma in the Russian UI (owner's answer 11), the point in English. */
+    static String format(float v) {
+        final String text = String.format(Locale.US, "%.1f", v).replace(".0", "");
+        return com.particlesdevs.photoncamera.util.Lang.ru() ? text.replace('.', ',') : text;
     }
 
     @Override protected void onDraw(Canvas canvas) {

@@ -46,7 +46,8 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
      * fixed here: {@link #allocation} is reassigned by the sized readback variants.
      */
     private final GLDrawParams.Allocate mOutAllocation;
-    private final int mOutCapacity;
+    /** Bytes of the full-frame readback; above 2 GB (one Java buffer) the readback fails with a clear message when it is needed. */
+    private final long mOutCapacity;
 
     public GLDrawParams.Allocate allocation = GLDrawParams.Allocate.Heap;
 
@@ -79,7 +80,7 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         mOutHeight = size.y;
         mBlockBuffer = ByteBuffer.allocateDirect(mOutWidth * GLDrawParams.TileSize * mglFormat.mFormat.mSize * mglFormat.mChannels);
         createTileTarget(glFormat);
-        mOutCapacity = mOutWidth * mOutHeight * mglFormat.mFormat.mSize * mglFormat.mChannels;
+        mOutCapacity = (long) mOutWidth * mOutHeight * mglFormat.mFormat.mSize * mglFormat.mChannels;
     }
     public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat,ByteBuffer output) {
         super(size.x, GLDrawParams.TileSize);
@@ -114,12 +115,13 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
     /** Allocates the full-frame readback buffer on first use (see {@link #mOutAllocation}). */
     private void ensureOutBuffer() {
         if (mOutBuffer != null || mOutAllocation == GLDrawParams.Allocate.None) return;
-        if (mOutAllocation == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(mOutCapacity);
+        final int capacity = GLLimits.bufferBytes(mOutWidth, mOutHeight, (long) mglFormat.mFormat.mSize * mglFormat.mChannels, "full-frame readback");
+        if (mOutAllocation == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(capacity);
         else {
             // Full-frame output on the Java heap scales with resolution
             // (~256 MB at 64 MP) and was a direct OOM source.
             // From RealJohnGalt/PhotonCamera 6d2291eb.
-            mOutBuffer = ByteBuffer.allocateDirect(mOutCapacity);
+            mOutBuffer = ByteBuffer.allocateDirect(capacity);
         }
         if (mOutBuffer == null)
             throw new IllegalStateException("readback buffer allocation of " + mOutCapacity + " bytes failed");
@@ -271,9 +273,10 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
     public ByteBuffer drawBlocksToOutput(Point size, GLFormat glFormat,GLDrawParams.Allocate alloc) {
         ByteBuffer mOutBuffer;
         allocation = alloc;
-        if(alloc == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(size.x * size.y * glFormat.mFormat.mSize * glFormat.mChannels);
+        final int bytes = GLLimits.bufferBytes(size.x, size.y, (long) glFormat.mFormat.mSize * glFormat.mChannels, "readback");
+        if(alloc == GLDrawParams.Allocate.Direct) mOutBuffer = Allocator.allocate(bytes);
         else
-            mOutBuffer = ByteBuffer.allocateDirect(size.x * size.y * glFormat.mFormat.mSize * glFormat.mChannels);
+            mOutBuffer = ByteBuffer.allocateDirect(bytes);
         return drawBlocksToOutput(size,glFormat,mOutBuffer);
     }
 

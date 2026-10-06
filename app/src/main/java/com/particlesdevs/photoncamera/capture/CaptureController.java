@@ -1944,7 +1944,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mTextureView.setAspectRatio(
                     mPreviewSize.getHeight(), mPreviewSize.getWidth());
             updatePreviewMirror();
-            cameraEventsListener.onCharacteristicsUpdated(updated);
+            // The fragment may be gone by now (activity recreated, e.g. on a language change).
+            final CameraEventsListener listener = cameraEventsListener;
+            if (listener != null) listener.onCharacteristicsUpdated(updated);
             if (PhotonCamera.getSettings().DebugData)
                 showToast("preview:" + new Point(mPreviewWidth, mPreviewHeight));
         });
@@ -3207,6 +3209,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (keep.size() < fill) { keep.add(image); widened++; } else rest.add(image);
             }
         } else rest.addAll(darker);
+        // P27 (VERIFY-11): the ring statistics of every shot (tier 1 = at the newest exposure, tier 2 = darker down to -0.5 EV).
+        Log.i("NICE_HDR", "hybrid ZSL ring: tier1=" + (keep.size() - widened) + " tier2=" + widened + " requested=" + requestedCount
+                + " exact=" + exact.size() + " darker=" + darker.size());
         if (widened > 0) Log.w("NICE_HDR", "hybrid ZSL: " + exact.size() + " ring frames at the newest exposure, widened by " + widened
                 + " frames down to -0.5 EV (AE ramp)");
         for (Image image : rest) {
