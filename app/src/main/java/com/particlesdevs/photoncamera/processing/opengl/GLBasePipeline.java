@@ -147,6 +147,7 @@ public class GLBasePipeline implements AutoCloseable {
      */
     public void dumpTimings(String label) {
         if (nodeTimings.isEmpty()) return;
+        Log.d(TAG, label + " " + GLProg.takeProgramStats());
         long total = 0;
         for (long[] t : nodeTimings) total += t[0];
         StringBuilder sb = new StringBuilder();

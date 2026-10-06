@@ -36,6 +36,40 @@ int main(int argc,char** argv) {
                 std::string target;
                 if(marker && std::getline(marker,target) && !target.empty())setenv("SCAM_DUMP_FORWARD",target.c_str(),1);
             }
+            auto report=[](const std::string& line){vivo_nn::log(line);};
+            // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
+            // fall back to SCAMERA's own tile alignment instead of failing.
+            std::unique_ptr<vivo_nice::StockMotion> motion;
+            if(std::getenv("SCAM_NO_CRE"))report("NICE MOTION: SCAMERA tile alignment (SCAM_NO_CRE replay)"); else
+            try {
+                const bool forceBundled=access((std::string(argv[2])+"/cre-force-bundled").c_str(),F_OK)==0;
+                const bool vendorOnly=access((std::string(argv[2])+"/cre-vendor-only").c_str(),F_OK)==0;
+                motion=std::make_unique<vivo_nice::StockMotion>(vendorOnly?std::string():std::string(argv[2]),forceBundled);
+                report("NICE MOTION: vivo CRE source="+motion->source);
+            }
+            catch(const std::exception& error) { report(std::string("NICE MOTION: SCAMERA tile alignment (")+error.what()+")"); }
+            // P30: started before the app has written the burst (job file "wait-go" = the fd of a pipe): the CRE and the GPU
+            // driver are initialised meanwhile, then the worker waits for the app's go byte. SCAM_WARMUP: the same warm-up
+            // in an offline replay (no wait).
+            {
+                int goFd=-1;
+                {std::ifstream marker(std::string(argv[2])+"/wait-go");std::string text;if(marker&&std::getline(marker,text)&&!text.empty())goFd=std::atoi(text.c_str());}
+                if(goFd>=0||std::getenv("SCAM_WARMUP")){
+                    const auto t0=std::chrono::steady_clock::now();
+                    if(motion)try{motion->warmUp();}catch(const std::exception&){}
+                    EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
+                    if(display!=EGL_NO_DISPLAY)eglInitialize(display,nullptr,nullptr); // loads the driver; the merge's own init is then a no-op
+                    const auto t1=std::chrono::steady_clock::now();
+                    if(goFd>=0){
+                        char go=0;ssize_t n;
+                        do n=read(goFd,&go,1); while(n<0&&errno==EINTR);
+                        close(goFd);
+                        if(n!=1)throw std::runtime_error("NICE burst was not delivered by the app");
+                    }
+                    report("NICE WARMUP: CRE and GPU driver ready in "+std::to_string(int(std::chrono::duration<double,std::milli>(t1-t0).count()))
+                        +" ms, burst after "+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms");
+                }
+            }
             // NCH v10 = the LMC hybrid transport (per-frame roles and noise); anything else is the NICE 7-slot burst.
             vivo_nice::MappedHybridBurst hybridBurst(argv[3]);
             std::unique_ptr<vivo_nice::MappedNiceBurst> mapped;
@@ -51,7 +85,6 @@ int main(int argc,char** argv) {
                 else dst.write(static_cast<const char*>(hybridBurst.address),std::streamsize(hybridBurst.length));
             }
             const char* outputPath=argv[4];
-            auto report=[](const std::string& line){vivo_nn::log(line);};
             report("NICE CAPTURE: original forward weights and stock CPU motion; supplied per-frame calibration");
             report(hybridBurst.hybrid?"NICE INPUT: hybrid v10 burst frames="+std::to_string(hybridBurst.input.frames.size()):"NICE INPUT: mapped capture file");
             if(mapped){
@@ -73,17 +106,6 @@ int main(int argc,char** argv) {
                 }
             }
             }
-            // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
-            // fall back to SCAMERA's own tile alignment instead of failing.
-            std::unique_ptr<vivo_nice::StockMotion> motion;
-            if(std::getenv("SCAM_NO_CRE"))report("NICE MOTION: SCAMERA tile alignment (SCAM_NO_CRE replay)"); else
-            try {
-                const bool forceBundled=access((std::string(argv[2])+"/cre-force-bundled").c_str(),F_OK)==0;
-                const bool vendorOnly=access((std::string(argv[2])+"/cre-vendor-only").c_str(),F_OK)==0;
-                motion=std::make_unique<vivo_nice::StockMotion>(vendorOnly?std::string():std::string(argv[2]),forceBundled);
-                report("NICE MOTION: vivo CRE source="+motion->source);
-            }
-            catch(const std::exception& error) { report(std::string("NICE MOTION: SCAMERA tile alignment (")+error.what()+")"); }
             vivo_nice::NiceAlignment alignment;
             if(motion)alignment=[&](vivo_nice::Burst& burst){return motion->align(burst,report);};
             std::vector<uint16_t> mergedDng;

@@ -88,6 +88,29 @@ class StockMotion {
     }
 public:
     std::string source;
+    // P30: the CRE initialises itself on its first detect / track (~0.4 s in the first group of a shot on the OPPO): one
+    // detect and one track on a synthetic texture while the app still writes the burst. Separate buffers; the burst's
+    // results do not depend on it (checked: replays bit-identical with SCAM_WARMUP).
+    void warmUp() {
+        const int w=256,h=192;
+        std::vector<uint8_t> a(size_t(w)*h),b(size_t(w)*h);
+        uint32_t seed=12345;
+        for(int y=0;y<h;++y)for(int x=0;x<w;++x){
+            seed=seed*1664525u+1013904223u;
+            const int v=((x/8+y/8)&1)*120+int(seed>>26);
+            a[size_t(y)*w+x]=uint8_t(v);
+        }
+        for(int y=0;y<h;++y)for(int x=0;x<w;++x)b[size_t(y)*w+x]=a[size_t(y)*w+std::min(w-1,x+1)];
+        auto ia=image(a,w,h),ib=image(b,w,h);
+        Features features;std::vector<Point> corners(features.maxCorners),moved(features.maxCorners);int count=0;
+        if(detect(&features,&ia,nullptr,corners.data(),&count,0)||count<0||count>features.maxCorners)return;
+        if(count<8)return;
+        std::array<uint8_t,0x140> params{};
+        put(params,0x30,.01f);put(params,0x34,int32_t(20));put(params,0x38,.7f);
+        put(params,0x3c,int32_t(100));put(params,0x40,.995f);put(params,0x44,int32_t(3));
+        int accepted=count;std::array<float,9> homography;homography.fill(0.f);
+        track(&ia,&ib,corners.data(),moved.data(),count,&accepted,params.data(),homography.data(),0);
+    }
     // bundleDir: the job directory holding the APK copies; forceBundled skips /vendor
     // (used to validate the bundled path on vivo itself).
     explicit StockMotion(const std::string& bundleDir="",bool forceBundled=false) {

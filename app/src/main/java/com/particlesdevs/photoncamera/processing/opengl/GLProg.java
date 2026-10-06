@@ -26,6 +26,59 @@ public class GLProg implements AutoCloseable {
     private final ByteBuffer mFlushBuffer = ByteBuffer.allocateDirect(4 * 4 * 4096);
     private final List<Integer> mPrograms = new ArrayList<>();
     private final Map<String, Integer> mProgramCache = new HashMap<>();
+    /**
+     * P30: driver binaries of the programs linked in this process (every shot creates a new EGL context and compiled its
+     * ~40 post-pipeline programs again). A binary from the same driver runs the identical code; one the driver refuses is
+     * compiled as before. Up to 96 MB, least recently used first out.
+     */
+    private static final class Binary { final int format; final byte[] data; Binary(int f, byte[] d) { format = f; data = d; } }
+    private static final java.util.LinkedHashMap<String, Binary> BINARIES = new java.util.LinkedHashMap<>(64, 0.75f, true);
+    private static long binaryBytes;
+    private static final long BINARY_LIMIT = 96L << 20;
+    public static long compileMs, binaryMs;
+    public static int compiled, fromBinary;
+    private static synchronized Binary binaryFor(String key) { return BINARIES.get(key); }
+    private static synchronized void storeBinary(String key, Binary b) {
+        Binary old = BINARIES.put(key, b);
+        if (old != null) binaryBytes -= old.data.length;
+        binaryBytes += b.data.length;
+        for (java.util.Iterator<java.util.Map.Entry<String, Binary>> it = BINARIES.entrySet().iterator(); binaryBytes > BINARY_LIMIT && it.hasNext();) {
+            binaryBytes -= it.next().getValue().data.length;
+            it.remove();
+        }
+    }
+    private static synchronized void dropBinary(String key) {
+        Binary old = BINARIES.remove(key);
+        if (old != null) binaryBytes -= old.data.length;
+    }
+    /** "programs: N compiled in X ms, M from driver binaries in Y ms" since the last call (logged per shot). */
+    public static synchronized String takeProgramStats() {
+        String text = "programs: " + compiled + " compiled in " + compileMs + " ms, " + fromBinary + " from driver binaries in " + binaryMs + " ms";
+        compileMs = binaryMs = 0; compiled = fromBinary = 0;
+        return text;
+    }
+    private int programFromBinary(String key) {
+        Binary b = binaryFor(key);
+        if (b == null) return 0;
+        int program = glCreateProgram();
+        glProgramBinary(program, b.format, java.nio.ByteBuffer.wrap(b.data), b.data.length);
+        int[] ok = new int[1];
+        glGetProgramiv(program, GL_LINK_STATUS, ok, 0);
+        if (ok[0] == 0 || glGetError() != GL_NO_ERROR) { glDeleteProgram(program); dropBinary(key); return 0; }
+        return program;
+    }
+    private static void keepBinary(String key, int program) {
+        int[] length = new int[1];
+        glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, length, 0);
+        if (length[0] <= 0) { glGetError(); return; }
+        java.nio.ByteBuffer data = java.nio.ByteBuffer.allocateDirect(length[0]);
+        int[] written = new int[1], format = new int[1];
+        glGetProgramBinary(program, length[0], written, 0, format, 0, data);
+        if (glGetError() != GL_NO_ERROR || written[0] <= 0) return;
+        byte[] bytes = new byte[written[0]];
+        data.position(0); data.get(bytes);
+        storeBinary(key, new Binary(format[0], bytes));
+    }
     private final int vertexShader;
     private final GLSquareModel mSquare = new GLSquareModel();
     public int mCurrentProgramActive;
@@ -129,14 +182,28 @@ public class GLProg implements AutoCloseable {
         } else {
             int program;
             int nShader;
-            if(!compute) {
-                nShader = compileShader(GL_FRAGMENT_SHADER, shader);
-                program = createProgram(vertexShader, nShader);
+            final String key = (compute ? "C\n" : "F\n" + vertexShaderSource + "\n") + shader;
+            final long t0 = android.os.SystemClock.elapsedRealtime();
+            program = programFromBinary(key);
+            if (program != 0) {
+                nShader = 0;
+                if (!compute) mPrograms.add(program);
+                synchronized (GLProg.class) { fromBinary++; binaryMs += android.os.SystemClock.elapsedRealtime() - t0; }
             } else {
-                nShader = compileShader(GL_COMPUTE_SHADER, shader);
-                program = glCreateProgram();
-                glAttachShader(program,nShader);
-                glLinkProgram(program);
+                if(!compute) {
+                    nShader = compileShader(GL_FRAGMENT_SHADER, shader);
+                    program = createProgram(vertexShader, nShader);
+                } else {
+                    nShader = compileShader(GL_COMPUTE_SHADER, shader);
+                    program = glCreateProgram();
+                    glAttachShader(program,nShader);
+                    glProgramParameteri(program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+                    glLinkProgram(program);
+                }
+                int[] linked = new int[1];
+                glGetProgramiv(program, GL_LINK_STATUS, linked, 0);
+                if (linked[0] != 0) keepBinary(key, program);
+                synchronized (GLProg.class) { compiled++; compileMs += android.os.SystemClock.elapsedRealtime() - t0; }
             }
             currentShader = nShader;
             glGetError();
@@ -195,6 +262,8 @@ public class GLProg implements AutoCloseable {
             glAttachShader(programHandle, vertexShaderHandle);
             // Bind the fragment shader to the program.
             glAttachShader(programHandle, fragmentShaderHandle);
+            // P30: the driver binary is kept for the next shot's context (programFromBinary).
+            glProgramParameteri(programHandle, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
             // Link the two shaders together into a program.
             glLinkProgram(programHandle);
             // Get the link status.

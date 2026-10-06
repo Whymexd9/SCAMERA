@@ -241,15 +241,24 @@ public final class VivoNeuralClient {
             // NICE: burst and result through shared memory (memfd) instead of ~0.6 GB
             // written to and read back from flash per shot; the root worker opens
             // them as /proc/<pid>/fd/<n>. Files remain the fallback.
+            // P30: with the app-process worker and shared memory the worker starts first and the burst is written while it
+            // starts (spawn, CRE and GPU driver), then a byte on a pipe (job file "wait-go") lets it map the burst.
+            boolean deferredWrite=false;
             if(niceBurst!=null){
                 niceIn=SharedMemory.create("scamera-nice-in");
                 niceOut=niceIn==null?null:SharedMemory.create("scamera-nice-out");
                 if(niceOut!=null){
-                    try(FileChannel channel=niceIn.writeChannel()){niceBurst.write(channel);}
+                    deferredWrite=direct;
+                    if(!deferredWrite)try(FileChannel channel=niceIn.writeChannel()){niceBurst.write(channel);}
                 } else {
                     if(niceIn!=null){niceIn.close();niceIn=null;}
                     niceBurst.write(input);
                 }
+            }
+            android.os.ParcelFileDescriptor[] goPipe=null;
+            if(deferredWrite){
+                goPipe=android.os.ParcelFileDescriptor.createPipe();
+                try(java.io.FileWriter marker=new java.io.FileWriter(new File(dir,"wait-go"))){marker.write("5");}
             }
             if(raw!=null || burst!=null || (niceBurst!=null && niceOut==null)){
                 if(raw!=null)try(FileChannel channel=new FileOutputStream(input).getChannel()){ByteBuffer data=raw.duplicate();while(data.hasRemaining())channel.write(data);}
@@ -267,7 +276,8 @@ public final class VivoNeuralClient {
                         dirPath,input.getAbsolutePath(),output.getAbsolutePath());
                 else if(niceBurst!=null){
                     // memfd burst/result inherited as fd 3/4 (the sandbox cannot open /proc/<pid>/fd).
-                    if(niceOut!=null)fds=new android.os.ParcelFileDescriptor[]{niceIn.fd,niceOut.fd};
+                    if(niceOut!=null)fds=goPipe!=null?new android.os.ParcelFileDescriptor[]{niceIn.fd,niceOut.fd,goPipe[0]}
+                            :new android.os.ParcelFileDescriptor[]{niceIn.fd,niceOut.fd};
                     java.util.Collections.addAll(args,"--nice-capture",dirPath,niceOut!=null?"fd:3":input.getAbsolutePath(),
                             niceOut!=null?"fd:4":output.getAbsolutePath());
                 }
@@ -277,6 +287,15 @@ public final class VivoNeuralClient {
                 log.accept("WORKER: отдельный процесс приложения (без root)");
                 process=com.particlesdevs.photoncamera.util.WorkerSpawn.start(context,args,
                         com.particlesdevs.photoncamera.util.WorkerSpawn.environment(context,dir),fds);
+                if(goPipe!=null){
+                    goPipe[0].close();
+                    final long writeStarted=android.os.SystemClock.elapsedRealtime();
+                    try(java.io.OutputStream go=new android.os.ParcelFileDescriptor.AutoCloseOutputStream(goPipe[1])){
+                        try(FileChannel channel=niceIn.writeChannel()){niceBurst.write(channel);}
+                        go.write(1); // closing the pipe without this byte stops the worker
+                    }
+                    log.accept("HEX CLIENT PREP ms: burst written while the worker started in "+(android.os.SystemClock.elapsedRealtime()-writeStarted));
+                }
             } else {
             String command="export CLASSPATH="+quote(context.getApplicationInfo().sourceDir)+
                     "; export LD_LIBRARY_PATH="+quote("/system/lib64:/system_ext/lib64:"+dir.getAbsolutePath()+":/vendor/lib64")+
