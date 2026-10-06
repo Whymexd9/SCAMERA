@@ -1246,6 +1246,11 @@ public class PreferenceKeys {
 
 
     /** Develop the preview RAW stream as the viewfinder instead of showing the ISP image. */
+    /** P24: DNGs with lossless JPEG (LJ92, compression 7) inside; off by default until the owner's readers are checked. */
+    public static boolean isDngLossless() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_dng_lossless", false);
+    }
+
     public static boolean isLiveViewfinderRawEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_RAW, false);
