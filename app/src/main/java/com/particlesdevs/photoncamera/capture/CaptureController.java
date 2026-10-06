@@ -1944,7 +1944,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mTextureView.setAspectRatio(
                     mPreviewSize.getHeight(), mPreviewSize.getWidth());
             updatePreviewMirror();
-            cameraEventsListener.onCharacteristicsUpdated(updated);
+            // The fragment may be gone by now (activity recreated, e.g. on a language change).
+            final CameraEventsListener listener = cameraEventsListener;
+            if (listener != null) listener.onCharacteristicsUpdated(updated);
             if (PhotonCamera.getSettings().DebugData)
                 showToast("preview:" + new Point(mPreviewWidth, mPreviewHeight));
         });

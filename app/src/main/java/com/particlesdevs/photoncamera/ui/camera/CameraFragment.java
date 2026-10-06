@@ -627,6 +627,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         if (cameraFragmentBinding != null && captureController != null) {
             View focusCircle = cameraFragmentBinding.layoutViewfinder.touchFocus;
             textureView.post(() -> {
+                // The fragment may be destroyed before this runs (activity relaunched at start-up, e.g. a screen layout or
+                // language change): its capture controller is gone then.
+                if (captureController == null || mCameraUIView == null) return;
                 mTouchFocus = new TouchFocus(captureController,focusCircle,textureView);
                 captureController.mTouchFocus = mTouchFocus;
             });
@@ -713,7 +716,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 mHorizonIndicatorView.updateDisplayRotation(orientation);
             }
             surfaceView.setOrientation(orientation);
-            mTouchFocus.setState(result.get(CaptureResult.CONTROL_AF_STATE));
+            if (mTouchFocus != null) mTouchFocus.setState(result.get(CaptureResult.CONTROL_AF_STATE));
             int afDataMode = PreferenceKeys.getAfDataValue();
             if (afDataMode == 1 || afDataMode == 2) {
                 // Mode 1: HUD, Mode 2: HUD + Histogram
@@ -1270,15 +1273,51 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     //**************************************CameraEventsListenerImpl***************************************************
     //*****************************************************************************************************************
 
+    /** A CameraUIView that ignores every call (see CameraEventsListenerImpl.ui()). */
+    private static final CameraUIView DETACHED_UI = (CameraUIView) java.lang.reflect.Proxy.newProxyInstance(
+            CameraUIView.class.getClassLoader(), new Class<?>[]{CameraUIView.class}, (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) {
+                    switch (method.getName()) {
+                        case "equals": return proxy == args[0];
+                        case "hashCode": return System.identityHashCode(proxy);
+                        default: return "DetachedCameraUIView";
+                    }
+                }
+                final Class<?> type = method.getReturnType();
+                if (type == boolean.class) return false;
+                if (type == int.class) return 0;
+                if (type == long.class) return 0L;
+                if (type == float.class) return 0f;
+                if (type == double.class) return 0d;
+                if (type == short.class) return (short) 0;
+                if (type == byte.class) return (byte) 0;
+                if (type == char.class) return (char) 0;
+                return null;
+            });
+
     private class CameraEventsListenerImpl extends CameraEventsListener {
+        /**
+         * This fragment's UI, or a no-op one after onDestroy: the capture controller of a destroyed fragment can still call
+         * back (the activity is recreated on a language change while a camera callback or a shot's processing is pending).
+         */
+        private CameraUIView ui() {
+            final CameraUIView view = mCameraUIView;
+            return view != null ? view : DETACHED_UI;
+        }
+
+        /** True once this fragment is destroyed: callbacks that only update its views do nothing. */
+        private boolean detached() {
+            return mCameraUIView == null;
+        }
+
         /**
          * Implementation of {@link ProcessingEventsListener}
          */
         @Override
         public void onProcessingStarted(String processName) {
             logD("onProcessingStarted: " + processName + " Processing Started");
-            mCameraUIView.setProcessingProgressBarIndeterminate(true);
-            mCameraUIView.activateShutterButton(true);
+            ui().setProcessingProgressBarIndeterminate(true);
+            ui().activateShutterButton(true);
             showNotification(processName);
         }
 
@@ -1289,9 +1328,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onProcessingFinished(Object obj) {
             logD("onProcessingFinished: " + obj);
-            mCameraUIView.setProcessingProgressBarIndeterminate(false);
-            mCameraUIView.activateShutterButton(true);
-            mCameraUIView.lockUIForBurst(false);
+            ui().setProcessingProgressBarIndeterminate(false);
+            ui().activateShutterButton(true);
+            ui().lockUIForBurst(false);
             stopNotification();
 
         }
@@ -1314,10 +1353,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onProcessingError(Object obj) {
-            mCameraUIView.resetCaptureProgressBar();
+            ui().resetCaptureProgressBar();
             if (obj instanceof String)
                 showToast((String) obj);
-            mCameraUIView.lockUIForBurst(false);
+            ui().lockUIForBurst(false);
             onProcessingFinished("Processing Finished Unexpectedly!!");
         }
 
@@ -1328,7 +1367,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
          */
         @Override
         public void onFrameCountSet(int frameCount) {
-            mCameraUIView.setCaptureProgressMax(frameCount);
+            ui().setCaptureProgressMax(frameCount);
         }
 
         /** ZSL shot: the frames are already buffered, the press must feel instant (LMC/GCam): no capture ring in the
@@ -1343,8 +1382,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 if (instantShot) {
                     snapshotViewfinderThumb();
                 } else {
-                    mCameraUIView.setCaptureProgressBarOpacity(1.0f);
-                    mCameraUIView.lockUIForBurst(true);
+                    ui().setCaptureProgressBarOpacity(1.0f);
+                    ui().lockUIForBurst(true);
                 }
             }
             //textureView.post(() -> textureView.setAlpha(0.8f));
@@ -1382,7 +1421,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public void onFrameCaptureCompleted(Object o) {
             if (instantShot) return; // one shutter sound at the press, no per-frame ring
             if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
-                mCameraUIView.incrementCaptureProgressBar(1);
+                ui().incrementCaptureProgressBar(1);
                 if (o instanceof TimerFrameCountViewModel.FrameCntTime) {
                     timerFrameCountViewModel.setFrameTimeCnt((TimerFrameCountViewModel.FrameCntTime) o);
                 }
@@ -1392,12 +1431,12 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onCaptureSequenceCompleted(Object o) {
             timerFrameCountViewModel.clearFrameTimeCnt();
-            mCameraUIView.resetCaptureProgressBar();
-            mCameraUIView.lockUIForBurst(false);
+            ui().resetCaptureProgressBar();
+            ui().lockUIForBurst(false);
             // Stock-like: the next shot is allowed once the burst is captured;
             // processing of earlier shots continues in the background queue.
-            mCameraUIView.activateShutterButton(true);
-            mCameraUIView.setVideoRecordingInfoVisible(false);
+            ui().activateShutterButton(true);
+            ui().setVideoRecordingInfoVisible(false);
             textureView.post(() -> textureView.setAlpha(1f));
         }
 
@@ -1412,23 +1451,26 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onOpenCamera(CameraManager cameraManager) {
+            if (detached()) return;
             initCameraIDLists(cameraManager);
             auxButtonsViewModel.initCameraLists(mCameraLensDataMap);
         }
 
         @Override
         public void onCameraRestarted() {
+            if (detached()) return;
             surfaceView.clear();
-            mCameraUIView.refresh(CaptureController.isProcessing);
+            ui().refresh(CaptureController.isProcessing);
             mTouchFocus.resetFocusCircle();
         }
 
         @Override
         public void onCharacteristicsUpdated(CameraCharacteristics characteristics) {
+            if (detached()) return;
             surfaceView.clear();
             auxButtonsViewModel.setActiveId(PreferenceKeys.getCameraID());
             Boolean flashAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
-            mCameraUIView.showFlashButton(flashAvailable != null && flashAvailable);
+            ui().showFlashButton(flashAvailable != null && flashAvailable);
             manualModeConsole.init(activity, characteristics);
             manualModeConsole.onResume();
         }
