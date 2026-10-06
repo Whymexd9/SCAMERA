@@ -743,8 +743,9 @@ public:
                         encoding_table_size);
                 dng_image0->SetImageData(reinterpret_cast<const unsigned char*>(dataToProcess), packed_size);
             } else {
+                // size_t: the int product w * h * bps overflowed above 134 MP at 16 bits (any RAW size)
                 dng_image0->SetImageData(reinterpret_cast<const unsigned char*>(dataToProcess),
-                                         actualWidth * actualHeight * metadata.bps / 8);
+                                         static_cast<size_t>(actualWidth) * static_cast<size_t>(actualHeight) * static_cast<size_t>(metadata.bps) / 8);
             }
         }
         dng_writer.AddImage(dng_image0);

@@ -6,6 +6,8 @@ import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
 
 import static android.opengl.EGL14.EGL_HEIGHT;
+import static android.opengl.EGL14.EGL_MAX_PBUFFER_HEIGHT;
+import static android.opengl.EGL14.EGL_MAX_PBUFFER_WIDTH;
 import static android.opengl.EGL14.EGL_NONE;
 import static android.opengl.EGL14.EGL_NO_CONTEXT;
 import static android.opengl.EGL14.EGL_NO_SURFACE;
@@ -15,6 +17,7 @@ import static android.opengl.EGL14.eglCreateContext;
 import static android.opengl.EGL14.eglCreatePbufferSurface;
 import static android.opengl.EGL14.eglDestroyContext;
 import static android.opengl.EGL14.eglDestroySurface;
+import static android.opengl.EGL14.eglGetConfigAttrib;
 import static android.opengl.EGL14.eglGetDisplay;
 import static android.opengl.EGL14.eglInitialize;
 import static android.opengl.EGL14.eglMakeCurrent;
@@ -63,6 +66,13 @@ public class GLContext implements AutoCloseable {
             throw new RuntimeException("OpenGL config is null");
         }
         mContext = eglCreateContext(mDisplay, configs[0], EGL_NO_CONTEXT, GLDrawParams.contextAttributeList, 0);
+        // P27 any resolution: every pass renders into textures / renderbuffers (FBOs), the pbuffer is never drawn to; it only has
+        // to exist. A frame wider than EGL_MAX_PBUFFER_* gets a pbuffer at that limit instead of none (unchanged below it).
+        final int[] limit = new int[1];
+        if (eglGetConfigAttrib(mDisplay, configs[0], EGL_MAX_PBUFFER_WIDTH, limit, 0) && limit[0] > 0 && surfaceWidth > limit[0])
+            surfaceWidth = limit[0];
+        if (eglGetConfigAttrib(mDisplay, configs[0], EGL_MAX_PBUFFER_HEIGHT, limit, 0) && limit[0] > 0 && surfaceHeight > limit[0])
+            surfaceHeight = limit[0];
         mSurface = eglCreatePbufferSurface(mDisplay, configs[0], new int[]{
                 EGL_WIDTH, surfaceWidth,
                 EGL_HEIGHT, surfaceHeight,

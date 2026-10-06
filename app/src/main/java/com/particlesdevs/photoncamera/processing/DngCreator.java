@@ -427,12 +427,17 @@ public class DngCreator {
             throw new RuntimeException("Failed to create DNG data");
         }
 
-        ByteBuffer softbuffer = ByteBuffer.allocate(dngData.capacity());
-        softbuffer.put(dngData);
-        softbuffer.position(0);
-
+        // P27 any resolution: the native DNG goes out in 4 MB pieces instead of one Java-heap copy of the whole file (2 B per
+        // pixel uncompressed: 100 MB at 50 MP, above the heap limit higher up). The same bytes in the same order.
         try {
-            outputStream.write(softbuffer.array());
+            final ByteBuffer data = dngData.duplicate();
+            data.clear();
+            final byte[] chunk = new byte[Math.min(4 << 20, Math.max(1, data.remaining()))];
+            while (data.hasRemaining()) {
+                final int n = Math.min(chunk.length, data.remaining());
+                data.get(chunk, 0, n);
+                outputStream.write(chunk, 0, n);
+            }
         } catch (Exception e) {
             throw new RuntimeException("Failed to write DNG data to output stream", e);
         }

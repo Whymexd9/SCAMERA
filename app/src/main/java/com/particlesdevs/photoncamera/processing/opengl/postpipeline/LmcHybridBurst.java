@@ -36,6 +36,23 @@ public final class LmcHybridBurst implements NiceTransport {
     private static final int CONSERVATIVE_NORMALS = 16;
     /** P27: worker tuning of the conservative retry (no tile-local alignment, Sabre 6.1 kernel, rim or chroma passes). */
     private static final String CONSERVATIVE_TUNING = "localAlign 0\nsabre61 0\nrimRatio 0\nchromaDiff 0\n";
+    /**
+     * P27 any resolution: largest input of the Sabre 2x grid (its 2w x 2h RGB float32 is 768 MB at 16 MP, today's largest 2x
+     * output). Above it the hybrid merges on the sensor grid and the per-resolution guards below apply; at or below it nothing
+     * changes.
+     */
+    static final long SABRE_2X_MAX_INPUT = 16_000_000L;
+    /** P27 any resolution: worker memory that does not grow with N (output stage, RGB result transport), bytes per sensor pixel. */
+    static final double FIXED_BYTES_PER_PIXEL = 40;
+    /**
+     * Worker memory of one more frame: the GPU strip windows of every storage slot (~300 RAW rows of the frame held at a time,
+     * 3.8 KB per pixel column) and the F6 local-alignment field (CPU and GPU, ~0.15 B per pixel).
+     */
+    static final double STRIP_BYTES_PER_COLUMN = 3800, FIELD_BYTES_PER_PIXEL = 0.15;
+    /** Share of the memory available before the merge (the burst is already in the shot arena then) the worker may take. */
+    static final double MEMORY_SHARE = 0.6;
+    /** N frames kept whatever the memory budget says: the base and one more (a failed merge still falls back, never fails). */
+    static final int MIN_NORMALS = 2;
 
     private final int width, height, cfa;
     /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_lmc_hybrid_output). */
@@ -84,8 +101,15 @@ public final class LmcHybridBurst implements NiceTransport {
         if (cfa < 0 || cfa > 3 || com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException(Lang.t("Hybrid: нужен RAW с порядком CFA 2×2, без программного биннинга", "Hybrid: needs a RAW with a 2×2 CFA order, without software binning"));
         if (black.length != 4) throw new IOException(Lang.t("Hybrid: нужны четыре уровня чёрного", "Hybrid: needs four black levels"));
-        if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0 || (long) width * height > 16000000)
-            throw new IOException(Lang.t("Hybrid: размер RAW до 16 МП", "Hybrid: RAW size up to 16 MP"));
+        if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0)
+            throw new IOException(Lang.t("Hybrid: размер RAW ", "Hybrid: RAW size ") + width + "x" + height
+                    + Lang.t(" (нужны чётные стороны от 64)", " (needs even sides of at least 64)"));
+        // P27 any resolution: no megapixel cap. Only the hard limits stop the hybrid (sensor-grid RGB above one 2 GB buffer, a side
+        // above the GPU's limit); HdrxProcessor bins such a stream with RawBin before, so this is a defensive check.
+        final int gpuMaxSide = com.particlesdevs.photoncamera.processing.opengl.GLLimits.get().maxSide();
+        final String beyond = com.particlesdevs.photoncamera.processing.RawBin.limitExceeded(width, height, gpuMaxSide);
+        if (beyond != null) throw new IOException("Hybrid: RAW " + width + "x" + height
+                + Lang.t(" за пределами склейки (", " is beyond the merge limits (") + beyond + ")");
         if (source.isEmpty() || source.size() > 64) throw new IOException(Lang.t("Hybrid: нужны 1–64 кадра", "Hybrid: needs 1–64 frames"));
         android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
         List<ImageFrame> usable = new ArrayList<>();
@@ -113,7 +137,12 @@ public final class LmcHybridBurst implements NiceTransport {
         if (mosaic != null) Log.i("NICE_HDR", "hybrid stream colour block: " + mosaic);
         // A mosaic's own sites already fill the sensor grid of the stream (the worker merges them on the 2x grid of its plain-Bayer
         // sub-frames): its output is the sensor grid.
-        final boolean twoX = !conservative && !"sensor".equals(PreferenceKeys.hybridOutputMode()) && mosaicBlock <= 1;
+        final boolean wants2x = !conservative && !"sensor".equals(PreferenceKeys.hybridOutputMode()) && mosaicBlock <= 1;
+        // P27 any resolution: the 2x grid only where it fits (input up to 16 MP, 2w x 2h within the GPU's limit, 2x RGB within one
+        // Java buffer); otherwise the sensor grid. Up to 16 MP on a GPU of 16384 (Adreno 750) this is today's choice exactly.
+        final boolean twoX = wants2x && sabre2xFits(width, height, gpuMaxSide);
+        if (wants2x && !twoX) Log.i("NICE_HDR", "hybrid output: sensor grid " + width + "x" + height + " (Sabre 2x grid "
+                + 2L * width + "x" + 2L * height + " needs an input up to 16 MP within GPU side " + gpuMaxSide + ")");
         // No memory gate (user's call): the 2x pipeline holds the 2w x 2h float RGB plus the GL working set; availMem is logged.
         Log.i("NICE_HDR", "hybrid output mode=" + PreferenceKeys.hybridOutputMode() + " availMem=" + (availableMemory() >> 20) + " MB twoX=" + twoX
                 + (conservative ? " (conservative retry)" : ""));
@@ -144,6 +173,23 @@ public final class LmcHybridBurst implements NiceTransport {
             Log.w("NICE_HDR", "hybrid: no N frame arrived, frame " + promoted.number + " (" + promoted.getCaptureRole() + ") is the base");
         }
         normal.sort(Comparator.comparingLong(f -> -f.timestamp)); // newest first
+        // P27 any resolution: above 16 MP the worker's working set grows with the frame, so N is capped by the memory available
+        // now (DESIGN 5); the oldest N frames go first, as at the worker limit. At 16 MP or less nothing changes.
+        int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - 7;
+        String limitReason = "worker limit";
+        final long available = (long) width * height > SABRE_2X_MAX_INPUT ? memoryAvailable() : -1;
+        // RAW CA "every frame" (rawCa 2) keeps a corrected copy of every plain-Bayer frame in the worker.
+        final boolean caCopies = PreferenceKeys.hybridValue("rawca_mode", 0f) >= 2f;
+        final int budget = memoryFrameBudget(width, height, mosaicBlock, available, caCopies);
+        if (budget != Integer.MAX_VALUE) {
+            final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(7, bracketed.size() + shorts.size()));
+            Log.i("NICE_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
+                    + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * width * height) / (1 << 20) + " MB, "
+                    + (long) perFrameBytes(width, height, mosaicBlock, caCopies) / (1 << 20) + " MB per frame"
+                    + (caCopies ? ", RAW CA copies" : "") + ") -> at most "
+                    + Math.min(byMemory, normalLimit) + " N");
+            if (byMemory < normalLimit) { normalLimit = byMemory; limitReason = "memory budget"; }
+        }
         // Base frame: the sharpest of the newest candidates within the LMC time window.
         long newest = normal.get(0).timestamp;
         ImageFrame best = normal.get(0); double bestScore = -1;
@@ -159,11 +205,10 @@ public final class LmcHybridBurst implements NiceTransport {
         add(base, ROLE_NORMAL, ref, newest);
         // The worker holds at most WORKER_MAX_FRAMES frames (uniform arrays); the oldest N frames go first,
         // two slots stay for the ultrashort frames and five for the bracketed ones.
-        final int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - 7;
         int normals = 1;
         for (ImageFrame f : normal) {
             if (f == base) continue;
-            if (normals >= normalLimit) { Log.w("NICE_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, worker limit " + normalLimit); break; }
+            if (normals >= normalLimit) { Log.w("NICE_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, " + limitReason + " " + normalLimit); break; }
             if (add(f, ROLE_NORMAL, ref, newest)) normals++;
         }
         // Bracketed frames: those really longer than the base; one that came back at the N exposure is an N frame (P27).
@@ -267,6 +312,11 @@ public final class LmcHybridBurst implements NiceTransport {
             noiseSource = "no valid noise profile for frame " + frame.number + ": " + fallback;
             Log.w("NICE_HDR", "hybrid: " + noiseSource);
         }
+        if (frame.binnedSamples > 1) {
+            // P27: a binned frame (RawBin) averages binnedSamples sensor samples: variance / binnedSamples.
+            slope /= frame.binnedSamples;
+            offset /= frame.binnedSamples;
+        }
         slope *= PreferenceKeys.hybridValue("noise_photon", 1f);
         offset *= PreferenceKeys.hybridValue("noise_readout", 1f);
         if (!Float.isFinite(slope) || slope <= 0) slope = 1e-6f;
@@ -293,6 +343,68 @@ public final class LmcHybridBurst implements NiceTransport {
             return info.lowMemory ? 0 : info.availMem;
         } catch (RuntimeException e) { return 0; }
     }
+    /** P27 any resolution: ActivityManager.MemoryInfo.availMem (also under lowMemory), -1 when unknown. */
+    private static long memoryAvailable() {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            if (am == null) return -1;
+            android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+            am.getMemoryInfo(info);
+            return info.availMem;
+        } catch (RuntimeException e) { return -1; }
+    }
+
+    /**
+     * P27 any resolution: the Sabre 2x grid fits a w x h stream: input up to {@link #SABRE_2X_MAX_INPUT} (today's largest 2x
+     * output), 2w and 2h within the GPU's {@code gpuMaxSide} (GLLimits.maxSide()), and the 2x RGB float32 (48 B per sensor pixel)
+     * within one Java buffer.
+     */
+    static boolean sabre2xFits(int w, int h, int gpuMaxSide) {
+        final long px = (long) w * h;
+        return px <= SABRE_2X_MAX_INPUT && 2L * Math.max(w, h) <= gpuMaxSide && 48L * px <= Integer.MAX_VALUE;
+    }
+
+    /** Worker memory of one more frame of a w x h stream (see {@link #STRIP_BYTES_PER_COLUMN}); a mosaic adds its worker copy. */
+    static double perFrameBytes(int w, int h, int mosaicBlock) {
+        return perFrameBytes(w, h, mosaicBlock, false);
+    }
+
+    /** {@code caCopies}: RAW CA corrects every frame (rawCa 2): a plain-Bayer frame adds its corrected copy (2 B per pixel). */
+    static double perFrameBytes(int w, int h, int mosaicBlock, boolean caCopies) {
+        final double px = (double) w * h;
+        double bytes = STRIP_BYTES_PER_COLUMN * w + FIELD_BYTES_PER_PIXEL * px;
+        // A Quad / Tetra stream: the worker keeps each picked frame and its binned copy (2 B + 2/b^2 B per pixel).
+        if (mosaicBlock >= 2) bytes += 2.0 * px * (1 + 1.0 / ((double) mosaicBlock * mosaicBlock));
+        // A mosaic is corrected in place; a plain-Bayer frame gets a corrected copy.
+        else if (caCopies) bytes += 2.0 * px;
+        return bytes;
+    }
+
+    /**
+     * P27 any resolution (DESIGN 5): frames of all roles the worker can hold for a w x h stream: {@link #MEMORY_SHARE} of the
+     * memory {@code availableBytes} available before the merge, minus the N-independent cost ({@link #FIXED_BYTES_PER_PIXEL}),
+     * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
+     */
+    static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes) {
+        return memoryFrameBudget(w, h, mosaicBlock, availableBytes, false);
+    }
+
+    static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes, boolean caCopies) {
+        final long px = (long) w * h;
+        if (px <= SABRE_2X_MAX_INPUT || availableBytes <= 0) return Integer.MAX_VALUE;
+        final double free = MEMORY_SHARE * availableBytes - FIXED_BYTES_PER_PIXEL * px;
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock, caCopies))));
+    }
+
+    /**
+     * P27 any resolution: the client's wait for the worker. 900 s up to 16 MP (unchanged); above it the merge time grows with the
+     * pixels (CRE, alignment, GPU strips, per-pixel passes), so the wait grows in proportion, at most an hour.
+     */
+    public static long workerTimeoutSeconds(int w, int h) {
+        final long px = (long) w * h;
+        return px <= SABRE_2X_MAX_INPUT ? 900 : Math.min(3600, (long) Math.ceil(900.0 * px / SABRE_2X_MAX_INPUT));
+    }
+
     @Override public int cfa() { return cfa; }
     @Override public boolean mergedDng() { return mergedDng; }
     @Override public boolean diagnostics() { return diagnostics; }
@@ -316,8 +428,45 @@ public final class LmcHybridBurst implements NiceTransport {
         h.position(0);
         return h;
     }
+    /**
+     * P27 any resolution, above 16 MP only: a burst that is not all in one shot arena (the post-shutter path, frames binned by
+     * RawBin) is moved into a new arena frame by frame, each original freed right after its copy, instead of a second copy of the
+     * whole burst in the transport (2.7 GB more at 50 MP x 27): the peak is one frame more. Same bytes, order and position.
+     */
+    private void moveIntoArena() {
+        final long frameBytes = (long) width * height * 2;
+        int arena = -1;
+        boolean shared = true;
+        for (ImageFrame f : frames) {
+            long[] where = f.buffer == null ? null : com.particlesdevs.photoncamera.util.Allocator.arenaOf(f.buffer);
+            if (where == null || (arena >= 0 && where[0] != arena) || (where[1] & 4095) != 0) { shared = false; break; }
+            arena = (int) where[0];
+        }
+        if (shared || frameBytes > Integer.MAX_VALUE) return;
+        final com.particlesdevs.photoncamera.util.ShotArena late = com.particlesdevs.photoncamera.util.ShotArena.create(frames.size(), frameBytes);
+        if (late == null) { Log.w("NICE_HDR", "hybrid burst: no shot arena for " + frames.size() + " x " + (frameBytes >> 20) + " MB"); return; }
+        int moved = 0;
+        try {
+            for (ImageFrame f : frames) {
+                final ByteBuffer old = f.buffer;
+                if (old == null || old.capacity() != frameBytes) break;
+                final ByteBuffer view = late.copy(old, 0, (int) frameBytes);
+                if (view == null) break;
+                view.order(old.order());
+                view.position(old.position());
+                f.buffer = view;
+                com.particlesdevs.photoncamera.util.Allocator.free(old);
+                moved++;
+            }
+        } finally {
+            late.release();
+        }
+        Log.i("NICE_HDR", "hybrid burst moved into a shot arena: " + moved + "/" + frames.size() + " frames of " + (frameBytes >> 20) + " MB");
+    }
+
     /** P30: every frame of the burst is a view of one shot arena: header into its first page, its memfd to the worker. */
     @Override public android.os.ParcelFileDescriptor sharedBurst() {
+        if ((long) width * height > SABRE_2X_MAX_INPUT) moveIntoArena();
         int arena = -1;
         final long[] pages = new long[frames.size()];
         for (int i = 0; i < frames.size(); i++) {
@@ -406,7 +555,10 @@ public final class LmcHybridBurst implements NiceTransport {
             final String report = VivoNeuralClient.lastJobReport;
             final String why = String.valueOf(first.getMessage());
             final boolean timeout = first instanceof VivoNeuralClient.WorkerTimeoutException;
-            final boolean gpuInitDeath = report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
+            // Only a stream of 16 MP or less marks the GPU unusable for the session: a larger one runs memory-heavy CPU stages
+            // before the GPU context, where the low-memory killer can stop the worker; it takes the conservative retry instead.
+            final boolean gpuInitDeath = (long) burst.width * burst.height <= SABRE_2X_MAX_INPUT
+                    && report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
             Log.e("NICE_HDR", "Hybrid merge failed (" + why + ")" + (gpuInitDeath ? ", worker died before the GPU context" : ""));
             if (gpuInitDeath) {
                 gpuUnusable = "worker died at GPU init: " + lastLine(report, "WORKER EXIT:");
@@ -451,7 +603,10 @@ public final class LmcHybridBurst implements NiceTransport {
     private static ByteBuffer cpuSingle(LmcHybridBurst burst) throws IOException {
         final long start = android.os.SystemClock.elapsedRealtime();
         final int w = burst.width, h = burst.height;
-        ByteBuffer out = com.particlesdevs.photoncamera.util.Allocator.allocate(w * h * 12);
+        final long bytes = 12L * w * h;
+        if (bytes > Integer.MAX_VALUE) throw new IOException(Lang.t("Hybrid: одиночный кадр ", "Hybrid: the single frame ") + w + "x" + h
+                + Lang.t(" больше 2 ГБ", " is above 2 GB"));
+        ByteBuffer out = com.particlesdevs.photoncamera.util.Allocator.allocate((int) bytes);
         if (out == null) throw new IOException(Lang.t("Hybrid: недостаточно памяти для одиночного кадра", "Hybrid: not enough memory for the single frame"));
         out.order(ByteOrder.nativeOrder());
         final int block = Math.max(1, burst.mosaicBlock);

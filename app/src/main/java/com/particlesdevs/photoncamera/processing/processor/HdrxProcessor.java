@@ -15,6 +15,8 @@ import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.control.GyroBurst;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
+import com.particlesdevs.photoncamera.processing.RawBin;
+import com.particlesdevs.photoncamera.processing.opengl.GLLimits;
 import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostPipeline;
@@ -121,9 +123,10 @@ public class HdrxProcessor extends ProcessorBase {
 //            if (isYuv) {
 //                ApplyStabilization();
 //            }
-        } catch (Exception e) {
+        } catch (Exception | OutOfMemoryError e) {
+            // P27 any resolution: an allocation that grows with the frame (Java heap) fails the shot, not the processing thread.
             Log.e(TAG, ProcessingEventsListener.FAILED_MSG);
-            Log.e(TAG, "Error in HdrX Processing:"+Log.getStackTraceString(e));
+            Log.e(TAG, "Error in HdrX Processing:"+stackTrace(e));
             callback.onFailed();
             String detail = e.getClass().getSimpleName();
             if (e.getMessage() != null && !e.getMessage().isEmpty()) {
@@ -153,6 +156,29 @@ public class HdrxProcessor extends ProcessorBase {
         }
     }
 
+    /** The app log's stack trace for an Exception (as before); an Error (OutOfMemoryError) through android.util.Log. */
+    private static String stackTrace(Throwable t) {
+        return t instanceof Exception ? Log.getStackTraceString((Exception) t) : android.util.Log.getStackTraceString(t);
+    }
+
+    /**
+     * P27 any resolution, above 16 MP only: the reference RAW leaves the shot arena before the post pipeline. One arena view keeps
+     * the whole memfd (every frame of the shot, 2.7 GB at 50 MP x 27) mapped until the end of the shot; an own copy (same bytes,
+     * order and position) lets the arena go once the other frames are closed. The view itself when it is no arena view or the
+     * copy fails.
+     */
+    private static ByteBuffer outOfArena(ByteBuffer view) {
+        if (view == null || Allocator.arenaOf(view) == null) return view;
+        final int bytes = view.capacity();
+        ByteBuffer own = Allocator.allocateAndCopy(bytes, view, 0);
+        if (own == null) return view;
+        own.order(view.order());
+        own.position(view.position());
+        Allocator.free(view);
+        Log.i(TAG, "reference RAW copied out of the shot arena (" + (bytes >> 20) + " MB): the arena goes with the other frames");
+        return own;
+    }
+
     private void ApplyHdrX() {
         processingStage = "input validation";
         callback.onStarted();
@@ -173,12 +199,29 @@ public class HdrxProcessor extends ProcessorBase {
             it.remove();
         }
         if (mImageFramesToProcess.isEmpty()) throw new IllegalStateException("no RAW frame with data received");
+        // P27 any resolution: the Hybrid merges any RAW stream at its own resolution. Only a stream beyond the hard limits (the
+        // sensor-grid RGB float result above 2 GB, i.e. above ~178 MP, or a side above the GPU's texture / render-target limit) is
+        // binned 2x2 (same colours averaged) as the last resort instead of failing.
+        final int gpuMaxSide = GLLimits.get().maxSide();
+        int rawBinning = 1;
+        if (!RawBin.fits(mImageFramesToProcess.get(0).width, mImageFramesToProcess.get(0).height, gpuMaxSide)) {
+            android.hardware.camera2.params.BlackLevelPattern pattern = characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+            Integer whiteLevel = characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+            float black = pattern == null ? 64f : (pattern.getOffsetForIndex(0, 0) + pattern.getOffsetForIndex(1, 0)
+                    + pattern.getOffsetForIndex(0, 1) + pattern.getOffsetForIndex(1, 1)) / 4f;
+            try {
+                rawBinning = RawBin.binOversized(mImageFramesToProcess, black, whiteLevel == null ? 1023f : whiteLevel, gpuMaxSide);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e.getMessage(), e);
+            }
+        }
         int width = mImageFramesToProcess.get(0).width;
         int height = mImageFramesToProcess.get(0).height;
         Log.d(TAG, "APPLY HDRX: buffer:" + mImageFramesToProcess.get(0).buffer.asShortBuffer().remaining());
         Log.d(TAG, "Api WhiteLevel:" + characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL));
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
+        processingParameters.rawBinning = rawBinning;
         processingParameters.vivoHdrMode = PreferenceKeys.isVivoHdrEnabled();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
         // Every shot is merged by the LMC hybrid or SCAM HDR (the legacy merge routes are gone).
@@ -413,6 +456,7 @@ public class HdrxProcessor extends ProcessorBase {
         }
         ImageFrame ref=images.get(0);
         ByteBuffer output=ref.buffer;ref.buffer=null;
+        if ((long) width * height > 16_000_000L) output = outOfArena(output);
         for(ImageFrame frame:images)frame.close();
         ByteBuffer niceMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng;
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng=null;
@@ -437,9 +481,9 @@ public class HdrxProcessor extends ProcessorBase {
                 }
             } else imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
                     processingParameters);
-            } catch (RuntimeException dngError) {
+            } catch (RuntimeException | OutOfMemoryError dngError) {
                 // P27: the DNG is optional, the JPEG is not.
-                Log.e(TAG, "DNG not saved: " + Log.getStackTraceString(dngError));
+                Log.e(TAG, "DNG not saved: " + stackTrace(dngError));
             }
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
             if (saveRAW == 2) {
@@ -525,7 +569,7 @@ public class HdrxProcessor extends ProcessorBase {
             try {
                 gm = pipeline.RunHDRGainMap(jpegInput, processingParameters, img,
                         GainMapComputer.SCALE_DOWN, GainMapComputer.SCALE);
-            } catch (Exception e) {
+            } catch (Exception | OutOfMemoryError e) {
                 Log.e(TAG, "Ultra HDR gain-map pass failed, falling back to SDR JPEG", e);
             }
         }

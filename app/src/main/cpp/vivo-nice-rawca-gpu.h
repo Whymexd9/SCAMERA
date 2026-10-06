@@ -299,6 +299,15 @@ public:
             }
         } else reserve(5, 16);
         const size_t sites = size_t(w) * h / 2;
+        // Any RAW size: the whole frame is one storage block per slot (2 B / 2 B per pixel); beyond the GPU's block size the
+        // reads are undefined. correctFrames() then corrects the frames on the CPU.
+        {
+            GLint64 block = 0;
+            glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &block);
+            const size_t largest = std::max(size_t(w) * h * 2, sites * 4);
+            if (block > 0 && largest > size_t(block))
+                throw std::runtime_error("RAW CA GPU: frame " + std::to_string(largest >> 20) + " MB > storage block " + std::to_string(size_t(block) >> 20) + " MB");
+        }
         reserve(0, size_t(w) * h * 2);
         reserve(1, sites * 4);
         reserve(2, sites * 4);
