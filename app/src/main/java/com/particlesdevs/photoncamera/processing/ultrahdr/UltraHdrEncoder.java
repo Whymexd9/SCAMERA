@@ -100,16 +100,29 @@ public final class UltraHdrEncoder {
         }
     }
 
+    // P24: jpegli 4:4:4 (JpegliEncoder). A failed base image fails the container; the caller then saves a plain JPEG.
     private static void compressPrimary(Bitmap bmp, OutputStream out, int quality) throws IOException {
-        if (!bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)) {
-            throw new IOException("Failed to compress SDR JPEG");
-        }
+        if (com.particlesdevs.photoncamera.processing.JpegliEncoder.available())
+            com.particlesdevs.photoncamera.processing.JpegliEncoder.compress(bmp, quality, out);
+        else
+            com.particlesdevs.photoncamera.processing.JpegliEncoder.compressFallback(bmp, quality, out);
     }
 
     private static byte[] compressGainMap(GainMapComputer.Result gm, int quality) {
+        if (com.particlesdevs.photoncamera.processing.JpegliEncoder.available()) {
+            final ByteArrayOutputStream gainOut = new ByteArrayOutputStream();
+            try {
+                com.particlesdevs.photoncamera.processing.JpegliEncoder.compress(gm.gainMap, quality, gainOut);
+                return gainOut.toByteArray();
+            } catch (IOException | RuntimeException e) {
+                Log.w(TAG, "jpegli gain map failed, Android encoder: " + e);
+            }
+        }
         final ByteArrayOutputStream gainOut = new ByteArrayOutputStream();
-        if (!gm.gainMap.compress(Bitmap.CompressFormat.JPEG, quality, gainOut)) {
-            throw new RuntimeException("Failed to compress gain map");
+        try {
+            com.particlesdevs.photoncamera.processing.JpegliEncoder.compressFallback(gm.gainMap, quality, gainOut);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to compress gain map", e);
         }
         return gainOut.toByteArray();
     }

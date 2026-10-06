@@ -158,14 +158,26 @@ public class ImageSaver {
         public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData) {
             exifData.COMPRESSION = ParseExif.COMPRESSION_JPEG;
             boolean encoded = false;
-            try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
-                if (!img.compress(Bitmap.CompressFormat.JPEG, jpgQuality, outputStream))
-                    throw new IOException("JPEG encoder failed for " + img.getWidth() + "x" + img.getHeight());
-                img.recycle();
-                outputStream.flush();
-                encoded = true;
-            } catch (IOException | RuntimeException e) {
-                Log.e(TAG, "JPEG save failed: " + Log.getStackTraceString(e));
+            try {
+                // jpegli 4:4:4 first; if it fails, the file is rewritten from the start by Android's encoder (4:2:0).
+                if (JpegliEncoder.available()) {
+                    try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
+                        JpegliEncoder.compress(img, jpgQuality, outputStream);
+                        outputStream.flush();
+                        encoded = true;
+                    } catch (IOException | RuntimeException e) {
+                        Log.w(TAG, "jpegli save failed, Android encoder (4:2:0): " + e);
+                    }
+                }
+                if (!encoded) {
+                    try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
+                        JpegliEncoder.compressFallback(img, jpgQuality, outputStream);
+                        outputStream.flush();
+                        encoded = true;
+                    } catch (IOException | RuntimeException e) {
+                        Log.e(TAG, "JPEG save failed: " + Log.getStackTraceString(e));
+                    }
+                }
             } finally {
                 if (!img.isRecycled()) img.recycle();
             }

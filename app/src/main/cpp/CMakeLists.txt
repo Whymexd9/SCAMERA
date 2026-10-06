@@ -86,6 +86,26 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_link_libraries(vivoNiceProbe PRIVATE dl)
 endif()
 
+# P24: every saved JPEG through jpegli, 4:4:4 (third_party/README.md); Highway gives it NEON / SVE.
+set(HWY_DIR ${SRC_DIR}/third_party/highway)
+add_library(scameraHwy STATIC
+    ${HWY_DIR}/hwy/abort.cc ${HWY_DIR}/hwy/aligned_allocator.cc ${HWY_DIR}/hwy/nanobenchmark.cc ${HWY_DIR}/hwy/per_target.cc
+    ${HWY_DIR}/hwy/perf_counters.cc ${HWY_DIR}/hwy/print.cc ${HWY_DIR}/hwy/profiler.cc ${HWY_DIR}/hwy/targets.cc ${HWY_DIR}/hwy/timer.cc)
+set_property(TARGET scameraHwy PROPERTY CXX_STANDARD 17)
+target_include_directories(scameraHwy PUBLIC ${HWY_DIR})
+target_compile_definitions(scameraHwy PUBLIC HWY_STATIC_DEFINE)
+target_compile_options(scameraHwy PRIVATE -O3 -fmerge-all-constants -fvisibility=hidden -fvisibility-inlines-hidden)
+file(GLOB JPEGLI_SRC ${SRC_DIR}/third_party/jpegli/lib/jpegli/*.cc)
+add_library(scameraJpegli STATIC ${JPEGLI_SRC})
+set_property(TARGET scameraJpegli PROPERTY CXX_STANDARD 17)
+target_include_directories(scameraJpegli PUBLIC ${SRC_DIR}/third_party/jpegli ${SRC_DIR}/third_party/jpegli/include)
+target_compile_options(scameraJpegli PRIVATE -O3 -fvisibility=hidden -fvisibility-inlines-hidden)
+target_link_libraries(scameraJpegli PUBLIC scameraHwy)
+add_library(scameraJpeg SHARED scamera-jpeg.cpp)
+set_property(TARGET scameraJpeg PROPERTY CXX_STANDARD 17)
+target_compile_options(scameraJpeg PRIVATE -O3 -fvisibility=hidden -fvisibility-inlines-hidden)
+target_link_libraries(scameraJpeg PRIVATE scameraJpegli jnigraphics log)
+
 # Final, memory-bounded resampling of successful Vivo RGB output.
 add_library(lanczosDownscale SHARED lanczos-downscale-jni.cpp)
 target_compile_options(lanczosDownscale PRIVATE -O3)
