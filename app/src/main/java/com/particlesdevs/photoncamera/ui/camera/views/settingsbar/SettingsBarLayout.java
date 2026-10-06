@@ -30,6 +30,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -42,6 +43,7 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.widget.NestedScrollView;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
@@ -96,7 +98,10 @@ public class SettingsBarLayout extends LinearLayout {
     private final NestedScrollView listScroll;
     private final LinearLayout content;
     private final TextView headTitle;
+    /** «Изменить» / «Готово». */
+    private final TextView editButton;
     private final RecyclerView tiles;
+    private final ItemTouchHelper dragHelper;
     private final ShadeTileAdapter adapter;
     /** Inline card of the open slider tile, under the grid. */
     private final LinearLayout sliderCard;
@@ -118,6 +123,12 @@ public class SettingsBarLayout extends LinearLayout {
     private boolean sliderTracking;
     private float iconRotation;
     private boolean refreshPosted;
+    /** Edit mode: tiles wobble, «×» unpins, a press-drag reorders. */
+    private boolean editing;
+    /** A tile is lifted under the finger. */
+    private boolean dragging;
+    /** A refresh that arrived during a drag, run on the drop. */
+    private boolean refreshPending;
 
     /** Handle plus the PEEK part of the list from the last layout: the peek height the behavior should have. */
     private int sheetPeekHeight;
@@ -151,6 +162,7 @@ public class SettingsBarLayout extends LinearLayout {
             behavior.setHideable(level != LEVEL_FULL);
             sheetLevel = level;
             if (level != LEVEL_FULL) listScroll.scrollTo(0, 0);
+            if (level == LEVEL_HIDDEN && editing) setEditing(false);
             if (levelListener != null) levelListener.onSheetLevelChanged(level);
         }
 
@@ -210,7 +222,13 @@ public class SettingsBarLayout extends LinearLayout {
         headTitle = new TextView(context);
         headTitle.setText(R.string.shade_pinned);
         head.addView(headTitle, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        content.addView(head, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
+        editButton = new TextView(context);
+        editButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        editButton.setPadding(dp(14), dp(7), dp(14), dp(7));
+        editButton.setTag("shade_edit");
+        editButton.setOnClickListener(v -> setEditing(!editing));
+        head.addView(editButton);
+        content.addView(head, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
         tiles = new RecyclerView(context);
         tiles.setLayoutManager(new GridLayoutManager(context, 4));
@@ -238,11 +256,18 @@ public class SettingsBarLayout extends LinearLayout {
             public void onCreated(ShadeTileAdapter.Holder holder) {
                 holder.tile.setOnClickListener(v -> {
                     if (holder.tile.addTile) onAddTile();
-                    else if (holder.tile.key != null) onTileTap(holder.tile.key);
+                    else if (holder.tile.key != null && !editing) onTileTap(holder.tile.key);
                 });
+                holder.tile.remove.setOnClickListener(v -> {
+                    if (holder.tile.key != null) togglePin(holder.tile.key);
+                });
+                holder.tile.setOnTouchListener(new TilePress(holder));
+                holder.tile.setAccessibilityDelegate(new TileActions(holder));
             }
         });
         tiles.setAdapter(adapter);
+        dragHelper = new ItemTouchHelper(new DragCallback());
+        dragHelper.attachToRecyclerView(tiles);
         content.addView(tiles, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         sliderCard = new LinearLayout(context);
@@ -295,6 +320,14 @@ public class SettingsBarLayout extends LinearLayout {
         content.addView(fullList, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ShadeStyle.label(headTitle, accent);
+        styleEditButton(accent);
+    }
+
+    private void styleEditButton(int accent) {
+        editButton.setText(editing ? R.string.shade_done : R.string.shade_edit);
+        editButton.setTextColor(editing ? ShadeStyle.INK : accent);
+        editButton.setTypeface(null, editing ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        editButton.setBackground(ShadeStyle.pressable(getContext(), editing ? accent : ShadeStyle.tint(accent, .16f), 0, 100));
     }
 
     private int dp(float f) {
@@ -412,6 +445,11 @@ public class SettingsBarLayout extends LinearLayout {
 
     private void refreshNow() {
         if (!contentBuilt) return;
+        // Never mid-drag: the pressed view keeps its touch stream; the drop runs the refresh.
+        if (dragging) {
+            refreshPending = true;
+            return;
+        }
         List<String> stored = ShadeTiles.load(catalog().prefs(), catalog()::isKnown);
         if (!stored.equals(pinned)) {
             pinned.clear();
@@ -450,6 +488,8 @@ public class SettingsBarLayout extends LinearLayout {
         view.open = key.equals(openSlider);
         view.bind(catalog(), e, catalog().unavailable(e));
         view.setIconRotation(iconRotation);
+        view.remove.setContentDescription(getContext().getString(R.string.shade_remove_description, e.shortTitle));
+        view.setEditing(editing, pinned.indexOf(key));
         view.setEnabled(isEnabled());
     }
 
@@ -615,11 +655,247 @@ public class SettingsBarLayout extends LinearLayout {
         sliderBar.setProgress(ShadeRows.progressOf(e, v));
     }
 
-    /** A lens switch closes the slider card (owner's answer 11). */
+    /** A lens switch ends the edit mode and closes the slider card (owner's answer 11). */
     public void onLensSwitch() {
+        if (editing) setEditing(false);
         if (openSlider == null) return;
         openSlider = null;
         rebindValues();
+    }
+
+    // ───────────────────────────────── edit mode and reorder
+
+    public boolean isEditing() {
+        return editing;
+    }
+
+    /**
+     * Edit mode: header «Перетащи плитки» / «Готово», «×» on every tile, the tiles wobble, a short press-drag lifts a tile;
+     * the FULL rows and the slider card step aside. The sheet cannot be dragged meanwhile (swipes on the viewfinder still
+     * move it).
+     */
+    public void setEditing(boolean on) {
+        if (editing == on) return;
+        if (on) ensureContent();
+        editing = on;
+        if (on) openSlider = null;
+        headTitle.setText(on ? R.string.shade_drag_title : R.string.shade_pinned);
+        styleEditButton(ShadeStyle.accent(getContext()));
+        fullList.setVisibility(on ? GONE : VISIBLE);
+        for (int i = 0; i < tiles.getChildCount(); i++) {
+            View child = tiles.getChildAt(i);
+            if (child instanceof ShadeTileView) {
+                ShadeTileView tile = (ShadeTileView) child;
+                tile.setEditing(on, tiles.getChildAdapterPosition(child));
+            }
+        }
+        bindSliderCard();
+        updateDraggable();
+    }
+
+    /** Back: the drag first, then the edit mode; false when the sheet has nothing of its own to close. */
+    public boolean onBackPressed() {
+        if (dragging) {
+            cancelDrag();
+            return true;
+        }
+        if (editing) {
+            setEditing(false);
+            return true;
+        }
+        return false;
+    }
+
+    /** Drops the lifted tile where it is (ItemTouchHelper settles it on a cancel). */
+    private void cancelDrag() {
+        long now = android.os.SystemClock.uptimeMillis();
+        MotionEvent cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
+        tiles.dispatchTouchEvent(cancel);
+        cancel.recycle();
+    }
+
+    /** Moves a tile one place (TalkBack «Раньше» / «Позже»), saves and says where it is. */
+    private void moveBy(String key, int delta) {
+        int from = pinned.indexOf(key), to = from + delta;
+        if (from < 0 || to < 0 || to >= pinned.size()) return;
+        adapter.move(from, to);
+        pinned.clear();
+        pinned.addAll(adapter.keys());
+        saveOrder(key);
+    }
+
+    private void saveOrder(String key) {
+        ShadeTiles.save(catalog().prefs(), pinned);
+        ShadeCatalog.Entry e = catalog().entry(key);
+        if (e != null) message(getContext().getString(R.string.shade_place, e.shortTitle, pinned.indexOf(key) + 1, pinned.size()));
+    }
+
+    /**
+     * Press on a tile. Outside the edit mode a long press (~400 ms, haptic) enters it and lifts the tile at once; a move
+     * before that is a swipe of the sheet or a scroll. In the edit mode the tile claims the finger at once (the list and
+     * the sheet do not move) and a move or ~120 ms lifts it.
+     */
+    private final class TilePress implements View.OnTouchListener {
+        private final ShadeTileAdapter.Holder holder;
+        private final int slop;
+        private float downX, downY;
+        private final Runnable lift = this::lift;
+
+        TilePress(ShadeTileAdapter.Holder holder) {
+            this.holder = holder;
+            slop = android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop();
+        }
+
+        private void lift() {
+            if (dragging || holder.tile.addTile || !isEnabled() || holder.getBindingAdapterPosition() == RecyclerView.NO_POSITION) return;
+            boolean fromLongPress = !editing;
+            if (fromLongPress) {
+                holder.tile.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                setEditing(true);
+                // The rows keep their space (INVISIBLE, not GONE) while this drag runs: the list must not scroll under
+                // the finger. The drop makes them GONE.
+                fullList.setVisibility(INVISIBLE);
+            }
+            ViewParent parent = tiles.getParent();
+            if (parent != null) parent.requestDisallowInterceptTouchEvent(true);
+            dragHelper.startDrag(holder);
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent e) {
+            if (holder.tile.addTile) return false;
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX = e.getX();
+                    downY = e.getY();
+                    if (editing) {
+                        ViewParent parent = tiles.getParent();
+                        if (parent != null) parent.requestDisallowInterceptTouchEvent(true);
+                        postDelayed(lift, 120);
+                    } else {
+                        postDelayed(lift, 400);
+                    }
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop) {
+                        removeCallbacks(lift);
+                        if (editing && !dragging) lift();
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    removeCallbacks(lift);
+                    break;
+                default:
+                    break;
+            }
+            return false;
+        }
+    }
+
+    private final class DragCallback extends ItemTouchHelper.Callback {
+        @Override
+        public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+            if (adapter.isAdd(viewHolder.getBindingAdapterPosition())) return 0;
+            return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN | ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT, 0);
+        }
+
+        @Override
+        public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder from, @NonNull RecyclerView.ViewHolder to) {
+            int a = from.getBindingAdapterPosition(), b = to.getBindingAdapterPosition();
+            if (a == RecyclerView.NO_POSITION || b == RecyclerView.NO_POSITION || adapter.isAdd(b)) return false;
+            // Only notifyItemMoved: the lifted view stays the same, the others shift to make room.
+            adapter.move(a, b);
+            return true;
+        }
+
+        @Override
+        public boolean isLongPressDragEnabled() {
+            return false; // TilePress starts the drags: ~400 ms outside the edit mode, ~120 ms in it
+        }
+
+        @Override
+        public boolean isItemViewSwipeEnabled() {
+            return false;
+        }
+
+        /** The grid never scrolls itself (all twelve tiles are laid out); no auto-scroll at its edges. */
+        @Override
+        public int interpolateOutOfBoundsScroll(@NonNull RecyclerView recyclerView, int viewSize, int viewSizeOutOfBounds,
+                                                int totalSize, long msSinceStartScroll) {
+            return 0;
+        }
+
+        @Override
+        public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+        }
+
+        @Override
+        public void onSelectedChanged(@Nullable RecyclerView.ViewHolder viewHolder, int actionState) {
+            super.onSelectedChanged(viewHolder, actionState);
+            if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder instanceof ShadeTileAdapter.Holder) {
+                dragging = true;
+                updateDraggable();
+                ((ShadeTileAdapter.Holder) viewHolder).tile.lift(true);
+            }
+        }
+
+        @Override
+        public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+            super.clearView(recyclerView, viewHolder);
+            if (!(viewHolder instanceof ShadeTileAdapter.Holder)) return;
+            ShadeTileView tile = ((ShadeTileAdapter.Holder) viewHolder).tile;
+            tile.lift(false);
+            dragging = false;
+            // The order is saved on the drop.
+            List<String> order = adapter.keys();
+            if (!order.equals(pinned)) {
+                pinned.clear();
+                pinned.addAll(order);
+            }
+            if (tile.key != null) saveOrder(tile.key);
+            if (editing) {
+                fullList.setVisibility(GONE);
+                tile.setEditing(true, viewHolder.getBindingAdapterPosition());
+            }
+            updateDraggable();
+            if (refreshPending) {
+                refreshPending = false;
+                refreshNow();
+            }
+        }
+    }
+
+    /** TalkBack: «Раньше», «Позже», «Убрать из шторки» on every tile. */
+    private final class TileActions extends View.AccessibilityDelegate {
+        private final ShadeTileAdapter.Holder holder;
+
+        TileActions(ShadeTileAdapter.Holder holder) {
+            this.holder = holder;
+        }
+
+        @Override
+        public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+            super.onInitializeAccessibilityNodeInfo(host, info);
+            String key = holder.tile.key;
+            if (holder.tile.addTile || key == null) return;
+            int at = pinned.indexOf(key);
+            Context c = getContext();
+            if (at > 0) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.shade_action_earlier, c.getString(R.string.shade_action_earlier)));
+            if (at >= 0 && at < pinned.size() - 1) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.shade_action_later, c.getString(R.string.shade_action_later)));
+            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.shade_action_remove, c.getString(R.string.shade_action_remove)));
+        }
+
+        @Override
+        public boolean performAccessibilityAction(View host, int action, Bundle args) {
+            String key = holder.tile.key;
+            if (key != null && !dragging) {
+                if (action == R.id.shade_action_earlier) { moveBy(key, -1); return true; }
+                if (action == R.id.shade_action_later) { moveBy(key, 1); return true; }
+                if (action == R.id.shade_action_remove) { togglePin(key); return true; }
+            }
+            return super.performAccessibilityAction(host, action, args);
+        }
     }
 
     /** Landscape: tile icons turn with the phone ({@code app:iconRotation}). */
@@ -692,14 +968,14 @@ public class SettingsBarLayout extends LinearLayout {
         }
     }
 
-    /** A finger may drag the sheet unless a burst locks it. */
+    /** A finger may drag the sheet unless a burst locks it, a tile is lifted, or the edit mode is on. */
     private void updateDraggable() {
         BottomSheetBehavior<SettingsBarLayout> sheet = sheetBehavior();
         if (sheet != null) sheet.setDraggable(isDraggable());
     }
 
     private boolean isDraggable() {
-        return isEnabled();
+        return isEnabled() && !editing && !dragging;
     }
 
     @Override

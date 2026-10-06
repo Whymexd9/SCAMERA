@@ -38,7 +38,10 @@ public class ShadeTileView extends FrameLayout {
     boolean active, dimmed, addTile;
     /** The inline slider card under the grid belongs to this tile: an accent outline. */
     boolean open;
+    /** Edit mode: «×» shown, the tile wobbles. */
+    boolean editing;
     private int accent;
+    @Nullable private android.animation.ObjectAnimator wobble;
 
     public ShadeTileView(Context context) {
         super(context);
@@ -169,6 +172,46 @@ public class ShadeTileView extends FrameLayout {
         value.setTypeface(null, active ? Typeface.BOLD : Typeface.NORMAL);
         name.setTextColor(active ? ink : ShadeStyle.MUTED);
         card.setAlpha(dimmed ? ShadeStyle.DIMMED : 1f);
+    }
+
+    /** Edit mode: «×» on the tile and a gentle wobble (none when animations are off). */
+    void setEditing(boolean editing, int index) {
+        this.editing = editing;
+        remove.setVisibility(editing && !addTile ? VISIBLE : GONE);
+        if (editing && !addTile) startWobble(index);
+        else stopWobble();
+    }
+
+    private void startWobble(int index) {
+        if (wobble != null || !android.animation.ValueAnimator.areAnimatorsEnabled()) return;
+        wobble = android.animation.ObjectAnimator.ofFloat(card, ROTATION, -1.3f, 1.3f);
+        wobble.setDuration(320);
+        wobble.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        wobble.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        wobble.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        // Neighbours out of step, as in the concept.
+        if (index % 2 == 1) wobble.setCurrentPlayTime(160);
+        wobble.start();
+    }
+
+    void stopWobble() {
+        if (wobble != null) {
+            wobble.cancel();
+            wobble = null;
+        }
+        card.setRotation(0f);
+    }
+
+    /** The tile under the finger: a bit larger, the wobble stops. */
+    void lift(boolean lifted) {
+        if (lifted) stopWobble();
+        animate().scaleX(lifted ? 1.08f : 1f).scaleY(lifted ? 1.08f : 1f).setDuration(150).start();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        stopWobble();
+        super.onDetachedFromWindow();
     }
 
     /** Landscape: the icon turns with the phone, the labels stay (owner's answer 11). */

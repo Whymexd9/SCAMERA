@@ -611,6 +611,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             catalogView.close();
             return true;
         }
+        if (cameraFragmentBinding != null && cameraFragmentBinding.settingsBar.onBackPressed()) return true;
         if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) {
             cameraFragmentViewModel.sheetLevelDown();
         }

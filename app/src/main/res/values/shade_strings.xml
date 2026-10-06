@@ -179,6 +179,16 @@
     <string name="shade_more">Other settings</string>
     <string name="shade_more_summary">Any setting into the panel (%1$d in all)</string>
 
+    <!-- Edit mode, reorder -->
+    <string name="shade_edit">Edit</string>
+    <string name="shade_done">Done</string>
+    <string name="shade_drag_title">Drag the tiles</string>
+    <string name="shade_place">%1$s: place %2$d of %3$d</string>
+    <string name="shade_action_earlier">Move earlier</string>
+    <string name="shade_action_later">Move later</string>
+    <string name="shade_action_remove">Remove from the panel</string>
+    <string name="shade_remove_description">Remove %1$s</string>
+
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
     <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>

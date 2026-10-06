@@ -3,4 +3,8 @@
     <item name="manualimpl" type="id"/>
     <item name="manual_palette" type="id"/>
     <item name="settings_bar_scroll_view" type="id"/>
+    <!-- TalkBack actions of a shade tile (P25) -->
+    <item name="shade_action_earlier" type="id"/>
+    <item name="shade_action_later" type="id"/>
+    <item name="shade_action_remove" type="id"/>
 </resources>
