@@ -10,11 +10,11 @@ precision highp sampler2D;
  * max-RGB/luminance guide so channel ratios (hue) survive the shoulder, and
  * only the final part of the headroom converges to neutral display white.
  *
- * This stage replaces Initial+AutoExposure for the SDR base render: the
+ * SDR base render of SCAM HDR / the hybrid without the ARK tone: the
  * exposure multiplier arrives from the LinearExposure node (linear-histogram
  * percentiles), color is matrix-only (sensor -> ProPhoto -> sRGB with
  * white-point WB), and the lens shading GainMap plus the
- * ExposureFusionBayer2 FusionMap are applied as linear gains before the
+ * NiceExposureFusion FusionMap are applied as linear gains before the
  * curve. No cubes/CLUTs/LUTs.
  */
 
@@ -326,7 +326,7 @@ void main() {
     vec3 inColor=max(texelFetch(InputBuffer,xy,0).rgb,vec3(0.0));
 
     /* Fusion map guided local gain: same 5x5 linear-model fit as the
-     * previous Initial stage. */
+     * former PhotonCamera Initial stage. */
     float tonemapGain=1.0;
     #if FUSION == 1
     vec4 moments=vec4(0.0);
@@ -352,7 +352,7 @@ void main() {
      * slope would blow the local exposure. */
     tonemapGain=clamp(tonemapGain,0.0,3.0);
 
-    /* Lens shading gain: same bicubic sampling as the previous Initial stage. */
+    /* Lens shading gain: same bicubic sampling as the former PhotonCamera Initial stage. */
     vec4 gains=textureBicubicHardware(GainMap,vec2(xy)/vec2(textureSize(InputBuffer,0)));
     gains.rgb=vec3(gains.r,(gains.g+gains.b)/2.0,gains.a);
     float gainsVal=dot(gains.rgb,vec3(1.0/3.0));

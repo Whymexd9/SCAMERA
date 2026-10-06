@@ -3,7 +3,6 @@
     <string name="request_permission">Este aplicativo necessita de permissão para acesso à câmera.</string>
     <string name="camera_error">Este aparelho não suporta Câmera2 API.</string>
     <string name="frame_count">Contagem de quadros:</string>
-    <string name="saturation">Saturação</string>
     <string name="turn_on_grid">Mostrar grade</string>
     <string name="turn_on_round_edges">"Habilitar cantos arredondados "</string>
     <string name="telegram">"Grupo no Telegram "</string>

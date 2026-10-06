@@ -12,7 +12,7 @@ public class NoiseModeler {
     public int AnalogueISO;
     public int SensivityISO;
     double adaptiveMpy = 1.0;
-    /** ISO actually fed to the model after the manual/min/max overrides. */
+    /** ISO fed to the model (the capture sensitivity). */
     private int modelIso1;
     public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer, SpecificSettingSensor specificSettingSensor) {
         AnalogueISO = analogISO;
@@ -22,29 +22,7 @@ public class NoiseModeler {
         // A selected profile replaces whatever the sensor reported, so it reaches every
         // consumer of computeModel at once: the denoise nodes and the alignment
         // significance gate in align.glsl.
-        // Fine tuning applies to whichever model is in use - sensor profile or a selected
-        // calibration - so it lives here rather than inside NoiseModelProfile.
-        int modelIso = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoManual();
-        if (modelIso <= 0) {
-            modelIso = ISO;
-        }
-        int isoMin = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoMin();
-        int isoMax = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoMax();
-        if (isoMin > 0) {
-            modelIso = Math.max(modelIso, isoMin);
-        }
-        if (isoMax > 0) {
-            modelIso = Math.min(modelIso, isoMax);
-        }
-        modelIso = applyIsoCurve(modelIso);
-        modelIso1 = modelIso;
-        if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isNoiseDigitalGainDisabled()) {
-            // Pin the analogue ISO at or above the model ISO so digitalGain resolves to 1.
-            AnalogueISO = Math.max(AnalogueISO, modelIso);
-        }
-        if (modelIso != ISO) {
-            Log.d(TAG, "Noise model ISO override: capture " + ISO + " -> " + modelIso);
-        }
+        modelIso1 = ISO;
 
         NoiseModelProfile profile = null;
         try {
@@ -122,35 +100,6 @@ public class NoiseModeler {
         Log.d(TAG, "ComputedNoiseModel2->" + computeModel[2]);
     }
 
-    /**
-     * Compress the ISO the noise model sees, so the predicted sigma grows slower than the real
-     * sensitivity at high ISO. The model becomes progressively optimistic, which preserves
-     * detail where a strictly linear S term would over-smooth.
-     *
-     * <p>Implemented as {@code iso' = base * (iso / base)^gamma} anchored at {@value #CURVE_BASE_ISO}
-     * so low ISO is left untouched and only the upper end is pulled in. Gammas were chosen to give
-     * roughly 10%, 20% and 30% reduction at ISO 6400; they are this implementation's own choice,
-     * not a copy of any particular vendor curve.
-     */
-    private int applyIsoCurve(int iso) {
-        String curve = com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseIsoCurve();
-        double gamma;
-        switch (curve) {
-            case "soft":   gamma = 0.94; break;
-            case "medium": gamma = 0.88; break;
-            case "strong": gamma = 0.80; break;
-            default: return iso;
-        }
-        if (iso <= CURVE_BASE_ISO) {
-            return iso;
-        }
-        int curved = (int) Math.round(CURVE_BASE_ISO
-                * Math.pow((double) iso / CURVE_BASE_ISO, gamma));
-        Log.d(TAG, "Noise ISO curve " + curve + ": " + iso + " -> " + curved);
-        return Math.max(curved, 1);
-    }
-
-    private static final int CURVE_BASE_ISO = 100;
 
     public void setAdaptiveMpy(double mpy){
         adaptiveMpy = mpy;
@@ -163,9 +112,8 @@ public class NoiseModeler {
         computeStackingNoiseModel((double)Math.max(1,FrameCnt),1);
     }
     public void computeStackingNoiseModel(double effectiveSamples,double spatialSamples) {
-        double coefficient=com.particlesdevs.photoncamera.settings.PreferenceKeys.getNoiseModelCoefficient();
         double scale=com.particlesdevs.photoncamera.processing.parameters.GcamFinishMath.varianceScale(
-                effectiveSamples,spatialSamples)*adaptiveMpy*coefficient;
+                effectiveSamples,spatialSamples)*adaptiveMpy;
         for(int i=0;i<3;i++)computeModel[i]=new Pair<>(baseModel[i].first*scale,baseModel[i].second*scale);
         Log.d(TAG,"Noise rescale: effective="+effectiveSamples+" spatial="+spatialSamples+" scale="+scale);
     }

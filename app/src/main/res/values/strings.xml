@@ -14,8 +14,6 @@
     <string name="long_exposure_ev">Long-frame increase (EV)</string>
     <string name="highlight_suppression">Highlight recovery (0–200)</string>
 
-    <string name="contrast">Contrast</string>
-    <string name="saturation">Saturation</string>
     <string name="hdrx" translatable="false">HDRX</string>
     <string name="ultrahdr">Ultra HDR</string>
     <string name="ultrahdr_summary">Encode JPEGs with an Ultra HDR gain map (requires a second, lightweight tone pass)</string>

@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Point;
 
-import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.util.Log;
 
 import com.particlesdevs.photoncamera.app.PhotonCamera;
@@ -30,13 +29,9 @@ public class Bayer2Float extends Node {
     }
     boolean testPattern = false;
     int testPatternIndex = 2;
-    @Tunable(title = "Inpaint Opposed Highlights", description = "Enable inpainting of opposed highlights to reconstruct chrominance",
-            category = "Bayer2Float", min = 0, max = 1, defaultValue = 1, step = 1)
-    boolean hlInpaintOpposed;
+    boolean hlInpaintOpposed = true;
 
-    @Tunable(title = "Highlight Clip", description = "Scale of the highlight clip level for inpainting",
-            category = "Bayer2Float", min = 0.1f, max = 4.0f, defaultValue = 1.0f, step = 0.1f)
-    float hlClip;
+    float hlClip = 1.0f;
     @Override
     public void AfterRun(){
         if(testPattern && testPatternIndex == 0) {
@@ -52,13 +47,7 @@ public class Bayer2Float extends Node {
         Point rawSize = basePipeline.mParameters.rawSize;
 
         GLTexture in;
-        boolean remosaiced = postPipeline.remosaicOutput != null;
-        if (remosaiced) {
-            // Remosaic already turned the mosaic into plain bayer; taking
-            // stackFrame here would throw that away and hand the demosaic the
-            // original block pattern.
-            in = postPipeline.remosaicOutput;
-        } else if((basePipeline.mSettings.alignAlgorithm != 2 || basePipeline.mParameters.remosaicDone)) {
+        if((basePipeline.mSettings.alignAlgorithm != 2 || basePipeline.mParameters.remosaicDone)) {
             in = new GLTexture(rawSize, new GLFormat(GLFormat.DataType.UNSIGNED_16),
                     ((PostPipeline) (basePipeline)).stackFrame, GL_NEAREST, GL_MIRRORED_REPEAT);
         } else {
@@ -84,7 +73,7 @@ public class Bayer2Float extends Node {
                 Log.d(Name, "InpaintOpposed chrominance:" + hlChroma[0] + "," + hlChroma[1] + "," + hlChroma[2]);
                 // The reconstruction emits scene-referred values above 1.0 -
                 // up to the white-balanced clip extent. Tell downstream nodes
-                // (Amaze's saturation bounding) where the real clip level sits
+                // where the real clip level sits
                 // so reconstructed photosites are not treated as clipped data.
                 float clipLevel = 1.0f;
                 float[] wp = basePipeline.mParameters.whitePoint;
@@ -100,7 +89,7 @@ public class Bayer2Float extends Node {
 
         if(basePipeline.mParameters.vivoHdrMode) {
             // Packed RAW remains <=1, but WB and normalized LSC can exceed 1.
-            // RGB-normalized LSC is <=3; preserve that full domain in AMaZE.
+            // RGB-normalized LSC is <=3; preserve that full domain.
             float minimumWhite=1f;
             for(float value:basePipeline.mParameters.whitePoint)
                 minimumWhite=Math.min(minimumWhite,Math.max(value,1e-6f));
@@ -178,9 +167,7 @@ public class Bayer2Float extends Node {
         basePipeline.main3 = new GLTexture(wsize, new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         ((PostPipeline) basePipeline).GainMap = GainMapTex;
         glProg.closed = true;
-        // The remosaic output belongs to the pipeline, not to this node.
-        if (!remosaiced) in.close();
-        else postPipeline.remosaicOutput = null;
+        in.close();
         //GainMapTex.close();
     }
 }

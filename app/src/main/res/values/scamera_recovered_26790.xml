@@ -34,25 +34,6 @@
     <string name="bottomsheet_action_expand">Expand the bottom sheet</string>
     <string name="bottomsheet_action_expand_halfway">Expand halfway</string>
     <string name="bottomsheet_drag_handle_content_description">Drag handle</string>
-    <string name="c1_clarity">Clarity</string>
-    <string name="c1_color_balance">Color Balance</string>
-    <string name="c1_color_editor">Color Editor</string>
-    <string name="c1_color_hue">Выбранный оттенок</string>
-    <string name="c1_color_range">Диапазон оттенка</string>
-    <string name="c1_color_saturation">Насыщенность выбранного цвета</string>
-    <string name="c1_color_shift">Сдвиг оттенка</string>
-    <string name="c1_highlights">Теплота светов</string>
-    <string name="c1_lcc">Lens Cast Correction — яркость краёв</string>
-    <string name="c1_lcc_blue">LCC — синий оттенок краёв</string>
-    <string name="c1_lcc_red">LCC — красный оттенок краёв</string>
-    <string name="c1_midtones">Теплота полутонов</string>
-    <string name="c1_moire">Подавление муара</string>
-    <string name="c1_shadows">Теплота теней</string>
-    <string name="c1_single_pixel">Удаление одиночных пикселей</string>
-    <string name="c1_skin">Равномерность тона кожи</string>
-    <string name="c1_structure">Structure</string>
-    <string name="ca_blue">Ручная коррекция синего канала</string>
-    <string name="ca_red">Ручная коррекция красного канала</string>
     <string name="call_notification_answer_action">Answer</string>
     <string name="call_notification_answer_video_action">Video</string>
     <string name="call_notification_decline_action">Decline</string>
@@ -60,23 +41,17 @@
     <string name="call_notification_incoming_text">Incoming call</string>
     <string name="call_notification_ongoing_text">Ongoing call</string>
     <string name="call_notification_screening_text">Screening an incoming call</string>
-    <string name="capture_one_group">Capture One</string>
     <string name="character_counter_content_description">Characters entered %1$d of %2$d</string>
     <string name="character_counter_overflowed_content_description">Character limit exceeded %1$d of %2$d</string>
     <string name="character_counter_pattern">%1$d/%2$d</string>
     <string name="clear_text_end_icon_content_description">Clear text</string>
     <string name="copy">Copy</string>
-    <string name="defringe_green">Подавление зелёной/бирюзовой каймы, %</string>
-    <string name="defringe_purple">Подавление фиолетовой каймы, %</string>
     <string name="error_a11y_label">Error: invalid</string>
     <string name="error_icon_content_description">Error</string>
     <string name="expand_button_title">Advanced</string>
     <string name="exposed_dropdown_menu_content_description">Show dropdown menu</string>
     <string name="fab_transformation_scrim_behavior">com.google.android.material.transformation.FabTransformationScrimBehavior</string>
     <string name="fab_transformation_sheet_behavior">com.google.android.material.transformation.FabTransformationSheetBehavior</string>
-    <string name="false_color_enabled">Автокоррекция цветных граней</string>
-    <string name="false_color_strength">Сила подавления ложного цвета, %</string>
-    <string name="false_color_summary">Подавляет Bayer zipper, magenta/cyan-полосы и локально совмещает R/B с зелёным каналом</string>
     <string name="hdrplus_chroma_denoise">HDR+ chroma denoise</string>
     <string name="hdrplus_chroma_denoise_summary">Suppress colour disagreement between aligned RAW frames</string>
     <string name="hdrplus_high_denoise">HDR+ high-frequency denoise</string>
@@ -213,48 +188,6 @@
     <string name="mtrl_timepicker_confirm">OK</string>
     <string name="not_set">Not set</string>
     <string name="password_toggle_content_description">Show password</string>
-    <string name="pref_c1_clarity_default">0</string>
-    <string name="pref_c1_clarity_key">pref_c1_clarity_key</string>
-    <string name="pref_c1_color_hue_default">0</string>
-    <string name="pref_c1_color_hue_key">pref_c1_color_hue_key</string>
-    <string name="pref_c1_color_range_default">0</string>
-    <string name="pref_c1_color_range_key">pref_c1_color_range_key</string>
-    <string name="pref_c1_color_saturation_default">0</string>
-    <string name="pref_c1_color_saturation_key">pref_c1_color_saturation_key</string>
-    <string name="pref_c1_color_shift_default">0</string>
-    <string name="pref_c1_color_shift_key">pref_c1_color_shift_key</string>
-    <string name="pref_c1_highlights_default">0</string>
-    <string name="pref_c1_highlights_key">pref_c1_highlights_key</string>
-    <string name="pref_c1_lcc_blue_default">0</string>
-    <string name="pref_c1_lcc_blue_key">pref_c1_lcc_blue_key</string>
-    <string name="pref_c1_lcc_default">0</string>
-    <string name="pref_c1_lcc_key">pref_c1_lcc_key</string>
-    <string name="pref_c1_lcc_red_default">0</string>
-    <string name="pref_c1_lcc_red_key">pref_c1_lcc_red_key</string>
-    <string name="pref_c1_midtones_default">0</string>
-    <string name="pref_c1_midtones_key">pref_c1_midtones_key</string>
-    <string name="pref_c1_moire_default">0</string>
-    <string name="pref_c1_moire_key">pref_c1_moire_key</string>
-    <string name="pref_c1_shadows_default">0</string>
-    <string name="pref_c1_shadows_key">pref_c1_shadows_key</string>
-    <string name="pref_c1_single_pixel_default">50</string>
-    <string name="pref_c1_single_pixel_key">pref_c1_single_pixel_key</string>
-    <string name="pref_c1_skin_default">0</string>
-    <string name="pref_c1_skin_key">pref_c1_skin_key</string>
-    <string name="pref_c1_structure_default">0</string>
-    <string name="pref_c1_structure_key">pref_c1_structure_key</string>
-    <string name="pref_ca_blue_default">0</string>
-    <string name="pref_ca_blue_key">pref_ca_blue_key</string>
-    <string name="pref_ca_red_default">0</string>
-    <string name="pref_ca_red_key">pref_ca_red_key</string>
-    <string name="pref_capture_one_enabled_key">pref_capture_one_enabled_key</string>
-    <string name="pref_defringe_green_default">65</string>
-    <string name="pref_defringe_green_key">pref_defringe_green_key</string>
-    <string name="pref_defringe_purple_default">80</string>
-    <string name="pref_defringe_purple_key">pref_defringe_purple_key</string>
-    <string name="pref_false_color_enabled_key">pref_false_color_enabled_key</string>
-    <string name="pref_false_color_strength_default">75</string>
-    <string name="pref_false_color_strength_key">pref_false_color_strength_key</string>
     <string name="pref_hdrplus_denoise_strength_key">pref_hdrplus_denoise_strength_key</string>
     <string name="snr_verylow_low">Очень низкий SNR (&lt; 8): низкие частоты</string>
     <string name="snr_verylow_low_sum">Крупные перепады яркости и плавный шум. Больше — сильнее сглаживание фона</string>
@@ -289,19 +222,7 @@
     <string name="hdrplus_snr_target">HDR+: целевой SNR</string>
     <string name="hdrplus_snr_target_summary">К какому отношению сигнал/шум стремится склейка. Сила шумодава масштабируется тем, насколько кадр до него не дотягивает. У GCam на светлой сцене оценка после склейки около 110</string>
     <string name="pref_live_viewfinder_look_key">pref_live_viewfinder_look_key</string>
-    <string name="pref_rt_nr_chroma_default">50</string>
-    <string name="pref_rt_nr_chroma_key">pref_rt_nr_chroma_key</string>
-    <string name="pref_rt_nr_detail_default">50</string>
-    <string name="pref_rt_nr_detail_key">pref_rt_nr_detail_key</string>
-    <string name="pref_rt_nr_luma_default">50</string>
-    <string name="pref_rt_nr_luma_key">pref_rt_nr_luma_key</string>
-    <string name="pref_rt_nr_moire_default">50</string>
-    <string name="pref_rt_nr_moire_key">pref_rt_nr_moire_key</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
-    <string name="rt_nr_chroma">Цветовой шум</string>
-    <string name="rt_nr_detail">Сохранение деталей</string>
-    <string name="rt_nr_luma">Шум яркости</string>
-    <string name="rt_nr_moire">Подавление муара</string>
     <string name="searchbar_scrolling_view_behavior">com.google.android.material.search.SearchBar$ScrollingViewBehavior</string>
     <string name="side_sheet_accessibility_pane_title">Side Sheet</string>
     <string name="side_sheet_behavior">com.google.android.material.sidesheet.SideSheetBehavior</string>
@@ -309,30 +230,6 @@
     <string name="summary_collapsed_preference_list">%1$s, %2$s</string>
     <string name="v7_preference_off">OFF</string>
     <string name="v7_preference_on">ON</string>
-    <string name="aces_custom_gamma">Пользовательская гамма</string>
-    <string name="aces_enabled">Включить ACES</string>
-    <string name="aces_enabled_summary">Заменяет стандартный финальный tone mapping единым ACES-преобразованием</string>
-    <string name="aces_exposure">Экспозиция ACES (EV)</string>
-    <string name="aces_gamma_curve">Гамма-кривая</string>
-    <string name="aces_gamma_curve_summary">Для JPEG используйте sRGB, Gamma 2.2/2.4 или Rec.709. PQ и HLG экспериментальны и без HDR-метаданных отображаются неправильно</string>
-    <string name="aces_gamut">Сжатие цветового охвата</string>
-    <string name="aces_gamut_summary">Сохраняет оттенки насыщенных цветов внутри выбранного дисплейного охвата</string>
-    <string name="aces_group">ACES</string>
-    <string name="aces_group_summary">ACES 2 GPU: цветовое пространство, тональная шкала и вывод</string>
-    <string name="aces_highlight_desat">Защита цвета в светах</string>
-    <string name="aces_hue_protection">Защита оттенков</string>
-    <string name="aces_mid_gray">Средний серый</string>
-    <string name="aces_output">Цветовое пространство вывода</string>
-    <string name="aces_output_summary">sRGB безопасен для JPEG; Display P3 требует совместимого просмотрщика</string>
-    <string name="aces_peak">Пиковая яркость (нит)</string>
-    <string name="aces_peak_summary">100 нит для SDR; повышенные значения расширяют плечо светов</string>
-    <string name="aces_shoulder">Плечо светов</string>
-    <string name="aces_surround">Контраст окружения</string>
-    <string name="aces_surround_summary">1.0 — эталон; меньше — мягче, больше — контрастнее</string>
-    <string name="aces_toe">Носок теней</string>
-    <string name="aces_tone_contrast">Контраст полутонов</string>
-    <string name="aces_tone_curve">Тоновая кривая</string>
-    <string name="aces_tone_mix">Сила тоновой кривой</string>
     <string-array name="merge_algorithm_entries">
         <item>@string/merge_algorithm_legacy</item>
         <item>@string/merge_algorithm_hdrplus</item>
@@ -341,70 +238,10 @@
         <item>legacy</item>
         <item>hdrplus</item>
     </string-array>
-    <string-array name="aces_gamma_curve_entries">
-        <item>sRGB</item>
-        <item>Gamma 2.2</item>
-        <item>Gamma 2.4 / BT.1886</item>
-        <item>Linear</item>
-        <item>Rec.709</item>
-        <item>Display P3</item>
-        <item>PQ / ST.2084 (экспериментально)</item>
-        <item>HLG (экспериментально)</item>
-        <item>Пользовательская</item>
-    </string-array>
-    <string-array name="aces_gamma_curve_values">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-        <item>4</item>
-        <item>5</item>
-        <item>6</item>
-        <item>7</item>
-        <item>8</item>
-    </string-array>
-    <string-array name="aces_output_entries">
-        <item>sRGB / Rec.709</item>
-        <item>Display P3</item>
-    </string-array>
-    <string-array name="aces_output_values">
-        <item>0</item>
-        <item>1</item>
-    </string-array>
-    <string-array name="aces_tone_curve_entries">
-        <item>ACES 2.0 (AP1 Wide Gamut)</item>
-        <item>ACES 1.x</item>
-        <item>Filmic</item>
-        <item>Reinhard</item>
-        <item>Hable (Kodak Filmic)</item>
-        <item>AgX (Next-Gen Realism)</item>
-        <item>OpenDRT</item>
-        <item>Sigmoid</item>
-        <item>Linear</item>
-        <item>Пользовательская</item>
-        <item>Lottes (Soft AMD Filmic)</item>
-        <item>Uchimura (Gran Turismo)</item>
-    </string-array>
-    <string-array name="aces_tone_curve_values">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-        <item>4</item>
-        <item>5</item>
-        <item>6</item>
-        <item>7</item>
-        <item>8</item>
-        <item>9</item>
-        <item>10</item>
-        <item>11</item>
-    </string-array>
     <bool name="abc_action_bar_embed_tabs">true</bool>
     <bool name="abc_config_actionMenuItemAllCaps">true</bool>
     <bool name="config_materialPreferenceIconSpaceReserved">false</bool>
     <bool name="mtrl_btn_textappearance_all_caps">true</bool>
-    <bool name="pref_capture_one_enabled_default">false</bool>
-    <bool name="pref_false_color_enabled_default">true</bool>
     <string name="highlight_recovery">Восстановление светов</string>
     <string name="highlight_recovery_summary">Если выбит не весь квад, слияние идёт по уцелевшим каналам, а не отбраковывается целиком. Зелёные пиксели клиппятся раньше красных и синих</string>
     <string name="highlight_recovery_min_ok">Восстановление: минимум каналов</string>
@@ -506,29 +343,6 @@
     <string name="noise_model_import_summary">Загрузить файл калибровки (.c) с коэффициентами A/B/C/D</string>
     <string name="noise_model_export">Экспорт модели шума</string>
     <string name="noise_model_export_summary">Сохранить активный профиль в Download/SCAMERA</string>
-    <string name="noise_disable_digital_gain">Отключить цифровой ISO gain</string>
-    <string name="noise_disable_digital_gain_summary">Считать член O без усиления выше аналогового ISO</string>
-    <string name="noise_model_coefficient">Коэффициент модели шума</string>
-    <string name="noise_model_coefficient_summary">Множитель всей модели; 1.0 — калибровка без изменений</string>
-    <string name="noise_iso_min">Мин. ISO шума</string>
-    <string name="noise_iso_max">Макс. ISO шума</string>
-    <string name="noise_iso_clamp_summary">Ограничение ISO для расчёта модели; 0 — без ограничения</string>
-    <string name="noise_iso_manual">Ручной ISO шума</string>
-    <string name="noise_iso_manual_summary">Фиксированное ISO для модели; 0 — реальное значение кадра</string>
-    <string-array name="noise_iso_curve_entries">
-        <item>Off</item>
-        <item>Soft</item>
-        <item>Medium</item>
-        <item>Strong</item>
-    </string-array>
-    <string-array name="noise_iso_curve_values">
-        <item>off</item>
-        <item>soft</item>
-        <item>medium</item>
-        <item>strong</item>
-    </string-array>
-    <string name="noise_iso_curve">Кривая Noise ISO</string>
-    <string name="noise_iso_curve_summary">Сжатие роста модели шума на высоких ISO</string>
     <string name="merge_robustness">Робастность склейки</string>
     <string name="merge_robustness_summary">Допуск по шумовой модели; больше — сильнее шумодав, меньше — меньше призраков (HDR+ = 8)</string>
     <string name="merge_clip_level">Порог выбитых светов</string>
@@ -557,32 +371,6 @@
     <string name="quad_bayer_enabled_desc">Съёмка с матрицы Quad Bayer в полном разрешении вместо биннинга 4:1</string>
     <string name="quad_bayer_mode_desc">Способ разбора quad-мозаики: биннинг для чистоты или ремозаик для детализации</string>
     <string name="quad_dng_metadata_desc">Какой шаблон CFA писать в DNG. Неверный вариант даёт пурпурный или ломаный цвет в редакторе</string>
-    <string name="darktable_enabled_desc">Тональная и цветовая обработка по модулям darktable вместо штатной</string>
-    <string name="darktable_exposure_desc">Общая экспокоррекция в стопах перед остальной обработкой</string>
-    <string name="darktable_filmic_contrast_desc">Крутизна плёночной S-кривой. Больше — контрастнее, но быстрее уходят света и тени</string>
-    <string name="darktable_shadows_desc">Подъём или спад теней в плёночной кривой</string>
-    <string name="darktable_highlights_desc">Сжатие или раскрытие светов в плёночной кривой</string>
-    <string name="darktable_local_contrast_desc">Локальный контраст, микроконтраст средних деталей. Избыток даёт ореолы</string>
-    <string name="darktable_colorfulness_desc">Насыщенность цвета в плёночном модуле, независимо от яркости</string>
-    <string name="darktable_highlight_reconstruction_desc">Восстановление выбитых светов по неклиппнутым каналам</string>
-    <string name="darktable_diffuse_sharpen_desc">Резкость через диффузию: восстанавливает детали, слабо усиливая шум</string>
-    <string name="darktable_profiled_denoise_desc">Шумодав по профилю сенсора, с учётом реальной модели шума</string>
-    <string name="darktable_tone_shadows_desc">Яркость теней в тональном балансе</string>
-    <string name="darktable_tone_midtones_desc">Яркость средних тонов в тональном балансе</string>
-    <string name="darktable_tone_highlights_desc">Яркость светов в тональном балансе</string>
-    <string name="darktable_balance_shadows_desc">Цветовой сдвиг теней</string>
-    <string name="darktable_balance_midtones_desc">Цветовой сдвиг средних тонов</string>
-    <string name="darktable_balance_highlights_desc">Цветовой сдвиг светов</string>
-    <string name="darktable_color_reconstruction_desc">Восстановление цвета в пересвеченных областях по окружающим пикселям</string>
-    <string name="darktable_calibration_temperature_desc">Цветовая температура при калибровке, в кельвинах</string>
-    <string name="darktable_calibration_tint_desc">Оттенок зелёный-пурпурный при калибровке</string>
-    <string name="darktable_color_red_desc">Коррекция красного канала в цветовой калибровке</string>
-    <string name="darktable_color_green_desc">Коррекция зелёного канала в цветовой калибровке</string>
-    <string name="darktable_color_blue_desc">Коррекция синего канала в цветовой калибровке</string>
-    <string name="darktable_wide_ca_desc">Подавление широкой хроматической аберрации по всему кадру</string>
-    <string name="darktable_vignette_desc">Виньетирование: минус затемняет углы, плюс осветляет</string>
-    <string name="darktable_haze_desc">Удаление дымки, подъём контраста в далёких планах</string>
-    <string name="darktable_texture_desc">Проработка мелкой фактуры без влияния на крупные кромки</string>
     <string name="noise_model_profile_desc">Профиль шума сенсора. Задаёт, какой уровень отклонения считается шумом, а какой реальным сигналом</string>
     <string name="zsl_merge_algorithm_desc">Алгоритм склейки обычных ZSL-кадров</string>
     <string name="night_merge_algorithm_desc">Алгоритм склейки в ночном режиме</string>
@@ -590,41 +378,6 @@
     <string name="ai_denoise_strength_desc">Общая сила ИИ-шумодава. Избыток стирает фактуру</string>
     <string name="ai_denoise_luma_desc">Сила ИИ-шумодава по яркости: зерно</string>
     <string name="ai_denoise_chroma_desc">Сила ИИ-шумодава по цвету: цветные пятна</string>
-    <string name="rt_nr_luma_desc">Шумоподавление яркости в RawTherapee-модуле</string>
-    <string name="rt_nr_chroma_desc">Шумоподавление цвета в RawTherapee-модуле</string>
-    <string name="rt_nr_detail_desc">Сколько мелких деталей сохраняется вопреки шумодаву</string>
-    <string name="rt_nr_moire_desc">Подавление муара на регулярных фактурах: ткань, сетки, кирпич</string>
-    <string name="false_color_strength_desc">Подавление ложного цвета — цветной ряби на мелких деталях после дебайера</string>
-    <string name="defringe_purple_desc">Удаление пурпурной каймы вокруг контрастных кромок</string>
-    <string name="defringe_green_desc">Удаление зелёной каймы вокруг контрастных кромок</string>
-    <string name="ca_red_desc">Коррекция хроматической аберрации по красному каналу: масштабирование относительно зелёного</string>
-    <string name="ca_blue_desc">Коррекция хроматической аберрации по синему каналу: масштабирование относительно зелёного</string>
-    <string name="aces_tone_curve_desc">Тональная кривая ACES. Определяет характер перехода в света и тени</string>
-    <string name="aces_exposure_desc">Экспокоррекция перед кривой ACES, в стопах</string>
-    <string name="aces_tone_mix_desc">Доля кривой ACES в итоге. 0 — кривая не применяется</string>
-    <string name="aces_mid_gray_desc">Точка среднего серого: какая яркость сцены считается серединой</string>
-    <string name="aces_tone_contrast_desc">Контраст кривой ACES в средних тонах</string>
-    <string name="aces_toe_desc">Носок кривой: поведение в тенях. Больше — глубже и контрастнее чёрный</string>
-    <string name="aces_shoulder_desc">Плечо кривой: поведение в светах. Больше — мягче переход к белому</string>
-    <string name="aces_highlight_desat_desc">Обесцвечивание светов к белому вместо ухода в цветной клиппинг</string>
-    <string name="aces_hue_protection_desc">Удержание оттенка при сильном изменении яркости</string>
-    <string name="aces_custom_gamma_desc">Дополнительная гамма после кривой ACES</string>
-    <string name="capture_one_enabled_desc">Обработка по модулям в стиле Capture One вместо штатной</string>
-    <string name="c1_lcc_desc">Коррекция падения света к краям кадра</string>
-    <string name="c1_lcc_red_desc">Коррекция цветового сдвига к краям по красному каналу</string>
-    <string name="c1_lcc_blue_desc">Коррекция цветового сдвига к краям по синему каналу</string>
-    <string name="c1_clarity_desc">Чёткость: локальный контраст средних деталей</string>
-    <string name="c1_structure_desc">Структура: контраст мелкой фактуры, не затрагивая крупные кромки</string>
-    <string name="c1_moire_desc">Подавление муара на регулярных фактурах</string>
-    <string name="c1_single_pixel_desc">Удаление одиночных выбитых пикселей: горячих и битых</string>
-    <string name="c1_skin_desc">Смягчение и выравнивание тона кожи</string>
-    <string name="c1_color_hue_desc">Центр диапазона оттенков для точечной цветокоррекции</string>
-    <string name="c1_color_range_desc">Ширина диапазона оттенков вокруг выбранного центра</string>
-    <string name="c1_color_shift_desc">Сдвиг оттенка внутри выбранного диапазона</string>
-    <string name="c1_color_saturation_desc">Насыщенность внутри выбранного диапазона оттенков</string>
-    <string name="c1_shadows_desc">Яркость теней</string>
-    <string name="c1_midtones_desc">Яркость средних тонов</string>
-    <string name="c1_highlights_desc">Яркость светов</string>
     <string name="wide169_desc">Съёмка в 16:9 вместо полного поля сенсора. Кадр обрезается сверху и снизу</string>
     <string name="short_frame_count_desc">Сколько коротких кадров снимать для спасения светов. 0 — не снимать</string>
     <string name="short_exposure_ev_desc">Насколько короткий кадр темнее базового, в стопах</string>
@@ -642,8 +395,6 @@
     <string name="peak_method_desc">Подсветка областей в фокусе на видоискателе</string>
     <string name="show_afdata_desc">Показ данных автофокуса на видоискателе</string>
     <string name="frame_count_desc">Сколько кадров объединяется в один снимок. Больше — чище, но дольше и выше риск смаза</string>
-    <string name="saturation_seekbar_desc">Насыщенность цвета итогового снимка</string>
-    <string name="contrast_seekbar_desc">Контраст итогового снимка</string>
     <string name="cfa_desc">Шаблон цветового фильтра сенсора. Неверный даёт ломаные цвета</string>
     <string name="color_method_desc">Метод цветопередачи: как сырые отсчёты переводятся в цвет</string>
     <string name="horizon_desc">Указатель горизонта на видоискателе</string>

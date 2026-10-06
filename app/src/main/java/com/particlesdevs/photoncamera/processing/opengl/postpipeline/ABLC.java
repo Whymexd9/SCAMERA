@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.annotation.SuppressLint;
 
-import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.util.Log;
 
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
@@ -14,59 +13,15 @@ import java.util.Locale;
 public class ABLC extends Node {
     private static final String TAG = "ABLC";
 
-    @Tunable(
-            title = "Enable auto black level",
-            category = TAG,
-            min = 0.0f,
-            max = 1.0f,
-            defaultValue = 1.0f,
-            step = 1.0f
-    )
-    boolean enable;
+    boolean enable = true;
 
-    @Tunable(
-            title = "Histogram size",
-            description = "Histogram bin count",
-            category = TAG,
-            min = 64,
-            max = 16384,
-            defaultValue = 256,
-            step = 32
-    )
-    int histSize;
+    int histSize = 256;
 
-    @Tunable(
-            title = "Noise exposure compensation EV",
-            description = "Multiply noise for ABL search by selected power of 2",
-            category = TAG,
-            min = -10.0f,
-            max = 10.0f,
-            defaultValue = 0.0f,
-            step = 0.5f
-    )
-    double noiseEV;
+    double noiseEV = 0.0;
 
-    @Tunable(
-            title = "Min exposure multiplier",
-            description = "Min multiplier for black region search",
-            category = TAG,
-            min = 1.0f,
-            max = 32.0f,
-            defaultValue = 8.0f,
-            step = 1.0f
-    )
-    double minExposureMpy;
+    double minExposureMpy = 8.0;
 
-    @Tunable(
-            title = "Max exposure compensation",
-            description = "Max possible exposure compensation to search dark regions if noise is low",
-            category = TAG,
-            min = 1.0f,
-            max = 16.0f,
-            defaultValue = 10.0f,
-            step = 1.0f
-    )
-    double maxEV;
+    double maxEV = 10.0;
 
     
     public ABLC() {

@@ -3,7 +3,6 @@
     <string name="request_permission">Aplikasi Ini membutuhkan perizinan Kamera</string>
     <string name="camera_error">Perangkat Ini tidak mendukung Camera2 API</string>
     <string name="frame_count">Jumlah Frame</string>
-    <string name="saturation">Saturasi</string>
     <string name="turn_on_grid">Perlihatkan Garis Penanda</string>
     <string name="turn_on_round_edges">Aktifkan garis tepi membulat</string>
     <string name="telegram">Grup Telegram</string>

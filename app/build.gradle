@@ -203,9 +203,6 @@ dependencies {
     annotationProcessor 'com.github.bumptech.glide:compiler:5.0.5'
     implementation group: 'commons-io', name: 'commons-io', version: '20030203.000550'
     implementation 'com.google.code.gson:gson:2.13.2'
-    // LiteRT interpreter + NNAPI delegate for the optional RAW Bayer AI denoiser.
-    implementation files('libs/litert-api-1.4.2.aar')
-    implementation files('libs/litert-1.4.2.aar')
     // Navigation Component
     implementation "androidx.navigation:navigation-fragment-ktx:2.9.7"
     implementation "androidx.navigation:navigation-ui-ktx:2.9.7"

@@ -9,8 +9,6 @@
     <string name="highlight_suppression">Света / восстановление хайлайтов (0–200)</string>
     <string name="ai_denoise_available">UNet Fast или NAFNet Quality · NPU через NNAPI, с явным переходом на CPU</string>
 
-    <string name="contrast">Контраст</string>
-    <string name="saturation">Насыщенность</string>
     <string name="turn_on_grid">Сетка</string>
     <string name="turn_on_round_edges">Включить закруглённые края</string>
     <string name="telegram">Группа Telegram</string>

@@ -3,7 +3,6 @@
     <string name="request_permission">"Esta aplicación necesita permisos de cámara "</string>
     <string name="camera_error">Este dispositivo no soporta Camera2 API</string>
     <string name="frame_count">"Número de Frames "</string>
-    <string name="saturation">Saturacion</string>
     <string name="turn_on_grid">Mostrar cuadricula</string>
     <string name="turn_on_round_edges">Activar bordes redondos</string>
     <string name="telegram">"Grupo de Telegram "</string>

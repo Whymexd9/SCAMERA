@@ -203,10 +203,7 @@ public final class SettingsNumericRules {
         }
         if (key.startsWith("pref_vivo_hdr_") && !key.equals("pref_vivo_hdr_enabled")) return new double[]{0,2,0};
         switch (key) {
-            case "pref_aces_gamma_curve_key": case "pref_aces_tone_curve_key": case "pref_aces_output_key": return new double[]{0,20,1};
             case "pref_antibanding_hz_key": return new double[]{0,1000,1};
-            case "pref_noise_iso_min_key": case "pref_noise_iso_max_key": case "pref_noise_iso_manual_key": return new double[]{0,1000000,1};
-            case "pref_noise_model_coefficient_key": return new double[]{0.001,100,0};
             default: return null;
         }
     }

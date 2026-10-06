@@ -3,7 +3,6 @@
     <string name="request_permission">Bu uygulama kamera iznine ihtiyaç duyuyor.</string>
     <string name="camera_error">Bu cihazın Camera2 API desteği yok.</string>
     <string name="frame_count">Kare sayısı:</string>
-    <string name="saturation">Doygunluk</string>
     <string name="turn_on_grid">Izgarayı göster</string>
     <string name="turn_on_round_edges">Yuvarlak kenarları etkinleştir</string>
     <string name="telegram">Telegram grubu</string>

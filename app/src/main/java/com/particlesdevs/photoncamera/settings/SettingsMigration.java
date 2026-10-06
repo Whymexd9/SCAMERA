@@ -80,9 +80,24 @@ public final class SettingsMigration {
             "hexquad_post_denoise", "quad2x2_exposure_ev", "quad2x2_post_denoise", "pref_vivo_hdr_luma",
             "pref_vivo_hdr_chroma", "pref_vivo_hdr_sharpen", "pref_ai_denoise_enabled_key",
             "pref_ai_denoise_strength_key", "pref_ai_denoise_luma_key", "pref_ai_denoise_chroma_key",
-            "pref_ai_denoise_model_key", "pref_remosaic_dump_key", "pref_noise_dynamic_enabled_key"));
+            "pref_ai_denoise_model_key", "pref_remosaic_dump_key", "pref_noise_dynamic_enabled_key",
+            // P5: the legacy post-processing (RT / ESD3D denoise, GCam finish, tone pipelines, ACES, Capture One,
+            // darktable, false colour / CA, PhotonCamera tone sliders, noise-model ISO overrides)
+            "pref_rt_denoise_backend", "pref_capture_one_enabled_key", "pref_false_color_enabled_key",
+            "pref_saliency_protection_key", "pref_false_color_strength_key", "pref_defringe_purple_key",
+            "pref_defringe_green_key", "pref_ca_red_key", "pref_ca_blue_key", "pref_saturation_seekbar_key",
+            "pref_contrast_seekbar_key", "pref_shadows_seekbar_key", "pref_compressor_seekbar_key",
+            "pref_sensor_sharpening_enabled", "pref_noise_disable_digital_gain_key", "pref_noise_model_coefficient_key",
+            "pref_noise_iso_curve_key", "pref_noise_iso_min_key", "pref_noise_iso_max_key", "pref_noise_iso_manual_key",
+            "pref_noise_seekbar_key", "pref_agx_local_highlights", "pref_agx_local_start"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
-            "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_"};
+            "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
+            // P5: the legacy post-processing and the tunables of its nodes
+            "rt512_", "pref_rt_nr_", "pref_gcam_", "pref_aces_", "pref_c1_", "scamera_darktable_",
+            "pref_tunable_postpipeline_", "pref_tunable_esd3d2_", "pref_tunable_ablc_", "pref_tunable_initial_",
+            "pref_tunable_autoexposurecurve_", "pref_tunable_opendrt_", "pref_tunable_locallaplacian_",
+            "pref_tunable_linearexposure_", "pref_tunable_headroomrender_", "pref_tunable_bayer2float_",
+            "pref_tunable_amaze_"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;
         for (String prefix : OBSOLETE_PREFIXES) if (key.startsWith(prefix)) return true;

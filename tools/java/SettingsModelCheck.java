@@ -12,10 +12,13 @@ public class SettingsModelCheck {
         if(!PreferenceNumber.floating(float.class))throw new AssertionError("float step=1 still float");
         if(!PreferenceNumber.format(.00390625f,true).equals("0.00390625"))throw new AssertionError("precision lost");
         eq(PreferenceNumber.progress(.30f,.10f,100,100),20);
-        if(SettingsNumericRules.error("pref_noise_iso_manual_key","300.5")==null)throw new AssertionError("integer validation");
+        if(SettingsNumericRules.error("pref_antibanding_hz_key","100.5")==null)throw new AssertionError("integer validation");
         if(SettingsNumericRules.bounds("pref_mfsr_frames_key")!=null)throw new AssertionError("removed RAW MFSR key still bounded");
-        eq(Double.parseDouble(SettingsNumericRules.normalized("pref_aces_gamut_key","98.25","100")),98.25);
-        eq(Double.parseDouble(SettingsNumericRules.normalized("pref_noise_model_coefficient_key","NaN","1.0")),1);
+        eq(Double.parseDouble(SettingsNumericRules.normalized("pref_lmc_hybrid_cdm","0.0625","0.07")),.0625);
+        eq(Double.parseDouble(SettingsNumericRules.normalized("pref_lmc_hybrid_cdm","NaN","0.07")),.07);
+        // the legacy post-processing keys (ACES, noise-model ISO overrides) are gone and unbounded
+        if(SettingsNumericRules.bounds("pref_aces_gamut_key")!=null||SettingsNumericRules.bounds("pref_noise_iso_manual_key")!=null)
+            throw new AssertionError("removed legacy post-processing key still bounded");
         eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-1,25",0),-1.25);
         eq(SettingsNumericRules.value("pref_vivo_hdr_exposure","-9",0),-2);
         eq(SettingsNumericRules.value("pref_vivo_hdr_gamma","0",1),.5);
@@ -37,7 +40,6 @@ public class SettingsModelCheck {
         p.clear();
         p.put("pref_camera_mode_key", "3");
         p.put("pref_merge_route", "scamhdr");
-        p.put("pref_rt_denoise_backend", "rt512");p.put("rt512_chroma", 15);
         p.put("pref_vivo_nice_route", "vcf2");
         Map<String,Object> saved = new HashMap<>(p);
         // Retired route values from saved/imported configs must not bypass RAW
@@ -47,7 +49,6 @@ public class SettingsModelCheck {
             for (String route : new String[]{"raw", "vcf2", "invalid"}) {
                 p.put("pref_vivo_nice_route", route);
                 inactive(p,"pref_vivo_nice_route");
-                inactive(p,"rt512_chroma");
                 active(p,"pref_vivo_nice_noise_scale");active(p,"pref_vivo_hdr_contrast");
                 active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
                 active(p,"pref_sharp_usm_enabled_key");
@@ -56,15 +57,15 @@ public class SettingsModelCheck {
         p.clear();p.putAll(saved);
         new SettingsAvailability(p).reason("pref_vivo_nice_route");
         if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
-        p.put("pref_merge_route","hybrid");inactive(p,"rt512_chroma");inactive(p,"pref_vivo_nice_noise_scale");
+        p.put("pref_merge_route","hybrid");inactive(p,"pref_vivo_nice_noise_scale");
         p.put("pref_merge_route","scamhdr");
         // LMC hybrid availability: its rows need the hybrid route (the default) and a plain Bayer route; then the stages its
         // route skips are inactive and SCAM HDR's own rows are inactive too.
-        Map<String,Object> h=new HashMap<>();h.put("pref_rt_denoise_backend","rt512");
-        h.put("pref_merge_route","scamhdr");inactive(h,"pref_lmc_hybrid_cdm");inactive(h,"rt512_chroma");
+        Map<String,Object> h=new HashMap<>();
+        h.put("pref_merge_route","scamhdr");inactive(h,"pref_lmc_hybrid_cdm");
         h.remove("pref_merge_route");
         active(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_sabre61");active(h,"pref_lmc_hybrid_highlight_recovery");
-        inactive(h,"rt512_chroma");inactive(h,"pref_vivo_nice_noise_photon");
+        inactive(h,"pref_vivo_nice_noise_photon");
         active(h,"pref_sharp_usm_enabled_key");
         // the removed legacy switches (RAW MFSR, standalone remosaic) no longer take the hybrid off
         h.put("pref_raw_mfsr_enabled_key",true);h.put("pref_remosaic_enabled_key",true);active(h,"pref_lmc_hybrid_cdm");

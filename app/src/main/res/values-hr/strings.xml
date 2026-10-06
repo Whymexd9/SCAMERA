@@ -3,7 +3,6 @@
     <string name="request_permission">Ovojoj aplikaciji je potrebna dozvola za pristup kameri.</string>
     <string name="camera_error">Ovaj uređaj ne podržava Camera2 API.</string>
     <string name="frame_count">Broj sličica:</string>
-    <string name="saturation">Zasićenje bojom</string>
     <string name="turn_on_grid">Pokaži rešetku</string>
     <string name="turn_on_round_edges">Omogući zakrivljene rubove:</string>
     <string name="telegram">Telegram grupa</string>

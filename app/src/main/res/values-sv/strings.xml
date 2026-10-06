@@ -3,7 +3,6 @@
     <string name="request_permission">Denna app behöver rättigheter för att använda kameran.</string>
     <string name="camera_error">Denna telefon stödjer ej Camera2 API.</string>
     <string name="frame_count">Antal Bilder:</string>
-    <string name="saturation">Mättnad</string>
     <string name="turn_on_grid">Visa Rutmönster</string>
     <string name="turn_on_round_edges">Aktivera runda kanter</string>
     <string name="telegram">Telegram-grupp</string>

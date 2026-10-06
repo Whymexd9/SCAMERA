@@ -41,47 +41,33 @@
      * closed so the pipeline skips the draw for this node.
      */
     public class AutoExposureCurve extends Node {
-        @Tunable(title = "Histogram size", category = "Auto Exposure", defaultValue = 256, min = 256, max = 16384, step = 16, description = "Histogram bin count")
-        int histSize;
+        int histSize = 256;
 
-        @Tunable(title = "Target Brightness", category = "Auto Exposure", max = 255.0f, defaultValue = 128.0f)
-        float target;
+        float target = 128.0f;
 
-        @Tunable(title = "Noise Max", category = "Auto Exposure", max = 1.0f, defaultValue = 0.05f)
-        float noiseMax;
+        float noiseMax = 0.05f;
 
-        @Tunable(title = "Gain Max", category = "Auto Exposure", max = 20.0f, defaultValue = 9.0f)
-        float gainMax;
+        float gainMax = 9.0f;
 
-        @Tunable(title = "Enable WhitePoint Search", category = "Auto Exposure", defaultValue = 1, min = 0, max = 1, step = 1, description = "Enable white point search for Reinhard tone mapping")
-        boolean enableWP;
+        boolean enableWP = true;
 
-        @Tunable(title = "WhitePoint apply level", category = "Auto Exposure", min = 0.0f, max = 1.0f, step = 0.1f, defaultValue = 0.8f, description = "Lower level disables white point, higher level applies full")
-        float whiteApply;
+        float whiteApply = 0.8f;
 
-        @Tunable(title = "Fill coefficient", category = "Auto Exposure", min = 0.0f, max = 1.0f, step = 0.01f, defaultValue = 0.99f, description = "Lower fill ratio can skip right histogram value peaks for HDR scenarios")
-        float fillCoefficient;
+        float fillCoefficient = 0.99f;
 
-    @Tunable(title = "Apply gamma mix", category = "Auto Exposure", min = 0.0f, max = 1.0f, step = 0.01f, defaultValue = 0.05f, description = "Blend between AE color space sRGB-linear")
-    float applyGammaMix;
+    float applyGammaMix = 0.05f;
 
-    @Tunable(title = "Highlight Compression", category = "Auto Exposure", defaultValue = 1, min = 0, max = 1, step = 1, description = "Adaptive highlight shoulder: smoothly compress the top of the range on HDR scenes instead of clipping to flat white")
-    boolean highlightCompression;
+    boolean highlightCompression = true;
 
-    @Tunable(title = "Highlight Knee Max", category = "Auto Exposure", min = 0.6f, max = 1.0f, step = 0.01f, defaultValue = 0.9f, description = "Shoulder start when almost nothing clips (higher = later rolloff)")
-    float kneeMax;
+    float kneeMax = 0.9f;
 
-    @Tunable(title = "Highlight Knee Min", category = "Auto Exposure", min = 0.3f, max = 1.0f, step = 0.01f, defaultValue = 0.55f, description = "Shoulder start at heavy clipping (lower = stronger highlight compression)")
-    float kneeMin;
+    float kneeMin = 0.55f;
 
-    @Tunable(title = "Highlight Clip Ref", category = "Auto Exposure", min = 0.01f, max = 0.5f, step = 0.01f, defaultValue = 0.1f, description = "Clipped image fraction at which the knee reaches its minimum")
-    float kneeRef;
+    float kneeRef = 0.1f;
 
-    @Tunable(title = "Highlight Clip Tolerance", category = "Auto Exposure", min = 0.0f, max = 0.2f, step = 0.01f, defaultValue = 0.03f, description = "Response headroom above display white before a pixel counts as clipped; absorbs bin quantization so an exactly-white highlight pile does not trigger the shoulder")
-    float clipTolerance;
+    float clipTolerance = 0.03f;
 
-    @Tunable(title = "Adaptive WhitePoint", category = "Auto Exposure", defaultValue = 1, min = 0, max = 1, step = 1, description = "Measure the scene white above display white and divide the input by it in initial.glsl, folding over-range highlight detail below display white")
-    boolean adaptiveWhitePointEnable;
+    boolean adaptiveWhitePointEnable = true;
 
         private static final int CURVE_SIZE = 1024;
 

@@ -312,11 +312,6 @@ public class GLBasePipeline implements AutoCloseable {
     private static boolean canBypassFailedNode(Node node) {
         String name = node.Name;
         return "ABLC".equals(name)
-                || "AutoExposureCurve".equals(name)
-                || "ES3D".equals(name)
-                || "LocalLaplacian".equals(name)
-                || "CaptureSharpening".equals(name)
-                || "CorrectingFlow".equals(name)
                 || "Sharpening".equals(name);
     }
 

@@ -3,7 +3,6 @@
     <string name="request_permission">Această aplicație are nevoie de permisiunea camerei.</string>
     <string name="camera_error">Acest dispozitiv nu acceptă Camera2 API.</string>
     <string name="frame_count">Număr cadre:</string>
-    <string name="saturation">Saturaţie</string>
     <string name="turn_on_grid">Arată grila</string>
     <string name="turn_on_round_edges">Permite colţuri rotunjite</string>
     <string name="telegram">Grup Telegram</string>

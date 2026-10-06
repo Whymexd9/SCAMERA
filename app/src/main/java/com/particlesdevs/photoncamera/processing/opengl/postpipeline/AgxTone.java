@@ -46,8 +46,6 @@ public final class AgxTone {
         return !"off".equals(RawTherapeeSettings.text("pref_agx_mode", "agx"));
     }
 
-    public static Params load() { return load(false); }
-
     /** The AgX linear exposure multiplier (EV slider + look offset), without loading the rest. */
     public static float exposureMultiplier() {
         float evLook = "scamera".equals(RawTherapeeSettings.text("pref_agx_look", "scamera")) ? 0.25f : 0f;
@@ -55,12 +53,11 @@ public final class AgxTone {
     }
 
     /**
-     * @param nice SCAM HDR: the HDR data of large bright areas (windows, sky) keeps its
-     *             range (stronger, earlier local compression) and near-white highlights
-     *             lose the colour cast that white balance and the look saturation leave
-     *             on them. Plain photos keep their settings.
+     * SCAM HDR / hybrid tone: the HDR data of large bright areas (windows, sky) keeps its range (stronger, earlier
+     * local compression) and near-white highlights lose the colour cast that white balance and the look saturation
+     * leave on them.
      */
-    public static Params load(boolean nice) {
+    public static Params load() {
         Params p = new Params();
         String look = RawTherapeeSettings.text("pref_agx_look", "scamera");
         // Look presets (Blender 4 contrast looks; minimal-AgX / FairplexVR CDL looks).
@@ -98,18 +95,12 @@ public final class AgxTone {
         float hueR = num("pref_agx_hue_red", 0f, -25f, 25f);
         float hueG = num("pref_agx_hue_green", 0f, -25f, 25f);
         float hueB = num("pref_agx_hue_blue", 0f, -25f, 25f);
-        // Local highlight range: 0..100 % (default 50), start bipolar around 3 EV.
-        if (nice) {
-            // SCAM HDR has its own highlight controls (group "Света в SCAM HDR").
-            // On a hybrid shot its own copies pref_lmc_hybrid_agx_* (PreferenceKeys.profileKey).
-            p.localStrength = num(PreferenceKeys.profileKey("pref_agx_nice_local_strength"), 70f, 0f, 100f) / 100f;
-            p.localStart = num(PreferenceKeys.profileKey("pref_agx_nice_knee_start"), 0.75f, 0f, 5f);
-            p.highlightDesat = num("pref_agx_highlight_desat", 45f, 0f, 100f) / 100f;
-            p.desatStart = num("pref_agx_desat_start", 88f, 50f, 95f) / 100f;
-        } else {
-            p.localStrength = num("pref_agx_local_highlights", 50f, 0f, 100f) / 100f;
-            p.localStart = 3f + num("pref_agx_local_start", 0f, -2f, 3f);
-        }
+        // Local highlight range (group "Света в SCAM HDR"); on a hybrid shot its own copies pref_lmc_hybrid_agx_*
+        // (PreferenceKeys.profileKey).
+        p.localStrength = num(PreferenceKeys.profileKey("pref_agx_nice_local_strength"), 70f, 0f, 100f) / 100f;
+        p.localStart = num(PreferenceKeys.profileKey("pref_agx_nice_knee_start"), 0.75f, 0f, 5f);
+        p.highlightDesat = num("pref_agx_highlight_desat", 45f, 0f, 100f) / 100f;
+        p.desatStart = num("pref_agx_desat_start", 88f, 50f, 95f) / 100f;
 
         p.exposure = (float) Math.pow(2.0, ev + evLook);
         p.maxEv = 6.5f + headroom;

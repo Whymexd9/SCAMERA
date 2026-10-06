@@ -77,7 +77,8 @@ public class TunablePreferenceGenerator {
                 // Registry and declaration order are stable; do not interleave unrelated classes.
                 
                 // Find or create the category on its expert screen. A missing screen skips only this category.
-                PreferenceScreen destination = preferenceScreen.findPreference(destination(fields.get(0).className));
+                String destinationKey = destination(fields.get(0).className);
+                PreferenceScreen destination = destinationKey == null ? null : preferenceScreen.findPreference(destinationKey);
                 if (destination == null) {
                     Log.e(TAG, "Missing settings destination for " + categoryName + ", its controls are not generated");
                     continue;
@@ -102,12 +103,9 @@ public class TunablePreferenceGenerator {
     
     private static String destination(String className) {
         switch (className) {
-            case "ESD3D2": case "ABLC": return "expert_noise_screen";
-            case "LocalLaplacian": return "expert_detail_screen";
-            case "Bayer2Float": case "Amaze": return "expert_raw_screen";
             case "Parameters": return "expert_sensor_screen";
             case "CameraUIViewImpl": return "expert_viewfinder_screen";
-            default: return "expert_tone_screen";
+            default: return null; // unknown class: logged as a missing destination below
         }
     }
 

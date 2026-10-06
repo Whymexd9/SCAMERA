@@ -3,7 +3,6 @@
     <string name="request_permission">Апликацијата бара пристап до камера</string>
     <string name="camera_error">Твојот уред не подржува Camera2 API</string>
     <string name="frame_count">Број на слики:</string>
-    <string name="saturation">Заситеност</string>
     <string name="turn_on_grid">Прикажи линии</string>
     <string name="turn_on_round_edges">Уклучи Заоблени ќошеви</string>
     <string name="telegram">Телеграм група</string>

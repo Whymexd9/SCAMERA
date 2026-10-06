@@ -39,32 +39,6 @@ public final class ScameraPreferences {
 
 
 
-    public static boolean darktableEnabled() { return PreferenceNumber.bool(com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), "scamera_darktable_enabled"), false); }
-    public static float darktableExposure() { return intValue("scamera_darktable_exposure", 0) / 10.0f; }
-    public static float darktableFilmicContrast() { return intValue("scamera_darktable_filmic_contrast", 100) / 100.0f; }
-    public static float darktableShadows() { return intValue("scamera_darktable_shadows", 0) / 100.0f; }
-    public static float darktableHighlights() { return intValue("scamera_darktable_highlights", 0) / 100.0f; }
-    public static float darktableLocalContrast() { return intValue("scamera_darktable_local_contrast", 0) / 100.0f; }
-    public static float darktableColorfulness() { return intValue("scamera_darktable_colorfulness", 0) / 100.0f; }
-    public static float darktableHighlightReconstruction() { return intValue("scamera_darktable_highlight_reconstruction", 0) / 100.0f; }
-    public static float darktableDiffuseSharpen() { return intValue("scamera_darktable_diffuse_sharpen", 0) / 100.0f; }
-    public static float darktableProfiledDenoise() { return intValue("scamera_darktable_profiled_denoise", 0) / 100.0f; }
-    public static float darktableToneShadows() { return intValue("scamera_darktable_tone_shadows", 0) / 100.0f; }
-    public static float darktableToneMidtones() { return intValue("scamera_darktable_tone_midtones", 0) / 100.0f; }
-    public static float darktableToneHighlights() { return intValue("scamera_darktable_tone_highlights", 0) / 100.0f; }
-    public static float darktableBalanceShadows() { return intValue("scamera_darktable_balance_shadows", 0) / 100.0f; }
-    public static float darktableBalanceMidtones() { return intValue("scamera_darktable_balance_midtones", 0) / 100.0f; }
-    public static float darktableBalanceHighlights() { return intValue("scamera_darktable_balance_highlights", 0) / 100.0f; }
-    public static float darktableColorReconstruction() { return intValue("scamera_darktable_color_reconstruction", 0) / 100.0f; }
-    public static float darktableCalibrationTemperature() { return intValue("scamera_darktable_calibration_temperature", 0) / 100.0f; }
-    public static float darktableCalibrationTint() { return intValue("scamera_darktable_calibration_tint", 0) / 100.0f; }
-    public static float darktableColorRed() { return intValue("scamera_darktable_color_red", 0) / 100.0f; }
-    public static float darktableColorGreen() { return intValue("scamera_darktable_color_green", 0) / 100.0f; }
-    public static float darktableColorBlue() { return intValue("scamera_darktable_color_blue", 0) / 100.0f; }
-    public static float darktableWideCa() { return intValue("scamera_darktable_wide_ca", 0) / 100.0f; }
-    public static float darktableVignette() { return intValue("scamera_darktable_vignette", 0) / 100.0f; }
-    public static float darktableHazeRemoval() { return intValue("scamera_darktable_haze", 0) / 100.0f; }
-    public static float darktableTexture() { return intValue("scamera_darktable_texture", 0) / 100.0f; }
 
     private static String text(String key, String fallback) {
         Object value = com.particlesdevs.photoncamera.settings.PreferenceValue.get(prefs(), key); return value == null ? fallback : value.toString();

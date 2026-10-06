@@ -3,6 +3,5 @@
     <string name="request_permission">এই অ্যাপ এর ক্যামেরা অনুমতি প্রয়োজন</string>
     <string name="camera_error">এই ডিভাইসে ক্যামেরা ২ এপিআই সাপোর্ট নেই</string>
     <string name="frame_count">ফ্রেম এর মাত্রাঃ</string>
-    <string name="saturation">রঙের ঘনত্ব</string>
     <string name="turn_on_grid">গ্রিড দেখুন</string>
 </resources>

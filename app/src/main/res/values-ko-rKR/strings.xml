@@ -10,8 +10,6 @@
     <string name="camera_error">이 기기는 Camera2 API를 지원하지 않습니다.</string>
     <string name="frame_count">HDR 프레임 수</string>
 
-    <string name="contrast">대비</string>
-    <string name="saturation">채도</string>
     <string name="hdrx" translatable="false">HDRX</string>
     <string name="turn_on_grid">그리드 표시</string>
     <string name="turn_on_round_edges">라운드 엣지 활성화</string>

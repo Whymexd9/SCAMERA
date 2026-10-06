@@ -23,15 +23,10 @@ public class Settings {
     public boolean hdrxNR;
     public boolean ultraHdr;
     public double exposureCompensation;
-    public double saturation;
     public double sharpness;
-    public double contrastMpy = 1.0;
     public int contrastConst = 0;//TODO
-    public double noiseRstr;
     public double mergeStrength;
-    public double compressor;
     public double gain;
-    public double shadows;
     public int rawSaver;
     public boolean QuadBayer;
     public int cfaPattern;
@@ -66,16 +61,10 @@ public class Settings {
         DebugData = PreferenceKeys.isFullDebugOn();
         roundEdge = PreferenceKeys.isRoundEdgeOn();
         sharpness = PreferenceKeys.getSharpnessValue();
-        contrastMpy = PreferenceKeys.getContrastValue();//TODO recheck
 //        contrastConst = get(contrastConst, "ContrastConst");///////TODO
-//        saturation = get(saturation, "Saturation");
-        saturation = PreferenceKeys.getSaturationValue();
         exposureCompensation = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_EXPOCOMPENSATE_SEEKBAR);
-        compressor = PreferenceKeys.getCompressorValue();
-        noiseRstr = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_NOISESTR_SEEKBAR);
         mergeStrength = 1f;
         gain = PreferenceKeys.getGainValue();
-        shadows = PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_SHADOWS_SEEKBAR);
         hdrx = PreferenceKeys.isHdrxNrOn();
         cfaPattern = PreferenceKeys.getCFAValue();
         rawSaver = PreferenceKeys.isSaveRaw();

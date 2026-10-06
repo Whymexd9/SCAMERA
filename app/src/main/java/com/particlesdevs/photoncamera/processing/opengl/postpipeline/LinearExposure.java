@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
 import com.particlesdevs.photoncamera.processing.opengl.scripts.GLHistogram;
-import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.util.Log;
 
 /**
@@ -19,19 +18,14 @@ import com.particlesdevs.photoncamera.util.Log;
  * closed so the pipeline skips the draw for this node.
  */
 public class LinearExposure extends Node {
-    @Tunable(title = "Histogram size", category = "Sky Exposure", defaultValue = 1024, min = 256, max = 16384, step = 16, description = "Histogram bin count")
-    int histSize;
+    int histSize = 1024;
 
-    @Tunable(title = "Midtone Anchor", category = "Sky Exposure", min = 0.005f, max = 0.200f, defaultValue = 0.050f, step = 0.005f, description = "Linear luminance target for the 50th percentile")
-    float midAnchor = 0.050f;
+    float midAnchor = 0.05f;
 
-    @Tunable(title = "Highlight Anchor", category = "Sky Exposure", min = 0.020f, max = 0.500f, defaultValue = 0.180f, step = 0.005f, description = "Linear luminance target for the 90th percentile")
-    float highAnchor = 0.180f;
+    float highAnchor = 0.18f;
 
-    @Tunable(title = "Gain Min", category = "Sky Exposure", min = 0.25f, max = 4.0f, defaultValue = 1.0f, step = 0.25f, description = "Lower clamp of the estimated display gain")
     float gainMin = 1.0f;
 
-    @Tunable(title = "Gain Max", category = "Sky Exposure", min = 1.0f, max = 16.0f, defaultValue = 16.0f, step = 1.0f, description = "Upper clamp of the estimated display gain")
     float gainMax = 16.0f;
 
     public LinearExposure() {
@@ -56,7 +50,7 @@ public class LinearExposure extends Node {
             gainMax = com.particlesdevs.photoncamera.settings.PreferenceKeys.profileNumber("pref_nice_ae_gain_max", 128f, 1f, 256f);
         }
         // Keep the linear scene snapshot for the Ultra HDR gain-map pass
-        // (this buffer is the post-demosaic/ABLC input Initial used to see).
+        // (the linear RGB of the merge, before the tone).
         if (pipeline.captureDemosaic) {
             pipeline.captureDemosaicLinear(previousNode.WorkingTexture);
         }

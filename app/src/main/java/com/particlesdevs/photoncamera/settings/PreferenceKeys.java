@@ -37,10 +37,6 @@ public class PreferenceKeys {
     }
 
 
-    /** Scales the whole noise model. 1.0 leaves the calibration untouched. */
-    public static float getNoiseModelCoefficient() {
-        return Float.parseFloat(getAcesString("pref_noise_model_coefficient_key", "1.0"));
-    }
 
     /**
      * Derive the burst's shutter from the TET waypoint curve (see {@code TetModel})
@@ -60,11 +56,6 @@ public class PreferenceKeys {
     }
 
 
-    /** Clamp the O term's digital gain to 1, i.e. ignore gain applied above the analogue ISO. */
-    public static boolean isNoiseDigitalGainDisabled() {
-        return preferenceKeys.settingsManager.getBoolean(
-                "default_scope", "pref_noise_disable_digital_gain_key", false);
-    }
 
 
 
@@ -73,97 +64,33 @@ public class PreferenceKeys {
 
 
 
-    /** Noise ISO curve: off, soft, medium or strong compression of the model's ISO response. */
-    public static String getNoiseIsoCurve() {
-        return getAcesString("pref_noise_iso_curve_key", "off");
-    }
 
-    /** Lower clamp for the ISO fed to the noise model; 0 disables the clamp. */
-    public static int getNoiseIsoMin() {
-        return Integer.parseInt(getAcesString("pref_noise_iso_min_key", "0"));
-    }
 
-    /** Upper clamp for the ISO fed to the noise model; 0 disables the clamp. */
-    public static int getNoiseIsoMax() {
-        return Integer.parseInt(getAcesString("pref_noise_iso_max_key", "0"));
-    }
 
-    /** Fixed ISO for the noise model regardless of the capture; 0 uses the real sensitivity. */
-    public static int getNoiseIsoManual() {
-        return Integer.parseInt(getAcesString("pref_noise_iso_manual_key", "0"));
-    }
 
-    public static float getAcesCustomGamma() {
-        return getAcesFloat("pref_aces_custom_gamma_key", "2.2");
-    }
 
-    public static float getAcesExposure() {
-        return Float.parseFloat(getAcesString("pref_aces_exposure_key", "0.0"));
-    }
 
     private static float getAcesFloat(String str, String str2) {
         return Float.parseFloat(getAcesString(str, str2));
     }
 
-    public static int getAcesGammaCurve() {
-        return Integer.parseInt(getAcesString("pref_aces_gamma_curve_key", "0"));
-    }
 
-    public static float getAcesGamut() {
-        return Float.parseFloat(getAcesString("pref_aces_gamut_key", "100")) / 100.0f;
-    }
 
-    public static float getAcesHighlightDesat() {
-        return Float.parseFloat(getAcesString("pref_aces_highlight_desat_key", "100")) / 100.0f;
-    }
 
-    public static float getAcesHueProtection() {
-        return getAcesFloat("pref_aces_hue_protection_key", "100") / 100.0f;
-    }
 
-    public static float getAcesMidGray() {
-        return getAcesFloat("pref_aces_mid_gray_key", "0.18");
-    }
 
-    public static int getAcesOutput() {
-        return Integer.parseInt(getAcesString("pref_aces_output_key", "0"));
-    }
 
-    public static float getAcesPeak() {
-        return Float.parseFloat(getAcesString("pref_aces_peak_key", "100.0"));
-    }
 
-    public static float getAcesShoulder() {
-        return getAcesFloat("pref_aces_shoulder_key", "50") / 100.0f;
-    }
 
     private static String getAcesString(String str, String str2) {
         return SettingsNumericRules.normalized(str, preferenceKeys.settingsManager.getString("default_scope", str, str2), str2);
     }
 
-    public static float getAcesSurround() {
-        return Float.parseFloat(getAcesString("pref_aces_surround_key", "1.0"));
-    }
 
-    public static float getAcesToe() {
-        return getAcesFloat("pref_aces_toe_key", "50") / 100.0f;
-    }
 
-    public static float getAcesToneContrast() {
-        return getAcesFloat("pref_aces_tone_contrast_key", "1.0");
-    }
 
-    public static int getAcesToneCurve() {
-        return Integer.parseInt(getAcesString("pref_aces_tone_curve_key", "0"));
-    }
 
-    public static float getAcesToneMix() {
-        return getAcesFloat("pref_aces_tone_mix_key", "100") / 100.0f;
-    }
 
-    public static boolean isAcesEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_aces_enabled_key", false);
-    }
 
     static {
         COMMON_KEYS.add(Key.CAMERA_ID.mValue);
@@ -715,33 +642,12 @@ public class PreferenceKeys {
     }
 
 
-    public static boolean isSaliencyProtectionEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_saliency_protection_key", false);
-    }
 
-    public static boolean isFalseColorCorrectionEnabled() {
-        return getBool(Key.KEY_FALSE_COLOR_ENABLED);
-    }
 
-    public static int getFalseColorStrength() {
-        return sharpInt(Key.KEY_FALSE_COLOR_STRENGTH);
-    }
 
-    public static int getDefringePurple() {
-        return sharpInt(Key.KEY_DEFRINGE_PURPLE);
-    }
 
-    public static int getDefringeGreen() {
-        return sharpInt(Key.KEY_DEFRINGE_GREEN);
-    }
 
-    public static int getCaRed() {
-        return sharpInt(Key.KEY_CA_RED);
-    }
 
-    public static int getCaBlue() {
-        return sharpInt(Key.KEY_CA_BLUE);
-    }
 
 
 
@@ -1335,9 +1241,6 @@ public class PreferenceKeys {
 
 
 
-    public static boolean isSensorSharpeningEnabled() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_sensor_sharpening_enabled", true);
-    }
 
     private static float mfsrFloat(Key key, float fallback) {
         try {
@@ -1402,85 +1305,25 @@ public class PreferenceKeys {
 
 
 
-    public static int getRtLumaDenoise() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RT_NR_LUMA).intValue();
-    }
 
-    public static int getRtChromaDenoise() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RT_NR_CHROMA).intValue();
-    }
 
-    public static int getRtDetailRecovery() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RT_NR_DETAIL).intValue();
-    }
 
-    public static int getRtMoireDenoise() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_RT_NR_MOIRE).intValue();
-    }
 
-    public static boolean isCaptureOneEnabled() {
-        return getBool(Key.KEY_CAPTURE_ONE_ENABLED);
-    }
 
-    public static int getC1Lcc() {
-        return sharpInt(Key.KEY_C1_LCC);
-    }
 
-    public static int getC1LccRed() {
-        return sharpInt(Key.KEY_C1_LCC_RED);
-    }
 
-    public static int getC1LccBlue() {
-        return sharpInt(Key.KEY_C1_LCC_BLUE);
-    }
 
-    public static int getC1Clarity() {
-        return sharpInt(Key.KEY_C1_CLARITY);
-    }
 
-    public static int getC1Structure() {
-        return sharpInt(Key.KEY_C1_STRUCTURE);
-    }
 
-    public static int getC1Moire() {
-        return sharpInt(Key.KEY_C1_MOIRE);
-    }
 
-    public static int getC1SinglePixel() {
-        return sharpInt(Key.KEY_C1_SINGLE_PIXEL);
-    }
 
-    public static int getC1Skin() {
-        return sharpInt(Key.KEY_C1_SKIN);
-    }
 
-    public static int getC1ColorHue() {
-        return sharpInt(Key.KEY_C1_COLOR_HUE);
-    }
 
-    public static int getC1ColorRange() {
-        return sharpInt(Key.KEY_C1_COLOR_RANGE);
-    }
 
-    public static int getC1ColorShift() {
-        return sharpInt(Key.KEY_C1_COLOR_SHIFT);
-    }
 
-    public static int getC1ColorSaturation() {
-        return sharpInt(Key.KEY_C1_COLOR_SATURATION);
-    }
 
-    public static int getC1Shadows() {
-        return sharpInt(Key.KEY_C1_SHADOWS);
-    }
 
-    public static int getC1Midtones() {
-        return sharpInt(Key.KEY_C1_MIDTONES);
-    }
 
-    public static int getC1Highlights() {
-        return sharpInt(Key.KEY_C1_HIGHLIGHTS);
-    }
 
 
 
@@ -1497,21 +1340,12 @@ public class PreferenceKeys {
 
 
 
-    public static float getCompressorValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_COMPRESSOR_SEEKBAR).floatValue();
-    }
 
     public static float getGainValue() {
         return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_GAIN_SEEKBAR).floatValue();
     }
 
-    public static float getSaturationValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_SATURATION_SEEKBAR).floatValue();
-    }
 
-    public static float getContrastValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_CONTRAST_SEEKBAR).floatValue();
-    }
 
     public static int getAlignMethodValue() {
         return 1; // ESD4D produces Bayer RAW; the removed legacy RGB-layout mode is unsupported.
@@ -1675,11 +1509,7 @@ public class PreferenceKeys {
         KEY_CAMERA_SOUNDS(R.string.pref_camera_sounds_key),
         KEY_CHROMA_NR_SEEKBAR(R.string.pref_chroma_nr_seekbar_key),
         KEY_LUMA_NR_SEEKBAR(R.string.pref_luma_nr_seekbar_key),
-        KEY_COMPRESSOR_SEEKBAR(R.string.pref_compressor_seekbar_key),
-        KEY_NOISESTR_SEEKBAR(R.string.pref_noise_seekbar_key),
         KEY_GAIN_SEEKBAR(R.string.pref_gain_seekbar_key),
-        KEY_SHADOWS_SEEKBAR(R.string.pref_shadows_seekbar_key),
-        KEY_CONTRAST_SEEKBAR(R.string.pref_contrast_seekbar_key),
         KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
         KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
@@ -1725,40 +1555,13 @@ public class PreferenceKeys {
         KEY_SHARP_MICRO_UNIFORMITY(R.string.pref_sharp_micro_uniformity_key),
         KEY_SHARP_MICRO_CONTRAST(R.string.pref_sharp_micro_contrast_key),
         KEY_SHARP_MICRO_MATRIX_3X3(R.string.pref_sharp_micro_matrix_key),
-        KEY_FALSE_COLOR_ENABLED(R.string.pref_false_color_enabled_key),
-        KEY_FALSE_COLOR_STRENGTH(R.string.pref_false_color_strength_key),
-        KEY_DEFRINGE_PURPLE(R.string.pref_defringe_purple_key),
-        KEY_DEFRINGE_GREEN(R.string.pref_defringe_green_key),
-        KEY_CA_RED(R.string.pref_ca_red_key),
-        KEY_CA_BLUE(R.string.pref_ca_blue_key),
         KEY_NR_LUMA_ENABLED(R.string.pref_nr_luma_enabled_key),
         KEY_NR_CHROMA_ENABLED(R.string.pref_nr_chroma_enabled_key),
         KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
-        KEY_RT_NR_LUMA(R.string.pref_rt_nr_luma_key),
-        KEY_RT_NR_CHROMA(R.string.pref_rt_nr_chroma_key),
-        KEY_RT_NR_DETAIL(R.string.pref_rt_nr_detail_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
-        KEY_RT_NR_MOIRE(R.string.pref_rt_nr_moire_key),
-        KEY_CAPTURE_ONE_ENABLED(R.string.pref_capture_one_enabled_key),
-        KEY_C1_LCC(R.string.pref_c1_lcc_key),
-        KEY_C1_LCC_RED(R.string.pref_c1_lcc_red_key),
-        KEY_C1_LCC_BLUE(R.string.pref_c1_lcc_blue_key),
-        KEY_C1_CLARITY(R.string.pref_c1_clarity_key),
-        KEY_C1_STRUCTURE(R.string.pref_c1_structure_key),
-        KEY_C1_MOIRE(R.string.pref_c1_moire_key),
-        KEY_C1_SINGLE_PIXEL(R.string.pref_c1_single_pixel_key),
-        KEY_C1_SKIN(R.string.pref_c1_skin_key),
-        KEY_C1_COLOR_HUE(R.string.pref_c1_color_hue_key),
-        KEY_C1_COLOR_RANGE(R.string.pref_c1_color_range_key),
-        KEY_C1_COLOR_SHIFT(R.string.pref_c1_color_shift_key),
-        KEY_C1_COLOR_SATURATION(R.string.pref_c1_color_saturation_key),
-        KEY_C1_SHADOWS(R.string.pref_c1_shadows_key),
-        KEY_C1_MIDTONES(R.string.pref_c1_midtones_key),
-        KEY_C1_HIGHLIGHTS(R.string.pref_c1_highlights_key),
         KEY_EXPOCOMPENSATE_SEEKBAR(R.string.pref_expocompensation_seekbar_key),
-        KEY_SATURATION_SEEKBAR(R.string.pref_saturation_seekbar_key),
         KEY_ALIGN_METHOD(R.string.pref_align_method_key),
         KEY_COLOR_METHOD(R.string.pref_color_method_key),
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),

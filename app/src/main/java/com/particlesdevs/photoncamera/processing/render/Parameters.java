@@ -82,10 +82,8 @@ public class Parameters {
     public float[] gainMap;
     public float[] proPhotoToSRGB = new float[9];
     public float[] sensorToProPhoto = new float[9];
-    public float tonemapStrength = 1.4f;
     /** 0..1 user control for retaining short-frame highlight headroom in SDR tone mapping. */
     public float highlightSuppressionStrength = 1.0f;
-    public float[] customTonemap;
     public Point[] hotPixels;
     public float focalLength;
     public float aperture;
@@ -177,7 +175,6 @@ public class Parameters {
             analogIso = analogue;
         } else analogIso = 100;
         for (int i = 0; i < 4; i++) blackLevel[i] = 64;
-        tonemapStrength = (float) PhotonCamera.getSettings().compressor;
         Object ptr = characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
         if (ptr != null) cfaPattern = (byte) (int) ptr;
         if (PhotonCamera.getSettings().cfaPattern >= 0) {
@@ -733,12 +730,6 @@ public class Parameters {
                 sceneCct = wbCct;
             }
         }
-        customTonemap = new float[]{
-                -2f + 2f * tonemapStrength,
-                3f - 3f * tonemapStrength,
-                tonemapStrength,
-                0f
-        };
     }
 
     /** The reported transform of a vivo SCAM HDR capture: a full matrix whose rows sum to about 1 (white stays white). */
@@ -799,8 +790,6 @@ public class Parameters {
         params.gainMap = gainMap.clone();
         params.proPhotoToSRGB = proPhotoToSRGB.clone();
         params.sensorToProPhoto = sensorToProPhoto.clone();
-        params.tonemapStrength = tonemapStrength;
-        params.customTonemap = customTonemap.clone();
         params.hotPixels = hotPixels.clone();
         params.focalLength = focalLength;
         params.cameraRotation = cameraRotation;
@@ -817,13 +806,8 @@ public class Parameters {
                 "\n CameraID=" + cameraID +
                 "\n DenoiseOn=" + PhotonCamera.getSettings().hdrxNR +
                 "\n Sharp=" + FltFormat(PreferenceKeys.getSharpnessValue()) +
-                "\n Sat=" + FltFormat(PreferenceKeys.getSaturationValue()) +
-                "\n Contrast=" + FltFormat(PreferenceKeys.getContrastValue()) +
                 "\n ExpoCorrect=" + FltFormat(PhotonCamera.getSettings().exposureCompensation) +
-                "\n Denoise=" + FltFormat(PreferenceKeys.getFloat(PreferenceKeys.Key.KEY_NOISESTR_SEEKBAR)) +
                 "\n Noise Merging=" + FltFormat(PhotonCamera.getSettings().mergeStrength) +
-                "\n Shadows=" + FltFormat(PhotonCamera.getSettings().shadows) +
-                "\n Compressor=" + FltFormat(PhotonCamera.getSettings().compressor) +
                 "\n Align=" + PhotonCamera.getSettings().alignAlgorithm +
                 "\n Color=" + PhotonCamera.getSettings().colorMethod +
                 "\n PreviewFormat=" + PhotonCamera.getSettings().previewFormat +

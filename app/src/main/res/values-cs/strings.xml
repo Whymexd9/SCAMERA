@@ -3,7 +3,6 @@
     <string name="request_permission">Aplikace vyžaduje oprávnění používat fotoaparát.</string>
     <string name="camera_error">Vaše zařízení nepodporuje Camera2 API</string>
     <string name="frame_count">Počet snímků:</string>
-    <string name="saturation">Sytost barev</string>
     <string name="turn_on_grid">Zobrazit mřížku</string>
     <string name="turn_on_round_edges">Zaoblené rohy</string>
     <string name="telegram">Telegram - skupina</string>

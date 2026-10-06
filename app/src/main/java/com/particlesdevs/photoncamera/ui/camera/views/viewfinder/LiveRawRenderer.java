@@ -49,7 +49,6 @@ final class LiveRawRenderer {
             if(photoDefines==null || now-settingsCheck>500_000_000L){
                 String next=PreviewPhotoLook.defines();settingsCheck=now;
                 if(!next.equals(photoDefines)){deleteResources();photoDefines=next;response=null;}
-                com.particlesdevs.photoncamera.settings.TunableInjector.inject(photoMeter);
             }
             if(program==0 && !init())return false;
             GLES20.glUseProgram(program);

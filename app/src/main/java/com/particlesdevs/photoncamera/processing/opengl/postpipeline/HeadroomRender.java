@@ -6,7 +6,6 @@ import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
 import com.particlesdevs.photoncamera.processing.render.ColorCorrectionTransform;
-import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.util.BufferUtils;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
@@ -17,22 +16,19 @@ import static android.opengl.GLES20.GL_CLAMP_TO_EDGE;
 import static android.opengl.GLES20.GL_LINEAR;
 
 /**
- * Sky headroom renderer, replacing the Initial role.
+ * Headroom renderer behind {@link VivoHdrTone} (SCAM HDR / hybrid without the ARK tone).
  *
  * Renders the SDR base with matrix-only color (sensor -> ProPhoto -> sRGB,
  * white-point WB; no CCT cubes/CLUTs), the lens shading GainMap and the
- * ExposureFusionBayer2 FusionMap as linear gains, and the sky
+ * NiceExposureFusion FusionMap as linear gains, and the
  * log-headroom tone curve driven by the {@link LinearExposure} display gain:
  * sceneWhite = clamp(headroomScale*displayGain, 1, sceneWhiteMax).
  */
 public class HeadroomRender extends Node {
-    @Tunable(title = "Output Exposure", category = "Sky (Headroom)", min = 0.50f, max = 1.20f, defaultValue = 0.80f, step = 0.01f, description = "Только Sky: линейный множитель яркости на выходе (0.80 ≈ −0.32 EV). На Exposure Fusion не влияет.")
-    float outputExposureScale = 0.80f;
+    float outputExposureScale = 0.8f;
 
-    @Tunable(title = "Headroom Scale", category = "Sky (Headroom)", min = 0.50f, max = 1.20f, defaultValue = 0.90f, step = 0.01f, description = "Только Sky: доля усиления, определяющая запас в светах. На Exposure Fusion не влияет.")
-    float headroomScale = 0.90f;
+    float headroomScale = 0.9f;
 
-    @Tunable(title = "Headroom Max", category = "Sky (Headroom)", min = 1.0f, max = 20.0f, defaultValue = 14.5f, step = 0.5f, description = "Только Sky: предел запаса в светах. Держите выше Headroom Scale × Gain Max, чтобы сохранить переходы в светах.")
     float sceneWhiteMax = 14.5f;
 
     protected float toneAmount = 1f;
@@ -50,7 +46,6 @@ public class HeadroomRender extends Node {
     /** SCAM HDR soft tone (render.glsl GCAM): local knee, toe, soft shoulder; replaces AgX and the headroom shoulder. */
     protected boolean gcam = false;
 
-    public HeadroomRender agx(boolean enabled) { agx = enabled; return this; }
     /** SCAM HDR tone stage: AgX with its HDR-specific highlight handling (see AgxTone.load). */
     protected boolean niceTone = false;
     private GLTexture fallbackGainMap;
@@ -64,7 +59,7 @@ public class HeadroomRender extends Node {
 
     @Override
     public void AfterRun() {
-        // Last consumer of the fusion map (was Initial's duty).
+        // Last consumer of the fusion map.
         if (((PostPipeline) basePipeline).FusionMap != null) {
             ((PostPipeline) basePipeline).FusionMap.close();
         }
@@ -167,7 +162,7 @@ public class HeadroomRender extends Node {
         }
 
         boolean fusion = pipeline.FusionMap != null;
-        AgxTone.Params agxParams = agx && !gcam ? AgxTone.load(niceTone) : null;
+        AgxTone.Params agxParams = agx && !gcam ? AgxTone.load() : null;
         if (gcam || (agxParams != null && agxParams.localStrength > 0f))
             agxBase = buildAgxBase(super.previousNode.WorkingTexture);
         glProg.setDefine("MANUAL_TONE", manualTone);

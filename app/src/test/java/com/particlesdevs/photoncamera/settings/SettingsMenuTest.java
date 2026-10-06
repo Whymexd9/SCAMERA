@@ -9,7 +9,6 @@ import androidx.preference.*;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
-import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.MockedStatic;
@@ -40,12 +39,6 @@ public class SettingsMenuTest {
         camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
         PhotonCamera app=mock(PhotonCamera.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
         camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
-    }
-    @Test public void researchOptionsAreOptInAndModuleLocal() {
-        assertFalse(PreferenceKeys.isSaliencyProtectionEnabled());
-        assertTrue(ModuleProfiles.isLocal("pref_saliency_protection_key"));
-        prefs.edit().putBoolean("pref_saliency_protection_key",true).commit();
-        assertTrue(PreferenceKeys.isSaliencyProtectionEnabled());
     }
     @Test public void niceInternalTuningKeepsValidatedValues() {
         PreferenceScreen screen=inflate();
@@ -169,47 +162,44 @@ public class SettingsMenuTest {
         for(String page:pages){PreferenceScreen root=inflate();PreferenceScreen nested=root.findPreference(page);assertNotNull(page,nested);root.getPreferenceManager().setPreferences(nested);assertEquals(page,nested.getKey());}
     }
     @Test public void mixedTypeMigrationAndRebindPreservePreciseValues(){
-        prefs.edit().putInt("pref_remosaic_block_key",4).putBoolean("pref_tunable_esd3d2_enable",false)
-                .putFloat("pref_tunable_esd3d2_noisetarget",.00390625f).putString("hexquad_luma","37.12345")
-                .putInt("scamera_darktable_enabled",1).putString("pref_tunable_initial_gammax1","7.18973").commit();
+        prefs.edit().putInt("pref_remosaic_block_key",4).putBoolean("pref_tunable_parameters_usedynamicwhitelevel",false)
+                .putString("hexquad_luma","37.12345")
+                .putInt("pref_vivo_nice_fusion_enabled",1).putString("pref_lmc_hybrid_cdm","0.18973").commit();
         PreferenceScreen screen=inflate();
-        assertEquals("4",prefs.getString("pref_remosaic_block_key",""));assertTrue(prefs.getBoolean("scamera_darktable_enabled",false));
-        TunableSeekBarPreference tiny=screen.findPreference("pref_tunable_esd3d2_noisetarget");
-        assertEquals(.00390625f,tiny.getFloatValue(),0f);
+        assertEquals("4",prefs.getString("pref_remosaic_block_key",""));assertTrue(prefs.getBoolean("pref_vivo_nice_fusion_enabled",false));
         visit(screen,new HashSet<>(),new ArrayList<>());
-        assertEquals(.00390625f,prefs.getFloat("pref_tunable_esd3d2_noisetarget",0),0f);
-        assertEquals("7.18973",prefs.getString("pref_tunable_initial_gammax1",""));assertEquals("37.12345",prefs.getString("hexquad_luma",""));
-        assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_tunable_esd3d2_enable"),true));
+        assertEquals("0.18973",prefs.getString("pref_lmc_hybrid_cdm",""));assertEquals("37.12345",prefs.getString("hexquad_luma",""));
+        assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_tunable_parameters_usedynamicwhitelevel"),true));
     }
     @Test public void perLensRestorePreservesBooleanTypesAndSharedSettings(){
         prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").commit();
         manager.set(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_audit",
-                "{\"scamera_darktable_enabled\":true,\"pref_remosaic_block_key\":4,\"hexquad_luma\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
+                "{\"pref_vivo_nice_fusion_enabled\":true,\"pref_remosaic_block_key\":4,\"hexquad_luma\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         PreferenceKeys.loadSettingsForCamera("audit");
-        assertTrue(prefs.getBoolean("scamera_darktable_enabled",false));
+        assertTrue(prefs.getBoolean("pref_vivo_nice_fusion_enabled",false));
         assertEquals(4.0,PreferenceNumber.read(manager.getString("default_scope","pref_remosaic_block_key","2"),2),0.0);
         assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","hexquad_luma","0"),0),0.0);
         assertFalse(prefs.contains("ignored_null"));assertEquals("keep",prefs.getString(PreferenceKeys.Key.KEY_THEME.mValue,""));
     }
 
     @Test public void moduleProfilesKeepTypedValuesAndCopyOnlySelection(){
-        prefs.edit().putFloat("hexquad_luma",37.125f).putBoolean("scamera_darktable_enabled",true)
+        prefs.edit().putFloat("hexquad_luma",37.125f).putBoolean("pref_vivo_nice_fusion_enabled",true)
                 .putString("pref_tunable_test","1.234567").putString("pref_sensorconfig_test","hardware").commit();
         ModuleProfiles profiles=PreferenceKeys.profiles();
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");
-        prefs.edit().putFloat("hexquad_luma",12.25f).putBoolean("scamera_darktable_enabled",false).commit();
+        prefs.edit().putFloat("hexquad_luma",12.25f).putBoolean("pref_vivo_nice_fusion_enabled",false).commit();
         profiles.activate("back1");
         assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
         prefs.edit().putString("pref_tunable_test","destination").commit();
         profiles.copy("back0",Arrays.asList("back1"),new HashSet<>(Arrays.asList("hexquad_luma","pref_sensorconfig_test")));
         assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
         assertEquals("destination",prefs.getString("pref_tunable_test",""));
-        assertTrue(prefs.getBoolean("scamera_darktable_enabled",false));
+        assertTrue(prefs.getBoolean("pref_vivo_nice_fusion_enabled",false));
         assertEquals("hardware",prefs.getString("pref_sensorconfig_test",""));
-        profiles.activate("back0");assertFalse(prefs.getBoolean("scamera_darktable_enabled",true));
+        profiles.activate("back0");assertFalse(prefs.getBoolean("pref_vivo_nice_fusion_enabled",true));
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,false).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
@@ -228,6 +218,24 @@ public class SettingsMenuTest {
         assertFalse(prefs.contains("pref_raisr_enabled_key"));assertFalse(prefs.contains("pref_vivo_upscale_backend_key"));
         assertFalse(prefs.contains("pref_vivo_downscale_kernel_key"));assertEquals("0.2",prefs.getString("pref_lmc_hybrid_cdm",""));
         assertFalse(SettingsMigration.removeObsolete(prefs));
+    }
+    @Test public void legacyPostProcessingSettingsAreGoneAndTheirStoredValuesCleared() {
+        PreferenceScreen screen=inflate();
+        for (String key:Arrays.asList("rt_denoise_screen","gcam_finish_screen","aces_group_screen","capture_one_group_screen",
+                "scamera_darktable_screen","optical_correction_screen","expert_raw_screen","expert_noise_screen","expert_detail_screen",
+                "expert_tone_screen","pref_tunable_postpipeline_tonepipeline","pref_tunable_postpipeline_demosaicingmethod",
+                "pref_saturation_seekbar_key","pref_contrast_seekbar_key","pref_sensor_sharpening_enabled","pref_noise_iso_curve_key"))
+            assertNull(key,screen.findPreference(key));
+        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key","agx_screen","sharp_settings_screen"))
+            assertNotNull(key,screen.findPreference(key));
+        android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
+                org.robolectric.RuntimeEnvironment.getApplication());
+        prefs.edit().putString("rt512_luma","10").putBoolean("pref_aces_enabled_key",true).putString("pref_tunable_initial_gammax1","7")
+                .putString("pref_noise_iso_manual_key","800").putString("pref_noise_model_profile_key","auto").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        for (String key:Arrays.asList("rt512_luma","pref_aces_enabled_key","pref_tunable_initial_gammax1","pref_noise_iso_manual_key"))
+            assertFalse(key,prefs.contains(key));
+        assertEquals("auto",prefs.getString("pref_noise_model_profile_key",""));
     }
     @Test public void configScreenKeepsOnlyOutputBackupAndReset() {
         PreferenceScreen screen=inflate();
@@ -253,8 +261,8 @@ public class SettingsMenuTest {
         android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
         android.content.SharedPreferences meta=app.getSharedPreferences(BackupRestoreUtil.META,0);
         android.content.SharedPreferences main1=app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"main1",0);
-        main.edit().clear().putString("pref_lmc_hybrid_cdm","0.2").putBoolean("pref_wide169_key",true).putInt("pref_tunable_esd3d2_x",7)
-                .putLong("scamera_long",1L<<40).putFloat("pref_tunable_initial_gammax1",7.18973f)
+        main.edit().clear().putString("pref_lmc_hybrid_cdm","0.2").putBoolean("pref_wide169_key",true).putInt("pref_lmc_hybrid_frames_x",7)
+                .putLong("scamera_long",1L<<40).putFloat("pref_lmc_hybrid_gamma_x",7.18973f)
                 .putStringSet("hidden_camera_ids",new HashSet<>(Arrays.asList("2","5"))).putString("pref_watermark_line1","<SHOT & \"ON\">").commit();
         meta.edit().clear().putBoolean("exists_main1",true).putString("active","main1").commit();
         main1.edit().clear().putString("pref_lmc_hybrid_cdm","0.3").commit();
@@ -268,7 +276,7 @@ public class SettingsMenuTest {
         main.edit().clear().putString("stale","x").commit();main1.edit().clear().commit();
         assertEquals("Загружено: ",BackupRestoreUtil.apply(app,config));
         assertFalse(main.contains("stale"));assertEquals(1L<<40,main.getLong("scamera_long",0));
-        assertEquals(7.18973f,main.getFloat("pref_tunable_initial_gammax1",0),0f);assertEquals(7,main.getInt("pref_tunable_esd3d2_x",0));
+        assertEquals(7.18973f,main.getFloat("pref_lmc_hybrid_gamma_x",0),0f);assertEquals(7,main.getInt("pref_lmc_hybrid_frames_x",0));
         assertEquals(new HashSet<>(Arrays.asList("2","5")),main.getStringSet("hidden_camera_ids",null));
         assertEquals("<SHOT & \"ON\">",main.getString("pref_watermark_line1",""));
         assertEquals("0.3",main1.getString("pref_lmc_hybrid_cdm",""));
@@ -289,7 +297,7 @@ public class SettingsMenuTest {
             android.view.View processing=copy.requireView().findViewWithTag("group_lmc_group_processing");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
-            assertNotNull(copy.requireView().findViewWithTag("parameter_rt512_luma"));
+            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key"));
             activity.getOnBackPressedDispatcher().onBackPressed();
             assertNotNull(copy.requireView().findViewWithTag("group_lmc_group_processing"));
         }
@@ -317,7 +325,7 @@ public class SettingsMenuTest {
     }
     @Test public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch() throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
-        prefs.edit().putString("module_active","back0").putFloat("rt512_luma",42f).putFloat("rt512_chroma",14f).commit();
+        prefs.edit().putString("module_active","back0").putFloat("pref_sharp_amount_key",42f).putFloat("pref_sharp_micro_amount_key",14f).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules");
@@ -326,11 +334,11 @@ public class SettingsMenuTest {
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy");
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             copy.requireView().findViewWithTag("group_lmc_group_processing").performClick();
-            copy.requireView().findViewWithTag("parameter_rt512_luma").performClick();renderPage(copy.requireView(),"noise");
+            copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key").performClick();renderPage(copy.requireView(),"noise");
             copy.requireView().findViewWithTag("primary_action").performClick();
             var check=copy.requireView().findViewWithTag("group_check_lmc_group_processing");assertTrue(check.getContentDescription().toString().contains("частично"));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
-            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("rt512_luma"),0),0);
+            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_sharp_amount_key"),0),0);
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
             var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestDialog();if(dialog!=null)dialog.dismiss();
             var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent");
@@ -475,13 +483,13 @@ public class SettingsMenuTest {
         assertTrue(screen.findPreference("pref_category_sensor_back0").isVisible());
         assertFalse(screen.findPreference("pref_category_sensor_back1").isVisible());
     }
-    @Test public void sharedPhotoExposureCurveIsFiniteAndRespondsToTarget(){
+    @Test public void sharedPhotoExposureCurveIsFiniteAndRespondsToTarget() throws Exception {
+        // The live RAW viewfinder's meter: its fixed target (no settings row since the legacy tone went).
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve model=new com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve();
         int[][] hist=new int[3][256];for(int c=0;c<3;c++){hist[c][20]=900;hist[c][240]=100;}
-        TunableInjector.inject(model);
         float[] first=model.calculateCurve(hist,new float[]{1,1,1},0,0);
         assertNotNull(first);for(float v:first)assertTrue(Float.isFinite(v)&&v>=0&&v<=1);
-        prefs.edit().putFloat("pref_tunable_autoexposurecurve_target",180).commit();TunableInjector.inject(model);
+        Field target=model.getClass().getDeclaredField("target");target.setAccessible(true);target.setFloat(model,180f);
         float[] brighter=model.calculateCurve(hist,new float[]{1,1,1},0,0);
         assertTrue(brighter[200]>first[200]);
     }
