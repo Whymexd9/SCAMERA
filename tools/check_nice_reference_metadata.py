@@ -54,6 +54,11 @@ BASE+'processing/parameters/IsoExpoSelector.java': '''package com.particlesdevs.
 public class IsoExpoSelector {public static class ExpoPair {}}''',
 BASE+'capture/RawFrameQuality.java': '''package com.particlesdevs.photoncamera.capture;
 public class RawFrameQuality {public static double score(java.nio.ByteBuffer b,int... dims){return 0;}}''',
+BASE+'util/ShotArena.java': '''package com.particlesdevs.photoncamera.util; import java.nio.*;
+public final class ShotArena {
+ public ByteBuffer copy(ByteBuffer b,int o,int n){return null;}
+ public ByteBuffer copyUnpacked(ByteBuffer b,int o,int f,int w,int r,int c){return null;}
+}''',
 BASE+'util/Allocator.java': '''package com.particlesdevs.photoncamera.util; import java.nio.*;
 public class Allocator {
  public static boolean binning=false;
