@@ -117,7 +117,7 @@ public final class SettingsMigration {
         return false;
     }
 
-    /** Removes the obsolete keys from one preference set and from its favourites list; returns whether anything changed. */
+    /** Removes the obsolete keys from one preference set, its favourites list and the shade tiles; returns whether anything changed. */
     public static boolean removeObsolete(SharedPreferences prefs) {
         SharedPreferences.Editor e = prefs.edit();
         boolean changed = false;
@@ -130,6 +130,13 @@ public final class SettingsMigration {
                 for (int i = 0; i < in.length(); i++) if (!isObsolete(in.getString(i))) out.put(in.getString(i));
                 if (out.length() != in.length()) { e.putString("settings_favorite_keys", out.toString()); changed = true; }
             } catch (org.json.JSONException ignored) {}
+        }
+        // The shade's tiles (P25): a removed setting leaves the list too.
+        String tiles = prefs.getString(ShadeTiles.KEY, null);
+        if (tiles != null) {
+            java.util.List<String> in = ShadeTiles.split(tiles), out = new java.util.ArrayList<>();
+            for (String key : in) if (!isObsolete(key)) out.add(key);
+            if (out.size() != in.size()) { e.putString(ShadeTiles.KEY, ShadeTiles.join(out)); changed = true; }
         }
         if (changed) e.commit();
         return changed;

@@ -1039,6 +1039,11 @@ public class PreferenceKeys {
         return v == null ? fallback : v != 0f;
     }
 
+    /** True when nice_dev.txt sets this line (an A/B override that wins over the stored setting). */
+    public static boolean niceDevOverrides(String key) {
+        return niceDevValue(key) != null;
+    }
+
     private static Float niceDevValue(String key) {
         long now = System.nanoTime();
         if (niceDevStamp == -1 || now - niceDevChecked > 2_000_000_000L) {
