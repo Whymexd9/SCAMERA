@@ -502,18 +502,18 @@ public class HdrxProcessor extends ProcessorBase {
         if (PhotonCamera.getSettings().ultraHdr && gm != null) {
             try {
                 GainMapComputer.Result res = GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
-                UltraHdrEncoder.encodeToFile(imageFile, img, res, exifData);
+                UltraHdrEncoder.encodeToFile(imageFile, img, res, exifData, PreferenceKeys.getJpegQuality());
                 img.recycle();
                 imageSaved = true;
             } catch (Exception e) {
                 Log.e(TAG, "Ultra HDR encode failed, falling back to SDR JPEG", e);
                 imageSaved = ImageSaver.Util.saveBitmapAsJPG(imageFile, img,
-                        ImageSaver.JPG_QUALITY, exifData);
+                        PreferenceKeys.getJpegQuality(), exifData);
             }
         } else {
             //Saves the final bitmap
             imageSaved = ImageSaver.Util.saveBitmapAsJPG(imageFile, img,
-                    ImageSaver.JPG_QUALITY, exifData);
+                    PreferenceKeys.getJpegQuality(), exifData);
         }
 
         try {

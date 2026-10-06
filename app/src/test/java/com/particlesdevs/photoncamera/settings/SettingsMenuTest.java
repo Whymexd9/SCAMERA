@@ -228,7 +228,7 @@ public class SettingsMenuTest {
         // RAW mode stays a quick bar setting; DNG crop and the tunable reset page are gone.
         for (String key:Arrays.asList("pref_save_raw_key","expert_output_screen","pref_tunable_submenu","pref_tunable_imagesaversettings_croptype"))
             assertNull(key,screen.findPreference(key));
-        for (String key:Arrays.asList("pref_ultrahdr_key","pref_wide169_key","pref_show_watermark_key","pref_watermark_line1",
+        for (String key:Arrays.asList("pref_jpeg_quality","pref_ultrahdr_key","pref_wide169_key","pref_show_watermark_key","pref_watermark_line1",
                 "pref_backup_preferences_key","pref_restore_preferences_key","pref_reset_preferences_key"))
             assertNotNull(key,config.findPreference(key));
         // The remaining dynamic pages are still filled without pref_tunable_submenu.

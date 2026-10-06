@@ -90,7 +90,7 @@ public class ParseExif {
             data.WHITE_BALANCE = (awbMode == CONTROL_AWB_MODE_AUTO) ? "0" : "1";
         }
         data.DATETIME = sFormatter.format(new Date(System.currentTimeMillis()));
-        data.COMPRESSION = "97";
+        data.COMPRESSION = COMPRESSION_JPEG;
         data.COLOR_SPACE = "sRGB";
         data.EXIF_VERSION = "0231";
         /*
@@ -102,6 +102,9 @@ public class ParseExif {
         */
         return data;
     }
+
+    /** EXIF Compression (259) of a JPEG file: 6; the encoder quality used to be written here (98). */
+    public static final String COMPRESSION_JPEG = "6";
 
     public static void syncWithParameters(ExifData data, Parameters parameters) {
         data.PHOTOGRAPHIC_SENSITIVITY = String.valueOf(parameters.iso);

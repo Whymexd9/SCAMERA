@@ -286,6 +286,11 @@ public class PreferenceKeys {
         return (float) SettingsNumericRules.value("pref_watermark_size",
                 preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_size", "7"), 7);
     }
+    /** P24: quality of every saved JPEG (plain, Ultra HDR base image and gain map), 70-100, default 98 as before. */
+    public static int getJpegQuality() {
+        return (int) Math.round(SettingsNumericRules.value("pref_jpeg_quality",
+                preferenceKeys.settingsManager.getString("default_scope", "pref_jpeg_quality", "98"), 98));
+    }
     public static float getWatermarkOpacity() {
         return (float) SettingsNumericRules.value("pref_watermark_opacity",
                 preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_opacity", "100"), 100) / 100f;

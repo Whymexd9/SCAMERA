@@ -32,7 +32,6 @@ public class ImageSaver {
     /**
      * Image frame buffer
      */
-    public static final int JPG_QUALITY = 98;
     private static final String TAG = "ImageSaver";
 
 
@@ -157,7 +156,7 @@ public class ImageSaver {
          * truncated JPEG never reaches the gallery.
          */
         public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData) {
-            exifData.COMPRESSION = String.valueOf(jpgQuality);
+            exifData.COMPRESSION = ParseExif.COMPRESSION_JPEG;
             boolean encoded = false;
             try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
                 if (!img.compress(Bitmap.CompressFormat.JPEG, jpgQuality, outputStream))

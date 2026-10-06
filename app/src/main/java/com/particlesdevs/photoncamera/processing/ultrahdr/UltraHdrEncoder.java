@@ -51,13 +51,13 @@ public final class UltraHdrEncoder {
      * @return Ultra HDR JPEG bytes
      */
     public static byte[] encode(Bitmap sdr, GainMapComputer.Result gm, ParseExif.ExifData exif) {
-        final byte[] gainMapJpeg = compressGainMap(gm);
+        final byte[] gainMapJpeg = compressGainMap(gm, DEFAULT_QUALITY);
         final byte[] exifApp1 = exif != null ? exifSegment(exif, sdr.getWidth(), sdr.getHeight()) : null;
         // q95 camera JPEGs are typically 0.3-0.8 bytes/pixel: at most one growth step in the common case.
         final long estimate = Math.min(Integer.MAX_VALUE - 64L, (long) sdr.getWidth() * sdr.getHeight() / 2 + gainMapJpeg.length + 65536L);
         final PatchableOutputStream out = new PatchableOutputStream((int) estimate);
         try {
-            UltraHdrContainer.write(out, out::patch, o -> compressPrimary(sdr, o), exifApp1,
+            UltraHdrContainer.write(out, out::patch, o -> compressPrimary(sdr, o, DEFAULT_QUALITY), exifApp1,
                     gainMapJpeg, gm.gainMapMin, gm.gainMapMax, gm.hdrCapacityMax);
         } catch (IOException e) {
             throw new RuntimeException("Ultra HDR encode failed", e);
@@ -74,7 +74,13 @@ public final class UltraHdrEncoder {
      */
     public static void encodeToFile(Path file, Bitmap sdr, GainMapComputer.Result gm, ParseExif.ExifData exif)
             throws IOException {
-        final byte[] gainMapJpeg = compressGainMap(gm);
+        encodeToFile(file, sdr, gm, exif, DEFAULT_QUALITY);
+    }
+
+    /** As above, with the JPEG quality of the base image and the gain map (P24 «Качество JPEG»). */
+    public static void encodeToFile(Path file, Bitmap sdr, GainMapComputer.Result gm, ParseExif.ExifData exif, int quality)
+            throws IOException {
+        final byte[] gainMapJpeg = compressGainMap(gm, quality);
         final byte[] exifApp1 = exif != null ? exifSegment(exif, sdr.getWidth(), sdr.getHeight()) : null;
         boolean done = false;
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
@@ -84,7 +90,7 @@ public final class UltraHdrEncoder {
                 final ByteBuffer patch = ByteBuffer.wrap(bytes);
                 long at = offset;
                 while (patch.hasRemaining()) at += channel.write(patch, at);
-            }, o -> compressPrimary(sdr, o), exifApp1, gainMapJpeg, gm.gainMapMin, gm.gainMapMax, gm.hdrCapacityMax);
+            }, o -> compressPrimary(sdr, o, quality), exifApp1, gainMapJpeg, gm.gainMapMin, gm.gainMapMax, gm.hdrCapacityMax);
             out.flush();
             done = true;
         } finally {
@@ -94,15 +100,15 @@ public final class UltraHdrEncoder {
         }
     }
 
-    private static void compressPrimary(Bitmap bmp, OutputStream out) throws IOException {
-        if (!bmp.compress(Bitmap.CompressFormat.JPEG, DEFAULT_QUALITY, out)) {
+    private static void compressPrimary(Bitmap bmp, OutputStream out, int quality) throws IOException {
+        if (!bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)) {
             throw new IOException("Failed to compress SDR JPEG");
         }
     }
 
-    private static byte[] compressGainMap(GainMapComputer.Result gm) {
+    private static byte[] compressGainMap(GainMapComputer.Result gm, int quality) {
         final ByteArrayOutputStream gainOut = new ByteArrayOutputStream();
-        if (!gm.gainMap.compress(Bitmap.CompressFormat.JPEG, DEFAULT_QUALITY, gainOut)) {
+        if (!gm.gainMap.compress(Bitmap.CompressFormat.JPEG, quality, gainOut)) {
             throw new RuntimeException("Failed to compress gain map");
         }
         return gainOut.toByteArray();
