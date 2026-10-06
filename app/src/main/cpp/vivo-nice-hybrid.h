@@ -257,6 +257,11 @@ struct HybridTuning {
     // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
     // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites)
     float mosaicKernelG=1.f,mosaicKernelRB=1.f;
+    // S5: per-frame R / B fill (M5b) before the frame weight: 0 off (parity), 1 ArkCam's colour difference of the 3x3 block means
+    // (a colour whose kernel weight in the frame is below mosaicFillSupport x the green weight is topped up to it with G + (R - G)).
+    // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (GCam 11 directional) is step S7, not built.
+    int mosaicChromaFill=0;
+    float mosaicFillSupport=0.25f;
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -327,6 +332,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             // P29 native mosaic path
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
+            ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue);
@@ -1665,7 +1671,37 @@ void main(){
 // sensor position X - (b-1)/2; binned pixel B holds the block b B .. b B + b-1 (centre b B + (b-1)/2).
 static const char* kHybMergeMosaic=R"(
 uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (ArkCam's distance multipliers per
-                   // colour, mosaicKernelG / RB), w = 0
+                   // colour, mosaicKernelG / RB), w = minimum R / B support of the colour fill relative to green (0 = off)
+// S5 (mosaicChromaFill 1): ArkCam v23's colour-difference regularisation of SampleNeighborhoodQuadRBF (ported with the author's
+// permission, research/ark23/k_fs_gcam_sabre_merge_quad.glsl): a colour whose kernel weight in this frame is below natK.w x the
+// green weight gets the missing weight at G + (mean R (B) - mean G) of the 3x3 colour blocks around the sample, G = this frame's
+// kernel-weighted green; before the frame's weight is applied. Block means of the unflagged, unclipped sites, each >= 0 (ArkCam's
+// clamp); a colour with clipped samples in this frame keeps its clipped mean (a lower bound), no fill.
+void natFill(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
+    int s=natV.x,b=natU.x,bb=natU.x*natU.x;
+    ivec2 q=ivec2(floor(O+0.5))>>s;   // block of the nearest site
+    vec3 sum=vec3(0.0),cnt=vec3(0.0);
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        int bx=q.x+i,by=q.y+j;
+        int c=phaseColor[((by&1)<<1)|(bx&1)];
+        float bs=0.0,bn=0.0;
+        for(int t=0;t<bb;t++){
+            uint fl;
+            float v=natSiteG(geo,(bx<<s)+(t&(b-1)),(by<<s)+(t>>s),fl);
+            if((fl&3u)!=0u||v>=clipLevel)continue;
+            bs+=v;bn+=1.0;
+        }
+        if(bn>0.0){sum[c]+=max(bs/bn,0.0);cnt[c]+=1.0;}
+    }
+    if(cnt.y<=0.0)return;
+    float gv=num.y/den.y,gm=sum.y/cnt.y*g,need=natK.w*den.y;
+    for(int k=0;k<2;k++){
+        int c=2*k;
+        if(den[c]>=need||cd[c]>0.0||cnt[c]<=0.0)continue;
+        num[c]+=max(gv+sum[c]/cnt[c]*g-gm,0.0)*(need-den[c]);
+        den[c]=need;
+    }
+}
 // The native sites of frame f around O (canonical native px), weighted by the kernel P (native px), into a: as frameSamples (outlier
 // site: no sample; clipped site or a site of a clipped cell: the clipped mean; a clipped longer frame: nothing) with the frame's
 // weight r. Window: win = the 6.1 window |d| <= r per axis (r = 1.5 b: the split's +-1.5 sub-frame px); otherwise d in (-4r/3, 4r/3]
@@ -1707,6 +1743,7 @@ void natSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool win){
             if(c==1)cv+=kw;
         }
     }
+    if(natK.w>0.0&&den.y>1.0e-7&&(den.x<natK.w*den.y||den.z<natK.w*den.y))natFill(num,den,cd,geo,O,g);
     a.num+=r*num;a.den+=r*den;a.clipNum+=r*cn;a.clipDen+=r*cd;a.usClip+=r*uc;a.cover+=cover*cv;
 }
 // Round-4 kernel (coverage rule of the base widening): the split merged the base's other b^2-1 site classes as donors (their
@@ -1837,6 +1874,7 @@ struct HybridMosaicNative {
     int window=3;                        // HybridTuning::mosaicWindow
     float kernelScale=1.f;               // HybridTuning::mosaicKernelScale
     float ksG=1.f,ksRB=1.f;              // HybridTuning::mosaicKernelG / RB (distance multipliers per colour)
+    float fillSupport=0.f;               // S5 R / B fill: minimum support relative to green (0 = off)
     float keyNoise=1.f;                  // the binned frames' noise model x this = the noise of one merged site: the SNR keys of the kernel
                                          // curves (Sabre 6.1 / round 4) follow the merged sites, not the binned averages
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
@@ -2352,7 +2390,7 @@ public:
             const float rimU[4]={rim?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
             glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
             const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
-            glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,0.f);
+            glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,std::clamp(nat->fillSupport,0.f,1.f));
             // 6.1 widening rule (mergeMode bit 2): the native merge counts every frame as the split's b^2 sub-frames plus the base's
             // own b^2-1 (b^2 F + b^2-1 < widenBelow); the chroma and rim passes on the binned frames count frames F, so their
             // threshold becomes (widenBelow - b^2 + 1) / b^2 and they widen the base where the merge did.
@@ -4488,10 +4526,12 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     const int window=std::clamp(tune.mosaicWindow,1,6);
     const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
+    const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
+    if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (GCam directional, S7) is not built: fill off");
     {
-        char head[240];
-        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d, %d of %d frames (one GPU slot each, binned %dx%d, mosaic %dx%d), window %d px, kernel scale %.3f, ks G %.3f R/B %.3f:",
-            b,int(pick.size()),n,vw,vh,W,Ht,window,kernelScale,ksG,ksRB);
+        char head[260];
+        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d, %d of %d frames (one GPU slot each, binned %dx%d, mosaic %dx%d), window %d px, kernel scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",
+            b,int(pick.size()),n,vw,vh,W,Ht,window,kernelScale,ksG,ksRB,fill);
         std::string line=head;
         for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
         report(line);
@@ -4535,7 +4575,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     // ---- the binned burst through hybridReconstruct with the native merge pass
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=b;bin.mosaic=1;bin.subFrames=0;
-    HybridMosaicNative nat;nat.block=b;nat.W=W;nat.H=Ht;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;
+    HybridMosaicNative nat;nat.block=b;nat.W=W;nat.H=Ht;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
     nat.rawGains=true;nat.gains=gain;
     nat.keyNoise=float(bb);
     nat.siteSlope=std::max(input.frames[0].slope,1e-9f);nat.siteOffset=std::max(input.frames[0].offset,0.f);
