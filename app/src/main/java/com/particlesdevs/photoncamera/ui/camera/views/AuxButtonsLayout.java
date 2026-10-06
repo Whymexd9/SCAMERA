@@ -117,6 +117,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
         ModuleRegistry.initialize("front", auxButtonsModel.getFrontCameras());
         ModuleRegistry.initialize("back", auxButtonsModel.getBackCameras());
+        // A config imported before the slots existed (fresh install) maps its module profiles now.
+        com.particlesdevs.photoncamera.settings.BackupRestoreUtil.applyPending(manager.getContext());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";
         List<String> slots = ModuleRegistry.initialize(side, cameraLensDataList);
         slots.sort(Comparator.comparingDouble(ModuleRegistry::zoom)); // zoom order, like the dial

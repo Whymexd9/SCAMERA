@@ -271,6 +271,54 @@ public class SettingsMenuTest {
                 +"<map><boolean name=\"pref_wide169_key\" value=\"false\" /><string name=\"pref_save_raw_key\">1</string></map>").getBytes("UTF-8")));
         assertTrue(legacy.legacyMap);assertEquals(false,legacy.files.get(ConfigXml.MAIN).get("pref_wide169_key"));
     }
+    @Test public void configFromAnotherPhoneMapsModuleProfilesOntoThisPhonesLenses() throws Exception {
+        android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
+        android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        // this phone: 1x and 3x on the back, a front camera (no camera service here: focal = 26 mm x zoom)
+        main.edit().clear().putString("module_auto_back0","0").putBoolean("module_visible_back0",true).putString("module_label_back0","1×")
+                .putString("module_auto_back1","2").putBoolean("module_visible_back1",true).putString("module_label_back1","3×")
+                .putString("module_auto_front0","1").putBoolean("module_visible_front0",true).putString("module_label_front0","Фронт")
+                .putString("module_active","back1").putString("pref_lmc_hybrid_cdm","0.9").commit();
+        ConfigXml.Config config=new ConfigXml.Config();
+        config.attributes.put("device","oppo/op627cl1");
+        java.util.Map<String,Object> srcMain=new java.util.HashMap<>();
+        srcMain.put("pref_lmc_hybrid_cdm","0.2");srcMain.put("module_auto_back0","9");srcMain.put("pref_save_per_lens_settings",true);
+        config.files.put(ConfigXml.MAIN,srcMain);
+        java.util.Map<String,Object> meta=new java.util.HashMap<>();meta.put("active","back1");meta.put("exists_back0",true);
+        config.files.put(BackupRestoreUtil.META,meta);
+        java.util.Map<String,Object> p0=new java.util.HashMap<>();p0.put("pref_lmc_hybrid_cdm","0.5");p0.put("module_auto_back0","7");
+        config.files.put(BackupRestoreUtil.PROFILE_PREFIX+"back0",p0);
+        java.util.Map<String,Object> common=new java.util.HashMap<>();common.put("pref_lmc_hybrid_cdm","0.1");
+        config.files.put(BackupRestoreUtil.PROFILE_PREFIX+"common",common);
+        java.util.Map<String,Object> lenses=new java.util.LinkedHashMap<>();
+        String[][] src={{"back0","14","0.6","0.6×"},{"back1","23","1","1×"},{"back2","70","3","3×"}};
+        for(String[] l:src){lenses.put(l[0]+".facing","back");lenses.put(l[0]+".focal",Float.parseFloat(l[1]));
+            lenses.put(l[0]+".zoom",Float.parseFloat(l[2]));lenses.put(l[0]+".crop",false);lenses.put(l[0]+".label",l[3]);}
+        config.files.put(BackupRestoreUtil.LENSES,lenses);
+        String message=BackupRestoreUtil.apply(app,config);
+        assertTrue(message,message.startsWith("Загружено с oppo/op627cl1. Модули: 1× ← 1×, 3× ← 3×, Фронт ← общие; не перенесены: 0.6×"));
+        // 1x <- the source's active 1x (its values are in the source's main settings); 3x <- the source's 3x, which had no
+        // saved profile: the baseline; the front has no source lens: the baseline
+        assertEquals("0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.1",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back1",0).getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.1",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"front0",0).getString("pref_lmc_hybrid_cdm",""));
+        assertFalse(app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).contains("module_auto_back0"));
+        android.content.SharedPreferences m=app.getSharedPreferences(BackupRestoreUtil.META,0);
+        assertTrue(m.getBoolean("exists_back1",false));assertTrue(m.getBoolean("exists_front0",false));assertEquals("back1",m.getString("active",""));
+        // this phone's slots stay; the active slot (3x) is in the main settings; the source's global settings came over
+        assertEquals("0",main.getString("module_auto_back0",""));assertEquals("0.1",main.getString("pref_lmc_hybrid_cdm",""));
+        assertTrue(main.getBoolean("pref_save_per_lens_settings",false));
+        // the file this phone saves carries its own lens passports
+        java.util.Map<String,?> own=BackupRestoreUtil.collect(app).get(BackupRestoreUtil.LENSES);
+        assertNotNull(own);assertEquals("front",own.get("front0.facing"));assertEquals(78f,(Float)own.get("back1.focal"),0.01f);
+        // per-lens settings off on the source: its main settings go to every module
+        srcMain.put("pref_save_per_lens_settings",false);
+        message=BackupRestoreUtil.apply(app,config);
+        assertTrue(message,message.contains("общие настройки на все модули"));
+        for(String slot:new String[]{"back0","back1","front0"})
+            assertEquals(slot,"0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+slot,0).getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.2",main.getString("pref_lmc_hybrid_cdm",""));
+    }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
