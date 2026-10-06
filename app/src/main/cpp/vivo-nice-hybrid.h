@@ -54,6 +54,9 @@ struct HybridInput {
     // Colour block of the stream (NCH v11 word 14, P14): 0 = unknown (the worker measures it), 1 = plain Bayer, 2 = Quad (2x2
     // same-colour sites, a sensor mode without remosaic), 4 = Tetra (4x4). A block mosaic goes through hybridReconstructMosaic.
     int mosaic=0;
+    // Sub-frames of a colour-block mosaic (P22): frames[k*subFrames + s] are the b² plain-Bayer sub-frames of real frame k
+    // (hybridReconstructMosaic); 0 = ordinary frames.
+    int subFrames=0;
 };
 
 // Tuning (LMC-like; a "key value" text file in the job dir or the external files dir overrides it).
@@ -220,10 +223,15 @@ struct HybridTuning {
     // moves R or B by at least caMinShift RAW px at the corner)
     int caCorrect=1;
     float caMinShift=0.25f;
+    int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
+    // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
+    // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
+    // Handheld X7 Ultra Quad burst, 0.6 with 24 frames: +14 % fine-band energy at the flat-area noise of 1.0 with 16 frames.
+    float mosaicEdgeScale=0.6f;
     int mosaicChroma=1;          // 1: chroma median of the mosaic result (GCam 11 remosaicked: chroma_median dual_5_point), 0: off
-    int mosaicFrames=16;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
-                                 // merge time grows with the sub-frames; 16 Quad frames (64 sub-frames) cost about what 25 plain frames
-                                 // on the 2x grid do
+    int mosaicFrames=24;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
+                                 // merge time grows with the sub-frames; 24 Quad frames (96 sub-frames) take about 8 s on the X7 Ultra,
+                                 // 16 about 6.8 s (P22: the extra frames pay for the narrower edge kernel)
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -267,7 +275,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
@@ -2392,6 +2400,49 @@ inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomo
     st.maxAbsY=maxY;st.accepted=float(acc)/float(std::max<size_t>(1,mag.size()));st.fromCoarse=float(fromCoarse)/float(std::max<size_t>(1,mag.size()));
 }
 
+// P22: the b² sub-frames of one mosaic frame are one exposure: the same motion. Their tile fields (each from a quarter of the
+// sites) differ by estimation noise (0.15-0.2 sub-frame px rms on a handheld Quad burst of the X7 Ultra, 0.3-0.4 output px) and
+// by a possible disparity of the site classes (Quad PD: the sites under one on-chip lens see different halves of the pupil).
+// Per tile, field(k, s) = m(k) + d(s), m(0) = d(0) = 0 (the base sub-frame), fitted by alternating means over the observed fields
+// (an exact zero is a rejected tile, not an observation); every observed field becomes its fit: the motion averaged over the
+// frame's sites, the disparity over all frames. Rejected tiles stay at the homography.
+inline void laShareSubFrames(std::vector<std::vector<float>>& fields,int per,std::vector<float>& maxY){
+    const int n=int(fields.size());
+    if(per<2||n<2*per||n%per)return;
+    const int K=n/per;
+    size_t T=0;for(const auto& f:fields)if(!f.empty()){T=f.size()/2;break;}
+    if(!T)return;
+    auto at=[&](int k,int s)->const std::vector<float>*{const auto& f=fields[size_t(k)*per+s];return f.size()==T*2?&f:nullptr;};
+    std::vector<std::vector<float>> out(fields.size());
+    for(int k=0;k<K;++k)for(int s=0;s<per;++s)if(at(k,s))out[size_t(k)*per+s].assign(T*2,0.f);
+    mergeRowBands(int(T),[&](int t0,int t1){
+        std::vector<double> m(size_t(K)*2),d(size_t(per)*2);std::vector<int> cm(K);
+        for(int t=t0;t<t1;++t){
+            auto obs=[&](int k,int s,float& x,float& y){const auto* f=at(k,s);if(!f)return false;x=(*f)[size_t(t)*2];y=(*f)[size_t(t)*2+1];return x!=0.f||y!=0.f;};
+            std::fill(m.begin(),m.end(),0.0);std::fill(d.begin(),d.end(),0.0);
+            for(int it=0;it<4;++it){
+                for(int k=1;k<K;++k){
+                    double sx=0,sy=0;int c=0;
+                    for(int s=0;s<per;++s){float x,y;if(!obs(k,s,x,y))continue;sx+=x-d[size_t(s)*2];sy+=y-d[size_t(s)*2+1];++c;}
+                    m[size_t(k)*2]=c?sx/c:0.0;m[size_t(k)*2+1]=c?sy/c:0.0;cm[k]=c;
+                }
+                for(int s=1;s<per;++s){ // the disparity from the base's own sub-frame and from frames with at least two sites
+                    double sx=0,sy=0;int c=0;
+                    for(int k=0;k<K;++k){float x,y;if(!obs(k,s,x,y)||(k>0&&cm[k]<2))continue;sx+=x-m[size_t(k)*2];sy+=y-m[size_t(k)*2+1];++c;}
+                    d[size_t(s)*2]=c?sx/c:0.0;d[size_t(s)*2+1]=c?sy/c:0.0;
+                }
+            }
+            for(int k=0;k<K;++k)for(int s=0;s<per;++s){
+                if(k==0&&s==0)continue;float x,y;if(!obs(k,s,x,y))continue;
+                auto& o=out[size_t(k)*per+s];o[size_t(t)*2]=float(m[size_t(k)*2]+d[size_t(s)*2]);o[size_t(t)*2+1]=float(m[size_t(k)*2+1]+d[size_t(s)*2+1]);
+            }
+        }
+    });
+    for(size_t i=0;i<fields.size();++i)if(!out[i].empty()){
+        fields[i].swap(out[i]);float my=0;for(size_t t=0;t<T;++t)my=std::max(my,std::abs(fields[i][t*2+1]));maxY[i]=std::max(maxY[i],my);
+    }
+}
+
 struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0,localAlignMs=0; int merged=0,droppedBracketed=0; bool bento=false; };
 
 // P19 lateral CA of one frame (tools/quad/measure_raw_ca.py is the reference): G interpolated at the R and B sites from their
@@ -2688,6 +2739,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float f0=sabreCurve(key,kf0,vf0),f1=sabreCurve(key,kf1,vf1),f2=sabreCurve(key,kf2,vf2),f3=sabreCurve(key,kf3,vf3),f4=4.f,f5=2.2f;
         const float ks=std::max(tune.kernelScale,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
+        if(input.subFrames>1&&tune.mosaicEdgeScale>0.f&&tune.mosaicEdgeScale!=1.f){
+            // across the edge and the base kernel (p ~ 1 / sigma); along the edge and the blurred kernel of flat areas stay
+            const float es=std::clamp(tune.mosaicEdgeScale,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
+            report("HYBRID KERNEL: mosaic sub-frames, kernel across edges and base x"+std::to_string(es));
+        }
         // daylight multipliers only with the local alignment (they were measured with it): localAlign 0 keeps the merge before F6
         // for every sabre61 setting, forced 6.1 in daylight included
         const bool dayNoise=!night61&&tune.localAlign>0;
@@ -2897,6 +2953,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             laMaxY[f]=st.maxAbsY;
             for(int k=0;k<7;++k)partMs[k]+=st.ms[k];
             char v[96];std::snprintf(v,sizeof(v)," %d:%.2f/%.2f/%.0f%%/z%.0f%%",f,st.median,st.p90,100.f*st.accepted,100.f*st.motionShare);per+=v;
+        }
+        if(input.subFrames>1&&tune.mosaicShare&&!jobs.empty()){
+            laShareSubFrames(laFields,input.subFrames,laMaxY);
+            per+=" (fields shared by the "+std::to_string(input.subFrames)+" sub-frames of each frame)";
         }
         const int done=int(jobs.size());
         const double grayMs=partMs[0];
@@ -3394,7 +3454,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     // ---- the sub-frame input. Coordinates: base sub-frame (0,0) pixel V = sensor b V. Binned pixel B = sensor b B + o, o = (b-1)/2.
     // Frame k binned: B_k = Hr(B_0); its sub-frame (a, c): V_k = B_k + (o - (a, c)) / b, with B_0 = V_0 - o / b.
     HybridInput vin;vin.w=vw;vin.h=vh;vin.cfa=input.cfa;vin.white=input.white;vin.black=input.black;vin.diagnostics=input.diagnostics;
-    vin.mergedDng=false;vin.clipFlags=input.clipFlags;vin.grid=2;vin.mosaic=1;
+    vin.mergedDng=false;vin.clipFlags=input.clipFlags;vin.grid=2;vin.mosaic=1;vin.subFrames=per;
     HybridPresetAlignment preset;
     const double o=0.5*(b-1);
     auto compose=[&](const BackwardHomography& h,double ax,double ay){

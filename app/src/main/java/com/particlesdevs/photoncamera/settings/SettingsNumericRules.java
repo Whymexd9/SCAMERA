@@ -151,6 +151,8 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_agx_sat": return new double[]{0,2,0};
             case "pref_lmc_hybrid_ark_hl_white": return new double[]{0,1,0};
             case "pref_lmc_hybrid_motion_threshold": return new double[]{0.25,8,0};
+            case "pref_lmc_hybrid_mosaic_edge_scale": return new double[]{0.25,1,0};
+            case "pref_lmc_hybrid_mosaic_frames": return new double[]{4,32,1};
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};

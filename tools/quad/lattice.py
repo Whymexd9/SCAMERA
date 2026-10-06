@@ -62,7 +62,7 @@ def main():
     for i, (x, y, s) in enumerate(crops):
         c = disp[y:y + s, x:x + s]
         Image.fromarray((c * 255 + 0.5).astype(np.uint8)).save(f'{prefix}_c{i}.png')
-        lum = rgb[y:y + s, x:x + s].mean(axis=2) ** (1 / 2.2)
+        lum = np.maximum(rgb[y:y + s, x:x + s].mean(axis=2), 0) ** (1 / 2.2)  # noise below black: no NaN
         r = peak_ratios(lum)
         chroma = (rgb[y:y + s, x:x + s] * g)
         chroma = chroma / np.maximum(chroma.mean(axis=2, keepdims=True), 1e-6)
