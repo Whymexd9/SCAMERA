@@ -40,7 +40,7 @@
                     android:id="@+id/route_badge"
                     style="@style/ShadeBadge"
                     tools:drawableLeft="@drawable/settings_ic_layers"
-                    tools:text="Склейка Hybrid"/>
+                    tools:text="Merge Hybrid"/>
 
             <TextView
                     android:id="@+id/format_badge"
