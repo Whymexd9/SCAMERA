@@ -25,6 +25,7 @@ import com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePrefe
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableCheckBoxPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -176,30 +177,31 @@ public final class ShadeCatalog {
 
     /**
      * Search keywords in the other language (bilingual search, owner's answer 11): a setting whose text matches the
-     * pattern is also found by these words, so «люма» finds Luma and «grid» finds «Сетка».
+     * pattern is also found by these words, so «люма» finds Luma and «grid» finds «Сетка». The patterns hold the English
+     * and the Russian UI words, so the keywords are added whichever language the titles are in.
      */
     private static final String[][] KEYWORDS = {
             {"denoise|шумодав|шумопод|noise|шум|despeckle", "шум шумоподавление шумодав denoise noise"},
-            {"luma|люма|ярк", "яркость люма luma"},
-            {"chroma|хрома|цвет", "цвет хрома chroma color colour"},
-            {"sharp|резк|usm|unsharp|деконвол|ореол|чётк|четк", "резкость sharpness sharpen usm детали"},
-            {"bento", "bento бенто короткий ультракороткий кадр пересвет света"},
-            {"shasta", "shasta шаста длинный кадр тени"},
-            {"zsl|кадр", "кадры frames zsl буфер"},
-            {"hdr|fusion|экспоз|тонмап|тон |ae ", "hdr экспозиция тон яркость exposure tone"},
-            {"мозаик|remosaic|quad|tetra|байер|bayer|hp9", "мозаика ремозаик quad tetra bayer mosaic"},
+            {"luma|люма|ярк|bright", "яркость люма luma brightness"},
+            {"chroma|хрома|цвет|colo", "цвет хрома chroma color colour"},
+            {"sharp|резк|usm|unsharp|деконвол|deconv|ореол|halo|чётк|четк", "резкость sharpness sharpen usm детали detail"},
+            {"bento", "bento бенто короткий ультракороткий кадр пересвет света short highlights"},
+            {"shasta", "shasta шаста длинный кадр тени long shadows"},
+            {"zsl|кадр|frame", "кадры frames zsl буфер buffer"},
+            {"hdr|fusion|экспоз|exposure|тонмап|tone map|тон |tone |ae ", "hdr экспозиция тон яркость exposure tone"},
+            {"мозаик|mosaic|quad|tetra|байер|bayer|hp9", "мозаика ремозаик quad tetra bayer mosaic"},
             {"сетк|grid", "сетка grid"},
             {"фокус|focus|peak", "фокус focus пик peaking"},
-            {"отладк|hud|диагност|журнал|debug", "отладка debug hud лог log"},
-            {"водян|подпис|watermark", "водяной знак watermark подпись"},
-            {"agx|aces|кривая|гамма|curve", "кривая curve тон agx гамма gamma"},
-            {"dcp|матриц", "dcp матрица цвет профиль"},
-            {"мерцан|antiband", "мерцание flicker антибандинг antibanding"},
+            {"отладк|hud|диагност|diagnost|журнал|debug", "отладка debug hud лог log"},
+            {"водян|подпис|watermark|caption", "водяной знак watermark подпись caption"},
+            {"agx|aces|кривая|гамма|gamma|curve", "кривая curve тон agx гамма gamma"},
+            {"dcp|матриц|matri", "dcp матрица цвет профиль matrix colour color profile"},
+            {"мерцан|flicker|antiband", "мерцание flicker антибандинг antibanding"},
             {"вспышк|фонар|flash|torch", "вспышка flash фонарик torch"},
             {"таймер|timer", "таймер timer"},
-            {"raw|jpeg|формат", "формат format raw jpeg dng"},
+            {"raw|jpeg|формат|format", "формат format raw jpeg dng"},
             {"звук|sound", "звук sound"},
-            {"замер|meter", "замер metering экспозамер"},
+            {"замер|\\bmeter", "замер metering экспозамер"},
             {"склейк|merge|route", "склейка merge route hybrid scam"},
             {"разрешен|resolution|даунсемпл|downsampl", "разрешение resolution мп mp размер size"},
     };
@@ -582,7 +584,7 @@ public final class ShadeCatalog {
         }
     }
 
-    /** The value as a tile (short) or a toast / catalog row (full) shows it. Numbers use the decimal comma. */
+    /** The value as a tile (short) or a toast / catalog row (full) shows it. Numbers use the decimal comma (point in English). */
     public String valueText(Entry e, boolean shortForm) {
         switch (e.kind) {
             case TOGGLE:
@@ -610,7 +612,7 @@ public final class ShadeCatalog {
         return s.isEmpty() ? label : s;
     }
 
-    /** "0,60", "20", "1,1": as many decimals as the step has (at most two), decimal comma, a real minus sign. */
+    /** "0,60", "20", "1,1": as many decimals as the step has (at most two), decimal comma (point in English), a real minus sign. */
     public static String formatNumber(Entry e, float v) {
         int decimals = 0;
         if (e.decimal) {
@@ -618,7 +620,7 @@ public final class ShadeCatalog {
             while (decimals < 2 && Math.abs(step * Math.pow(10, decimals) - Math.round(step * Math.pow(10, decimals))) > 1e-4) decimals++;
         }
         String text = String.format(Locale.ROOT, "%." + decimals + "f", v);
-        return text.replace('.', ',').replace('-', '−');
+        return (Lang.ru() ? text.replace('.', ',') : text).replace('-', '−');
     }
 
     /** Icon of the current value, else of the setting. */

@@ -14,6 +14,7 @@ import com.particlesdevs.photoncamera.api.VendorTagUtils;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyDialog;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference;
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.settings.annotations.SensorConfig;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference;
@@ -59,8 +60,9 @@ public class SensorConfigPreferenceGenerator {
             physicalIds.sort(java.util.Comparator.comparing((String slot) -> slot.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
             for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
-            submenu.setTitle("Настройки сенсоров по модулям");
-            submenu.setSummary("Уровни RAW, экспозиция, стабилизация и сессия каждого модуля");
+            submenu.setTitle(Lang.t(context, "Настройки сенсоров по модулям", "Sensor settings per module"));
+            submenu.setSummary(Lang.t(context, "Уровни RAW, экспозиция, стабилизация и сессия каждого модуля",
+                    "RAW levels, exposure, stabilization and session of each module"));
             if (physicalIds.isEmpty()) {
                 Log.w(TAG, "No camera ids found, cannot generate sensor config preferences.");
                 addNoSensorsPreference(context, submenu);
@@ -98,8 +100,8 @@ public class SensorConfigPreferenceGenerator {
     private static ListPreference createSelector(Context context, PreferenceScreen submenu, List<String> physicalIds, Map<String, CameraLensData> lensMap) {
         ListPreference selector = new ListPreference(context);
         selector.setKey(SELECTOR_KEY);
-        selector.setTitle("Модуль камеры");
-        selector.setDialogTitle("Выберите модуль");
+        selector.setTitle(Lang.t(context, "Модуль камеры", "Camera module"));
+        selector.setDialogTitle(Lang.t(context, "Выберите модуль", "Select a module"));
 
         CharSequence[] entries = new CharSequence[physicalIds.size()];
         CharSequence[] entryValues = new CharSequence[physicalIds.size()];
@@ -144,8 +146,9 @@ public class SensorConfigPreferenceGenerator {
         androidx.preference.Preference addButton = new androidx.preference.Preference(context);
         addButton.setKey("pref_sensorconfig_" + physicalId + "_add_tunablekey");
         addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
-        addButton.setTitle("Добавить vendor tag");
-        addButton.setSummary("Параметр сессии выбранного модуля: тип, имя и значение");
+        addButton.setTitle(Lang.t(context, "Добавить vendor tag", "Add vendor tag"));
+        addButton.setSummary(Lang.t(context, "Параметр сессии выбранного модуля: тип, имя и значение",
+                "Session parameter of the selected module: type, name and value"));
         addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.ic_add);
         addButton.setOrder(10000);
         addButton.setOnPreferenceClickListener(preference -> {
@@ -194,8 +197,9 @@ public class SensorConfigPreferenceGenerator {
         try {
             androidx.preference.Preference info = new androidx.preference.Preference(context);
             info.setKey("pref_sensor_config_no_sensors");
-            info.setTitle("Сенсоры не найдены");
-            info.setSummary("Камеры ещё не определены. Откройте видоискатель и вернитесь в это меню.");
+            info.setTitle(Lang.t(context, "Сенсоры не найдены", "No sensors found"));
+            info.setSummary(Lang.t(context, "Камеры ещё не определены. Откройте видоискатель и вернитесь в это меню.",
+                    "Cameras are not detected yet. Open the viewfinder and come back to this menu."));
             info.setSelectable(false);
             submenu.addPreference(info);
         } catch (Exception e) {
@@ -309,8 +313,8 @@ public class SensorConfigPreferenceGenerator {
     }
 
     private static String buildCategoryTitle(String physicalId, CameraLensData lens) {
-        if(ModuleRegistry.slots().contains(physicalId))return ModuleRegistry.label(physicalId)+" · ID "+ModuleRegistry.camera(physicalId)+(ModuleRegistry.visible(physicalId)?"":" · скрыт");
-        StringBuilder title = new StringBuilder("Сенсор ").append(physicalId);
+        if(ModuleRegistry.slots().contains(physicalId))return ModuleRegistry.label(physicalId)+" · ID "+ModuleRegistry.camera(physicalId)+(ModuleRegistry.visible(physicalId)?"":Lang.t(" · скрыт"," · hidden"));
+        StringBuilder title = new StringBuilder(Lang.t("Сенсор ", "Sensor ")).append(physicalId);
         if (lens != null) {
             if (lens.getCameraId() != null) {
                 title.append(" \u00b7 ID ").append(lens.getCameraId());
@@ -375,7 +379,7 @@ public class SensorConfigPreferenceGenerator {
         seekBar.setTitle(ModuleSensorSettings.title(annotation.title()));
 
         if (!annotation.description().isEmpty()) {
-            seekBar.setSummary(annotation.description());
+            seekBar.setSummary(ModuleSensorSettings.description(annotation.description()));
         }
 
         seekBar.setMinValue(annotation.min());
@@ -442,11 +446,12 @@ public class SensorConfigPreferenceGenerator {
             double number = PreferenceNumber.read(input, Double.NaN);
             boolean valid = Double.isFinite(number) && number >= annotation.min() && number <= annotation.max()
                     && (PreferenceNumber.floating(fieldType) || number == Math.rint(number));
-            if (!valid) android.widget.Toast.makeText(context, "Число от " + annotation.min() + " до " + annotation.max(), android.widget.Toast.LENGTH_LONG).show();
+            if (!valid) android.widget.Toast.makeText(context, Lang.t(context, "Число от " + annotation.min() + " до " + annotation.max(),
+                    "Number from " + annotation.min() + " to " + annotation.max()), android.widget.Toast.LENGTH_LONG).show();
             return valid;
         });
 
-        String description = annotation.description();
+        String description = ModuleSensorSettings.description(annotation.description());
         editText.setSummaryProvider(preference -> {
             String value = editText.getText();
             String display = value != null ? value : formatDefault(defaultValue, fieldType);

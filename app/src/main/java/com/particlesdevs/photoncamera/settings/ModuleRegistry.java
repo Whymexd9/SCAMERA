@@ -3,6 +3,7 @@ package com.particlesdevs.photoncamera.settings;
 import android.content.SharedPreferences;
 import java.util.*;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 
 /** Stable button slots are distinct from physical IDs and from their display names. */
@@ -43,7 +44,7 @@ public final class ModuleRegistry {
         List<String> out=new ArrayList<>();for(int i=0;i<8;i++)out.add(side+i);return out;
     }
     public static String camera(String slot){String manual=prefs().getString("module_id_"+slot,"").trim();return manual.isEmpty()?prefs().getString("module_auto_"+slot,slot):manual;}
-    public static String label(String slot){String custom=prefs().getString("module_name_"+slot,"").trim();return custom.isEmpty()?prefs().getString("module_label_"+slot,"Камера"):custom;}
+    public static String label(String slot){String custom=prefs().getString("module_name_"+slot,"").trim();return custom.isEmpty()?prefs().getString("module_label_"+slot,Lang.t("Камера","Camera")):custom;}
     public static boolean visible(String slot){return prefs().getBoolean("module_visible_"+slot,false);}
     /** Zoom ratio of the module button; defaults to the ratio in its automatic label ("0.6×", "3×"). */
     public static float zoom(String slot){

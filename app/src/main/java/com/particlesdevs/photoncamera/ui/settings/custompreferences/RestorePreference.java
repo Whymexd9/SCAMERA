@@ -6,6 +6,7 @@ import android.util.AttributeSet;
 import androidx.preference.ListPreference;
 
 import com.particlesdevs.photoncamera.util.ConfigFolder;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /**
  * Configs in Download/SCAMERA/XML, plus {@link #PICK}: the system picker, for a config this app did not save there
@@ -21,7 +22,7 @@ public class RestorePreference extends ListPreference {
             String[] names = ConfigFolder.list(context);
             String[] entries = new String[names.length + 1];
             String[] values = new String[names.length + 1];
-            entries[0] = "Выбрать файл…";
+            entries[0] = Lang.t(context,"Выбрать файл…","Choose a file…");
             values[0] = PICK;
             for (int i = 0; i < names.length; i++) {
                 entries[i + 1] = names[names.length - 1 - i]; // newest names (dated) first

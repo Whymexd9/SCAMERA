@@ -10,6 +10,7 @@ import androidx.preference.EditTextPreference;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.util.ConfigFolder;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -20,7 +21,7 @@ public class BackupPreferences extends EditTextPreference {
         super(context, attributeSet);
         setPersistent(false);
         setSummary(ConfigFolder.RELATIVE);
-        setDialogMessage("Все настройки и профили модулей сохраняются в XML-файл в папке " + ConfigFolder.RELATIVE);
+        setDialogMessage(Lang.t(context,"Все настройки и профили модулей сохраняются в XML-файл в папке ","All settings and module profiles are saved to an XML file in the folder ") + ConfigFolder.RELATIVE);
 
         setOnBindEditTextListener(editText -> {
             editText.setText(getContext().getString(R.string.backup_file_name,

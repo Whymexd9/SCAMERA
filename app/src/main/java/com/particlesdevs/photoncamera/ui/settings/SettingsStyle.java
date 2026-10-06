@@ -44,6 +44,7 @@ import com.particlesdevs.photoncamera.ui.settings.custompreferences.RouteSelecto
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference;
+import com.particlesdevs.photoncamera.util.Lang;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -137,7 +138,7 @@ public final class SettingsStyle {
         h.back.setImageResource(R.drawable.settings_ic_back);
         h.back.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
         h.back.setPadding(dp(c, 9), dp(c, 9), dp(c, 9), dp(c, 9));
-        h.back.setContentDescription("Назад");
+        h.back.setContentDescription(Lang.t(c,"Назад","Back"));
         h.back.setFocusable(true);
         h.back.setOnClickListener(v -> onBack.run());
         h.view.addView(h.back, new FrameLayout.LayoutParams(dp(c, 40), dp(c, 44), Gravity.START | Gravity.TOP));
@@ -146,7 +147,7 @@ public final class SettingsStyle {
             h.search.setImageResource(R.drawable.settings_ic_search);
             h.search.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
             h.search.setPadding(dp(c, 9), dp(c, 9), dp(c, 9), dp(c, 9));
-            h.search.setContentDescription("Поиск настройки");
+            h.search.setContentDescription(Lang.t(c,"Поиск настройки","Search settings"));
             h.search.setTag("settings_search");
             h.search.setFocusable(true);
             h.search.setOnClickListener(v -> onSearch.run());
@@ -433,7 +434,7 @@ public final class SettingsStyle {
         LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(-1, -2);
         fp.bottomMargin = dp(c, 14);
         body.addView(field, fp);
-        TextView save = text(c, "Сохранить", 16, INK);
+        TextView save = text(c, Lang.t(c,"Сохранить","Save"), 16, INK);
         save.setTypeface(null, android.graphics.Typeface.BOLD);
         save.setGravity(Gravity.CENTER);
         save.setPadding(0, dp(c, 15), 0, dp(c, 15));

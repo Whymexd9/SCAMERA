@@ -16,6 +16,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralWorker;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** App-UID/root execution prerequisite, in :vivo_nice; no camera frames. */
 public final class VivoNiceActivity extends Activity {
@@ -28,36 +29,36 @@ public final class VivoNiceActivity extends Activity {
     private native void nativeProbe(String directory);
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);setTitle("SCAM HDR — проверка запуска");
+        super.onCreate(state);setTitle(Lang.t(this,"SCAM HDR — проверка запуска","SCAM HDR launch check"));
         saved=getSharedPreferences("vivo_nice_report",MODE_PRIVATE);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
         int pad=Math.round(16*getResources().getDisplayMetrics().density);layout.setPadding(pad,pad,pad,pad);
         TextView note=new TextView(this);
-        note.setText("Запуск оригинальной HDR-модели основной камеры Vivo. Модель и QNN находятся в APK. Проверка пока не обрабатывает фотографии. Root использует тот же механизм запуска HTP, что нейроремозаик. Обычный запуск проверяет доступ без root. После завершения скопируйте отчёт.");
+        note.setText(Lang.t(this,"Запуск оригинальной HDR-модели основной камеры Vivo. Модель и QNN находятся в APK. Проверка пока не обрабатывает фотографии. Root использует тот же механизм запуска HTP, что нейроремозаик. Обычный запуск проверяет доступ без root. После завершения скопируйте отчёт.","Runs the original HDR model of the Vivo main camera. The model and QNN are in the APK. The check does not process photos yet. Root uses the same HTP launch path as the neural remosaic. A normal run checks access without root. When it finishes, copy the report."));
         layout.addView(note);
-        start=new Button(this);start.setText("Проверить без root");start.setOnClickListener(v->runProbe(false));layout.addView(start);
-        rootStart=new Button(this);rootStart.setText("Проверить SCAM HDR через root");rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
-        toneStart=new Button(this);toneStart.setText("Проверить тональные модели SCAM HDR через root");
+        start=new Button(this);start.setText(Lang.t(this,"Проверить без root","Check without root"));start.setOnClickListener(v->runProbe(false));layout.addView(start);
+        rootStart=new Button(this);rootStart.setText(Lang.t(this,"Проверить SCAM HDR через root","Check SCAM HDR with root"));rootStart.setOnClickListener(v->runProbe(true));layout.addView(rootStart);
+        toneStart=new Button(this);toneStart.setText(Lang.t(this,"Проверить тональные модели SCAM HDR через root","Check the SCAM HDR tone models with root"));
         toneStart.setOnClickListener(v->runProbe(true,true));layout.addView(toneStart);
-        Button captureReport=new Button(this);captureReport.setText("Отчёт последней съёмки SCAM HDR");
+        Button captureReport=new Button(this);captureReport.setText(Lang.t(this,"Отчёт последней съёмки SCAM HDR","Last SCAM HDR capture report"));
         captureReport.setOnClickListener(v->{
             if(running)return;
             SharedPreferences capture=getSharedPreferences("vivo_nice_capture_report",MODE_PRIVATE);
             String text=capture.getString("report","");
-            output.setText(text.isEmpty()?"Отчёта съёмки SCAM HDR пока нет.":
-                    (capture.getBoolean("complete",false)?"":"Съёмка не завершена. Последний этап:\n")+text);
+            output.setText(text.isEmpty()?Lang.t(this,"Отчёта съёмки SCAM HDR пока нет.","No SCAM HDR capture report yet."):
+                    (capture.getBoolean("complete",false)?"":Lang.t(this,"Съёмка не завершена. Последний этап:\n","The capture did not finish. Last stage:\n"))+text);
         });layout.addView(captureReport);
-        Button copy=new Button(this);copy.setText("Скопировать отчёт");
+        Button copy=new Button(this);copy.setText(Lang.t(this,"Скопировать отчёт","Copy report"));
         copy.setOnClickListener(v->((ClipboardManager)getSystemService(CLIPBOARD_SERVICE))
                 .setPrimaryClip(ClipData.newPlainText("SCAM HDR",output.getText())));layout.addView(copy);
         output=new TextView(this);output.setTextSize(12);output.setTextIsSelectable(true);
         String previous=saved.getString("report","");
-        if(!previous.isEmpty())output.setText((saved.getBoolean("complete",false)?"":"Проверка прервалась. Последний этап:\n")+previous);
+        if(!previous.isEmpty())output.setText((saved.getBoolean("complete",false)?"":Lang.t(this,"Проверка прервалась. Последний этап:\n","The check was interrupted. Last stage:\n"))+previous);
         ScrollView scroll=new ScrollView(this);scroll.addView(output);
         layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(layout);
     }
     private final Runnable timeout=()-> {
-        if(running){onNativeProgress("TIMEOUT: SCAM HDR остановлен. Откройте пункт снова и скопируйте отчёт.");
+        if(running){onNativeProgress(Lang.t(this,"TIMEOUT: SCAM HDR остановлен. Откройте пункт снова и скопируйте отчёт.","TIMEOUT: SCAM HDR stopped. Open the item again and copy the report."));
             android.os.Process.killProcess(android.os.Process.myPid());}
     };
     private void copyVerified(File directory,String prefix,String[] item)throws Exception {
@@ -94,10 +95,10 @@ public final class VivoNiceActivity extends Activity {
                 for(String[] item:VivoNeuralWorker.HEX_FILES)if(item[0].endsWith(".so"))copyVerified(dir,"vivo-hexquad/arm64-v8a/",item);
                 System.loadLibrary("vivoNiceProbe");nativeProbe(dir.getAbsolutePath());
                 }
-                onNativeProgress("CHECK FINISHED: результат указан выше. Это ещё не проверка обработки фото.");
+                onNativeProgress(Lang.t(this,"CHECK FINISHED: результат указан выше. Это ещё не проверка обработки фото.","CHECK FINISHED: the result is above. Photo processing is not checked yet."));
             } catch(Exception|LinkageError e){onNativeProgress("STOP: "+e);}
             finally{running=false;main.removeCallbacks(timeout);saved.edit().putBoolean("complete",true).commit();
-                main.post(()->{if(!isDestroyed())start.setText("Проверка завершена. Скопируйте отчёт");});}
+                main.post(()->{if(!isDestroyed())start.setText(Lang.t(this,"Проверка завершена. Скопируйте отчёт","Check finished. Copy the report"));});}
         },"nice-runtime-check").start();
     }
     public void onNativeProgress(String line) {

@@ -1,5 +1,7 @@
 package com.particlesdevs.photoncamera.settings;
 
+import com.particlesdevs.photoncamera.util.Lang;
+
 /** Scalar validation shared by text inputs and capture getters (including imported configs). */
 public final class SettingsNumericRules {
     private static final String HYBRID = "pref_lmc_hybrid_";
@@ -227,7 +229,8 @@ public final class SettingsNumericRules {
         double[] b=bounds(key); if(b==null) return null;
         double v=PreferenceNumber.read(input,Double.NaN);
         if (!Double.isFinite(v) || v<b[0] || v>b[1] || b[2]==1 && v!=Math.rint(v))
-            return (b[2]==1 ? "Нужно целое число" : "Нужно число")+" от "+b[0]+" до "+b[1]+".";
+            return b[2]==1 ? Lang.t("Нужно целое число от "+b[0]+" до "+b[1]+".", "Enter a whole number from "+b[0]+" to "+b[1]+".")
+                    : Lang.t("Нужно число от "+b[0]+" до "+b[1]+".", "Enter a number from "+b[0]+" to "+b[1]+".");
         return null;
     }
     public static double value(String key,Object input,double fallback) {

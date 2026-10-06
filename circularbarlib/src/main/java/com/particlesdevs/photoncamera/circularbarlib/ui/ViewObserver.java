@@ -104,7 +104,8 @@ public class ViewObserver implements Observer {
         textViews = Arrays.asList(isoOption, evOption, expOption, wbOption, focusOption);
         int[] icons = {R.drawable.concept_manual_iso, R.drawable.concept_manual_ev,
                 R.drawable.concept_manual_exposure, R.drawable.concept_manual_wb, R.drawable.concept_manual_focus};
-        String[] names = {"ISO", "Экспокоррекция", "Выдержка", "Баланс белого", "Фокус"};
+        String[] names = {"ISO", activity.getString(R.string.manual_tab_ev), activity.getString(R.string.manual_tab_shutter),
+                activity.getString(R.string.manual_tab_wb), activity.getString(R.string.manual_tab_focus)};
         for (int i = 0; i < textViews.size(); i++) {
             TextView tab = textViews.get(i);
             tab.setText("");
@@ -159,7 +160,7 @@ public class ViewObserver implements Observer {
     }
     public void setWhiteBalanceSupported(boolean supported) {
         wbOption.setEnabled(supported);
-        wbOption.setContentDescription(supported ? "Баланс белого" : "Ручной баланс белого недоступен для этой камеры");
+        wbOption.setContentDescription(activity.getString(supported ? R.string.manual_tab_wb : R.string.manual_wb_unavailable));
     }
 
     public void enableOrientationListener() {
@@ -240,7 +241,7 @@ public class ViewObserver implements Observer {
                         syncScale();
                         break;
                     case WB_TEXT:
-                        wbOption.setContentDescription("Баланс белого: " + manualModeModel.getWbText());
+                        wbOption.setContentDescription(activity.getString(R.string.manual_tab_wb) + ": " + manualModeModel.getWbText());
                         syncScale(); break;
                     case WB_LISTENER:
                         wbOption.setOnClickListener(manualModeModel.getWbTextClicked()); break;

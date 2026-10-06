@@ -1,5 +1,7 @@
 package com.particlesdevs.photoncamera.settings;
 
+import com.particlesdevs.photoncamera.util.Lang;
+
 import java.util.Map;
 
 /** Conditions mirror the capture/post-pipeline branches. Pages stay open to explain inactive rows. */
@@ -25,40 +27,40 @@ public final class SettingsAvailability {
         boolean hybrid=!autonomous;
         // The ARK tone (ArkCore) and its sharpening are shared by both routes.
         boolean arkShared = key.startsWith("pref_lmc_hybrid_ark_") || key.equals("pref_lmc_hybrid_sharp_mode");
-        if (key.startsWith("pref_lmc_hybrid_") && !hybrid && !arkShared) return "Выберите склейку «Hybrid».";
+        if (key.startsWith("pref_lmc_hybrid_") && !hybrid && !arkShared) return Lang.t("Выберите склейку «Hybrid».", "Select the “Hybrid” merge.");
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
-        if (key.startsWith("pref_lmc_hybrid_dn_") && !on("pref_lmc_hybrid_denoise", true)) return "Включите «Шумоподавление».";
+        if (key.startsWith("pref_lmc_hybrid_dn_") && !on("pref_lmc_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
         // P28 RAW CA: the rows under the mode list follow it and the auto switch.
         if (key.startsWith("pref_lmc_hybrid_rawca_") && !key.equals("pref_lmc_hybrid_rawca_mode")) {
-            if (text("pref_lmc_hybrid_rawca_mode", "0").equals("0")) return "Выберите режим «Коррекция ХА в RAW».";
+            if (text("pref_lmc_hybrid_rawca_mode", "0").equals("0")) return Lang.t("Выберите режим «Коррекция ХА в RAW».", "Select a “RAW CA correction” mode.");
             boolean auto = on("pref_lmc_hybrid_rawca_auto", true);
-            if (any(key, "pref_lmc_hybrid_rawca_red", "pref_lmc_hybrid_rawca_blue") && auto) return "Только без автоподбора.";
-            if (key.equals("pref_lmc_hybrid_rawca_passes") && !auto) return "Только с автоподбором.";
+            if (any(key, "pref_lmc_hybrid_rawca_red", "pref_lmc_hybrid_rawca_blue") && auto) return Lang.t("Только без автоподбора.", "Only when auto fit is off.");
+            if (key.equals("pref_lmc_hybrid_rawca_passes") && !auto) return Lang.t("Только с автоподбором.", "Only when auto fit is on.");
         }
-        if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return "Включите водяной знак.";
+        if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         if (key.startsWith("pref_vivo_nice_") && !autonomous)
-            return "Выберите склейку «SCAM HDR».";
+            return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");
         // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.
         if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
-            if (!neuralMosaic) return "Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).";
+            if (!neuralMosaic) return Lang.t("Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).", "Used in SCAM HDR with the “Neural” mosaic (ISZ modules).");
             String p = key.startsWith("quad2x2_") ? "quad2x2_" : "hexquad_";
             boolean auto = on(p + "auto_iso", false);
-            if (any(key, p + "luma", p + "chroma") && auto) return "Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.";
-            if (key.startsWith(p + "iso_") && !auto) return "Включите «Люма и хрома по ISO».";
+            if (any(key, p + "luma", p + "chroma") && auto) return Lang.t("Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.", "The strength is set by ISO below. Turn off the auto mode to set it by hand.");
+            if (key.startsWith(p + "iso_") && !auto) return Lang.t("Включите «Люма и хрома по ISO».", "Turn on “Luma and chroma by ISO”.");
         }
         // GPU remosaic of SCAM HDR's mosaic modes (S / ES / L always, N in «SCAMERA» / «Sabre»).
-        if (key.startsWith("pref_remosaic_") && !niceMosaic) return "Используется в SCAM HDR с мозаикой Quad / Tetra (модули ISZ).";
+        if (key.startsWith("pref_remosaic_") && !niceMosaic) return Lang.t("Используется в SCAM HDR с мозаикой Quad / Tetra (модули ISZ).", "Used in SCAM HDR with a Quad / Tetra mosaic (ISZ modules).");
         if (key.equals("pref_tetra_response_key") && !(niceMosaic && (mosaicMode.equals("detail") || mosaicMode.startsWith("neural"))))
-            return "Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.";
-        if (any(key,"scamera_quad_bayer_mode","scamera_quad_dng_metadata") && !on("scamera_quad_bayer_enabled", false)) return "Включите обработку Quad Bayer.";
+            return Lang.t("Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.", "Correction for the SCAM HDR “Tetra Detail” and “Neural” mosaics.");
+        if (any(key,"scamera_quad_bayer_mode","scamera_quad_dng_metadata") && !on("scamera_quad_bayer_enabled", false)) return Lang.t("Включите обработку Quad Bayer.", "Turn on Quad Bayer processing.");
         if (key.startsWith("pref_sharp_")) {
             String master = key.contains("deconv") ? "pref_sharp_deconv_enabled_key"
                     : key.contains("micro") ? "pref_sharp_micro_enabled_key" : "pref_sharp_usm_enabled_key";
-            if (!key.equals(master) && !on(master, master.contains("usm"))) return "Включите соответствующий алгоритм резкости.";
-            if (any(key,"pref_sharp_edges_radius_key","pref_sharp_edges_tolerance_key") && !on("pref_sharp_edges_only_key",false)) return "Включите режим «Только края».";
-            if (key.equals("pref_sharp_halo_amount_key") && !on("pref_sharp_halo_control_key",false)) return "Включите контроль ореолов Unsharp Mask.";
+            if (!key.equals(master) && !on(master, master.contains("usm"))) return Lang.t("Включите соответствующий алгоритм резкости.", "Turn on the matching sharpening algorithm.");
+            if (any(key,"pref_sharp_edges_radius_key","pref_sharp_edges_tolerance_key") && !on("pref_sharp_edges_only_key",false)) return Lang.t("Включите режим «Только края».", "Turn on the “Edges only” mode.");
+            if (key.equals("pref_sharp_halo_amount_key") && !on("pref_sharp_halo_control_key",false)) return Lang.t("Включите контроль ореолов Unsharp Mask.", "Turn on Unsharp Mask halo control.");
         }
-        if (key.equals("pref_show_gradient_key") && text("pref_theme_accent_key","default").equals("eszdman")) return "Оформление задаётся выбранной темой.";
+        if (key.equals("pref_show_gradient_key") && text("pref_theme_accent_key","default").equals("eszdman")) return Lang.t("Оформление задаётся выбранной темой.", "The look is set by the selected theme.");
         return null;
     }
 }

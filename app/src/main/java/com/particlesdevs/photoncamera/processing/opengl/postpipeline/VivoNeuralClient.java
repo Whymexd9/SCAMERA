@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.zip.ZipFile;
+import com.particlesdevs.photoncamera.util.Lang;
 
 /** Bounded one-job worker process (app sandbox, or su when enabled); vendor failures cannot crash the camera PID. */
 public final class VivoNeuralClient {
@@ -42,6 +43,10 @@ public final class VivoNeuralClient {
     private static void saveHexProfiles(Context context) {
         hexProfileStore(context).edit().putString("build", hexProfileBuild(context))
                 .putStringSet("profiles", new java.util.HashSet<>(validatedHexProfiles)).apply();
+    }
+    /** The worker did not finish in time. LmcHybridBurst skips its conservative retry on this type (the text is localized). */
+    public static final class WorkerTimeoutException extends IOException {
+        WorkerTimeoutException(String message) { super(message); }
     }
     private static String quote(String s) { return "'"+s.replace("'","'\\''")+"'"; }
     public static synchronized void selfTest(Context context,Consumer<String> log) throws Exception {
@@ -96,7 +101,7 @@ public final class VivoNeuralClient {
         if(!dir.isDirectory()){
             File[] old=root.listFiles();
             if(old!=null)for(File d:old)deleteTree(d);
-            if(!dir.mkdirs()&&!dir.isDirectory())throw new IOException("Не удалось создать кэш ресурсов");
+            if(!dir.mkdirs()&&!dir.isDirectory())throw new IOException(Lang.t("Не удалось создать кэш ресурсов","Could not create the asset cache"));
         }
         return dir;
     }
@@ -107,26 +112,26 @@ public final class VivoNeuralClient {
     }
     private static File cachedAsset(Context context,ZipFile apk,java.util.zip.ZipEntry entry,String prefix,String name) throws IOException {
         File dir=new File(assetCacheDir(context),prefix.replace('/','_'));
-        if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Не удалось создать кэш ресурсов");
+        if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException(Lang.t("Не удалось создать кэш ресурсов","Could not create the asset cache"));
         File file=new File(dir,name);
         if(file.isFile()&&file.length()==entry.getSize())return file;
         File tmp=new File(dir,name+".tmp");
         tmp.delete();
         try(InputStream in=apk.getInputStream(entry);FileOutputStream out=new FileOutputStream(tmp)){
             byte[] buf=new byte[65536];int n;long total=0;
-            while((n=in.read(buf))!=-1){total+=n;if(total>128L*1024*1024)throw new IOException("Слишком большой ресурс");out.write(buf,0,n);}
+            while((n=in.read(buf))!=-1){total+=n;if(total>128L*1024*1024)throw new IOException(Lang.t("Слишком большой ресурс","Asset too large"));out.write(buf,0,n);}
         }
-        if(!tmp.setReadOnly())throw new IOException("Не удалось защитить "+name);
-        if(name.equals("vivo-neural-worker")&&!tmp.setExecutable(true,true))throw new IOException("Не удалось разрешить запуск нейромодуля");
+        if(!tmp.setReadOnly())throw new IOException(Lang.t("Не удалось защитить ","Could not protect ")+name);
+        if(name.equals("vivo-neural-worker")&&!tmp.setExecutable(true,true))throw new IOException(Lang.t("Не удалось разрешить запуск нейромодуля","Could not make the neural module executable"));
         file.delete();
-        if(!tmp.renameTo(file))throw new IOException("Не удалось сохранить "+name);
+        if(!tmp.renameTo(file))throw new IOException(Lang.t("Не удалось сохранить ","Could not save ")+name);
         return file;
     }
     private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,boolean nice,boolean niceTone,HexQuadBurst burst,NiceTransport niceBurst,Consumer<String> observer) throws Exception {
         if(raw!=null && (w<8||h<8||w%8!=0||h%8!=0||(long)w*h>16000000||raw.remaining()!=(long)w*h*4))
-            throw new IOException("Неподдерживаемый размер RAW");
+            throw new IOException(Lang.t("Неподдерживаемый размер RAW","Unsupported RAW size"));
         File dir=new File(context.getCacheDir(),"vivo-neural-job-"+UUID.randomUUID());
-        if(!dir.mkdir())throw new IOException("Не удалось создать папку задания");
+        if(!dir.mkdir())throw new IOException(Lang.t("Не удалось создать папку задания","Could not create the job folder"));
         com.particlesdevs.photoncamera.util.WorkerSpawn.Child process=null;
         SharedMemory niceIn=null,niceOut=null;
         // Without root: the worker and its QNN/CRE runtime are installed as native
@@ -170,8 +175,8 @@ public final class VivoNeuralClient {
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             if(!direct && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRootEnabled())
-                throw new IOException(hex||nice?"Обработчик не установлен в этой сборке; включите «Root-доступ» в настройках Обработки Vivo"
-                        :"Этот нейроремозаик работает только с root: включите «Root-доступ» в настройках Обработки Vivo");
+                throw new IOException(hex||nice?Lang.t("Обработчик не установлен в этой сборке; включите «Root-доступ» в настройках Обработки Vivo","The processor is not installed in this build; turn on “Root access” in the Vivo processing settings")
+                        :Lang.t("Этот нейроремозаик работает только с root: включите «Root-доступ» в настройках Обработки Vivo","This neural remosaic works only with root: turn on “Root access” in the Vivo processing settings"));
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
                 java.util.ArrayList<String> names=new java.util.ArrayList<>();
                 java.util.HashSet<String> niceAssets=new java.util.HashSet<>();
@@ -190,19 +195,19 @@ public final class VivoNeuralClient {
                     // QNN build and stays an asset.)
                     final boolean shared=name.endsWith(".so") && !prefix.equals("assets/vivo-neural/arm64-v8a/");
                     File installed=shared?com.particlesdevs.photoncamera.util.WorkerSpawn.library(context,name):null;
-                    if(direct&&shared&&installed==null)throw new IOException("Неполная установка: нет "+name);
+                    if(direct&&shared&&installed==null)throw new IOException(Lang.t("Неполная установка: нет ","Incomplete install: missing ")+name);
                     if(installed!=null){
                         try{android.system.Os.symlink(installed.getAbsolutePath(),new File(dir,name).getAbsolutePath());}
-                        catch(android.system.ErrnoException e){throw new IOException("Не удалось подготовить "+name+": "+e.getMessage());}
+                        catch(android.system.ErrnoException e){throw new IOException(Lang.t("Не удалось подготовить ","Could not prepare ")+name+": "+e.getMessage());}
                         continue;
                     }
                     java.util.zip.ZipEntry entry=apk.getEntry(prefix+name);
-                    if(entry==null)throw new IOException("Неполный APK: отсутствует "+name+". Установите сборку Bundled.");
+                    if(entry==null)throw new IOException(Lang.t("Неполный APK: отсутствует ","Incomplete APK: missing ")+name+Lang.t(". Установите сборку Bundled.",". Install the Bundled build."));
                     // Extracted once per installed APK (was every shot, ~0.2 s); the job
                     // directory only links to it. The root worker still verifies hashes.
                     File cached=cachedAsset(context,apk,entry,prefix,name);
                     try{android.system.Os.symlink(cached.getAbsolutePath(),new File(dir,name).getAbsolutePath());}
-                    catch(android.system.ErrnoException e){throw new IOException("Не удалось подготовить "+name+": "+e.getMessage());}
+                    catch(android.system.ErrnoException e){throw new IOException(Lang.t("Не удалось подготовить ","Could not prepare ")+name+": "+e.getMessage());}
                 }
             }
             // "Bundled" CRE source: the worker skips /vendor and loads the APK copy with
@@ -211,7 +216,7 @@ public final class VivoNeuralClient {
             if(niceBurst!=null){
                 String creSource=com.particlesdevs.photoncamera.settings.PreferenceKeys.getNiceCreSource();
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
-                if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException("Не удалось создать маркер CRE");
+                if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));
             }
             // Only the hybrid burst asks for the hybrid merge: a VivoNiceBurst reaches the worker when the engine is
             // the network or the burst is a Quad/Tetra mosaic (HdrxProcessor), and the hybrid would read the mosaic
@@ -220,7 +225,7 @@ public final class VivoNeuralClient {
             if(hybridMerge){
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
-                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException("Не удалось создать маркер склейки Hybrid");
+                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки Hybrid","Could not create the Hybrid merge marker"));
                 // P30: the worker keeps its compiled GPU programs in the app's cache (−0.6 s per shot after the first).
                 File glCache=new File(context.getCacheDir(),"hybrid-gl");
                 if(glCache.isDirectory()||glCache.mkdirs())
@@ -273,7 +278,7 @@ public final class VivoNeuralClient {
                 if(raw!=null)try(FileChannel channel=new FileOutputStream(input).getChannel()){ByteBuffer data=raw.duplicate();while(data.hasRemaining())channel.write(data);}
                 // Create as app UID before root truncates/writes it: no chmod,
                 // chown, shared-storage input, or globally readable temp files.
-                if(!output.createNewFile())throw new IOException("Не удалось создать файл результата");
+                if(!output.createNewFile())throw new IOException(Lang.t("Не удалось создать файл результата","Could not create the result file"));
             }
             final long inputDone=android.os.SystemClock.elapsedRealtime();
             log.accept("HEX CLIENT PREP ms: assets="+(assetsDone-startMs)+" raw_write="+(inputDone-assetsDone));
@@ -293,7 +298,7 @@ public final class VivoNeuralClient {
                 else if(niceTone)java.util.Collections.addAll(args,"--nice-tone-check",dirPath);
                 else if(nice)java.util.Collections.addAll(args,"--nice-check",dirPath);
                 else java.util.Collections.addAll(args,"--hexquad-check",dirPath);
-                log.accept("WORKER: отдельный процесс приложения (без root)");
+                log.accept(Lang.t("WORKER: отдельный процесс приложения (без root)","WORKER: separate app process (no root)"));
                 process=com.particlesdevs.photoncamera.util.WorkerSpawn.start(context,args,
                         com.particlesdevs.photoncamera.util.WorkerSpawn.environment(context,dir),fds);
                 if(goPipe!=null){
@@ -317,7 +322,7 @@ public final class VivoNeuralClient {
             else if(niceTone)command+=" --nice-tone-check";
             else if(nice)command+=" --nice";
             else if(hex)command+=" --hexquad";
-            log.accept("ROOT: запуск отдельного процесса; разрешите запрос root");
+            log.accept(Lang.t("ROOT: запуск отдельного процесса; разрешите запрос root","ROOT: starting a separate process; allow the root request"));
             process=com.particlesdevs.photoncamera.util.WorkerSpawn.Child.of(new ProcessBuilder("su","-c",command).redirectErrorStream(true).start());
             }
             final com.particlesdevs.photoncamera.util.WorkerSpawn.Child child=process;
@@ -327,7 +332,7 @@ public final class VivoNeuralClient {
                 catch(IOException e){log.accept("READ: "+e);}
             },"vivo-neural-output");
             reader.setDaemon(true);reader.start();
-            if(!process.waitFor(TimeUnit.SECONDS.toMillis(burst!=null||niceBurst!=null?900:niceTone?420:200))){process.destroy();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
+            if(!process.waitFor(TimeUnit.SECONDS.toMillis(burst!=null||niceBurst!=null?900:niceTone?420:200))){process.destroy();throw new WorkerTimeoutException(Lang.t("Тайм-аут нейромодуля; снимок не обработан","Neural module timed out; the shot was not processed"));}
             reader.join(5000);
             if(process.exitValue()!=0||!completed[0]){
                 // P26: the X200 Pro (Mali) worker vanished mid-merge with nothing in the log; say how it ended.
@@ -337,14 +342,14 @@ public final class VivoNeuralClient {
                         :code>128?"signal "+(code-128):"code "+code)+(completed[0]?"":", no completion line"));
             }
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
-                    niceBurst instanceof LmcHybridBurst?"Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
-                    niceBurst!=null?"SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
-                    (nice?"Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ":"Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ")+
-                    (raw!=null||burst!=null?"Отчёт последней съёмки":"Скопировать отчёт")+".");
+                    niceBurst instanceof LmcHybridBurst?Lang.t("Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","Hybrid: merge not finished. Report: SCAM HDR launch check → Last SCAM HDR capture report."):
+                    niceBurst!=null?Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open SCAM HDR launch check → Last SCAM HDR capture report."):
+                    (nice?Lang.t("Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ","SCAM HDR check not finished. Copy this report. "):Lang.t("Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ","Neural remosaic not finished. Open Vivo Neural check → "))+
+                    (raw!=null||burst!=null?Lang.t("Отчёт последней съёмки","Last capture report"):Lang.t("Скопировать отчёт","Copy report"))+".");
             if(raw==null&&burst==null&&niceBurst==null)return null;
             final int ow=niceBurst!=null?niceBurst.outputWidth():w,oh=niceBurst!=null?niceBurst.outputHeight():h;
             long expected=niceBurst!=null?(long)ow*oh*12:burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
-            if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException("Слишком большой нейрорезультат");
+            if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException(Lang.t("Слишком большой нейрорезультат","Neural result too large"));
             final long outputBytes=niceOut!=null?niceOut.size():output.length();
             // Trailers after the RGB, each optional, in this order: merged Bayer RAW (sensor grid, w*h*2, if requested), the
             // effective-frame map (OUTPUT grid, ow*oh), the clip flags (OUTPUT grid, ow*oh; LMC hybrid, only if requested and only
@@ -358,18 +363,18 @@ public final class VivoNeuralClient {
                         for(long c:niceBurst.clipFlags()&&e>0?new long[]{outTrailer,0}:new long[]{0})
                             if(outputBytes==expected+d+e+c){dngBytes=d;effBytes=e;clipBytes=c;sized=true;break search;}
             }
-            if(!sized)throw new IOException("Неверный размер нейрорезультата");
+            if(!sized)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
             if(niceBurst!=null){VivoNiceBurst.lastMergedDng=null;VivoNiceBurst.lastEffectiveFrames=null;VivoNiceRgb.lastClipFlags=null;
                 LmcHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 LmcHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 LmcHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null||niceBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
-            if(result==null)throw new IOException("Недостаточно памяти для результата");
+            if(result==null)throw new IOException(Lang.t("Недостаточно памяти для результата","Not enough memory for the result"));
             result.order(ByteOrder.nativeOrder());
             try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
                 long position=0;
-                while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException("Неполный результат");position+=n;}
+                while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException(Lang.t("Неполный результат","Incomplete result"));position+=n;}
             }
             catch(Exception e){if(burst!=null||niceBurst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
             result.flip();
@@ -379,7 +384,7 @@ public final class VivoNeuralClient {
                     dng.order(ByteOrder.nativeOrder());
                     try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
                         long position=expected;
-                        while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException("Неполный RAW");position+=n;}
+                        while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException(Lang.t("Неполный RAW","Incomplete RAW"));position+=n;}
                         dng.flip();VivoNiceBurst.lastMergedDng=dng;
                     }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
                 }
@@ -388,7 +393,7 @@ public final class VivoNeuralClient {
                 ByteBuffer eff=ByteBuffer.allocateDirect((int)effBytes);
                 try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
                     long position=expected+dngBytes;
-                    while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException("Неполная карта кадров");position+=n;}
+                    while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException(Lang.t("Неполная карта кадров","Incomplete frame map"));position+=n;}
                     eff.flip();VivoNiceBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
@@ -396,7 +401,7 @@ public final class VivoNeuralClient {
                 ByteBuffer clip=ByteBuffer.allocateDirect((int)clipBytes);
                 try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
                     long position=expected+dngBytes+effBytes;
-                    while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException("Неполные флаги клипа");position+=n;}
+                    while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException(Lang.t("Неполные флаги клипа","Incomplete clip flags"));position+=n;}
                     clip.flip();VivoNiceRgb.lastClipFlags=clip;
                 }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
             }else if(niceBurst!=null&&niceBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
