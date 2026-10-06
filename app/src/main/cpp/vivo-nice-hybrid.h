@@ -18,6 +18,7 @@
 // float) in base units, canonical RGGB geometry (the caller restores the sensor origin), plus the
 // effective-frames map and the merged Bayer RAW for the DNG.
 #include "vivo-nice-superres-gpu.h"
+#include "vivo-nice-rawca-gpu.h" // P28 RAW CA (CA_correct_RT port, burst / GPU pre-pass)
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -225,6 +226,13 @@ struct HybridTuning {
     // moves R or B by at least caMinShift RAW px at the corner)
     int caCorrect=1;
     float caMinShift=0.25f;
+    // P28 RAW CA correction as RawTherapee's CA_correct_RT (vivo-nice-rawca.h, vivo-nice-rawca-gpu.h). rawCa: 0 off (default; P19
+    // above as before), 1 "base": the fit of the base frame moves R / B of the merged RGB onto G once, 2 "frames": every frame
+    // corrected before the alignment / merge (GPU pre-pass). Either replaces P19 (caCorrect is skipped). rawCaAuto 1: RT's auto fit
+    // with rawCaPasses passes; 0: RT's manual red / blue (rawCaRed / rawCaBlue, px at the frame edge). rawCaAvoidShift: RT's avoid
+    // colour shift. rawCaGpu 0: frames mode on the CPU (diagnostics).
+    int rawCa=0,rawCaAuto=1,rawCaPasses=2,rawCaAvoidShift=1,rawCaGpu=1;
+    float rawCaRed=0,rawCaBlue=0;
     int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
     // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
@@ -300,7 +308,10 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
             ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
-            ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift);
+            ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
+            // P28
+            ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
+            ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -2830,6 +2841,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     if(input.frames.empty()||int(input.frames.size())>kHybridMaxFrames)throw std::runtime_error("HYBRID: 1.."+std::to_string(kHybridMaxFrames)+" frames");
+    if(tune.rawCa==2){ // P28 frames mode: every frame corrected (vivo-nice-rawca-gpu.h), then this merge on them without it
+        HybridInput corrected=input;std::vector<std::vector<uint16_t>> caStore;
+        // the sub-frames of a colour-block mosaic (subFrames > 1) are hybridReconstructMosaic's own buffer: corrected in place
+        if(vivo_rawca::hybridRawCaFrames(corrected,tune,report,caStore,input.subFrames>1)){
+            HybridTuning t2=tune;t2.rawCa=0;t2.caCorrect=0;
+            return hybridReconstruct(corrected,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset);
+        }
+    }
     const int w=input.w,h=input.h;
     // A Burst view for the shared helpers (sampleRaw, guides, alignment): slot 0 = base.
     Burst b;b.w=w;b.h=h;b.cfa=input.cfa;b.white=input.white;b.black=input.black;b.canonicalRggb=true;
@@ -3260,7 +3279,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     in.k61a=k61a;in.k61b=k61b;in.k61c=k61c;
     in.mergeMode=sabre61?(tune.s61Mode&7):0;
     HybridCa caModel;
-    if(tune.caCorrect){ // P19 lateral CA of R / B, measured on the base frame, corrected on the merged RGB
+    vivo_rawca::BaseEstimate rawCaBase; // P28 base mode: CA_correct_RT's fit of the base frame, applied to the merged RGB
+    if(tune.rawCa==1)rawCaBase=vivo_rawca::hybridRawCaEstimate(input,tune,report);
+    if(tune.caCorrect&&tune.rawCa==0){ // P19 lateral CA of R / B, measured on the base frame, corrected on the merged RGB (P28 replaces it)
         const auto caStarted=Clock::now();
         const HybridCa ca=hybridRawCa(input);
         char line[260];
@@ -3338,6 +3359,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         hybridCorrectCa(out,outW,outH,grid,caModel);
         report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms");
     }
+    if(rawCaBase.ok)vivo_rawca::hybridRawCaApply(out,outW,outH,grid,rawCaBase,tune.rawCaAvoidShift!=0,report); // P28 base mode
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
         sensorRgb.assign(size_t(w)*h*3,0.f);
         mergeRowBands(h,[&](int y0,int y1){
