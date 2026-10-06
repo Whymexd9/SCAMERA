@@ -175,8 +175,8 @@ public final class VivoNeuralClient {
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             if(!direct && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRootEnabled())
-                throw new IOException(hex||nice?Lang.t("Обработчик не установлен в этой сборке; включите «Root-доступ» в настройках Обработки Vivo","The processor is not installed in this build; turn on “Root access” in the Vivo processing settings")
-                        :Lang.t("Этот нейроремозаик работает только с root: включите «Root-доступ» в настройках Обработки Vivo","This neural remosaic works only with root: turn on “Root access” in the Vivo processing settings"));
+                throw new IOException(hex||nice?Lang.t("Обработчик не установлен в этой сборке; включите «Root-доступ» в настройках Обработки Vivo","The processor is not installed in this build; turn on “Root access” in Settings → System")
+                        :Lang.t("Этот нейроремозаик работает только с root: включите «Root-доступ» в настройках Обработки Vivo","This neural remosaic works only with root: turn on “Root access” in Settings → System"));
             try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
                 java.util.ArrayList<String> names=new java.util.ArrayList<>();
                 java.util.HashSet<String> niceAssets=new java.util.HashSet<>();
@@ -342,8 +342,8 @@ public final class VivoNeuralClient {
                         :code>128?"signal "+(code-128):"code "+code)+(completed[0]?"":", no completion line"));
             }
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
-                    niceBurst instanceof LmcHybridBurst?Lang.t("Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","Hybrid: merge not finished. Report: SCAM HDR launch check → Last SCAM HDR capture report."):
-                    niceBurst!=null?Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open SCAM HDR launch check → Last SCAM HDR capture report."):
+                    niceBurst instanceof LmcHybridBurst?Lang.t("Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","Hybrid: merge not finished. Report: “SCAM HDR: launch check” → “Last SCAM HDR capture report”."):
+                    niceBurst!=null?Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open “SCAM HDR: launch check” → “Last SCAM HDR capture report”."):
                     (nice?Lang.t("Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ","SCAM HDR check not finished. Copy this report. "):Lang.t("Нейроремозаик не завершён. Откройте Vivo Neural — проверка → ","Neural remosaic not finished. Open Vivo Neural check → "))+
                     (raw!=null||burst!=null?Lang.t("Отчёт последней съёмки","Last capture report"):Lang.t("Скопировать отчёт","Copy report"))+".");
             if(raw==null&&burst==null&&niceBurst==null)return null;

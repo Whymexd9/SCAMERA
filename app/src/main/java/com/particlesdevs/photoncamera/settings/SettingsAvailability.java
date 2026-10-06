@@ -34,15 +34,15 @@ public final class SettingsAvailability {
         if (key.startsWith("pref_lmc_hybrid_rawca_") && !key.equals("pref_lmc_hybrid_rawca_mode")) {
             if (text("pref_lmc_hybrid_rawca_mode", "0").equals("0")) return Lang.t("Выберите режим «Коррекция ХА в RAW».", "Select a “RAW CA correction” mode.");
             boolean auto = on("pref_lmc_hybrid_rawca_auto", true);
-            if (any(key, "pref_lmc_hybrid_rawca_red", "pref_lmc_hybrid_rawca_blue") && auto) return Lang.t("Только без автоподбора.", "Only when auto fit is off.");
-            if (key.equals("pref_lmc_hybrid_rawca_passes") && !auto) return Lang.t("Только с автоподбором.", "Only when auto fit is on.");
+            if (any(key, "pref_lmc_hybrid_rawca_red", "pref_lmc_hybrid_rawca_blue") && auto) return Lang.t("Только без автоподбора.", "Only when “Auto detect” is off.");
+            if (key.equals("pref_lmc_hybrid_rawca_passes") && !auto) return Lang.t("Только с автоподбором.", "Only when “Auto detect” is on.");
         }
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         if (key.startsWith("pref_vivo_nice_") && !autonomous)
             return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");
         // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.
         if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
-            if (!neuralMosaic) return Lang.t("Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).", "Used in SCAM HDR with the “Neural” mosaic (ISZ modules).");
+            if (!neuralMosaic) return Lang.t("Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).", "Used in SCAM HDR with a “Neural remosaic” mosaic mode (ISZ modules).");
             String p = key.startsWith("quad2x2_") ? "quad2x2_" : "hexquad_";
             boolean auto = on(p + "auto_iso", false);
             if (any(key, p + "luma", p + "chroma") && auto) return Lang.t("Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.", "The strength is set by ISO below. Turn off the auto mode to set it by hand.");
@@ -51,8 +51,8 @@ public final class SettingsAvailability {
         // GPU remosaic of SCAM HDR's mosaic modes (S / ES / L always, N in «SCAMERA» / «Sabre»).
         if (key.startsWith("pref_remosaic_") && !niceMosaic) return Lang.t("Используется в SCAM HDR с мозаикой Quad / Tetra (модули ISZ).", "Used in SCAM HDR with a Quad / Tetra mosaic (ISZ modules).");
         if (key.equals("pref_tetra_response_key") && !(niceMosaic && (mosaicMode.equals("detail") || mosaicMode.startsWith("neural"))))
-            return Lang.t("Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.", "Correction for the SCAM HDR “Tetra Detail” and “Neural” mosaics.");
-        if (any(key,"scamera_quad_bayer_mode","scamera_quad_dng_metadata") && !on("scamera_quad_bayer_enabled", false)) return Lang.t("Включите обработку Quad Bayer.", "Turn on Quad Bayer processing.");
+            return Lang.t("Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.", "Correction for the SCAM HDR “Tetra Detail” and “Neural remosaic” mosaic modes.");
+        if (any(key,"scamera_quad_bayer_mode","scamera_quad_dng_metadata") && !on("scamera_quad_bayer_enabled", false)) return Lang.t("Включите обработку Quad Bayer.", "Turn on Quad Bayer handling.");
         if (key.startsWith("pref_sharp_")) {
             String master = key.contains("deconv") ? "pref_sharp_deconv_enabled_key"
                     : key.contains("micro") ? "pref_sharp_micro_enabled_key" : "pref_sharp_usm_enabled_key";

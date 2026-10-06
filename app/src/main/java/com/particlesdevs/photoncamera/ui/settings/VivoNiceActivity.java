@@ -29,7 +29,7 @@ public final class VivoNiceActivity extends Activity {
     private native void nativeProbe(String directory);
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);setTitle(Lang.t(this,"SCAM HDR — проверка запуска","SCAM HDR launch check"));
+        super.onCreate(state);setTitle(Lang.t(this,"SCAM HDR — проверка запуска","SCAM HDR: launch check"));
         saved=getSharedPreferences("vivo_nice_report",MODE_PRIVATE);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
         int pad=Math.round(16*getResources().getDisplayMetrics().density);layout.setPadding(pad,pad,pad,pad);

@@ -43,7 +43,7 @@
     <string name="prefs_lmc_hybrid_merge_screen_title">Merge</string>
     <string name="prefs_lmc_hybrid_merge_screen_summary">Alignment, rejection, Sabre kernel, highlights</string>
     <string name="prefs_lmc_hybrid_cre_source_title">Alignment (CRE)</string>
-    <string name="prefs_lmc_hybrid_cre_source_summary">%s. vivo motion tracker for frame homographies. System: from /vendor on vivo; built-in: the same library from the APK, works on other phones too. Auto: system if present, otherwise built-in.</string>
+    <string name="prefs_lmc_hybrid_cre_source_summary">%s. vivo motion tracker for frame homographies. System: from /vendor on vivo; bundled: the same library from the APK, works on other phones too. Auto: system if present, otherwise bundled.</string>
     <string name="prefs_lmc_hybrid_local_align_title">Local alignment F6</string>
     <string name="prefs_lmc_hybrid_local_align_summary">%s. On top of the frame homography: a shift per 16 RAW px tile (window 32, two-level Lucas–Kanade, falls back to the homography on flat, clipped and moving areas). Residual mismatch of handheld daytime frames 0.77 → 0.09 px: Sabre collects fine detail instead of blurring it. ~0.8 s per shot.</string>
     <string name="prefs_lmc_hybrid_rejection_screen_title">Motion rejection</string>
@@ -126,7 +126,7 @@
     <string name="prefs_lmc_hybrid_rawca_screen_title">RAW chromatic aberration</string>
     <string name="prefs_lmc_hybrid_rawca_screen_summary">Lens colour fringing: CA_correct from RawTherapee</string>
     <string name="prefs_lmc_hybrid_rawca_mode_title">RAW CA correction</string>
-    <string name="prefs_lmc_hybrid_rawca_mode_summary">%s. RawTherapee CA_correct algorithm: green is estimated at the R and B sites, the shift of the red and blue grids relative to green is measured in 128 px tiles, the field is smoothed with a polynomial, and R / B are corrected through the colour difference with G (green samples stay unchanged). “From the base frame”: the base frame field shifts R / B of the finished merge (instead of the old radial correction). “Each frame”: every frame of the series is corrected on the GPU before alignment and merging. Off: as before.</string>
+    <string name="prefs_lmc_hybrid_rawca_mode_summary">%s. RawTherapee CA_correct algorithm: green is estimated at the R and B sites, the shift of the red and blue grids relative to green is measured in 128 px tiles, the field is smoothed with a polynomial, and R / B are corrected through the colour difference with G (green samples stay unchanged). “Estimate from the base frame”: the base frame field shifts R / B of the finished merge (instead of the old radial correction). “Correct every frame (GPU)”: every frame of the series is corrected on the GPU before alignment and merging. Off: as before.</string>
     <string name="prefs_lmc_hybrid_rawca_auto_title">Auto detect</string>
     <string name="prefs_lmc_hybrid_rawca_auto_summary">Shifts are measured on the shot (like Auto in RawTherapee). Off: manual radial correction “Red” / “Blue”.</string>
     <string name="prefs_lmc_hybrid_rawca_passes_title">Passes</string>
@@ -442,7 +442,7 @@
     <string name="prefs_vivo_nice_bracket_screen_title">Bracket and alignment</string>
     <string name="prefs_vivo_nice_bracket_screen_summary">CRE, L from ZSL, planner</string>
     <string name="prefs_vivo_nice_cre_source_title">Alignment (CRE)</string>
-    <string name="prefs_vivo_nice_cre_source_summary">%s. Stock vivo motion tracker for aligning SCAM HDR frames. System: from /vendor on vivo; built-in: the same library from the APK with stubs for the vivo dependencies, works on other phones too. Auto: system if present, otherwise built-in.</string>
+    <string name="prefs_vivo_nice_cre_source_summary">%s. Stock vivo motion tracker for aligning SCAM HDR frames. System: from /vendor on vivo; bundled: the same library from the APK with stubs for the vivo dependencies, works on other phones too. Auto: system if present, otherwise bundled.</string>
     <string name="prefs_nice_zsl_long_title">Long L frame from ZSL</string>
     <string name="prefs_nice_zsl_long_summary">L is not taken after the press: it is built from all ZSL N frames (more light and less noise than a single 1/8 s L). After the press only the short S and ES are taken, and the shutter is free about 0.25 s sooner.</string>
     <string name="prefs_vivo_nice_planner_title">Bracket planner</string>
@@ -601,7 +601,7 @@
     <string name="prefs_raw_lsc_mode_title">Vignetting map</string>
     <string name="prefs_raw_lsc_mode_summary">%s. The STATISTICS_LENS_SHADING_CORRECTION_MAP map (up to ×5 in the corners). Auto: always apply, as before (the HAL flag SENSOR_INFO_LENS_SHADING_APPLIED is unreliable: vivo reports it, but without the map the RAW is wrong). “Do not apply”: for cameras whose RAW is already corrected in the ISP; otherwise the edges get brighter and their black level rises.</string>
     <string name="prefs_raw_black_from_data_title">Black level from the frame</string>
-    <string name="prefs_raw_black_from_data_summary">If dark areas in the RAW itself are below the black level the HAL reports, black is lowered to the real floor of the frame (from the shortest frame of the series). Fixes green shadows on the OPPO Find X8 Ultra: RAW_SENSOR reports 64, but the data starts at ~60. Only lowers black; a manual “Black Level Override” takes priority.</string>
+    <string name="prefs_raw_black_from_data_summary">If dark areas in the RAW itself are below the black level the HAL reports, black is lowered to the real floor of the frame (from the shortest frame of the series). Fixes green shadows on the OPPO Find X8 Ultra: RAW_SENSOR reports 64, but the data starts at ~60. Only lowers black; a manual “Black level” in “Sensor settings per module” takes priority.</string>
     <string name="prefs_raw_stream_format_title">RAW stream format</string>
     <string name="prefs_raw_stream_format_summary">%s. Auto: RAW_SENSOR (16-bit container) if the camera offers it, otherwise RAW10, then RAW12. Packed RAW10/RAW12 are unpacked to 16 bits when copied and in the RAW viewfinder; black and white levels come from the camera characteristics, and the merge does not depend on the bit depth. RAW10 by default on the OPPO Find X8 Ultra.</string>
     <string name="prefs_expert_sensor_screen_title">RAW metadata</string>
