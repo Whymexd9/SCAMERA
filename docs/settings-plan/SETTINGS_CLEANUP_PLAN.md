@@ -1118,6 +1118,16 @@ The settings live in different places now; the curated groups use these keys.
   - no lattice at period 2 / 4 px (`tools/quad/lattice.py`), no maze, no false colour;
   - detail band energy, time;
   - synthetic bursts (`gen_mosaic_burst.py` / `eval_mosaic_burst.py`), then a replay of `hand.nch` on the OPPO.
+- **Built (branch p29, 2026-10-07; host replays only, device check pending):**
+  - S0 numpy reference (`research/p29/S0_results.md`); S1 native pass at parity, S2 ks per colour, S3 site gains at read
+    time, S5 ArkCam R / B fill, S8 Tetra T2 / T1 (all in `vivo-nice-hybrid.h`, `kHybMergeMain1` untouched).
+  - Worker keys: `mosaicPath` (0), `mosaicWindow` (3), `mosaicWindowFull` (1), `mosaicKernelScale` (1),
+    `mosaicNativeEdgeScale` (0.4), `mosaicKernelG` / `RB` (1 / 0.85), `mosaicChromaFill` (0), `mosaicFillSupport` (0.25),
+    `mosaicTetra` (2). The path-1 defaults are the S0 point; `mosaicPath` stays 0 until the device check.
+  - Settings: Hybrid → Склейка → «Мозаика без ремозаика»: «Склейка мозаики» list, category «Нативная склейка мозаики»
+    (`pref_lmc_hybrid_mosaic_*`); rows inactive unless the native merge is chosen.
+  - Device check plan for the coordinator: `research/p29/DEVICE_CHECK.md`.
+  - Not built: S4 device sweep, S6 GCam fallback, S7 directional fill, T2 evaluated at the sensor sub-positions (S0).
 
 ### P30 — Hybrid speed: what ArkCam v23 does faster (study 2026-10-06; not started)
 

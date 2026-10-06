@@ -253,6 +253,30 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <string-array name="lmc_hybrid_mosaic_path_entries">
+        <item>Subframe split (default)</item>
+        <item>Native mosaic</item>
+    </string-array>
+    <string-array name="lmc_hybrid_mosaic_path_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
+    <string-array name="lmc_hybrid_mosaic_chroma_fill_entries">
+        <item>Off (default)</item>
+        <item>ArkCam: colour-block means</item>
+    </string-array>
+    <string-array name="lmc_hybrid_mosaic_chroma_fill_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
+    <string-array name="lmc_hybrid_mosaic_tetra_entries">
+        <item>T2: 2×2 bin to Quad (default)</item>
+        <item>T1: native Tetra</item>
+    </string-array>
+    <string-array name="lmc_hybrid_mosaic_tetra_values" translatable="false">
+        <item>2</item>
+        <item>1</item>
+    </string-array>
     <string-array name="lmc_hybrid_sabre61_entries">
         <item>Off (round 4 core)</item>
         <item>Always</item>

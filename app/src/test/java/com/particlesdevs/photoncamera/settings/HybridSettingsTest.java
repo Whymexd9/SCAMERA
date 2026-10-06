@@ -263,6 +263,58 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
     }
 
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void nativeMosaicKeysReachTheTuningFileAndDefaultToTheSplit() {
+        nativeMosaicKeysReachTheTuningFileAndDefaultToTheSplit("Склейка мозаики","Нативная мозаика");
+    }
+
+    /** The same on an English system (i18n). */
+    @Test public void nativeMosaicKeysReachTheTuningFileAndDefaultToTheSplitInEnglish() {
+        nativeMosaicKeysReachTheTuningFileAndDefaultToTheSplit("Mosaic merge","Native mosaic");
+    }
+
+    private void nativeMosaicKeysReachTheTuningFileAndDefaultToTheSplit(String pathTitle,String nativeEntry) {
+        // P29: unset, nothing is written (worker defaults: mosaicPath 0 = the sub-frame split, the S0 point for mosaicPath 1)
+        String[] keys={"mosaicPath","mosaicWindow","mosaicWindowFull","mosaicKernelScale","mosaicNativeEdgeScale","mosaicKernelG",
+                "mosaicKernelRB","mosaicChromaFill","mosaicFillSupport","mosaicTetra"};
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String k:keys)assertFalse(tuning,tuning.contains(k+" "));
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_path","1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_window","2");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_window_full",false);
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_kernel_scale","0.75");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_native_edge_scale","0.3");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_kernel_g","1.1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_kernel_rb","0.9");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_chroma_fill","1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_fill_support","0.3");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_tetra","1");
+        tuning=PreferenceKeys.hybridTuningText();
+        for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 2.0","mosaicWindowFull 0","mosaicKernelScale 0.75","mosaicNativeEdgeScale 0.3",
+                "mosaicKernelG 1.1","mosaicKernelRB 0.9","mosaicChromaFill 1.0","mosaicFillSupport 0.3","mosaicTetra 1.0"})
+            assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
+        // the page: Hybrid -> Merge -> Mosaic without remosaic; XML defaults = worker defaults (the split; the S0 point for the native
+        // merge: window 3 full, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill, Tetra T2)
+        PreferenceScreen settings=inflate(),merge=settings.findPreference("lmc_hybrid_merge_screen");
+        PreferenceScreen page=merge.findPreference("lmc_hybrid_mosaic_screen");
+        assertNotNull(page);
+        ListPreference path=page.findPreference("pref_lmc_hybrid_mosaic_path");
+        assertEquals(pathTitle,path.getTitle().toString());
+        assertArrayEquals(new CharSequence[]{"0","1"},path.getEntryValues());
+        assertEquals(nativeEntry,path.getEntries()[1].toString());
+        ListPreference tetra=page.findPreference("pref_lmc_hybrid_mosaic_tetra");
+        assertArrayEquals(new CharSequence[]{"2","1"},tetra.getEntryValues());
+        assertNotNull(page.findPreference("lmc_hybrid_mosaic_native_category"));
+        prefs.edit().clear().commit();
+        settings=inflate();
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path","?"));
+        assertTrue(prefs.getBoolean("pref_lmc_hybrid_mosaic_window_full",false));
+        tuning=PreferenceKeys.hybridTuningText();
+        for(String line:new String[]{"mosaicPath 0.0","mosaicWindow 3.0","mosaicKernelScale 1.0","mosaicNativeEdgeScale 0.4","mosaicKernelG 1.0",
+                "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 2.0"})
+            assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
+        assertFalse(tuning,tuning.contains("mosaicWindowFull"));
+    }
+
     @Test public void migrationMovesHybridKeysCopiesSharedKnobsAndKeepsTheEffectiveRoute() {
         prefs.edit().clear()
                 .putBoolean("pref_vivo_hdr_enabled",true).putBoolean("pref_vivo_nice_enabled",true)
