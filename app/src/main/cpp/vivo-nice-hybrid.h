@@ -262,6 +262,10 @@ struct HybridTuning {
     // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (GCam 11 directional) is step S7, not built.
     int mosaicChromaFill=0;
     float mosaicFillSupport=0.25f;
+    // S8 Tetra route of the native path: 2 = T2 (default): every 2x2 sub-block of a Tetra block, gained and clip-aware, is one site of
+    // a true Quad mosaic at W/2 x H/2 merged by the Quad pass, output 2x to the sensor grid; 1 = T1: the Tetra mosaic merged natively
+    // (block 4; mosaicWindow 6 reproduces the split's sites, 196 taps per frame)
+    int mosaicTetra=2;
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -333,6 +337,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
+            ||set("mosaicTetra",nullptr,&t.mosaicTetra)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue);
@@ -4496,6 +4501,8 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
 //   M5  the merge pass is kHybMergeMosaic over the raw mosaic (HybridMosaicNative, slot 12), output on the grid b = W x H in the
 //       split's geometry (output X at sensor X - (b-1)/2); kHybChroma / kHybBento / kHybRim run on the binned frames as usual;
 //   M7  chroma median and false-colour suppression of the split (same code and defaults), M8 to the requested grid.
+// Tetra (S8): T2 (mosaicTetra 2, default) bins every 2x2 sub-block of a Tetra block into one site of a true Quad mosaic at W/2 x H/2
+// and runs the Quad pass on it, output 2x to the sensor grid; T1 (mosaicTetra 1) merges the Tetra mosaic natively (block 4).
 // The plain-Bayer path and mosaicPath 0 never come here.
 inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
                                                         const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
@@ -4527,11 +4534,14 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
+    // The mosaic the merge reads: the sensor's (Quad; Tetra T1), or for Tetra T2 the Quad mosaic of its 2x2 sub-blocks.
+    const bool t2=b==4&&tune.mosaicTetra!=1;
+    const int mb=t2?2:b,MW=t2?W/2:W,MH=t2?Ht/2:Ht,sub=b/mb; // merge block, size, sensor sites per merge site and axis
     if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (GCam directional, S7) is not built: fill off");
     {
         char head[260];
-        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d, %d of %d frames (one GPU slot each, binned %dx%d, mosaic %dx%d), window %d px, kernel scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",
-            b,int(pick.size()),n,vw,vh,W,Ht,window,kernelScale,ksG,ksRB,fill);
+        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d%s, %d of %d frames (one GPU slot each, binned %dx%d, merged mosaic %dx%d block %d), window %d px, kernel scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",
+            b,t2?" (Tetra T2: 2x2 sub-blocks binned into a Quad mosaic)":b==4?" (Tetra T1: native)":"",int(pick.size()),n,vw,vh,MW,MH,mb,window,kernelScale,ksG,ksRB,fill);
         std::string line=head;
         for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
         report(line);
@@ -4551,8 +4561,10 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     // A binned pixel is the block mean, or white when any of its sites clipped: the split saw every site's clip in its sub-frames
     // (cell clip, Bento mask, Shasta's unsaturated pixels, the rejection of a clipped longer frame); a mean of clipped and unclipped
     // sites would hide it (replay of a x1.6 synthetic burst: Bento mask 1.8 % of the cells instead of 5.6 %).
-    const size_t vpix=size_t(vw)*vh;
-    std::vector<uint16_t> binned(vpix*pick.size());
+    // T2: the Quad site (u, v) is the mean of the gained sensor sites (2u..2u+1, 2v..2v+1) (white when one clipped), with the black of
+    // its Tetra block's phase (vb, as the split's sub-frames), so the merge reads it without gains (natV.y = 0).
+    const size_t vpix=size_t(vw)*vh,qpix=size_t(MW)*MH;
+    std::vector<uint16_t> binned(vpix*pick.size()),quad(t2?qpix*pick.size():0);
     const float clipAt=input.white-1.f;
     mergeRowBands(vh,[&](int j0,int j1){
         for(size_t k=0;k<pick.size();++k){
@@ -4560,6 +4572,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
             for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
                 const float vb=input.black[((J&1)<<1)|(I&1)];
                 double acc=0;bool clipped=false;
+                double subAcc[4]{};bool subClip[4]{};
                 for(int c=0;c<b;++c)for(int a=0;a<b;++a){
                     const int x=b*I+a,y=b*J+c;
                     const float v=float(raw[size_t(y)*W+x]);
@@ -4567,26 +4580,30 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
                     const float lin=(v-sb)*gain[((y&7)<<3)|(x&7)];
                     const float out=v>=clipAt?input.white:std::clamp(vb+lin,0.f,input.white);
                     acc+=out;clipped|=v>=clipAt;
+                    if(t2){const int q=((c>>1)<<1)|(a>>1);subAcc[q]+=out;subClip[q]=subClip[q]||v>=clipAt;}
                 }
                 binned[k*vpix+size_t(J)*vw+I]=clipped?uint16_t(std::lround(input.white)):uint16_t(std::lround(acc/bb));
+                if(t2)for(int q=0;q<4;++q)
+                    quad[k*qpix+size_t(2*J+(q>>1))*MW+size_t(2*I+(q&1))]=subClip[q]?uint16_t(std::lround(input.white)):uint16_t(std::lround(subAcc[q]/4.0));
             }
         }
     });
     // ---- the binned burst through hybridReconstruct with the native merge pass
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
-    bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=b;bin.mosaic=1;bin.subFrames=0;
-    HybridMosaicNative nat;nat.block=b;nat.W=W;nat.H=Ht;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
-    nat.rawGains=true;nat.gains=gain;
-    nat.keyNoise=float(bb);
-    nat.siteSlope=std::max(input.frames[0].slope,1e-9f);nat.siteOffset=std::max(input.frames[0].offset,0.f);
+    bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb;bin.mosaic=1;bin.subFrames=0;
+    HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
+    nat.rawGains=!t2;nat.gains=gain;
+    // a binned pixel averages b^2 sites, a merged site sub^2: the kernel keys follow the merged sites (noise x mb^2 of the binned one)
+    nat.keyNoise=float(mb*mb);
+    nat.siteSlope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub);nat.siteOffset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
     for(size_t k=0;k<pick.size();++k){
         HybridFrame v=input.frames[pick[k]];
         v.raw=binned.data()+k*vpix;
         v.slope/=float(bb);v.offset/=float(bb); // a binned pixel is the mean of b^2 sites
         bin.frames.push_back(v);
-        nat.frames.push_back(input.frames[pick[k]].raw);
+        nat.frames.push_back(t2?quad.data()+k*qpix:input.frames[pick[k]].raw);
     }
-    HybridTuning vt=tune;vt.grid=b;vt.mosaicBlock=1;vt.caCorrect=0;
+    HybridTuning vt=tune;vt.grid=mb;vt.mosaicBlock=1;vt.caCorrect=0;
     if(vt.rawCa==2){ // the frames mode would correct the binned frames only, not the mosaic the merge reads
         vt.rawCa=1;
         report("HYBRID MOSAIC NATIVE: RAW CA frames mode is not available on the native mosaic path; base mode instead");
@@ -4595,31 +4612,37 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     HybridStats st;
     std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
     std::vector<uint16_t>().swap(binned);
-    // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults; kept apart from it so
-    // that mosaicPath 0 stays untouched)
-    const int ow=b*vw,oh=b*vh;
+    // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults, on the merged mosaic's
+    // grid and block; kept apart from it so that mosaicPath 0 stays untouched). T2: the oscillation of the Quad sites (the merge's).
+    const int ow=mb*vw,oh=mb*vh;
     if(tune.mosaicChroma){
         const auto c0=Clock::now();
         std::vector<float> osc;
         {
-            const int bw=W/b,bh=Ht/b;
+            const int bw=MW/mb,bh=MH/mb,bq=mb;
             std::vector<float> f(size_t(bw)*bh,0.f);
             const uint16_t* raw=input.frames[0].raw;
+            const uint16_t* q0=t2?quad.data():nullptr;
             const double range=double(input.white)-0.25*(input.black[0]+input.black[1]+input.black[2]+input.black[3]);
-            const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f);
+            const float slope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub),offset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
             mergeRowBands(bh,[&](int j0,int j1){
-                std::vector<double> d(size_t(b)*b);
+                std::vector<double> d(size_t(bq)*bq);
                 for(int J=j0;J<j1;++J)for(int I=0;I<bw;++I){
                     double m=0;
-                    for(int c=0;c<b;++c)for(int a=0;a<b;++a){const int x=b*I+a,y=b*J+c;d[size_t(c)*b+a]=double(raw[size_t(y)*W+x])-input.black[((y&1)<<1)|(x&1)];m+=d[size_t(c)*b+a];}
-                    m/=double(b*b);
+                    for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
+                        const int x=bq*I+a,y=bq*J+c;
+                        d[size_t(c)*bq+a]=q0?double(q0[size_t(y)*MW+x])-input.black[((J&1)<<1)|(I&1)]
+                                            :double(raw[size_t(y)*W+x])-input.black[((y&1)<<1)|(x&1)];
+                        m+=d[size_t(c)*bq+a];
+                    }
+                    m/=double(bq*bq);
                     const double sigma=std::sqrt(std::max(slope*std::max(m,0.0)/range+offset,0.0))*range;
                     const double gate=0.04*std::max(m,0.0)+3.0*sigma;
                     int changes=0,pairs=0;
-                    for(int c=0;c<b;++c)for(int a=0;a<b;++a){
-                        const double p0=d[size_t(c)*b+a]-m;
-                        if(a+1<b){const double p1=d[size_t(c)*b+a+1]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
-                        if(c+1<b){const double p1=d[size_t(c+1)*b+a]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
+                    for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
+                        const double p0=d[size_t(c)*bq+a]-m;
+                        if(a+1<bq){const double p1=d[size_t(c)*bq+a+1]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
+                        if(c+1<bq){const double p1=d[size_t(c+1)*bq+a]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
                     }
                     f[size_t(J)*bw+I]=pairs?float(changes)/float(pairs):0.f;
                 }
@@ -4630,24 +4653,29 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
                 for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++cnt;}
                 osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
         }
-        mosaicChromaMedian(rgb,ow,oh,b,&osc);
-        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px) "+std::to_string(int(millis(Clock::now()-c0)))+" ms");
+        mosaicChromaMedian(rgb,ow,oh,mb,&osc);
+        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result) "
+            +std::to_string(int(millis(Clock::now()-c0)))+" ms");
     }
-    // ---- to the requested output: sensor grid W x H, or the 2x grid (bilinear: output X sits on sensor position X/2 - 0.25)
+    std::vector<uint16_t>().swap(quad);
+    // ---- to the requested output: sensor grid W x H, or the 2x grid. Target pixel X is the W-grid position fx = (X + 0.5) W / tw - 0.5
+    // (the split's resize), at sensor fx - (b-1)/2; merged pixel i sits at sensor alpha (i - (mb-1)/2) + (alpha-1)/2 (alpha = sensor px
+    // per merged px: 1, or 2 for T2), so it is read (bilinear) at i = (fx - (b-1)/2 - (alpha-1)/2) / alpha + (mb-1)/2.
     const int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     const int tw=W*gridOut,th=Ht*gridOut;
+    const double alpha=double(sub),shift=-0.5*(b-1)-0.5*(alpha-1.0),om=0.5*(mb-1);
     std::vector<float> out;std::vector<uint8_t> eOut,cOut;
     if(tw==ow&&th==oh){out.swap(rgb);eOut.swap(vEff);cOut.swap(vClip);}
     else {
         out.assign(size_t(tw)*th*3,0.f);
         if(!vEff.empty())eOut.assign(size_t(tw)*th,0);
         if(!vClip.empty())cOut.assign(size_t(tw)*th,0);
-        const double sx=double(ow)/tw,sy=double(oh)/th;
+        const double sx=double(W)/tw,sy=double(Ht)/th;
         mergeRowBands(th,[&](int y0,int y1){
             for(int Y=y0;Y<y1;++Y){
-                const double fy=std::clamp((Y+0.5)*sy-0.5,0.0,double(oh-1));const int iy=std::min(int(fy),oh-2);const float wy=float(fy-iy);
+                const double fy=std::clamp(((Y+0.5)*sy-0.5+shift)/alpha+om,0.0,double(oh-1));const int iy=std::min(int(fy),oh-2);const float wy=float(fy-iy);
                 for(int X=0;X<tw;++X){
-                    const double fx=std::clamp((X+0.5)*sx-0.5,0.0,double(ow-1));const int ix=std::min(int(fx),ow-2);const float wx=float(fx-ix);
+                    const double fx=std::clamp(((X+0.5)*sx-0.5+shift)/alpha+om,0.0,double(ow-1));const int ix=std::min(int(fx),ow-2);const float wx=float(fx-ix);
                     const size_t a=(size_t(iy)*ow+ix)*3,o2=(size_t(Y)*tw+X)*3;
                     for(int c=0;c<3;++c)out[o2+c]=(rgb[a+c]*(1-wx)+rgb[a+3+c]*wx)*(1-wy)+(rgb[a+size_t(ow)*3+c]*(1-wx)+rgb[a+size_t(ow)*3+3+c]*wx)*wy;
                     const size_t ns=size_t(std::min(oh-1,int(fy+0.5)))*ow+std::min(ow-1,int(fx+0.5));
