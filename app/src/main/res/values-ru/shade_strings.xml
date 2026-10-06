@@ -196,8 +196,7 @@
     <string name="shade_gallery">Галерея</string>
     <string name="shade_all_settings_summary">Hybrid, SCAM HDR, цвет, захват, конфиг</string>
     <string name="shade_all_settings_summary_mtk">Hybrid, цвет, захват, конфиг</string>
-    <string name="shade_hint">Свайп вверх — шторка
-Зажми плитку — переставить</string>
+    <string name="shade_hint">Свайп вверх — шторка\nЗажми плитку — переставить</string>
 
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">У этого объектива нет вспышки</string>

@@ -196,8 +196,7 @@
     <string name="shade_gallery">Gallery</string>
     <string name="shade_all_settings_summary">Hybrid, SCAM HDR, colour, capture, config</string>
     <string name="shade_all_settings_summary_mtk">Hybrid, colour, capture, config</string>
-    <string name="shade_hint">Swipe up for the panel
-Hold a tile to move it</string>
+    <string name="shade_hint">Swipe up for the panel\nHold a tile to move it</string>
 
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
