@@ -85,6 +85,7 @@ public final class VivoNeuralClient {
         FileChannel writeChannel() { return new FileOutputStream(fd.getFileDescriptor()).getChannel(); }
         FileChannel readChannel() { return new FileInputStream(fd.getFileDescriptor()).getChannel(); }
         @Override public void close() { try { fd.close(); } catch (IOException ignored) {} }
+        static SharedMemory wrap(android.os.ParcelFileDescriptor fd) { return new SharedMemory(fd); }
     }
     private static File assetCacheDir(Context context) throws IOException {
         long stamp;
@@ -244,7 +245,15 @@ public final class VivoNeuralClient {
             // P30: with the app-process worker and shared memory the worker starts first and the burst is written while it
             // starts (spawn, CRE and GPU driver), then a byte on a pipe (job file "wait-go") lets it map the burst.
             boolean deferredWrite=false;
-            if(niceBurst!=null){
+            // P30: the frames already lie in the shot's arena (memfd): only the header is written, the worker maps it.
+            final android.os.ParcelFileDescriptor arena=niceBurst!=null&&android.os.Build.VERSION.SDK_INT>=30?niceBurst.sharedBurst():null;
+            if(arena!=null){
+                niceIn=SharedMemory.wrap(arena);
+                niceOut=SharedMemory.create("scamera-nice-out");
+                if(niceOut==null){niceIn.close();niceIn=null;}
+                else log.accept("CLIENT: burst in the shot arena (no copy)");
+            }
+            if(niceBurst!=null&&niceIn==null){
                 niceIn=SharedMemory.create("scamera-nice-in");
                 niceOut=niceIn==null?null:SharedMemory.create("scamera-nice-out");
                 if(niceOut!=null){

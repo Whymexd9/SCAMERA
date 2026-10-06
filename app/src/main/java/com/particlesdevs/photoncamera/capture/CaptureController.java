@@ -531,6 +531,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * shot is in flight. A camera close, error, disconnect or a stalled HAL then still gives a photo and frees the shutter.
      */
     private volatile Runnable mInFlightRescue;
+    /** P30: the arena of the shot being set up / in flight (released when the shot completes or fails). */
+    private volatile com.particlesdevs.photoncamera.util.ShotArena mShotArena;
     /** P27: watchRawPayload's session restart waits until the shot in flight is complete. */
     private volatile boolean mPendingPayloadRestart;
     private File vid = null;
@@ -3569,6 +3571,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         : VivoNiceCaptureSequence.stockZsl(captures,mPendingZslNormalFrames,niceZslShutterTimestamp);
             // Buffered RAWs are already present; only submitted requests consume reader slots.
             mImageSaver.setFrameCount(niceSequence != null ? captures.size() : frameCount);
+            // P30: the Hybrid's RAWs (ring and post-shutter) are copied straight into one memfd the worker maps (ShotArena);
+            // without it (no memfd, binning, packed RAW) they are copied into native buffers as before.
+            com.particlesdevs.photoncamera.util.ShotArena arenaForShot = null;
+            if (lmcHybridShot && hybridZsl && !PhotonCamera.getSettings().binning) {
+                int frameBytes = 0;
+                for (ImageFrame f : mPendingZslNormalFrames) frameBytes = Math.max(frameBytes, f.pendingBytes());
+                if (frameBytes > 0) arenaForShot = com.particlesdevs.photoncamera.util.ShotArena.create(mPendingZslNormalFrames.size() + captures.size(), frameBytes);
+                if (arenaForShot != null) {
+                    for (ImageFrame f : mPendingZslNormalFrames) f.arena = arenaForShot;
+                    mImageSaver.shotArena = arenaForShot;
+                    mShotArena = arenaForShot;
+                    Log.i("NICE_CAPTURE", "RAWs of the shot into " + arenaForShot);
+                }
+            }
+            final com.particlesdevs.photoncamera.util.ShotArena shotArena = arenaForShot;
             if (hybridZsl) {
                 mImageSaver.setImageFormat(mTargetFormat);
                 SaverImplementation.IMAGE_BUFFER.addAll(mPendingZslNormalFrames);
@@ -3873,6 +3890,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     shotSaver.discardFrames();
                                 }
                             } finally {
+                                // P30: no more frames for this shot's arena (it goes once the processing frees them)
+                                if (shotArena != null) { shotArena.release(); if (mShotArena == shotArena) mShotArena = null; }
                                 mNiceRouted = false;
                                 mNativeRawPslCapture=false;mZslCapturing=false;mLiveRawRouter.clear();
                                 if (hybridZslRequested) {
@@ -3992,6 +4011,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;mNiceRingFrozen=false;
             mNiceRouted=false;mNiceQueuedShots=0;mLiveRawRouter.clear();
+            if (mShotArena != null) { mShotArena.release(); mShotArena = null; }
             for(ImageFrame frame:mPendingZslNormalFrames)frame.close();mPendingZslNormalFrames=new ArrayList<>();
                 mHybridZslCapture=false;burst=false;
             cameraEventsListener.onCaptureSequenceCompleted(null);

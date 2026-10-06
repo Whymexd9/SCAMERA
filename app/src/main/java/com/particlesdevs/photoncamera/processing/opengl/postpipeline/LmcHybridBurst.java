@@ -296,19 +296,45 @@ public final class LmcHybridBurst implements NiceTransport {
     /** P27: extra hybrid_tuning.txt lines for this burst (the conservative retry), appended after the user's tuning. */
     public String tuningOverride() { return conservative ? CONSERVATIVE_TUNING : ""; }
 
-    private ByteBuffer header() {
+    private ByteBuffer header() { return header(null); }
+    /** pages: NCH v12, frame i at byte pages[i] * 4096 of the shared memfd (the shot's arena); null: v11, planes follow the table. */
+    private ByteBuffer header(long[] pages) {
         ByteBuffer h = ByteBuffer.allocate(128 + 32 * frames.size()).order(ByteOrder.LITTLE_ENDIAN);
-        h.putInt(0x3143484e).putInt(11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
+        h.putInt(0x3143484e).putInt(pages != null ? 12 : 11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
         h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0)).putInt(0)
          .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
             h.putInt(roles.get(i)).putFloat(exposures.get(i)).putInt(frames.get(i).measuredIso)
-             .putFloat(noise.get(i)[0]).putFloat(noise.get(i)[1]).putFloat(orderMs.get(i)).putInt(0).putInt(0);
+             .putFloat(noise.get(i)[0]).putFloat(noise.get(i)[1]).putFloat(orderMs.get(i)).putInt(0).putInt(pages != null ? (int) pages[i] : 0);
         }
         h.position(0);
         return h;
+    }
+    /** P30: every frame of the burst is a view of one shot arena: header into its first page, its memfd to the worker. */
+    @Override public android.os.ParcelFileDescriptor sharedBurst() {
+        int arena = -1;
+        final long[] pages = new long[frames.size()];
+        for (int i = 0; i < frames.size(); i++) {
+            ByteBuffer b = frames.get(i).buffer;
+            long[] where = b == null ? null : com.particlesdevs.photoncamera.util.Allocator.arenaOf(b);
+            if (where == null || (arena >= 0 && where[0] != arena) || (where[1] & 4095) != 0 || b.capacity() != (long) width * height * 2) {
+                Log.i("NICE_HDR", "hybrid burst copied into the transport: frame " + frames.get(i).number + " "
+                        + (where == null ? "not in an arena" : "arena " + where[0] + " offset " + where[1] + " capacity " + b.capacity()));
+                return null;
+            }
+            arena = (int) where[0];
+            pages[i] = where[1] >> 12;
+        }
+        if (arena < 0) return null;
+        ByteBuffer heap = header(pages);
+        if (heap.capacity() > com.particlesdevs.photoncamera.util.ShotArena.HEADER) return null;
+        ByteBuffer direct = ByteBuffer.allocateDirect(heap.capacity()).order(ByteOrder.LITTLE_ENDIAN);
+        direct.put(heap); direct.flip();
+        if (!com.particlesdevs.photoncamera.util.Allocator.arenaWrite(arena, 0, direct)) return null;
+        final int fd = com.particlesdevs.photoncamera.util.Allocator.arenaFd(arena);
+        return fd < 0 ? null : android.os.ParcelFileDescriptor.adoptFd(fd);
     }
     @Override public void write(File file) throws IOException {
         try (FileChannel out = new FileOutputStream(file).getChannel()) { write(out); }

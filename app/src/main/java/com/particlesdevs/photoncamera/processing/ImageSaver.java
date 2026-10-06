@@ -36,6 +36,8 @@ public class ImageSaver {
 
 
     public SaverImplementation implementation;
+    /** P30: the shot's arena the RAWs of this burst are copied into (ShotArena), or null. */
+    public volatile com.particlesdevs.photoncamera.util.ShotArena shotArena;
     private int imageFormat;
     private int frameCounter = 0;
     private int desiredFrameCount = 0;
@@ -129,6 +131,7 @@ public class ImageSaver {
         if (frameCounter < desiredFrameCount || desiredFrameCount == -1) {
             imageFormat = image.getFormat();
             implementation = getImageSaver(imageFormat, implementation);
+            implementation.shotArena = shotArena; // the implementation can change with the format (P30)
             implementation.frameCount = desiredFrameCount;
             implementation.newBurst = newBurst;
             implementation.addImage(image);

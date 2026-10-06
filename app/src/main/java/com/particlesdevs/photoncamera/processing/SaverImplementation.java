@@ -20,6 +20,8 @@ public class SaverImplementation {
     public volatile boolean bufferLock = true;
     public volatile boolean newBurst = false;
     public static ArrayList<ImageFrame> IMAGE_BUFFER = new ArrayList<>();
+    /** P30: the arena of the shot this saver collects (post-shutter RAWs are copied into it), or null. */
+    public volatile com.particlesdevs.photoncamera.util.ShotArena shotArena;
     public int frameCount = 0;
     private int imageFormat;
     public final ProcessingEventsListener processingEventsListener;
@@ -60,7 +62,7 @@ public class SaverImplementation {
             com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
             RawPayloadCheck.dumpOnce(image, payload, PhotonCamera.getSettings().mCameraID);
         }
-        ImageFrame frame = new ImageFrame(image.getPlanes()[0].getBuffer(), image.getFormat(), width, image.getPlanes()[0].getRowStride(), offset, capacity);
+        ImageFrame frame = new ImageFrame(image.getPlanes()[0].getBuffer(), image.getFormat(), width, image.getPlanes()[0].getRowStride(), offset, capacity, shotArena);
         frame.rawPayloadError = payload.error;
         frame.timestamp = image.getTimestamp();
 

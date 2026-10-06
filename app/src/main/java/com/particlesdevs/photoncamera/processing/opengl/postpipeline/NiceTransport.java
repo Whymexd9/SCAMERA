@@ -20,6 +20,11 @@ interface NiceTransport {
      * LMC hybrid only, header flag 4). The client then accepts that third trailer.
      */
     default boolean clipFlags() { return false; }
+    /**
+     * P30: the burst already lies in shared memory (the shot's arena): the transport header is written into it and a
+     * descriptor of that memfd is returned (the caller owns it); null: write() the burst as before.
+     */
+    default android.os.ParcelFileDescriptor sharedBurst() { return null; }
     void write(FileChannel out) throws IOException;
     void write(File file) throws IOException;
 }

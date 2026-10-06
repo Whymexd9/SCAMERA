@@ -27,5 +27,13 @@ public class Allocator{
                                                         int kernel);
 
     public native static void free(ByteBuffer buffer);
+
+    // P30: shot arenas (allocator.cpp, ShotArena): one memfd holding the frames of a shot, shared with the merge worker.
+    public native static int arenaCreate(long bytes);
+    public native static ByteBuffer arenaCopy(int id, long offset, ByteBuffer origin, int originOffset, int bytes);
+    public native static boolean arenaWrite(int id, long offset, ByteBuffer origin);
+    public native static long[] arenaOf(ByteBuffer buffer);
+    public native static int arenaFd(int id);
+    public native static void arenaRelease(int id);
     public native static long getMemoryCount();
 }

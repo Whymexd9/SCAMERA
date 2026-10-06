@@ -3831,7 +3831,7 @@ struct MappedHybridBurst {
         length=size_t(st.st_size);address=mmap(nullptr,length,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
         if(address==MAP_FAILED)throw std::runtime_error("Cannot map NICE burst");
         uint32_t h[32];std::memcpy(h,address,128);
-        if(h[0]!=0x3143484e||(h[1]!=10&&h[1]!=11)){munmap(address,length);address=MAP_FAILED;return;}
+        if(h[0]!=0x3143484e||(h[1]!=10&&h[1]!=11&&h[1]!=12)){munmap(address,length);address=MAP_FAILED;return;}
         try {
             if(h[2]<64||h[3]<64||h[2]%2||h[3]%2||uint64_t(h[2])*h[3]>16000000||h[4]>3||h[5]<1||h[5]>64)
                 throw std::runtime_error("Unsupported hybrid burst dimensions/CFA/count");
@@ -3848,7 +3848,9 @@ struct MappedHybridBurst {
             if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
             for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");
             const size_t pixels=size_t(input.w)*input.h,headerBytes=128+32*size_t(n);
-            if(length!=headerBytes+pixels*2*size_t(n))throw std::runtime_error("Truncated hybrid burst");
+            // v12 (P30): every frame at its own page of the shared memfd (the app's shot arena), the table holds the page.
+            const bool paged=h[1]>=12;
+            if(!paged&&length!=headerBytes+pixels*2*size_t(n))throw std::runtime_error("Truncated hybrid burst");
             const auto* table=static_cast<const uint8_t*>(address)+128;
             const auto* data=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+headerBytes);
             for(int i=0;i<n;++i){
@@ -3861,6 +3863,12 @@ struct MappedHybridBurst {
                     throw std::runtime_error("Hybrid frame exposure");
                 if(!std::isfinite(f.slope)||f.slope<=0||!std::isfinite(f.offset)||f.offset<0)throw std::runtime_error("Hybrid frame noise");
                 f.role=int(role);f.iso=iso;f.raw=data+size_t(i)*pixels;
+                if(paged){
+                    uint32_t page;std::memcpy(&page,r+28,4);
+                    const size_t at=size_t(page)*4096;
+                    if(at<headerBytes||at+pixels*2>length)throw std::runtime_error("Hybrid frame outside the shared burst");
+                    f.raw=reinterpret_cast<const uint16_t*>(static_cast<const uint8_t*>(address)+at);
+                }
                 input.frames.push_back(f);
             }
             hybrid=true;

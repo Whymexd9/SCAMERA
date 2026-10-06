@@ -123,7 +123,18 @@ public class ImageFrame {
     }
 
     public ImageFrame(ByteBuffer in, int format, int width, int row_stride, int shift, int capacity) {
-        ByteBuffer direct;
+        this(in, format, width, row_stride, shift, capacity, null);
+    }
+
+    /** P30: a plain 16-bit RAW goes straight into the shot's arena when there is one (ShotArena), else a native copy. */
+    public ImageFrame(ByteBuffer in, int format, int width, int row_stride, int shift, int capacity,
+                      com.particlesdevs.photoncamera.util.ShotArena arena) {
+        ByteBuffer direct = arena != null && !Allocator.binning && !Allocator.isPackedRaw(format) ? arena.copy(in, shift, capacity) : null;
+        if (direct != null) {
+            direct.position(0);
+            buffer = direct;
+            return;
+        }
         if (Allocator.binning) {
             int height = capacity / row_stride;
             if (format == 0x25) {
@@ -151,6 +162,10 @@ public class ImageFrame {
     private Image pendingImage;
     private int pendingFormat, pendingRowStride, pendingShift, pendingCapacity, pendingWidth;
     private boolean pendingBinning;
+    /** P30: the shot's arena the deferred copy goes into (null: a native copy). */
+    public com.particlesdevs.photoncamera.util.ShotArena arena;
+    /** Bytes the deferred copy will take (0 when not deferred). */
+    public int pendingBytes() { return pendingImage == null ? 0 : pendingCapacity; }
 
     private ImageFrame() {}
 
@@ -171,8 +186,11 @@ public class ImageFrame {
         if (pendingImage == null) return;
         try {
             ByteBuffer in = pendingImage.getPlanes()[0].getBuffer();
-            ByteBuffer direct;
-            if (pendingBinning) {
+            ByteBuffer direct = arena != null && !pendingBinning && !Allocator.isPackedRaw(pendingFormat)
+                    ? arena.copy(in, pendingShift, pendingCapacity) : null;
+            if (direct != null) {
+                // the shot's arena (P30)
+            } else if (pendingBinning) {
                 int height = pendingCapacity / pendingRowStride;
                 direct = pendingFormat == 0x25
                         ? Allocator.allocateAndCopyConvertBinning(pendingCapacity, in, pendingWidth, pendingRowStride, pendingShift)
