@@ -42,6 +42,16 @@ public final class ShotArena {
         return Allocator.arenaCopy(id, HEADER + slot * slotBytes, src, srcOffset, bytes);
     }
 
+    /** A packed RAW10 / RAW12 frame ({@code capacity} bytes of rows {@code rowStride} apart) unpacked into the next slot; null as copy(). */
+    public ByteBuffer copyUnpacked(ByteBuffer src, int srcOffset, int format, int width, int rowStride, int capacity) {
+        if (released || rowStride <= 0) return null;
+        final int height = capacity / rowStride;
+        if ((long) width * height * 2 > frameBytes || height < 1) return null;
+        final int slot = next.getAndIncrement();
+        if (slot >= slots) return null;
+        return Allocator.arenaCopyUnpack(id, HEADER + slot * slotBytes, src, srcOffset, format, width, rowStride, height);
+    }
+
     /** No more frames for this shot (the memfd stays until its frames are freed). */
     public void release() {
         if (released) return;

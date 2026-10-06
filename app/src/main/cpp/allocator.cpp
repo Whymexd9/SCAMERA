@@ -578,3 +578,70 @@ Java_com_particlesdevs_photoncamera_util_Allocator_getMemoryCount(JNIEnv *env, j
     LOGD("Current memory count: %ld MB", (memoryCount/1024)/1024);
     return memoryCount;
 }
+
+// RawUnpack: packed RAW10 / RAW12 rows to uint16 into the caller's buffer (RAW viewfinder and mosaic measurement on RAW10 /
+// RAW12 streams). Rows split over up to four threads; the bit layout of decodeRaw10Row / decodeRaw12Row.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_particlesdevs_photoncamera_util_RawUnpack_nativeUnpack(JNIEnv* env, jclass, jobject src, jint format, jint width,
+                                                                jint height, jint rowStride, jobject dst) {
+    auto* in = static_cast<const uint8_t*>(src ? env->GetDirectBufferAddress(src) : nullptr);
+    auto* out = static_cast<uint16_t*>(dst ? env->GetDirectBufferAddress(dst) : nullptr);
+    if (!in || !out || width < 4 || height < 1 || (format != 0x25 && format != 0x26)) return JNI_FALSE;
+    const long rowBytes = format == 0x25 ? long(width) * 10 / 8 : long(width) * 12 / 8;
+    if (rowStride < rowBytes || env->GetDirectBufferCapacity(src) < long(height - 1) * rowStride + rowBytes
+            || env->GetDirectBufferCapacity(dst) < long(width) * height * 2) return JNI_FALSE;
+    const int threads = std::max(1, std::min(4, int(std::thread::hardware_concurrency())));
+    auto rows = [&](int y0, int y1) {
+        for (int y = y0; y < y1; ++y) {
+            if (format == 0x25) decodeRaw10Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
+            else decodeRaw12Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
+        }
+    };
+    std::vector<std::thread> pool;
+    for (int t = 1; t < threads; ++t) pool.emplace_back(rows, int(int64_t(height) * t / threads), int(int64_t(height) * (t + 1) / threads));
+    rows(0, height / threads);
+    for (auto& t : pool) t.join();
+    return JNI_TRUE;
+}
+
+// P30: a packed RAW10 / RAW12 frame unpacked straight into its arena slot (uint16, width per row), so a RAW10 stream
+// (OPPO Find X8 Ultra default) also reaches the worker without the transport copy.
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopyUnpack(JNIEnv* env, jclass, jint id, jlong offset, jobject origin,
+                                                                    jint originOffset, jint format, jint width, jint rowStride,
+                                                                    jint height) {
+    auto* src = origin ? static_cast<const uint8_t*>(env->GetDirectBufferAddress(origin)) : nullptr;
+    const jlong srcCapacity = origin ? env->GetDirectBufferCapacity(origin) : 0;
+    if (!src || (format != 0x25 && format != 0x26) || width < 4 || height < 1 || originOffset < 0) return nullptr;
+    const long rowBytes = format == 0x25 ? long(width) * 10 / 8 : long(width) * 12 / 8;
+    if (rowStride < rowBytes || long(originOffset) + long(height - 1) * rowStride + rowBytes > srcCapacity) return nullptr;
+    const size_t bytes = size_t(width) * size_t(height) * 2;
+    uint8_t* dst;
+    {
+        std::lock_guard<std::mutex> lock(arenaLock);
+        const long i = findLocked(id);
+        if (i < 0 || arenas[size_t(i)].released || offset < 0 || size_t(offset) + bytes > arenas[size_t(i)].size) return nullptr;
+        dst = arenas[size_t(i)].base + offset;
+        arenas[size_t(i)].refs++;
+    }
+    auto* out = reinterpret_cast<uint16_t*>(dst);
+    const uint8_t* in = src + originOffset;
+    const int threads = std::max(1, std::min(4, int(std::thread::hardware_concurrency())));
+    auto rows = [&](int y0, int y1) {
+        for (int y = y0; y < y1; ++y) {
+            if (format == 0x25) decodeRaw10Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
+            else decodeRaw12Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
+        }
+    };
+    std::vector<std::thread> pool;
+    for (int t = 1; t < threads; ++t) pool.emplace_back(rows, int(int64_t(height) * t / threads), int(int64_t(height) * (t + 1) / threads));
+    rows(0, height / threads);
+    for (auto& t : pool) t.join();
+    jobject view = env->NewDirectByteBuffer(dst, jlong(bytes));
+    if (!view) {
+        std::lock_guard<std::mutex> lock(arenaLock);
+        const long i = containingLocked(dst);
+        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i));
+    }
+    return view;
+}

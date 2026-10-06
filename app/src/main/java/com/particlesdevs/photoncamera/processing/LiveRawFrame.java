@@ -100,9 +100,16 @@ public final class LiveRawFrame {
         publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,0,0);
     }
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise){
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,shotNoise,readNoise,
+                android.graphics.ImageFormat.RAW_SENSOR);
+    }
+    /** format: RAW_SENSOR (16-bit rows), or RAW10 / RAW12 (packed rows, unpacked into the frame buffer: the viewfinder is the same). */
+    public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format){
         if (!enabled || plane == null) return;
-        if (w < 2 || h < 2 || cfa < 0 || cfa > 3 || stride < w * 2L || (stride & 1) != 0
-                || (long)(h-1)*stride+w*2L > plane.remaining() || !Float.isFinite(white) || white <= 0) return;
+        final boolean packed = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
+        final long rowBytes = packed ? com.particlesdevs.photoncamera.util.RawUnpack.packedRowBytes(format, w) : w * 2L;
+        if (w < 2 || h < 2 || cfa < 0 || cfa > 3 || stride < rowBytes || (!packed && (stride & 1) != 0)
+                || (long)(h-1)*stride+rowBytes > plane.remaining() || !Float.isFinite(white) || white <= 0) return;
         if ((long)w*h*2 > Integer.MAX_VALUE) return;
         block = block==2 || block==4 ? block : 1;
         if (w < 2*block || h < 2*block) return;
@@ -133,14 +140,19 @@ public final class LiveRawFrame {
         // Filled outside the lock: the copy is tens of megabytes and the GL
         // thread only needs the lock long enough to swap references.
         target.clear();
-        ByteBuffer src = plane.duplicate();
-        int start = src.position();
-        for (int y=0;y<h;y++) {
-            src.limit(start+y*stride+w*2);
-            src.position(start+y*stride);
-            target.put(src);
+        if (packed) {
+            if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, target)) return;
+            target.position(0); target.limit(needed);
+        } else {
+            ByteBuffer src = plane.duplicate();
+            int start = src.position();
+            for (int y=0;y<h;y++) {
+                src.limit(start+y*stride+w*2);
+                src.position(start+y*stride);
+                target.put(src);
+            }
+            target.flip();
         }
-        target.flip();
         synchronized (LOCK) {
             if (!enabled || session != generation) return;
             publishedNanos = System.nanoTime();

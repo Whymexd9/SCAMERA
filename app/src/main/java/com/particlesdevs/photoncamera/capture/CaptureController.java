@@ -531,6 +531,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * shot is in flight. A camera close, error, disconnect or a stalled HAL then still gives a photo and frees the shutter.
      */
     private volatile Runnable mInFlightRescue;
+    /** Unpacked copy of a RAW10 / RAW12 preview frame for the mosaic measurement (reused). */
+    private java.nio.ByteBuffer mMosaicUnpacked;
     /** P30: the arena of the shot being set up / in flight (released when the shot completes or fails). */
     private volatile com.particlesdevs.photoncamera.util.ShotArena mShotArena;
     /** P27: watchRawPayload's session restart waits until the shot in flight is complete. */
@@ -1793,7 +1795,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (isRawFormat(mTargetFormat)) {
             int resolved = resolveRawFormat(map);
-            if (resolved != mTargetFormat) Log.i(TAG, "RAW stream format " + mTargetFormat + " -> " + resolved + " (" + PreferenceKeys.getRawStreamFormat() + ")");
+            Log.i(TAG, "RAW stream format " + mTargetFormat + " -> " + resolved + " (setting " + PreferenceKeys.getRawStreamFormat()
+                    + ", camera " + physicalID + ")");
             mTargetFormat = resolved;
         }
         ArrayList<Size> allTargets = getAllTargets();
@@ -1997,15 +2000,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mPayloadBad = false;
             Log.i("NICE_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isLmcHybridEnabled() ? "LMC_HYBRID" : PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));
+            // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
-                    && mTargetFormat == ImageFormat.RAW_SENSOR && PreferenceKeys.isLiveViewfinderRawEnabled();
+                    && isRawFormat(mTargetFormat) && PreferenceKeys.isLiveViewfinderRawEnabled();
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
             mMosaicMeasure = PreferenceKeys.niceDevSwitch("mosaic_preview", true);
             com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
             mMosaicPreview = mMosaicMeasure && !mLiveRawSession && photoMode && !isBurstSession && !mIsRecordingVideo && isZslMode()
-                    && mTargetFormat == ImageFormat.RAW_SENSOR && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1;
+                    && isRawFormat(mTargetFormat) && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1;
             if (mMosaicPreview) LiveRawFrame.setEnabled(true);
             LiveRawFrame.setMosaicPreview(mMosaicPreview);
             setCaptureRequestBuilder();
@@ -2772,7 +2776,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void observeMosaic(Image img) {
         try {
-            if (!mMosaicMeasure || img.getFormat() != ImageFormat.RAW_SENSOR || !isCameraResumed || mPayloadBad) return;
+            if (!mMosaicMeasure || !isRawFormat(img.getFormat()) || !isCameraResumed || mPayloadBad) return;
             if (com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) {
                 Image.Plane plane = img.getPlanes()[0];
                 float black = 0, white = 1023f;
@@ -2782,9 +2786,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (blp != null) { int[] bl = new int[4]; blp.copyTo(bl, 0); black = (bl[0] + bl[1] + bl[2] + bl[3]) / 4f; }
                 Integer wl = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
                 if (wl != null && wl > black) white = wl;
+                java.nio.ByteBuffer samples = plane.getBuffer();
+                int sampleStride = plane.getRowStride();
+                if (com.particlesdevs.photoncamera.util.RawUnpack.isPacked(img.getFormat())) {
+                    // RAW10 / RAW12: measured on the unpacked frame (only the first frames of a session are measured)
+                    final int bytes = img.getWidth() * img.getHeight() * 2;
+                    if (mMosaicUnpacked == null || mMosaicUnpacked.capacity() < bytes)
+                        mMosaicUnpacked = java.nio.ByteBuffer.allocateDirect(bytes).order(java.nio.ByteOrder.nativeOrder());
+                    if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(samples.duplicate(), img.getFormat(), img.getWidth(), img.getHeight(),
+                            sampleStride, mMosaicUnpacked)) return;
+                    samples = mMosaicUnpacked.duplicate().order(java.nio.ByteOrder.nativeOrder());
+                    samples.position(0); samples.limit(bytes);
+                    sampleStride = img.getWidth() * 2;
+                }
                 int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
-                        com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                                plane.getRowStride(), black, white, 32));
+                        com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(samples, img.getWidth(), img.getHeight(),
+                                sampleStride, black, white, 32));
                 if (block > 1 && !mMosaicPreview && !mLiveRawSession) {
                     mMosaicPreview = true;
                     LiveRawFrame.setEnabled(true);
@@ -2811,7 +2828,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     private void publishLiveRawFrame(Image img, TotalCaptureResult matchedResult) {
         if (!LiveRawFrame.isEnabled() || img == null) return;
-        if (img.getFormat() != ImageFormat.RAW_SENSOR) return;
+        if (!isRawFormat(img.getFormat())) return;
         if (mPayloadBad) {
             // The developed RAW viewfinder would show the same garbage: the ISP preview takes over for this session.
             LiveRawFrame.setEnabled(false);
@@ -2900,7 +2917,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
-                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise);
+                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise,
+                    img.getFormat());
             if (mTextureView != null) mTextureView.requestRender();
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());

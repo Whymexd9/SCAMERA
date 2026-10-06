@@ -129,7 +129,9 @@ public class ImageFrame {
     /** P30: a plain 16-bit RAW goes straight into the shot's arena when there is one (ShotArena), else a native copy. */
     public ImageFrame(ByteBuffer in, int format, int width, int row_stride, int shift, int capacity,
                       com.particlesdevs.photoncamera.util.ShotArena arena) {
-        ByteBuffer direct = arena != null && !Allocator.binning && !Allocator.isPackedRaw(format) ? arena.copy(in, shift, capacity) : null;
+        ByteBuffer direct = arena == null || Allocator.binning ? null
+                : Allocator.isPackedRaw(format) ? arena.copyUnpacked(in, shift, format, width, row_stride, capacity)
+                : arena.copy(in, shift, capacity);
         if (direct != null) {
             direct.position(0);
             buffer = direct;
@@ -164,8 +166,12 @@ public class ImageFrame {
     private boolean pendingBinning;
     /** P30: the shot's arena the deferred copy goes into (null: a native copy). */
     public com.particlesdevs.photoncamera.util.ShotArena arena;
-    /** Bytes the deferred copy will take (0 when not deferred). */
-    public int pendingBytes() { return pendingImage == null ? 0 : pendingCapacity; }
+    /** Bytes the deferred copy will take (0 when not deferred): a packed RAW10 / RAW12 frame is unpacked to 16 bit. */
+    public int pendingBytes() {
+        if (pendingImage == null) return 0;
+        return Allocator.isPackedRaw(pendingFormat) && pendingRowStride > 0
+                ? pendingWidth * (pendingCapacity / pendingRowStride) * 2 : pendingCapacity;
+    }
 
     private ImageFrame() {}
 
@@ -186,8 +192,10 @@ public class ImageFrame {
         if (pendingImage == null) return;
         try {
             ByteBuffer in = pendingImage.getPlanes()[0].getBuffer();
-            ByteBuffer direct = arena != null && !pendingBinning && !Allocator.isPackedRaw(pendingFormat)
-                    ? arena.copy(in, pendingShift, pendingCapacity) : null;
+            ByteBuffer direct = arena == null || pendingBinning ? null
+                    : Allocator.isPackedRaw(pendingFormat)
+                    ? arena.copyUnpacked(in, pendingShift, pendingFormat, pendingWidth, pendingRowStride, pendingCapacity)
+                    : arena.copy(in, pendingShift, pendingCapacity);
             if (direct != null) {
                 // the shot's arena (P30)
             } else if (pendingBinning) {
