@@ -75,7 +75,7 @@ public final class LmcHybridBurst implements NiceTransport {
         for (ImageFrame f : source) {
             if (f.buffer == null || f.width != width || f.height != height || f.buffer.capacity() != (long) width * height * 2) continue;
             mosaic = com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(f.buffer, width, height, width * 2,
-                    (black[0] + black[1] + black[2] + black[3]) / 4f, 8);
+                    (black[0] + black[1] + black[2] + black[3]) / 4f, white, 8);
             break;
         }
         mosaicBlock = mosaic == null || !mosaic.confident ? 0 : mosaic.block;

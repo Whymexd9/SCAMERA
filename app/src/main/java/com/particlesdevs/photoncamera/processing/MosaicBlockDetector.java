@@ -11,86 +11,105 @@ import java.nio.ByteOrder;
  * plain-Bayer merge then render it purple with a lattice. The block is what the viewfinder and the hybrid need to treat it
  * right, and the metadata does not say it.
  *
- * <p>Model (the same as {@code detectMosaicBlock} in vivo-nice-hybrid.h): the 64 phase means (y mod 8, x mod 8) of the centre
- * of the frame, black subtracted, against the colour-block models of block 1, 2 and 4, each the mean of its four phase classes.
- * A mosaic fits its own model to the noise and every other model badly (the colour step between the classes); plain Bayer fits
- * block 1 only. Confident when the best model leaves at most 1/20 of the residual of the next one and its classes differ by at
- * least 0.5 % of the level.
+ * <p>Model (the same as {@code detectMosaicBlock} in vivo-nice-hybrid.h): every 8x8 tile of the frame centre is fitted to the
+ * colour-block models of block 1, 2 and 4 (each the mean of its four phase classes inside the tile). The CFA's own model leaves
+ * only noise and texture; a wrong one also leaves the colour step between the classes. A tile votes when its best model leaves at
+ * most 1/3 of the residual of the next one. Periodic scene detail at a period dividing 8 (bars, a zone plate, fabric) can make a
+ * tile vote for a wrong model, but only where it is; summed phase means carried it into the whole answer. Confident with at
+ * least 50 votes and 60 % of them for one block. Clipped and black tiles are skipped.
  */
 public final class MosaicBlockDetector {
     private MosaicBlockDetector() {}
 
     public static final class Result {
-        /** 1, 2 or 4; 1 also when the data gives no clear model. */
+        /** 1, 2 or 4; 1 also when the data gives no clear answer. */
         public final int block;
         public final boolean confident;
-        /** Residual of the models of block 1, 2, 4 (squared DN). */
-        public final double[] residual;
-        /** Class contrast of the chosen model (squared DN). */
-        public final double contrast;
-        Result(int block, boolean confident, double[] residual, double contrast) {
-            this.block = block; this.confident = confident; this.residual = residual; this.contrast = contrast;
+        /** Votes of the tiles for block 1, 2, 4. */
+        public final int[] votes;
+        /** Tiles fitted (black and clipped ones left out). */
+        public final int tiles;
+        Result(int block, boolean confident, int[] votes, int tiles) {
+            this.block = block; this.confident = confident; this.votes = votes; this.tiles = tiles;
         }
         @Override public String toString() {
-            return "block " + block + (confident ? " (confident" : " (no clear model") + String.format(java.util.Locale.ROOT,
-                    "; residual b1/b2/b4 %.3g/%.3g/%.3g, contrast %.3g)", residual[0], residual[1], residual[2], contrast);
+            return "block " + block + (confident ? " (confident" : " (no clear answer") + "; tile votes b1/b2/b4 "
+                    + votes[0] + "/" + votes[1] + "/" + votes[2] + " of " + tiles + ")";
         }
+    }
+
+    public static Result detect(ByteBuffer raw, int width, int height, int rowStride, float black, int bandStep) {
+        return detect(raw, width, height, rowStride, black, 1023f, bandStep);
     }
 
     /**
      * @param raw       uint16 little-endian sites, row-major
      * @param rowStride bytes per row
      * @param black     mean black level (DN)
-     * @param bandStep  rows between the starts of the 8-row bands that are read (8 = every row; 32 reads a quarter)
+     * @param white     white level (DN): a tile with a site at 95 % of it is clipped
+     * @param bandStep  rows between the starts of the 8-row tile bands that are read (8 = every band; 32 reads a quarter)
      */
-    public static Result detect(ByteBuffer raw, int width, int height, int rowStride, float black, int bandStep) {
-        if (raw == null || width < 64 || height < 64 || rowStride < width * 2) return new Result(1, false, new double[3], 0);
+    public static Result detect(ByteBuffer raw, int width, int height, int rowStride, float black, float white, int bandStep) {
+        int[] votes = new int[3];
+        if (raw == null || width < 64 || height < 64 || rowStride < width * 2) return new Result(1, false, votes, 0);
         ByteBuffer b = raw.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         int base = b.position();
         int x0 = (width / 10) & ~7, x1 = (width * 9 / 10) & ~7, y0 = (height / 10) & ~7, y1 = (height * 9 / 10) & ~7;
         int step = Math.max(8, bandStep & ~7);
-        double[] sum = new double[64];
-        long[] cnt = new long[64];
-        short[] row = new short[x1 - x0];
+        int len = x1 - x0;
+        short[][] rows = new short[8][len];
+        double[] tile = new double[64];
+        int clip = Math.round(black + 0.95f * (white - black));
+        int tiles = 0;
         for (int band = y0; band + 8 <= y1; band += step) {
-            for (int y = band; y < band + 8; y++) {
-                long offset = base + (long) y * rowStride + x0 * 2L;
-                if (offset + row.length * 2L > b.limit()) break;
+            boolean complete = true;
+            for (int k = 0; k < 8; k++) {
+                long offset = base + (long) (band + k) * rowStride + x0 * 2L;
+                if (offset + len * 2L > b.limit()) { complete = false; break; }
                 b.position((int) offset);
-                b.asShortBuffer().get(row);
-                int py = (y & 7) << 3;
-                double[] s = new double[8];
-                for (int i = 0; i < row.length; i++) s[(x0 + i) & 7] += row[i] & 0xFFFF;
-                for (int k = 0; k < 8; k++) { sum[py | k] += s[k]; cnt[py | k] += row.length / 8; }
+                b.asShortBuffer().get(rows[k]);
+            }
+            if (!complete) break;
+            for (int tx = 0; tx + 8 <= len; tx += 8) {
+                double s = 0;
+                boolean clipped = false;
+                for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) {
+                    int v = rows[y][tx + x] & 0xFFFF;
+                    if (v >= clip) clipped = true;
+                    tile[(y << 3) | x] = v - black;
+                    s += v - black;
+                }
+                if (clipped || !(s > 128)) continue;
+                tiles++;
+                int vote = vote(tile);
+                if (vote >= 0) votes[vote]++;
             }
         }
-        double[] m = new double[64];
-        for (int k = 0; k < 64; k++) m[k] = cnt[k] > 0 ? sum[k] / cnt[k] - black : 0;
-        return fit(m);
+        return decide(votes, tiles);
     }
 
-    /** The model fit on 64 phase means (index (y&7)*8 + (x&7), black already subtracted). */
-    static Result fit(double[] m) {
-        double mean = 0;
-        for (double v : m) mean += v / 64;
+    /** The block (index 0, 1, 2 = block 1, 2, 4) one 8x8 tile votes for, or -1 when no model wins by 3x. */
+    static int vote(double[] t) {
+        double[] r = new double[3];
         int[] blocks = {1, 2, 4};
-        double[] residual = new double[3], between = new double[3];
         for (int i = 0; i < 3; i++) {
-            int bs = blocks[i];
-            double[] cs = new double[4], cn = new double[4];
-            for (int k = 0; k < 64; k++) { int c = cls(k, bs); cs[c] += m[k]; cn[c]++; }
-            for (int k = 0; k < 64; k++) {
-                double pr = cs[cls(k, bs)] / cn[cls(k, bs)];
-                residual[i] += (m[k] - pr) * (m[k] - pr) / 64;
-                between[i] += (pr - mean) * (pr - mean) / 64;
-            }
+            double[] cs = new double[4];
+            for (int k = 0; k < 64; k++) cs[cls(k, blocks[i])] += t[k];
+            for (int c = 0; c < 4; c++) cs[c] /= 16.0;
+            for (int k = 0; k < 64; k++) { double d = t[k] - cs[cls(k, blocks[i])]; r[i] += d * d; }
         }
         int best = 0;
-        for (int i = 1; i < 3; i++) if (residual[i] < residual[best]) best = i;
+        for (int i = 1; i < 3; i++) if (r[i] < r[best]) best = i;
         double second = Double.MAX_VALUE;
-        for (int i = 0; i < 3; i++) if (i != best) second = Math.min(second, residual[i]);
-        boolean confident = mean > 2.0 && between[best] > 2.5e-5 * mean * mean && residual[best] * 20.0 < second;
-        return new Result(confident ? blocks[best] : 1, confident, residual, between[best]);
+        for (int i = 0; i < 3; i++) if (i != best) second = Math.min(second, r[i]);
+        return r[best] * 3.0 < second ? best : -1;
+    }
+
+    static Result decide(int[] votes, int tiles) {
+        int total = votes[0] + votes[1] + votes[2], best = 0;
+        for (int i = 1; i < 3; i++) if (votes[i] > votes[best]) best = i;
+        boolean confident = total >= 50 && votes[best] >= 0.6 * total;
+        return new Result(confident ? new int[]{1, 2, 4}[best] : 1, confident, votes, tiles);
     }
 
     private static int cls(int k, int block) {

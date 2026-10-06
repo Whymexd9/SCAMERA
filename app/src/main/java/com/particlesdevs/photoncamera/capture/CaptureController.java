@@ -2602,14 +2602,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (!mMosaicMeasure || img.getFormat() != ImageFormat.RAW_SENSOR || !isCameraResumed) return;
             if (com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) {
                 Image.Plane plane = img.getPlanes()[0];
-                float black = 0;
+                float black = 0, white = 1023f;
                 CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
                 if (c == null) c = mCameraCharacteristics;
                 BlackLevelPattern blp = c == null ? null : c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
                 if (blp != null) { int[] bl = new int[4]; blp.copyTo(bl, 0); black = (bl[0] + bl[1] + bl[2] + bl[3]) / 4f; }
+                Integer wl = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+                if (wl != null && wl > black) white = wl;
                 int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
                         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                                plane.getRowStride(), black, 32));
+                                plane.getRowStride(), black, white, 32));
                 if (block > 1 && !mMosaicPreview && !mLiveRawSession) {
                     mMosaicPreview = true;
                     LiveRawFrame.setEnabled(true);
