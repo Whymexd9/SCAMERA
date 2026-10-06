@@ -186,6 +186,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 route.setEnabled(false);
                 route.setSummary("MediaTek: только LMC-гибрид (SCAM HDR и нейроремозаик работают на NPU Snapdragon)");
             }
+            // MediaTek: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
+            Preference scamHdr = findPreference("vivo_hdr_screen");
+            if (scamHdr != null && PreferenceKeys.isMediaTekSoc()) scamHdr.setVisible(false);
             setupRemosaicBackend();
             updateHexQuadDenoiseControls();
         }

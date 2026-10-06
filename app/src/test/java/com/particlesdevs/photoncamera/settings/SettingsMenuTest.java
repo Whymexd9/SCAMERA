@@ -377,7 +377,7 @@ public class SettingsMenuTest {
             fm.executePendingTransactions();
             com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment root=
                     (com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            PreferenceScreen first=root.findPreference("vivo_settings_screen");
+            PreferenceScreen first=root.findPreference("vivo_hdr_screen");
             assertNotNull(first);activity.onPreferenceStartScreen(root,first);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals(1,fm.getBackStackEntryCount());

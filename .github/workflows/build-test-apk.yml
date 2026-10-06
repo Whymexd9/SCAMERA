@@ -146,7 +146,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file "$PREFS_PATH" > /tmp/apk-preferences.txt
           grep -q 'pref_merge_route' /tmp/apk-preferences.txt
           grep -q 'lmc_hybrid_screen' /tmp/apk-preferences.txt
-          grep -q 'vivo_settings_screen' /tmp/apk-preferences.txt
+          grep -q 'vivo_hdr_screen' /tmp/apk-preferences.txt
           grep -q 'output_settings_screen' /tmp/apk-preferences.txt
           if grep -q 'rt_denoise_screen\|gcam_finish_screen\|aces_group_screen' /tmp/apk-preferences.txt; then
             echo "Removed legacy post-processing screens are back"

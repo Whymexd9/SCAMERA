@@ -56,17 +56,22 @@ public class HybridSettingsTest {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("lmc_hybrid_screen");
         assertNotNull(hybrid);assertEquals("LMC-гибрид",hybrid.getTitle().toString());
-        // Grouped like ArkCam 1.23: Функции обработки / Обработка фото / Обработка ArkCore (+ Диагностика).
-        for(String screen:new String[]{"lmc_hybrid_functions_screen","lmc_hybrid_photo_screen","lmc_hybrid_arkcore_screen",
-                "lmc_hybrid_ark_sharp_screen","lmc_hybrid_ark_rl_screen","lmc_hybrid_ark_tone_screen","lmc_hybrid_ark_vibrance_screen"})
+        // Grouped like ArkCam 1.23: Функции обработки / Обработка фото (+ Диагностика); the ArkCore tone and sharpening
+        // are a top-level screen shared with SCAM HDR (P6 / P10).
+        PreferenceScreen ark=root.findPreference("lmc_hybrid_arkcore_screen");
+        assertNotNull(ark);assertNull(hybrid.findPreference("lmc_hybrid_arkcore_screen"));
+        for(String screen:new String[]{"lmc_hybrid_functions_screen","lmc_hybrid_photo_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
+        for(String screen:new String[]{"lmc_hybrid_ark_sharp_screen","lmc_hybrid_ark_rl_screen","lmc_hybrid_ark_tone_screen","lmc_hybrid_ark_vibrance_screen"})
+            assertTrue(screen,ark.findPreference(screen) instanceof PreferenceScreen);
         for(String category:new String[]{"lmc_hybrid_main_category","lmc_hybrid_capture_category","lmc_hybrid_merge_category",
-                "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_sharp_category",
-                "lmc_hybrid_ark_artifacts_category","lmc_hybrid_diag_category"})
+                "lmc_hybrid_nr_category","lmc_hybrid_nr_levels_category","lmc_hybrid_diag_category"})
             assertTrue(category,hybrid.findPreference(category) instanceof PreferenceCategory);
+        for(String category:new String[]{"lmc_hybrid_sharp_category","lmc_hybrid_ark_artifacts_category"})
+            assertTrue(category,ark.findPreference(category) instanceof PreferenceCategory);
         assertNull(root.findPreference("pref_lmc_hybrid_enabled"));
         assertTrue(root.findPreference(PreferenceKeys.ROUTE_KEY) instanceof androidx.preference.ListPreference);
-        List<Preference> inside=new ArrayList<>();collect(hybrid,inside);
+        List<Preference> inside=new ArrayList<>();collect(hybrid,inside);collect(ark,inside);
         Set<String> insideKeys=new HashSet<>();
         for(Preference p:inside){
             String key=p.getKey();assertNotNull(key);insideKeys.add(key);
@@ -83,7 +88,7 @@ public class HybridSettingsTest {
             String key=p.getKey();if(key==null)continue;
             assertFalse(key,key.startsWith("pref_vivo_nice_hybrid"));
             assertFalse(key,key.equals("pref_vivo_nice_engine"));
-            if(key.startsWith(PreferenceKeys.HYBRID_PREFIX))assertTrue(key+" outside the hybrid section",insideKeys.contains(key));
+            if(key.startsWith(PreferenceKeys.HYBRID_PREFIX))assertTrue(key+" outside the hybrid / ArkCore sections",insideKeys.contains(key));
         }
     }
 
@@ -213,9 +218,9 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("hotSigma 0.0\n"));
         assertTrue(tuning,tuning.contains("cellClip 0\n"));assertTrue(tuning,tuning.contains("bentoLmc 0\n"));
         // XML defaults equal the worker defaults (setDefaultValues writes them into every user's preferences).
-        PreferenceScreen hybrid=inflate().findPreference("lmc_hybrid_screen");
+        PreferenceScreen settings=inflate(),hybrid=settings.findPreference("lmc_hybrid_screen");
         assertEquals("2",((ListPreference)hybrid.findPreference("pref_lmc_hybrid_sabre61")).getEntryValues()[2].toString());
-        assertNotNull(hybrid.findPreference("pref_lmc_hybrid_highlight_recovery"));
+        assertNotNull(settings.findPreference("pref_lmc_hybrid_highlight_recovery"));
         assertNotNull(hybrid.findPreference("pref_lmc_hybrid_hot_base_sigma"));
     }
 
