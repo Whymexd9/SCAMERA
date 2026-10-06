@@ -294,6 +294,13 @@ public final class VivoNeuralClient {
             reader.setDaemon(true);reader.start();
             if(!process.waitFor(TimeUnit.SECONDS.toMillis(burst!=null||niceBurst!=null?900:niceTone?420:200))){process.destroy();throw new IOException("Тайм-аут нейромодуля; снимок не обработан");}
             reader.join(5000);
+            if(process.exitValue()!=0||!completed[0]){
+                // P26: the X200 Pro (Mali) worker vanished mid-merge with nothing in the log; say how it ended.
+                final int code=process.exitValue();
+                final String[] signals={"","SIGHUP","SIGINT","SIGQUIT","SIGILL","SIGTRAP","SIGABRT","SIGBUS","SIGFPE","SIGKILL (low memory or killed)","SIGUSR1","SIGSEGV"};
+                log.accept("WORKER EXIT: "+(code>128&&code-128<signals.length?"signal "+(code-128)+" "+signals[code-128]
+                        :code>128?"signal "+(code-128):"code "+code)+(completed[0]?"":", no completion line"));
+            }
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
                     niceBurst instanceof LmcHybridBurst?"Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":
                     niceBurst!=null?"SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.":

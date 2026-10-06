@@ -788,10 +788,40 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mCameraOpening.set(false);
             cameraDevice.close();
             mCameraDevice = null;
-            showToast("onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
-            Log.d(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
+                showToast("Сбой камеры (код " + error + "), перезапуск");
+                scheduleRecovery("onError " + error);
+            } else {
+                showToast("Камера недоступна (код " + error + ")");
+            }
         }
     };
+
+    // Recovery after the camera HAL or service died: the vivo X100 Ultra (owner's log 2026-10-05) answered
+    // ERROR_CAMERA_DEVICE, every id was 'unknown device' for ~4.5 s while the provider restarted, and nothing reopened the
+    // camera until the user tapped a module (27 s of a dead viewfinder once). 1, 2, 4 s, at most three times a minute.
+    private android.os.Handler mRecoveryHandler;
+    private final java.util.ArrayDeque<Long> mRecoveries = new java.util.ArrayDeque<>();
+
+    private void scheduleRecovery(String reason) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        synchronized (mRecoveries) {
+            while (!mRecoveries.isEmpty() && now - mRecoveries.peekFirst() > 60_000) mRecoveries.pollFirst();
+            if (mRecoveries.size() >= 3) {
+                Log.e(TAG, "camera recovery stopped after three restarts within a minute (" + reason + ")");
+                showToast("Камера не отвечает. Выберите другой модуль или перезапустите приложение");
+                return;
+            }
+            mRecoveries.addLast(now);
+        }
+        long delay = 1000L << (mRecoveries.size() - 1);
+        Log.w(TAG, "camera recovery in " + delay + " ms (" + reason + ")");
+        if (mRecoveryHandler == null) mRecoveryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        mRecoveryHandler.postDelayed(() -> {
+            if (isCameraResumed && mCameraDevice == null && !mCameraOpening.get()) restartCamera();
+        }, delay);
+    }
     /**
      * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a
      * {@link TextureView}.
@@ -1683,29 +1713,45 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     //isDualSession = true;
                 }
 
+                // The retry budget belongs to one camera: switching modules during a provider restart used it up for the next one.
+                if (!logicalID.equals(mOpenRetryId)) { mOpenRetryId = logicalID; mOpenRetries = 0; }
                 this.mCameraManager.openCamera(logicalID, mStateCallback, mBackgroundHandler);
                 mOpenRetries = 0;
             } catch (CameraAccessException e) {
                 mCameraOpening.set(false);
+                // No device callback follows a refused open: the lock taken above is released here (it used to stay held, so
+                // the next open waited 1 s and failed with "Time out waiting to lock camera opening").
+                mCameraOpenCloseLock.release();
                 Log.e(TAG, Log.getStackTraceString(e));
+                // CAMERA_ERROR / CAMERA_DISCONNECTED while the provider restarts: the same retry as an unknown device.
+                if (e.getReason() == CameraAccessException.CAMERA_ERROR || e.getReason() == CameraAccessException.CAMERA_DISCONNECTED)
+                    retryOpen(width, height, e);
             } catch (IllegalArgumentException e) {
                 // "Unknown device" while the vendor camera provider restarts after a HAL
                 // crash: the device list comes back a few seconds later. Retry instead of
                 // taking the app down with the HAL.
                 mCameraOpening.set(false);
                 mCameraOpenCloseLock.release();
-                if (mOpenRetries++ < 5 && mBackgroundHandler != null) {
-                    Log.w(TAG, "openCamera(" + logicalID + ") failed (" + e.getMessage() + "), retry " + mOpenRetries);
-                    mBackgroundHandler.postDelayed(() -> openCamera(width, height), 1000);
-                } else {
-                    Log.e(TAG, "openCamera(" + logicalID + ") failed after retries: " + Log.getStackTraceString(e));
-                }
+                retryOpen(width, height, e);
             } catch (InterruptedException e) {
                 mCameraOpening.set(false);
                 throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
             }
     });
     }
+    private String mOpenRetryId = "";
+
+    /** Up to 8 retries 0.5, 1, 2, 4, 4 ... s apart (~27 s): the X100 Ultra provider needed ~4.5 s, the old 5 x 1 s ran out. */
+    private void retryOpen(int width, int height, Exception e) {
+        if (mOpenRetries < 8 && mBackgroundHandler != null && isCameraResumed) {
+            long delay = Math.min(4000L, 500L << mOpenRetries++);
+            Log.w(TAG, "openCamera(" + logicalID + ") failed (" + e.getMessage() + "), retry " + mOpenRetries + " in " + delay + " ms");
+            mBackgroundHandler.postDelayed(() -> openCamera(width, height), delay);
+        } else {
+            Log.e(TAG, "openCamera(" + logicalID + ") failed after retries: " + Log.getStackTraceString(e));
+        }
+    }
+
     public void UpdateCameraCharacteristics(String cameraId) {
         PhotonCamera.getSpecificSensor().selectSpecifics(Integer.parseInt(cameraId));
         CameraCharacteristics characteristics = this.mCameraCharacteristicsMap.get(cameraId);

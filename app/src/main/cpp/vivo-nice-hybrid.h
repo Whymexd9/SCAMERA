@@ -1533,7 +1533,10 @@ public:
     const bool localAlign=false;
     // bentoPass: compile the Bento colour pass (kHybBento) for a shot with Bento and bentoChromaSigma > 0.
     // chromaPass: compile the colour-difference pass of the base frame (kHybChroma) for chromaDiff > 0.
-    explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false):localAlign(withLocalAlign){
+    // early: optional report of the context and, off Adreno, of every program before it compiles (P26: the vivo X200 Pro's
+    // Mali worker died between "HYBRID FRAMES" and the init report, so the failing step was unknown).
+    explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
+                       const std::function<void(const std::string&)>& early=nullptr):localAlign(withLocalAlign){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -1552,7 +1555,10 @@ public:
              GLint blocks=0,bindings=0;glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,&blocks);glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS,&bindings);
              limits="ssbo="+std::to_string(ssbo/(1024*1024))+"MB tex="+std::to_string(tex)+" wgY="+std::to_string(wg)
                  +" blocks="+std::to_string(blocks)+" bindings="+std::to_string(bindings);}
+            const bool adreno=renderer.find("Adreno")!=std::string::npos;
+            if(early)early("HYBRID GPU: context "+renderer+" "+limits+(adreno?"":"; compiling program by program"));
             auto timed=[&](const char* name,const char* body,bool standalone=false){
+                if(early&&!adreno)early(std::string("HYBRID GPU: compile ")+name);
                 const auto t0=std::chrono::steady_clock::now();GLuint p=compile(body,standalone);
                 compileMs+=std::string(" ")+name+"="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
                 return p;
@@ -3084,7 +3090,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const int outW=w*grid,outH=h*grid;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
-        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
+        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f,report);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")");
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);

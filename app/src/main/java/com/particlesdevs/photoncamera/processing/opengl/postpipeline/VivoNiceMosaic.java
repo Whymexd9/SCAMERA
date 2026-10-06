@@ -41,7 +41,14 @@ public final class VivoNiceMosaic {
 
     public static List<ImageFrame> prepare(Context context, List<ImageFrame> images, Parameters p) throws Exception {
         final boolean sabre = PreferenceKeys.isNiceMosaicSabre();
-        final String mode = PreferenceKeys.niceMosaicBase();
+        String base = PreferenceKeys.niceMosaicBase();
+        // The quad / HexQuad networks are Hexagon v79 contexts (SM8750): elsewhere the QNN device cannot be created (status 14001
+        // on the 8 Gen 3 of the OPPO and the vivo X100 Ultra, ~0.4 s lost per shot), so the GPU remosaic runs at once.
+        if ("neural".equals(base) && !PreferenceKeys.isVivoNetSoc()) {
+            Log.i(TAG, "SCAM HDR mosaic: neural remosaic needs the SM8750 NPU, GPU remosaic (scamera) on this SoC");
+            base = "scamera";
+        }
+        final String mode = base;
         final int block = PreferenceKeys.niceMosaicBlock();
         final long start = SystemClock.elapsedRealtime();
         validate(images, p, block);

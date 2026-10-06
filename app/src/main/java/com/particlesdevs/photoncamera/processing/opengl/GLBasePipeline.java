@@ -52,17 +52,9 @@ public class GLBasePipeline implements AutoCloseable {
         Name = name;
         Properties properties = new Properties();
         try {
+            // Read only when present: creating it under scoped storage failed with EPERM on every pipeline.
             File init = new File(sPHOTON_TUNING_DIR, "PhotonCameraTuning.ini");
-            if(!init.exists()) {
-                init.createNewFile();
-                /*InputStream inputStream = PhotonCamera.getAssetLoader().getInputStream("tuning/PhotonCameraTuning.ini");
-                byte[] buffer = new byte[inputStream.available()];
-                inputStream.read(buffer);
-                OutputStream outputStream = new FileOutputStream(init);
-                outputStream.write(buffer);
-                outputStream.close();*/
-            }
-            properties.load(new FileInputStream(init));
+            if (init.canRead()) try (FileInputStream in = new FileInputStream(init)) { properties.load(in); }
         } catch (Exception e) {
             // Optional tuning file; absence is normal, not an error.
             Log.d("PostPipeline", "No tuning properties, using built-in defaults (" + e + ")");

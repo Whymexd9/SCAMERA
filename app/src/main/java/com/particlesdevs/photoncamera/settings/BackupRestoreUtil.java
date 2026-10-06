@@ -392,13 +392,16 @@ public class BackupRestoreUtil {
      */
     private static void applyRestoredJson(Context context, JsonObject root) {
         String packageName = context.getPackageName();
-        boolean sameDevice = true;
+        // Camera IDs alone do not identify a phone (an X200 Ultra backup passed on an X100 Ultra, whose ids 0-6 exist too, and
+        // put PD2454 slots and forced sensor modes on its main sensor): the lenses recorded in the backup must match as well.
+        final boolean lensesHere = lensesMatchHere(context, root);
+        boolean sameDevice = lensesHere;
         if (root.has("main_preferences")) {
             SharedPreferences mainPrefs = PreferenceManager.getDefaultSharedPreferences(context);
             Map<String, Object> own = new LinkedHashMap<>();
             for (Map.Entry<String, ?> e : mainPrefs.getAll().entrySet()) if (deviceOnly(e.getKey())) own.put(e.getKey(), e.getValue());
             JsonObject mainPrefsObj = root.getAsJsonObject("main_preferences");
-            sameDevice = slotsExistHere(context, mainPrefsObj);
+            sameDevice = lensesHere && slotsExistHere(context, mainPrefsObj);
             SharedPreferences.Editor editor = mainPrefs.edit();
             editor.clear();
             for (String key : mainPrefsObj.keySet()) {
@@ -436,7 +439,8 @@ public class BackupRestoreUtil {
                 new com.google.gson.reflect.TypeToken<Map<String, Object>>(){}.getType());
             TunableSettingsManager.importTunableSettings(context, tunableSettingsMap);
         }
-        if (root.has("cameras_preferences")) {
+        // The camera scan cache and the device specifics describe the phone that wrote the backup.
+        if (root.has("cameras_preferences") && sameDevice) {
             String camerasFileName = context.getString(R.string._cameras);
             SharedPreferences camerasPrefs = context.getSharedPreferences(packageName + camerasFileName, Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = camerasPrefs.edit();
@@ -446,7 +450,7 @@ public class BackupRestoreUtil {
             }
             editor.commit();
         }
-        if (root.has("devices_preferences")) {
+        if (root.has("devices_preferences") && sameDevice) {
             String devicesFileName = context.getString(R.string._devices);
             SharedPreferences devicesPrefs = context.getSharedPreferences(packageName + devicesFileName, Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = devicesPrefs.edit();
@@ -456,6 +460,60 @@ public class BackupRestoreUtil {
             }
             editor.commit();
         }
+    }
+
+    /**
+     * False when the backup's camera scan (cameras_preferences / all_camera_lens: id, facing, focal length) names a Camera ID
+     * that this phone has with another facing or a focal length more than 3 % apart. A backup without that list passes.
+     */
+    static boolean lensesMatchHere(Context context, JsonObject root) {
+        java.util.Map<String, float[]> recorded = recordedLenses(root);
+        if (recorded.isEmpty()) return true;
+        android.hardware.camera2.CameraManager cm;
+        try {
+            cm = context.getSystemService(android.hardware.camera2.CameraManager.class);
+        } catch (Exception | LinkageError e) {
+            return false;
+        }
+        for (java.util.Map.Entry<String, float[]> lens : recorded.entrySet()) {
+            String id = lens.getKey();
+            if (id.contains("-")) id = id.split("-", 2)[1];
+            android.hardware.camera2.CameraCharacteristics c;
+            try {
+                c = cm.getCameraCharacteristics(id);
+            } catch (Exception e) {
+                continue; // a hidden lens of that phone: the slot check decides
+            }
+            Integer facing = c.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+            float[] focal = c.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+            if (!lensMatches(lens.getValue(), facing, focal)) return false;
+        }
+        return true;
+    }
+
+    /** {facing, focal length} per Camera ID from the backup's all_camera_lens list (CameraLensData JSON). */
+    static java.util.Map<String, float[]> recordedLenses(JsonObject root) {
+        java.util.Map<String, float[]> out = new LinkedHashMap<>();
+        if (root == null || !root.has("cameras_preferences") || !root.get("cameras_preferences").isJsonObject()) return out;
+        com.google.gson.JsonElement list = root.getAsJsonObject("cameras_preferences").get("all_camera_lens");
+        if (list == null || !list.isJsonArray()) return out;
+        for (com.google.gson.JsonElement item : list.getAsJsonArray()) {
+            try {
+                JsonObject lens = item.isJsonPrimitive() ? JsonParser.parseString(item.getAsString()).getAsJsonObject() : item.getAsJsonObject();
+                if (!lens.has("id") || !lens.has("fl")) continue;
+                out.put(lens.get("id").getAsString(), new float[]{lens.has("face") ? lens.get("face").getAsFloat() : -1, lens.get("fl").getAsFloat()});
+            } catch (RuntimeException ignored) {
+                // an unreadable entry says nothing about the phone
+            }
+        }
+        return out;
+    }
+
+    static boolean lensMatches(float[] recorded, Integer facing, float[] focal) {
+        if (recorded[0] >= 0 && facing != null && Math.round(recorded[0]) != facing) return false;
+        if (recorded[1] <= 0 || focal == null || focal.length == 0) return true;
+        for (float f : focal) if (Math.abs(f - recorded[1]) <= 0.03f * Math.max(f, recorded[1])) return true;
+        return false;
     }
 
     /** True when every Camera ID of the backup's module slots (module_auto_*) exists on this phone. */
