@@ -246,6 +246,9 @@ struct HybridTuning {
     // colour shift. rawCaGpu 0: frames mode on the CPU (diagnostics).
     int rawCa=0,rawCaAuto=1,rawCaPasses=2,rawCaAvoidShift=1,rawCaGpu=1;
     float rawCaRed=0,rawCaBlue=0;
+    // P27 (VERIFY-11): 1 = a bracketed / ultrashort frame whose data disagrees with its metadata exposure ratio by more than 5 %
+    // (consistent tiles, hybridMeasuredGain) is merged with the measured ratio. 0 (default) = report only (HYBRID GAIN CHECK).
+    int gainMeasured=0;
     int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
     // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
@@ -324,7 +327,9 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
-            ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue);
+            ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
+            // P27
+            ||set("gainMeasured",nullptr,&t.gainMeasured);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -2925,6 +2930,26 @@ inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
     return g;
 }
 
+// P27 (VERIFY-11, tuning gainMeasured 1): every bracketed / ultrashort frame whose data disagrees with its metadata exposure ratio
+// by more than 5 % (consistent tiles, hybridMeasuredGain) takes the measured ratio. Returns the number of frames changed.
+inline int hybridApplyMeasuredGains(HybridInput& in,const std::function<void(const std::string&)>& report){
+    const HybridInput original=in;
+    int changed=0;
+    for(int f=1;f<int(in.frames.size());++f){
+        HybridFrame& fr=in.frames[f];
+        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
+        const HybridGain g=hybridMeasuredGain(original,f);
+        if(!g.ok||std::abs(g.measured/fr.exposure-1.f)<=0.05f)continue;
+        char line[160];
+        std::snprintf(line,sizeof(line),"HYBRID GAIN: frame=%d role=%d metadata ratio %.4f replaced by the measured %.4f (tiles=%d mad=%.1f %%)",
+            f,fr.role,fr.exposure,g.measured,g.tiles,100.0*g.mad);
+        if(report)report(line);
+        fr.exposure=g.measured;
+        ++changed;
+    }
+    return changed;
+}
+
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
 // frames beyond six are aligned in groups like the extra ZSL frames of the NICE path.
 struct HybridPresetAlignment { std::vector<BackwardHomography> h; std::vector<bool> aligned; };
@@ -2943,6 +2968,16 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(input.mosaic!=1&&!input.frames.empty()){
         const int block=hybridMosaicBlock(input,tune,report);
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+    }
+    if(tune.gainMeasured>0&&input.frames.size()>1){
+        // P27 (VERIFY-11): the measured ratio replaces a metadata ratio the data disagrees with (see HybridTuning::gainMeasured);
+        // then the merge as usual, with the key off. The data of both frames is compared without alignment, as in the report. A
+        // colour-block mosaic gets here with its plain-Bayer sub-frames (measured per sub-frame, as the GAIN CHECK lines).
+        HybridInput measured=input;
+        measured.mosaic=1; // past the colour-block dispatch: plain Bayer (or the sub-frames of one), not detected again
+        hybridApplyMeasuredGains(measured,report);
+        HybridTuning t2=tune;t2.gainMeasured=0;
+        return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset);
     }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
