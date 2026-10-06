@@ -85,8 +85,16 @@ public final class HybridPlan {
     public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.hybridValue("shasta_max_ratio", 32f))); }
 
     public static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics) {
-        Range<Long> times = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
-        Range<Integer> isos = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+        return build(nShutterNs, nIso, clipFraction, characteristics, null);
+    }
+
+    /**
+     * P27: {@code limits} (may be null) caps the manual ISO / shutter at what this camera's HAL was seen to honour
+     * (ExposureLimits); with nothing learned the plan is the one of the declared ranges.
+     */
+    public static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, ExposureLimits limits) {
+        Range<Long> times = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE), limits == null ? Long.MAX_VALUE : limits.shutterCap());
+        Range<Integer> isos = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), limits == null ? Integer.MAX_VALUE : limits.isoCap());
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
             throw new IllegalStateException("Hybrid: нет экспозиции превью или диапазонов сенсора");
         final double n = (double) nShutterNs * nIso;
@@ -131,9 +139,16 @@ public final class HybridPlan {
      * carries the rest of the N exposure (up to the handheld cap).
      */
     public static HybridPlan buildNormalBack(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, int normals) {
+        return buildNormalBack(nShutterNs, nIso, clipFraction, characteristics, normals, null);
+    }
+
+    public static HybridPlan buildNormalBack(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, int normals,
+                                             ExposureLimits limits) {
         if (nShutterNs <= 0 || nIso <= 0) return autoExposure(normals);
-        Range<Long> times = characteristics == null ? null : characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
-        Range<Integer> isos = characteristics == null ? null : characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+        Range<Long> times = characteristics == null ? null : capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
+                limits == null ? Long.MAX_VALUE : limits.shutterCap());
+        Range<Integer> isos = characteristics == null ? null : capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE),
+                limits == null ? Integer.MAX_VALUE : limits.isoCap());
         int iso = isos == null ? nIso : Math.max(isos.getLower(), Math.min(isos.getUpper(), nIso));
         long ns = Math.round((double) nShutterNs * nIso / iso);
         if (times != null) ns = Math.max(times.getLower(), Math.min(Math.min(times.getUpper(), Math.max(nShutterNs, HANDHELD_SHUTTER_CAP_NS)), ns));
@@ -142,13 +157,22 @@ public final class HybridPlan {
         for (int i = 0; i < Math.max(1, normals); i++) out.add(new Request(ImageFrame.CaptureRole.NORMAL, ns, iso, ratio));
         String extrasText;
         try {
-            HybridPlan extras = build(nShutterNs, nIso, clipFraction, characteristics);
+            HybridPlan extras = build(nShutterNs, nIso, clipFraction, characteristics, limits);
             for (Request r : extras.requests) if (r.role != ImageFrame.CaptureRole.NORMAL) out.add(r);
             extrasText = extras.description;
         } catch (RuntimeException e) {
             extrasText = "no Bento / Shasta (" + e.getMessage() + ")";
         }
         return new HybridPlan(out, nShutterNs, nIso, "hybrid normal-back: " + out + " | " + extrasText);
+    }
+
+    private static Range<Long> capped(Range<Long> r, long cap) {
+        if (r == null || cap >= r.getUpper()) return r;
+        return new Range<>(r.getLower(), Math.max(r.getLower(), cap));
+    }
+    private static Range<Integer> capped(Range<Integer> r, int cap) {
+        if (r == null || cap >= r.getUpper()) return r;
+        return new Range<>(r.getLower(), Math.max(r.getLower(), cap));
     }
 
     /** P27: one N frame after the shutter, the plan when Bento / Shasta cannot be planned. */

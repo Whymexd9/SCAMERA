@@ -531,6 +531,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * shot is in flight. A camera close, error, disconnect or a stalled HAL then still gives a photo and frees the shutter.
      */
     private volatile Runnable mInFlightRescue;
+    /** P27: manual ISO / shutter this camera's HAL honours (learned from shots; null before the first session). */
+    private volatile ExposureLimits mExposureLimits;
     /** Unpacked copy of a RAW10 / RAW12 preview frame for the mosaic measurement (reused). */
     private java.nio.ByteBuffer mMosaicUnpacked;
     /** P30: the arena of the shot being set up / in flight (released when the shot completes or fails). */
@@ -706,6 +708,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (exposure != null) mPreviewExposureTime = (long) exposure;
                 if (iso != null) mPreviewIso = (int) iso;
                 if (iso != null) widenSensitivityRange((int) iso);
+                // P27: the AE restore frame after a shot is a manual request at N: it re-checks the learned limits.
+                final ExposureLimits limits = mExposureLimits;
+                if (limits != null) limits.observeManual(request, result);
                 if (focus != null) mFocus = (float) focus;
                 if (mTemp != null) mPreviewTemp = mTemp;
                 if (mPreviewTemp == null) {
@@ -1846,6 +1851,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageReaderRaw = ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg);
         }
         mImageReaderRaw.setOnImageAvailableListener(mOnRawImageAvailableListener, mBackgroundHandler);
+        mExposureLimits = ExposureLimits.of(String.valueOf(physicalID), mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight(), useMaximumResolutionKey);
         // Find out if we need to swap dimension to get the preview size relative to sensor
         // coordinate.
         int displayRotation = PhotonCamera.getGravity().getRotation();
@@ -3502,14 +3508,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     long nNs=baseNs!=null&&baseNs>0?baseNs:stockPlan!=null?stockPlan.shutter(0):0;
                     int nIso=baseIso!=null&&baseIso>0?baseIso:stockPlan!=null?stockPlan.iso(0):0;
                     try {
-                        plan=HybridPlan.build(nNs,nIso,mLastZslClipFraction,mCameraCharacteristics);
+                        plan=HybridPlan.build(nNs,nIso,mLastZslClipFraction,mCameraCharacteristics,mExposureLimits);
                     } catch(RuntimeException noPlan) {
                         Log.w("NICE_CAPTURE","hybrid plan unavailable ("+noPlan.getMessage()+"): one more N frame after the shutter");
                         plan=HybridPlan.single(nNs,nIso);
                     }
                 } else {
                     plan=stockPlan!=null
-                            ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4)
+                            ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4,mExposureLimits)
                             : HybridPlan.autoExposure(4);
                 }
                 hybridPlanHolder[0]=plan;
@@ -3676,6 +3682,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                     if (shotDone.get()) return;
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
+                    final ExposureLimits shotLimits = mExposureLimits;
+                    if (shotLimits != null) shotLimits.observeManual(request, result);
                     if(niceSequence != null) {
                         // P27: a frame never costs the shot for its exposure. The Hybrid uses it in the role its measured
                         // exposure gives (HybridPlan.classify); SCAM HDR keeps it with its measured exposure (VivoNiceBurst
