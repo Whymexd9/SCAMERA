@@ -21,10 +21,11 @@ public enum CameraMode {
         this.stringId = stringId;
     }
 
+    /** The stored mode; the retired UNLIMITED / RAWVIDEO modes (no processor any more) read as MOTION. */
     public static CameraMode valueOf(int modeOrdinal) {
         for (CameraMode mode : values()) {
             if (modeOrdinal == mode.ordinal()) {
-                return mode;
+                return mode == UNLIMITED || mode == RAWVIDEO ? MOTION : mode;
             }
         }
         return MOTION;

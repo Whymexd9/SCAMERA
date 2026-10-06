@@ -4,21 +4,17 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 
-import com.particlesdevs.photoncamera.processing.processor.RawVideoProcessor;
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.api.ParseExif;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.GyroBurst;
 import com.particlesdevs.photoncamera.processing.processor.HdrxProcessor;
-import com.particlesdevs.photoncamera.processing.processor.UnlimitedProcessor;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 
 public class DefaultSaver extends SaverImplementation {
     private static final String TAG = "DefaultSaver";
-    final UnlimitedProcessor mUnlimitedProcessor;
-    final RawVideoProcessor mRawVideoProcessor;
     final HdrxProcessor hdrxProcessor;
     ArrayList<ImageFrame> ownedFrames;
     Path ownedDngFile, ownedImageFile;
@@ -27,8 +23,6 @@ public class DefaultSaver extends SaverImplementation {
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
         this.hdrxProcessor = new HdrxProcessor(processingEventsListener);
-        this.mUnlimitedProcessor = new UnlimitedProcessor(processingEventsListener);
-        this.mRawVideoProcessor = new RawVideoProcessor(processingEventsListener);
     }
 
     public void runRaw(int imageFormat, CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
@@ -120,46 +114,5 @@ public class DefaultSaver extends SaverImplementation {
         slicedBuffer.clear();
     }
 
-    public void processStart(int imageFormat, CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, int cameraRotation) {
-        super.processStart(imageFormat, characteristics, captureResult, captureRequest, cameraRotation);
-        Path dngFile = ImagePath.newDNGFilePath();
-        Path jpgFile = ImagePath.newImageFilePath();
-        switch (PhotonCamera.getSettings().selectedMode) {
-            case UNLIMITED:
-                mUnlimitedProcessor.configure(PhotonCamera.getSettings().rawSaver);
-                mUnlimitedProcessor.unlimitedStart(
-                        dngFile,
-                        jpgFile,
-                        ParseExif.parse(captureResult, captureRequest),
-                        characteristics,
-                        captureResult,
-                        captureRequest,
-                        cameraRotation,
-                        processingCallback
-                );
-                break;
-            case RAWVIDEO:
-                mRawVideoProcessor.videoStart(
-                        ImagePath.getNewVideoFolderPath(),
-                        ParseExif.parse(captureResult, captureRequest),
-                        characteristics,
-                        captureResult,
-                        captureRequest,
-                        cameraRotation,
-                        processingCallback
-                );
-                break;
-        }
-    }
 
-    public void processEnd() {
-        switch (PhotonCamera.getSettings().selectedMode){
-            case UNLIMITED:
-                mUnlimitedProcessor.unlimitedEnd();
-                break;
-            case RAWVIDEO:
-                mRawVideoProcessor.videoEnd();
-                break;
-        }
-    }
 }

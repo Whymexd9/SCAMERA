@@ -393,7 +393,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
             // Keep every category reachable regardless of the last camera mode.
             setVersionDetails();
-            setHdrxTitle();
             checkEszdTheme();
             setTelegramPref();
             setGithubPref();
@@ -724,10 +723,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
-        private void removePreferenceFromScreen(String preferenceKey) {
-            Preference preference = findPreference(preferenceKey);
-            if (preference != null && preference.getParent() != null) preference.getParent().removePreference(preference);
-    }
 
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
@@ -752,7 +747,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             
             if (key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)) {
-                setHdrxTitle();
                 if (PreferenceKeys.isPerLensSettingsOn()) {
 
                     restartActivity();
@@ -789,15 +783,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 p.setEnabled(!"eszdman".equalsIgnoreCase(mSettingsManager.getString(SCOPE_GLOBAL, PreferenceKeys.Key.KEY_THEME_ACCENT)));
         }
 
-        private void setHdrxTitle() {
-            Preference p = findPreference("settings_scope_info");
-            if (p != null) {
-                p.setTitle("Активная камера: " + PreferenceKeys.getCameraID());
-                p.setSummary(PreferenceKeys.isPerLensSettingsOn()
-                        ? "Настройки съёмки и обработки — для активного модуля. Аппаратные параметры сенсора — по физическому ID."
-                        : "Общие настройки обработки. Отдельные профили включаются в разделе «Камеры и сенсоры»." );
-            }
-    }
 
         private void setBaseSummary(Preference preference, CharSequence summary) {
             if (originalSummaries.containsKey(preference.getKey())) originalSummaries.put(preference.getKey(), summary);

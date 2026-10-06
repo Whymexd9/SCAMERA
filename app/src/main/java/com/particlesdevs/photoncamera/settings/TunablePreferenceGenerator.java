@@ -162,7 +162,7 @@ public class TunablePreferenceGenerator {
         // Create new category
         PreferenceCategory category = new PreferenceCategory(context);
         category.setKey(categoryKey);
-        category.setTitle(categoryName.isEmpty() ? "Чёрный уровень — ABLC" : categoryName);
+        category.setTitle(categoryName.isEmpty() ? "Параметры" : categoryName);
         screen.addPreference(category);
         
         return category;

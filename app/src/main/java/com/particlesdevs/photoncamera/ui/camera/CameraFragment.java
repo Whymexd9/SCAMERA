@@ -1107,14 +1107,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onProcessingChanged(Object obj) {
-            if (PhotonCamera.getSettings().selectedMode == CameraMode.RAWVIDEO
-                    && obj instanceof com.particlesdevs.photoncamera.processing.processor.RawVideoProcessor.RawVideoStats) {
-                com.particlesdevs.photoncamera.processing.processor.RawVideoProcessor.RawVideoStats stats =
-                        (com.particlesdevs.photoncamera.processing.processor.RawVideoProcessor.RawVideoStats) obj;
-                timerFrameCountViewModel.setFrameTimeCnt(
-                        new TimerFrameCountViewModel.FrameCntTime(stats.pendingWrites, 0, 0));
-                mCameraUIView.updateVideoRecordingInfo(stats.elapsedMs, stats.estimatedBytes, stats.availableBytes);
-            }
         }
 
         @Override

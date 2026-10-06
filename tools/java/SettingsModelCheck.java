@@ -42,14 +42,13 @@ public class SettingsModelCheck {
             p.put("pref_camera_mode_key", mode);
             for (String route : new String[]{"raw", "vcf2", "invalid"}) {
                 p.put("pref_vivo_nice_route", route);
-                inactive(p,"pref_vivo_nice_route");
                 active(p,"pref_vivo_nice_noise_scale");
                 active(p,"pref_vivo_nice_noise_photon");active(p,"pref_vivo_nice_noise_readout");
                 active(p,"pref_sharp_usm_enabled_key");
             }
         }
         p.clear();p.putAll(saved);
-        new SettingsAvailability(p).reason("pref_vivo_nice_route");
+        new SettingsAvailability(p).reason("pref_vivo_nice_noise_scale");
         if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
         p.put("pref_merge_route","hybrid");inactive(p,"pref_vivo_nice_noise_scale");
         p.put("pref_merge_route","scamhdr");

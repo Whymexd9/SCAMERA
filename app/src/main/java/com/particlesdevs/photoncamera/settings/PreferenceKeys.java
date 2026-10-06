@@ -142,9 +142,6 @@ public class PreferenceKeys {
         settingsManager.setInitial("default_scope", Key.KEY_BRACKETING_MODE, 0);
         settingsManager.setInitial("default_scope", Key.KEY_AE_METERING_STD, -1);
         settingsManager.setInitial("default_scope", Key.KEY_VIDEO_RESOLUTION, resources.getString(R.string.pref_video_resolution_default));
-        settingsManager.setInitial("default_scope", Key.KEY_RAWVIDEO_DOWNSCALE_4X, false);
-        settingsManager.setInitial("default_scope", Key.KEY_RAWVIDEO_WRITE_ZIP, true);
-        settingsManager.setInitial("default_scope", Key.KEY_RAWVIDEO_CROP_169, true);
         settingsManager.setDefaults(Key.CAMERA_ID, resources.getString(R.string.camera_id_default), new String[]{"0", "1"});
         settingsManager.setDefaults(Key.TONEMAP, resources.getString(R.string.tonemap_default), new String[]{resources.getString(R.string.tonemap_default)});
         settingsManager.setDefaults(Key.GAMMA, resources.getString(R.string.gamma_default), new String[]{resources.getString(R.string.gamma_default)});
@@ -1168,15 +1165,6 @@ public class PreferenceKeys {
     public static String getRawStreamFormat() {
         return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_stream_format", "auto");
     }
-    public static boolean isGcamStageEnabled(String key) {
-        return preferenceKeys.settingsManager.getBoolean("default_scope",key,false);
-    }
-    public static float gcamValue(String key,float fallback,float min,float max) {
-        try {
-            float value=Float.parseFloat(preferenceKeys.settingsManager.getString("default_scope",key,String.valueOf(fallback)));
-            return Float.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
-        } catch(RuntimeException error) { return fallback; }
-    }
 
 
 
@@ -1423,17 +1411,8 @@ public class PreferenceKeys {
     }
 
 
-    public static boolean isRawVideoDownscale4x() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAWVIDEO_DOWNSCALE_4X);
-    }
 
-    public static boolean isRawVideoWriteZip() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAWVIDEO_WRITE_ZIP);
-    }
 
-    public static boolean isRawVideoCrop169() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_RAWVIDEO_CROP_169);
-    }
 
     public enum Key {
         KEY_PREF_VERSION(R.string._pref_version),
@@ -1517,9 +1496,6 @@ public class PreferenceKeys {
         KEY_COUNTDOWN_TIMER(R.string.pref_countdown_timer_key),
         KEY_PREVIEW_RESOLUTION(R.string.pref_preview_resolution_key),
         KEY_VIDEO_RESOLUTION(R.string.pref_video_resolution_key),
-        KEY_RAWVIDEO_DOWNSCALE_4X(R.string.pref_rawvideo_downscale_4x_key),
-        KEY_RAWVIDEO_WRITE_ZIP(R.string.pref_rawvideo_write_zip_key),
-        KEY_RAWVIDEO_CROP_169(R.string.pref_rawvideo_crop_169_key),
         KEY_SHOW_AF_DATA(R.string.pref_show_afdata_key),
         KEY_SHOW_HORIZON(R.string.pref_horizon),
         KEY_SAVE_RAW(R.string.pref_save_raw_key),

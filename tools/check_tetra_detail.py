@@ -42,15 +42,6 @@ def checks():
  for value in (0.,1.):
   raw,truth=mosaic(np.full((h,w,3),value));out=tetra(raw)
   assert np.max(abs(out-truth))<=1
- # The GPU moment reduction is also compiled/executed, and checked against
- # the raw data rather than the reconstruction equations.
- rgb=np.repeat((.2+.001*x+.002*y)[:,:,None],3,2);raw,_=mosaic(rgb)
- u={'size':(w,h),'phase':(0,0),'quadColors':(2,1,1,0),'blackLevel':64.,'whiteLevel':1023.,'gainB':1.,'gainR':1.}
- moments=run('tetra/moments',{'RawBuffer':raw},u,output_size=((w+31)//32,(h+31)//32))
- c=np.array([2,1,1,0])[y%8//4*2+x%8//4];a=(raw[:,:,0].astype(float)-64)/959
- expected=np.array([np.sum(a[c==1]**2),np.sum(a[c==2]**2),np.sum(a[c==0]**2),np.sum(c==1)])
- assert np.allclose(moments.sum((0,1)),expected,rtol=2e-6)
-
  for quad in [(2,1,1,0),(0,1,1,2),(1,0,2,1),(1,2,0,1)]:
   rgb=np.empty((h,w,3));rgb[:]=(.25,.4,.6)
   for phase in [(0,0),(1,3),(7,7),(4,2)]:

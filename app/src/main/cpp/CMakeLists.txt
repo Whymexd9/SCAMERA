@@ -26,12 +26,6 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/tiny_dng_writer.h)
     endif()
 endif()
 
-if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/technicallyflac.h)
-    file(DOWNLOAD
-            https://raw.githubusercontent.com/ParticlesDevs/technicallyflac/main/technicallyflac.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/deps/technicallyflac.h)
-endif()
-
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/archive.h)
     file(DOWNLOAD
             https://raw.githubusercontent.com/libarchive/libarchive/master/libarchive/archive.h
@@ -55,9 +49,6 @@ add_library(allocator SHARED
     ${SRC_DIR}/allocator.cpp
     ${SRC_DIR}/worker-spawn.cpp
 )
-add_library(flacRecorder SHARED
-    ${SRC_DIR}/flacRecorder.cpp
-)
 add_library(
         camera2native SHARED ${SRC_DIR}/native-engine.cpp
 )
@@ -73,10 +64,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(allocator PRIVATE
-        log
-)
-
-target_link_libraries(flacRecorder PRIVATE
         log
 )
 

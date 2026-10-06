@@ -95,7 +95,9 @@ public final class SettingsMigration {
             "pref_vivo_nice_soft_tone", "pref_vivo_nice_tone_key", "pref_vivo_nice_sharp_amount", "pref_vivo_nice_texture",
             "pref_vivo_nice_warm_retention", "pref_vivo_nice_gcam_tone", "pref_lmc_hybrid_ae_mid", "pref_lmc_hybrid_ae_high",
             "pref_lmc_hybrid_ae_gain_max", "pref_lmc_hybrid_bento_fusion", "pref_lmc_hybrid_texture", "pref_lmc_hybrid_ark_tone",
-            "pref_lmc_hybrid_soft_tone", "pref_lmc_hybrid_tone_key", "pref_lmc_hybrid_warm_retention", "pref_lmc_hybrid_gcam_tone"));
+            "pref_lmc_hybrid_soft_tone", "pref_lmc_hybrid_tone_key", "pref_lmc_hybrid_warm_retention", "pref_lmc_hybrid_gcam_tone",
+            // P8: the retired VCF2 route selector and the unreachable RAW video mode
+            "pref_vivo_nice_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes

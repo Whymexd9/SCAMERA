@@ -31,7 +31,7 @@
      *
      * The histogram covers the linear input, so bins are mapped through the
      * sRGB OETF to keep the gain estimate in the display domain the curve
-     * operates on. The input is white-balanced (Bayer2Float divides by the
+     * operates on. The input is white-balanced (the import divides by the
      * camera neutral point), so bins are additionally scaled per channel by
      * {@link GLHistogram#exposure} to resolve the real range up to
      * 1/whitePoint[c]; without that, everything above linear 1.0 clamps into
@@ -92,7 +92,7 @@
             histogram.Gc = true;
             histogram.Bc = true;
             histogram.Ac = false;
-            // The input is white-balanced: Bayer2Float divides by the camera
+            // The input is white-balanced: the import divides by the camera
             // neutral point, so a photosite that clips at sensor white holds up
             // to 1/whitePoint[c] after balancing - a range the inpaint-opposed
             // reconstruction actively fills. Scale the histogram bins per

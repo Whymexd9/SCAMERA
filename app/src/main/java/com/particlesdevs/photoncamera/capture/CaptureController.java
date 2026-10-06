@@ -221,7 +221,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public static CaptureRequest mCaptureRequest;
 
     public static volatile CaptureResult mPreviewCaptureResult;
-    private VivoNiceAeSnapshot mNiceShutterAe;
     public static CaptureRequest mPreviewCaptureRequest;
     public static int mPreviewTargetFormat = ImageFormat.JPEG;
     public boolean isDualSession = false;
@@ -1165,7 +1164,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mSessionGeneration.incrementAndGet();
             mPreviewRequestBuilder = null;
             mPreviewCaptureResult = null;
-            mNiceShutterAe = null;
             mPreviewCaptureRequest = null;
             mShotInProgress = false;
         }
@@ -1907,7 +1905,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         mConfiguredSessionGeneration = generation;
                         mPreviewCaptureResult = null;
                         mPreviewCaptureRequest = null;
-                        mNiceShutterAe = null;
                         try {
                             // Auto focus should be continuous for camera preview.
                             //mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
@@ -2161,7 +2158,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // The vendor shutter AE snapshot (diagnostic only, never applied) walked
             // every vendor key of the result: 37 ms on the UI thread per press, and
             // this HAL does not publish it for Camera2 clients anyway.
-            mNiceShutterAe = null;
             if(PreferenceKeys.isVivoNiceEnabled()) Log.i("NICE_CAPTURE","shutter camera="+physicalID
                     +" mode="+PhotonCamera.getSettings().selectedMode+" zslMode="+isZslMode()
                     +" sensorCutoffNs="+niceZslShutterTimestamp+" cutoffSource=latest_preview_result"
@@ -2890,16 +2886,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             }
             final HybridPlan[] hybridPlanHolder={null};
-            final VivoNiceAeSnapshot shutterAe = mNiceShutterAe;
-            mNiceShutterAe = null;
-            if (niceCapture && shutterAe != null) {
-                if (shutterAe.sessionGeneration != mSessionGeneration.get()
-                        || shutterAe.timestamp != niceZslShutterTimestamp)
-                    throw new IllegalStateException("NICE AE: shutter belongs to another session");
-                Log.i("NICE_CAPTURE", "shutterAeFrame=" + shutterAe.frameNumber
-                        + " past=" + shutterAe.plan.pastCount + " future=" + shutterAe.plan.futureCount
-                        + " stockVcfPlanApplied=false");
-            }
             final boolean niceZslRequested = hybridZslRequested && niceCapture;
             if (niceZslRequested) {
                 mLiveRawRouter.clear();
