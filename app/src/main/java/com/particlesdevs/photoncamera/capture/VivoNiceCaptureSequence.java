@@ -18,12 +18,19 @@ public final class VivoNiceCaptureSequence {
     private String failure;
     private long shutterTimestamp;
     public final int futureCount, frameCount;
-    // LMC hybrid: the post-shutter frames (Bento ultrashort, Shasta bracketed) are extras on top of the buffered N frames. A
-    // request whose RAW the HAL lost or failed, or whose exposure missed the plan, is dropped and the shot goes on (vivo X300
-    // Ultra ultrawide: the HAL returned 1 of 5 post-shutter RAWs and the whole shot was discarded). SCAM HDR stays strict.
+    // P27: every series the camera takes is tolerant ("optional"). A request whose RAW the HAL lost or failed, whose result is
+    // invalid or foreign, a duplicate or a missing RAW only drops that frame and the shot goes on with what arrived (vivo X300
+    // Ultra ultrawide: the HAL returned 1 of 5 post-shutter RAWs; X300 Ultra 2026-10-06: 'NICE: incomplete results 3/7' lost the
+    // shot). The merge decides what it can build from the frames (SCAM HDR falls back to the Hybrid merge). Only a series
+    // built with the plain constructor stays strict (host checks of the binding rules).
     private boolean optionalFuture;
     private final TreeMap<Integer, String> dropped = new TreeMap<>();
-    private int boundFuture;
+    private final List<String> notes = new ArrayList<>();
+    /** P27: role a frame really has by its measured exposure, when it differs from its request's (HybridPlan.classify). */
+    private final Map<Integer, ImageFrame.CaptureRole> measuredRoles = new HashMap<>();
+    /** Results bound to a RAW by the last bindAndValidate, by request index. */
+    private final TreeMap<Integer, CaptureResult> bound = new TreeMap<>();
+    private int boundFuture, zslPresent;
 
     public static VivoNiceCaptureSequence stockZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp) {
         if(shutterTimestamp<=0 || past.size()<4 || past.size()>50 || requests.size()<2 || requests.size()>3)
@@ -45,6 +52,7 @@ public final class VivoNiceCaptureSequence {
         }
         VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,past);
         sequence.shutterTimestamp=shutterTimestamp;
+        sequence.optionalFuture=true;
         return sequence;
     }
 
@@ -68,19 +76,35 @@ public final class VivoNiceCaptureSequence {
         return sequence;
     }
 
-    // Stock normal-back: all four N and L/S/ES are requested after the shutter.
+    // Stock normal-back: all four N and L/S/ES are requested after the shutter (six requests: no L, it is built from the N).
     public static VivoNiceCaptureSequence stockNormalBack(List<CaptureRequest> requests,long shutterTimestamp) {
-        if(shutterTimestamp<=0 || requests.size()!=7)
-            throw new IllegalArgumentException("NICE normal-back requires seven bracket requests");
-        for(int i=0;i<7;i++) {
-            ImageFrame.CaptureRole role=i<4?ImageFrame.CaptureRole.NORMAL:i==4?ImageFrame.CaptureRole.LONG
-                    :i==5?ImageFrame.CaptureRole.SHORT:ImageFrame.CaptureRole.EXTRA_SHORT;
+        if(shutterTimestamp<=0 || (requests.size()!=7 && requests.size()!=6))
+            throw new IllegalArgumentException("NICE normal-back requires six or seven bracket requests");
+        final boolean withLong=requests.size()==7;
+        for(int i=0;i<requests.size();i++) {
+            int slot=withLong||i<4?i:i+1;
+            ImageFrame.CaptureRole role=slot<4?ImageFrame.CaptureRole.NORMAL:slot==4?ImageFrame.CaptureRole.LONG
+                    :slot==5?ImageFrame.CaptureRole.SHORT:ImageFrame.CaptureRole.EXTRA_SHORT;
             Object tag=requests.get(i).getTag();
             if(!(tag instanceof ImageFrame.NiceCaptureTag) || ((ImageFrame.NiceCaptureTag)tag).role!=role)
                 throw new IllegalArgumentException("NICE normal-back request order");
         }
         VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,new ArrayList<>());
         sequence.shutterTimestamp=shutterTimestamp;
+        sequence.optionalFuture=true;
+        return sequence;
+    }
+
+    /**
+     * P27, Hybrid with an empty ZSL ring: N and the Bento / Shasta frames are all taken after the shutter, tolerant like
+     * {@link #hybridZsl}; the merge uses whatever arrived (at least one RAW).
+     */
+    public static VivoNiceCaptureSequence hybridFuture(List<CaptureRequest> requests,long shutterTimestamp) {
+        if(shutterTimestamp<=0 || requests.isEmpty() || requests.size()>16)
+            throw new IllegalArgumentException("NICE hybrid normal-back requires 1..16 requests");
+        VivoNiceCaptureSequence sequence=new VivoNiceCaptureSequence(requests,new ArrayList<>());
+        sequence.shutterTimestamp=shutterTimestamp;
+        sequence.optionalFuture=true;
         return sequence;
     }
 
@@ -108,7 +132,13 @@ public final class VivoNiceCaptureSequence {
     }
 
     public synchronized void failed(String reason) {
+        // Every reason is kept for the log (the first one used to hide the rest).
         if (failure == null) failure = reason;
+        else if (failure.length() < 2000) failure += "; " + reason;
+    }
+
+    private void note(String what) {
+        if (notes.size() < 32) notes.add(what);
     }
 
     /**
@@ -117,11 +147,40 @@ public final class VivoNiceCaptureSequence {
      */
     public synchronized void lost(CaptureRequest request, String reason) {
         Object value = request == null ? null : request.getTag();
-        if (!optionalFuture || !(value instanceof ImageFrame.NiceCaptureTag)) { failed(reason); return; }
+        if (!optionalFuture) { failed(reason); return; }
+        if (!(value instanceof ImageFrame.NiceCaptureTag)) { note("lost frame without identity: " + reason); return; }
         ImageFrame.NiceCaptureTag tag = (ImageFrame.NiceCaptureTag) value;
-        if (tag.index >= tags.size() || tags.get(tag.index) != tag) { failed("lost frame from another request/series"); return; }
+        if (tag.index >= tags.size() || tags.get(tag.index) != tag) { note("lost frame from another request/series: " + reason); return; }
         if (!dropped.containsKey(tag.index)) dropped.put(tag.index, tag.role + ": " + reason);
         results.remove(tag.index);
+    }
+
+    /**
+     * P27: the series ends early (aborted, camera closed, watchdog): every request without a result counts as lost, so the
+     * completion merges what arrived instead of waiting for frames that will not come.
+     */
+    public synchronized void abandonOutstanding(String reason) {
+        for (ImageFrame.NiceCaptureTag tag : tags)
+            if (!results.containsKey(tag.index) && !dropped.containsKey(tag.index))
+                if (optionalFuture) dropped.put(tag.index, tag.role + ": " + reason); else failed(reason);
+    }
+
+    /**
+     * P27: the frame of {@code request} arrived at another exposure than planned and is used in the role its measured exposure
+     * gives (HybridPlan.classify), never dropped for it. The role reaches the frame in {@link #bindAndValidate}.
+     */
+    public synchronized void reclassify(CaptureRequest request, ImageFrame.CaptureRole role) {
+        Object value = request == null ? null : request.getTag();
+        if (!(value instanceof ImageFrame.NiceCaptureTag) || role == null) {
+            if (optionalFuture) note("reclassified frame without identity"); else failed("reclassified frame without identity");
+            return;
+        }
+        ImageFrame.NiceCaptureTag tag = (ImageFrame.NiceCaptureTag) value;
+        if (tag.index >= tags.size() || tags.get(tag.index) != tag) {
+            if (optionalFuture) note("reclassified frame from another series"); else failed("reclassified frame from another series");
+            return;
+        }
+        if (role != tag.role) measuredRoles.put(tag.index, role); else measuredRoles.remove(tag.index);
     }
 
     public synchronized boolean isOptionalFuture() { return optionalFuture; }
@@ -129,24 +188,44 @@ public final class VivoNiceCaptureSequence {
     /** Post-shutter frames bound to a RAW by the last bindAndValidate. */
     public synchronized int boundFutureCount() { return boundFuture; }
     public synchronized String droppedSummary() {
-        if (dropped.isEmpty()) return "";
         StringBuilder out = new StringBuilder();
         for (Map.Entry<Integer, String> e : dropped.entrySet())
             out.append(out.length() == 0 ? "" : "; ").append('#').append(e.getKey()).append(' ').append(e.getValue());
+        for (String n : notes) out.append(out.length() == 0 ? "" : "; ").append(n);
+        for (Map.Entry<Integer, ImageFrame.CaptureRole> e : measuredRoles.entrySet())
+            out.append(out.length() == 0 ? "" : "; ").append('#').append(e.getKey()).append(' ').append(tags.get(e.getKey()).role)
+               .append(" used as ").append(e.getValue());
         return out.toString();
+    }
+    /** RAWs that are part of the series and were present at the last bindAndValidate (buffered N + bound post-shutter). */
+    public synchronized int presentCount() { return zslPresent + boundFuture; }
+
+    /**
+     * The result of the first post-shutter frame bound by the last bindAndValidate whose role (measured role first) is
+     * {@code role}, in request order; {@code role == null}: any bound frame. Null when there is none.
+     */
+    public synchronized CaptureResult firstBoundResult(ImageFrame.CaptureRole role) {
+        for (Map.Entry<Integer, CaptureResult> e : bound.entrySet()) {
+            ImageFrame.CaptureRole actual = measuredRoles.containsKey(e.getKey()) ? measuredRoles.get(e.getKey()) : tags.get(e.getKey()).role;
+            if (role == null || actual == role) return e.getValue();
+        }
+        return null;
     }
 
     public synchronized void completed(CaptureRequest request, CaptureResult result) {
         Object value = request.getTag();
         if (!(value instanceof ImageFrame.NiceCaptureTag)) {
+            if (optionalFuture) { note("result without request identity ignored"); return; }
             failed("result without request identity"); return;
         }
         ImageFrame.NiceCaptureTag tag = (ImageFrame.NiceCaptureTag) value;
         if (tag.index >= tags.size() || tags.get(tag.index) != tag
                 || result.getRequest() == null || result.getRequest().getTag() != tag) {
+            if (optionalFuture) { note("result from another request/series ignored"); return; }
             failed("result from another request/series"); return;
         }
         if (optionalFuture && dropped.containsKey(tag.index)) return; // dropped frame: its metadata is not used
+        if (optionalFuture && results.containsKey(tag.index)) { note("#" + tag.index + " second result ignored"); return; }
         Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
         Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
@@ -154,6 +233,8 @@ public final class VivoNiceCaptureSequence {
                 || iso == null || iso <= 0 || results.containsKey(tag.index)
                 || (shutterTimestamp>0 && timestamp<=shutterTimestamp)
                 || zslTimestamps.contains(timestamp) || !timestamps.add(timestamp)) {
+            // A frame whose metadata cannot be trusted is never matched to a RAW; a tolerant series goes on without it.
+            if (optionalFuture) { lost(request, "invalid or duplicate capture metadata"); return; }
             failed("duplicate or invalid capture metadata"); return;
         }
         results.put(tag.index, result);
@@ -175,16 +256,36 @@ public final class VivoNiceCaptureSequence {
         if (!optionalFuture && frames.size() != frameCount)
             throw new IllegalStateException("NICE: incomplete RAW series " + frames.size() + "/" + frameCount);
         List<ImageFrame> discard = new ArrayList<>();
-        int bound = 0;
+        int boundCount = 0, zslCount = 0;
+        bound.clear();
         Map<Long, CaptureResult> byTimestamp = new HashMap<>();
-        for (CaptureResult result : results.values())
-            byTimestamp.put(result.get(CaptureResult.SENSOR_TIMESTAMP), result);
+        Map<CaptureResult, Integer> indexOf = new HashMap<>();
+        for (Map.Entry<Integer, CaptureResult> e : results.entrySet()) {
+            byTimestamp.put(e.getValue().get(CaptureResult.SENSOR_TIMESTAMP), e.getValue());
+            indexOf.put(e.getValue(), e.getKey());
+        }
         HashSet<Long> seen = new HashSet<>();
         for (ImageFrame frame : frames) {
-            if (!seen.add(frame.timestamp)) throw new IllegalStateException("NICE: duplicate RAW timestamp");
+            if (frame == null) {
+                if (!optionalFuture) throw new IllegalStateException("NICE: missing RAW frame");
+                note("null RAW frame dropped");
+                discard.add(null);
+                continue;
+            }
+            if (!seen.add(frame.timestamp)) {
+                if (!optionalFuture) throw new IllegalStateException("NICE: duplicate RAW timestamp");
+                note("duplicate RAW timestamp " + frame.timestamp + " dropped");
+                discard.add(frame);
+                continue;
+            }
             if (frame.fromZsl) {
-                if (!zslTimestamps.contains(frame.timestamp) || frame.getMatchedCaptureMetadata() == null)
-                    throw new IllegalStateException("NICE: unexpected buffered RAW");
+                if (!zslTimestamps.contains(frame.timestamp) || frame.getMatchedCaptureMetadata() == null) {
+                    if (!optionalFuture) throw new IllegalStateException("NICE: unexpected buffered RAW");
+                    note("unexpected buffered RAW " + frame.timestamp + " dropped");
+                    discard.add(frame);
+                    continue;
+                }
+                zslCount++;
             } else {
                 CaptureResult result = byTimestamp.remove(frame.timestamp);
                 if (result == null) {
@@ -193,16 +294,26 @@ public final class VivoNiceCaptureSequence {
                     continue;
                 }
                 frame.setCaptureMetadata(result);
-                bound++;
+                Integer index = indexOf.get(result);
+                frame.measuredRole = index == null ? null : measuredRoles.get(index);
+                if (index != null) bound.put(index, result);
+                boundCount++;
             }
         }
-        if (!seen.containsAll(zslTimestamps) || (!optionalFuture && !byTimestamp.isEmpty()))
+        if (!optionalFuture && (!seen.containsAll(zslTimestamps) || !byTimestamp.isEmpty()))
             throw new IllegalStateException("NICE: missing requested RAW");
-        // hybrid: a result whose RAW never arrived is a dropped frame as well
+        if (optionalFuture && zslCount < zslTimestamps.size())
+            note((zslTimestamps.size() - zslCount) + " buffered N RAWs missing");
+        // a result whose RAW never arrived is a dropped frame as well
         for (Map.Entry<Integer, CaptureResult> e : results.entrySet())
             if (optionalFuture && byTimestamp.containsValue(e.getValue()) && !dropped.containsKey(e.getKey()))
                 dropped.put(e.getKey(), tags.get(e.getKey()).role + ": RAW missing");
-        boundFuture = bound;
+        boundFuture = boundCount;
+        zslPresent = zslCount;
+        // The only case without a photo: not a single RAW of the series arrived.
+        if (optionalFuture && zslCount + boundCount == 0)
+            throw new IllegalStateException("NICE: камера не передала ни одного RAW-кадра"
+                    + (dropped.isEmpty() ? "" : " (" + droppedSummary() + ")"));
         return discard;
     }
 }

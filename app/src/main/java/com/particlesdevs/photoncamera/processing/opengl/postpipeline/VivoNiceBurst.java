@@ -85,7 +85,8 @@ public final class VivoNiceBurst implements NiceTransport {
             measuredAe.put(frame,snapshot);
             if(snapshot.hasMeasuredExposure())vendorFrames++;
         }
-        // Keep one radiometric domain for the entire burst; never mix ISO and linear gain.
+        // Keep one radiometric domain for the entire burst; never mix ISO and linear gain (P27: such a burst is merged by the
+        // Hybrid, HdrxProcessor).
         if(vendorFrames!=0 && vendorFrames!=source.size())
             throw new IOException("SCAM HDR: неполные измеренные vendor AE в серии");
         vendorExposureDomain=vendorFrames==source.size();
@@ -111,9 +112,9 @@ public final class VivoNiceBurst implements NiceTransport {
         Comparator<ImageFrame> byExposure=Comparator.comparingDouble(this::product);
         shorts.sort(byExposure);longs.sort(byExposure);
         ordered[4]=longs.get(0);
+        // S and ES by their measured exposure (P27: the request tags may be swapped by the HAL's rounding; the ES < S check
+        // below still holds the graph to two distinct short frames).
         ordered[5]=shorts.get(shorts.size()-1);ordered[6]=shorts.get(0);
-        if(ordered[5].getCaptureRole()==ImageFrame.CaptureRole.EXTRA_SHORT)
-            throw new IOException("SCAM HDR: ES имеет большую экспозицию, чем S");
         // Forward ref/refn=3 identify L in the ES/S/N/L radiometric table.
         float[] longNoise=noiseFor(ordered[4]), normalNoise=noiseFor(ordered[0]);
         noiseSlope=longNoise[0];noiseOffset=longNoise[1];
@@ -150,8 +151,9 @@ public final class VivoNiceBurst implements NiceTransport {
             ae[i]=measuredAe.get(ordered[i]);
             Log.i("NICE_HDR","slot="+i+" "+ae[i].describe());
             exposure[i]=i==4&&syntheticLong>0?syntheticLong:(float)(product(ordered[i])/ref);
-            // Stock night plans reach ~9-10 EV between ES and N (street lights); allow 12 EV.
-            if(!Float.isFinite(exposure[i])||exposure[i]<1f/4096||exposure[i]>4096||ordered[i].measuredIso<=0)
+            // The worker takes x1/256..x256 (vivo-nice-capture.h); a burst outside it is merged by the Hybrid (P27) instead of
+            // failing in the worker.
+            if(!Float.isFinite(exposure[i])||exposure[i]<1f/256||exposure[i]>256||ordered[i].measuredIso<=0)
                 throw new IOException("SCAM HDR: экспозиция/ISO вне диапазона");
             Log.i("NICE_HDR","slot="+i+" role="+new String[]{"N-ref","N","N","N","L","S","ES"}[i]
                     +" frame="+ordered[i].number+" timestamp="+ordered[i].timestamp+" exposureNs="+ordered[i].measuredExposure

@@ -526,6 +526,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private int mPreviewHeight;
     private ArrayList<CaptureRequest> captures;
     private CameraCaptureSession.CaptureCallback CaptureCallback;
+    /**
+     * P27: completes the shot in flight with the frames that arrived (the outstanding requests count as lost); null when no
+     * shot is in flight. A camera close, error, disconnect or a stalled HAL then still gives a photo and frees the shutter.
+     */
+    private volatile Runnable mInFlightRescue;
+    /** P27: watchRawPayload's session restart waits until the shot in flight is complete. */
+    private volatile boolean mPendingPayloadRestart;
     private File vid = null;
     public int mMeasuredFrameCnt;
     public static boolean isProcessing;
@@ -776,6 +783,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+            rescueInFlightShot("camera disconnected");
             mCameraOpenCloseLock.release();
             mCameraOpening.set(false);
             cameraDevice.close();
@@ -784,6 +792,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onError(@NonNull CameraDevice cameraDevice, int error) {
+            rescueInFlightShot("camera error " + error);
             mCameraOpenCloseLock.release();
             mCameraOpening.set(false);
             cameraDevice.close();
@@ -1194,6 +1203,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public void closeCamera() {
+        rescueInFlightShot("camera closed");
+        mNiceQueuedShots = 0;
         VivoStockAe stock=mStockAe;mStockAe=null;if(stock!=null)stock.close();
         mNiceRingFrozen=false;
         // Invalidate callbacks before releasing their resources. onConfigured and
@@ -1969,7 +1980,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if(surface == null)
                 surface = new Surface(texture);
             // We set up a CaptureRequest.Builder with the output Surface.
-            mLiveRawRouter.clear();
+            // P27: the routing of a shot in flight stays (its post-shutter RAWs would be closed as preview frames).
+            if (!shotInFlight()) mLiveRawRouter.clear();
             mLiveMetadata.clear();
             boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
@@ -2363,7 +2375,41 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /**
+     * P27: the camera closed, failed or stalled while a shot was in flight: the frames that arrived are processed (the
+     * outstanding requests count as lost) instead of vanishing with the shutter left locked (shot flags, static burst, ring
+     * routing, ~25 MB of native memory per deferred ZSL frame).
+     */
+    private void rescueInFlightShot(String reason) {
+        final Runnable rescue = mInFlightRescue;
+        mInFlightRescue = null;
+        if (rescue == null) {
+            mNativeRawPslCapture = false; mZslCapturing = false; mHybridZslCapture = false; burst = false;
+            return;
+        }
+        Log.w("NICE_CAPTURE", "shot in flight completed with the frames that arrived: " + reason);
+        try {
+            rescue.run();
+        } catch (RuntimeException e) {
+            Log.e(TAG, "shot rescue failed: " + Log.getStackTraceString(e));
+        }
+    }
+
+    /** P27: a shot is between its press and the end of its post-shutter frames. */
+    private boolean shotInFlight() {
+        return mInFlightRescue != null || mZslCapturing || burst;
+    }
+
     private void finishNiceShot() {
+        if (mPendingPayloadRestart && mBackgroundHandler != null) {
+            mPendingPayloadRestart = false;
+            final int generation = mSessionGeneration.get();
+            mBackgroundHandler.post(() -> {
+                if (!isCameraResumed || generation != mSessionGeneration.get() || mCaptureSession == null) return;
+                mCaptureSession.close();
+                createCameraPreviewSession(false);
+            });
+        }
         final boolean fire;
         synchronized (mPreviewStateLock) {
             mShotInProgress = false;
@@ -2684,6 +2730,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w("NICE_CAPTURE", "camera " + physicalID + ": vivo stock preview profile off, session restarted with the plain Camera2 preview");
             mBackgroundHandler.post(() -> {
                 if (!isCameraResumed || generation != mSessionGeneration.get() || mCaptureSession == null) return;
+                // P27: never under a shot in flight (its post-shutter RAWs are still routed): after it, from finishNiceShot.
+                if (shotInFlight()) { mPendingPayloadRestart = true; return; }
                 mCaptureSession.close();
                 createCameraPreviewSession(false);
             });
@@ -2895,6 +2943,35 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return plan;
     }
 
+    /**
+     * P27: the Hybrid's N without the SCAM HDR planner (whose throws cost Hybrid shots): the ring frame at the shutter, else
+     * the newest ring result before it, the preview result, the preview AE values. Null when no N exposure is known at all
+     * (the Hybrid then lets the camera's AE expose its frames).
+     */
+    private VivoStockAe.Plan hybridNPlan() {
+        CaptureResult n;String source="zsl_cutoff";
+        synchronized (mZslBufferLock) {
+            n=mHexZslResults.get(niceZslShutterTimestamp);
+            if(n==null) {
+                long best=Long.MIN_VALUE;source="zsl_newest";
+                for(java.util.Map.Entry<Long,TotalCaptureResult> e:mHexZslResults.entrySet())
+                    if(e.getKey()<=niceZslShutterTimestamp && e.getKey()>best){best=e.getKey();n=e.getValue();}
+            }
+        }
+        if(n==null){n=mPreviewCaptureResult;source="preview";}
+        Long ns=n==null?null:n.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Integer iso=n==null?null:n.get(CaptureResult.SENSOR_SENSITIVITY);
+        long shutter=ns!=null&&ns>0?ns:0;int sensitivity=iso!=null&&iso>0?iso:0;
+        if(shutter<=0||sensitivity<=0){shutter=mPreviewExposureTime;sensitivity=mPreviewIso;source="preview_ae";}
+        mLastZslClipFraction=zslClipFraction();
+        if(shutter<=0||sensitivity<=0){
+            Log.w("NICE_CAPTURE","bracket=HYBRID no N exposure known: the camera's AE exposes the frames");
+            return null;
+        }
+        Log.i("NICE_CAPTURE","bracket=HYBRID N="+shutter+"ns ISO"+sensitivity+" from="+source);
+        return VivoStockAe.Plan.nOnly(shutter,sensitivity,niceZslShutterTimestamp,mSessionGeneration.get());
+    }
+
     /** Fraction of clipped RAW samples in the newest buffered ZSL frame (sparse sample). */
     /** Clipped fraction of the newest buffered RAW at the last plan (the ring is drained before the hybrid plan is built). */
     private float mLastZslClipFraction;
@@ -2966,6 +3043,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount,VivoStockAe.Plan stockPlan,boolean defer) {
+        return drainZslNormalFrames(requestedCount,stockPlan,defer,false);
+    }
+
+    /**
+     * P27, {@code hybrid}: the Hybrid needs one usable N frame, never SCAM HDR's four at the plan's exact exposure. Its ring
+     * selection keeps the frames at the newest frame's exposure (0.05 EV, as before) and, only when fewer than
+     * min(requested, 8) remain (a press during an AE ramp, the first press after a lens switch), adds frames up to 0.5 EV
+     * darker, nearest first; never brighter (the merge would accumulate their clipped samples). Each frame keeps its own
+     * exposure (the worker normalises by it). The ring is never emptied for the Hybrid while one plain frame is left (X300
+     * Ultra 2026-10-06: 3 of 15 ring frames matched, the shot fell into SCAM HDR's strict normal-back and was lost).
+     */
+    private List<ImageFrame> drainZslNormalFrames(int requestedCount,VivoStockAe.Plan stockPlan,boolean defer,boolean hybrid) {
         List<Image> rawImages;
         java.util.Map<Long,TotalCaptureResult> selectedMetadata;
         synchronized (mZslBufferLock) {
@@ -2988,7 +3077,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Long exposure = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
                 boolean matchesPlan=true;
-                if(stockPlan!=null)try{stockPlan.verifyZslNormal(result,niceZslShutterTimestamp);}
+                if(stockPlan!=null && !hybrid)try{stockPlan.verifyZslNormal(result,niceZslShutterTimestamp);}
                 catch(RuntimeException mismatch){matchesPlan=false;
                     if(result!=null && firstMismatch){firstMismatch=false;Log.w("NICE_HDR",mismatch.getMessage());}}
                 if (exposure == null || exposure <= 0 || iso == null || iso <= 0
@@ -3000,8 +3089,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     it.remove();
                 }
             }
+            if (hybrid && !rawImages.isEmpty()) selectHybridRing(rawImages, selectedMetadata, requestedCount);
             Log.i("NICE_HDR", "ZSL matched RAWs=" + rawImages.size() + " requested=" + requestedCount);
-            if(stockPlan!=null && rawImages.size()<4) {
+            if(!hybrid && stockPlan!=null && rawImages.size()<4) {
                 // Stock normal-back (VAF niceNormalBack 0x29a714): when the
                 // planned N exposure is not what the preview stream ran at
                 // (low light: longer N than preview), the stock takes N after
@@ -3042,7 +3132,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             int capacity = img.getPlanes()[0].getBuffer().capacity();
             int offset = 0;
             if (PhotonCamera.getSettings().aspect169 && width > height) {
-                height = width * 9 / 16;
+                // Even rows (P27): a 4080-wide stream gave 2295 rows, which the merges refuse.
+                height = (width * 9 / 16) & ~1;
                 int offsetH = (img.getHeight() - height) / 2;
                 offsetH -= offsetH % 2;
                 offset = rowStride * offsetH;
@@ -3064,6 +3155,47 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             selected.add(frame);
         }
         return selected;
+    }
+
+    /** P27: the Hybrid's ring selection (see drainZslNormalFrames); closes the frames it does not keep. */
+    private void selectHybridRing(List<Image> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
+        Image base = null;
+        for (Image image : rawImages) if (base == null || image.getTimestamp() > base.getTimestamp()) base = image;
+        final double ref = product(metadata.get(base.getTimestamp()));
+        List<Image> exact = new ArrayList<>(), darker = new ArrayList<>(), rest = new ArrayList<>();
+        for (Image image : rawImages) {
+            double ev = Math.log(product(metadata.get(image.getTimestamp())) / ref) / Math.log(2);
+            if (Math.abs(ev) <= 0.05) exact.add(image);
+            else if (ev >= -0.5 && ev < 0) darker.add(image);
+            else rest.add(image);
+        }
+        exact.sort(java.util.Comparator.comparingLong(Image::getTimestamp).reversed());
+        List<Image> keep = new ArrayList<>(exact.subList(0, Math.min(exact.size(), Math.max(1, requestedCount))));
+        for (Image image : exact.subList(keep.size(), exact.size())) rest.add(image);
+        final int fill = Math.min(Math.max(1, requestedCount), 8);
+        int widened = 0;
+        if (keep.size() < fill) {
+            darker.sort(java.util.Comparator.comparingDouble(image -> -product(metadata.get(image.getTimestamp()))));
+            for (Image image : darker) {
+                if (keep.size() < fill) { keep.add(image); widened++; } else rest.add(image);
+            }
+        } else rest.addAll(darker);
+        if (widened > 0) Log.w("NICE_HDR", "hybrid ZSL: " + exact.size() + " ring frames at the newest exposure, widened by " + widened
+                + " frames down to -0.5 EV (AE ramp)");
+        for (Image image : rest) {
+            Log.w("NICE_HDR", "hybrid ZSL: ring RAW timestamp=" + image.getTimestamp() + " not used (exposure "
+                    + String.format(java.util.Locale.ROOT, "%+.2f EV", Math.log(product(metadata.get(image.getTimestamp())) / ref) / Math.log(2))
+                    + " from the newest frame)");
+            image.close();
+        }
+        rawImages.clear();
+        rawImages.addAll(keep);
+    }
+
+    private static double product(CaptureResult result) {
+        Long ns = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
+        return ns == null || iso == null ? 0 : (double) ns * iso;
     }
 
     private boolean isGyroClockComparable() {
@@ -3091,14 +3223,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 throw new IllegalStateException("Нет маршрута склейки: Hybrid и SCAM HDR снимают из ZSL RAW-потока (режимы Фото и Ночь)");
             final boolean niceCapture = PreferenceKeys.isVivoNiceEnabled();
             // The LMC hybrid takes the NICE capture route with its own settings (independent of SCAM HDR; wins over it).
-            final boolean lmcHybridShot = niceCapture && PreferenceKeys.isLmcHybridEnabled();
+            final boolean lmcHybridSelected = niceCapture && PreferenceKeys.isLmcHybridEnabled();
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
-            final VivoStockAe.Plan stockPlan;
+            VivoStockAe.Plan planned;
+            boolean scamToHybrid=false;
             {
-                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridShot?"Hybrid":"SCAM HDR")+" требует ZSL RAW-поток");
-                // The hybrid's N is the ring at the preview exposure: the SCAMERA plan, never the vivo stock solver.
-                if(lmcHybridShot || !PreferenceKeys.useStockBracketPlanner()) {
-                    stockPlan=scameraBracketPlan();
+                if(!hybridZslRequested)throw new IllegalStateException((lmcHybridSelected?"Hybrid":"SCAM HDR")+" требует ZSL RAW-поток");
+                // The hybrid's N is the ring at the preview exposure (P27: its own N, never the SCAM HDR planner).
+                if(lmcHybridSelected) {
+                    planned=hybridNPlan();
+                } else if(!PreferenceKeys.useStockBracketPlanner()) {
+                    try {
+                        planned=scameraBracketPlan();
+                    } catch(IllegalStateException noBracket) {
+                        // P27: no S/ES plan (bright scene at the sensor floor, no N metadata): this shot is captured and merged
+                        // by the Hybrid instead of failing.
+                        Log.w("NICE_CAPTURE","SCAM HDR plan unavailable ("+noBracket.getMessage()+"); this shot is taken by the Hybrid");
+                        scamToHybrid=true;
+                        planned=hybridNPlan();
+                    }
                 } else {
                 VivoStockAe stock=mStockAe;
                 final boolean mayWait=android.os.SystemClock.elapsedRealtime()<mNicePlanDeadline && mBackgroundHandler!=null;
@@ -3122,22 +3265,30 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     solved=null;
                 }
                 mStockObserverReady=solved!=null;
-                if(solved==null) {
-                    stockPlan=scameraBracketPlan();
-                } else if(solved.fitsCamera(mCameraCharacteristics)) {
-                    stockPlan=solved;
-                    Log.i("NICE_CAPTURE","bracket=Vivo_stock_solver Camera2_RAW frameId="+stockPlan.frameId+" timestamp="+stockPlan.timestamp+" "+stockPlan.sceneDescription);
+                if(solved!=null && solved.fitsCamera(mCameraCharacteristics)) {
+                    planned=solved;
+                    Log.i("NICE_CAPTURE","bracket=Vivo_stock_solver Camera2_RAW frameId="+planned.frameId+" timestamp="+planned.timestamp+" "+planned.sceneDescription);
                 } else {
                     // The vendor gain->ISO conversion is the main camera's; on other
                     // modules (HP9 tele) the plan can land outside the Camera2 range.
-                    Log.w("NICE_CAPTURE","stock plan outside Camera2 range for camera "+PhotonCamera.getSettings().mCameraID
+                    if(solved!=null)Log.w("NICE_CAPTURE","stock plan outside Camera2 range for camera "+PhotonCamera.getSettings().mCameraID
                             +" ("+solved.describeRanges()+"; "+VivoStockAe.Plan.describeCamera(mCameraCharacteristics)
                             +"); using SCAMERA planner for this shot");
-                    stockPlan=scameraBracketPlan();
+                    try {
+                        planned=scameraBracketPlan();
+                    } catch(IllegalStateException noBracket) {
+                        Log.w("NICE_CAPTURE","SCAM HDR plan unavailable ("+noBracket.getMessage()+"); this shot is taken by the Hybrid");
+                        scamToHybrid=true;
+                        planned=hybridNPlan();
+                    }
                 }
                 }
             }
+            final VivoStockAe.Plan stockPlan=planned;
+            // The capture route of this shot (P27: a SCAM HDR shot without an S/ES plan is captured and merged by the Hybrid).
+            final boolean lmcHybridShot=lmcHybridSelected||scamToHybrid;
             final HybridPlan[] hybridPlanHolder={null};
+            final float[] normalBackLongRatio={0f};
             final boolean niceZslRequested = hybridZslRequested && niceCapture;
             if (niceZslRequested) {
                 mLiveRawRouter.clear();
@@ -3160,7 +3311,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             }
             float focus = mFocus;
-            double frametime = ExposureIndex.time2sec(stockPlan.shutter(0));
+            double frametime = stockPlan != null ? ExposureIndex.time2sec(stockPlan.shutter(0)) : 1 / 30.0;
             //this.mCaptureSession.stopRepeating();
             if(isDualSession) {
                 if (mTargetFormat != mPreviewTargetFormat)
@@ -3226,8 +3377,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // The graph consumes four N; frames beyond four (same exposure,
                 // newest first) are merged into those slots by the worker.
                 mPendingZslNormalFrames = drainZslNormalFrames(
-                        lmcHybridShot ? PreferenceKeys.getHybridZslFrames() : PreferenceKeys.getNiceZslFrames(),stockPlan,
-                        niceZslRequested);
+                        lmcHybridShot ? PreferenceKeys.getHybridZslFrames() : Math.max(4, PreferenceKeys.getNiceZslFrames()),stockPlan,
+                        niceZslRequested,lmcHybridShot);
                 if (!mPendingZslNormalFrames.isEmpty()) {
                     denoiseFrameCount = mPendingZslNormalFrames.size();
                     long[] zslTimestamps = new long[denoiseFrameCount];
@@ -3239,10 +3390,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     PhotonCamera.getGyro().buildZslBurstShakiness(zslTimestamps,
                             previewExposure != null ? previewExposure : 0L, BurstShakiness, isGyroClockComparable());
                 } else {
-                    if(niceZslRequested && stockPlan==null)throw new IllegalStateException("SCAM HDR ZSL: буфер ещё не готов");
-                    // Camera was just opened and the ring has not filled yet:
-                    // safely fall back to the complete manual burst this once.
-                    Log.w(TAG, "Hybrid ZSL ring empty; falling back to manual normal frames");
+                    // Camera was just opened, the ring has not filled yet or holds no usable frame: N is taken after the
+                    // shutter this once (tolerant for both routes, P27).
+                    Log.w(TAG, (lmcHybridShot ? "Hybrid" : "SCAM HDR") + " ZSL ring empty; N frames taken after the shutter");
                 }
                 if (niceZslRequested) {
                     // Keep the viewfinder and AE running: requests submitted with
@@ -3318,16 +3468,33 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             paramController.applyWhiteBalance(captureBuilder);
             IsoExpoSelector.useTripod = PhotonCamera.getGyro().getTripod();
-            if(hybridZsl && lmcHybridShot) {
+            if(lmcHybridShot) {
                 // LMC hybrid: N from the ring, then the ultrashort (Bento) and the bracketed frames (Shasta) of the plan.
-                if(mPendingZslNormalFrames.size()<2)
-                    throw new IllegalStateException("Hybrid ZSL: нужны хотя бы два кадра N до нажатия");
+                // P27: one ring frame is enough; with an empty ring N is taken after the shutter (tolerant), without any
+                // known N exposure the camera's AE exposes the frames. Planning never throws.
                 IsoExpoSelector.fullpairs.clear();
-                final HybridPlan plan=HybridPlan.build(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics);
+                HybridPlan plan;
+                if(hybridZsl) {
+                    // N = the newest ring frame (the base of the selection): its own exposure, not the cutoff plan's.
+                    CaptureResult base=mNativeZslBase;
+                    Long baseNs=base==null?null:base.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                    Integer baseIso=base==null?null:base.get(CaptureResult.SENSOR_SENSITIVITY);
+                    long nNs=baseNs!=null&&baseNs>0?baseNs:stockPlan!=null?stockPlan.shutter(0):0;
+                    int nIso=baseIso!=null&&baseIso>0?baseIso:stockPlan!=null?stockPlan.iso(0):0;
+                    try {
+                        plan=HybridPlan.build(nNs,nIso,mLastZslClipFraction,mCameraCharacteristics);
+                    } catch(RuntimeException noPlan) {
+                        Log.w("NICE_CAPTURE","hybrid plan unavailable ("+noPlan.getMessage()+"): one more N frame after the shutter");
+                        plan=HybridPlan.single(nNs,nIso);
+                    }
+                } else {
+                    plan=stockPlan!=null
+                            ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4)
+                            : HybridPlan.autoExposure(4);
+                }
                 hybridPlanHolder[0]=plan;
                 Log.i("NICE_CAPTURE",plan.description);
                 for(ImageFrame normal:mPendingZslNormalFrames) {
-                    stockPlan.verifyZslNormal(normal.getMatchedCaptureMetadata(),niceZslShutterTimestamp);
                     IsoExpoSelector.ExpoPair pair=new IsoExpoSelector.ExpoPair(normal.measuredExposure,normal.measuredExposure,normal.measuredExposure,
                             normal.measuredIso,normal.measuredIso,normal.measuredIso,normal.measuredIso);
                     IsoExpoSelector.fullpairs.add(pair);
@@ -3358,23 +3525,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness);
             } else {
-                if(hybridZsl && mPendingZslNormalFrames.size()<4)
-                    throw new IllegalStateException("SCAM HDR ZSL: четыре кадра N до нажатия обязательны");
                 IsoExpoSelector.fullpairs.clear();
                 // L from the ZSL N frames: after the press only S and ES are exposed
                 // (the 125 ms L frame cost ~0.25 s of shutter time).
                 final boolean zslLong=hybridZsl && (PreferenceKeys.isNiceZslLong() || stockPlan.longBeyondSensor);
-                if(stockPlan.longBeyondSensor && !zslLong)
-                    throw new IllegalStateException("SCAM HDR: длинный кадр L не набирает экспозицию N в пределах сенсора ("+stockPlan.planText()+")");
+                // P27: in normal-back an L the sensor cannot expose is built from the N taken after the shutter (six requests).
+                final boolean backLong=!hybridZsl && stockPlan.longBeyondSensor;
                 if(zslLong) {
                     final float ratio=(float)Math.max(1,Math.min(64,stockPlan.longRatio()));
                     for(ImageFrame normal:mPendingZslNormalFrames)normal.syntheticLongRatio=ratio;
                     Log.i("NICE_CAPTURE","L from "+mPendingZslNormalFrames.size()+" ZSL N frames, ratio="+ratio);
                 }
-                long[] times=new long[hybridZsl?(zslLong?2:3):7];int timeIndex=0;
+                normalBackLongRatio[0]=backLong?(float)Math.max(1,Math.min(64,stockPlan.longRatio())):0f;
+                if(backLong)Log.i("NICE_CAPTURE","normal-back: L beyond the sensor, built from the N frames, ratio="+normalBackLongRatio[0]);
+                long[] times=new long[hybridZsl?(zslLong?2:3):backLong?6:7];int timeIndex=0;
                 for(int i=0;i<7;i++) {
                     long ns;int iso;
-                    if(i==4 && zslLong)continue;
+                    if(i==4 && (zslLong||backLong))continue;
                     if(i<4 && hybridZsl) {
                         ImageFrame normal=mPendingZslNormalFrames.get(i);
                         stockPlan.verifyZslNormal(normal.getMatchedCaptureMetadata(),niceZslShutterTimestamp);
@@ -3395,7 +3562,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.d(TAG, "FrameCount:" + frameCount);
             mImageSaver = new ImageSaver(cameraEventsListener);
             final VivoNiceCaptureSequence niceSequence = hybridPlanHolder[0]!=null
-                        ? VivoNiceCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,niceZslShutterTimestamp)
+                        ? (hybridZsl ? VivoNiceCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,niceZslShutterTimestamp)
+                                     : VivoNiceCaptureSequence.hybridFuture(captures,niceZslShutterTimestamp))
                         : !hybridZsl
                         ? VivoNiceCaptureSequence.stockNormalBack(captures,niceZslShutterTimestamp)
                         : VivoNiceCaptureSequence.stockZsl(captures,mPendingZslNormalFrames,niceZslShutterTimestamp);
@@ -3416,7 +3584,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final long[] baseFrameNumber = {0};
             final int[] maxFrameCount = {hybridZsl ? captures.size() : frameCount};
             final int zslNormalCount=hybridZsl ? mPendingZslNormalFrames.size() : 0;
-            final boolean niceNormalBack=niceSequence!=null && stockPlan!=null && !hybridZsl;
+            final boolean niceNormalBack=niceSequence!=null && !hybridZsl;
+            // P27: one completion per shot (sequence completed, aborted, rescued after a camera close or a stall); callbacks of a
+            // completed shot are ignored, the shot's own saver is used even if the field was replaced.
+            final java.util.concurrent.atomic.AtomicBoolean shotDone=new java.util.concurrent.atomic.AtomicBoolean();
+            final ImageSaver shotSaver=mImageSaver;
+            final boolean shotHybridRoute=lmcHybridShot;
             final int nativeBaseIndex=denoiseFrameCount/2;
             final TotalCaptureResult[] nativeBaseResult={hybridZsl?mNativeZslBase:null};
 
@@ -3433,6 +3606,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                              @NonNull CaptureRequest request,
                                              long timestamp,
                                              long frameNumber) {
+                    if (shotDone.get()) return;
                     if (mNativeRawPslCapture || mNiceRouted || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
                     if (mNiceRouted) mNiceTailTimestamp = Math.max(mNiceTailTimestamp, timestamp);
                     if (sTimelineSubmitNs > 0) Log.i("NICE_TIMELINE", "bracket start frame=" + frameNumber + " dtMs=" + (timestamp - sTimelineSubmitNs) / 1_000_000
@@ -3452,6 +3626,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 @Override
                 public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request,
                                                 @NonNull CaptureResult partialResult) {
+                    if (shotDone.get()) return;
                     int frameCount = (int) (partialResult.getFrameNumber() - baseFrameNumber[0]);
                     Log.v("BurstCounter", "CaptureProgressed! FrameCount:" + frameCount);
                     if (mCaptureResult == null) {
@@ -3464,18 +3639,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                @NonNull CaptureRequest request,
                                                @NonNull TotalCaptureResult result) {
 
+                    if (shotDone.get()) return;
                     int frameCount = (int) (result.getFrameNumber() - baseFrameNumber[0]);
                     if(niceSequence != null) {
-                        if(hybridPlanHolder[0]!=null)try{hybridPlanHolder[0].verify(request,result);}
-                        catch(RuntimeException mismatch){niceSequence.lost(request,mismatch.getMessage());}
-                        else if(stockPlan!=null)try{stockPlan.verify(request,result);}
-                        catch(RuntimeException mismatch){niceSequence.failed(mismatch.getMessage());}
+                        // P27: a frame never costs the shot for its exposure. The Hybrid uses it in the role its measured
+                        // exposure gives (HybridPlan.classify); SCAM HDR keeps it with its measured exposure (VivoNiceBurst
+                        // slots by measurement, else the Hybrid merges the burst).
+                        if(hybridPlanHolder[0]!=null) {
+                            ImageFrame.CaptureRole actual=hybridPlanHolder[0].classify(request,result);
+                            if(actual==null)niceSequence.lost(request,"exposure outside every hybrid role");
+                            else niceSequence.reclassify(request,actual);
+                        } else if(stockPlan!=null)try{stockPlan.verify(request,result);}
+                        catch(RuntimeException mismatch){Log.w("NICE_CAPTURE",mismatch.getMessage()+"; kept with its measured exposure");}
                         niceSequence.completed(request, result);
                     }
                     if(niceCapture) VivoNiceCaptureLog.result(request,result,niceZslShutterTimestamp);
-                    // Normal-back: first N is the reference, as the buffered N is in ZSL.
-                    if(niceNormalBack && request.getTag() instanceof ImageFrame.NiceCaptureTag
-                            && ((ImageFrame.NiceCaptureTag)request.getTag()).index==0)nativeBaseResult[0]=result;
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
@@ -3520,6 +3698,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 public void onCaptureFailed(@NonNull CameraCaptureSession session,
                                             @NonNull CaptureRequest request,
                                             @NonNull android.hardware.camera2.CaptureFailure failure) {
+                    if (shotDone.get()) return;
+                    Log.w("NICE_CAPTURE", "capture failed: " + request.getTag() + " reason=" + failure.getReason()
+                            + " imageCaptured=" + failure.wasImageCaptured() + " frame=" + failure.getFrameNumber());
                     if (niceSequence != null) niceSequence.lost(request, "HAL capture failure=" + failure.getReason());
                 }
 
@@ -3527,13 +3708,24 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 public void onCaptureBufferLost(@NonNull CameraCaptureSession session,
                                                 @NonNull CaptureRequest request,
                                                 @NonNull Surface target, long frameNumber) {
+                    if (shotDone.get()) return;
+                    Log.w("NICE_CAPTURE", "buffer lost: " + request.getTag() + " frame=" + frameNumber + " raw=" + (target == niceRawSurface));
                     if (niceSequence != null && target == niceRawSurface)
                         niceSequence.lost(request, "RAW buffer lost frame=" + frameNumber);
                 }
 
                 @Override
                 public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
+                    if (shotDone.get()) return;
+                    if (niceSequence != null) {
+                        // P27: the frames that arrived (and the buffered N) still make the photo.
+                        Log.w(TAG, "SHUTTER sequence aborted camera=" + physicalID + " sequence=" + sequenceId + ": merging the frames that arrived");
+                        niceSequence.abandonOutstanding("sequence aborted");
+                        onCaptureSequenceCompleted(session, sequenceId, -1);
+                        return;
+                    }
                     if (session != mCaptureSession) return;
+                    if (!shotDone.compareAndSet(false, true)) return;
                     mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;mNiceRouted=false;
                     mNiceQueuedShots=0;mLiveRawRouter.clear();burst=false;
                     for(ImageFrame frame:mPendingZslNormalFrames)frame.close();mPendingZslNormalFrames=new ArrayList<>();
@@ -3548,7 +3740,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session,
                                                        int sequenceId,
                                                        long lastFrameNumber) {
-
+                    if (!shotDone.compareAndSet(false, true)) return;
+                    mInFlightRescue = null;
                     final int finalFrameCount = niceSequence != null ? niceSequence.futureCount
                             : (int) (lastFrameNumber - baseFrameNumber[0]) + 1;
                     Log.v("BurstCounter", "CaptureSequenceCompleted! FrameCount:" + finalFrameCount);
@@ -3580,7 +3773,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             int cnt = 0;
                             //int captureNumber = PhotonCamera.getGyro().capturingNumber;
                             while (PhotonCamera.getGyro().capturingNumber < finalFrameCount - (niceSequence != null ? niceSequence.droppedCount() : 0)
-                                    || mImageSaver.bufferSize() < zslNormalCount + finalFrameCount - (niceSequence != null ? niceSequence.droppedCount() : 0)){
+                                    || shotSaver.bufferSize() < zslNormalCount + finalFrameCount - (niceSequence != null ? niceSequence.droppedCount() : 0)){
                                 if(cnt > 1000) {
                                     Log.d(TAG, "GyroBurstTimeout");
                                     break;
@@ -3596,6 +3789,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             }
                             PhotonCamera.getGyro().CompleteSequence();
                             awaitZslCopy();
+                            // P27: a ZSL frame whose copy did not finish is copied now; one that cannot be copied is dropped.
+                            for (ImageFrame zsl : new ArrayList<>(mPendingZslNormalFrames)) {
+                                try { zsl.materialize(); } catch (RuntimeException e) { Log.w("NICE_CAPTURE", "ZSL frame " + zsl.timestamp + " not copied: " + e); }
+                            }
                             final boolean routedNice = mNiceRouted;
                             if (!routedNice) mBackgroundHandler.post(() -> {
                                 if (!isDualSession)
@@ -3605,35 +3802,54 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             });
                             try{
                             if (niceSequence != null) {
-                                java.util.List<ImageFrame> unmatched = niceSequence.bindAndValidate(mImageSaver.snapshotFrames());
-                                if (!unmatched.isEmpty()) mImageSaver.removeFrames(unmatched);
-                                if (niceSequence.droppedCount() > 0)
-                                    Log.w("NICE_CAPTURE", "hybrid: " + niceSequence.droppedCount() + " of " + niceSequence.futureCount
-                                            + " post-shutter frames dropped, merging without them: " + niceSequence.droppedSummary());
-                                Log.i("NICE_CAPTURE", "complete matched RAWs=" + mImageSaver.bufferSize()
+                                java.util.List<ImageFrame> unmatched = niceSequence.bindAndValidate(shotSaver.snapshotFrames());
+                                if (!unmatched.isEmpty()) shotSaver.removeFrames(unmatched);
+                                String summary = niceSequence.droppedSummary();
+                                if (!summary.isEmpty())
+                                    Log.w("NICE_CAPTURE", (shotHybridRoute ? "hybrid" : "SCAM HDR") + ": " + niceSequence.droppedCount() + " of "
+                                            + niceSequence.futureCount + " post-shutter frames dropped, merging the rest: " + summary);
+                                Log.i("NICE_CAPTURE", "complete matched RAWs=" + shotSaver.bufferSize()
                                         + " futureRequests=" + niceSequence.futureCount + " bound=" + niceSequence.boundFutureCount()
                                         + " stockAePlan=" + (stockPlan!=null));
+                                // Normal-back (no buffered N): the base metadata is the first N frame that arrived, else any frame.
+                                if (niceNormalBack) {
+                                    CaptureResult first = niceSequence.firstBoundResult(ImageFrame.CaptureRole.NORMAL);
+                                    if (first == null) first = niceSequence.firstBoundResult(null);
+                                    if (first instanceof TotalCaptureResult) nativeBaseResult[0] = (TotalCaptureResult) first;
+                                }
+                                if (normalBackLongRatio[0] > 0)
+                                    for (ImageFrame frame : shotSaver.snapshotFrames())
+                                        if (frame.getCaptureRole() == ImageFrame.CaptureRole.NORMAL) frame.syntheticLongRatio = normalBackLongRatio[0];
                             }
-                            if(mImageSaver.bufferSize() == 0){
+                            if(shotSaver.bufferSize() == 0){
                                 cameraEventsListener.onProcessingError("Камера не передала RAW-кадры. Повторите снимок.");
                                 return;
                             }
-                            mImageSaver.updateFrameCount(mImageSaver.bufferSize());
-                            if (mImageSaver.bufferSize() != 0) {
+                            shotSaver.updateFrameCount(shotSaver.bufferSize());
+                            if (shotSaver.bufferSize() != 0) {
                                 boolean useZslBase = niceZslRequested && (hybridZsl || niceNormalBack);
-                                if(useZslBase && nativeBaseResult[0]==null)
-                                    throw new IllegalStateException("RAW: отсутствуют метаданные основного кадра");
-                                if (niceZslRequested && mImageSaver.bufferSize() < zslNormalCount
-                                        + (niceSequence != null && niceSequence.isOptionalFuture() ? niceSequence.boundFutureCount() : finalFrameCount))
-                                    throw new IllegalStateException("SCAM HDR: камера передала неполную серию RAW");
-                                final ImageSaver saver = mImageSaver;
+                                CaptureResult baseMetadata = useZslBase ? nativeBaseResult[0] : mCaptureResult;
+                                if (baseMetadata == null) {
+                                    // P27: never without base metadata while a frame exists: the newest frame's own result.
+                                    for (ImageFrame frame : shotSaver.snapshotFrames()) {
+                                        CaptureResult own = frame.getMatchedCaptureMetadata();
+                                        Long ts = own == null ? null : own.get(CaptureResult.SENSOR_TIMESTAMP);
+                                        Long best = baseMetadata == null ? null : baseMetadata.get(CaptureResult.SENSOR_TIMESTAMP);
+                                        if (own != null && (best == null || (ts != null && ts > best))) baseMetadata = own;
+                                    }
+                                    Log.w("NICE_CAPTURE", "base metadata from the newest frame of the burst");
+                                }
+                                if (baseMetadata == null) throw new IllegalStateException("RAW: отсутствуют метаданные основного кадра");
+                                if (niceSequence != null && shotSaver.bufferSize() != niceSequence.presentCount())
+                                    Log.w("NICE_CAPTURE", "RAWs in the saver " + shotSaver.bufferSize() + ", in the series " + niceSequence.presentCount());
+                                final ImageSaver saver = shotSaver;
                                 final CameraCharacteristics shotCharacteristics = mCameraCharacteristics;
-                                final CaptureResult shotResult = useZslBase ? nativeBaseResult[0] : mCaptureResult;
-                                final CaptureRequest shotRequest = useZslBase ? nativeBaseResult[0].getRequest() : mCaptureRequest;
+                                final CaptureResult shotResult = baseMetadata;
+                                final CaptureRequest shotRequest = baseMetadata.getRequest() != null ? baseMetadata.getRequest() : mCaptureRequest;
                                 final ArrayList<GyroBurst> shotShakiness = new ArrayList<>(BurstShakiness);
                                 final HashMap<Long, Double> shotExposures = mExposures;
                                 if (niceSequence != null) {
-                                    saver.detachForQueue();
+                                    saver.detachForQueue(shotHybridRoute);
                                     sNicePending.incrementAndGet();
                                     Log.i("NICE_CAPTURE", "queued for processing pending=" + sNicePending.get());
                                     NICE_PROCESSING.execute(() -> {
@@ -3654,7 +3870,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 Log.e(TAG, "runRaw:"+Log.getStackTraceString(e));
                                 cameraEventsListener.onProcessingError(e.getLocalizedMessage());
                                 if (niceSequence != null) {
-                                    mImageSaver.discardFrames();
+                                    shotSaver.discardFrames();
                                 }
                             } finally {
                                 mNiceRouted = false;
@@ -3721,6 +3937,33 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 startZslCopy(mPendingZslNormalFrames);
                 CaptureCallback.onCaptureSequenceCompleted(mCaptureSession,0,-1);return;
             }
+            // P27: from here the shot completes with what arrived whatever happens: a camera close / error, an abort, a
+            // submit failure or a HAL that never reports the series (the watchdog; 65 s HAL stalls were seen).
+            if (niceSequence != null) {
+                final CameraCaptureSession.CaptureCallback shotCallback = CaptureCallback;
+                final CameraCaptureSession shotSession = mCaptureSession;
+                final Runnable rescue = () -> {
+                    if (shotDone.get()) return;
+                    niceSequence.abandonOutstanding("camera stopped delivering the series");
+                    for (ImageFrame zsl : new ArrayList<>(mPendingZslNormalFrames)) {
+                        try { zsl.materialize(); } catch (RuntimeException e) { Log.w("NICE_CAPTURE", "ZSL frame " + zsl.timestamp + " not copied: " + e); }
+                    }
+                    shotCallback.onCaptureSequenceCompleted(shotSession, -1, -1);
+                };
+                mInFlightRescue = rescue;
+                long plannedNs = 0;
+                for (CaptureRequest request : captures) {
+                    Long t = request.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
+                    plannedNs += t == null || t <= 0 ? 33_000_000L : t;
+                }
+                final long watchdogMs = 4000 + 3 * plannedNs / 1_000_000;
+                if (mBackgroundHandler != null) mBackgroundHandler.postDelayed(() -> {
+                    if (shotDone.get() || mInFlightRescue != rescue) return;
+                    Log.w("NICE_CAPTURE", "series not completed after " + watchdogMs + " ms: aborting it, merging the frames that arrived");
+                    try { if (shotSession != null) shotSession.abortCaptures(); } catch (CameraAccessException | RuntimeException ignored) {}
+                    rescueInFlightShot("watchdog " + watchdogMs + " ms");
+                }, watchdogMs);
+            }
                 switch (PhotonCamera.getSettings().selectedMode) {
                     case UNLIMITED:
                         mCaptureSession.setRepeatingBurst(captures, CaptureCallback, mBackgroundHandler);
@@ -3740,6 +3983,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 startZslCopy(mPendingZslNormalFrames);
             }
         } catch (CameraAccessException | RuntimeException e) {
+            // P27: the series failed to submit after the shot was set up (session closed, device disconnecting): the
+            // buffered N frames still make the photo.
+            if (mInFlightRescue != null) {
+                Log.w("NICE_CAPTURE", "series submit failed (" + e + "): merging the buffered frames");
+                rescueInFlightShot("submit failed: " + e.getMessage());
+                return;
+            }
             mNativeRawPslCapture=false;mZslCapturing=false;mShotInProgress=false;mNiceRingFrozen=false;
             mNiceRouted=false;mNiceQueuedShots=0;mLiveRawRouter.clear();
             for(ImageFrame frame:mPendingZslNormalFrames)frame.close();mPendingZslNormalFrames=new ArrayList<>();

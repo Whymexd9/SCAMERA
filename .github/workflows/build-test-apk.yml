@@ -86,6 +86,7 @@ jobs:
           python3 tools/check_nice_legacy_isolation.py
           python3 tools/check_vivo_nice_ae_context.py
           python3 tools/check_vivo_nice_measured_exposure.py
+          python3 tools/check_nice_capture_sequence.py
           sudo apt-get update -qq
           sudo apt-get install -y python3-numpy libegl1 libgl1-mesa-dri libegl-dev libgles-dev
           python3 -m venv /tmp/tetra-gpu-check
@@ -110,7 +111,7 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-probe /tmp/nice-probe-fixture
           python3 tools/check_nice_reference_metadata.py
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.util.AsyncLogTest" --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.processing.RawPayloadCheckTest" --tests "com.particlesdevs.photoncamera.settings.BackupLensMatchTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.capture.VivoStockAePlanTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.util.AsyncLogTest" --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.processing.RawPayloadCheckTest" --tests "com.particlesdevs.photoncamera.settings.BackupLensMatchTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.capture.VivoStockAePlanTest" --tests "com.particlesdevs.photoncamera.capture.HybridPlanTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurstRolesTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()

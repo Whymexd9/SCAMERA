@@ -494,6 +494,16 @@ public final class VivoStockAe implements AutoCloseable {
             android.util.Log.i("NICE_CAPTURE","SCAMERA planner: "+p.sceneDescription+" -> "+p.describePlan());
             return p;
         }
+        /**
+         * P27: the Hybrid's plan holder. The Hybrid only reads N from it (frame time, gyro, AE restore); it never runs the SCAM
+         * HDR S/ES/L planner, whose throws (bright scene, missing ranges, L beyond the sensor) cost Hybrid shots before.
+         */
+        public static Plan nOnly(long nShutter,int nIso,long timestamp,int generation) {
+            if(nShutter<=0||nIso<=0)throw new IllegalStateException("Hybrid: нет экспозиции N");
+            Plan p=new Plan(timestamp,generation,"planner=HYBRID_N");
+            for(int i=0;i<4;i++){p.shutter[i]=nShutter;p.iso[i]=nIso;p.gain[i]=nIso/50f;p.product[i]=(double)nShutter*nIso/50;}
+            return p;
+        }
         /** N's real exposure as ISO from the vendor AE (gain*50), or -1. */
         public static double vendorIso(CaptureResult result) {
             float[] aec=null;

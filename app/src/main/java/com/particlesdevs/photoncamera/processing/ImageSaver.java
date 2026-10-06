@@ -67,9 +67,15 @@ public class ImageSaver {
      * so the camera can capture the next shot while this one is processed.
      */
     public synchronized void detachForQueue() {
+        detachForQueue(null);
+    }
+
+    /** P27: {@code hybridRoute} is the merge route the shot was captured for; processing keeps it even if the setting changes. */
+    public synchronized void detachForQueue(Boolean hybridRoute) {
         if (!(implementation instanceof DefaultSaver))
             throw new IllegalStateException("Queued processing requires the RAW saver");
         DefaultSaver saver = (DefaultSaver) implementation;
+        saver.ownedHybridRoute = hybridRoute;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
@@ -97,7 +103,7 @@ public class ImageSaver {
 
     /** Removes and closes the given frames of this burst (post-shutter RAWs the hybrid dropped). */
     public synchronized void removeFrames(java.util.Collection<ImageFrame> frames) {
-        for (ImageFrame frame : frames) if (SaverImplementation.IMAGE_BUFFER.remove(frame)) frame.close();
+        for (ImageFrame frame : frames) if (SaverImplementation.IMAGE_BUFFER.remove(frame) && frame != null) frame.close();
     }
 
     public synchronized void discardFrames() {
@@ -269,12 +275,11 @@ public class ImageSaver {
             dngCreator.setParameters(parameters);
             dngCreator.setCompression(com.particlesdevs.photoncamera.settings.PreferenceKeys.isDngLossless());
             //dngCreator.setBinning(true);
-            try {
-                OutputStream outputStream = Files.newOutputStream(dngFilePath);
+            // P27: a DNG that cannot be written (I/O, or a DngCreator RuntimeException) costs only the DNG, never the JPEG.
+            try (OutputStream outputStream = Files.newOutputStream(dngFilePath)) {
                 dngCreator.writeBuffer(outputStream, buffer, parameters.rawSize.x, parameters.rawSize.y);
-                outputStream.close();
-            } catch (IOException e) {
-                e.printStackTrace();
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "DNG save failed: " + Log.getStackTraceString(e));
                 return false;
             }
             return true;

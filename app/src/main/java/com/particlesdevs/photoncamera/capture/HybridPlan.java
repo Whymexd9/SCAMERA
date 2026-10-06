@@ -25,6 +25,10 @@ import java.util.Locale;
  *     and ship vibration: 33-82 % of the base sharpness, below the 80 % gate in every shot, never merged.</li>
  * </ul>
  * Capture order: ultrashort first (closest in time to the buffered base), bracketed frames after it.
+ * <p>
+ * P27: a frame never costs the shot. One that came back at another exposure than planned keeps the role its measured exposure
+ * gives ({@link #classify}); with no buffered N the frames are taken after the shutter ({@link #buildNormalBack}); without any
+ * known N exposure the camera's own AE exposes them ({@link #autoExposure}).
  */
 public final class HybridPlan {
     public static final class Request {
@@ -33,15 +37,26 @@ public final class HybridPlan {
         public final int iso;
         /** Exposure product relative to N. */
         public final double ratio;
+        /** P27: no N exposure is known; the camera's AE exposes this frame (its measured exposure is used as is). */
+        public final boolean autoExposure;
         Request(ImageFrame.CaptureRole role, long shutterNs, int iso, double ratio) {
-            this.role = role; this.shutterNs = shutterNs; this.iso = iso; this.ratio = ratio;
+            this(role, shutterNs, iso, ratio, false);
+        }
+        Request(ImageFrame.CaptureRole role, long shutterNs, int iso, double ratio, boolean autoExposure) {
+            this.role = role; this.shutterNs = shutterNs; this.iso = iso; this.ratio = ratio; this.autoExposure = autoExposure;
         }
         @Override public String toString() {
-            return String.format(Locale.ROOT, "%s %.3fms*ISO%d (x%.3f)", role, shutterNs / 1e6, iso, ratio);
+            return autoExposure ? role + " AE" : String.format(Locale.ROOT, "%s %.3fms*ISO%d (x%.3f)", role, shutterNs / 1e6, iso, ratio);
         }
     }
     private static final long HANDHELD_SHUTTER_CAP_NS = 125_000_000L;
     private static final double VERIFY_TOLERANCE_EV = 0.4;
+    /**
+     * P27: a frame that missed its plan is merged as an N frame when it is at most 0.5 EV darker or 0.05 EV brighter than N.
+     * Never clearly brighter: the merge accumulates the clipped samples of N frames (only bracketed frames skip them), so a
+     * brighter N donor would put clipped values into highlights the base still resolves.
+     */
+    static final double NORMAL_DARKER_RATIO = Math.pow(2, -0.5), NORMAL_BRIGHTER_RATIO = 1.035;
 
     public final List<Request> requests;
     public final long nShutterNs;
@@ -110,6 +125,47 @@ public final class HybridPlan {
         return new HybridPlan(out, nShutterNs, nIso, description);
     }
 
+    /**
+     * P27, Hybrid with an empty ZSL ring (camera just opened, AE ramp, every ring RAW packed): {@code normals} N frames after
+     * the shutter, then the Bento / Shasta frames of {@link #build}. The N ISO stays inside the sensor range, the shutter
+     * carries the rest of the N exposure (up to the handheld cap).
+     */
+    public static HybridPlan buildNormalBack(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, int normals) {
+        if (nShutterNs <= 0 || nIso <= 0) return autoExposure(normals);
+        Range<Long> times = characteristics == null ? null : characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+        Range<Integer> isos = characteristics == null ? null : characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+        int iso = isos == null ? nIso : Math.max(isos.getLower(), Math.min(isos.getUpper(), nIso));
+        long ns = Math.round((double) nShutterNs * nIso / iso);
+        if (times != null) ns = Math.max(times.getLower(), Math.min(Math.min(times.getUpper(), Math.max(nShutterNs, HANDHELD_SHUTTER_CAP_NS)), ns));
+        final double ratio = (double) ns * iso / ((double) nShutterNs * nIso);
+        List<Request> out = new ArrayList<>();
+        for (int i = 0; i < Math.max(1, normals); i++) out.add(new Request(ImageFrame.CaptureRole.NORMAL, ns, iso, ratio));
+        String extrasText;
+        try {
+            HybridPlan extras = build(nShutterNs, nIso, clipFraction, characteristics);
+            for (Request r : extras.requests) if (r.role != ImageFrame.CaptureRole.NORMAL) out.add(r);
+            extrasText = extras.description;
+        } catch (RuntimeException e) {
+            extrasText = "no Bento / Shasta (" + e.getMessage() + ")";
+        }
+        return new HybridPlan(out, nShutterNs, nIso, "hybrid normal-back: " + out + " | " + extrasText);
+    }
+
+    /** P27: one N frame after the shutter, the plan when Bento / Shasta cannot be planned. */
+    public static HybridPlan single(long nShutterNs, int nIso) {
+        if (nShutterNs <= 0 || nIso <= 0) return autoExposure(1);
+        List<Request> out = new ArrayList<>();
+        out.add(new Request(ImageFrame.CaptureRole.NORMAL, nShutterNs, nIso, 1.0));
+        return new HybridPlan(out, nShutterNs, nIso, String.format(Locale.ROOT, "hybrid single N=%.3fms*ISO%d", nShutterNs / 1e6, nIso));
+    }
+
+    /** P27: no N exposure is known at all: {@code count} frames exposed by the camera's own AE. */
+    public static HybridPlan autoExposure(int count) {
+        List<Request> out = new ArrayList<>();
+        for (int i = 0; i < Math.max(1, count); i++) out.add(new Request(ImageFrame.CaptureRole.NORMAL, 0, 0, 1.0, true));
+        return new HybridPlan(out, 0, 0, "hybrid AE frames: " + out.size() + " (no N exposure known)");
+    }
+
     /** Long shutters snap to whole flicker periods (pref_antibanding_hz_key), never below the N shutter. */
     private static long snapAntibanding(long ns, long nShutterNs) {
         int hz;
@@ -123,6 +179,12 @@ public final class HybridPlan {
 
     public void apply(CaptureRequest.Builder builder, int index) {
         Request r = requests.get(index);
+        if (r.autoExposure) {
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+            builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+            builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false);
+            return;
+        }
         builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
         builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
         builder.set(CaptureRequest.CONTROL_ENABLE_ZSL, false);
@@ -130,19 +192,32 @@ public final class HybridPlan {
         builder.set(CaptureRequest.SENSOR_SENSITIVITY, r.iso);
     }
 
-    /** The result must be the requested exposure (sensor rounding allowed), else the frame is not the planned one. */
-    public void verify(CaptureRequest request, CaptureResult result) {
-        Object tag = request.getTag();
-        if (!(tag instanceof ImageFrame.NiceCaptureTag)) throw new IllegalStateException("Hybrid: запрос без роли");
+    /**
+     * P27: the role the frame of {@code request} really has. Within 0.4 EV of its plan (sensor rounding): the planned role, so a
+     * shot whose plan worked merges exactly as before. Otherwise by its measured exposure against N: x1.5 or more bracketed,
+     * x0.5 or less ultrashort, between {@link #NORMAL_DARKER_RATIO} and {@link #NORMAL_BRIGHTER_RATIO} an N frame (the owner's
+     * 'LONG: ISO 320/640' frames: the HAL capped the gain, the frames are N exposures and are merged as such); null: no role
+     * fits (or no metadata), the frame is dropped. Never throws.
+     */
+    public ImageFrame.CaptureRole classify(CaptureRequest request, CaptureResult result) {
+        Object tag = request == null ? null : request.getTag();
+        if (!(tag instanceof ImageFrame.NiceCaptureTag) || result == null) return null;
         int index = ((ImageFrame.NiceCaptureTag) tag).index;
-        if (index < 0 || index >= requests.size()) throw new IllegalStateException("Hybrid: индекс запроса вне плана");
+        if (index < 0 || index >= requests.size()) return null;
         Request r = requests.get(index);
         Long ns = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-        if (ns == null || iso == null || ns <= 0 || iso <= 0) throw new IllegalStateException("Hybrid: нет экспозиции Camera2 в результате");
-        double ev = Math.abs(Math.log((double) ns * iso / ((double) r.shutterNs * r.iso)) / Math.log(2));
-        if (ev > VERIFY_TOLERANCE_EV)
-            throw new IllegalStateException(String.format(Locale.ROOT, "Hybrid: выдержка/ISO RAW не совпали с планом Hybrid (%s: ISO %d/%d, shutter %d/%d, %.2f EV)",
-                    r.role, iso, r.iso, ns, r.shutterNs, ev));
+        if (ns == null || iso == null || ns <= 0 || iso <= 0) return null;
+        if (r.autoExposure) return r.role;
+        double planEv = Math.abs(Math.log((double) ns * iso / ((double) r.shutterNs * r.iso)) / Math.log(2));
+        if (planEv <= VERIFY_TOLERANCE_EV) return r.role;
+        double ratio = (double) ns * iso / ((double) nShutterNs * nIso);
+        ImageFrame.CaptureRole role = ratio >= 1.5 ? ImageFrame.CaptureRole.LONG
+                : ratio <= 0.5 ? ImageFrame.CaptureRole.EXTRA_SHORT
+                : ratio >= NORMAL_DARKER_RATIO && ratio <= NORMAL_BRIGHTER_RATIO ? ImageFrame.CaptureRole.NORMAL : null;
+        com.particlesdevs.photoncamera.util.Log.w("NICE_CAPTURE", String.format(Locale.ROOT,
+                "hybrid: %s #%d delivered x%.3f of N (plan x%.3f; ISO %d/%d, shutter %d/%d, %.2f EV off) -> %s",
+                r.role, index, ratio, r.ratio, iso, r.iso, ns, r.shutterNs, planEv, role == null ? "dropped" : "used as " + role));
+        return role;
     }
 }

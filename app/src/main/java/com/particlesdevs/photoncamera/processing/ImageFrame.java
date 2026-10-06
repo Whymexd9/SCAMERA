@@ -58,11 +58,18 @@ public class ImageFrame {
         @Override public String toString() { return role + " series=" + generation + " index=" + index; }
     }
 
+    /**
+     * P27: the role this post-shutter frame really has by its measured exposure when the HAL delivered another exposure than
+     * the request asked for (HybridPlan.classify, set by VivoNiceCaptureSequence.bindAndValidate); null = the request's role.
+     */
+    public CaptureRole measuredRole;
+
     /** Role follows its request/result even if other burst images are missing. */
     public CaptureRole getCaptureRole() {
         android.hardware.camera2.CaptureResult matched = getMatchedCaptureMetadata();
         if (matched == null) return null;
         if (fromZsl) return CaptureRole.NORMAL;
+        if (measuredRole != null) return measuredRole;
         android.hardware.camera2.CaptureRequest request = matched.getRequest();
         Object tag = request == null ? null : request.getTag();
         if (tag instanceof NiceCaptureTag) return ((NiceCaptureTag) tag).role;

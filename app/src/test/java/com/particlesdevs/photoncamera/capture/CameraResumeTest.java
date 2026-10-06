@@ -334,4 +334,60 @@ public class CameraResumeTest {
         order.verify(spy).resumeCamera();
     }
 
+    @SuppressWarnings("unchecked")
+    private java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame> drainHybrid(long cutoff,long[] timestamps,int[] isos,int requested) throws Exception {
+        put(controller,"niceZslShutterTimestamp",cutoff);
+        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
+        for(int i=0;i<timestamps.length;i++){ring.add(rawImage(timestamps[i]));metadata.put(timestamps[i],exposure(10_000_000L,isos[i]));}
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class,boolean.class);
+        method.setAccessible(true);
+        try(var prefs=mockStatic(PreferenceKeys.class);
+            var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class,(frame,c)->{})) {
+            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,requested,null,false,true);
+            return new java.util.ArrayList<>(frames);
+        }
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void hybridRingKeepsTheFramesAtTheNewestExposureDuringAnAeRamp() throws Exception {
+        // X300 Ultra 2026-10-06 (log 235-258): AE ramp ISO 468 -> 75 after a module switch, the newest three frames at ISO 72.
+        // SCAM HDR's rule (four frames within 0.05 EV of the plan) emptied the ring and the shot was lost in a strict
+        // normal-back; the Hybrid keeps the frames at the newest exposure and never takes a brighter one.
+        int[] isos={468,468,468,316,212,154,111,100,95,91,88,85,83,81,79,78,76,75,72,72,72};
+        long[] ts=new long[isos.length];for(int i=0;i<ts.length;i++)ts[i]=i+1;
+        var frames=drainHybrid(ts.length,ts,isos,20);
+        assertEquals(3,frames.size());
+        var stamps=new java.util.TreeSet<Long>();for(var f:frames)stamps.add(f.timestamp);
+        assertEquals(java.util.Set.of(19L,20L,21L),stamps);
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void hybridRingWidensOnlyToDarkerFramesAndOnlyToFillEight() throws Exception {
+        // Newest exposure ISO 100 with five more at it, six at -0.32 EV (ISO 80), two at -1 EV (ISO 50): 6 exact + 2 darker.
+        int[] isos={50,50,80,80,80,80,80,80,100,100,100,100,100,100};
+        long[] ts=new long[isos.length];for(int i=0;i<ts.length;i++)ts[i]=i+1;
+        var frames=drainHybrid(ts.length,ts,isos,20);
+        assertEquals(8,frames.size());
+        for(var f:frames)assertTrue(f.timestamp>=3);
+        // Enough exact frames: nothing is widened, the newest requested ones are taken as before.
+        cleanupRing();
+        var exact=drainHybrid(ts.length,ts,isos,4);
+        assertEquals(4,exact.size());
+        for(var f:exact)assertTrue(f.timestamp>=11);
+    }
+    @Test
+    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
+    public void hybridRingWithOneFrameIsUsed() throws Exception {
+        var frames=drainHybrid(5,new long[]{5},new int[]{400},20);
+        assertEquals(1,frames.size());
+        assertEquals(5,frames.get(0).timestamp);
+    }
+    @SuppressWarnings("unchecked")
+    private void cleanupRing() throws Exception {
+        ((ArrayDeque<Image>)get(controller,"mZslRingBuffer")).clear();
+        ((java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults")).clear();
+    }
+
 }

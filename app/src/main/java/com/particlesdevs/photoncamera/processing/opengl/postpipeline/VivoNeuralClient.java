@@ -140,6 +140,9 @@ public final class VivoNeuralClient {
         SharedPreferences prefs=context.getSharedPreferences(
                 niceBurst!=null?"vivo_nice_capture_report":niceTone?"vivo_nice_tone_report":nice?"vivo_nice_root_report":raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
         StringBuilder report=new StringBuilder("SCAMERA: neural inference job\n");
+        // P27: a retry after a failed merge keeps the first attempt in its report.
+        final String carried=carryReport;
+        if(niceBurst!=null&&carried!=null)report.append("PREVIOUS ATTEMPT:\n").append(carried).append("\nRETRY:\n");
         prefs.edit().putString("report",report.toString()).putBoolean("complete",false).commit();
         final long[] lastReportWriteMs={startMs};
         Consumer<String> log=line->{
@@ -217,7 +220,7 @@ public final class VivoNeuralClient {
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
                 if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException("Не удалось создать маркер склейки Hybrid");
-                String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
+                String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText()+((LmcHybridBurst)niceBurst).tuningOverride();
                 if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
                 log.accept("CLIENT: LMC hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
             }
@@ -377,11 +380,17 @@ public final class VivoNeuralClient {
             if(niceOut!=null)niceOut.close();
             synchronized(report){
                 prefs.edit().putString("report",report.toString()).putBoolean("complete",true).commit();
+                if(niceBurst!=null)lastJobReport=report.toString();
             }
             if(niceBurst!=null)NiceDiagnostics.nativeFiles(dir,report.toString());
             deleteTree(dir);
         }
     }
+
+    /** P27: the report of the last merge job (LmcHybridBurst reads how the worker ended to pick its fallback tier). */
+    public static volatile String lastJobReport;
+    /** P27: text put at the top of the next merge job's report (the failed first attempt of a retry). */
+    public static volatile String carryReport;
 
     /** Number after `key=` on the first report line containing `line` (worker report), or `fallback`. */
     static float reportNumber(CharSequence rep,String line,String key,float fallback){

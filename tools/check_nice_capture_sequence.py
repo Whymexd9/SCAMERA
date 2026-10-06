@@ -71,11 +71,21 @@ public class Check {
   rejects(()->VivoNiceCaptureSequence.stockZsl(q3,p4,70));
   var wrongTail=List.of(request(3,0,ImageFrame.CaptureRole.NORMAL),tail.get(1),tail.get(2));
   rejects(()->VivoNiceCaptureSequence.stockZsl(wrongTail,p4,70));
+  // P27: every capture series is tolerant. A result from before the shutter (a preview frame) is never bound to a RAW: that
+  // request is dropped, the shot goes on with the RAWs that belong to it.
   var latePreview=VivoNiceCaptureSequence.stockZsl(tail,p4,70);
   latePreview.completed(tail.get(0),result(tail.get(0),69));
   latePreview.completed(tail.get(1),result(tail.get(1),82));
   latePreview.completed(tail.get(2),result(tail.get(2),83));
-  rejects(latePreview::requireCompleteMetadata);
+  latePreview.requireCompleteMetadata();
+  var lateFrames=new ArrayList<ImageFrame>(p4);lateFrames.add(raw(69));lateFrames.add(raw(82));lateFrames.add(raw(83));
+  var lateDiscard=latePreview.bindAndValidate(lateFrames);
+  check(lateDiscard.size()==1&&lateDiscard.get(0).timestamp==69&&latePreview.boundFutureCount()==2&&latePreview.droppedCount()==1);
+  check(lateFrames.get(4).getCaptureRole()==null&&lateFrames.get(5).getCaptureRole()==ImageFrame.CaptureRole.SHORT);
+  check(latePreview.droppedSummary().contains("LONG"));
+  // The strict binding rules stay for a series built with the plain constructor (no shutter cutoff there: a foreign result).
+  var strictLate=new VivoNiceCaptureSequence(tail,p4);
+  strictLate.completed(tail.get(0),result(tail.get(1),82));rejects(strictLate::requireCompleteMetadata);
   // LMC hybrid: post-shutter frames are optional extras (lost buffer / HAL failure / missing RAW drop that frame only)
   var hq=List.of(request(4,0,ImageFrame.CaptureRole.EXTRA_SHORT),request(4,1,ImageFrame.CaptureRole.EXTRA_SHORT),request(4,2,ImageFrame.CaptureRole.LONG));
   var hz=List.of(past(91),past(92),past(93));
@@ -88,11 +98,75 @@ public class Check {
   check(hframes.get(3).getCaptureRole()==ImageFrame.CaptureRole.LONG);
   var hyb2=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb2.completed(hq.get(1),result(hq.get(1),101));
   var hf2=new ArrayList<ImageFrame>(hz);check(hyb2.bindAndValidate(hf2).isEmpty()&&hyb2.boundFutureCount()==0&&hyb2.droppedCount()==1);
+  // P27: a buffered N frame that went missing (copy failed) is dropped, not fatal; the series needs at least one RAW.
   var hyb3=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb3.lost(hq.get(2),"HAL capture failure=0");
-  rejects(()->hyb3.bindAndValidate(List.of(hz.get(0),hz.get(1)))); // a buffered N frame is still required
-  var hyb4=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb4.completed(hq.get(0),result(hq.get(1),100));rejects(hyb4::requireCompleteMetadata);
-  var strict=VivoNiceCaptureSequence.stockZsl(tail,p4,70);strict.lost(tail.get(0),"RAW buffer lost frame=7");rejects(strict::requireCompleteMetadata);
-  System.out.println("PASS: "+checks+" NICE request/result/RAW checks, including reordering, missing frames, stale series, invalid metadata and HAL failure; hybrid drops lost post-shutter frames");
+  check(hyb3.bindAndValidate(List.of(hz.get(0),hz.get(1))).isEmpty()&&hyb3.presentCount()==2&&hyb3.boundFutureCount()==0&&hyb3.droppedCount()==1);
+  check(hyb3.droppedSummary().contains("1 buffered N RAWs missing"));
+  var nothing=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);for(var q:hq)nothing.lost(q,"RAW buffer lost");
+  rejects(()->nothing.bindAndValidate(List.of()));
+  var strictZsl=new VivoNiceCaptureSequence(hq,hz);
+  rejects(()->strictZsl.bindAndValidate(List.of(hz.get(0),hz.get(1)))); // strict: every buffered N is required
+  // A result that belongs to another request of the series is never bound (tolerant: ignored; strict: fails).
+  var hyb4=VivoNiceCaptureSequence.hybridZsl(hq,hz,95);hyb4.completed(hq.get(0),result(hq.get(1),100));hyb4.requireCompleteMetadata();
+  var h4=new ArrayList<ImageFrame>(hz);h4.add(raw(100));
+  var h4Discard=hyb4.bindAndValidate(h4);check(h4Discard.size()==1&&h4Discard.get(0).timestamp==100&&hyb4.boundFutureCount()==0);
+  var strictHyb4=new VivoNiceCaptureSequence(hq,hz);strictHyb4.completed(hq.get(0),result(hq.get(1),100));rejects(strictHyb4::requireCompleteMetadata);
+  // SCAM HDR series are tolerant as well (P27): a lost L leaves the others; the merge falls back to the Hybrid if its graph
+  // cannot be built. The strict constructor still fails on it.
+  var scamLost=VivoNiceCaptureSequence.stockZsl(tail,p4,70);scamLost.lost(tail.get(0),"RAW buffer lost frame=7");
+  scamLost.completed(tail.get(1),result(tail.get(1),82));scamLost.completed(tail.get(2),result(tail.get(2),83));scamLost.requireCompleteMetadata();
+  var scamFrames=new ArrayList<ImageFrame>(p4);scamFrames.add(raw(82));scamFrames.add(raw(83));
+  check(scamLost.bindAndValidate(scamFrames).isEmpty()&&scamLost.boundFutureCount()==2&&scamLost.droppedCount()==1&&scamLost.presentCount()==6);
+  var strict=new VivoNiceCaptureSequence(tail,p4);strict.lost(tail.get(0),"RAW buffer lost frame=7");rejects(strict::requireCompleteMetadata);
+  // P27 tolerant series: foreign, duplicate and invalid results, null and duplicate RAWs are dropped, never fatal.
+  var tq=List.of(request(5,0,ImageFrame.CaptureRole.NORMAL),request(5,1,ImageFrame.CaptureRole.LONG),request(5,2,ImageFrame.CaptureRole.EXTRA_SHORT));
+  var tol=VivoNiceCaptureSequence.hybridZsl(tq,hz,95);
+  tol.completed(new CaptureRequest(null),result(new CaptureRequest(null),110));       // no identity
+  tol.completed(request(9,0,ImageFrame.CaptureRole.NORMAL),result(tq.get(0),111));      // another series
+  tol.completed(tq.get(0),result(tq.get(0),112));tol.completed(tq.get(0),result(tq.get(0),113)); // second result of #0
+  var noTs=result(tq.get(1),114);noTs.put(CaptureResult.SENSOR_TIMESTAMP,null);tol.completed(tq.get(1),noTs); // invalid
+  tol.completed(tq.get(2),result(tq.get(2),115));
+  tol.requireCompleteMetadata();
+  var tf=new ArrayList<ImageFrame>(hz);tf.add(null);tf.add(raw(112));tf.add(raw(112));tf.add(raw(114));tf.add(raw(115));
+  var tolDiscard=tol.bindAndValidate(tf);
+  check(tol.boundFutureCount()==2&&tol.presentCount()==5&&tol.droppedCount()==1&&tolDiscard.size()==3);
+  check(tolDiscard.contains(null)&&tolDiscard.get(1).timestamp==112&&tolDiscard.get(2).timestamp==114);
+  check(tol.firstBoundResult(ImageFrame.CaptureRole.NORMAL).get(CaptureResult.SENSOR_TIMESTAMP)==112L);
+  // X300 Ultra 2026-10-06 shape (log 265-325): Hybrid normal-back, N#0 buffer lost, N#1-3 failed, L/S/ES arrived -> merged.
+  var nb=new ArrayList<CaptureRequest>();
+  for(int i=0;i<4;i++)nb.add(request(6,i,ImageFrame.CaptureRole.NORMAL));
+  nb.add(request(6,4,ImageFrame.CaptureRole.LONG));nb.add(request(6,5,ImageFrame.CaptureRole.EXTRA_SHORT));nb.add(request(6,6,ImageFrame.CaptureRole.EXTRA_SHORT));
+  var x300=VivoNiceCaptureSequence.hybridFuture(nb,120);
+  x300.lost(nb.get(0),"RAW buffer lost frame=27");for(int i=1;i<4;i++)x300.lost(nb.get(i),"HAL capture failure=0");
+  for(int i=4;i<7;i++)x300.completed(nb.get(i),result(nb.get(i),130+i));
+  x300.requireCompleteMetadata();
+  var x300Frames=new ArrayList<ImageFrame>();for(int i=4;i<7;i++)x300Frames.add(raw(130+i));
+  check(x300.bindAndValidate(x300Frames).isEmpty()&&x300.boundFutureCount()==3&&x300.droppedCount()==4);
+  check(x300.firstBoundResult(ImageFrame.CaptureRole.NORMAL)==null&&x300.firstBoundResult(null)!=null);
+  var allLost=VivoNiceCaptureSequence.hybridFuture(nb,120);for(var q:nb)allLost.lost(q,"HAL capture failure=0");
+  rejects(()->allLost.bindAndValidate(List.of()));
+  rejects(()->VivoNiceCaptureSequence.hybridFuture(List.of(),120));
+  rejects(()->VivoNiceCaptureSequence.hybridFuture(nb,0));
+  // P27: a frame delivered at another exposure keeps the role its measured exposure gives (owner's 'LONG: ISO 320/640').
+  var rq=List.of(request(7,0,ImageFrame.CaptureRole.LONG),request(7,1,ImageFrame.CaptureRole.LONG));
+  var rc=VivoNiceCaptureSequence.hybridZsl(rq,hz,95);
+  rc.reclassify(rq.get(0),ImageFrame.CaptureRole.NORMAL);
+  rc.completed(rq.get(0),result(rq.get(0),140));rc.completed(rq.get(1),result(rq.get(1),141));
+  var rf=new ArrayList<ImageFrame>(hz);rf.add(raw(140));rf.add(raw(141));
+  check(rc.bindAndValidate(rf).isEmpty()&&rc.boundFutureCount()==2);
+  check(rf.get(3).getCaptureRole()==ImageFrame.CaptureRole.NORMAL&&rf.get(4).getCaptureRole()==ImageFrame.CaptureRole.LONG);
+  check(rc.firstBoundResult(ImageFrame.CaptureRole.NORMAL).get(CaptureResult.SENSOR_TIMESTAMP)==140L&&rc.droppedSummary().contains("used as NORMAL"));
+  rc.reclassify(request(8,0,ImageFrame.CaptureRole.LONG),ImageFrame.CaptureRole.NORMAL);rc.requireCompleteMetadata(); // foreign: noted
+  var strictRc=new VivoNiceCaptureSequence(rq,hz);strictRc.reclassify(request(8,0,ImageFrame.CaptureRole.LONG),ImageFrame.CaptureRole.NORMAL);
+  rejects(strictRc::requireCompleteMetadata);
+  // SCAM HDR normal-back: seven requests, or six without L (L built from the N frames).
+  var six=new ArrayList<CaptureRequest>();
+  for(int i=0;i<4;i++)six.add(request(10,i,ImageFrame.CaptureRole.NORMAL));
+  six.add(request(10,4,ImageFrame.CaptureRole.SHORT));six.add(request(10,5,ImageFrame.CaptureRole.EXTRA_SHORT));
+  check(VivoNiceCaptureSequence.stockNormalBack(six,150).futureCount==6);
+  var badSix=new ArrayList<CaptureRequest>(six);badSix.set(4,request(10,4,ImageFrame.CaptureRole.LONG));
+  rejects(()->VivoNiceCaptureSequence.stockNormalBack(badSix,150));
+  System.out.println("PASS: "+checks+" NICE request/result/RAW checks, including reordering, missing frames, stale series, invalid metadata and HAL failure; tolerant series drop lost, foreign, duplicate and invalid frames, reclassify by measured exposure, and fail only when no RAW arrived");
  }
 }'''
 with tempfile.TemporaryDirectory() as d:

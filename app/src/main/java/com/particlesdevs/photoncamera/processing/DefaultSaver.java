@@ -19,6 +19,8 @@ public class DefaultSaver extends SaverImplementation {
     ArrayList<ImageFrame> ownedFrames;
     Path ownedDngFile, ownedImageFile;
     java.util.List<com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair> ownedPairs;
+    /** P27: the merge route the shot was captured for (null: read the setting when processing starts). */
+    Boolean ownedHybridRoute;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -33,6 +35,8 @@ public class DefaultSaver extends SaverImplementation {
             ArrayList<ImageFrame> frames = ownedFrames;
             ownedFrames = null;
             hdrxProcessor.ownedPairs = ownedPairs;
+            hdrxProcessor.ownedHybridRoute = ownedHybridRoute;
+            ownedHybridRoute = null;
             hdrxProcessor.configure(PhotonCamera.getSettings().alignAlgorithm,
                     PhotonCamera.getSettings().rawSaver, PhotonCamera.getSettings().selectedMode);
             hdrxProcessor.start(ownedDngFile, ownedImageFile,
