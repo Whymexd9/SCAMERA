@@ -595,6 +595,12 @@ public class Parameters {
         boolean oppoTuned = false;
         if (OppoTunedColor.applies()) {
             float cctK = OppoTunedColor.estimateCct(characteristics, whitePoint);
+            {
+                float[] fl = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                float f0 = fl != null && fl.length > 0 ? fl[0] : 0f;
+                Log.i(TAG, String.format(java.util.Locale.ROOT, "OPPO CCT: focal %.2f mm neutral R/G %.4f B/G %.4f ln(R/B) %.4f anchor %.3f -> %.0f K",
+                        f0, whitePoint[0] / whitePoint[1], whitePoint[2] / whitePoint[1], Math.log(whitePoint[0] / whitePoint[2]), OppoTunedColor.anchor(f0), cctK));
+            }
             sceneCct = cctK;
             float[] tunedForward = OppoTunedColor.forwardAt(characteristics, cctK);
             if (tunedForward != null) {

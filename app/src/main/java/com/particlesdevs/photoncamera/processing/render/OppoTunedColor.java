@@ -74,9 +74,17 @@ final class OppoTunedColor {
     /** Colour temperature of the light from the as-shot neutral [R/G, 1, B/G] (the DNG estimate barely moves on this HAL). */
     static float estimateCct(CameraCharacteristics characteristics, float[] neutral) {
         float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
-        float anchor = -0.6f;
-        if (focal != null && focal.length > 0)
-            for (float[] row : NEUTRAL_AT_6500) if (Math.abs(row[0] - focal[0]) < 0.05f) anchor = row[1];
+        return estimateCct(focal != null && focal.length > 0 ? focal[0] : 0f, neutral);
+    }
+
+    /** ln(R/B) of the neutral of a 6500 K light for the sensor of this focal length (-0.6 for one not measured). */
+    static float anchor(float focal) {
+        for (float[] row : NEUTRAL_AT_6500) if (Math.abs(row[0] - focal) < 0.05f) return row[1];
+        return -0.6f;
+    }
+
+    static float estimateCct(float focal, float[] neutral) {
+        float anchor = anchor(focal);
         float shift = (float) Math.log(neutral[0] / neutral[2]) - anchor;
         float[][] t = SHIFT_MIRED;
         float mired;
@@ -108,13 +116,6 @@ final class OppoTunedColor {
         }
     }
 
-    private static Object[] sensor(CameraCharacteristics characteristics) {
-        float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
-        if (focal == null || focal.length == 0) return null;
-        for (Object[] row : TABLE) if (Math.abs(((Float) row[0]) - focal[0]) < 0.05f) return row;
-        return null;
-    }
-
     /** CCM at a colour temperature: piecewise linear in 1/CCT between the tuning's nodes, clamped at both ends. */
     private static float[] ccm(float[][] nodes, float cct) {
         if (cct <= nodes[0][0]) return java.util.Arrays.copyOfRange(nodes[0], 1, 10);
@@ -134,7 +135,13 @@ final class OppoTunedColor {
 
     /** Forward matrix (white-balanced sensor RGB -> XYZ D50, row-major) at a colour temperature, or null. */
     static float[] forwardAt(CameraCharacteristics characteristics, float cct) {
-        Object[] row = sensor(characteristics);
+        float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+        return focal == null || focal.length == 0 ? null : forwardAt(focal[0], cct);
+    }
+
+    static float[] forwardAt(float focal, float cct) {
+        Object[] row = null;
+        for (Object[] r : TABLE) if (Math.abs(((Float) r[0]) - focal) < 0.05f) row = r;
         if (row == null) return null;
         float[][] nodes = nodesOf(row);
         float[] ccm = ccm(nodes, cct);
