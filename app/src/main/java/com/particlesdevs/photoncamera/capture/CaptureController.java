@@ -3629,6 +3629,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P27: one completion per shot (sequence completed, aborted, rescued after a camera close or a stall); callbacks of a
             // completed shot are ignored, the shot's own saver is used even if the field was replaced.
             final java.util.concurrent.atomic.AtomicBoolean shotDone=new java.util.concurrent.atomic.AtomicBoolean();
+            // P27 (M6): request indices the HAL failed or lost the RAW of, and whether the queue was flushed (FlushLossStats).
+            final java.util.Set<Integer> halLost=java.util.concurrent.ConcurrentHashMap.newKeySet();
+            final java.util.concurrent.atomic.AtomicBoolean shotFlushed=new java.util.concurrent.atomic.AtomicBoolean();
+            final FlushLossStats flushStats=FlushLossStats.of(String.valueOf(physicalID));
             final ImageSaver shotSaver=mImageSaver;
             final boolean shotHybridRoute=lmcHybridShot;
             final int nativeBaseIndex=denoiseFrameCount/2;
@@ -3745,6 +3749,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     Log.w("NICE_CAPTURE", "capture failed: " + request.getTag() + " reason=" + failure.getReason()
                             + " imageCaptured=" + failure.wasImageCaptured() + " frame=" + failure.getFrameNumber());
                     if (niceSequence != null) niceSequence.lost(request, "HAL capture failure=" + failure.getReason());
+                    if (request.getTag() instanceof ImageFrame.NiceCaptureTag) halLost.add(((ImageFrame.NiceCaptureTag) request.getTag()).index);
                 }
 
                 @Override
@@ -3755,6 +3760,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     Log.w("NICE_CAPTURE", "buffer lost: " + request.getTag() + " frame=" + frameNumber + " raw=" + (target == niceRawSurface));
                     if (niceSequence != null && target == niceRawSurface)
                         niceSequence.lost(request, "RAW buffer lost frame=" + frameNumber);
+                    if (target == niceRawSurface && request.getTag() instanceof ImageFrame.NiceCaptureTag)
+                        halLost.add(((ImageFrame.NiceCaptureTag) request.getTag()).index);
                 }
 
                 @Override
@@ -3785,6 +3792,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                        long lastFrameNumber) {
                     if (!shotDone.compareAndSet(false, true)) return;
                     mInFlightRescue = null;
+                    if (niceSequence != null && niceSequence.futureCount > 0)
+                        Log.i("NICE_CAPTURE", flushStats.record(shotFlushed.get(), niceSequence.futureCount, halLost));
                     final int finalFrameCount = niceSequence != null ? niceSequence.futureCount
                             : (int) (lastFrameNumber - baseFrameNumber[0]) + 1;
                     Log.v("BurstCounter", "CaptureSequenceCompleted! FrameCount:" + finalFrameCount);
@@ -3968,8 +3977,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // this HAL) otherwise sit ahead of the bracket. Flushing them brings the
             // first bracket exposure ~0.25 s closer to the press; the preview is
             // restarted right behind the burst.
-            final boolean flushQueue = mNiceRouted && niceSequence != null && PreferenceKeys.isNiceFastCapture()
+            final boolean flushWanted = mNiceRouted && niceSequence != null && PreferenceKeys.isNiceFastCapture()
                     && !captures.isEmpty() && (mStockObserverReady || !PreferenceKeys.useStockBracketPlanner());
+            // P27 (M6): a camera whose HAL lost the first requests after the flush twice in a row is not flushed any more.
+            final boolean flushQueue = flushWanted && !flushStats.skipFlush();
+            if (flushWanted && !flushQueue) Log.i("NICE_CAPTURE", "HAL queue not flushed: camera " + flushStats.camera
+                    + " lost the first requests after a flush (FlushLossStats)");
+            shotFlushed.set(flushQueue);
             sTimelineSubmitNs = android.os.SystemClock.elapsedRealtimeNanos();
             if (flushQueue) {
                 long t0 = android.os.SystemClock.elapsedRealtime();
