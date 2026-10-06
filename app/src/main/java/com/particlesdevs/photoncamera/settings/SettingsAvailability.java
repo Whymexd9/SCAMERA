@@ -28,6 +28,13 @@ public final class SettingsAvailability {
         if (key.startsWith("pref_lmc_hybrid_") && !hybrid && !arkShared) return "Выберите склейку «Hybrid».";
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
         if (key.startsWith("pref_lmc_hybrid_dn_") && !on("pref_lmc_hybrid_denoise", true)) return "Включите «Шумоподавление».";
+        // P28 RAW CA: the rows under the mode list follow it and the auto switch.
+        if (key.startsWith("pref_lmc_hybrid_rawca_") && !key.equals("pref_lmc_hybrid_rawca_mode")) {
+            if (text("pref_lmc_hybrid_rawca_mode", "0").equals("0")) return "Выберите режим «Коррекция ХА в RAW».";
+            boolean auto = on("pref_lmc_hybrid_rawca_auto", true);
+            if (any(key, "pref_lmc_hybrid_rawca_red", "pref_lmc_hybrid_rawca_blue") && auto) return "Только без автоподбора.";
+            if (key.equals("pref_lmc_hybrid_rawca_passes") && !auto) return "Только с автоподбором.";
+        }
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return "Включите водяной знак.";
         if (key.startsWith("pref_vivo_nice_") && !autonomous)
             return "Выберите склейку «SCAM HDR».";

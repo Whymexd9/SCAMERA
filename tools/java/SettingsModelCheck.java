@@ -80,11 +80,24 @@ public class SettingsModelCheck {
         active(s,"pref_lmc_hybrid_ark_ae_target");active(s,"pref_lmc_hybrid_sharp_mode");inactive(s,"pref_lmc_hybrid_cdm");
         if(SettingsNumericRules.bounds("pref_lmc_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_lmc_hybrid_enabled")!=null)
             throw new AssertionError("unbounded hybrid copies got bounds");
+        // P28 RAW CA: off by default (rows below the mode explain themselves), passes with auto, red / blue without; bounds
+        Map<String,Object> ca=new HashMap<>();
+        active(ca,"pref_lmc_hybrid_rawca_mode");inactive(ca,"pref_lmc_hybrid_rawca_passes");inactive(ca,"pref_lmc_hybrid_rawca_avoid_shift");
+        ca.put("pref_lmc_hybrid_rawca_mode","2");
+        active(ca,"pref_lmc_hybrid_rawca_passes");active(ca,"pref_lmc_hybrid_rawca_auto");active(ca,"pref_lmc_hybrid_rawca_avoid_shift");inactive(ca,"pref_lmc_hybrid_rawca_red");
+        ca.put("pref_lmc_hybrid_rawca_auto",false);active(ca,"pref_lmc_hybrid_rawca_red");active(ca,"pref_lmc_hybrid_rawca_blue");inactive(ca,"pref_lmc_hybrid_rawca_passes");
+        ca.put("pref_merge_route","scamhdr");inactive(ca,"pref_lmc_hybrid_rawca_mode");
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_mode","7",0),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_passes","9",2),5);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_passes","1.6",2),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_red","-9",0),-4);
+        if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_blue","4.5")==null)throw new AssertionError("RAW CA blue beyond 4 px accepted");
+        if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_passes","0")==null)throw new AssertionError("RAW CA without a pass accepted");
         float[] list=SettingsNumericRules.listValue("pref_lmc_hybrid_x","1; 2.5 3",new float[]{0,0,0});
         eq(list.length,3);eq(list[0],1);eq(list[1],2.5);eq(list[2],3);
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,NaN,3",new float[]{0,0,0})[0]!=0)throw new AssertionError("NaN list accepted");
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,2",new float[]{0,0,0}).length!=3)throw new AssertionError("short list accepted");
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","",null)!=null)throw new AssertionError("empty list");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA");
     }
 }

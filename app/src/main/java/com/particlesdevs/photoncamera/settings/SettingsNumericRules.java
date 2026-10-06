@@ -153,6 +153,10 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_motion_threshold": return new double[]{0.25,8,0};
             case "pref_lmc_hybrid_mosaic_edge_scale": return new double[]{0.25,1,0};
             case "pref_lmc_hybrid_mosaic_frames": return new double[]{4,32,1};
+            // P28 RAW CA (worker rawCa*): mode 0 off / 1 base frame / 2 every frame, RawTherapee's auto passes and manual red / blue
+            case "pref_lmc_hybrid_rawca_mode": return new double[]{0,2,1};
+            case "pref_lmc_hybrid_rawca_passes": return new double[]{1,5,1};
+            case "pref_lmc_hybrid_rawca_red": case "pref_lmc_hybrid_rawca_blue": return new double[]{-4,4,0};
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};

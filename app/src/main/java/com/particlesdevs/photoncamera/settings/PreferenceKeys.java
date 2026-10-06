@@ -946,6 +946,9 @@ public class PreferenceKeys {
             // edges of the sub-frame merge (worker default 0.6), shared motion of a frame's sub-frames (worker default 1)
             {"mosaicFrames", "mosaic_frames"}, {"mosaicBlock", "mosaic_block"},
             {"mosaicEdgeScale", "mosaic_edge_scale"}, {"mosaicShare", "mosaic_share"},
+            // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
+            // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
+            {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
         };
         for (String[] k : keys) {
             Float dev = niceDevValue("hybrid_" + k[1]);
@@ -961,6 +964,8 @@ public class PreferenceKeys {
         if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_lmc", true)) out.append("bentoLmc 0\n");
+        if (!hybridSwitch("rawca_auto", true)) out.append("rawCaAuto 0\n");
+        if (!hybridSwitch("rawca_avoid_shift", true)) out.append("rawCaAvoidShift 0\n");
         return out.toString();
     }
     /** The hybrid's N frames from the ZSL ring (pref_lmc_hybrid_zsl_frames, 4..44, default 20). */

@@ -226,6 +226,34 @@ public class HybridSettingsTest {
         assertNotNull(hybrid.findPreference("pref_lmc_hybrid_hot_base_sigma"));
     }
 
+    @Test public void rawCaKeysReachTheTuningFileAndDefaultOff() {
+        // P28: unset, nothing is written (worker default rawCa 0 = off, P19 as before)
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String k:new String[]{"rawCa","rawCaAuto","rawCaPasses","rawCaRed","rawCaBlue","rawCaAvoidShift"})assertFalse(tuning,tuning.contains(k+" "));
+        manager.set("default_scope","pref_lmc_hybrid_rawca_mode","2");
+        manager.set("default_scope","pref_lmc_hybrid_rawca_passes","3");
+        manager.set("default_scope","pref_lmc_hybrid_rawca_auto",false);
+        manager.set("default_scope","pref_lmc_hybrid_rawca_red","1.5");
+        manager.set("default_scope","pref_lmc_hybrid_rawca_blue","-0.5");
+        manager.set("default_scope","pref_lmc_hybrid_rawca_avoid_shift",false);
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("rawCa 2.0\n"));assertTrue(tuning,tuning.contains("rawCaPasses 3.0\n"));
+        assertTrue(tuning,tuning.contains("rawCaAuto 0\n"));assertTrue(tuning,tuning.contains("rawCaRed 1.5\n"));
+        assertTrue(tuning,tuning.contains("rawCaBlue -0.5\n"));assertTrue(tuning,tuning.contains("rawCaAvoidShift 0\n"));
+        // the page: «Hybrid -> Склейка -> Хроматическая аберрация RAW», XML defaults = worker defaults (off, auto, 2 passes, avoid)
+        PreferenceScreen settings=inflate(),merge=settings.findPreference("lmc_hybrid_merge_screen");
+        PreferenceScreen page=merge.findPreference("lmc_hybrid_rawca_screen");
+        assertNotNull(page);assertEquals("Хроматическая аберрация RAW",page.getTitle().toString());
+        ListPreference mode=page.findPreference("pref_lmc_hybrid_rawca_mode");
+        assertArrayEquals(new CharSequence[]{"0","1","2"},mode.getEntryValues());
+        prefs.edit().clear().commit();
+        settings=inflate();
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_rawca_mode","?"));
+        assertTrue(prefs.getBoolean("pref_lmc_hybrid_rawca_auto",false));assertTrue(prefs.getBoolean("pref_lmc_hybrid_rawca_avoid_shift",false));
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
+    }
+
     @Test public void migrationMovesHybridKeysCopiesSharedKnobsAndKeepsTheEffectiveRoute() {
         prefs.edit().clear()
                 .putBoolean("pref_vivo_hdr_enabled",true).putBoolean("pref_vivo_nice_enabled",true)
