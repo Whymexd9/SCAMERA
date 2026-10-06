@@ -113,20 +113,20 @@
                 app:layout_constraintBottom_toTopOf="@id/manual_mode" />
 
             <!--    Block 1.5-->
-            <!--   arrow-->
-
-            <ImageView
-                    android:id="@+id/open_close_manual"
-                    android:layout_width="@dimen/arrow_size"
-                    android:layout_height="@dimen/arrow_size"
-                    android:background="@drawable/chevron_up"
-                    android:elevation="8dp"
-                    android:contentDescription="Arrow"
+            <!--    scrim of the FULL settings sheet over the viewfinder (shade_scrim_top covers the top bar);
+                    above the viewfinder controls, below the sheet. Its top margin follows the top bar
+                    (CameraFragment.initSettingsBar), so the two pieces never overlap. -->
+            <View
+                    android:id="@+id/shade_scrim"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:background="@color/shade_scrim"
+                    android:elevation="10dp"
                     android:visibility="gone"
+                    app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
-                    app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
-                    android:layout_marginBottom="8dp" />
+                    app:layout_constraintEnd_toEndOf="parent" />
 
             <!--    Block 1.6-->
             <!--    includes the Layout resource of BottomBar-->
@@ -188,6 +188,18 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- The FULL sheet's scrim over the top bar (outside camera_container); see shade_scrim. -->
+        <View
+                android:id="@+id/shade_scrim_top"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@color/shade_scrim"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="@id/layout_topbar"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
 
         <TextView
                 android:id="@+id/video_recording_info"

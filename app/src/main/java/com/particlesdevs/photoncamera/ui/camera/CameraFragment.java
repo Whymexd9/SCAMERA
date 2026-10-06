@@ -117,8 +117,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private static final String ACTIVE_BACKCAM_ID = "ACTIVE_BACKCAM_ID"; //key for savedInstanceState
     private static final String ACTIVE_FRONTCAM_ID = "ACTIVE_FRONTCAM_ID"; //key for savedInstanceState
     private static final String NOTIFICATION_CHANNEL_ID = "NOTIFICATION_CHANNEL_ID";
-    /** FULL settings sheet height limit as a share of the viewfinder height. */
-    private static final float SHEET_MAX_HEIGHT_FRACTION = 0.66f;
+    /** FULL settings sheet height as a share of the viewfinder height (P25, owner's answer 3). */
+    private static final float SHEET_MAX_HEIGHT_FRACTION = 0.86f;
     /**
      * sActiveBackCamId is either
      * = 0 or camera_id stored in SharedPreferences in case of fresh application Start; or
@@ -378,7 +378,18 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         // their level the same way.
         // The model setter is idempotent, so a level the model asked for is not sent again.
         sheet.setOnSheetLevelListener(cameraFragmentViewModel::setSheetLevel);
-        // FULL is at most 66% of the viewfinder height.
+        // FULL: a scrim over the viewfinder and the top bar; the viewfinder piece starts under the top bar.
+        View scrim = cameraFragmentBinding.shadeScrim, scrimTop = cameraFragmentBinding.shadeScrimTop;
+        sheet.setScrim(scrim, scrimTop);
+        cameraFragmentBinding.getRoot().addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int overlap = Math.max(0, cameraFragmentBinding.layoutTopbar.getRoot().getBottom() - cameraFragmentBinding.cameraContainer.getTop());
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) scrim.getLayoutParams();
+            if (params.topMargin != overlap) {
+                params.topMargin = overlap;
+                scrim.post(() -> scrim.setLayoutParams(params));
+            }
+        });
+        // FULL is 86% of the viewfinder height.
         cameraFragmentBinding.layoutViewfinder.getRoot().addOnLayoutChangeListener(
                 (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
                         sheet.setMaxSheetHeight(Math.round((bottom - top) * SHEET_MAX_HEIGHT_FRACTION)));

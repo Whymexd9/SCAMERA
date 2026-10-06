@@ -12,5 +12,7 @@
     <color name="sheet_fg">#F2F5F7</color>
     <color name="sheet_dim">#9AA6AD</color>
     <color name="sheet_accent">#90C7FF</color>
+    <!-- Scrim under the FULL quick-settings shade (P25 concept: #000a) -->
+    <color name="shade_scrim">#AA000000</color>
     <color name="sheet_on_fg">#111111</color>
 </resources>

@@ -74,15 +74,15 @@ import java.util.List;
  * moves one level: the sheet is hideable only in PEEK and HIDDEN, so a fling from FULL lands in
  * PEEK. The sheet itself stays VISIBLE; the behavior moves it below the edge when hidden.
  * <p>
- * Content, top to bottom: the handle (a tap opens FULL or lowers FULL to PEEK), then a body
- * that holds the PEEK rows over the accordion list. PEEK shows the quick buttons (pinned
- * parameters, at most four, each a quarter of the row and centred) and three group cells.
- * FULL shows the accordion: one header per group, exactly one group open, its parameter rows
- * below. The list waits below the PEEK rows and slides up over them as the sheet opens, so
- * neither the sheet top nor the list jumps when the rows hide.
+ * Content, top to bottom: the handle, then a body that holds the PEEK rows over the accordion
+ * list. PEEK shows only the pinned parameters. FULL shows the accordion: one header per group,
+ * exactly one group open, its parameter rows below. The list waits below the PEEK rows and slides
+ * up over them as the sheet opens, so neither the sheet top nor the list jumps when the rows hide.
  * <p>
- * While the sheet is HIDDEN a separate handle stays on screen: a tap opens FULL, a fling up
- * opens PEEK.
+ * The handle cycles the levels (P25, owner's answer 3): HIDDEN -> PEEK -> FULL -> HIDDEN. While
+ * the sheet is HIDDEN a separate handle stays on screen: a tap or a fling up opens PEEK. In FULL a
+ * scrim covers the viewfinder and the top bar: a tap or a fling down on it lowers the sheet to
+ * PEEK, and the viewfinder gets neither focus nor pinch zoom.
  */
 public class SettingsBarLayout extends LinearLayout implements SettingsBarListener {
     // Same values as the model, which app:sheetLevel binds straight to setSheetLevel(int).
@@ -94,8 +94,6 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     private static final int MAX_QUICK_BUTTONS = 4;
     /** Quick buttons until the user pins others (SettingType names, oldest first). */
     private static final String DEFAULT_QUICK_BUTTONS = "FLASH,TIMER,RAW,GRID";
-    /** Changed-parameter icons a group cell shows before "+N". The headers show all of them. */
-    private static final int CELL_ICON_LIMIT = 4;
     private static final int GROUP_COUNT = SettingsBarEntryModel.GROUP_COUNT;
     private static final int RIPPLE_COLOR = 0x29FFFFFF;
 
@@ -128,8 +126,6 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     private final LinearLayout peekRows;
     private final LinearLayout quickRow;
     private final NestedScrollView listScroll;
-    private final LinearLayout[] groupCells = new LinearLayout[GROUP_COUNT];
-    private final LinearLayout[] cellIcons = new LinearLayout[GROUP_COUNT];
     private final LinearLayout[] groupHeaders = new LinearLayout[GROUP_COUNT];
     private final ImageView[] headerChevrons = new ImageView[GROUP_COUNT];
     private final LinearLayout[] headerIcons = new LinearLayout[GROUP_COUNT];
@@ -167,12 +163,16 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     private View hiddenHandle;
     /** View under the HIDDEN handle that keeps the touches starting on it. */
     private View hiddenHandlePassThrough;
+    /** Scrim pieces over the viewfinder and the top bar, shown in FULL. */
+    private View[] scrims = new View[0];
 
     private final BottomSheetBehavior.BottomSheetCallback sheetCallback = new BottomSheetBehavior.BottomSheetCallback() {
         @Override
         public void onStateChanged(@NonNull View bottomSheet, int newState) {
             updateHiddenHandle();
             syncLook(newState);
+            if (newState == BottomSheetBehavior.STATE_EXPANDED) updateScrim(1f);
+            else if (newState != BottomSheetBehavior.STATE_DRAGGING && newState != BottomSheetBehavior.STATE_SETTLING) updateScrim(0f);
             int level = levelForState(newState);
             if (level < 0) return;
             // One level per gesture: FULL can only be lowered to PEEK, PEEK can be hidden.
@@ -186,6 +186,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         public void onSlide(@NonNull View bottomSheet, float slideOffset) {
             // 0 at PEEK, 1 at FULL; between HIDDEN and PEEK (negative) the PEEK look stays.
             applyLook(Math.max(0f, Math.min(1f, slideOffset)));
+            updateScrim(Math.max(0f, Math.min(1f, slideOffset)));
         }
     };
 
@@ -207,13 +208,13 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         setOrientation(VERTICAL);
         setBackgroundResource(R.drawable.settings_sheet_background);
 
-        // Handle at the top of the sheet. A tap opens FULL or lowers FULL to PEEK. A drag past
-        // the touch slop is taken by the BottomSheetBehavior, which moves the sheet.
+        // Handle at the top of the sheet. A tap goes on round the cycle: PEEK -> FULL -> HIDDEN.
+        // A drag past the touch slop is taken by the BottomSheetBehavior, which moves the sheet.
         handle = new ImageView(context);
         handle.setImageResource(R.drawable.sheet_handle);
         handle.setScaleType(ImageView.ScaleType.CENTER);
         handle.setContentDescription(context.getString(R.string.sheet_handle_toggle));
-        handle.setOnClickListener(v -> requestSheetLevel(sheetLevel == LEVEL_FULL ? LEVEL_PEEK : LEVEL_FULL));
+        handle.setOnClickListener(v -> requestSheetLevel(nextHandleLevel(sheetLevel)));
         addView(handle, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
 
         // Body under the handle: the accordion list fills it, the PEEK rows lie over its top.
@@ -252,16 +253,6 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         quickRow.setPadding(dp(10), 0, dp(10), dp(8));
         quickRow.setVisibility(GONE);
         peekRows.addView(quickRow, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout cellRow = new LinearLayout(context);
-        cellRow.setOrientation(HORIZONTAL);
-        cellRow.setBaselineAligned(false);
-        cellRow.setPadding(dp(10), 0, dp(10), dp(10));
-        for (int group = 0; group < GROUP_COUNT; group++) {
-            LayoutParams cellParams = new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            if (group > 0) cellParams.setMarginStart(dp(6));
-            cellRow.addView(createGroupCell(context, group), cellParams);
-        }
-        peekRows.addView(cellRow, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         body.addView(peekRows, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
         openGroup(openGroup, false);
@@ -354,8 +345,17 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         for (int i = 0; i < getChildCount(); i++) setTreeEnabled(getChildAt(i), enabled);
+        updateDraggable();
+    }
+
+    /** A finger may drag the sheet unless a burst locks it. */
+    private void updateDraggable() {
         BottomSheetBehavior<SettingsBarLayout> sheet = sheetBehavior();
-        if (sheet != null) sheet.setDraggable(enabled);
+        if (sheet != null) sheet.setDraggable(isDraggable());
+    }
+
+    private boolean isDraggable() {
+        return isEnabled();
     }
 
     private static void setTreeEnabled(View view, boolean enabled) {
@@ -438,6 +438,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         if (settled >= 0) {
             sheetLevel = settled;
             syncLook(now);
+            updateScrim(settled == LEVEL_FULL ? 1f : 0f);
         }
         updateHiddenHandle();
     }
@@ -462,8 +463,8 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     }
 
     /**
-     * Handle next to the sheet that stays on screen while the sheet is HIDDEN. A tap opens FULL
-     * (no touch focus), a fling up opens PEEK. The handle takes the touches that start on it, so
+     * Handle next to the sheet that stays on screen while the sheet is HIDDEN. A tap or a fling up
+     * opens PEEK (no touch focus). The handle takes the touches that start on it, so
      * the viewfinder swipe never sees them. A touch that starts on {@code passThrough} (the lens
      * strip under the handle) is left to that view, as before the handle took touches.
      */
@@ -489,7 +490,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
                 @Override
                 public boolean performAccessibilityAction(View host, int action, Bundle args) {
                     if (action == AccessibilityNodeInfo.ACTION_CLICK) {
-                        requestSheetLevel(LEVEL_FULL);
+                        requestSheetLevel(LEVEL_PEEK);
                         return true;
                     }
                     return super.performAccessibilityAction(host, action, args);
@@ -508,7 +509,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
 
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
-                requestSheetLevel(LEVEL_FULL);
+                requestSheetLevel(LEVEL_PEEK);
                 return true;
             }
 
@@ -519,7 +520,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
                 return true;
             }
         });
-        // The handle has no long press, so a slow tap still opens FULL.
+        // The handle has no long press, so a slow tap still opens PEEK.
         detector.setIsLongpressEnabled(false);
         return (v, event) -> {
             // Not taking the DOWN leaves the whole gesture to the views below the handle.
@@ -528,6 +529,58 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
             }
             return detector.onTouchEvent(event);
         };
+    }
+
+    /** The handle's cycle: HIDDEN -> PEEK -> FULL -> HIDDEN. */
+    static int nextHandleLevel(int level) {
+        return level == LEVEL_FULL ? LEVEL_HIDDEN : Math.max(LEVEL_HIDDEN, level) + 1;
+    }
+
+    /**
+     * The scrim of the FULL level: views over the viewfinder and the top bar (the top bar lies outside
+     * camera_container). They follow the sheet between PEEK (gone) and FULL (shown), take every
+     * touch, and a tap or a fling down on them lowers the sheet to PEEK.
+     */
+    public void setScrim(View... views) {
+        scrims = views == null ? new View[0] : views;
+        GestureDetector detector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onSingleTapUp(MotionEvent e) {
+                requestSheetLevel(LEVEL_PEEK);
+                return true;
+            }
+
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                if (velocityY <= 0 || Math.abs(velocityY) <= Math.abs(velocityX)) return false;
+                requestSheetLevel(LEVEL_PEEK);
+                return true;
+            }
+        });
+        detector.setIsLongpressEnabled(false);
+        for (View scrim : scrims) {
+            scrim.setContentDescription(getContext().getString(R.string.shade_scrim));
+            scrim.setOnTouchListener((v, event) -> {
+                detector.onTouchEvent(event);
+                return true;
+            });
+            // TalkBack: a double tap lowers the sheet as a tap does.
+            scrim.setOnClickListener(v -> requestSheetLevel(LEVEL_PEEK));
+        }
+        BottomSheetBehavior<SettingsBarLayout> sheet = sheetBehavior();
+        updateScrim(sheet != null && sheet.getState() == BottomSheetBehavior.STATE_EXPANDED ? 1f : 0f);
+    }
+
+    private void updateScrim(float full) {
+        for (View scrim : scrims) {
+            scrim.setAlpha(full);
+            scrim.setVisibility(full > 0f ? VISIBLE : GONE);
+        }
     }
 
     /**
@@ -566,7 +619,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
             }
             behavior = BottomSheetBehavior.from(this);
             behavior.addBottomSheetCallback(sheetCallback);
-            behavior.setDraggable(isEnabled());
+            behavior.setDraggable(isDraggable());
             if (maxSheetHeight > 0) {
                 behavior.setMaxHeight(maxSheetHeight);
                 requestLayout();
@@ -688,37 +741,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         if (scrollToTop) listScroll.scrollTo(0, 0);
     }
 
-    // ---------------------------------------------------------------- group cells
-
-    private LinearLayout createGroupCell(Context context, int group) {
-        LinearLayout cell = new LinearLayout(context);
-        cell.setOrientation(VERTICAL);
-        cell.setPadding(dp(9), dp(6), dp(9), dp(6));
-        cell.setBackground(ripple(context, R.drawable.sheet_cell_background, rippleMask(GradientDrawable.RECTANGLE, dp(12))));
-        // PEEK -> FULL with this group open.
-        cell.setOnClickListener(v -> {
-            openGroup(group, true);
-            requestSheetLevel(LEVEL_FULL);
-        });
-
-        TextView name = new AppCompatTextView(context);
-        name.setText(SettingsBarEntryModel.getGroupTitleStringId(group));
-        name.setAllCaps(true);
-        name.setTypeface(name.getTypeface(), Typeface.BOLD);
-        name.setLetterSpacing(0.05f);
-        name.setTextColor(ContextCompat.getColor(context, R.color.sheet_dim));
-        fitOneLine(name, 10.5f);
-        cell.addView(name, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)));
-
-        LinearLayout icons = createIconsRow(context);
-        LayoutParams iconsParams = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(16));
-        iconsParams.topMargin = dp(1);
-        cell.addView(icons, iconsParams);
-
-        groupCells[group] = cell;
-        cellIcons[group] = icons;
-        return cell;
-    }
+    // ---------------------------------------------------------------- group summaries
 
     private LinearLayout createIconsRow(Context context) {
         LinearLayout row = new LinearLayout(context);
@@ -732,19 +755,17 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         for (int group = 0; group < GROUP_COUNT; group++) refreshGroupSummary(group);
     }
 
-    /** Cell and header of a group: icons of its changed parameters, and the spoken summary. */
+    /** Header of a group: icons of its changed parameters, and the spoken summary. */
     private void refreshGroupSummary(int group) {
         List<SettingsBarEntryModel> changed = new ArrayList<>();
         for (SettingsBarEntryModel entry : entries) {
             if (groupOf(entry) == group && isEntryShown(entry) && entry.isChanged()) changed.add(entry);
         }
-        fillChangedIcons(cellIcons[group], changed, CELL_ICON_LIMIT);
         fillChangedIcons(headerIcons[group], changed, 0);
         StringBuilder description = new StringBuilder(getContext().getString(SettingsBarEntryModel.getGroupTitleStringId(group)));
         for (int i = 0; i < changed.size(); i++) {
             description.append(i == 0 ? ": " : ", ").append(describe(changed.get(i)));
         }
-        groupCells[group].setContentDescription(description);
         groupHeaders[group].setContentDescription(description);
     }
 

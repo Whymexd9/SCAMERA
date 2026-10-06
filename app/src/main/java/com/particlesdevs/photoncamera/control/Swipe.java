@@ -6,7 +6,6 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
@@ -25,7 +24,6 @@ public class Swipe {
     private GestureDetector gestureDetector;
     private ManualModeConsole manualModeConsole;
     private CameraFragmentViewModel cameraFragmentViewModel;
-    private ImageView ocManual;
 
     public Swipe(CameraFragment cameraFragment) {
         this.cameraFragment = cameraFragment;
@@ -36,18 +34,7 @@ public class Swipe {
         Log.d(TAG, "SwipeDetection - ON");
         manualModeConsole = cameraFragment.getManualModeConsole();
         cameraFragmentViewModel = cameraFragment.getCameraFragmentViewModel();
-        ocManual = cameraFragment.findViewById(R.id.open_close_manual);
         manualModeConsole.setPanelVisibility(true);
-        ocManual.animate().rotation(0).setDuration(250).start();
-        ocManual.setOnClickListener((v) -> {
-            if (!manualModeConsole.isPanelVisible()) {
-                SwipeUp();
-                Log.d(TAG, "Arrow Clicked:SwipeUp");
-            } else {
-                SwipeDown();
-                Log.d(TAG, "Arrow Clicked:SwipeDown");
-            }
-        });
         gestureDetector = new GestureDetector(cameraFragment.getContext(), new GestureDetector.SimpleOnGestureListener() {
             private static final int SWIPE_THRESHOLD = 100;
             private static final int SWIPE_VELOCITY_THRESHOLD = 100;
@@ -59,9 +46,11 @@ public class Swipe {
 
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
-                // A tap on the viewfinder lowers a FULL settings sheet to PEEK; focus works as before.
+                // In FULL the scrim takes the touches; should one get here, it only lowers the sheet
+                // to PEEK, without focus (P25, owner's answer 3).
                 if (cameraFragmentViewModel.getSheetLevel() == CameraFragmentModel.SHEET_FULL) {
                     cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_PEEK);
+                    return true;
                 }
                 startTouchToFocus(e);
                 return false;
@@ -104,6 +93,8 @@ public class Swipe {
                     }
                 });
         View.OnTouchListener touchListener = (view, motionEvent) -> {
+            // No pinch zoom under the FULL sheet's scrim.
+            if (cameraFragmentViewModel.getSheetLevel() == CameraFragmentModel.SHEET_FULL) return gestureDetector.onTouchEvent(motionEvent);
             if (motionEvent.getPointerCount() > 1) Log.d(TAG, "pinch touch pointers=" + motionEvent.getPointerCount() + " action=" + motionEvent.getActionMasked());
             scaleDetector.onTouchEvent(motionEvent);
             if (scaleDetector.isInProgress() || motionEvent.getPointerCount() > 1) return true;

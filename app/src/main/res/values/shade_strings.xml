@@ -149,6 +149,8 @@
         <item>Full</item>
     </string-array>
 
+    <string name="shade_scrim">Lower the settings panel</string>
+
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
     <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>
