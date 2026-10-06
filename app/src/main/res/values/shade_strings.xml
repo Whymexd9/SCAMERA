@@ -164,6 +164,21 @@
     <string name="shade_unpin">Unpin %1$s</string>
     <string name="shade_group_extra">Added from settings</string>
 
+    <!-- Catalog «Добавить в шторку» -->
+    <string name="shade_catalog_title">Add to the panel</string>
+    <string name="shade_catalog_close">Close</string>
+    <string name="shade_catalog_search">Search all settings</string>
+    <string name="shade_catalog_clear">Clear the search</string>
+    <string name="shade_catalog_count">In the panel: %1$d of %2$d · settings: %3$d</string>
+    <string name="shade_catalog_found">Found: %1$d · in the panel: %2$d of %3$d</string>
+    <string name="shade_catalog_nothing">Nothing found</string>
+    <string name="shade_catalog_note">Text fields (captions, denoise tables, Camera ID) change in the settings only.</string>
+    <string name="shade_catalog_pinned">Pinned</string>
+    <string name="shade_catalog_row_add">Add to the panel: %1$s</string>
+    <string name="shade_catalog_row_pinned">In the panel, remove: %1$s</string>
+    <string name="shade_more">Other settings</string>
+    <string name="shade_more_summary">Any setting into the panel (%1$d in all)</string>
+
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
     <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>

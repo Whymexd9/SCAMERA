@@ -342,6 +342,54 @@ public class SettingsBarLayout extends LinearLayout {
         extraRows.clear();
         for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extraRows.add(key);
         rows.build(fullList, catalog().visibleGroups(), extraRows);
+        fullList.addView(moreRow(), moreRowParams());
+    }
+
+    private LayoutParams moreRowParams() {
+        LayoutParams lp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(16);
+        return lp;
+    }
+
+    /** «Другие настройки» at the end of FULL: the catalog of every pinnable setting. */
+    private View moreRow() {
+        Context c = getContext();
+        int accent = ShadeStyle.accent(c);
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(14), dp(14), dp(14));
+        row.setMinimumHeight(dp(66));
+        row.setBackground(ShadeStyle.pressable(c, ShadeStyle.CARD, ShadeStyle.LINE, 20));
+        row.setTag("shade_more");
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.ic_shade_plus);
+        icon.setImageTintList(ColorStateList.valueOf(accent));
+        LayoutParams ip = new LayoutParams(dp(26), dp(26));
+        ip.setMarginEnd(dp(14));
+        row.addView(icon, ip);
+        LinearLayout texts = new LinearLayout(c);
+        texts.setOrientation(VERTICAL);
+        TextView title = new TextView(c);
+        title.setText(R.string.shade_more);
+        title.setTextColor(ShadeStyle.TEXT);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        texts.addView(title);
+        TextView summary = new TextView(c);
+        summary.setText(c.getString(R.string.shade_more_summary, catalog().all().size()));
+        summary.setTextColor(ShadeStyle.MUTED);
+        summary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        texts.addView(summary);
+        row.addView(texts, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView chevron = new TextView(c);
+        chevron.setText("\u203a");
+        chevron.setTextColor(ShadeStyle.MUTED);
+        chevron.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(chevron);
+        row.setOnClickListener(v -> {
+            if (host != null) host.openCatalog();
+        });
+        return row;
     }
 
     /** Pinned keys in tile order. */
@@ -436,9 +484,31 @@ public class SettingsBarLayout extends LinearLayout {
         }
     }
 
-    /** The «Добавить» tile: the FULL level with every curated row and its pin. */
+    /** The «Добавить» tile: the catalog of every pinnable setting. */
     private void onAddTile() {
-        requestSheetLevel(LEVEL_FULL);
+        if (host != null) host.openCatalog();
+    }
+
+    /** The pins as the catalog sees and changes them. */
+    public ShadeCatalogView.Pins pins() {
+        return new ShadeCatalogView.Pins() {
+            @Override
+            public boolean pinned(String key) {
+                ensureContent();
+                return pinned.contains(key);
+            }
+
+            @Override
+            public void toggle(String key) {
+                togglePin(key);
+            }
+
+            @Override
+            public int count() {
+                ensureContent();
+                return pinned.size();
+            }
+        };
     }
 
     /** Writes a value the way the settings screen does; camera controls go through CameraUIController. */

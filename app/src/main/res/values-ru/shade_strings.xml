@@ -164,6 +164,21 @@
     <string name="shade_unpin">Открепить %1$s</string>
     <string name="shade_group_extra">Добавлено из настроек</string>
 
+    <!-- Catalog «Добавить в шторку» -->
+    <string name="shade_catalog_title">Добавить в шторку</string>
+    <string name="shade_catalog_close">Закрыть</string>
+    <string name="shade_catalog_search">Поиск по всем настройкам</string>
+    <string name="shade_catalog_clear">Очистить поиск</string>
+    <string name="shade_catalog_count">В шторке %1$d из %2$d · всего настроек: %3$d</string>
+    <string name="shade_catalog_found">Найдено: %1$d · в шторке %2$d из %3$d</string>
+    <string name="shade_catalog_nothing">Ничего не найдено</string>
+    <string name="shade_catalog_note">Текстовые поля (подписи, таблицы шумодава, Camera ID) меняются только в настройках.</string>
+    <string name="shade_catalog_pinned">В шторке</string>
+    <string name="shade_catalog_row_add">Добавить в шторку: %1$s</string>
+    <string name="shade_catalog_row_pinned">В шторке, убрать: %1$s</string>
+    <string name="shade_more">Другие настройки</string>
+    <string name="shade_more_summary">Любую настройку — в шторку (всего %1$d)</string>
+
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">У этого объектива нет вспышки</string>
     <string name="shade_reason_mediatek">MediaTek: только Hybrid (SCAM HDR работает на NPU Snapdragon)</string>

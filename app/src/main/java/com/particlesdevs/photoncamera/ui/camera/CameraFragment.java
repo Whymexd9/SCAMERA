@@ -418,7 +418,63 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public void showMessage(CharSequence text) {
             showCardToast(text);
         }
+
+        @Override
+        public void openCatalog() {
+            CameraFragment.this.openCatalog();
+        }
     };
+
+    private com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeCatalogView catalogView;
+
+    /**
+     * The catalog «Добавить в шторку»: a full-screen page over the camera screen, the camera keeps running (an Activity
+     * would close it and drop the shade to HIDDEN). Built on the first open.
+     */
+    void openCatalog() {
+        if (cameraFragmentBinding == null || activity == null) return;
+        ViewGroup root = (ViewGroup) cameraFragmentBinding.getRoot();
+        if (catalogView == null) {
+            catalogView = new com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeCatalogView(activity,
+                    com.particlesdevs.photoncamera.settings.ShadeCatalog.get(activity), cameraFragmentBinding.settingsBar.pins(), this::closeCatalog);
+            catalogView.setElevation(getResources().getDisplayMetrics().density * 40);
+            // Below the status bar and above the navigation bar, wherever the camera screen draws.
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(catalogView, (v, insets) -> {
+                androidx.core.graphics.Insets bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                        | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+                int base = Math.round(getResources().getDisplayMetrics().density * 12);
+                v.setPadding(v.getPaddingLeft(), base + bars.top, v.getPaddingRight(), bars.bottom);
+                return insets;
+            });
+            ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(0, 0);
+            lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+            root.addView(catalogView, lp);
+            androidx.core.view.ViewCompat.requestApplyInsets(catalogView);
+        } else {
+            catalogView.reset();
+        }
+        catalogView.animate().cancel();
+        catalogView.setVisibility(View.VISIBLE);
+        catalogView.setTranslationY(root.getHeight() > 0 ? root.getHeight() : 2000);
+        catalogView.animate().translationY(0).setDuration(300)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+    }
+
+    private boolean isCatalogOpen() {
+        return catalogView != null && catalogView.getVisibility() == View.VISIBLE;
+    }
+
+    private void closeCatalog() {
+        if (!isCatalogOpen()) return;
+        View view = catalogView;
+        view.animate().cancel();
+        view.animate().translationY(view.getHeight()).setDuration(250)
+                .withEndAction(() -> view.setVisibility(View.GONE)).start();
+        if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
+    }
 
     private final Runnable hideCardToast = () -> {
         View toast = cameraFragmentBinding == null ? null : cameraFragmentBinding.shadeToast;
@@ -545,11 +601,16 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     /**
-     * Back lowers the settings sheet one level (FULL -> PEEK -> HIDDEN). With the sheet already
+     * Back closes the catalog, else lowers the settings sheet one level (FULL -> PEEK -> HIDDEN). With the sheet already
      * HIDDEN it does nothing, and the app stays open as before.
      */
     @Override
     public boolean onBackPressed() {
+        // Back order (P25): the catalog, then the sheet's own states, then one level down.
+        if (isCatalogOpen()) {
+            catalogView.close();
+            return true;
+        }
         if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) {
             cameraFragmentViewModel.sheetLevelDown();
         }

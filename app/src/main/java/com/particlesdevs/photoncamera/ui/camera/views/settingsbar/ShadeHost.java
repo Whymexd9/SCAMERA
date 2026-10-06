@@ -13,4 +13,7 @@ public interface ShadeHost {
 
     /** A short card toast. */
     void showMessage(CharSequence text);
+
+    /** The catalog «Добавить в шторку» over the camera screen. */
+    void openCatalog();
 }
