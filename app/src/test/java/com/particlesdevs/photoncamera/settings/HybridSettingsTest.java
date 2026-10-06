@@ -293,7 +293,7 @@ public class HybridSettingsTest {
                 "mosaicKernelG 1.1","mosaicKernelRB 0.9","mosaicChromaFill 1.0","mosaicFillSupport 0.3","mosaicTetra 1.0"})
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
         // the page: Hybrid -> Merge -> Mosaic without remosaic; XML defaults = worker defaults (the split; the S0 point for the native
-        // merge: window 3 full, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill, Tetra T2)
+        // merge: window 3 full, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill; Tetra stays on the split)
         PreferenceScreen settings=inflate(),merge=settings.findPreference("lmc_hybrid_merge_screen");
         PreferenceScreen page=merge.findPreference("lmc_hybrid_mosaic_screen");
         assertNotNull(page);
@@ -302,15 +302,16 @@ public class HybridSettingsTest {
         assertArrayEquals(new CharSequence[]{"0","1"},path.getEntryValues());
         assertEquals(nativeEntry,path.getEntries()[1].toString());
         ListPreference tetra=page.findPreference("pref_lmc_hybrid_mosaic_tetra");
-        assertArrayEquals(new CharSequence[]{"2","1"},tetra.getEntryValues());
+        assertArrayEquals(new CharSequence[]{"0","2","1"},tetra.getEntryValues());
         assertNotNull(page.findPreference("lmc_hybrid_mosaic_native_category"));
         prefs.edit().clear().commit();
         settings=inflate();
         assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path","?"));
         assertTrue(prefs.getBoolean("pref_lmc_hybrid_mosaic_window_full",false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_tetra","?"));
         tuning=PreferenceKeys.hybridTuningText();
         for(String line:new String[]{"mosaicPath 0.0","mosaicWindow 3.0","mosaicKernelScale 1.0","mosaicNativeEdgeScale 0.4","mosaicKernelG 1.0",
-                "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 2.0"})
+                "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 0.0"})
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
         assertFalse(tuning,tuning.contains("mosaicWindowFull"));
     }

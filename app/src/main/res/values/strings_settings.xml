@@ -100,7 +100,7 @@
     <string name="prefs_lmc_hybrid_mosaic_edge_scale_title">Sharpening: kernel across edges</string>
     <string name="prefs_lmc_hybrid_mosaic_edge_scale_summary">Multiplier of the Sabre kernel across edges and in texture for mosaic subframes (the flat-area kernel, and with it the noise, stays the same). A subframe is 2 (Quad) or 4 (Tetra) sensor pixels, so the kernel can be narrower. Default 0.6: a handheld shot on the X7 Ultra gets +14 % fine detail with the same noise in flat areas; lower is sharper, but grain shows more in dark plain areas. Subframe split only: the native merge has its own “Kernel across edges” below.</string>
     <string name="prefs_lmc_hybrid_mosaic_path_title">Mosaic merge</string>
-    <string name="prefs_lmc_hybrid_mosaic_path_summary">%s. Subframe split: the current path (b² Bayer subframes per frame). Native mosaic: one GPU slot per frame, the merge weighs every raw site of its window at the site\'s true position (no split); faster, and Tetra merges every frame instead of 8. Not yet checked on the phone, so the split stays the default.</string>
+    <string name="prefs_lmc_hybrid_mosaic_path_summary">%s. Subframe split: the current path (b² Bayer subframes per frame). Native mosaic (experimental): one GPU slot per frame, the merge weighs every raw site of its window at the site\'s true position (no split), without the colour-difference, clip-border and Bento colour passes. On the X7 Ultra it was 4–6× slower than the split and did not beat it on a handheld series, so the split stays the default. Tetra follows “Tetra route”.</string>
     <string name="prefs_lmc_hybrid_mosaic_native_category_title">Native mosaic merge</string>
     <string name="prefs_lmc_hybrid_mosaic_window_title">Window radius, px</string>
     <string name="prefs_lmc_hybrid_mosaic_window_summary">1–6, default 3: sites within r sensor pixels of the sample position (3 = a 7×7 window). Quad parity with the split: 3; ArkCam uses 2 (5×5) with its narrow kernel. Tetra T1 needs 6 for the split\'s sites (13×13, slow).</string>
@@ -119,7 +119,7 @@
     <string name="prefs_lmc_hybrid_mosaic_fill_support_title">Fill threshold</string>
     <string name="prefs_lmc_hybrid_mosaic_fill_support_summary">Minimum red / blue kernel weight relative to green; below it the fill acts. Default 0.25 (ArkCam).</string>
     <string name="prefs_lmc_hybrid_mosaic_tetra_title">Tetra route</string>
-    <string name="prefs_lmc_hybrid_mosaic_tetra_summary">%s. T2: every 2×2 sub-block of a Tetra block (gained, clip-aware) becomes one site of a true Quad mosaic at half size, merged by the Quad pass and scaled 2× to the sensor grid; every frame, about as fast as Quad. T1: the Tetra mosaic merged natively (block 4), slow with a large window.</string>
+    <string name="prefs_lmc_hybrid_mosaic_tetra_summary">%s. Subframe split (default): Tetra stays on the split even with “Native mosaic”. T2: every 2×2 sub-block of a Tetra block (gained, clip-aware) becomes one site of a true Quad mosaic at half size, merged by the Quad pass and scaled 2× to the sensor grid; every frame, but on the synthetic series it lost the finest Tetra detail (4–8 px). T1: the Tetra mosaic merged natively (block 4), slow with a large window.</string>
     <string name="prefs_lmc_hybrid_frames_screen_title">Bento and Shasta in the merge</string>
     <string name="prefs_lmc_hybrid_frames_screen_summary">Weights and kernels of short and long frames</string>
     <string name="prefs_lmc_hybrid_bento_weight_title">Bento: ultra-short frame weight</string>

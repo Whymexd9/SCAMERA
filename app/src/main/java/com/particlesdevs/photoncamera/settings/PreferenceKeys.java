@@ -948,7 +948,10 @@ public class PreferenceKeys {
             {"mosaicEdgeScale", "mosaic_edge_scale"}, {"mosaicShare", "mosaic_share"},
             // P29 native mosaic merge (research/p29): mosaicPath 0 = the sub-frame split above (worker default), 1 = native; the keys
             // below act only with 1 (worker defaults = the S0 point: window 3 full, kernel scale 1, edge scale 0.4, ks 1 / 0.85,
-            // no fill, fill support 0.25, Tetra T2; the full-window switch is written below)
+            // no fill, fill support 0.25; Tetra 0 = stays on the split; the full-window switch is written below).
+            // The XML default of every row is stored when the screen is first opened (HybridSettingsTest): making the native path the
+            // default takes a one-time migration of the stored "0" of pref_lmc_hybrid_mosaic_path (as SettingsMigration's
+            // migrateMultiFrame), not only a new XML / worker default.
             {"mosaicPath", "mosaic_path"}, {"mosaicWindow", "mosaic_window"}, {"mosaicKernelScale", "mosaic_kernel_scale"},
             {"mosaicNativeEdgeScale", "mosaic_native_edge_scale"}, {"mosaicKernelG", "mosaic_kernel_g"},
             {"mosaicKernelRB", "mosaic_kernel_rb"}, {"mosaicChromaFill", "mosaic_chroma_fill"},

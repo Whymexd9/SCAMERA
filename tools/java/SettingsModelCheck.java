@@ -110,7 +110,9 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_window","2.6",3),3);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_kernel_rb","0.1",0.85),0.5);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_edge_scale","2",0.4),1);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","0",2),1);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","0",2),0); // 0 = Tetra on the split
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","3",0),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","-1",2),0);
         if(SettingsNumericRules.error("pref_lmc_hybrid_mosaic_fill_support","1.5")==null)throw new AssertionError("fill support above 1 accepted");
         if(SettingsNumericRules.error("pref_lmc_hybrid_mosaic_kernel_scale","0.1")==null)throw new AssertionError("kernel scale below 0.25 accepted");
         float[] list=SettingsNumericRules.listValue("pref_lmc_hybrid_x","1; 2.5 3",new float[]{0,0,0});
