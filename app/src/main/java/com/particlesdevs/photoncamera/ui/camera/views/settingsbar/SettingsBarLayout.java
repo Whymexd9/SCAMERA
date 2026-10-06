@@ -22,15 +22,8 @@ package com.particlesdevs.photoncamera.ui.camera.views.settingsbar;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
 import android.os.Bundle;
 import android.util.AttributeSet;
-import android.util.SparseArray;
-import android.util.SparseIntArray;
 import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
@@ -38,64 +31,57 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
-import androidx.annotation.ColorRes;
-import androidx.annotation.DrawableRes;
-import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.widget.AppCompatTextView;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
-import androidx.core.content.ContextCompat;
 import androidx.core.widget.NestedScrollView;
-import androidx.core.widget.TextViewCompat;
+import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.Vibration;
-import com.particlesdevs.photoncamera.settings.PreferenceKeys;
-import com.particlesdevs.photoncamera.settings.SettingType;
+import com.particlesdevs.photoncamera.settings.SettingsManager;
+import com.particlesdevs.photoncamera.settings.ShadeCatalog;
+import com.particlesdevs.photoncamera.settings.ShadeTiles;
 import com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel;
-import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarButtonModel;
-import com.particlesdevs.photoncamera.ui.camera.model.SettingsBarEntryModel;
+import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Settings bottom sheet (SHADE_SPEC). It lives in a CoordinatorLayout with a
- * {@link BottomSheetBehavior} and has three levels: {@link #LEVEL_HIDDEN} (STATE_HIDDEN),
- * {@link #LEVEL_PEEK} (STATE_COLLAPSED) and {@link #LEVEL_FULL} (STATE_EXPANDED). One gesture
- * moves one level: the sheet is hideable only in PEEK and HIDDEN, so a fling from FULL lands in
- * PEEK. The sheet itself stays VISIBLE; the behavior moves it below the edge when hidden.
+ * The quick-settings shade (P25, docs/settings-plan/SHADE_TASK.md). It lives in a CoordinatorLayout above the bottom bar
+ * with a {@link BottomSheetBehavior} and has three levels: {@link #LEVEL_HIDDEN} (STATE_HIDDEN), {@link #LEVEL_PEEK}
+ * (STATE_COLLAPSED) and {@link #LEVEL_FULL} (STATE_EXPANDED, 86 % of the viewfinder). One gesture moves one level: the
+ * sheet is hideable only in PEEK and HIDDEN, so a fling from FULL lands in PEEK. The sheet itself stays VISIBLE; the
+ * behavior moves it below the edge when hidden.
  * <p>
- * Content, top to bottom: the handle, then a body that holds the PEEK rows over the accordion
- * list. PEEK shows only the pinned parameters. FULL shows the accordion: one header per group,
- * exactly one group open, its parameter rows below. The list waits below the PEEK rows and slides
- * up over them as the sheet opens, so neither the sheet top nor the list jumps when the rows hide.
+ * Content, one scroll list: the handle, the header «Закреплено», the grid of pinned tiles (4 columns, at most 12, a
+ * dashed «Добавить» tile while fewer), the inline slider card of an open slider tile, then (seen in FULL) the curated
+ * groups with an inline control and a pin per row. PEEK shows the list down to the grid (or the slider card). The
+ * content is built on the first need ({@link #prewarm}, or the first level above HIDDEN), because it inflates the
+ * settings tree.
  * <p>
- * The handle cycles the levels (P25, owner's answer 3): HIDDEN -> PEEK -> FULL -> HIDDEN. While
- * the sheet is HIDDEN a separate handle stays on screen: a tap or a fling up opens PEEK. In FULL a
- * scrim covers the viewfinder and the top bar: a tap or a fling down on it lowers the sheet to
- * PEEK, and the viewfinder gets neither focus nor pinch zoom.
+ * The handle cycles the levels (owner's answer 3): HIDDEN -> PEEK -> FULL -> HIDDEN. While the sheet is HIDDEN a separate
+ * handle stays on screen: a tap or a fling up opens PEEK. In FULL a scrim covers the viewfinder and the top bar: a tap
+ * or a fling down on it lowers the sheet to PEEK, and the viewfinder gets neither focus nor pinch zoom.
+ * <p>
+ * Tiles and rows read and write the same keys as the settings screen (ShadeCatalog); a change from anywhere (settings,
+ * a module switch, a config restore) refreshes them through one settings listener, once per batch.
  */
-public class SettingsBarLayout extends LinearLayout implements SettingsBarListener {
+public class SettingsBarLayout extends LinearLayout {
     // Same values as the model, which app:sheetLevel binds straight to setSheetLevel(int).
     public static final int LEVEL_HIDDEN = CameraFragmentModel.SHEET_HIDDEN;
     public static final int LEVEL_PEEK = CameraFragmentModel.SHEET_PEEK;
     public static final int LEVEL_FULL = CameraFragmentModel.SHEET_FULL;
-
-    /** Most quick buttons in the row; pinning one more drops the oldest pin. */
-    private static final int MAX_QUICK_BUTTONS = 4;
-    /** Quick buttons until the user pins others (SettingType names, oldest first). */
-    private static final String DEFAULT_QUICK_BUTTONS = "FLASH,TIMER,RAW,GRID";
-    private static final int GROUP_COUNT = SettingsBarEntryModel.GROUP_COUNT;
-    private static final int RIPPLE_COLOR = 0x29FFFFFF;
 
     /**
      * Receives the level the model should hold: the level the sheet has settled at, whoever moved
@@ -105,49 +91,35 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         void onSheetLevelChanged(int level);
     }
 
-    /** One quick button: a column with the value circle and an optional label under it. */
-    private static final class QuickButton {
-        final SettingsBarEntryModel entry;
-        final LinearLayout root;
-        final ImageView circle;
-        final TextView label;
-
-        QuickButton(SettingsBarEntryModel entry, LinearLayout root, ImageView circle, TextView label) {
-            this.entry = entry;
-            this.root = root;
-            this.circle = circle;
-            this.label = label;
-        }
-    }
-
     private final Vibration vibration;
     private final ImageView handle;
-    /** Quick row and group cells (PEEK). They lie over the top of the list. */
-    private final LinearLayout peekRows;
-    private final LinearLayout quickRow;
     private final NestedScrollView listScroll;
-    private final LinearLayout[] groupHeaders = new LinearLayout[GROUP_COUNT];
-    private final ImageView[] headerChevrons = new ImageView[GROUP_COUNT];
-    private final LinearLayout[] headerIcons = new LinearLayout[GROUP_COUNT];
-    /** Parameter rows of each group; a closed group hides this container. */
-    private final LinearLayout[] groupRows = new LinearLayout[GROUP_COUNT];
+    private final LinearLayout content;
+    private final TextView headTitle;
+    private final RecyclerView tiles;
+    private final ShadeTileAdapter adapter;
+    /** Inline card of the open slider tile, under the grid. */
+    private final LinearLayout sliderCard;
+    private final TextView sliderTitle;
+    private final TextView sliderPill;
+    private final SeekBar sliderBar;
+    /** FULL rows: the curated groups and the pinned settings outside them. */
+    private final LinearLayout fullList;
 
-    /** Entries in the order they were added. */
-    private final List<SettingsBarEntryModel> entries = new ArrayList<>();
-    /** Parameter row per entry id (rows keep the entry id, as the old bar did). */
-    private final SparseArray<SettingsBarEntryView> entryViews = new SparseArray<>();
-    /** Quick button per entry id; quick buttons have no ids of their own. */
-    private final SparseArray<QuickButton> quickButtons = new SparseArray<>();
-    /** Entries hidden by {@link #setChildVisibility}: id to GONE/INVISIBLE; kept across rebuilds. */
-    private final SparseIntArray hiddenEntries = new SparseIntArray();
-    /** Pinned parameters (SettingType names), oldest first; stored in ui_sheet_quick (PreferenceKeys.getSheetQuick). */
-    private final List<String> quickTypes = loadQuickTypes();
-    private int openGroup = SettingsBarEntryModel.GROUP_SHOOT;
-    /** 0 = PEEK look (rows shown, list below them), 1 = FULL look (list only). */
-    private float fullness;
-    /** Height of the PEEK rows from the last layout; -1 before it. */
-    private int peekRowsHeight = -1;
-    /** Handle plus PEEK rows from the last layout: the peek height the behavior should have. */
+    private ShadeHost host;
+    private ShadeCatalog catalog;
+    private ShadeRows rows;
+    private boolean contentBuilt;
+    /** Pinned keys in tile order (ui_shade_tiles). */
+    private final List<String> pinned = new ArrayList<>();
+    /** Pinned keys outside the curated groups, as the FULL rows were last built with. */
+    private final List<String> extraRows = new ArrayList<>();
+    @Nullable private String openSlider;
+    private boolean sliderTracking;
+    private float iconRotation;
+    private boolean refreshPosted;
+
+    /** Handle plus the PEEK part of the list from the last layout: the peek height the behavior should have. */
     private int sheetPeekHeight;
     private boolean peekUpdatePosted;
 
@@ -170,7 +142,6 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         @Override
         public void onStateChanged(@NonNull View bottomSheet, int newState) {
             updateHiddenHandle();
-            syncLook(newState);
             if (newState == BottomSheetBehavior.STATE_EXPANDED) updateScrim(1f);
             else if (newState != BottomSheetBehavior.STATE_DRAGGING && newState != BottomSheetBehavior.STATE_SETTLING) updateScrim(0f);
             int level = levelForState(newState);
@@ -179,13 +150,13 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
             // HIDDEN must stay hideable too, or the next layout puts the sheet back on screen.
             behavior.setHideable(level != LEVEL_FULL);
             sheetLevel = level;
+            if (level != LEVEL_FULL) listScroll.scrollTo(0, 0);
             if (levelListener != null) levelListener.onSheetLevelChanged(level);
         }
 
         @Override
         public void onSlide(@NonNull View bottomSheet, float slideOffset) {
-            // 0 at PEEK, 1 at FULL; between HIDDEN and PEEK (negative) the PEEK look stays.
-            applyLook(Math.max(0f, Math.min(1f, slideOffset)));
+            // 0 at PEEK, 1 at FULL; between HIDDEN and PEEK (negative) there is no scrim.
             updateScrim(Math.max(0f, Math.min(1f, slideOffset)));
         }
     };
@@ -206,7 +177,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         // is never created, so the static sPhotonCamera is null.
         vibration = isInEditMode() ? null : PhotonCamera.getVibration();
         setOrientation(VERTICAL);
-        setBackgroundResource(R.drawable.settings_sheet_background);
+        setBackground(ShadeStyle.sheet(context));
 
         // Handle at the top of the sheet. A tap goes on round the cycle: PEEK -> FULL -> HIDDEN.
         // A drag past the touch slop is taken by the BottomSheetBehavior, which moves the sheet.
@@ -215,127 +186,420 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         handle.setScaleType(ImageView.ScaleType.CENTER);
         handle.setContentDescription(context.getString(R.string.sheet_handle_toggle));
         handle.setOnClickListener(v -> requestSheetLevel(nextHandleLevel(sheetLevel)));
-        addView(handle, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
-
-        // Body under the handle: the accordion list fills it, the PEEK rows lie over its top.
-        FrameLayout body = new FrameLayout(context);
-        addView(body, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        addView(handle, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)));
 
         // The BottomSheetBehavior leaves a list alone only if it is a nested scrolling child, so
         // FULL scrolls the list, and a drag down at its top lowers the sheet to PEEK.
         listScroll = new NestedScrollView(context);
         listScroll.setId(R.id.settings_bar_scroll_view);
         listScroll.setNestedScrollingEnabled(true);
-        listScroll.setPadding(dp(6), 0, dp(6), dp(8));
-        LinearLayout listContent = new LinearLayout(context);
-        listContent.setOrientation(VERTICAL);
-        for (int group = 0; group < GROUP_COUNT; group++) {
-            listContent.addView(createGroupHeader(context, group),
-                    new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            // Rows of all groups are built at once; a closed group hides this container.
-            LinearLayout rows = new LinearLayout(context);
-            rows.setOrientation(VERTICAL);
-            groupRows[group] = rows;
-            listContent.addView(rows, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-        listScroll.addView(listContent, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        body.addView(listScroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        listScroll.setOverScrollMode(OVER_SCROLL_NEVER);
+        listScroll.setVerticalScrollBarEnabled(false);
+        addView(listScroll, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        peekRows = new LinearLayout(context);
-        peekRows.setOrientation(VERTICAL);
-        // Quick buttons: each is a quarter of the row (weight 1 of 4), so 1-3 buttons are
-        // centred by the gravity. The row is GONE while it holds no visible button.
-        quickRow = new LinearLayout(context);
-        quickRow.setOrientation(HORIZONTAL);
-        quickRow.setGravity(Gravity.CENTER_HORIZONTAL);
-        quickRow.setWeightSum(MAX_QUICK_BUTTONS);
-        quickRow.setBaselineAligned(false);
-        quickRow.setPadding(dp(10), 0, dp(10), dp(8));
-        quickRow.setVisibility(GONE);
-        peekRows.addView(quickRow, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        body.addView(peekRows, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+        content = new LinearLayout(context);
+        content.setOrientation(VERTICAL);
+        // The tiles carry 5dp of the 10dp gap themselves: 11 + 5 = the 16dp edge.
+        content.setPadding(dp(11), 0, dp(11), dp(20));
+        listScroll.addView(content, new NestedScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        openGroup(openGroup, false);
-        refreshGroupSummaries();
-        applyLook(0f);
-    }
+        LinearLayout head = new LinearLayout(context);
+        head.setOrientation(HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(dp(9), dp(2), dp(5), dp(7));
+        headTitle = new TextView(context);
+        headTitle.setText(R.string.shade_pinned);
+        head.addView(headTitle, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        content.addView(head, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
 
-    public void addEntry(SettingsBarEntryModel entryModel) {
-        entryModel.setSettingsBarListener(this);
-        SettingsBarEntryView entryView = new SettingsBarEntryView(getContext());
-        entryView.setId(entryModel.getId());
-        entryView.setSettingsBarEntryModel(entryModel);
-        entryView.setPinned(quickTypes.contains(typeName(entryModel)));
-        entryView.setOnPinClickListener(this::togglePin);
-        entryView.setVisibility(hiddenEntries.get(entryModel.getId(), VISIBLE));
-        entryView.setEnabled(isEnabled());
-        groupRows[groupOf(entryModel)].addView(entryView);
-        entries.add(entryModel);
-        entryViews.put(entryModel.getId(), entryView);
-    }
+        tiles = new RecyclerView(context);
+        tiles.setLayoutManager(new GridLayoutManager(context, 4));
+        tiles.setNestedScrollingEnabled(false);
+        tiles.setOverScrollMode(OVER_SCROLL_NEVER);
+        tiles.setClipChildren(false);
+        tiles.setClipToPadding(false);
+        tiles.setTag("shade_tiles");
+        DefaultItemAnimator animator = new DefaultItemAnimator();
+        animator.setSupportsChangeAnimations(false);
+        tiles.setItemAnimator(animator);
+        adapter = new ShadeTileAdapter(new ShadeTileAdapter.Binder() {
+            @Override
+            public void bind(ShadeTileView view, String key) {
+                bindTile(view, key);
+            }
 
-    /**
-     * End of a batch of {@link #addEntry} calls (SettingsBarEntryProvider.addEntries): builds the
-     * quick buttons and the group summaries. The open group, the list scroll position (the list
-     * view itself stays) and the hidden entries are kept across the rebuild.
-     */
-    public void onEntriesAdded() {
-        // Pins of parameters the sheet no longer has (an older build's choice) would hold a slot with no button.
-        if (quickTypes.removeIf(type -> entryForType(type) == null)) PreferenceKeys.setSheetQuick(String.join(",", quickTypes));
-        rebuildQuickRow();
-        refreshGroupSummaries();
+            @Override
+            public void bindAdd(ShadeTileView view) {
+                view.bindAdd();
+                view.setIconRotation(iconRotation);
+            }
+
+            @Override
+            public void onCreated(ShadeTileAdapter.Holder holder) {
+                holder.tile.setOnClickListener(v -> {
+                    if (holder.tile.addTile) onAddTile();
+                    else if (holder.tile.key != null) onTileTap(holder.tile.key);
+                });
+            }
+        });
+        tiles.setAdapter(adapter);
+        content.addView(tiles, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        sliderCard = new LinearLayout(context);
+        sliderCard.setOrientation(VERTICAL);
+        sliderCard.setPadding(dp(16), dp(14), dp(16), dp(10));
+        sliderCard.setBackground(ShadeStyle.card(context, ShadeStyle.CARD, ShadeStyle.LINE, 20));
+        sliderCard.setVisibility(GONE);
+        sliderCard.setTag("shade_slider_card");
+        LinearLayout sliderTop = new LinearLayout(context);
+        sliderTop.setGravity(Gravity.CENTER_VERTICAL);
+        sliderTitle = new TextView(context);
+        sliderTitle.setTextColor(ShadeStyle.TEXT);
+        sliderTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        sliderTop.addView(sliderTitle, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        int accent = isInEditMode() ? 0xFFFFD447 : ShadeStyle.accent(context);
+        sliderPill = ShadeRows.valuePill(context, accent);
+        sliderTop.addView(sliderPill);
+        sliderCard.addView(sliderTop);
+        sliderBar = new SeekBar(context);
+        sliderBar.setTag("shade_slider_card_bar");
+        sliderBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                ShadeCatalog.Entry e = openSliderEntry();
+                if (fromUser && e != null) sliderPill.setText(ShadeCatalog.formatNumber(e, ShadeRows.valueAt(e, progress)));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+                sliderTracking = true;
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                sliderTracking = false;
+                ShadeCatalog.Entry e = openSliderEntry();
+                if (e != null) apply(e, ShadeRows.valueAt(e, seekBar.getProgress()));
+            }
+        });
+        LayoutParams barParams = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
+        barParams.topMargin = dp(6);
+        sliderCard.addView(sliderBar, barParams);
+        LayoutParams cardParams = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardParams.setMargins(dp(5), dp(7), dp(5), 0);
+        content.addView(sliderCard, cardParams);
+
+        fullList = new LinearLayout(context);
+        fullList.setOrientation(VERTICAL);
+        fullList.setPadding(dp(5), 0, dp(5), 0);
+        content.addView(fullList, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        ShadeStyle.label(headTitle, accent);
     }
 
     private int dp(float f) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, f, getContext().getResources().getDisplayMetrics());
     }
 
-    @Override
-    public void onEntryUpdated(SettingsBarEntryModel entryModel, SettingsBarButtonModel buttonModel) {
-        if (vibration != null) vibration.Click();
-        // The row shows the chosen value as its checked segment (no summary text any more).
-        SettingsBarEntryView entryView = entryViews.get(entryModel.getId());
-        if (entryView != null) entryView.setChecked(buttonModel.getId());
-        QuickButton quick = quickButtons.get(entryModel.getId());
-        if (quick != null) bindQuickButton(quick);
-        refreshGroupSummary(groupOf(entryModel));
+    // ───────────────────────────────── content
+
+    /** Connects the shade to the camera screen. */
+    public void attach(ShadeHost host) {
+        this.host = host;
     }
 
-    public void removeEntries() {
-        for (LinearLayout rows : groupRows) rows.removeAllViews();
-        entries.clear();
-        entryViews.clear();
-        quickRow.removeAllViews();
-        quickButtons.clear();
+    /** A catalog other than the process-wide one (tests). */
+    public void setCatalog(ShadeCatalog catalog) {
+        this.catalog = catalog;
+        contentBuilt = false;
     }
 
-    private int getResolvedAttr(Context context, int attrId) {
-        TypedValue outValue = new TypedValue();
-        context.getTheme().resolveAttribute(attrId, outValue, true);
-        return outValue.resourceId;
+    /** Builds the tiles and rows now (it inflates the settings tree once); the camera screen calls it when idle. */
+    public void prewarm() {
+        ensureContent();
+    }
+
+    private ShadeCatalog catalog() {
+        if (catalog == null) catalog = ShadeCatalog.get(getContext());
+        return catalog;
+    }
+
+    private boolean ensureContent() {
+        if (contentBuilt) return true;
+        if (host == null) return false;
+        contentBuilt = true;
+        ShadeStyle.label(headTitle, ShadeStyle.accent(getContext()));
+        pinned.clear();
+        pinned.addAll(ShadeTiles.load(catalog().prefs(), catalog()::isKnown));
+        adapter.submit(pinned, pinned.size() < ShadeCatalog.MAX_TILES);
+        rows = new ShadeRows(getContext(), catalog(), rowActions);
+        buildRows();
+        bindSliderCard();
+        return true;
+    }
+
+    private void buildRows() {
+        extraRows.clear();
+        for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extraRows.add(key);
+        rows.build(fullList, catalog().visibleGroups(), extraRows);
+    }
+
+    /** Pinned keys in tile order. */
+    public List<String> pinnedKeys() {
+        return new ArrayList<>(pinned);
     }
 
     /**
-     * Shows or hides a parameter (by its entry id) for the current mode or lens. The choice is
-     * kept and applies to the parameter row, its quick button and the group summaries, also after
-     * the entries are built again.
+     * Reads the tiles and values again (a setting changed anywhere): the tile list from ui_shade_tiles, every value in
+     * place. Posted, so a batch of changes (a module profile being applied) refreshes once.
      */
-    public void setChildVisibility(@IdRes int id, int visibility) {
-        if (visibility == VISIBLE) {
-            hiddenEntries.delete(id);
-        } else {
-            hiddenEntries.put(id, visibility);
-        }
-        SettingsBarEntryView entryView = entryViews.get(id);
-        if (entryView != null) entryView.setVisibility(visibility);
-        QuickButton quick = quickButtons.get(id);
-        if (quick != null) {
-            quick.root.setVisibility(visibility == VISIBLE ? VISIBLE : GONE);
-            updateQuickRowVisibility();
-        }
-        // A hidden parameter no longer counts as changed in the cells and headers.
-        refreshGroupSummaries();
+    public void refresh() {
+        if (refreshPosted) return;
+        refreshPosted = true;
+        post(() -> {
+            refreshPosted = false;
+            refreshNow();
+        });
     }
+
+    private void refreshNow() {
+        if (!contentBuilt) return;
+        List<String> stored = ShadeTiles.load(catalog().prefs(), catalog()::isKnown);
+        if (!stored.equals(pinned)) {
+            pinned.clear();
+            pinned.addAll(stored);
+            onPinnedChanged();
+        } else {
+            rebindValues();
+        }
+    }
+
+    /** Values of every tile on screen, the rows and the slider card, without rebuilding a view. */
+    private void rebindValues() {
+        for (int i = 0; i < tiles.getChildCount(); i++) {
+            RecyclerView.ViewHolder holder = tiles.getChildViewHolder(tiles.getChildAt(i));
+            if (holder instanceof ShadeTileAdapter.Holder) {
+                ShadeTileView tile = ((ShadeTileAdapter.Holder) holder).tile;
+                if (!tile.addTile && tile.key != null) bindTile(tile, tile.key);
+            }
+        }
+        if (rows != null) rows.bindAll();
+        bindSliderCard();
+    }
+
+    private void onPinnedChanged() {
+        adapter.submit(pinned, pinned.size() < ShadeCatalog.MAX_TILES);
+        List<String> extra = new ArrayList<>();
+        for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extra.add(key);
+        if (!extra.equals(extraRows)) buildRows();
+        if (openSlider != null && !pinned.contains(openSlider)) openSlider = null;
+        rebindValues();
+    }
+
+    private void bindTile(ShadeTileView view, String key) {
+        ShadeCatalog.Entry e = catalog().entry(key);
+        if (e == null) return;
+        view.open = key.equals(openSlider);
+        view.bind(catalog(), e, catalog().unavailable(e));
+        view.setIconRotation(iconRotation);
+        view.setEnabled(isEnabled());
+    }
+
+    // ───────────────────────────────── taps and writes
+
+    private void onTileTap(String key) {
+        ShadeCatalog.Entry e = catalog().entry(key);
+        if (e == null) return;
+        String reason = catalog().unavailable(e);
+        if (reason != null) {
+            message(reason);
+            return;
+        }
+        if (vibration != null) vibration.Click();
+        switch (e.kind) {
+            case ShadeCatalog.TOGGLE:
+                apply(e, !catalog().on(e));
+                toastValue(e);
+                break;
+            case ShadeCatalog.SLIDER:
+                openSlider = key.equals(openSlider) ? null : key;
+                rebindValues();
+                break;
+            default:
+                if (e.isLongList()) {
+                    openList(e);
+                } else {
+                    apply(e, catalog().nextValue(e));
+                    toastValue(e);
+                }
+                break;
+        }
+    }
+
+    /** The «Добавить» tile: the FULL level with every curated row and its pin. */
+    private void onAddTile() {
+        requestSheetLevel(LEVEL_FULL);
+    }
+
+    /** Writes a value the way the settings screen does; camera controls go through CameraUIController. */
+    private void apply(ShadeCatalog.Entry e, Object value) {
+        if (host == null) return;
+        if (e.isVirtual()) {
+            host.applyCameraControl(e.settingType, (int) Math.round(Double.parseDouble(value.toString())));
+        } else {
+            catalog().write(e, value);
+            host.onSettingWritten(e);
+        }
+        rebindValues();
+    }
+
+    private void toastValue(ShadeCatalog.Entry e) {
+        message(getContext().getString(R.string.shade_toast_value, e.shortTitle, catalog().valueText(e, false)));
+    }
+
+    private void message(CharSequence text) {
+        if (host != null) host.showMessage(text);
+    }
+
+    /** A long list (the tone curve, the ISZ mosaic): the list sheet of the settings screens. */
+    private void openList(ShadeCatalog.Entry e) {
+        CharSequence[] tags = new CharSequence[e.values.length];
+        System.arraycopy(e.values, 0, tags, 0, tags.length);
+        SettingsStyle.optionSheet(getContext(), e.title, e.labels, tags, catalog().index(e), ShadeStyle.accent(getContext()), i -> {
+            apply(e, e.values[i].toString());
+            toastValue(e);
+        });
+    }
+
+    /** Pins a setting as the last tile or unpins it; the 13th pin is refused. Stored at once. */
+    public void togglePin(String key) {
+        if (!ensureContent()) return;
+        ShadeCatalog.Entry e = catalog().entry(key);
+        if (e == null) return;
+        if (pinned.remove(key)) {
+            message(getContext().getString(R.string.shade_removed, e.shortTitle));
+        } else {
+            if (pinned.size() >= ShadeCatalog.MAX_TILES) {
+                message(getContext().getString(R.string.shade_full, ShadeCatalog.MAX_TILES));
+                return;
+            }
+            pinned.add(key);
+            message(getContext().getString(R.string.shade_added, e.shortTitle));
+        }
+        ShadeTiles.save(catalog().prefs(), pinned);
+        onPinnedChanged();
+    }
+
+    private final ShadeRows.Actions rowActions = new ShadeRows.Actions() {
+        @Override
+        public void pick(ShadeCatalog.Entry entry, Object value) {
+            if (vibration != null) vibration.Click();
+            apply(entry, value);
+        }
+
+        @Override
+        public void togglePin(String key) {
+            SettingsBarLayout.this.togglePin(key);
+        }
+
+        @Override
+        public boolean pinned(String key) {
+            return pinned.contains(key);
+        }
+
+        @Override
+        public void openList(ShadeCatalog.Entry entry) {
+            SettingsBarLayout.this.openList(entry);
+        }
+
+        @Override
+        public void blocked(String reason) {
+            message(reason);
+        }
+    };
+
+    @Nullable
+    private ShadeCatalog.Entry openSliderEntry() {
+        return openSlider == null || catalog == null ? null : catalog.entry(openSlider);
+    }
+
+    private void bindSliderCard() {
+        ShadeCatalog.Entry e = openSliderEntry();
+        if (e == null || e.kind != ShadeCatalog.SLIDER || !pinned.contains(e.key)) {
+            openSlider = null;
+            if (sliderCard.getVisibility() != GONE) sliderCard.setVisibility(GONE);
+            return;
+        }
+        if (sliderCard.getVisibility() != VISIBLE) sliderCard.setVisibility(VISIBLE);
+        sliderTitle.setText(e.shortTitle);
+        sliderBar.setContentDescription(e.title);
+        int accent = ShadeStyle.accent(getContext());
+        sliderPill.setTextColor(accent);
+        sliderBar.setProgressTintList(ColorStateList.valueOf(accent));
+        sliderBar.setThumbTintList(ColorStateList.valueOf(accent));
+        sliderBar.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF4A5058));
+        if (sliderTracking) return;
+        float v = catalog().number(e);
+        sliderPill.setText(ShadeCatalog.formatNumber(e, v));
+        sliderBar.setMax(ShadeRows.steps(e));
+        sliderBar.setProgress(ShadeRows.progressOf(e, v));
+    }
+
+    /** A lens switch closes the slider card (owner's answer 11). */
+    public void onLensSwitch() {
+        if (openSlider == null) return;
+        openSlider = null;
+        rebindValues();
+    }
+
+    /** Landscape: tile icons turn with the phone ({@code app:iconRotation}). */
+    public void setIconRotation(int degrees) {
+        iconRotation = degrees;
+        for (int i = 0; i < tiles.getChildCount(); i++) {
+            View child = tiles.getChildAt(i);
+            if (child instanceof ShadeTileView) ((ShadeTileView) child).icon.animate().rotation(degrees).setDuration(300).start();
+        }
+    }
+
+    /** Whether the current lens has a flash; the flash tile is dimmed otherwise. */
+    public void setFlashAvailable(boolean available) {
+        ShadeCatalog.setFlashAvailable(available);
+        refresh();
+    }
+
+    // ───────────────────────────────── settings listener
+
+    /** The one settings listener of the shade: registered once, it refreshes the shade on screen. */
+    private static final class Sync implements SettingsManager.OnSettingChangedListener {
+        static final Sync INSTANCE = new Sync();
+        static boolean registered;
+        @Nullable SettingsBarLayout target;
+
+        @Override
+        public void onSettingChanged(SettingsManager settingsManager, String key) {
+            SettingsBarLayout shade = target;
+            if (shade != null) shade.refresh();
+        }
+    }
+
+    /** While the camera screen is in front, every settings change refreshes this shade. */
+    public void setLive(boolean live) {
+        if (live) {
+            if (!Sync.registered && !isInEditMode()) {
+                SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
+                if (manager != null) {
+                    manager.addListener(Sync.INSTANCE);
+                    Sync.registered = true;
+                }
+            }
+            Sync.INSTANCE.target = this;
+            refresh();
+        } else if (Sync.INSTANCE.target == this) {
+            Sync.INSTANCE.target = null;
+        }
+    }
+
+    // ───────────────────────────────── burst lock, measure
 
     /**
      * Locks the sheet during a burst (lockUIForBurst): its controls stop reacting and it cannot
@@ -344,8 +608,18 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     @Override
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
-        for (int i = 0; i < getChildCount(); i++) setTreeEnabled(getChildAt(i), enabled);
+        setTreeEnabled(this, enabled);
         updateDraggable();
+    }
+
+    private static void setTreeEnabled(View view, boolean enabled) {
+        if (!(view instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            child.setEnabled(enabled);
+            setTreeEnabled(child, enabled);
+        }
     }
 
     /** A finger may drag the sheet unless a burst locks it. */
@@ -358,18 +632,10 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         return isEnabled();
     }
 
-    private static void setTreeEnabled(View view, boolean enabled) {
-        view.setEnabled(enabled);
-        // A parameter row enables its own segments and pin.
-        if (view instanceof SettingsBarEntryView || !(view instanceof ViewGroup)) return;
-        ViewGroup group = (ViewGroup) view;
-        for (int i = 0; i < group.getChildCount(); i++) setTreeEnabled(group.getChildAt(i), enabled);
-    }
-
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        // FULL always has the same height, the 66% limit (as in the mock): opening another group
-        // never moves the top of the sheet. The behavior measures the sheet AT_MOST that limit.
+        // FULL always has the same height, the 86% limit: opening the slider card never moves the
+        // top of the FULL sheet. The behavior measures the sheet AT_MOST that limit.
         int mode = MeasureSpec.getMode(heightMeasureSpec);
         if (maxSheetHeight > 0 && mode != MeasureSpec.EXACTLY) {
             int size = mode == MeasureSpec.UNSPECIFIED
@@ -383,14 +649,10 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
-        // In FULL the rows are INVISIBLE, not GONE, so their height stays valid here.
-        int rowsHeight = peekRows.getHeight();
-        if (rowsHeight != peekRowsHeight) {
-            peekRowsHeight = rowsHeight;
-            applyLook(fullness);
-        }
-        int peek = handle.getBottom() + rowsHeight;
-        if (peek > 0 && peek != sheetPeekHeight) {
+        // PEEK: the handle, the header and the grid, or down to the slider card when it is open.
+        View last = sliderCard.getVisibility() == VISIBLE ? sliderCard : tiles;
+        int peek = listScroll.getTop() + content.getTop() + last.getBottom() + dp(14);
+        if (contentBuilt && peek > 0 && peek != sheetPeekHeight) {
             sheetPeekHeight = peek;
             // This runs inside the behavior's onLayoutChild; set the peek after the pass.
             if (!peekUpdatePosted) {
@@ -400,6 +662,8 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         }
     }
 
+    // ───────────────────────────────── levels
+
     /**
      * Moves the sheet to a level ({@code app:sheetLevel} binding). Idempotent: compares with the
      * behavior state, not with {@link #sheetLevel}. Skipped while a finger drags the sheet (its
@@ -408,6 +672,8 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
      */
     public void setSheetLevel(int level) {
         level = Math.max(LEVEL_HIDDEN, Math.min(LEVEL_FULL, level));
+        // The tiles exist before the sheet shows them (the first open builds them).
+        if (level != LEVEL_HIDDEN) ensureContent();
         // Any rebind sends the level again: invalidateAll in CameraUIViewImpl.refresh (camera
         // restart, mode switch) and notifyChange on rotation or a new thumbnail. After a fling the
         // model keeps the old level until the sheet settles, so a repeat while settling would pull
@@ -437,7 +703,6 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         int settled = levelForState(now);
         if (settled >= 0) {
             sheetLevel = settled;
-            syncLook(now);
             updateScrim(settled == LEVEL_FULL ? 1f : 0f);
         }
         updateHiddenHandle();
@@ -452,7 +717,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
         levelListener = listener;
     }
 
-    /** The FULL height limit in pixels (a share of the viewfinder height). */
+    /** The FULL height in pixels (a share of the viewfinder height). */
     public void setMaxSheetHeight(int px) {
         if (px <= 0 || px == maxSheetHeight) return;
         maxSheetHeight = px;
@@ -584,7 +849,7 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
     }
 
     /**
-     * A level asked for from a handle (tap or fling) or a group cell. It goes to the model first;
+     * A level asked for from a handle (tap or fling) or a tile. It goes to the model first;
      * the binding then sends it back as a repeat. It is also applied here at once.
      */
     private void requestSheetLevel(int level) {
@@ -658,373 +923,5 @@ public class SettingsBarLayout extends LinearLayout implements SettingsBarListen
             default:
                 return -1;
         }
-    }
-
-    // ---------------------------------------------------------------- PEEK / FULL look
-
-    /**
-     * Rows and list for a behavior state. FULL hides the quick buttons and group cells; they are
-     * INVISIBLE (no touches, not read by TalkBack) and keep their height for the peek. While the
-     * sheet moves they are shown and fade with {@link #applyLook}.
-     */
-    private void syncLook(int state) {
-        if (state == BottomSheetBehavior.STATE_EXPANDED) {
-            applyLook(1f);
-            peekRows.setVisibility(INVISIBLE);
-        } else {
-            peekRows.setVisibility(VISIBLE);
-            if (state != BottomSheetBehavior.STATE_DRAGGING && state != BottomSheetBehavior.STATE_SETTLING) {
-                applyLook(0f);
-            }
-        }
-    }
-
-    /**
-     * 0 = PEEK: the rows show and the list waits right below them (out of view, and out of the
-     * rows' touch area, so a drag that starts on the rows moves the sheet). 1 = FULL: the list
-     * fills the body. In between the list slides up and the rows fade out. Only translation and
-     * alpha change, no layout.
-     */
-    private void applyLook(float full) {
-        fullness = full;
-        peekRows.setAlpha(1f - full);
-        listScroll.setAlpha(full);
-        listScroll.setTranslationY(Math.max(0, peekRowsHeight) * (1f - full));
-    }
-
-    // ---------------------------------------------------------------- accordion
-
-    private LinearLayout createGroupHeader(Context context, int group) {
-        LinearLayout header = new LinearLayout(context);
-        header.setOrientation(HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(10), dp(8), dp(10), dp(8));
-        header.setBackgroundResource(getResolvedAttr(context, android.R.attr.selectableItemBackground));
-        header.setOnClickListener(v -> openGroup(group, true));
-
-        ImageView chevron = new ImageView(context);
-        chevron.setImageTintList(colorList(context, R.color.sheet_dim));
-        chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LayoutParams chevronParams = new LayoutParams(dp(20), dp(20));
-        chevronParams.setMarginEnd(dp(4));
-        header.addView(chevron, chevronParams);
-
-        // The group name wraps instead of being cut.
-        TextView name = new AppCompatTextView(context);
-        name.setText(SettingsBarEntryModel.getGroupTitleStringId(group));
-        name.setAllCaps(true);
-        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        name.setTypeface(name.getTypeface(), Typeface.BOLD);
-        name.setLetterSpacing(0.07f);
-        name.setTextColor(ContextCompat.getColor(context, R.color.sheet_dim));
-        header.addView(name, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        LinearLayout icons = createIconsRow(context);
-        LayoutParams iconsParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(16));
-        iconsParams.setMarginStart(dp(8));
-        header.addView(icons, iconsParams);
-
-        groupHeaders[group] = header;
-        headerChevrons[group] = chevron;
-        headerIcons[group] = icons;
-        return header;
-    }
-
-    /** Opens one group and closes the others: exactly one group is open at any time. */
-    private void openGroup(int group, boolean scrollToTop) {
-        openGroup = Math.max(0, Math.min(GROUP_COUNT - 1, group));
-        for (int g = 0; g < GROUP_COUNT; g++) {
-            boolean open = g == openGroup;
-            groupRows[g].setVisibility(open ? VISIBLE : GONE);
-            headerChevrons[g].setImageResource(open ? R.drawable.ic_sheet_expand_less : R.drawable.ic_sheet_expand_more);
-        }
-        if (scrollToTop) listScroll.scrollTo(0, 0);
-    }
-
-    // ---------------------------------------------------------------- group summaries
-
-    private LinearLayout createIconsRow(Context context) {
-        LinearLayout row = new LinearLayout(context);
-        row.setOrientation(HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        row.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        return row;
-    }
-
-    private void refreshGroupSummaries() {
-        for (int group = 0; group < GROUP_COUNT; group++) refreshGroupSummary(group);
-    }
-
-    /** Header of a group: icons of its changed parameters, and the spoken summary. */
-    private void refreshGroupSummary(int group) {
-        List<SettingsBarEntryModel> changed = new ArrayList<>();
-        for (SettingsBarEntryModel entry : entries) {
-            if (groupOf(entry) == group && isEntryShown(entry) && entry.isChanged()) changed.add(entry);
-        }
-        fillChangedIcons(headerIcons[group], changed, 0);
-        StringBuilder description = new StringBuilder(getContext().getString(SettingsBarEntryModel.getGroupTitleStringId(group)));
-        for (int i = 0; i < changed.size(); i++) {
-            description.append(i == 0 ? ": " : ", ").append(describe(changed.get(i)));
-        }
-        groupHeaders[group].setContentDescription(description);
-    }
-
-    /**
-     * Icons of the changed parameters in accent colour; past {@code limit} (0 = no limit) a
-     * "+N" count, and a dim dash when nothing is changed.
-     */
-    private void fillChangedIcons(LinearLayout row, List<SettingsBarEntryModel> changed, int limit) {
-        row.removeAllViews();
-        Context context = getContext();
-        if (changed.isEmpty()) {
-            row.addView(createSummaryText(context, "\u2014", R.color.sheet_dim, false));
-            return;
-        }
-        int shown = limit > 0 ? Math.min(limit, changed.size()) : changed.size();
-        ColorStateList accent = colorList(context, R.color.sheet_accent);
-        for (int i = 0; i < shown; i++) {
-            ImageView icon = new ImageView(context);
-            icon.setImageResource(iconOf(changed.get(i)));
-            icon.setImageTintList(accent);
-            LayoutParams params = new LayoutParams(dp(15), dp(15));
-            if (i > 0) params.setMarginStart(dp(3));
-            row.addView(icon, params);
-        }
-        if (changed.size() > shown) {
-            LayoutParams params = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            params.setMarginStart(dp(3));
-            row.addView(createSummaryText(context, "+" + (changed.size() - shown), R.color.sheet_accent, true), params);
-        }
-    }
-
-    private TextView createSummaryText(Context context, String text, @ColorRes int color, boolean bold) {
-        TextView view = new AppCompatTextView(context);
-        view.setText(text);
-        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
-        if (bold) view.setTypeface(view.getTypeface(), Typeface.BOLD);
-        view.setTextColor(ContextCompat.getColor(context, color));
-        view.setIncludeFontPadding(false);
-        view.setMaxLines(1);
-        view.setEllipsize(null);
-        return view;
-    }
-
-    // ---------------------------------------------------------------- quick buttons
-
-    private void rebuildQuickRow() {
-        quickRow.removeAllViews();
-        quickButtons.clear();
-        Context context = getContext();
-        for (String type : quickTypes) {
-            SettingsBarEntryModel entry = entryForType(type);
-            if (entry == null) continue;
-            QuickButton quick = createQuickButton(context, entry);
-            quickRow.addView(quick.root, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            quickButtons.put(entry.getId(), quick);
-            quick.root.setVisibility(isEntryShown(entry) ? VISIBLE : GONE);
-            setTreeEnabled(quick.root, isEnabled());
-            bindQuickButton(quick);
-        }
-        updateQuickRowVisibility();
-    }
-
-    private QuickButton createQuickButton(Context context, SettingsBarEntryModel entry) {
-        LinearLayout root = new LinearLayout(context);
-        root.setOrientation(VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setOnClickListener(v -> selectNextValue(entry));
-
-        // The circle shows the column's pressed and selected state: one ripple for the whole
-        // button, and a white circle with a dark icon when the value differs from the default.
-        ImageView circle = new ImageView(context);
-        circle.setDuplicateParentStateEnabled(true);
-        circle.setBackground(ripple(context, R.drawable.sheet_quick_circle, rippleMask(GradientDrawable.OVAL, 0)));
-        circle.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        circle.setPadding(dp(11), dp(11), dp(11), dp(11));
-        circle.setImageTintList(new ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_selected}, new int[]{}},
-                new int[]{ContextCompat.getColor(context, R.color.sheet_on_fg), ContextCompat.getColor(context, R.color.sheet_fg)}));
-        circle.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        root.addView(circle, new LayoutParams(dp(42), dp(42)));
-
-        // The label always takes its line (INVISIBLE when unused), so the row height and the
-        // peek height do not change with the value.
-        TextView label = new AppCompatTextView(context);
-        label.setGravity(Gravity.CENTER);
-        label.setTypeface(label.getTypeface(), Typeface.BOLD);
-        label.setTextColor(ContextCompat.getColor(context, R.color.sheet_fg));
-        fitOneLine(label, 10.5f);
-        label.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LayoutParams labelParams = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14));
-        labelParams.topMargin = dp(4);
-        root.addView(label, labelParams);
-        return new QuickButton(entry, root, circle, label);
-    }
-
-    /** Icon of the current value; a label only where that icon does not tell the value. */
-    private void bindQuickButton(QuickButton quick) {
-        Context context = getContext();
-        SettingsBarEntryModel entry = quick.entry;
-        SettingsBarButtonModel selected = entry.getSelectedButtonModel();
-        quick.circle.setImageResource(iconOf(entry));
-        boolean labelled = selected != null && !iconShowsValue(entry, selected);
-        quick.label.setText(labelled ? selected.getShortLabel(context) : "");
-        quick.label.setVisibility(labelled ? VISIBLE : INVISIBLE);
-        quick.root.setSelected(entry.isChanged());
-        CharSequence description = describe(entry);
-        quick.root.setContentDescription(description);
-        quick.root.setTooltipText(description);
-    }
-
-    private void updateQuickRowVisibility() {
-        boolean any = false;
-        for (int i = 0; i < quickRow.getChildCount(); i++) {
-            if (quickRow.getChildAt(i).getVisibility() == VISIBLE) {
-                any = true;
-                break;
-            }
-        }
-        // The peek height follows on the next layout (onLayout).
-        quickRow.setVisibility(any ? VISIBLE : GONE);
-    }
-
-    /** A tap on a quick button: the next value in the order of the segments, wrapping around. */
-    private static void selectNextValue(SettingsBarEntryModel entry) {
-        SettingsBarButtonModel[] models = entry.getSettingsBarButtonModels();
-        if (models == null || models.length == 0) return;
-        int next = 0;
-        for (int i = 0; i < models.length; i++) {
-            if (models[i].isSelected()) {
-                next = (i + 1) % models.length;
-                break;
-            }
-        }
-        entry.select(models[next]);
-    }
-
-    /**
-     * Stored pins: SettingType names that still exist, without repeats, at most MAX_QUICK_BUTTONS (the newest kept).
-     * Nothing stored yet: the default buttons. An empty string is a valid choice (every pin removed).
-     */
-    private static List<String> loadQuickTypes() {
-        String stored = PreferenceKeys.getSheetQuick();
-        List<String> out = new ArrayList<>();
-        for (String name : (stored != null ? stored : DEFAULT_QUICK_BUTTONS).split(",")) {
-            String type = name.trim();
-            if (type.isEmpty() || out.contains(type)) continue;
-            try {
-                SettingType.valueOf(type);
-            } catch (IllegalArgumentException unknown) {
-                continue;
-            }
-            out.add(type);
-        }
-        while (out.size() > MAX_QUICK_BUTTONS) out.remove(0);
-        return out;
-    }
-
-    /** Pin: adds the parameter to the quick buttons or removes it; a fifth pin drops the oldest. Stored at once. */
-    private void togglePin(SettingsBarEntryModel entryModel) {
-        String type = typeName(entryModel);
-        if (type == null) return;
-        if (!quickTypes.remove(type)) {
-            quickTypes.add(type);
-            while (quickTypes.size() > MAX_QUICK_BUTTONS) quickTypes.remove(0);
-        }
-        PreferenceKeys.setSheetQuick(String.join(",", quickTypes));
-        for (SettingsBarEntryModel entry : entries) {
-            SettingsBarEntryView entryView = entryViews.get(entry.getId());
-            if (entryView != null) entryView.setPinned(quickTypes.contains(typeName(entry)));
-        }
-        rebuildQuickRow();
-    }
-
-    // ---------------------------------------------------------------- helpers
-
-    @Nullable
-    private SettingsBarEntryModel entryForType(String type) {
-        for (SettingsBarEntryModel entry : entries) {
-            if (type.equals(typeName(entry))) return entry;
-        }
-        return null;
-    }
-
-    @Nullable
-    private static String typeName(SettingsBarEntryModel entry) {
-        Enum<SettingType> type = entry.getType();
-        return type != null ? type.name() : null;
-    }
-
-    private static int groupOf(SettingsBarEntryModel entry) {
-        return Math.max(0, Math.min(GROUP_COUNT - 1, entry.getGroup()));
-    }
-
-    private boolean isEntryShown(SettingsBarEntryModel entry) {
-        return hiddenEntries.get(entry.getId(), VISIBLE) == VISIBLE;
-    }
-
-    /** Icon of the selected value, or the parameter icon before a value is known. */
-    @DrawableRes
-    private static int iconOf(SettingsBarEntryModel entry) {
-        SettingsBarButtonModel selected = entry.getSelectedButtonModel();
-        int icon = selected != null ? selected.getIconDrawableId() : 0;
-        return icon != 0 ? icon : entry.getIcon();
-    }
-
-    /** True when no other value of the entry has the same icon, so the icon alone tells the value. */
-    private static boolean iconShowsValue(SettingsBarEntryModel entry, SettingsBarButtonModel selected) {
-        int icon = selected.getIconDrawableId();
-        if (icon == 0) return false;
-        for (SettingsBarButtonModel model : entry.getSettingsBarButtonModels()) {
-            if (model != selected && model.getIconDrawableId() == icon) return false;
-        }
-        return true;
-    }
-
-    /** "Name: value" for TalkBack and tooltips. */
-    private String describe(SettingsBarEntryModel entry) {
-        Context context = getContext();
-        String title = context.getString(entry.getTitleStringId());
-        SettingsBarButtonModel selected = entry.getSelectedButtonModel();
-        if (selected == null) return title;
-        String value = selected.getButtonStateNameStringId() != 0
-                ? context.getString(selected.getButtonStateNameStringId())
-                : selected.getShortLabel(context);
-        return title + ": " + value;
-    }
-
-    /** One line that shrinks (down to 8sp) instead of being cut or ending in an ellipsis. */
-    private void fitOneLine(TextView view, float maxSp) {
-        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, maxSp);
-        view.setMaxLines(1);
-        view.setEllipsize(null);
-        view.setIncludeFontPadding(false);
-        int max = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, maxSp, getResources().getDisplayMetrics()));
-        int min = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 8, getResources().getDisplayMetrics()));
-        // Autosize needs max > min (it throws otherwise) and a fixed view size (set by the caller).
-        if (max > min) {
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(view, min, max, 1, TypedValue.COMPLEX_UNIT_PX);
-        }
-    }
-
-    private static ColorStateList colorList(Context context, @ColorRes int color) {
-        return ColorStateList.valueOf(ContextCompat.getColor(context, color));
-    }
-
-    /**
-     * The drawable with a ripple inside {@code mask}. Without a mask the ripple would take the
-     * content's alpha (a faint 6-8% fill) or, over the opaque white circle, fill the square.
-     */
-    private static RippleDrawable ripple(Context context, @DrawableRes int content, Drawable mask) {
-        return new RippleDrawable(ColorStateList.valueOf(RIPPLE_COLOR), ContextCompat.getDrawable(context, content), mask);
-    }
-
-    /** Opaque shape that bounds a ripple: an oval, or a rectangle with {@code radius} corners. */
-    private static Drawable rippleMask(int shape, int radius) {
-        GradientDrawable mask = new GradientDrawable();
-        mask.setShape(shape);
-        if (radius > 0) mask.setCornerRadius(radius);
-        mask.setColor(Color.WHITE);
-        return mask;
     }
 }

@@ -110,6 +110,7 @@ final class CameraUIController implements CameraUIEventsListener,
                 break;
 
             case R.id.flip_camera_button:
+                cameraFragment.onLensSwitch();
                 view.animate().rotationBy(180).setDuration(450).start();
                 //cameraFragment.textureView.animate().rotationBy(360).setDuration(450).start();
                 //PreferenceKeys.setCameraID(cycler(PreferenceKeys.getCameraID()));
@@ -173,6 +174,7 @@ final class CameraUIController implements CameraUIEventsListener,
             cameraFragment.showSnackBar("Камера " + id + " — монохромный служебный поток, снимать с неё нельзя");
             return;
         }
+        cameraFragment.onLensSwitch();
         setID(id);
         this.restartCamera();
 

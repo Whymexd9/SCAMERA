@@ -157,7 +157,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private NotificationManagerCompat notificationManager;
     private SettingsManager settingsManager;
     private SupportedDevice supportedDevice;
-    private SettingsBarEntryProvider settingsBarEntryProvider;
     private ManualModeConsole manualModeConsole;
     public float displayAspectRatio;
     private HorizonIndicatorView mHorizonIndicatorView;
@@ -237,7 +236,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         timerFrameCountViewModel = new ViewModelProvider(this).get(TimerFrameCountViewModel.class);
         manualModeConsole = ManualInstanceProvider.getNewManualModeConsole();
-        settingsBarEntryProvider = new ViewModelProvider(this).get(SettingsBarEntryProvider.class);
         auxButtonsViewModel = new ViewModelProvider(this).get(AuxButtonsViewModel.class);
         surfaceView = cameraFragmentBinding.layoutViewfinder.surfaceView;
         textureView = cameraFragmentBinding.layoutViewfinder.texture;
@@ -366,9 +364,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     private void initSettingsBar() {
-        settingsBarEntryProvider.createEntries();
-        settingsBarEntryProvider.addObserver(mCameraUIEventsListener);
+        com.particlesdevs.photoncamera.settings.SettingsMigration.resetRemovedSettings(getResources());
         SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
+        sheet.attach(shadeHost);
         // The HIDDEN handle sits over the bottom of the lens strip; touches that start on the
         // strip stay with the strip.
         sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, cameraFragmentBinding.auxButtonsContainer);
@@ -393,12 +391,62 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         cameraFragmentBinding.layoutViewfinder.getRoot().addOnLayoutChangeListener(
                 (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
                         sheet.setMaxSheetHeight(Math.round((bottom - top) * SHEET_MAX_HEIGHT_FRACTION)));
-        settingsBarEntryProvider.addEntries(sheet);
+        // The tiles inflate the settings tree once: build them when the camera screen is idle, before the first swipe.
+        android.os.Looper.myQueue().addIdleHandler(() -> {
+            if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.prewarm();
+            return false;
+        });
+    }
+
+    /** What the quick-settings shade needs from the camera screen. */
+    private final com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeHost shadeHost =
+            new com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeHost() {
+        @Override
+        public void applyCameraControl(com.particlesdevs.photoncamera.settings.SettingType type, int value) {
+            if (mCameraUIEventsListener != null)
+                mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(type, value));
+        }
+
+        @Override
+        public void onSettingWritten(com.particlesdevs.photoncamera.settings.ShadeCatalog.Entry entry) {
+            if ("pref_show_grid_key".equals(entry.key)) invalidateSurfaceView();
+            // Read when the session is built (live RAW, 16:9, ...): restart now (owner's answer 7).
+            if (entry.sessionTime && captureController != null) captureController.restartCamera();
+        }
+
+        @Override
+        public void showMessage(CharSequence text) {
+            showCardToast(text);
+        }
+    };
+
+    private final Runnable hideCardToast = () -> {
+        View toast = cameraFragmentBinding == null ? null : cameraFragmentBinding.shadeToast;
+        if (toast != null) toast.animate().alpha(0f).setDuration(250).withEndAction(() -> toast.setVisibility(View.GONE)).start();
+    };
+
+    /** A short message in the card style (CARD, LINE, MUTED text) above the bottom bar. */
+    public void showCardToast(CharSequence text) {
+        if (cameraFragmentBinding == null) return;
+        android.widget.TextView toast = cameraFragmentBinding.shadeToast;
+        toast.removeCallbacks(hideCardToast);
+        toast.animate().cancel();
+        toast.setText(text);
+        if (toast.getVisibility() != View.VISIBLE) {
+            toast.setAlpha(0f);
+            toast.setVisibility(View.VISIBLE);
+        }
+        toast.animate().alpha(1f).setDuration(200).start();
+        toast.postDelayed(hideCardToast, 1500);
+    }
+
+    /** A lens or camera switch: the shade closes its slider card. */
+    void onLensSwitch() {
+        if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.onLensSwitch();
     }
 
     public void updateSettingsBar(){
-        settingsBarEntryProvider.updateAllEntries();
-        settingsBarEntryProvider.addEntries(cameraFragmentBinding.settingsBar);
+        cameraFragmentBinding.settingsBar.refresh();
         this.mCameraUIView.refresh(CaptureController.isProcessing);
     }
 
@@ -456,6 +504,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         if (mHorizonIndicatorView != null) {
             mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
         }
+        cameraFragmentBinding.settingsBar.setLive(true);
         captureController.startBackgroundThread();
         textureView.onResume();
         captureController.resumeCamera();
@@ -486,6 +535,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         cameraFragmentViewModel.onPause();
         mCameraUIEventsListener.onPause();
         auxButtonsViewModel.setAuxButtonListener(null);
+        cameraFragmentBinding.settingsBar.setLive(false);
         // The sounds are loaded asynchronously in onResume; release() handles what is there.
         sounds().release();
         // The settings sheet comes back HIDDEN, whatever level it was left at.
@@ -521,7 +571,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             } catch (ExecutionException | InterruptedException ignored) {
             }
         }
-        settingsBarEntryProvider.removeObserver(mCameraUIEventsListener);
+        if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.setLive(false);
         cameraFragmentBinding = null;
         mCameraUIView.destroy();
         mCameraUIView = null;

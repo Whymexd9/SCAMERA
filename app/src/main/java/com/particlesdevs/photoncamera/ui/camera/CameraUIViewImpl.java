@@ -216,7 +216,7 @@ public class CameraUIViewImpl implements CameraUIView {
     @Override
     public void showFlashButton(boolean flashAvailable) {
         this.topbar.setFlashVisible(flashAvailable);
-        cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.flash_entry_layout, flashAvailable ? View.VISIBLE : GONE);
+        cameraFragment.cameraFragmentBinding.settingsBar.setFlashAvailable(flashAvailable);
     }
 
     @Override
@@ -307,9 +307,6 @@ public class CameraUIViewImpl implements CameraUIView {
             // cameraUIView.cameraFragmentBinding.textureHolder.setBackgroundResource(R.drawable.gradient_vector_video);
             topbar.setFpsVisible(true);
             topbar.setTimerVisible(false);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.fps_entry_layout, View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.timer_entry_layout, View.GONE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.quad_entry_layout, enableQuadRes ? View.VISIBLE : View.GONE);
             mShutterButton.setBackgroundResource(R.drawable.unlimitedbutton);
             cameraFragment.cameraFragmentBinding.layoutViewfinder.frameTimer.setVisibility(View.VISIBLE);
             cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar.setVisibility(View.VISIBLE);
@@ -335,9 +332,6 @@ public class CameraUIViewImpl implements CameraUIView {
         public void reConfigureModeViews(CameraMode mode) {
             topbar.setFpsVisible(true);
             topbar.setTimerVisible(false);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.fps_entry_layout, View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.timer_entry_layout, View.GONE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.quad_entry_layout, enableQuadRes ? View.VISIBLE : View.GONE);
             mShutterButton.setBackgroundResource(R.drawable.unlimitedbutton);
             if (mode == CameraMode.RAWVIDEO) {
                 cameraFragment.cameraFragmentBinding.layoutViewfinder.frameTimer.setVisibility(View.GONE);
@@ -377,11 +371,6 @@ public class CameraUIViewImpl implements CameraUIView {
             cameraFragment.cameraFragmentBinding.layoutViewfinder.frameTimer.setVisibility(View.VISIBLE);
             cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar.setVisibility(View.VISIBLE);
             setVideoRecordingInfoVisible(false);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.eis_entry_layout, View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.fps_entry_layout, View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.timer_entry_layout, View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.hdrx_entry_layout, View.GONE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.quad_entry_layout, enableQuadRes ? View.VISIBLE : View.GONE);
             mShutterButton.setBackgroundResource(R.drawable.roundbutton);
             //cameraFragment.cameraFragmentBinding.layoutBottombar.layoutBottombar.setBackground(null);
             //cameraFragment.cameraFragmentBinding.getRoot().setBackground(Utilities.resolveDrawable(cameraFragment.requireActivity(), R.attr.cameraFragmentBackground));
@@ -416,10 +405,6 @@ public class CameraUIViewImpl implements CameraUIView {
             cameraFragment.cameraFragmentBinding.layoutViewfinder.frameTimer.setVisibility(View.VISIBLE);
             cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar.setVisibility(View.VISIBLE);
             setVideoRecordingInfoVisible(false);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.eis_entry_layout, View.GONE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.fps_entry_layout, View.GONE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.timer_entry_layout, View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.settingsBar.setChildVisibility(R.id.quad_entry_layout, enableQuadRes ? View.VISIBLE : View.GONE);
             mShutterButton.setBackgroundResource(R.drawable.roundbutton);
             if(PhotonCamera.getSettings().aspect169) {
                 // Set the dummy view's aspect ratio to 16:9

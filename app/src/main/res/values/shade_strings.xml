@@ -151,6 +151,19 @@
 
     <string name="shade_scrim">Lower the settings panel</string>
 
+    <!-- Tiles, rows, toasts -->
+    <string name="shade_pinned">Pinned</string>
+    <string name="shade_add">Add</string>
+    <string name="shade_add_description">Add to the panel</string>
+    <string name="shade_toast_value">%1$s: %2$s</string>
+    <string name="shade_changed">changed</string>
+    <string name="shade_added">Added: %1$s</string>
+    <string name="shade_removed">Removed: %1$s</string>
+    <string name="shade_full">At most %1$d tiles in the panel</string>
+    <string name="shade_pin">Pin %1$s</string>
+    <string name="shade_unpin">Unpin %1$s</string>
+    <string name="shade_group_extra">Added from settings</string>
+
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
     <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>

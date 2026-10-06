@@ -154,7 +154,7 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent">
 
-                <!-- peekHeight is provisional until the quick row and group cells measure it -->
+                <!-- peekHeight is provisional until the tile grid measures it -->
                 <com.particlesdevs.photoncamera.ui.camera.views.settingsbar.SettingsBarLayout
                         android:id="@+id/settings_bar"
                         android:layout_width="match_parent"
@@ -163,7 +163,8 @@
                         app:behavior_hideable="true"
                         app:behavior_peekHeight="120dp"
                         app:gestureInsetBottomIgnored="true"
-                        app:sheetLevel="@{uimodel.sheetLevel}" />
+                        app:sheetLevel="@{uimodel.sheetLevel}"
+                        app:iconRotation="@{uimodel.orientation}" />
 
                 <!-- Handle shown only while the sheet is HIDDEN (the sheet itself is below the edge then) -->
                 <ImageView
@@ -177,6 +178,30 @@
                         android:visibility="gone"
                         tools:visibility="visible" />
             </androidx.coordinatorlayout.widget.CoordinatorLayout>
+            <!--    Block 1.8-->
+            <!--    card toast of the shade and the camera screen, over the sheet, above the bottom bar -->
+            <TextView
+                    android:id="@+id/shade_toast"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="@drawable/shade_card"
+                    android:elevation="30dp"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp"
+                    android:textColor="@color/settings_muted"
+                    android:textSize="14sp"
+                    android:accessibilityLiveRegion="polite"
+                    android:visibility="gone"
+                    app:layout_constrainedWidth="true"
+                    app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <include
