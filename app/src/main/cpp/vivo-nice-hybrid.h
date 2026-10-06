@@ -1448,8 +1448,11 @@ layout(std430,binding=12) readonly buffer NFrames{uint nwords[];};
 layout(std140,binding=1) uniform NatTable{uvec4 nGeo[128];}; // [kHybridGpuFrames]: x = first site of frame f in NFrames, y = first
                                                               // sensor row held, z = rows held (>= 1)
 uniform ivec4 natU;   // x = colour block b (2 | 4), y = W, z = H (native sensor sites), w = window half-width r (native px)
-uniform ivec4 natV;   // x = log2 b, y = 0 (reserved), z = first Sums counter of the native outlier counts, w = 0
+uniform ivec4 natV;   // x = log2 b, y = 1: the words are the sensor RAW (site gains applied here), 0: built like the split's sub-frames;
+                      // z = first Sums counter of the native outlier counts, w = 0
 uniform int natMarkU; // 1: the words carry the site flags of kHybNatMark in bits 14 (outlier) / 15 (cell clipped)
+uniform vec4 natW;    // x = white, y = the RAW code from which a site is clipped (white - 1)
+uniform vec4 natGain[16]; // site-class gains (hybridMosaicGains), class (y & 7) * 8 + (x & 7) of the SENSOR site: natGain[k >> 2][k & 3]
 // A site outside the frame: its BLOCK is reflected as reflectCfa() reflects a sub-frame site of the split (colour and the position
 // inside the block kept).
 int natReflect(int x,int n){
@@ -1465,8 +1468,10 @@ int natRow(int r,int n){
     return r<0?(r&m):r>=n?max(n-natU.x,0)+(r&m):r;
 }
 // Native site (x, y) (canonical) of the frame whose NatTable entry is geo, normalised exactly as the split normalised its sub-frame
-// site: the words were built like the sub-frames (vb + (raw - black) x site gain, vb = black of the block's Bayer phase), so black
-// and inv of that phase, clamped to [-0.25, 1] as sampleRaw(). fl = site flags (bit 0 outlier, bit 1 cell clipped).
+// site: the split built it as vb + (raw - black of the site) x site gain (vb = black of the block's Bayer phase, clamped to
+// [0, white], white where the RAW clipped), then sampleRaw() took black and inv of the block's phase, clamped to [-0.25, 1]. With
+// natV.y the word is the sensor RAW and that build happens here (S3: no gained copies; the same value without the copy's rounding).
+// fl = site flags (bit 0 outlier, bit 1 cell clipped).
 float natSiteG(uvec4 geo,int x,int y,out uint fl){
     int X=x+(cfaShift.x<<natV.x),Y=y+(cfaShift.y<<natV.x);
     if(X<0||Y<0||X>=natU.y||Y>=natU.z){X=natReflect(X,natU.y);Y=natReflect(Y,natU.z);}
@@ -1476,7 +1481,12 @@ float natSiteG(uvec4 geo,int x,int y,out uint fl){
     uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
     fl=natMarkU!=0?(v>>14):0u;v&=natMarkU!=0?0x3FFFu:0xFFFFu;
     int cp=(((Y>>natV.x)&1)<<1)|((X>>natV.x)&1);
-    return clamp((float(v)-black[cp])*inv[cp],-0.25,1.0);
+    float u=float(v);
+    if(natV.y!=0){
+        int k=((Y&7)<<3)|(X&7);
+        u=u>=natW.y?natW.x:clamp(black[cp]+(u-black[((Y&1)<<1)|(X&1)])*natGain[k>>2][k&3],0.0,natW.x);
+    }
+    return clamp((u-black[cp])*inv[cp],-0.25,1.0);
 }
 float natSite(int f,int x,int y,out uint fl){return natSiteG(nGeo[clamp(f,0,127)],x,y,fl);}
 )";
@@ -1584,6 +1594,8 @@ layout(std430,binding=2) readonly buffer SiteFlags{uint sflags[];}; // native ca
 layout(std140,binding=1) uniform NatTable{uvec4 nGeo[128];};
 uniform ivec4 natU;          // as kHybNatAccess
 uniform ivec4 natV;
+uniform vec4 natW;
+uniform vec4 natGain[16];
 uniform ivec2 cfaShift;
 uniform vec4 black;
 uniform vec4 inv;
@@ -1605,7 +1617,12 @@ float siteValue(int f,int X,int Y){ // normalised sensor site inside the frame's
     uint word=nwords[idx>>1];
     uint v=((idx&1u)==0u?(word&0xFFFFu):(word>>16))&0x3FFFu;
     int cp=(((Y>>natV.x)&1)<<1)|((X>>natV.x)&1);
-    return (float(v)-black[cp])*inv[cp];
+    float u=float(v);
+    if(natV.y!=0){
+        int k=((Y&7)<<3)|(X&7);
+        u=u>=natW.y?natW.x:clamp(black[cp]+(u-black[((Y&1)<<1)|(X&1)])*natGain[k>>2][k&3],0.0,natW.x);
+    }
+    return (u-black[cp])*inv[cp];
 }
 bool cellClipped(int f,int x,int y){ // canonical site
     int s=natV.x,b=natU.x,m=b-1;
@@ -1813,8 +1830,10 @@ inline std::string& hybridProgramCacheDir(){static std::string dir;return dir;}
 // everywhere else: the plain-Bayer and the sub-frame paths never see it.
 struct HybridMosaicNative {
     int block=2,W=0,H=0;                 // colour block b and size of the mosaic the merge reads (W = b x the binned width)
-    std::vector<const uint16_t*> frames; // mosaic of frame k of the binned burst (same index), W x H sensor layout, built like the
-                                         // split's sub-frames (vb + (raw - black) x site gain, clip-aware)
+    std::vector<const uint16_t*> frames; // mosaic of frame k of the binned burst (same index), W x H sensor layout: the sensor RAW
+                                         // (rawGains, S3) or built like the split's sub-frames (vb + (raw - black) x site gain)
+    bool rawGains=false;                 // the frames are the sensor RAW: gains[] apply at read time
+    std::array<float,64> gains{};        // site-class gains (sensor class (y&7)*8 + (x&7)), with rawGains
     int window=3;                        // HybridTuning::mosaicWindow
     float kernelScale=1.f;               // HybridTuning::mosaicKernelScale
     float ksG=1.f,ksRB=1.f;              // HybridTuning::mosaicKernelG / RB (distance multipliers per colour)
@@ -2307,10 +2326,14 @@ public:
         if(nat){ // P29: uniforms of the native programs
             const int nb=nat->block,ns=nb==4?2:1,nr=std::clamp(nat->window,1,6);
             const float ks=std::clamp(nat->kernelScale,0.1f,4.f);
+            std::array<float,64> ng;ng.fill(1.f);
+            if(nat->rawGains)ng=nat->gains;
             for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram}){
                 glUseProgram(program);
                 glUniform4i(loc(program,"natU"),nb,nat->W,nat->H,nr);
-                glUniform4i(loc(program,"natV"),ns,0,frames+3,0); // z: native outlier counters after the plain ones (zeros below)
+                glUniform4i(loc(program,"natV"),ns,nat->rawGains?1:0,frames+3,0); // z: native outlier counters after the plain ones
+                glUniform4f(loc(program,"natW"),in.white,in.white-1.f,0.f,0.f);
+                glUniform4fv(loc(program,"natGain"),16,ng.data());
             }
             glUseProgram(natMarkProgram);
             glUniform2i(loc(natMarkProgram,"cfaShift"),in.cfa&1,in.cfa>>1);
@@ -2387,6 +2410,11 @@ public:
             natClipBlock.assign(size_t(frames)*natBlocks,0);
             if(natFlagMode){
                 float lowest=1e9f;
+                if(nat->rawGains){ // RAW codes: the lowest code whose gained value can reach the clip level, or the clipped code
+                    float gmax=1e-3f;for(float gk:nat->gains)gmax=std::max(gmax,gk);
+                    for(int sp=0;sp<4;++sp)for(int cp=0;cp<4;++cp)lowest=std::min(lowest,in.black[sp]+tune.clipLevel/std::max(in.inv[cp],1e-12f)/gmax);
+                    lowest=std::min(lowest,in.white-1.f);
+                } else
                 for(int p=0;p<4;++p)lowest=std::min(lowest,in.black[p]+tune.clipLevel/std::max(in.inv[p],1e-12f));
                 const uint16_t threshold=uint16_t(std::clamp(std::ceil(lowest),0.f,65535.f));
                 std::vector<uint16_t> blockMax(size_t(frames)*natBlocks,0);
@@ -4423,7 +4451,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
 // P29 native mosaic path (mosaicPath 1; research/ark23/quad_report.md section 8, plan P29). Instead of the b^2 sub-frame split of
 // hybridReconstructMosaic, every frame keeps ONE GPU slot:
 //   M0  frame pick by frames (budget min(kHybridGpuFrames, mosaicFrames)), the split's rules otherwise;
-//   M1  site-class gains (hybridMosaicGains), built into the mosaic copies exactly as the split built its sub-frames;
+//   M1  site-class gains (hybridMosaicGains): into the binned frames as the split built its sub-frames, at read time in the merge;
 //   M2  binned frames (W/b x H/b, as the split's alignment frames): hybridReconstruct runs its whole front end on them as a plain burst
 //       (alignment, Shasta, Bento, F6 with one field per frame, weights, outlier sites, guide, rejection, dilation), with the noise
 //       of a b^2 average and the SNR keys of the native sites;
@@ -4477,18 +4505,18 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
             *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread);
         report(line);
     }
-    // ---- the mosaic the merge reads and the binned frames. Every site exactly as the split built it into its sub-frame: vb + (raw -
-    // black of the site) x gain of its class (sensor (y&7, x&7)), vb = black of the block's Bayer phase, a clipped site stays white.
+    // ---- the binned frames. Every site as the split built it into its sub-frame: vb + (raw - black of the site) x gain of its class
+    // (sensor (y&7, x&7)), vb = black of the block's Bayer phase, a clipped site stays white; the merge reads the sensor RAW itself
+    // and applies the same gains at read time (S3: kHybNatAccess natSiteG, no gained copy of the mosaic).
     // A binned pixel is the block mean, or white when any of its sites clipped: the split saw every site's clip in its sub-frames
     // (cell clip, Bento mask, Shasta's unsaturated pixels, the rejection of a clipped longer frame); a mean of clipped and unclipped
     // sites would hide it (replay of a x1.6 synthetic burst: Bento mask 1.8 % of the cells instead of 5.6 %).
-    const size_t vpix=size_t(vw)*vh,npix=size_t(W)*Ht;
-    std::vector<uint16_t> mosaic(npix*pick.size()),binned(vpix*pick.size());
+    const size_t vpix=size_t(vw)*vh;
+    std::vector<uint16_t> binned(vpix*pick.size());
     const float clipAt=input.white-1.f;
     mergeRowBands(vh,[&](int j0,int j1){
         for(size_t k=0;k<pick.size();++k){
             const uint16_t* raw=input.frames[pick[k]].raw;
-            uint16_t* dst=mosaic.data()+k*npix;
             for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
                 const float vb=input.black[((J&1)<<1)|(I&1)];
                 double acc=0;bool clipped=false;
@@ -4498,7 +4526,6 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
                     const float sb=input.black[((y&1)<<1)|(x&1)];
                     const float lin=(v-sb)*gain[((y&7)<<3)|(x&7)];
                     const float out=v>=clipAt?input.white:std::clamp(vb+lin,0.f,input.white);
-                    dst[size_t(y)*W+x]=uint16_t(std::lround(out));
                     acc+=out;clipped|=v>=clipAt;
                 }
                 binned[k*vpix+size_t(J)*vw+I]=clipped?uint16_t(std::lround(input.white)):uint16_t(std::lround(acc/bb));
@@ -4509,6 +4536,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=b;bin.mosaic=1;bin.subFrames=0;
     HybridMosaicNative nat;nat.block=b;nat.W=W;nat.H=Ht;nat.window=window;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;
+    nat.rawGains=true;nat.gains=gain;
     nat.keyNoise=float(bb);
     nat.siteSlope=std::max(input.frames[0].slope,1e-9f);nat.siteOffset=std::max(input.frames[0].offset,0.f);
     for(size_t k=0;k<pick.size();++k){
@@ -4516,7 +4544,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
         v.raw=binned.data()+k*vpix;
         v.slope/=float(bb);v.offset/=float(bb); // a binned pixel is the mean of b^2 sites
         bin.frames.push_back(v);
-        nat.frames.push_back(mosaic.data()+k*npix);
+        nat.frames.push_back(input.frames[pick[k]].raw);
     }
     HybridTuning vt=tune;vt.grid=b;vt.mosaicBlock=1;vt.caCorrect=0;
     if(vt.rawCa==2){ // the frames mode would correct the binned frames only, not the mosaic the merge reads
@@ -4526,7 +4554,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     std::vector<uint8_t> vEff,vClip;
     HybridStats st;
     std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
-    std::vector<uint16_t>().swap(mosaic);std::vector<uint16_t>().swap(binned);
+    std::vector<uint16_t>().swap(binned);
     // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults; kept apart from it so
     // that mosaicPath 0 stays untouched)
     const int ow=b*vw,oh=b*vh;
