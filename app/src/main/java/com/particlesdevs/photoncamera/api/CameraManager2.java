@@ -163,6 +163,30 @@ public final class CameraManager2 {
         }
     }
 
+    /**
+     * MONO / NIR sensors are auxiliary streams, not photo lenses: Hybrid and SCAM HDR merge Bayer RAW only, and configuring the
+     * vivo X100 Ultra's MONO id 6 with the RAW reader killed its camera HAL ('Error configuring streams: Broken pipe', every id
+     * 'unknown device' for 4.5 s; owner's log 2026-10-05).
+     */
+    public static boolean isAuxiliarySensor(CameraCharacteristics characteristics) {
+        Integer cfa = characteristics == null ? null : characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+        return cfa != null && (cfa == 5 || cfa == 6); // SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO / _NIR (API 29)
+    }
+
+    public static boolean isAuxiliarySensor(CameraManager cameraManager, String id) {
+        if (cameraManager == null || id == null) return false;
+        try {
+            return isAuxiliarySensor(cameraManager.getCameraCharacteristics(id));
+        } catch (Exception direct) {
+            String physical = id.contains("/") ? id.split("/", 2)[1] : id.contains("-") ? id.split("-", 2)[1] : null;
+            try {
+                return physical != null && isAuxiliarySensor(cameraManager.getCameraCharacteristics(physical));
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+    }
+
     private void scanAllCameras(CameraManager cameraManager) {
         boolean isSamsung = Build.BRAND.equalsIgnoreCase("samsung") || Build.BRAND.equalsIgnoreCase("google");
             CameraLensData mainLensData = null;
@@ -180,13 +204,13 @@ public final class CameraManager2 {
                         if (mainLensData.getCameraFocalLength() == cameraLensData.getCameraFocalLength()) {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                                 boolean isLogical = !cameraCharacteristics.getPhysicalCameraIds().isEmpty();
-                                if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isLogical) {
+                                if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isLogical && !isAuxiliarySensor(cameraCharacteristics)) {
                                     mAllCameraIDsSet.add(formatID);
                                     mCameraLensDataMap.put(formatID, cameraLensData);
                                     break;
                                 }
                             } else {
-                                if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData)) {
+                                if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isAuxiliarySensor(cameraCharacteristics)) {
                                     mAllCameraIDsSet.add(formatID);
                                     mCameraLensDataMap.put(formatID, cameraLensData);
                                     break;
@@ -210,12 +234,12 @@ public final class CameraManager2 {
                     CameraLensData cameraLensData = createNewCameraLensData(formatID, cameraCharacteristics);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         boolean isLogical = !cameraCharacteristics.getPhysicalCameraIds().isEmpty();
-                        if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isLogical) {
+                        if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isLogical && !isAuxiliarySensor(cameraCharacteristics)) {
                             mAllCameraIDsSet.add(formatID);
                             mCameraLensDataMap.put(formatID, cameraLensData);
                         }
                     } else {
-                        if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData)) {
+                        if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isAuxiliarySensor(cameraCharacteristics)) {
                             mAllCameraIDsSet.add(formatID);
                             mCameraLensDataMap.put(formatID, cameraLensData);
                         }

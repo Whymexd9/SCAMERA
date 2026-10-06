@@ -70,6 +70,8 @@ public final class VivoNiceBurst implements NiceTransport {
             if(f.buffer==null||f.width!=width||f.height!=height||f.buffer.capacity()!=(long)width*height*2)
                 throw new IOException("SCAM HDR: неполный RAW: "+detail+" size="+f.width+"x"+f.height
                         +" bytes="+(f.buffer==null?0:f.buffer.capacity())+" expected="+width+"x"+height+"/"+((long)width*height*2));
+            if(f.rawPayloadError!=null)
+                throw new IOException("SCAM HDR: RAW-кадр не в 16-битном формате, снимок не сохранён: "+detail+" ("+f.rawPayloadError+")");
             switch(role) {
                 case SHORT: case EXTRA_SHORT: shorts.add(f); break;
                 case LONG: longs.add(f); break;

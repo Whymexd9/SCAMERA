@@ -16,6 +16,8 @@ public class ImageFrame {
     public ByteBuffer mosaic;
     public long timestamp;
     public boolean fromZsl = false;
+    /** RawPayloadCheck verdict of the reader Image this frame was copied from; null = plain 16-bit. */
+    public String rawPayloadError;
     /** NICE: L exposure ratio for an L built from the ZSL N frames (0 = L was captured). */
     public float syntheticLongRatio = 0;
     public int width, height;

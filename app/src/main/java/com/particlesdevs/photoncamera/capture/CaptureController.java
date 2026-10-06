@@ -482,6 +482,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mLiveMetadata.image(img.getTimestamp(), img);
                     return;
                 }
+                watchRawPayload(img);
                 observeMosaic(img);
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
@@ -1929,7 +1930,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
             // Vendor detector tags exist only on a vivo HAL; elsewhere SCAM HDR uses the plain preview.
             final boolean nicePreview = PreferenceKeys.isVivoNiceEnabled() && photoMode
-                    && VivoNicePreview.supported() && !isBurstSession && !mIsRecordingVideo;
+                    && VivoNicePreview.supported() && !isBurstSession && !mIsRecordingVideo
+                    && !sPlainPreviewCameras.contains(physicalID);
+            mNicePreviewActive = nicePreview;
+            mPayloadFrames = 0;
+            mPayloadBad = false;
             Log.i("NICE_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isLmcHybridEnabled() ? "LMC_HYBRID" : PreferenceKeys.isVivoNiceEnabled() ? "NICE_RAW" : "SCAMERA"));
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
@@ -2605,10 +2610,45 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * copy inside LiveRawFrame is what the viewfinder develops; the Image goes
      * on to the ring untouched.
      */
+    // RawPayloadCheck on the preview stream: the first frames of every session, then every 30th.
+    private int mPayloadFrames;
+    private volatile boolean mPayloadBad;
+    private boolean mNicePreviewActive;
+    /**
+     * Cameras whose preview RAW was not plain 16-bit while VivoNicePreview's stock profile ran (vivo X100 Ultra main: packed
+     * 10-bit ZSL frames under the PD2454 stagger / HDR preview tags). Their sessions run the plain Camera2 preview from then on
+     * (this process); the ring check still guards the shot when the plain preview is packed too.
+     */
+    private static final java.util.Set<String> sPlainPreviewCameras = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    private void watchRawPayload(Image img) {
+        int n = mPayloadFrames++;
+        if (n >= 4 && n % 30 != 0) return;
+        com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(img, rawPayloadWhite(null));
+        if (payload.plain()) { mPayloadBad = false; return; }
+        if (!mPayloadBad) {
+            Log.w(TAG, "preview RAW of camera " + physicalID + ": " + payload.error
+                    + (mNicePreviewActive ? " (vivo stock preview profile on)" : ""));
+            com.particlesdevs.photoncamera.processing.RawPayloadCheck.dumpOnce(img, payload, physicalID);
+        }
+        mPayloadBad = true;
+        if (mNicePreviewActive && sPlainPreviewCameras.add(physicalID) && mBackgroundHandler != null) {
+            final int generation = mSessionGeneration.get();
+            Log.w("NICE_CAPTURE", "camera " + physicalID + ": vivo stock preview profile off, session restarted with the plain Camera2 preview");
+            mBackgroundHandler.post(() -> {
+                if (!isCameraResumed || generation != mSessionGeneration.get() || mCaptureSession == null) return;
+                mCaptureSession.close();
+                createCameraPreviewSession(false);
+            });
+        }
+    }
+
     private void onMatchedLiveRaw(Image img, TotalCaptureResult result) {
         boolean retained = false;
         try {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture || mNiceRingFrozen) return;
+            watchRawPayload(img);
             publishLiveRawFrame(img, result);
             if (isZslMode()) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
@@ -2636,7 +2676,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void observeMosaic(Image img) {
         try {
-            if (!mMosaicMeasure || img.getFormat() != ImageFormat.RAW_SENSOR || !isCameraResumed) return;
+            if (!mMosaicMeasure || img.getFormat() != ImageFormat.RAW_SENSOR || !isCameraResumed || mPayloadBad) return;
             if (com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) {
                 Image.Plane plane = img.getPlanes()[0];
                 float black = 0, white = 1023f;
@@ -2676,6 +2716,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void publishLiveRawFrame(Image img, TotalCaptureResult matchedResult) {
         if (!LiveRawFrame.isEnabled() || img == null) return;
         if (img.getFormat() != ImageFormat.RAW_SENSOR) return;
+        if (mPayloadBad) {
+            // The developed RAW viewfinder would show the same garbage: the ISP preview takes over for this session.
+            LiveRawFrame.setEnabled(false);
+            return;
+        }
         try {
             Image.Plane plane = img.getPlanes()[0];
             CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
@@ -2808,8 +2853,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** Clipped fraction of the newest buffered RAW at the last plan (the ring is drained before the hybrid plan is built). */
     private float mLastZslClipFraction;
     private float zslClipFraction() {
-        Image newest;
-        synchronized (mZslBufferLock) { newest = mZslRingBuffer.peekLast(); }
+        // The newest ring frame whose RAW is plain 16-bit: a packed payload reads as ~62 % clipped (X100 Ultra) and planned
+        // the bracket from garbage. None plain: no clipping is assumed (the shot then takes N after the shutter).
+        Image newest = null;
+        synchronized (mZslBufferLock) {
+            int looked = 0;
+            for (java.util.Iterator<Image> it = mZslRingBuffer.descendingIterator(); it.hasNext() && looked < 4; looked++) {
+                Image candidate = it.next();
+                if (com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(candidate,
+                        rawPayloadWhite(mHexZslResults.get(candidate.getTimestamp()))).plain()) { newest = candidate; break; }
+            }
+            if (newest == null && looked > 0) Log.w("NICE_CAPTURE", "ZSL clip estimate: no plain 16-bit RAW among the newest " + looked);
+        }
         if (newest == null || mCameraCharacteristics == null || newest.getFormat() != ImageFormat.RAW_SENSOR) return 0f;
         try {
             Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
@@ -2835,6 +2890,35 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /** White level for RawPayloadCheck: the previewed physical camera, the frame's dynamic white when its result is known. */
+    private int rawPayloadWhite(CaptureResult result) {
+        CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+        return com.particlesdevs.photoncamera.processing.RawPayloadCheck.whiteLevel(c == null ? mCameraCharacteristics : c, result);
+    }
+
+    /**
+     * Ring RAWs whose payload is not plain 16-bit (RawPayloadCheck) leave the burst before anything reads them. With fewer than
+     * four left the existing normal-back path takes N after the shutter (those frames were plain on the X100 Ultra).
+     */
+    private void dropNonPlainRaw(List<Image> images, java.util.Map<Long, TotalCaptureResult> results) {
+        int dropped = 0;
+        String first = null;
+        for (java.util.Iterator<Image> it = images.iterator(); it.hasNext();) {
+            Image image = it.next();
+            com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
+                    com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(image, rawPayloadWhite(results.get(image.getTimestamp())));
+            if (payload.plain()) continue;
+            if (first == null) {
+                first = payload.error;
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.dumpOnce(image, payload, physicalID);
+            }
+            image.close();
+            it.remove();
+            dropped++;
+        }
+        if (dropped > 0) Log.w("NICE_HDR", "ZSL: " + dropped + " ring RAWs dropped (" + first + "), " + images.size() + " kept");
+    }
+
     private List<ImageFrame> drainZslNormalFrames(int requestedCount,VivoStockAe.Plan stockPlan,boolean defer) {
         List<Image> rawImages;
         java.util.Map<Long,TotalCaptureResult> selectedMetadata;
@@ -2846,6 +2930,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mHexZslResults.clear();
         }
         mNativeZslBase=null;
+        dropNonPlainRaw(rawImages, selectedMetadata);
         if (PreferenceKeys.isVivoNiceEnabled()) {
             // RAW may arrive before its TotalCaptureResult. Select from matched
             // pairs BEFORE taking the newest N images, so older complete ZSL

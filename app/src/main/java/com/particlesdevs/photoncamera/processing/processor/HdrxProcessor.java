@@ -340,7 +340,7 @@ public class HdrxProcessor extends ProcessorBase {
                 Log.i("NICE_HDR", "Reference calibration timestamp=" + niceReference.timestamp
                         + " ISO=" + processingParameters.iso
                         + " exposureSeconds=" + processingParameters.exposureTime);
-                if (PreferenceKeys.isNiceMosaic()) {
+                if (PreferenceKeys.isNiceMosaic() && niceMosaicStream(images, processingParameters)) {
                     // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
                     processingStage = "SCAM HDR: ремозаик мозаики";
                     images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceMosaic.prepare(
@@ -527,12 +527,32 @@ public class HdrxProcessor extends ProcessorBase {
         callback.onFinished();
     }
 
+    /**
+     * SCAM HDR's mosaic mode applies to a burst that really is a mosaic: a forced block or an ISZ sensor mode, else a confident
+     * colour block measured on the first frame. A plain-Bayer module keeps its Bayer frames (vivo X100 Ultra main, owner's log
+     * 2026-10-05: 'mode=neural_sabre block=4' remosaicked a 4096x3072 Bayer stream as Tetra).
+     */
+    private static boolean niceMosaicStream(java.util.List<ImageFrame> images, Parameters p) {
+        if (PreferenceKeys.niceMosaicDeclared()) return true;
+        for (ImageFrame f : images) {
+            if (f.buffer == null || f.buffer.capacity() < (long) f.width * f.height * 2) continue;
+            float black = (p.blackLevel[0] + p.blackLevel[1] + p.blackLevel[2] + p.blackLevel[3]) / 4f;
+            com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result r =
+                    com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(f.buffer, f.width, f.height, f.width * 2,
+                            black, p.whiteLevel, 8);
+            boolean mosaic = r.confident && r.block > 1;
+            Log.i("NICE_HDR", "SCAM HDR mosaic: stream colour block " + r + (mosaic ? "" : "; mosaic mode ignored, plain Bayer"));
+            return mosaic;
+        }
+        return false;
+    }
+
     /** The shortest exposure has the most pixels at the dark floor, so it bounds black best. */
     private static void refineBlackFromDarkestFrame(Parameters processingParameters, ArrayList<ImageFrame> frames) {
         ImageFrame darkest = null;
         double lowest = Double.MAX_VALUE;
         for (ImageFrame frame : frames) {
-            if (frame == null || frame.buffer == null) continue;
+            if (frame == null || frame.buffer == null || frame.rawPayloadError != null) continue;
             double exposure = frame.measuredExposure > 0 && frame.measuredIso > 0
                     ? (double) frame.measuredExposure * frame.measuredIso
                     : frame.pair != null ? frame.pair.exposure * (double) frame.pair.iso : Double.MAX_VALUE / 2;

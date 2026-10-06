@@ -165,6 +165,14 @@ final class CameraUIController implements CameraUIEventsListener,
     @Override
     public void onAuxButtonClicked(String id) {
         Log.d(TAG, "onAuxButtonClicked() called with: id = [" + id + "]");
+        android.content.Context context = cameraFragment.getContext();
+        if (context != null && com.particlesdevs.photoncamera.api.CameraManager2.isAuxiliarySensor(
+                (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE), id)) {
+            // Not opened: the camera stays on the current module (see CameraManager2.isAuxiliarySensor).
+            Log.w(TAG, "camera " + id + " is a MONO / NIR auxiliary stream, not opened");
+            cameraFragment.showSnackBar("Камера " + id + " — монохромный служебный поток, снимать с неё нельзя");
+            return;
+        }
         setID(id);
         this.restartCamera();
 

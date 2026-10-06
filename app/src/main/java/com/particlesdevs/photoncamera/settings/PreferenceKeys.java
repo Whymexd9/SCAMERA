@@ -405,6 +405,13 @@ public class PreferenceKeys {
         return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
+    /** A forced colour block or an ISZ sensor mode (5 Quad, 7 Tetra): the module streams a mosaic by its own settings. */
+    public static boolean niceMosaicDeclared() {
+        int forced = Math.round(scamInternalValue("mosaic_block", 0f));
+        int mode = ModuleRegistry.sensorMode(ModuleRegistry.active());
+        return forced == 2 || forced == 4 || mode == 5 || mode == 7;
+    }
+
     /** Colour-block side of the RAW stream for statistics and the raw viewfinder: 1 for plain bayer. */
     public static int mosaicBlock() {
         return isNiceMosaic() ? getRemosaicBlockSize() : 1;

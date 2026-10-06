@@ -14,7 +14,7 @@ public class CaptureResult {public float[] aec; public static class Key<T> {publ
 pkg+'processing/ImageFrame.java':'''package com.particlesdevs.photoncamera.processing;
 import android.hardware.camera2.CaptureResult;import java.nio.ByteBuffer;
 public class ImageFrame {public int number,width=64,height=64,measuredIso=100;public long timestamp,measuredExposure=1000000;
-public boolean fromZsl;public float noiseSlope=1,noiseOffset=0,syntheticLongRatio=0;public ByteBuffer buffer=ByteBuffer.allocate(8192),mosaic;
+public boolean fromZsl;public String rawPayloadError;public float noiseSlope=1,noiseOffset=0,syntheticLongRatio=0;public ByteBuffer buffer=ByteBuffer.allocate(8192),mosaic;
 public enum CaptureRole {NORMAL,SHORT,LONG,EXTRA_SHORT}
 public CaptureRole role=CaptureRole.NORMAL;public CaptureRole getCaptureRole(){return role;}
 public Pair pair=new Pair();public CaptureResult result=new CaptureResult();public CaptureResult getMatchedCaptureMetadata(){return result;}
@@ -84,6 +84,7 @@ public class Check {
   fs.get(5).role=ImageFrame.CaptureRole.NORMAL;rejected(fs);fs.get(5).role=ImageFrame.CaptureRole.SHORT;
   for(ImageFrame f:fs){f.pair.isHighlightFrame=true;f.pair.isLongFrame=true;}
   ratios(make(fs));
+  fs.get(2).rawPayloadError="RAW is not plain 16-bit";rejected(fs);fs.get(2).rawPayloadError=null;
   fs.get(5).role=null;rejected(fs);fs.get(5).role=ImageFrame.CaptureRole.SHORT;
   float savedTime=fs.get(5).result.aec[14],savedGain=fs.get(5).result.aec[2];
   fs.get(5).result.aec[14]=fs.get(4).result.aec[14];fs.get(5).result.aec[2]=fs.get(4).result.aec[2];

@@ -53,7 +53,15 @@ public class SaverImplementation {
             }
         }
         Allocator.binning = PhotonCamera.getSettings().binning;
+        // Post-shutter frames are kept but marked: the burst writers drop or refuse a frame that is not plain 16-bit.
+        RawPayloadCheck.Result payload = RawPayloadCheck.check(image,
+                RawPayloadCheck.whiteLevel(CaptureController.mCameraCharacteristics, null));
+        if (!payload.plain()) {
+            com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
+            RawPayloadCheck.dumpOnce(image, payload, PhotonCamera.getSettings().mCameraID);
+        }
         ImageFrame frame = new ImageFrame(image.getPlanes()[0].getBuffer(), image.getFormat(), width, image.getPlanes()[0].getRowStride(), offset, capacity);
+        frame.rawPayloadError = payload.error;
         frame.timestamp = image.getTimestamp();
 
         if (Allocator.binning) {

@@ -4,6 +4,8 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <cstddef>
+#include <cstdio>
+#include <cstring>
 #include <future>
 
 namespace vivo_nice {
@@ -68,12 +70,32 @@ class StockMotion {
         if(!handle)throw std::runtime_error(std::string("Bundled CRE load failed: ")+dlerror());
         return handle;
     }
+    static bool sameFile(const std::string& a,const std::string& b) {
+        FILE* fa=fopen(a.c_str(),"rb");FILE* fb=fopen(b.c_str(),"rb");
+        bool same=fa&&fb;
+        if(same){fseek(fa,0,SEEK_END);fseek(fb,0,SEEK_END);same=ftell(fa)==ftell(fb);rewind(fa);rewind(fb);}
+        std::vector<char> ba(1<<16),bb(1<<16);
+        while(same){
+            size_t na=fread(ba.data(),1,ba.size(),fa),nb=fread(bb.data(),1,bb.size(),fb);
+            same=na==nb&&std::memcmp(ba.data(),bb.data(),na)==0;
+            if(na==0)break;
+        }
+        if(fa)fclose(fa);if(fb)fclose(fb);
+        return same;
+    }
 public:
     std::string source;
     // bundleDir: the job directory holding the APK copies; forceBundled skips /vendor
     // (used to validate the bundled path on vivo itself).
     explicit StockMotion(const std::string& bundleDir="",bool forceBundled=false) {
-        if(!forceBundled && access("/vendor/lib64/libvivo_nice_cre.so",F_OK)==0) {
+        const std::string vendorCre="/vendor/lib64/libvivo_nice_cre.so",bundledCre=bundleDir+"/libvivo_nice_cre.so";
+        bool vendor=!forceBundled && access(vendorCre.c_str(),F_OK)==0;
+        // Another vivo build of the CRE (X100 Ultra, owner's log 2026-10-05) does not load here, and the vendor libraries
+        // preloaded for it then bound the bundled copy to a libc++_shared without __emutls_get_address: /vendor is taken
+        // only when it is the pinned file itself.
+        bool otherBuild=false;
+        if(vendor && !bundleDir.empty() && access(bundledCre.c_str(),R_OK)==0 && !sameFile(vendorCre,bundledCre)) {vendor=false;otherBuild=true;}
+        if(vendor) {
             // The job directory precedes /vendor on LD_LIBRARY_PATH (bundled QNN) and now
             // also holds the compat stubs: pin the real vivo dependencies first so the
             // vendor CRE binds to them by soname, not to the stubs.
@@ -82,7 +104,7 @@ public:
             library=dlopen("/vendor/lib64/libvivo_nice_cre.so",RTLD_NOW|RTLD_LOCAL);
         }
         if(library)source="vendor deps="+std::to_string(compat.size())+"/4 vendor";
-        else if(!bundleDir.empty()) {library=loadBundled(bundleDir);source="bundled";}
+        else if(!bundleDir.empty()) {library=loadBundled(bundleDir);source=otherBuild?"bundled (vendor CRE is another build)":"bundled";}
         if(!library)throw std::runtime_error(std::string("Original CRE motion load failed: ")+dlerror());
         try {
             Dl_info info{};

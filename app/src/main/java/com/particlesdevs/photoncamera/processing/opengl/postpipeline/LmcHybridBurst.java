@@ -99,6 +99,14 @@ public final class LmcHybridBurst implements NiceTransport {
             if (role == null) throw new IOException("Hybrid: нет роли из совпавших метаданных RAW: " + detail);
             if (f.buffer == null || f.width != width || f.height != height || f.buffer.capacity() != (long) width * height * 2)
                 throw new IOException("Hybrid: неполный RAW: " + detail);
+            // RawPayloadCheck: a frame whose RAW is not plain 16-bit never reaches the merge; the Bento / Shasta extras are
+            // dropped like a lost buffer, an N frame stops the shot instead of saving garbage.
+            if (f.rawPayloadError != null) {
+                if (role == ImageFrame.CaptureRole.NORMAL)
+                    throw new IOException("Hybrid: RAW-кадр не в 16-битном формате, снимок не сохранён: " + detail + " (" + f.rawPayloadError + ")");
+                Log.w("NICE_HDR", "hybrid: " + role + " frame dropped, " + f.rawPayloadError + ": " + detail);
+                continue;
+            }
             switch (role) {
                 case NORMAL: normal.add(f); break;
                 case LONG: bracketed.add(f); break;
