@@ -2348,12 +2348,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mMosaicMeasure = PreferenceKeys.niceDevSwitch("mosaic_preview", true);
             com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
             // P35 / P33: the GPU programs of this module's merge route (its stored / declared colour block) built now, not on the shutter
-            if (photoMode && !isBurstSession && !mIsRecordingVideo && PreferenceKeys.isLmcHybridEnabled())
+            // (an optimisation only: a failure here must never stop the session from starting)
+            if (photoMode && !isBurstSession && !mIsRecordingVideo && PreferenceKeys.isLmcHybridEnabled()) try {
                 com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralClient.prewarmHybridGpu(PhotonCamera.getAppContext(),
                         com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForModule(
                                 com.particlesdevs.photoncamera.processing.MosaicStream.key(),
                                 com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
                                         com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()))));
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Hybrid GPU prewarm skipped: " + e);
+            }
             mMosaicPreview = mMosaicMeasure && !mLiveRawSession && photoMode && !isBurstSession && !mIsRecordingVideo && isZslMode()
                     && isRawFormat(mTargetFormat) && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1;
             if (mMosaicPreview) LiveRawFrame.setEnabled(true);

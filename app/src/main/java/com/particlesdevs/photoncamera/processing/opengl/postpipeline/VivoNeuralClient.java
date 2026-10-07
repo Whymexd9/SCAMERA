@@ -138,36 +138,43 @@ public final class VivoNeuralClient {
         Thread t=new Thread(r,"hybrid-gpu-prewarm");t.setDaemon(true);t.setPriority(Thread.MIN_PRIORITY);return t;});
     /** P35: build the Hybrid merge programs of colour block {@code block} (1 = plain Bayer, 2 Quad, 4 Tetra) ahead of the shot. */
     public static void prewarmHybridGpu(Context context,int block){
-        if(context==null||!com.particlesdevs.photoncamera.util.WorkerSpawn.available(context))return;
-        final String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
+        if(context==null)return;
         final int b=block==2||block==4?block:1;
-        if(!prewarmed.add(b+"|"+tuning.hashCode()))return;
         final Context app=context.getApplicationContext();
-        PREWARM.execute(()->{
-            final long started=android.os.SystemClock.elapsedRealtime();
-            File dir=new File(app.getCacheDir(),"vivo-neural-prewarm-"+UUID.randomUUID());
-            com.particlesdevs.photoncamera.util.WorkerSpawn.Child child=null;
-            try{
-                if(!dir.mkdir())throw new IOException("job folder");
-                File glCache=new File(app.getCacheDir(),"hybrid-gl");
-                if(!glCache.isDirectory()&&!glCache.mkdirs())throw new IOException("program cache folder");
-                try(java.io.FileWriter cw=new java.io.FileWriter(new File(dir,"gl-cache"))){cw.write(glCache.getAbsolutePath());}
-                if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
-                java.util.ArrayList<String> args=new java.util.ArrayList<>();
-                java.util.Collections.addAll(args,"--gpu-prewarm",dir.getAbsolutePath(),String.valueOf(b));
-                child=com.particlesdevs.photoncamera.util.WorkerSpawn.start(app,args,com.particlesdevs.photoncamera.util.WorkerSpawn.environment(app,dir));
-                String result="no report";
-                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){
-                    String line;while((line=lines.readLine())!=null)if(line.startsWith("HYBRID PREWARM"))result=line;
-                }
-                if(!child.waitFor(60000)){child.destroy();result="timed out";}
-                Log.i("NICE_HDR",result+" (worker "+(android.os.SystemClock.elapsedRealtime()-started)+" ms)");
-            }catch(Exception e){
-                if(child!=null)child.destroy();
-                prewarmed.remove(b+"|"+tuning.hashCode());
-                Log.w("NICE_HDR","HYBRID PREWARM: "+e);
-            }finally{deleteTree(dir);}
-        });
+        // Called from the camera session setup: everything else (worker check, tuning text, nice_dev.txt) runs on the prewarm
+        // thread, and nothing it does can fail the session.
+        try{PREWARM.execute(()->prewarmRun(app,b));}catch(RuntimeException e){Log.w("NICE_HDR","HYBRID PREWARM: "+e);}
+    }
+    private static void prewarmRun(Context app,int b){
+        final String tuning;
+        try{
+            if(!com.particlesdevs.photoncamera.util.WorkerSpawn.available(app))return;
+            tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
+        }catch(RuntimeException e){Log.w("NICE_HDR","HYBRID PREWARM: "+e);return;}
+        if(!prewarmed.add(b+"|"+tuning.hashCode()))return;
+        final long started=android.os.SystemClock.elapsedRealtime();
+        File dir=new File(app.getCacheDir(),"vivo-neural-prewarm-"+UUID.randomUUID());
+        com.particlesdevs.photoncamera.util.WorkerSpawn.Child child=null;
+        try{
+            if(!dir.mkdir())throw new IOException("job folder");
+            File glCache=new File(app.getCacheDir(),"hybrid-gl");
+            if(!glCache.isDirectory()&&!glCache.mkdirs())throw new IOException("program cache folder");
+            try(java.io.FileWriter cw=new java.io.FileWriter(new File(dir,"gl-cache"))){cw.write(glCache.getAbsolutePath());}
+            if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
+            java.util.ArrayList<String> args=new java.util.ArrayList<>();
+            java.util.Collections.addAll(args,"--gpu-prewarm",dir.getAbsolutePath(),String.valueOf(b));
+            child=com.particlesdevs.photoncamera.util.WorkerSpawn.start(app,args,com.particlesdevs.photoncamera.util.WorkerSpawn.environment(app,dir));
+            String result="no report";
+            try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){
+                String line;while((line=lines.readLine())!=null)if(line.startsWith("HYBRID PREWARM"))result=line;
+            }
+            if(!child.waitFor(60000)){child.destroy();result="timed out";}
+            Log.i("NICE_HDR",result+" (worker "+(android.os.SystemClock.elapsedRealtime()-started)+" ms)");
+        }catch(Exception e){
+            if(child!=null)child.destroy();
+            prewarmed.remove(b+"|"+tuning.hashCode());
+            Log.w("NICE_HDR","HYBRID PREWARM: "+e);
+        }finally{deleteTree(dir);}
     }
     /** W1.0: the Java preparation of a hybrid shot in one line, from the marks of its ShotTimeline (ms; -1 = not measured). */
     private static String javaPrepLine(){
