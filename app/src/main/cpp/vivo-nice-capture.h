@@ -368,6 +368,11 @@ inline std::array<float,64> mosaicSiteGain(const Burst& b,const uint16_t* data,i
     return gain;
 }
 using NiceAlignment = std::function<std::array<BackwardHomography,7>(Burst&)>;
+// P31 (W1.2): optional companion of the worker's NiceAlignment (the CRE). Told every frame of a burst before its groups are
+// aligned (base: the groups' Burst with slots 1..6 still unset; donors: raw and exposure of each frame to align, in order), it
+// builds their guides ahead; called with base == nullptr after the last group (or on an exception) to drop the unused ones.
+using NiceAlignmentPrefetch = std::function<void(const Burst* base,const std::vector<std::pair<const uint16_t*,float>>& donors)>;
+inline NiceAlignmentPrefetch& niceAlignmentPrefetch(){static NiceAlignmentPrefetch hook;return hook;}
 inline std::vector<float> reconstruct(const Burst& sensor,const NiceExecute& execute,
                                       const std::function<void(const std::string&)>& report,
                                       const std::function<void(const std::string&,const std::vector<float>&,int,int)>& snapshot={},

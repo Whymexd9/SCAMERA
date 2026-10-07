@@ -8,6 +8,7 @@
 // so moving objects do not ghost, but unlike the single reference pixel it is not
 // itself a noise outlier (a noisy anchor rejected every donor and left dark dots).
 #include "vivo-nice-profile.h"
+#include "vivo-nice-pool.h"
 #include <algorithm>
 #include <atomic>
 #include <array>
@@ -38,6 +39,9 @@ inline void mergeRowBands(int h,const std::function<void(int,int)>& body) {
     // Small chunks handed out dynamically: the work per row depends on the scene
     // (robust frames, clipped areas), and equal static bands left cores idle.
     const int chunk=std::max(4,h/(threads*16));
+    // P31: inside a task of the shared pool (hybrid stages built during the alignment) the same chunks go to the pool's threads,
+    // not to 8 new threads on top of them; every row is computed by the same body.
+    if(NicePool::inWorker()){NicePool::get().rows(h,chunk,body);return;}
     std::atomic<int> next{0};
     std::vector<std::thread> pool;
     for(int t=0;t<threads;++t)pool.emplace_back([&]{

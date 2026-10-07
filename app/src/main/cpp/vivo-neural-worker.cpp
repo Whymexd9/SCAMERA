@@ -23,6 +23,9 @@ static int integer(const char* text) {
     return static_cast<int>(v);
 }
 int main(int argc,char** argv) {
+    // P31 (W1.0): worker stage times for the shot timeline (NICE WORKER TIMELINE), ms since the worker started
+    const auto mainStarted=std::chrono::steady_clock::now();
+    auto sinceStart=[&]{return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-mainStarted).count();};
     try {
         vivo_nn::log("Vivo Neural native executable v30 (RAW stream input; HP9 hybrid CPU/GPU/NPU); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
@@ -48,26 +51,41 @@ int main(int argc,char** argv) {
                 report("NICE MOTION: vivo CRE source="+motion->source);
             }
             catch(const std::exception& error) { report(std::string("NICE MOTION: SCAMERA tile alignment (")+error.what()+")"); }
+            const double creMs=sinceStart();
             // P30: started before the app has written the burst (job file "wait-go" = the fd of a pipe): the CRE and the GPU
-            // driver are initialised meanwhile, then the worker waits for the app's go byte. SCAM_WARMUP: the same warm-up
-            // in an offline replay (no wait).
+            // driver are initialised meanwhile, then the worker waits for the app's go byte. P31 (W1.7): the warm-up always runs, on
+            // threads of its own from here (the app never asked for it on the shot-arena path): the CRE's first detect / track,
+            // joined before the first alignment (the burst's results do not depend on it, see StockMotion::warmUp), and
+            // eglInitialize (the driver load), joined at the end. SCAM_NO_WARMUP: without it (replay A/B).
+            const auto warmStarted=std::chrono::steady_clock::now();
+            std::thread creWarm,eglWarm;
+            std::atomic<int> creReadyMs{-1};
+            if(!std::getenv("SCAM_NO_WARMUP")){
+                if(motion)creWarm=std::thread([&]{
+                    try{motion->warmUp();}catch(const std::exception&){}
+                    creReadyMs=int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count());
+                });
+                eglWarm=std::thread([]{
+                    EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
+                    if(display!=EGL_NO_DISPLAY)eglInitialize(display,nullptr,nullptr); // loads the driver; the merge's own init is then a no-op
+                });
+            }
+            struct WarmJoin { std::thread& a;std::thread& b; ~WarmJoin(){if(a.joinable())a.join();if(b.joinable())b.join();} } warmJoin{creWarm,eglWarm};
+            auto joinCreWarm=[&]{
+                if(!creWarm.joinable())return;
+                creWarm.join();
+                report("NICE WARMUP: CRE ready in "+std::to_string(creReadyMs.load())+" ms, joined after "
+                    +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count()))+" ms");
+            };
             {
                 int goFd=-1;
                 {std::ifstream marker(std::string(argv[2])+"/wait-go");std::string text;if(marker&&std::getline(marker,text)&&!text.empty())goFd=std::atoi(text.c_str());}
-                if(goFd>=0||std::getenv("SCAM_WARMUP")){
-                    const auto t0=std::chrono::steady_clock::now();
-                    if(motion)try{motion->warmUp();}catch(const std::exception&){}
-                    EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
-                    if(display!=EGL_NO_DISPLAY)eglInitialize(display,nullptr,nullptr); // loads the driver; the merge's own init is then a no-op
-                    const auto t1=std::chrono::steady_clock::now();
-                    if(goFd>=0){
-                        char go=0;ssize_t n;
-                        do n=read(goFd,&go,1); while(n<0&&errno==EINTR);
-                        close(goFd);
-                        if(n!=1)throw std::runtime_error("NICE burst was not delivered by the app");
-                    }
-                    report("NICE WARMUP: CRE and GPU driver ready in "+std::to_string(int(std::chrono::duration<double,std::milli>(t1-t0).count()))
-                        +" ms, burst after "+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms");
+                if(goFd>=0){
+                    char go=0;ssize_t n;
+                    do n=read(goFd,&go,1); while(n<0&&errno==EINTR);
+                    close(goFd);
+                    if(n!=1)throw std::runtime_error("NICE burst was not delivered by the app");
+                    report("NICE WARMUP: burst after "+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count()))+" ms");
                 }
             }
             // NCH v10 = the LMC hybrid transport (per-frame roles and noise); anything else is the NICE 7-slot burst.
@@ -107,7 +125,14 @@ int main(int argc,char** argv) {
             }
             }
             vivo_nice::NiceAlignment alignment;
-            if(motion)alignment=[&](vivo_nice::Burst& burst){return motion->align(burst,report);};
+            if(motion){
+                alignment=[&](vivo_nice::Burst& burst){joinCreWarm();return motion->align(burst,report);};
+                // P31 (W1.2): the hybrid merge hands the CRE every frame before its groups: their guides are built ahead on the pool
+                vivo_nice::niceAlignmentPrefetch()=[&](const vivo_nice::Burst* base,const std::vector<std::pair<const uint16_t*,float>>& donors){
+                    if(base)motion->prefetch(*base,donors); else motion->dropPrefetched();
+                };
+            }
+            const double mappedMs=sinceStart();
             std::vector<uint16_t> mergedDng;
             std::vector<uint8_t> effMap,clipFlags;
             std::vector<float> result;
@@ -152,6 +177,10 @@ int main(int argc,char** argv) {
                 if(!f)report("NICE DIAGNOSTIC: incomplete tile dump");
             },alignment,&mergedDng,&effMap);
             }
+            const double mergedMs=sinceStart();
+            // The CRE's first call prints an unterminated line ("Failed to load symbol ..."): with the warm-up joined here at the
+            // latest it lands before the result lines, never in front of "NICE CAPTURE OK" (the app matches that line exactly).
+            joinCreWarm();
             // P30: the log line's mean and max on all cores (the sum was ~60 ms on one core at 12 MP, 4x that on the 2x grid).
             double sum=0;float maximum=0;
             {
@@ -179,6 +208,11 @@ int main(int argc,char** argv) {
             // from the clipped mean, 3 clip border, 4 Bento mask, 5 ultrashort clipped mean).
             if(!clipFlags.empty()&&clipFlags.size()==effMap.size())writeAll(clipFlags.data(),clipFlags.size());
             if(close(out))throw std::runtime_error("Incomplete NICE output");
+            {
+                char line[200];
+                std::snprintf(line,sizeof(line),"NICE WORKER TIMELINE ms: cre=%.0f mapped=%.0f merged=%.0f written=%.0f",creMs,mappedMs,mergedMs,sinceStart());
+                report(line);
+            }
             alarm(0);report("NICE CAPTURE OK");return 0;
         }
         if(argc==3 && std::string(argv[1])=="--nice-tone-check") {

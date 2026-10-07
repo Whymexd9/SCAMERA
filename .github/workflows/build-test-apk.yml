@@ -112,6 +112,8 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-motion-capture
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_measured_gain.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-measured-gain
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-measured-gain
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_prefetch.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-prefetch
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-prefetch
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_probe.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-nice-probe
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-probe /tmp/nice-probe-fixture
           python3 tools/check_nice_reference_metadata.py
