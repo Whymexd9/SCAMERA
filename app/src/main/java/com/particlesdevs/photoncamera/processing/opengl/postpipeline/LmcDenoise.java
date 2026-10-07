@@ -385,6 +385,7 @@ public final class LmcDenoise extends Node {
             glProg.useAssetProgram("chromadn/luma", false);
             glProg.setTexture("InputBuffer", base);
             glProg.setVar("offsetC", offsetC);
+            glProg.setVar("signedU", 0); // the noise estimate as before (the program may hold NiceDenoise's value)
             glProg.drawBlocks(noisy);
             final float sigmaU = NiceDenoise.estimateNoise(glProg, noisy, 1);
             pipeline.niceNoiseSigma = sigmaU;

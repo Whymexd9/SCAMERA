@@ -21,10 +21,11 @@ precision highp sampler2D;
 //     compression scaling compares against it in the ae domain (x cbrt(ae / m)).
 //  4. display: pure power 1/gamma, film toe below 0.15, optional IGN dither [:1805-1843].
 // Integer grid arithmetic everywhere (the output reaches 8192 px; float pixel coordinates lose precision on Adreno).
-// signedColourU 1 (the working RGB is signed: LMC hybrid without the denoise, nicergb signedU): the B-spline colour is
+// signedColourU 1 (the working RGB is signed: LMC hybrid without the denoise or after the NLM engine, nicergb signedU): the
+// B-spline colour is
 // clamped at zero after the interpolation, not per tap - the colour source holds box means of the signed merge, and a
 // clamp per tap lifted the mean of a channel near zero (red mottling of a dark teal curtain under the shadow lift).
-// 0 (unset: SCAM HDR, the hybrid after the denoise): per tap as before. The taps can be negative there as well (a
+// 0 (unset: SCAM HDR, the hybrid after the LMC/GCam denoise): per tap as before. The taps can be negative there as well (a
 // saturated colour outside sRGB after the colour matrix); clamping those after the interpolation would move colour edges.
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)

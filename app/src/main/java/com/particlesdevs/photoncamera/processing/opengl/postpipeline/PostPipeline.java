@@ -43,8 +43,9 @@ public class PostPipeline extends GLBasePipeline {
     public float niceNoiseSigma = 0f;
     /**
      * The working RGB holds signed values: set by VivoNiceRgb (nicergb signedU, LMC hybrid), cleared by a noise reduction
-     * that writes its clamped output. ArkCombine then clamps its B-spline colour after the interpolation; otherwise (SCAM
-     * HDR, or the hybrid after the denoise) per tap as before, so negative taps of the colour matrix change nothing there.
+     * that writes its clamped output (the LMC/GCam engine; the NLM engine keeps it: chromadn/apply clips once, downstream).
+     * ArkCombine then clamps its B-spline colour after the interpolation; otherwise (SCAM HDR, or the hybrid after the
+     * LMC/GCam denoise) per tap as before, so negative taps of the colour matrix change nothing there.
      */
     public boolean signedRgb;
     /** ARK tone of the LMC hybrid: state handed from ArkStats to ArkCombine / ArkSharpenGuard; null outside that route. */

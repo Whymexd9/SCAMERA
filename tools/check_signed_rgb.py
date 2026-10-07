@@ -15,9 +15,15 @@ Checks:
 - chromadn/down (NLM colour stage): the box mean of the signed values (no lift), as numpy;
 - ark/low colour mode: the box mean of the signed values (no lift); DETAIL_REF 1 keeps its per-pixel clamp, the box mean
   of min(ae * Y(max(rgb, 0)), 1), as ark/combine's detail luminance;
-- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the denoise) is the former per-tap clamp, bit
-  for bit, also for the negative taps of a colour outside sRGB; signedColourU 1 (signed hybrid input) clamps after the
-  interpolation (the red of a dark teal field is not lifted); non-negative taps give the same output in both modes.
+- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the LMC denoise) is the former per-tap clamp,
+  bit for bit, also for the negative taps of a colour outside sRGB; signedColourU 1 (signed hybrid input) clamps after the
+  interpolation (the red of a dark teal field is not lifted); non-negative taps give the same output in both modes;
+- the NLM denoise engine (NiceDenoise.runNlm: chromadn/luma, down, filter, nlm, down4, coarse, apply as the Java sets them,
+  despeckle off; signedU 1 = signed hybrid input): non-negative input gives the output of signedU 0 bit for bit (luma and
+  chroma on, luma alone, chroma alone); on the signed dark field the luminance is not lifted by a clamp per pixel (chroma
+  alone: |Y bias| < 0.5 %, the clamp lifts the noisy edge by > 3 %), with the chroma denoise off the colour is not lifted
+  either (|red bias| at the edge < 5 % and at most 0.6 x the clamp's, which lifts it by > 20 %), with both on the edge red
+  stays within 2 % and Y within 3 %; output finite.
 Usage: check_signed_rgb.py [--shaders DIR] [--report]
 """
 from pathlib import Path
@@ -176,6 +182,120 @@ def combine_checks():
     return fails
 
 
+LW = np.array([0.2126, 0.7152, 0.0722])
+OFFSET_C = 0.008                                         # NiceDenoise offsetC
+DARK_CHROMA = (1.5e-4, 4.0e-4)                           # LmcDenoise.darkChroma on signed hybrid input (defaults)
+
+
+def nlm_engine(field, signed, luma, chroma, sigma):
+    """NiceDenoise.runNlm without the despeckle (checked alone above), 1x grid, no effective-frame map: chromadn/luma ->
+    down -> filter (stepU 1, 2) -> nlm -> down4 -> coarse -> apply with the uniforms the Java sets (strengths 0 / 1)."""
+    h_, w_ = field.shape[:2]
+    tin = texture(np.concatenate([field, np.ones((h_, w_, 1))], -1).astype(np.float32))
+    eff = ctx.texture((1, 1), 1, np.zeros(1, np.uint16).tobytes(), dtype='u2')   # EffMap (usampler2D), unused: useEff 0
+    eff.filter = (moderngl.NEAREST, moderngl.NEAREST)
+    owned = [tin, eff]
+
+    def up(a, linear=False):
+        t = texture(np.ascontiguousarray(a, np.float32), linear=linear)   # FLOAT_16 values: exact in f4
+        owned.append(t)
+        return t
+
+    def rgba(a):
+        return np.concatenate([a, np.ones(a.shape[:2] + (1,))], -1)
+
+    def run(name, size, texs, uni):
+        p = program(name)
+        try:
+            return draw(p, size, texs, uni)
+        finally:
+            p.release()
+
+    half, quarter = (w_ // 2, h_ // 2), (w_ // 4, h_ // 4)
+    noisy = up(run('chromadn/luma.glsl', (w_, h_), {'InputBuffer': tin}, {'offsetC': OFFSET_C, 'signedU': signed})[..., 0])
+    before = up(rgba(run('chromadn/down.glsl', half, {'InputBuffer': tin}, {'factorU': 2})))
+    after = before
+    if chroma > 0:
+        for st in (1, 2):
+            after = up(rgba(run('chromadn/filter.glsl', half, {'InputBuffer': after},
+                                {'stepU': st, 'strength': 1.0, 'tolerance': max(1.0, chroma), 'sigmaU': max(sigma, 0.0008),
+                                 'offsetC': OFFSET_C})))
+    clean = coarse = noisy
+    if luma > 0:
+        clean = up(run('chromadn/nlm.glsl', (w_, h_), {'InputBuffer': noisy, 'EffMap': eff},
+                       {'h': luma * max(0.0035, 3 * sigma), 'pxStepU': 1, 'useEff': 0})[..., 0])
+        q = up(run('chromadn/down4.glsl', quarter, {'InputBuffer': clean}, {'factorU': 4})[..., 0])
+        coarse = up(run('chromadn/coarse.glsl', quarter, {'InputBuffer': q}, {'tolerance': max(0.004, 3.5 * sigma)})[..., 0],
+                    linear=True)                                     # apply samples Coarse with texture()
+    grain = max(0.12, min(1.0, 0.0002 / (max(sigma, 1e-4) * luma))) if luma > 0 else 1.0
+    try:
+        return run('chromadn/apply.glsl', (w_, h_),
+                   {'InputBuffer': tin, 'EffMap': eff, 'Before': before, 'After': after, 'Noisy': noisy, 'Clean': clean,
+                    'Coarse': coarse},
+                   {'sigma': sigma if luma > 0 else 0.0, 'useEff': 0, 'pxStepU': 1, 'lowRatio': 2.0, 'grain': grain,
+                    'offsetC': OFFSET_C, 'lumaAmount': 1.0 if luma > 0 else 0.0, 'chromaAmount': 1.0 if chroma > 0 else 0.0,
+                    'darkFade': (0.0008, 0.003), 'darkChroma': DARK_CHROMA, 'signedU': signed})
+    finally:
+        for t in owned:
+            t.release()
+
+
+def nlm_checks(raw):
+    fails = []
+    field = np.where(np.isfinite(raw), raw, 0).astype(np.float64) / WP      # white-balanced, as the denoise gets it
+    edge, inside = slice(0, EDGE), slice(EDGE + 8, W - 8)
+    y = field @ LW
+    sigma = float(np.std(y[:, inside]) / (2 * np.sqrt(OFFSET_C + max(np.mean(y[:, inside]), 0))))
+
+    def bias(o, cols):
+        """(per-channel, luminance) mean of the output over the input's, minus 1 (rows 1..H-2: no border clamp)."""
+        a, b = o[1:H - 1, cols].reshape(-1, 3).mean(0), field[1:H - 1, cols].reshape(-1, 3).mean(0)
+        return a / b - 1, (a @ LW) / (b @ LW) - 1
+
+    configs = {'luma+chroma': (1.0, 1.0), 'luma, chroma 0': (1.0, 0.0), 'chroma, luma 0': (0.0, 1.0)}
+    pos = np.abs(field)
+    for name, (luma, chroma) in configs.items():
+        a, b = nlm_engine(pos, 1, luma, chroma, sigma), nlm_engine(pos, 0, luma, chroma, sigma)
+        if not np.array_equal(a, b):
+            fails.append('NLM %s: non-negative input differs between signedU 1 and 0 (%d px)'
+                         % (name, int(np.any(a != b, axis=-1).sum())))
+    res = {}
+    for name, (luma, chroma) in configs.items():
+        for signed in (1, 0):
+            o = nlm_engine(field, signed, luma, chroma, sigma)
+            if not np.all(np.isfinite(o)):
+                fails.append('NLM %s signedU %d: non-finite output' % (name, signed))
+            res[name, signed] = {'edge': bias(o, edge), 'inside': bias(o, inside)}
+            if REPORT:
+                print('NLM %-15s signedU %d: edge rgb %s Y %+.2f %% | inside rgb %s Y %+.2f %% | px < 0 %.1f %%'
+                      % (name, signed, np.round(100 * res[name, signed]['edge'][0], 2), 100 * res[name, signed]['edge'][1],
+                         np.round(100 * res[name, signed]['inside'][0], 2), 100 * res[name, signed]['inside'][1],
+                         100 * (o < 0).any(-1).mean()))
+    # chroma alone: the luminance of chromadn/luma (the pixel's level in apply) no longer lifted by the clamp per channel
+    for part in ('edge', 'inside'):
+        yb = res['chroma, luma 0', 1][part][1]
+        if abs(yb) > 0.005:
+            fails.append('NLM chroma, luma 0, signed: %s luminance biased by %+.2f %%' % (part, 100 * yb))
+    if res['chroma, luma 0', 0]['edge'][1] < 0.03:
+        fails.append('NLM chroma, luma 0, clamped: edge luminance lift %+.2f %% < 3 %% - the scene no longer shows the bias'
+                     % (100 * res['chroma, luma 0', 0]['edge'][1]))
+    # chroma 0: the pixel keeps its own colour difference, signed (no red lift where it is near zero)
+    rs, rc = res['luma, chroma 0', 1], res['luma, chroma 0', 0]
+    if abs(rs['edge'][0][0]) > 0.05:
+        fails.append('NLM luma, chroma 0, signed: edge red biased by %+.1f %%' % (100 * rs['edge'][0][0]))
+    if rc['edge'][0][0] < 0.2:
+        fails.append('NLM luma, chroma 0, clamped: edge red lift %+.1f %% < 20 %% - the scene no longer shows the bias'
+                     % (100 * rc['edge'][0][0]))
+    for part in ('edge', 'inside'):
+        if abs(rs[part][0][0]) > 0.6 * rc[part][0][0]:
+            fails.append("NLM luma, chroma 0: %s red bias %+.1f %% not below 0.6 x the clamp's %+.1f %%"
+                         % (part, 100 * rs[part][0][0], 100 * rc[part][0][0]))
+    rb = res['luma+chroma', 1]['edge']
+    if abs(rb[0][0]) > 0.02 or abs(rb[1]) > 0.03:
+        fails.append('NLM luma+chroma, signed: edge red %+.1f %% / Y %+.1f %% biased' % (100 * rb[0][0], 100 * rb[1]))
+    return fails, rs['edge'][0][0], rc['edge'][0][0]
+
+
 def main():
     fails = []
     raw, mean = scene()
@@ -264,12 +384,17 @@ def main():
     # after the interpolation and no longer lifts a channel near zero; for non-negative taps both are the same.
     fails += combine_checks()
 
+    # ---- the NLM denoise engine on the signed field (luminance and, with the chroma denoise off, colour clipped once)
+    nf, nlm_signed, nlm_clamped = nlm_checks(raw)
+    fails += nf
+
     if fails:
         for f in fails:
             print('FAIL:', f)
         sys.exit(1)
-    print('signed RGB PASS: nicergb edge bias %+.2f %% (clamped %+.1f %%), despeckle / down / ark low keep the mean'
-          % (100 * (be[0] - 1), 100 * (oe[0] - 1)))
+    print('signed RGB PASS: nicergb edge bias %+.2f %% (clamped %+.1f %%), despeckle / down / ark low keep the mean, '
+          'NLM chroma 0 edge red %+.1f %% (clamped %+.1f %%)'
+          % (100 * (be[0] - 1), 100 * (oe[0] - 1), 100 * nlm_signed, 100 * nlm_clamped))
 
 
 if __name__ == '__main__':

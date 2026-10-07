@@ -6,9 +6,14 @@ precision highp usampler2D;
 // samples are weighted by how close their luminance is to the pixel's own, so colour edges stay
 // on the luminance edges); its luminance follows the non-local-means result. Very dark pixels
 // carry no measurable colour (black-level error shows as a tint) and fade to neutral.
-// Signed input (LMC hybrid: nicergb signedU): the pixel's luminance uses its value clamped at zero (as before); its 3x3
-// colour averages the signed values and clamps the mean, so a channel near zero is not lifted by a clamp per pixel. The
-// output is >= 0 (the clamp after the noise reduction). For non-negative input nothing changes.
+// Signed input (LMC hybrid: nicergb signedU, signedU 1 here): the 3x3 colour averages the signed values and clamps the
+// mean, so a channel near zero is not lifted by a clamp per pixel. A pixel with a negative channel is not clamped either:
+// its luminance is the non-local-means result (chromadn/luma took its signed luminance) or, without the luma pass, its own
+// signed luminance; its colour difference is the filtered colour's (chroma pass) or its own signed one (chroma 0). Such a
+// pixel may stay negative: the hybrid clips once, after averaging, downstream (ark/low, ark/combine signedColourU), and
+// PostPipeline.signedRgb stays set. A pixel without a negative channel takes the former formula and comes out >= 0 (its
+// non-local-means luminance may see signed neighbours); input without negative values, and signedU 0 (SCAM HDR), give the
+// former output bit for bit (tools/check_signed_rgb.py).
 uniform sampler2D InputBuffer;
 uniform sampler2D Before;    // half resolution colour, unfiltered
 uniform sampler2D After;     // half resolution colour, filtered
@@ -29,6 +34,7 @@ uniform vec2 darkChroma;     // colour deviation |RGB - mean| from which a dark 
                              // (signed hybrid input; 0 = off, the fade of the luminance alone)
 uniform int pxStepU;            // outputScale: dilates the fixed 3x3 and +-3 px windows to sensor-pixel units
 uniform float lowRatio;      // full-resolution pixels per Before/After texel (2 * outputScale)
+uniform int signedU;         // 1: signed input (PostPipeline.signedRgb), see above
 out vec4 Output;
 void main() {
     int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
@@ -39,7 +45,9 @@ void main() {
         uint v = texelFetch(EffMap, p, 0).r;
         if (v > 0u && float(v) * 0.125 < effRef) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
     }
-    vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
+    vec3 cIn = texelFetch(InputBuffer, p, 0).rgb; // signed with signedU 1
+    vec3 c = max(cIn, vec3(0.0));
+    bool negative = signedU != 0 && any(lessThan(cIn, vec3(0.0)));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
     ivec2 lowSize = textureSize(After, 0);
     vec2 g = (vec2(p) + 0.5) / (lowRatio > 0.0 ? lowRatio : 2.0) - 0.5; // unset = 2:1
@@ -151,5 +159,13 @@ void main() {
     float y0 = un * un - offsetC;
     float y1 = uc * uc - offsetC;
     float gain = y0 > 1.0e-6 ? clamp(y1 / y0, 0.25, 4.0) : 1.0;
+    if (negative) {
+        // signed pixel (see the head): luminance and colour difference added, no clamp
+        float ys = dot(cIn, lw);
+        float yt = mix(ys, y1, lumaAmount);
+        vec3 diff = chromaAmount > 0.0 ? max(yt, 0.0) * (q / max(dot(q, lw), 1.0e-6) - vec3(1.0)) : cIn - vec3(ys);
+        Output = vec4(vec3(yt) + diff, 1.0);
+        return;
+    }
     Output = vec4(chroma * mix(1.0, gain, lumaAmount), 1.0);
 }
