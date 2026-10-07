@@ -8,6 +8,7 @@
 // (CRE, EGL / GL program compile). Everything in the handler is async-signal-safe (write, dladdr on a loaded image, no malloc);
 // memory of the frame chain is probed with write() into a pipe (EFAULT instead of a second fault).
 #include <signal.h>
+#include <pthread.h>
 #include <dlfcn.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -19,10 +20,23 @@
 #include <cstring>
 
 namespace worker_crash {
-inline thread_local const char* tlsStage=nullptr;
+// The stage of each thread lives in a pthread key, not in a thread_local: the worker targets API 26, where thread_local is
+// emulated TLS (__emutls_get_address), whose first access on a thread mallocs; a handler reading it on a thread that never
+// set a stage (a driver thread) could deadlock on the allocator lock the crash left held. bionic keeps key values in the
+// thread's own block: pthread_getspecific neither allocates nor locks.
+namespace detail {
+inline pthread_key_t stageKey;
+inline std::atomic<bool> stageKeyReady{false};
+}
+inline const char* threadStage(){
+    return detail::stageKeyReady.load(std::memory_order_acquire)?static_cast<const char*>(pthread_getspecific(detail::stageKey)):nullptr;
+}
+inline void setThreadStage(const char* stage){
+    if(detail::stageKeyReady.load(std::memory_order_acquire))pthread_setspecific(detail::stageKey,const_cast<char*>(stage));
+}
 inline std::atomic<const char*>& lastStage(){static std::atomic<const char*> s{nullptr};return s;}
 // stage names must be string literals or otherwise live for the whole process
-inline void mark(const char* stage){tlsStage=stage;lastStage().store(stage,std::memory_order_relaxed);}
+inline void mark(const char* stage){setThreadStage(stage);lastStage().store(stage,std::memory_order_relaxed);}
 // The last report line of the worker (any thread), printed with the crash. Racing writers may garble it, never overrun it.
 inline char* lastLine(){static char text[192];return text;}
 inline void note(const char* line,size_t n){
@@ -32,8 +46,8 @@ inline void note(const char* line,size_t n){
 }
 struct Stage {
     const char* previous;
-    explicit Stage(const char* stage):previous(tlsStage){mark(stage);}
-    ~Stage(){tlsStage=previous;}
+    explicit Stage(const char* stage):previous(threadStage()){mark(stage);}
+    ~Stage(){setThreadStage(previous);}
     Stage(const Stage&)=delete;Stage& operator=(const Stage&)=delete;
 };
 
@@ -67,6 +81,17 @@ inline void where(char*& p,char* end,uintptr_t pc){
         put(p,end," ");put(p,end,name);put(p,end,"+");putHex(p,end,pc-reinterpret_cast<uintptr_t>(info.dli_fbase));
         if(info.dli_sname){put(p,end," ");put(p,end,info.dli_sname);put(p,end,"+");putHex(p,end,pc-reinterpret_cast<uintptr_t>(info.dli_saddr));}
     }
+}
+// A return address as code address: the top byte (TBI) and, on cores with pointer authentication (Dimensity 9400 /
+// Cortex-X925: LR is signed between paciasp and autiasp, also in the frame records), the PAC bits. XPACLRI is in the hint
+// space, a no-op on cores without it.
+inline uintptr_t codeAddress(uintptr_t value){
+#if defined(__aarch64__)
+    register uintptr_t x30 __asm__("x30")=value;
+    __asm__("hint #7":"+r"(x30)); // xpaclri
+    value=x30;
+#endif
+    return value&0x00ffffffffffffffULL;
 }
 inline const char* signalName(int sig){
     switch(sig){case SIGSEGV:return "SIGSEGV";case SIGBUS:return "SIGBUS";case SIGFPE:return "SIGFPE";
@@ -110,7 +135,7 @@ inline void handler(int sig,siginfo_t* info,void* context){
         if(info){put(p,end," code=");putDec(p,end,info->si_code);put(p,end," addr=");putHex(p,end,reinterpret_cast<uintptr_t>(info->si_addr));}
         put(p,end," tid=");putDec(p,end,long(syscall(SYS_gettid)));
         char name[20]{};if(prctl(PR_GET_NAME,reinterpret_cast<unsigned long>(name),0,0,0)==0){put(p,end," thread=");put(p,end,name);}
-        put(p,end," stage=");put(p,end,tlsStage?tlsStage:"-");
+        const char* stage=threadStage();put(p,end," stage=");put(p,end,stage?stage:"-");
         put(p,end," last=");const char* last=lastStage().load(std::memory_order_relaxed);put(p,end,last?last:"-");
         emit(line,p);
         {char text[192];std::memcpy(text,lastLine(),sizeof(text));text[191]=0;
@@ -118,7 +143,7 @@ inline void handler(int sig,siginfo_t* info,void* context){
 #if defined(__aarch64__)
         if(context){
             const auto* uc=static_cast<const ucontext_t*>(context);
-            const uintptr_t pc=uc->uc_mcontext.pc,lr=uc->uc_mcontext.regs[30]&0x00ffffffffffffffULL,sp=uc->uc_mcontext.sp;
+            const uintptr_t pc=uc->uc_mcontext.pc,lr=codeAddress(uc->uc_mcontext.regs[30]),sp=uc->uc_mcontext.sp;
             p=line;put(p,end,"WORKER CRASH pc=");putHex(p,end,pc);put(p,end," lr=");putHex(p,end,lr);put(p,end," sp=");putHex(p,end,sp);
             put(p,end," fp=");putHex(p,end,uc->uc_mcontext.regs[29]);emit(line,p);
             const uintptr_t both[2]={pc,lr};
@@ -133,7 +158,7 @@ inline void handler(int sig,siginfo_t* info,void* context){
                 uintptr_t record[2];
                 if(!readable(reinterpret_cast<const void*>(fp),sizeof(record)))break;
                 std::memcpy(record,reinterpret_cast<const void*>(fp),sizeof(record));
-                const uintptr_t ret=record[1]&0x00ffffffffffffffULL;
+                const uintptr_t ret=codeAddress(record[1]);
                 if(!ret)break;
                 p=line;put(p,end,"WORKER CRASH #");putDec(p,end,n);put(p,end," ");where(p,end,ret);emit(line,p);
                 if(record[0]<=fp)break;
@@ -152,9 +177,10 @@ inline void handler(int sig,siginfo_t* info,void* context){
 }
 } // namespace detail
 
-// Once, at the start of main (before threads): every thread inherits the handlers; the alternate stack is per thread, so only
-// the main thread has one (a stack overflow elsewhere still dies without a line).
+// Once, at the start of main (before threads): every thread inherits the handlers. The alternate stack is per thread: the main
+// thread gets this one; bionic gives every thread pthread_create starts its own (16 KB and up; the handler needs about 2 KB).
 inline void install(){
+    if(!detail::stageKeyReady.load()&&pthread_key_create(&detail::stageKey,nullptr)==0)detail::stageKeyReady.store(true,std::memory_order_release);
     if(pipe2(detail::probe,O_CLOEXEC|O_NONBLOCK)!=0)detail::probe[0]=detail::probe[1]=-1;
     stack_t ss{};ss.ss_sp=detail::altStack;ss.ss_size=sizeof(detail::altStack);ss.ss_flags=0;sigaltstack(&ss,nullptr);
     struct sigaction sa{};sa.sa_sigaction=detail::handler;sa.sa_flags=SA_SIGINFO|SA_ONSTACK;sigemptyset(&sa.sa_mask);
