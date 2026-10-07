@@ -198,7 +198,10 @@ public final class NiceDenoise extends Node {
         final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
         // The LMC-hybrid engine has its own strengths («Шумоподавление после склейки» in the hybrid section).
         final boolean hybrid = PreferenceKeys.isHybridShot();
-        final float[] darkChroma = LmcDenoise.darkChroma(pipeline.signedRgb); // before this node resets signedRgb
+        final float[] darkChroma = LmcDenoise.darkChroma(pipeline.signedRgb);
+        // Signed input (the LMC hybrid: VivoNiceRgb signedU): chromadn/luma and chromadn/apply clip nothing per pixel (the
+        // hybrid clips once, after averaging, downstream); the output may keep negative values, so signedRgb stays set.
+        final boolean signed = pipeline.signedRgb;
         float chroma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_chroma", 1f) : PreferenceKeys.niceInternalValue("post_chroma", 1f)));
         float luma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_luma", 0.6f) : PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
         boolean despeckle = hybrid ? PreferenceKeys.hybridSwitch("despeckle", true) : PreferenceKeys.isNiceDespeckleEnabled();
@@ -223,6 +226,7 @@ public final class NiceDenoise extends Node {
                 glProg.useAssetProgram("chromadn/luma", false);
                 glProg.setTexture("InputBuffer", original);
                 glProg.setVar("offsetC", offsetC);
+                glProg.setVar("signedU", signed ? 1 : 0);
                 glProg.drawBlocks(noisy);
                 noiseSigma = estimateNoise(glProg, noisy, s);
                 pipeline.niceNoiseSigma = noiseSigma;
@@ -252,7 +256,7 @@ public final class NiceDenoise extends Node {
                 for (int pass = 0; pass < steps.length; pass++) {
                     glProg.useAssetProgram("chromadn/filter", false);
                     glProg.setTexture("InputBuffer", source);
-                    glProg.setVar("step", steps[pass]);
+                    glProg.setVar("stepU", steps[pass]);
                     glProg.setVar("strength", 1f);
                     glProg.setVar("tolerance", tolerance);
                     glProg.setVar("sigmaU", Math.max(noiseSigma, 0.0008f));
@@ -266,6 +270,7 @@ public final class NiceDenoise extends Node {
                     glProg.useAssetProgram("chromadn/luma", false);
                     glProg.setTexture("InputBuffer", input);
                     glProg.setVar("offsetC", offsetC);
+                    glProg.setVar("signedU", signed ? 1 : 0);
                     glProg.drawBlocks(noisy);
                 }
                 float sigma = noiseSigma;
@@ -313,10 +318,11 @@ public final class NiceDenoise extends Node {
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
             glProg.setVar("darkFade", 0.0008f, 0.003f);
             glProg.setVar("darkChroma", darkChroma[0], darkChroma[1]);
+            glProg.setVar("signedU", signed ? 1 : 0);
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
-            pipeline.signedRgb = false; // chromadn/apply writes >= 0
+            pipeline.signedRgb = signed; // chromadn/apply writes >= 0 unless its input is signed
         } finally {
             for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean, quarter, coarse, effMap}) if (t != null) t.close();
         }
