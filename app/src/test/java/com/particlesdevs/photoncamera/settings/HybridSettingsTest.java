@@ -149,7 +149,7 @@ public class HybridSettingsTest {
         PreferenceKeys.beginShotProfile(true);
         assertTrue(PreferenceKeys.isHybridShot());assertTrue(PreferenceKeys.isNiceHybridEnabled());
         assertEquals(1f,PreferenceKeys.niceInternalValue("noise_photon",1f),0f);
-        assertEquals(20,PreferenceKeys.getNiceZslFrames());assertEquals(20,PreferenceKeys.getHybridZslFrames());
+        assertEquals(30,PreferenceKeys.getNiceZslFrames());assertEquals(30,PreferenceKeys.getHybridZslFrames());
         assertTrue(PreferenceKeys.isNiceDespeckleEnabled());
         assertFalse(PreferenceKeys.useStockBracketPlanner());
         assertEquals("auto",PreferenceKeys.getNiceCreSource());
@@ -324,7 +324,9 @@ public class HybridSettingsTest {
         assertTrue(prefs.getBoolean("pref_lmc_hybrid_mosaic_window_full",false));
         assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_tetra","?"));
         assertEquals("2",prefs.getString("pref_lmc_hybrid_mosaic_native_clamp","?"));
+        assertEquals("30",prefs.getString("pref_lmc_hybrid_mosaic_frames","?")); // = the worker default mosaicFrames (7 October 2026)
         tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("mosaicFrames 30.0\n"));
         for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 3.0","mosaicKernelScale 0.7","mosaicNativeEdgeScale 0.6","mosaicKernelG 1.0",
                 "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 1.0","mosaicNativeFlatScale 2.4",
                 "mosaicNativeClamp 2.0"})
@@ -539,6 +541,91 @@ public class HybridSettingsTest {
         assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
     }
 
+    @Test public void hybridZslFramesFormerDefaultMovesTo30Once() {
+        // a stored 20 is the former XML default: it moves to 30 once; the run reports the change, the next one does not
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6)
+                .putString("pref_lmc_hybrid_zsl_frames","20").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("30",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        // 20 chosen after the move stays on every later run
+        prefs.edit().putString("pref_lmc_hybrid_zsl_frames","20").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("20",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        // any other stored value is the user's and stays; the marker is set anyway
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6)
+                .putString("pref_lmc_hybrid_zsl_frames","25").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("25",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.ZSL_FRAMES_REV,0));
+        // nothing stored (fresh install, the screen never shown): the default 30 applies, only the marker is written
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6).commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertFalse(prefs.contains("pref_lmc_hybrid_zsl_frames"));
+        assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        prefs.edit().putString("pref_lmc_hybrid_zsl_frames","20").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("20",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+    }
+
+    @Test public void mosaicFramesFormerDefaultMovesTo30Once() {
+        // a stored 24 is the former XML default of «Frames in the mosaic merge»: it moves to 30 once, the next run reports nothing
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",7)
+                .putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("30",prefs.getString("pref_lmc_hybrid_mosaic_frames",""));
+        assertTrue(PreferenceKeys.hybridTuningText(),PreferenceKeys.hybridTuningText().contains("mosaicFrames 30.0\n"));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        // 24 chosen after the move stays on every later run
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("24",prefs.getString("pref_lmc_hybrid_mosaic_frames",""));
+        // another stored value is the user's and stays; the marker is set anyway; the N frames' move is independent of it
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_lmc_hybrid_zsl_frames","20")
+                .putString("pref_lmc_hybrid_mosaic_frames","16").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("16",prefs.getString("pref_lmc_hybrid_mosaic_frames",""));
+        assertEquals("20",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.MOSAIC_FRAMES_REV,0));
+        // a build that already moved the N frames (its marker set) still moves a stored 24 of the mosaic merge
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("30",prefs.getString("pref_lmc_hybrid_mosaic_frames",""));
+        // nothing stored: the default 30 (XML and worker) applies, only the marker is written; 24 chosen later stays
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",7).commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertFalse(prefs.contains("pref_lmc_hybrid_mosaic_frames"));
+        assertEquals(1,prefs.getInt(SettingsMigration.MOSAIC_FRAMES_REV,0));
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("24",prefs.getString("pref_lmc_hybrid_mosaic_frames",""));
+    }
+
+    @Test public void frameCountMovesReachModuleProfilesOnceToo() {
+        // module profiles stored by an older build (former defaults, no markers) move with the main preferences; a profile that
+        // already went through the move keeps a 20 / 24 chosen afterwards
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").commit();
+        SharedPreferences meta=context.getSharedPreferences("module_profiles_meta",Context.MODE_PRIVATE);
+        meta.edit().clear().putBoolean("exists_back1",true).putBoolean("exists_back2",true).commit();
+        SharedPreferences old=context.getSharedPreferences("module_profile_v2_back1",Context.MODE_PRIVATE);
+        old.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_zsl_frames","20")
+                .putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        SharedPreferences moved=context.getSharedPreferences("module_profile_v2_back2",Context.MODE_PRIVATE);
+        moved.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt(SettingsMigration.ZSL_FRAMES_REV,1)
+                .putInt(SettingsMigration.MOSAIC_FRAMES_REV,1).putString("pref_lmc_hybrid_zsl_frames","20")
+                .putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        SettingsMigration.migrateLmcHybrid(context,prefs);
+        assertEquals("30",old.getString("pref_lmc_hybrid_zsl_frames",""));assertEquals("30",old.getString("pref_lmc_hybrid_mosaic_frames",""));
+        assertEquals("20",moved.getString("pref_lmc_hybrid_zsl_frames",""));assertEquals("24",moved.getString("pref_lmc_hybrid_mosaic_frames",""));
+        old.edit().putString("pref_lmc_hybrid_mosaic_frames","24").commit();
+        SettingsMigration.migrateLmcHybrid(context,prefs);
+        assertEquals("24",old.getString("pref_lmc_hybrid_mosaic_frames",""));
+        meta.edit().clear().commit();old.edit().clear().commit();moved.edit().clear().commit();
+    }
+
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         PreferenceKeys.beginShotProfile(true);
@@ -562,7 +649,7 @@ public class HybridSettingsTest {
         SettingsMigration.migrateLmcHybrid(prefs,false);
         assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         assertFalse(prefs.contains("pref_lmc_hybrid_zsl_frames"));assertFalse(prefs.contains("pref_lmc_hybrid_fusion_dark_ev"));
-        assertEquals(20,PreferenceKeys.getHybridZslFrames());
+        assertEquals(30,PreferenceKeys.getHybridZslFrames());
         // A later run (engine key gone, "auto" off SM8750 would read as the hybrid) copies nothing either.
         prefs.edit().putString("pref_vivo_nice_fusion_detail","0.7").commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));

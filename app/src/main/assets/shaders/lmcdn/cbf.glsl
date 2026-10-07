@@ -29,6 +29,8 @@ uniform int modeU;              // 0: YUV; 1: (U,V) - Orig.(U,V); 2: RGB (final,
 uniform float keepU;            // modeU 3: share of the 2x-only colour kept by final2x (unset 0 = colour from this scale)
 uniform int fadeU;              // modeU 2: colour fades to neutral in the darkest pixels (black-level error)
 uniform vec2 darkFadeU;         // mean RGB where the colour starts to fade / is fully kept
+uniform vec2 darkChromaU;       // fadeU: colour deviation |RGB - mean| from which a dark colour starts to stay / stays
+                                // fully (signed hybrid input; 0 = off, the fade of the luminance alone)
 out vec4 Output;
 
 const vec3 kY = vec3(0.2126, 0.7152, 0.0721996);
@@ -81,7 +83,11 @@ void main() {
     } else if (modeU == 2) {
         vec3 rgb = toRgb(r);
         if (fadeU != 0) {
-            float t = smoothstep(darkFadeU.x, darkFadeU.y, dot(rgb, vec3(1.0 / 3.0)));
+            // Dark fade: the colour of the darkest pixels fades to neutral (a black-level error shows as a tint there),
+            // except a colour clearly stronger than such a tint (a dark teal curtain), which is kept.
+            float m = dot(rgb, vec3(1.0 / 3.0));
+            float t = smoothstep(darkFadeU.x, darkFadeU.y, m);
+            if (darkChromaU.y > 0.0) t = max(t, smoothstep(darkChromaU.x, darkChromaU.y, length(rgb - vec3(m))));
             rgb = toRgb(vec3(r.x, r.yz * t));
         }
         Output = vec4(max(rgb, vec3(0.0)), 1.0);

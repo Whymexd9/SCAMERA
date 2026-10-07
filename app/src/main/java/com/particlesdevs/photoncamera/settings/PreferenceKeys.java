@@ -795,7 +795,9 @@ public class PreferenceKeys {
     /** Hybrid defaults that differ from the fallback the shared nodes pass; any other key keeps the caller's fallback. */
     private static final Map<String, Float> HYBRID_DEFAULTS = new HashMap<>();
     static {
-        HYBRID_DEFAULTS.put("zsl_frames", 20f);  // the Sabre kernel shows detail from ~12-15 frames (SCAM HDR NICE: 4)
+        // The Sabre kernel shows detail from ~12-15 frames and keeps gaining towards ArkCam's ~30 (owner 2026-10-07: 20 -> 30,
+        // SettingsMigration moves a stored former default); SCAM HDR NICE: 4.
+        HYBRID_DEFAULTS.put("zsl_frames", 30f);
         HYBRID_DEFAULTS.put("soft_tone", 0f);    // AgX + Exposure Fusion with the Bento headroom
         HYBRID_DEFAULTS.put("bento_factor", 8f); // LMC ultrashort_tet_factor
     }
@@ -942,7 +944,8 @@ public class PreferenceKeys {
             {"hotSigma", "hot_sigma"}, {"hotBaseSigma", "hot_base_sigma"}, {"hotFrames", "hot_frames"},
             {"hotCross", "hot_cross"}, {"hotMaxLevel", "hot_max_level"}, {"hotMaxKey", "hot_max_key"},
             {"bentoInvalid", "bento_invalid"},
-            // P14 / P22: frames of a Quad / Tetra burst merged (4 / 16 sub-frames each; worker default 24), the kernel across
+            // P14 / P22: frames of a Quad / Tetra burst merged (4 / 16 sub-frames each; worker default 30 since 7 October 2026, was 24;
+            // SettingsMigration moves a stored 24 once), the kernel across
             // edges of the sub-frame merge (worker default 0.6), shared motion of a frame's sub-frames (worker default 1)
             {"mosaicFrames", "mosaic_frames"}, {"mosaicBlock", "mosaic_block"},
             {"mosaicEdgeScale", "mosaic_edge_scale"}, {"mosaicShare", "mosaic_share"},
@@ -987,9 +990,9 @@ public class PreferenceKeys {
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
         return out.toString();
     }
-    /** The hybrid's N frames from the ZSL ring (pref_lmc_hybrid_zsl_frames, 4..44, default 20). */
+    /** The hybrid's N frames from the ZSL ring (pref_lmc_hybrid_zsl_frames, 4..44, default 30). */
     public static int getHybridZslFrames() {
-        return Math.round(hybridValue("zsl_frames", 20f));
+        return Math.round(hybridValue("zsl_frames", 30f));
     }
     /**
      * LMC hybrid tone: the ArkCam 1.23 / LMC 9.6 photo tone (ArkStats -> ArkFusion -> ArkCombine: Smart-HDR AE, exposure

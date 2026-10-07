@@ -258,7 +258,7 @@ public final class SettingsMigration {
      * (SCAM HDR on and pref_vivo_nice_engine resolving to the hybrid), the SCAM HDR knobs it read (Exposure Fusion, tone,
      * look, texture, sharpening, AE, AgX highlights, autonomous HDR tone, noise and CRE source, N frames, diagnostics,
      * fast capture) are copied to the hybrid's keys (LmcHybridKeys.copyKey), so the hybrid keeps its look while SCAM HDR
-     * keeps its own values; elsewhere (e.g. SCAM HDR NICE on SM8750) the hybrid starts from its own defaults (N 20, ...).
+     * keeps its own values; elsewhere (e.g. SCAM HDR NICE on SM8750) the hybrid starts from its own defaults (N 30, ...).
      * The copy happens once, in the run that creates pref_lmc_hybrid_enabled (= the hybrid took the shots so far; on a
      * fresh install: on wherever the NICE network does not run), so later SCAM HDR changes never reach the hybrid.
      * pref_vivo_nice_engine and the first switch pref_vivo_nice_hybrid are removed. Keys that already exist under the new
@@ -418,11 +418,42 @@ public final class SettingsMigration {
                 markOnly = true;
             }
         }
+        // N frames from the ZSL ring 20 -> 30 (owner, 7 October 2026: towards ArkCam's ~30 merged frames; detail grows with
+        // the frame count). A stored 20 is the former XML default (the row stores it when the screen is first shown) and
+        // moves to 30; any other value is the user's and stays. Its own one-time marker, set in the first run whatever it
+        // finds: a value copied from SCAM HDR in this run (the hybrid took the shots with it) is not in `values` and stays,
+        // and a 20 chosen after this run is never moved.
+        if (!values.containsKey(ZSL_FRAMES_REV)) {
+            Object frames = values.get(LmcHybridKeys.PREFIX + "zsl_frames");
+            if (frames != null && isNumber(frames, 20f)) {
+                ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "zsl_frames", frames instanceof String ? "30" : (Object) 30f);
+                changed = true;
+            }
+            e.putInt(ZSL_FRAMES_REV, 1);
+            markOnly = true;
+        }
+        // Frames in the mosaic merge 24 -> 30 (owner, 7 October 2026, with the N frames above: our Quad merge took 21 frames,
+        // ArkCam 30). A stored 24 is the former XML default and moves to 30; any other value is the user's and stays. Its own
+        // one-time marker, as the N frames' (the key has no legacy or SCAM HDR source to copy from): set in the first run
+        // whatever it finds, so a 24 chosen after this run is never moved.
+        if (!values.containsKey(MOSAIC_FRAMES_REV)) {
+            Object frames = values.get(LmcHybridKeys.PREFIX + "mosaic_frames");
+            if (frames != null && isNumber(frames, 24f)) {
+                ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_frames", frames instanceof String ? "30" : (Object) 30f);
+                changed = true;
+            }
+            e.putInt(MOSAIC_FRAMES_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
 
     private static final String DEFAULTS_REV = "pref_lmc_hybrid_defaults_rev";
+    /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_zsl_frames (20) to 30. */
+    static final String ZSL_FRAMES_REV = "pref_lmc_hybrid_zsl_frames_rev";
+    /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_mosaic_frames (24) to 30. */
+    static final String MOSAIC_FRAMES_REV = "pref_lmc_hybrid_mosaic_frames_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {

@@ -25,17 +25,19 @@ uniform float offsetC;
 uniform float lumaAmount;    // 0..1
 uniform float chromaAmount;  // 0..1: 0 keeps the original colour
 uniform vec2 darkFade;       // mean level where colour starts to fade / is fully kept
+uniform vec2 darkChroma;     // colour deviation |RGB - mean| from which a dark colour starts to stay / stays fully
+                             // (signed hybrid input; 0 = off, the fade of the luminance alone)
 uniform int pxStepU;            // outputScale: dilates the fixed 3x3 and +-3 px windows to sensor-pixel units
 uniform float lowRatio;      // full-resolution pixels per Before/After texel (2 * outputScale)
 out vec4 Output;
 void main() {
     int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
-    // Noise of this pixel: the measured level scaled by how well the merge covered it.
+    // Noise of this pixel: the measured level scaled by how well the merge covered it, one-sided (W3.5, as chromadn/nlm).
     float sg = sigma;
     if (useEff != 0 && sigma > 0.0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, (effMax > 0.0 ? effMax : 3.0));
+        if (v > 0u && float(v) * 0.125 < effRef) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
     }
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
@@ -98,7 +100,11 @@ void main() {
         float keep = smoothstep(1.6, 3.0, dist);
         q = mix(q, own, keep);
     }
-    q = mix(vec3(1.0), q, smoothstep(darkFade.x, darkFade.y, ym));
+    // q has mean 1, so ym * (q - 1) is the colour's deviation from neutral in linear RGB: a colour clearly stronger than
+    // a black-level tint (a dark teal curtain) is kept.
+    float fadeT = smoothstep(darkFade.x, darkFade.y, ym);
+    if (darkChroma.y > 0.0) fadeT = max(fadeT, smoothstep(darkChroma.x, darkChroma.y, ym * length(q - vec3(1.0))));
+    q = mix(vec3(1.0), q, fadeT);
     vec3 chroma = ym * mix(c / ym, q, chromaAmount);
     // Replacing the colour must not move the luminance: a chroma taken from a strongly coloured
     // neighbour (equal mean, different luminance weights) turned pixels at colour edges dark.

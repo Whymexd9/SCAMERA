@@ -257,9 +257,13 @@ struct HybridTuning {
     // Handheld X7 Ultra Quad burst, 0.6 with 24 frames: +14 % fine-band energy at the flat-area noise of 1.0 with 16 frames.
     float mosaicEdgeScale=0.6f;
     int mosaicChroma=1;          // 1: chroma median of the mosaic result (GCam 11 remosaicked: chroma_median dual_5_point), 0: off
-    int mosaicFrames=24;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
+    int mosaicFrames=30;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
                                  // merge time grows with the sub-frames; 24 Quad frames (96 sub-frames) take about 8 s on the X7 Ultra,
-                                 // 16 about 6.8 s (P22: the extra frames pay for the narrower edge kernel)
+                                 // 16 about 6.8 s (P22: the extra frames pay for the narrower edge kernel). 30 since 7 October 2026
+                                 // (owner: towards ArkCam's ~30 merged frames; the ZSL ring sends 30 N): the native merge (one GPU
+                                 // slot per frame, strips within the storage block and a quarter of MemAvailable) takes them all, the
+                                 // split up to kHybridGpuFrames / b^2 (Quad 30, Tetra 8); above 16 MP both stay within half of
+                                 // MemAvailable
     // P29 native mosaic path (research/ark23/quad_report.md section 8, plan P29). mosaicPath 0 = the b^2 sub-frame split above
     // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
     // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF

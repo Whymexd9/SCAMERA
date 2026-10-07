@@ -93,10 +93,12 @@ public final class NiceDenoise extends Node {
         long seen = 0;
         int median = 1;
         for (int v = 1; v < 256; v++) { seen += histogram[v]; if (seen * 2 >= count) { median = v; break; } }
-        effRef = Math.max(1f, median / 8f);
+        // The median itself (>= 1/8 frame): a floor of 1 frame would strengthen pixels at the median of a map whose median is
+        // below one frame (the shaders read it one-sided).
+        effRef = median / 8f;
         eff.rewind();
-        // W1.1: the map as it always reached the shaders (all zero where the driver rejects its upload), deterministically;
-        // see LmcDenoise.effectiveFramesTexture.
+        // W3.5: the real codes, read one-sided by chromadn/nlm and chromadn/apply (only fewer than the median frames
+        // strengthen the filter); see LmcDenoise.effectiveFramesTexture.
         return LmcDenoise.effectiveFramesTexture(size, eff);
     }
 
@@ -196,6 +198,7 @@ public final class NiceDenoise extends Node {
         final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
         // The LMC-hybrid engine has its own strengths («Шумоподавление после склейки» in the hybrid section).
         final boolean hybrid = PreferenceKeys.isHybridShot();
+        final float[] darkChroma = LmcDenoise.darkChroma(pipeline.signedRgb); // before this node resets signedRgb
         float chroma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_chroma", 1f) : PreferenceKeys.niceInternalValue("post_chroma", 1f)));
         float luma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_luma", 0.6f) : PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
         boolean despeckle = hybrid ? PreferenceKeys.hybridSwitch("despeckle", true) : PreferenceKeys.isNiceDespeckleEnabled();
@@ -309,6 +312,7 @@ public final class NiceDenoise extends Node {
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
             glProg.setVar("darkFade", 0.0008f, 0.003f);
+            glProg.setVar("darkChroma", darkChroma[0], darkChroma[1]);
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;

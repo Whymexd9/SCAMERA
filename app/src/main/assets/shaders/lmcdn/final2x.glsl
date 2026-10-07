@@ -10,12 +10,14 @@ precision highp sampler2D;
 //   Y = Y(RGB_2x) + Up2(Delta.x),  UV = keep UV(RGB_2x) + Up2(Delta.yz)
 // (Up2 is linear), one upsampled texture. Up2 = bilinear x2 at the sensor-scale position p/2 - 0.25 from four integer
 // texel fetches: a float coordinate (p + 0.5) / 2 is an fp16 value on Adreno (4-pixel steps above 4096 px).
-// Optional fade of the colour in the darkest pixels; a non-finite input sample is zeroed (see lmcdn/yuv).
+// Optional fade of the colour in the darkest pixels (a colour clearly stronger than a black-level tint is kept, see
+// lmcdn/cbf); a non-finite input sample is zeroed (see lmcdn/yuv).
 uniform sampler2D InputBuffer;  // RGB on the 2x grid
 uniform sampler2D Delta;        // sensor scale: (Y change, UV(Den0) - keep UV(X0))
 uniform float keepU;            // share of the 2x-only colour residual kept (unset 0 = colour from the sensor scale)
 uniform int fadeU;
 uniform vec2 darkFadeU;
+uniform vec2 darkChromaU;       // colour deviation |RGB - mean| kept despite the fade (lmcdn/cbf; 0 = off)
 out vec4 Output;
 const vec3 kY = vec3(0.2126, 0.7152, 0.0721996);
 const vec3 kU = vec3(-0.162450244, -0.546494309, 0.708944715);
@@ -42,7 +44,10 @@ void main() {
     float keep = clamp(keepU, 0.0, 1.0);
     vec3 yuv = vec3(dot(c, kY) + d.x, keep * vec2(dot(c, kU), dot(c, kV)) + d.yz);
     if (fadeU != 0) {
-        float t = smoothstep(darkFadeU.x, darkFadeU.y, dot(toRgb(yuv), vec3(1.0 / 3.0)));
+        vec3 rgb = toRgb(yuv);
+        float m = dot(rgb, vec3(1.0 / 3.0));
+        float t = smoothstep(darkFadeU.x, darkFadeU.y, m);
+        if (darkChromaU.y > 0.0) t = max(t, smoothstep(darkChromaU.x, darkChromaU.y, length(rgb - vec3(m))));
         yuv.yz *= t;
     }
     Output = vec4(max(toRgb(yuv), vec3(0.0)), 1.0);
