@@ -213,6 +213,23 @@ public final class LiveRawFrame {
         }
     }
 
+    /**
+     * P36: the session of the frame {@link #acquire()} would return, -1 without one. The frame is always from the
+     * current session (a session change drops the published frame).
+     */
+    public static int peekSession() {
+        synchronized (LOCK) {
+            return front == null ? -1 : session;
+        }
+    }
+
+    /** P36: the current session number (a frame published from now on carries a higher one after the next change). */
+    public static int currentSession() {
+        synchronized (LOCK) {
+            return session;
+        }
+    }
+
     public static int getVersion() {
         synchronized (LOCK) {
             return version;

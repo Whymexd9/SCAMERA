@@ -361,6 +361,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     private void refreshZoomDial() {
         if (zoomDial == null) return;
+        com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
         java.util.List<String> slots = com.particlesdevs.photoncamera.control.ZoomController.lenses();
         java.util.List<Float> ratios = new java.util.ArrayList<>();
         java.util.List<String> labels = new java.util.ArrayList<>();
