@@ -76,4 +76,25 @@ public class ParametersBlackFloorTest {
         q.refineBlackLevel(raw(1024, 768, 1024, 768, 60, 0), 1024, 768);
         for (float b : q.blackLevel) assertEquals(60f, b, 1.01f);
     }
+
+    @Test public void noisyDarkFrameKeepsTheDriftCorrection() throws Exception {
+        // A night frame of the OPPO: floor 60 under heavy read noise (sigma 14 DN of 10 bits), so single samples dip below 16
+        // (a quarter of black 64) now and then. A block with such a sample is left out, the rest still find the floor.
+        final int w = 1024, h = 768;
+        ByteBuffer b = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+        ShortBuffer s = b.asShortBuffer();
+        Random r = new Random(11);
+        int below = 0;
+        for (int i = 0; i < w * h; i++) {
+            int v = (int) Math.round(60 + 14 * r.nextGaussian());
+            if (v < 16) below++;
+            s.put(i, (short) Math.max(0, v));
+        }
+        assertTrue("the frame must hold samples below black / 4", below > 0);
+        Parameters p = parameters();
+        p.refineBlackLevel(b, w, h);
+        // lowered from 64 as without the padding rule; the third-lowest block mean is a low noise quantile (about 56 here,
+        // the same value the estimator gave before the rule)
+        for (float v : p.blackLevel) assertTrue("black " + v, v > 52f && v < 62f);
+    }
 }
