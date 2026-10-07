@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/resource.h>
 
 static int integer(const char* text) {
     char* end=nullptr;errno=0;long v=std::strtol(text,&end,10);
@@ -38,6 +39,21 @@ int main(int argc,char** argv) {
         if(argc==2 && std::string(argv[1])=="--crash-check") { // the crash report on this device: a null write on a helper thread
             std::thread([]{worker_crash::Stage stage("crash check");volatile int* p=nullptr;*p=1;}).join();
             return 0;
+        }
+        if(argc==4 && std::string(argv[1])=="--gpu-prewarm") { // P35: <job dir> <colour block>: the merge route's GPU programs into the cache
+            // Runs while the camera session starts (and possibly while a shot merges): the compile threads of the driver inherit
+            // this thread's nice value, so the whole prewarm yields the CPU to the camera, the viewfinder and the shot's worker.
+            if(setpriority(PRIO_PROCESS,0,10)!=0){} // best effort
+            // A driver that hangs must not hold the app's prewarm thread: it reads the output until the worker exits.
+            signal(SIGALRM,SIG_DFL);alarm(60);
+            auto report=[](const std::string& line){worker_crash::note(line.data(),line.size());vivo_nn::log(line);};
+            std::ifstream cache(std::string(argv[2])+"/gl-cache");std::string dir;
+            if(cache&&std::getline(cache,dir)&&!dir.empty())vivo_nice::hybridProgramCacheDir()=dir;
+            else if(const char* env=std::getenv("SCAM_GL_CACHE"))vivo_nice::hybridProgramCacheDir()=env;
+            if(vivo_nice::hybridProgramCacheDir().empty())throw std::runtime_error("HYBRID PREWARM: no program cache");
+            worker_crash::mark("GPU prewarm");
+            vivo_nice::hybridPrewarmGpu(vivo_nice::loadHybridTuning(argv[2],report),integer(argv[3]),report);
+            vivo_nn::log("NICE PREWARM OK");return 0;
         }
         if(argc==5 && std::string(argv[1])=="--nice-capture") {
             signal(SIGALRM,SIG_DFL);alarm(840);

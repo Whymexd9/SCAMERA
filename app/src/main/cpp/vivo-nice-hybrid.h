@@ -22,6 +22,8 @@
 #include "vivo-nice-crash.h"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -29,6 +31,11 @@
 // POSIX on every target: the program binary cache (trimProgramCache) runs on the host builds of CI too.
 #include <dirent.h>
 #include <sys/stat.h>
+#if defined(__linux__)
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #if defined(__aarch64__)
 #include <arm_neon.h>
 #endif
@@ -230,6 +237,8 @@ struct HybridTuning {
     int laMedian=2;              // 3x3 median passes over the L0 field
     int laUltrashort=0;          // 1: refine the ultrashort (Bento) frame too (x8..16 gain: noisy, isotropic 1 px kernel)
     int laThreads=6;             // worker threads (one frame each; ~15 MB per thread)
+    int laStream=1;              // P33 W2.1: 1 = the field in tile-row bands alongside the GPU merge (LaStream), 0 = the whole field first
+    int laNice=0;                // P33 W2.1: nice value of the LaStream threads (0 = as the merge thread; > 0 leaves the CPU to it)
     int isoKernel=0;             // diagnostics, round-4 kernel only (sabre61 off): 1 = isotropic sigma = base (no edge shaping), 2 = also no
                                  // flat widening: a "spatial RGB"-like isotropic Gaussian (LMC 9.6 spatial_rgb: sigma 0.28..0.40 px)
     // P14 / P15 colour-block mosaic: 0 = the header's block, measured from the base frame when the header has none or says
@@ -415,7 +424,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
-            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
+            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laNice",nullptr,&t.laNice)||set("isoKernel",nullptr,&t.isoKernel)
             ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
@@ -2350,6 +2359,18 @@ struct HybridMosaicNative {
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
 };
 
+// P33 W2.1 (research/speed/SHOT_SPEED_PLAN.md): the F6 field computed in tile-row bands while the GPU merges (LaStream below).
+// HybridGpu::merge waits before each strip for the field rows that strip reads and uploads them; the rows are final when
+// waitRows returns (the same floats as the whole-frame laFrameField). waitRows throws HybridLaStreamFailed when F6 failed.
+struct HybridLaStreamFailed : std::runtime_error { using std::runtime_error::runtime_error; };
+struct HybridLaStream {
+    virtual ~HybridLaStream()=default;
+    virtual void waitRows(int rows)=0;                 // every streamed frame holds final field / Z rows [0, rows)
+    virtual const float* field(int mergeIndex) const=0; // ny x nx x 2 (RAW px) of merge frame i, nullptr = no field (zeros)
+    virtual const float* motion(int mergeIndex) const=0;// ny x nx Z channel of merge frame i, nullptr = zeros
+    double waitMs=0;int waits=0;                        // time the strips spent waiting (report)
+};
+
 class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
@@ -2633,6 +2654,10 @@ public:
         int laMode=0,laNx=0,laNy=0;
         float laOx=0,laOy=0,laStride=16;
         std::vector<float> laMaxY;                      // per frame: largest |dy| of the field (rows uploaded beyond the homography)
+        // P33 W2.1: the field arrives in rows while the merge runs (laField / laMotion unused); laMaxY then holds a bound
+        HybridLaStream* laStream=nullptr;
+        // P33 W2.2: called on the merge thread after each strip's readback with the output rows [0, rows) of out complete
+        std::function<void(std::vector<float>& out,int rows)> rowsDone;
         // P29: the raw mosaic behind these (binned) frames; null = every other merge. nativeFrames: its frames in merge order.
         const HybridMosaicNative* native=nullptr;
         std::vector<const uint16_t*> nativeFrames;
@@ -2744,6 +2769,19 @@ public:
     void release(){if(display!=EGL_NO_DISPLAY)eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);}
     void acquire(){if(display==EGL_NO_DISPLAY||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");}
     bool hasBentoPass() const {return bentoProgram!=0;}
+    // P35 / P33: the native mosaic merge programs merge() compiles on first use (prewarm on module open, hybridPrewarmGpu): the fast
+    // merge plain and, when the strips may carry site flags, marked; or the generic merge where the fast one does not apply.
+    void prewarmNative(int block,int window,bool fill,bool fullWindow,bool generic,bool mayMark){
+        if(fullWindow&&window>=1&&window<=(block==4?8:3)&&!(fill&&window<2)&&!generic){
+            natFastProgram(block,window,false,fill);
+            if(mayMark)natFastProgram(block,window,true,fill);
+        } else if(!mosaicProgram){
+            compileName="mosaic";
+            const auto t0=std::chrono::steady_clock::now();
+            mosaicProgram=compile((std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+            compileMs+=" mosaic="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
+        }
+    }
 
     // out: RGB (w*g)*(h*g)*3 (base units) on the output grid g (1 = sensor, 2 = Sabre 6.1 2x); effective: donor
     // coverage per output pixel (frames); robustShare[f]: mean accepted weight of frame f after dilation, scalar
@@ -2847,7 +2885,17 @@ public:
         // F6 field: the whole burst once (frames x tiles x 8 B, ~12 MB for 32 frames of 12 MP). The programs compiled with it read
         // binding 15 for every donor: they need the field (zeros = the homography).
         const bool la=localAlign;
-        if(la){
+        const size_t laTiles=size_t(std::max(in.laNx,0))*size_t(std::max(in.laNy,0));
+        int laUploaded=0; // P33 W2.1: field rows [0, laUploaded) of every frame are in slots 15 / 17
+        if(la&&in.laStream){
+            if(in.laMode==0||in.laNx<1||in.laNy<1)throw std::runtime_error("HYBRID GPU local alignment field");
+            if(maxStorageBlock>0&&size_t(frames)*laTiles*8>maxStorageBlock)
+                throw std::runtime_error("HYBRID GPU: local alignment field "+hybridMB(size_t(frames)*laTiles*8)+" MB > storage block "+hybridMB(maxStorageBlock)+" MB");
+            // zeros first (the base and frames without a field stay so); the rows of each strip follow before its rejection
+            const std::vector<float> zero(size_t(frames)*laTiles*2,0.f);
+            reserve(15,zero.size()*4);put(15,0,zero.data(),zero.size()*4);
+            reserve(17,zero.size()*2);put(17,0,zero.data(),zero.size()*2);
+        } else if(la){
             if(in.laMode==0||!in.laField||in.laNx<1||in.laNy<1||in.laField->size()!=size_t(frames)*in.laNx*in.laNy*2)
                 throw std::runtime_error("HYBRID GPU local alignment field");
             // the whole burst's field is one storage block (12 MB at 12 MP x 32 frames; the caller then merges without it)
@@ -3257,8 +3305,41 @@ public:
                 glUniform4i(loc(markProgram,"mFlagsU"),ry0,ry1,stripMode,0);
                 const GLint frameIdx=loc(markProgram,"frameIdx");
                 int maxRows=1;for(int f=0;f<frames;++f)maxRows=std::max(maxRows,rows[f]);
+                if(stripMode==1){
+                    // P33 W2.2: cell clip only (no outlier sites): the rows of the 32-row blocks that hold a clipped sample, and of
+                    // their neighbour blocks (a canonical cell may straddle two blocks). Everywhere else the pass writes the words
+                    // back unchanged (fresh uploads: flag bits 0, no clipped cell), so it is not dispatched there.
+                    const GLint chunkLoc=loc(markProgram,"chunkU");
+                    const int chunk=chunkOf(128);
+                    const auto markStarted=std::chrono::steady_clock::now();
+                    auto clipNear=[&](int f,int bk){
+                        for(int d=-1;d<=1;++d){const int bb=bk+d;if(bb>=0&&bb<blocks&&clipBlock[size_t(f)*blocks+bb])return true;}
+                        return false;
+                    };
+                    for(int f=0;f<frames;++f){
+                        glUniform1i(frameIdx,f);
+                        int runStart=-1;
+                        const int firstBlock=row0[f]/kBlock,lastBlock=(row0[f]+rows[f]-1)/kBlock;
+                        for(int bk=firstBlock;bk<=lastBlock+1;++bk){
+                            const bool need=bk<=lastBlock&&clipNear(f,bk);
+                            const int r0=std::clamp(bk*kBlock-row0[f],0,rows[f]);
+                            if(need&&runStart<0)runStart=r0;
+                            if(!need&&runStart>=0){
+                                for(int r=runStart;r<r0;r+=chunk){
+                                    glUniform1i(chunkLoc,r);
+                                    glDispatchCompute(GLuint((w2+7)/8),GLuint((std::min(chunk,r0-r)+7)/8),1);
+                                }
+                                runStart=-1;
+                            }
+                        }
+                    }
+                    glFlush();
+                    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                    if(profile){glFinish();passMs[7]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-markStarted).count();}
+                } else {
                 glUniform1i(frameIdx,0);
                 dispatchRows(markProgram,w2,maxRows,frames,chunkOf(128),7);
+                }
                 check("mark");
             }
             if(nat&&natStripMode){ // P29: the same flags on the native sites (kHybNatMean / kHybNatFlags / kHybNatMark)
@@ -3319,6 +3400,22 @@ public:
                     dispatchRows(cellsProgram,w2,maxRows,frames-1,chunkOf(256),2);
                 }
                 check("cells");
+                if(la&&in.laStream&&laUploaded<in.laNy){
+                    // P33 W2.1: the field rows this strip reads (after the cells pass, which does not read them: the GPU runs it meanwhile): laFlowAt / laMotionAt at the cells [ry0, ry1) (tile rows i0, i0 + 1 of the
+                    // bilinear sample, the nearest of the Z channel), one row more for rounding; earlier rows are already uploaded
+                    const float pmax=std::clamp((float(2*(ry1-1))+0.5f-in.laOy)/std::max(in.laStride,1e-3f),0.f,float(in.laNy-1));
+                    const int need=std::min(in.laNy,int(pmax)+3);
+                    if(need>laUploaded){
+                        in.laStream->waitRows(need);
+                        const size_t nx=size_t(in.laNx),r0=size_t(laUploaded),nr=size_t(need-laUploaded);
+                        for(int f=0;f<frames;++f){
+                            if(const float* fld=in.laStream->field(f))put(15,(size_t(f)*laTiles+r0*nx)*8,fld+r0*nx*2,nr*nx*8);
+                            if(const float* z=in.laStream->motion(f))put(17,(size_t(f)*laTiles+r0*nx)*4,z+r0*nx,nr*nx*4);
+                        }
+                        laUploaded=need;
+                        check("local alignment rows");
+                    }
+                }
                 glUseProgram(rejectProgram);
                 glUniform1i(loc(rejectProgram,"ry0"),ry0);glUniform1i(loc(rejectProgram,"ry1"),ry1);
                 dispatchRows(rejectProgram,w2,ry1-ry0,frames-1,chunkOf(256),3);
@@ -3375,10 +3472,14 @@ public:
             check("merge");
             GLsync fence=glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0);
             glFlush();
-            readStrip(pending);                      // the previous strip, while the GPU runs this one
+            {const int doneRows=pending.active?pending.oy0+pending.rows2:0;
+             readStrip(pending);                     // the previous strip, while the GPU runs this one
+             if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
             pending.active=true;pending.bank=bank;pending.oy0=oy0;pending.rows2=rows2;pending.fence=fence;
         }
-        readStrip(pending);
+        {const int doneRows=pending.active?pending.oy0+pending.rows2:0;
+         readStrip(pending);
+         if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
         if(stripsShrunk&&trace)trace("HYBRID GPU: "+std::to_string(stripsShrunk)+" of "+std::to_string(stripIndex)+" strips shrunk to fit the storage block / memory budget (smallest "
             +std::to_string(smallestStrip)+" cells)");
         std::vector<GLuint> sums(zeros.size());
@@ -3389,6 +3490,31 @@ public:
         if(nat){natFixedOutliers=long(sums[natSum0]);natBaseOutliers=long(sums[natSum0+1]);}
     }
 };
+
+// P35 (with P33): the GPU programs of a module's merge route, built when the module opens (worker --gpu-prewarm), so that the first
+// shot loads them from the program cache (hybridProgramCacheDir) instead of compiling them. The same programs the shot's merge
+// asks for, from the same tuning: the plain set (hybridReconstruct's early context, an ultrashort frame assumed: every app burst
+// carries one), on a stored / declared Quad / Tetra block with mosaicPath 1 the native set with the colour passes off
+// (hybridReconstructMosaicNativeMerge) and its merge program for the block's window. The split (mosaicPath 0) merges plain.
+inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::function<void(const std::string&)>& report){
+    const auto t0=std::chrono::steady_clock::now();
+    const bool native=block>1&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0);
+    HybridTuning t=tune;
+    if(native){t.chromaDiff=0.f;t.rimRatio=0;t.bentoChroma=0.f;}
+    const bool rimPass=t.rimRatio!=0,la=t.localAlign>0,chromaPass=t.chromaDiff>0.f;
+    const bool bentoPass=t.bento>0&&t.bentoChromaSigma>0.f&&t.bentoChroma>0.f;
+    const bool outlierPrograms=t.hotSigma>0||t.hotBaseSigma>0;
+    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms);
+    if(native){
+        const bool t2=block==4&&tune.mosaicTetra!=1;
+        const int mb=t2?2:block;
+        const int window=block==4&&!t2?std::clamp(2*tune.mosaicWindow,1,8):std::clamp(tune.mosaicWindow,1,6);
+        const bool fill=tune.mosaicChromaFill==1&&std::clamp(tune.mosaicFillSupport,0.f,1.f)>0.f;
+        gpu.prewarmNative(mb,window,fill,tune.mosaicWindowFull!=0,tune.mosaicGeneric!=0,tune.cellClip!=0||outlierPrograms);
+    }
+    report("HYBRID PREWARM: block "+std::to_string(block)+(native?" native mosaic":" plain")+" programs ready in "
+        +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms ("+gpu.renderer+";"+gpu.compileMs+")");
+}
 
 // ---------------------------------------------------------------------------------------------
 // CPU side: sharpness (Shasta gate), Bento mask, per-frame weights, assembly.
@@ -3810,10 +3936,11 @@ inline void laT0(const LaGrid& g,const BackwardHomography& H,int i,int j,float& 
     tx=(hx-0.5f*float(g.s-1))/float(g.s)-cx;ty=(hy-0.5f*float(g.s-1))/float(g.s)-cy;
 }
 // Lucas-Kanade iterations on every tile of a level: r (RAW px, ny*nx*2) in/out.
-inline void laLK(const LaImage& B,const LaImage& D,const LaGrid& g,const BackwardHomography& H,float v,float mu,float kappa,int iters,
-                 std::vector<float>& r){
+// W2.1: the tile rows [j0, j1) only (every tile is independent: the same floats as the whole level).
+inline void laLKRows(const LaImage& B,const LaImage& D,const LaGrid& g,const BackwardHomography& H,float v,float mu,float kappa,int iters,
+                     std::vector<float>& r,int j0,int j1){
     const float minN=0.5f*float(g.win*g.win);
-    for(int j=0;j<g.ny;++j)for(int i=0;i<g.nx;++i){
+    for(int j=j0;j<j1;++j)for(int i=0;i<g.nx;++i){
         float tx0,ty0;laT0(g,H,i,j,tx0,ty0);
         float* rr=r.data()+(size_t(j)*g.nx+i)*2;
         for(int it=0;it<iters;++it){
@@ -3827,11 +3954,13 @@ inline void laLK(const LaImage& B,const LaImage& D,const LaGrid& g,const Backwar
         }
     }
 }
+inline void laLK(const LaImage& B,const LaImage& D,const LaGrid& g,const BackwardHomography& H,float v,float mu,float kappa,int iters,
+                 std::vector<float>& r){laLKRows(B,D,g,H,v,mu,kappa,iters,r,0,g.ny);}
 // 3x3 median of each component (borders replicated), 19-comparator network.
-inline void laMedian3(std::vector<float>& r,int nx,int ny){
-    const std::vector<float> src=r;
+// W2.1: rows [j0, j1) of the median of src into dst (src rows j0-1 .. j1 must be final).
+inline void laMedian3Rows(const std::vector<float>& src,std::vector<float>& r,int nx,int ny,int j0,int j1){
     auto cx=[](float& a,float& b){const float lo=std::min(a,b);b=std::max(a,b);a=lo;};
-    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i)for(int c=0;c<2;++c){
+    for(int j=j0;j<j1;++j)for(int i=0;i<nx;++i)for(int c=0;c<2;++c){
         float p[9];int k=0;
         for(int dj=-1;dj<=1;++dj)for(int di=-1;di<=1;++di)
             p[k++]=src[(size_t(std::clamp(j+dj,0,ny-1))*nx+std::clamp(i+di,0,nx-1))*2+c];
@@ -3840,6 +3969,7 @@ inline void laMedian3(std::vector<float>& r,int nx,int ny){
         r[(size_t(j)*nx+i)*2+c]=p[4];
     }
 }
+inline void laMedian3(std::vector<float>& r,int nx,int ny){const std::vector<float> src=r;laMedian3Rows(src,r,nx,ny,0,ny);}
 // Bilinear sample of a level-L field (RAW px) at RAW position (X, Y).
 inline void laFieldAt(const std::vector<float>& r,const LaGrid& g,float X,float Y,float& fx,float& fy){
     const float u=std::clamp(((X-0.5f*float(g.s-1))/float(g.s)-0.5f*float(g.win-1))/float(g.stride),0.f,float(g.nx-1));
@@ -3858,19 +3988,22 @@ struct LaBase { LaImage l0,l1; LaGrid g0,g1; float v0=0; };
 // GCam 11 Z channel (rejection.cl motion prior): per tile the length of the min-max extent of the raw LK flow over its 3x3
 // tile neighbourhood, taken before the acceptance test (a moving hand is exactly where LK is rejected and the kept field
 // stays 0) and before any median. A tile whose LK diverged (non-finite or beyond maxShift) counts as maxShift.
-inline void laMotionExtent(const std::vector<float>& raw,int nx,int ny,float maxShift,std::vector<float>& z){
-    z.assign(size_t(nx)*ny,0.f);
+// W2.1: rows [j0, j1) of z (sized nx * ny; raw rows j0-1 .. j1 must be final).
+inline void laMotionExtentRows(const std::vector<float>& raw,int nx,int ny,float maxShift,std::vector<float>& z,int j0,int j1){
     auto at=[&](int i,int j,float& x,float& y){
         const size_t k=size_t(std::clamp(j,0,ny-1))*nx+std::clamp(i,0,nx-1);
         x=raw[k*2];y=raw[k*2+1];
         if(!std::isfinite(x)||!std::isfinite(y)||std::hypot(x,y)>maxShift){const float m=std::hypot(x,y);const float s=std::isfinite(m)&&m>0.f?maxShift/m:0.f;
             x=std::isfinite(x)?x*s:maxShift;y=std::isfinite(y)?y*s:0.f;}
     };
-    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i){
+    for(int j=j0;j<j1;++j)for(int i=0;i<nx;++i){
         float x0=1e9f,x1=-1e9f,y0=1e9f,y1=-1e9f;
         for(int dj=-1;dj<=1;++dj)for(int di=-1;di<=1;++di){float x,y;at(i+di,j+dj,x,y);x0=std::min(x0,x);x1=std::max(x1,x);y0=std::min(y0,y);y1=std::max(y1,y);}
         z[size_t(j)*nx+i]=std::hypot(x1-x0,y1-y0);
     }
+}
+inline void laMotionExtent(const std::vector<float>& raw,int nx,int ny,float maxShift,std::vector<float>& z){
+    z.assign(size_t(nx)*ny,0.f);laMotionExtentRows(raw,nx,ny,maxShift,z,0,ny);
 }
 inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomography& H,const HybridTuning& t,
                          std::vector<float>& field,LaFrameStats& st,std::vector<float>* motion=nullptr){
@@ -3927,6 +4060,234 @@ inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomo
     std::nth_element(mag.begin(),mag.begin()+p90,mag.end());st.p90=mag[p90];
     st.maxAbsY=maxY;st.accepted=float(acc)/float(std::max<size_t>(1,mag.size()));st.fromCoarse=float(fromCoarse)/float(std::max<size_t>(1,mag.size()));
 }
+
+// P33 W2.1: laFrameField of every refined frame in tile-row bands, alongside the GPU merge (HybridLaStream). Phase 1 of a frame
+// (gray, L1 field and its median) is queued as soon as the alignment publishes its homography (add), the bands once the merge
+// knows the refined frames (commit): bands of every frame in band order, each the start, L0 LK and acceptance test of those tile
+// rows (every tile alone, as in laFrameField), and, as the rows below them arrive, the Z channel and the medians (3x3: one row of
+// halo each). Every value is the one laFrameField computes (the same functions on the same tiles); only the order of the tiles
+// differs. A frame's gray image is freed when its field is complete (or when the merge drops the frame).
+class LaStream final : public HybridLaStream {
+public:
+    struct Job { int f=0;const uint16_t* raw=nullptr;float gain=1;BackwardHomography H; };
+    struct Frame {
+        Job job;LaImage D0;std::vector<float> r1,s0,lk,z;std::vector<std::vector<float>> stage;std::vector<uint8_t> ok,coarse,lkDone;
+        std::vector<int> stageRows;int lkPrefix=0,zRows=0,ready=0;bool p1=false,done=false,dropped=false;LaFrameStats st;
+    };
+    static constexpr int kBandRows=4; // tile rows per task (191 rows at 12 MP: 48 bands)
+    LaStream(const Burst& burst,LaBase&& laBase,float epsilon,const HybridTuning& tune,int threads)
+            :b(burst),base(std::move(laBase)),t(tune),eps(epsilon),started(std::chrono::steady_clock::now()){
+        bands=(base.g0.ny+kBandRows-1)/kBandRows;
+        for(int k=0;k<std::max(1,threads);++k){
+            try{pool.emplace_back([this]{work();});}catch(const std::exception&){if(pool.empty())throw;break;} // fewer threads
+        }
+    }
+    // the jobs at once (tests, and a merge whose frames are known)
+    LaStream(const Burst& burst,LaBase&& laBase,float epsilon,const HybridTuning& tune,const std::vector<Job>& jobs,int threads)
+            :LaStream(burst,std::move(laBase),epsilon,tune,threads){
+        std::vector<int> fs;for(const auto& job:jobs){add(job);fs.push_back(job.f);}
+        commit(fs);
+    }
+    ~LaStream() override {stop();for(auto& th:pool)if(th.joinable())th.join();}
+    LaStream(const LaStream&)=delete;
+    const LaGrid& grid0() const {return base.g0;}
+    // phase 1 of frame job.f (its homography final); before commit
+    void add(const Job& job){
+        std::lock_guard<std::mutex> l(m);
+        if(committed)return;
+        all.push_back(std::make_unique<Frame>());all.back()->job=job;
+        queue.emplace_back(int(all.size())-1,-1);cv.notify_one();
+    }
+    // the refined frames (each added before; ascending f as the merge lists them): their bands are queued, the others dropped
+    void commit(const std::vector<int>& refined){
+        std::lock_guard<std::mutex> l(m);
+        if(committed)return;
+        committed=true;
+        for(size_t k=0;k<all.size();++k){
+            const bool in=std::find(refined.begin(),refined.end(),all[k]->job.f)!=refined.end();
+            if(!in){all[k]->dropped=true;if(all[k]->p1)release(*all[k]);}
+        }
+        for(int f:refined)for(size_t k=0;k<all.size();++k)if(all[k]->job.f==f&&!all[k]->dropped){frames.push_back(int(k));break;}
+        // queued phase-1 tasks of dropped frames go; the bands follow in band order
+        std::deque<std::pair<int,int>> kept;
+        for(const auto& task:queue)if(!all[task.first]->dropped)kept.push_back(task);
+        queue.swap(kept);
+        for(int band=0;band<bands;++band)for(int k:frames)queue.emplace_back(k,band);
+        commitMs=ms(started);
+        {bool all1=true;for(int k:frames)all1=all1&&all[k]->p1;if(all1)phase1Ms=commitMs;}
+        if(frames.empty())doneMs=commitMs;
+        cv.notify_all();
+    }
+    int frameCount() const {return int(frames.size());}
+    void stop(){std::lock_guard<std::mutex> l(m);stopping=true;cv.notify_all();}
+    // merge order: frameOfMerge[i] = burst frame of merge slot i; slots without a refined frame read zeros
+    void setMergeOrder(const std::vector<int>& frameOfMerge){
+        slots.assign(frameOfMerge.size(),-1);
+        for(size_t i=0;i<frameOfMerge.size();++i)for(int k:frames)if(all[k]->job.f==frameOfMerge[i])slots[i]=k;
+    }
+    void waitRows(int rows) override {
+        const auto t0=std::chrono::steady_clock::now();
+        rows=std::min(rows,base.g0.ny);
+        std::unique_lock<std::mutex> l(m);
+        bool blocked=false;
+        cv.wait(l,[&]{
+            if(failed||stopping)return true;
+            if(!committed){blocked=true;return false;}
+            for(int k:frames)if(all[k]->ready<rows){blocked=true;return false;}
+            return true;
+        });
+        if(failed)throw HybridLaStreamFailed(failure);
+        if(stopping)throw HybridLaStreamFailed("stopped");
+        if(blocked){waitMs+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();++waits;}
+    }
+    // every committed field complete (or failed); false on a failure (failureText())
+    bool finish(){
+        std::unique_lock<std::mutex> l(m);
+        cv.wait(l,[&]{if(failed||stopping)return true;if(!committed)return false;for(int k:frames)if(!all[k]->done)return false;return true;});
+        return !failed&&!stopping;
+    }
+    const std::string& failureText() const {return failure;}
+    bool hasField(int i) const {return i>=0&&i<int(slots.size())&&slots[i]>=0;}
+    // after waitRows (the frame's arrays exist)
+    const float* field(int i) const override {return hasField(i)?all[slots[i]]->stage.back().data():nullptr;}
+    const float* motion(int i) const override {return hasField(i)?all[slots[i]]->z.data():nullptr;}
+    const Frame& frameAt(int k) const {return *all[frames[k]];}
+    double doneMs=0;  // field of every frame complete, after the start
+    double phase1Ms=0;// phase 1 of every refined frame done, after the start
+    double commitMs=0;// commit, after the start
+private:
+    using Clock=std::chrono::steady_clock;
+    static double ms(Clock::time_point a){return std::chrono::duration<double,std::milli>(Clock::now()-a).count();}
+    Burst b;LaBase base;HybridTuning t;float eps;Clock::time_point started;
+    std::vector<std::unique_ptr<Frame>> all;std::vector<int> frames,slots;int bands=0,framesDone=0;
+    std::deque<std::pair<int,int>> queue; // (index into all, band; -1 = phase 1)
+    std::vector<std::thread> pool;
+    std::mutex m;std::condition_variable cv;bool committed=false,failed=false,stopping=false;std::string failure;
+    void fail(const std::string& why){std::lock_guard<std::mutex> l(m);if(!failed){failed=true;failure=why;}cv.notify_all();}
+    static void release(Frame& fr){
+        fr.D0=LaImage{};std::vector<float>().swap(fr.r1);std::vector<float>().swap(fr.s0);std::vector<float>().swap(fr.lk);
+        for(size_t s=0;s+1<fr.stage.size();++s)std::vector<float>().swap(fr.stage[s]);
+        if(fr.dropped){std::vector<std::vector<float>>().swap(fr.stage);std::vector<float>().swap(fr.z);}
+    }
+    void work(){
+#if defined(__linux__)
+        if(t.laNice>0&&setpriority(PRIO_PROCESS,id_t(syscall(SYS_gettid)),std::min(t.laNice,19))!=0){} // best effort
+#endif
+        try{
+            for(;;){
+                std::pair<int,int> task;
+                {
+                    std::unique_lock<std::mutex> l(m);
+                    cv.wait(l,[&]{return failed||stopping||!queue.empty()||committed;});
+                    if(failed||stopping||queue.empty())return; // committed and nothing left
+                    task=queue.front();queue.pop_front();
+                    if(task.second>=0){ // a band: phase 1 of its frame was queued before it, so it runs or ran already
+                        cv.wait(l,[&]{return all[task.first]->p1||failed||stopping;});
+                        if(failed||stopping)return;
+                    }
+                }
+                if(task.second<0)phase1(*all[task.first]); else runBand(*all[task.first],task.second);
+            }
+        }catch(const std::exception& error){fail(error.what());}
+        catch(...){fail("unknown error");}
+    }
+    void phase1(Frame& fr){
+        double part[3]{};auto tick=Clock::now();
+        laGray(b,fr.job.raw,fr.job.gain,eps,fr.D0,false);part[0]=ms(tick);tick=Clock::now();
+        LaImage D1;laDown(fr.D0,D1,false);part[1]=ms(tick);tick=Clock::now();
+        const LaGrid& g0=base.g0;const LaGrid& g1=base.g1;
+        fr.r1.assign(size_t(g1.nx)*g1.ny*2,0.f);
+        laLK(base.l1,D1,g1,fr.job.H,base.v0*0.25f,t.laMu,t.laKappa,std::max(0,t.laItersCoarse),fr.r1);
+        laMedian3(fr.r1,g1.nx,g1.ny);part[2]=ms(tick);
+        const size_t T=size_t(g0.nx)*g0.ny;const int M=std::max(0,t.laMedian);
+        fr.lk.assign(T*2,0.f);fr.s0.assign(T,0.f);fr.ok.assign(T,0);fr.coarse.assign(T,0);fr.lkDone.assign(g0.ny,0);fr.z.assign(T,0.f);
+        fr.stage.assign(size_t(M)+1,std::vector<float>(T*2,0.f));fr.stageRows.assign(size_t(M)+1,0);
+        std::lock_guard<std::mutex> l(m);
+        for(int q=0;q<3;++q)fr.st.ms[q]+=part[q];
+        fr.p1=true;
+        if(fr.dropped)release(fr);
+        if(committed){
+            bool all1=true;for(int k:frames)all1=all1&&all[k]->p1;
+            if(all1&&phase1Ms<=0)phase1Ms=ms(started);
+        }
+        cv.notify_all();
+    }
+    void runBand(Frame& fr,int band){
+        const LaGrid& g0=base.g0;const LaGrid& g1=base.g1;
+        const int j0=band*kBandRows,j1=std::min(g0.ny,j0+kBandRows);
+        const float minN=0.5f*float(g0.win*g0.win);
+        double part[3]{};auto tick=Clock::now();
+        std::vector<float>& field=fr.lk;
+        // start: the better of the homography and the L1 field (window SSD); laFrameField's loop on these rows
+        for(int j=j0;j<j1;++j)for(int i=0;i<g0.nx;++i){
+            const size_t k=size_t(j)*g0.nx+i;
+            float tx0,ty0;laT0(g0,fr.job.H,i,j,tx0,ty0);
+            const LaTile a=laTilePass(base.l0,fr.D0,g0.stride*i,g0.stride*j,g0.win,tx0,ty0,false);
+            fr.s0[k]=a.n>=minN?a.ssd:-1.f;
+            float ux,uy;laFieldAt(fr.r1,g1,g0.raw(g0.centre(i)),g0.raw(g0.centre(j)),ux,uy);
+            if(a.n>=minN&&(ux!=0.f||uy!=0.f)){
+                const LaTile u=laTilePass(base.l0,fr.D0,g0.stride*i,g0.stride*j,g0.win,tx0+ux/float(g0.s),ty0+uy/float(g0.s),false);
+                if(u.n>=minN&&u.ssd<a.ssd){field[k*2]=ux;field[k*2+1]=uy;fr.coarse[k]=1;}
+            }
+        }
+        part[0]=ms(tick);tick=Clock::now();
+        laLKRows(base.l0,fr.D0,g0,fr.job.H,base.v0,t.laMu,t.laKappa,std::max(0,t.laIters),field,j0,j1);
+        part[1]=ms(tick);tick=Clock::now();
+        // keep the refinement only where it lowers the SSD of the homography (into stage 0; lk stays as it is for the Z channel)
+        std::vector<float>& acc=fr.stage[0];
+        for(int j=j0;j<j1;++j)for(int i=0;i<g0.nx;++i){
+            const size_t k=size_t(j)*g0.nx+i;
+            float rr[2]={field[k*2],field[k*2+1]};
+            bool keep=fr.s0[k]>=0.f&&std::isfinite(rr[0])&&std::isfinite(rr[1])&&std::hypot(rr[0],rr[1])<=t.laMaxShift;
+            if(keep&&(rr[0]!=0.f||rr[1]!=0.f)){
+                float tx0,ty0;laT0(g0,fr.job.H,i,j,tx0,ty0);
+                const LaTile f=laTilePass(base.l0,fr.D0,g0.stride*i,g0.stride*j,g0.win,tx0+rr[0]/float(g0.s),ty0+rr[1]/float(g0.s),false);
+                keep=f.n>=minN&&f.ssd<fr.s0[k];
+            }
+            if(!keep){rr[0]=0;rr[1]=0;} else fr.ok[k]=1;
+            acc[k*2]=rr[0];acc[k*2+1]=rr[1];
+        }
+        part[2]=ms(tick);
+        std::lock_guard<std::mutex> l(m);
+        fr.st.ms[3]+=part[0];fr.st.ms[4]+=part[1];fr.st.ms[5]+=part[2];
+        for(int j=j0;j<j1;++j)fr.lkDone[j]=1;
+        advance(fr);
+        cv.notify_all();
+    }
+    // under m: the rows the complete rows allow (Z row j: lk rows j-1..j+1; median s row j: stage s-1 rows j-1..j+1)
+    void advance(Frame& fr){
+        const int nx=base.g0.nx,ny=base.g0.ny,M=int(fr.stage.size())-1;
+        while(fr.lkPrefix<ny&&fr.lkDone[fr.lkPrefix])++fr.lkPrefix;
+        const int P=fr.lkPrefix;
+        const int zT=P>=ny?ny:std::max(0,P-1);
+        auto tick=Clock::now();
+        if(zT>fr.zRows){laMotionExtentRows(fr.lk,nx,ny,t.laMaxShift,fr.z,fr.zRows,zT);fr.zRows=zT;}
+        fr.stageRows[0]=P;int avail=P;
+        for(int s=1;s<=M;++s){
+            const int tgt=avail>=ny?ny:std::max(0,avail-1);
+            if(tgt>fr.stageRows[s]){laMedian3Rows(fr.stage[s-1],fr.stage[s],nx,ny,fr.stageRows[s],tgt);fr.stageRows[s]=tgt;}
+            avail=fr.stageRows[s];
+        }
+        fr.st.ms[6]+=ms(tick);
+        fr.ready=std::min(avail,fr.zRows);
+        if(fr.ready>=ny&&!fr.done)complete(fr);
+    }
+    // laFrameField's statistics of a complete field; the frame's working images are freed
+    void complete(Frame& fr){
+        const std::vector<float>& field=fr.stage.back();
+        long over=0;for(float v:fr.z)over+=v>t.motionThreshold;
+        fr.st.motionShare=float(over)/float(std::max<size_t>(1,fr.z.size()));
+        std::vector<float> mag(fr.s0.size());float maxY=0;long acc=0,fromCoarse=0;
+        for(size_t k=0;k<mag.size();++k){mag[k]=std::hypot(field[k*2],field[k*2+1]);maxY=std::max(maxY,std::abs(field[k*2+1]));acc+=fr.ok[k];fromCoarse+=fr.coarse[k];}
+        const size_t mid=mag.size()/2,p90=std::min(mag.size()-1,mag.size()*9/10);
+        std::nth_element(mag.begin(),mag.begin()+mid,mag.end());fr.st.median=mag[mid];
+        std::nth_element(mag.begin(),mag.begin()+p90,mag.end());fr.st.p90=mag[p90];
+        fr.st.maxAbsY=maxY;fr.st.accepted=float(acc)/float(std::max<size_t>(1,mag.size()));fr.st.fromCoarse=float(fromCoarse)/float(std::max<size_t>(1,mag.size()));
+        release(fr);
+        fr.done=true;
+        if(++framesDone==int(frames.size()))doneMs=ms(started);
+    }
+};
 
 // P22: the b² sub-frames of one mosaic frame are one exposure: the same motion. Their tile fields (each from a quarter of the
 // sites) differ by estimation noise (0.15-0.2 sub-frame px rms on a handheld Quad burst of the X7 Ultra, 0.3-0.4 output px) and
@@ -4075,46 +4436,60 @@ inline HybridCa hybridRawCa(const HybridInput& in){
     ca.ok=all;
     return ca;
 }
-inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const HybridCa& ca){
-    // Bands of 512 rows, top to bottom. A band reads the original R / B of its rows +- margin: the rows above it come from the
-    // copy kept before the previous band wrote them, the rest from the image (not written yet). Only R and B are held (no copy
-    // of the whole RGB: 600 MB on the 2x grid).
-    const float g=float(grid);
-    const int margin=int(std::ceil(4.f*g))+2,band=512;
-    std::vector<float> rx(w),ry(h);
-    for(int X=0;X<w;++X)rx[X]=(0.5f*((X+0.5f)/g-0.5f)-ca.cx)*ca.invHalf;
-    for(int Y=0;Y<h;++Y)ry[Y]=(0.5f*((Y+0.5f)/g-0.5f)-ca.cy)*ca.invHalf;
-    std::vector<float> buf,saved;int savedFrom=0;
-    for(int y0=0;y0<h;y0+=band){
-        const int y1=std::min(h,y0+band),b0=std::max(0,y0-margin),b1=std::min(h,y1+margin);
-        buf.resize(size_t(b1-b0)*w*2);
-        mergeRowBands(b1-b0,[&](int a0,int a1){for(int y=b0+a0;y<b0+a1;++y){
-            float* d=buf.data()+size_t(y-b0)*w*2;
-            if(y<y0){const float* sv=saved.data()+size_t(y-savedFrom)*w*2;std::copy(sv,sv+size_t(w)*2,d);continue;}
-            const float* r=rgb.data()+size_t(y)*w*3;
-            for(int X=0;X<w;++X){d[2*X]=r[3*X];d[2*X+1]=r[3*X+2];}
-        }});
-        mergeRowBands(y1-y0,[&](int a0,int a1){
-            for(int Y=y0+a0;Y<y0+a1;++Y){
-                float* o=rgb.data()+size_t(Y)*w*3;
-                const float yy=ry[Y];
-                for(int X=0;X<w;++X){
-                    const float xx=rx[X],r2=xx*xx+yy*yy;
-                    for(int ch=0;ch<2;++ch){
-                        const float k=ca.k1[ch]+ca.k2[ch]*r2;
-                        const float dx=std::clamp(2.f*k*xx*g,-4.f*g,4.f*g),dy=std::clamp(2.f*k*yy*g,-4.f*g,4.f*g);
-                        const float sx=std::clamp(X+dx,0.f,float(w-1)),sy=std::clamp(Y+dy,float(b0),float(b1-1));
-                        const int x0=std::min(int(sx),w-2),yq=std::min(int(sy),b1-2);const float fx=sx-x0,fy=sy-yq;
-                        const float* p0=buf.data()+(size_t(yq-b0)*w+x0)*2+ch;const float* p1=p0+size_t(w)*2;
-                        o[3*X+(ch?2:0)]=(p0[0]*(1-fx)+p0[2]*fx)*(1-fy)+(p1[0]*(1-fx)+p1[2]*fx)*fy;
+// P33 W2.2: hybridCorrectCa in bands that follow the merge's strips (advance(rgb, rows): the rows [0, rows) are final). A band reads
+// the R / B of its rows +- margin and its clamps never bind inside the image (|d| <= 4 g < margin), so any band split gives the
+// same floats as one pass.
+class HybridCaBands {
+public:
+    HybridCaBands(int width,int height,int grid,const HybridCa& model):w(width),h(height),g(float(grid)),ca(model),
+            margin(int(std::ceil(4.f*float(grid)))+2),rx(width),ry(height){
+        for(int X=0;X<w;++X)rx[X]=(0.5f*((X+0.5f)/g-0.5f)-ca.cx)*ca.invHalf;
+        for(int Y=0;Y<h;++Y)ry[Y]=(0.5f*((Y+0.5f)/g-0.5f)-ca.cy)*ca.invHalf;
+    }
+    int done() const {return next;}
+    void advance(std::vector<float>& rgb,int rows){
+        const int limit=rows>=h?h:std::max(0,rows-margin);
+        while(next<limit){
+            // Bands of up to 512 rows, top to bottom. A band reads the original R / B of its rows +- margin: the rows above it come
+            // from the copy kept before the previous band wrote them, the rest from the image (not written yet). Only R and B are
+            // held (no copy of the whole RGB: 600 MB on the 2x grid).
+            const int y0=next,y1=std::min(limit,y0+512),b0=std::max(0,y0-margin),b1=std::min(h,y1+margin);
+            buf.resize(size_t(b1-b0)*w*2);
+            mergeRowBands(b1-b0,[&](int a0,int a1){for(int y=b0+a0;y<b0+a1;++y){
+                float* d=buf.data()+size_t(y-b0)*w*2;
+                if(y<y0){const float* sv=saved.data()+size_t(y-savedFrom)*w*2;std::copy(sv,sv+size_t(w)*2,d);continue;}
+                const float* r=rgb.data()+size_t(y)*w*3;
+                for(int X=0;X<w;++X){d[2*X]=r[3*X];d[2*X+1]=r[3*X+2];}
+            }});
+            mergeRowBands(y1-y0,[&](int a0,int a1){
+                for(int Y=y0+a0;Y<y0+a1;++Y){
+                    float* o=rgb.data()+size_t(Y)*w*3;
+                    const float yy=ry[Y];
+                    for(int X=0;X<w;++X){
+                        const float xx=rx[X],r2=xx*xx+yy*yy;
+                        for(int ch=0;ch<2;++ch){
+                            const float k=ca.k1[ch]+ca.k2[ch]*r2;
+                            const float dx=std::clamp(2.f*k*xx*g,-4.f*g,4.f*g),dy=std::clamp(2.f*k*yy*g,-4.f*g,4.f*g);
+                            const float sx=std::clamp(X+dx,0.f,float(w-1)),sy=std::clamp(Y+dy,float(b0),float(b1-1));
+                            const int x0=std::min(int(sx),w-2),yq=std::min(int(sy),b1-2);const float fx=sx-x0,fy=sy-yq;
+                            const float* p0=buf.data()+(size_t(yq-b0)*w+x0)*2+ch;const float* p1=p0+size_t(w)*2;
+                            o[3*X+(ch?2:0)]=(p0[0]*(1-fx)+p0[2]*fx)*(1-fy)+(p1[0]*(1-fx)+p1[2]*fx)*fy;
+                        }
                     }
                 }
-            }
-        });
-        // the original rows the next band needs above it
-        savedFrom=std::max(b0,y1-margin);
-        saved.assign(buf.begin()+size_t(savedFrom-b0)*w*2,buf.begin()+size_t(y1-b0)*w*2);
+            });
+            // the original rows the next band needs above it
+            savedFrom=std::max(b0,y1-margin);
+            saved.assign(buf.begin()+size_t(savedFrom-b0)*w*2,buf.begin()+size_t(y1-b0)*w*2);
+            next=y1;
+        }
+        if(next>=h){std::vector<float>().swap(buf);std::vector<float>().swap(saved);}
     }
+private:
+    int w,h;float g;HybridCa ca;int margin;std::vector<float> rx,ry,buf,saved;int savedFrom=0,next=0;
+};
+inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const HybridCa& ca){
+    HybridCaBands bands(w,h,grid,ca);bands.advance(rgb,h);
 }
 
 // RAW Bracket 0.2.5 (research/rawbracket/NOTES.md) measured gain: the exposure ratio of a bracketed / ultrashort frame to the
@@ -4401,6 +4776,34 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // ---- alignment: every frame against the base, groups of six
     std::vector<BackwardHomography> H(n);
     std::vector<bool> aligned(n,true);
+    // P33 W2.1: the F6 field in tile-row bands (LaStream). Phase 1 of a frame (gray, L1 field) starts as soon as the alignment
+    // publishes its homography, the bands once the refined frames are known (commit below) and run alongside the GPU merge. Plain
+    // Bayer and the native mosaic's binned frames up to kHybridClassicPixels (the split's sub-frames share their fields frame-wide);
+    // every frame holds its gray image (4 B per quad) until its field is complete: within a quarter of MemAvailable, else the
+    // whole field first as before. tune laStream 0 / SCAM_NO_F6_STREAM / SCAM_LA_DUMP: the whole field first.
+    std::unique_ptr<LaStream> laStream;double laStreamBaseMs=0;bool laStreamTried=false;
+    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!large&&input.subFrames<=1&&laAhead.valid()
+            &&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
+    auto streamFeed=[&](int f){
+        if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
+        if(!laStream){
+            if(laStreamTried)return;
+            laStreamTried=true;
+            const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
+            const uint64_t tiles=uint64_t(std::max(1,(w/2-win)/stride+1))*uint64_t(std::max(1,(h/2-win)/stride+1));
+            const uint64_t avail=hybridMemAvailable(),need=uint64_t(n-1)*(uint64_t(w/2)*uint64_t(h/2)*4+tiles*40);
+            if(avail>0&&need>avail/4){report("HYBRID LOCAL ALIGN: field not streamed ("+hybridMB(need)+" MB of gray images, MemAvailable "+hybridMB(avail)+" MB)");return;}
+            LaBaseBuilt built=laAhead.get(); // P31: the base pyramid, built on the pool since the alignment started
+            LaBase laBase=std::move(built.base);laStreamBaseMs=built.ms;
+            laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
+            const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f); // baseSlope, baseOffset
+            laBase.v0=slope/16.f;
+            const int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
+            laStream=std::make_unique<LaStream>(b,std::move(laBase),std::max(offset/std::max(slope,1e-9f),1e-5f),tune,threads);
+        }
+        LaStream::Job job;job.f=f;job.raw=input.frames[f].raw;job.gain=1.f/input.frames[f].exposure;job.H=H[f];
+        laStream->add(job);
+    };
     const auto alignStarted=Clock::now();
     if(presetAlignment){
         H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
@@ -4422,6 +4825,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                     Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
                     const Shift t=globalShift(fallbackRef,guides(one,1),input.frames[f].exposure);
                     BackwardHomography m;m.h={1,0,t.x,0,1,t.y,0,0};H[f]=m;aligned[f]=true;
+                    streamFeed(f);
                 }
                 continue;
             }
@@ -4430,6 +4834,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 try{H[first+j].validate();}catch(const std::exception&){aligned[first+j]=false;}
                 // replaceFailed() points a failed slot at the reference frame: detect and drop it.
                 if(group.raw[1+j]!=input.frames[first+j].raw)aligned[first+j]=false;
+                streamFeed(first+j); // P33 W2.1: its F6 phase 1 now
             }
         }
         if(prefetchDrop.on){niceAlignmentPrefetch()(nullptr,{});prefetchDrop.on=false;}
@@ -4451,6 +4856,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int t=1;t<threads;++t)pool.emplace_back(work);
         work();
         for(auto& th:pool)th.join();
+        for(int f=1;f<n;++f)streamFeed(f);
     }
     stats.alignMs=millis(Clock::now()-alignStarted);
     if(tune.profile){ // the homographies, so the residual alignment error can be measured offline (sabre2x_61.md F7b / R4)
@@ -4740,6 +5146,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     LaGrid laG0;bool laOn=false;
     if(tune.localAlign>0&&n>1){
         const auto laStarted=Clock::now();
+        std::vector<int> jobs;
+        for(int f=1;f<n;++f){
+            if(!keep[f]||!aligned[f])continue;
+            if(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort)continue;
+            jobs.push_back(f);
+        }
+        if(laStream&&jobs.empty())laStream.reset();
+        if(laStream){ // P33 W2.1: the bands of the refined frames (phase 1 ran during the alignment), alongside the merge
+            laStream->commit(jobs);
+            laOn=true;laG0=laStream->grid0();
+            stats.localAlignMs=millis(Clock::now()-laStarted);
+        } else {
         LaBase laBase; // ~40 MB on 12 MP, freed before the GPU merge
         const float eps=std::max(baseOffset/std::max(baseSlope,1e-9f),1e-5f);
         double baseMs=0;
@@ -4752,12 +5170,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
         laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
         laBase.v0=baseSlope/16.f;
-        std::vector<int> jobs;
-        for(int f=1;f<n;++f){
-            if(!keep[f]||!aligned[f])continue;
-            if(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort)continue;
-            jobs.push_back(f);
-        }
+        {
         // One worker per frame at a time (gray 12 MB + L1 3 MB each): long-lived threads, so the scheduler moves them to the big
         // cores (short parallel sections per pass stayed on the small ones: 3.3 s for 19 frames against 0.8 s for this pool on Adreno 750 phones (SM8650)).
         std::vector<LaFrameStats> fstats(n);
@@ -4830,6 +5243,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 baseMs,partMs[0],partMs[1],partMs[2],partMs[3],partMs[4],partMs[5],partMs[6]);
             report(line);
         }
+        } // P33 W2.1: end of the whole-field path
+        }
     } else report("HYBRID LOCAL ALIGN: off");
     // ---- per-frame weights (LMC driver): A = min(cap, ((TET_f/TET_b)^2 read_b/read_f)^fwe), LUTsigma(A)
     HybridGpu::Frames in;
@@ -4877,7 +5292,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     // F6 field in merge order (0 = base and frames without a field: zeros)
     std::vector<float> laAll,laZAll;
-    if(laOn){
+    if(laOn&&laStream){ // P33 W2.1: rows arrive during the merge; the strip windows take the field's bound (|dy| <= laMaxShift)
+        laStream->setMergeOrder(index);
+        in.laMaxY.assign(index.size(),0.f);
+        for(size_t i=0;i<index.size();++i)if(laStream->hasField(int(i)))in.laMaxY[i]=std::max(tune.laMaxShift,0.f);
+        in.laStream=laStream.get();in.laMode=tune.localAlign==2?2:1;in.laNx=laG0.nx;in.laNy=laG0.ny;
+        in.laOx=in.laOy=laG0.raw(laG0.centre(0));in.laStride=float(2*laG0.stride);
+    } else if(laOn){
         const size_t tiles=size_t(laG0.nx)*laG0.ny*2;
         laAll.assign(index.size()*tiles,0.f);in.laMaxY.assign(index.size(),0.f);
         laZAll.assign(index.size()*(tiles/2),0.f);
@@ -4972,8 +5393,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         void join(){if(thread.joinable())thread.join();}
         ~GpuTeardown(){join();}
     } teardown;
+    // P33 W2.2: the P19 R / B resample of the merged rows while the GPU merges the next strips (new bands for every attempt)
+    std::unique_ptr<HybridCaBands> caBands;double caBandsMs=0;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
+        if(caModel.ok){
+            caBands=std::make_unique<HybridCaBands>(w*grid,h*grid,grid,caModel);caBandsMs=0;
+            in.rowsDone=[&](std::vector<float>& rgb,int rows){const auto t0=Clock::now();caBands->advance(rgb,rows);caBandsMs+=millis(Clock::now()-t0);};
+        }
         const bool bentoPass=bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
         std::unique_ptr<HybridGpu> held;std::string built;
         if(earlyGpu.valid()){ // P31 (W1.7): the context built during the front end, when it holds the programs this merge needs
@@ -5013,14 +5440,46 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         report(line);
         if(!large)teardown.start(std::move(held)); // above kHybridClassicPixels destroyed here, as before (memory)
     };
+    // P33 W2.1: the report of the streamed field (the same line as the whole-field path, after the merge)
+    auto reportStream=[&]{
+        if(!laStream||!laStream->finish())return;
+        std::string per;double partMs[7]{},grayMs=0;
+        for(int k=0;k<laStream->frameCount();++k){
+            const auto& fr=laStream->frameAt(k);const LaFrameStats& st=fr.st;
+            for(int q=0;q<7;++q)partMs[q]+=st.ms[q];
+            char v[96];std::snprintf(v,sizeof(v)," %d:%.2f/%.2f/%.0f%%/z%.0f%%",fr.job.f,st.median,st.p90,100.f*st.accepted,100.f*st.motionShare);per+=v;
+        }
+        grayMs=partMs[0];
+        char line[320];
+        std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN: %s, %d frames, tiles %dx%d (%d RAW px, window %d RAW px), %.0f ms (gray %.0f ms thread sum) mu=%.2f kappa=%.1f maxShift=%.1f medians=%d; per frame |r| median/p90 RAW px / refined tiles / tiles over the motion threshold (rejection boost):",
+            tune.localAlign==2?"constant per tile":"bilinear field",laStream->frameCount(),laG0.nx,laG0.ny,2*laG0.stride,2*laG0.win,laStream->doneMs,grayMs,tune.laMu,tune.laKappa,tune.laMaxShift,tune.laMedian);
+        report(line+per);
+        std::snprintf(line,sizeof(line),"HYBRID F6 STREAM: phase 1 from the alignment, bands of %d tile rows alongside the merge: committed %.0f ms, phase 1 done %.0f ms, field done %.0f ms after the first frame; strips waited %.0f ms (%d waits)",
+            LaStream::kBandRows,laStream->commitMs,laStream->phase1Ms,laStream->doneMs,laStream->waitMs,laStream->waits);
+        report(line);
+        if(tune.profile){
+            std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN ms (thread sums): base=%.0f gray=%.0f down=%.0f L1=%.0f start=%.0f L0=%.0f accept=%.0f median=%.0f",
+                laStreamBaseMs,partMs[0],partMs[1],partMs[2],partMs[3],partMs[4],partMs[5],partMs[6]);
+            report(line);
+        }
+    };
+    auto dropStream=[&]{if(laStream)laStream->stop();in.laStream=nullptr;};
     if(laOn){
         // The F6 programs need two more storage bindings (15, 16) and change the reject / dilate / merge / rim passes: a GPU that
         // refuses them (compile/link, bindings) or a pass that fails must not lose the shot. Merge again with the homographies
         // only (the context of the failed attempt is destroyed first); a 6.1 kernel chosen only for the alignment goes as well.
         // P29: a failed native mosaic merge is not retried here (its programs, its slot 12 or its long passes fail without F6 as well,
         // and a retry costs the whole native merge again): hybridReconstructMosaicNative merges the burst on the split instead.
-        try{gpuMerge(true);}
+        try{gpuMerge(true);reportStream();}
+        catch(const HybridLaStreamFailed& error){ // P33 W2.1: F6 failed while the merge ran: as a failed whole-field F6 before it
+            dropStream();
+            report(std::string("HYBRID LOCAL ALIGN: failed (")+error.what()+"); merging with the homographies only");
+            in.laField=nullptr;in.laMotion=nullptr;in.laMode=0;in.laMaxY.clear();laOn=false;
+            dropDay61("it was chosen for the local alignment, which gave no field");
+            gpuMerge(false);
+        }
         catch(const std::exception& error){
+            dropStream();
             if(native)throw;
             report(std::string("HYBRID LOCAL ALIGN: GPU merge with the local offsets failed (")+error.what()+"); merging with the homographies only");
             in.laField=nullptr;in.laMotion=nullptr;in.laMode=0;in.laMaxY.clear();laOn=false;
@@ -5030,8 +5489,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     } else gpuMerge(false);
     if(caModel.ok){ // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it)
         const auto caStarted=Clock::now();
-        hybridCorrectCa(out,outW,outH,grid,caModel);
-        report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms");
+        const int during=caBands?caBands->done():0;
+        if(caBands)caBands->advance(out,outH); else hybridCorrectCa(out,outW,outH,grid,caModel);
+        in.rowsDone=nullptr;caBands.reset();
+        report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)+caBandsMs))
+            +" ms ("+std::to_string(during)+" rows during the merge, "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms after it)");
     }
     if(rawCaBase.ok)vivo_rawca::hybridRawCaApply(out,outW,outH,grid,rawCaBase,tune.rawCaAvoidShift!=0,report); // P28 base mode
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions

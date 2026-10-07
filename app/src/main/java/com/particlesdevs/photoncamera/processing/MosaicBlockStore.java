@@ -152,6 +152,11 @@ public final class MosaicBlockStore {
         return choose(get().stored(SHOT_KEY.get()), declared);
     }
 
+    /** P35 / P33: the block a module's shots will merge with (its stored block, else its declared mosaic mode; 0 = unknown). */
+    public static int blockForModule(String key, int declared) {
+        return choose(get().stored(key == null ? "" : key), declared);
+    }
+
     static int choose(int stored, int declared) {
         boolean mosaicDeclared = declared == 2 || declared == 4;
         if (stored > 1 || (stored == 1 && !mosaicDeclared)) return stored;

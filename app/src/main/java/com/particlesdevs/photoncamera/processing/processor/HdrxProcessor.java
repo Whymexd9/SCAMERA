@@ -36,6 +36,9 @@ import java.util.HashMap;
 import com.particlesdevs.photoncamera.util.Lang;
 
 public class HdrxProcessor extends ProcessorBase {
+    /** P33: frees the shot's big buffers off the save path (one at a time, in order). */
+    private static final java.util.concurrent.ExecutorService BUFFER_FREE = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "hdrx-buffer-free"); t.setDaemon(true); return t; });
     private static final String TAG = "HdrxProcessor";
     private ArrayList<ImageFrame> mImageFramesToProcess;
     private HashMap<Long, Double> exposures;
@@ -631,8 +634,20 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
 
-        Allocator.free(jpegInput);
-        if (jpegInput != output) Allocator.free(output);
+        final long tailFree = System.nanoTime(); // P33: where post_done -> encode goes (log only)
+        // P33: the last reference of the shot arena unmaps it (~0.9 GB at 30 frames: 150-200 ms on the OPPO): up to 16 MP on a
+        // helper thread while the JPEG is encoded (nothing reads these buffers any more); above it here, as before (memory).
+        if ((long) width * height <= 16_000_000L) {
+            final ByteBuffer freeInput = jpegInput, freeOutput = jpegInput != output ? output : null;
+            BUFFER_FREE.execute(() -> {
+                Allocator.free(freeInput);
+                if (freeOutput != null) Allocator.free(freeOutput);
+            });
+        } else {
+            Allocator.free(jpegInput);
+            if (jpegInput != output) Allocator.free(output);
+        }
+        final long tailOverlay = System.nanoTime();
 
         final Bitmap withDebug = overlay(img, pipeline.debugData.toArray(new Bitmap[0]));
         if (withDebug != img) { img.recycle(); img = withDebug; }
@@ -643,6 +658,7 @@ public class HdrxProcessor extends ProcessorBase {
         } catch (Exception e) {
             Log.e(TAG, "PostPipeline close failed (non-fatal): " + Log.getStackTraceString(e));
         }
+        final long tailFinished = System.nanoTime();
         try {
             processingEventsListener.onProcessingFinished("HdrX JPG Processing Finished");
         }
@@ -650,6 +666,8 @@ public class HdrxProcessor extends ProcessorBase {
             Log.d(TAG,"Error in processingEventsListener.onProcessingFinished:"+Log.getStackTraceString(e));
         }
         imageFile = Paths.get(imageFile.toAbsolutePath() + ".jpg");
+        Log.d(TAG, "HDRX tail ms: free=" + (tailOverlay - tailFree) / 1000000 + " overlay+close=" + (tailFinished - tailOverlay) / 1000000
+                + " finished=" + (System.nanoTime() - tailFinished) / 1000000);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("encode");
         boolean imageSaved;
         if (PhotonCamera.getSettings().ultraHdr && gm != null) {

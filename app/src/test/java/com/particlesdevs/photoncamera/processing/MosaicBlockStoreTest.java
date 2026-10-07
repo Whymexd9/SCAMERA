@@ -136,4 +136,14 @@ public class MosaicBlockStoreTest {
         MosaicStream.startSession("other");
         assertEquals(0, MosaicStream.block());
     }
+
+    @Test
+    public void moduleBlockForThePrewarm() {
+        MosaicBlockStore.setInstance(fresh());
+        assertEquals("nothing known", 0, MosaicBlockStore.blockForModule(QUAD, 0));
+        assertEquals("a declared Quad mode", 2, MosaicBlockStore.blockForModule(QUAD, 2));
+        MosaicBlockStore.get().observe(QUAD, true, 4, "earlier session");
+        assertEquals("the stored block", 4, MosaicBlockStore.blockForModule(QUAD, 0));
+        assertEquals(0, MosaicBlockStore.blockForModule(null, 0));
+    }
 }

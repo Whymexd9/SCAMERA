@@ -217,14 +217,20 @@ public final class VivoNiceRgb extends Node {
             lastRealClip=clip[1]<1e29f;
         }
         final boolean perChannel=cc!=null&&strength>0f&&cc.enabled();
+        final long uploadStart=System.nanoTime();
         GLTexture input=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_32,3),
                 p.mParameters.vivoNiceRgb,GL_NEAREST,GL_CLAMP_TO_EDGE);
+        final long uploadDone=System.nanoTime();long decimateDone=uploadDone;
         if(p.mParameters.vivoNiceRgbOwned){
             java.nio.ByteBuffer big=p.mParameters.vivoNiceRgb;
             p.mParameters.vivoNiceRgb=decimate(big,61);
+            decimateDone=System.nanoTime();
             p.mParameters.vivoNiceRgbOwned=false;
             com.particlesdevs.photoncamera.util.Allocator.free(big);
         }
+        // P33 W2.4: where the time between the clip statistics and the lens shading goes
+        com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","nicergb input ms: upload="+(uploadDone-uploadStart)/1000000
+                +" decimate="+(decimateDone-uploadDone)/1000000+" free="+(System.nanoTime()-decimateDone)/1000000);
         GLTexture flagsTex=null,chromaNear=null,chromaWide=null,chromaHuge=null;
         try {
             float[] gm=p.mParameters.gainMap;
