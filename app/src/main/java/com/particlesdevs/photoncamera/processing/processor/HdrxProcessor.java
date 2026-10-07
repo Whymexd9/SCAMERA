@@ -21,7 +21,6 @@ import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostPipeline;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
-import com.particlesdevs.photoncamera.processing.ultrahdr.UltraHdrEncoder;
 import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -29,7 +28,6 @@ import com.particlesdevs.photoncamera.util.Allocator;
 
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -601,7 +599,7 @@ public class HdrxProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
-        // Ultra HDR: the gain-map pass runs on the bitmap exactly
+        // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG): the gain-map pass runs on the bitmap exactly
         // as the pipeline produced it - the pass checks the base against the pipeline size. It used to run after the hybrid
         // resize below, so every hybrid shot on the 2x grid with a 12/16/20 MP output failed the check and was saved as SDR,
         // and the digital zoom crop was skipped with Ultra HDR on. Now the map follows the resize and the crop instead.
@@ -679,33 +677,33 @@ public class HdrxProcessor extends ProcessorBase {
         catch (Exception e){
             Log.d(TAG,"Error in processingEventsListener.onProcessingFinished:"+Log.getStackTraceString(e));
         }
-        imageFile = Paths.get(imageFile.toAbsolutePath() + ".jpg");
         Log.d(TAG, "HDRX tail ms: free=" + (tailOverlay - tailFree) / 1000000 + " overlay+close=" + (tailFinished - tailOverlay) / 1000000
                 + " finished=" + (System.nanoTime() - tailFinished) / 1000000);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("encode");
-        boolean imageSaved;
-        if (PhotonCamera.getSettings().ultraHdr && gm != null) {
+        GainMapComputer.Result gain = null;
+        if (gm != null) {
             try {
-                GainMapComputer.Result res = GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
-                UltraHdrEncoder.encodeToFile(imageFile, img, res, exifData, PreferenceKeys.getJpegQuality());
-                img.recycle();
-                imageSaved = true;
-            } catch (Exception e) {
-                Log.e(TAG, "Ultra HDR encode failed, falling back to SDR JPEG", e);
-                imageSaved = ImageSaver.Util.saveBitmapAsJPG(imageFile, img,
-                        PreferenceKeys.getJpegQuality(), exifData);
+                gain = GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
+                Log.i(TAG, "Ultra HDR gain map: min=" + gain.gainMapMin + " max=" + gain.gainMapMax + " (log2) " + gain.gainW + "x" + gain.gainH);
+            } catch (Exception | OutOfMemoryError e) {
+                Log.e(TAG, "Ultra HDR gain map normalisation failed, falling back to SDR JPEG", e);
+            } finally {
+                gm.bitmap.recycle();
             }
-        } else {
-            //Saves the final bitmap
-            imageSaved = ImageSaver.Util.saveBitmapAsJPG(imageFile, img,
-                    PreferenceKeys.getJpegQuality(), exifData);
         }
-
-        try {
-            processingEventsListener.notifyImageSavedStatus(imageSaved, imageFile);
-        }
-        catch (Exception e){
-            Log.d(TAG,"Error in processingEventsListener.notifyImageSavedStatus:"+Log.getStackTraceString(e));
+        // imageFile has no extension yet: PhotoOutput names the files by the chosen format (.jpg / .heic / .webp).
+        final com.particlesdevs.photoncamera.processing.PhotoOutput.Result saved =
+                com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData, gain);
+        if (gain != null) gain.gainMap.recycle();
+        final java.util.List<Path> savedFiles = saved.notifyOrder();
+        if (savedFiles.isEmpty()) savedFiles.add(com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG.fileFor(imageFile));
+        for (Path file : savedFiles) {
+            try {
+                processingEventsListener.notifyImageSavedStatus(!saved.files.isEmpty(), file);
+            }
+            catch (Exception e){
+                Log.d(TAG,"Error in processingEventsListener.notifyImageSavedStatus:"+Log.getStackTraceString(e));
+            }
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("saved");
         finishDeferredTeardown();

@@ -362,4 +362,14 @@
         <item>hybrid</item>
         <item>scamhdr</item>
     </string-array>
+    <string-array name="photo_format_entries">
+        <item>JPEG</item>
+        <item>HEIC (smaller files)</item>
+        <item>WebP (smaller files)</item>
+    </string-array>
+    <string-array name="photo_format_values" translatable="false">
+        <item>jpeg</item>
+        <item>heic</item>
+        <item>webp</item>
+    </string-array>
 </resources>

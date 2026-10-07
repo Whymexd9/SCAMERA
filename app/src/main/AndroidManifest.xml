@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- androidx.heifwriter declares minSdk 28: HEIC output is offered and used only on API 28+ (PhotoFormat). -->
+    <uses-sdk tools:overrideLibrary="androidx.heifwriter" />
+
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Storage: read for gallery (system camera images). Write only via SAF on Android 11+. -->

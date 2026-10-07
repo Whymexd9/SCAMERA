@@ -165,6 +165,11 @@ public class ImageSaver {
          * truncated JPEG never reaches the gallery.
          */
         public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData) {
+            return saveBitmapAsJPG(fileToSave, img, jpgQuality, exifData, true);
+        }
+
+        /** As above; {@code recycle} false keeps the bitmap for another encode (a HEIC / WebP photo with its extra JPEG). */
+        public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData, boolean recycle) {
             exifData.COMPRESSION = ParseExif.COMPRESSION_JPEG;
             boolean encoded = false;
             final long encodeStart = System.nanoTime();
@@ -189,7 +194,7 @@ public class ImageSaver {
                     }
                 }
             } finally {
-                if (!img.isRecycled()) img.recycle();
+                if (recycle && !img.isRecycled()) img.recycle();
             }
             if (!encoded) {
                 try { Files.deleteIfExists(fileToSave); } catch (IOException ignored) {}

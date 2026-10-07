@@ -21,6 +21,7 @@ public class Settings {
     public boolean align;
     public boolean hdrx;
     public boolean hdrxNR;
+    /** Ultra HDR in effect: the switch is on and the shot writes a JPEG (JPEG format or «Также сохранять JPEG»). */
     public boolean ultraHdr;
     public double sharpness;
     public int contrastConst = 0;//TODO
@@ -71,7 +72,8 @@ public class Settings {
         QuadBayer = PreferenceKeys.isQuadBayerOn();
         fpsMode = PreferenceKeys.getFpsMode();
         hdrxNR = PreferenceKeys.isHdrxNrOn();
-        ultraHdr = PreferenceKeys.isUltraHdrOn();
+        // The gain-map pass (linear snapshot, no deferred GL teardown, no in-pipeline resize) runs only when a JPEG carries it.
+        ultraHdr = PreferenceKeys.isUltraHdrActive();
         alignAlgorithm = PreferenceKeys.getAlignMethodValue();
         colorMethod = PreferenceKeys.getColorMethodValue();
         focusPeak = PreferenceKeys.getFocusPeakValue();

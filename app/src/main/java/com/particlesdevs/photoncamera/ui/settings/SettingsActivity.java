@@ -193,9 +193,26 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
             Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
+            setupPhotoFormat();
             setupRemosaicBackend();
             updateHexQuadDenoiseControls();
             SettingsStyle.apply(getPreferenceScreen());
+        }
+
+        /** HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK): below it the format list offers JPEG and WebP only. */
+        private void setupPhotoFormat() {
+            ListPreference format = findPreference(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY);
+            if (format == null || android.os.Build.VERSION.SDK_INT >= com.particlesdevs.photoncamera.processing.PhotoFormat.HEIC_MIN_SDK) return;
+            java.util.List<CharSequence> entries = new java.util.ArrayList<>(), values = new java.util.ArrayList<>();
+            for (int i = 0; i < format.getEntryValues().length; i++) {
+                if (com.particlesdevs.photoncamera.processing.PhotoFormat.HEIC.value.contentEquals(format.getEntryValues()[i])) continue;
+                entries.add(format.getEntries()[i]);
+                values.add(format.getEntryValues()[i]);
+            }
+            format.setEntries(entries.toArray(new CharSequence[0]));
+            format.setEntryValues(values.toArray(new CharSequence[0]));
+            if (com.particlesdevs.photoncamera.processing.PhotoFormat.HEIC.value.equals(format.getValue()))
+                format.setValue(com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG.value);
         }
 
         // ───── P6b: the card look of «Камеры и сенсоры» on every page ─────
@@ -665,6 +682,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
                 String key = p.getKey();
                 if (key == null) continue;
+                // Rows of a photo format that is not chosen are hidden, not explained (SettingsAvailability.hidden).
+                boolean hidden = state.hidden(key);
+                if (p.isVisible() == hidden) p.setVisible(!hidden);
                 String reason = state.reason(key);
                 if (p.getClass() != Preference.class) p.setEnabled(reason == null);
                 if (reason != null) {

@@ -645,7 +645,7 @@
     <string name="prefs_theme_accent_title">Цветовой акцент</string>
     <string name="prefs_theme_accent_summary">Цвет выделения, переключателей и элементов камеры</string>
     <string name="prefs_output_settings_screen_title">Конфиг</string>
-    <string name="prefs_output_settings_screen_summary">Качество JPEG, Ultra HDR, 16:9, водяной знак, сохранение настроек</string>
+    <string name="prefs_output_settings_screen_summary">Формат фото (JPEG / HEIC / WebP) и качество, Ultra HDR, 16:9, водяной знак, сохранение настроек</string>
     <string name="prefs_jpeg_quality_title">Качество JPEG</string>
     <string name="prefs_jpeg_quality_summary">Сжатие каждого JPEG: обычного, Ultra HDR и его карты усиления. 98 по умолчанию (как раньше); меньше — файл меньше, мелкая деталь и плавные градиенты теряются раньше. Ниже 90 разница заметна на увеличении.</string>
     <string name="prefs_watermark_screen_title">Подпись и вид знака</string>
@@ -690,4 +690,14 @@
     <string name="prefs_camera_package_spoof_help_title">Как работает</string>
     <string name="prefs_camera_package_spoof_help_summary">OnePlus/OPPO — OplusCameraManager.saveOpPackageName (открывает скрытые камеры и вендорные режимы Oplus). Общий Android — подменяет пакет в контексте CameraManager, проверку UID в CameraService не обходит. BinderHook — переписывает имя пакета прямо в транзакциях ICameraService (экспериментально). Пустое поле — собственный пакет. Пример: com.android.camera на vivo, com.oplus.camera на OPPO.</string>
     <string name="prefs_scamera_full_debug_title">Полный журнал обработки</string>
+    <string name="prefs_photo_format_title">Формат фото</string>
+    <string name="prefs_photo_format_summary">JPEG открывается везде, и только он несёт Ultra HDR. HEIC — примерно вдвое меньше при том же виде; открывают Android 9+, iPhone, Windows / macOS с кодеком. WebP — меньше JPEG; открывают браузеры и большинство приложений, но не каждая галерея; до 16383 px по стороне, фото больше сохраняется в JPEG.</string>
+    <string name="prefs_heic_quality_title">Качество HEIC</string>
+    <string name="prefs_heic_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше. Если в телефоне нет кодировщика HEVC, фото сохраняется в JPEG.</string>
+    <string name="prefs_webp_quality_title">Качество WebP</string>
+    <string name="prefs_webp_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше.</string>
+    <string name="prefs_webp_lossless_title">WebP без потерь</string>
+    <string name="prefs_webp_lossless_summary">Пиксели без изменений: файл в несколько раз больше, чем WebP с потерями, и сохраняется дольше. Качество не используется.</string>
+    <string name="prefs_photo_also_jpeg_title">Также сохранять JPEG</string>
+    <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с фото HEIC / WebP — для приложений, которые их не открывают. С включённым Ultra HDR он будет в этом JPEG.</string>
 </resources>
