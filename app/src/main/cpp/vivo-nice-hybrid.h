@@ -248,9 +248,11 @@ struct HybridTuning {
     // colour shift. rawCaGpu 0: frames mode on the CPU (diagnostics).
     int rawCa=0,rawCaAuto=1,rawCaPasses=2,rawCaAvoidShift=1,rawCaGpu=1;
     float rawCaRed=0,rawCaBlue=0;
-    // P27 (VERIFY-11): 1 = a bracketed / ultrashort frame whose data disagrees with its metadata exposure ratio by more than 5 %
-    // (consistent tiles, hybridMeasuredGain) is merged with the measured ratio. 0 (default) = report only (HYBRID GAIN CHECK).
-    int gainMeasured=0;
+    // P27 (VERIFY-11): 1 (default) = the frames of a bracketed / ultrashort exposure whose data reliably disagrees with their
+    // metadata exposure ratio by more than 5 % are merged with the measured ratio (hybridApplyMeasuredGains: enough tiles, low
+    // MAD, consistent across the frames of the exposure, 0.5..2 x the metadata), all others with the metadata ratio; 0 = report
+    // only (HYBRID GAIN CHECK). -1 is internal (decided before the merge).
+    int gainMeasured=1;
     int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
     // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
@@ -4106,10 +4108,13 @@ inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const H
 
 // RAW Bracket 0.2.5 (research/rawbracket/NOTES.md) measured gain: the exposure ratio of a bracketed / ultrashort frame to the
 // base from the data, to check the metadata ratio the merge normalises with (a wrong ratio leaves a step where the other
-// exposure replaces the base). A grid of up to 32 x 32 tiles of 16 x 16 RAW px; a tile counts when neither frame clips in it,
-// both means are above the noise (8 DN) and the brighter one is below 80 % of the range; its ratio must lie within 0.5..2 x the
-// metadata. Median and relative MAD over at least 64 tiles. Translation between the frames is not compensated: tiles at moving
-// edges are what the MAD rejects.
+// exposure replaces the base). A grid of up to 32 x 32 tiles of 16 x 16 RAW px; a tile counts when neither frame clips in it and
+// its signal s (the mean of both frames on the base scale, s = (base + other / metadata) / 2) puts the darker exposure above the
+// noise (8 DN) and the brighter one below 80 % of the range; its ratio must lie within 0.5..2 x the metadata. Median and
+// relative MAD over at least 64 tiles. Translation between the frames is not compensated: tiles at moving edges are what the
+// MAD rejects. The thresholds act on s, not on each frame's own mean: a test on the darker frame's mean alone kept the tiles
+// whose noise or motion made it brighter and dropped the others, which biased a dim ultrashort frame upwards (vivo X200 Ultra
+// Tetra 10x night burst, ES at 1/16: +34..37 % with the per-frame test, -3..-7 % with s, metadata ratio exact in daylight).
 struct HybridGain { float measured=0,mad=0; int tiles=0; bool ok=false; };
 inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
     HybridGain g;
@@ -4131,7 +4136,8 @@ inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
         }
         if(clipped)continue;
         const double n=double(tile)*tile,mb=sb/n,mo=so/n,range=in.white-in.black[0];
-        if(mb<8.0||mo<8.0||std::max(mb,mo)>0.8*range)continue;
+        const double sig=0.5*(mb+mo/expected); // the tile's signal on the base scale, from both frames alike
+        if(mb<=0.0||mo<=0.0||sig*std::min(1.f,expected)<8.0||sig*std::max(1.f,expected)>0.8*range)continue;
         const float r=float(mo/mb);
         if(r<0.5f*expected||r>2.f*expected)continue;
         ratios.push_back(r);
@@ -4148,22 +4154,84 @@ inline HybridGain hybridMeasuredGain(const HybridInput& in,int f){
     return g;
 }
 
-// P27 (VERIFY-11, tuning gainMeasured 1): every bracketed / ultrashort frame whose data disagrees with its metadata exposure ratio
-// by more than 5 % (consistent tiles, hybridMeasuredGain) takes the measured ratio. Returns the number of frames changed.
+// The report line of one frame's measured gain (HYBRID GAIN CHECK; `metadata` = the ratio the capture metadata gives).
+inline std::string hybridGainCheckLine(int f,int role,float metadata,const HybridGain& g){
+    char line[200];
+    if(g.tiles<64)std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f: insufficient signal or overlap (%d tiles)",f,role,metadata,g.tiles);
+    else std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f measured=%.4f (%+.1f %%) tiles=%d mad=%.1f %% -> %s",f,role,metadata,g.measured,
+        100.0*(g.measured/metadata-1.0),g.tiles,100.0*g.mad,!g.ok?"inconsistent ratios":std::abs(g.measured/metadata-1.f)>0.05f?"metadata differs":"ok");
+    return line;
+}
+
+// gainMeasured 1 (the default): the measured exposure ratio replaces the metadata ratio where the data is reliable. Some phones
+// deliver bracketed frames whose RAW level is not what the metadata says (vivo X200 Pro: LONG frames at ISO x2 ~4300 measured
+// x1.47 of the base instead of x2.0 on 660 tiles, MAD 5 %, the same on all five frames: the sensor's analog gain ends near ISO
+// 3200 and the rest is applied after the RAW). The merge normalises every frame by its ratio (merge gain 1 / ratio, the
+// alignment guides, the local alignment, the Shasta sharpness test, the Bento ultrashort mask and its factor), so a wrong ratio
+// shows as a level step where the other exposure replaces or joins the base.
+// The frames of one exposure (same role, metadata ratios within 2 %) are decided together. A frame is reliable with at least
+// kGainMinTiles tiles and a relative MAD of at most kGainMaxMad; the group is reliable when at least two of its frames are and
+// they make at least half of it, and their measured / metadata factors agree within kGainMaxSpread of their median, or when
+// its only reliable frame makes at least half of it with a MAD of at most kGainMaxMadAlone. A reliable group whose factor
+// lies within 0.5..2 and differs from 1 by more than 5 % takes it: every frame of the group gets metadata x factor (the
+// unreliable frames of the group too: they were captured with the same settings). Every other group keeps its metadata
+// ratios bit for bit. Each frame's measurement is reported (HYBRID GAIN CHECK) and each group's decision (HYBRID GAIN).
+// Returns the number of frames whose ratio changed.
+constexpr int kGainMinTiles=64;
+constexpr float kGainMaxMad=0.10f,kGainMaxMadAlone=0.06f,kGainMaxSpread=0.03f,kGainTolerance=0.05f;
 inline int hybridApplyMeasuredGains(HybridInput& in,const std::function<void(const std::string&)>& report){
-    const HybridInput original=in;
+    const int n=int(in.frames.size());
+    std::vector<std::future<HybridGain>> pending(n);
+    for(int f=1;f<n;++f){
+        const int role=in.frames[f].role;
+        if(role!=kRoleBracketed&&role!=kRoleUltrashort)continue;
+        // the frames in parallel (P30); a thread the system refuses measures on this one
+        try{pending[f]=std::async(std::launch::async,[&in,f]{return hybridMeasuredGain(in,f);});}
+        catch(const std::system_error&){pending[f]=std::async(std::launch::deferred,[&in,f]{return hybridMeasuredGain(in,f);});}
+    }
+    std::vector<HybridGain> gains(n);
+    std::vector<std::vector<int>> groups;
+    for(int f=1;f<n;++f){
+        if(!pending[f].valid())continue;
+        gains[f]=pending[f].get();
+        const HybridFrame& fr=in.frames[f];
+        if(report)report(hybridGainCheckLine(f,fr.role,fr.exposure,gains[f]));
+        bool joined=false;
+        for(auto& grp:groups){
+            const HybridFrame& first=in.frames[grp[0]];
+            if(first.role==fr.role&&std::abs(std::log(fr.exposure/first.exposure))<std::log(1.02f)){grp.push_back(f);joined=true;break;}
+        }
+        if(!joined)groups.push_back({f});
+    }
     int changed=0;
-    for(int f=1;f<int(in.frames.size());++f){
-        HybridFrame& fr=in.frames[f];
-        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
-        const HybridGain g=hybridMeasuredGain(original,f);
-        if(!g.ok||std::abs(g.measured/fr.exposure-1.f)<=0.05f)continue;
-        char line[160];
-        std::snprintf(line,sizeof(line),"HYBRID GAIN: frame=%d role=%d metadata ratio %.4f replaced by the measured %.4f (tiles=%d mad=%.1f %%)",
-            f,fr.role,fr.exposure,g.measured,g.tiles,100.0*g.mad);
-        if(report)report(line);
-        fr.exposure=g.measured;
-        ++changed;
+    for(const auto& grp:groups){
+        std::vector<float> factors;float madAlone=0;
+        for(int f:grp){
+            const HybridGain& g=gains[f];
+            const float factor=g.measured/in.frames[f].exposure;
+            if(g.tiles>=kGainMinTiles&&g.mad<=kGainMaxMad&&std::isfinite(factor)&&factor>0.f){factors.push_back(factor);madAlone=g.mad;}
+        }
+        std::vector<float> sorted=factors;std::sort(sorted.begin(),sorted.end());
+        const float factor=sorted.empty()?1.f:sorted.size()%2?sorted[sorted.size()/2]:0.5f*(sorted[sorted.size()/2-1]+sorted[sorted.size()/2]);
+        float spread=0;for(float c:factors)spread=std::max(spread,std::abs(c/factor-1.f));
+        const bool half=2*factors.size()>=grp.size();
+        std::string reason;
+        char why[64];std::snprintf(why,sizeof(why),"frames disagree (spread %.1f %%)",100.0*spread);
+        if(factors.size()>=2&&half&&spread>kGainMaxSpread)reason=why;
+        else if(factors.empty()||!half)reason="too few reliable frames";
+        else if(factors.size()==1&&madAlone>kGainMaxMadAlone)reason="one reliable frame, mad above the single-frame limit";
+        else if(factor<0.5f||factor>2.f)reason="factor outside 0.5..2";
+        const bool use=reason.empty()&&std::abs(factor-1.f)>kGainTolerance;
+        if(report){
+            std::string frames;for(int f:grp)frames+=(frames.empty()?"":",")+std::to_string(f);
+            char line[400];
+            std::snprintf(line,sizeof(line),"HYBRID GAIN: role=%d metadata=%.4f frames=%s: %zu of %zu reliable (tiles >= %d, mad <= %.0f %%), factor %.4f (%+.1f %%) -> %s%s",
+                in.frames[grp[0]].role,in.frames[grp[0]].exposure,frames.c_str(),factors.size(),grp.size(),kGainMinTiles,100.0*kGainMaxMad,factor,100.0*(factor-1.0),
+                use?"measured ratio used":!reason.empty()?"metadata kept: ":"metadata kept (agrees within 5 %)",reason.c_str());
+            report(line);
+        }
+        if(!use)continue;
+        for(int f:grp){in.frames[f].exposure*=factor;++changed;}
     }
     return changed;
 }
@@ -4186,6 +4254,20 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                                             std::vector<uint16_t>* mergedDng,std::vector<uint8_t>* effMap,
                                             HybridStats* statsOut=nullptr,std::vector<uint8_t>* clipFlags=nullptr,
                                             const HybridPresetAlignment* preset=nullptr,const HybridMosaicNative* native=nullptr) {
+    if(tune.gainMeasured>0){
+        // gainMeasured 1: the measured ratio where the data is reliable (hybridApplyMeasuredGains), decided once on the stream
+        // frames as they came (a colour-block mosaic before its sub-frames or binned frames: one decision for all of them, from
+        // every frame of each exposure); then this merge with the decision made (gainMeasured -1: no second measurement or report).
+        // A burst without bracketed / ultrashort frames skips it (nothing to decide).
+        bool other=false;
+        for(size_t f=1;f<input.frames.size();++f)other|=input.frames[f].role==kRoleBracketed||input.frames[f].role==kRoleUltrashort;
+        if(other){
+            HybridInput measured=input;
+            hybridApplyMeasuredGains(measured,report);
+            HybridTuning t2=tune;t2.gainMeasured=-1;
+            return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+        }
+    }
     // P14 / P15: a colour-block mosaic (sensor mode without remosaic) is merged through its plain-Bayer sub-frames; P29: or, with
     // mosaicPath 1, natively (hybridReconstructMosaicNative)
     if(input.mosaic!=1&&!input.frames.empty()){
@@ -4195,16 +4277,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
         if(block>1&&tune.mosaicPath==1)report("HYBRID MOSAIC NATIVE: Tetra stays on the sub-frame split (mosaicTetra 0)");
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
-    }
-    if(tune.gainMeasured>0&&input.frames.size()>1){
-        // P27 (VERIFY-11): the measured ratio replaces a metadata ratio the data disagrees with (see HybridTuning::gainMeasured);
-        // then the merge as usual, with the key off. The data of both frames is compared without alignment, as in the report. A
-        // colour-block mosaic gets here with its plain-Bayer sub-frames (measured per sub-frame, as the GAIN CHECK lines).
-        HybridInput measured=input;
-        measured.mosaic=1; // past the colour-block dispatch: plain Bayer (or the sub-frames of one), not detected again
-        hybridApplyMeasuredGains(measured,report);
-        HybridTuning t2=tune;t2.gainMeasured=0;
-        return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
     }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
@@ -4281,7 +4353,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // before this function returns (an exception included): the tasks may use b, input and tune.
     NiceTasks tasks;
     std::vector<std::future<HybridGain>> gains(n);
-    for(int f=1;f<n;++f){
+    for(int f=1;f<n&&tune.gainMeasured==0;++f){ // gainMeasured -1: measured and reported by the decision before this merge
         const auto& fr=input.frames[f];
         if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
         if(ahead)gains[f]=tasks.run([&input,f]{return hybridMeasuredGain(input,f);});
@@ -4465,17 +4537,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(tune.chromaDiff>0.f)report("HYBRID CHROMA DIFF: base R/B = merged G + <R-G>/<B-G> of the base sites where the base kernel widens (strength "
         +std::to_string(std::clamp(tune.chromaDiff,0.f,1.f))+((tune.s61Mode&4)&&sabre61?", below "+std::to_string(tune.widenBelow)+" accepted frames":", by donor coverage")
         +(tune.chromaDiffClamp?", clamped to the base's sample range)":", unclamped)"));
-    // ---- measured gain of the other exposures against their metadata ratio (report only; P12c). P30: frames in parallel; P31:
-    // started before the alignment (gains above).
+    // ---- measured gain of the other exposures against their metadata ratio (report only with gainMeasured 0; P12c). P30: frames
+    // in parallel; P31: started before the alignment (gains above).
     for(int f=1;f<n;++f){
-        const auto& fr=input.frames[f];
-        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
-        const HybridGain g=gains[f].get();
-        char line[200];
-        if(g.tiles<64)std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f: insufficient signal or overlap (%d tiles)",f,fr.role,fr.exposure,g.tiles);
-        else std::snprintf(line,sizeof(line),"HYBRID GAIN CHECK frame=%d role=%d metadata=%.4f measured=%.4f (%+.1f %%) tiles=%d mad=%.1f %% -> %s",f,fr.role,fr.exposure,g.measured,
-            100.0*(g.measured/fr.exposure-1.0),g.tiles,100.0*g.mad,!g.ok?"inconsistent ratios":std::abs(g.measured/fr.exposure-1.f)>0.05f?"metadata differs":"ok");
-        report(line);
+        if(!gains[f].valid())continue;
+        report(hybridGainCheckLine(f,input.frames[f].role,input.frames[f].exposure,gains[f].get()));
     }
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);

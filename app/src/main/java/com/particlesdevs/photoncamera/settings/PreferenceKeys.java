@@ -953,7 +953,8 @@ public class PreferenceKeys {
             // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
             // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
-            // P27: the measured exposure ratio instead of a disagreeing metadata ratio (worker default 0 = report only)
+            // P27: the measured exposure ratio instead of a metadata ratio the data reliably disagrees with (worker default 1 since
+            // 7 October 2026; 0 = report only, nice_dev.txt "hybrid_gain_measured 0")
             {"gainMeasured", "gain_measured"},
             // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from nice_dev.txt
             // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them).
