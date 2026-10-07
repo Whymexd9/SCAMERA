@@ -703,13 +703,62 @@ public class SettingsMenuTest {
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
             .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true) // shown modules (hidden fillers are not listed)
             .putString("module_active","back1").commit();
-        PreferenceScreen screen=inflate();SensorConfigPreferenceGenerator.generatePreferences(context,screen);
-        ListPreference selector=screen.findPreference("pref_sensor_config_selector");
-        assertEquals("back1",selector.getValue());
-        selector.getOnPreferenceChangeListener().onPreferenceChange(selector,"back0");
+        PreferenceScreen screen=inflate();
+        SensorConfigPreferenceGenerator.ModuleSelection selection=SensorConfigPreferenceGenerator.generatePreferences(context,screen);
+        assertNull("the module is picked by the page chip, not by a row on the page",screen.findPreference("pref_sensor_config_selector"));
+        assertEquals("back1",selection.selected());
+        assertEquals(Arrays.asList("back0","back1"),selection.slots());
+        assertTrue(screen.findPreference("pref_category_sensor_back1").isVisible());
+        assertFalse(screen.findPreference("pref_category_sensor_back0").isVisible());
+        selection.select("back0");
         assertEquals("back1",ModuleRegistry.active());
         assertTrue(screen.findPreference("pref_category_sensor_back0").isVisible());
         assertFalse(screen.findPreference("pref_category_sensor_back1").isVisible());
+    }
+    /** The sensor page has no module row: its chip names the module and picks another one; the camera stays. */
+    @Test public void sensorPageChipPicksTheModuleWithoutSwitchingTheCamera(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5").putString("module_auto_back2","7")
+            .putString("module_label_back0","1×").putString("module_label_back1","3×").putString("module_label_back2","6×")
+            .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true).putBoolean("module_visible_back2",true)
+            .putString("module_active","back2").commit();
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var fm=controller.get().getSupportFragmentManager();
+            var page=com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.sensorPage("back1");
+            fm.beginTransaction().replace(R.id.settings_container,page).commitNow();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertNull(page.findPreference("pref_sensor_config_selector"));
+            assertTrue(page.findPreference("pref_category_sensor_back1").isVisible());
+            assertFalse(page.findPreference("pref_category_sensor_back0").isVisible());
+            android.widget.TextView chip=page.requireView().findViewWithTag("settings_chip");
+            assertNotNull(chip);assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Editing: 3× · ID 5"));
+            chip.performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertNotNull(sheet);sheet.findViewById(android.R.id.content).findViewWithTag("option_back0").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertTrue(page.findPreference("pref_category_sensor_back0").isVisible());
+            assertFalse(page.findPreference("pref_category_sensor_back1").isVisible());
+            assertEquals("the camera keeps its module","back2",ModuleRegistry.active());
+            chip=page.requireView().findViewWithTag("settings_chip");
+            assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Editing: 1× · ID 3"));
+        }
+    }
+    /** A module page opens its own sensor settings, even for a hidden module; the rows keep one fixed order. */
+    @Test public void sensorPageOpensAtTheRequestedModuleInFixedRowOrder(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
+            .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",false)
+            .putString("module_active","back0").commit();
+        PreferenceScreen screen=inflate();
+        SensorConfigPreferenceGenerator.ModuleSelection selection=SensorConfigPreferenceGenerator.generatePreferences(context,screen,"back1");
+        assertEquals("back1",selection.selected());
+        assertEquals("back0",ModuleRegistry.active());
+        PreferenceCategory category=screen.findPreference("pref_category_sensor_back1");
+        assertTrue(category.isVisible());
+        List<String> keys=new ArrayList<>();
+        for(int i=0;i<category.getPreferenceCount();i++)if(category.getPreference(i).getKey().startsWith("pref_sensorconfig_back1_"))keys.add(category.getPreference(i).getKey().substring("pref_sensorconfig_back1_".length()));
+        // RAW levels, exposure limits, stabilization (only with OIS hardware), session; then the vendor tag button
+        keys.remove("oismode");
+        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","exposurebalanceisolimit","exposurebalanceshutterlimit",
+                "exposurebalancemultiplier","sessiontype","add_tunablekey"),keys);
     }
     @Test public void sharedPhotoExposureCurveIsFiniteAndRespondsToTarget() throws Exception {
         // The live RAW viewfinder's meter: its fixed target (no settings row since the legacy tone went).

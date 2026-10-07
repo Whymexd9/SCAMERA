@@ -32,7 +32,10 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         for(int i=0;i<keys.length;i++){CheckBoxPreference p=new CheckBoxPreference(requireContext());p.setKey("pref_manual_"+keys[i]);p.setTitle(titles[i]);p.setPersistent(false);manual.addPreference(p);}
         PreferenceScreen sensors=tree.findPreference("pref_sensor_config_submenu");
         if(sensors!=null){sensors.setTitle(Lang.t(getContext(),"Настройки сенсора модуля","Module sensor settings"));
-            for(Class<?> cls:SensorConfigRegistry.SENSOR_CONFIG_CLASSES)for(java.lang.reflect.Field f:cls.getDeclaredFields()){
+            java.util.List<java.lang.reflect.Field> fields=new ArrayList<>();
+            for(Class<?> cls:SensorConfigRegistry.SENSOR_CONFIG_CLASSES)fields.addAll(java.util.Arrays.asList(cls.getDeclaredFields()));
+            fields.sort(java.util.Comparator.comparingInt(f->SensorConfigPreferenceGenerator.rank(f.getName()))); // the sensor page's order
+            for(java.lang.reflect.Field f:fields){
                 com.particlesdevs.photoncamera.settings.annotations.SensorConfig a=f.getAnnotation(com.particlesdevs.photoncamera.settings.annotations.SensorConfig.class);
                 if(a==null)continue;
                 String key=ModuleSensorSettings.COPY_PREFIX+f.getName().toLowerCase(java.util.Locale.ROOT);

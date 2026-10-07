@@ -39,13 +39,10 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
                 ()->open(ModuleLensFragment.module(slot)));
         }
         if(slots.isEmpty())note(Lang.t(getContext(),"Откройте видоискатель, чтобы определить доступные модули камеры.","Open the viewfinder to detect the available camera modules."));
-        caption(Lang.t(getContext(),"Все модули сразу","All modules at once"));
-        navigation("▣",Lang.t(getContext(),"Назначение Camera ID","Camera ID assignment"),Lang.t(getContext(),"Авто, список камер или ручной ввод","Auto, camera list or manual entry"),()->open(ModuleLensFragment.create("id")));
-        navigation("⌕",Lang.t(getContext(),"Зум-факторы кнопок","Button zoom factors"),Lang.t(getContext(),"Порог переключения модулей при зуме и кроп на сенсоре","Module switch thresholds when zooming, and sensor crop"),()->open(ModuleLensFragment.create("zoom")));
-        navigation("☷",Lang.t(getContext(),"Отображение кнопок","Button display"),Lang.t(getContext(),"Порядок задаётся зум-фактором","The zoom factor sets the order"),()->open(ModuleLensFragment.create("order")));
-        navigation("◇",Lang.t(getContext(),"Названия модулей","Module names"),null,()->open(ModuleLensFragment.create("names")));
+        // Name, Camera ID, zoom / sensor crop and the viewfinder button live on each module's page only (P21 listed
+        // them a second time as «Все модули сразу» bulk pages; the module rows above already show zoom, crop and «скрыт»).
         caption(Lang.t(getContext(),"Сенсоры","Sensors"));
-        navigation("⚙︎",Lang.t(getContext(),"Настройки сенсоров и вендорные ключи","Sensor settings and vendor keys"),Lang.t(getContext(),"Уровни, шум и цвет по модулям, реквесты (Vendor Tags), метод цвета","Levels, noise and colour per module, requests (vendor tags), colour method"),()->{
+        navigation("⚙︎",Lang.t(getContext(),"Сенсоры и вендорные ключи","Sensors and vendor keys"),Lang.t(getContext(),"Цветовой метод; уровни RAW, экспозиция, стабилизация и vendor tags каждого модуля","Colour method; RAW levels, exposure, stabilization and vendor tags of each module"),()->{
             SettingsActivity.SettingsFragment extra=new SettingsActivity.SettingsFragment();Bundle args=new Bundle();args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT,"camera_settings_screen");extra.setArguments(args);open(extra);
         });
         caption(Lang.t(getContext(),"Профили","Profiles"));

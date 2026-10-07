@@ -11,9 +11,8 @@ import java.util.*;
 
 public class ModuleLensFragment extends ModuleConceptFragment {
     private String page;
-    public static ModuleLensFragment create(String mode){ModuleLensFragment f=new ModuleLensFragment();Bundle b=new Bundle();b.putString("mode",mode);f.setArguments(b);return f;}
-    /** P21: the page of one module (button). */
-    public static ModuleLensFragment module(String slot){ModuleLensFragment f=create("module");f.getArguments().putString("slot",slot);return f;}
+    /** P21: the page of one module (button): every module setting is edited here and nowhere else. */
+    public static ModuleLensFragment module(String slot){ModuleLensFragment f=new ModuleLensFragment();Bundle b=new Bundle();b.putString("slot",slot);f.setArguments(b);return f;}
     private void rename(String slot){
         EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));
         new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
@@ -32,11 +31,9 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         navigation(shown?"●":"○",Lang.t(getContext(),"Кнопка в видоискателе","Viewfinder button"),shown?Lang.t(getContext(),"Показывается · нажмите, чтобы скрыть","Shown · tap to hide"):Lang.t(getContext(),"Скрыта · нажмите, чтобы показать","Hidden · tap to show"),()->{
             PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_visible_"+slot,!shown).apply();render();});
         int mode=ModuleRegistry.sensorMode(slot);
-        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни, шум, цвет и реквесты этого модуля (выберите его в списке «Модуль камеры»)","Levels, noise, colour and requests of this module (pick it in the “Camera module” list)"),()->{
-            androidx.preference.PreferenceFragmentCompat extra=new SettingsActivity.SettingsFragment();Bundle args=new Bundle();
-            args.putString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT,"camera_settings_screen");extra.setArguments(args);
-            getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,extra).addToBackStack("sensor").commit();
-        });
+        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, экспозиция, стабилизация и vendor tags этого модуля","RAW levels, exposure, stabilization and vendor tags of this module"),()->
+            // straight to this module's sensor page (it no longer has a module list row to pick it in)
+            getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,SettingsActivity.SettingsFragment.sensorPage(slot)).addToBackStack("sensor").commit());
         if(slot.equals(ModuleRegistry.active())){
             int block=com.particlesdevs.photoncamera.processing.MosaicStream.block();
             note(Lang.t(getContext(),"Цветовой блок потока: ","Stream colour block: ")+(block==0?Lang.t(getContext(),"ещё не измерен (откройте видоискатель)","not measured yet (open the viewfinder)"):block==1?Lang.t(getContext(),"обычный Bayer","plain Bayer"):block==2?Lang.t(getContext(),"Quad 2×2 (сенсормод без ремозаика)","Quad 2×2 (sensor mode without remosaic)"):Lang.t(getContext(),"Tetra 4×4 (сенсормод без ремозаика)","Tetra 4×4 (sensor mode without remosaic)")));
@@ -53,27 +50,7 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         else note(Lang.t(getContext(),"Исходный модуль объектива удалить нельзя — его можно скрыть.","The original module of a lens can't be deleted, only hidden."));
     }
     @Override protected void render(){
-        String mode=getArguments()==null?"id":getArguments().getString("mode","id");
-        if(mode.equals("module")){renderModule(getArguments().getString("slot",ModuleRegistry.active()));return;}
-        page(mode.equals("names")?Lang.t(getContext(),"Названия модулей","Module names"):mode.equals("order")?Lang.t(getContext(),"Отображение кнопок","Button display"):mode.equals("zoom")?Lang.t(getContext(),"Зум-факторы кнопок","Button zoom factors"):Lang.t(getContext(),"Назначение Camera ID","Camera ID assignment"),null);
-        List<String> slots=ModuleRegistry.slots();slots.sort(Comparator.comparing((String id)->id.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
-        String side="";
-        for(String slot:slots){
-            if(!mode.equals("order")&&!ModuleRegistry.visible(slot))continue; // hidden buttons are only managed on the display page
-            String next=slot.startsWith("front")?Lang.t(getContext(),"Фронтальная камера","Front camera"):Lang.t(getContext(),"Задние камеры","Back cameras");if(!side.equals(next)){caption(next);side=next;}
-            String label=ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot);
-            if(mode.equals("order")){
-                LinearLayout c=card(),r=row();Runnable visible=()->{var prefs=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();prefs.edit().putBoolean("module_visible_"+slot,!ModuleRegistry.visible(slot)).apply();render();};
-                r.addView(mark(ModuleRegistry.visible(slot)?2:0,label,visible),new LinearLayout.LayoutParams(dp(44),dp(52)));r.addView(text(label,14,TEXT),new LinearLayout.LayoutParams(0,-2,1));
-c.addView(r);
-            }else navigation(mode.equals("names")?"◇":mode.equals("zoom")?"⌕":"▣",label,mode.equals("zoom")?String.format(java.util.Locale.US,Lang.t(getContext(),"Зум %.2f×","Zoom %.2f×"),ModuleRegistry.zoom(slot)).replaceAll("\\.?0+×","×")+(ModuleRegistry.sensorCrop(slot)?Lang.t(getContext()," · кроп на сенсоре"," · sensor crop"):""):ModuleRegistry.visible(slot)?Lang.t(getContext(),"Кнопка отображается","Button shown"):Lang.t(getContext(),"Кнопка скрыта","Button hidden"),()->{
-                page=slot;
-                if(mode.equals("zoom")){zoomDialog(slot);}
-                else if(mode.equals("names")){EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putString("module_name_"+slot,input.getText().toString().trim()).apply();render();}).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();}
-                else choose();
-            });
-        }
-        if(slots.isEmpty())note(Lang.t(getContext(),"Откройте видоискатель, чтобы определить доступные модули камеры.","Open the viewfinder to detect the available camera modules."));
+        renderModule(getArguments()==null?ModuleRegistry.active():getArguments().getString("slot",ModuleRegistry.active()));
     }
     /** Zoom ratio of the module button and whether its frame is already cropped on the sensor. */
     private void zoomDialog(String slot){

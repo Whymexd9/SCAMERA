@@ -150,7 +150,21 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     public static class SettingsFragment extends PreferenceFragmentCompat implements SharedPreferences.OnSharedPreferenceChangeListener, PreferenceManager.OnPreferenceTreeClickListener {
         private static final String KEY_MAIN_PARENT_SCREEN = "prefscreen";
+        private static final String SENSOR_PAGE = "pref_sensor_config_submenu";
+        /** Argument of the sensor page: the module it shows (a module page opens its own; the chip changes it). */
+        static final String ARG_SENSOR_SLOT = "sensor_slot";
         private Activity activity;
+        private com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.ModuleSelection sensorSelection;
+
+        /** The sensor settings and vendor keys of one module. */
+        public static SettingsFragment sensorPage(String slot) {
+            SettingsFragment page = new SettingsFragment();
+            Bundle args = new Bundle();
+            args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, SENSOR_PAGE);
+            args.putString(ARG_SENSOR_SLOT, slot);
+            page.setArguments(args);
+            return page;
+        }
         private SettingsManager mSettingsManager;
         private Context mContext;
         private View mRootView;
@@ -175,6 +189,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 PreferenceScreen selected = findPreference(rootKey);
                 if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
                 setPreferenceScreen(selected);
+                // The XML page of «Камеры и сенсоры» opens from that page's «Сенсоры и вендорные ключи» row: same name in its header
+                if ("camera_settings_screen".equals(rootKey))
+                    selected.setTitle(Lang.t(getContext(),"Сенсоры и вендорные ключи","Sensors and vendor keys"));
             }
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
@@ -262,8 +279,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             header.subtitle.setVisibility(View.GONE);
             chipBox.removeAllViews();
             String chip = null;
+            boolean picker = false;
             if (screen != null && KEY_MAIN_PARENT_SCREEN.equals(screen.getKey()))
                 chip = Lang.t(getContext(),"Активна: ","Active: ") + ("hybrid".equals(PreferenceKeys.mergeRoute()) ? "Hybrid" : "SCAM HDR") + Lang.t(getContext()," · по умолчанию Hybrid"," · Hybrid by default");
+            else if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
+                // Sensor settings always belong to one module, per-module profiles on or off. The chip names it and,
+                // with more than one module, is the module picker (the page has no picker row of its own).
+                chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + sensorSelection.title(sensorSelection.selected());
+                picker = sensorSelection.slots().size() > 1;
+                if (picker) chip += "  ▾";
+            }
             else if (screen != null && PreferenceKeys.isPerLensSettingsOn() && SettingsStyle.hasModuleSettings(screen)) {
                 String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
                 chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)
@@ -272,8 +297,29 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (chip != null) {
                 android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
                 lp.bottomMargin = SettingsStyle.dp(requireContext(), 4);
-                chipBox.addView(SettingsStyle.chip(requireContext(), chip), lp);
+                android.widget.TextView view = SettingsStyle.chip(requireContext(), chip);
+                if (picker) {
+                    view.setOnClickListener(v -> pickSensorModule());
+                    view.setFocusable(true);
+                    view.setContentDescription(chip.replace("  ▾", "") + Lang.t(getContext(),". Выбрать другой модуль",". Choose another module"));
+                }
+                chipBox.addView(view, lp);
             }
+        }
+
+        /** The module picker of the sensor page: shows another module's sensor settings; the camera stays as it is. */
+        private void pickSensorModule() {
+            if (sensorSelection == null) return;
+            java.util.List<String> slots = sensorSelection.slots();
+            CharSequence[] labels = new CharSequence[slots.size()], tags = new CharSequence[slots.size()];
+            for (int i = 0; i < slots.size(); i++) { labels[i] = sensorSelection.title(slots.get(i)); tags[i] = slots.get(i); }
+            SettingsStyle.optionSheet(requireContext(), Lang.t(getContext(),"Модуль камеры","Camera module"), labels, tags,
+                    slots.indexOf(sensorSelection.selected()), SettingsStyle.accent(requireContext()), i -> {
+                        sensorSelection.select(slots.get(i));
+                        // kept in the arguments, so a reset (it recreates the activity) comes back to this module
+                        if (getArguments() != null) getArguments().putString(ARG_SENSOR_SLOT, slots.get(i));
+                        updateHeader();
+                    });
         }
 
         private void openSearch() {
@@ -550,7 +596,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
                 Log.d("SettingsActivity", "Target PreferenceScreen: " + screen.getKey() + " (count before: " + screen.getPreferenceCount() + ")");
 
-                com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.generatePreferences(mContext, screen);
+                String preferred = getArguments() == null ? null : getArguments().getString(ARG_SENSOR_SLOT);
+                sensorSelection = com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.generatePreferences(mContext, screen, preferred);
 
                 Log.d("SettingsActivity", "Generated sensor config preferences (count after: " + screen.getPreferenceCount() + ")");
                 addSensorConfigResetButton();
@@ -577,8 +624,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 resetButton.setOrder(9999); // Force to the end
 
                 resetButton.setOnPreferenceClickListener(preference -> {
-                    androidx.preference.ListPreference selector=submenu.findPreference("pref_sensor_config_selector");
-                    String slot=selector!=null?selector.getValue():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+                    String slot=sensorSelection!=null?sensorSelection.selected():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
                     new androidx.appcompat.app.AlertDialog.Builder(mContext)
                         .setTitle(Lang.t(getContext(),"Сбросить настройки модуля?","Reset the module settings?"))
                         .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
