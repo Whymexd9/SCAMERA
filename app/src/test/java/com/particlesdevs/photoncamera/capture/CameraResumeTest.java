@@ -390,4 +390,72 @@ public class CameraResumeTest {
         ((java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults")).clear();
     }
 
+    /** OPPO PHY110 2026-10-07: the provider died during startup, getCameraCharacteristics threw and the app crashed. */
+    @Test @SuppressWarnings("unchecked")
+    public void providerDeathWhileReadingCharacteristicsSchedulesRecoveryInsteadOfCrashing() throws Exception {
+        Activity activity=mock(Activity.class);CameraManager manager=mock(CameraManager.class);
+        when(activity.getSystemService(Context.CAMERA_SERVICE)).thenReturn(manager);
+        when(manager.getCameraCharacteristics("3")).thenThrow(new IllegalArgumentException(
+                "getCameraCharacteristics:1370: Unable to retrieve camera characteristics for unknown device 3: No such file or directory (-2)"));
+        CaptureController dying=new CaptureController(activity,mock(ExecutorService.class),events);
+        assertTrue((Boolean)get(dying,"mCharacteristicsIncomplete"));
+        assertEquals(1,((ArrayDeque<Long>)get(dying,"mRecoveries")).size());
+    }
+
+    private static CameraCharacteristics facing(int lensFacing) {
+        CameraCharacteristics c=mock(CameraCharacteristics.class);
+        when(c.get(CameraCharacteristics.LENS_FACING)).thenReturn(lensFacing);
+        return c;
+    }
+
+    /** OPPO PHY110 modules: back0 "2x" and back4 "1x" on the main camera 2, back3 "2.8x" on the hidden tele 4. */
+    private Settings oppoModules() {
+        Settings settings=new Settings();settings.mCameraID="4";
+        photon.when(PhotonCamera::getSettings).thenReturn(settings);
+        android.content.SharedPreferences.Editor e=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit();
+        for(String[] r:new String[][]{{"back0","2","2\u00d7"},{"back3","4","2.8\u00d7"},{"back4","2","1\u00d7"},{"front0","1","1\u00d7"}})
+            e.putString("module_auto_"+r[0],r[1]).putBoolean("module_visible_"+r[0],true).putString("module_label_"+r[0],r[2]);
+        e.putString("module_active","back3").commit();
+        PreferenceKeys.setCameraID("4");
+        return settings;
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String,CameraCharacteristics> coldStartList(CameraCharacteristics main) throws Exception {
+        java.util.Map<String,CameraCharacteristics> map=(java.util.Map<String,CameraCharacteristics>)get(controller,"mCameraCharacteristicsMap");
+        map.clear();map.put("1",facing(CameraCharacteristics.LENS_FACING_FRONT));map.put("2",main);
+        map.put("3",facing(CameraCharacteristics.LENS_FACING_BACK));
+        return map;
+    }
+
+    /** Cold start with the 2.8x tele selected and the list [1, 2, 3]: the main back camera under its 1x module, not the front one. */
+    @Test public void missingTeleOpensTheMainBackCameraUnderItsOwnModule() throws Exception {
+        Settings settings=oppoModules();
+        CameraManager manager=(CameraManager)get(controller,"mCameraManager");
+        when(manager.getCameraCharacteristics("4")).thenThrow(new IllegalArgumentException("unknown device 4"));
+        CameraCharacteristics main=facing(CameraCharacteristics.LENS_FACING_BACK);
+        coldStartList(main);
+        var method=CaptureController.class.getDeclaredMethod("requestedCharacteristics");method.setAccessible(true);
+        assertSame(main,method.invoke(controller));
+        assertEquals("2",get(controller,"physicalID"));assertEquals("2",get(controller,"logicalID"));
+        assertEquals("2",settings.mCameraID);assertEquals("2",PreferenceKeys.getCameraID());
+        assertEquals("back4",ModuleRegistry.active());
+        // the requested module comes back when its camera appears
+        verify(manager).registerAvailabilityCallback(any(CameraManager.AvailabilityCallback.class),any(android.os.Handler.class));
+    }
+
+    /** A camera the start-up list lacks but the camera service knows is opened as requested. */
+    @Test public void unlistedCameraKnownToTheServiceOpensAsRequested() throws Exception {
+        Settings settings=oppoModules();
+        CameraManager manager=(CameraManager)get(controller,"mCameraManager");
+        CameraCharacteristics tele=facing(CameraCharacteristics.LENS_FACING_BACK);
+        when(manager.getCameraCharacteristics("4")).thenReturn(tele);
+        var map=coldStartList(facing(CameraCharacteristics.LENS_FACING_BACK));
+        var method=CaptureController.class.getDeclaredMethod("requestedCharacteristics");method.setAccessible(true);
+        assertSame(tele,method.invoke(controller));
+        assertSame(tele,map.get("4"));
+        assertEquals("4",get(controller,"physicalID"));assertEquals("4",settings.mCameraID);
+        assertEquals("back3",ModuleRegistry.active());
+    }
+
 }
