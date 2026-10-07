@@ -275,6 +275,13 @@ public final class LmcDenoise extends Node {
             Log.i("NICE_PIPELINE", "EFFMAP legacy upload left " + nonZero + " non-zero of " + (long) size.x * size.y + " texels"
                     + (nonZero == 0 ? " (all zero: the cleared map is the same)" : nonZero < 0 ? " (read-back failed)" : " (NOT all zero)")
                     + " check ms=" + (System.nanoTime() - checkStart) / 1_000_000);
+            // nice_dev.txt "post_ab_effclear 1": the old run gets the new run's cleared map, so a POST AB difference that remains
+            // is not the stale texels the failing upload left behind.
+            if (nonZero != 0 && PreferenceKeys.niceDevSwitch("post_ab_effclear", false)) {
+                t.BufferLoad();
+                android.opengl.GLES30.glClearBufferuiv(android.opengl.GLES30.GL_COLOR, 0, new int[]{0, 0, 0, 0}, 0);
+                Log.i("NICE_PIPELINE", "EFFMAP legacy map cleared for the A/B (post_ab_effclear)");
+            }
             return t;
         }
         GLTexture t = new GLTexture(size, format, null, GL_NEAREST, GL_CLAMP_TO_EDGE);

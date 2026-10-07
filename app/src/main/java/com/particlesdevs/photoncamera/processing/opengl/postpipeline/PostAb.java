@@ -18,7 +18,9 @@ import java.security.MessageDigest;
  * in the old GL model ({@link PostGlMode#legacy()}: the pipeline as before wave 1), then in the new one, and logs both times
  * and the MD5 of both bitmaps in one line:
  * <pre>POST AB old ms=... teardown=... md5=... | new ms=... md5=... EQUAL|DIFFERENT</pre>
- * The new run's bitmap goes on to the JPEG as in any shot. The worker RGB, the effective-frame map and the clip flags are
+ * The new run's bitmap goes on to the JPEG as in any shot. "post_ab_dump 1" also writes both bitmaps as post_ab_old.png /
+ * post_ab_new.png to the external files dir; "post_ab_effclear 1" gives the old run the new run's cleared effective-frame map.
+ * The worker RGB, the effective-frame map and the clip flags are
  * kept for the second run (the first one frees the RGB after its upload and consumes the clip flags). Only for a hybrid /
  * SCAM HDR RGB of 16 MP or less without Ultra HDR (the copy of the RGB and a second bitmap must fit); otherwise one normal run.
  * A failure of the old run is logged and the shot goes on with the new one.
@@ -60,6 +62,7 @@ public final class PostAb {
             oldTeardown = (System.nanoTime() - t1) / 1_000_000;
             oldMs = (t1 - t0) / 1_000_000;
             oldMd5 = md5(a);
+            dump(a, "post_ab_old.png");
             a.recycle();
         } catch (RuntimeException | OutOfMemoryError e) {
             Log.e("NICE_PIPELINE", "POST AB old run failed: " + e);
@@ -76,10 +79,25 @@ public final class PostAb {
         final Bitmap b = pipeline.Run(input, p);
         final long newMs = (System.nanoTime() - t2) / 1_000_000;
         final String newMd5 = md5(b);
+        dump(b, "post_ab_new.png");
         Log.i("NICE_PIPELINE", "POST AB old ms=" + oldMs + " teardown=" + oldTeardown + " md5=" + oldMd5
                 + " | new ms=" + newMs + " md5=" + newMd5 + (oldMd5.equals(newMd5) ? " EQUAL" : " DIFFERENT")
                 + " size=" + b.getWidth() + "x" + b.getHeight());
         return b;
+    }
+
+    /** nice_dev.txt "post_ab_dump 1": both bitmaps as lossless PNG in the app's external files dir, for a pixel diff. */
+    private static void dump(Bitmap bitmap, String name) {
+        if (!PreferenceKeys.niceDevSwitch("post_ab_dump", false)) return;
+        try {
+            final java.io.File dir = PhotonCamera.getAppContext().getExternalFilesDir(null);
+            if (dir == null) return;
+            try (java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(dir, name))) {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+            }
+        } catch (Exception e) {
+            Log.w("NICE_PIPELINE", "POST AB dump failed: " + e);
+        }
     }
 
     /** MD5 of the ARGB pixels of a bitmap, row by row (hex). */
