@@ -41,6 +41,12 @@ public class PostPipeline extends GLBasePipeline {
     public float linearDisplayGain = 1.0f;
     /** Noise sigma of the frame (variance stabilised units) estimated by NiceDenoise; 0 = not measured. */
     public float niceNoiseSigma = 0f;
+    /**
+     * The working RGB holds signed values: set by VivoNiceRgb (nicergb signedU, LMC hybrid), cleared by a noise reduction
+     * that writes its clamped output. ArkCombine then clamps its B-spline colour after the interpolation; otherwise (SCAM
+     * HDR, or the hybrid after the denoise) per tap as before, so negative taps of the colour matrix change nothing there.
+     */
+    public boolean signedRgb;
     /** ARK tone of the LMC hybrid: state handed from ArkStats to ArkCombine / ArkSharpenGuard; null outside that route. */
     public ArkTone.State ark;
     /**
@@ -159,6 +165,7 @@ public class PostPipeline extends GLBasePipeline {
         mCaptured = false;
         linearDisplayGain = 1.0f;
         niceNoiseSigma = 0f;
+        signedRgb = false;
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         exposureCurve = null;

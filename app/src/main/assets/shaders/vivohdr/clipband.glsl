@@ -16,6 +16,8 @@ precision highp sampler2D;
 // tools/check_highlight_recovery.py).
 // Those take the mixed colour at any luminance; other band pixels only on the bright side (luminance above ~a quarter
 // of the window's brightest), and every pixel away from the flagged band stays as it is.
+// The input is signed on hybrid shots (nicergb signedU): the window statistics clamp each pixel for their own maths, the
+// pixel itself keeps its signed value for the share it is not recoloured (w < 1) - for non-negative input as before.
 uniform sampler2D InputBuffer;      // white-balanced linear RGB after nicergb
 uniform sampler2D ClipFlags;        // worker flags, normalised R8 (code = r * 255)
 uniform int radiusU;                // window radius in output pixels (3 at 1x, 6 on the Sabre 2x grid); <= 0 -> 3
@@ -78,5 +80,5 @@ void main() {
     float ld = min(dot(dk, W), l);
     vec3 mixed = dk * (ld / max(dot(dk, W), 1.0e-6)) + mean * ((l - ld) / lm);
     vec3 target = mix(mixed, mean * (l / lm), bright);     // the bright side: the window's mean colour, as before
-    Output = vec4(mix(rgb, target, w), c.a);
+    Output = vec4(mix(c.rgb, target, w), c.a);
 }

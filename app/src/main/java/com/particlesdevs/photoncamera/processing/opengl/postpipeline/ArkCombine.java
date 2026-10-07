@@ -96,6 +96,7 @@ public final class ArkCombine extends Node {
             glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
             glProg.setVar("fU", st.factor);
             glProg.setVar("colourFU", colourFactor);
+            glProg.setVar("signedColourU", pipeline.signedRgb ? 1 : 0);
             glProg.setVar("aeU", r.ae);
             glProg.setVar("clipU", r.clip);
             // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.
