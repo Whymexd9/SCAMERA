@@ -19,17 +19,20 @@ import java.util.Locale;
  * stabilised after a hybrid shot). Every preview result keeps the requested and reported
  * LENS_OPTICAL_STABILIZATION_MODE / CONTROL_VIDEO_STABILIZATION_MODE, the request's AE mode (the AE restore frame is
  * AE OFF), the exposure, the OIS samples (when STATISTICS_OIS_DATA_MODE is on, nice_dev.txt "stab_trace_ois 1") and the
- * vendor result keys whose names mention OIS / EIS / stabilisation. A shot marks the timeline; about one second after it
- * the frames from one second before to one second after are written to the log (tag STAB_TRACE), together with the
- * shot's events (flush, AE restore, re-arm).
+ * vendor result keys whose names mention OIS / EIS / stabilisation. A shot marks the timeline; one second after the shot
+ * and after its last event (flush, AE restore, re-arm; at most {@link #MAX_AFTER_NS} after the shot) the frames from one
+ * second before the shot on are written to the log (tag STAB_TRACE), together with the shot's events.
  *
- * Cost per frame: a handful of metadata reads into a fixed ring, no string formatting outside the dump.
+ * Cost per frame: a handful of metadata reads into a fixed ring, no allocation and no string formatting; the dump copies
+ * the window under the lock and formats it on its own thread, never on the camera callback thread.
  * nice_dev.txt "stab_trace 0" turns it off.
  */
 final class StabilizationTrace {
     static final String TAG = "STAB_TRACE";
     private static final int CAPACITY = 256;          // > 2.5 s at 60 fps, 5 s at 46 fps
     private static final long WINDOW_NS = 1_000_000_000L;
+    /** The window ends one second after the last event, but never later than this after the shot (fits the ring). */
+    private static final long MAX_AFTER_NS = 3_000_000_000L;
     private static final int MAX_VENDOR_KEYS = 8;
 
     private static final class Frame {
@@ -38,14 +41,31 @@ final class StabilizationTrace {
         int oisCount = -1;
         float oisMeanX, oisMeanY, oisRangeX, oisRangeY;
         Object[] vendor;
+
+        Frame copy() {
+            Frame c = new Frame();
+            c.arrivalNs = arrivalNs; c.sensorTs = sensorTs; c.exposureNs = exposureNs;
+            c.reqOis = reqOis; c.reqVs = reqVs; c.reqAe = reqAe; c.resOis = resOis; c.resVs = resVs; c.iso = iso; c.intent = intent;
+            c.oisCount = oisCount; c.oisMeanX = oisMeanX; c.oisMeanY = oisMeanY; c.oisRangeX = oisRangeX; c.oisRangeY = oisRangeY;
+            c.vendor = vendor == null ? null : vendor.clone();   // the ring reuses its array
+            return c;
+        }
     }
+
+    /** The dumps are formatted and logged here, off the camera callback thread. */
+    private static final java.util.concurrent.ExecutorService DUMP = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "STAB_TRACE-dump");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
 
     private final Frame[] ring = new Frame[CAPACITY];
     private int head, size;
     private final List<long[]> events = new ArrayList<>();      // {arrivalNs, index into eventNames}
     private final List<String> eventNames = new ArrayList<>();
-    private long shotNs = -1;
-    private boolean enabled = true;
+    private long shotNs = -1, lastEventNs = -1;
+    private volatile boolean enabled = true;
     private List<CaptureResult.Key<?>> vendorKeys;
     private String header = "";
 
@@ -55,7 +75,7 @@ final class StabilizationTrace {
 
     /** A new preview session: forget the old frames, describe the camera's stabilisation capabilities. */
     synchronized void startSession(String cameraId, CameraCharacteristics chars) {
-        head = 0; size = 0; shotNs = -1; events.clear(); eventNames.clear(); vendorKeys = null;
+        head = 0; size = 0; shotNs = -1; lastEventNs = -1; events.clear(); eventNames.clear(); vendorKeys = null;
         enabled = PreferenceKeys.niceDevSwitch("stab_trace", true);
         if (!enabled || chars == null) return;
         int[] ois = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
@@ -119,7 +139,7 @@ final class StabilizationTrace {
                     try { f.vendor[i] = result.get(vendorKeys.get(i)); } catch (RuntimeException e) { f.vendor[i] = null; }
                 }
             }
-            dump = shotNs >= 0 && now - shotNs >= WINDOW_NS;
+            dump = shotNs >= 0 && (now - Math.max(shotNs, lastEventNs) >= WINDOW_NS || now - shotNs >= MAX_AFTER_NS);
         }
         if (dump) dump();
     }
@@ -131,6 +151,7 @@ final class StabilizationTrace {
         if (!enabled) return;
         if (shotNs >= 0) { events.clear(); eventNames.clear(); }  // a shot that is still open: restart the window
         shotNs = SystemClock.elapsedRealtimeNanos();
+        lastEventNs = shotNs;
         events.add(new long[]{shotNs, eventNames.size()});
         eventNames.add(what);
     }
@@ -138,59 +159,81 @@ final class StabilizationTrace {
     /** An event inside the shot window (flush, AE restore frame, re-arm), printed between the frames. */
     synchronized void event(String what) {
         if (!enabled || shotNs < 0) return;
-        events.add(new long[]{SystemClock.elapsedRealtimeNanos(), eventNames.size()});
+        lastEventNs = SystemClock.elapsedRealtimeNanos();
+        events.add(new long[]{lastEventNs, eventNames.size()});
         eventNames.add(what);
     }
 
+    /** Copies the shot window under the lock (cheap) and formats it on the dump thread. */
     private void dump() {
-        StringBuilder out = new StringBuilder(16384);
+        final List<Frame> frames = new ArrayList<>();
+        final List<long[]> ev;
+        final List<String> evNames;
+        final long shot;
+        final String head0;
         synchronized (this) {
             if (shotNs < 0) return;
+            shot = shotNs;
             long from = shotNs - WINDOW_NS;
-            out.append("shot window ").append(header).append(" vendorKeys=");
-            for (CaptureResult.Key<?> k : vendorKeys) out.append(k.getName()).append(',');
-            out.append('\n');
-            int ev = 0;
+            StringBuilder h = new StringBuilder("shot window ").append(header).append(" vendorKeys=");
+            if (vendorKeys != null) for (CaptureResult.Key<?> k : vendorKeys) h.append(k.getName()).append(',');
+            head0 = h.toString();
             int start = (head - size + CAPACITY) % CAPACITY;
-            int frames = 0, oisOn = 0, vsOn = 0, after = 0, oisOnAfter = 0, vsOnAfter = 0;
-            long prevTs = -1;
             for (int i = 0; i < size; i++) {
                 Frame f = ring[(start + i) % CAPACITY];
-                if (f.arrivalNs < from) continue;
-                while (ev < events.size() && events.get(ev)[0] <= f.arrivalNs) {
-                    long[] e = events.get(ev++);
-                    out.append(String.format(Locale.US, "  %+6d ms EVENT %s%n", (e[0] - shotNs) / 1_000_000, eventNames.get((int) e[1])));
-                }
-                out.append(String.format(Locale.US, "  %+6d ms dts=%5.1f req[ois=%d vs=%d ae=%d intent=%d] res[ois=%d vs=%d] exp=%.2fms iso=%d",
-                        (f.arrivalNs - shotNs) / 1_000_000, prevTs < 0 || f.sensorTs < 0 ? 0f : (f.sensorTs - prevTs) / 1e6f,
-                        f.reqOis, f.reqVs, f.reqAe, f.intent, f.resOis, f.resVs, f.exposureNs / 1e6, f.iso));
-                if (f.oisCount >= 0) out.append(String.format(Locale.US, " oisN=%d mean=(%.2f,%.2f) range=(%.2f,%.2f)",
-                        f.oisCount, f.oisMeanX, f.oisMeanY, f.oisRangeX, f.oisRangeY));
-                if (f.vendor != null) {
-                    out.append(" vendor=");
-                    for (Object v : f.vendor) out.append(format(v)).append('|');
-                }
-                out.append('\n');
-                prevTs = f.sensorTs;
-                frames++;
-                if (f.resOis == CaptureResult.LENS_OPTICAL_STABILIZATION_MODE_ON) oisOn++;
-                if (f.resVs > 0) vsOn++;
-                if (f.arrivalNs > shotNs) {
-                    after++;
-                    if (f.resOis == CaptureResult.LENS_OPTICAL_STABILIZATION_MODE_ON) oisOnAfter++;
-                    if (f.resVs > 0) vsOnAfter++;
-                }
+                if (f.arrivalNs >= from) frames.add(f.copy());
             }
-            while (ev < events.size()) {
-                long[] e = events.get(ev++);
-                out.append(String.format(Locale.US, "  %+6d ms EVENT %s%n", (e[0] - shotNs) / 1_000_000, eventNames.get((int) e[1])));
-            }
-            out.append(String.format(Locale.US, "summary frames=%d oisOn=%d vsOn=%d | after shot frames=%d oisOn=%d vsOn=%d",
-                    frames, oisOn, vsOn, after, oisOnAfter, vsOnAfter));
+            ev = new ArrayList<>(events);
+            evNames = new ArrayList<>(eventNames);
             shotNs = -1;
+            lastEventNs = -1;
             events.clear();
             eventNames.clear();
         }
+        try {
+            DUMP.execute(() -> format(shot, head0, frames, ev, evNames));
+        } catch (RuntimeException rejected) {
+            // Diagnostics only.
+        }
+    }
+
+    private static void format(long shotNs, String head0, List<Frame> frames, List<long[]> events, List<String> eventNames) {
+        StringBuilder out = new StringBuilder(16384);
+        out.append(head0).append('\n');
+        int ev = 0;
+        int count = 0, oisOn = 0, vsOn = 0, after = 0, oisOnAfter = 0, vsOnAfter = 0;
+        long prevTs = -1;
+        for (Frame f : frames) {
+            while (ev < events.size() && events.get(ev)[0] <= f.arrivalNs) {
+                long[] e = events.get(ev++);
+                out.append(String.format(Locale.US, "  %+6d ms EVENT %s%n", (e[0] - shotNs) / 1_000_000, eventNames.get((int) e[1])));
+            }
+            out.append(String.format(Locale.US, "  %+6d ms dts=%5.1f req[ois=%d vs=%d ae=%d intent=%d] res[ois=%d vs=%d] exp=%.2fms iso=%d",
+                    (f.arrivalNs - shotNs) / 1_000_000, prevTs < 0 || f.sensorTs < 0 ? 0f : (f.sensorTs - prevTs) / 1e6f,
+                    f.reqOis, f.reqVs, f.reqAe, f.intent, f.resOis, f.resVs, f.exposureNs / 1e6, f.iso));
+            if (f.oisCount >= 0) out.append(String.format(Locale.US, " oisN=%d mean=(%.2f,%.2f) range=(%.2f,%.2f)",
+                    f.oisCount, f.oisMeanX, f.oisMeanY, f.oisRangeX, f.oisRangeY));
+            if (f.vendor != null) {
+                out.append(" vendor=");
+                for (Object v : f.vendor) out.append(format(v)).append('|');
+            }
+            out.append('\n');
+            prevTs = f.sensorTs;
+            count++;
+            if (f.resOis == CaptureResult.LENS_OPTICAL_STABILIZATION_MODE_ON) oisOn++;
+            if (f.resVs > 0) vsOn++;
+            if (f.arrivalNs > shotNs) {
+                after++;
+                if (f.resOis == CaptureResult.LENS_OPTICAL_STABILIZATION_MODE_ON) oisOnAfter++;
+                if (f.resVs > 0) vsOnAfter++;
+            }
+        }
+        while (ev < events.size()) {
+            long[] e = events.get(ev++);
+            out.append(String.format(Locale.US, "  %+6d ms EVENT %s%n", (e[0] - shotNs) / 1_000_000, eventNames.get((int) e[1])));
+        }
+        out.append(String.format(Locale.US, "summary frames=%d oisOn=%d vsOn=%d | after shot frames=%d oisOn=%d vsOn=%d",
+                count, oisOn, vsOn, after, oisOnAfter, vsOnAfter));
         // One log call per line: logcat truncates long messages.
         for (String line : out.toString().split("\n")) Log.i(TAG, line);
     }

@@ -401,6 +401,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P38: a flush re-arm waits for the first repeating-preview result after the series (until the deadline). */
     private volatile boolean mRearmPending;
     private volatile long mRearmDeadlineMs;
+    /** P38: the session the pending re-arm belongs to (a new session never runs an old session's re-arm). */
+    private volatile CameraCaptureSession mRearmSession;
     /** P38: preview stabilisation keys per frame around a shot (tag STAB_TRACE). */
     private final StabilizationTrace mStabTrace = new StabilizationTrace();
     private final TimestampFrameRouter<Image> mLiveRawRouter = new TimestampFrameRouter<>((image, still) -> {
@@ -2104,6 +2106,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             CameraCharacteristics traceChars = mCameraCharacteristicsMap.get(physicalID);
                             if (traceChars == null) traceChars = mCameraCharacteristics;
                             mStabTrace.startSession(physicalID, traceChars);
+                            mRearmPending = false;
                             if (StabilizationTrace.wantsOisSamples(traceChars))
                                 mPreviewRequestBuilder.set(CaptureRequest.STATISTICS_OIS_DATA_MODE, CaptureRequest.STATISTICS_OIS_DATA_MODE_ON);
 
@@ -2458,14 +2461,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      *       It waits for the first result of the repeating preview after the series: the AE restore frame queued
      *       behind the series is then done (a flush from finishNiceShot itself dropped it on the OPPO, 0.47 s after
      *       the press) and only preview frames are dropped;
-     *   default (no line) = 3 on a vivo HAL after a flushed shot (the camera where the loss was seen), 1 otherwise.
+     *   default (no line) on a vivo HAL (where the loss was seen) = 3 after a flushed shot, 1 otherwise; elsewhere 0 (the OPPO
+     *   and the other cameras keep the preview exactly as before).
+     * Never under a queued or waiting next shot, nor under another shot's frames: that shot flushes and re-arms on its own.
      */
-    private void requestPreviewRearm(boolean shotFlushed) {
-        int fallback = shotFlushed && VivoNicePreview.supported() ? 3 : 1;
+    private void requestPreviewRearm(boolean shotFlushed, boolean skip) {
+        int fallback = VivoNicePreview.supported() ? (shotFlushed ? 3 : 1) : 0;
         int mode = Math.round(PreferenceKeys.niceDevNumber("stab_rearm", fallback));
         if (mode <= 0 || mode > 3) return;
+        if (skip) {
+            mStabTrace.event("re-arm skipped: a queued shot follows or the session restarts");
+            return;
+        }
         if (mode == 3) {
             mRearmDeadlineMs = android.os.SystemClock.elapsedRealtime() + 1500;
+            mRearmSession = mCaptureSession;
             mRearmPending = true;
             mStabTrace.event("re-arm (flush) waits for the first preview frame after the series");
             return;
@@ -2476,7 +2486,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P38: from the preview callback: the first repeating-preview result after the series runs the pending re-arm. */
     private void maybeRunPendingRearm(CameraCaptureSession session, CaptureRequest request, CaptureResult result) {
         if (!mRearmPending || request != mPreviewInputRequest) return;
-        if (android.os.SystemClock.elapsedRealtime() > mRearmDeadlineMs || shotInFlight() || mShotInProgress) {
+        if (android.os.SystemClock.elapsedRealtime() > mRearmDeadlineMs || session != mRearmSession || nextShotPending()) {
             mRearmPending = false;  // a new shot flushes on its own; a lost moment is not chased
             mStabTrace.event("pending re-arm dropped");
             return;
@@ -2488,10 +2498,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (handler != null) handler.post(() -> rearmPreviewStabilisation(session, 3));
     }
 
+    /** P38: a shot is in flight, pressed, queued or waiting for fresh preview frames (read under mPreviewStateLock to be exact). */
+    private boolean nextShotPending() {
+        return shotInFlight() || mShotInProgress || mNiceFireWaiting || mNiceQueuedShots > 0;
+    }
+
     private void rearmPreviewStabilisation(CameraCaptureSession session, int mode) {
-        if (mode == 3 && (shotInFlight() || mShotInProgress)) mode = 1;  // never flush under another shot's frames
         synchronized (mPreviewStateLock) {
             if (!isCameraResumed || session == null || session != mCaptureSession || mPreviewRequestBuilder == null) return;
+            // Checked under the lock takePicture() sets its flags under: a press is either fully before (skipped here) or
+            // waits for this re-arm and then takes the frames after it. A re-arm never flushes or re-issues the preview under
+            // another shot's requests (it would drop them, or put preview frames ahead of its bracket).
+            if (nextShotPending()) {
+                mStabTrace.event("re-arm mode=" + mode + " skipped: another shot is pending");
+                return;
+            }
             long t0 = android.os.SystemClock.elapsedRealtime();
             try {
                 if (mode == 2) {
@@ -2551,10 +2572,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private void finishNiceShot() {
-        // P38: every frame of the series is in memory: re-arm the preview stabilisation (the preview kept running on
-        // this route), before a queued shot fires.
-        requestPreviewRearm(mLastShotFlushed);
-        if (mPendingPayloadRestart && mBackgroundHandler != null) {
+        final boolean sessionRestart = mPendingPayloadRestart && mBackgroundHandler != null;
+        if (sessionRestart) {
             mPendingPayloadRestart = false;
             final int generation = mSessionGeneration.get();
             mBackgroundHandler.post(() -> {
@@ -2571,6 +2590,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             fire = mNiceQueuedShots > 0;
             if (fire) mNiceQueuedShots--;
         }
+        // P38: every frame of the series is in memory and the shot's flags are clear: re-arm the preview stabilisation (the
+        // preview kept running on this route). Not when a queued press fires now (that shot re-arms after its own series), nor
+        // when the session is restarted anyway.
+        requestPreviewRearm(mLastShotFlushed, fire || mNiceFireWaiting || sessionRestart);
         Log.i("NICE_CAPTURE", "shutter free (preview kept running) queuedNext=" + fire);
         if (fire) fireQueuedNiceShot(android.os.SystemClock.elapsedRealtime() + 2000);
     }
