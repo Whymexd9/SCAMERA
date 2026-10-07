@@ -139,7 +139,7 @@ public class CameraUIViewImpl implements CameraUIView {
         if (topbar != null) bindBadges(topbar);
     }
 
-    /** The top bar's badges: «Склейка Hybrid / SCAM HDR» (the route in effect) and the save format with its icon. */
+    /** The top bar's badges: «Склейка Hybrid / SCAM HDR» (the route in effect) and the save format (with its codec) and icon. */
     public static void bindBadges(LayoutMainTopbarBinding topbar) {
         Context context = topbar.getRoot().getContext();
         int accent = ShadeStyle.accent(context);
@@ -154,8 +154,10 @@ public class CameraUIViewImpl implements CameraUIView {
         badgeIcon(topbar.routeBadge, R.drawable.settings_ic_layers, accent);
         int format = Math.max(0, Math.min(2, PreferenceKeys.isSaveRaw()));
         int[] icons = {R.drawable.ic_shade_jpeg, R.drawable.ic_shade_rawjpeg, R.drawable.ic_shade_raw};
-        topbar.formatBadge.setText(context.getResources().getStringArray(R.array.shade_s_format)[format]);
-        topbar.formatBadge.setContentDescription(context.getResources().getStringArray(R.array.shade_l_format)[format]);
+        // The save mode with the chosen codec: JPEG / R+J / RAW, HEIC / R+H, WEBP / R+W.
+        com.particlesdevs.photoncamera.processing.PhotoFormat codec = PreferenceKeys.getPhotoFormat();
+        topbar.formatBadge.setText(codec.saveModeShort(format));
+        topbar.formatBadge.setContentDescription(codec.saveModeLong(format));
         badgeIcon(topbar.formatBadge, icons[format], accent);
     }
 
