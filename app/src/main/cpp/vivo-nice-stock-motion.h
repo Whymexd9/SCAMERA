@@ -52,13 +52,112 @@ class StockMotion {
     // the guide's own 4x4 mean), (w/scale) x (h/scale). 1 = the frame itself, exactly as before.
     static std::vector<uint8_t> guide(const Burst& b,int frame,float ceiling=1.f,int scale=1) {
         if(scale>1)return binnedGuide(b,frame,ceiling,scale);
-        // Camera2 adaptation: canonical CFA and calibrated sensor black/white
-        // are expressed in the original guide's RAW14 black=1024 convention.
+        return tableGuide(guideSource(b,b.raw[frame],b.exposure[frame],ceiling));
+    }
+public:
+    // Everything guide(b, frame, ceiling, 1) reads: the frame's samples, the burst geometry and calibration, its exposure, the ceiling.
+    struct GuideSource {
+        const uint16_t* raw=nullptr;int w=0,h=0,cfa=0;bool canonical=false;
+        std::array<float,4> black{};float white=0,exposure=1,ceiling=1;
+        bool operator==(const GuideSource& o) const {
+            return raw==o.raw&&w==o.w&&h==o.h&&cfa==o.cfa&&canonical==o.canonical&&black==o.black&&white==o.white
+                &&exposure==o.exposure&&ceiling==o.ceiling;
+        }
+    };
+    static GuideSource guideSource(const Burst& b,const uint16_t* raw,float exposure,float ceiling) {
+        GuideSource s;s.raw=raw;s.w=b.w;s.h=b.h;s.cfa=b.cfa;s.canonical=b.canonicalRggb;s.black=b.black;s.white=b.white;
+        s.exposure=exposure;s.ceiling=ceiling;return s;
+    }
+    // P31 (W1.2): the guide of a frame up to 16 MP without a float divide per sample and without the 24 MB RAW14 copy it used to
+    // build. Camera2 adaptation (unchanged): canonical CFA and calibrated sensor black / white are expressed in the original guide's
+    // RAW14 black=1024 convention. The RAW14 code of a sample, and stockMotionGuide4's signal() of that code, depend only on the CFA
+    // phase of the site and its 16-bit value: both are tabulated per frame from the very expressions of Burst::sampleRaw, the RAW14
+    // conversion and stockMotionGuide4 (same operations in the same translation unit: same rounding and contraction), then one
+    // pass sums each 4x4 block. Same mean at stride 8, same reflected border sites: bit-identical to the per-sample guide.
+    // parallel: the 4x4 pass in row bands on the shared pool (the reference guide, which the first detect waits for).
+    static std::vector<uint8_t> tableGuide(const GuideSource& s,bool parallel=false) {
+        const int width=s.w,height=s.h;
+        const float gain=1.f/s.exposure,gamma=.6f; // stockMotionGuide4(raw, w, h, w, 14, 1 / exposure, .6f)
+        if(!s.raw || width<4 || height<4 || width>32760 || height>32760 || int64_t(width)*height>16000000 ||
+           !std::isfinite(gain) || gain<=0)
+            throw std::invalid_argument("Invalid NICE motion guide input");
+        if(!(s.white>0.f&&s.white<=65535.f))return sampleGuide(s); // outside the parsers' range: no table bound
+        // Every sample at or above `cap` (>= white) is clamped to 1 by sampleRaw: the tables end there.
+        const int cap=int(std::min(65535.f,std::ceil(s.white)));
+        const size_t entries=size_t(cap)+1;
+        const int dx=s.canonical?(s.cfa&1):0,dy=s.canonical?(s.cfa>>1):0;
+        std::vector<uint16_t> table(4*entries);
+        for(int p=0;p<4;++p) {
+            const float b=s.black[p];
+            uint16_t* t=table.data()+size_t(p)*entries;
+            for(int v=0;v<=cap;++v) {
+                const float sample=std::clamp((float(v)-b)/(s.white-b),0.0f,1.0f);                        // Burst::sampleRaw
+                const uint16_t code=uint16_t(std::floor(1024.f+std::min(sample,s.ceiling)*15359.f+.5f)); // RAW14 guide input
+                const int clamped=std::clamp(int(code>>4),64,1023);                                     // signal(), 14 bits
+                t[v]=uint16_t(int(std::clamp(float(clamped-64)*gain,0.f,1023.f)));
+            }
+        }
+        // signal(x, y) of stockMotionGuide4 on guide-input site (x, y): sampleRaw's shifted, border-reflected site
+        auto signal=[&](int x,int y)->int{
+            int X=x+dx,Y=y+dy;
+            if(X>=width)X=reflectCfa(X,width);
+            if(Y>=height)Y=reflectCfa(Y,height);
+            const unsigned v=std::min<unsigned>(s.raw[size_t(Y)*width+X],unsigned(cap));
+            return table[size_t(((Y&1)<<1)|(X&1))*entries+v];
+        };
+        int64_t sum=0;int count=0;
+        for(int y=0;y<height;y+=8)for(int x=0;x<width;x+=8){sum+=signal(x,y);++count;}
+        const int mean=std::max(int(sum/count),2);
+        const int ratio=130944/mean;
+        const int weight=ratio>65479?128:ratio>>3;
+        std::array<uint8_t,1024> lut{};
+        for(int i=0;i<1024;++i)lut[i]=uint8_t(std::pow(double(i)/1023.0,double(gamma))*255.0);
+        const int gw=width/4,gh=height/4;
+        std::vector<uint8_t> out(size_t(gw)*gh);
+        // Guide columns whose four sites need no reflection: 4 x + 3 + dx < width.
+        const int inner=width-4-dx>=0?std::min(gw,(width-4-dx)/4+1):0;
+        auto band=[&](int y0,int y1){
+        for(int y=y0;y<y1;++y) {
+            const uint16_t* rows[4];const uint16_t* even[4];const uint16_t* odd[4];
+            for(int j=0;j<4;++j){
+                int Y=4*y+j+dy;if(Y>=height)Y=reflectCfa(Y,height);
+                rows[j]=s.raw+size_t(Y)*width+dx;
+                // sites x' = 4 gx + i + dx: i = 0, 2 have the parity of dx, i = 1, 3 the other one
+                even[j]=table.data()+size_t(((Y&1)<<1)|(dx&1))*entries;
+                odd[j]=table.data()+size_t(((Y&1)<<1)|((dx+1)&1))*entries;
+            }
+            uint8_t* o=out.data()+size_t(y)*gw;
+            for(int x=0;x<inner;++x) {
+                int total=0;
+                for(int j=0;j<4;++j){
+                    const uint16_t* r=rows[j]+4*x;const uint16_t* a=even[j];const uint16_t* c=odd[j];
+                    total+=a[std::min<unsigned>(r[0],unsigned(cap))]+c[std::min<unsigned>(r[1],unsigned(cap))]
+                          +a[std::min<unsigned>(r[2],unsigned(cap))]+c[std::min<unsigned>(r[3],unsigned(cap))];
+                }
+                o[x]=lut[std::clamp(((total*weight+1024)>>7)/16,0,1023)];
+            }
+            for(int x=inner;x<gw;++x) {
+                int total=0;
+                for(int j=0;j<4;++j)for(int i=0;i<4;++i)total+=signal(x*4+i,y*4+j);
+                o[x]=lut[std::clamp(((total*weight+1024)>>7)/16,0,1023)];
+            }
+        }
+        };
+        if(parallel)NicePool::get().rows(gh,std::max(4,gh/64),band); else band(0,gh);
+        return out;
+    }
+    // The per-sample guide tableGuide replaces (the code before P31): the reference of the host check and the path for a white
+    // level the tables cannot bound.
+    static std::vector<uint8_t> sampleGuide(const GuideSource& s) {
+        Burst b;b.w=s.w;b.h=s.h;b.cfa=s.cfa;b.canonicalRggb=s.canonical;b.black=s.black;b.white=s.white;
+        b.raw[0]=s.raw;b.exposure[0]=s.exposure;
+        const float ceiling=s.ceiling;const int frame=0;
         std::vector<uint16_t> raw(size_t(b.w)*b.h);
         for(int y=0;y<b.h;++y)for(int x=0;x<b.w;++x)
             raw[size_t(y)*b.w+x]=uint16_t(std::floor(1024.f+std::min(b.sample(frame,x,y),ceiling)*15359.f+.5f));
         return stockMotionGuide4(raw.data(),b.w,b.h,b.w,14,1.f/b.exposure[frame],.6f);
     }
+private:
     static std::vector<uint8_t> binnedGuide(const Burst& b,int frame,float ceiling,int s) {
         const int gw=b.w/s,gh=b.h/s;
         std::vector<uint16_t> raw(size_t(gw)*gh);
@@ -82,6 +181,14 @@ private:
     // P30: the clipped reference of a brighter frame depends only on its exposure (the Shasta frames share one): kept per burst.
     std::vector<uint8_t> clippedRefCache;std::vector<Point> clippedCornersCache;int clippedCountCache=0;
     float clippedExposureCache=0;const uint16_t* clippedRawCache=nullptr;
+    // P31 (W1.2): guides of the whole burst built ahead on the shared pool (prefetch() before the first group); align() takes a
+    // prefetched guide, keyed by everything it reads, instead of building it (the groups waited 105-167 ms each for theirs).
+    struct Prefetched { GuideSource source; std::shared_future<std::vector<uint8_t>> guide; };
+    std::vector<Prefetched> prefetched;
+    bool takePrefetched(const GuideSource& s,std::shared_future<std::vector<uint8_t>>& out) {
+        for(auto it=prefetched.begin();it!=prefetched.end();++it)if(it->source==s){out=it->guide;prefetched.erase(it);return true;}
+        return false;
+    }
     std::vector<void*> compat;
     // Same pinned CRE file shipped in the APK, for devices without it in /vendor.
     // Its vivo-only dependencies are replaced by vivo-cre-compat stubs, preloaded
@@ -134,6 +241,35 @@ public:
         int accepted=count;std::array<float,9> homography;homography.fill(0.f);
         track(&ia,&ib,corners.data(),moved.data(),count,&accepted,params.data(),homography.data(),0);
     }
+    // P31 (W1.2): start every guide the groups of one burst will ask align() for: the reference (unless cached), each donor
+    // (raw, exposure) in order and, after the first donor of each brighter exposure, the reference clipped for it. `base` is the
+    // burst of the groups with its frames 1..6 still unset (geometry, calibration, slot 0). Only frames up to 16 MP (guide scale 1).
+    // detect and track stay in align(), on the calling thread, in their order.
+    void prefetch(const Burst& base,const std::vector<std::pair<const uint16_t*,float>>& donors) {
+        dropPrefetched();
+        if(guideScale(base.w,base.h)!=1)return;
+        auto add=[&](const uint16_t* raw,float exposure,float ceiling){
+            const GuideSource s=guideSource(base,raw,exposure,ceiling);
+            for(const auto& p:prefetched)if(p.source==s)return;
+            prefetched.push_back({s,NicePool::get().submit([s]{return tableGuide(s);}).share()});
+        };
+        // the reference first and at once, its rows on the whole pool: the first detect waits for it (unless an earlier group of
+        // this burst left it cached); an exception reaches align() where the guide is taken, as before
+        if(!(cachedRaw==base.raw[0] && cachedExposure==base.exposure[0] && cachedW==base.w && cachedH==base.h && !cachedRef.empty())) {
+            const GuideSource s=guideSource(base,base.raw[0],base.exposure[0],1.f);
+            std::promise<std::vector<uint8_t>> ready;
+            try{ready.set_value(tableGuide(s,true));}catch(...){ready.set_exception(std::current_exception());}
+            prefetched.push_back({s,ready.get_future().share()});
+        }
+        for(const auto& d:donors) {
+            if(d.first==base.raw[0] && d.second==1)continue;
+            add(d.first,d.second,1.f);
+            if(d.second>1.5f && !(clippedRawCache==base.raw[0] && clippedExposureCache==d.second && !clippedRefCache.empty()))
+                add(base.raw[0],base.exposure[0],1.f/d.second);
+        }
+    }
+    // Waits for and frees the guides prefetch() started that align() did not take (end of the alignment, or an exception).
+    void dropPrefetched() {for(auto& p:prefetched)if(p.guide.valid())p.guide.wait();prefetched.clear();}
     // bundleDir: the job directory holding the APK copies; forceBundled skips /vendor
     // (used to validate the bundled path on vivo itself).
     explicit StockMotion(const std::string& bundleDir="",bool forceBundled=false) {
@@ -173,7 +309,7 @@ public:
         } catch(...) {dlclose(library);library=nullptr;throw;}
     }
     StockMotion(const StockMotion&)=delete;
-    ~StockMotion(){if(library)dlclose(library);for(auto it=compat.rbegin();it!=compat.rend();++it)dlclose(*it);}
+    ~StockMotion(){dropPrefetched();if(library)dlclose(library);for(auto it=compat.rbegin();it!=compat.rend();++it)dlclose(*it);}
     // scale: RAW px per guide px (4, or 4 x the guideScale of a frame above 16 MP).
     static BackwardHomography inverseToRaw(const std::array<float,9>& input,int scale=4) {
         for(float v:input)if(!std::isfinite(v))throw std::runtime_error("Unwritten NICE alignment matrix");
@@ -228,15 +364,22 @@ public:
         if(w<16||h<16)throw std::runtime_error("NICE guide too small for original LK");
         if(s>1)report("NICE STOCK MOTION: guide from x"+std::to_string(s)+" binned RAW ("+std::to_string(burst.w)+"x"+std::to_string(burst.h)
             +" -> guide "+std::to_string(w)+"x"+std::to_string(h)+")");
+        // P31: a guide prefetch() started, or built here as before
+        auto build=[&](int frame,float ceiling)->std::vector<uint8_t>{
+            std::shared_future<std::vector<uint8_t>> ahead;
+            if(s==1 && takePrefetched(guideSource(burst,burst.raw[frame],burst.exposure[frame],ceiling),ahead))return ahead.get();
+            return guide(burst,frame,ceiling,s);
+        };
         // Donor guides are independent: build them in parallel with the reference.
-        std::array<std::future<std::vector<uint8_t>>,7> donorGuides;
+        std::array<std::shared_future<std::vector<uint8_t>>,7> donorGuides;
         for(int frame=1;frame<7;++frame)
-            if(!(burst.raw[frame]==burst.raw[0] && burst.exposure[frame]==1))
-                donorGuides[frame]=std::async(std::launch::async,[&burst,frame,s]{return guide(burst,frame,1.f,s);});
+            if(!(burst.raw[frame]==burst.raw[0] && burst.exposure[frame]==1)
+                    && !(s==1 && takePrefetched(guideSource(burst,burst.raw[frame],burst.exposure[frame],1.f),donorGuides[frame])))
+                donorGuides[frame]=std::async(std::launch::async,[&burst,frame,s]{return guide(burst,frame,1.f,s);}).share();
         Features features;
         if(cachedRaw!=burst.raw[0] || cachedExposure!=burst.exposure[0] || cachedW!=burst.w || cachedH!=burst.h
                 || cachedRef.empty()) {
-            cachedRef=guide(burst,0,1.f,s);
+            cachedRef=build(0,1.f);
             auto reference=image(cachedRef,w,h);
             cachedCorners.assign(features.maxCorners,Point{});
             cachedCount=0;
@@ -266,7 +409,7 @@ public:
             const bool brighter=burst.exposure[frame]>1.5f;
             if(brighter && !(clippedRawCache==burst.raw[0] && clippedExposureCache==burst.exposure[frame] && !clippedRefCache.empty()
                     && clippedRefCache.size()==size_t(w)*h)) {
-                clippedRefCache=guide(burst,0,1.f/burst.exposure[frame],s);
+                clippedRefCache=build(0,1.f/burst.exposure[frame]);
                 auto clipped=image(clippedRefCache,w,h);Features local;
                 clippedCornersCache.assign(local.maxCorners,Point{});clippedCountCache=0;
                 if(detect(&local,&clipped,nullptr,clippedCornersCache.data(),&clippedCountCache,0)

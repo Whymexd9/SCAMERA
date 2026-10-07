@@ -2311,6 +2311,11 @@ public:
     }
     HybridGpu(const HybridGpu&)=delete;
     ~HybridGpu(){cleanup();}
+    // P31 (W1.7): built on a helper thread during the front end, merged on the calling thread, destroyed on another: release() on
+    // the thread that has the context current, acquire() on the next one (the destructor makes it current itself).
+    void release(){if(display!=EGL_NO_DISPLAY)eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);}
+    void acquire(){if(display==EGL_NO_DISPLAY||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");}
+    bool hasBentoPass() const {return bentoProgram!=0;}
 
     // out: RGB (w*g)*(h*g)*3 (base units) on the output grid g (1 = sensor, 2 = Sabre 6.1 2x); effective: donor
     // coverage per output pixel (frames); robustShare[f]: mean accepted weight of frame f after dilation, scalar
@@ -2925,12 +2930,16 @@ inline Guide guideLevel0(const Burst& b,int f){
     return g;
 }
 inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat);
+inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Guide& qf,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat);
 inline SharpnessPair hybridSharpnessPair(const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat) {
     return hybridSharpnessPair(guideLevel0(b,0),b,f,exposure,baseSlope,baseOffset,slope,offset,sat);
 }
 // P30: the base guide is computed once per burst by the caller (it was rebuilt, with its whole pyramid, for every frame).
 inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Burst& b,int f,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat) {
-    const Guide qf=guideLevel0(b,f);
+    return hybridSharpnessPair(qb,guideLevel0(b,f),exposure,baseSlope,baseOffset,slope,offset,sat);
+}
+// P31 (W1.4): both guides given (built during the alignment).
+inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Guide& qf,float exposure,float baseSlope,float baseOffset,float slope,float offset,float sat) {
     // sat: guide values are in the frame's own units (0..1 of white), a 4x4 mean (HybridTuning::shastaSat)
     double gb=0,gf=0,mb=0,mf=0;long n=0;
     for(int y=1;y<qb.h-1;++y)for(int x=1;x<qb.w-1;++x){
@@ -2954,13 +2963,16 @@ inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Burst& b,int f,fl
 struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0,maskCells=0;std::vector<float> mask;
     std::vector<float> smooth,valid; /* the mask before the LMC check, and the per-cell (1 - error) factor of the checked frame */ };
 
-// Highlight mask of the base (per 2x2 cell): clipped -> dilate r -> gaussian smooth; checked against the
-// aligned ultrashort frame (LMC bento mask.cl + ShouldFallback).
-inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography& usH,float usExposure,const HybridTuning& t) {
-    BentoResult res;
+// P31 (W1.4): the part of bentoMask that reads the base frame alone (clip scan, dilation, smoothing, near-clip factor). It is the
+// same for every call of a burst (each ultrashort frame, the validation masks with bento 2): built once, during the alignment.
+// mask: the mask before the ultrashort frame's check, built only when a call can use it (clippedFraction above bentoMinClipped, or
+// bento 2); full says it was.
+struct BentoBase { double clippedFraction=0; bool full=false; std::vector<float> mask; };
+inline BentoBase bentoBase(const Burst& b,const HybridTuning& t) {
+    BentoBase res;
     const int w2=b.w/2,h2=b.h/2;
-    std::vector<uint8_t> clip(size_t(w2)*h2,0),usClip(size_t(w2)*h2,0),near(size_t(w2)*h2,0);
-    std::atomic<long> clipped{0},usClippedInMask{0};
+    std::vector<uint8_t> clip(size_t(w2)*h2,0),near(size_t(w2)*h2,0);
+    std::atomic<long> clipped{0};
     const float nearLevel=std::min(t.bentoNearClip,t.bentoHighlight);
     mergeRowBands(h2,[&](int y0,int y1){
         long lc=0;
@@ -2973,22 +2985,23 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
         clipped+=lc;
     });
     res.clippedFraction=double(clipped)/(double(w2)*h2);
-    if(res.clippedFraction<=t.bentoMinClipped&&t.bento!=2){res.reason="not enough clipping";return res;}
-    // dilate: diamond |dx|+|dy| <= r plus the outer ring of the (2r+1)^2 square
+    if(res.clippedFraction<=t.bentoMinClipped&&t.bento!=2)return res;
+    // dilate: diamond |dx|+|dy| <= r plus the outer ring of the (2r+1)^2 square. P31: stamped around each clipped cell instead of
+    // searched around every cell (the same cells: the shape is symmetric); each band writes only its own rows.
     const int r=std::max(0,t.bentoDilate);
     std::vector<uint8_t> dil(size_t(w2)*h2,0);
     mergeRowBands(h2,[&](int y0,int y1){
-        for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
-            bool on=false;
-            for(int dy=-r;dy<=r&&!on;++dy){
-                const int yy=cy+dy;if(yy<0||yy>=h2)continue;
-                for(int dx=-r;dx<=r;++dx){
-                    const int xx=cx+dx;if(xx<0||xx>=w2)continue;
-                    const bool shape=(std::abs(dx)+std::abs(dy)<=r)||(std::abs(dx)==r||std::abs(dy)==r);
-                    if(shape&&clip[size_t(yy)*w2+xx]){on=true;break;}
+        for(int yy=std::max(0,y0-r);yy<std::min(h2,y1+r);++yy){
+            const uint8_t* row=clip.data()+size_t(yy)*w2;
+            for(const uint8_t* p=row;(p=static_cast<const uint8_t*>(std::memchr(p,1,size_t(row+w2-p))))!=nullptr;++p){
+                const int xx=int(p-row);
+                for(int cy=std::max(y0,yy-r);cy<std::min(y1,yy+r+1);++cy){
+                    const int ady=std::abs(cy-yy),k=ady==r?r:r-ady; // |dx| <= k (the diamond, or the whole ring row)
+                    uint8_t* out=dil.data()+size_t(cy)*w2;
+                    std::fill(out+std::max(0,xx-k),out+std::min(w2,xx+k+1),uint8_t(1));
+                    if(ady<r){if(xx-r>=0)out[xx-r]=1;if(xx+r<w2)out[xx+r]=1;} // |dx| == r: the ring's sides
                 }
             }
-            dil[size_t(cy)*w2+cx]=on?1:0;
         }
     });
     // gaussian smooth 7x7 (sigma)
@@ -3036,6 +3049,25 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
             }
         });
     }
+    res.mask=std::move(mask);res.full=true;
+    return res;
+}
+
+// Highlight mask of the base (per 2x2 cell): clipped -> dilate r -> gaussian smooth; checked against the
+// aligned ultrashort frame (LMC bento mask.cl + ShouldFallback). base (P31): bentoBase of this burst, built once for every call;
+// null (or built without the mask this call needs): built here.
+inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography& usH,float usExposure,const HybridTuning& t,
+                             const BentoBase* base=nullptr) {
+    BentoResult res;
+    const int w2=b.w/2,h2=b.h/2;
+    BentoBase own;
+    if(!base||(!base->full&&(base->clippedFraction>t.bentoMinClipped||t.bento==2))){own=bentoBase(b,t);base=&own;}
+    res.clippedFraction=base->clippedFraction;
+    if(res.clippedFraction<=t.bentoMinClipped&&t.bento!=2){res.reason="not enough clipping";return res;}
+    std::vector<float> mask;
+    if(base==&own)mask=std::move(own.mask); else mask=base->mask;
+    std::vector<uint8_t> usClip(size_t(w2)*h2,0);
+    std::atomic<long> usClippedInMask{0};
     // The aligned ultrashort frame inside the mask (LMC Mask::RunWithUltraShortFrame, on the 2x2 cells): its own clipping and,
     // with bentoLmc, the intensity error |min(GainUp(us) - base, 0)| over RGB: where the gained ultrashort frame is much DARKER
     // than the base (motion, misalignment) it is invalid, the mask loses that place ((1 - error) * mask), and where the base is
@@ -3731,11 +3763,94 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     for(int s=0;s<7;++s){b.raw[s]=input.frames[0].raw;b.exposure[s]=1;b.iso[s]=std::max(1u,input.frames[0].iso);}
     const int n=int(input.frames.size());
     HybridStats stats;
+    // ---- P31 (shot speed, research/speed/SHOT_SPEED_PLAN.md W1.2 / W1.4 / W1.7): started before the alignment, as none of it needs
+    // the alignment: the GPU context and its programs on a helper thread, every guide of the CRE groups on the shared pool and, on
+    // the pool as well, the stages that read frames but no homography (gain checks, Shasta guides, the base part of the Bento mask,
+    // the F6 base pyramid, the P19 RAW CA fit). Each is the same code on the same data as before, used (and reported) where it was
+    // used before. Above kHybridClassicPixels nothing is built ahead (memory). SCAM_NO_PREFETCH / SCAM_NO_EARLY_GPU: replay A/B.
+    const bool ahead=!large&&!std::getenv("SCAM_NO_PREFETCH");
+    const bool presetAlignment=preset&&int(preset->h.size())==n&&int(preset->aligned.size())==n;
+    bool anyBracketed=false,anyUltrashort=false;
+    for(int f=1;f<n;++f){anyBracketed|=input.frames[f].role==kRoleBracketed;anyUltrashort|=input.frames[f].role==kRoleUltrashort;}
+    // W1.7: the context with the programs this merge will ask for as far as the tuning tells (the local alignment as asked, the
+    // Bento colour pass whenever an ultrashort frame may be merged: merge() runs a pass only when its own flags say so).
+    struct EarlyGpuLog { std::mutex lock;std::vector<std::string> lines;bool direct=false;double ms=0; };
+    auto earlyLog=std::make_shared<EarlyGpuLog>();
+    std::future<std::unique_ptr<HybridGpu>> earlyGpu;
+    if(!large&&!std::getenv("SCAM_NO_EARLY_GPU")){
+        const bool rimPass=tune.rimRatio!=0,la=tune.localAlign>0&&n>1,chromaPass=tune.chromaDiff>0.f,nat=native!=nullptr;
+        const bool bentoPass=tune.bento>0&&anyUltrashort&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
+        // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat]{
+            const auto t0=Clock::now();
+            // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
+            // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
+            // (it shares the worker's pipe with stdout), so the last one names the step even if the process dies.
+            auto early=[earlyLog](const std::string& line){
+                std::lock_guard<std::mutex> l(earlyLog->lock);
+                if(earlyLog->direct||line.find("compiling program by program")!=std::string::npos){
+                    earlyLog->direct=true;const std::string text=line+"\n";
+                    if(::write(2,text.data(),text.size())<0){}
+                    return;
+                }
+                earlyLog->lines.push_back(line);
+            };
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat);
+            gpu->release();
+            earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
+            return gpu;
+        });}catch(const std::exception&){}
+    }
+    // W1.2: the CRE groups' guides (the prefetch drops what the groups did not take after the last group, or on an exception)
+    struct PrefetchDrop { bool on=false; ~PrefetchDrop(){if(on&&niceAlignmentPrefetch())niceAlignmentPrefetch()(nullptr,{});} } prefetchDrop;
+    if(ahead&&alignment&&!presetAlignment&&n>1&&niceAlignmentPrefetch()){
+        std::vector<std::pair<const uint16_t*,float>> donors;
+        for(int f=1;f<n;++f)donors.emplace_back(input.frames[f].raw,input.frames[f].exposure);
+        niceAlignmentPrefetch()(&b,donors);prefetchDrop.on=true;
+    }
+    // W1.4: the stages that read frames but no homography, in the order the merge uses them. The task group waits for all of them
+    // before this function returns (an exception included): the tasks may use b, input and tune.
+    NiceTasks tasks;
+    std::vector<std::future<HybridGain>> gains(n);
+    for(int f=1;f<n;++f){
+        const auto& fr=input.frames[f];
+        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
+        if(ahead)gains[f]=tasks.run([&input,f]{return hybridMeasuredGain(input,f);});
+        else gains[f]=std::async(std::launch::async,[&input,f]{return hybridMeasuredGain(input,f);});
+    }
+    std::shared_future<Guide> shastaBase;std::vector<std::shared_future<Guide>> shastaGuides(n);
+    if(ahead&&tune.shastaEnable&&anyBracketed){ // every bracketed frame: the alignment decides later which ones are scored
+        shastaBase=tasks.run([&b]{return guideLevel0(b,0);}).share();
+        for(int f=1;f<n;++f)if(input.frames[f].role==kRoleBracketed)shastaGuides[f]=tasks.run([&b,&input,f]{
+            Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+            return guideLevel0(one,1);
+        }).share();
+    }
+    std::shared_future<BentoBase> bentoAhead;
+    if(ahead&&tune.bento>0&&anyUltrashort)bentoAhead=tasks.run([&b,&tune]{return bentoBase(b,tune);}).share();
+    struct LaBaseBuilt { LaBase base;double ms=0; };
+    std::future<LaBaseBuilt> laAhead;
+    if(ahead&&tune.localAlign>0&&n>1)laAhead=tasks.run([&b,&input]{
+        const auto t0=Clock::now();
+        LaBaseBuilt built;
+        const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f); // baseSlope, baseOffset
+        const float eps=std::max(offset/std::max(slope,1e-9f),1e-5f);
+        laGray(b,input.frames[0].raw,1.f,eps,built.base.l0,true);
+        laDown(built.base.l0,built.base.l1,true);laBaseLevel(built.base.l1,true);laBaseLevel(built.base.l0,true);
+        built.ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
+        return built;
+    });
+    std::future<std::pair<HybridCa,double>> caAhead;
+    if(ahead&&tune.caCorrect&&tune.rawCa==0)caAhead=tasks.run([&input]{
+        const auto t0=Clock::now();
+        const HybridCa ca=hybridRawCa(input);
+        return std::make_pair(ca,std::chrono::duration<double,std::milli>(Clock::now()-t0).count());
+    });
     // ---- alignment: every frame against the base, groups of six
     std::vector<BackwardHomography> H(n);
     std::vector<bool> aligned(n,true);
     const auto alignStarted=Clock::now();
-    if(preset&&int(preset->h.size())==n&&int(preset->aligned.size())==n){
+    if(presetAlignment){
         H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
     } else if(alignment){
         std::vector<Guide> fallbackRef; // base pyramid of the translation fallback, built on the first failed group
@@ -3765,6 +3880,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 if(group.raw[1+j]!=input.frames[first+j].raw)aligned[first+j]=false;
             }
         }
+        if(prefetchDrop.on){niceAlignmentPrefetch()(nullptr,{});prefetchDrop.on=false;}
     } else {
         // No corner tracker: global translation from the guide pyramids. P30: frames are independent, on all cores (the same
         // per-frame result; 904 ms for 26 frames on one core on the X100 Ultra).
@@ -3866,13 +3982,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(tune.chromaDiff>0.f)report("HYBRID CHROMA DIFF: base R/B = merged G + <R-G>/<B-G> of the base sites where the base kernel widens (strength "
         +std::to_string(std::clamp(tune.chromaDiff,0.f,1.f))+((tune.s61Mode&4)&&sabre61?", below "+std::to_string(tune.widenBelow)+" accepted frames":", by donor coverage")
         +(tune.chromaDiffClamp?", clamped to the base's sample range)":", unclamped)"));
-    // ---- measured gain of the other exposures against their metadata ratio (report only; P12c). P30: frames in parallel.
-    std::vector<std::future<HybridGain>> gains(n);
-    for(int f=1;f<n;++f){
-        const auto& fr=input.frames[f];
-        if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
-        gains[f]=std::async(std::launch::async,[&input,f]{return hybridMeasuredGain(input,f);});
-    }
+    // ---- measured gain of the other exposures against their metadata ratio (report only; P12c). P30: frames in parallel; P31:
+    // started before the alignment (gains above).
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
         if(fr.role!=kRoleBracketed&&fr.role!=kRoleUltrashort)continue;
@@ -3893,6 +4004,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int f=1;f<n;++f){
             const auto& fr=input.frames[f];
             if(fr.role!=kRoleBracketed||!tune.shastaEnable||!aligned[f])continue;
+            if(shastaGuides[f].valid()){ // P31: both guides built during the alignment; the scores on the pool (nothing left to wait for)
+                shastaBase.wait();shastaGuides[f].wait();
+                sharp[f]=tasks.run([qb=shastaBase,qf=shastaGuides[f],frame=input.frames[f],baseSlope,baseOffset,sat=std::clamp(tune.shastaSat,0.05f,0.95f)]{
+                    return hybridSharpnessPair(qb.get(),qf.get(),frame.exposure,baseSlope,baseOffset,frame.slope,frame.offset,sat);
+                });
+                continue;
+            }
             if(!baseGuide)baseGuide=std::make_shared<Guide>(guideLevel0(b,0));
             sharp[f]=std::async(std::launch::async,[&,f,baseGuide]{
                 const auto& frame=input.frames[f];
@@ -3915,6 +4033,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             for(int f=1;f<n;++f)if(input.frames[f].role==kRoleBracketed&&keep[f]){keep[f]=false;++stats.droppedBracketed;}
             report("HYBRID SHASTA: TET ratio "+std::to_string(maxRatio)+" above the limit; all bracketed frames dropped");
         }
+        shastaBase={};shastaGuides.clear(); // P31: the guides are not held through the merge
     }
     // ---- Bento: the ultrashort frame with the lowest exposure
     int us=-1;
@@ -3932,15 +4051,30 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(us>=0&&tune.bento>0){
         // P30: the masks of the other ultrashort frames (validation) are built alongside the first one. Any RAW size: above 16 MP
         // one after the other (each mask holds ~5.5 B per pixel while it is built; otherMask() below computes it on demand).
+        // P31 (W1.4): the base part of every mask below was built during the alignment (bentoAhead); the masks then run on the pool.
+        // The validation masks are needed only when the first one can be applied: not started when its base has no mask.
+        const BentoBase* shared=bentoAhead.valid()?&bentoAhead.get():nullptr;
+        auto poolMask=[&b,&tune,&bentoAhead](const HybridFrame& fr,const BackwardHomography& h,int mode){
+            // the task holds the base itself (a validation mask still running when an exception leaves this block outlives it)
+            return [&b,&tune,base=bentoAhead,raw=fr.raw,exposure=fr.exposure,h,mode]{
+                Burst one=b;one.raw[1]=raw;one.exposure[1]=exposure;
+                HybridTuning t2=tune;if(mode)t2.bento=mode;
+                return bentoMask(one,1,h,exposure,t2,&base.get());
+            };
+        };
         std::vector<std::future<BentoResult>> otherMasks(usFrames.size());
-        if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1&&!large)
-            for(size_t k=1;k<usFrames.size();++k)otherMasks[k]=std::async(std::launch::async,[&,k]{
+        if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1&&!large&&(!shared||shared->full))
+            for(size_t k=1;k<usFrames.size();++k){
+                if(shared){otherMasks[k]=tasks.run(poolMask(input.frames[usFrames[k]],H[usFrames[k]],2));continue;}
+                otherMasks[k]=std::async(std::launch::async,[&,k]{
                 const int f=usFrames[k];
                 Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
                 HybridTuning t2=tune;t2.bento=2;
                 return bentoMask(one,1,H[f],input.frames[f].exposure,t2);
             });
+            }
         if(input.frames[us].exposure>=1.f){bento.reason="ultrashort frame is not the shortest";}
+        else if(shared)bento=tasks.run(poolMask(input.frames[us],H[us],0)).get();
         else {
             Burst one=b;one.raw[1]=input.frames[us].raw;one.exposure[1]=input.frames[us].exposure;
             bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune);
@@ -3950,7 +4084,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             const int f=usFrames[k];
             Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
             HybridTuning t2=tune;t2.bento=2;
-            return bentoMask(one,1,H[f],input.frames[f].exposure,t2);
+            return bentoMask(one,1,H[f],input.frames[f].exposure,t2,shared);
         };
         std::vector<long> usInvalid{bento.invalidCells}; // per ultrashort frame (merge order of usFrames), for the motion share
         auto frameLine=[&](int f,const BentoResult& r){
@@ -3960,21 +4094,29 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(us>=0&&input.frames[us].exposure<1.f)frameLine(us,bento);
         if(bento.active&&tune.bentoValidate>=1&&usFrames.size()>1){
             // every ultrashort frame checked; mask = smooth x max_k valid_k; per-frame factors for the GPU (dilate pass)
-            std::vector<std::vector<float>> valids;valids.push_back(bento.valid);
+            // P31: the validity planes are moved, not copied (bento.valid is freed below anyway)
+            std::vector<std::vector<float>> valids;valids.push_back(std::move(bento.valid));
             std::string line="HYBRID BENTO VALIDATE: per-frame invalid cells";
             line+=" "+std::to_string(us)+":"+std::to_string(bento.invalidCells);
             for(size_t k=1;k<usFrames.size();++k){
                 const int f=usFrames[k];
                 BentoResult r=otherMask(k);
                 frameLine(f,r);usInvalid.push_back(r.invalidCells);
-                valids.push_back(r.valid);line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
+                valids.push_back(std::move(r.valid));line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
             }
-            long onlyBase=0,anyInvalid=0;
-            for(size_t i=0;i<bento.mask.size();++i){
-                float best=0;for(const auto& v:valids)best=std::max(best,v[i]);
-                if(bento.smooth[i]>0.f){if(best<1.f)++anyInvalid;if(best<=0.f)++onlyBase;}
-                bento.mask[i]=std::clamp(bento.smooth[i]*best,0.f,1.f);
-            }
+            // P31: blocks of cells on all cores (integer counts, every cell's value as before)
+            std::atomic<long> onlyBaseSum{0},anyInvalidSum{0};
+            const size_t cells=bento.mask.size();
+            mergeRowBands(int((cells+4095)/4096),[&](int k0,int k1){
+                long onlyBaseLocal=0,anyInvalidLocal=0;
+                for(size_t i=size_t(k0)*4096;i<std::min(cells,size_t(k1)*4096);++i){
+                    float best=0;for(const auto& v:valids)best=std::max(best,v[i]);
+                    if(bento.smooth[i]>0.f){if(best<1.f)++anyInvalidLocal;if(best<=0.f)++onlyBaseLocal;}
+                    bento.mask[i]=std::clamp(bento.smooth[i]*best,0.f,1.f);
+                }
+                onlyBaseSum+=onlyBaseLocal;anyInvalidSum+=anyInvalidLocal;
+            });
+            const long onlyBase=onlyBaseSum,anyInvalid=anyInvalidSum;
             bentoValids=std::move(valids);
             report(line+" | cells invalid in some frame="+std::to_string(anyInvalid)+" in every frame (base stays)="+std::to_string(onlyBase));
         }
@@ -3996,7 +4138,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" frames="+std::to_string(usFrames.size())+" chroma sigma="+std::to_string(tune.bentoChromaSigma));
         // the mask before the check and the first frame's validity were for the validation only (bentoValids holds its copy)
         std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);
+        // P31: a validation mask nobody took (the first mask was not applied) ends here, as the std::async futures made it end
+        // before: it does not run on into the local alignment and the merge (all cores, ~50 MB at 12 MP while it is built).
+        for(auto& m:otherMasks)if(m.valid())m.wait();
     } else if(us>=0)report("HYBRID BENTO: disabled by tuning");
+    bentoAhead={}; // P31: the shared base is not held through the merge (a task still running keeps its own reference)
     // Split-half diagnostics: odd or even normal donors only, no base, no Bento, no long frames (the base noise would be common
     // to both halves).
     if(tune.subset==1||tune.subset==2){
@@ -4031,9 +4177,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const auto laStarted=Clock::now();
         LaBase laBase; // ~40 MB on 12 MP, freed before the GPU merge
         const float eps=std::max(baseOffset/std::max(baseSlope,1e-9f),1e-5f);
+        double baseMs=0;
+        if(laAhead.valid()){LaBaseBuilt built=laAhead.get();laBase=std::move(built.base);baseMs=built.ms;} // P31: built during the alignment
+        else {
         laGray(b,input.frames[0].raw,1.f,eps,laBase.l0,true);
         laDown(laBase.l0,laBase.l1,true);laBaseLevel(laBase.l1,true);laBaseLevel(laBase.l0,true);
-        const double baseMs=millis(Clock::now()-laStarted);
+        baseMs=millis(Clock::now()-laStarted);
+        }
         const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
         laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
         laBase.v0=baseSlope/16.f;
@@ -4196,13 +4346,15 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(tune.rawCa==1)rawCaBase=vivo_rawca::hybridRawCaEstimate(input,tune,report);
     if(tune.caCorrect&&tune.rawCa==0){ // P19 lateral CA of R / B, measured on the base frame, corrected on the merged RGB (P28 replaces it)
         const auto caStarted=Clock::now();
-        const HybridCa ca=hybridRawCa(input);
+        HybridCa ca;double caMs=0;
+        if(caAhead.valid()){const auto built=caAhead.get();ca=built.first;caMs=built.second;} // P31: fitted during the alignment
+        else {ca=hybridRawCa(input);caMs=millis(Clock::now()-caStarted);}
         char line[260];
         const bool worth=ca.ok&&(std::abs(ca.cornerPx[0])>=tune.caMinShift||std::abs(ca.cornerPx[1])>=tune.caMinShift)
                 &&ca.rmsPx[0]<0.4f&&ca.rmsPx[1]<0.4f;
         std::snprintf(line,sizeof(line),"HYBRID RAW CA: R corner %+.2f px (rms %.2f, %d tiles) B corner %+.2f px (rms %.2f, %d tiles) -> %s, %.0f ms",
             ca.cornerPx[0],ca.rmsPx[0],ca.tiles[0],ca.cornerPx[1],ca.rmsPx[1],ca.tiles[1],
-            worth?"corrected":!ca.ok?"not measurable":"below the threshold",millis(Clock::now()-caStarted));
+            worth?"corrected":!ca.ok?"not measurable":"below the threshold",caMs);
         report(line);
         if(worth)caModel=ca;
     }
@@ -4239,11 +4391,38 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     const int outW=w*grid,outH=h*grid;
     in.large=large;
+    // P31 (W1.7): the context goes to a helper thread after the merge (its buffers and programs take 19-57 ms to destroy), joined
+    // before this function returns; the CPU tail below runs meanwhile.
+    struct GpuTeardown {
+        std::thread thread;double ms=0;
+        void start(std::unique_ptr<HybridGpu> gpu){
+            join();gpu->release();
+            // A thread the system refuses must not fail the merge that already succeeded (gpuMerge(true) would merge again
+            // without the local offsets): the context is then destroyed right here, as before P31.
+            try{thread=std::thread([this,g=std::move(gpu)]() mutable {
+                const auto t0=std::chrono::steady_clock::now();g.reset();
+                ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();
+            });}catch(const std::exception&){}
+        }
+        void join(){if(thread.joinable())thread.join();}
+        ~GpuTeardown(){join();}
+    } teardown;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
-        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f,report,large,native!=nullptr);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
+        const bool bentoPass=bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
+        std::unique_ptr<HybridGpu> held;std::string built;
+        if(earlyGpu.valid()){ // P31 (W1.7): the context built during the front end, when it holds the programs this merge needs
+            try{held=earlyGpu.get();}catch(const std::exception&){held.reset();} // built again below, as before
+            {std::lock_guard<std::mutex> l(earlyLog->lock);for(const auto& line:earlyLog->lines)report(line);earlyLog->lines.clear();}
+            if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())))held.reset();
+            if(held){
+                try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
+            }
+        }
+        if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr);
+        HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
-            +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")");
+            +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
@@ -4266,6 +4445,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpu.rimPixels,100.0*double(gpu.rimPixels)/(double(outW)*outH),tune.rimSigma,tune.rimLo,tune.rimHi,tune.rimStride);
         else std::snprintf(line,sizeof(line),"HYBRID RIM: off");
         report(line);
+        if(!large)teardown.start(std::move(held)); // above kHybridClassicPixels destroyed here, as before (memory)
     };
     if(laOn){
         // The F6 programs need two more storage bindings (15, 16) and change the reject / dilate / merge / rim passes: a GPU that
@@ -4369,6 +4549,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" bento="+std::to_string(counts[4])+" ultrashort="+std::to_string(counts[5])+(counts[6]?" rimChecked="+std::to_string(counts[6]):std::string()));
     }
     std::vector<uint8_t>().swap(flagsRaw);
+    if(tune.profile&&teardown.thread.joinable()){ // P31 (W1.7): what the helper thread took off the merge
+        const auto waitStarted=Clock::now();teardown.join();
+        report("HYBRID GPU: context destroyed on a helper thread in "+std::to_string(int(teardown.ms))+" ms (waited "
+            +std::to_string(int(millis(Clock::now()-waitStarted)))+" ms for it)");
+    }
     report("HYBRID STAGES ms: align="+std::to_string(stats.alignMs)+" localAlign="+std::to_string(stats.localAlignMs)+" mask="+std::to_string(stats.maskMs)+" merge="+std::to_string(stats.mergeMs)
         +" total="+std::to_string(millis(Clock::now()-started))+" merged="+std::to_string(stats.merged)+" droppedBracketed="+std::to_string(stats.droppedBracketed)
         +" bento="+std::to_string(stats.bento));
