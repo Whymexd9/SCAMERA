@@ -310,7 +310,7 @@ public class HybridSettingsTest {
         assertTrue(prefs.getBoolean("pref_lmc_hybrid_mosaic_window_full",false));
         assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_tetra","?"));
         tuning=PreferenceKeys.hybridTuningText();
-        for(String line:new String[]{"mosaicPath 0.0","mosaicWindow 3.0","mosaicKernelScale 1.0","mosaicNativeEdgeScale 0.4","mosaicKernelG 1.0",
+        for(String line:new String[]{"mosaicPath 0.0","mosaicWindow 3.0","mosaicKernelScale 1.0","mosaicNativeEdgeScale 0.6","mosaicKernelG 1.0",
                 "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 0.0"})
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
         assertFalse(tuning,tuning.contains("mosaicWindowFull"));

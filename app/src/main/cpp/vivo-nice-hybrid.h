@@ -281,8 +281,9 @@ struct HybridTuning {
                                  // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5)
     // mosaicEdgeScale of the native path (across the edge and the base kernel; along the edge and flat areas stay). Its own key so that
     // the split keeps 0.6. S0 (synthetic Quad, 16 frames): 0.4 gave zone plate +1.0, bars +1.4 / +3.2, edges +1.2 dB at unchanged
-    // flat noise; 0.3 more detail but +57 % colour error on neutral edges.
-    float mosaicNativeEdgeScale=0.4f;
+    // flat noise; 0.3 more detail but +57 % colour error on neutral edges. Device (OPPO, real handheld Quad hand.nch): 0.6 gave
+    // +49 % 2-4 px detail at matched flat noise and half the flat phase amplitude of the split, 0.4 0.94x with x1.6 chroma HF: 0.6.
+    float mosaicNativeEdgeScale=0.6f;
     // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
     // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
     // (false colour on bars -7 %)
