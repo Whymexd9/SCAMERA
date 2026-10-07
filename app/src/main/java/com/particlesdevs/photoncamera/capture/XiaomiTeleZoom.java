@@ -149,6 +149,25 @@ public final class XiaomiTeleZoom {
     }
 
     /**
+     * Lens position (equivalent mm, 75-100) a reported focal length stands for, or NaN when it cannot be this tele's lens: in
+     * ISZ a HAL may report the 2x field of view (above 100 mm), anything else outside the lens range belongs to another camera
+     * (the logical camera's result of a physical stream) and must not count as "the lens does not follow".
+     */
+    static float lensPosition(float reportedMm, boolean isz) {
+        if (Float.isNaN(reportedMm)) return Float.NaN;
+        float mm = isz && reportedMm > OPT_MAX + 5f ? reportedMm / 2f : reportedMm;
+        return mm >= OPT_MIN - 10f && mm <= OPT_MAX + 10f ? mm : Float.NaN;
+    }
+
+    /**
+     * A result counts for the follow check only when its request carried the mode now applied and the last ISZ toggle is at
+     * least {@link #TOGGLE_MS} old (the HAL may hold the lens while it changes the sensor mode).
+     */
+    static boolean countsForFollow(Integer requestMode, boolean isz, long sinceToggleMs) {
+        return Integer.valueOf(ISZ_MODE).equals(requestMode) == isz && sinceToggleMs >= TOGGLE_MS;
+    }
+
+    /**
      * A RAW frame after an in-session ISZ change belongs to the new mode: its request asked for it and, when the result reports
      * the mode, the result says so; with no reported mode a few frames after the first matching request. Never more than
      * {@link #BARRIER_MAX_FRAMES} frames are dropped.
@@ -293,8 +312,10 @@ public final class XiaomiTeleZoom {
     private static float firstLensMm = Float.NaN;
     private static boolean lensMoved;
     private static volatile boolean lensFixed;
+    /** Where the lens stood when it was declared fixed (75-100 mm). */
+    private static volatile float fixedLensMm = Float.NaN;
     private static long farSinceMs;
-    private static boolean focalReported, focalMissingLogged;
+    private static boolean focalReported, focalMissingLogged, implausibleLogged;
     private static Integer reportedMode;
     private static boolean tunableWarned;
     private static String describedCamera;
@@ -308,7 +329,8 @@ public final class XiaomiTeleZoom {
     static void reset() {
         isz = false; last = null; lastToggleMs = 0; lastTraceMs = 0; teleRatio = 0f;
         fMin = 0f; focalList = null; lensMm = Float.NaN; firstLensMm = Float.NaN; lensMoved = false; lensFixed = false;
-        farSinceMs = 0; focalReported = false; focalMissingLogged = false; reportedMode = null; tunableWarned = false;
+        fixedLensMm = Float.NaN;
+        farSinceMs = 0; focalReported = false; focalMissingLogged = false; implausibleLogged = false; reportedMode = null; tunableWarned = false;
         describedCamera = null;
     }
 
@@ -370,7 +392,8 @@ public final class XiaomiTeleZoom {
         final long now = android.os.SystemClock.elapsedRealtime();
         final float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
         final boolean nextIsz = nextIsz(mm, isz, last == null ? Long.MAX_VALUE : now - lastToggleMs);
-        final float fixed = (lensFixed && lensCheck) || forceCrop ? (Float.isNaN(lensMm) ? OPT_MIN : lensMm) : 0f;
+        final float fixed = (lensFixed && lensCheck) || forceCrop
+                ? (!Float.isNaN(fixedLensMm) ? fixedLensMm : Float.isNaN(lensMm) ? OPT_MIN : clamp(lensMm, OPT_MIN, OPT_MAX)) : 0f;
         final Plan p = planFor(mm, nextIsz, fixed);
         set(b, p, physicalId);
         boolean changed = last != null && p.isz != isz;
@@ -483,13 +506,21 @@ public final class XiaomiTeleZoom {
         return r != null && Integer.valueOf(ISZ_MODE).equals(requestMode(r)) == isz;
     }
 
+    /** {@link #onResult(CaptureResult, CaptureResult, boolean)} with the focal length from the same result. */
+    public static boolean onResult(CaptureResult r, boolean lensCheck) {
+        return onResult(r, r, lensCheck);
+    }
+
     /**
      * A preview result of the Xiaomi tele session: follows the reported lens position and sensor mode (logged when they change)
-     * and decides crop mode when the lens does not follow. Returns true when the zoom keys must be applied again.
+     * and decides crop mode when the lens does not follow. {@code lensResult}: the tele's physical result when the stream is a
+     * physical one of a logical camera (its focal length is the tele's; the logical one may describe another lens), else
+     * {@code r}. Returns true when the zoom keys must be applied again.
      */
-    public static boolean onResult(CaptureResult r, boolean lensCheck) {
+    public static boolean onResult(CaptureResult r, CaptureResult lensResult, boolean lensCheck) {
         Plan p = last;
         if (p == null || r == null) return false;
+        if (lensResult == null) lensResult = r;
         long now = android.os.SystemClock.elapsedRealtime();
         Integer mode = resultMode(r);
         if (mode != null && !mode.equals(reportedMode)) {
@@ -497,7 +528,7 @@ public final class XiaomiTeleZoom {
             Log.i(TAG, "sensor mode reported " + mode + " (requested " + (p.isz ? ISZ_MODE : "none") + ")");
         }
         Float f = null;
-        try { f = r.get(CaptureResult.LENS_FOCAL_LENGTH); } catch (RuntimeException ignored) { /* none */ }
+        try { f = lensResult.get(CaptureResult.LENS_FOCAL_LENGTH); } catch (RuntimeException ignored) { /* none */ }
         if (f == null || fMin <= 0f) {
             if (!focalMissingLogged) {
                 focalMissingLogged = true;
@@ -505,7 +536,16 @@ public final class XiaomiTeleZoom {
             }
             return false;
         }
-        float mm = equivalentOf(f, fMin);
+        final Integer frameMode = requestMode(r);
+        final float mm = lensPosition(equivalentOf(f, fMin), Integer.valueOf(ISZ_MODE).equals(frameMode));
+        if (Float.isNaN(mm)) {
+            if (!implausibleLogged) {
+                implausibleLogged = true;
+                Log.i(TAG, String.format(Locale.ROOT, "reported focal length %.2f mm is not a position of this tele's lens: not checked", f));
+            }
+            farSinceMs = 0;
+            return false;
+        }
         if (Float.isNaN(firstLensMm)) firstLensMm = mm;
         if (!lensMoved && Math.abs(mm - firstLensMm) > 1f) {
             lensMoved = true;
@@ -516,10 +556,13 @@ public final class XiaomiTeleZoom {
         }
         focalReported = true;
         lensMm = mm;
-        if (Math.abs(p.opticalMm - mm) > 5f) {
+        // frames of the other mode or right after an ISZ toggle do not count (the lens may be held while the mode changes)
+        if (!countsForFollow(frameMode, p.isz, now - lastToggleMs)) farSinceMs = 0;
+        else if (Math.abs(p.opticalMm - mm) > 5f) {
             if (farSinceMs == 0) farSinceMs = now;
         } else farSinceMs = 0;
         if (lensCheck && !lensFixed && farSinceMs != 0 && lensDoesNotFollow(p.opticalMm, mm, now - farSinceMs, lensMoved)) {
+            fixedLensMm = clamp(mm, OPT_MIN, OPT_MAX);
             lensFixed = true;
             Log.w(TAG, String.format(Locale.ROOT, "the lens does not follow userZoomRatio (commanded %.1f mm for %d ms, reported %.1f mm"
                     + " and never moved): crop mode from now on (userZoomRatio = lens position, the HAL crops)", p.opticalMm, now - farSinceMs, mm));

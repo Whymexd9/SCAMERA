@@ -760,7 +760,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
-                        && XiaomiTeleZoom.onResult(result, PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true)))
+                        && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
                 mStabTrace.record(request, result);
                 maybeRunPendingRearm(session, request, result);
@@ -1582,6 +1582,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } catch (RuntimeException e) {
             Log.w(TAG, "applyZoom: " + e.getMessage());
         }
+    }
+
+    /** P41: the result that carries the tele's own focal length (its physical result for a physical stream of a logical camera). */
+    private CaptureResult xiaomiLensResult(TotalCaptureResult result) {
+        if (Build.VERSION.SDK_INT >= 28 && !Objects.equals(physicalID, logicalID)) {
+            try {
+                CaptureResult physical = result.getPhysicalCameraResults().get(physicalID);
+                if (physical != null) return physical;
+            } catch (RuntimeException ignored) {
+                // no physical results: the logical one
+            }
+        }
+        return result;
     }
 
     /**

@@ -150,6 +150,21 @@ public class XiaomiTeleZoomTest {
     }
 
     @Test
+    public void reportsThatCannotBeTheTeleLensDoNotCount() {
+        assertEquals(87.5f, XiaomiTeleZoom.lensPosition(87.5f, false), E);
+        assertEquals("ISZ may report the 2x field of view", 87.5f, XiaomiTeleZoom.lensPosition(175f, true), E);
+        assertTrue("another camera's focal length (logical result)", Float.isNaN(XiaomiTeleZoom.lensPosition(30f, false)));
+        assertTrue("above the lens range outside ISZ", Float.isNaN(XiaomiTeleZoom.lensPosition(175f, false)));
+        assertTrue(Float.isNaN(XiaomiTeleZoom.lensPosition(Float.NaN, true)));
+        // frames of the other mode and the first TOGGLE_MS after a toggle are not counted
+        assertTrue(XiaomiTeleZoom.countsForFollow(null, false, 10_000));
+        assertTrue(XiaomiTeleZoom.countsForFollow(9, true, 10_000));
+        assertFalse(XiaomiTeleZoom.countsForFollow(null, true, 10_000));
+        assertFalse(XiaomiTeleZoom.countsForFollow(9, false, 10_000));
+        assertFalse(XiaomiTeleZoom.countsForFollow(9, true, XiaomiTeleZoom.TOGGLE_MS - 1));
+    }
+
+    @Test
     public void framesOfTheOldModeAreHeldBackAfterAnInSessionSwitch() {
         // switched ISZ on: a frame requested without the mode is old
         assertFalse(XiaomiTeleZoom.frameReady(null, null, true, 1, 0));
