@@ -39,6 +39,16 @@ int main(int argc,char** argv) {
             std::thread([]{worker_crash::Stage stage("crash check");volatile int* p=nullptr;*p=1;}).join();
             return 0;
         }
+        if(argc==4 && std::string(argv[1])=="--gpu-prewarm") { // P35: <job dir> <colour block>: the merge route's GPU programs into the cache
+            auto report=[](const std::string& line){worker_crash::note(line.data(),line.size());vivo_nn::log(line);};
+            std::ifstream cache(std::string(argv[2])+"/gl-cache");std::string dir;
+            if(cache&&std::getline(cache,dir)&&!dir.empty())vivo_nice::hybridProgramCacheDir()=dir;
+            else if(const char* env=std::getenv("SCAM_GL_CACHE"))vivo_nice::hybridProgramCacheDir()=env;
+            if(vivo_nice::hybridProgramCacheDir().empty())throw std::runtime_error("HYBRID PREWARM: no program cache");
+            worker_crash::mark("GPU prewarm");
+            vivo_nice::hybridPrewarmGpu(vivo_nice::loadHybridTuning(argv[2],report),integer(argv[3]),report);
+            vivo_nn::log("NICE PREWARM OK");return 0;
+        }
         if(argc==5 && std::string(argv[1])=="--nice-capture") {
             signal(SIGALRM,SIG_DFL);alarm(840);
             // Burst and result arrive as "fd:N" (memfd shared by the app) or as file paths.

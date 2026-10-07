@@ -2746,6 +2746,19 @@ public:
     void release(){if(display!=EGL_NO_DISPLAY)eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);}
     void acquire(){if(display==EGL_NO_DISPLAY||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");}
     bool hasBentoPass() const {return bentoProgram!=0;}
+    // P35 / P33: the native mosaic merge programs merge() compiles on first use (prewarm on module open, hybridPrewarmGpu): the fast
+    // merge plain and, when the strips may carry site flags, marked; or the generic merge where the fast one does not apply.
+    void prewarmNative(int block,int window,bool fill,bool fullWindow,bool generic,bool mayMark){
+        if(fullWindow&&window>=1&&window<=(block==4?8:3)&&!(fill&&window<2)&&!generic){
+            natFastProgram(block,window,false,fill);
+            if(mayMark)natFastProgram(block,window,true,fill);
+        } else if(!mosaicProgram){
+            compileName="mosaic";
+            const auto t0=std::chrono::steady_clock::now();
+            mosaicProgram=compile((std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+            compileMs+=" mosaic="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
+        }
+    }
 
     // out: RGB (w*g)*(h*g)*3 (base units) on the output grid g (1 = sensor, 2 = Sabre 6.1 2x); effective: donor
     // coverage per output pixel (frames); robustShare[f]: mean accepted weight of frame f after dilation, scalar
@@ -3417,6 +3430,31 @@ public:
         if(nat){natFixedOutliers=long(sums[natSum0]);natBaseOutliers=long(sums[natSum0+1]);}
     }
 };
+
+// P35 (with P33): the GPU programs of a module's merge route, built when the module opens (worker --gpu-prewarm), so that the first
+// shot loads them from the program cache (hybridProgramCacheDir) instead of compiling them. The same programs the shot's merge
+// asks for, from the same tuning: the plain set (hybridReconstruct's early context, an ultrashort frame assumed: every app burst
+// carries one), on a stored / declared Quad / Tetra block with mosaicPath 1 the native set with the colour passes off
+// (hybridReconstructMosaicNativeMerge) and its merge program for the block's window. The split (mosaicPath 0) merges plain.
+inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::function<void(const std::string&)>& report){
+    const auto t0=std::chrono::steady_clock::now();
+    const bool native=block>1&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0);
+    HybridTuning t=tune;
+    if(native){t.chromaDiff=0.f;t.rimRatio=0;t.bentoChroma=0.f;}
+    const bool rimPass=t.rimRatio!=0,la=t.localAlign>0,chromaPass=t.chromaDiff>0.f;
+    const bool bentoPass=t.bento>0&&t.bentoChromaSigma>0.f&&t.bentoChroma>0.f;
+    const bool outlierPrograms=t.hotSigma>0||t.hotBaseSigma>0;
+    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms);
+    if(native){
+        const bool t2=block==4&&tune.mosaicTetra!=1;
+        const int mb=t2?2:block;
+        const int window=block==4&&!t2?std::clamp(2*tune.mosaicWindow,1,8):std::clamp(tune.mosaicWindow,1,6);
+        const bool fill=tune.mosaicChromaFill==1&&std::clamp(tune.mosaicFillSupport,0.f,1.f)>0.f;
+        gpu.prewarmNative(mb,window,fill,tune.mosaicWindowFull!=0,tune.mosaicGeneric!=0,tune.cellClip!=0||outlierPrograms);
+    }
+    report("HYBRID PREWARM: block "+std::to_string(block)+(native?" native mosaic":" plain")+" programs ready in "
+        +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms ("+gpu.renderer+";"+gpu.compileMs+")");
+}
 
 // ---------------------------------------------------------------------------------------------
 // CPU side: sharpness (Shasta gate), Bento mask, per-frame weights, assembly.

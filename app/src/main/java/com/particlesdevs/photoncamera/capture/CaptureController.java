@@ -2259,6 +2259,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
             mMosaicMeasure = PreferenceKeys.niceDevSwitch("mosaic_preview", true);
             com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
+            // P35 / P33: the GPU programs of this module's merge route (its stored / declared colour block) built now, not on the shutter
+            if (photoMode && !isBurstSession && !mIsRecordingVideo && PreferenceKeys.isLmcHybridEnabled())
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNeuralClient.prewarmHybridGpu(PhotonCamera.getAppContext(),
+                        com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForModule(
+                                com.particlesdevs.photoncamera.processing.MosaicStream.key(),
+                                com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
+                                        com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()))));
             mMosaicPreview = mMosaicMeasure && !mLiveRawSession && photoMode && !isBurstSession && !mIsRecordingVideo && isZslMode()
                     && isRawFormat(mTargetFormat) && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1;
             if (mMosaicPreview) LiveRawFrame.setEnabled(true);
