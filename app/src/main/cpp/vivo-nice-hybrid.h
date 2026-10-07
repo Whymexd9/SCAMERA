@@ -267,7 +267,10 @@ struct HybridTuning {
     // mosaicPath 1; their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
     // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill) except where noted: Tetra stays on the split (mosaicTetra 0)
     // and the 6.1 base widening keeps the split's rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
-    // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1.
+    // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1, mosaicKernelScale 1,
+    // mosaicNativeFlatScale 1, mosaicNativeClamp 0. P34 (research/p29/QUAD_COMBINED.md): kernel scale 0.7, flat scale 2.4,
+    // eigenvalue clamp in daylight, kernel scale 1 / edge scale 0.6 at night; ArkCam's point is kernel scale 0.5, edge scale 0.5
+    // (isz2: ArkCam's noise with 21 frames against its 30, 0.96 of its poster detail).
     // Path 1 merges without the colour-difference (chromaDiff), clip-border (rimRatio) and Bento colour passes: they re-sample the
     // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
     // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
@@ -278,13 +281,27 @@ struct HybridTuning {
                                  // 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]); Tetra
                                  // T1 parity is 6; 2 = ArkCam's 5x5
     int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
-    float mosaicKernelScale=1.f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
-                                 // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5)
+    float mosaicKernelScale=0.7f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
+                                 // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5). P34: 0.7 with the flat scale 2.4 and
+                                 // the eigenvalue clamp below (daylight; mosaicNativeNightKernelScale at night): isz2 detail +12 % at
+                                 // the split's noise, hh_1 / hh_2 / hh_4 +11 % (2-4 px band at matched noise)
     // mosaicEdgeScale of the native path (across the edge and the base kernel; along the edge and flat areas stay). Its own key so that
     // the split keeps 0.6. S0 (synthetic Quad, 16 frames): 0.4 gave zone plate +1.0, bars +1.4 / +3.2, edges +1.2 dB at unchanged
     // flat noise; 0.3 more detail but +57 % colour error on neutral edges. Device (OPPO, real handheld Quad hand.nch): 0.6 gave
     // +49 % 2-4 px detail at matched flat noise and half the flat phase amplitude of the split, 0.4 0.94x with x1.6 chroma HF: 0.6.
     float mosaicNativeEdgeScale=0.6f;
+    // P34: the native path's blurred (flat-area) and along-edge kernels, x sigma (> 1 = wider); across / base follow
+    // mosaicNativeEdgeScale, all of them mosaicKernelScale
+    // P34 isz2 (against ArkCam's DNG): the flat kernel x1.4 at ArkCam's kernel scale 0.5 took the wall's noise from 1.40 to 1.07
+    // at 0.955 -> 0.917 poster detail (the kernel scale alone: 0.6 -> 1.15 / 0.91); 2.4 with kernel scale 0.7 and edge scale 0.6
+    float mosaicNativeFlatScale=2.4f,mosaicNativeAlongScale=1.f;
+    // P34: the native kernel and edge scales at night (6.1 night key, key <= s61MaxKey; 0 = the daylight values above). The night
+    // guide (no daylight noise damping) puts more of a dim scene on the texture kernels, and narrowed there the R / B blocks of the
+    // Quad lattice show through (arena11, key 25: a chroma lattice ratio of 263 in texture against 13 for the split).
+    float mosaicNativeNightKernelScale=1.f,mosaicNativeNightEdgeScale=0.6f;
+    int mosaicNativeClamp=2;     // P34: ArkCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
+                                 // 1 per component as ArkCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
+                                 // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split)
     // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
     // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
     // (false colour on bars -7 %)
@@ -382,6 +399,8 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             // P29 native mosaic path
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
+            ||set("mosaicNativeFlatScale",&t.mosaicNativeFlatScale)||set("mosaicNativeClamp",nullptr,&t.mosaicNativeClamp)
+            ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)||set("mosaicNativeAlongScale",&t.mosaicNativeAlongScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
@@ -1549,6 +1568,23 @@ float natSiteG(uvec4 geo,int x,int y,out uint fl){
     return clamp((u-black[cp])*inv[cp],-0.25,1.0);
 }
 float natSite(int f,int x,int y,out uint fl){return natSiteG(nGeo[clamp(f,0,127)],x,y,fl);}
+// P34: the merges' bound on the native kernel precision (HybridTuning::mosaicNativeClamp)
+uniform int natClampU;  // 1: ArkCam's covariance packing range on the native precision, 2: the same bounds on its eigenvalues
+// ArkCam v23 stores the kernel covariance C (exp2(-0.5 d'Cd), C = P / ln 2) in a texture with the ranges cov_range_rg / _b
+// (quad_report, merge L22-23): C_xx, C_yy in [0.367, 24.8], C_xy in [-6.98, 7.03], i.e. an across-edge sigma >= 0.242 px.
+// Clamped per component (1) a narrow kernel on a diagonal edge loses its orientation (diagonal capped, xy capped apart);
+// 2 bounds the eigenvalues instead (sigma in [0.242, 1.98] px along both axes of the kernel, orientation kept).
+vec3 natEig(vec3 P,float lo,float hi){ // eigenvalues of the precision clamped to [lo, hi], eigenvectors kept
+    float m=0.5*(P.x+P.y),h=0.5*(P.x-P.y),r=sqrt(h*h+P.z*P.z);
+    float l1=m+r,l2=m-r,c1=clamp(l1,lo,hi),c2=clamp(l2,lo,hi);
+    if(r<1.0e-6)return vec3(c1,c1,0.0);
+    vec3 vv=vec3(P.x-l2,P.y-l2,P.z)/(2.0*r); // v v' of the larger eigenvalue's unit eigenvector (xx, yy, xy)
+    return vec3(c2+(c1-c2)*vv.x,c2+(c1-c2)*vv.y,(c1-c2)*vv.z);
+}
+vec3 natClamp(vec3 P){
+    if(natClampU==1)return vec3(clamp(P.xy,vec2(0.2544),vec2(17.19)),clamp(P.z,-4.838,4.873));
+    return natClampU==2?natEig(P,0.2544,17.19):P;
+}
 )";
 
 // Native outlier sites, as kHybMean / kHybFlags do for a plain burst but on the native sites: the split tested its sub-frames, whose
@@ -1907,7 +1943,7 @@ void main(){
         else Pf=P*fParam[f].z;
         float rw=r/max(fParam[f].y,1.0e-6);
         if(!us)frames+=rw;
-        natSamples(a,f,Ob*float(b)+o,r,rw,Pf*natK.x,(mode&2)!=0&&!us);
+        natSamples(a,f,Ob*float(b)+o,r,rw,natClamp(Pf*natK.x),(mode&2)!=0&&!us);
     }
     // Base frame last. 6.1 rule (natWidenU 0) as in the split, where each frame was b^2 sub-frames and the base's own other b^2-1
     // sub-frames were accepted donors: b^2 frames + b^2-1 < widenBelow; natWidenU 1: S0's frames < widenBelow. Round-4 rule on the
@@ -1917,7 +1953,7 @@ void main(){
         if((mode&4)!=0)Pb=(natWidenU!=0?frames:float(bb)*frames+float(bb-1))<kD.x?P/(kD.y*kD.y):P;
         else { float self=natSelfCover(S,P*natK.x,(mode&2)!=0);
                float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+self)); Pb=P/(widen*widen); }
-        natSamples(a,0,S,wb,wb,Pb*natK.x,(mode&2)!=0&&m<=0.0);
+        natSamples(a,0,S,wb,wb,natClamp(Pb*natK.x),(mode&2)!=0&&m<=0.0);
     }
     vec3 col;uint cfl=0u;
     for(int c=0;c<3;c++){
@@ -2151,7 +2187,7 @@ void main(){
         else Pf=P*fParam[f].z;
         float rw=r/max(fParam[f].y,1.0e-6);
         if(!us)frames+=rw;
-        natFrame(a,f,Ob*2.0+0.5,r,rw,Pf*natK.x);
+        natFrame(a,f,Ob*2.0+0.5,r,rw,natClamp(Pf*natK.x));
     }
     if(wb>0.0){
         vec3 Pb;
@@ -2160,7 +2196,7 @@ void main(){
             NatSums s=natTaps(nGeo[0],S,P*natK.x,false,false,true);
             float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+s.dn.y));Pb=P/(widen*widen);
         }
-        natFrame(a,0,S,wb,wb,Pb*natK.x);
+        natFrame(a,0,S,wb,wb,natClamp(Pb*natK.x));
     }
     vec3 col;uint cfl=0u;
     for(int c=0;c<3;c++){
@@ -2213,6 +2249,7 @@ struct HybridMosaicNative {
                                          // split and in S0, not the binned averages (nor T2's 2x2 means)
     bool s0Widen=false;                  // HybridTuning::mosaicNativeWiden: the 6.1 base widening below widenBelow FRAMES (S0)
     bool generic=false;                  // HybridTuning::mosaicGeneric: kHybMergeMosaic even where kHybMergeMosaicFast applies
+    int clampCov=0;                      // HybridTuning::mosaicNativeClamp
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
 };
 
@@ -2793,6 +2830,7 @@ public:
                 glUseProgram(mosaicProgram);
                 glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
                 glUniform1i(loc(mosaicProgram,"natWidenU"),nat->s0Widen?1:0);
+                glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
                 const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
                 glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
                 glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
@@ -4135,6 +4173,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     const bool night61=key61<=tune.s61MaxKey,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
     const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&(night61||handheld61));
+    HybridMosaicNative nativeNight; // P34: the native kernel scale at night (mosaicNativeNightKernelScale)
+    if(native&&night61&&tune.mosaicNativeNightKernelScale>0.f&&tune.mosaicNativeNightKernelScale!=native->kernelScale){
+        nativeNight=*native;nativeNight.kernelScale=std::clamp(tune.mosaicNativeNightKernelScale,0.1f,4.f);native=&nativeNight;
+        report("HYBRID KERNEL: native mosaic at night (key "+std::to_string(key61)+"): kernel scale "+std::to_string(nativeNight.kernelScale)
+            +", edge scale "+std::to_string(tune.mosaicNativeNightEdgeScale));
+    }
     const int gridOut=fineGridRefused?1:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     if(!sabre61&&gridOut==1&&tune.dayKernelScale>0.f&&tune.dayKernelScale!=1.f&&key61>tune.s61MaxKey){
         const float lo=std::max(tune.s61MaxKey,1.f),t=std::clamp((key61-lo)/lo,0.f,1.f),s=1.f+(tune.dayKernelScale-1.f)*t*t*(3.f-2.f*t);
@@ -4151,16 +4195,24 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float f0=sabreCurve(key,kf0,vf0),f1=sabreCurve(key,kf1,vf1),f2=sabreCurve(key,kf2,vf2),f3=sabreCurve(key,kf3,vf3),f4=4.f,f5=2.2f;
         const float ks=std::max(tune.kernelScale,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
-        if((input.subFrames>1||native)&&tune.mosaicEdgeScale>0.f&&tune.mosaicEdgeScale!=1.f){
+        // P34: the native path's night edge scale (mosaicNativeNightEdgeScale)
+        const float esTune=native&&night61&&tune.mosaicNativeNightEdgeScale>0.f?tune.mosaicNativeNightEdgeScale:tune.mosaicEdgeScale;
+        if((input.subFrames>1||native)&&esTune>0.f&&esTune!=1.f){
             // across the edge and the base kernel (p ~ 1 / sigma); along the edge and the blurred kernel of flat areas stay
-            const float es=std::clamp(tune.mosaicEdgeScale,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
+            const float es=std::clamp(esTune,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
             report(std::string("HYBRID KERNEL: ")+(native?"native mosaic":"mosaic sub-frames")+", kernel across edges and base x"+std::to_string(es));
+        }
+        if(native&&(tune.mosaicNativeFlatScale!=1.f||tune.mosaicNativeAlongScale!=1.f)){ // P34
+            const float fs=std::clamp(tune.mosaicNativeFlatScale,0.25f,4.f),as=std::clamp(tune.mosaicNativeAlongScale,0.25f,4.f);
+            k61a[1]/=as;
+            report("HYBRID KERNEL: native mosaic, along-edge kernel x"+std::to_string(as)+", flat kernel x"+std::to_string(fs));
         }
         // daylight multipliers only with the local alignment (they were measured with it): localAlign 0 keeps the merge before F6
         // for every sabre61 setting, forced 6.1 in daylight included
         const bool dayNoise=!night61&&tune.localAlign>0;
         const float tn=dayNoise?tune.s61DayTensorNoise:tune.s61TensorNoise,gn=dayNoise?tune.s61DayGdNoise:tune.s61GdNoise;
         k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tn>0?tn:1.f};
+        if(native&&tune.mosaicNativeFlatScale!=1.f)k61b[0]/=std::clamp(tune.mosaicNativeFlatScale,0.25f,4.f); // P34
         k61c={gn>0?gn:1.f,0,0,0};
         auto sigma=[&](float p){return std::to_string(ks/(p*std::sqrt(std::log(2.f))));};
         report("HYBRID KERNEL: Sabre 6.1 baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" key="+std::to_string(key)
@@ -5245,7 +5297,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb;bin.mosaic=1;bin.subFrames=0;
     HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
-    nat.rawGains=!t2;nat.gains=gain;nat.s0Widen=tune.mosaicNativeWiden!=0;nat.generic=tune.mosaicGeneric!=0;
+    nat.rawGains=!t2;nat.gains=gain;nat.s0Widen=tune.mosaicNativeWiden!=0;nat.generic=tune.mosaicGeneric!=0;nat.clampCov=std::clamp(tune.mosaicNativeClamp,0,2);
     // a binned pixel averages b^2 sites: the kernel keys (6.1 / round-4 curves, the 6.1 night rule, the outlier gate hotMaxKey) follow
     // one SENSOR site (noise x b^2 of the binned one), as the split and S0 (run_s0.py: key of the site noise); T2's merged 2x2 means
     // would raise them ~2x (a Tetra burst at sensor key 15..30 would lose the night kernel and the outlier test)
