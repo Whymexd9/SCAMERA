@@ -31,6 +31,8 @@ uniform int fadeU;              // modeU 2: colour fades to neutral in the darke
 uniform vec2 darkFadeU;         // mean RGB where the colour starts to fade / is fully kept
 uniform vec2 darkChromaU;       // fadeU: colour deviation |RGB - mean| from which a dark colour starts to stay / stays
                                 // fully (signed hybrid input; 0 = off, the fade of the luminance alone)
+uniform vec2 darkNoiseU;        // darkChromaU on: the keep floor follows the colour noise left after the denoise,
+                                // floor^2 = x * mean + y (LmcDenoise.darkNoise; 0 = the fixed floor alone)
 out vec4 Output;
 
 const vec3 kY = vec3(0.2126, 0.7152, 0.0721996);
@@ -87,7 +89,12 @@ void main() {
             // except a colour clearly stronger than such a tint (a dark teal curtain), which is kept.
             float m = dot(rgb, vec3(1.0 / 3.0));
             float t = smoothstep(darkFadeU.x, darkFadeU.y, m);
-            if (darkChromaU.y > 0.0) t = max(t, smoothstep(darkChromaU.x, darkChromaU.y, length(rgb - vec3(m))));
+            if (darkChromaU.y > 0.0) {
+                // the floor rises above the fixed one where the colour noise does (high ISO, few frames): noise-level
+                // colour still fades, a colour clearly above it stays
+                float lo = max(darkChromaU.x, sqrt(max(darkNoiseU.x * max(m, 0.0) + darkNoiseU.y, 0.0)));
+                t = max(t, smoothstep(lo, max(darkChromaU.y, 2.0 * lo), length(rgb - vec3(m))));
+            }
             rgb = toRgb(vec3(r.x, r.yz * t));
         }
         Output = vec4(max(rgb, vec3(0.0)), 1.0);

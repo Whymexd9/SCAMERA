@@ -12,6 +12,13 @@ dark colour chart (colours and neutral grey with a small tint, mean RGB 2e-4 .. 
 - on: every patch whose colour deviation is at least hi keeps >= 99 % of it (the former fade kept < 50 % of these at mean
   RGB <= 0.0012); a neutral patch whose tint is below lo still fades to <= 2 %; patches at mean RGB >= 0.003 are the same
   bit for bit in both modes.
+Noise floor (lmcdn/cbf and lmcdn/final2x darkNoiseU = (x, y), LmcDenoise.darkKeep): the keep floor becomes
+max(lo, sqrt(x mean + y)) and the ramp ends at max(hi, 2 floor), so the colour noise the denoise leaves at high ISO fades
+while a colour clearly above it stays. On a second chart (neutral tints 2-3e-4 and colours, dark means): every patch keeps
+exactly the share the rule gives (numpy, within 2e-3); a tint of 2.5e-4 under a floor of 3e-4 fades to <= 2 % (the fixed
+floor alone keeps >= 20 % of it); a colour of at least twice the floor keeps >= 99 %; darkNoiseU (0, 0) and a floor below
+lo are bit-identical to the fixed floor; patches at mean RGB >= 0.003 are unchanged. chromadn/apply (the NLM engine) has no
+noise floor.
 Usage: check_dark_fade.py [--shaders DIR] [--report]
 """
 from pathlib import Path
@@ -107,25 +114,104 @@ def old_fade(rgb):
     return np.maximum(y[..., None] + t[..., None] * (rgb - y[..., None]), 0)
 
 
-def run_cbf(img, keep):
+def run_cbf(img, keep, noise=None):
     yuv = np.stack([img @ KY, img @ KU, img @ KV], -1)
     h, w = img.shape[:2]
     t = texture(yuv)
-    out = draw('lmcdn/cbf.glsl', (w, h), {'InputBuffer': t, 'DeltaUV': t, 'Orig': t, 'StrMap': t},
-               {'strideU': 1, 'filterU': 0, 'useDeltaU': 0, 'useMapU': 0, 'modeU': 2, 'fadeU': 1,
-                'darkFadeU': FADE, 'darkChromaU': keep})
+    u = {'strideU': 1, 'filterU': 0, 'useDeltaU': 0, 'useMapU': 0, 'modeU': 2, 'fadeU': 1, 'darkFadeU': FADE, 'darkChromaU': keep}
+    if noise is not None:
+        u['darkNoiseU'] = noise
+    out = draw('lmcdn/cbf.glsl', (w, h), {'InputBuffer': t, 'DeltaUV': t, 'Orig': t, 'StrMap': t}, u)
     t.release()
     return out
 
 
-def run_final2x(img, keep):
+def run_final2x(img, keep, noise=None):
     h, w = img.shape[:2]
     t = texture(img)
     d = texture(np.zeros(((h + 1) // 2, (w + 1) // 2, 3)))
-    out = draw('lmcdn/final2x.glsl', (w, h), {'InputBuffer': t, 'Delta': d},
-               {'keepU': 1.0, 'fadeU': 1, 'darkFadeU': FADE, 'darkChromaU': keep})
+    u = {'keepU': 1.0, 'fadeU': 1, 'darkFadeU': FADE, 'darkChromaU': keep}
+    if noise is not None:
+        u['darkNoiseU'] = noise
+    out = draw('lmcdn/final2x.glsl', (w, h), {'InputBuffer': t, 'Delta': d}, u)
     t.release(); d.release()
     return out
+
+
+NOISE_LUMS = [2e-4, 5e-4, 8e-4, 15e-4, 30e-4, 1e-2]
+NOISE_ROWS = [('tint 2.0e-4', 2.0e-4), ('tint 2.5e-4', 2.5e-4), ('tint 3.0e-4', 3.0e-4), ('teal 6e-4', 6e-4),
+              ('red 9e-4', 9e-4), ('blue 15e-4', 15e-4)]
+
+
+def noise_chart():
+    """Rows: neutral grey with a tint / colours of a given deviation |RGB - mean|; columns: NOISE_LUMS (mean RGB)."""
+    dirs = {'tint': np.array([1.0, 0.0, -1.0]), 'teal': np.array([-1.0, 0.3, 0.7]), 'red': np.array([1.0, -0.4, -0.6]),
+            'blue': np.array([-0.5, -0.5, 1.0])}
+    img = np.zeros((len(NOISE_ROWS) * P, len(NOISE_LUMS) * P, 3))
+    for j, (name, d) in enumerate(NOISE_ROWS):
+        u = dirs[name.split()[0]]
+        u = (u - u.mean()) / np.linalg.norm(u - u.mean())
+        for i, m in enumerate(NOISE_LUMS):
+            img[j * P:(j + 1) * P, i * P:(i + 1) * P] = m + d * u
+    return img
+
+
+def smooth(a, b, x):
+    t = np.clip((x - a) / (b - a), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def expected_keep(m, dev, keep, noise):
+    """The share of the colour the rule keeps (the colour scales with t: Y kept, U and V times t)."""
+    lo = max(keep[0], np.sqrt(max(noise[0] * max(m, 0) + noise[1], 0)))
+    return max(smooth(FADE[0], FADE[1], m), smooth(lo, max(keep[1], 2 * lo), dev))
+
+
+def check_noise_floor(name, fn, fails):
+    img = noise_chart()
+    n_r, n_c = len(NOISE_ROWS), len(NOISE_LUMS)
+    centre = lambda a, j, i: a[j * P + P // 2, i * P + P // 2]
+    means = np.array([[centre(img, j, i).mean() for i in range(n_c)] for j in range(n_r)])
+    dev_in = np.array([[np.linalg.norm(centre(img, j, i) - means[j, i]) for i in range(n_c)] for j in range(n_r)])
+    # a patch with a channel below zero comes out clamped at zero (both modes): not a case of the rule
+    valid = np.array([[centre(img, j, i).min() >= 0.0 for i in range(n_c)] for j in range(n_r)])
+
+    def kept(out):
+        return np.array([[np.linalg.norm(centre(out, j, i) - centre(out, j, i).mean()) for i in range(n_c)]
+                         for j in range(n_r)]) / dev_in
+
+    fixed = fn(img, KEEP)
+    if not np.array_equal(fn(img, KEEP, (0.0, 0.0)), fixed):
+        fails.append('%s: darkNoiseU (0, 0) is not the fixed floor bit for bit' % name)
+    if not np.array_equal(fn(img, KEEP, (0.0, (0.5 * KEEP[0]) ** 2)), fixed):
+        fails.append('%s: a noise floor below lo changed the output' % name)
+    F = 3e-4
+    pix_bright = np.repeat(np.repeat(means >= FADE[1], P, 0), P, 1)
+    for noise in ((0.0, F * F), (0.5 * F * F / 8e-4, 0.5 * F * F)):  # constant floor; floor 3e-4 at mean 8e-4 (x term)
+        on = fn(img, KEEP, noise)
+        k = kept(on)
+        exp = np.array([[expected_keep(means[j, i], dev_in[j, i], KEEP, noise) for i in range(n_c)] for j in range(n_r)])
+        if REPORT:
+            print('%s noise floor %s: kept %% (rule) at mean RGB %s' % (name, noise, ' '.join('%.4f' % m for m in NOISE_LUMS)))
+            for j, (rn, _) in enumerate(NOISE_ROWS):
+                print('   %-12s %s | rule %s' % (rn, ' '.join('%4.0f' % (100 * v) for v in k[j]),
+                                                  ' '.join('%4.0f' % (100 * v) for v in exp[j])))
+        err = np.abs(k - exp)[valid].max()
+        if err > 2e-3:
+            fails.append('%s noise floor %s: kept share off the rule by %.4f' % (name, noise, err))
+        if not np.array_equal(on[pix_bright], fixed[pix_bright]):
+            fails.append('%s noise floor: patches at mean RGB >= %.4f changed' % (name, FADE[1]))
+        if noise[0] == 0.0:
+            t25 = [n for n, _ in NOISE_ROWS].index('tint 2.5e-4')
+            dark = (means[t25] <= FADE[0]) & valid[t25]
+            k_fixed = kept(fixed)
+            if not np.all(k[t25][dark] <= 0.02):
+                fails.append('%s: a tint below the noise floor kept %.2f of it' % (name, k[t25][dark].max()))
+            if not np.all(k_fixed[t25][dark] >= 0.2):
+                fails.append('%s: the fixed floor no longer keeps the 2.5e-4 tint (the chart lost its case)' % name)
+            strong = valid & (dev_in >= 2 * F)
+            if not np.all(k[strong] >= 0.99):
+                fails.append('%s: a colour of twice the noise floor faded (min kept %.2f)' % (name, k[strong].min()))
 
 
 def run_apply(img, keep):
@@ -188,12 +274,14 @@ def main():
         pix_bright = np.repeat(np.repeat(bright, P, 0), P, 1)
         if not np.array_equal(on[pix_bright], off[pix_bright]):
             fails.append('%s: patches at mean RGB >= %.4f differ between the modes' % (name, FADE[1]))
+    for name, fn in (('lmcdn/cbf', run_cbf), ('lmcdn/final2x', run_final2x)):
+        check_noise_floor(name, fn, fails)
     if fails:
         for f in fails:
             print('FAIL:', f)
         sys.exit(1)
     print('dark fade PASS: dark colours above the tint floor kept (cbf, final2x, apply), tinted black still neutral, '
-          'bright pixels unchanged')
+          'bright pixels unchanged; noise floor (cbf, final2x) as the rule: noise-level tint fades, strong colours stay')
 
 
 if __name__ == '__main__':

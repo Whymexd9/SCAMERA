@@ -126,6 +126,9 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_clamp","5",2),2);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_night_kernel_scale","0.1",1),0.25);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_night_edge_scale","3",0.6),1);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra_night_kernel_scale","0.1",0.7),0.25);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra_night_edge_scale","3",0.45),1);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra_night_flat_scale","9",1.667),4);
         if(SettingsNumericRules.error("pref_lmc_hybrid_mosaic_fill_support","1.5")==null)throw new AssertionError("fill support above 1 accepted");
         if(SettingsNumericRules.error("pref_lmc_hybrid_mosaic_kernel_scale","0.1")==null)throw new AssertionError("kernel scale below 0.25 accepted");
         float[] list=SettingsNumericRules.listValue("pref_lmc_hybrid_x","1; 2.5 3",new float[]{0,0,0});
