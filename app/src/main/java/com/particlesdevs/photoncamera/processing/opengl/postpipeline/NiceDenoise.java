@@ -95,8 +95,8 @@ public final class NiceDenoise extends Node {
         for (int v = 1; v < 256; v++) { seen += histogram[v]; if (seen * 2 >= count) { median = v; break; } }
         effRef = Math.max(1f, median / 8f);
         eff.rewind();
-        // W1.1: the map as it always reached the shaders (all zero where the driver rejects its upload), deterministically;
-        // see LmcDenoise.effectiveFramesTexture.
+        // W3.5: the real codes, read one-sided by chromadn/nlm and chromadn/apply (only fewer than the median frames
+        // strengthen the filter); see LmcDenoise.effectiveFramesTexture.
         return LmcDenoise.effectiveFramesTexture(size, eff);
     }
 

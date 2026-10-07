@@ -19,7 +19,8 @@ import java.security.MessageDigest;
  * and the MD5 of both bitmaps in one line:
  * <pre>POST AB old ms=... teardown=... md5=... | new ms=... md5=... EQUAL|DIFFERENT</pre>
  * The new run's bitmap goes on to the JPEG as in any shot. "post_ab_dump 1" also writes both bitmaps as post_ab_old.png /
- * post_ab_new.png to the external files dir; "post_ab_effclear 1" gives the old run the new run's cleared effective-frame map.
+ * post_ab_new.png to the external files dir. The old run gets the cleared effective-frame map of before W3.5 (the new run
+ * reads the real map one-sided, LmcDenoise.effectiveFramesTexture).
  * The worker RGB, the effective-frame map and the clip flags are
  * kept for the second run (the first one frees the RGB after its upload and consumes the clip flags). Only for a hybrid /
  * SCAM HDR RGB of 16 MP or less without Ultra HDR (the copy of the RGB and a second bitmap must fit); otherwise one normal run.

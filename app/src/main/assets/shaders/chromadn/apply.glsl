@@ -31,11 +31,11 @@ out vec4 Output;
 void main() {
     int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
-    // Noise of this pixel: the measured level scaled by how well the merge covered it.
+    // Noise of this pixel: the measured level scaled by how well the merge covered it, one-sided (W3.5, as chromadn/nlm).
     float sg = sigma;
     if (useEff != 0 && sigma > 0.0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 0.5, (effMax > 0.0 ? effMax : 3.0));
+        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
     }
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);

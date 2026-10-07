@@ -98,6 +98,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_ark_highlights.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_highlight_recovery.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_signed_rgb.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_effmap_onesided.py
           mkdir -p /tmp/zsl-quality-check
           javac -d /tmp/zsl-quality-check app/src/main/java/com/particlesdevs/photoncamera/capture/RawFrameQuality.java tools/java/RawFrameQualityCheck.java
           java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck

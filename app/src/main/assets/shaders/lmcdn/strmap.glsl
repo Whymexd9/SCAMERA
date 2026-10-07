@@ -3,9 +3,11 @@ precision highp int;
 precision highp sampler2D;
 precision highp usampler2D;
 // LMC noise reduction, strength map "frames" (the counterpart of GCam's q8 denoise strength map): the noise
-// variance multiplier f = clamp(sqrt(E_ref / E(p)), 0.5, effMax)^2 from the worker's effective-frame map (code 0 =
-// unknown or clip-flagged: f = 1), averaged over factor x factor output pixels. Same clamp as the NLM route
-// (bento_denoise_max limits the noise boost of Bento regions merged from one gained frame).
+// variance multiplier f = clamp(sqrt(E_ref / E(p)), 1, effMax)^2 from the worker's effective-frame map (code 0 =
+// unknown or clip-flagged: f = 1), averaged over factor x factor output pixels. One-sided (W3.5): only pixels merged
+// from fewer than the median frames get a stronger filter; at or above the median f = 1 exactly (the strength of the
+// uniform map). Same clamp as the NLM route (bento_denoise_max limits the noise boost of Bento regions merged from one
+// gained frame).
 uniform usampler2D EffMap;      // effective-frame codes on the output grid
 uniform int factorU;            // output pixels per map texel (unset: 2)
 uniform float effRefU;          // median code
@@ -21,7 +23,7 @@ void main() {
     for (int j = 0; j < F; j++) {
         for (int i = 0; i < F; i++) {
             uint v = texelFetch(EffMap, min(o + ivec2(i, j), last), 0).r;
-            float r = v > 0u ? clamp(sqrt(ref / float(v)), 0.5, hi) : 1.0;
+            float r = v > 0u ? clamp(sqrt(ref / float(v)), 1.0, hi) : 1.0;
             s += r * r;
         }
     }
