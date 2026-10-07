@@ -277,7 +277,8 @@ public class HybridSettingsTest {
         // for Tetra, kernel scale 0.7, edge scale 0.6, flat-area kernel x2.4, eigenvalue clamp)
         String[] keys={"mosaicPath","mosaicWindow","mosaicWindowFull","mosaicKernelScale","mosaicNativeEdgeScale","mosaicKernelG",
                 "mosaicKernelRB","mosaicChromaFill","mosaicFillSupport","mosaicTetra","mosaicNativeFlatScale","mosaicNativeClamp",
-                "mosaicNativeNightKernelScale","mosaicNativeNightEdgeScale"};
+                "mosaicNativeNightKernelScale","mosaicNativeNightEdgeScale","mosaicTetraNightKernelScale","mosaicTetraNightEdgeScale",
+                "mosaicTetraNightFlatScale"};
         String tuning=PreferenceKeys.hybridTuningText();
         for(String k:keys)assertFalse(tuning,tuning.contains(k+" "));
         manager.set("default_scope","pref_lmc_hybrid_mosaic_path","1");
@@ -294,10 +295,14 @@ public class HybridSettingsTest {
         manager.set("default_scope","pref_lmc_hybrid_mosaic_native_clamp","1");
         manager.set("default_scope","pref_lmc_hybrid_mosaic_native_night_kernel_scale","0.8"); // dev keys without a row
         manager.set("default_scope","pref_lmc_hybrid_mosaic_native_night_edge_scale","0.5");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_tetra_night_kernel_scale","0.75");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_tetra_night_edge_scale","0.4");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_tetra_night_flat_scale","1.5");
         tuning=PreferenceKeys.hybridTuningText();
         for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 2.0","mosaicWindowFull 0","mosaicKernelScale 0.75","mosaicNativeEdgeScale 0.3",
                 "mosaicKernelG 1.1","mosaicKernelRB 0.9","mosaicChromaFill 1.0","mosaicFillSupport 0.3","mosaicTetra 2.0",
-                "mosaicNativeFlatScale 1.5","mosaicNativeClamp 1.0","mosaicNativeNightKernelScale 0.8","mosaicNativeNightEdgeScale 0.5"})
+                "mosaicNativeFlatScale 1.5","mosaicNativeClamp 1.0","mosaicNativeNightKernelScale 0.8","mosaicNativeNightEdgeScale 0.5",
+                "mosaicTetraNightKernelScale 0.75","mosaicTetraNightEdgeScale 0.4","mosaicTetraNightFlatScale 1.5"})
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
         // the page: Hybrid -> Merge -> Mosaic without remosaic; XML defaults = worker defaults (P34: the native merge for Quad with
         // window 3 full, kernel scale 0.7, edge scale 0.6, flat-area kernel x2.4, eigenvalue clamp, ks 1 / 0.85, no fill; P35: Tetra
@@ -318,6 +323,7 @@ public class HybridSettingsTest {
         assertArrayEquals(new CharSequence[]{"0","1","2"},clamp.getEntryValues());
         assertNotNull(page.findPreference("pref_lmc_hybrid_mosaic_native_flat_scale"));
         assertNull(page.findPreference("pref_lmc_hybrid_mosaic_native_night_kernel_scale"));
+        assertNull(page.findPreference("pref_lmc_hybrid_mosaic_tetra_night_kernel_scale"));
         prefs.edit().clear().commit();
         settings=inflate();
         assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_path","?"));
@@ -333,6 +339,7 @@ public class HybridSettingsTest {
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
         assertFalse(tuning,tuning.contains("mosaicWindowFull"));
         assertFalse(tuning,tuning.contains("mosaicNativeNight"));
+        assertFalse(tuning,tuning.contains("mosaicTetraNight"));
     }
 
     @Test public void migrationMovesHybridKeysCopiesSharedKnobsAndKeepsTheEffectiveRoute() {

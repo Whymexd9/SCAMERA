@@ -306,6 +306,15 @@ struct HybridTuning {
     // guide (no daylight noise damping) puts more of a dim scene on the texture kernels, and narrowed there the R / B blocks of the
     // Quad lattice show through (arena11, key 25: a chroma lattice ratio of 263 in texture against 13 for the split).
     float mosaicNativeNightKernelScale=1.f,mosaicNativeNightEdgeScale=0.6f;
+    // Tetra (block 4) at the 6.1 night key: kernel scale, edge scale and a multiplier on mosaicNativeFlatScale (0 = the Quad night keys /
+    // no multiplier; the flat product is clamped to 4). The Quad night point (kernel 1 / edge 0.6 / flat 2.4) lost 8-19 % of the 4-8 px
+    // band of the owner's real 10x Tetra bursts (vivo X200 Ultra, ISO 773 / 423 / key 28) against the split at 1/11-1/13 of its noise.
+    // Sweep (kernel 0.7-1, edge 0.4-0.6, flat 1.8-4; scratchpad qual/): the flat kernel buys back noise and the synthetic lattice
+    // without touching texture, the edge scale moves detail the most per lattice. Edge 0.4 with the flat kernel x4: 4-8 px band
+    // +19 / +8 / +13 % (0.87 / 0.86 / 0.88 of the split), noise 0.13 / 0.14 / 0.10 of the split's (was 0.08-0.09), flat phase
+    // amplitude <= 0.05 % (split 0.22-1.4 %); syn_b4 at device noise: background lattice ratio 13.9 (noise level; kernel 0.7 or edge
+    // 0.4 with kernel 0.9: 21-26), zone plates +0.2 dB, false colour -9 %, 4-8 px transfer +22 %.
+    float mosaicTetraNightKernelScale=1.f,mosaicTetraNightEdgeScale=0.4f,mosaicTetraNightFlatScale=1.6667f;
     int mosaicNativeClamp=2;     // P34: ArkCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
                                  // 1 per component as ArkCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
                                  // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split). Tetra (P35): the range in
@@ -411,7 +420,9 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
             ||set("mosaicNativeFlatScale",&t.mosaicNativeFlatScale)||set("mosaicNativeClamp",nullptr,&t.mosaicNativeClamp)
-            ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)||set("mosaicNativeAlongScale",&t.mosaicNativeAlongScale)
+            ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)
+            ||set("mosaicTetraNightKernelScale",&t.mosaicTetraNightKernelScale)||set("mosaicTetraNightEdgeScale",&t.mosaicTetraNightEdgeScale)
+            ||set("mosaicTetraNightFlatScale",&t.mosaicTetraNightFlatScale)||set("mosaicNativeAlongScale",&t.mosaicNativeAlongScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
@@ -4408,10 +4419,15 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const bool night61=key61<=tune.s61MaxKey,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
     const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&(night61||handheld61));
     HybridMosaicNative nativeNight; // P34: the native kernel scale at night (mosaicNativeNightKernelScale)
-    if(native&&night61&&tune.mosaicNativeNightKernelScale>0.f&&tune.mosaicNativeNightKernelScale!=native->kernelScale){
-        nativeNight=*native;nativeNight.kernelScale=std::clamp(tune.mosaicNativeNightKernelScale,0.1f,4.f);native=&nativeNight;
-        report("HYBRID KERNEL: native mosaic at night (key "+std::to_string(key61)+"): kernel scale "+std::to_string(nativeNight.kernelScale)
-            +", edge scale "+std::to_string(tune.mosaicNativeNightEdgeScale));
+    // Tetra (4x4 colour blocks) has its own night point (mosaicTetraNight*; 0 = the Quad keys above); Quad is unchanged
+    const bool tetraNight=native&&night61&&native->block==4;
+    const float nightKs=tetraNight&&tune.mosaicTetraNightKernelScale>0.f?tune.mosaicTetraNightKernelScale:tune.mosaicNativeNightKernelScale;
+    const float nightEs=tetraNight&&tune.mosaicTetraNightEdgeScale>0.f?tune.mosaicTetraNightEdgeScale:tune.mosaicNativeNightEdgeScale;
+    const float flatScale=tetraNight&&tune.mosaicTetraNightFlatScale>0.f?tune.mosaicNativeFlatScale*tune.mosaicTetraNightFlatScale:tune.mosaicNativeFlatScale;
+    if(native&&night61&&nightKs>0.f&&nightKs!=native->kernelScale){
+        nativeNight=*native;nativeNight.kernelScale=std::clamp(nightKs,0.1f,4.f);native=&nativeNight;
+        report("HYBRID KERNEL: native mosaic at night (key "+std::to_string(key61)+(tetraNight?", Tetra":"")+"): kernel scale "
+            +std::to_string(nativeNight.kernelScale)+", edge scale "+std::to_string(nightEs)+", flat kernel x"+std::to_string(std::clamp(flatScale,0.25f,4.f)));
     }
     const int gridOut=fineGridRefused?1:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     if(!sabre61&&gridOut==1&&tune.dayKernelScale>0.f&&tune.dayKernelScale!=1.f&&key61>tune.s61MaxKey){
@@ -4430,14 +4446,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float ks=std::max(tune.kernelScale,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
         // P34: the native path's night edge scale (mosaicNativeNightEdgeScale)
-        const float esTune=native&&night61&&tune.mosaicNativeNightEdgeScale>0.f?tune.mosaicNativeNightEdgeScale:tune.mosaicEdgeScale;
+        const float esTune=native&&night61&&nightEs>0.f?nightEs:tune.mosaicEdgeScale;
         if((input.subFrames>1||native)&&esTune>0.f&&esTune!=1.f){
             // across the edge and the base kernel (p ~ 1 / sigma); along the edge and the blurred kernel of flat areas stay
             const float es=std::clamp(esTune,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
             report(std::string("HYBRID KERNEL: ")+(native?"native mosaic":"mosaic sub-frames")+", kernel across edges and base x"+std::to_string(es));
         }
-        if(native&&(tune.mosaicNativeFlatScale!=1.f||tune.mosaicNativeAlongScale!=1.f)){ // P34
-            const float fs=std::clamp(tune.mosaicNativeFlatScale,0.25f,4.f),as=std::clamp(tune.mosaicNativeAlongScale,0.25f,4.f);
+        if(native&&(flatScale!=1.f||tune.mosaicNativeAlongScale!=1.f)){ // P34
+            const float fs=std::clamp(flatScale,0.25f,4.f),as=std::clamp(tune.mosaicNativeAlongScale,0.25f,4.f);
             k61a[1]/=as;
             report("HYBRID KERNEL: native mosaic, along-edge kernel x"+std::to_string(as)+", flat kernel x"+std::to_string(fs));
         }
@@ -4446,7 +4462,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool dayNoise=!night61&&tune.localAlign>0;
         const float tn=dayNoise?tune.s61DayTensorNoise:tune.s61TensorNoise,gn=dayNoise?tune.s61DayGdNoise:tune.s61GdNoise;
         k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tn>0?tn:1.f};
-        if(native&&tune.mosaicNativeFlatScale!=1.f)k61b[0]/=std::clamp(tune.mosaicNativeFlatScale,0.25f,4.f); // P34
+        if(native&&flatScale!=1.f)k61b[0]/=std::clamp(flatScale,0.25f,4.f); // P34
         k61c={gn>0?gn:1.f,0,0,0};
         auto sigma=[&](float p){return std::to_string(ks/(p*std::sqrt(std::log(2.f))));};
         report("HYBRID KERNEL: Sabre 6.1 baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" key="+std::to_string(key)
