@@ -1,19 +1,20 @@
 precision highp float;
 precision highp sampler2D;
-// Colour noise removal, step 2 (runs four times with step 1, 2, 4, 8): 5x5 dilated bilateral
+// Colour noise removal, step 2 (NiceDenoise runs it twice, stepU 1 then 2): 5x5 dilated bilateral
 // filter of the colour at half resolution. A neighbour counts when its colour ratios differ by
 // no more than the colour noise expected at that brightness and its luminance is close; the
 // pixel keeps its own luminance. Averaging is done on the linear values, not on the ratios, so
 // dim pixels weigh less. The input may be signed (box means of the signed hybrid RGB, chromadn/down): the weights and
 // ratios use the values clamped at zero, the average itself the signed values, clamped once after averaging.
 uniform sampler2D InputBuffer;
-uniform int step;
+uniform int stepU;           // dilation of the 5x5 taps (named stepU: `step` is a GLSL built-in)
 uniform float strength;   // 0..1 blend towards the filtered colour
 uniform float tolerance;  // colour-noise multiplier (1 = three times the relative luminance noise)
 uniform float sigmaU;     // noise sigma of u = sqrt(Y + offsetC)
 uniform float offsetC;
 out vec4 Output;
 void main() {
+    int dil = max(stepU, 1); // unset uniform (0) = step 1
     ivec2 p = ivec2(gl_FragCoord.xy);
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
     vec3 c0 = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));     // own level and colour: clamped
@@ -23,7 +24,7 @@ void main() {
     float mass = 0.0;
     for (int j = -2; j <= 2; j++) {
         for (int i = -2; i <= 2; i++) {
-            vec3 cs = texelFetch(InputBuffer, clamp(p + ivec2(i, j) * step, ivec2(0), last), 0).rgb;
+            vec3 cs = texelFetch(InputBuffer, clamp(p + ivec2(i, j) * dil, ivec2(0), last), 0).rgb;
             vec3 c = max(cs, vec3(0.0));
             float y = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);
             vec3 d = c / y - q0;

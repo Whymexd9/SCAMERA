@@ -252,7 +252,7 @@ public final class NiceDenoise extends Node {
                 for (int pass = 0; pass < steps.length; pass++) {
                     glProg.useAssetProgram("chromadn/filter", false);
                     glProg.setTexture("InputBuffer", source);
-                    glProg.setVar("step", steps[pass]);
+                    glProg.setVar("stepU", steps[pass]);
                     glProg.setVar("strength", 1f);
                     glProg.setVar("tolerance", tolerance);
                     glProg.setVar("sigmaU", Math.max(noiseSigma, 0.0008f));
