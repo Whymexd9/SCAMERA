@@ -30,6 +30,8 @@ public final class ZoomController {
     private static volatile float shotResidual = 1f;
     private static boolean initialized;
     private static long lastSwitch;
+    /** P37: the module the zoom and residual were last set for (a different active module means it changed from outside). */
+    private static volatile String zoomSlot;
 
     private ZoomController() {}
 
@@ -81,6 +83,7 @@ public final class ZoomController {
             String active = ModuleRegistry.active();
             zoom = ModuleRegistry.zoom(active);
             residual = Math.max(1f, zoom / ModuleRegistry.nativeRatio(active));
+            zoomSlot = active;
             initialized = true;
             Log.d(TAG, "init slot=" + active + " zoom=" + zoom + " native=" + ModuleRegistry.nativeRatio(active) + " residual=" + residual);
         } catch (RuntimeException notReady) {
@@ -90,10 +93,11 @@ public final class ZoomController {
 
     /**
      * P37: the active module changed without a button tap or a zoom step (the camera was changed from outside, the
-     * module restored on start, a module's ratio edited in the settings): when the zoom is outside the active module's
-     * range [own ratio, next module's ratio) it goes to the module's own ratio, so the ruler and the next pinch / drag
-     * start there and not at 1x. Not within {@link #SWITCH_INTERVAL_MS} of a switch, when a throttled zoom may
-     * legitimately run ahead of the module.
+     * module restored on start, the other side's camera): the zoom goes to the module's own ratio. For the same module
+     * (e.g. its ratio edited in the settings) only a zoom outside the module's range [own ratio, next module's ratio) goes
+     * there. So the ruler, the residual crop and the next pinch / drag start from the module and not at 1x (a UW module
+     * kept the main camera's 1x and residual: label 1x, uncropped 0.6x picture). Not within {@link #SWITCH_INTERVAL_MS}
+     * of a switch, when a throttled zoom may legitimately run ahead of the module.
      */
     public static void syncToActive() {
         ensureInitialized();
@@ -108,14 +112,20 @@ public final class ZoomController {
                 if (r > base + ROUNDING) upper = Math.min(upper, r);
             }
             float z = zoom;
-            if (!inRange(z, base, upper)) {
+            if (needsSync(active, zoomSlot, z, base, upper)) {
                 zoom = base;
                 residual = Math.max(1f, base / ModuleRegistry.nativeRatio(active));
-                Log.d(TAG, "sync slot=" + active + " zoom " + z + " -> " + base + " residual=" + residual);
+                Log.d(TAG, "sync slot=" + active + " (was " + zoomSlot + ") zoom " + z + " -> " + base + " residual=" + residual);
             }
+            zoomSlot = active;
         } catch (RuntimeException notReady) {
             // Settings not available yet.
         }
+    }
+
+    /** P37: the zoom moves to the active module's own ratio: another module than the zoom was set for, or out of range. */
+    static boolean needsSync(String active, String zoomSlot, float z, float base, float upper) {
+        return !active.equals(zoomSlot) || !inRange(z, base, upper);
     }
 
     /** P37: a zoom belongs to a module with ratio {@code base} when below the next module's ratio {@code upper}. */
@@ -128,6 +138,7 @@ public final class ZoomController {
         initialized = true;
         zoom = ModuleRegistry.zoom(slot);
         residual = Math.max(1f, zoom / ModuleRegistry.nativeRatio(slot));
+        zoomSlot = slot;
         lastSwitch = android.os.SystemClock.elapsedRealtime();
     }
 
@@ -149,7 +160,9 @@ public final class ZoomController {
             active = target;
             Log.d(TAG, "zoom " + z + " -> module " + target);
         }
-        residual = Math.max(1f, z / ModuleRegistry.nativeRatio(ModuleRegistry.slots().contains(active) ? active : ModuleRegistry.active()));
+        String inEffect = ModuleRegistry.slots().contains(active) ? active : ModuleRegistry.active();
+        residual = Math.max(1f, z / ModuleRegistry.nativeRatio(inEffect));
+        zoomSlot = inEffect;
         return result;
     }
 
