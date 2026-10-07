@@ -69,39 +69,22 @@ public final class GainMapComputer {
     public static Result compute(Bitmap src, int down, float scale) {
         final int sw = src.getWidth();
         final int sh = src.getHeight();
-        final int gw = Math.max(1, sw / down);
-        final int gh = Math.max(1, sh / down);
         if (sw <= 0 || sh <= 0) {
             throw new IllegalArgumentException("Empty gain map: " + sw + "x" + sh);
         }
+        down = Math.max(1, down);
+        final int gw = Math.max(1, sw / down);
+        final int gh = Math.max(1, sh / down);
 
-        final int[] in = new int[sw * sh];
-        src.getPixels(in, 0, sw, 0, 0, sw, sh);
-
-        // Decode v -> logBoost over the fixed encode range, box-averaging in log
-        // domain (geometric mean of per-pixel gains - robust to outliers).
-        final float[] logBoost = new float[gw * gh];
+        // Two passes over one band of rows at a time: the range first, then the requantised map. A whole-frame int[] and
+        // float[] copy (the previous code) is ~400 MB of Java heap for a 50 MP map, which failed the encode with an
+        // OutOfMemoryError and silently left the photo SDR.
+        final int[] band = new int[sw * down];
+        final float[] row = new float[gw];
         float maxBoost = Float.NEGATIVE_INFINITY;
         for (int gy = 0; gy < gh; gy++) {
-            final int y0 = gy * down;
-            final int y1 = Math.min(y0 + down, sh);
-            for (int gx = 0; gx < gw; gx++) {
-                final int x0 = gx * down;
-                final int x1 = Math.min(x0 + down, sw);
-                float sum = 0f;
-                int count = 0;
-                for (int y = y0; y < y1; y++) {
-                    final int row = y * sw;
-                    for (int x = x0; x < x1; x++) {
-                        final int r = (in[row + x] >> 16) & 0xFF;
-                        sum += r;
-                        count++;
-                    }
-                }
-                final float lb = (sum / (count * 255f)) * scale;
-                logBoost[gy * gw + gx] = lb;
-                if (lb > maxBoost) maxBoost = lb;
-            }
+            boostRow(src, band, row, gy, down, sw, sh, gw, scale);
+            for (float lb : row) if (lb > maxBoost) maxBoost = lb;
         }
 
         // Gains are non-negative by construction (headroom >= 1), so the
@@ -115,16 +98,43 @@ public final class GainMapComputer {
         final float range = gMax - gMin;
 
         final Bitmap out = Bitmap.createBitmap(gw, gh, Bitmap.Config.ARGB_8888);
-        final int[] pixels = new int[gw * gh];
-        for (int i = 0; i < logBoost.length; i++) {
-            float vNorm = (logBoost[i] - gMin) / range;
-            if (vNorm < 0f) vNorm = 0f;
-            else if (vNorm > 1f) vNorm = 1f;
-            final int byteVal = Math.round(vNorm * 255.0f);
-            pixels[i] = (0xFF << 24) | (byteVal << 16) | (byteVal << 8) | byteVal;
+        final int[] pixels = new int[gw];
+        for (int gy = 0; gy < gh; gy++) {
+            boostRow(src, band, row, gy, down, sw, sh, gw, scale);
+            for (int gx = 0; gx < gw; gx++) {
+                float vNorm = (row[gx] - gMin) / range;
+                if (vNorm < 0f) vNorm = 0f;
+                else if (vNorm > 1f) vNorm = 1f;
+                final int byteVal = Math.round(vNorm * 255.0f);
+                pixels[gx] = (0xFF << 24) | (byteVal << 16) | (byteVal << 8) | byteVal;
+            }
+            out.setPixels(pixels, 0, gw, 0, gy, gw, 1);
         }
-        out.setPixels(pixels, 0, gw, 0, 0, gw, gh);
 
         return new Result(out, gMin, gMax);
+    }
+
+    /**
+     * Log2 boost of gain-map row {@code gy}: decodes v -> logBoost over the fixed encode range, box-averaging
+     * {@code down} x {@code down} source pixels in the log domain (geometric mean of the gains - robust to outliers).
+     */
+    private static void boostRow(Bitmap src, int[] band, float[] out, int gy, int down, int sw, int sh, int gw, float scale) {
+        final int y0 = gy * down;
+        final int rows = Math.min(down, sh - y0);
+        src.getPixels(band, 0, sw, 0, y0, sw, rows);
+        for (int gx = 0; gx < gw; gx++) {
+            final int x0 = gx * down;
+            final int x1 = Math.min(x0 + down, sw);
+            float sum = 0f;
+            int count = 0;
+            for (int y = 0; y < rows; y++) {
+                final int base = y * sw;
+                for (int x = x0; x < x1; x++) {
+                    sum += (band[base + x] >> 16) & 0xFF;
+                    count++;
+                }
+            }
+            out[gx] = (sum / (count * 255f)) * scale;
+        }
     }
 }
