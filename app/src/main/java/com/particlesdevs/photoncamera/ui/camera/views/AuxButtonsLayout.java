@@ -49,6 +49,7 @@ import java.util.Locale;
  * P25 look: one pill-shaped CARD with a LINE stroke (aux_container_background) under the bottom bar's zoom ruler, the
  * active lens filled with the camera accent (INK text), the others MUTED, three dots between them, decimal commas
  * («0,6×», «2,5×»). The gestures are unchanged (owner's answer 2): tap selects a lens, a horizontal drag zooms.
+ * The buttons are {@link LensButton}s: in landscape only their labels turn (P32).
  * <p>
  * This layout's functionality is dependent on {@link AuxButtonsModel} which is provided
  * through DataBinding {@link CustomBinding#setAuxButtonModel(AuxButtonsLayout, AuxButtonsModel)}.
@@ -206,36 +207,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     }
 
     private void addNewButton(String cameraId, String buttonText) {
-        Button b = new Button(getContext());
+        LensButton b = new LensButton(getContext());
         b.setLayoutParams(buttonParams);
-        float density = getResources().getDisplayMetrics().density;
-        b.setMinimumWidth(Math.round(48 * density));
-        b.setMinWidth(Math.round(48 * density));
-        b.setMinHeight(0);
-        b.setMinimumHeight(0);
-        int padding = Math.round(density * 9f);
-        b.setPadding(padding, 0, padding, 0);
-        b.setGravity(android.view.Gravity.CENTER);
-        b.setIncludeFontPadding(false);
-        b.setMaxLines(1);
-        b.setHorizontallyScrolling(false);
         b.setText(display(buttonText));
-        b.setRotation(labelRotation);
+        b.setLabelRotation(labelRotation);
         b.setContentDescription(Lang.t(getContext(), "Объектив ", "Lens ") + display(buttonText));
-        b.setTextSize(14);
-        int accent = com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(getContext());
-        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_selected},{}},
-                new int[]{com.particlesdevs.photoncamera.ui.settings.SettingsStyle.INK, com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED}));
-        android.graphics.drawable.GradientDrawable selected = new android.graphics.drawable.GradientDrawable();
-        selected.setColor(accent);
-        selected.setCornerRadius(100 * density);
-        android.graphics.drawable.StateListDrawable states=new android.graphics.drawable.StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_selected},selected);
-        states.addState(new int[]{},new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
-        b.setBackground(states);
-        b.setStateListAnimator(null);
-        b.setBackgroundTintList(null);
-        b.setTransformationMethod(null);
         int buttonId = View.generateViewId();
         b.setId(buttonId);
         this.auxButtonsMap.put(buttonId, cameraId);
@@ -262,12 +238,15 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     public void setDialRefresh(Runnable dialRefresh){this.dialRefresh=dialRefresh;}
     private void touchDial(){if(dialRefresh!=null)dialRefresh.run();}
 
+    /**
+     * P32: only the labels turn upright with the phone; the buttons and the selected pill keep their portrait shape (a
+     * turned button made the pill a tall capsule clipped flat by the strip).
+     */
     public void rotateLabels(int orientation, long duration) {
         labelRotation=orientation;
         for(int i=0;i<getChildCount();i++){
             View child=getChildAt(i);
-            float start=child.getRotation(),delta=((orientation-start+540)%360)-180;
-            child.animate().rotation(start+delta).setDuration(duration).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+            if(child instanceof LensButton)((LensButton)child).turnLabel(orientation,duration);
         }
     }
 
