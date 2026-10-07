@@ -60,17 +60,21 @@ int main(int argc,char** argv) {
             const auto warmStarted=std::chrono::steady_clock::now();
             std::thread creWarm,eglWarm;
             std::atomic<int> creReadyMs{-1};
+            // Joins whatever was started, on every way out (before the threads are started: a second thread the system refuses
+            // must not leave the first one joinable, std::terminate).
+            struct WarmJoin { std::thread& a;std::thread& b; ~WarmJoin(){if(a.joinable())a.join();if(b.joinable())b.join();} } warmJoin{creWarm,eglWarm};
             if(!std::getenv("SCAM_NO_WARMUP")){
-                if(motion)creWarm=std::thread([&]{
+                // A thread the system refuses costs only its warm-up (the first alignment and the merge initialise as before), never
+                // the shot.
+                if(motion)try{creWarm=std::thread([&]{
                     try{motion->warmUp();}catch(const std::exception&){}
                     creReadyMs=int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count());
-                });
-                eglWarm=std::thread([]{
+                });}catch(const std::exception&){}
+                try{eglWarm=std::thread([]{
                     EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
                     if(display!=EGL_NO_DISPLAY)eglInitialize(display,nullptr,nullptr); // loads the driver; the merge's own init is then a no-op
-                });
+                });}catch(const std::exception&){}
             }
-            struct WarmJoin { std::thread& a;std::thread& b; ~WarmJoin(){if(a.joinable())a.join();if(b.joinable())b.join();} } warmJoin{creWarm,eglWarm};
             auto joinCreWarm=[&]{
                 if(!creWarm.joinable())return;
                 creWarm.join();
