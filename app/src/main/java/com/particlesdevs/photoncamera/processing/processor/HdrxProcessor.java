@@ -601,6 +601,22 @@ public class HdrxProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
+        // Ultra HDR: the gain-map pass runs on the bitmap exactly
+        // as the pipeline produced it - the pass checks the base against the pipeline size. It used to run after the hybrid
+        // resize below, so every hybrid shot on the 2x grid with a 12/16/20 MP output failed the check and was saved as SDR,
+        // and the digital zoom crop was skipped with Ultra HDR on. Now the map follows the resize and the crop instead.
+        // Must run before the raw frame buffer is freed.
+        PostPipeline.GainMapRaw gm = null;
+        if (PhotonCamera.getSettings().ultraHdr) {
+            processingStage = "Ultra HDR gain map";
+            try {
+                gm = pipeline.RunHDRGainMap(jpegInput, processingParameters, img,
+                        GainMapComputer.SCALE_DOWN, GainMapComputer.SCALE);
+            } catch (Exception | OutOfMemoryError e) {
+                Log.e(TAG, "Ultra HDR gain-map pass failed, falling back to SDR JPEG", e);
+            }
+            Log.i(TAG, "Ultra HDR gain map " + (gm != null ? gm.w + "x" + gm.h + " for " + img.getWidth() + "x" + img.getHeight() : "not produced"));
+        }
         // SCAM HDR hybrid on the Sabre 2x grid: the whole pipeline (including sharpening) ran on the 2x image; the
         // final size (12/16/20 MP, or the sensor size) is produced here, keeping the bitmap's aspect and rotation.
         final Point hybridFinal = hybridOut != null ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastFinalSize : null;
@@ -615,24 +631,22 @@ public class HdrxProcessor extends ProcessorBase {
             } catch (Throwable resizeError) {
                 Log.e(TAG, "hybrid resize failed; keeping the 2x image", resizeError);
             }
-        }
-        final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
-        if (zoomCrop > 1.005f && !PhotonCamera.getSettings().ultraHdr) {
-            processingStage = "digital zoom crop";
-            img = com.particlesdevs.photoncamera.control.ZoomController.crop(img, zoomCrop);
-        }
-        processingStage = "image encoding";
-
-        PostPipeline.GainMapRaw gm = null;
-        if (PhotonCamera.getSettings().ultraHdr) {
-            // Must run before the raw frame buffer is freed.
-            try {
-                gm = pipeline.RunHDRGainMap(jpegInput, processingParameters, img,
-                        GainMapComputer.SCALE_DOWN, GainMapComputer.SCALE);
-            } catch (Exception | OutOfMemoryError e) {
-                Log.e(TAG, "Ultra HDR gain-map pass failed, falling back to SDR JPEG", e);
+            if (gm != null) {
+                try {
+                    gm = gm.resizedFor(img.getWidth(), img.getHeight());
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    Log.e(TAG, "Ultra HDR gain map resize failed, SDR JPEG", e);
+                    gm = null;
+                }
             }
         }
+        final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
+        if (zoomCrop > 1.005f) {
+            processingStage = "digital zoom crop";
+            img = com.particlesdevs.photoncamera.control.ZoomController.crop(img, zoomCrop);
+            if (gm != null) gm = gm.croppedBy(zoomCrop);
+        }
+        processingStage = "image encoding";
 
         final long tailFree = System.nanoTime(); // P33: where post_done -> encode goes (log only)
         // P33: the last reference of the shot arena unmaps it (~0.9 GB at 30 frames: 150-200 ms on the OPPO): up to 16 MP on a
