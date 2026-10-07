@@ -432,6 +432,19 @@ public final class SettingsMigration {
             e.putInt(ZSL_FRAMES_REV, 1);
             markOnly = true;
         }
+        // Frames in the mosaic merge 24 -> 30 (owner, 7 October 2026, with the N frames above: our Quad merge took 21 frames,
+        // ArkCam 30). A stored 24 is the former XML default and moves to 30; any other value is the user's and stays. Its own
+        // one-time marker, as the N frames' (the key has no legacy or SCAM HDR source to copy from): set in the first run
+        // whatever it finds, so a 24 chosen after this run is never moved.
+        if (!values.containsKey(MOSAIC_FRAMES_REV)) {
+            Object frames = values.get(LmcHybridKeys.PREFIX + "mosaic_frames");
+            if (frames != null && isNumber(frames, 24f)) {
+                ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_frames", frames instanceof String ? "30" : (Object) 30f);
+                changed = true;
+            }
+            e.putInt(MOSAIC_FRAMES_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
@@ -439,6 +452,8 @@ public final class SettingsMigration {
     private static final String DEFAULTS_REV = "pref_lmc_hybrid_defaults_rev";
     /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_zsl_frames (20) to 30. */
     static final String ZSL_FRAMES_REV = "pref_lmc_hybrid_zsl_frames_rev";
+    /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_mosaic_frames (24) to 30. */
+    static final String MOSAIC_FRAMES_REV = "pref_lmc_hybrid_mosaic_frames_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {

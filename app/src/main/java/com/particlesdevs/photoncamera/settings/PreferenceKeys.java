@@ -944,7 +944,8 @@ public class PreferenceKeys {
             {"hotSigma", "hot_sigma"}, {"hotBaseSigma", "hot_base_sigma"}, {"hotFrames", "hot_frames"},
             {"hotCross", "hot_cross"}, {"hotMaxLevel", "hot_max_level"}, {"hotMaxKey", "hot_max_key"},
             {"bentoInvalid", "bento_invalid"},
-            // P14 / P22: frames of a Quad / Tetra burst merged (4 / 16 sub-frames each; worker default 24), the kernel across
+            // P14 / P22: frames of a Quad / Tetra burst merged (4 / 16 sub-frames each; worker default 30 since 7 October 2026, was 24;
+            // SettingsMigration moves a stored 24 once), the kernel across
             // edges of the sub-frame merge (worker default 0.6), shared motion of a frame's sub-frames (worker default 1)
             {"mosaicFrames", "mosaic_frames"}, {"mosaicBlock", "mosaic_block"},
             {"mosaicEdgeScale", "mosaic_edge_scale"}, {"mosaicShare", "mosaic_share"},
