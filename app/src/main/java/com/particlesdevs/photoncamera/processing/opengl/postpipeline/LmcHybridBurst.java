@@ -130,13 +130,24 @@ public final class LmcHybridBurst implements NiceTransport {
             usable.add(f);
         }
         if (usable.isEmpty()) throw new IOException(Lang.t("Hybrid: ни одного пригодного RAW-кадра (", "Hybrid: no usable RAW frame (") + source.size() + Lang.t(" получено)", " received)"));
-        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("mosaic_start");
-        com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result mosaic =
-                com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(usable.get(0).buffer, width, height, width * 2,
-                        (black[0] + black[1] + black[2] + black[3]) / 4f, white, 8);
-        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("mosaic_done");
-        mosaicBlock = mosaic == null || !mosaic.confident ? 0 : mosaic.block;
-        if (mosaic != null) Log.i("NICE_HDR", "hybrid stream colour block: " + mosaic);
+        // P35: the stream's stored block (or a declared Quad / Tetra sensor mode) without the detector; a binned burst is another
+        // grid and is always measured.
+        final int knownBlock = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(
+                declaredSensorModeBlock());
+        if (knownBlock > 0) {
+            mosaicBlock = knownBlock;
+            Log.i("NICE_HDR", "hybrid stream colour block: " + knownBlock + " (stored for "
+                    + com.particlesdevs.photoncamera.processing.MosaicBlockStore.shotKey() + ", detector skipped)");
+        } else {
+            com.particlesdevs.photoncamera.processing.ShotTimeline.mark("mosaic_start");
+            com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result mosaic =
+                    com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(usable.get(0).buffer, width, height, width * 2,
+                            (black[0] + black[1] + black[2] + black[3]) / 4f, white, 8);
+            com.particlesdevs.photoncamera.processing.ShotTimeline.mark("mosaic_done");
+            mosaicBlock = mosaic == null || !mosaic.confident ? 0 : mosaic.block;
+            if (mosaic != null) Log.i("NICE_HDR", "hybrid stream colour block: " + mosaic);
+            if (p.rawBinning <= 1) com.particlesdevs.photoncamera.processing.MosaicBlockStore.observeShot(mosaic, "hybrid shot");
+        }
         // A mosaic's own sites already fill the sensor grid of the stream (the worker merges them on the 2x grid of its plain-Bayer
         // sub-frames): its output is the sensor grid.
         final boolean wants2x = !conservative && !"sensor".equals(PreferenceKeys.hybridOutputMode()) && mosaicBlock <= 1;
@@ -367,6 +378,16 @@ public final class LmcHybridBurst implements NiceTransport {
     }
 
     /** Worker memory of one more frame of a w x h stream (see {@link #STRIP_BYTES_PER_COLUMN}); a mosaic adds its worker copy. */
+    /** P35: block of the active module's declared ISZ sensor mode (5 Quad -> 2, 7 Tetra -> 4), else 0. */
+    private static int declaredSensorModeBlock() {
+        try {
+            int mode = com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
+            return mode == 7 ? 4 : mode == 5 ? 2 : 0;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
     static double perFrameBytes(int w, int h, int mosaicBlock) {
         return perFrameBytes(w, h, mosaicBlock, false);
     }

@@ -689,6 +689,14 @@ public class HdrxProcessor extends ProcessorBase {
      */
     private static boolean niceMosaicStream(java.util.List<ImageFrame> images, Parameters p) {
         if (PreferenceKeys.niceMosaicDeclared()) return true;
+        // P35: the stream's stored block decides without the detector (a binned burst is always measured).
+        final int stored = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
+        if (stored > 0) {
+            Log.i("NICE_HDR", "SCAM HDR mosaic: stored stream colour block " + stored + " for "
+                    + com.particlesdevs.photoncamera.processing.MosaicBlockStore.shotKey()
+                    + (stored > 1 ? "" : "; mosaic mode ignored, plain Bayer") + " (detector skipped)");
+            return stored > 1;
+        }
         for (ImageFrame f : images) {
             if (f.buffer == null || f.buffer.capacity() < (long) f.width * f.height * 2) continue;
             float black = (p.blackLevel[0] + p.blackLevel[1] + p.blackLevel[2] + p.blackLevel[3]) / 4f;
@@ -697,6 +705,7 @@ public class HdrxProcessor extends ProcessorBase {
                             black, p.whiteLevel, 8);
             boolean mosaic = r.confident && r.block > 1;
             Log.i("NICE_HDR", "SCAM HDR mosaic: stream colour block " + r + (mosaic ? "" : "; mosaic mode ignored, plain Bayer"));
+            if (p.rawBinning <= 1) com.particlesdevs.photoncamera.processing.MosaicBlockStore.observeShot(r, "SCAM HDR shot");
             return mosaic;
         }
         return false;
