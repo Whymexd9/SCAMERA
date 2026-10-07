@@ -14,7 +14,10 @@ Checks:
 - chromadn/despeckle: the signed field keeps its mean colour (|bias| < 2 % of the red), output finite;
 - chromadn/down (NLM colour stage): the box mean of the signed values (no lift), as numpy;
 - ark/low colour mode: the box mean of the signed values (no lift); DETAIL_REF 1 keeps its per-pixel clamp, the box mean
-  of min(ae * Y(max(rgb, 0)), 1), as ark/combine's detail luminance.
+  of min(ae * Y(max(rgb, 0)), 1), as ark/combine's detail luminance;
+- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the denoise) is the former per-tap clamp, bit
+  for bit, also for the negative taps of a colour outside sRGB; signedColourU 1 (signed hybrid input) clamps after the
+  interpolation (the red of a dark teal field is not lifted); non-negative taps give the same output in both modes.
 Usage: check_signed_rgb.py [--shaders DIR] [--report]
 """
 from pathlib import Path
@@ -122,6 +125,57 @@ def nicergb(raw, signed):
         t.release(); g.release(); p.release()
 
 
+def combine(colour, signed):
+    """ark/combine on a 2x reduced colour source (fU = colourFU = 2), no detail, identity colour chain."""
+    cw, ch = colour.shape[1], colour.shape[0]
+    rgba = np.concatenate([colour, np.ones((ch, cw, 1))], -1).astype(np.float32)
+    fused = np.zeros((ch, cw, 4), np.float32)
+    fused[..., 0] = 0.45
+    full = np.full((2 * ch, 2 * cw, 4), 0.05, np.float32)
+    texs = {'InputBuffer': texture(full), 'GainMap': texture(np.ones((1, 1, 4), np.float32), linear=True),
+            'ArkLow': texture(rgba), 'ArkColour': texture(rgba), 'ArkFused': texture(fused), 'ArkDetailRef': texture(rgba),
+            'ArkLumaS': texture(rgba)}
+    p = program('ark/combine.glsl')
+    try:
+        return draw(p, (2 * cw, 2 * ch), texs,
+                    {'sensorToIntermediate': IDENT, 'intermediateToSRGB': IDENT, 'neutralPointU': (1.0, 1.0, 1.0),
+                     'inScaleU': 1.0, 'fU': 2, 'colourFU': 2, 'aeU': 1.0, 'clipU': 1.0, 'toeU': 0.05, 'gammaInvU': 1 / 2.2,
+                     'macroU': 1.1, 'vibU': (0.0, 0.4, 0.2), 'detailGainU': 0.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1,
+                     'ditherU': 0, 'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0,
+                     'hlWhiteU': 0.15, 'signedColourU': signed}, dtype='f4')
+    finally:
+        p.release()
+        for x in texs.values():
+            x.release()
+
+
+def combine_checks():
+    fails = []
+    rng = np.random.default_rng(11)
+    cw, ch = 48, 24
+    colour = np.empty((ch, cw, 3))
+    colour[:, :cw // 2] = (-0.02, 0.10, 0.12)            # deep cyan, R below zero after the sRGB matrix
+    colour[:, cw // 2:] = (0.002, 0.012, 0.010)          # dark teal, R at its noise
+    colour += rng.normal(0.0, [0.004, 0.003, 0.003], (ch, cw, 3))
+    s0 = combine(colour, 0)
+    s0c = combine(np.maximum(colour, 0), 0)
+    s1 = combine(colour, 1)
+    a0 = combine(np.abs(colour), 0)
+    a1 = combine(np.abs(colour), 1)
+    teal = (slice(4, 2 * ch - 4), slice(cw + 8, 2 * cw - 8))
+    lift = s0[teal][..., 0].mean() / max(s1[teal][..., 0].mean(), 1e-9)
+    if REPORT:
+        print('ark/combine: per tap |raw - pre-clamped| %.2e, non-negative taps |signed - per tap| %.2e, '
+              'dark teal red per tap / signed x%.3f' % (np.abs(s0 - s0c).max(), np.abs(a1 - a0).max(), lift))
+    if not np.array_equal(s0, s0c):
+        fails.append('ark/combine signedColourU 0: not the per-tap clamp of before (max diff %.2e)' % np.abs(s0 - s0c).max())
+    if not np.array_equal(a0, a1):
+        fails.append('ark/combine: non-negative taps differ between signedColourU 0 and 1 (max diff %.2e)' % np.abs(a1 - a0).max())
+    if not lift > 1.1:
+        fails.append('ark/combine signedColourU 1: the red of negative taps is still lifted (per tap / signed x%.3f)' % lift)
+    return fails
+
+
 def main():
     fails = []
     raw, mean = scene()
@@ -204,6 +258,11 @@ def main():
     if err > 1e-4:
         fails.append('ark/low DETAIL_REF: not the box mean of min(ae Y(max(rgb, 0)), 1) (max error %.2e)' % err)
     t.release(); g.release()
+
+    # ---- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, hybrid after the denoise) clamps per tap as before, so
+    # the colour matrix's negative taps (a saturated colour outside sRGB) change nothing; 1 (signed hybrid input) clamps
+    # after the interpolation and no longer lifts a channel near zero; for non-negative taps both are the same.
+    fails += combine_checks()
 
     if fails:
         for f in fails:

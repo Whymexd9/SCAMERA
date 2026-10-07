@@ -289,6 +289,7 @@ public final class VivoNiceRgb extends Node {
             glProg.setVar("whitePoint",p.mParameters.whitePoint);
             final boolean signed=signedInput(hybrid);
             glProg.setVar("signedU",signed?1:0);
+            p.signedRgb=signed;
             if(perChannel){
                 glProg.setVar("hlModeU",1);
                 glProg.setVar("clipLoU",cc.lo);glProg.setVar("clipHiU",cc.hi);

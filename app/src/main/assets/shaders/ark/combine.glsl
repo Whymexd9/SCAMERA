@@ -21,9 +21,11 @@ precision highp sampler2D;
 //     compression scaling compares against it in the ae domain (x cbrt(ae / m)).
 //  4. display: pure power 1/gamma, film toe below 0.15, optional IGN dither [:1805-1843].
 // Integer grid arithmetic everywhere (the output reaches 8192 px; float pixel coordinates lose precision on Adreno).
-// The B-spline colour is clamped at zero after the interpolation, not per tap: the colour source holds box means of the
-// signed merge (LMC hybrid without the denoise, nicergb signedU), and a clamp per tap lifted the mean of a channel near
-// zero (red mottling of a dark teal curtain under the shadow lift). Where every tap is >= 0 nothing changes.
+// signedColourU 1 (the working RGB is signed: LMC hybrid without the denoise, nicergb signedU): the B-spline colour is
+// clamped at zero after the interpolation, not per tap - the colour source holds box means of the signed merge, and a
+// clamp per tap lifted the mean of a channel near zero (red mottling of a dark teal curtain under the shadow lift).
+// 0 (unset: SCAM HDR, the hybrid after the denoise): per tap as before. The taps can be negative there as well (a
+// saturated colour outside sRGB after the colour matrix); clamping those after the interpolation would move colour edges.
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -38,6 +40,7 @@ uniform vec3 neutralPointU;         // unset -> 1
 uniform float inScaleU;             // <= 0 -> 1
 uniform int fU;                     // arkLow box factor (2 at 1x, 4 on the 2x grid; 1 = same size, kernel bypass); <= 0 -> 2
 uniform int colourFU;               // box factor of the colour source; <= 0 -> fU
+uniform int signedColourU;          // 1: B-spline colour clamped after the interpolation (signed input); 0: per tap
 uniform float aeU;                  // <= 0 -> 1
 uniform float clipU;                // data ceiling; <= 0 -> 1
 uniform float toeU;                 // ACES toe; <= 0 -> 0.05
@@ -222,10 +225,11 @@ void main() {
         for (int dy = -1; dy <= 2; dy++) {
             for (int dx = -1; dx <= 2; dx++) {
                 ivec2 p = clamp(ivec2(bx + dx, by + dy), ivec2(0), lastColour);
-                orig += finiteTap(texelFetch(ArkColour, p, 0).rgb) * (wx[dx + 1] * wy[dy + 1]);
+                vec3 tap = texelFetch(ArkColour, p, 0).rgb;
+                orig += (signedColourU != 0 ? finiteTap(tap) : sanitize(tap)) * (wx[dx + 1] * wy[dy + 1]);
             }
         }
-        orig = max(orig, vec3(0.0));
+        if (signedColourU != 0) orig = max(orig, vec3(0.0));
     }
 
     // === 2. ACES inversion and base gain [:1500-1509] ===
