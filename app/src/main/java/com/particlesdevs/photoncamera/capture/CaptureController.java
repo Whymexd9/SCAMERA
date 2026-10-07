@@ -394,6 +394,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean mLiveRawRejected;
     private final PreviewFrameMatcher<Image, TotalCaptureResult> mLiveMetadata =
             new PreviewFrameMatcher<>(this::onMatchedLiveRaw, Image::close);
+    /** P36: the session generation whose first capture start armed the viewfinder transform. */
+    private int mTransformArmedGeneration = -1;
     /** P38: the last NICE-routed shot flushed the HAL queue before its series (picks the default re-arm). */
     private volatile boolean mLastShotFlushed;
     /** P38: a flush re-arm waits for the first repeating-preview result after the series (until the deadline). */
@@ -607,6 +609,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
+                // P36: the first frame of this session: the viewfinder takes the camera's orientation / mirror from it.
+                if (mTransformArmedGeneration != mConfiguredSessionGeneration) {
+                    mTransformArmedGeneration = mConfiguredSessionGeneration;
+                    if (mTextureView != null) mTextureView.armPendingTransform(timestamp);
+                }
                 if (mNativeRawPslCapture || mNiceRouted || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, false);
             }
         }
@@ -1460,17 +1467,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             matrix.postRotate(180, centerX, centerY);
         }*/
         //mTextureView.setTransform(matrix);
-        mTextureView.setOrientation(mSensorOrientation+90);
         updatePreviewMirror();
     }
 
+    /**
+     * Orientation and mirror of the viewfinder for the camera being opened. P36: they apply from the new camera's first
+     * frame (GLPreview / MainRenderer), not to the previous camera's frame still on screen.
+     */
     private void updatePreviewMirror() {
         if (mTextureView == null || mCameraCharacteristics == null) {
             return;
         }
         Integer facing = mCameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
         boolean mirror = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
-        mTextureView.setMirror(mirror);
+        mTextureView.setViewfinderTransform(mSensorOrientation + 90, mirror);
     }
 
     private ArrayList<Size> getAllTargets(){
