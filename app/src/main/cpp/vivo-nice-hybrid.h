@@ -5161,7 +5161,8 @@ inline std::array<float,64> hybridMosaicGains(const HybridInput& in,const std::v
 // signs ramps to 1 over `tau` x gate, the swing |p0| + |p1| over 0.75..1.25 gate (smoothstep). A grating (p1 ~ -p0) and the two
 // sides of an edge pass as before; a pair with one side near zero counts in part (the callers' thresholds make up for that).
 inline float mosaicSoftSignChange(double p0,double p1,double gate,double tau){
-    if(!(gate>0.0))return 0.f;
+    // a NaN deviation counts as no change, as in the hard test (p0 p1 < 0 is false); a NaN p1 alone would give a NaN weight
+    if(!(gate>0.0)||std::isnan(p0)||std::isnan(p1))return 0.f;
     const double opp=std::max(0.0,std::min(p0,-p1))+std::max(0.0,std::min(-p0,p1));
     if(opp<=0.0)return 0.f;
     auto ss=[](double x){x=std::clamp(x,0.0,1.0);return x*x*(3.0-2.0*x);};
