@@ -11,6 +11,8 @@
 #include <functional>
 #include <sstream>
 #include <iomanip>
+#include <cstdio>
+#include <stdio_ext.h> // __fpending (bionic API 23+)
 
 // Minimal public QNN ABI prefixes, restricted to the hash-checked PD2454
 // libraries and Core 2.18.0 / System 1.1.0. Runtime files come from APK assets.
@@ -52,7 +54,16 @@ static_assert(sizeof(TensorV1)==112 && offsetof(TensorV1,dimensions)==80 && offs
 static_assert(sizeof(Tensor)==144,"QNN tensor union storage");
 static_assert(offsetof(BinaryV1Prefix,graph)==120 && offsetof(BinaryV3Prefix,graph)==96,"QNN metadata ABI");
 inline void check(Error e,const char* stage) { if(e) throw std::runtime_error(std::string(stage)+" status="+std::to_string(e)); }
-inline void log(const std::string& s) { std::cout<<s<<std::endl; }
+// A vendor library may print to stdout without a trailing newline (the CRE's first detect, on the warm-up thread: "Failed to
+// load symbol  ntiLegacyMemMgrCreate"), and the next line of the worker then ran into it. Each own line is written and flushed
+// whole while holding stdout's lock (std::cout goes through stdio's stdout and endl flushes it), so bytes still pending in
+// stdout's buffer when a line starts are someone else's: they are ended with a newline first. The vendor text stays as printed.
+inline void log(const std::string& s) {
+    flockfile(stdout);
+    if(__fpending(stdout))std::putc('\n',stdout);
+    std::cout<<s<<std::endl;
+    funlockfile(stdout);
+}
 inline std::vector<uint8_t> read(const std::string& p) {
     std::ifstream f(p,std::ios::binary|std::ios::ate);
     if(!f) throw std::runtime_error("Cannot read "+p);

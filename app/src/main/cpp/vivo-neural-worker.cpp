@@ -241,7 +241,7 @@ int main(int argc,char** argv) {
         }
         if(argc==3 && std::string(argv[1])=="--nice-tone-check") {
             alarm(360);
-            vivo_nice::probeTone(argv[2],[](const std::string& line){std::cout<<line<<std::endl;});
+            vivo_nice::probeTone(argv[2],[](const std::string& line){vivo_nn::log(line);});
             return 0;
         }
         if(argc==5 && std::string(argv[1])=="--nice-forward") {
