@@ -263,22 +263,23 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
     }
 
-    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void nativeMosaicKeysReachTheTuningFileAndAreNotOnTheScreen() {
-        checkNativeMosaicKeys();
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge() {
+        nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge("Склейка мозаики","Нативная мозаика (по умолчанию)","Диапазон ядра");
     }
 
     /** The same on an English system (i18n). */
-    @Test public void nativeMosaicKeysReachTheTuningFileAndAreNotOnTheScreenInEnglish() {
-        checkNativeMosaicKeys();
+    @Test public void nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMergeInEnglish() {
+        nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge("Mosaic merge","Native mosaic (default)","Kernel range");
     }
 
-    private void checkNativeMosaicKeys() {
-        // P29: unset, nothing is written (worker defaults: mosaicPath 0 = the sub-frame split)
+    private void nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge(String pathTitle,String nativeEntry,String clampTitle) {
+        // P29 / P34: unset, nothing is written (worker defaults: mosaicPath 1 = the native merge for Quad, kernel scale 0.7, edge
+        // scale 0.6, flat-area kernel x2.4, eigenvalue clamp; Tetra on the split)
         String[] keys={"mosaicPath","mosaicWindow","mosaicWindowFull","mosaicKernelScale","mosaicNativeEdgeScale","mosaicKernelG",
-                "mosaicKernelRB","mosaicChromaFill","mosaicFillSupport","mosaicTetra"};
+                "mosaicKernelRB","mosaicChromaFill","mosaicFillSupport","mosaicTetra","mosaicNativeFlatScale","mosaicNativeClamp",
+                "mosaicNativeNightKernelScale","mosaicNativeNightEdgeScale"};
         String tuning=PreferenceKeys.hybridTuningText();
         for(String k:keys)assertFalse(tuning,tuning.contains(k+" "));
-        // stored values (a config, a developer) still reach the worker
         manager.set("default_scope","pref_lmc_hybrid_mosaic_path","1");
         manager.set("default_scope","pref_lmc_hybrid_mosaic_window","2");
         manager.set("default_scope","pref_lmc_hybrid_mosaic_window_full",false);
@@ -289,26 +290,46 @@ public class HybridSettingsTest {
         manager.set("default_scope","pref_lmc_hybrid_mosaic_chroma_fill","1");
         manager.set("default_scope","pref_lmc_hybrid_mosaic_fill_support","0.3");
         manager.set("default_scope","pref_lmc_hybrid_mosaic_tetra","1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_native_flat_scale","1.5");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_native_clamp","1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_native_night_kernel_scale","0.8"); // dev keys without a row
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_native_night_edge_scale","0.5");
         tuning=PreferenceKeys.hybridTuningText();
         for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 2.0","mosaicWindowFull 0","mosaicKernelScale 0.75","mosaicNativeEdgeScale 0.3",
-                "mosaicKernelG 1.1","mosaicKernelRB 0.9","mosaicChromaFill 1.0","mosaicFillSupport 0.3","mosaicTetra 1.0"})
+                "mosaicKernelG 1.1","mosaicKernelRB 0.9","mosaicChromaFill 1.0","mosaicFillSupport 0.3","mosaicTetra 1.0",
+                "mosaicNativeFlatScale 1.5","mosaicNativeClamp 1.0","mosaicNativeNightKernelScale 0.8","mosaicNativeNightEdgeScale 0.5"})
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
-        // The screen (Hybrid -> Merge -> Mosaic without remosaic) has the split's rows only: the native merge was x8 slower than the
-        // split on the OPPO (44-57 s against 7 s), owner 2026-10-07. Opening it stores nothing for the native keys: the worker
-        // defaults (the split) apply.
+        // the page: Hybrid -> Merge -> Mosaic without remosaic; XML defaults = worker defaults (P34: the native merge for Quad with
+        // window 3 full, kernel scale 0.7, edge scale 0.6, flat-area kernel x2.4, eigenvalue clamp, ks 1 / 0.85, no fill; Tetra on
+        // the split)
         PreferenceScreen settings=inflate(),merge=settings.findPreference("lmc_hybrid_merge_screen");
         PreferenceScreen page=merge.findPreference("lmc_hybrid_mosaic_screen");
         assertNotNull(page);
-        assertNotNull(page.findPreference("pref_lmc_hybrid_mosaic_frames"));
-        assertNotNull(page.findPreference("pref_lmc_hybrid_mosaic_edge_scale"));
-        assertNull(page.findPreference("pref_lmc_hybrid_mosaic_path"));
-        assertNull(page.findPreference("lmc_hybrid_mosaic_native_category"));
-        assertNull(page.findPreference("pref_lmc_hybrid_mosaic_tetra"));
+        ListPreference path=page.findPreference("pref_lmc_hybrid_mosaic_path");
+        assertEquals(pathTitle,path.getTitle().toString());
+        assertArrayEquals(new CharSequence[]{"0","1"},path.getEntryValues());
+        assertEquals(nativeEntry,path.getEntries()[1].toString());
+        ListPreference tetra=page.findPreference("pref_lmc_hybrid_mosaic_tetra");
+        assertArrayEquals(new CharSequence[]{"0","2","1"},tetra.getEntryValues());
+        assertNotNull(page.findPreference("lmc_hybrid_mosaic_native_category"));
+        ListPreference clamp=page.findPreference("pref_lmc_hybrid_mosaic_native_clamp");
+        assertEquals(clampTitle,clamp.getTitle().toString());
+        assertArrayEquals(new CharSequence[]{"0","1","2"},clamp.getEntryValues());
+        assertNotNull(page.findPreference("pref_lmc_hybrid_mosaic_native_flat_scale"));
+        assertNull(page.findPreference("pref_lmc_hybrid_mosaic_native_night_kernel_scale"));
         prefs.edit().clear().commit();
         settings=inflate();
-        assertFalse(prefs.contains("pref_lmc_hybrid_mosaic_path"));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_path","?"));
+        assertTrue(prefs.getBoolean("pref_lmc_hybrid_mosaic_window_full",false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_tetra","?"));
+        assertEquals("2",prefs.getString("pref_lmc_hybrid_mosaic_native_clamp","?"));
         tuning=PreferenceKeys.hybridTuningText();
-        for(String k:keys)assertFalse(tuning,tuning.contains(k+" "));
+        for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 3.0","mosaicKernelScale 0.7","mosaicNativeEdgeScale 0.6","mosaicKernelG 1.0",
+                "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 0.0","mosaicNativeFlatScale 2.4",
+                "mosaicNativeClamp 2.0"})
+            assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
+        assertFalse(tuning,tuning.contains("mosaicWindowFull"));
+        assertFalse(tuning,tuning.contains("mosaicNativeNight"));
     }
 
     @Test public void migrationMovesHybridKeysCopiesSharedKnobsAndKeepsTheEffectiveRoute() {
@@ -414,6 +435,38 @@ public class HybridSettingsTest {
         prefs.edit().putString("pref_lmc_hybrid_cdm","0.1").putInt("pref_lmc_hybrid_defaults_rev",4).commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
         assertEquals("0.1",prefs.getString("pref_lmc_hybrid_cdm",""));
+        // revision 6 (P34): the former XML defaults of a P29 build (mosaic merge "0" = the split, kernel scale 1) move to the native
+        // merge with kernel scale 0.7; chosen values stay, and a choice made after the revision is kept
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",5)
+                .putString("pref_lmc_hybrid_mosaic_path","0").putString("pref_lmc_hybrid_mosaic_kernel_scale","1").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        assertEquals(0.7f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale","")),1e-6f);
+        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_path","0").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",5)
+                .putString("pref_lmc_hybrid_mosaic_kernel_scale","0.5").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0.5",prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale",""));
+        // an upgrade without the mosaic keys stored (no rows before P34): the run marks revision 6, so the split and kernel scale 1
+        // chosen after it (the screen first stored "1" / 0.7) stay on every later run
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",5).commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_path","0").putString("pref_lmc_hybrid_mosaic_kernel_scale","1").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale",""));
+        // a run that moves an older revision's value keeps its own marker; the next run marks 6
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",4)
+                .putString("pref_lmc_hybrid_cdm","0.07").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(5,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {

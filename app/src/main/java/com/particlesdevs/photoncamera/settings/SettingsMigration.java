@@ -314,10 +314,12 @@ public final class SettingsMigration {
         // ArkCam on the Oppo; a stored 1 is the old XML default written by the first round-5 build, not a user choice.
         Object rev = values.get(DEFAULTS_REV);
         int revision = rev instanceof Integer ? (Integer) rev : 0;
+        boolean revisionStored = false, markOnly = false; // a revision block below wrote its marker / only the marker moves
         Object detail = values.get(LmcHybridKeys.PREFIX + "ark_detail_gain");
         if (detail != null && revision < 2) {
             if (isNumber(detail, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
             e.putInt(DEFAULTS_REV, 2);
+            revisionStored = true;
             changed = true;
         }
         // Defaults revision 3 (4 October 2026): the hybrid sharpening is ArkCam's own (sharp_mode "ark", ArkLumaSharpen) and
@@ -340,6 +342,7 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 3);
+                revisionStored = true;
                 changed = true;
             }
         }
@@ -357,6 +360,7 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 4);
+                revisionStored = true;
                 changed = true;
             }
         }
@@ -367,10 +371,38 @@ public final class SettingsMigration {
             if (cdm != null) {
                 if (isNumber(cdm, 0.07f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "cdm", cdm instanceof String ? PreferenceNumber.format(0.2f, true) : (Object) 0.2f);
                 e.putInt(DEFAULTS_REV, 5);
+                revisionStored = true;
                 changed = true;
             }
         }
-        if (changed) e.commit();
+        // Defaults revision 6 (7 October 2026, P34): Quad streams take the native mosaic merge (2x faster than the split, +11-12 %
+        // detail at the same noise) with kernel scale 0.7; the former XML defaults a P29 build stored (merge "0", kernel scale 1)
+        // move along, a chosen value stays.
+        if (revision < 6) {
+            boolean touched = false;
+            Object path = values.get(LmcHybridKeys.PREFIX + "mosaic_path");
+            if (path != null) {
+                if (isNumber(path, 0f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_path", path instanceof String ? "1" : (Object) 1f);
+                touched = true;
+            }
+            Object scale = values.get(LmcHybridKeys.PREFIX + "mosaic_kernel_scale");
+            if (scale != null) {
+                if (isNumber(scale, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_kernel_scale", scale instanceof String ? PreferenceNumber.format(0.7f, true) : (Object) 0.7f);
+                touched = true;
+            }
+            if (touched) {
+                e.putInt(DEFAULTS_REV, 6);
+                changed = true;
+            } else if (!revisionStored && written.isEmpty()) {
+                // Neither key stored yet (they had no rows before P34): the rows store today's defaults ("1", 0.7) when the screen
+                // is first opened, so a "0" or a 1 stored after this run is the user's choice and must not move on a later run.
+                // Mark the revision now; a run that copied legacy keys or stored an older revision marks it on the next run (which
+                // sees those values). The marker alone is not reported as a change.
+                e.putInt(DEFAULTS_REV, 6);
+                markOnly = true;
+            }
+        }
+        if (changed || markOnly) e.commit();
         return changed;
     }
 
