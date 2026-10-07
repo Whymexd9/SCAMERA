@@ -37,18 +37,6 @@ public final class SettingsAvailability {
             if (any(key, "pref_lmc_hybrid_rawca_red", "pref_lmc_hybrid_rawca_blue") && auto) return Lang.t("Только без автоподбора.", "Only when “Auto detect” is off.");
             if (key.equals("pref_lmc_hybrid_rawca_passes") && !auto) return Lang.t("Только с автоподбором.", "Only when “Auto detect” is on.");
         }
-        // P29 mosaic merge: the native rows follow the merge list, the split's edge kernel only acts on the split.
-        if (key.startsWith("pref_lmc_hybrid_mosaic_")) {
-            boolean nativeMosaic = text("pref_lmc_hybrid_mosaic_path", "0").equals("1");
-            if (key.equals("pref_lmc_hybrid_mosaic_edge_scale") && nativeMosaic)
-                return Lang.t("Только для разбиения на подкадры: у нативной склейки своё «Ядро поперёк краёв».", "Subframe split only: the native merge uses its own “Kernel across edges”.");
-            if (any(key, "pref_lmc_hybrid_mosaic_window", "pref_lmc_hybrid_mosaic_window_full", "pref_lmc_hybrid_mosaic_kernel_scale",
-                    "pref_lmc_hybrid_mosaic_native_edge_scale", "pref_lmc_hybrid_mosaic_kernel_g", "pref_lmc_hybrid_mosaic_kernel_rb",
-                    "pref_lmc_hybrid_mosaic_chroma_fill", "pref_lmc_hybrid_mosaic_fill_support", "pref_lmc_hybrid_mosaic_tetra") && !nativeMosaic)
-                return Lang.t("Только для «Нативная мозаика» в «Склейка мозаики».", "Only with “Native mosaic” in “Mosaic merge”.");
-            if (key.equals("pref_lmc_hybrid_mosaic_fill_support") && text("pref_lmc_hybrid_mosaic_chroma_fill", "0").equals("0"))
-                return Lang.t("Только с добором ArkCam.", "Only with the ArkCam fill.");
-        }
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         if (key.startsWith("pref_vivo_nice_") && !autonomous)
             return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");

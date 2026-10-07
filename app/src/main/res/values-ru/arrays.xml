@@ -106,19 +106,6 @@
         <item>Оценка по базовому кадру</item>
         <item>Коррекция каждого кадра (GPU)</item>
     </string-array>
-    <string-array name="lmc_hybrid_mosaic_path_entries">
-        <item>Разбиение на подкадры (по умолчанию)</item>
-        <item>Нативная мозаика</item>
-    </string-array>
-    <string-array name="lmc_hybrid_mosaic_chroma_fill_entries">
-        <item>Выкл. (по умолчанию)</item>
-        <item>ArkCam: средние цветовых блоков</item>
-    </string-array>
-    <string-array name="lmc_hybrid_mosaic_tetra_entries">
-        <item>Разбиение на подкадры (по умолчанию)</item>
-        <item>T2: биннинг 2×2 в Quad</item>
-        <item>T1: нативная Tetra</item>
-    </string-array>
     <string-array name="lmc_hybrid_sabre61_entries">
         <item>Выключено (ядро раунда 4)</item>
         <item>Всегда</item>

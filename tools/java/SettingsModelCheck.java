@@ -93,18 +93,11 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_red","-9",0),-4);
         if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_blue","4.5")==null)throw new AssertionError("RAW CA blue beyond 4 px accepted");
         if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_passes","0")==null)throw new AssertionError("RAW CA without a pass accepted");
-        // P29 native mosaic merge: its rows need “Native mosaic”, the fill threshold the ArkCam fill; the split's edge kernel only
-        // acts on the split; bounds of the worker keys
+        // P29: the native mosaic merge has no rows on the screen (x8 slower than the split on the OPPO; dev key hybrid_mosaic_path
+        // only); the split's rows follow the hybrid route; the bounds of the worker keys stay checked for the dev keys
         Map<String,Object> mo=new HashMap<>();
-        active(mo,"pref_lmc_hybrid_mosaic_path");active(mo,"pref_lmc_hybrid_mosaic_frames");active(mo,"pref_lmc_hybrid_mosaic_edge_scale");
-        for(String k:new String[]{"window","window_full","kernel_scale","native_edge_scale","kernel_g","kernel_rb","chroma_fill","fill_support","tetra"})
-            inactive(mo,"pref_lmc_hybrid_mosaic_"+k);
-        mo.put("pref_lmc_hybrid_mosaic_path","1");
-        for(String k:new String[]{"window","window_full","kernel_scale","native_edge_scale","kernel_g","kernel_rb","chroma_fill","tetra","frames"})
-            active(mo,"pref_lmc_hybrid_mosaic_"+k);
-        inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");inactive(mo,"pref_lmc_hybrid_mosaic_fill_support");
-        mo.put("pref_lmc_hybrid_mosaic_chroma_fill","1");active(mo,"pref_lmc_hybrid_mosaic_fill_support");
-        mo.put("pref_merge_route","scamhdr");inactive(mo,"pref_lmc_hybrid_mosaic_path");inactive(mo,"pref_lmc_hybrid_mosaic_window");
+        active(mo,"pref_lmc_hybrid_mosaic_frames");active(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        mo.put("pref_merge_route","scamhdr");inactive(mo,"pref_lmc_hybrid_mosaic_frames");inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_path","3",0),1);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_window","9",3),6);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_window","2.6",3),3);
