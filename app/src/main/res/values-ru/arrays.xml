@@ -120,9 +120,9 @@
         <item>ArkCam: средние цветовых блоков</item>
     </string-array>
     <string-array name="lmc_hybrid_mosaic_tetra_entries">
-        <item>Разбиение на подкадры (по умолчанию)</item>
+        <item>Разбиение на подкадры</item>
         <item>T2: биннинг 2×2 в Quad</item>
-        <item>T1: нативная Tetra</item>
+        <item>T1: нативная Tetra (по умолчанию)</item>
     </string-array>
     <string-array name="lmc_hybrid_sabre61_entries">
         <item>Выключено (ядро раунда 4)</item>

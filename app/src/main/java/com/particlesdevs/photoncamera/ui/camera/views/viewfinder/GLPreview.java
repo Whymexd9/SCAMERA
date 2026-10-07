@@ -213,6 +213,16 @@ public class GLPreview extends GLSurfaceView {
         requestRender();
     }
 
+    /** P36: orientation and mirror of the camera being opened, applied from its first frame (see MainRenderer). */
+    public void setViewfinderTransform(int orientation, boolean mirror) {
+        mRenderer.setViewfinderTransform(orientation, mirror);
+    }
+
+    /** P36: the new session's first capture started at this sensor timestamp. */
+    public void armPendingTransform(long sensorTimestampNs) {
+        mRenderer.armPendingTransform(sensorTimestampNs);
+    }
+
     public boolean isAvailable() {
         return surfaceReady && mRenderer != null && mRenderer.getmSTexture() != null;
     }

@@ -69,8 +69,10 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
             if (mUpdateST) {
                 mSTexture.updateTexImage();
                 mUpdateST = false;
+                mHaveFrame = true;
             }
         }
+        applyPendingTransform();
         // Developed RAW takes over the viewfinder when a frame is available, so
         // what is framed is what the pipeline produces rather than the ISP's own
         // rendering. Falls through to the ISP path whenever a frame is missing,
@@ -296,6 +298,90 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mMirrorPreview = mirrorPreview;
     }
 
+    // P36: the viewfinder transform of a new camera (sensor orientation 90 vs 270, the front mirror) is applied from
+    // the new camera's first frame. Applied at once, the frame on screen - still the previous camera's - was redrawn
+    // upside down (and mirrored) until the new camera delivered: the 180 degree flip on a switch to the front camera.
+    private final Object mPendingLock = new Object();
+    private float[] mPendingMatrix;
+    private boolean mPendingMirror;
+    private int mPendingOrientation;
+    private long mPendingSetNs, mPendingArmNs, mPendingFromTs = Long.MAX_VALUE;
+    private int mPendingRawSession;
+    private int mOrientation = 180;
+    private volatile boolean mHaveFrame;
+    private int mFramesToLog;
+    /** Without a first frame of the new session (no capture start seen) the transform still goes on after this. */
+    private static final long PENDING_UNARMED_NS = 3_000_000_000L, PENDING_ARMED_NS = 700_000_000L;
+
+    /**
+     * P36: orientation (degrees for the texture rotation) and mirror of the camera about to open. Before any frame was
+     * drawn, or when nothing changes, it applies at once; otherwise it waits for {@link #armPendingTransform} and the
+     * first frame with a timestamp at or after the new session's first capture.
+     */
+    public void setViewfinderTransform(int orientation, boolean mirror) {
+        synchronized (mPendingLock) {
+            if (!mHaveFrame || (orientation % 360 == mOrientation % 360 && mirror == mMirrorPreview)) {
+                mPendingMatrix = null;
+                if (orientation % 360 != mOrientation % 360) setOrientation(orientation);
+                mMirrorPreview = mirror;
+                return;
+            }
+            // The same transform again (configureTransform, then setUpCameraOutputs' UI post): an armed one stays armed.
+            if (mPendingMatrix != null && orientation % 360 == mPendingOrientation % 360 && mirror == mPendingMirror) return;
+            float[] m = new float[16];
+            android.opengl.Matrix.setRotateM(m, 0, orientation, 0f, 0f, 1f);
+            mPendingMatrix = m;
+            mPendingOrientation = orientation;
+            mPendingMirror = mirror;
+            mPendingSetNs = System.nanoTime();
+            mPendingArmNs = 0;
+            mPendingFromTs = Long.MAX_VALUE;
+            mPendingRawSession = com.particlesdevs.photoncamera.processing.LiveRawFrame.currentSession();
+            Log.d("MainRenderer", "viewfinder transform pending orientation=" + orientation + " mirror=" + mirror
+                    + " (now " + mOrientation + "/" + mMirrorPreview + ")");
+        }
+    }
+
+    /** P36: the new session's first capture started at this sensor timestamp; frames from it on get the new transform. */
+    public void armPendingTransform(long sensorTimestampNs) {
+        synchronized (mPendingLock) {
+            if (mPendingMatrix == null || mPendingArmNs != 0) return;
+            mPendingFromTs = sensorTimestampNs;
+            mPendingArmNs = System.nanoTime();
+        }
+    }
+
+    /** GL thread, before drawing: the frame in the texture (or the RAW frame) belongs to the new camera. */
+    private void applyPendingTransform() {
+        synchronized (mPendingLock) {
+            if (mPendingMatrix == null) {
+                if (mFramesToLog > 0 && mSTexture != null) {
+                    mFramesToLog--;
+                    Log.d("MainRenderer", "viewfinder frame ts=" + mSTexture.getTimestamp() + " orientation=" + mOrientation + " mirror=" + mMirrorPreview);
+                }
+                return;
+            }
+            long now = System.nanoTime();
+            long ts = mSTexture == null ? 0 : mSTexture.getTimestamp();
+            String reason = null;
+            if (mPendingArmNs != 0 && ts >= mPendingFromTs) reason = "first frame of the new session ts=" + ts;
+            else if (com.particlesdevs.photoncamera.processing.LiveRawFrame.peekSession() > mPendingRawSession) reason = "first RAW frame of the new session";
+            else if (mPendingArmNs != 0 && now - mPendingArmNs > PENDING_ARMED_NS) reason = "timeout after the first capture";
+            else if (now - mPendingSetNs > PENDING_UNARMED_NS) reason = "timeout";
+            if (reason == null) {
+                Log.d("MainRenderer", "viewfinder frame ts=" + ts + " keeps orientation=" + mOrientation + " mirror=" + mMirrorPreview + " (previous camera)");
+                return;
+            }
+            System.arraycopy(mPendingMatrix, 0, mTexRotateMatrix, 0, 16);
+            mOrientation = mPendingOrientation;
+            mMirrorPreview = mPendingMirror;
+            mPendingMatrix = null;
+            mFramesToLog = 3;
+            Log.d("MainRenderer", "viewfinder transform applied orientation=" + mOrientation + " mirror=" + mMirrorPreview + " on " + reason
+                    + " (" + (now - mPendingSetNs) / 1_000_000 + " ms after it was set)");
+        }
+    }
+
     private int getPeakEnabled() {
         int focusPeakSetting = PhotonCamera.getSettings().focusPeak;
         if (focusPeakSetting == 1) {
@@ -315,6 +401,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     public void setOrientation(int or) {
         android.opengl.Matrix.setRotateM(mTexRotateMatrix, 0, or, 0f, 0f, 1f);
+        mOrientation = or;
     }
 
     public void setTransform(@NonNull android.graphics.Matrix matrix) {

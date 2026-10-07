@@ -314,12 +314,11 @@ public final class SettingsMigration {
         // ArkCam on the Oppo; a stored 1 is the old XML default written by the first round-5 build, not a user choice.
         Object rev = values.get(DEFAULTS_REV);
         int revision = rev instanceof Integer ? (Integer) rev : 0;
-        boolean revisionStored = false, markOnly = false; // a revision block below wrote its marker / only the marker moves
+        boolean markOnly = false; // a revision block below only moves the marker (not reported as a change)
         Object detail = values.get(LmcHybridKeys.PREFIX + "ark_detail_gain");
         if (detail != null && revision < 2) {
             if (isNumber(detail, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
             e.putInt(DEFAULTS_REV, 2);
-            revisionStored = true;
             changed = true;
         }
         // Defaults revision 3 (4 October 2026): the hybrid sharpening is ArkCam's own (sharp_mode "ark", ArkLumaSharpen) and
@@ -342,7 +341,6 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 3);
-                revisionStored = true;
                 changed = true;
             }
         }
@@ -360,7 +358,6 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 4);
-                revisionStored = true;
                 changed = true;
             }
         }
@@ -371,7 +368,6 @@ public final class SettingsMigration {
             if (cdm != null) {
                 if (isNumber(cdm, 0.07f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "cdm", cdm instanceof String ? PreferenceNumber.format(0.2f, true) : (Object) 0.2f);
                 e.putInt(DEFAULTS_REV, 5);
-                revisionStored = true;
                 changed = true;
             }
         }
@@ -393,12 +389,32 @@ public final class SettingsMigration {
             if (touched) {
                 e.putInt(DEFAULTS_REV, 6);
                 changed = true;
-            } else if (!revisionStored && written.isEmpty()) {
+            } else if (written.isEmpty()) {
                 // Neither key stored yet (they had no rows before P34): the rows store today's defaults ("1", 0.7) when the screen
                 // is first opened, so a "0" or a 1 stored after this run is the user's choice and must not move on a later run.
-                // Mark the revision now; a run that copied legacy keys or stored an older revision marks it on the next run (which
-                // sees those values). The marker alone is not reported as a change.
+                // Mark the revision now, also when an older revision moved its own stored keys in this run (its marker is
+                // overwritten in the same commit; deferring the mark to the next run let a choice made in between move back).
+                // Only a run that copied legacy keys marks it on the next run, which sees the copied values (a marker past the
+                // older revisions now would skip their former defaults among the copies). The marker alone is not reported as a
+                // change.
                 e.putInt(DEFAULTS_REV, 6);
+                markOnly = true;
+            }
+        }
+        // Defaults revision 7 (7 October 2026, P35): Tetra streams take the native mosaic merge as well (T1 on the fast merge: on the
+        // vivo X200 Ultra +2..+5 dB detail, a quarter of the false colour, 46 % less flat noise at device noise and less time than
+        // the split's 8 frames with 17). The "Tetra path" row stored "0" (the split) as its XML default since P29; a stored "0" is
+        // that former default and moves to "1", a chosen T2 ("2") stays. As in revision 6, the marker is set when the key is not
+        // stored yet (the row stores today's "1" when the screen is first opened), so a "0" chosen after this run stays, also when
+        // an older revision moved its stored keys in this run; only a run that copied legacy keys marks it on the next run.
+        if (revision < 7) {
+            Object tetra = values.get(LmcHybridKeys.PREFIX + "mosaic_tetra");
+            if (tetra != null) {
+                if (isNumber(tetra, 0f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_tetra", tetra instanceof String ? "1" : (Object) 1f);
+                e.putInt(DEFAULTS_REV, 7);
+                changed = true;
+            } else if (written.isEmpty()) {
+                e.putInt(DEFAULTS_REV, 7);
                 markOnly = true;
             }
         }

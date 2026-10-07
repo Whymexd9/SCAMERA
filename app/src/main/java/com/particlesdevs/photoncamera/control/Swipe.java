@@ -87,6 +87,12 @@ public class Swipe {
         android.view.ScaleGestureDetector scaleDetector = new android.view.ScaleGestureDetector(cameraFragment.getContext(),
                 new android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
                     @Override
+                    public boolean onScaleBegin(android.view.ScaleGestureDetector detector) {
+                        ZoomController.syncToActive(); // P37: a pinch starts from the active module's zoom
+                        return true;
+                    }
+
+                    @Override
                     public boolean onScale(android.view.ScaleGestureDetector detector) {
                         cameraFragment.zoomTo(ZoomController.zoom() * detector.getScaleFactor());
                         return true;

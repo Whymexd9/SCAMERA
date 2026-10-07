@@ -134,7 +134,11 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             String best=null;float zoom=com.particlesdevs.photoncamera.control.ZoomController.zoom();
             for(String slot:slots)if(ModuleRegistry.visible(slot)&&ModuleRegistry.camera(slot).equals(activeId)
                     &&(best==null||Math.abs(ModuleRegistry.zoom(slot)-zoom)<Math.abs(ModuleRegistry.zoom(best)-zoom)))best=slot;
-            if(best!=null)ModuleRegistry.select(best);
+            if(best!=null){
+                ModuleRegistry.select(best);
+                // P37: the zoom follows the module chosen here (the ruler started at the old zoom, e.g. 1x on a tele).
+                com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
+            }
         }
         List<String> visible = new ArrayList<>(), labels = new ArrayList<>();
         for (String slot : slots) if (ModuleRegistry.visible(slot)) {visible.add(slot);labels.add(ModuleRegistry.label(slot));}
@@ -258,7 +262,13 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     private float touchX,touchY;
     @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
         if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){touchX=e.getX();touchY=e.getY();}
-        if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE&&Math.abs(e.getX()-touchX)>android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop()&&Math.abs(e.getX()-touchX)>Math.abs(e.getY()-touchY))return true;
+        if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE&&Math.abs(e.getX()-touchX)>android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop()&&Math.abs(e.getX()-touchX)>Math.abs(e.getY()-touchY)){
+            // P37: the drag continues from here. A drag that starts on a lens button reaches onTouchEvent without its
+            // DOWN, so lastDragX was stale (0 or the previous gesture's end): the first step jumped by the whole
+            // distance, e.g. from a tele module straight back to 1x.
+            lastDragX=e.getX();
+            return true;
+        }
         return super.onInterceptTouchEvent(e);
     }
     @Override public boolean onTouchEvent(android.view.MotionEvent e){
