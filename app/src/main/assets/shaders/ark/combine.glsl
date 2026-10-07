@@ -21,6 +21,9 @@ precision highp sampler2D;
 //     compression scaling compares against it in the ae domain (x cbrt(ae / m)).
 //  4. display: pure power 1/gamma, film toe below 0.15, optional IGN dither [:1805-1843].
 // Integer grid arithmetic everywhere (the output reaches 8192 px; float pixel coordinates lose precision on Adreno).
+// The B-spline colour is clamped at zero after the interpolation, not per tap: the colour source holds box means of the
+// signed merge (LMC hybrid without the denoise, nicergb signedU), and a clamp per tap lifted the mean of a channel near
+// zero (red mottling of a dark teal curtain under the shadow lift). Where every tap is >= 0 nothing changes.
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -87,12 +90,15 @@ void gridPos(int x, int f, out int base, out float frac) {
     if (c < 0.0) { base = q - 1; frac = c + 1.0; } else { base = q; frac = c; }
 }
 
-vec3 sanitize(vec3 c) {
-    c = max(c, vec3(0.0));
+vec3 finiteTap(vec3 c) {
     if (isnan(c.r) || isinf(c.r)) c.r = 1.0;
     if (isnan(c.g) || isinf(c.g)) c.g = 1.0;
     if (isnan(c.b) || isinf(c.b)) c.b = 1.0;
     return c;
+}
+
+vec3 sanitize(vec3 c) {
+    return finiteTap(max(c, vec3(0.0)));
 }
 
 // Exact quadratic inverse of the kernel's ACES curve, pre-gain 1.5, a 2.51, d 0.59 [:987-1004].
@@ -216,9 +222,10 @@ void main() {
         for (int dy = -1; dy <= 2; dy++) {
             for (int dx = -1; dx <= 2; dx++) {
                 ivec2 p = clamp(ivec2(bx + dx, by + dy), ivec2(0), lastColour);
-                orig += sanitize(texelFetch(ArkColour, p, 0).rgb) * (wx[dx + 1] * wy[dy + 1]);
+                orig += finiteTap(texelFetch(ArkColour, p, 0).rgb) * (wx[dx + 1] * wy[dy + 1]);
             }
         }
+        orig = max(orig, vec3(0.0));
     }
 
     // === 2. ACES inversion and base gain [:1500-1509] ===

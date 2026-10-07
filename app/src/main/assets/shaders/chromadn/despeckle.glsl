@@ -6,6 +6,9 @@ precision highp sampler2D;
 // Edges and texture fail the homogeneity test; text on a flat ground (the strokes of small spaced capitals, the dots
 // of an ellipsis) passes it, so a candidate must also be alone: at most two of its eight direct neighbours may be
 // off the ring level as well (a defect pixel or a pair), while a stroke two or three pixels wide has more.
+// Signed input (LMC hybrid: nicergb signedU): the tests run on the clamped values as before, the output keeps the signed
+// value (a kept pixel unchanged, a scaled one scaled, a replaced one the mean of the signed ring), so the despeckle does not
+// lift the mean of a channel near zero. For non-negative input the output is the former one.
 uniform sampler2D InputBuffer;
 uniform float sigma;    // noise sigma of u = sqrt(Y + offsetC), 0 disables the noise-aware test
 uniform float offsetC;
@@ -16,7 +19,8 @@ void main() {
     int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
     ivec2 p = ivec2(gl_FragCoord.xy);
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
-    vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
+    vec3 cs = texelFetch(InputBuffer, p, 0).rgb;
+    vec3 c = max(cs, vec3(0.0));
     float y = luma(c);
     // Ring at distance four: a dot up to three pixels wide (a dead quad group) leaves it untouched.
     const ivec2 ring[16] = ivec2[16](
@@ -44,7 +48,7 @@ void main() {
             if (darkDot ? v < 0.85 * mean : v > 1.18 * mean) offRing++;
         }
     }
-    if (homog && (darkDot || brightDot) && offRing <= 2) c *= clamp(mean / max(y, 1.0e-6), 0.3, 3.0);
+    if (homog && (darkDot || brightDot) && offRing <= 2) cs *= clamp(mean / max(y, 1.0e-6), 0.3, 3.0);
     else if (sigma > 0.0) {
         // Noisy flat areas (dark sky): the ring test above cannot tell a defect from noise
         // there. In u the noise is uniform, so a dark pixel far below the mean of the ring
@@ -57,8 +61,9 @@ void main() {
         float us = 0.0, ulo = 1.0e9, uhi = 0.0;
         vec3 rgbSum = vec3(0.0);
         for (int k = 0; k < 16; k++) {
-            vec3 rc = max(texelFetch(InputBuffer, clamp(p + ring2[k] * pxStep, ivec2(0), last), 0).rgb, vec3(0.0));
-            rgbSum += rc;
+            vec3 rs = texelFetch(InputBuffer, clamp(p + ring2[k] * pxStep, ivec2(0), last), 0).rgb;
+            vec3 rc = max(rs, vec3(0.0));
+            rgbSum += rs;
             float v = sqrt(luma(rc) + offsetC);
             us += v;
             ulo = min(ulo, v);
@@ -73,12 +78,12 @@ void main() {
                           + sqrt(luma(max(texelFetch(InputBuffer, clamp(p + ivec2(0, 1) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC)
                           + sqrt(luma(max(texelFetch(InputBuffer, clamp(p - ivec2(0, 1) * pxStep, ivec2(0), last), 0).rgb, vec3(0.0))) + offsetC));
         if (uhi - ulo < 7.0 * sigma && uc < um - 3.5 * sigma && un4 > um - 1.5 * sigma) {
-            c = rgbSum * (1.0 / 16.0);
+            cs = rgbSum * (1.0 / 16.0);
         } else if (uc > um + 4.5 * sigma && un4 < um + 1.5 * sigma && uhi - ulo < 9.0 * sigma + 0.5 * (uc - um)) {
             // Bright dot (hot pixel the merge kept): far above a flat ring while its direct neighbours stay
             // at the ring level (a real small highlight is blurred over its neighbours by the lens).
-            c = rgbSum * (1.0 / 16.0);
+            cs = rgbSum * (1.0 / 16.0);
         }
     }
-    Output = vec4(c, 1.0);
+    Output = vec4(cs, 1.0);
 }

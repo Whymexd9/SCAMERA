@@ -12,7 +12,7 @@ import static android.opengl.GLES20.*;
  * Import reconstructed sensor RGB; apply WB and normalized lens shading once. On an LMC hybrid shot it also runs the
  * per-channel highlight recovery (research/hybrid5/highlights.md): clip levels per physical channel before WB, a clipped
  * green of a white highlight rebuilt from R and B, all channels clipped -> neutral white at the brightest level, a
- * saturated single colour left alone.
+ * saturated single colour left alone. Hybrid values stay signed ({@link #signedInput}).
  */
 public final class VivoNiceRgb extends Node {
     public VivoNiceRgb(){super("","VivoNiceRgb");}
@@ -162,6 +162,18 @@ public final class VivoNiceRgb extends Node {
         return cc;
     }
 
+    /**
+     * LMC hybrid: the worker's signed RGB passes through this node unclamped (nicergb signedU). The merge keeps its noise
+     * signed and clips once; a per-pixel max(0) here lifted the mean of every channel near zero by up to half its noise
+     * (x1.5 red along the frame edge of a dark teal curtain where fewer donors overlap, OPPO X8U 2026-10-07), and the ARK
+     * tone turned that into a red band and red mottling. The stages after it clamp only after the noise reduction or an
+     * average. The SCAM HDR route keeps the clamp. nice_dev.txt "post_ab_clamp 1": the old run of post_ab (PostAb) gets the
+     * former per-pixel clamp, so the A/B shows this change on the same worker result.
+     */
+    static boolean signedInput(boolean hybrid) {
+        return hybrid && !(PostGlMode.legacy() && PreferenceKeys.niceDevSwitch("post_ab_clamp", false));
+    }
+
     /** Every `stride`-th pixel of the linear RGB: enough for the percentile statistics of the later nodes. */
     private static java.nio.ByteBuffer decimate(java.nio.ByteBuffer rgb,int stride){
         java.nio.FloatBuffer f=rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
@@ -275,6 +287,8 @@ public final class VivoNiceRgb extends Node {
             }
             glProg.useAssetProgram("vivohdr/nicergb");glProg.setTexture("InputBuffer",input);glProg.setTexture("GainMap",p.GainMap);
             glProg.setVar("whitePoint",p.mParameters.whitePoint);
+            final boolean signed=signedInput(hybrid);
+            glProg.setVar("signedU",signed?1:0);
             if(perChannel){
                 glProg.setVar("hlModeU",1);
                 glProg.setVar("clipLoU",cc.lo);glProg.setVar("clipHiU",cc.hi);
@@ -310,6 +324,7 @@ public final class VivoNiceRgb extends Node {
                 glProg.drawBlocks(banded);glProg.closed=true;
                 WorkingTexture=banded;
             }
+            if(hybrid)com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","nicergb input "+(signed?"signed (clamped after the noise reduction or the ARK colour averages)":"clamped per pixel (post_ab_clamp)"));
             if(perChannel)com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","highlight recovery per channel: chroma="
                     +(chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral")
                     +" limit="+chromaLimit+" band="+band+" gpu ms="+(System.currentTimeMillis()-gpuStart));
