@@ -2355,6 +2355,7 @@ class HybridGpu {
             const auto t0=std::chrono::steady_clock::now();
             const std::string body=std::string("#define NAT_B ")+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
                 +"\n#define NAT_FILL "+(fill?"1":"0")+"\n"+kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
+            compileName=tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program being compiled (string literal)
             p=compile(body.c_str());
             compileMs+=std::string(" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
                 +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
@@ -2794,6 +2795,7 @@ public:
             } else {
                 if(!mosaicProgram){
                     const auto t0=std::chrono::steady_clock::now();
+                    compileName="mosaic";
                     mosaicProgram=compile((std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
                     compileMs+=" mosaic="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
                 }
