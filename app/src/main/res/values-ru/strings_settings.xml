@@ -93,12 +93,12 @@
     <string name="prefs_lmc_hybrid_lut_sigma_title">Расширение ядра длинных кадров (LUT σ)</string>
     <string name="prefs_lmc_hybrid_lut_sigma_summary">Кадры Shasta с весом A ≥ 30 сливаются более широким ядром: меньше шума в тенях, меньше деталей. 10 → ×1.0, 30 → ×1.414; 1.0 — LUT выключен.</string>
     <string name="prefs_lmc_hybrid_mosaic_screen_title">Мозаика без ремозаика</string>
-    <string name="prefs_lmc_hybrid_mosaic_screen_summary">Quad 2×2 и Tetra 4×4: кадры и резкость склейки подкадров</string>
+    <string name="prefs_lmc_hybrid_mosaic_screen_summary">Quad 2×2 и Tetra 4×4: разбиение на подкадры или нативная склейка, кадры и резкость</string>
     <string name="prefs_lmc_hybrid_mosaic_note_summary">Для модулей, чей поток приходит мозаикой (режим сенсора без ремозаика): каждый кадр делится на обычные Bayer-подкадры по сайтам цветового блока, и склейка собирает их на сетке сенсора, как GCam QuadBayerRgbMerge.</string>
     <string name="prefs_lmc_hybrid_mosaic_frames_title">Кадров в склейке мозаики</string>
-    <string name="prefs_lmc_hybrid_mosaic_frames_summary">4–32, по умолчанию 24: каждый кадр даёт 4 (Quad) или 16 (Tetra) подкадров, GPU держит 128. Больше кадров — меньше шума и можно уже ядро; на X7 Ultra 24 кадра Quad ≈ 8 с, 16 кадров ≈ 6,8 с.</string>
+    <string name="prefs_lmc_hybrid_mosaic_frames_summary">4–32, по умолчанию 24: каждый кадр даёт 4 (Quad) или 16 (Tetra) подкадров, GPU держит 128. Больше кадров — меньше шума и можно уже ядро; на X7 Ultra 24 кадра Quad ≈ 8 с, 16 кадров ≈ 6,8 с. Нативная склейка занимает один слот GPU на кадр.</string>
     <string name="prefs_lmc_hybrid_mosaic_edge_scale_title">Резкость: ядро поперёк краёв</string>
-    <string name="prefs_lmc_hybrid_mosaic_edge_scale_summary">Множитель ядра Sabre поперёк краёв и в текстуре для подкадров мозаики (ядро ровных участков, а с ним шум, не меняется). Подкадр — это 2 (Quad) или 4 (Tetra) пикселя сенсора, поэтому ядро можно сузить. 0,6 по умолчанию: кадр с рук на X7 Ultra +14 % мелкой детали при прежнем шуме ровных мест; меньше — резче, но заметнее зерно в тёмных однотонных местах.</string>
+    <string name="prefs_lmc_hybrid_mosaic_edge_scale_summary">Множитель ядра Sabre поперёк краёв и в текстуре для подкадров мозаики (ядро ровных участков, а с ним шум, не меняется). Подкадр — это 2 (Quad) или 4 (Tetra) пикселя сенсора, поэтому ядро можно сузить. 0,6 по умолчанию: кадр с рук на X7 Ultra +14 % мелкой детали при прежнем шуме ровных мест; меньше — резче, но заметнее зерно в тёмных однотонных местах. Только для разбиения на подкадры: у нативной склейки своё «Ядро поперёк краёв» ниже.</string>
     <string name="prefs_lmc_hybrid_frames_screen_title">Bento и Shasta в склейке</string>
     <string name="prefs_lmc_hybrid_frames_screen_summary">Веса и ядра коротких и длинных кадров</string>
     <string name="prefs_lmc_hybrid_bento_weight_title">Bento: вес ультракороткого кадра</string>

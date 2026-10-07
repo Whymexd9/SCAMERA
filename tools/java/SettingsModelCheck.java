@@ -93,11 +93,26 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_red","-9",0),-4);
         if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_blue","4.5")==null)throw new AssertionError("RAW CA blue beyond 4 px accepted");
         if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_passes","0")==null)throw new AssertionError("RAW CA without a pass accepted");
+        // P29: the native mosaic merge has no rows on the screen (x8 slower than the split on the OPPO; dev key hybrid_mosaic_path
+        // only); the split's rows follow the hybrid route; the bounds of the worker keys stay checked for the dev keys
+        Map<String,Object> mo=new HashMap<>();
+        active(mo,"pref_lmc_hybrid_mosaic_frames");active(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        mo.put("pref_merge_route","scamhdr");inactive(mo,"pref_lmc_hybrid_mosaic_frames");inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_path","3",0),1);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_window","9",3),6);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_window","2.6",3),3);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_kernel_rb","0.1",0.85),0.5);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_edge_scale","2",0.4),1);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","0",2),0); // 0 = Tetra on the split
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","3",0),2);
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","-1",2),0);
+        if(SettingsNumericRules.error("pref_lmc_hybrid_mosaic_fill_support","1.5")==null)throw new AssertionError("fill support above 1 accepted");
+        if(SettingsNumericRules.error("pref_lmc_hybrid_mosaic_kernel_scale","0.1")==null)throw new AssertionError("kernel scale below 0.25 accepted");
         float[] list=SettingsNumericRules.listValue("pref_lmc_hybrid_x","1; 2.5 3",new float[]{0,0,0});
         eq(list.length,3);eq(list[0],1);eq(list[1],2.5);eq(list[2],3);
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,NaN,3",new float[]{0,0,0})[0]!=0)throw new AssertionError("NaN list accepted");
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,2",new float[]{0,0,0}).length!=3)throw new AssertionError("short list accepted");
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","",null)!=null)throw new AssertionError("empty list");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA, native mosaic");
     }
 }

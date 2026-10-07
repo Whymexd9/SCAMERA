@@ -258,6 +258,56 @@ struct HybridTuning {
     int mosaicFrames=24;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
                                  // merge time grows with the sub-frames; 24 Quad frames (96 sub-frames) take about 8 s on the X7 Ultra,
                                  // 16 about 6.8 s (P22: the extra frames pay for the narrower edge kernel)
+    // P29 native mosaic path (research/ark23/quad_report.md section 8, plan P29). mosaicPath 0 = the b^2 sub-frame split above
+    // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
+    // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
+    // kHybMergeMosaic over the raw mosaic itself.
+    // DEFAULTS: mosaicPath stays 0 (today's output) until the device sweep S4 passes on the phone. The keys below only act with
+    // mosaicPath 1; their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
+    // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill) except where noted: Tetra stays on the split (mosaicTetra 0)
+    // and the 6.1 base widening keeps the split's rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
+    // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1.
+    // Path 1 merges without the colour-difference (chromaDiff), clip-border (rimRatio) and Bento colour passes: they re-sample the
+    // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
+    // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
+    int mosaicPath=0;
+    int mosaicWindow=3;          // half-width r of the native window (native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites around
+                                 // the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the 6.1
+                                 // window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split (its
+                                 // 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]); Tetra
+                                 // T1 parity is 6; 2 = ArkCam's 5x5
+    int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
+    float mosaicKernelScale=1.f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
+                                 // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5)
+    // mosaicEdgeScale of the native path (across the edge and the base kernel; along the edge and flat areas stay). Its own key so that
+    // the split keeps 0.6. S0 (synthetic Quad, 16 frames): 0.4 gave zone plate +1.0, bars +1.4 / +3.2, edges +1.2 dB at unchanged
+    // flat noise; 0.3 more detail but +57 % colour error on neutral edges. Device (OPPO, real handheld Quad hand.nch): 0.6 gave
+    // +49 % 2-4 px detail at matched flat noise and half the flat phase amplitude of the split, 0.4 0.94x with x1.6 chroma HF: 0.6.
+    float mosaicNativeEdgeScale=0.6f;
+    // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
+    // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
+    // (false colour on bars -7 %)
+    float mosaicKernelG=1.f,mosaicKernelRB=0.85f;
+    // S5: per-frame R / B fill (M5b) before the frame weight: 0 off (parity), 1 ArkCam's colour difference of the 3x3 block means
+    // (a colour whose kernel weight in the frame is below mosaicFillSupport x the green weight is topped up to it with G + (R - G)).
+    // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (GCam 11 directional) is step S7, not built.
+    int mosaicChromaFill=0;
+    float mosaicFillSupport=0.25f;
+    // S8 Tetra route with mosaicPath 1: 0 (default) = the sub-frame split as with mosaicPath 0 (only Quad takes the native path);
+    // 2 = T2: every 2x2 sub-block of a Tetra block, gained and clip-aware, is one site of a true Quad mosaic at W/2 x H/2 merged by
+    // the Quad pass, output bilinear 2x to the sensor grid; 1 = T1: the Tetra mosaic merged natively (block 4; mosaicWindow 6 with
+    // mosaicWindowFull 0 reproduces the split's sites, 196 taps per frame). T2 with the bilinear 2x is what S0 advised against
+    // (edges -4.8 dB, a period-2 artefact; S0 evaluates T2 at the sensor sub-positions, not built): on syn_b4 it lost the whole 4-8 px
+    // band (transfer 0.039 -> 0.000), so Tetra stays on the split until a T2 at the sensor sub-positions or a phone Tetra burst.
+    int mosaicTetra=0;
+    // 6.1 base widening rule of the native merge (s61Mode bit 4; F = the accepted donor frames of the output pixel): 0 (default) =
+    // the split's rule b^2 F + b^2 - 1 < widenBelow (each frame counted as its b^2 sub-frames plus the base's own b^2 - 1 sub-frames:
+    // Quad widens only below F = 0.25, T1 never; the split itself widens only there, so 0 keeps today's moving areas); 1 = S0's rule
+    // F < widenBelow (research/p29/S0_results.md section 4, m5ref.py). S0's 1- / 3-frame numbers hold for 1 only. Host replays of
+    // the synthetic Quad (binned passes off), 1 against 0: 3 frames bars +3.0 / +2.9 dB, edges +1.7 dB, background +0.5 dB, but
+    // more colour on the B/W edge (0.022 -> 0.030) and flat phase bias 0.001 -> 0.004 %; 16 frames +0.05..+0.1 dB, nothing worse.
+    // The device sweep (hand, its moving areas) decides.
+    int mosaicNativeWiden=0;
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -325,6 +375,12 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("isoKernel",nullptr,&t.isoKernel)
             ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
+            // P29 native mosaic path
+            ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
+            ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
+            ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
+            ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
+            ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
@@ -1433,10 +1489,480 @@ void main(){
 }
 )";
 
+// ---------------------------------------------------------------------------------------------
+// P29 native mosaic path (mosaicPath 1, hybridReconstructMosaicNative; research/ark23/quad_report.md section 8). New programs
+// only: the plain-Bayer programs above are not touched (kHybMergeMain1 in particular: on Adreno 750 any edit of it made the merge
+// ~15x slower). The Frames block holds the BINNED frames (one per frame, w x h = W/b x H/b): the guide, cells, rejection, dilation
+// and the rim / Bento / chroma passes run on them as on any plain burst. The raw mosaic of every frame goes to the NFrames block
+// (slot 12) and only the programs below read it.
+// ---------------------------------------------------------------------------------------------
+// Native frame access (after kHybCommon + kHybHelpers). Native canonical coordinates = sensor site - b cfaShift: the canonical shift
+// of the binned frames in whole colour blocks, so (x & (b-1)) is the site's position inside its block, x >> log2 b the block (whose
+// parity gives the colour), and the site classes (y & 7, x & 7) are taken in sensor coordinates.
+static const char* kHybNatAccess=R"(
+layout(std430,binding=12) readonly buffer NFrames{uint nwords[];};
+layout(std140,binding=1) uniform NatTable{uvec4 nGeo[128];}; // [kHybridGpuFrames]: x = first site of frame f in NFrames, y = first
+                                                              // sensor row held, z = rows held (>= 1)
+uniform ivec4 natU;   // x = colour block b (2 | 4), y = W, z = H (native sensor sites), w = window half-width r (native px)
+uniform ivec4 natV;   // x = log2 b, y = 1: the words are the sensor RAW (site gains applied here), 0: built like the split's sub-frames;
+                      // z = first Sums counter of the native outlier counts, w = 1: the merge's full (2r+1)^2 window (mosaicWindowFull)
+uniform int natMarkU; // 1: the words carry the site flags of kHybNatMark in bits 14 (outlier) / 15 (cell clipped)
+uniform vec4 natW;    // x = white, y = the RAW code from which a site is clipped (white - 1)
+uniform vec4 natGain[16]; // site-class gains (hybridMosaicGains), class (y & 7) * 8 + (x & 7) of the SENSOR site: natGain[k >> 2][k & 3]
+// A site outside the frame: its BLOCK is reflected as reflectCfa() reflects a sub-frame site of the split (colour and the position
+// inside the block kept).
+int natReflect(int x,int n){
+    int v=x>>natV.x;                 // floor division (the shift of a signed int extends the sign)
+    int a=x-(v<<natV.x);
+    v=reflectCfa(v,n>>natV.x);
+    return (v<<natV.x)+a;
+}
+// Row inside the rows held (n, a multiple of b): a row past them becomes the first / last held row of the same position inside the
+// block, as the split clamped a sub-frame row to its first / last held row (the margins of the upload make this rare).
+int natRow(int r,int n){
+    int m=natU.x-1;
+    return r<0?(r&m):r>=n?max(n-natU.x,0)+(r&m):r;
+}
+// Native site (x, y) (canonical) of the frame whose NatTable entry is geo, normalised exactly as the split normalised its sub-frame
+// site: the split built it as vb + (raw - black of the site) x site gain (vb = black of the block's Bayer phase, clamped to
+// [0, white], white where the RAW clipped), then sampleRaw() took black and inv of the block's phase, clamped to [-0.25, 1]. With
+// natV.y the word is the sensor RAW and that build happens here (S3: no gained copies; the same value without the copy's rounding).
+// fl = site flags (bit 0 outlier, bit 1 cell clipped).
+float natSiteG(uvec4 geo,int x,int y,out uint fl){
+    int X=x+(cfaShift.x<<natV.x),Y=y+(cfaShift.y<<natV.x);
+    if(X<0||Y<0||X>=natU.y||Y>=natU.z){X=natReflect(X,natU.y);Y=natReflect(Y,natU.z);}
+    int ry=natRow(Y-int(geo.y),int(geo.z));
+    uint idx=geo.x+uint(ry*natU.y+X);
+    uint word=nwords[idx>>1];
+    uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
+    fl=natMarkU!=0?(v>>14):0u;v&=natMarkU!=0?0x3FFFu:0xFFFFu;
+    int cp=(((Y>>natV.x)&1)<<1)|((X>>natV.x)&1);
+    float u=float(v);
+    if(natV.y!=0){
+        int k=((Y&7)<<3)|(X&7);
+        u=u>=natW.y?natW.x:clamp(black[cp]+(u-black[((Y&1)<<1)|(X&1)])*natGain[k>>2][k&3],0.0,natW.x);
+    }
+    return clamp((u-black[cp])*inv[cp],-0.25,1.0);
+}
+float natSite(int f,int x,int y,out uint fl){return natSiteG(nGeo[clamp(f,0,127)],x,y,fl);}
+)";
+
+// Native outlier sites, as kHybMean / kHybFlags do for a plain burst but on the native sites: the split tested its sub-frames, whose
+// lattice is the same position inside the blocks (+-b px = adjacent blocks, other colours; +-2b px = same colour). kHybNatMean: the
+// mean of the hot frames at the same SENSOR site for the flag rows +-2b.
+static const char* kHybNatMean=R"(
+layout(std430,binding=1) writeonly buffer MeanBuf{float meanv[];}; // native canonical rows [natRows.x - 2b, natRows.y + 2b)
+uniform int hotList[16];
+uniform ivec4 hotU;          // x = frames in hotList
+uniform ivec2 natRows;       // native canonical rows of the strip's site flags
+void main(){
+    int b=natU.x;
+    int x=int(gl_GlobalInvocationID.x),r=chunkU+int(gl_GlobalInvocationID.y);
+    if(x>=natU.y||r>=natRows.y-natRows.x+4*b)return;
+    int y=natRows.x-2*b+r;
+    float s=0.0;
+    for(int l=0;l<hotU.x&&l<16;l++){uint fl;s+=natSite(hotList[l],x,y,fl);}
+    meanv[uint(r*natU.y+x)]=s/float(max(hotU.x,1));
+}
+)";
+// kHybNatFlags: one word per native canonical site of the flag rows: bit 0 fixed-pattern outlier (mean of the hot frames), bit 1
+// transient outlier of the base. siteExcess / median8 as kHybFlags, the 5x5 lattice in steps of b px; noise of one native site.
+static const char* kHybNatFlags=R"(
+layout(std430,binding=9) buffer Sums{uint sums[];};
+layout(std430,binding=1) readonly buffer MeanBuf{float meanv[];};
+layout(std430,binding=2) writeonly buffer SiteFlags{uint sflags[];}; // native canonical rows [natRows.x, natRows.y)
+uniform ivec4 hotU;          // x = frames in the mean (0: no fixed-pattern test), y = bit 0 fixed-pattern test, bit 1 base transient test
+uniform vec4 hotSigU;        // as kHybFlags
+uniform ivec2 natRows;
+uniform ivec2 natCount;      // native canonical rows counted for the report (the strip's own rows)
+uniform vec2 natNoise;       // slope, offset of one native site of the base (normalised units)
+float mAt(int x,int y){
+    if(x<0||x>=natU.y)x=natReflect(x,natU.y);
+    return meanv[uint((y-natRows.x+2*natU.x)*natU.y+x)];
+}
+#define CX(p,q) { float lo_=min(p,q); q=max(p,q); p=lo_; }
+float median8(float a0,float a1,float a2,float a3,float a4,float a5,float a6,float a7){
+    CX(a0,a2)CX(a1,a3)CX(a4,a6)CX(a5,a7) CX(a0,a4)CX(a1,a5)CX(a2,a6)CX(a3,a7) CX(a0,a1)CX(a2,a3)CX(a4,a5)CX(a6,a7)
+    CX(a2,a4)CX(a3,a5) CX(a1,a4)CX(a3,a6) CX(a1,a2)CX(a3,a4)CX(a5,a6)
+    return 0.5*(a3+a4);
+}
+#define P5(dx,dy) p[((dy)+2)*5+(dx)+2]
+vec4 siteExcess(float p[25],bool green){
+    float med,cross;
+    if(green){
+        med=median8(P5(-1,-1),P5(1,-1),P5(-1,1),P5(1,1),P5(-2,0),P5(2,0),P5(0,-2),P5(0,2));
+        float hi=0.5*(P5(-1,0)+P5(1,0)),ho=0.25*(P5(-1,-2)+P5(1,-2)+P5(-1,2)+P5(1,2));
+        float vi=0.5*(P5(0,-1)+P5(0,1)),vo=0.25*(P5(-2,-1)+P5(2,-1)+P5(-2,1)+P5(2,1));
+        cross=0.5*((hi-ho)+(vi-vo));
+    } else {
+        med=median8(P5(-2,0),P5(2,0),P5(0,-2),P5(0,2),P5(-2,-2),P5(2,-2),P5(-2,2),P5(2,2));
+        float gi=0.25*(P5(-1,0)+P5(1,0)+P5(0,-1)+P5(0,1));
+        float go=0.125*(P5(-1,-2)+P5(1,-2)+P5(-1,2)+P5(1,2)+P5(-2,-1)+P5(2,-1)+P5(-2,1)+P5(2,1));
+        cross=gi-go;
+    }
+    float c=P5(0,0);
+    float level=(P5(-1,0)+P5(1,0)+P5(0,-1)+P5(0,1)+P5(-1,-1)+P5(1,-1)+P5(-1,1)+P5(1,1))*0.125;
+    return vec4(c-med,med,cross,level);
+}
+void main(){
+    int b=natU.x;
+    int x=int(gl_GlobalInvocationID.x),r=chunkU+int(gl_GlobalInvocationID.y);
+    if(x>=natU.y||r>=natRows.y-natRows.x)return;
+    int y=natRows.x+r;
+    bool green=phaseColor[(((y>>natV.x)&1)<<1)|((x>>natV.x)&1)]==1;
+    uint bits=0u;
+    float p[25];
+    if(hotU.x>=3&&(hotU.y&1)!=0){
+        for(int k=0;k<25;k++)p[k]=mAt(x+b*(k%5-2),y+b*(k/5-2));
+        vec4 e=siteExcess(p,green);
+        if(hotSigU.w<=0.0||e.w<hotSigU.w){
+            float sd=sqrt(max((natNoise.x*max(e.y,0.0)+natNoise.y)/float(hotU.x),1.0e-14))*1.15;
+            float ex=abs(e.x),cr=e.z*sign(e.x);
+            if(ex>hotSigU.x*sd&&cr<hotSigU.z*ex&&e.y<0.9)bits|=1u;
+        }
+    }
+    if((hotU.y&2)!=0){
+        for(int k=0;k<25;k++){uint fl;p[k]=natSite(0,x+b*(k%5-2),y+b*(k/5-2),fl);}
+        vec4 e=siteExcess(p,green);
+        if(hotSigU.w<=0.0||e.w<hotSigU.w){
+            float sd=sqrt(max(natNoise.x*max(e.y,0.0)+natNoise.y,1.0e-14))*1.1;
+            if(e.x>hotSigU.y*sd&&e.z<hotSigU.z*e.x&&e.y<0.9)bits|=2u;
+        }
+    }
+    sflags[uint(r*natU.y+x)]=bits;
+    if(bits!=0u&&y>=natCount.x&&y<natCount.y){
+        if((bits&1u)!=0u)atomicAdd(sums[natV.z],1u);
+        if((bits&2u)!=0u)atomicAdd(sums[natV.z+1],1u);
+    }
+}
+)";
+
+// Marks the native words of every frame of the strip (one invocation per word = two sites of a row), as kHybMark does for a plain
+// burst: bit 14 = outlier site (fixed-pattern sites in every frame, transient ones in the base), bit 15 = the site's cell is clipped
+// in this frame. The cell is the split's sub-frame cell: the sites at the same position inside the four blocks of the 2b x 2b
+// RGGB super-cell (any non-outlier one >= clipLevel). Standalone program: the NFrames block is writable here.
+static const char* kHybNatMark=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=12) buffer NFrames{uint nwords[];};
+layout(std430,binding=2) readonly buffer SiteFlags{uint sflags[];}; // native canonical rows [mFlagsU.x, mFlagsU.y)
+layout(std140,binding=1) uniform NatTable{uvec4 nGeo[128];};
+uniform ivec4 natU;          // as kHybNatAccess
+uniform ivec4 natV;
+uniform vec4 natW;
+uniform vec4 natGain[16];
+uniform ivec2 cfaShift;
+uniform vec4 black;
+uniform vec4 inv;
+uniform float clipLevel;
+uniform int frameIdx;        // first frame of this dispatch (+ z)
+uniform int chunkU;
+uniform ivec4 mFlagsU;       // x, y = native canonical rows of SiteFlags, z: 1 cell clip, 2 outliers
+uint siteOutlier(int f,int x,int y){ // canonical site
+    if((mFlagsU.z&2)==0||x<0||y<0||x>=natU.y||y<mFlagsU.x||y>=mFlagsU.y)return 0u;
+    uint s=sflags[uint((y-mFlagsU.x)*natU.y+x)];
+    return (s&1u)|(f==0?((s>>1)&1u):0u);
+}
+float siteValue(int f,int X,int Y){ // normalised sensor site inside the frame's rows (as natSiteG); flag bits masked off
+    uvec4 geo=nGeo[f];
+    int m=natU.x-1,n=int(geo.z),ry=Y-int(geo.y);
+    X=X<0?(X&m):X>=natU.y?natU.y-natU.x+(X&m):X;          // as kHybMark clamps a sub-frame column: same position in the block
+    ry=ry<0?(ry&m):ry>=n?max(n-natU.x,0)+(ry&m):ry;
+    uint idx=geo.x+uint(ry*natU.y+X);
+    uint word=nwords[idx>>1];
+    uint v=((idx&1u)==0u?(word&0xFFFFu):(word>>16))&0x3FFFu;
+    int cp=(((Y>>natV.x)&1)<<1)|((X>>natV.x)&1);
+    float u=float(v);
+    if(natV.y!=0){
+        int k=((Y&7)<<3)|(X&7);
+        u=u>=natW.y?natW.x:clamp(black[cp]+(u-black[((Y&1)<<1)|(X&1)])*natGain[k>>2][k&3],0.0,natW.x);
+    }
+    return (u-black[cp])*inv[cp];
+}
+bool cellClipped(int f,int x,int y){ // canonical site
+    int s=natV.x,b=natU.x,m=b-1;
+    int x0=((x>>(s+1))<<(s+1))+(x&m),y0=((y>>(s+1))<<(s+1))+(y&m);
+    for(int p=0;p<4;p++){
+        int cx=x0+(p&1)*b,cy=y0+(p>>1)*b;
+        if(siteOutlier(f,cx,cy)!=0u)continue;
+        if(siteValue(f,cx+(cfaShift.x<<s),cy+(cfaShift.y<<s))>=clipLevel)return true;
+    }
+    return false;
+}
+void main(){
+    int f=frameIdx+int(gl_GlobalInvocationID.z);
+    int wx=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
+    if(f>127||wx>=natU.y/2||row>=int(nGeo[f].z))return;
+    int Y=int(nGeo[f].y)+row;
+    uint idx=nGeo[f].x+uint(row*natU.y+2*wx);
+    uint word=nwords[idx>>1];
+    for(int k=0;k<2;k++){
+        int X=2*wx+k;
+        int x=X-(cfaShift.x<<natV.x),y=Y-(cfaShift.y<<natV.x); // canonical
+        uint fl=siteOutlier(f,x,y);
+        if((mFlagsU.z&1)!=0&&x>=0&&y>=0&&cellClipped(f,x,y))fl|=2u;
+        uint sh=uint(16*k);
+        word=(word&~(0xC000u<<sh))|((fl&3u)<<(14u+sh));
+    }
+    nwords[idx>>1]=word;
+}
+)";
+
+// The native merge (after kHybMergeCommon + kHybNatAccess): one invocation per output pixel of the strip, output layout exactly as
+// kHybMergeMain1 on the grid b of the binned frames (outRgb / eff / cflags rows of the strip, row width W), so the effective map and
+// the clip flags downstream work unchanged. kHybChroma / kHybBento / kHybRim do NOT apply to it: they sample the binned base at the
+// binned position of the output pixel ((ox + 0.5) / b - 0.5, i.e. native ox), while this merge writes native ox - (b-1)/2, and they
+// correct with sums of the binned base that this merge never added (P29 review: chroma on, Quad, one frame: edges -1.2 dB, flat
+// noise +8 %). hybridReconstructMosaicNative turns them off; native variants of them are not built.
+// Accumulation: ArkCam v23 k_fs_gcam_sabre_merge_quad (SampleNeighborhoodQuadRBF, source given to the SCAMERA owner by the ArkCam
+// author, research/ark23/k_fs_gcam_sabre_merge_quad.glsl; its logic is ported here with the author's permission): every raw site of
+// the window around the frame's sample position, at its native position, colour from its block, anisotropic RBF in native px.
+// Ours around it: the binned guide's covariance scaled to native px (natK.x = 1 / (b mosaicKernelScale)^2), bilinear between the
+// cell centres at the sample position (S0's sample_cov; the donors' own 6.1 covariance the same way), the binned rejection per frame,
+// the F6 offset of the binned frame, site flags and clip handling as frameSamples, base frame last with the widening rule.
+// Geometry (the split's convention, which the app and tools/quad/eval_mosaic_burst.py expect): output pixel X sits at native
+// sensor position X - (b-1)/2; binned pixel B holds the block b B .. b B + b-1 (centre b B + (b-1)/2).
+static const char* kHybMergeMosaic=R"(
+uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (ArkCam's distance multipliers per
+                   // colour, mosaicKernelG / RB), w = minimum R / B support of the colour fill relative to green (0 = off)
+uniform int natRy1;    // end of the guide cell rows held in Cov (ry1: the strip's cells + 3, clamped to the frame)
+uniform int natWidenU; // 6.1 base widening: 0 = the split's rule b^2 F + b^2 - 1 < widenBelow, 1 = S0's rule F < widenBelow
+// Precision of the binned guide at binned position B, bilinear between the cell centres (2 c + 0.5) (S0, m5ref.sample_cov): the
+// nearest cell kept P constant over 2b x 2b native px squares. Rows within the held ones [ry0, natRy1) (the strip's own +-1 rows are
+// always held except at the frame's border, where S0 clamps as well), columns within the frame.
+vec3 natCov(vec2 B){
+    int w2=size.x/2;
+    vec2 c=clamp((B-0.5)*0.5,vec2(0.0,float(ry0)),vec2(float(w2-1),float(natRy1-1)));
+    int x0=min(int(floor(c.x)),max(w2-2,0)),y0=max(min(int(floor(c.y)),natRy1-2),ry0);
+    int x1=min(x0+1,w2-1),y1=min(y0+1,natRy1-1);
+    vec2 t=clamp(c-vec2(float(x0),float(y0)),0.0,1.0);
+    vec3 p0=mix(cov[(y0-ry0)*w2+x0].xyz,cov[(y0-ry0)*w2+x1].xyz,t.x);
+    vec3 p1=mix(cov[(y1-ry0)*w2+x0].xyz,cov[(y1-ry0)*w2+x1].xyz,t.x);
+    return mix(p0,p1,t.y);
+}
+// The same for the donor's own 6.1 covariance (mergeMode & 1) at its binned position Ob (dcovAt clamps to the cells it holds).
+vec3 natDcov(int f,vec2 Ob){
+    vec2 c=(Ob-0.5)*0.5,c0=floor(c),t=c-c0;
+    int x0=int(c0.x),y0=int(c0.y);
+    vec3 p0=mix(dcovAt(f,x0,y0),dcovAt(f,x0+1,y0),t.x);
+    vec3 p1=mix(dcovAt(f,x0,y0+1),dcovAt(f,x0+1,y0+1),t.x);
+    return mix(p0,p1,t.y);
+}
+// S5 (mosaicChromaFill 1): ArkCam v23's colour-difference regularisation of SampleNeighborhoodQuadRBF (ported with the author's
+// permission, research/ark23/k_fs_gcam_sabre_merge_quad.glsl): a colour whose kernel weight in this frame is below natK.w x the
+// green weight gets the missing weight at G + (mean R (B) - mean G) of the 3x3 colour blocks around the sample, G = this frame's
+// kernel-weighted green; before the frame's weight is applied. Block means of the unflagged, unclipped sites, each >= 0 (ArkCam's
+// clamp); a colour with clipped samples in this frame keeps its clipped mean (a lower bound), no fill.
+void natFill(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
+    int s=natV.x,b=natU.x,bb=natU.x*natU.x;
+    ivec2 q=ivec2(floor(O+0.5))>>s;   // block of the nearest site
+    vec3 sum=vec3(0.0),cnt=vec3(0.0);
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        int bx=q.x+i,by=q.y+j;
+        int c=phaseColor[((by&1)<<1)|(bx&1)];
+        float bs=0.0,bn=0.0;
+        for(int t=0;t<bb;t++){
+            uint fl;
+            float v=natSiteG(geo,(bx<<s)+(t&(b-1)),(by<<s)+(t>>s),fl);
+            if((fl&3u)!=0u||v>=clipLevel)continue;
+            bs+=v;bn+=1.0;
+        }
+        if(bn>0.0){sum[c]+=max(bs/bn,0.0);cnt[c]+=1.0;}
+    }
+    if(cnt.y<=0.0)return;
+    float gv=num.y/den.y,gm=sum.y/cnt.y*g,need=natK.w*den.y;
+    for(int k=0;k<2;k++){
+        int c=2*k;
+        if(den[c]>=need||cd[c]>0.0||cnt[c]<=0.0)continue;
+        num[c]+=max(gv+sum[c]/cnt[c]*g-gm,0.0)*(need-den[c]);
+        den[c]=need;
+    }
+}
+// The native sites of frame f around O (canonical native px), weighted by the kernel P (native px), into a: as frameSamples (outlier
+// site: no sample; clipped site or a site of a clipped cell: the clipped mean; a clipped longer frame: nothing) with the frame's
+// weight r. Window: natV.w = 1 (mosaicWindowFull, S0's full window): the (2r+1)^2 sites around the nearest site N = floor(O + 0.5),
+// d in (-r-1/2, r+1/2] per axis; otherwise as the split: win = the 6.1 window |d| <= r per axis (r = 1.5 b: the split's +-1.5
+// sub-frame px), else d in (-4r/3, 4r/3] per axis (r = 1.5 b: the two lattice sites per axis and phase of frameSamples on the split's
+// sub-frames, +-2 sub-frame px). With natV.w = 0, Quad r = 3 and Tetra r = 6 reproduce the split's sites exactly.
+// The frame's sums are formed first and weighted by r once (the colour fill of S5 works on them).
+void natSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool win){
+    float g=fParam[f].x;
+    int role=int(fParam[f].w);
+    uvec4 geo=nGeo[clamp(f,0,127)];
+    int s=natV.x;
+    float R=float(natU.w);
+    int x0,y0,x1,y1;
+    float Rn=R*(4.0/3.0);
+    if(natV.w!=0){ivec2 N=ivec2(floor(O+0.5));x0=N.x-natU.w;y0=N.y-natU.w;x1=N.x+natU.w;y1=N.y+natU.w;}
+    else if(win){x0=int(ceil(O.x-R));y0=int(ceil(O.y-R));x1=int(floor(O.x+R));y1=int(floor(O.y+R));}
+    else{x0=int(floor(O.x-Rn))+1;y0=int(floor(O.y-Rn))+1;x1=int(floor(O.x+Rn));y1=int(floor(O.y+Rn));}
+    // at most ceil(8r/3) sites per axis whatever O is (a non-finite position must not make the loop unbounded)
+    int span=int(ceil(2.0*Rn))-1;
+    x1=min(x1,x0+span);y1=min(y1,y0+span);
+    vec3 num=vec3(0.0),den=vec3(0.0),cn=vec3(0.0),cd=vec3(0.0);float cv=0.0,uc=0.0;
+    for(int sy=y0;sy<=y1;sy++){
+        float dy=float(sy)-O.y;
+        int py=((sy>>s)&1)<<1;
+        for(int sx=x0;sx<=x1;sx++){
+            float dx=float(sx)-O.x;
+            int c=phaseColor[py|((sx>>s)&1)];
+            float kw=exp2(-0.72135*(c==1?natK.y:natK.z)*(dx*dx*P.x+dy*dy*P.y+2.0*dx*dy*P.z))+kD.z;
+            if(kw<0.002&&f!=0&&role!=5)continue;
+            uint fl;
+            float v=natSiteG(geo,sx,sy,fl);
+            if((fl&1u)!=0u)continue;                           // outlier site: no sample at all
+            if((fl&2u)!=0u||v>=clipLevel){
+                if(role==3)continue;                           // a clipped longer frame is only a lower bound below the base's
+                cn[c]+=kw*v*g;cd[c]+=kw;
+                if(role==5)uc+=kw;
+                continue;
+            }
+            num[c]+=kw*v*g;den[c]+=kw;
+            if(c==1)cv+=kw;
+        }
+    }
+    if(natK.w>0.0&&den.y>1.0e-7&&(den.x<natK.w*den.y||den.z<natK.w*den.y))natFill(num,den,cd,geo,O,g);
+    a.num+=r*num;a.den+=r*den;a.clipNum+=r*cn;a.clipDen+=r*cd;a.usClip+=r*uc;a.cover+=cover*cv;
+}
+// Round-4 kernel (coverage rule of the base widening): the split merged the base's other b^2-1 site classes as donors (their
+// sub-frames always pass the rejection against class (0, 0)), and their green kernel weight counted as coverage. The same weight here
+// (the donor kernel P, unflagged unclipped sites), so the base widens where it widened in the split.
+float natSelfCover(vec2 O,vec3 P,bool win){
+    uvec4 geo=nGeo[0];
+    int s=natV.x,m=natU.x-1;
+    float R=float(natU.w);
+    int x0,y0,x1,y1;
+    float Rn=R*(4.0/3.0);
+    if(natV.w!=0){ivec2 N=ivec2(floor(O+0.5));x0=N.x-natU.w;y0=N.y-natU.w;x1=N.x+natU.w;y1=N.y+natU.w;}
+    else if(win){x0=int(ceil(O.x-R));y0=int(ceil(O.y-R));x1=int(floor(O.x+R));y1=int(floor(O.y+R));}
+    else{x0=int(floor(O.x-Rn))+1;y0=int(floor(O.y-Rn))+1;x1=int(floor(O.x+Rn));y1=int(floor(O.y+Rn));}
+    int span=int(ceil(2.0*Rn))-1;
+    x1=min(x1,x0+span);y1=min(y1,y0+span);
+    float cv=0.0;
+    for(int sy=y0;sy<=y1;sy++){
+        float dy=float(sy)-O.y;
+        int py=((sy>>s)&1)<<1;
+        for(int sx=x0;sx<=x1;sx++){
+            if(phaseColor[py|((sx>>s)&1)]!=1||((sx&m)==0&&(sy&m)==0))continue;
+            float dx=float(sx)-O.x;
+            float kw=exp2(-0.72135*natK.y*(dx*dx*P.x+dy*dy*P.y+2.0*dx*dy*P.z))+kD.z;
+            if(kw<0.002)continue;
+            uint fl;
+            float v=natSiteG(geo,sx,sy,fl);
+            if((fl&3u)!=0u||v>=clipLevel)continue;
+            cv+=kw;
+        }
+    }
+    return cv;
+}
+// No sample of colour c at all (outlier sites under the window): the mean of the base's unflagged sites of that colour in the
+// no-window range around O (baseFill of the split).
+float natBaseFill(int c,vec2 O){
+    float Rn=float(natU.w)*(4.0/3.0);
+    int s=natV.x,n=int(ceil(2.0*Rn));
+    int x0=int(floor(O.x-Rn))+1,y0=int(floor(O.y-Rn))+1;
+    float sum=0.0,cnt=0.0;
+    for(int j=0;j<n;j++)for(int i=0;i<n;i++){
+        int sx=x0+i,sy=y0+j;
+        if(phaseColor[(((sy>>s)&1)<<1)|((sx>>s)&1)]!=c)continue;
+        uint fl;
+        float v=natSite(0,sx,sy,fl);
+        if((fl&1u)!=0u)continue;
+        sum+=v;cnt+=1.0;
+    }
+    return cnt>0.0?sum*fParam[0].x/cnt:0.0;
+}
+void main(){
+    int g=kG.x,ow=kG.y,w2=size.x/2;
+    int ox=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
+    if(ox>=ow||row>=2*(cy1-cy0)*g)return;
+    int b=natU.x,bb=b*b;
+    float o=0.5*float(b-1);
+    vec2 S=vec2(float(ox),float(2*cy0*g+row))-o; // native canonical position of the output pixel (X - (b-1)/2)
+    vec2 B0=(S-o)/float(b);                       // the same in the binned base frame
+    ivec2 bi=ivec2(floor(B0+0.5));                // nearest binned pixel: its cell gives the robustness, Bento mask and F6 offset
+    int cx=clamp(bi.x>>1,0,w2-1),cy=clamp(bi.y>>1,cy0,cy1-1);
+    vec3 P=natCov(B0);                            // the guide: bilinear between the cell centres
+    float m=kD.w>0.5?bmask[(cy-cy0)*w2+cx]:0.0;
+    vec2 cell=vec2(float(2*cx),float(2*cy));
+    int mode=mergeModeU.x;
+    float wb=1.0-m;
+    if(kE.x>=0.0||mergeModeU.y!=0)wb=0.0;
+    Acc a;initAcc(a);
+    float frames=0.0; // accepted donor frames
+    for(int f=1;f<frameCount;f++){
+        float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+        if(r<0.004)continue;
+        if(kE.x>=0.0&&int(kE.x)!=f)continue;
+        vec2 Ob=originM(f,2*cx,2*cy)+(B0-cell);    // binned position in frame f (homography and F6 offset of the cell)
+        bool us=int(fParam[f].w)==5;
+        vec3 Pf;
+        if(us)Pf=vec3(kE.y,kE.y,0.0);
+        else if((mode&1)!=0)Pf=natDcov(f,Ob)*fParam[f].z;
+        else Pf=P*fParam[f].z;
+        float rw=r/max(fParam[f].y,1.0e-6);
+        if(!us)frames+=rw;
+        natSamples(a,f,Ob*float(b)+o,r,rw,Pf*natK.x,(mode&2)!=0&&!us);
+    }
+    // Base frame last. 6.1 rule (natWidenU 0) as in the split, where each frame was b^2 sub-frames and the base's own other b^2-1
+    // sub-frames were accepted donors: b^2 frames + b^2-1 < widenBelow; natWidenU 1: S0's frames < widenBelow. Round-4 rule on the
+    // coverage including those sites.
+    if(wb>0.0){
+        vec3 Pb;
+        if((mode&4)!=0)Pb=(natWidenU!=0?frames:float(bb)*frames+float(bb-1))<kD.x?P/(kD.y*kD.y):P;
+        else { float self=natSelfCover(S,P*natK.x,(mode&2)!=0);
+               float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+self)); Pb=P/(widen*widen); }
+        natSamples(a,0,S,wb,wb,Pb*natK.x,(mode&2)!=0&&m<=0.0);
+    }
+    vec3 col;uint cfl=0u;
+    for(int c=0;c<3;c++){
+        if(a.den[c]>1.0e-7)col[c]=a.num[c]/a.den[c];
+        else if(a.clipDen[c]>0.0){col[c]=a.clipNum[c]/a.clipDen[c];cfl|=1u<<uint(c);}
+        else col[c]=(natMarkU!=0&&wb>0.0)?natBaseFill(c,S):0.0;
+        if(a.clipDen[c]>0.0)cfl|=8u;
+    }
+    int i=row*ow+ox;
+    outRgb[i*3]=col.x;outRgb[i*3+1]=col.y;outRgb[i*3+2]=col.z;
+    eff[i]=a.cover+wb;
+    if(mergeModeU.z!=0||rimU.x>0.0){
+        if(m>0.0)cfl|=16u;
+        if(a.usClip>0.0&&(cfl&7u)!=0u)cfl|=32u;
+        if(rimU.x>0.0&&(cfl&8u)!=0u&&a.den[1]>1.0e-7){
+            float e=0.0;
+            for(int c=0;c<3;c++)e=max(e,a.clipDen[c]/max(a.den[c]+a.clipDen[c],1.0e-20));
+            cfl|=uint(clamp(e,0.0,1.0)*63.0+0.5)<<8;
+        }
+        if(rimU.x>0.0&&(cfl&8u)!=0u)cfl|=64u;
+        cflags[i]=cfl;
+    }
+}
+)";
+
 // P30: directory of the GPU program binary cache (empty = no cache), set by the worker from the job's "gl-cache" file.
 // Compiling the merge programs cost ~0.6 s of every shot (OPPO Adreno 750: 637 ms of a 702 ms init); a program loaded from
 // its own driver binary runs the identical code.
 inline std::string& hybridProgramCacheDir(){static std::string dir;return dir;}
+
+// P29: the raw mosaic behind a binned burst (hybridReconstructMosaicNative -> hybridReconstruct -> HybridGpu::merge). Absent (null)
+// everywhere else: the plain-Bayer and the sub-frame paths never see it.
+struct HybridMosaicNative {
+    int block=2,W=0,H=0;                 // colour block b and size of the mosaic the merge reads (W = b x the binned width)
+    std::vector<const uint16_t*> frames; // mosaic of frame k of the binned burst (same index), W x H sensor layout: the sensor RAW
+                                         // (rawGains, S3) or built like the split's sub-frames (vb + (raw - black) x site gain)
+    bool rawGains=false;                 // the frames are the sensor RAW: gains[] apply at read time
+    std::array<float,64> gains{};        // site-class gains (sensor class (y&7)*8 + (x&7)), with rawGains
+    int window=3;                        // HybridTuning::mosaicWindow
+    bool fullWindow=false;               // HybridTuning::mosaicWindowFull: the (2r+1)^2 sites around the nearest one (S0), else the split's
+    float kernelScale=1.f;               // HybridTuning::mosaicKernelScale
+    float ksG=1.f,ksRB=1.f;              // HybridTuning::mosaicKernelG / RB (distance multipliers per colour)
+    float fillSupport=0.f;               // S5 R / B fill: minimum support relative to green (0 = off)
+    float keyNoise=1.f;                  // the binned frames' noise model x this = the noise of one SENSOR site: the SNR keys of the kernel
+                                         // curves (Sabre 6.1 / round 4, the night rule, the outlier gate) follow the sensor sites as on the
+                                         // split and in S0, not the binned averages (nor T2's 2x2 means)
+    bool s0Widen=false;                  // HybridTuning::mosaicNativeWiden: the 6.1 base widening below widenBelow FRAMES (S0)
+    float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
+};
 
 class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
@@ -1445,6 +1971,9 @@ class HybridGpu {
     static constexpr int kSlots=19; // 0..17 merge (1 fixed-pattern mean, 2 site flags, 6 clip flags, 14 donor covariance, 15 F6 field,
                                     // 16 F6 offset per strip cell, 17 F6 Z channel), 18 readback staging (kSlots - 1)
     GLuint meanProgram=0,flagsProgram=0,markProgram=0,guideProgram=0,cellsProgram=0,rejectProgram=0,dilateProgram=0,mergeProgram=0,rimProgram=0,bentoProgram=0,chromaProgram=0,buffers[kSlots]{};
+    // P29 native mosaic (compiled only by HybridGpu(.., nativeMosaic = true)): outlier mean / flags / mark of the native sites and
+    // the merge kHybMergeMosaic; the NatTable uniform buffers (binding 1) of the two strip banks
+    GLuint natMeanProgram=0,natFlagsProgram=0,natMarkProgram=0,mosaicProgram=0,natTable[2]{};
     // FrameTable (std140, uniform buffer binding 0): six arrays of kHybridGpuFrames 16-byte entries
     GLuint frameTable=0;
     static constexpr size_t kTableGeo=0,kTableHA=1,kTableHB=2,kTableParam=3,kTableNoise=4,kTableCells=5;
@@ -1480,6 +2009,8 @@ class HybridGpu {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
+            for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram})if(program)glDeleteProgram(program); // P29
+            if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
             glDeleteBuffers(kSlots,buffers);
             glDeleteBuffers(kSlots,bankBuffers);
             if(frameTable)glDeleteBuffers(1,&frameTable);
@@ -1634,13 +2165,15 @@ class HybridGpu {
     static GLint loc(GLuint program,const char* n){return glGetUniformLocation(program,n);}
     // A pass may be split into dispatches of `chunk` rows (a multiple of the 8-row workgroup), flushed together: a single
     // dispatch that runs for seconds trips the kernel's GPU hang detection (the context is reset, every later map returns NULL),
-    // many small flushed submissions cost ~1 ms each. The current program must be bound.
-    void dispatchRows(GLuint program,int w2,int rows,int gz,int chunk,int pass,bool barrier=true){
+    // many small flushed submissions cost ~1 ms each. The current program must be bound. flushEach (P29 native merge): every
+    // dispatch is its own submission (a pass whose dispatches together run for seconds).
+    void dispatchRows(GLuint program,int w2,int rows,int gz,int chunk,int pass,bool barrier=true,bool flushEach=false){
         const GLint l=loc(program,"chunkU");
         const auto t0=std::chrono::steady_clock::now();
         for(int r=0;r<rows;r+=chunk){
             glUniform1i(l,r);
             glDispatchCompute(GLuint((w2+7)/8),GLuint((std::min(chunk,rows-r)+7)/8),GLuint(std::max(gz,1)));
+            if(flushEach)glFlush();
         }
         glFlush();
         if(barrier)glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1682,11 +2215,15 @@ public:
         int laMode=0,laNx=0,laNy=0;
         float laOx=0,laOy=0,laStride=16;
         std::vector<float> laMaxY;                      // per frame: largest |dy| of the field (rows uploaded beyond the homography)
+        // P29: the raw mosaic behind these (binned) frames; null = every other merge. nativeFrames: its frames in merge order.
+        const HybridMosaicNative* native=nullptr;
+        std::vector<const uint16_t*> nativeFrames;
         // The stream is above kHybridClassicPixels (any RAW size): strips sized by the readback, the storage block and the
         // available memory, dispatch chunks scaled by the width. false: the merge exactly as before.
         bool large=false;
     };
     long fixedOutliers=0,baseOutliers=0;                // sites flagged by the last merge
+    long natFixedOutliers=0,natBaseOutliers=0;          // P29: native sites flagged by the last native mosaic merge
     long rimPixels=0;                                   // output pixels whose R/B the clip-border ratios rebuilt
     // rimPass: compile the clip-border colour pass (kHybRim, ~0.14 s on Adreno 750); without it merge() runs as before the pass.
     // localAlign: compile the F6 local offsets into the reject / merge / rim programs (Frames::laMode needs it).
@@ -1698,8 +2235,9 @@ public:
     // sumsCarry (any RAW size): the per-frame accepted-weight sums of kHybDilate (up to 255 per cell, uint32) carry into a second
     // word per frame; without it they wrap above 2^32 / 255 cells (67 MP). Report only (robustShare); false = the program as before.
     const bool sumsCarry=false;
+    // nativeMosaic (P29): also compile the native mosaic programs (Frames::native needs them).
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
-                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false)
+                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false)
             :localAlign(withLocalAlign),sumsCarry(withSumsCarry){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
@@ -1753,6 +2291,14 @@ public:
             if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
             if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
+            if(nativeMosaic){ // P29: new programs only, the ones above are compiled from the same sources as without it
+                natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
+                natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybNatFlags).c_str());
+                natMarkProgram=timed("natMark",kHybNatMark,true);
+                mosaicProgram=timed("mosaic",(std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+                glGenBuffers(2,natTable);
+                for(GLuint t:natTable){glBindBuffer(GL_UNIFORM_BUFFER,t);glBufferData(GL_UNIFORM_BUFFER,GLsizeiptr(size_t(kHybridGpuFrames)*16),nullptr,GL_DYNAMIC_DRAW);}
+            }
             if(cacheStores>0)trimProgramCache();
             if(!hybridProgramCacheDir().empty())compileMs+=" cache="+std::to_string(cacheHits)+"/"+std::to_string(cacheHits+cacheStores)+" hits";
             glGenBuffers(kSlots,buffers);
@@ -1810,6 +2356,15 @@ public:
         if(rimProgram)programs.push_back(rimProgram);
         if(bentoProgram)programs.push_back(bentoProgram);
         if(chromaProgram)programs.push_back(chromaProgram);
+        // P29 native mosaic (Frames::native): the frames above are the binned frames, the raw mosaic of each goes to slot 12
+        const HybridMosaicNative* nat=in.native;
+        if(nat){
+            if(!mosaicProgram||!natMarkProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
+            if(int(in.nativeFrames.size())!=frames||(nat->block!=2&&nat->block!=4)||g!=nat->block||nat->W!=w*nat->block||nat->H!=h*nat->block)
+                throw std::runtime_error("HYBRID GPU native mosaic shape");
+            for(const uint16_t* p:in.nativeFrames)if(!p)throw std::runtime_error("HYBRID GPU native mosaic frame");
+            programs.push_back(natMeanProgram);programs.push_back(natFlagsProgram);programs.push_back(mosaicProgram);
+        }
         glUseProgram(markProgram);
         glUniform2i(loc(markProgram,"size"),w,h);glUniform2i(loc(markProgram,"cfaShift"),in.cfa&1,in.cfa>>1);
         glUniform4f(loc(markProgram,"black"),in.black[0],in.black[1],in.black[2],in.black[3]);
@@ -1915,8 +2470,48 @@ public:
          {const float us=std::max(0.3f,tune.bentoUsSigma);glUniform4f(loc(rimProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);}
          glUniform4i(loc(rimProgram,"kG"),g,ow,0,0);
          glUniform4i(loc(rimProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);}}
-        // per-frame accepted weight, the two outlier counts, rim pixels (sumsCarry: then the carry word of every frame's weight)
-        std::vector<GLuint> zeros(size_t(std::max(frames,1))*(sumsCarry?2:1)+3,0);
+        // Sums (slot 9): per-frame accepted weight, the two outlier counts, rim pixels (sumsCarry: then the carry word of every frame's
+        // weight); P29: then the two native outlier counts (natSum0)
+        const size_t natSum0=size_t(std::max(frames,1))*(sumsCarry?2:1)+3;
+        if(nat){ // P29: uniforms of the native programs
+            // The binned passes re-sample the binned base at the binned positions; the native merge writes other positions and never
+            // added the binned base's sums they correct (hybridReconstructMosaicNative turns them off; native variants are not built).
+            if(chromaPass||rim||bentoColourPass)throw std::runtime_error("HYBRID GPU: the chroma / rim / Bento colour passes do not apply to the native mosaic merge");
+            const int nb=nat->block,ns=nb==4?2:1,nr=std::clamp(nat->window,1,6);
+            const float ks=std::clamp(nat->kernelScale,0.1f,4.f);
+            std::array<float,64> ng;ng.fill(1.f);
+            if(nat->rawGains)ng=nat->gains;
+            for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram}){
+                glUseProgram(program);
+                glUniform4i(loc(program,"natU"),nb,nat->W,nat->H,nr);
+                glUniform4i(loc(program,"natV"),ns,nat->rawGains?1:0,int(natSum0),0); // z: native outlier counters after the plain ones
+                glUniform4f(loc(program,"natW"),in.white,in.white-1.f,0.f,0.f);
+                glUniform4fv(loc(program,"natGain"),16,ng.data());
+            }
+            glUseProgram(natMarkProgram);
+            glUniform2i(loc(natMarkProgram,"cfaShift"),in.cfa&1,in.cfa>>1);
+            glUniform4f(loc(natMarkProgram,"black"),in.black[0],in.black[1],in.black[2],in.black[3]);
+            glUniform4f(loc(natMarkProgram,"inv"),in.inv[0],in.inv[1],in.inv[2],in.inv[3]);
+            glUniform1f(loc(natMarkProgram,"clipLevel"),tune.clipLevel);
+            glUseProgram(natFlagsProgram);
+            glUniform4f(loc(natFlagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
+            glUniform2f(loc(natFlagsProgram,"natNoise"),nat->siteSlope,nat->siteOffset);
+            glUseProgram(mosaicProgram);
+            glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
+            glUniform1i(loc(mosaicProgram,"natWidenU"),nat->s0Widen?1:0);
+            const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
+            glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
+            glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
+            glUniform4i(loc(mosaicProgram,"kG"),g,ow,0,0);
+            glUniform4i(loc(mosaicProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);
+            const float rimU[4]={rim?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
+            glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
+            const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
+            glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,std::clamp(nat->fillSupport,0.f,1.f));
+            glUseProgram(mergeProgram);
+            check("native uniforms");
+        }
+        std::vector<GLuint> zeros(natSum0+(nat?2:0),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
         reserve(12,16); // mosaic frames: unused
         int stripCells=128/(g*g); // 256 output rows per dispatch on the sensor grid; on the 2x grid the strip
@@ -1929,10 +2524,13 @@ public:
         //   memory    all strip buffers (both banks) within a quarter of MemAvailable: halved as well, down to 8 cells (soft)
         //   dispatch  rows per dispatch scaled by 4624 / width: the work of one dispatch stays within today's (GPU hang detection)
         const bool large=in.large;
+        // P29: the native mosaic merge binds the raw mosaic rows of every frame (slot 12, b^2 x slot 0: the largest strip buffer) and
+        // the native site flags (slots 1 / 2): its strips follow the same readback, storage-block and memory limits at any size.
+        const bool fit=large||nat!=nullptr;
         constexpr int64_t kReadbackCap=int64_t(256)*4624*12;
         const size_t blockLimit=maxStorageBlock>0?maxStorageBlock:(size_t(128)<<20);
         uint64_t gpuBudget=0;
-        if(large){
+        if(fit){
             stripCells=std::max(8,std::min(stripCells,int(kReadbackCap/(2*int64_t(g)*ow*12))&~7));
             gpuBudget=hybridMemAvailable()/4;
         }
@@ -1967,6 +2565,42 @@ public:
                 flagMode=0;
                 if(trace)trace("HYBRID GPU: RAW codes up to "+std::to_string(top)+" with white level "+std::to_string(in.white)
                     +" leave no spare bits: cell clip and outlier sites off");
+            }
+        }
+        // P29: the same scan of the native mosaic (its own clipped sites and flag bits; the binned averages hide single clipped sites)
+        int natFlagMode=0,natBlocks=0;
+        std::vector<uint8_t> natClipBlock;
+        std::vector<GLuint> natOffsets;std::vector<GLint> natRow0,natRows;
+        if(nat){
+            natOffsets.assign(frames,0);natRow0.assign(frames,0);natRows.assign(frames,1);
+            natFlagMode=markable?((tune.cellClip?1:0)|(hot?2:0)):0;
+            natBlocks=(nat->H+kBlock-1)/kBlock;
+            natClipBlock.assign(size_t(frames)*natBlocks,0);
+            if(natFlagMode){
+                float lowest=1e9f;
+                if(nat->rawGains){ // RAW codes: the lowest code whose gained value can reach the clip level, or the clipped code
+                    float gmax=1e-3f;for(float gk:nat->gains)gmax=std::max(gmax,gk);
+                    for(int sp=0;sp<4;++sp)for(int cp=0;cp<4;++cp)lowest=std::min(lowest,in.black[sp]+tune.clipLevel/std::max(in.inv[cp],1e-12f)/gmax);
+                    lowest=std::min(lowest,in.white-1.f);
+                } else
+                for(int p=0;p<4;++p)lowest=std::min(lowest,in.black[p]+tune.clipLevel/std::max(in.inv[p],1e-12f));
+                const uint16_t threshold=uint16_t(std::clamp(std::ceil(lowest),0.f,65535.f));
+                std::vector<uint16_t> blockMax(size_t(frames)*natBlocks,0);
+                const int NW=nat->W,NH=nat->H,nbl=natBlocks;
+                mergeRowBands(frames*nbl,[&](int i0,int i1){
+                    for(int i=i0;i<i1;++i){
+                        const int f=i/nbl,bk=i%nbl;
+                        const uint16_t* row=in.nativeFrames[f]+size_t(bk)*kBlock*NW;
+                        const size_t cnt=size_t(std::min(kBlock,NH-bk*kBlock))*NW;
+                        uint16_t m=0;for(size_t k=0;k<cnt;++k)m=std::max(m,row[k]);
+                        blockMax[i]=m;natClipBlock[i]=(natFlagMode&1)&&m>=threshold;
+                    }
+                });
+                const uint16_t top=*std::max_element(blockMax.begin(),blockMax.end());
+                if(top>=16384){
+                    natFlagMode=0;
+                    if(trace)trace("HYBRID GPU: native mosaic codes up to "+std::to_string(top)+" leave no spare bits: native cell clip and outlier sites off");
+                }
             }
         }
         // P30: the readback of strip k runs after strip k+1 is submitted (fence), from the other bank.
@@ -2012,8 +2646,20 @@ public:
                 crow0[f]=r0/2;crows[f]=rows[f]/2;cellOff[f]=GLuint(cellTotal);cellTotal+=size_t(crows[f])*w2;
             }
         };
-        // Bytes the strip binds per storage slot (the reserve() calls below; slots 0, 3, 4, 6 and 13 exist in both banks).
-        auto stripSlots=[&](int cy0,int cy1,size_t total,size_t cellTotal,std::array<size_t,kSlots>& s){
+        // P29: the native rows behind every binned row of the plan (b per binned row: the margins of the binned window cover the
+        // native window +-(r+1) px) into natRow0 / natRows / natOffsets; returns the 16-bit words of slot 12 (0 without the native merge)
+        auto natPlan=[&]()->size_t{
+            if(!nat)return 0;
+            const int NW=nat->W,NH=nat->H,nb=nat->block;
+            size_t ntotal=0;
+            for(int f=0;f<frames;++f){
+                const int r0=std::min(NH-nb,nb*row0[f]),r1=std::min(NH,nb*(row0[f]+rows[f]));
+                natRow0[f]=r0;natRows[f]=std::max(1,r1-r0);natOffsets[f]=GLuint(ntotal);ntotal+=size_t(natRows[f])*NW;
+            }
+            return ntotal;
+        };
+        // Bytes the strip binds per storage slot (the reserve() calls below; slots 0, 3, 4, 6, 12 and 13 exist in both banks).
+        auto stripSlots=[&](int cy0,int cy1,size_t total,size_t cellTotal,size_t ntotal,std::array<size_t,kSlots>& s){
             const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3),rows2=2*(cy1-cy0)*g;
             s.fill(0);
             s[0]=total*2;
@@ -2029,6 +2675,13 @@ public:
             s[13]=size_t(cy1-cy0)*w2*(1+in.maskValid.size())*4;
             s[14]=(in.mergeMode&1)?std::max<size_t>(cellTotal,1)*8:16;
             s[16]=la?size_t(donors)*(cy1-cy0)*w2*4:0;
+            if(nat){ // P29: the raw mosaic rows (slot 12) and the native site flags / mean of the flag rows (slots 2 / 1, shared)
+                const int NW=nat->W,NH=nat->H,nb=nat->block;
+                const int fr0=std::min(NH,2*ry0*nb),fr1=std::min(NH,2*ry1*nb);
+                s[12]=ntotal*2;
+                s[2]=std::max(s[2],std::max<size_t>(size_t(fr1-fr0)*NW,1)*4);
+                if(hot)s[1]=std::max(s[1],(size_t(fr1-fr0)+size_t(4*nb))*NW*4);
+            }
         };
         int stripIndex=0,stripsShrunk=0,smallestStrip=stripCells;
         for(int cy0=0,cy1=0;cy0<h2;cy0=cy1,++stripIndex){
@@ -2036,14 +2689,15 @@ public:
             cy1=std::min(h2,cy0+stripCells);
             size_t total=0,cellTotal=0;
             planStrip(cy0,cy1,total,cellTotal);
-            if(large){ // halve the strip until every slot fits the storage block and the strip memory the budget
+            size_t ntotal=natPlan();
+            if(fit){ // halve the strip until every slot fits the storage block and the strip memory the budget
                 bool shrunk=false;
                 for(;;){
-                    std::array<size_t,kSlots> slot{};stripSlots(cy0,cy1,total,cellTotal,slot);
+                    std::array<size_t,kSlots> slot{};stripSlots(cy0,cy1,total,cellTotal,ntotal,slot);
                     int worst=0;uint64_t sum=0;
                     for(int k=0;k<kSlots;++k){
                         if(slot[k]>slot[worst])worst=k;
-                        sum+=uint64_t(slot[k])*((k==0||k==3||k==4||k==6||k==13)?2:1);
+                        sum+=uint64_t(slot[k])*((k==0||k==3||k==4||k==6||k==12||k==13)?2:1);
                     }
                     const bool overBlock=slot[worst]>blockLimit,overMemory=gpuBudget>0&&sum>gpuBudget;
                     if(!overBlock&&!overMemory)break;
@@ -2054,6 +2708,7 @@ public:
                     }
                     cy1=cy0+std::max(8,(cy1-cy0)/2);shrunk=true;
                     planStrip(cy0,cy1,total,cellTotal);
+                    ntotal=natPlan();
                 }
                 if(shrunk){++stripsShrunk;smallestStrip=std::min(smallestStrip,cy1-cy0);}
             }
@@ -2067,6 +2722,23 @@ public:
                 for(int f=0;f<frames;++f){geo[f*4]=offsets[f];geo[f*4+1]=GLuint(row0[f]);geo[f*4+2]=GLuint(rows[f]);float u=up[f];std::memcpy(&geo[f*4+3],&u,4);}
                 putTableBank(kTableGeo,geo.data(),frames,bank);putTableBank(kTableCells,cellGeom.data(),frames,bank);
                 glBindBufferBase(GL_UNIFORM_BUFFER,0,tableOf(bank));
+            }
+            // P29: the native rows behind every binned row uploaded above (natPlan), slot 12 and NatTable of this strip's bank
+            int natStripMode=0;
+            if(nat){
+                const int NW=nat->W;
+                reserveBank(12,ntotal*2,bank);
+                for(int f=0;f<frames;++f)putBank(12,bank,size_t(natOffsets[f])*2,in.nativeFrames[f]+size_t(natRow0[f])*NW,size_t(natRows[f])*NW*2);
+                std::vector<GLuint> ngeo(size_t(frames)*4,0);
+                for(int f=0;f<frames;++f){ngeo[f*4]=natOffsets[f];ngeo[f*4+1]=GLuint(natRow0[f]);ngeo[f*4+2]=GLuint(natRows[f]);}
+                glBindBuffer(GL_UNIFORM_BUFFER,natTable[bank]);
+                glBufferSubData(GL_UNIFORM_BUFFER,0,GLsizeiptr(ngeo.size()*4),ngeo.data());
+                glBindBufferBase(GL_UNIFORM_BUFFER,1,natTable[bank]);
+                bool natClipHere=false;
+                for(int f=0;f<frames&&!natClipHere;++f)
+                    for(int bk=natRow0[f]/kBlock;bk<=(natRow0[f]+natRows[f]-1)/kBlock&&bk<natBlocks;++bk)if(natClipBlock[size_t(f)*natBlocks+bk]){natClipHere=true;break;}
+                natStripMode=hot?natFlagMode:(natClipHere?natFlagMode:0);
+                check("native upload");
             }
             bool clipHere=false;
             for(int f=0;f<frames&&!clipHere;++f)
@@ -2119,6 +2791,37 @@ public:
                 dispatchRows(markProgram,w2,maxRows,frames,chunkOf(128),7);
                 check("mark");
             }
+            if(nat&&natStripMode){ // P29: the same flags on the native sites (kHybNatMean / kHybNatFlags / kHybNatMark)
+                const int NW=nat->W,NH=nat->H,nb=nat->block;
+                const int fr0=std::min(NH,2*ry0*nb),fr1=std::min(NH,2*ry1*nb); // native canonical rows of the strip's cells +-3
+                // rows per dispatch scaled by 4624 / width as the large frames' (the work of one dispatch stays within today's)
+                auto natChunkOf=[&](int c){return std::min(c,std::max(8,int(int64_t(c)*4624/std::max(NW,1))&~7));};
+                reserve(2,std::max<size_t>(size_t(fr1-fr0)*NW,1)*4);
+                if(hot){
+                    reserve(1,(size_t(fr1-fr0)+size_t(4*nb))*NW*4);
+                    std::vector<GLint> list;
+                    const int cfaY=(in.cfa>>1)*nb;
+                    for(int f:in.hotList)if(natRow0[f]<=std::max(0,fr0-2*nb+cfaY)&&natRow0[f]+natRows[f]>=std::min(NH,fr1+2*nb+cfaY))list.push_back(f);
+                    const int nh=std::min<int>(16,int(list.size()));
+                    glUseProgram(natMeanProgram);
+                    if(nh>0)glUniform1iv(loc(natMeanProgram,"hotList"),nh,list.data());
+                    glUniform4i(loc(natMeanProgram,"hotU"),nh,0,0,0);
+                    glUniform2i(loc(natMeanProgram,"natRows"),fr0,fr1);
+                    dispatchRows(natMeanProgram,NW,fr1-fr0+4*nb,1,natChunkOf(512),0);
+                    glUseProgram(natFlagsProgram);
+                    glUniform4i(loc(natFlagsProgram,"hotU"),nh,(tune.hotSigma>0?1:0)|(tune.hotBaseSigma>0?2:0),0,0);
+                    glUniform2i(loc(natFlagsProgram,"natRows"),fr0,fr1);
+                    glUniform2i(loc(natFlagsProgram,"natCount"),2*cy0*nb,2*cy1*nb);
+                    dispatchRows(natFlagsProgram,NW,fr1-fr0,1,natChunkOf(128),0);
+                }
+                check("native flags");
+                glUseProgram(natMarkProgram);
+                glUniform4i(loc(natMarkProgram,"mFlagsU"),fr0,fr1,natStripMode,0);
+                int maxRows=1;for(int f=0;f<frames;++f)maxRows=std::max(maxRows,natRows[f]);
+                glUniform1i(loc(natMarkProgram,"frameIdx"),0);
+                dispatchRows(natMarkProgram,NW/2,maxRows,frames,natChunkOf(128),7);
+                check("native mark");
+            }
             glUseProgram(guideProgram);
             glUniform1i(loc(guideProgram,"ry0"),ry0);glUniform1i(loc(guideProgram,"ry1"),ry1);
             dispatchRows(guideProgram,w2,ry1-ry0,1,chunkOf(256),1);
@@ -2147,12 +2850,25 @@ public:
             const int rows2=(y1-y0)*g,oy0=y0*g; // output-grid rows of this strip
             reserveBank(3,size_t(rows2)*ow*3*4,bank);reserveBank(4,size_t(rows2)*ow*4,bank);
             reserveBank(6,(clipFlags||rim||bentoColourPass)?size_t(rows2)*ow*4:16,bank);
+            if(nat){ // P29: the native merge, one invocation per output pixel of the strip, into the same Out / Eff / CFlags layout
+                glUseProgram(mosaicProgram);
+                glUniform1i(loc(mosaicProgram,"cy0"),cy0);glUniform1i(loc(mosaicProgram,"cy1"),cy1);glUniform1i(loc(mosaicProgram,"ry0"),ry0);
+                glUniform1i(loc(mosaicProgram,"natRy1"),ry1);
+                glUniform1i(loc(mosaicProgram,"natMarkU"),natStripMode?1:0);
+                // One submission per dispatch, at most 16 rows of a 4096-px row with 16 frames (the rows scale by 4096 x 16 / (ow F)).
+                // X7 Ultra, full window: syn_b2 (16 frames) merged 24 strips of 128 rows in 34.4 s, ~1.4 s per strip submitted at
+                // once; hand (4096 px, 21 frames, real noise) lost the GPU context in its first strips ("readback failed slot=3", the
+                // GPU hang detection resetting the context, as for a long single dispatch). Each flush costs ~1 ms.
+                const int natChunk=std::clamp(int(16.0*4096.0*16.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,16);
+                dispatchRows(mosaicProgram,ow,rows2,1,natChunk,5,true,true);
+            } else {
             glUseProgram(mergeProgram);
             glUniform1i(loc(mergeProgram,"cy0"),cy0);glUniform1i(loc(mergeProgram,"cy1"),cy1);glUniform1i(loc(mergeProgram,"ry0"),ry0);
             for(int sub=0;sub<g*g;++sub){ // grid 2 / 4: one dispatch per sub-position (same registers as 1x; g^2 passes)
                 glUniform4i(loc(mergeProgram,"kG"),g,ow,sub%g,sub/g);
                 dispatchRows(mergeProgram,w2,cy1-cy0,1,chunkOf(64),5);
             }
+            } // P29: end of the plain merge dispatch (else branch of the native one)
             if(chromaPass){ // after all sub-positions: the base's colour where the merge widened its kernel
                 glUseProgram(chromaProgram);
                 glUniform1i(loc(chromaProgram,"cy0"),cy0);glUniform1i(loc(chromaProgram,"cy1"),cy1);glUniform1i(loc(chromaProgram,"ry0"),ry0);
@@ -2183,6 +2899,7 @@ public:
         if(sumsCarry)for(int f=1;f<frames;++f)robustShare[f]=(double(sums[size_t(frames)+3+f])*4294967296.0+double(sums[f]))/(255.0*double(w2)*h2);
         else for(int f=1;f<frames;++f)robustShare[f]=double(sums[f])/(255.0*double(w2)*h2);
         fixedOutliers=long(sums[size_t(frames)]);baseOutliers=long(sums[size_t(frames)+1]);rimPixels=long(sums[size_t(frames)+2]);
+        if(nat){natFixedOutliers=long(sums[natSum0]);natBaseOutliers=long(sums[natSum0+1]);}
     }
 };
 
@@ -2957,16 +3674,25 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
                                                   const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                   std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags);
 inline int hybridMosaicBlock(const HybridInput& input,const HybridTuning& tune,const std::function<void(const std::string&)>& report);
+inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
+                                                        const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                        std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags);
 
+// native (P29): the raw mosaic behind a binned burst (hybridReconstructMosaicNative only); null for every other merge.
 inline std::vector<float> hybridReconstruct(const HybridInput& input,const HybridTuning& tune,
                                             const NiceAlignment& alignment,
                                             const std::function<void(const std::string&)>& report,
                                             std::vector<uint16_t>* mergedDng,std::vector<uint8_t>* effMap,
                                             HybridStats* statsOut=nullptr,std::vector<uint8_t>* clipFlags=nullptr,
-                                            const HybridPresetAlignment* preset=nullptr) {
-    // P14 / P15: a colour-block mosaic (sensor mode without remosaic) is merged through its plain-Bayer sub-frames
+                                            const HybridPresetAlignment* preset=nullptr,const HybridMosaicNative* native=nullptr) {
+    // P14 / P15: a colour-block mosaic (sensor mode without remosaic) is merged through its plain-Bayer sub-frames; P29: or, with
+    // mosaicPath 1, natively (hybridReconstructMosaicNative)
     if(input.mosaic!=1&&!input.frames.empty()){
         const int block=hybridMosaicBlock(input,tune,report);
+        // Tetra takes the native path only with mosaicTetra 1 / 2 (HybridTuning::mosaicTetra: 0 = the split, the default)
+        if(block>1&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0))
+            return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+        if(block>1&&tune.mosaicPath==1)report("HYBRID MOSAIC NATIVE: Tetra stays on the sub-frame split (mosaicTetra 0)");
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
     }
     if(tune.gainMeasured>0&&input.frames.size()>1){
@@ -2977,7 +3703,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         measured.mosaic=1; // past the colour-block dispatch: plain Bayer (or the sub-frames of one), not detected again
         hybridApplyMeasuredGains(measured,report);
         HybridTuning t2=tune;t2.gainMeasured=0;
-        return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset);
+        return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
     }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
@@ -2988,7 +3714,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // the sub-frames of a colour-block mosaic (subFrames > 1) are hybridReconstructMosaic's own buffer: corrected in place
         if(vivo_rawca::hybridRawCaFrames(corrected,tune,report,caStore,input.subFrames>1)){
             HybridTuning t2=tune;t2.rawCa=0;t2.caCorrect=0;
-            return hybridReconstruct(corrected,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset);
+            return hybridReconstruct(corrected,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
         }
     }
     const int w=input.w,h=input.h;
@@ -3069,14 +3795,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const HybridFrame& base=input.frames[0];
     const float baseSlope=std::max(base.slope,1e-9f),baseOffset=std::max(base.offset,0.f);
     SuperResTuning kernel;
-    const float snr=tune.snrFixed>0?float(tune.snrFixed):sabreSnr(baseSlope,baseOffset,tune.snrScale);
+    // P29: the binned burst of the native mosaic path averages b^2 sites per pixel; the SNR keys of the kernel curves follow the
+    // sites the merge accumulates (HybridMosaicNative::keyNoise), the binned noise model stays for the guide / rejection / F6
+    const float snr=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,baseOffset*native->keyNoise,tune.snrScale)
+                    :sabreSnr(baseSlope,baseOffset,tune.snrScale);
     snrKernel(kernel,snr);
     kernel.base*=tune.kernelScale;kernel.shrunk*=tune.kernelScale;kernel.stretched*=tune.kernelScale;kernel.flat*=tune.kernelScale;
     if(tune.isoKernel){kernel.shrunk=kernel.stretched=kernel.base;if(tune.isoKernel>=2)kernel.flat=kernel.base;}
     // Sabre 6.1 kernel (sabre2x_61.md F1): key = 0.18/sqrt(O + 0.18 S) of the base frame (no snrScale), GCam 6.1 curves f0..f3
     // (research/gcam61/sabre_curves.json), f4 = 4, f5 = 2.2; uniforms exactly as libgcam 0x723f04-0x724008.
     std::array<float,4> k61a{},k61b{},k61c{};
-    const float key61=tune.snrFixed>0?float(tune.snrFixed):sabreSnr(baseSlope,baseOffset,1.f);
+    const float key61=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,baseOffset*native->keyNoise,1.f)
+                      :sabreSnr(baseSlope,baseOffset,1.f);
     // Hand motion of the burst: RMS shift of the aligned normal donors at the frame centre (sub-pixel diversity for the 6.1 kernel).
     double motion=0;
     {
@@ -3107,10 +3837,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float f0=sabreCurve(key,kf0,vf0),f1=sabreCurve(key,kf1,vf1),f2=sabreCurve(key,kf2,vf2),f3=sabreCurve(key,kf3,vf3),f4=4.f,f5=2.2f;
         const float ks=std::max(tune.kernelScale,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
-        if(input.subFrames>1&&tune.mosaicEdgeScale>0.f&&tune.mosaicEdgeScale!=1.f){
+        if((input.subFrames>1||native)&&tune.mosaicEdgeScale>0.f&&tune.mosaicEdgeScale!=1.f){
             // across the edge and the base kernel (p ~ 1 / sigma); along the edge and the blurred kernel of flat areas stay
             const float es=std::clamp(tune.mosaicEdgeScale,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
-            report("HYBRID KERNEL: mosaic sub-frames, kernel across edges and base x"+std::to_string(es));
+            report(std::string("HYBRID KERNEL: ")+(native?"native mosaic":"mosaic sub-frames")+", kernel across edges and base x"+std::to_string(es));
         }
         // daylight multipliers only with the local alignment (they were measured with it): localAlign 0 keeps the merge before F6
         // for every sabre61 setting, forced 6.1 in daylight included
@@ -3454,6 +4184,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             report(std::string("HYBRID LOCAL ALIGN: field dumped to ")+dump);
         }
     }
+    if(native){ // P29: the mosaic of every merged frame, in merge order
+        in.native=native;
+        for(int f:index)in.nativeFrames.push_back(f<int(native->frames.size())?native->frames[f]:nullptr);
+    }
     in.k61a=k61a;in.k61b=k61b;in.k61c=k61c;
     in.mergeMode=sabre61?(tune.s61Mode&7):0;
     HybridCa caModel;
@@ -3506,7 +4240,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     in.large=large;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
-        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f,report,large);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
+        HybridGpu gpu(tune.rimRatio!=0,withLocalAlign,bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f,tune.chromaDiff>0.f,report,large,native!=nullptr);gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")");
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
@@ -3521,6 +4255,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpu.fixedOutliers,gpu.fixedOutliers/mp,int(in.hotList.size()),tune.hotSigma,gpu.baseOutliers,gpu.baseOutliers/mp,tune.hotBaseSigma,tune.cellClip);
         else std::snprintf(line,sizeof(line),"HYBRID OUTLIERS: off (key %.1f > %.1f or thresholds 0) cellClip=%d",key61,tune.hotMaxKey,tune.cellClip);
         report(line);
+        if(native&&outliers){ // P29: the binned line above counts binned sites; these are the native sites the merge skipped
+            const double nmp=double(native->W)*native->H/1e6;
+            std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE OUTLIERS: fixed-pattern sites=%ld (%.1f/MP) base transient=%ld (%.1f/MP)",
+                gpu.natFixedOutliers,gpu.natFixedOutliers/nmp,gpu.natBaseOutliers,gpu.natBaseOutliers/nmp);
+            report(line);
+        }
         if(tune.rimRatio)std::snprintf(line,sizeof(line),"HYBRID RIM: clip-border colour from real-site ratios, pixels=%ld (%.2f %% of the output) sigma=%.2f ramp=%.3f..%.3f stride=%d",
             gpu.rimPixels,100.0*double(gpu.rimPixels)/(double(outW)*outH),tune.rimSigma,tune.rimLo,tune.rimHi,tune.rimStride);
         else std::snprintf(line,sizeof(line),"HYBRID RIM: off");
@@ -3530,8 +4270,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // The F6 programs need two more storage bindings (15, 16) and change the reject / dilate / merge / rim passes: a GPU that
         // refuses them (compile/link, bindings) or a pass that fails must not lose the shot. Merge again with the homographies
         // only (the context of the failed attempt is destroyed first); a 6.1 kernel chosen only for the alignment goes as well.
+        // P29: a failed native mosaic merge is not retried here (its programs, its slot 12 or its long passes fail without F6 as well,
+        // and a retry costs the whole native merge again): hybridReconstructMosaicNative merges the burst on the split instead.
         try{gpuMerge(true);}
         catch(const std::exception& error){
+            if(native)throw;
             report(std::string("HYBRID LOCAL ALIGN: GPU merge with the local offsets failed (")+error.what()+"); merging with the homographies only");
             in.laField=nullptr;in.laMotion=nullptr;in.laMode=0;in.laMaxY.clear();laOn=false;
             dropDay61("it was chosen for the local alignment");
@@ -4064,6 +4807,270 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     report("HYBRID MOSAIC: total "+std::to_string(int(millis(Clock::now()-started)))+" ms");
     if(statsOut)*statsOut=st;
     return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// P29 native mosaic path (mosaicPath 1; research/ark23/quad_report.md section 8, plan P29). Instead of the b^2 sub-frame split of
+// hybridReconstructMosaic, every frame keeps ONE GPU slot:
+//   M0  frame pick by frames (budget min(kHybridGpuFrames, mosaicFrames)), the split's rules otherwise;
+//   M1  site-class gains (hybridMosaicGains): into the binned frames as the split built its sub-frames, at read time in the merge;
+//   M2  binned frames (W/b x H/b, as the split's alignment frames): hybridReconstruct runs its whole front end on them as a plain burst
+//       (alignment, Shasta, Bento, F6 with one field per frame, weights, outlier sites, guide, rejection, dilation), with the noise
+//       of a b^2 average and the SNR keys of the sensor sites (as the split and S0);
+//   M5  the merge pass is kHybMergeMosaic over the raw mosaic (HybridMosaicNative, slot 12), output on the grid b = W x H in the
+//       split's geometry (output X at sensor X - (b-1)/2). The binned colour passes (kHybChroma, kHybBento, kHybRim) are off: they
+//       work on the binned base at the binned positions (see kHybMergeMosaic);
+//   M7  chroma median and false-colour suppression of the split (same code and defaults), M8 to the requested grid.
+// Tetra (S8): only with mosaicTetra 1 / 2 (0, the default, keeps Tetra on the split). T2 (mosaicTetra 2) bins every 2x2 sub-block
+// of a Tetra block into one site of a true Quad mosaic at W/2 x H/2 and runs the Quad pass on it, output bilinear 2x to the sensor
+// grid; T1 (mosaicTetra 1) merges the Tetra mosaic natively (block 4).
+// The plain-Bayer path and mosaicPath 0 never come here. A failure of the native merge (GPU programs, storage, a lost context)
+// merges the burst on the split instead (hybridReconstructMosaicNative below).
+inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
+                                                             const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                             std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
+    using Clock=std::chrono::steady_clock;
+    const auto started=Clock::now();
+    auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
+    const int b=block,W=input.w,Ht=input.h,bb=b*b;
+    if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
+    const int vw=W/b,vh=Ht/b,n=int(input.frames.size());
+    // The mosaic the merge reads: the sensor's (Quad; Tetra T1), or for Tetra T2 the Quad mosaic of its 2x2 sub-blocks.
+    const bool t2=b==4&&tune.mosaicTetra!=1;
+    const int mb=t2?2:b,MW=t2?W/2:W,MH=t2?Ht/2:Ht,sub=b/mb; // merge block, size, sensor sites per merge site and axis
+    // ---- frames within the GPU capacity, one slot each: the base, the normals closest in time, one ultrashort (Bento) and one
+    // bracketed (Shasta) frame when there is room (the split's rules)
+    int budget=std::max(1,std::min(kHybridGpuFrames,std::max(2,tune.mosaicFrames)));
+    if(int64_t(W)*Ht>kHybridClassicPixels){
+        // Any RAW size, as the split: every picked frame adds its binned copy (2 B per binned pixel, 2/b^2 B per stream pixel) and for
+        // T2 its Quad mosaic (2/4 B per stream pixel; Quad and T1 read the worker's RAW itself); the merge and the output then add
+        // ~20 B per stream pixel (RGB, coverage, flags, chroma median). The frames stay within half of MemAvailable, at least two.
+        const uint64_t avail=hybridMemAvailable();
+        if(avail>0){
+            const double P=double(W)*Ht,perFrame=2.0*P/bb+(t2?0.5*P:0.0);
+            const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
+            if(byMemory<budget){
+                report("HYBRID MOSAIC NATIVE: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
+                    +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
+                budget=byMemory;
+            }
+        }
+    }
+    std::vector<int> normals;int us=-1,br=-1;
+    for(int f=1;f<n;++f){
+        const auto& fr=input.frames[f];
+        if(fr.role==kRoleNormal)normals.push_back(f);
+        else if(fr.role==kRoleUltrashort&&tune.bento>0&&(us<0||fr.exposure<input.frames[us].exposure))us=f;
+        else if(fr.role==kRoleBracketed&&tune.shastaEnable&&(br<0||std::abs(fr.orderMs-input.frames[0].orderMs)<std::abs(input.frames[br].orderMs-input.frames[0].orderMs)))br=f;
+    }
+    const float t0=input.frames[0].orderMs;
+    std::stable_sort(normals.begin(),normals.end(),[&](int a,int c){return std::abs(input.frames[a].orderMs-t0)<std::abs(input.frames[c].orderMs-t0);});
+    const int extras=(us>=0&&budget>=4?1:0)+(br>=0&&budget>=6?1:0);
+    std::vector<int> pick{0};
+    for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
+    if(us>=0&&budget>=4&&int(pick.size())<budget)pick.push_back(us);
+    if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
+    const int window=std::clamp(tune.mosaicWindow,1,6);
+    const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
+    const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
+    const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
+    const bool fullWindow=tune.mosaicWindowFull!=0;
+    if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (GCam directional, S7) is not built: fill off");
+    {
+        char head[400];
+        std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d%s, %d of %d frames (one GPU slot each, binned %dx%d, merged mosaic %dx%d block %d), window %d px %s, kernel scale %.3f, edge scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",
+            b,t2?" (Tetra T2: 2x2 sub-blocks binned into a Quad mosaic)":b==4?" (Tetra T1: native)":"",int(pick.size()),n,vw,vh,MW,MH,mb,window,fullWindow?"full":"split",kernelScale,
+            tune.mosaicNativeEdgeScale,ksG,ksRB,fill);
+        std::string line=head;
+        for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
+        report(line);
+    }
+    // ---- response of the site classes (the normal frames picked, up to 4)
+    std::array<float,64> gain;gain.fill(1.f);
+    if(tune.mosaicGain){
+        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<4)gf.push_back(f);
+        float spread=0;long used=0;gain=hybridMosaicGains(input,gf,b,spread,&used);
+        char line[200];std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE: site-class response from %d frames, %ld smooth tiles, gain range %.4f..%.4f (spread %.2f %%)",int(gf.size()),used,
+            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread);
+        report(line);
+    }
+    // ---- the binned frames. Every site as the split built it into its sub-frame: vb + (raw - black of the site) x gain of its class
+    // (sensor (y&7, x&7)), vb = black of the block's Bayer phase, a clipped site stays white; the merge reads the sensor RAW itself
+    // and applies the same gains at read time (S3: kHybNatAccess natSiteG, no gained copy of the mosaic).
+    // A binned pixel is the block mean, or white when any of its sites clipped: the split saw every site's clip in its sub-frames
+    // (cell clip, Bento mask, Shasta's unsaturated pixels, the rejection of a clipped longer frame); a mean of clipped and unclipped
+    // sites would hide it (replay of a x1.6 synthetic burst: Bento mask 1.8 % of the cells instead of 5.6 %).
+    // T2: the Quad site (u, v) is the mean of the gained sensor sites (2u..2u+1, 2v..2v+1) (white when one clipped), with the black of
+    // its Tetra block's phase (vb, as the split's sub-frames), so the merge reads it without gains (natV.y = 0).
+    const size_t vpix=size_t(vw)*vh,qpix=size_t(MW)*MH;
+    std::vector<uint16_t> binned(vpix*pick.size()),quad(t2?qpix*pick.size():0);
+    const float clipAt=input.white-1.f;
+    mergeRowBands(vh,[&](int j0,int j1){
+        for(size_t k=0;k<pick.size();++k){
+            const uint16_t* raw=input.frames[pick[k]].raw;
+            for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
+                const float vb=input.black[((J&1)<<1)|(I&1)];
+                double acc=0;bool clipped=false;
+                double subAcc[4]{};bool subClip[4]{};
+                for(int c=0;c<b;++c)for(int a=0;a<b;++a){
+                    const int x=b*I+a,y=b*J+c;
+                    const float v=float(raw[size_t(y)*W+x]);
+                    const float sb=input.black[((y&1)<<1)|(x&1)];
+                    const float lin=(v-sb)*gain[((y&7)<<3)|(x&7)];
+                    const float out=v>=clipAt?input.white:std::clamp(vb+lin,0.f,input.white);
+                    acc+=out;clipped|=v>=clipAt;
+                    if(t2){const int q=((c>>1)<<1)|(a>>1);subAcc[q]+=out;subClip[q]=subClip[q]||v>=clipAt;}
+                }
+                binned[k*vpix+size_t(J)*vw+I]=clipped?uint16_t(std::lround(input.white)):uint16_t(std::lround(acc/bb));
+                if(t2)for(int q=0;q<4;++q)
+                    quad[k*qpix+size_t(2*J+(q>>1))*MW+size_t(2*I+(q&1))]=subClip[q]?uint16_t(std::lround(input.white)):uint16_t(std::lround(subAcc[q]/4.0));
+            }
+        }
+    });
+    // ---- the binned burst through hybridReconstruct with the native merge pass
+    HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
+    bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb;bin.mosaic=1;bin.subFrames=0;
+    HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
+    nat.rawGains=!t2;nat.gains=gain;nat.s0Widen=tune.mosaicNativeWiden!=0;
+    // a binned pixel averages b^2 sites: the kernel keys (6.1 / round-4 curves, the 6.1 night rule, the outlier gate hotMaxKey) follow
+    // one SENSOR site (noise x b^2 of the binned one), as the split and S0 (run_s0.py: key of the site noise); T2's merged 2x2 means
+    // would raise them ~2x (a Tetra burst at sensor key 15..30 would lose the night kernel and the outlier test)
+    nat.keyNoise=float(bb);
+    nat.siteSlope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub);nat.siteOffset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
+    for(size_t k=0;k<pick.size();++k){
+        HybridFrame v=input.frames[pick[k]];
+        v.raw=binned.data()+k*vpix;
+        v.slope/=float(bb);v.offset/=float(bb); // a binned pixel is the mean of b^2 sites
+        bin.frames.push_back(v);
+        nat.frames.push_back(t2?quad.data()+k*qpix:input.frames[pick[k]].raw);
+    }
+    HybridTuning vt=tune;vt.grid=mb;vt.mosaicBlock=1;vt.caCorrect=0;
+    vt.mosaicEdgeScale=tune.mosaicNativeEdgeScale; // the native path's own edge scale (hybridReconstruct applies it with `native`)
+    if(vt.chromaDiff>0.f||vt.rimRatio!=0||vt.bentoChroma>0.f){
+        // the binned colour passes would correct the native output at the wrong positions with the binned base's sums (P29 review)
+        report("HYBRID MOSAIC NATIVE: colour-difference, clip-border and Bento colour passes off (they work on the binned frames; native variants not built)");
+        vt.chromaDiff=0.f;vt.rimRatio=0;vt.bentoChroma=0.f;
+    }
+    if(vt.rawCa==2){ // the frames mode would correct the binned frames only, not the mosaic the merge reads
+        vt.rawCa=1;
+        report("HYBRID MOSAIC NATIVE: RAW CA frames mode is not available on the native mosaic path; base mode instead");
+    }
+    std::vector<uint8_t> vEff,vClip;
+    HybridStats st;
+    std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
+    std::vector<uint16_t>().swap(binned);
+    // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults, on the merged mosaic's
+    // grid and block; kept apart from it so that mosaicPath 0 stays untouched). T2: the oscillation of the Quad sites (the merge's);
+    // the sensor sites of the Tetra blocks (the split's map, S0's) tripled T2's zone-plate false colour on syn_b4 (0.0135 -> 0.039).
+    const int ow=mb*vw,oh=mb*vh;
+    if(tune.mosaicChroma){
+        const auto c0=Clock::now();
+        std::vector<float> osc;
+        {
+            const int bw=MW/mb,bh=MH/mb,bq=mb;
+            std::vector<float> f(size_t(bw)*bh,0.f);
+            const uint16_t* raw=input.frames[0].raw;
+            const uint16_t* q0=t2?quad.data():nullptr;
+            const double range=double(input.white)-0.25*(input.black[0]+input.black[1]+input.black[2]+input.black[3]);
+            const float slope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub),offset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
+            mergeRowBands(bh,[&](int j0,int j1){
+                std::vector<double> d(size_t(bq)*bq);
+                for(int J=j0;J<j1;++J)for(int I=0;I<bw;++I){
+                    double m=0;
+                    for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
+                        const int x=bq*I+a,y=bq*J+c;
+                        d[size_t(c)*bq+a]=q0?double(q0[size_t(y)*MW+x])-input.black[((J&1)<<1)|(I&1)]
+                                            :double(raw[size_t(y)*W+x])-input.black[((y&1)<<1)|(x&1)];
+                        m+=d[size_t(c)*bq+a];
+                    }
+                    m/=double(bq*bq);
+                    const double sigma=std::sqrt(std::max(slope*std::max(m,0.0)/range+offset,0.0))*range;
+                    const double gate=0.04*std::max(m,0.0)+3.0*sigma;
+                    int changes=0,pairs=0;
+                    for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
+                        const double p0=d[size_t(c)*bq+a]-m;
+                        if(a+1<bq){const double p1=d[size_t(c)*bq+a+1]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
+                        if(c+1<bq){const double p1=d[size_t(c+1)*bq+a]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
+                    }
+                    f[size_t(J)*bw+I]=pairs?float(changes)/float(pairs):0.f;
+                }
+            });
+            osc.assign(f.size(),0.f);
+            mergeRowBands(bh,[&](int j0,int j1){for(int J=j0;J<j1;++J)for(int I=0;I<bw;++I){
+                double s=0;int cnt=0;
+                for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++cnt;}
+                osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
+        }
+        mosaicChromaMedian(rgb,ow,oh,mb,&osc);
+        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result) "
+            +std::to_string(int(millis(Clock::now()-c0)))+" ms");
+    }
+    std::vector<uint16_t>().swap(quad);
+    // ---- to the requested output: sensor grid W x H, or the 2x grid. Target pixel X is the W-grid position fx = (X + 0.5) W / tw - 0.5
+    // (the split's resize), at sensor fx - (b-1)/2; merged pixel i sits at sensor alpha (i - (mb-1)/2) + (alpha-1)/2 (alpha = sensor px
+    // per merged px: 1, or 2 for T2), so it is read (bilinear) at i = (fx - (b-1)/2 - (alpha-1)/2) / alpha + (mb-1)/2.
+    int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    if(gridOut==2&&int64_t(W)*Ht>kHybridClassicPixels){ // any RAW size: the 2x grid only up to 16 MP (as the split)
+        report("HYBRID OUTPUT: 2x grid refused for "+std::to_string(W)+"x"+std::to_string(Ht)+" (2x RGB "+hybridMB(uint64_t(W)*Ht*48)
+            +" MB, only up to 16 MP); sensor grid");
+        gridOut=1;
+    }
+    const int tw=W*gridOut,th=Ht*gridOut;
+    const double alpha=double(sub),shift=-0.5*(b-1)-0.5*(alpha-1.0),om=0.5*(mb-1);
+    std::vector<float> out;std::vector<uint8_t> eOut,cOut;
+    if(tw==ow&&th==oh){out.swap(rgb);eOut.swap(vEff);cOut.swap(vClip);}
+    else {
+        out.assign(size_t(tw)*th*3,0.f);
+        if(!vEff.empty())eOut.assign(size_t(tw)*th,0);
+        if(!vClip.empty())cOut.assign(size_t(tw)*th,0);
+        const double sx=double(W)/tw,sy=double(Ht)/th;
+        mergeRowBands(th,[&](int y0,int y1){
+            for(int Y=y0;Y<y1;++Y){
+                const double fy=std::clamp(((Y+0.5)*sy-0.5+shift)/alpha+om,0.0,double(oh-1));const int iy=std::min(int(fy),oh-2);const float wy=float(fy-iy);
+                for(int X=0;X<tw;++X){
+                    const double fx=std::clamp(((X+0.5)*sx-0.5+shift)/alpha+om,0.0,double(ow-1));const int ix=std::min(int(fx),ow-2);const float wx=float(fx-ix);
+                    const size_t a=(size_t(iy)*ow+ix)*3,o2=(size_t(Y)*tw+X)*3;
+                    for(int c=0;c<3;++c)out[o2+c]=(rgb[a+c]*(1-wx)+rgb[a+3+c]*wx)*(1-wy)+(rgb[a+size_t(ow)*3+c]*(1-wx)+rgb[a+size_t(ow)*3+3+c]*wx)*wy;
+                    const size_t ns=size_t(std::min(oh-1,int(fy+0.5)))*ow+std::min(ow-1,int(fx+0.5));
+                    if(!eOut.empty())eOut[size_t(Y)*tw+X]=vEff[ns];
+                    if(!cOut.empty())cOut[size_t(Y)*tw+X]=vClip[ns];
+                }
+            }
+        });
+        report("HYBRID MOSAIC NATIVE: "+std::to_string(ow)+"x"+std::to_string(oh)+" resampled to the requested "+std::to_string(tw)+"x"+std::to_string(th));
+    }
+    if(effMap)effMap->swap(eOut);
+    if(clipFlags)clipFlags->swap(cOut);
+    // ---- merged Bayer RAW for the DNG (sensor layout, 14-bit scale): the colour of every sensor Bayer phase from the RGB
+    if(mergedDng&&input.mergedDng){
+        const float k=16383.f/input.white;
+        const int red=input.cfa;
+        mergedDng->assign(size_t(W)*Ht,0);
+        mergeRowBands(Ht,[&](int y0,int y1){
+            for(int y=y0;y<y1;++y)for(int x=0;x<W;++x){
+                const int p=((y&1)<<1)|(x&1),c=p==red?0:p==(red^3)?2:1;
+                const size_t src=(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c;
+                const float v=std::clamp(out[src],0.f,1.f),black=input.black[p];
+                (*mergedDng)[size_t(y)*W+x]=uint16_t(std::clamp(std::lround((black+v*(input.white-black))*k),0L,16383L));
+            }
+        });
+    }
+    report("HYBRID MOSAIC NATIVE: total "+std::to_string(int(millis(Clock::now()-started)))+" ms");
+    if(statsOut)*statsOut=st;
+    return out;
+}
+// The native path with its fallback: a native merge that fails (its GPU programs, slot 12 beyond the storage block, a lost GPU
+// context, memory) must not lose the shot. The burst is merged on the sub-frame split (mosaicPath 0) instead; the outputs
+// (effective map, clip flags, DNG, stats) are written only by the merge that returns.
+inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
+                                                        const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                        std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
+    try{
+        return hybridReconstructMosaicNativeMerge(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+    } catch(const std::exception& error){
+        report(std::string("HYBRID MOSAIC NATIVE: failed (")+error.what()+"); merging on the sub-frame split (mosaicPath 0) instead");
+    }
+    return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
 }
 
 // NCH v10 — the hybrid transport written by LmcHybridBurst.java: header 128 B (magic, version 10, w, h, cfa,

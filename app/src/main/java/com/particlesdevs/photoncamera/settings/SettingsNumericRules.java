@@ -155,6 +155,14 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_motion_threshold": return new double[]{0.25,8,0};
             case "pref_lmc_hybrid_mosaic_edge_scale": return new double[]{0.25,1,0};
             case "pref_lmc_hybrid_mosaic_frames": return new double[]{4,32,1};
+            // P29 native mosaic merge (worker mosaicPath / mosaicWindow / mosaicKernel* / mosaicChromaFill / mosaicFillSupport / mosaicTetra)
+            case "pref_lmc_hybrid_mosaic_path": case "pref_lmc_hybrid_mosaic_chroma_fill": return new double[]{0,1,1};
+            case "pref_lmc_hybrid_mosaic_window": return new double[]{1,6,1};
+            case "pref_lmc_hybrid_mosaic_kernel_scale": return new double[]{0.25,2,0};
+            case "pref_lmc_hybrid_mosaic_native_edge_scale": return new double[]{0.25,1,0};
+            case "pref_lmc_hybrid_mosaic_kernel_g": case "pref_lmc_hybrid_mosaic_kernel_rb": return new double[]{0.5,2,0};
+            case "pref_lmc_hybrid_mosaic_fill_support": return new double[]{0,1,0};
+            case "pref_lmc_hybrid_mosaic_tetra": return new double[]{0,2,1}; // 0 = Tetra on the split (default), 2 = T2, 1 = T1
             // P28 RAW CA (worker rawCa*): mode 0 off / 1 base frame / 2 every frame, RawTherapee's auto passes and manual red / blue
             case "pref_lmc_hybrid_rawca_mode": return new double[]{0,2,1};
             case "pref_lmc_hybrid_rawca_passes": return new double[]{1,5,1};

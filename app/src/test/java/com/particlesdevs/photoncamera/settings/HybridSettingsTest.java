@@ -263,6 +263,54 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
     }
 
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void nativeMosaicKeysReachTheTuningFileAndAreNotOnTheScreen() {
+        checkNativeMosaicKeys();
+    }
+
+    /** The same on an English system (i18n). */
+    @Test public void nativeMosaicKeysReachTheTuningFileAndAreNotOnTheScreenInEnglish() {
+        checkNativeMosaicKeys();
+    }
+
+    private void checkNativeMosaicKeys() {
+        // P29: unset, nothing is written (worker defaults: mosaicPath 0 = the sub-frame split)
+        String[] keys={"mosaicPath","mosaicWindow","mosaicWindowFull","mosaicKernelScale","mosaicNativeEdgeScale","mosaicKernelG",
+                "mosaicKernelRB","mosaicChromaFill","mosaicFillSupport","mosaicTetra"};
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String k:keys)assertFalse(tuning,tuning.contains(k+" "));
+        // stored values (a config, a developer) still reach the worker
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_path","1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_window","2");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_window_full",false);
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_kernel_scale","0.75");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_native_edge_scale","0.3");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_kernel_g","1.1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_kernel_rb","0.9");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_chroma_fill","1");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_fill_support","0.3");
+        manager.set("default_scope","pref_lmc_hybrid_mosaic_tetra","1");
+        tuning=PreferenceKeys.hybridTuningText();
+        for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 2.0","mosaicWindowFull 0","mosaicKernelScale 0.75","mosaicNativeEdgeScale 0.3",
+                "mosaicKernelG 1.1","mosaicKernelRB 0.9","mosaicChromaFill 1.0","mosaicFillSupport 0.3","mosaicTetra 1.0"})
+            assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
+        // The screen (Hybrid -> Merge -> Mosaic without remosaic) has the split's rows only: the native merge was x8 slower than the
+        // split on the OPPO (44-57 s against 7 s), owner 2026-10-07. Opening it stores nothing for the native keys: the worker
+        // defaults (the split) apply.
+        PreferenceScreen settings=inflate(),merge=settings.findPreference("lmc_hybrid_merge_screen");
+        PreferenceScreen page=merge.findPreference("lmc_hybrid_mosaic_screen");
+        assertNotNull(page);
+        assertNotNull(page.findPreference("pref_lmc_hybrid_mosaic_frames"));
+        assertNotNull(page.findPreference("pref_lmc_hybrid_mosaic_edge_scale"));
+        assertNull(page.findPreference("pref_lmc_hybrid_mosaic_path"));
+        assertNull(page.findPreference("lmc_hybrid_mosaic_native_category"));
+        assertNull(page.findPreference("pref_lmc_hybrid_mosaic_tetra"));
+        prefs.edit().clear().commit();
+        settings=inflate();
+        assertFalse(prefs.contains("pref_lmc_hybrid_mosaic_path"));
+        tuning=PreferenceKeys.hybridTuningText();
+        for(String k:keys)assertFalse(tuning,tuning.contains(k+" "));
+    }
+
     @Test public void migrationMovesHybridKeysCopiesSharedKnobsAndKeepsTheEffectiveRoute() {
         prefs.edit().clear()
                 .putBoolean("pref_vivo_hdr_enabled",true).putBoolean("pref_vivo_nice_enabled",true)
