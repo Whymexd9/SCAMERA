@@ -1554,8 +1554,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     // P41: the first request of a session already carries its mode; only a change inside the session re-measures
                     if (plan.isz != wasIsz && (wasActive || plan.isz)) onSensorModeChangedInSession(plan.isz);
                     // a toggle held back by the debounce happens once it expires, also when the slider stopped
-                    if (builder == mPreviewRequestBuilder && XiaomiTeleZoom.togglePending(moduleZoom, zoom) && mBackgroundHandler != null)
-                        mBackgroundHandler.postDelayed(this::onZoomChanged, XiaomiTeleZoom.TOGGLE_MS);
+                    Handler handler = mBackgroundHandler;
+                    if (builder == mPreviewRequestBuilder && XiaomiTeleZoom.togglePending(moduleZoom, zoom) && handler != null) {
+                        // one retry at a time, and only for this session (not after a module switch or a closed camera)
+                        mXiaomiToggleGeneration = mSessionGeneration.get();
+                        handler.removeCallbacks(mXiaomiToggleRetry);
+                        handler.postDelayed(mXiaomiToggleRetry, XiaomiTeleZoom.TOGGLE_MS);
+                    }
                     return;
                 }
             } catch (RuntimeException e) {
@@ -1583,6 +1588,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w(TAG, "applyZoom: " + e.getMessage());
         }
     }
+
+    /** P41: the deferred ISZ toggle of the Xiaomi tele; dropped when the session it was posted for is gone. */
+    private volatile int mXiaomiToggleGeneration = -1;
+    private final Runnable mXiaomiToggleRetry = () -> {
+        if (isCameraResumed && mXiaomiToggleGeneration == mSessionGeneration.get() && XiaomiTeleZoom.active()) onZoomChanged();
+    };
 
     /** P41: the result that carries the tele's own focal length (its physical result for a physical stream of a logical camera). */
     private CaptureResult xiaomiLensResult(TotalCaptureResult result) {
@@ -1628,9 +1639,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /** True when the RAW frame may be used (no barrier, or the first frame of the new mode releases it). */
     private boolean passModeBarrier(Image img) {
+        return passModeBarrier(img, null);
+    }
+
+    /** {@code matched}: the frame's own result when the caller has it (live RAW matcher). */
+    private boolean passModeBarrier(Image img, TotalCaptureResult matched) {
         if (!mModeBarrier) return true;
-        TotalCaptureResult r;
-        synchronized (mZslBufferLock) { r = mHexZslResults.get(img.getTimestamp()); }
+        TotalCaptureResult r = matched;
+        if (r == null) synchronized (mZslBufferLock) { r = mHexZslResults.get(img.getTimestamp()); }
         // an image whose result has not arrived yet is newer than the latest completed result: that one stands for it
         CaptureResult latest = mPreviewCaptureResult;
         if (r == null && latest instanceof TotalCaptureResult) r = (TotalCaptureResult) latest;
@@ -3222,7 +3238,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture || mNiceRingFrozen) return;
             watchRawPayload(img);
             publishLiveRawFrame(img, result);
-            if (isZslMode()) synchronized (mZslBufferLock) {
+            // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
+            if (isZslMode() && passModeBarrier(img, result)) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
                 mZslRingBuffer.addLast(img);
                 retained = true;
