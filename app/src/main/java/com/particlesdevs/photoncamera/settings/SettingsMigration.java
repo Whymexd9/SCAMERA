@@ -314,10 +314,12 @@ public final class SettingsMigration {
         // ArkCam on the Oppo; a stored 1 is the old XML default written by the first round-5 build, not a user choice.
         Object rev = values.get(DEFAULTS_REV);
         int revision = rev instanceof Integer ? (Integer) rev : 0;
+        boolean revisionStored = false, markOnly = false; // a revision block below wrote its marker / only the marker moves
         Object detail = values.get(LmcHybridKeys.PREFIX + "ark_detail_gain");
         if (detail != null && revision < 2) {
             if (isNumber(detail, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
             e.putInt(DEFAULTS_REV, 2);
+            revisionStored = true;
             changed = true;
         }
         // Defaults revision 3 (4 October 2026): the hybrid sharpening is ArkCam's own (sharp_mode "ark", ArkLumaSharpen) and
@@ -340,6 +342,7 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 3);
+                revisionStored = true;
                 changed = true;
             }
         }
@@ -357,6 +360,7 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 4);
+                revisionStored = true;
                 changed = true;
             }
         }
@@ -367,6 +371,7 @@ public final class SettingsMigration {
             if (cdm != null) {
                 if (isNumber(cdm, 0.07f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "cdm", cdm instanceof String ? PreferenceNumber.format(0.2f, true) : (Object) 0.2f);
                 e.putInt(DEFAULTS_REV, 5);
+                revisionStored = true;
                 changed = true;
             }
         }
@@ -388,9 +393,16 @@ public final class SettingsMigration {
             if (touched) {
                 e.putInt(DEFAULTS_REV, 6);
                 changed = true;
+            } else if (!revisionStored && written.isEmpty()) {
+                // Neither key stored yet (they had no rows before P34): the rows store today's defaults ("1", 0.7) when the screen
+                // is first opened, so a "0" or a 1 stored after this run is the user's choice and must not move on a later run.
+                // Mark the revision now; a run that copied legacy keys or stored an older revision marks it on the next run (which
+                // sees those values). The marker alone is not reported as a change.
+                e.putInt(DEFAULTS_REV, 6);
+                markOnly = true;
             }
         }
-        if (changed) e.commit();
+        if (changed || markOnly) e.commit();
         return changed;
     }
 

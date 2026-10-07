@@ -451,6 +451,22 @@ public class HybridSettingsTest {
                 .putString("pref_lmc_hybrid_mosaic_kernel_scale","0.5").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("0.5",prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale",""));
+        // an upgrade without the mosaic keys stored (no rows before P34): the run marks revision 6, so the split and kernel scale 1
+        // chosen after it (the screen first stored "1" / 0.7) stay on every later run
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",5).commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_path","0").putString("pref_lmc_hybrid_mosaic_kernel_scale","1").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale",""));
+        // a run that moves an older revision's value keeps its own marker; the next run marks 6
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",4)
+                .putString("pref_lmc_hybrid_cdm","0.07").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(5,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {
