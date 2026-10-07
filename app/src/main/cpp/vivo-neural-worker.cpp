@@ -11,6 +11,7 @@
 #include "vivo-nice-hybrid.h"
 #include "vivo-nice-tone-probe.h"
 #include "vivo-nice-stock-motion.h"
+#include "vivo-nice-crash.h"
 #include <memory>
 #include <cerrno>
 #include <cstdlib>
@@ -26,10 +27,17 @@ int main(int argc,char** argv) {
     // P31 (W1.0): worker stage times for the shot timeline (NICE WORKER TIMELINE), ms since the worker started
     const auto mainStarted=std::chrono::steady_clock::now();
     auto sinceStart=[&]{return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-mainStarted).count();};
+    // A fatal signal writes "WORKER CRASH: ..." lines (signal, thread, stage, pc / lr with library offsets) before the worker dies
+    // (vivo X200 Pro, owner's log 2026-10-07: 14 SIGSEGV exits, none naming the crash site).
+    worker_crash::install();
     try {
         vivo_nn::log("Vivo Neural native executable v30 (RAW stream input; HP9 hybrid CPU/GPU/NPU); root="+std::to_string(geteuid()));
         if(argc==2 && std::string(argv[1])=="--transport-check") {
             vivo_nn::log("NATIVE EXEC OK");return 0;
+        }
+        if(argc==2 && std::string(argv[1])=="--crash-check") { // the crash report on this device: a null write on a helper thread
+            std::thread([]{worker_crash::Stage stage("crash check");volatile int* p=nullptr;*p=1;}).join();
+            return 0;
         }
         if(argc==5 && std::string(argv[1])=="--nice-capture") {
             signal(SIGALRM,SIG_DFL);alarm(840);
@@ -39,12 +47,15 @@ int main(int argc,char** argv) {
                 std::string target;
                 if(marker && std::getline(marker,target) && !target.empty())setenv("SCAM_DUMP_FORWARD",target.c_str(),1);
             }
-            auto report=[](const std::string& line){vivo_nn::log(line);};
+            auto report=[](const std::string& line){worker_crash::note(line.data(),line.size());vivo_nn::log(line);};
             // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
             // fall back to SCAMERA's own tile alignment instead of failing.
             std::unique_ptr<vivo_nice::StockMotion> motion;
+            // Job marker cre-off: the app's retry after a worker that died inside the CRE (its stage in the crash report).
             if(std::getenv("SCAM_NO_CRE"))report("NICE MOTION: SCAMERA tile alignment (SCAM_NO_CRE replay)"); else
+            if(access((std::string(argv[2])+"/cre-off").c_str(),F_OK)==0)report("NICE MOTION: SCAMERA tile alignment (CRE off for this job)"); else
             try {
+                worker_crash::Stage stage("CRE load (dlopen)");
                 const bool forceBundled=access((std::string(argv[2])+"/cre-force-bundled").c_str(),F_OK)==0;
                 const bool vendorOnly=access((std::string(argv[2])+"/cre-vendor-only").c_str(),F_OK)==0;
                 motion=std::make_unique<vivo_nice::StockMotion>(vendorOnly?std::string():std::string(argv[2]),forceBundled);
@@ -67,10 +78,12 @@ int main(int argc,char** argv) {
                 // A thread the system refuses costs only its warm-up (the first alignment and the merge initialise as before), never
                 // the shot.
                 if(motion)try{creWarm=std::thread([&]{
+                    worker_crash::Stage stage("CRE warm-up");
                     try{motion->warmUp();}catch(const std::exception&){}
                     creReadyMs=int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count());
                 });}catch(const std::exception&){}
                 try{eglWarm=std::thread([]{
+                    worker_crash::Stage stage("EGL warm-up (driver load)");
                     EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
                     if(display!=EGL_NO_DISPLAY)eglInitialize(display,nullptr,nullptr); // loads the driver; the merge's own init is then a no-op
                 });}catch(const std::exception&){}
@@ -93,6 +106,7 @@ int main(int argc,char** argv) {
                 }
             }
             // NCH v10 = the LMC hybrid transport (per-frame roles and noise); anything else is the NICE 7-slot burst.
+            worker_crash::mark("burst map");
             vivo_nice::MappedHybridBurst hybridBurst(argv[3]);
             std::unique_ptr<vivo_nice::MappedNiceBurst> mapped;
             if(!hybridBurst.hybrid)mapped=std::make_unique<vivo_nice::MappedNiceBurst>(argv[3]);
@@ -169,6 +183,7 @@ int main(int argc,char** argv) {
                 // (external files dir, /data/local/tmp) must not add a trailer it did not ask for.
                 const bool wantClipFlags=hin.clipFlags||(tuning.clipFlags&&std::getenv("SCAM_HYBRID"))
                         ||access((std::string(argv[2])+"/clip-flags").c_str(),F_OK)==0;
+                worker_crash::mark("hybrid merge");
                 result=vivo_nice::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);
             } else {
             const auto& input=mapped->burst;
@@ -200,6 +215,7 @@ int main(int argc,char** argv) {
                 });
             }
             report("NICE RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
+            worker_crash::mark("output write");
             const int out=vivo_nice::openArgument(outputPath,O_WRONLY|O_CREAT|O_TRUNC);
             if(out<0)throw std::runtime_error("Cannot open NICE output");
             auto writeAll=[&](const void* data,size_t bytes){

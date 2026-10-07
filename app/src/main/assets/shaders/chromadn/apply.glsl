@@ -6,6 +6,9 @@ precision highp usampler2D;
 // samples are weighted by how close their luminance is to the pixel's own, so colour edges stay
 // on the luminance edges); its luminance follows the non-local-means result. Very dark pixels
 // carry no measurable colour (black-level error shows as a tint) and fade to neutral.
+// Signed input (LMC hybrid: nicergb signedU): the pixel's luminance uses its value clamped at zero (as before); its 3x3
+// colour averages the signed values and clamps the mean, so a channel near zero is not lifted by a clamp per pixel. The
+// output is >= 0 (the clamp after the noise reduction). For non-negative input nothing changes.
 uniform sampler2D InputBuffer;
 uniform sampler2D Before;    // half resolution colour, unfiltered
 uniform sampler2D After;     // half resolution colour, filtered
@@ -52,10 +55,11 @@ void main() {
         for (int j = -1; j <= 1; j++) {
             for (int i = -1; i <= 1; i++) {
                 float wgt = ((i == 0) ? 1.0 : 0.3614) * ((j == 0) ? 1.0 : 0.3614);
-                s3 += wgt * max(texelFetch(InputBuffer, clamp(p + ivec2(i, j) * pxStep, ivec2(0), lastI), 0).rgb, vec3(0.0));
+                s3 += wgt * texelFetch(InputBuffer, clamp(p + ivec2(i, j) * pxStep, ivec2(0), lastI), 0).rgb;
                 w3 += wgt;
             }
         }
+        s3 = max(s3, vec3(0.0));
         own = s3 / max(dot(s3, vec3(1.0 / 3.0)), 1.0e-6);
         float relN = 2.0 * sg * sqrt(ym + offsetC) / ym;
         tolC = clamp(3.0 * relN, 0.02, 0.5) * 1.7 * 0.42;

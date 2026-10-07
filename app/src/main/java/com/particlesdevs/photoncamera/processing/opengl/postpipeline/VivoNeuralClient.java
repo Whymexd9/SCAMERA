@@ -262,6 +262,9 @@ public final class VivoNeuralClient {
                 // LMC hybrid merge (vivo-nice-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
                 if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки Hybrid","Could not create the Hybrid merge marker"));
+                // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.
+                if(((LmcHybridBurst)niceBurst).creOff()&&!new File(dir,"cre-off").createNewFile())
+                    throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));
                 // P30: the worker keeps its compiled GPU programs in the app's cache (−0.6 s per shot after the first).
                 File glCache=new File(context.getCacheDir(),"hybrid-gl");
                 if(glCache.isDirectory()||glCache.mkdirs())

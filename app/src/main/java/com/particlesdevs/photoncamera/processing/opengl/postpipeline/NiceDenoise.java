@@ -168,6 +168,7 @@ public final class NiceDenoise extends Node {
                 dumpInput(pipeline); // developer switch dump-denoise: the linear input for offline replays (tools/check_lmcdn.py)
                 WorkingTexture = LmcDenoise.process(glProg, pipeline, previousNode.WorkingTexture);
                 glProg.closed = true;
+                pipeline.signedRgb = false; // lmcdn/cbf mode 2 and lmcdn/final2x clamp their output
                 dumpTexture(pipeline, WorkingTexture, "denoise-out");
                 return;
             } catch (RuntimeException error) {
@@ -311,6 +312,7 @@ public final class NiceDenoise extends Node {
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
+            pipeline.signedRgb = false; // chromadn/apply writes >= 0
         } finally {
             for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean, quarter, coarse, effMap}) if (t != null) t.close();
         }

@@ -19,6 +19,7 @@
 // effective-frames map and the merged Bayer RAW for the DNG.
 #include "vivo-nice-superres-gpu.h"
 #include "vivo-nice-rawca-gpu.h" // P28 RAW CA (CA_correct_RT port, burst / GPU pre-pass)
+#include "vivo-nice-crash.h"
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -263,28 +264,46 @@ struct HybridTuning {
     // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
     // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
     // kHybMergeMosaic over the raw mosaic itself.
-    // DEFAULTS: mosaicPath stays 0 (today's output) until the device sweep S4 passes on the phone. The keys below only act with
-    // mosaicPath 1; their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
+    // DEFAULTS: mosaicPath 1 since P34 (Quad: the native merge, 2x faster than the split on the OPPO with +11-12 % 2-4 px detail at
+    // matched noise on the handheld bursts; Tetra stays on the split, mosaicTetra 0). The keys below only act with mosaicPath 1;
+    // their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
     // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill) except where noted: Tetra stays on the split (mosaicTetra 0)
     // and the 6.1 base widening keeps the split's rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
-    // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1.
+    // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1, mosaicKernelScale 1,
+    // mosaicNativeFlatScale 1, mosaicNativeClamp 0. P34 (research/p29/QUAD_COMBINED.md): kernel scale 0.7, flat scale 2.4,
+    // eigenvalue clamp in daylight, kernel scale 1 / edge scale 0.6 at night; ArkCam's point is kernel scale 0.5, edge scale 0.5
+    // (isz2: ArkCam's noise with 21 frames against its 30, 0.96 of its poster detail).
     // Path 1 merges without the colour-difference (chromaDiff), clip-border (rimRatio) and Bento colour passes: they re-sample the
     // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
     // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
-    int mosaicPath=0;
+    int mosaicPath=1;
     int mosaicWindow=3;          // half-width r of the native window (native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites around
                                  // the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the 6.1
                                  // window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split (its
                                  // 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]); Tetra
                                  // T1 parity is 6; 2 = ArkCam's 5x5
     int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
-    float mosaicKernelScale=1.f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
-                                 // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5)
+    float mosaicKernelScale=0.7f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
+                                 // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5). P34: 0.7 with the flat scale 2.4 and
+                                 // the eigenvalue clamp below (daylight; mosaicNativeNightKernelScale at night): isz2 detail +12 % at
+                                 // the split's noise, hh_1 / hh_2 / hh_4 +11 % (2-4 px band at matched noise)
     // mosaicEdgeScale of the native path (across the edge and the base kernel; along the edge and flat areas stay). Its own key so that
     // the split keeps 0.6. S0 (synthetic Quad, 16 frames): 0.4 gave zone plate +1.0, bars +1.4 / +3.2, edges +1.2 dB at unchanged
     // flat noise; 0.3 more detail but +57 % colour error on neutral edges. Device (OPPO, real handheld Quad hand.nch): 0.6 gave
     // +49 % 2-4 px detail at matched flat noise and half the flat phase amplitude of the split, 0.4 0.94x with x1.6 chroma HF: 0.6.
     float mosaicNativeEdgeScale=0.6f;
+    // P34: the native path's blurred (flat-area) and along-edge kernels, x sigma (> 1 = wider); across / base follow
+    // mosaicNativeEdgeScale, all of them mosaicKernelScale
+    // P34 isz2 (against ArkCam's DNG): the flat kernel x1.4 at ArkCam's kernel scale 0.5 took the wall's noise from 1.40 to 1.07
+    // at 0.955 -> 0.917 poster detail (the kernel scale alone: 0.6 -> 1.15 / 0.91); 2.4 with kernel scale 0.7 and edge scale 0.6
+    float mosaicNativeFlatScale=2.4f,mosaicNativeAlongScale=1.f;
+    // P34: the native kernel and edge scales at night (6.1 night key, key <= s61MaxKey; 0 = the daylight values above). The night
+    // guide (no daylight noise damping) puts more of a dim scene on the texture kernels, and narrowed there the R / B blocks of the
+    // Quad lattice show through (arena11, key 25: a chroma lattice ratio of 263 in texture against 13 for the split).
+    float mosaicNativeNightKernelScale=1.f,mosaicNativeNightEdgeScale=0.6f;
+    int mosaicNativeClamp=2;     // P34: ArkCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
+                                 // 1 per component as ArkCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
+                                 // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split)
     // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
     // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
     // (false colour on bars -7 %)
@@ -309,6 +328,9 @@ struct HybridTuning {
     // more colour on the B/W edge (0.022 -> 0.030) and flat phase bias 0.001 -> 0.004 %; 16 frames +0.05..+0.1 dB, nothing worse.
     // The device sweep (hand, its moving areas) decides.
     int mosaicNativeWiden=0;
+    // P34 diagnostics: 1 = the generic native merge kHybMergeMosaic also for Quad with the full window (where kHybMergeMosaicFast,
+    // the same merge on whole colour blocks, runs by default)
+    int mosaicGeneric=0;
 };
 
 // restoreSensorOrigin() of vivo-nice-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -379,9 +401,11 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             // P29 native mosaic path
             ||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
+            ||set("mosaicNativeFlatScale",&t.mosaicNativeFlatScale)||set("mosaicNativeClamp",nullptr,&t.mosaicNativeClamp)
+            ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)||set("mosaicNativeAlongScale",&t.mosaicNativeAlongScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
-            ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)
+            ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
@@ -1546,6 +1570,30 @@ float natSiteG(uvec4 geo,int x,int y,out uint fl){
     return clamp((u-black[cp])*inv[cp],-0.25,1.0);
 }
 float natSite(int f,int x,int y,out uint fl){return natSiteG(nGeo[clamp(f,0,127)],x,y,fl);}
+// P34: the merges' bound on the native kernel precision (HybridTuning::mosaicNativeClamp)
+uniform int natClampU;  // 1: ArkCam's covariance packing range on the native precision, 2: the same bounds on its eigenvalues
+// ArkCam v23 stores the kernel covariance C (exp2(-0.5 d'Cd), C = P / ln 2) in a texture with the ranges cov_range_rg / _b
+// (quad_report, merge L22-23): C_xx, C_yy in [0.367, 24.8], C_xy in [-6.98, 7.03], i.e. an across-edge sigma >= 0.242 px.
+// Clamped per component (1) a narrow kernel on a diagonal edge loses its orientation (diagonal capped, xy capped apart);
+// 2 bounds the eigenvalues instead (sigma in [0.242, 1.98] px along both axes of the kernel, orientation kept).
+vec3 natEig(vec3 P,float lo,float hi){ // eigenvalues of the precision clamped to [lo, hi], eigenvectors kept
+    float m=0.5*(P.x+P.y),h=0.5*(P.x-P.y),r=sqrt(h*h+P.z*P.z);
+    float l1=m+r,l2=m-r,c1=clamp(l1,lo,hi),c2=clamp(l2,lo,hi);
+    if(r<1.0e-6)return vec3(c1,c1,0.0);
+    vec3 vv=vec3(P.x-l2,P.y-l2,P.z)/(2.0*r); // v v' of the larger eigenvalue's unit eigenvector (xx, yy, xy)
+    return vec3(c2+(c1-c2)*vv.x,c2+(c1-c2)*vv.y,(c1-c2)*vv.z);
+}
+vec3 natClamp(vec3 P){
+    if(natClampU==1){
+        // per component; C_xx capped at 17.19 with C_xy kept up to 4.87 can leave xx yy < xy^2 (a narrow kernel a few degrees off
+        // an axis): an indefinite precision whose weight GROWS with distance along one direction (up to ~2^10 inside the 7x7
+        // window). |xy| stays below sqrt(xx yy), so the kernel stays a kernel.
+        vec3 C=vec3(clamp(P.xy,vec2(0.2544),vec2(17.19)),clamp(P.z,-4.838,4.873));
+        float lim=0.99*sqrt(C.x*C.y);
+        return vec3(C.xy,clamp(C.z,-lim,lim));
+    }
+    return natClampU==2?natEig(P,0.2544,17.19):P;
+}
 )";
 
 // Native outlier sites, as kHybMean / kHybFlags do for a plain burst but on the native sites: the split tested its sub-frames, whose
@@ -1904,7 +1952,7 @@ void main(){
         else Pf=P*fParam[f].z;
         float rw=r/max(fParam[f].y,1.0e-6);
         if(!us)frames+=rw;
-        natSamples(a,f,Ob*float(b)+o,r,rw,Pf*natK.x,(mode&2)!=0&&!us);
+        natSamples(a,f,Ob*float(b)+o,r,rw,natClamp(Pf*natK.x),(mode&2)!=0&&!us);
     }
     // Base frame last. 6.1 rule (natWidenU 0) as in the split, where each frame was b^2 sub-frames and the base's own other b^2-1
     // sub-frames were accepted donors: b^2 frames + b^2-1 < widenBelow; natWidenU 1: S0's frames < widenBelow. Round-4 rule on the
@@ -1914,13 +1962,260 @@ void main(){
         if((mode&4)!=0)Pb=(natWidenU!=0?frames:float(bb)*frames+float(bb-1))<kD.x?P/(kD.y*kD.y):P;
         else { float self=natSelfCover(S,P*natK.x,(mode&2)!=0);
                float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+self)); Pb=P/(widen*widen); }
-        natSamples(a,0,S,wb,wb,Pb*natK.x,(mode&2)!=0&&m<=0.0);
+        natSamples(a,0,S,wb,wb,natClamp(Pb*natK.x),(mode&2)!=0&&m<=0.0);
     }
     vec3 col;uint cfl=0u;
     for(int c=0;c<3;c++){
         if(a.den[c]>1.0e-7)col[c]=a.num[c]/a.den[c];
         else if(a.clipDen[c]>0.0){col[c]=a.clipNum[c]/a.clipDen[c];cfl|=1u<<uint(c);}
         else col[c]=(natMarkU!=0&&wb>0.0)?natBaseFill(c,S):0.0;
+        if(a.clipDen[c]>0.0)cfl|=8u;
+    }
+    int i=row*ow+ox;
+    outRgb[i*3]=col.x;outRgb[i*3+1]=col.y;outRgb[i*3+2]=col.z;
+    eff[i]=a.cover+wb;
+    if(mergeModeU.z!=0||rimU.x>0.0){
+        if(m>0.0)cfl|=16u;
+        if(a.usClip>0.0&&(cfl&7u)!=0u)cfl|=32u;
+        if(rimU.x>0.0&&(cfl&8u)!=0u&&a.den[1]>1.0e-7){
+            float e=0.0;
+            for(int c=0;c<3;c++)e=max(e,a.clipDen[c]/max(a.den[c]+a.clipDen[c],1.0e-20));
+            cfl|=uint(clamp(e,0.0,1.0)*63.0+0.5)<<8;
+        }
+        if(rimU.x>0.0&&(cfl&8u)!=0u)cfl|=64u;
+        cflags[i]=cfl;
+    }
+}
+)";
+
+// P34: the native Quad merge restructured for speed after ArkCam v23's k_fs_gcam_sabre_merge_quad (research/ark23): whole colour
+// blocks are loaded once per frame and output pixel (its q_cache of normalised 2x2 blocks), the loops have constant bounds, the
+// site normalisation runs once per site and strip instead of once per tap. kHybMergeMosaic read every site of the window with a
+// uniform-bound loop, one 16-bit load per tap behind the kernel test and the site-gain arithmetic per tap: ~4 ns per tap on
+// Adreno 750, 54 s per 12 MP Quad merge.
+// kHybNatNorm: every held site of every frame of the strip once, normalised exactly as natSiteG (site gains, black, white clip),
+// flags in the float bits (outlier site: all ones; site of a clipped cell: bit 30, which no value in [-0.25, 1] has), one uvec4
+// per sensor colour block (TL, TR, BL, BR) of the frame's held rows; NatTable w = the frame's first block. Quad (b = 2) only.
+static const char* kHybNatNorm=R"(
+layout(std430,binding=18) writeonly buffer NNorm{uvec4 nnorm[];};
+uniform int frameIdx;
+void main(){
+    int f=frameIdx+int(gl_GlobalInvocationID.z);
+    int bx=int(gl_GlobalInvocationID.x),rb=chunkU+int(gl_GlobalInvocationID.y);
+    if(f>=frameCount||f>127)return;
+    uvec4 geo=nGeo[f];
+    int BW=natU.y>>1;
+    if(bx>=BW||rb>=(int(geo.z)>>1))return;
+    uvec4 o;
+    for(int k=0;k<4;k++){
+        int X=2*bx+(k&1),ry=2*rb+(k>>1),Y=int(geo.y)+ry; // sensor site
+        uint idx=geo.x+uint(ry*natU.y+X);
+        uint word=nwords[idx>>1];
+        uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
+        uint fl=natMarkU!=0?(v>>14):0u;v&=natMarkU!=0?0x3FFFu:0xFFFFu;
+        int cp=(((Y>>1)&1)<<1)|((X>>1)&1);
+        float u=float(v);
+        if(natV.y!=0){
+            int kk=((Y&7)<<3)|(X&7);
+            u=u>=natW.y?natW.x:clamp(black[cp]+(u-black[((Y&1)<<1)|(X&1)])*natGain[kk>>2][kk&3],0.0,natW.x);
+        }
+        uint bits=floatBitsToUint(clamp((u-black[cp])*inv[cp],-0.25,1.0));
+        o[k]=(fl&1u)!=0u?0xFFFFFFFFu:(fl&2u)!=0u?(bits|0x40000000u):bits;
+    }
+    nnorm[geo.w+uint(rb*BW+bx)]=o;
+}
+)";
+// kHybMergeMosaicFast (after kHybMergeCommon + kHybNatAccess; #define NAT_R = window half-width 1..3, NAT_MARKED = the strip's
+// sites carry flags, NAT_FILL = the S5 R / B fill): kHybMergeMosaic for Quad with the full window (mosaicWindowFull 1) on the
+// blocks of kHybNatNorm. The (2r+1)^2 sites around N = floor(O + 0.5) lie in the (r+1)^2 blocks from (N - r) >> 1; the blocks'
+// sites outside the window weigh 0. Same sites, kernel, weights, flags and clip handling as kHybMergeMosaic (the sums in another
+// order: last-bit differences).
+static const char* kHybMergeMosaicFast=R"(
+layout(std430,binding=18) readonly buffer NNorm{uvec4 nnorm[];};
+uniform vec4 natK;     // as kHybMergeMosaic
+uniform int natRy1;
+uniform int natWidenU;
+#define NB (NAT_R+1)
+vec3 natCov(vec2 B){
+    int w2=size.x/2;
+    vec2 c=clamp((B-0.5)*0.5,vec2(0.0,float(ry0)),vec2(float(w2-1),float(natRy1-1)));
+    int x0=min(int(floor(c.x)),max(w2-2,0)),y0=max(min(int(floor(c.y)),natRy1-2),ry0);
+    int x1=min(x0+1,w2-1),y1=min(y0+1,natRy1-1);
+    vec2 t=clamp(c-vec2(float(x0),float(y0)),0.0,1.0);
+    vec3 p0=mix(cov[(y0-ry0)*w2+x0].xyz,cov[(y0-ry0)*w2+x1].xyz,t.x);
+    vec3 p1=mix(cov[(y1-ry0)*w2+x0].xyz,cov[(y1-ry0)*w2+x1].xyz,t.x);
+    return mix(p0,p1,t.y);
+}
+vec3 natDcov(int f,vec2 Ob){
+    vec2 c=(Ob-0.5)*0.5,c0=floor(c),t=c-c0;
+    int x0=int(c0.x),y0=int(c0.y);
+    vec3 p0=mix(dcovAt(f,x0,y0),dcovAt(f,x0+1,y0),t.x);
+    vec3 p1=mix(dcovAt(f,x0,y0+1),dcovAt(f,x0+1,y0+1),t.x);
+    return mix(p0,p1,t.y);
+}
+// Canonical colour block (bx, by) of the frame whose NatTable entry is geo: reflected at the frame's border and clamped to its
+// held rows block-wise, as natSiteG reflects / clamps a site (position inside the block kept).
+int natReflB(int v,int n){v=v<0?-v:v;v=v>=n?2*n-2-v:v;return clamp(v,0,n-1);}
+uvec4 natBlock(uvec4 geo,int bx,int by){
+    int BW=natU.y>>1;
+    int sx=natReflB(bx+cfaShift.x,BW),sy=natReflB(by+cfaShift.y,natU.z>>1);
+    int rb=clamp(sy-(int(geo.y)>>1),0,max((int(geo.z)>>1)-1,0));
+    return nnorm[geo.w+uint(rb*BW+sx)];
+}
+float natVal(uint u,out bool ok,out bool cl){
+#if NAT_MARKED
+    ok=u!=0xFFFFFFFFu;
+    float v=ok?uintBitsToFloat(u&0xBFFFFFFFu):0.0; // an outlier's bits are a NaN: weight 0 times NaN would poison the sums
+    cl=(u&0x40000000u)!=0u||v>=clipLevel;
+#else
+    ok=true;
+    float v=uintBitsToFloat(u);
+    cl=v>=clipLevel;
+#endif
+    return v;
+}
+// Sums of one frame per colour over the window: valid samples (nm, dn) and clipped ones (cn, cd). The (r+1)^2 colour blocks from
+// (N - r) >> 1 hold the window's (2r+1)^2 sites; one block at a time (one colour, one kernel constant), its four sites tested
+// against the window on their coordinates, kernel and weights exactly as kHybMergeMosaic writes them. selfCover: natSelfCover's sum
+// instead (green sites other than the block's first, unflagged, unclipped, the donor rule kw >= 0.002).
+// Register-light on purpose: the first form (a row of blocks in a local array, ArkCam's precomputed column terms dx^2 Cxx /
+// 2 dx Cxy in local arrays, per block phase sums, a window test on the cache indices) was miscompiled by the Adreno 750 driver
+// (OPPO PHY110, 2026-10): some R / B taps got wrong weights (syn_b2, round-4 kernel: R / B off by up to 0.28 at ~6000 pixels,
+// G exact), and small changes of its text moved the error around instead of removing it.
+struct NatSums{vec3 nm;vec3 dn;vec3 cn;vec3 cd;};
+NatSums natTaps(uvec4 geo,vec2 O,vec3 P,bool skipSmall,bool skipClip,bool selfCover){
+    ivec2 N=ivec2(floor(O+0.5)),q0=(N-NAT_R)>>1;
+    NatSums s;s.nm=vec3(0.0);s.dn=vec3(0.0);s.cn=vec3(0.0);s.cd=vec3(0.0);
+    for(int J=0;J<NB;J++)for(int I=0;I<NB;I++){
+        int bx=q0.x+I,by=q0.y+J,ph=((by&1)<<1)|(bx&1); // canonical RGGB: phase 0 red, 1 / 2 green, 3 blue
+        bool green=ph==1||ph==2;
+        if(selfCover&&!green)continue;
+        float kk=-0.72135*(green?natK.y:natK.z);
+        uvec4 u=natBlock(geo,bx,by);
+        float nm=0.0,dn=0.0,cn=0.0,cd=0.0;
+        for(int t=0;t<4;t++){
+            int sx=2*bx+(t&1),sy=2*by+(t>>1);
+            float dx=float(sx)-O.x,dy=float(sy)-O.y;
+            bool ok,cl;
+            float v=natVal(u[t],ok,cl);
+            float kw=exp2(kk*(dx*dx*P.x+dy*dy*P.y+2.0*dx*dy*P.z))+kD.z;
+            bool use=abs(sx-N.x)<=NAT_R&&abs(sy-N.y)<=NAT_R&&ok;
+            if(selfCover)use=use&&t!=0&&!cl&&kw>=0.002;
+            else use=use&&!(skipSmall&&kw<0.002)&&!(skipClip&&cl);
+            if(!use)continue;
+            if(cl){cn+=kw*v;cd+=kw;} else {nm+=kw*v;dn+=kw;}
+        }
+        vec3 m=ph==0?vec3(1.0,0.0,0.0):ph==3?vec3(0.0,0.0,1.0):vec3(0.0,1.0,0.0);
+        s.nm+=m*nm;s.dn+=m*dn;s.cn+=m*cn;s.cd+=m*cd;
+    }
+    return s;
+}
+#if NAT_FILL
+// natFill of kHybMergeMosaic on the blocks
+void natFillC(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
+    ivec2 q=ivec2(floor(O+0.5))>>1;
+    vec3 sum=vec3(0.0),cnt=vec3(0.0);
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        int bx=q.x+i,by=q.y+j;
+        int c=((by&1)<<1)|(bx&1);c=c==0?0:c==3?2:1;
+        uvec4 u=natBlock(geo,bx,by);
+        float bs=0.0,bn=0.0;
+        for(int t=0;t<4;t++){
+            bool ok,cl;
+            float v=natVal(u[t],ok,cl);
+            if(!ok||cl)continue;
+            bs+=v;bn+=1.0;
+        }
+        if(bn>0.0){sum[c]+=max(bs/bn,0.0);cnt[c]+=1.0;}
+    }
+    if(cnt.y<=0.0)return;
+    float gv=num.y/den.y,gm=sum.y/cnt.y*g,need=natK.w*den.y;
+    for(int k=0;k<2;k++){
+        int c=2*k;
+        if(den[c]>=need||cd[c]>0.0||cnt[c]<=0.0)continue;
+        num[c]+=max(gv+sum[c]/cnt[c]*g-gm,0.0)*(need-den[c]);
+        den[c]=need;
+    }
+}
+#endif
+// natSamples of kHybMergeMosaic (full window) on the blocks
+void natFrame(inout Acc a,int f,vec2 O,float r,float cover,vec3 P){
+    float g=fParam[f].x;
+    int role=int(fParam[f].w);
+    uvec4 geo=nGeo[clamp(f,0,127)];
+    NatSums s=natTaps(geo,O,P,f!=0&&role!=5,role==3,false);
+    vec3 num=s.nm*g,den=s.dn,cn=s.cn*g,cd=s.cd;
+#if NAT_FILL
+    if(natK.w>0.0&&den.y>1.0e-7&&(den.x<natK.w*den.y||den.z<natK.w*den.y))natFillC(num,den,cd,geo,O,g);
+#endif
+    a.num+=r*num;a.den+=r*den;a.clipNum+=r*cn;a.clipDen+=r*cd;a.cover+=cover*den.y;
+    if(role==5)a.usClip+=r*(cd.x+cd.y+cd.z);
+}
+#if NAT_MARKED
+float natBaseFill(int c,vec2 O){
+    float Rn=float(natU.w)*(4.0/3.0);
+    int s=natV.x,n=int(ceil(2.0*Rn));
+    int x0=int(floor(O.x-Rn))+1,y0=int(floor(O.y-Rn))+1;
+    float sum=0.0,cnt=0.0;
+    for(int j=0;j<n;j++)for(int i=0;i<n;i++){
+        int sx=x0+i,sy=y0+j;
+        if(phaseColor[(((sy>>s)&1)<<1)|((sx>>s)&1)]!=c)continue;
+        uint fl;
+        float v=natSite(0,sx,sy,fl);
+        if((fl&1u)!=0u)continue;
+        sum+=v;cnt+=1.0;
+    }
+    return cnt>0.0?sum*fParam[0].x/cnt:0.0;
+}
+#endif
+void main(){
+    int g=kG.x,ow=kG.y,w2=size.x/2;
+    int ox=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
+    if(ox>=ow||row>=2*(cy1-cy0)*g)return;
+    vec2 S=vec2(float(ox),float(2*cy0*g+row))-0.5; // native canonical position of the output pixel (X - (b-1)/2)
+    vec2 B0=(S-0.5)*0.5;                          // the same in the binned base frame
+    ivec2 bi=ivec2(floor(B0+0.5));
+    int cx=clamp(bi.x>>1,0,w2-1),cy=clamp(bi.y>>1,cy0,cy1-1);
+    vec3 P=natCov(B0);
+    float m=kD.w>0.5?bmask[(cy-cy0)*w2+cx]:0.0;
+    vec2 cell=vec2(float(2*cx),float(2*cy));
+    int mode=mergeModeU.x;
+    float wb=1.0-m;
+    if(kE.x>=0.0||mergeModeU.y!=0)wb=0.0;
+    Acc a;initAcc(a);
+    float frames=0.0;
+    for(int f=1;f<frameCount;f++){
+        float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+        if(r<0.004)continue;
+        if(kE.x>=0.0&&int(kE.x)!=f)continue;
+        vec2 Ob=originM(f,2*cx,2*cy)+(B0-cell);
+        bool us=int(fParam[f].w)==5;
+        vec3 Pf;
+        if(us)Pf=vec3(kE.y,kE.y,0.0);
+        else if((mode&1)!=0)Pf=natDcov(f,Ob)*fParam[f].z;
+        else Pf=P*fParam[f].z;
+        float rw=r/max(fParam[f].y,1.0e-6);
+        if(!us)frames+=rw;
+        natFrame(a,f,Ob*2.0+0.5,r,rw,natClamp(Pf*natK.x));
+    }
+    if(wb>0.0){
+        vec3 Pb;
+        if((mode&4)!=0)Pb=(natWidenU!=0?frames:4.0*frames+3.0)<kD.x?P/(kD.y*kD.y):P;
+        else{
+            NatSums s=natTaps(nGeo[0],S,P*natK.x,false,false,true);
+            float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+s.dn.y));Pb=P/(widen*widen);
+        }
+        natFrame(a,0,S,wb,wb,natClamp(Pb*natK.x));
+    }
+    vec3 col;uint cfl=0u;
+    for(int c=0;c<3;c++){
+        if(a.den[c]>1.0e-7)col[c]=a.num[c]/a.den[c];
+        else if(a.clipDen[c]>0.0){col[c]=a.clipNum[c]/a.clipDen[c];cfl|=1u<<uint(c);}
+#if NAT_MARKED
+        else col[c]=wb>0.0?natBaseFill(c,S):0.0;
+#else
+        else col[c]=0.0;
+#endif
         if(a.clipDen[c]>0.0)cfl|=8u;
     }
     int i=row*ow+ox;
@@ -1962,6 +2257,8 @@ struct HybridMosaicNative {
                                          // curves (Sabre 6.1 / round 4, the night rule, the outlier gate) follow the sensor sites as on the
                                          // split and in S0, not the binned averages (nor T2's 2x2 means)
     bool s0Widen=false;                  // HybridTuning::mosaicNativeWiden: the 6.1 base widening below widenBelow FRAMES (S0)
+    bool generic=false;                  // HybridTuning::mosaicGeneric: kHybMergeMosaic even where kHybMergeMosaicFast applies
+    int clampCov=0;                      // HybridTuning::mosaicNativeClamp
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
 };
 
@@ -1975,6 +2272,22 @@ class HybridGpu {
     // P29 native mosaic (compiled only by HybridGpu(.., nativeMosaic = true)): outlier mean / flags / mark of the native sites and
     // the merge kHybMergeMosaic; the NatTable uniform buffers (binding 1) of the two strip banks
     GLuint natMeanProgram=0,natFlagsProgram=0,natMarkProgram=0,mosaicProgram=0,natTable[2]{};
+    // P34: the fast Quad merge (kHybNatNorm + kHybMergeMosaicFast [window r][marked][fill], compiled when first used) and the
+    // normalised blocks of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
+    GLuint natNormProgram=0,natFast[4][2][2]{},natNormBuf=0;
+    size_t natNormCap=0;
+    GLuint natFastProgram(int r,bool marked,bool fill){
+        GLuint& p=natFast[std::clamp(r,1,3)][marked?1:0][fill?1:0];
+        if(!p){
+            const auto t0=std::chrono::steady_clock::now();
+            const std::string body="#define NAT_R "+std::to_string(std::clamp(r,1,3))+"\n#define NAT_MARKED "+(marked?"1":"0")
+                +"\n#define NAT_FILL "+(fill?"1":"0")+"\n"+kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
+            p=compile(body.c_str());
+            compileMs+=" mosaicFast"+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
+                +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
+        }
+        return p;
+    }
     // FrameTable (std140, uniform buffer binding 0): six arrays of kHybridGpuFrames 16-byte entries
     GLuint frameTable=0;
     static constexpr size_t kTableGeo=0,kTableHA=1,kTableHB=2,kTableParam=3,kTableNoise=4,kTableCells=5;
@@ -2010,8 +2323,10 @@ class HybridGpu {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
-            for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram})if(program)glDeleteProgram(program); // P29
+            for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram,natNormProgram})if(program)glDeleteProgram(program); // P29
+            for(auto& byR:natFast)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
+            if(natNormBuf)glDeleteBuffers(1,&natNormBuf);
             glDeleteBuffers(kSlots,buffers);
             glDeleteBuffers(kSlots,bankBuffers);
             if(frameTable)glDeleteBuffers(1,&frameTable);
@@ -2078,10 +2393,19 @@ class HybridGpu {
         std::sort(files.begin(),files.end());
         for(size_t i=0;i+48<files.size();++i)std::remove(files[i].second.c_str());
     }
+    // Crash diagnostics (vivo X200 Pro: every Mali worker died after "HYBRID GPU: compile flags"): the program and the GL call in
+    // progress, for the worker's crash report. One GPU thread compiles at a time; the text lives for the whole process.
+    static char* compileStage(){static char text[96];return text;}
+    const char* compileName="?";
+    void markCompile(const char* step){
+        std::snprintf(compileStage(),96,"GPU compile %s: %s",compileName,step);worker_crash::mark(compileStage());
+    }
     GLuint compile(const char* body,bool standalone=false){
         std::string source=standalone?std::string(body):std::string(kHybCommon)+helpersPrefix+kHybHelpers+body;
         const std::string cacheFile=programCacheFile(source);
+        markCompile("glProgramBinary (cache)");
         if(!cacheFile.empty())if(GLuint cached=loadProgramBinary(cacheFile))return cached;
+        markCompile("glCompileShader");
         GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,kHybHelpers,body};
         if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,4,sources,nullptr);
         glCompileShader(shader);
@@ -2089,9 +2413,11 @@ class HybridGpu {
         if(!ok){char msg[4096]{};glGetShaderInfoLog(shader,sizeof(msg),nullptr,msg);glDeleteShader(shader);throw std::runtime_error(std::string("HYBRID GPU shader: ")+msg);}
         GLuint program=glCreateProgram();glAttachShader(program,shader);
         if(!cacheFile.empty())glProgramParameteri(program,GL_PROGRAM_BINARY_RETRIEVABLE_HINT,GL_TRUE);
+        markCompile("glLinkProgram");
         glLinkProgram(program);glDeleteShader(shader);
         glGetProgramiv(program,GL_LINK_STATUS,&ok);
         if(!ok){char msg[4096]{};glGetProgramInfoLog(program,sizeof(msg),nullptr,msg);glDeleteProgram(program);throw std::runtime_error(std::string("HYBRID GPU link: ")+msg);}
+        markCompile("glGetProgramBinary (cache store)");
         if(!cacheFile.empty())storeProgramBinary(program,cacheFile);
         return program;
     }
@@ -2237,12 +2563,18 @@ public:
     // word per frame; without it they wrap above 2^32 / 255 cells (67 MP). Report only (robustShare); false = the program as before.
     const bool sumsCarry=false;
     // nativeMosaic (P29): also compile the native mosaic programs (Frames::native needs them).
+    // outlierPrograms: compile kHybMean / kHybFlags (the fixed-pattern and base transient outlier tests, hotSigma / hotBaseSigma).
+    // false only for a merge with both thresholds 0: the vivo X200 Pro's Mali worker died compiling kHybFlags (owner's log
+    // 2026-10-07), the app's retry turns the tests off and the merge then runs without those two programs. true = as before.
+    const bool outlierPrograms=true;
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
-                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false)
-            :localAlign(withLocalAlign),sumsCarry(withSumsCarry){
+                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
+                       bool withOutlierPrograms=true)
+            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
+            worker_crash::mark("GPU context (EGL)");
             if(display==EGL_NO_DISPLAY||!eglInitialize(display,nullptr,nullptr)||!eglBindAPI(EGL_OPENGL_ES_API))throw std::runtime_error("EGL unavailable");
             const EGLint configAttrs[]={EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RENDERABLE_TYPE,EGL_OPENGL_ES3_BIT,EGL_RED_SIZE,8,EGL_GREEN_SIZE,8,EGL_BLUE_SIZE,8,EGL_NONE};
             EGLConfig config{};EGLint count=0;
@@ -2264,12 +2596,15 @@ public:
             if(early)early("HYBRID GPU: context "+renderer+" "+limits+(adreno?"":"; compiling program by program"));
             auto timed=[&](const char* name,const char* body,bool standalone=false){
                 if(early&&!adreno)early(std::string("HYBRID GPU: compile ")+name);
+                compileName=name;
                 const auto t0=std::chrono::steady_clock::now();GLuint p=compile(body,standalone);
                 compileMs+=std::string(" ")+name+"="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
                 return p;
             };
-            meanProgram=timed("mean",kHybMean);
-            flagsProgram=timed("flags",kHybFlags);
+            if(outlierPrograms){
+                meanProgram=timed("mean",kHybMean);
+                flagsProgram=timed("flags",kHybFlags);
+            } else if(early)early("HYBRID GPU: outlier tests off, mean / flags programs not compiled");
             markProgram=timed("mark",kHybMark,true);
             guideProgram=timed("guide",kHybGuide);
             cellsProgram=timed("cells",kHybCells);
@@ -2296,10 +2631,12 @@ public:
                 natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
                 natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybNatFlags).c_str());
                 natMarkProgram=timed("natMark",kHybNatMark,true);
-                mosaicProgram=timed("mosaic",(std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+                natNormProgram=timed("natNorm",(std::string(kHybNatAccess)+kHybNatNorm).c_str());
+                // the merge programs when merge() knows the window: kHybMergeMosaicFast (natFastProgram) or kHybMergeMosaic
                 glGenBuffers(2,natTable);
                 for(GLuint t:natTable){glBindBuffer(GL_UNIFORM_BUFFER,t);glBufferData(GL_UNIFORM_BUFFER,GLsizeiptr(size_t(kHybridGpuFrames)*16),nullptr,GL_DYNAMIC_DRAW);}
             }
+            worker_crash::mark("GPU init (buffers)");
             if(cacheStores>0)trimProgramCache();
             if(!hybridProgramCacheDir().empty())compileMs+=" cache="+std::to_string(cacheHits)+"/"+std::to_string(cacheHits+cacheStores)+" hits";
             glGenBuffers(kSlots,buffers);
@@ -2358,18 +2695,39 @@ public:
             glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
             check("frame table");
         }
+        worker_crash::mark("GPU merge");
         std::vector<GLuint> programs={meanProgram,flagsProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram};
+        if(!flagsProgram)programs.erase(programs.begin(),programs.begin()+2); // outlierPrograms false: not compiled
         if(rimProgram)programs.push_back(rimProgram);
         if(bentoProgram)programs.push_back(bentoProgram);
         if(chromaProgram)programs.push_back(chromaProgram);
         // P29 native mosaic (Frames::native): the frames above are the binned frames, the raw mosaic of each goes to slot 12
         const HybridMosaicNative* nat=in.native;
+        // P34: Quad with the full window merges with kHybNatNorm + kHybMergeMosaicFast (plain / marked strips), anything else with
+        // kHybMergeMosaic (natMerge = the merge programs either way)
+        bool natFastOn=false;GLuint natPlain=0,natMarked=0;std::vector<GLuint> natMerge;
         if(nat){
-            if(!mosaicProgram||!natMarkProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
+            if(!natMarkProgram||!natNormProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
             if(int(in.nativeFrames.size())!=frames||(nat->block!=2&&nat->block!=4)||g!=nat->block||nat->W!=w*nat->block||nat->H!=h*nat->block)
                 throw std::runtime_error("HYBRID GPU native mosaic shape");
             for(const uint16_t* p:in.nativeFrames)if(!p)throw std::runtime_error("HYBRID GPU native mosaic frame");
-            programs.push_back(natMeanProgram);programs.push_back(natFlagsProgram);programs.push_back(mosaicProgram);
+            const bool fill=nat->fillSupport>0.f;
+            natFastOn=nat->block==2&&nat->fullWindow&&nat->window>=1&&nat->window<=3&&!(fill&&nat->window<2)&&!nat->generic;
+            if(natFastOn){
+                const bool mayMark=in.white>0&&in.white<16384.f&&(tune.cellClip||(!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0)));
+                natPlain=natFastProgram(nat->window,false,fill);natMerge.push_back(natPlain);
+                if(mayMark){natMarked=natFastProgram(nat->window,true,fill);natMerge.push_back(natMarked);}
+                programs.push_back(natNormProgram);
+            } else {
+                if(!mosaicProgram){
+                    const auto t0=std::chrono::steady_clock::now();
+                    mosaicProgram=compile((std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+                    compileMs+=" mosaic="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
+                }
+                natMerge.push_back(mosaicProgram);
+            }
+            programs.push_back(natMeanProgram);programs.push_back(natFlagsProgram);
+            for(GLuint p:natMerge)programs.push_back(p);
         }
         glUseProgram(markProgram);
         glUniform2i(loc(markProgram,"size"),w,h);glUniform2i(loc(markProgram,"cfaShift"),in.cfa&1,in.cfa>>1);
@@ -2409,15 +2767,17 @@ public:
             if(in.laMotion&&in.laMotion->size()==zn){reserve(17,zn*4);put(17,0,in.laMotion->data(),zn*4);}
             else{std::vector<float> z(zn,0.f);reserve(17,zn*4);put(17,0,z.data(),zn*4);}
         } else if(in.laMode!=0)throw std::runtime_error("HYBRID GPU compiled without local alignment");
-        const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0);
+        const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0)&&flagsProgram;
         // Site flags ride in the two spare top bits of the uploaded words: needs white < 16384 (RAW10/12/14) and no word above
         // 16383 (checked below with the clip scan: a white level below the codes the sensor really sends would turn bits 14/15 of
         // those codes into flags).
         const bool markable=in.white>0&&in.white<16384.f;
         int flagMode=markable?((tune.cellClip?1:0)|(hot?2:0)):0;
         if(!markable&&(tune.cellClip||hot)&&trace)trace("HYBRID GPU: white level "+std::to_string(in.white)+" leaves no spare bits: cell clip and outlier sites off");
-        glUseProgram(flagsProgram);
-        glUniform4f(loc(flagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
+        if(flagsProgram){
+            glUseProgram(flagsProgram);
+            glUniform4f(loc(flagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
+        }
         glUseProgram(guideProgram);
         glUniform4f(loc(guideProgram,"kA"),kernel.base,kernel.shrunk,kernel.stretched,kernel.flat);
         glUniform4f(loc(guideProgram,"kB"),kernel.strengthScale,kernel.flat0,kernel.flat1,kernel.texStd);
@@ -2487,7 +2847,10 @@ public:
             const float ks=std::clamp(nat->kernelScale,0.1f,4.f);
             std::array<float,64> ng;ng.fill(1.f);
             if(nat->rawGains)ng=nat->gains;
-            for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram}){
+            std::vector<GLuint> natPrograms={natMeanProgram,natFlagsProgram,natMarkProgram};
+            if(natFastOn)natPrograms.push_back(natNormProgram);
+            for(GLuint p:natMerge)natPrograms.push_back(p);
+            for(GLuint program:natPrograms){
                 glUseProgram(program);
                 glUniform4i(loc(program,"natU"),nb,nat->W,nat->H,nr);
                 glUniform4i(loc(program,"natV"),ns,nat->rawGains?1:0,int(natSum0),0); // z: native outlier counters after the plain ones
@@ -2502,18 +2865,21 @@ public:
             glUseProgram(natFlagsProgram);
             glUniform4f(loc(natFlagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
             glUniform2f(loc(natFlagsProgram,"natNoise"),nat->siteSlope,nat->siteOffset);
-            glUseProgram(mosaicProgram);
-            glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
-            glUniform1i(loc(mosaicProgram,"natWidenU"),nat->s0Widen?1:0);
-            const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
-            glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
-            glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
-            glUniform4i(loc(mosaicProgram,"kG"),g,ow,0,0);
-            glUniform4i(loc(mosaicProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);
-            const float rimU[4]={rim?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
-            glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
-            const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
-            glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,std::clamp(nat->fillSupport,0.f,1.f));
+            for(GLuint mosaicProgram:natMerge){ // P34: every merge program of the native path gets the same uniforms
+                glUseProgram(mosaicProgram);
+                glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
+                glUniform1i(loc(mosaicProgram,"natWidenU"),nat->s0Widen?1:0);
+                glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
+                const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
+                glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
+                glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
+                glUniform4i(loc(mosaicProgram,"kG"),g,ow,0,0);
+                glUniform4i(loc(mosaicProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);
+                const float rimU[4]={rim?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
+                glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
+                const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
+                glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,std::clamp(nat->fillSupport,0.f,1.f));
+            }
             glUseProgram(mergeProgram);
             check("native uniforms");
         }
@@ -2576,9 +2942,10 @@ public:
         // P29: the same scan of the native mosaic (its own clipped sites and flag bits; the binned averages hide single clipped sites)
         int natFlagMode=0,natBlocks=0;
         std::vector<uint8_t> natClipBlock;
-        std::vector<GLuint> natOffsets;std::vector<GLint> natRow0,natRows;
+        std::vector<GLuint> natOffsets,natNormOff;std::vector<GLint> natRow0,natRows;
+        size_t natNormBlocks=0; // P34: blocks of the strip's normalised frames (kHybNatNorm)
         if(nat){
-            natOffsets.assign(frames,0);natRow0.assign(frames,0);natRows.assign(frames,1);
+            natOffsets.assign(frames,0);natNormOff.assign(frames,0);natRow0.assign(frames,0);natRows.assign(frames,1);
             natFlagMode=markable?((tune.cellClip?1:0)|(hot?2:0)):0;
             natBlocks=(nat->H+kBlock-1)/kBlock;
             natClipBlock.assign(size_t(frames)*natBlocks,0);
@@ -2657,10 +3024,11 @@ public:
         auto natPlan=[&]()->size_t{
             if(!nat)return 0;
             const int NW=nat->W,NH=nat->H,nb=nat->block;
-            size_t ntotal=0;
+            size_t ntotal=0;natNormBlocks=0;
             for(int f=0;f<frames;++f){
                 const int r0=std::min(NH-nb,nb*row0[f]),r1=std::min(NH,nb*(row0[f]+rows[f]));
                 natRow0[f]=r0;natRows[f]=std::max(1,r1-r0);natOffsets[f]=GLuint(ntotal);ntotal+=size_t(natRows[f])*NW;
+                natNormOff[f]=GLuint(natNormBlocks);natNormBlocks+=size_t(NW/2)*(natRows[f]/2);
             }
             return ntotal;
         };
@@ -2705,10 +3073,12 @@ public:
                         if(slot[k]>slot[worst])worst=k;
                         sum+=uint64_t(slot[k])*((k==0||k==3||k==4||k==6||k==12||k==13)?2:1);
                     }
-                    const bool overBlock=slot[worst]>blockLimit,overMemory=gpuBudget>0&&sum>gpuBudget;
+                    const size_t normBytes=natFastOn?natNormBlocks*16:0; // P34: the normalised blocks (binding 18, one bank)
+                    sum+=normBytes;
+                    const bool overBlock=slot[worst]>blockLimit||normBytes>blockLimit,overMemory=gpuBudget>0&&sum>gpuBudget;
                     if(!overBlock&&!overMemory)break;
                     if(cy1-cy0<=8){
-                        if(overBlock)throw std::runtime_error("HYBRID GPU: strip needs "+hybridMB(slot[worst])+" MB in storage slot "+std::to_string(worst)
+                        if(overBlock)throw std::runtime_error("HYBRID GPU: strip needs "+hybridMB(std::max(slot[worst],normBytes))+" MB in storage slot "+std::to_string(slot[worst]>=normBytes?worst:18)
                             +", GPU block limit "+hybridMB(blockLimit)+" MB");
                         break; // the memory budget is a target, not a limit: the smallest strip goes on
                     }
@@ -2736,7 +3106,7 @@ public:
                 reserveBank(12,ntotal*2,bank);
                 for(int f=0;f<frames;++f)putBank(12,bank,size_t(natOffsets[f])*2,in.nativeFrames[f]+size_t(natRow0[f])*NW,size_t(natRows[f])*NW*2);
                 std::vector<GLuint> ngeo(size_t(frames)*4,0);
-                for(int f=0;f<frames;++f){ngeo[f*4]=natOffsets[f];ngeo[f*4+1]=GLuint(natRow0[f]);ngeo[f*4+2]=GLuint(natRows[f]);}
+                for(int f=0;f<frames;++f){ngeo[f*4]=natOffsets[f];ngeo[f*4+1]=GLuint(natRow0[f]);ngeo[f*4+2]=GLuint(natRows[f]);ngeo[f*4+3]=natNormOff[f];}
                 glBindBuffer(GL_UNIFORM_BUFFER,natTable[bank]);
                 glBufferSubData(GL_UNIFORM_BUFFER,0,GLsizeiptr(ngeo.size()*4),ngeo.data());
                 glBindBufferBase(GL_UNIFORM_BUFFER,1,natTable[bank]);
@@ -2767,9 +3137,11 @@ public:
             for(size_t k=0;k<in.maskValid.size();++k)if(in.maskValid[k]&&in.maskValid[k]->size()==size_t(w2)*h2)std::memcpy(maskStrip.data()+planeSize*(k+1),in.maskValid[k]->data()+size_t(cy0)*w2,planeSize*4);
             reserveBank(13,maskStrip.size()*4,bank);putBank(13,bank,0,maskStrip.data(),maskStrip.size()*4);
             if(stripMode){
-                glUseProgram(flagsProgram);
-                glUniform1i(loc(flagsProgram,"ry0"),ry0);glUniform1i(loc(flagsProgram,"ry1"),ry1);
-                glUniform1i(loc(flagsProgram,"cy0"),cy0);glUniform1i(loc(flagsProgram,"cy1"),cy1);
+                if(flagsProgram){
+                    glUseProgram(flagsProgram);
+                    glUniform1i(loc(flagsProgram,"ry0"),ry0);glUniform1i(loc(flagsProgram,"ry1"),ry1);
+                    glUniform1i(loc(flagsProgram,"cy0"),cy0);glUniform1i(loc(flagsProgram,"cy1"),cy1);
+                }
                 if(hot){
                     // fixed-pattern mean: the hot frames that hold every row of the strip +-2 (motion moves the upload window).
                     // The strip rows are canonical; the frame holds sensor rows (canonical + cfa>>1): a row past the window is
@@ -2828,6 +3200,17 @@ public:
                 dispatchRows(natMarkProgram,NW/2,maxRows,frames,natChunkOf(128),7);
                 check("native mark");
             }
+            if(natFastOn){ // P34: every held site of every frame normalised once, one uvec4 per colour block (binding 18)
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER,natNormBuf?natNormBuf:(glGenBuffers(1,&natNormBuf),natNormBuf));
+                if(natNormCap<natNormBlocks*16){glBufferData(GL_SHADER_STORAGE_BUFFER,GLsizeiptr(natNormBlocks*16),nullptr,GL_DYNAMIC_DRAW);natNormCap=natNormBlocks*16;}
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER,18,natNormBuf);
+                glUseProgram(natNormProgram);
+                glUniform1i(loc(natNormProgram,"natMarkU"),natStripMode?1:0);
+                glUniform1i(loc(natNormProgram,"frameIdx"),0);
+                int maxRows=1;for(int f=0;f<frames;++f)maxRows=std::max(maxRows,natRows[f]/2);
+                dispatchRows(natNormProgram,nat->W/2,maxRows,frames,std::min(256,std::max(8,int(int64_t(256)*2048/std::max(nat->W/2,1))&~7)),7);
+                check("native norm");
+            }
             glUseProgram(guideProgram);
             glUniform1i(loc(guideProgram,"ry0"),ry0);glUniform1i(loc(guideProgram,"ry1"),ry1);
             dispatchRows(guideProgram,w2,ry1-ry0,1,chunkOf(256),1);
@@ -2857,6 +3240,8 @@ public:
             reserveBank(3,size_t(rows2)*ow*3*4,bank);reserveBank(4,size_t(rows2)*ow*4,bank);
             reserveBank(6,(clipFlags||rim||bentoColourPass)?size_t(rows2)*ow*4:16,bank);
             if(nat){ // P29: the native merge, one invocation per output pixel of the strip, into the same Out / Eff / CFlags layout
+                const GLuint mosaicProgram=natFastOn?(natStripMode&&natMarked?natMarked:natPlain):this->mosaicProgram;
+                if(natFastOn&&natStripMode&&!natMarked)throw std::runtime_error("HYBRID GPU: native strip with flags but no marked merge program");
                 glUseProgram(mosaicProgram);
                 glUniform1i(loc(mosaicProgram,"cy0"),cy0);glUniform1i(loc(mosaicProgram,"cy1"),cy1);glUniform1i(loc(mosaicProgram,"ry0"),ry0);
                 glUniform1i(loc(mosaicProgram,"natRy1"),ry1);
@@ -2865,7 +3250,9 @@ public:
                 // X7 Ultra, full window: syn_b2 (16 frames) merged 24 strips of 128 rows in 34.4 s, ~1.4 s per strip submitted at
                 // once; hand (4096 px, 21 frames, real noise) lost the GPU context in its first strips ("readback failed slot=3", the
                 // GPU hang detection resetting the context, as for a long single dispatch). Each flush costs ~1 ms.
-                const int natChunk=std::clamp(int(16.0*4096.0*16.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,16);
+                // P34: the fast merge, ~10x cheaper per output pixel: 32 rows of 4096 px with 22 frames per submission
+                const int natChunk=natFastOn?std::clamp(int(32.0*4096.0*22.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,128)
+                                            :std::clamp(int(16.0*4096.0*16.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,16);
                 dispatchRows(mosaicProgram,ow,rows2,1,natChunk,5,true,true);
             } else {
             glUseProgram(mergeProgram);
@@ -3780,8 +4167,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(!large&&!std::getenv("SCAM_NO_EARLY_GPU")){
         const bool rimPass=tune.rimRatio!=0,la=tune.localAlign>0&&n>1,chromaPass=tune.chromaDiff>0.f,nat=native!=nullptr;
         const bool bentoPass=tune.bento>0&&anyUltrashort&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
+        const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0;
         // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
-        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat]{
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -3795,7 +4183,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 earlyLog->lines.push_back(line);
             };
-            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat);
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms);
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
@@ -3938,6 +4326,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     const bool night61=key61<=tune.s61MaxKey,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
     const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&(night61||handheld61));
+    HybridMosaicNative nativeNight; // P34: the native kernel scale at night (mosaicNativeNightKernelScale)
+    if(native&&night61&&tune.mosaicNativeNightKernelScale>0.f&&tune.mosaicNativeNightKernelScale!=native->kernelScale){
+        nativeNight=*native;nativeNight.kernelScale=std::clamp(tune.mosaicNativeNightKernelScale,0.1f,4.f);native=&nativeNight;
+        report("HYBRID KERNEL: native mosaic at night (key "+std::to_string(key61)+"): kernel scale "+std::to_string(nativeNight.kernelScale)
+            +", edge scale "+std::to_string(tune.mosaicNativeNightEdgeScale));
+    }
     const int gridOut=fineGridRefused?1:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     if(!sabre61&&gridOut==1&&tune.dayKernelScale>0.f&&tune.dayKernelScale!=1.f&&key61>tune.s61MaxKey){
         const float lo=std::max(tune.s61MaxKey,1.f),t=std::clamp((key61-lo)/lo,0.f,1.f),s=1.f+(tune.dayKernelScale-1.f)*t*t*(3.f-2.f*t);
@@ -3954,16 +4348,24 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float f0=sabreCurve(key,kf0,vf0),f1=sabreCurve(key,kf1,vf1),f2=sabreCurve(key,kf2,vf2),f3=sabreCurve(key,kf3,vf3),f4=4.f,f5=2.2f;
         const float ks=std::max(tune.kernelScale,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
-        if((input.subFrames>1||native)&&tune.mosaicEdgeScale>0.f&&tune.mosaicEdgeScale!=1.f){
+        // P34: the native path's night edge scale (mosaicNativeNightEdgeScale)
+        const float esTune=native&&night61&&tune.mosaicNativeNightEdgeScale>0.f?tune.mosaicNativeNightEdgeScale:tune.mosaicEdgeScale;
+        if((input.subFrames>1||native)&&esTune>0.f&&esTune!=1.f){
             // across the edge and the base kernel (p ~ 1 / sigma); along the edge and the blurred kernel of flat areas stay
-            const float es=std::clamp(tune.mosaicEdgeScale,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
+            const float es=std::clamp(esTune,0.25f,2.f);k61a[0]/=es;k61a[3]/=es;
             report(std::string("HYBRID KERNEL: ")+(native?"native mosaic":"mosaic sub-frames")+", kernel across edges and base x"+std::to_string(es));
+        }
+        if(native&&(tune.mosaicNativeFlatScale!=1.f||tune.mosaicNativeAlongScale!=1.f)){ // P34
+            const float fs=std::clamp(tune.mosaicNativeFlatScale,0.25f,4.f),as=std::clamp(tune.mosaicNativeAlongScale,0.25f,4.f);
+            k61a[1]/=as;
+            report("HYBRID KERNEL: native mosaic, along-edge kernel x"+std::to_string(as)+", flat kernel x"+std::to_string(fs));
         }
         // daylight multipliers only with the local alignment (they were measured with it): localAlign 0 keeps the merge before F6
         // for every sabre61 setting, forced 6.1 in daylight included
         const bool dayNoise=!night61&&tune.localAlign>0;
         const float tn=dayNoise?tune.s61DayTensorNoise:tune.s61TensorNoise,gn=dayNoise?tune.s61DayGdNoise:tune.s61GdNoise;
         k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tn>0?tn:1.f};
+        if(native&&tune.mosaicNativeFlatScale!=1.f)k61b[0]/=std::clamp(tune.mosaicNativeFlatScale,0.25f,4.f); // P34
         k61c={gn>0?gn:1.f,0,0,0};
         auto sigma=[&](float p){return std::to_string(ks/(p*std::sqrt(std::log(2.f))));};
         report("HYBRID KERNEL: Sabre 6.1 baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" key="+std::to_string(key)
@@ -4419,7 +4821,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
             }
         }
-        if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr);
+        if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr,
+                tune.hotSigma>0||tune.hotBaseSigma>0);
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);
@@ -5117,7 +5520,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb;bin.mosaic=1;bin.subFrames=0;
     HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
-    nat.rawGains=!t2;nat.gains=gain;nat.s0Widen=tune.mosaicNativeWiden!=0;
+    nat.rawGains=!t2;nat.gains=gain;nat.s0Widen=tune.mosaicNativeWiden!=0;nat.generic=tune.mosaicGeneric!=0;nat.clampCov=std::clamp(tune.mosaicNativeClamp,0,2);
     // a binned pixel averages b^2 sites: the kernel keys (6.1 / round-4 curves, the 6.1 night rule, the outlier gate hotMaxKey) follow
     // one SENSOR site (noise x b^2 of the binned one), as the split and S0 (run_s0.py: key of the site noise); T2's merged 2x2 means
     // would raise them ~2x (a Tetra burst at sensor key 15..30 would lose the night kernel and the outlier test)

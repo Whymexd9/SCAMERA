@@ -20,6 +20,12 @@ uniform sampler2D Chroma128;
 uniform int blockU;               // output pixels per Chroma8 texel
 uniform float chromaLimitU;       // deviation of the local chroma from neutral where it stops being trusted (0: 0.35)
 uniform float defringeU;          // clip-border colour suppression 0..1 (0 = unset: 0.85; < 0: off)
+// 1 (LMC hybrid): the worker's signed values pass on. The merge keeps its noise signed and clips once; a per-pixel
+// max(0) here lifted the mean of every channel near zero by up to half its noise - x1.5 red along the frame edge of a dark
+// teal curtain, where fewer donors overlap (OPPO X8U 2026-10-07), and red mottling of dark saturated colours once the ARK
+// tone lifted them. The clamp now follows the noise reduction (LmcDenoise / NiceDenoise output) or an average (ark/low,
+// ark/combine). 0 (unset): clamp at zero (SCAM HDR route, whose stages expect it).
+uniform int signedU;
 out vec3 Output;
 
 // Clip level of every channel at this pixel (raw units); vec3(-1) = no channel can be clipped here.
@@ -100,7 +106,14 @@ void main(){
     vec4 sites=texture(GainMap,vec2(p)*inverseSize);
     vec3 gains=vec3(sites.r,(sites.g+sites.b)*.5,sites.a);
     gains/=max(dot(gains,vec3(1.0/3.0)),1e-6);
-    vec3 raw=max(texelFetch(InputBuffer,p,0).rgb,vec3(0));
+    vec3 raw=texelFetch(InputBuffer,p,0).rgb;
+    if (signedU != 0) {
+        // non-finite samples are zeroed as max(., 0) did on the GPUs it ran on (and lmcdn/yuv does)
+        raw = vec3(isnan(raw.r) || isinf(raw.r) ? 0.0 : raw.r, isnan(raw.g) || isinf(raw.g) ? 0.0 : raw.g,
+                   isnan(raw.b) || isinf(raw.b) ? 0.0 : raw.b);
+    } else {
+        raw = max(raw, vec3(0));
+    }
     vec3 c=raw*gains/max(whitePoint,vec3(1e-6));
     if (hlModeU == 1) {
         // Per-channel recovery in camera RGB: the clip test runs on the raw channels (one level per physical channel,

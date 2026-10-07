@@ -435,8 +435,13 @@ public final class LmcHybridBurst implements NiceTransport {
     @Override public boolean mergedDng() { return mergedDng; }
     @Override public boolean diagnostics() { return diagnostics; }
     @Override public boolean clipFlags() { return clipFlags; }
-    /** P27: extra hybrid_tuning.txt lines for this burst (the conservative retry), appended after the user's tuning. */
-    public String tuningOverride() { return conservative ? CONSERVATIVE_TUNING : ""; }
+    /**
+     * P27: extra hybrid_tuning.txt lines for this burst (the conservative retry), appended after the user's tuning; then the steps
+     * a worker of this process died in (see {@link #avoidedSteps}).
+     */
+    public String tuningOverride() { return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning(); }
+    /** The worker leaves the CRE motion out (job marker cre-off) after a worker of this process died inside it. */
+    public boolean creOff() { return avoidedSteps.contains(STEP_CRE); }
 
     private ByteBuffer header() { return header(null); }
     /** pages: NCH v12, frame i at byte pages[i] * 4096 of the shared memfd (the shot's arena); null: v11, planes follow the table. */
@@ -552,6 +557,90 @@ public final class LmcHybridBurst implements NiceTransport {
     public static volatile android.graphics.Point lastFinalSize;
     /** P27: the worker died at GPU init in this process (Mali, X200 Pro): further shots go straight to the CPU fallback. */
     private static volatile String gpuUnusable;
+    /**
+     * Optional worker steps a worker of this process died in (its crash report names the stage, or the last "HYBRID GPU: compile"
+     * line before the exit): every later merge of the process leaves them out. vivo X200 Pro (Mali-G925, owner's log 2026-10-07):
+     * 14 of 14 merges died compiling the outlier-test program kHybFlags; without the outlier tests the merge may run.
+     */
+    static final java.util.Set<String> avoidedSteps = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    static final String STEP_OUTLIERS = "outlier tests", STEP_RIM = "rim pass", STEP_BENTO = "Bento colour pass",
+            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion";
+    /** Crash site that leaves no GPU merge (a required program, the context): the session goes to the CPU fallback. */
+    static final String STEP_GPU = "GPU";
+
+    static String avoidedTuning() {
+        StringBuilder t = new StringBuilder();
+        if (avoidedSteps.contains(STEP_OUTLIERS)) t.append("hotSigma 0\nhotBaseSigma 0\n");
+        if (avoidedSteps.contains(STEP_RIM)) t.append("rimRatio 0\n");
+        if (avoidedSteps.contains(STEP_BENTO)) t.append("bentoChromaSigma 0\n");
+        if (avoidedSteps.contains(STEP_CHROMA)) t.append("chromaDiff 0\n");
+        return t.toString();
+    }
+
+    /**
+     * Where a worker that died on a signal was (null: it did not die on a signal, or nothing names the step): the stage of its crash
+     * report ("WORKER CRASH: ... stage=X last=Y"), else the last program the GPU thread announced before the exit when the GPU
+     * context never reported itself ready (off Adreno every program is announced before it compiles).
+     */
+    static String crashStage(String report) {
+        if (report == null || !report.contains("WORKER EXIT: signal")) return null;
+        int at = report.lastIndexOf("WORKER CRASH: signal");
+        if (at >= 0) {
+            int end = report.indexOf('\n', at);
+            String line = end < 0 ? report.substring(at) : report.substring(at, end);
+            int s = line.indexOf(" stage="), l = line.indexOf(" last=", s + 1);
+            if (s < 0) return null;
+            String stage = line.substring(s + 7, l > s ? l : line.length()).trim();
+            // a thread without a stage of its own (a driver's compiler thread): the GPU program being compiled, nothing else
+            if (stage.equals("-") && l > s) {
+                String last = line.substring(l + 6).trim();
+                stage = last.startsWith("GPU compile ") ? last : "-";
+            }
+            return stage.isEmpty() || stage.equals("-") ? null : stage;
+        }
+        if (java.util.regex.Pattern.compile("HYBRID GPU: .* frames=\\d+ limits").matcher(report).find()) return null; // context was ready
+        int compile = report.lastIndexOf("HYBRID GPU: compile ");
+        if (compile < 0) return null;
+        int end = report.indexOf('\n', compile);
+        String name = (end < 0 ? report.substring(compile + 20) : report.substring(compile + 20, end)).trim();
+        return name.isEmpty() ? null : "GPU compile " + name;
+    }
+
+    /** The step to leave out after a crash in {@code stage}: one of the STEP_ constants, or null (not a step the app can drop). */
+    static String stepOf(String stage) {
+        if (stage == null) return null;
+        if (stage.startsWith("CRE")) return STEP_CRE;
+        if (stage.startsWith("GPU compile ")) {
+            String program = stage.substring(12);
+            int colon = program.indexOf(':');
+            if (colon >= 0) program = program.substring(0, colon);
+            program = program.trim();
+            switch (program) {
+                case "mean": case "flags": return STEP_OUTLIERS;
+                case "rim": return STEP_RIM;
+                case "bento": return STEP_BENTO;
+                case "chroma": return STEP_CHROMA;
+                default: return STEP_GPU; // mark, guide, cells, reject, dilate, merge: every merge needs them
+            }
+        }
+        if (stage.startsWith("GPU context") || stage.startsWith("GPU init") || stage.startsWith("EGL")) return STEP_GPU;
+        return null;
+    }
+
+    /** Learns from a failed worker: true when this crash named a step the next attempt can leave out (or the GPU is unusable). */
+    private static boolean learnFromCrash(String report) {
+        final String stage = crashStage(report);
+        final String step = stepOf(stage);
+        if (step == null) return false;
+        if (STEP_GPU.equals(step)) {
+            gpuUnusable = "worker died in " + stage;
+            Log.w("NICE_HDR", "Hybrid: worker died in " + stage + "; GPU merge off for this session");
+            return true;
+        }
+        final boolean added = avoidedSteps.add(step);
+        Log.w("NICE_HDR", "Hybrid: worker died in " + stage + "; " + step + " off for this session" + (added ? "" : " (already off)"));
+        return added;
+    }
     /** P27: how the last hybrid shot was merged: "gpu", "gpu-conservative" or "cpu-single". */
     public static volatile String lastMergeTier = "gpu";
 
@@ -591,20 +680,30 @@ public final class LmcHybridBurst implements NiceTransport {
                 gpuUnusable = "worker died at GPU init: " + lastLine(report, "WORKER EXIT:");
                 return cpuSingle(burst);
             }
+            learnFromCrash(report);
+            if (gpuUnusable != null) return cpuSingle(burst);
             if (!timeout) {
-                try {
-                    LmcHybridBurst safe = new LmcHybridBurst(frames, p, true);
-                    lastOutputSize = new android.graphics.Point(safe.outWidth, safe.outHeight);
-                    lastFinalSize = new android.graphics.Point(safe.finalWidth, safe.finalHeight);
-                    VivoNeuralClient.carryReport = "first attempt: " + why + "\n" + (report == null ? "" : tail(report, 4000));
-                    ByteBuffer out = VivoNeuralClient.processNiceBurst(context, safe);
-                    lastMergeTier = "gpu-conservative";
-                    Log.w("NICE_HDR", "Hybrid fallback=gpu-conservative after: " + why);
-                    return out;
-                } catch (Exception second) {
-                    Log.e("NICE_HDR", "Hybrid conservative merge failed too: " + second.getMessage());
-                } finally {
-                    VivoNeuralClient.carryReport = null;
+                // The conservative retry, once more while each crash names a further optional step to leave out (at most 3 retries).
+                String previous = report, previousWhy = why;
+                for (int attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        LmcHybridBurst safe = new LmcHybridBurst(frames, p, true);
+                        lastOutputSize = new android.graphics.Point(safe.outWidth, safe.outHeight);
+                        lastFinalSize = new android.graphics.Point(safe.finalWidth, safe.finalHeight);
+                        VivoNeuralClient.carryReport = "previous attempt: " + previousWhy + "\n" + (previous == null ? "" : tail(previous, 4000));
+                        ByteBuffer out = VivoNeuralClient.processNiceBurst(context, safe);
+                        lastMergeTier = "gpu-conservative";
+                        Log.w("NICE_HDR", "Hybrid fallback=gpu-conservative after: " + why
+                                + (avoidedSteps.isEmpty() ? "" : " (left out: " + avoidedSteps + ")"));
+                        return out;
+                    } catch (Exception second) {
+                        Log.e("NICE_HDR", "Hybrid conservative merge failed too: " + second.getMessage());
+                        previous = VivoNeuralClient.lastJobReport;
+                        previousWhy = String.valueOf(second.getMessage());
+                        if (second instanceof VivoNeuralClient.WorkerTimeoutException || !learnFromCrash(previous) || gpuUnusable != null) break;
+                    } finally {
+                        VivoNeuralClient.carryReport = null;
+                    }
                 }
             }
             return cpuSingle(burst);

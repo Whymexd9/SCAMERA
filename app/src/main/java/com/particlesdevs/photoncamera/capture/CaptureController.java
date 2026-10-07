@@ -826,6 +826,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             cameraDevice.close();
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            if (revertToLastGoodCamera("error " + error)) return;
             if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
                 showToast(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
                 scheduleRecovery("onError " + error);
@@ -840,6 +841,90 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     // camera until the user tapped a module (27 s of a dead viewfinder once). 1, 2, 4 s, at most three times a minute.
     private android.os.Handler mRecoveryHandler;
     private final java.util.ArrayDeque<Long> mRecoveries = new java.util.ArrayDeque<>();
+
+    /**
+     * Session fallbacks per camera (vivo X200 Pro, owner's log 2026-10-07: the front camera 1 and camera 5 answered every session
+     * of the preview + RAW streams with onConfigureFailed, the viewfinder froze on the last frame of the main camera with a toast,
+     * and camera 5 died with ERROR_CAMERA_DEVICE on every reopen). A failed configuration retries once with the next smaller RAW
+     * size the camera lists, then once without a RAW stream (YUV), then returns to the last camera that ran in this process.
+     * Kept for the process: the next switch to that camera starts at the step that worked.
+     */
+    private static final java.util.Map<String, Integer> sRawFallback = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<String, Size> sRawSizeAlt = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Cameras (full camera ID setting) whose session was configured in this process, and the last one of them. */
+    private static final java.util.Set<String> sGoodCameras = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static volatile String sLastGoodCamera;
+    /** The RAW target format this session replaced with YUV (no RAW stream on this camera); restored for the next camera. */
+    private static volatile int sDemotedFrom = 0;
+    private volatile boolean mReverting;
+
+    /** RAW sizes of the target format the camera lists, largest first (plain stream configuration only). */
+    private static Size[] rawSizesLargestFirst(StreamConfigurationMap map, int format) {
+        Size[] sizes = map == null ? null : map.getOutputSizes(format);
+        if (sizes == null) return new Size[0];
+        sizes = sizes.clone();
+        Arrays.sort(sizes, (a, b) -> Long.compare((long) b.getWidth() * b.getHeight(), (long) a.getWidth() * a.getHeight()));
+        return sizes;
+    }
+
+    /**
+     * Next fallback step after onConfigureFailed of this camera: true when a session is being created again (smaller RAW, then no
+     * RAW stream). Not while recording, and only for a session with a RAW stream.
+     */
+    private boolean retryConfigureFallback(CameraCaptureSession session) {
+        final CameraDevice device = mCameraDevice;
+        if (device == null || mIsRecordingVideo || (!isRawFormat(mTargetFormat) && sDemotedFrom == 0)) return false;
+        final String id = physicalID;
+        final int stage = sRawFallback.getOrDefault(id, 0);
+        if (stage >= 2) return false;
+        // A camera whose session configured in this process keeps its streams: a later failure is transient (the old path), not a
+        // reason to give up its RAW size or RAW stream for the rest of the process.
+        if (sGoodCameras.contains(PhotonCamera.getSettings().mCameraID)) return false;
+        int next = stage + 1;
+        Size alt = null;
+        // Not with the maximum-resolution pixel mode (Quad / remosaic): a size of the default map would switch the sensor mode.
+        if (next == 1 && mImageReaderRaw != null && isRawFormat(mTargetFormat) && !useMaximumResolutionKey) {
+            final long current = (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight();
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(id);
+            StreamConfigurationMap map = c == null ? null : c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            for (Size size : rawSizesLargestFirst(map, mTargetFormat))
+                if ((long) size.getWidth() * size.getHeight() < current) { alt = size; break; }
+        }
+        if (alt == null) next = 2; else sRawSizeAlt.put(id, alt);
+        sRawFallback.put(id, next);
+        Log.w(TAG, "camera " + id + ": session configuration failed (preview " + mBufferSize + ", "
+                + (mImageReaderRaw == null ? "no reader" : "reader " + mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight()
+                + " format " + mImageReaderRaw.getImageFormat()) + "); retry " + (next == 1 ? "with RAW " + alt : "without the RAW stream (YUV)"));
+        try { session.close(); } catch (Exception ignored) {}
+        final Handler handler = mBackgroundHandler;
+        if (handler == null) return false;
+        handler.post(() -> {
+            if (!isCameraResumed || mCameraDevice != device) return;
+            UpdateCameraCharacteristics(id);
+            createCameraPreviewSession(false);
+        });
+        return true;
+    }
+
+    /**
+     * A camera that never ran in this process failed (configuration, device error): back to the last camera that did, instead of a
+     * frozen viewfinder or reopening the failing one again and again. False when there is none to go back to.
+     */
+    private boolean revertToLastGoodCamera(String reason) {
+        final String current = PhotonCamera.getSettings().mCameraID;
+        final String good = sLastGoodCamera;
+        if (good == null || good.equals(current) || sGoodCameras.contains(current) || mReverting || !isCameraResumed) return false;
+        mReverting = true;
+        Log.e(TAG, "camera " + current + " failed (" + reason + ") and never ran in this session: back to camera " + good);
+        showToast(Lang.t("Камера " + current + " не запускается (" + reason + "), возврат к камере " + good,
+                "Camera " + current + " does not start (" + reason + "), back to camera " + good));
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            mReverting = false;
+            PreferenceKeys.setCameraID(good);
+            restartCamera();
+        });
+        return true;
+    }
 
     private void scheduleRecovery(String reason) {
         long now = android.os.SystemClock.elapsedRealtime();
@@ -993,6 +1078,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public static void setTargetFormat(int targetFormat) {
         mTargetFormat = targetFormat;
+        sDemotedFrom = 0; // the user's choice: no session fallback restores a RAW target over it
     }
     /** RAW_SENSOR (16-bit container), RAW10 or RAW12 — every one is unpacked to uint16 on copy. */
     public static boolean isRawFormat(int format) {
@@ -1820,6 +1906,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (map == null) {
             return;
         }
+        if (sDemotedFrom != 0) { // the previous camera ran without a RAW stream: this one starts from the RAW format again
+            if (mTargetFormat == YUV_FORMAT) mTargetFormat = sDemotedFrom;
+            sDemotedFrom = 0;
+        }
+        if (isRawFormat(mTargetFormat)) {
+            final boolean noRawSizes = map.getOutputSizes(ImageFormat.RAW_SENSOR) == null && map.getOutputSizes(ImageFormat.RAW10) == null
+                    && map.getOutputSizes(ImageFormat.RAW12) == null;
+            if (noRawSizes || sRawFallback.getOrDefault(physicalID, 0) >= 2) {
+                Log.w(TAG, "camera " + physicalID + ": no RAW stream (" + (noRawSizes ? "the camera lists no RAW size"
+                        : "its RAW sessions failed to configure") + "), YUV session");
+                sDemotedFrom = mTargetFormat;
+                mTargetFormat = YUV_FORMAT;
+            }
+        }
         if (isRawFormat(mTargetFormat)) {
             int resolved = resolveRawFormat(map);
             Log.i(TAG, "RAW stream format " + mTargetFormat + " -> " + resolved + " (setting " + PreferenceKeys.getRawStreamFormat()
@@ -1842,6 +1942,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // otherwise acquireNextImage starves once the ring is full.
             maxjpg = Math.min(zslRingCapacity() + 3, 103);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
+        // Diagnostics: the vivo X200 Pro's 4096x3072 RAW holds its image in 4000x3000 (zeros elsewhere, black stripe at the edge);
+        // whether the arrays say so decides how a crop to the valid area can be done.
+        Log.i(TAG, "camera " + physicalID + " arrays: pixel=" + characteristics.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)
+                + " active=" + characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+                + " preCorrection=" + characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
+                + " level=" + characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+                + " capabilities=" + Arrays.toString(characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES))
+                + " target=" + target + " format=" + mTargetFormat
+                + " rawSizes=" + Arrays.toString(isRawFormat(mTargetFormat) ? rawSizesLargestFirst(map, mTargetFormat) : new Size[0]));
+        final Size rawAlt = isRawFormat(mTargetFormat) && sRawFallback.getOrDefault(physicalID, 0) == 1 ? sRawSizeAlt.get(physicalID) : null;
+        if (rawAlt != null) {
+            Log.w(TAG, "camera " + physicalID + ": RAW " + rawAlt + " instead of " + target + " (session fallback)");
+            target = rawAlt;
+            this.target = rawAlt;
+        }
         Size aspect = getAspect(PhotonCamera.getSettings().selectedMode);
         if(preview.getWidth() > preview.getHeight())
             preview = new Size(preview.getWidth(),preview.getWidth()*aspect.getWidth()/aspect.getHeight());
@@ -2070,6 +2185,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         // When the session is ready, we start displaying the preview.
                         mCaptureSession = cameraCaptureSession;
+                        final String runningId = PhotonCamera.getSettings().mCameraID;
+                        if (sGoodCameras.add(runningId) && sRawFallback.getOrDefault(physicalID, 0) > 0) {
+                            final int step = sRawFallback.get(physicalID);
+                            Log.w(TAG, "camera " + physicalID + " runs with the session fallback " + step);
+                            showToast(step == 1 ? Lang.t("Камера " + physicalID + ": RAW " + mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight(),
+                                    "Camera " + physicalID + ": RAW " + mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight())
+                                    : Lang.t("Камера " + physicalID + " без RAW-потока: только обычная съёмка",
+                                    "Camera " + physicalID + " has no RAW stream: plain capture only"));
+                        }
+                        sLastGoodCamera = runningId;
                         mConfiguredSessionGeneration = generation;
                         mPreviewCaptureResult = null;
                         mPreviewCaptureRequest = null;
@@ -2153,9 +2278,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             cameraCaptureSession.close();
                             return;
                         }
-                        if (retryWithoutLiveRaw(cameraCaptureSession)) return;
-                        showToast(activity.getString(R.string.session_on_configure_failed));
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                        if (retryWithoutLiveRaw(cameraCaptureSession)) return;
+                        if (retryConfigureFallback(cameraCaptureSession)) return;
+                        if (revertToLastGoodCamera("session configuration")) return;
+                        showToast(activity.getString(R.string.session_on_configure_failed));
                     }
                 }
             };
