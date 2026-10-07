@@ -408,6 +408,15 @@ public class Parameters {
         if (data.capacity() < width * height) return;
         final int bs = 32;
         int bw = width / 2 / bs, bh = height / 2 / bs;
+        // Padding is not signal: the vivo X200 Pro (MediaTek, owner's log 2026-10-07) delivers its 4096x3072 RAW_SENSOR with
+        // the image in 4000x3000 and the rest of the buffer exactly 0. Those blocks drove the floor to 0, black 64 was never
+        // subtracted and every photo came out pink (black x WB gains R 2.5 / B 1.4). A sample below a quarter of the reported
+        // black is padding or a masked area, never a drift of the black level (the OPPO's drift is 64 -> ~60): a block with
+        // one is left out (blocks on the border of the padding hold both).
+        float reportedMin = Float.MAX_VALUE;
+        for (float b : blackLevel) reportedMin = Math.min(reportedMin, b);
+        final float paddingBelow = reportedMin > 4f ? reportedMin * 0.25f : -1f;
+        int padding = 0;
         float estimate = Float.MAX_VALUE;
         for (int c = 0; c < 4; c++) {
             int ox = c % 2, oy = c / 2;
@@ -416,18 +425,26 @@ public class Parameters {
                 // Every 4th sample of the block both ways (64 per block): the block mean
                 // stays well below 1 DN of noise, at 1/16 of the full-frame read cost.
                 long sum = 0;
+                boolean padded = false;
                 for (int y = 0; y < bs; y += 4) {
                     int row = (by * bs + y) * 2 + oy;
                     int base = row * width + bx * bs * 2 + ox;
-                    for (int x = 0; x < bs; x += 4) sum += data.get(base + x * 2) & 0xffff;
+                    for (int x = 0; x < bs; x += 4) {
+                        int v = data.get(base + x * 2) & 0xffff;
+                        sum += v;
+                        padded |= v < paddingBelow; // a block on the border of the padding: its mean is half signal
+                    }
                 }
                 float mean = sum / (float) ((bs / 4) * (bs / 4));
+                if (padded) { padding++; continue; }
                 if (mean < low1) { low3 = low2; low2 = low1; low1 = mean; }
                 else if (mean < low2) { low3 = low2; low2 = mean; }
                 else if (mean < low3) low3 = mean;
             }
             estimate = Math.min(estimate, low3);
         }
+        if (padding > 0) Log.i(TAG, "RAW black floor: " + padding + " of " + (4 * bw * bh) + " blocks below " + paddingBelow
+                + " DN skipped (padding / masked area, not signal)");
         if (estimate == Float.MAX_VALUE) return;
         blackFloorSource = buffer;
         blackFloorEstimate = estimate;
