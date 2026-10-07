@@ -1583,7 +1583,14 @@ vec3 natEig(vec3 P,float lo,float hi){ // eigenvalues of the precision clamped t
     return vec3(c2+(c1-c2)*vv.x,c2+(c1-c2)*vv.y,(c1-c2)*vv.z);
 }
 vec3 natClamp(vec3 P){
-    if(natClampU==1)return vec3(clamp(P.xy,vec2(0.2544),vec2(17.19)),clamp(P.z,-4.838,4.873));
+    if(natClampU==1){
+        // per component; C_xx capped at 17.19 with C_xy kept up to 4.87 can leave xx yy < xy^2 (a narrow kernel a few degrees off
+        // an axis): an indefinite precision whose weight GROWS with distance along one direction (up to ~2^10 inside the 7x7
+        // window). |xy| stays below sqrt(xx yy), so the kernel stays a kernel.
+        vec3 C=vec3(clamp(P.xy,vec2(0.2544),vec2(17.19)),clamp(P.z,-4.838,4.873));
+        float lim=0.99*sqrt(C.x*C.y);
+        return vec3(C.xy,clamp(C.z,-lim,lim));
+    }
     return natClampU==2?natEig(P,0.2544,17.19):P;
 }
 )";
