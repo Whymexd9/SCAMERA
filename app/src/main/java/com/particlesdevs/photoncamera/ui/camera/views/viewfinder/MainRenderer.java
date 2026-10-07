@@ -326,6 +326,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 mMirrorPreview = mirror;
                 return;
             }
+            // The same transform again (configureTransform, then setUpCameraOutputs' UI post): an armed one stays armed.
+            if (mPendingMatrix != null && orientation % 360 == mPendingOrientation % 360 && mirror == mPendingMirror) return;
             float[] m = new float[16];
             android.opengl.Matrix.setRotateM(m, 0, orientation, 0f, 0f, 1f);
             mPendingMatrix = m;
