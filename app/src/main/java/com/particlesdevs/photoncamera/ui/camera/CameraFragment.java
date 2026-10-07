@@ -728,6 +728,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
         this.captureController = null;
 
+        // The preview may still post a texture callback after this point; nobody here handles it any more.
+        if (textureView != null) textureView.setSurfaceTextureListener(null);
         processExecutorService.shutdown();
         Log.d(TAG, "onDestroy() finished");
     }

@@ -440,8 +440,10 @@ vec3 processPipeline(vec3 color, float corner_gain) {
 }
 
 void main() {
-    float u = mirror==1 ? 1.0-texCoord.x : texCoord.x;
-    float v = texCoord.y;
+    // The front mirror flips the same texture axis as the ISP preview (main_fs.glsl: uv.y). Flipping x instead
+    // turned the front RAW viewfinder upside down: two different mirrors differ by a 180 degree turn.
+    float u = texCoord.x;
+    float v = mirror==1 ? 1.0-texCoord.y : texCoord.y;
     if (u_ldc_enabled == 1) {
         float nx = (u - u_ldc_cx) * 2.0;
         float ny = (v - u_ldc_cy) * 2.0 * u_ldc_inv_aspect;
