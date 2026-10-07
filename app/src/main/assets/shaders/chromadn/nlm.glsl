@@ -28,7 +28,8 @@ void main() {
     float hp = h;
     if (useEff != 0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
+        // at or above the median no division: h exactly also with an approximate GPU reciprocal
+        if (v > 0u && float(v) * 0.125 < effRef) hp = h * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
     }
     float norm = 1.0 / (hp * hp);
     for (int j = -2; j <= 2; j++) {

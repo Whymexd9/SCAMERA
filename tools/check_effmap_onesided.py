@@ -185,9 +185,19 @@ def check_nlm_apply(rng, fails):
         t.release()
 
 
+def check_guard(fails):
+    """Codes at or above the median must skip the division: a GPU dividing through an approximate reciprocal (Adreno) can
+    give ref / ref slightly above 1, which the clamp at 1 would keep (llvmpipe divides exactly, so only the source shows it)."""
+    for name, guard in (('lmcdn/strmap.glsl', 'float(v) < ref'), ('chromadn/nlm.glsl', 'float(v) * 0.125 < effRef'),
+                        ('chromadn/apply.glsl', 'float(v) * 0.125 < effRef')):
+        if guard not in (SH / name).read_text(encoding='utf-8'):
+            fails.append('%s: no "%s" guard before the division (median pixels may be strengthened on the GPU)' % (name, guard))
+
+
 def main():
     rng = np.random.default_rng(11)
     fails = []
+    check_guard(fails)
     check_strmap(rng, fails)
     check_nlm_apply(rng, fails)
     if fails:

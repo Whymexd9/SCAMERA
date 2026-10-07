@@ -37,7 +37,7 @@ void main() {
     float sg = sigma;
     if (useEff != 0 && sigma > 0.0) {
         uint v = texelFetch(EffMap, p, 0).r;
-        if (v > 0u) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
+        if (v > 0u && float(v) * 0.125 < effRef) sg = sigma * clamp(sqrt(effRef / (float(v) * 0.125)), 1.0, (effMax > 0.0 ? effMax : 3.0));
     }
     vec3 c = max(texelFetch(InputBuffer, p, 0).rgb, vec3(0.0));
     float ym = max(dot(c, vec3(1.0 / 3.0)), 1.0e-6);

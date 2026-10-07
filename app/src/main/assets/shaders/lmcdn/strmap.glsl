@@ -23,7 +23,9 @@ void main() {
     for (int j = 0; j < F; j++) {
         for (int i = 0; i < F; i++) {
             uint v = texelFetch(EffMap, min(o + ivec2(i, j), last), 0).r;
-            float r = v > 0u ? clamp(sqrt(ref / float(v)), 1.0, hi) : 1.0;
+            // codes at or above the median skip the division: 1.0 exactly also where a GPU divides through an approximate
+            // reciprocal (ref / ref slightly above 1 would strengthen the median pixels)
+            float r = (v > 0u && float(v) < ref) ? clamp(sqrt(ref / float(v)), 1.0, hi) : 1.0;
             s += r * r;
         }
     }

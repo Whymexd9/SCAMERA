@@ -93,7 +93,9 @@ public final class NiceDenoise extends Node {
         long seen = 0;
         int median = 1;
         for (int v = 1; v < 256; v++) { seen += histogram[v]; if (seen * 2 >= count) { median = v; break; } }
-        effRef = Math.max(1f, median / 8f);
+        // The median itself (>= 1/8 frame): a floor of 1 frame would strengthen pixels at the median of a map whose median is
+        // below one frame (the shaders read it one-sided).
+        effRef = median / 8f;
         eff.rewind();
         // W3.5: the real codes, read one-sided by chromadn/nlm and chromadn/apply (only fewer than the median frames
         // strengthen the filter); see LmcDenoise.effectiveFramesTexture.
