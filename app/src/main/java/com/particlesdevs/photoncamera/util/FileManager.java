@@ -15,11 +15,9 @@ import java.util.List;
 
 public class FileManager {
     private static final String TAG = "FileManager";
-    private static final List<String> ACCEPTED_FILES_EXTENSIONS = Arrays.asList("JPG", "JPEG", "DNG");
-    private static final FilenameFilter FILENAME_FILTER = (dir, name) -> {
-        int index = name.lastIndexOf(46);
-        return ACCEPTED_FILES_EXTENSIONS.contains(-1 == index ? "" : name.substring(index + 1).toUpperCase()) && new File(dir, name).length() > 0;
-    };
+    /** Photos in every format the camera writes (JPEG, HEIC / HEIF, WebP) and DNG: PhotoFormat.isGalleryFile. */
+    private static final FilenameFilter FILENAME_FILTER = (dir, name) ->
+            com.particlesdevs.photoncamera.processing.PhotoFormat.isGalleryFile(name) && new File(dir, name).length() > 0;
     public static File sEXTERNAL_DIR = Environment.getExternalStorageDirectory();
     public static File sCACHE_DIR;
     public static File sPHOTON_DIR = new File(sEXTERNAL_DIR + "//DCIM//PhotonCamera//");

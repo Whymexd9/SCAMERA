@@ -201,8 +201,9 @@ public final class SimpleStorageHelper {
         String lower = fileName.toLowerCase();
         if (lower.endsWith(".flac"))             return "audio/flac";
         if (lower.endsWith(".png"))              return "image/png";
-        if (lower.endsWith(".jpg")
-                || lower.endsWith(".jpeg"))      return "image/jpeg";
+        // Photos in every format the camera writes (jpg / heic / heif / webp); DNG stays a plain binary as before.
+        String photo = com.particlesdevs.photoncamera.processing.PhotoFormat.mimeForName(lower);
+        if (photo != null && photo.startsWith("image/") && !lower.endsWith(".dng")) return photo;
         if (lower.endsWith(".csv")
                 || lower.endsWith(".gcsv"))      return "text/csv";
         if (lower.endsWith(".txt"))              return "text/plain";
