@@ -1176,6 +1176,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      * 1x, so back0 "2x" (Quad mode 29 on the OPPO) came back as back4 "1x". Returns the Camera ID to open.
      */
     public String flip(String savedCameraID) {
+        com.particlesdevs.photoncamera.settings.ModuleRegistry.rememberActive();
         String target = cycler(savedCameraID);
         CameraLensData lens = mCameraLensDataMap.get(target);
         String side = lens != null && lens.getFacing() == CameraCharacteristics.LENS_FACING_FRONT ? "front" : "back";

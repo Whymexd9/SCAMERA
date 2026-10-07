@@ -109,6 +109,8 @@ public final class ModuleRegistry {
      * Module to restore when the camera flips to {@code side} (back0 "2x" with its Quad mode, not the side's plain 1x): the
      * module last used there while it is still a visible slot on an existing camera; null otherwise.
      */
+    /** Records the active module as its side's last one (before a flip; a module restored at start was never select()ed). */
+    public static void rememberActive(){String a=active();String k=ModuleChoice.lastKey(a);if(k!=null)prefs().edit().putString(k,a).apply();}
     public static String lastOnSide(String side,java.util.Collection<String> cameraIds){
         String slot=prefs().getString("module_last_"+side,null);
         return ModuleChoice.flipTarget(slot,side,slot!=null&&visible(slot),slot==null?null:camera(slot),cameraIds);
