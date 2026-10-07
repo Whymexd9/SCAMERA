@@ -30,33 +30,79 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Automatically generates per-physical-sensor preference UI from {@code @SensorConfig} annotations.
- * A selector on top lets the user pick which physical camera to configure; only that sensor's
- * sliders are shown.
+ * Automatically generates per-module sensor preference UI from {@code @SensorConfig} annotations.
+ * One category per module; only the selected module's category is shown. The module is chosen by the
+ * page (the module chip, or the module page that opened it), not by a row on the page: see {@link ModuleSelection}.
  */
 public class SensorConfigPreferenceGenerator {
     private static final String TAG = "SensorConfigPrefGen";
 
     private static final String SUBMENU_KEY = "pref_sensor_config_submenu";
-    private static final String SELECTOR_KEY = "pref_sensor_config_selector";
+    /** Rows in this order: RAW levels, exposure limits, stabilization, session; unknown fields after them. */
+    private static final List<String> FIELD_ORDER = java.util.Arrays.asList(
+            "blackLevelOverride", "whiteLevelOverride",
+            "exposureBalanceIsoLimit", "exposureBalanceShutterLimit", "exposureBalanceMultiplier",
+            "oisMode", "sessionType");
 
     private SensorConfigPreferenceGenerator() {}
 
     /**
-     * Generate and add per-sensor preferences to the preference screen.
+     * The module whose sensor settings the page shows. Choosing another one only changes what the page shows: it
+     * neither switches the camera nor writes a preference.
      */
-    public static void generatePreferences(Context context, PreferenceScreen preferenceScreen) {
+    public static final class ModuleSelection {
+        private final List<String> slots;
+        private final Map<String, PreferenceCategory> categories;
+        private String selected;
+
+        ModuleSelection(List<String> slots, Map<String, PreferenceCategory> categories, String selected) {
+            this.slots = new ArrayList<>(slots);
+            this.categories = categories;
+            select(selected);
+        }
+
+        /** The modules the page can show, in zoom-bar order. */
+        public List<String> slots() { return Collections.unmodifiableList(slots); }
+
+        public String selected() { return selected; }
+
+        /** «1× · ID 3»: the title of the module's category. */
+        public String title(String slot) {
+            PreferenceCategory category = categories.get(slot);
+            return category != null && category.getTitle() != null ? category.getTitle().toString() : slot;
+        }
+
+        public void select(String slot) {
+            if (slot == null || !categories.containsKey(slot)) slot = selected != null ? selected : slots.get(0);
+            selected = slot;
+            for (Map.Entry<String, PreferenceCategory> entry : categories.entrySet())
+                entry.getValue().setVisible(slot.equals(entry.getKey()));
+        }
+    }
+
+    /** Generate the per-module sensor rows; the page starts at the active module. */
+    public static ModuleSelection generatePreferences(Context context, PreferenceScreen preferenceScreen) {
+        return generatePreferences(context, preferenceScreen, null);
+    }
+
+    /**
+     * Generate and add per-module sensor preferences to the preference screen.
+     *
+     * @param preferred the module to show first (a module page opens its own settings), null for the active module
+     * @return the module selection of the page, null when nothing was generated
+     */
+    public static ModuleSelection generatePreferences(Context context, PreferenceScreen preferenceScreen, String preferred) {
         PreferenceScreen submenu = preferenceScreen.findPreference(SUBMENU_KEY);
         if (submenu == null) {
             Log.w(TAG, "Sensor config submenu not found! Preferences will not be generated.");
-            return;
+            return null;
         }
 
         try {
             List<String> physicalIds = new ArrayList<>(ModuleRegistry.slots());
             // P21: the modules the zoom bar shows (and the active one); hidden filler slots only cluttered the list
             String activeSlot = ModuleRegistry.active();
-            physicalIds.removeIf(slot -> !ModuleRegistry.visible(slot) && !slot.equals(activeSlot));
+            physicalIds.removeIf(slot -> !ModuleRegistry.visible(slot) && !slot.equals(activeSlot) && !slot.equals(preferred));
             physicalIds.sort(java.util.Comparator.comparing((String slot) -> slot.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
             for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
@@ -66,56 +112,25 @@ public class SensorConfigPreferenceGenerator {
             if (physicalIds.isEmpty()) {
                 Log.w(TAG, "No camera ids found, cannot generate sensor config preferences.");
                 addNoSensorsPreference(context, submenu);
-                return;
+                return null;
             }
 
             List<TunableFieldInfo> fields = scanFields();
             if (fields.isEmpty()) {
                 Log.w(TAG, "No @SensorConfig fields found - UI will not be generated!");
-                return;
+                return null;
             }
 
             Map<String, CameraLensData> lensMap = getCameraLensMap();
-
-            ListPreference selector = createSelector(context, submenu, physicalIds, lensMap);
             Map<String, PreferenceCategory> categories = createCategories(context, submenu, physicalIds, lensMap, fields);
-
-            String selected = resolveSelected(context, selector, physicalIds);
-            selector.setValue(selected);
-            updateVisibility(selector, categories, selected);
-
-            selector.setOnPreferenceChangeListener((preference, newValue) -> {
-                String sel = newValue != null ? newValue.toString() : null;
-                selector.setValue(sel);
-                updateVisibility(selector, categories, sel);
-                return true;
-            });
-
+            String selected = physicalIds.contains(preferred) ? preferred
+                    : physicalIds.contains(activeSlot) ? activeSlot : physicalIds.get(0);
             Log.d(TAG, "Generated sensor config preferences for " + physicalIds.size() + " sensors, " + fields.size() + " fields");
+            return new ModuleSelection(physicalIds, categories, selected);
         } catch (Exception e) {
             Log.e(TAG, "ERROR in generatePreferences: " + Log.getStackTraceString(e));
+            return null;
         }
-    }
-
-    private static ListPreference createSelector(Context context, PreferenceScreen submenu, List<String> physicalIds, Map<String, CameraLensData> lensMap) {
-        ListPreference selector = new ListPreference(context);
-        selector.setKey(SELECTOR_KEY);
-        selector.setTitle(Lang.t(context, "Модуль камеры", "Camera module"));
-        selector.setDialogTitle(Lang.t(context, "Выберите модуль", "Select a module"));
-
-        CharSequence[] entries = new CharSequence[physicalIds.size()];
-        CharSequence[] entryValues = new CharSequence[physicalIds.size()];
-        for (int i = 0; i < physicalIds.size(); i++) {
-            String pid = physicalIds.get(i);
-            entries[i] = buildCategoryTitle(pid, lensMap.get(pid));
-            entryValues[i] = pid;
-        }
-        selector.setEntries(entries);
-        selector.setEntryValues(entryValues);
-        selector.setPersistent(false);
-        selector.setDefaultValue(ModuleRegistry.active());
-        submenu.addPreference(selector);
-        return selector;
     }
 
     private static Map<String, PreferenceCategory> createCategories(Context context, PreferenceScreen submenu,
@@ -170,27 +185,6 @@ public class SensorConfigPreferenceGenerator {
             category.removePreference(p);
         }
         addTunableKeySection(context, category, physicalId);
-    }
-
-    private static String resolveSelected(Context context, ListPreference selector, List<String> physicalIds) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        String selected = ModuleRegistry.active();
-        if (!physicalIds.contains(selected)) {
-            selected = physicalIds.get(0);
-        }
-        return selected;
-    }
-
-    private static void updateVisibility(ListPreference selector, Map<String, PreferenceCategory> categories, String selected) {
-        if (selected == null) selected = categories.keySet().iterator().next();
-        for (Map.Entry<String, PreferenceCategory> entry : categories.entrySet()) {
-            entry.getValue().setVisible(selected.equals(entry.getKey()));
-        }
-        if (selector != null) {
-            PreferenceCategory category = categories.get(selected);
-            selector.setSummary(category != null && category.getTitle() != null
-                    ? category.getTitle().toString() : selected);
-        }
     }
 
     private static void addNoSensorsPreference(Context context, PreferenceScreen submenu) {
@@ -262,7 +256,15 @@ public class SensorConfigPreferenceGenerator {
         for (Class<?> clazz : SensorConfigRegistry.SENSOR_CONFIG_CLASSES) {
             scanClass(clazz, fields);
         }
+        // getDeclaredFields() has no defined order: sort, so related rows stay together on every device
+        fields.sort(java.util.Comparator.comparingInt(info -> rank(info.fieldName)));
         return fields;
+    }
+
+    /** Position of a {@code @SensorConfig} field on the page (and in the module copy list); unknown fields last. */
+    public static int rank(String fieldName) {
+        int i = FIELD_ORDER.indexOf(fieldName);
+        return i < 0 ? FIELD_ORDER.size() : i;
     }
 
     /**

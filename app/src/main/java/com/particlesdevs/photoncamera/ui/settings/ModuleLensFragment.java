@@ -32,11 +32,9 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         navigation(shown?"●":"○",Lang.t(getContext(),"Кнопка в видоискателе","Viewfinder button"),shown?Lang.t(getContext(),"Показывается · нажмите, чтобы скрыть","Shown · tap to hide"):Lang.t(getContext(),"Скрыта · нажмите, чтобы показать","Hidden · tap to show"),()->{
             PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_visible_"+slot,!shown).apply();render();});
         int mode=ModuleRegistry.sensorMode(slot);
-        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни, шум, цвет и реквесты этого модуля (выберите его в списке «Модуль камеры»)","Levels, noise, colour and requests of this module (pick it in the “Camera module” list)"),()->{
-            androidx.preference.PreferenceFragmentCompat extra=new SettingsActivity.SettingsFragment();Bundle args=new Bundle();
-            args.putString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT,"camera_settings_screen");extra.setArguments(args);
-            getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,extra).addToBackStack("sensor").commit();
-        });
+        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, экспозиция, стабилизация и vendor tags этого модуля","RAW levels, exposure, stabilization and vendor tags of this module"),()->
+            // straight to this module's sensor page (it no longer has a module list row to pick it in)
+            getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,SettingsActivity.SettingsFragment.sensorPage(slot)).addToBackStack("sensor").commit());
         if(slot.equals(ModuleRegistry.active())){
             int block=com.particlesdevs.photoncamera.processing.MosaicStream.block();
             note(Lang.t(getContext(),"Цветовой блок потока: ","Stream colour block: ")+(block==0?Lang.t(getContext(),"ещё не измерен (откройте видоискатель)","not measured yet (open the viewfinder)"):block==1?Lang.t(getContext(),"обычный Bayer","plain Bayer"):block==2?Lang.t(getContext(),"Quad 2×2 (сенсормод без ремозаика)","Quad 2×2 (sensor mode without remosaic)"):Lang.t(getContext(),"Tetra 4×4 (сенсормод без ремозаика)","Tetra 4×4 (sensor mode without remosaic)")));
