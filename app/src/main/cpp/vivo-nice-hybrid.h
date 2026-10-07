@@ -264,10 +264,10 @@ struct HybridTuning {
     // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
     // kHybMergeMosaic over the raw mosaic itself.
     // DEFAULTS: mosaicPath 1 since P34 (Quad: the native merge, 2x faster than the split on the OPPO with +11-12 % 2-4 px detail at
-    // matched noise on the handheld bursts; Tetra stays on the split, mosaicTetra 0). The keys below only act with mosaicPath 1;
+    // matched noise on the handheld bursts; Tetra too since P35, mosaicTetra 1). The keys below only act with mosaicPath 1;
     // their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
-    // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill) except where noted: Tetra stays on the split (mosaicTetra 0)
-    // and the 6.1 base widening keeps the split's rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
+    // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill) except where noted, and the 6.1 base widening keeps the split's
+    // rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
     // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1, mosaicKernelScale 1,
     // mosaicNativeFlatScale 1, mosaicNativeClamp 0. P34 (research/p29/QUAD_COMBINED.md): kernel scale 0.7, flat scale 2.4,
     // eigenvalue clamp in daylight, kernel scale 1 / edge scale 0.6 at night; ArkCam's point is kernel scale 0.5, edge scale 0.5
@@ -276,11 +276,12 @@ struct HybridTuning {
     // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
     // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
     int mosaicPath=1;
-    int mosaicWindow=3;          // half-width r of the native window (native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites around
-                                 // the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the 6.1
-                                 // window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split (its
-                                 // 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]); Tetra
-                                 // T1 parity is 6; 2 = ArkCam's 5x5
+    int mosaicWindow=3;          // half-width r of the native window (Quad: native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites
+                                 // around the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the
+                                 // 6.1 window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split
+                                 // (its 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]);
+                                 // 2 = ArkCam's 5x5. Tetra T1 (P35): 2r sensor px, at most 8 (3: 13x13; 3 with mosaicWindowFull 0 =
+                                 // the split's sites)
     int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
     float mosaicKernelScale=0.7f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
                                  // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5). P34: 0.7 with the flat scale 2.4 and
@@ -302,7 +303,8 @@ struct HybridTuning {
     float mosaicNativeNightKernelScale=1.f,mosaicNativeNightEdgeScale=0.6f;
     int mosaicNativeClamp=2;     // P34: ArkCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
                                  // 1 per component as ArkCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
-                                 // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split)
+                                 // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split). Tetra (P35): the range in
+                                 // sigma x2 (4x4 blocks: across-edge sigma 0.48..3.96 px)
     // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
     // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
     // (false colour on bars -7 %)
@@ -312,13 +314,16 @@ struct HybridTuning {
     // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (GCam 11 directional) is step S7, not built.
     int mosaicChromaFill=0;
     float mosaicFillSupport=0.25f;
-    // S8 Tetra route with mosaicPath 1: 0 (default) = the sub-frame split as with mosaicPath 0 (only Quad takes the native path);
-    // 2 = T2: every 2x2 sub-block of a Tetra block, gained and clip-aware, is one site of a true Quad mosaic at W/2 x H/2 merged by
-    // the Quad pass, output bilinear 2x to the sensor grid; 1 = T1: the Tetra mosaic merged natively (block 4; mosaicWindow 6 with
-    // mosaicWindowFull 0 reproduces the split's sites, 196 taps per frame). T2 with the bilinear 2x is what S0 advised against
-    // (edges -4.8 dB, a period-2 artefact; S0 evaluates T2 at the sensor sub-positions, not built): on syn_b4 it lost the whole 4-8 px
-    // band (transfer 0.039 -> 0.000), so Tetra stays on the split until a T2 at the sensor sub-positions or a phone Tetra burst.
-    int mosaicTetra=0;
+    // S8 / P35 Tetra route with mosaicPath 1: 1 (default since P35) = T1: the Tetra mosaic merged natively (block 4,
+    // kHybMergeMosaicFast on the 2x2 cells of the 4x4 colour blocks, window 2 x mosaicWindow sensor px, every frame of the budget);
+    // 0 = the sub-frame split as with mosaicPath 0 (16 sub-frames per frame, at most 8 frames); 2 = T2: every 2x2 sub-block of a
+    // Tetra block, gained and clip-aware, is one site of a true Quad mosaic at W/2 x H/2 merged by the Quad pass, output bilinear 2x
+    // to the sensor grid (on syn_b4 it lost the whole 4-8 px band, transfer 0.039 -> 0.000). P35:
+    // T1 against the split on the vivo X200 Ultra (Adreno 830): synthetic Tetra +1.9..+4.7 dB on zone plates / edges / bars,
+    // neutral false colour / 4..6, lattice and phase bias lower; at device noise (x6, 4 % site gains) flat noise -46 %; real 10x
+    // ISZ Tetra burst 17 frames merged in less time than the split's 8. Clean daylight on the round-4 kernel: flat noise x1.19 of the
+    // split's (window-limited; mosaicWindow 4 = 17x17 sites: x1.11, +25 % merge time).
+    int mosaicTetra=1;
     // 6.1 base widening rule of the native merge (s61Mode bit 4; F = the accepted donor frames of the output pixel): 0 (default) =
     // the split's rule b^2 F + b^2 - 1 < widenBelow (each frame counted as its b^2 sub-frames plus the base's own b^2 - 1 sub-frames:
     // Quad widens only below F = 0.25, T1 never; the split itself widens only there, so 0 keeps today's moving areas); 1 = S0's rule
@@ -1927,6 +1932,7 @@ void main(){
     if(ox>=ow||row>=2*(cy1-cy0)*g)return;
     int b=natU.x,bb=b*b;
     float o=0.5*float(b-1);
+    float cs=0.25*float(bb); // natClamp's bounds are ArkCam's Quad range (native px of 2x2 blocks): scaled by (b/2)^2 in precision
     vec2 S=vec2(float(ox),float(2*cy0*g+row))-o; // native canonical position of the output pixel (X - (b-1)/2)
     vec2 B0=(S-o)/float(b);                       // the same in the binned base frame
     ivec2 bi=ivec2(floor(B0+0.5));                // nearest binned pixel: its cell gives the robustness, Bento mask and F6 offset
@@ -1951,7 +1957,7 @@ void main(){
         else Pf=P*fParam[f].z;
         float rw=r/max(fParam[f].y,1.0e-6);
         if(!us)frames+=rw;
-        natSamples(a,f,Ob*float(b)+o,r,rw,natClamp(Pf*natK.x),(mode&2)!=0&&!us);
+        natSamples(a,f,Ob*float(b)+o,r,rw,natClamp(Pf*(natK.x*cs))/cs,(mode&2)!=0&&!us);
     }
     // Base frame last. 6.1 rule (natWidenU 0) as in the split, where each frame was b^2 sub-frames and the base's own other b^2-1
     // sub-frames were accepted donors: b^2 frames + b^2-1 < widenBelow; natWidenU 1: S0's frames < widenBelow. Round-4 rule on the
@@ -1961,7 +1967,7 @@ void main(){
         if((mode&4)!=0)Pb=(natWidenU!=0?frames:float(bb)*frames+float(bb-1))<kD.x?P/(kD.y*kD.y):P;
         else { float self=natSelfCover(S,P*natK.x,(mode&2)!=0);
                float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+self)); Pb=P/(widen*widen); }
-        natSamples(a,0,S,wb,wb,natClamp(Pb*natK.x),(mode&2)!=0&&m<=0.0);
+        natSamples(a,0,S,wb,wb,natClamp(Pb*(natK.x*cs))/cs,(mode&2)!=0&&m<=0.0);
     }
     vec3 col;uint cfl=0u;
     for(int c=0;c<3;c++){
@@ -1994,7 +2000,10 @@ void main(){
 // Adreno 750, 54 s per 12 MP Quad merge.
 // kHybNatNorm: every held site of every frame of the strip once, normalised exactly as natSiteG (site gains, black, white clip),
 // flags in the float bits (outlier site: all ones; site of a clipped cell: bit 30, which no value in [-0.25, 1] has), one uvec4
-// per sensor colour block (TL, TR, BL, BR) of the frame's held rows; NatTable w = the frame's first block. Quad (b = 2) only.
+// per 2x2 sensor cell (TL, TR, BL, BR) of the frame's held rows; NatTable w = the frame's first cell. Quad: the cell is the colour
+// block; Tetra (b = 4): a quarter of the 4x4 colour block (ArkCam's "2x2-of-2x2" texel, quad_report section 8.5), colour from the
+// 4x4 block's parity. The held rows of a Tetra frame start at and span a multiple of 4 sensor rows (natPlan), so a Tetra block
+// is always 2x2 whole cells.
 static const char* kHybNatNorm=R"(
 layout(std430,binding=18) writeonly buffer NNorm{uvec4 nnorm[];};
 uniform int frameIdx;
@@ -2012,7 +2021,7 @@ void main(){
         uint word=nwords[idx>>1];
         uint v=(idx&1u)==0u?(word&0xFFFFu):(word>>16);
         uint fl=natMarkU!=0?(v>>14):0u;v&=natMarkU!=0?0x3FFFu:0xFFFFu;
-        int cp=(((Y>>1)&1)<<1)|((X>>1)&1);
+        int cp=(((Y>>natV.x)&1)<<1)|((X>>natV.x)&1); // colour block b = 1 << natV.x (Tetra: the 2x2 cell is a quarter of a 4x4 block)
         float u=float(v);
         if(natV.y!=0){
             int kk=((Y&7)<<3)|(X&7);
@@ -2024,11 +2033,14 @@ void main(){
     nnorm[geo.w+uint(rb*BW+bx)]=o;
 }
 )";
-// kHybMergeMosaicFast (after kHybMergeCommon + kHybNatAccess; #define NAT_R = window half-width 1..3, NAT_MARKED = the strip's
-// sites carry flags, NAT_FILL = the S5 R / B fill): kHybMergeMosaic for Quad with the full window (mosaicWindowFull 1) on the
-// blocks of kHybNatNorm. The (2r+1)^2 sites around N = floor(O + 0.5) lie in the (r+1)^2 blocks from (N - r) >> 1; the blocks'
-// sites outside the window weigh 0. Same sites, kernel, weights, flags and clip handling as kHybMergeMosaic (the sums in another
-// order: last-bit differences).
+// kHybMergeMosaicFast (after kHybMergeCommon + kHybNatAccess; #define NAT_B = colour block 2 (Quad) | 4 (Tetra), NAT_R = window
+// half-width (Quad 1..3, Tetra 1..8), NAT_MARKED = the strip's sites carry flags, NAT_FILL = the S5 R / B fill): kHybMergeMosaic
+// with the full window (mosaicWindowFull 1) on the 2x2 cells of kHybNatNorm. The (2r+1)^2 sites around N = floor(O + 0.5) lie in
+// the (r+1)^2 cells from (N - r) >> 1 (for any r); the cells' sites outside the window weigh 0. A cell is one colour for both
+// blocks: Quad colour from the cell's parity, Tetra from its 4x4 block's ((cell >> 1) parity, ArkCam's "2x2-of-2x2" texel), so the
+// loop, the one-kernel-constant-per-cell rule and the register budget are the Quad's. Same sites, kernel, weights, flags and clip
+// handling as kHybMergeMosaic (the sums in another order: last-bit differences). With NAT_B 2 the preprocessed text is the P34
+// Quad program's.
 static const char* kHybMergeMosaicFast=R"(
 layout(std430,binding=18) readonly buffer NNorm{uvec4 nnorm[];};
 uniform vec4 natK;     // as kHybMergeMosaic
@@ -2055,12 +2067,25 @@ vec3 natDcov(int f,vec2 Ob){
 // Canonical colour block (bx, by) of the frame whose NatTable entry is geo: reflected at the frame's border and clamped to its
 // held rows block-wise, as natSiteG reflects / clamps a site (position inside the block kept).
 int natReflB(int v,int n){v=v<0?-v:v;v=v>=n?2*n-2-v:v;return clamp(v,0,n-1);}
+#if NAT_B==4
+// Tetra: (bx, by) is a 2x2 cell, (bx >> 1, by >> 1) its 4x4 colour block. natSiteG / natRow reflect and clamp whole 4x4 blocks
+// and keep the position inside the block, i.e. the cell's half (bx & 1, by & 1).
+uvec4 natBlock(uvec4 geo,int bx,int by){
+    int BW=natU.y>>1;
+    int tx=bx+(cfaShift.x<<1),ty=by+(cfaShift.y<<1); // sensor cells (cfaShift in 4x4 blocks)
+    int sx=(natReflB(tx>>1,natU.y>>2)<<1)|(tx&1),sy=(natReflB(ty>>1,natU.z>>2)<<1)|(ty&1);
+    int rt=sy-(int(geo.y)>>1);
+    int rb=(clamp(rt>>1,0,max((int(geo.z)>>2)-1,0))<<1)|(rt&1);
+    return nnorm[geo.w+uint(rb*BW+sx)];
+}
+#else
 uvec4 natBlock(uvec4 geo,int bx,int by){
     int BW=natU.y>>1;
     int sx=natReflB(bx+cfaShift.x,BW),sy=natReflB(by+cfaShift.y,natU.z>>1);
     int rb=clamp(sy-(int(geo.y)>>1),0,max((int(geo.z)>>1)-1,0));
     return nnorm[geo.w+uint(rb*BW+sx)];
 }
+#endif
 float natVal(uint u,out bool ok,out bool cl){
 #if NAT_MARKED
     ok=u!=0xFFFFFFFFu;
@@ -2086,7 +2111,12 @@ NatSums natTaps(uvec4 geo,vec2 O,vec3 P,bool skipSmall,bool skipClip,bool selfCo
     ivec2 N=ivec2(floor(O+0.5)),q0=(N-NAT_R)>>1;
     NatSums s;s.nm=vec3(0.0);s.dn=vec3(0.0);s.cn=vec3(0.0);s.cd=vec3(0.0);
     for(int J=0;J<NB;J++)for(int I=0;I<NB;I++){
+#if NAT_B==4
+        int bx=q0.x+I,by=q0.y+J,ph=(((by>>1)&1)<<1)|((bx>>1)&1); // cell (bx, by) of the 4x4 block (bx >> 1, by >> 1)
+        bool first=((bx|by)&1)==0;                                   // the cell holding the block's first site
+#else
         int bx=q0.x+I,by=q0.y+J,ph=((by&1)<<1)|(bx&1); // canonical RGGB: phase 0 red, 1 / 2 green, 3 blue
+#endif
         bool green=ph==1||ph==2;
         if(selfCover&&!green)continue;
         float kk=-0.72135*(green?natK.y:natK.z);
@@ -2099,7 +2129,11 @@ NatSums natTaps(uvec4 geo,vec2 O,vec3 P,bool skipSmall,bool skipClip,bool selfCo
             float v=natVal(u[t],ok,cl);
             float kw=exp2(kk*(dx*dx*P.x+dy*dy*P.y+2.0*dx*dy*P.z))+kD.z;
             bool use=abs(sx-N.x)<=NAT_R&&abs(sy-N.y)<=NAT_R&&ok;
+#if NAT_B==4
+            if(selfCover)use=use&&!(t==0&&first)&&!cl&&kw>=0.002;
+#else
             if(selfCover)use=use&&t!=0&&!cl&&kw>=0.002;
+#endif
             else use=use&&!(skipSmall&&kw<0.002)&&!(skipClip&&cl);
             if(!use)continue;
             if(cl){cn+=kw*v;cd+=kw;} else {nm+=kw*v;dn+=kw;}
@@ -2112,6 +2146,25 @@ NatSums natTaps(uvec4 geo,vec2 O,vec3 P,bool skipSmall,bool skipClip,bool selfCo
 #if NAT_FILL
 // natFill of kHybMergeMosaic on the blocks
 void natFillC(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
+#if NAT_B==4
+    ivec2 q=ivec2(floor(O+0.5))>>2; // Tetra: the 3x3 colour blocks of 4x4 sites (2x2 cells each) around the nearest site
+    vec3 sum=vec3(0.0),cnt=vec3(0.0);
+    for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+        int bx=q.x+i,by=q.y+j;
+        int c=((by&1)<<1)|(bx&1);c=c==0?0:c==3?2:1;
+        float bs=0.0,bn=0.0;
+        for(int h=0;h<4;h++){
+            uvec4 u=natBlock(geo,2*bx+(h&1),2*by+(h>>1));
+            for(int t=0;t<4;t++){
+                bool ok,cl;
+                float v=natVal(u[t],ok,cl);
+                if(!ok||cl)continue;
+                bs+=v;bn+=1.0;
+            }
+        }
+        if(bn>0.0){sum[c]+=max(bs/bn,0.0);cnt[c]+=1.0;}
+    }
+#else
     ivec2 q=ivec2(floor(O+0.5))>>1;
     vec3 sum=vec3(0.0),cnt=vec3(0.0);
     for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
@@ -2127,6 +2180,7 @@ void natFillC(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
         }
         if(bn>0.0){sum[c]+=max(bs/bn,0.0);cnt[c]+=1.0;}
     }
+#endif
     if(cnt.y<=0.0)return;
     float gv=num.y/den.y,gm=sum.y/cnt.y*g,need=natK.w*den.y;
     for(int k=0;k<2;k++){
@@ -2171,8 +2225,13 @@ void main(){
     int g=kG.x,ow=kG.y,w2=size.x/2;
     int ox=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
     if(ox>=ow||row>=2*(cy1-cy0)*g)return;
+#if NAT_B==4
+    vec2 S=vec2(float(ox),float(2*cy0*g+row))-1.5; // native canonical position of the output pixel (X - (b-1)/2)
+    vec2 B0=(S-1.5)*0.25;                         // the same in the binned base frame
+#else
     vec2 S=vec2(float(ox),float(2*cy0*g+row))-0.5; // native canonical position of the output pixel (X - (b-1)/2)
     vec2 B0=(S-0.5)*0.5;                          // the same in the binned base frame
+#endif
     ivec2 bi=ivec2(floor(B0+0.5));
     int cx=clamp(bi.x>>1,0,w2-1),cy=clamp(bi.y>>1,cy0,cy1-1);
     vec3 P=natCov(B0);
@@ -2195,16 +2254,28 @@ void main(){
         else Pf=P*fParam[f].z;
         float rw=r/max(fParam[f].y,1.0e-6);
         if(!us)frames+=rw;
+#if NAT_B==4
+        natFrame(a,f,Ob*4.0+1.5,r,rw,natClamp(Pf*(natK.x*4.0))*0.25); // the clamp range twice as wide (sigma) for 4x4 blocks
+#else
         natFrame(a,f,Ob*2.0+0.5,r,rw,natClamp(Pf*natK.x));
+#endif
     }
     if(wb>0.0){
         vec3 Pb;
+#if NAT_B==4
+        if((mode&4)!=0)Pb=(natWidenU!=0?frames:16.0*frames+15.0)<kD.x?P/(kD.y*kD.y):P;
+#else
         if((mode&4)!=0)Pb=(natWidenU!=0?frames:4.0*frames+3.0)<kD.x?P/(kD.y*kD.y):P;
+#endif
         else{
             NatSums s=natTaps(nGeo[0],S,P*natK.x,false,false,true);
             float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+s.dn.y));Pb=P/(widen*widen);
         }
+#if NAT_B==4
+        natFrame(a,0,S,wb,wb,natClamp(Pb*(natK.x*4.0))*0.25);
+#else
         natFrame(a,0,S,wb,wb,natClamp(Pb*natK.x));
+#endif
     }
     vec3 col;uint cfl=0u;
     for(int c=0;c<3;c++){
@@ -2271,18 +2342,20 @@ class HybridGpu {
     // P29 native mosaic (compiled only by HybridGpu(.., nativeMosaic = true)): outlier mean / flags / mark of the native sites and
     // the merge kHybMergeMosaic; the NatTable uniform buffers (binding 1) of the two strip banks
     GLuint natMeanProgram=0,natFlagsProgram=0,natMarkProgram=0,mosaicProgram=0,natTable[2]{};
-    // P34: the fast Quad merge (kHybNatNorm + kHybMergeMosaicFast [window r][marked][fill], compiled when first used) and the
-    // normalised blocks of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
-    GLuint natNormProgram=0,natFast[4][2][2]{},natNormBuf=0;
+    // P34: the fast native merge (kHybNatNorm + kHybMergeMosaicFast [block Quad / Tetra][window r][marked][fill], compiled when
+    // first used) and the normalised 2x2 cells of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
+    GLuint natNormProgram=0,natFast[2][9][2][2]{},natNormBuf=0;
     size_t natNormCap=0;
-    GLuint natFastProgram(int r,bool marked,bool fill){
-        GLuint& p=natFast[std::clamp(r,1,3)][marked?1:0][fill?1:0];
+    GLuint natFastProgram(int block,int r,bool marked,bool fill){
+        const bool tetra=block==4;
+        r=std::clamp(r,1,tetra?8:3);
+        GLuint& p=natFast[tetra?1:0][r][marked?1:0][fill?1:0];
         if(!p){
             const auto t0=std::chrono::steady_clock::now();
-            const std::string body="#define NAT_R "+std::to_string(std::clamp(r,1,3))+"\n#define NAT_MARKED "+(marked?"1":"0")
+            const std::string body=std::string("#define NAT_B ")+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
                 +"\n#define NAT_FILL "+(fill?"1":"0")+"\n"+kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
             p=compile(body.c_str());
-            compileMs+=" mosaicFast"+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
+            compileMs+=std::string(" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
                 +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
         }
         return p;
@@ -2323,7 +2396,7 @@ class HybridGpu {
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
             for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram,natNormProgram})if(program)glDeleteProgram(program); // P29
-            for(auto& byR:natFast)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
+            for(auto& byBlock:natFast)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
             if(natNormBuf)glDeleteBuffers(1,&natNormBuf);
             glDeleteBuffers(kSlots,buffers);
@@ -2679,8 +2752,8 @@ public:
         if(chromaProgram)programs.push_back(chromaProgram);
         // P29 native mosaic (Frames::native): the frames above are the binned frames, the raw mosaic of each goes to slot 12
         const HybridMosaicNative* nat=in.native;
-        // P34: Quad with the full window merges with kHybNatNorm + kHybMergeMosaicFast (plain / marked strips), anything else with
-        // kHybMergeMosaic (natMerge = the merge programs either way)
+        // P34: Quad (window 1..3) and Tetra (window 1..8) with the full window merge with kHybNatNorm + kHybMergeMosaicFast (plain /
+        // marked strips), anything else with kHybMergeMosaic (natMerge = the merge programs either way)
         bool natFastOn=false;GLuint natPlain=0,natMarked=0;std::vector<GLuint> natMerge;
         if(nat){
             if(!natMarkProgram||!natNormProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
@@ -2688,11 +2761,11 @@ public:
                 throw std::runtime_error("HYBRID GPU native mosaic shape");
             for(const uint16_t* p:in.nativeFrames)if(!p)throw std::runtime_error("HYBRID GPU native mosaic frame");
             const bool fill=nat->fillSupport>0.f;
-            natFastOn=nat->block==2&&nat->fullWindow&&nat->window>=1&&nat->window<=3&&!(fill&&nat->window<2)&&!nat->generic;
+            natFastOn=nat->fullWindow&&nat->window>=1&&nat->window<=(nat->block==4?8:3)&&!(fill&&nat->window<2)&&!nat->generic;
             if(natFastOn){
                 const bool mayMark=in.white>0&&in.white<16384.f&&(tune.cellClip||(!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0)));
-                natPlain=natFastProgram(nat->window,false,fill);natMerge.push_back(natPlain);
-                if(mayMark){natMarked=natFastProgram(nat->window,true,fill);natMerge.push_back(natMarked);}
+                natPlain=natFastProgram(nat->block,nat->window,false,fill);natMerge.push_back(natPlain);
+                if(mayMark){natMarked=natFastProgram(nat->block,nat->window,true,fill);natMerge.push_back(natMarked);}
                 programs.push_back(natNormProgram);
             } else {
                 if(!mosaicProgram){
@@ -2817,7 +2890,7 @@ public:
             // The binned passes re-sample the binned base at the binned positions; the native merge writes other positions and never
             // added the binned base's sums they correct (hybridReconstructMosaicNative turns them off; native variants are not built).
             if(chromaPass||rim||bentoColourPass)throw std::runtime_error("HYBRID GPU: the chroma / rim / Bento colour passes do not apply to the native mosaic merge");
-            const int nb=nat->block,ns=nb==4?2:1,nr=std::clamp(nat->window,1,6);
+            const int nb=nat->block,ns=nb==4?2:1,nr=std::clamp(nat->window,1,nb==4?8:6);
             const float ks=std::clamp(nat->kernelScale,0.1f,4.f);
             std::array<float,64> ng;ng.fill(1.f);
             if(nat->rawGains)ng=nat->gains;
@@ -3223,7 +3296,9 @@ public:
                 // once; hand (4096 px, 21 frames, real noise) lost the GPU context in its first strips ("readback failed slot=3", the
                 // GPU hang detection resetting the context, as for a long single dispatch). Each flush costs ~1 ms.
                 // P34: the fast merge, ~10x cheaper per output pixel: 32 rows of 4096 px with 22 frames per submission
-                const int natChunk=natFastOn?std::clamp(int(32.0*4096.0*22.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,128)
+                // Tetra: the rows scaled by the 16 cells of the Quad 7x7 window against its (r+1)^2 cells
+                const double natCells=nat->block==4?double((std::clamp(nat->window,1,8)+1)*(std::clamp(nat->window,1,8)+1))/16.0:1.0;
+                const int natChunk=natFastOn?std::clamp(int(32.0*4096.0*22.0/(double(std::max(ow,1))*std::max(frames,1)*std::max(natCells,1.0)))&~7,8,128)
                                             :std::clamp(int(16.0*4096.0*16.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,16);
                 dispatchRows(mosaicProgram,ow,rows2,1,natChunk,5,true,true);
             } else {
@@ -4081,7 +4156,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // mosaicPath 1, natively (hybridReconstructMosaicNative)
     if(input.mosaic!=1&&!input.frames.empty()){
         const int block=hybridMosaicBlock(input,tune,report);
-        // Tetra takes the native path only with mosaicTetra 1 / 2 (HybridTuning::mosaicTetra: 0 = the split, the default)
+        // Tetra takes the native path with mosaicTetra 1 (T1, the default since P35) / 2 (T2); 0 keeps it on the split
         if(block>1&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0))
             return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
         if(block>1&&tune.mosaicPath==1)report("HYBRID MOSAIC NATIVE: Tetra stays on the sub-frame split (mosaicTetra 0)");
@@ -5380,9 +5455,10 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
 //       split's geometry (output X at sensor X - (b-1)/2). The binned colour passes (kHybChroma, kHybBento, kHybRim) are off: they
 //       work on the binned base at the binned positions (see kHybMergeMosaic);
 //   M7  chroma median and false-colour suppression of the split (same code and defaults), M8 to the requested grid.
-// Tetra (S8): only with mosaicTetra 1 / 2 (0, the default, keeps Tetra on the split). T2 (mosaicTetra 2) bins every 2x2 sub-block
-// of a Tetra block into one site of a true Quad mosaic at W/2 x H/2 and runs the Quad pass on it, output bilinear 2x to the sensor
-// grid; T1 (mosaicTetra 1) merges the Tetra mosaic natively (block 4).
+// Tetra (S8, P35): T1 (mosaicTetra 1, the default since P35) merges the Tetra mosaic natively (block 4: kHybMergeMosaicFast on the
+// 2x2 cells of the 4x4 colour blocks, window 2 x mosaicWindow sensor px); T2 (mosaicTetra 2) bins every 2x2 sub-block of a Tetra
+// block into one site of a true Quad mosaic at W/2 x H/2 and runs the Quad pass on it, output bilinear 2x to the sensor grid;
+// mosaicTetra 0 keeps Tetra on the split.
 // The plain-Bayer path and mosaicPath 0 never come here. A failure of the native merge (GPU programs, storage, a lost context)
 // merges the burst on the split instead (hybridReconstructMosaicNative below).
 inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
@@ -5429,7 +5505,10 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
     if(us>=0&&budget>=4&&int(pick.size())<budget)pick.push_back(us);
     if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
-    const int window=std::clamp(tune.mosaicWindow,1,6);
+    // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
+    // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
+    // Quad pass on its Quad mosaic with mosaicWindow itself
+    const int window=b==4&&!t2?std::clamp(2*tune.mosaicWindow,1,8):std::clamp(tune.mosaicWindow,1,6);
     const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
