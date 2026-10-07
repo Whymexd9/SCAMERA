@@ -16,7 +16,9 @@
 
     <!-- P25 bottom bar (same height as before: whatever the 3:4 preview leaves), anchored at the bottom: the zoom
          ruler's place, the lens strip, then the shutter row. The quick-settings shade and its scrim end above this bar,
-         so the strip works at every shade level and the ruler never covers the tiles. -->
+         so the strip works at every shade level and the ruler never covers the tiles. P32: the shade's HIDDEN handle lies
+         over this bar's top edge, and BottomChrome raises the shutter row (with the strip and the ruler's place chained
+         above it) by 10 % of this bar's height, through the row's bottom margin. -->
     <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

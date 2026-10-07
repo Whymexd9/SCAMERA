@@ -319,6 +319,19 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
         initSettingsBar();
         initZoomDial(view);
+        initBottomChrome();
+    }
+
+    /**
+     * P32: the bottom controls sit 10 % of the bottom bar's height higher, and the shade's HIDDEN handle starts at the
+     * viewfinder's bottom edge instead of covering it; the manual palette and the zoom ruler keep clear of the handle
+     * (after initZoomDial).
+     */
+    private void initBottomChrome() {
+        com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.attach(cameraFragmentBinding.layoutBottombar.getRoot(),
+                cameraFragmentBinding.layoutBottombar.bottomButtons.getRoot(), cameraFragmentBinding.layoutBottombar.auxButtonsContainer,
+                cameraFragmentBinding.settingsSheetHandleSlot, cameraFragmentBinding.layoutViewfinder.texture, zoomDial,
+                cameraFragmentBinding.manualMode);
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
@@ -364,7 +377,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         com.particlesdevs.photoncamera.settings.SettingsMigration.resetRemovedSettings(getResources());
         SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
         sheet.attach(shadeHost);
-        // The HIDDEN handle is the sheet's top edge (the strip lives in the bottom bar now, so nothing passes through).
+        // The HIDDEN handle is the sheet's top edge (the strip lives in the bottom bar now, so nothing passes through);
+        // since P32 it lies under the viewfinder, at the bottom bar's top (initBottomChrome).
         cameraFragmentBinding.settingsSheetHandle.setBackground(
                 com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheet(requireContext()));
         sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, null);

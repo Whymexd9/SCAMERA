@@ -66,7 +66,8 @@
                     app:layout_constraintVertical_bias="0.0" />
 
             <!--    Block 1.4-->
-            <!--   includes the Layout resource of Manual Mode palette-->
+            <!--   includes the Layout resource of Manual Mode palette. Its 36dp keep it clear of the shade's HIDDEN
+                   handle; BottomChrome adds to them when the handle floats over the preview closer than 8dp (16:9, video). -->
             <include
                     android:id="@+id/manual_mode"
                     layout="@layout/manual_palette"
@@ -98,6 +99,32 @@
                     app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent" />
+
+            <!--    Block 1.5b-->
+            <!--    Handle shown only while the settings sheet is HIDDEN (the sheet itself is below the edge then): the
+                    sheet's 28dp top edge with its grip, as in the concept. P32: it starts at the viewfinder's bottom edge
+                    (BottomChrome moves the slot there), so it no longer covers the viewfinder. While the zoom ruler above
+                    the lens strip shows and would reach it, BottomChrome fades the slot out (no touches) until the ruler
+                    is gone. The slot itself always stays visible: camera_container's layout transition would fade a shown
+                    handle in late. -->
+            <FrameLayout
+                    android:id="@+id/settings_sheet_handle_slot"
+                    android:layout_width="0dp"
+                    android:layout_height="28dp"
+                    app:layout_constraintTop_toTopOf="@id/layout_bottombar"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent">
+
+                <ImageView
+                        android:id="@+id/settings_sheet_handle"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/sheet_handle"
+                        android:scaleType="center"
+                        android:contentDescription="@string/sheet_handle_open"
+                        android:visibility="gone"
+                        tools:visibility="visible" />
+            </FrameLayout>
 
             <!--    Block 1.6-->
             <!--    includes the Layout resource of BottomBar-->
@@ -138,19 +165,6 @@
                         app:gestureInsetBottomIgnored="true"
                         app:sheetLevel="@{uimodel.sheetLevel}"
                         app:iconRotation="@{uimodel.orientation}" />
-
-                <!-- Handle shown only while the sheet is HIDDEN (the sheet itself is below the edge then): the sheet's
-                     28dp top edge with its grip, as in the concept -->
-                <ImageView
-                        android:id="@+id/settings_sheet_handle"
-                        android:layout_width="match_parent"
-                        android:layout_height="28dp"
-                        android:layout_gravity="bottom|center_horizontal"
-                        android:src="@drawable/sheet_handle"
-                        android:scaleType="center"
-                        android:contentDescription="@string/sheet_handle_open"
-                        android:visibility="gone"
-                        tools:visibility="visible" />
             </androidx.coordinatorlayout.widget.CoordinatorLayout>
             <!--    Block 1.8-->
             <!--    card toast of the shade and the camera screen, over the sheet, above the bottom bar -->

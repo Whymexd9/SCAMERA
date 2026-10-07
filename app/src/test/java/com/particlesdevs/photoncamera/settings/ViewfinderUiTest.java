@@ -108,6 +108,14 @@ public class ViewfinderUiTest {
         Bitmap image=Bitmap.createBitmap(400,880,Bitmap.Config.ARGB_8888);screen.draw(new Canvas(image));
         java.io.File dir=new java.io.File("build/reports/viewfinder");dir.mkdirs();
         try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}
+        // P32: with the phone in landscape only the labels turn; the buttons (and the selected pill) keep their portrait size.
+        int[] widths=new int[lenses.getChildCount()];for(int i=0;i<widths.length;i++)widths[i]=lenses.getChildAt(i).getWidth();
+        for(int orientation:new int[]{90,180,-90,0}){
+            lenses.rotateLabels(orientation,0);screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
+            for(int i=0;i<lenses.getChildCount();i++){var lens=(com.particlesdevs.photoncamera.ui.camera.views.LensButton)lenses.getChildAt(i);
+                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals(40,lens.getHeight());}
+            if(orientation==90){screen.draw(new Canvas(image));try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls-landscape"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}}
+        }
         scale.setListener(new LinearScaleView.OnValueChangedListener(){
             public void onValueChanged(KnobItemInfo item,boolean user){}
             public void onDragStateChanged(boolean dragging){}
