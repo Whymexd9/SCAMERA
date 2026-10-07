@@ -1554,7 +1554,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 XiaomiTeleZoom.Plan plan = XiaomiTeleZoom.apply(builder, mCameraCharacteristics,
                         PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(XiaomiTeleZoom.PREF, true),
                         moduleZoom, zoom, physicalID, PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true),
-                        PreferenceKeys.niceDevSwitch("xiaomi_crop_mode", false));
+                        PreferenceKeys.niceDevSwitch("xiaomi_crop_mode", true));
                 if (plan != null) {
                     com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(plan.residual);
                     // P41: the first request of a session already carries its mode; only a change inside the session re-measures
@@ -1629,11 +1629,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mModeBarrier = true;
         // the new mode's key at once (a shot meanwhile finds its stored block); no frame is measured before the barrier opens
         com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mModeBarrierKey : "off");
-        // P41: the stock camera's ISZ preview is the ISP's; the developed RAW viewfinder is not used for the Xiaomi tele
+        // P41: the Xiaomi tele's ISP preview outside ISZ; in ISZ (raw colour mosaic from the ISP) the developed RAW viewfinder,
+        // at once when this mode's block is stored, else once the measurement finds it
         if (mMosaicPreview && (XiaomiTeleZoom.ispPreview() || com.particlesdevs.photoncamera.processing.MosaicStream.block() <= 1)) {
             mMosaicPreview = false;
             LiveRawFrame.setMosaicPreview(false);
             if (!mLiveRawSession) LiveRawFrame.setEnabled(false);
+        } else if (!mMosaicPreview && !mLiveRawSession && !mIsRecordingVideo && mMosaicMeasure && !XiaomiTeleZoom.ispPreview()
+                && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1) {
+            mMosaicPreview = true;
+            LiveRawFrame.setEnabled(true);
+            LiveRawFrame.setMosaicPreview(true);
+            Log.i(TAG, "ISZ: stored colour block " + com.particlesdevs.photoncamera.processing.MosaicStream.block() + ", developed RAW viewfinder");
         }
         Log.i(TAG, "sensor mode changed in session (ISZ " + (isz ? "on" : "off") + "): ZSL ring dropped, waiting for the first frame of the new mode");
     }
@@ -3417,6 +3424,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         (clipped.top-active.top)/(float)active.height(), clipped.width()/(float)active.width(),
                         clipped.height()/(float)active.height()};
                 }
+            }
+            // P41: the Xiaomi tele's preview crop (zoomRatio against the claimed optics) is not in SCALER_CROP_REGION
+            final float teleCrop = XiaomiTeleZoom.active() ? XiaomiTeleZoom.previewCrop() : 1f;
+            if (teleCrop > 1.001f) {
+                float w = crop[2] / teleCrop, h = crop[3] / teleCrop;
+                crop = new float[]{crop[0] + (crop[2] - w) * 0.5f, crop[1] + (crop[3] - h) * 0.5f, w, h};
             }
             double shotNoise=0,readNoise=0;
             android.util.Pair<Double,Double>[] noiseProfile=colorResult.get(CaptureResult.SENSOR_NOISE_PROFILE);

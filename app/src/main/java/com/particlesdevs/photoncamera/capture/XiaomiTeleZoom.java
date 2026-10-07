@@ -38,6 +38,14 @@ import java.util.Locale;
  * watched: when the reported focal length never follows the commanded optics, the module switches to crop mode for the process
  * (userZoomRatio tells the HAL the real lens position, the HAL then crops the whole way and the field of view is right at every
  * zoom, also across the ISZ switch). Dev switch {@code xiaomi_lens_check 0} keeps the optical command anyway.
+ *
+ * <p>Owner's 17U recording of build 30595 (2026-10-07): the results DID report the focal length following userZoomRatio
+ * (20.05 -> 26.5 mm), yet the preview did not zoom between 75 and 100 mm nor inside ISZ (measured frame to frame: x1.0 where
+ * x1.34 was due), while the crop part was exact. The reported focal length follows the claim, not the glass, so the follow check
+ * cannot see it: crop mode is the default (dev switch {@code xiaomi_crop_mode 0} tries the optics). The same recording: after
+ * "ISZ off" the sensor stayed in mode 9 until the camera restarted (a request without current_mode keeps the last one), so once
+ * ISZ was on, the way back requests the mode the tele reported before explicitly; and the ISP preview of mode 9 is the raw
+ * colour mosaic (purple), so ISZ shows the developed RAW viewfinder.
  */
 public final class XiaomiTeleZoom {
     private static final String TAG = "XiaomiTeleZoom";
@@ -317,6 +325,9 @@ public final class XiaomiTeleZoom {
     private static long farSinceMs;
     private static boolean focalReported, focalMissingLogged, implausibleLogged;
     private static Integer reportedMode;
+    /** Sensor mode the tele reported outside ISZ (the mode to go back to), and whether ISZ was on in this session. */
+    private static volatile Integer normalMode;
+    private static volatile boolean iszUsed;
     private static boolean tunableWarned;
     private static String describedCamera;
 
@@ -324,12 +335,28 @@ public final class XiaomiTeleZoom {
     public static Plan last() { return last; }
     /** The current session is the Xiaomi tele under this switch. */
     public static boolean active() { return last != null; }
-    /** P41: the stock camera's ISZ preview comes from the ISP; the developed RAW viewfinder is not used for it. */
-    public static boolean ispPreview() { return last != null; }
+    /**
+     * P41: outside ISZ the preview is the ISP's; in ISZ (mode 9) the HAL's preview is the raw colour mosaic (purple on the
+     * owner's 17U), so the developed RAW viewfinder takes over there.
+     */
+    public static boolean ispPreview() { return last != null && !isz; }
+
+    /**
+     * Crop the HAL applies to the preview on top of the RAW frame's field of view (zoomRatio relative to the optics
+     * userZoomRatio claims); the developed RAW viewfinder crops the same. 1 outside this tele.
+     */
+    public static float previewCrop() {
+        return cropOf(last);
+    }
+
+    static float cropOf(Plan p) {
+        return p == null ? 1f : Math.max(1f, p.zoomRatio * MM_PER_RATIO / (p.userZoom * MM_PER_USER));
+    }
     static void reset() {
         isz = false; last = null; lastToggleMs = 0; lastTraceMs = 0; teleRatio = 0f;
         fMin = 0f; focalList = null; lensMm = Float.NaN; firstLensMm = Float.NaN; lensMoved = false; lensFixed = false;
         fixedLensMm = Float.NaN;
+        normalMode = null; iszUsed = false;
         farSinceMs = 0; focalReported = false; focalMissingLogged = false; implausibleLogged = false; reportedMode = null; tunableWarned = false;
         describedCamera = null;
     }
@@ -337,6 +364,7 @@ public final class XiaomiTeleZoom {
     /** A new camera session: the ISZ state of the previous one does not carry over (its first request sets the mode). */
     public static void startSession() {
         isz = false;
+        iszUsed = false;
         last = null;
         lastToggleMs = 0;
         farSinceMs = 0;
@@ -374,7 +402,10 @@ public final class XiaomiTeleZoom {
         return apply(b, c, switchOn, moduleZoom, zoom, physicalId, lensCheck, false);
     }
 
-    /** {@code forceCrop}: dev switch {@code xiaomi_crop_mode 1}, crop mode from the start (for a HAL that reports no focal length). */
+    /**
+     * {@code forceCrop}: crop mode from the start, the lens standing at 75 mm (default: the 17U's HAL reports a focal length that
+     * follows userZoomRatio while the glass stays; dev switch {@code xiaomi_crop_mode 0} tries the optics).
+     */
     public static Plan apply(CaptureRequest.Builder b, CameraCharacteristics c, boolean switchOn, float moduleZoom, float zoom,
                              String physicalId, boolean lensCheck, boolean forceCrop) {
         if (b == null || !switchOn || !phone() || !teleModule(c) || !supported(b) || moduleZoom <= 0f) return null;
@@ -392,12 +423,14 @@ public final class XiaomiTeleZoom {
         final long now = android.os.SystemClock.elapsedRealtime();
         final float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
         final boolean nextIsz = nextIsz(mm, isz, last == null ? Long.MAX_VALUE : now - lastToggleMs);
-        final float fixed = (lensFixed && lensCheck) || forceCrop
+        // forced crop mode: the lens stands at 75 mm (its reported position follows the claim, so it is not read back)
+        final float fixed = forceCrop ? OPT_MIN : lensFixed && lensCheck
                 ? (!Float.isNaN(fixedLensMm) ? fixedLensMm : Float.isNaN(lensMm) ? OPT_MIN : clamp(lensMm, OPT_MIN, OPT_MAX)) : 0f;
         final Plan p = planFor(mm, nextIsz, fixed);
         set(b, p, physicalId);
         boolean changed = last != null && p.isz != isz;
         if (changed) lastToggleMs = now;
+        if (p.isz) iszUsed = true;
         isz = p.isz;
         last = p;
         if (changed) Log.i(TAG, "ISZ " + (p.isz ? "on" : "off") + " at " + p + lensNote());
@@ -425,16 +458,26 @@ public final class XiaomiTeleZoom {
         return (Float.isNaN(lensMm) ? "" : String.format(Locale.ROOT, " lens %.1f mm", lensMm)) + (lensFixed ? " (crop mode)" : "");
     }
 
+    /**
+     * current_mode for a plan: 9 in ISZ; after ISZ was on in this session the mode the tele reported before (a request
+     * without the key leaves the sensor in mode 9); else none (the HAL's own mode, as before).
+     */
+    static Integer modeFor(boolean isz, boolean iszUsed, Integer normalMode) {
+        if (isz) return ISZ_MODE;
+        return iszUsed && normalMode != null && normalMode != ISZ_MODE ? normalMode : null;
+    }
+
     private static void set(CaptureRequest.Builder b, Plan p, String physicalId) {
+        final Integer mode = modeFor(p.isz, iszUsed, normalMode);
         b.set(USER_ZOOM, p.userZoom);
         b.set(CaptureRequest.CONTROL_ZOOM_RATIO, p.zoomRatio);
-        b.set(SENSOR_MODE, p.isz ? Integer.valueOf(ISZ_MODE) : null);
+        b.set(SENSOR_MODE, mode);
         Float focal = focalRequest(p);
         if (focal != null) b.set(CaptureRequest.LENS_FOCAL_LENGTH, focal);
         if (physicalId != null && !physicalId.isEmpty() && Build.VERSION.SDK_INT >= 28) {
             try {
                 b.setPhysicalCameraKey(USER_ZOOM, p.userZoom, physicalId);
-                b.setPhysicalCameraKey(SENSOR_MODE, p.isz ? Integer.valueOf(ISZ_MODE) : null, physicalId);
+                b.setPhysicalCameraKey(SENSOR_MODE, mode, physicalId);
             } catch (RuntimeException ignored) {
                 // a logical camera without that physical stream: the logical keys apply
             }
@@ -463,7 +506,7 @@ public final class XiaomiTeleZoom {
         if (b == null || p == null) return false;
         try {
             Integer before = b.get(SENSOR_MODE);
-            Integer planned = p.isz ? Integer.valueOf(ISZ_MODE) : null;
+            Integer planned = modeFor(p.isz, iszUsed, normalMode);
             if (before != null && !before.equals(planned) && !tunableWarned) {
                 tunableWarned = true;
                 Log.w(TAG, "module tunable current_mode=" + before + " overridden: «Плавный оптический зум» owns the tele's sensor mode ("
@@ -522,9 +565,11 @@ public final class XiaomiTeleZoom {
         if (lensResult == null) lensResult = r;
         long now = android.os.SystemClock.elapsedRealtime();
         Integer mode = resultMode(r);
+        if (mode != null && !p.isz && mode != ISZ_MODE && !Integer.valueOf(ISZ_MODE).equals(requestMode(r))) normalMode = mode;
         if (mode != null && !mode.equals(reportedMode)) {
             reportedMode = mode;
-            Log.i(TAG, "sensor mode reported " + mode + " (requested " + (p.isz ? ISZ_MODE : "none") + ")");
+            Integer asked = modeFor(p.isz, iszUsed, normalMode);
+            Log.i(TAG, "sensor mode reported " + mode + " (requested " + (asked == null ? "none" : asked) + ")");
         }
         Float f = null;
         try { f = lensResult.get(CaptureResult.LENS_FOCAL_LENGTH); } catch (RuntimeException ignored) { /* none */ }

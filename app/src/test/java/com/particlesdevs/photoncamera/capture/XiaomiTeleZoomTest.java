@@ -139,6 +139,34 @@ public class XiaomiTeleZoomTest {
         assertEquals(1.2f, z.residual, E);
     }
 
+    /** Build 30595 recording: crop mode (lens at 75 mm) gives the slider's field of view, and the RAW viewfinder crops the same. */
+    @Test
+    public void cropModeFieldOfViewAndTheRawViewfinderCrop() {
+        for (float mm = 75f; mm <= 400f; mm += 5f) {
+            boolean isz = mm >= XiaomiTeleZoom.ISZ_ON;
+            XiaomiTeleZoom.Plan p = XiaomiTeleZoom.planFor(mm, isz, 75f);
+            assertEquals("HAL field of view at " + mm, mm, XiaomiTeleZoom.halFieldOfView(p, 75f), 0.01f * mm);
+            // the RAW frame is the lens (x2 in ISZ); the viewfinder crops it to the HAL's preview
+            assertEquals("RAW viewfinder at " + mm, mm, 75f * (isz ? 2f : 1f) * XiaomiTeleZoom.cropOf(p), 0.01f * mm);
+            assertEquals("the shot crops the same", XiaomiTeleZoom.cropOf(p), p.residual, 0.001f);
+        }
+        assertEquals(1f, XiaomiTeleZoom.cropOf(null), E);
+    }
+
+    /** Build 30595 recording: the sensor stayed in mode 9 after ISZ off until a restart; the way back names the old mode. */
+    @Test
+    public void afterIszTheRequestNamesTheModeToGoBackTo() {
+        assertEquals(Integer.valueOf(9), XiaomiTeleZoom.modeFor(true, false, null));
+        assertEquals(Integer.valueOf(9), XiaomiTeleZoom.modeFor(true, true, 4));
+        assertNull("before any ISZ the HAL keeps its own mode", XiaomiTeleZoom.modeFor(false, false, 4));
+        assertEquals(Integer.valueOf(4), XiaomiTeleZoom.modeFor(false, true, 4));
+        assertNull("unknown normal mode: as before", XiaomiTeleZoom.modeFor(false, true, null));
+        assertNull("never 9 as the normal mode", XiaomiTeleZoom.modeFor(false, true, 9));
+        // frames requested with the normal mode belong to the non-ISZ state
+        assertTrue(XiaomiTeleZoom.frameReady(4, 4, false, 2, 1));
+        assertFalse(XiaomiTeleZoom.frameReady(4, 9, false, 2, 1));
+    }
+
     @Test
     public void theLensIsDeclaredFixedOnlyWhenItNeverFollows() {
         assertFalse("not yet long enough", XiaomiTeleZoom.lensDoesNotFollow(100f, 75f, 500, false));
