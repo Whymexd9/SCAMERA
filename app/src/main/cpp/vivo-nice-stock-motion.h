@@ -1,6 +1,7 @@
 #pragma once
 #include "vivo-nice-capture.h"
 #include "vivo-nice-guide.h"
+#include "vivo-nice-crash.h"
 #include <dlfcn.h>
 #include <unistd.h>
 #include <cstddef>
@@ -233,6 +234,7 @@ public:
         for(int y=0;y<h;++y)for(int x=0;x<w;++x)b[size_t(y)*w+x]=a[size_t(y)*w+std::min(w-1,x+1)];
         auto ia=image(a,w,h),ib=image(b,w,h);
         Features features;std::vector<Point> corners(features.maxCorners),moved(features.maxCorners);int count=0;
+        worker_crash::Stage stage("CRE warm-up detect / track");
         if(detect(&features,&ia,nullptr,corners.data(),&count,0)||count<0||count>features.maxCorners)return;
         if(count<8)return;
         std::array<uint8_t,0x140> params{};
@@ -383,6 +385,7 @@ public:
             auto reference=image(cachedRef,w,h);
             cachedCorners.assign(features.maxCorners,Point{});
             cachedCount=0;
+            worker_crash::Stage stage("CRE detect (reference)");
             const int detection=detect(&features,&reference,nullptr,cachedCorners.data(),&cachedCount,0);
             if(detection || cachedCount<0 || cachedCount>features.maxCorners) {
                 cachedRef.clear();
@@ -412,6 +415,7 @@ public:
                 clippedRefCache=build(0,1.f/burst.exposure[frame]);
                 auto clipped=image(clippedRefCache,w,h);Features local;
                 clippedCornersCache.assign(local.maxCorners,Point{});clippedCountCache=0;
+                worker_crash::Stage stage("CRE detect (clipped reference)");
                 if(detect(&local,&clipped,nullptr,clippedCornersCache.data(),&clippedCountCache,0)
                         || clippedCountCache<0 || clippedCountCache>local.maxCorners)clippedCountCache=0;
                 clippedRawCache=burst.raw[0];clippedExposureCache=burst.exposure[frame];
@@ -423,6 +427,7 @@ public:
             std::copy_n((brighter?clippedCorners:original).begin(),n,src.begin());
             int accepted=n;std::array<float,9> homography;
             homography.fill(std::numeric_limits<float>::quiet_NaN());
+            worker_crash::Stage trackStage("CRE track");
             int status=n>=50?track(&refImage,&donor,src.data(),dst.data(),n,&accepted,params.data(),homography.data(),0):-1;
             // RANSAC inliers: 50 and a third of the corners determine the homography
             // well. The former 70% rule rejected most L/ES frames (clipped windows,

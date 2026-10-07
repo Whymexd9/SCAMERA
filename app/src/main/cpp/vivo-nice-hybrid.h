@@ -19,6 +19,7 @@
 // effective-frames map and the merged Bayer RAW for the DNG.
 #include "vivo-nice-superres-gpu.h"
 #include "vivo-nice-rawca-gpu.h" // P28 RAW CA (CA_correct_RT port, burst / GPU pre-pass)
+#include "vivo-nice-crash.h"
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -2392,10 +2393,19 @@ class HybridGpu {
         std::sort(files.begin(),files.end());
         for(size_t i=0;i+48<files.size();++i)std::remove(files[i].second.c_str());
     }
+    // Crash diagnostics (vivo X200 Pro: every Mali worker died after "HYBRID GPU: compile flags"): the program and the GL call in
+    // progress, for the worker's crash report. One GPU thread compiles at a time; the text lives for the whole process.
+    static char* compileStage(){static char text[96];return text;}
+    const char* compileName="?";
+    void markCompile(const char* step){
+        std::snprintf(compileStage(),96,"GPU compile %s: %s",compileName,step);worker_crash::mark(compileStage());
+    }
     GLuint compile(const char* body,bool standalone=false){
         std::string source=standalone?std::string(body):std::string(kHybCommon)+helpersPrefix+kHybHelpers+body;
         const std::string cacheFile=programCacheFile(source);
+        markCompile("glProgramBinary (cache)");
         if(!cacheFile.empty())if(GLuint cached=loadProgramBinary(cacheFile))return cached;
+        markCompile("glCompileShader");
         GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,kHybHelpers,body};
         if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,4,sources,nullptr);
         glCompileShader(shader);
@@ -2403,9 +2413,11 @@ class HybridGpu {
         if(!ok){char msg[4096]{};glGetShaderInfoLog(shader,sizeof(msg),nullptr,msg);glDeleteShader(shader);throw std::runtime_error(std::string("HYBRID GPU shader: ")+msg);}
         GLuint program=glCreateProgram();glAttachShader(program,shader);
         if(!cacheFile.empty())glProgramParameteri(program,GL_PROGRAM_BINARY_RETRIEVABLE_HINT,GL_TRUE);
+        markCompile("glLinkProgram");
         glLinkProgram(program);glDeleteShader(shader);
         glGetProgramiv(program,GL_LINK_STATUS,&ok);
         if(!ok){char msg[4096]{};glGetProgramInfoLog(program,sizeof(msg),nullptr,msg);glDeleteProgram(program);throw std::runtime_error(std::string("HYBRID GPU link: ")+msg);}
+        markCompile("glGetProgramBinary (cache store)");
         if(!cacheFile.empty())storeProgramBinary(program,cacheFile);
         return program;
     }
@@ -2551,12 +2563,18 @@ public:
     // word per frame; without it they wrap above 2^32 / 255 cells (67 MP). Report only (robustShare); false = the program as before.
     const bool sumsCarry=false;
     // nativeMosaic (P29): also compile the native mosaic programs (Frames::native needs them).
+    // outlierPrograms: compile kHybMean / kHybFlags (the fixed-pattern and base transient outlier tests, hotSigma / hotBaseSigma).
+    // false only for a merge with both thresholds 0: the vivo X200 Pro's Mali worker died compiling kHybFlags (owner's log
+    // 2026-10-07), the app's retry turns the tests off and the merge then runs without those two programs. true = as before.
+    const bool outlierPrograms=true;
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
-                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false)
-            :localAlign(withLocalAlign),sumsCarry(withSumsCarry){
+                       const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
+                       bool withOutlierPrograms=true)
+            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
+            worker_crash::mark("GPU context (EGL)");
             if(display==EGL_NO_DISPLAY||!eglInitialize(display,nullptr,nullptr)||!eglBindAPI(EGL_OPENGL_ES_API))throw std::runtime_error("EGL unavailable");
             const EGLint configAttrs[]={EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RENDERABLE_TYPE,EGL_OPENGL_ES3_BIT,EGL_RED_SIZE,8,EGL_GREEN_SIZE,8,EGL_BLUE_SIZE,8,EGL_NONE};
             EGLConfig config{};EGLint count=0;
@@ -2578,12 +2596,15 @@ public:
             if(early)early("HYBRID GPU: context "+renderer+" "+limits+(adreno?"":"; compiling program by program"));
             auto timed=[&](const char* name,const char* body,bool standalone=false){
                 if(early&&!adreno)early(std::string("HYBRID GPU: compile ")+name);
+                compileName=name;
                 const auto t0=std::chrono::steady_clock::now();GLuint p=compile(body,standalone);
                 compileMs+=std::string(" ")+name+"="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
                 return p;
             };
-            meanProgram=timed("mean",kHybMean);
-            flagsProgram=timed("flags",kHybFlags);
+            if(outlierPrograms){
+                meanProgram=timed("mean",kHybMean);
+                flagsProgram=timed("flags",kHybFlags);
+            } else if(early)early("HYBRID GPU: outlier tests off, mean / flags programs not compiled");
             markProgram=timed("mark",kHybMark,true);
             guideProgram=timed("guide",kHybGuide);
             cellsProgram=timed("cells",kHybCells);
@@ -2615,6 +2636,7 @@ public:
                 glGenBuffers(2,natTable);
                 for(GLuint t:natTable){glBindBuffer(GL_UNIFORM_BUFFER,t);glBufferData(GL_UNIFORM_BUFFER,GLsizeiptr(size_t(kHybridGpuFrames)*16),nullptr,GL_DYNAMIC_DRAW);}
             }
+            worker_crash::mark("GPU init (buffers)");
             if(cacheStores>0)trimProgramCache();
             if(!hybridProgramCacheDir().empty())compileMs+=" cache="+std::to_string(cacheHits)+"/"+std::to_string(cacheHits+cacheStores)+" hits";
             glGenBuffers(kSlots,buffers);
@@ -2673,7 +2695,9 @@ public:
             glBindBufferBase(GL_UNIFORM_BUFFER,0,frameTable);
             check("frame table");
         }
+        worker_crash::mark("GPU merge");
         std::vector<GLuint> programs={meanProgram,flagsProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram};
+        if(!flagsProgram)programs.erase(programs.begin(),programs.begin()+2); // outlierPrograms false: not compiled
         if(rimProgram)programs.push_back(rimProgram);
         if(bentoProgram)programs.push_back(bentoProgram);
         if(chromaProgram)programs.push_back(chromaProgram);
@@ -2743,15 +2767,17 @@ public:
             if(in.laMotion&&in.laMotion->size()==zn){reserve(17,zn*4);put(17,0,in.laMotion->data(),zn*4);}
             else{std::vector<float> z(zn,0.f);reserve(17,zn*4);put(17,0,z.data(),zn*4);}
         } else if(in.laMode!=0)throw std::runtime_error("HYBRID GPU compiled without local alignment");
-        const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0);
+        const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0)&&flagsProgram;
         // Site flags ride in the two spare top bits of the uploaded words: needs white < 16384 (RAW10/12/14) and no word above
         // 16383 (checked below with the clip scan: a white level below the codes the sensor really sends would turn bits 14/15 of
         // those codes into flags).
         const bool markable=in.white>0&&in.white<16384.f;
         int flagMode=markable?((tune.cellClip?1:0)|(hot?2:0)):0;
         if(!markable&&(tune.cellClip||hot)&&trace)trace("HYBRID GPU: white level "+std::to_string(in.white)+" leaves no spare bits: cell clip and outlier sites off");
-        glUseProgram(flagsProgram);
-        glUniform4f(loc(flagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
+        if(flagsProgram){
+            glUseProgram(flagsProgram);
+            glUniform4f(loc(flagsProgram,"hotSigU"),tune.hotSigma,tune.hotBaseSigma,tune.hotCross,tune.hotMaxLevel);
+        }
         glUseProgram(guideProgram);
         glUniform4f(loc(guideProgram,"kA"),kernel.base,kernel.shrunk,kernel.stretched,kernel.flat);
         glUniform4f(loc(guideProgram,"kB"),kernel.strengthScale,kernel.flat0,kernel.flat1,kernel.texStd);
@@ -3111,9 +3137,11 @@ public:
             for(size_t k=0;k<in.maskValid.size();++k)if(in.maskValid[k]&&in.maskValid[k]->size()==size_t(w2)*h2)std::memcpy(maskStrip.data()+planeSize*(k+1),in.maskValid[k]->data()+size_t(cy0)*w2,planeSize*4);
             reserveBank(13,maskStrip.size()*4,bank);putBank(13,bank,0,maskStrip.data(),maskStrip.size()*4);
             if(stripMode){
-                glUseProgram(flagsProgram);
-                glUniform1i(loc(flagsProgram,"ry0"),ry0);glUniform1i(loc(flagsProgram,"ry1"),ry1);
-                glUniform1i(loc(flagsProgram,"cy0"),cy0);glUniform1i(loc(flagsProgram,"cy1"),cy1);
+                if(flagsProgram){
+                    glUseProgram(flagsProgram);
+                    glUniform1i(loc(flagsProgram,"ry0"),ry0);glUniform1i(loc(flagsProgram,"ry1"),ry1);
+                    glUniform1i(loc(flagsProgram,"cy0"),cy0);glUniform1i(loc(flagsProgram,"cy1"),cy1);
+                }
                 if(hot){
                     // fixed-pattern mean: the hot frames that hold every row of the strip +-2 (motion moves the upload window).
                     // The strip rows are canonical; the frame holds sensor rows (canonical + cfa>>1): a row past the window is
@@ -4139,8 +4167,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(!large&&!std::getenv("SCAM_NO_EARLY_GPU")){
         const bool rimPass=tune.rimRatio!=0,la=tune.localAlign>0&&n>1,chromaPass=tune.chromaDiff>0.f,nat=native!=nullptr;
         const bool bentoPass=tune.bento>0&&anyUltrashort&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
+        const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0;
         // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
-        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat]{
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -4154,7 +4183,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 earlyLog->lines.push_back(line);
             };
-            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat);
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms);
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
@@ -4792,7 +4821,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
             }
         }
-        if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr);
+        if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr,
+                tune.hotSigma>0||tune.hotBaseSigma>0);
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);
