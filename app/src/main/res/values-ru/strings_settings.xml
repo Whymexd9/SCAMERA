@@ -13,7 +13,7 @@
     <string name="prefs_lmc_hybrid_capture_screen_title">Кадры и захват</string>
     <string name="prefs_lmc_hybrid_capture_screen_summary">N-кадров из ZSL, Bento, Shasta</string>
     <string name="prefs_lmc_hybrid_zsl_frames_title">N-кадров из ZSL</string>
-    <string name="prefs_lmc_hybrid_zsl_frames_summary">4–44, по умолчанию 20. Кадры обычной экспозиции из ZSL-буфера до нажатия (берётся не больше, чем есть в буфере с той же экспозицией). Детализация Sabre заметна примерно с 12–15 кадров и насыщается к 20–25; больше кадров — меньше шума, дольше склейка и больше памяти.</string>
+    <string name="prefs_lmc_hybrid_zsl_frames_summary">4–44, по умолчанию 30 (ArkCam склеивает около 30). Кадры обычной экспозиции из ZSL-буфера до нажатия (берётся не больше, чем есть в буфере с той же экспозицией). Детализация Sabre заметна примерно с 12–15 кадров и растёт до 30; каждый кадр добавляет к склейке около 0,1 с и 25 МБ памяти на 12 Мп (Quad-поток склеивает не больше кадров, чем задано в «Кадров в склейке мозаики»).</string>
     <string name="prefs_lmc_hybrid_capture_category_title">Bento — ультракороткий кадр</string>
     <string name="prefs_lmc_hybrid_bento_summary">%s. Кадр с экспозицией N/8 заменяет пересвеченные участки базового кадра (маска: порог 0.98, расширение 4, сглаживание σ=1; отказ при малой площади клиппинга, дырах ≥15 ячеек или если сам кадр клиппирован более чем на 62 %%). Авто — снимается при наличии клиппинга в ZSL-кадре.</string>
     <string name="prefs_lmc_hybrid_bento_frames_title">Bento: кадров</string>

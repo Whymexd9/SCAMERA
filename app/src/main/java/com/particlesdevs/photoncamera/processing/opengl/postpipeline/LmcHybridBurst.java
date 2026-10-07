@@ -31,7 +31,9 @@ public final class LmcHybridBurst implements NiceTransport {
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // LMC: base candidates within 205 ms of the newest frame
     private static final int BASE_CANDIDATES = 4;
-    private static final int WORKER_MAX_FRAMES = 48; // kHybridMaxFrames in vivo-nice-hybrid.h
+    // Frames one burst sends (the app's own cap: 41 N + 7 bracketed / ultrashort; the worker takes up to kHybridMaxFrames = 128,
+    // vivo-nice-hybrid.h, and holds kHybridGpuFrames = 128 on the GPU).
+    private static final int WORKER_MAX_FRAMES = 48;
     /** P27: N frames of the conservative retry after a failed merge. */
     private static final int CONSERVATIVE_NORMALS = 16;
     /** P27: worker tuning of the conservative retry (no tile-local alignment, Sabre 6.1 kernel, rim or chroma passes). */

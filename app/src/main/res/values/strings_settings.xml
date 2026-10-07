@@ -13,7 +13,7 @@
     <string name="prefs_lmc_hybrid_capture_screen_title">Frames and capture</string>
     <string name="prefs_lmc_hybrid_capture_screen_summary">N frames from ZSL, Bento, Shasta</string>
     <string name="prefs_lmc_hybrid_zsl_frames_title">N frames from ZSL</string>
-    <string name="prefs_lmc_hybrid_zsl_frames_summary">4–44, default 20. Normal-exposure frames from the ZSL buffer before the press (no more than the buffer holds at the same exposure). Sabre detail shows from about 12–15 frames and saturates at 20–25; more frames give less noise, a longer merge and more memory.</string>
+    <string name="prefs_lmc_hybrid_zsl_frames_summary">4–44, default 30 (ArkCam merges about 30). Normal-exposure frames from the ZSL buffer before the press (no more than the buffer holds at the same exposure). Sabre detail shows from about 12–15 frames and keeps growing towards 30; each frame adds about 0.1 s to the merge and 25 MB of memory at 12 MP (a Quad stream merges at most the frames of «Frames in the mosaic merge»).</string>
     <string name="prefs_lmc_hybrid_capture_category_title">Bento: ultra-short frame</string>
     <string name="prefs_lmc_hybrid_bento_summary">%s. A frame with N/8 exposure replaces the overexposed areas of the base frame (mask: threshold 0.98, dilation 4, smoothing σ=1; skipped when the clipped area is small, with holes ≥15 cells, or if the frame itself is more than 62 %% clipped). Auto: taken when the ZSL frame has clipping.</string>
     <string name="prefs_lmc_hybrid_bento_frames_title">Bento frames</string>

@@ -149,7 +149,7 @@ public class HybridSettingsTest {
         PreferenceKeys.beginShotProfile(true);
         assertTrue(PreferenceKeys.isHybridShot());assertTrue(PreferenceKeys.isNiceHybridEnabled());
         assertEquals(1f,PreferenceKeys.niceInternalValue("noise_photon",1f),0f);
-        assertEquals(20,PreferenceKeys.getNiceZslFrames());assertEquals(20,PreferenceKeys.getHybridZslFrames());
+        assertEquals(30,PreferenceKeys.getNiceZslFrames());assertEquals(30,PreferenceKeys.getHybridZslFrames());
         assertTrue(PreferenceKeys.isNiceDespeckleEnabled());
         assertFalse(PreferenceKeys.useStockBracketPlanner());
         assertEquals("auto",PreferenceKeys.getNiceCreSource());
@@ -469,6 +469,34 @@ public class HybridSettingsTest {
         assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
     }
 
+    @Test public void hybridZslFramesFormerDefaultMovesTo30Once() {
+        // a stored 20 is the former XML default: it moves to 30 once; the run reports the change, the next one does not
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6)
+                .putString("pref_lmc_hybrid_zsl_frames","20").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("30",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        // 20 chosen after the move stays on every later run
+        prefs.edit().putString("pref_lmc_hybrid_zsl_frames","20").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("20",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        // any other stored value is the user's and stays; the marker is set anyway
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6)
+                .putString("pref_lmc_hybrid_zsl_frames","25").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("25",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.ZSL_FRAMES_REV,0));
+        // nothing stored (fresh install, the screen never shown): the default 30 applies, only the marker is written
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6).commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertFalse(prefs.contains("pref_lmc_hybrid_zsl_frames"));
+        assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        prefs.edit().putString("pref_lmc_hybrid_zsl_frames","20").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("20",prefs.getString("pref_lmc_hybrid_zsl_frames",""));
+    }
+
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         PreferenceKeys.beginShotProfile(true);
@@ -492,7 +520,7 @@ public class HybridSettingsTest {
         SettingsMigration.migrateLmcHybrid(prefs,false);
         assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         assertFalse(prefs.contains("pref_lmc_hybrid_zsl_frames"));assertFalse(prefs.contains("pref_lmc_hybrid_fusion_dark_ev"));
-        assertEquals(20,PreferenceKeys.getHybridZslFrames());
+        assertEquals(30,PreferenceKeys.getHybridZslFrames());
         // A later run (engine key gone, "auto" off SM8750 would read as the hybrid) copies nothing either.
         prefs.edit().putString("pref_vivo_nice_fusion_detail","0.7").commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
