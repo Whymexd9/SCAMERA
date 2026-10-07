@@ -89,7 +89,9 @@ public class RotateWatermark extends Node {
         glProg.setDefine("WATERMARK",watermarkNeeded);
 
         glProg.useAssetProgram("RotateWatermark/addwatermark_rotate");
-        try {
+        // W1.11: with WATERMARK 0 the shader never reads the watermark, and the noise it samples is not used (the dither
+        // line is commented out): no font rendering, logo or noise.png decode and no two uploads for nothing.
+        if (watermarkNeeded || com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) try {
             File waterExternal = new File(FileManager.sPHOTON_TUNING_DIR,"watermark.png");
             Bitmap custom = waterExternal.exists() ? null : buildBitmap();
             if (waterExternal.exists()) watermark = new GLImage(waterExternal);

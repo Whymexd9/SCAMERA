@@ -2310,6 +2310,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     +" sensorCutoffNs="+niceZslShutterTimestamp+" cutoffSource=latest_preview_result"
                     +" route="+PreferenceKeys.mergeRoute());
             mShotInProgress = true;
+            com.particlesdevs.photoncamera.processing.ShotTimeline.begin("shutter");
             final long shotGeneration = ++mShutterGeneration;
             if (isZslMode()) {
                 mNiceRingFrozen = PreferenceKeys.isVivoNiceEnabled();
@@ -3214,12 +3215,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 + " exact=" + exact.size() + " darker=" + darker.size());
         if (widened > 0) Log.w("NICE_HDR", "hybrid ZSL: " + exact.size() + " ring frames at the newest exposure, widened by " + widened
                 + " frames down to -0.5 EV (AE ramp)");
-        for (Image image : rest) {
-            Log.w("NICE_HDR", "hybrid ZSL: ring RAW timestamp=" + image.getTimestamp() + " not used (exposure "
-                    + String.format(java.util.Locale.ROOT, "%+.2f EV", Math.log(product(metadata.get(image.getTimestamp())) / ref) / Math.log(2))
-                    + " from the newest frame)");
-            image.close();
+        // W1.0: one summary line for the ring frames not used (one line each pushed the shot over OPPO's log quota).
+        if (!rest.isEmpty()) {
+            double evMin = Double.POSITIVE_INFINITY, evMax = Double.NEGATIVE_INFINITY;
+            long oldest = Long.MAX_VALUE, newestUnused = Long.MIN_VALUE;
+            for (Image image : rest) {
+                final double ev = Math.log(product(metadata.get(image.getTimestamp())) / ref) / Math.log(2);
+                if (ev < evMin) evMin = ev;
+                if (ev > evMax) evMax = ev;
+                oldest = Math.min(oldest, image.getTimestamp());
+                newestUnused = Math.max(newestUnused, image.getTimestamp());
+            }
+            Log.w("NICE_HDR", "hybrid ZSL: " + rest.size() + " ring RAWs not used (exposure "
+                    + String.format(java.util.Locale.ROOT, "%+.2f..%+.2f EV", evMin, evMax) + " from the newest frame, timestamps "
+                    + oldest + ".." + newestUnused + ")");
         }
+        for (Image image : rest) image.close();
         rawImages.clear();
         rawImages.addAll(keep);
     }
@@ -3555,7 +3566,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     pair.isHighlightFrame=r.role==ImageFrame.CaptureRole.SHORT||r.role==ImageFrame.CaptureRole.EXTRA_SHORT;
                     IsoExpoSelector.fullpairs.add(pair);
                 }
-                PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness);
+                // W1.9: the sensor re-registration (~39 ms) runs after the submit (Gyro.startBurstRegistration).
+                PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness,true);
             } else {
                 IsoExpoSelector.fullpairs.clear();
                 // L from the ZSL N frames: after the press only S and ES are exposed
@@ -3587,7 +3599,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     IsoExpoSelector.ExpoPair pair=new IsoExpoSelector.ExpoPair(ns,ns,ns,iso,iso,iso,iso);
                     pair.isLongFrame=i==4;pair.isHighlightFrame=i>=5;IsoExpoSelector.fullpairs.add(pair);
                 }
-                PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness);
+                PhotonCamera.getGyro().PrepareGyroBurst(times,BurstShakiness,true);
             }
 
             //img
@@ -3643,6 +3655,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean shotHybridRoute=lmcHybridShot;
             final int nativeBaseIndex=denoiseFrameCount/2;
             final TotalCaptureResult[] nativeBaseResult={hybridZsl?mNativeZslBase:null};
+            // W1.9: the vendor-key scan of every bracket result (10-15 ms on the camera callback thread) only with diagnostics.
+            final boolean vendorScan=niceCapture&&PreferenceKeys.isNiceDiagnosticsEnabled();
 
             // ZSL SCAM HDR: the N frames are already buffered and only the short tail is exposed, so the UI
             // treats the press as an instant shot (no capture ring, no locked controls, provisional thumbnail).
@@ -3665,6 +3679,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                     if (baseFrameNumber[0] == 0) {
                         baseFrameNumber[0] = frameNumber;
+                        com.particlesdevs.photoncamera.processing.ShotTimeline.capture("first_start");
                         if (maxFrameCount[0] != -1) PhotonCamera.getGyro().CaptureGyroBurst();
                         Log.v("BurstCounter", "CaptureStarted with FirstFrameNumber:" + frameNumber);
                     } else {
@@ -3706,7 +3721,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         catch(RuntimeException mismatch){Log.w("NICE_CAPTURE",mismatch.getMessage()+"; kept with its measured exposure");}
                         niceSequence.completed(request, result);
                     }
-                    if(niceCapture) VivoNiceCaptureLog.result(request,result,niceZslShutterTimestamp);
+                    if(niceCapture) VivoNiceCaptureLog.result(request,result,niceZslShutterTimestamp,vendorScan);
                     Log.v("BurstCounter", "CaptureCompleted! FrameCount:" + frameCount);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.frame(frameCount, result);
                     com.particlesdevs.photoncamera.util.ScameraDebugLog.remosaicMetadata(
@@ -3868,6 +3883,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 if (!summary.isEmpty())
                                     Log.w("NICE_CAPTURE", (shotHybridRoute ? "hybrid" : "SCAM HDR") + ": " + niceSequence.droppedCount() + " of "
                                             + niceSequence.futureCount + " post-shutter frames dropped, merging the rest: " + summary);
+                                com.particlesdevs.photoncamera.processing.ShotTimeline.capture("complete");
                                 Log.i("NICE_CAPTURE", "complete matched RAWs=" + shotSaver.bufferSize()
                                         + " futureRequests=" + niceSequence.futureCount + " bound=" + niceSequence.boundFutureCount()
                                         + " stockAePlan=" + (stockPlan!=null));
@@ -3912,7 +3928,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     saver.detachForQueue(shotHybridRoute);
                                     sNicePending.incrementAndGet();
                                     Log.i("NICE_CAPTURE", "queued for processing pending=" + sNicePending.get());
+                                    com.particlesdevs.photoncamera.processing.ShotTimeline.capture("queued");
+                                    final com.particlesdevs.photoncamera.processing.ShotTimeline shotTimeline =
+                                            com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
                                     NICE_PROCESSING.execute(() -> {
+                                        com.particlesdevs.photoncamera.processing.ShotTimeline.attach(shotTimeline);
+                                        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("proc");
                                         try {
                                             saver.runRaw(shotCharacteristics, shotResult, shotRequest,
                                                     shotShakiness, cameraRotation, shotExposures);
@@ -3921,6 +3942,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                             cameraEventsListener.onProcessingError(e.getLocalizedMessage());
                                         } finally {
                                             sNicePending.decrementAndGet();
+                                            // W1.0: the stage times of the shot in one line, after it was saved.
+                                            com.particlesdevs.photoncamera.processing.ShotTimeline.print();
                                         }
                                     });
                                 } else saver.runRaw(shotCharacteristics, shotResult, shotRequest,
@@ -3994,6 +4017,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + " lost the first requests after a flush (FlushLossStats)");
             shotFlushed.set(flushQueue);
             sTimelineSubmitNs = android.os.SystemClock.elapsedRealtimeNanos();
+            com.particlesdevs.photoncamera.processing.ShotTimeline.capture("submit");
             if (flushQueue) {
                 long t0 = android.os.SystemClock.elapsedRealtime();
                 // Without stopping the repeating preview first, the HAL sometimes
@@ -4051,6 +4075,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 mPreviewInputRequest = mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
                         break;
                 }
+                // W1.9: the gyro's burst-rate registration, now that the series is submitted (its first exposure starts
+                // 109 ms or more after the flush); before, it delayed the submit by ~39 ms.
+                PhotonCamera.getGyro().startBurstRegistration();
                 startZslCopy(mPendingZslNormalFrames);
             }
         } catch (CameraAccessException | RuntimeException e) {

@@ -157,6 +157,62 @@ final class LmcDenoiseTables {
             if (ok) valid[n++] = i;
         }
         if (n < 16) return null;
+        // Shot speed: the two stable sorts of reduceLegacy (boxed Integer[] with a Float.compare lambda) as sorts of primitive
+        // keys: the float's Float.compare order in the high 32 bits, the position in the input in the low 32 bits. The keys
+        // are distinct, so any sort gives the order of the stable sort, element by element.
+        final long[] keys = new long[n];
+        for (int i = 0; i < n; i++) keys[i] = ((long) sortableBits(blocks[8 * valid[i] + 1]) << 32) | i;
+        Arrays.sort(keys);
+        final int[] byT = new int[n];
+        for (int i = 0; i < n; i++) byT[i] = valid[(int) keys[i]];
+        int m = Math.max(16, n / 4);
+        float[] out = new float[11];
+        float[] tmp = new float[m];
+        for (int k = 0; k < 6; k++) {
+            for (int i = 0; i < m; i++) tmp[i] = blocks[8 * byT[i] + 2 + k];
+            out[k] = median(tmp, m);
+        }
+        final long[] keysY = new long[m];
+        for (int i = 0; i < m; i++) keysY[i] = ((long) sortableBits(blocks[8 * byT[i]]) << 32) | i;
+        Arrays.sort(keysY);
+        final int[] byY = new int[m];
+        for (int i = 0; i < m; i++) byY[i] = byT[(int) keysY[i]];
+        int d = Math.max(8, m / 2);
+        float[] r = new float[d];
+        for (int s = 0; s < 2; s++) {
+            for (int c = 0; c < 2; c++) {
+                for (int i = 0; i < d; i++) {
+                    int o = 8 * byY[i];
+                    r[i] = blocks[o + 2 + s] / Math.max(blocks[o + 4 + 2 * c + s], 1e-6f);
+                }
+                out[6 + 2 * c + s] = (float) Math.sqrt(Math.max(median(r, d), 1e-4f));
+            }
+        }
+        out[10] = m;
+        return out;
+    }
+
+    /**
+     * Signed int whose order is Float.compare's order of the float: -0.0 before 0.0, every NaN (canonical bits) after
+     * +Infinity.
+     */
+    static int sortableBits(float f) {
+        final int bits = Float.floatToIntBits(f);
+        return bits ^ ((bits >> 31) & 0x7fffffff);
+    }
+
+    /** The original {@link #reduce} (boxed sorts), the reference of the primitive one (ShotSpeedBitExactTest) and the old post mode. */
+    static float[] reduceLegacy(float[] blocks, int count, float clip) {
+        int[] valid = new int[count];
+        int n = 0;
+        for (int i = 0; i < count; i++) {
+            int o = 8 * i;
+            float y = blocks[o];
+            boolean ok = y > 1e-5f && y < clip && blocks[o + 2] > 0f;
+            for (int k = 1; k < 8 && ok; k++) ok = Float.isFinite(blocks[o + k]);
+            if (ok) valid[n++] = i;
+        }
+        if (n < 16) return null;
         Integer[] byT = new Integer[n];
         for (int i = 0; i < n; i++) byT[i] = valid[i];
         Arrays.sort(byT, (a, b) -> Float.compare(blocks[8 * a + 1], blocks[8 * b + 1]));

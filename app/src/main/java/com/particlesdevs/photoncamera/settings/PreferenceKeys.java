@@ -961,6 +961,9 @@ public class PreferenceKeys {
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
             // P27: the measured exposure ratio instead of a disagreeing metadata ratio (worker default 0 = report only)
             {"gainMeasured", "gain_measured"},
+            // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from nice_dev.txt
+            // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them).
+            {"profile", "profile"}, {"laThreads", "la_threads"},
         };
         for (String[] k : keys) {
             Float dev = niceDevValue("hybrid_" + k[1]);
@@ -1045,6 +1048,12 @@ public class PreferenceKeys {
     /** True when nice_dev.txt sets this line (an A/B override that wins over the stored setting). */
     public static boolean niceDevOverrides(String key) {
         return niceDevValue(key) != null;
+    }
+
+    /** The number of a nice_dev.txt line ("key value"); {@code fallback} without the line. */
+    public static float niceDevNumber(String key, float fallback) {
+        Float v = niceDevValue(key);
+        return v == null ? fallback : v;
     }
 
     private static Float niceDevValue(String key) {

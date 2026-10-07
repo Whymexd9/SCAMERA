@@ -130,9 +130,11 @@ public final class LmcHybridBurst implements NiceTransport {
             usable.add(f);
         }
         if (usable.isEmpty()) throw new IOException(Lang.t("Hybrid: ни одного пригодного RAW-кадра (", "Hybrid: no usable RAW frame (") + source.size() + Lang.t(" получено)", " received)"));
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("mosaic_start");
         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result mosaic =
                 com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(usable.get(0).buffer, width, height, width * 2,
                         (black[0] + black[1] + black[2] + black[3]) / 4f, white, 8);
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("mosaic_done");
         mosaicBlock = mosaic == null || !mosaic.confident ? 0 : mosaic.block;
         if (mosaic != null) Log.i("NICE_HDR", "hybrid stream colour block: " + mosaic);
         // A mosaic's own sites already fill the sensor grid of the stream (the worker merges them on the 2x grid of its plain-Bayer
@@ -537,6 +539,7 @@ public final class LmcHybridBurst implements NiceTransport {
      */
     public static ByteBuffer process(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng) throws Exception {
         LmcHybridBurst burst = new LmcHybridBurst(frames, p, false);
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ctor_done");
         burst.mergedDng = mergedDng;
         lastOutputSize = new android.graphics.Point(burst.outWidth, burst.outHeight);
         lastFinalSize = new android.graphics.Point(burst.finalWidth, burst.finalHeight);

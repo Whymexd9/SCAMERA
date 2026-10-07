@@ -52,6 +52,66 @@ public final class MosaicBlockDetector {
     public static Result detect(ByteBuffer raw, int width, int height, int rowStride, float black, float white, int bandStep) {
         int[] votes = new int[3];
         if (raw == null || width < 64 || height < 64 || rowStride < width * 2) return new Result(1, false, votes, 0);
+        final ByteBuffer b = raw.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+        final int base = b.position(), limit = b.limit();
+        final int x0 = (width / 10) & ~7, x1 = (width * 9 / 10) & ~7, y0 = (height / 10) & ~7, y1 = (height * 9 / 10) & ~7;
+        final int step = Math.max(8, bandStep & ~7);
+        final int len = x1 - x0;
+        final int clip = Math.round(black + 0.95f * (white - black));
+        // Bands are read in order up to the first one that runs past the buffer (every later one does too: the offsets grow).
+        int complete = 0;
+        for (int band = y0; band + 8 <= y1; band += step) {
+            if ((long) base + (long) (band + 7) * rowStride + x0 * 2L + len * 2L > limit) break;
+            complete++;
+        }
+        // Shot speed: the bands are independent (integer votes and tile counts summed), split over the shared pool with
+        // per-thread buffers, so the answer is the one of detectReference.
+        final int bands = complete;
+        final int chunks = Math.max(1, Math.min(bands, com.particlesdevs.photoncamera.util.ParallelWork.threads() * 4));
+        final int[][] partVotes = new int[chunks][3];
+        final int[] partTiles = new int[chunks];
+        com.particlesdevs.photoncamera.util.ParallelWork.forEach(chunks, c -> {
+            final ByteBuffer own = b.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+            final short[][] rows = new short[8][len];
+            final double[] tile = new double[64];
+            final double[] scratch = new double[7];
+            final int first = (int) ((long) bands * c / chunks), last = (int) ((long) bands * (c + 1) / chunks);
+            int tiles = 0;
+            for (int i = first; i < last; i++) {
+                final int band = y0 + i * step;
+                for (int k = 0; k < 8; k++) {
+                    own.position((int) (base + (long) (band + k) * rowStride + x0 * 2L));
+                    own.asShortBuffer().get(rows[k]);
+                }
+                for (int tx = 0; tx + 8 <= len; tx += 8) {
+                    double s = 0;
+                    boolean clipped = false;
+                    for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) {
+                        int v = rows[y][tx + x] & 0xFFFF;
+                        if (v >= clip) clipped = true;
+                        tile[(y << 3) | x] = v - black;
+                        s += v - black;
+                    }
+                    if (clipped || !(s > 128)) continue;
+                    tiles++;
+                    int vote = vote(tile, scratch);
+                    if (vote >= 0) partVotes[c][vote]++;
+                }
+            }
+            partTiles[c] = tiles;
+        });
+        int tiles = 0;
+        for (int c = 0; c < chunks; c++) {
+            tiles += partTiles[c];
+            for (int i = 0; i < 3; i++) votes[i] += partVotes[c][i];
+        }
+        return decide(votes, tiles);
+    }
+
+    /** The original single-threaded detector, kept as the reference of {@link #detect} (ShotSpeedBitExactTest). */
+    static Result detectReference(ByteBuffer raw, int width, int height, int rowStride, float black, float white, int bandStep) {
+        int[] votes = new int[3];
+        if (raw == null || width < 64 || height < 64 || rowStride < width * 2) return new Result(1, false, votes, 0);
         ByteBuffer b = raw.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         int base = b.position();
         int x0 = (width / 10) & ~7, x1 = (width * 9 / 10) & ~7, y0 = (height / 10) & ~7, y1 = (height * 9 / 10) & ~7;
@@ -86,6 +146,34 @@ public final class MosaicBlockDetector {
             }
         }
         return decide(votes, tiles);
+    }
+
+    /** Class of site k (row-major 8x8) in the colour-block model of block 1, 2, 4 (index 0, 1, 2). */
+    private static final int[][] CLS = new int[3][64];
+    static {
+        final int[] blocks = {1, 2, 4};
+        for (int i = 0; i < 3; i++) for (int k = 0; k < 64; k++) CLS[i][k] = cls(k, blocks[i]);
+    }
+
+    /**
+     * {@link #vote(double[])} without allocations: scratch holds the three residuals (0..2) and the four class means (3..6).
+     * The same sums in the same order, so the same vote.
+     */
+    static int vote(double[] t, double[] scratch) {
+        final double[] r = scratch;
+        r[0] = r[1] = r[2] = 0;
+        for (int i = 0; i < 3; i++) {
+            final int[] cl = CLS[i];
+            r[3] = r[4] = r[5] = r[6] = 0;
+            for (int k = 0; k < 64; k++) r[3 + cl[k]] += t[k];
+            for (int c = 0; c < 4; c++) r[3 + c] /= 16.0;
+            for (int k = 0; k < 64; k++) { double d = t[k] - r[3 + cl[k]]; r[i] += d * d; }
+        }
+        int best = 0;
+        for (int i = 1; i < 3; i++) if (r[i] < r[best]) best = i;
+        double second = Double.MAX_VALUE;
+        for (int i = 0; i < 3; i++) if (i != best) second = Math.min(second, r[i]);
+        return r[best] * 3.0 < second ? best : -1;
     }
 
     /** The block (index 0, 1, 2 = block 1, 2, 4) one 8x8 tile votes for, or -1 when no model wins by 3x. */

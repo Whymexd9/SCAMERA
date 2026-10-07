@@ -53,6 +53,8 @@ public class HdrxProcessor extends ProcessorBase {
     private boolean hybridShot;
     /** P27: the merge route the queued shot was captured for (null: the current setting). */
     public Boolean ownedHybridRoute;
+    /** W1.3: the post pipeline whose GL teardown waits until the JPEG is saved (null: none pending). */
+    private PostPipeline deferredPipeline;
 
 
     public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
@@ -143,6 +145,7 @@ public class HdrxProcessor extends ProcessorBase {
             processingEventsListener.onProcessingError("HDRX failed at "
                     + processingStage + " — " + detail);
          } finally {
+            finishDeferredTeardown();
             com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.finish();
             if (niceOwnedOutput != null) {
                 // VivoNiceRgb may already have freed the big buffer after the GL upload (then vivoNiceRgb is a small copy).
@@ -154,6 +157,43 @@ public class HdrxProcessor extends ProcessorBase {
             if (mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
         }
+    }
+
+    /** W1.3: the GL teardown of the post pipeline after the JPEG (or after a failure); nothing when none is pending. */
+    private void finishDeferredTeardown() {
+        final PostPipeline pending = deferredPipeline;
+        if (pending == null) return;
+        deferredPipeline = null;
+        try {
+            pending.finishDeferredTeardown();
+        } catch (RuntimeException e) {
+            Log.e(TAG, "PostPipeline teardown failed (non-fatal): " + Log.getStackTraceString(e));
+        }
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("gl_teardown");
+    }
+
+    /**
+     * W1.11 test switch: nice_dev.txt "post_priority N" runs the post pipeline at thread nice value N (the processing thread
+     * runs at Java priority NORM_PRIORITY - 1); returns the previous nice value to restore, or Integer.MIN_VALUE when unset.
+     */
+    private static int raisePostPriority() {
+        if (!PreferenceKeys.niceDevOverrides("post_priority")) return Integer.MIN_VALUE;
+        try {
+            final int tid = android.os.Process.myTid();
+            final int before = android.os.Process.getThreadPriority(tid);
+            final int nice = Math.max(-8, Math.min(19, Math.round(PreferenceKeys.niceDevNumber("post_priority", before))));
+            android.os.Process.setThreadPriority(nice);
+            Log.i(TAG, "post pipeline at thread priority " + nice + " (was " + before + ")");
+            return before;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "post_priority not applied: " + e);
+            return Integer.MIN_VALUE;
+        }
+    }
+
+    private static void restorePriority(int before) {
+        if (before == Integer.MIN_VALUE) return;
+        try { android.os.Process.setThreadPriority(before); } catch (RuntimeException ignored) {}
     }
 
     /** The app log's stack trace for an Exception (as before); an Error (OutOfMemoryError) through android.util.Log. */
@@ -181,6 +221,7 @@ public class HdrxProcessor extends ProcessorBase {
 
     private void ApplyHdrX() {
         processingStage = "input validation";
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("prep");
         callback.onStarted();
         processingEventsListener.onProcessingStarted("HDRX");
 
@@ -337,22 +378,7 @@ public class HdrxProcessor extends ProcessorBase {
                 int ind = Math.max(0,mImageFramesToProcess.size()-2);
                 frame.frameGyro = BurstShakiness.get(ind);
             }*/
-            Log.d(TAG, "Mpy:" + frame.pair.layerMpy);
             images.add(frame);
-            // Measured for every frame now, bracket members included. Their value is
-            // not directly comparable with a regular frame's - the measure is
-            // normalised by level, not by the noise model, and a longer exposure has
-            // a better SNR, which lowers the noise part of the gradient energy on its
-            // own - so it is logged for diagnosis and used only against the same
-            // exposure, never as a cross-exposure threshold.
-            frame.computeSharpness(PreferenceKeys.isNiceMosaic() || processingParameters.quadCfa
-                    ? PreferenceKeys.getRemosaicBlockSize() : 1);
-            Log.d(TAG, "frame " + i + ": mpy=" + frame.pair.layerMpy
-                    + " iso=" + frame.pair.iso
-                    + " sharpness=" + frame.sharpness
-                    + " shakiness=" + frame.frameGyro.shakiness
-                    + " long=" + frame.pair.isLongFrame
-                    + " short=" + frame.pair.isHighlightFrame);
             // Bracket members shoot at their own ISO (72 for the ultra-short, 166
             // for the long one here), so averaging all frames moved the burst's ISO
             // away from the regular frames the result is actually built from, and
@@ -364,6 +390,25 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
         ISO = isoFrames > 0 ? ISO / isoFrames : ISO / images.size();
+        // Measured for every frame, bracket members included. Their value is not directly comparable with a regular
+        // frame's - the measure is normalised by level, not by the noise model, and a longer exposure has a better SNR,
+        // which lowers the noise part of the gradient energy on its own - so it is logged for diagnosis and used only
+        // against the same exposure, never as a cross-exposure threshold.
+        // W1.5: the frames are independent, so they are measured in parallel (each writes its own sharpness).
+        final int sharpnessBlock = PreferenceKeys.isNiceMosaic() || processingParameters.quadCfa ? PreferenceKeys.getRemosaicBlockSize() : 1;
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("sharp_start");
+        final ArrayList<ImageFrame> measured = images;
+        com.particlesdevs.photoncamera.util.ParallelWork.forEach(measured.size(), k -> measured.get(k).computeSharpness(sharpnessBlock));
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("sharp_done");
+        // W1.0: one line for the burst instead of two per frame (OPPO's log flow control dropped the shot's rows).
+        StringBuilder frameLog = new StringBuilder("frames ").append(images.size()).append(" (index=mpy/iso/sharpness/shakiness, L long, S short):");
+        for (int i = 0; i < images.size(); i++) {
+            ImageFrame frame = images.get(i);
+            frameLog.append(' ').append(i).append('=').append(frame.pair.layerMpy).append('/').append(frame.pair.iso)
+                    .append('/').append(frame.sharpness).append('/').append(frame.frameGyro.shakiness)
+                    .append(frame.pair.isLongFrame ? "L" : "").append(frame.pair.isHighlightFrame ? "S" : "");
+        }
+        Log.d(TAG, frameLog.toString());
 
         processingParameters.FillDynamicParameters(captureResult, captureRequest,ISO);
         // The last burst callback belongs to the ultra-short highlight frame: the exposure of the photo (EXIF, DNG) and the key of the
@@ -442,6 +487,7 @@ public class HdrxProcessor extends ProcessorBase {
                 }
                 if (hybridShot) {
                     processingStage = "Hybrid merge";
+                    com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
                     niceOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.process(
                             PhotonCamera.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                 }
@@ -539,8 +585,19 @@ public class HdrxProcessor extends ProcessorBase {
             Log.i("NICE_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
         }
         PostPipeline pipeline = new PostPipeline();
-
-        Bitmap img = pipeline.Run(jpegInput, processingParameters);
+        // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
+        pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters);
+        if (pipeline.deferTeardown) deferredPipeline = pipeline;
+        final boolean postAb = com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters);
+        final int priorityBefore = raisePostPriority();
+        Bitmap img;
+        try {
+            img = postAb ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.run(pipeline, jpegInput, processingParameters)
+                    : pipeline.Run(jpegInput, processingParameters);
+        } finally {
+            restorePriority(priorityBefore);
+        }
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
         // SCAM HDR hybrid on the Sabre 2x grid: the whole pipeline (including sharpening) ran on the 2x image; the
         // final size (12/16/20 MP, or the sensor size) is produced here, keeping the bitmap's aspect and rotation.
         final Point hybridFinal = hybridOut != null ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastFinalSize : null;
@@ -579,8 +636,9 @@ public class HdrxProcessor extends ProcessorBase {
 
         final Bitmap withDebug = overlay(img, pipeline.debugData.toArray(new Bitmap[0]));
         if (withDebug != img) { img.recycle(); img = withDebug; }
-        // The EGL context and the rest of the GL state are not needed for the encoding: release them before it.
-        try {
+        // The EGL context and the rest of the GL state are not needed for the encoding: release them before it, unless the
+        // teardown waits for the end of the encode (W1.3, 16 MP or less).
+        if (deferredPipeline == null) try {
             pipeline.close();
         } catch (Exception e) {
             Log.e(TAG, "PostPipeline close failed (non-fatal): " + Log.getStackTraceString(e));
@@ -592,6 +650,7 @@ public class HdrxProcessor extends ProcessorBase {
             Log.d(TAG,"Error in processingEventsListener.onProcessingFinished:"+Log.getStackTraceString(e));
         }
         imageFile = Paths.get(imageFile.toAbsolutePath() + ".jpg");
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("encode");
         boolean imageSaved;
         if (PhotonCamera.getSettings().ultraHdr && gm != null) {
             try {
@@ -616,6 +675,8 @@ public class HdrxProcessor extends ProcessorBase {
         catch (Exception e){
             Log.d(TAG,"Error in processingEventsListener.notifyImageSavedStatus:"+Log.getStackTraceString(e));
         }
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("saved");
+        finishDeferredTeardown();
 
         Allocator.getMemoryCount();
         callback.onFinished();

@@ -160,7 +160,7 @@ public final class LmcDenoise extends Node {
         }
     }
 
-    /** Block statistics of one level (lmcdn/stats), reduced on the host; null when too few flat blocks. */
+    /** Block statistics of one level (lmcdn/stats), reduced on the host; null when too few flat blocks (old model of post_ab). */
     private static float[] levelNoise(GLProg glProg, List<GLTexture> owned, GLTexture level, int block, float sY, float rY, float[][] rawOut) {
         Point blocks = new Point(Math.max(1, level.mSize.x / block), Math.max(1, level.mSize.y / block));
         GLTexture st = tex(owned, blocks, GLFormat.DataType.UNSIGNED_32, 4, GL_NEAREST);
@@ -172,10 +172,67 @@ public final class LmcDenoise extends Node {
             glProg.drawBlocks(st);
             float[] raw = readStats(st);
             if (rawOut != null) rawOut[0] = raw;
-            return LmcDenoiseTables.reduce(raw, blocks.x * blocks.y, 0.8f);
+            return LmcDenoiseTables.reduceLegacy(raw, blocks.x * blocks.y, 0.8f);
         } finally {
             release(owned, st);
         }
+    }
+
+    /**
+     * W1.6: {@link #levelNoise} of several levels at once. Every statistics pass is drawn first, then they are read back
+     * (one sync instead of one per level), and the levels are reduced in parallel with the primitive-key sorts of
+     * {@link LmcDenoiseTables#reduce}. The same passes, read-backs and reductions, so the same gains; rawOut gets level 0.
+     */
+    private static float[][] levelNoiseBatch(GLProg glProg, List<GLTexture> owned, GLTexture[] levels, int block, float sY, float rY,
+                                             float[][] rawOut) {
+        final int n = levels.length;
+        final GLTexture[] st = new GLTexture[n];
+        final int[] counts = new int[n];
+        final float[][] raws = new float[n][];
+        try {
+            for (int i = 0; i < n; i++) {
+                Point blocks = new Point(Math.max(1, levels[i].mSize.x / block), Math.max(1, levels[i].mSize.y / block));
+                counts[i] = blocks.x * blocks.y;
+                st[i] = tex(owned, blocks, GLFormat.DataType.UNSIGNED_32, 4, GL_NEAREST);
+                glProg.useAssetProgram("lmcdn/stats", false);
+                glProg.setTexture("InputBuffer", levels[i]);
+                glProg.setVar("blockU", block);
+                glProg.setVar("modelU", sY, rY);
+                glProg.drawBlocks(st[i]);
+            }
+            for (int i = 0; i < n; i++) {
+                raws[i] = readStats(st[i]);
+                release(owned, st[i]);
+                st[i] = null;
+            }
+        } finally {
+            for (GLTexture t : st) release(owned, t);
+        }
+        if (rawOut != null) rawOut[0] = raws[0];
+        final float[][] out = new float[n][];
+        com.particlesdevs.photoncamera.util.ParallelWork.forEach(n, i -> out[i] = LmcDenoiseTables.reduce(raws[i], counts[i], 0.8f));
+        return out;
+    }
+
+    /** Histogram of every 7th code of the effective-frame map (codes 1..255); returns the number of non-zero samples. */
+    static long effHistogram(ByteBuffer eff, int[] histogram) {
+        // Bulk reads in chunks of a multiple of 7 bytes, so every chunk starts on a sampled code: the samples of eff.get(i)
+        // for i = 0, 7, 14, ... (1.8 M buffer calls at 12 MP before).
+        final int capacity = eff.capacity();
+        final byte[] chunk = new byte[7 * 9362];
+        final ByteBuffer src = eff.duplicate();
+        long count = 0;
+        for (int start = 0; start < capacity; start += chunk.length) {
+            final int n = Math.min(chunk.length, capacity - start);
+            src.clear();
+            src.position(start);
+            src.get(chunk, 0, n);
+            for (int j = 0; j < n; j += 7) {
+                int v = chunk[j] & 255;
+                if (v > 0) { histogram[v]++; count++; }
+            }
+        }
+        return count;
     }
 
     /** Effective-frame map of the worker as a texture (codes, 0 = unknown); median code in effRef[0]. Null when absent. */
@@ -184,21 +241,69 @@ public final class LmcDenoise extends Node {
         if (eff == null || eff.capacity() != size.x * size.y) return null;
         eff.rewind();
         int[] histogram = new int[256];
-        long count = 0;
-        for (int i = 0; i < eff.capacity(); i += 7) {
-            int v = eff.get(i) & 255;
-            if (v > 0) { histogram[v]++; count++; }
-        }
+        long count = effHistogram(eff, histogram);
         if (count == 0) return null;
         long seen = 0;
         int median = 1;
         for (int v = 1; v < 256; v++) { seen += histogram[v]; if (seen * 2 >= count) { median = v; break; } }
         effRef[0] = median;
         eff.rewind();
-        android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT, 1);
-        GLTexture t = new GLTexture(size, new GLFormat(GLFormat.DataType.UNSIGNED_8, 1), eff, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        GLTexture t = effectiveFramesTexture(size, eff);
         owned.add(t);
         return t;
+    }
+
+    /**
+     * The effective-frame map texture (GL_R8UI) of {@link #loadEffectiveFrames} and NiceDenoise.
+     * <p>
+     * Its upload has always used GL_RED, which GL_R8UI does not accept (GL_INVALID_OPERATION, the "glTexSubImage2D glError
+     * 0x502" of every shot): the map kept the storage the driver handed out, zero in practice, so every code read "unknown"
+     * and the strength map was 1.0 everywhere. W1.1 (step 1) clears it to zero explicitly instead: the same map, now
+     * deterministic once textures are released earlier or reused (freed GPU memory must not leak into it). The real codes
+     * (GL_RED_INTEGER) would change the denoise and are an owner decision (plan W3.5). The old model of post_ab keeps the
+     * failing upload and logs what it left in the texture.
+     */
+    static GLTexture effectiveFramesTexture(Point size, ByteBuffer eff) {
+        android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT, 1);
+        final GLFormat format = new GLFormat(GLFormat.DataType.UNSIGNED_8, 1);
+        if (com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
+            GLTexture t = new GLTexture(size, format, eff, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            final long nonZero = countNonZero(t);
+            Log.i("NICE_PIPELINE", "EFFMAP legacy upload left " + nonZero + " non-zero of " + (long) size.x * size.y + " texels"
+                    + (nonZero == 0 ? " (all zero: the cleared map is the same)" : nonZero < 0 ? " (read-back failed)" : " (NOT all zero)"));
+            return t;
+        }
+        GLTexture t = new GLTexture(size, format, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        t.BufferLoad();
+        android.opengl.GLES30.glClearBufferuiv(android.opengl.GLES30.GL_COLOR, 0, new int[]{0, 0, 0, 0}, 0);
+        return t;
+    }
+
+    /** Non-zero texels of an R8UI texture (read back in bands as RGBA_INTEGER / UNSIGNED_INT); -1 when the read-back fails. */
+    private static long countNonZero(GLTexture t) {
+        final int w = t.mSize.x, h = t.mSize.y;
+        int[] oldRead = new int[1], framebuffer = new int[1];
+        android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_READ_FRAMEBUFFER_BINDING, oldRead, 0);
+        try {
+            android.opengl.GLES30.glGenFramebuffers(1, framebuffer, 0);
+            android.opengl.GLES30.glBindFramebuffer(android.opengl.GLES30.GL_READ_FRAMEBUFFER, framebuffer[0]);
+            android.opengl.GLES30.glFramebufferTexture2D(android.opengl.GLES30.GL_READ_FRAMEBUFFER, android.opengl.GLES30.GL_COLOR_ATTACHMENT0,
+                    android.opengl.GLES30.GL_TEXTURE_2D, t.mTextureID, 0);
+            final int rows = Math.max(1, Math.min(h, (4 << 20) / Math.max(1, w * 16)));
+            ByteBuffer data = ByteBuffer.allocateDirect(w * rows * 16).order(ByteOrder.nativeOrder());
+            long nonZero = 0;
+            for (int y = 0; y < h; y += rows) {
+                final int n = Math.min(rows, h - y);
+                data.clear();
+                android.opengl.GLES30.glReadPixels(0, y, w, n, android.opengl.GLES30.GL_RGBA_INTEGER, android.opengl.GLES30.GL_UNSIGNED_INT, data);
+                if (android.opengl.GLES30.glGetError() != android.opengl.GLES30.GL_NO_ERROR) return -1;
+                for (int i = 0; i < w * n; i++) if (data.getInt(i * 16) != 0) nonZero++;
+            }
+            return nonZero;
+        } finally {
+            android.opengl.GLES30.glBindFramebuffer(android.opengl.GLES30.GL_READ_FRAMEBUFFER, oldRead[0]);
+            if (framebuffer[0] != 0) android.opengl.GLES30.glDeleteFramebuffers(1, framebuffer, 0);
+        }
     }
 
     /** Set once {@link #process} took the pipeline's output texture (a failure after it cannot fall back to another pass). */
@@ -306,10 +411,20 @@ public final class LmcDenoise extends Node {
             // ---- measured noise per level and stride (luma pyramid: Y; chroma pyramid: Y, U, V)
             float[][] gL = new float[LmcDenoiseTables.LEVELS][], gC = new float[LmcDenoiseTables.LEVELS][];
             float[][] raw0 = new float[1][];
-            gL[0] = gC[0] = levelNoise(glProg, owned, x0, 16, sY, rY, raw0);
-            for (int L = 1; L < LmcDenoiseTables.LEVELS; L++) {
-                gL[L] = levelNoise(glProg, owned, Y[L], 16, sY, rY, null);
-                gC[L] = levelNoise(glProg, owned, XC[L], 16, sY, rY, null);
+            if (com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
+                gL[0] = gC[0] = levelNoise(glProg, owned, x0, 16, sY, rY, raw0);
+                for (int L = 1; L < LmcDenoiseTables.LEVELS; L++) {
+                    gL[L] = levelNoise(glProg, owned, Y[L], 16, sY, rY, null);
+                    gC[L] = levelNoise(glProg, owned, XC[L], 16, sY, rY, null);
+                }
+            } else {
+                // The same levels in the same order: x0, then Y[L], XC[L] for L = 1..3.
+                GLTexture[] levels = new GLTexture[2 * LmcDenoiseTables.LEVELS - 1];
+                levels[0] = x0;
+                for (int L = 1; L < LmcDenoiseTables.LEVELS; L++) { levels[2 * L - 1] = Y[L]; levels[2 * L] = XC[L]; }
+                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, raw0);
+                gL[0] = gC[0] = g[0];
+                for (int L = 1; L < LmcDenoiseTables.LEVELS; L++) { gL[L] = g[2 * L - 1]; gC[L] = g[2 * L]; }
             }
             for (int L = 1; L < LmcDenoiseTables.LEVELS; L++) release(owned, XC[L]);
             // Gains used by the filters: measured, else level 0 scaled by the kernel energy, else a white spectrum of ~4 frames.

@@ -166,6 +166,22 @@ public final class ArkLumaSharpen extends Node {
         return t;
     }
 
+    /** W1.6: the input the passes were issued on by {@link #runEarly}, null when they run in {@link #Run}. */
+    private GLTexture earlyInput;
+
+    /**
+     * W1.6: called by ArkStats right after its arkLow read-back, before the CPU Smart-HDR statistics. In the G_CLEAN domain
+     * (sharp_domain 1, the default) the passes use nothing of the AE (Ya = min(Y709, 1)), so they are issued now on the same
+     * input and run on the GPU while the CPU works; {@link #Run} then only passes the image on. False (nothing issued) in the
+     * ae domain, which needs the exposure.
+     */
+    boolean runEarly(PostPipeline pipeline, GLTexture input) {
+        if (Math.round(ArkTone.value("sharp_domain", 1f)) < 1 || pipeline.ark == null || input == null) return false;
+        issue(pipeline, input, true);
+        earlyInput = input;
+        return true;
+    }
+
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
@@ -173,12 +189,25 @@ public final class ArkLumaSharpen extends Node {
         WorkingTexture = input;
         glProg.closed = true;
         ArkTone.State st = pipeline.ark;
+        if (earlyInput != null) {
+            final boolean same = earlyInput == input;
+            earlyInput = null;
+            if (same) return;
+            // Not expected (ArkFusion passes the image on): the passes run again on this node's own input.
+            Log.w("NICE_PIPELINE", "ARK luma sharpen: input changed after the early passes, sharpening again");
+            if (st != null && st.lumaS != null) { st.lumaS.close(); st.lumaS = null; }
+        }
         if (st == null || st.ae == null) throw new IllegalStateException("ARK sharpen: no statistics (ArkStats did not run)");
+        issue(pipeline, input, false);
+    }
+
+    /** The passes of the ARK sharpening on input; the result goes to pipeline.ark.lumaS. */
+    private void issue(PostPipeline pipeline, GLTexture input, boolean early) {
+        ArkTone.State st = pipeline.ark;
         long started = System.currentTimeMillis();
         Point size = input.mSize;
-        float ae = st.ae.ae;
         boolean gClean = Math.round(ArkTone.value("sharp_domain", 1f)) >= 1;
-        float mul = gClean ? 1f : ae;
+        float mul = gClean ? 1f : st.ae.ae;
         float scaleSetting = ArkTone.value("sharp_scale", 0f);
         float s = scaleSetting > 0f ? Math.min(scaleSetting, 4f) : Math.max(1, Math.round(pipeline.mParameters.outputScale));
         int down = Math.max(1, (int) Math.floor(s + 1e-4f));
@@ -321,7 +350,8 @@ public final class ArkLumaSharpen extends Node {
         st.sharpMul = mul;
         Log.i("NICE_PIPELINE", "ARK luma sharpen grid=" + size.x + "x" + size.y + " scale=" + s + " domain=" + (gClean ? "G_CLEAN" : "ae")
                 + " mul=" + mul + " bil=" + (bil ? bilAmount * scaleComp(s, SCALE2_BIL) : 0f) + " gf=" + (gf ? gfLc + "@r" + gfBox + "/" + down : "off")
-                + " usm=" + (usm ? usmAmount + "@" + usmRadius * s : "off") + stages + " ms=" + (System.currentTimeMillis() - started));
+                + " usm=" + (usm ? usmAmount + "@" + usmRadius * s : "off") + stages + " ms=" + (System.currentTimeMillis() - started)
+                + (early ? " (issued before the AE)" : ""));
     }
 
     private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }

@@ -82,6 +82,14 @@ public class GLContext implements AutoCloseable {
         mProgram = new GLProg();
     }
 
+    /**
+     * Makes this context current on the calling thread again (W1.3: the deferred teardown after the JPEG encode must delete
+     * the textures of this context even if another one was made current in between).
+     */
+    public void makeCurrent() {
+        if (mDisplay != null && mContext != null) eglMakeCurrent(mDisplay, mSurface, mSurface, mContext);
+    }
+
     @Override
     public void close() {
         if (mDisplay == null) return;
