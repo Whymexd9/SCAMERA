@@ -74,7 +74,10 @@ public final class ZoomController {
     public static float maxZoom() {
         List<String> slots = lenses();
         if (slots.isEmpty()) return 4f;
-        return Math.min(30f, ModuleRegistry.zoom(slots.get(slots.size() - 1)) * 4f);
+        float top = ModuleRegistry.zoom(slots.get(slots.size() - 1));
+        // P41: the Xiaomi 17 Ultra tele goes to 400 mm (17.2×) like the stock dial
+        float xiaomi = com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.maxZoom(top);
+        return xiaomi > 0f ? xiaomi : Math.min(30f, top * 4f);
     }
 
     private static void ensureInitialized() {
