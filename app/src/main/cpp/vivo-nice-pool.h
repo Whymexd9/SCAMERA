@@ -77,7 +77,9 @@ public:
         };
         const int helpers=std::min(size(),(h+chunk-1)/chunk-1);
         if(helpers>0){
-            {std::lock_guard<std::mutex> l(lock);for(int i=0;i<helpers;++i)queue.emplace_front(run);}
+            // A helper that cannot be queued (no memory) means fewer helpers, never an exception here: the helpers already queued
+            // read `fn` only for a chunk they take, and the wait below outlasts every taken chunk.
+            try{std::lock_guard<std::mutex> l(lock);for(int i=0;i<helpers;++i)queue.emplace_front(run);}catch(const std::exception&){}
             wake.notify_all();
         }
         run();
