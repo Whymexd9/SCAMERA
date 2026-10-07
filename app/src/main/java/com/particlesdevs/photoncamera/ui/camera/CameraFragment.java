@@ -1170,6 +1170,24 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
     }
 
+    /**
+     * Back <-> front. The module last used on the other side is selected again (its zoom, profile and sensor mode): the flip
+     * used to keep only the Camera ID, and the module strip then picked the module of that camera nearest the front camera's
+     * 1x, so back0 "2x" (Quad mode 29 on the OPPO) came back as back4 "1x". Returns the Camera ID to open.
+     */
+    public String flip(String savedCameraID) {
+        String target = cycler(savedCameraID);
+        CameraLensData lens = mCameraLensDataMap.get(target);
+        String side = lens != null && lens.getFacing() == CameraCharacteristics.LENS_FACING_FRONT ? "front" : "back";
+        String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.lastOnSide(side, mCameraLensDataMap.keySet());
+        if (slot == null) return target;
+        com.particlesdevs.photoncamera.settings.ModuleRegistry.select(slot);
+        com.particlesdevs.photoncamera.control.ZoomController.onButton(slot);
+        String camera = com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
+        Log.d(TAG, "flip to " + side + ": module " + slot + " (camera " + camera + ")");
+        return camera;
+    }
+
     public String cycler(String savedCameraID) {
         if (Objects.requireNonNull(mCameraLensDataMap.get(savedCameraID)).getFacing() == CameraCharacteristics.LENS_FACING_BACK) {
             sActiveBackCamId = savedCameraID;

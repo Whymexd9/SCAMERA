@@ -105,10 +105,33 @@ public final class ModuleRegistry {
         if(slot.equals(active()))select(source);
         return true;
     }
+    /**
+     * Module to restore when the camera flips to {@code side} (back0 "2x" with its Quad mode, not the side's plain 1x): the
+     * module last used there while it is still a visible slot on an existing camera; null otherwise.
+     */
+    public static String lastOnSide(String side,java.util.Collection<String> cameraIds){
+        String slot=prefs().getString("module_last_"+side,null);
+        return ModuleChoice.flipTarget(slot,side,slot!=null&&visible(slot),slot==null?null:camera(slot),cameraIds);
+    }
+    /** The module standing for {@code cameraId} on {@code side}: plain (no forced sensor mode) and nearest 1x preferred. */
+    public static String moduleForCamera(String side,String cameraId){
+        List<String> slots=new ArrayList<>();Map<String,String> cameraOf=new HashMap<>();Set<String> shown=new HashSet<>();
+        Map<String,Float> zooms=new HashMap<>();Map<String,Integer> modes=new HashMap<>();
+        for(int i=0;i<8;i++){
+            String slot=side+i;if(!prefs().contains("module_auto_"+slot))continue;
+            slots.add(slot);cameraOf.put(slot,camera(slot));if(visible(slot))shown.add(slot);
+            zooms.put(slot,zoom(slot));modes.put(slot,sensorMode(slot));
+        }
+        return ModuleChoice.moduleFor(slots,side,cameraId,cameraOf,shown,zooms,modes);
+    }
     private static volatile String pendingSlot="";
     private static volatile long pendingAt;
     public static void select(String slot){
-        PreferenceKeys.profiles().activate(slot);prefs().edit().putString("module_active",slot).apply();
+        PreferenceKeys.profiles().activate(slot);
+        SharedPreferences.Editor e=prefs().edit().putString("module_active",slot);
+        // The module of each side is remembered, so flipping back to that side returns to it (and not to the side's 1x).
+        String last=ModuleChoice.lastKey(slot);if(last!=null)e.putString(last,slot);
+        e.apply();
         pendingSlot=slot;pendingAt=android.os.SystemClock.elapsedRealtime();
     }
     /**

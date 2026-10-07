@@ -944,6 +944,131 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (isCameraResumed && mCameraDevice == null && !mCameraOpening.get()) restartCamera();
         }, delay);
     }
+    /** Set when filling the characteristics failed (camera provider died during startup): refilled before the next open. */
+    private volatile boolean mCharacteristicsIncomplete;
+    /** Waits for the requested camera after a fallback to the main camera of its side (see {@link #awaitRequestedCamera}). */
+    private CameraManager.AvailabilityCallback mAwaitCallback;
+    private static final long AWAIT_REQUESTED_MS = 60_000;
+
+    /**
+     * Characteristics of the requested camera (Settings.mCameraID, "logical-physical" or a plain ID); logicalID / physicalID are
+     * set to the camera that will open. A camera missing from the list read at start is asked for directly first: the
+     * cached list can lack a hidden lens the camera service has. Without it, the main camera of the requested module's side
+     * opens in its place and the module strip shows that camera's module: the old fallback took the first entry of the map,
+     * so on the OPPO PHY110 a restart on the 2.8x tele (camera 4, list [1, 2, 3]) opened the front camera under the back
+     * "2.8x" label. Null when that side has no camera at all (a recovery is scheduled).
+     */
+    private CameraCharacteristics requestedCharacteristics() {
+        String curID = PhotonCamera.getSettings().mCameraID;
+        if (curID.contains("-")) {
+            logicalID = curID.split("-")[0];
+            physicalID = curID.split("-")[1];
+        } else {
+            logicalID = curID;
+            physicalID = curID;
+        }
+        Log.d(TAG, "ID:" + mCameraCharacteristicsMap.get(physicalID));
+        CameraCharacteristics chars = mCameraCharacteristicsMap.get(physicalID);
+        if (chars == null) chars = characteristicsOnDemand(physicalID);
+        if (chars != null) return chars;
+        String requestedSlot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+        int wanted = com.particlesdevs.photoncamera.settings.ModuleChoice.wantedFacing(requestedSlot, null);
+        String side = com.particlesdevs.photoncamera.settings.ModuleChoice.side(wanted);
+        Map<String, Integer> facing = new HashMap<>();
+        java.util.Set<String> auxiliary = new java.util.HashSet<>();
+        for (Map.Entry<String, CameraCharacteristics> e : mCameraCharacteristicsMap.entrySet()) {
+            CameraCharacteristics c = e.getValue();
+            if (c == null) continue;
+            Integer f = c.get(CameraCharacteristics.LENS_FACING);
+            if (f != null) facing.put(e.getKey(), f);
+            if (CameraManager2.isAuxiliarySensor(c)) auxiliary.add(e.getKey());
+        }
+        String fallback = com.particlesdevs.photoncamera.settings.ModuleChoice.fallbackCamera(facing, auxiliary, wanted);
+        if (fallback == null) {
+            Log.e(TAG, "No characteristics for physicalID=" + physicalID + " (mCameraID=" + curID + ", module " + requestedSlot
+                    + ") and no other " + side + " camera: not opened");
+            scheduleRecovery("no " + side + " camera with characteristics");
+            return null;
+        }
+        Log.e(TAG, "No characteristics for physicalID=" + physicalID + " (mCameraID=" + curID + ", module " + requestedSlot
+                + "). Falling back to the main " + side + " camera " + fallback + ".");
+        String module = com.particlesdevs.photoncamera.settings.ModuleRegistry.moduleForCamera(side, fallback);
+        if (module != null) {
+            // The strip, the label and the zoom follow the camera that really opens.
+            com.particlesdevs.photoncamera.settings.ModuleRegistry.select(module);
+            com.particlesdevs.photoncamera.control.ZoomController.onButton(module);
+        }
+        PreferenceKeys.setCameraID(fallback);
+        PhotonCamera.getSettings().mCameraID = fallback;
+        awaitRequestedCamera(curID, requestedSlot, fallback, module);
+        showToast(Lang.t("Камера " + logicalID + " недоступна, открыта основная камера " + fallback,
+                "Camera " + logicalID + " is not available, the main camera " + fallback + " is open"));
+        logicalID = fallback;
+        physicalID = fallback;
+        return mCameraCharacteristicsMap.get(fallback);
+    }
+
+    /** Asks the camera service for a camera the start-up list did not have; null when it does not know it either. */
+    private CameraCharacteristics characteristicsOnDemand(String id) {
+        try {
+            CameraCharacteristics c = mCameraManager.getCameraCharacteristics(id);
+            if (c != null) {
+                mCameraCharacteristicsMap.put(id, c);
+                Log.i(TAG, "characteristics of camera " + id + " fetched on demand");
+            }
+            return c;
+        } catch (CameraAccessException | IllegalArgumentException e) {
+            Log.w(TAG, "no characteristics for camera " + id + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * After a fallback: when the requested camera appears within {@link #AWAIT_REQUESTED_MS} (hidden lenses can show up later
+     * in the process) and the fallback is still what runs, its module is selected again and the camera restarts on it.
+     */
+    private void awaitRequestedCamera(String requestedId, String requestedSlot, String fallbackId, String fallbackModule) {
+        stopAwaitingRequestedCamera();
+        if (requestedSlot == null || com.particlesdevs.photoncamera.settings.ModuleChoice.side(requestedSlot) == null) return;
+        final String logical = requestedId.contains("-") ? requestedId.split("-")[0] : requestedId;
+        final String physical = requestedId.contains("-") ? requestedId.split("-")[1] : requestedId;
+        final long deadline = SystemClock.elapsedRealtime() + AWAIT_REQUESTED_MS;
+        final Handler main = new Handler(Looper.getMainLooper());
+        CameraManager.AvailabilityCallback callback = new CameraManager.AvailabilityCallback() {
+            @Override
+            public void onCameraAvailable(@NonNull String cameraId) {
+                if (mAwaitCallback != this || !(logical.equals(cameraId) || physical.equals(cameraId))) return;
+                boolean stillFallback = fallbackId.equals(PreferenceKeys.getCameraID()) && (fallbackModule == null
+                        || fallbackModule.equals(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
+                if (SystemClock.elapsedRealtime() > deadline || !stillFallback) { stopAwaitingRequestedCamera(); return; }
+                if (!isCameraResumed || characteristicsOnDemand(physical) == null) return; // a later report may still work
+                stopAwaitingRequestedCamera();
+                Log.i(TAG, "camera " + requestedId + " appeared: back to module " + requestedSlot);
+                com.particlesdevs.photoncamera.settings.ModuleRegistry.select(requestedSlot);
+                com.particlesdevs.photoncamera.control.ZoomController.onButton(requestedSlot);
+                PreferenceKeys.setCameraID(requestedId);
+                PhotonCamera.getSettings().mCameraID = requestedId;
+                restartCamera();
+            }
+        };
+        mAwaitCallback = callback;
+        try {
+            mCameraManager.registerAvailabilityCallback(callback, main);
+        } catch (RuntimeException e) {
+            mAwaitCallback = null;
+            return;
+        }
+        main.postDelayed(() -> { if (mAwaitCallback == callback) stopAwaitingRequestedCamera(); }, AWAIT_REQUESTED_MS);
+    }
+
+    private void stopAwaitingRequestedCamera() {
+        CameraManager.AvailabilityCallback callback = mAwaitCallback;
+        mAwaitCallback = null;
+        if (callback != null) {
+            try { mCameraManager.unregisterAvailabilityCallback(callback); } catch (RuntimeException ignored) {}
+        }
+    }
+
     /**
      * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a
      * {@link TextureView}.
@@ -962,35 +1087,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 return;
             }
             try {
-                String curID = PhotonCamera.getSettings().mCameraID;
-                if(curID.contains("-")){
-                    logicalID = curID.split("-")[0];
-                    physicalID = curID.split("-")[1];
-                } else {
-                    logicalID = curID;
-                    physicalID = curID;
-                }
-                
-                Log.d(TAG, "ID:" + mCameraCharacteristicsMap.get(physicalID));
                 // list available characteristics ids
                 for (String id : mCameraCharacteristicsMap.keySet()) {
                     Log.d(TAG, "Available camera ID: " + id);
                 }
-                CameraCharacteristics chars = mCameraCharacteristicsMap.get(physicalID);
-                if (chars == null) {
-                    Log.e(TAG, "No characteristics for physicalID=" + physicalID
-                            + " (mCameraID=" + PhotonCamera.getSettings().mCameraID + "). Falling back to first available.");
-                    if (!mCameraCharacteristicsMap.isEmpty()) {
-                        Map.Entry<String, CameraCharacteristics> first = mCameraCharacteristicsMap.entrySet().iterator().next();
-                        physicalID = first.getKey();
-                        logicalID = physicalID;
-                        PhotonCamera.getSettings().mCameraID = physicalID;
-                        chars = first.getValue();
-                    } else {
-                        showToast("No cameras available");
-                        return;
-                    }
-                }
+                CameraCharacteristics chars = requestedCharacteristics();
+                if (chars == null) return;
                 Size optimal = getPreviewOutputSize(getSafeDisplay(), chars,
                         PhotonCamera.getSettings().selectedMode);
                 openCamera(optimal.getWidth(), optimal.getHeight());
@@ -1043,21 +1145,24 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * {@link CaptureController#UpdateCameraCharacteristics}.
      */
     private void fillInCameraCharacteristics() {
-        try {
-            String[] cameraIds = mCameraManager2.getCameraIdList();
-            for (String cameraId : cameraIds) {
-                String physicalID = cameraId;
-                if(cameraId.contains("-")){
-                    physicalID = cameraId.split("-")[1];
-                }
-                mCameraCharacteristicsMap.put(physicalID, mCameraManager.getCameraCharacteristics(physicalID));
+        String failure = null;
+        for (String cameraId : mCameraManager2.getCameraIdList()) {
+            String physicalID = cameraId;
+            if(cameraId.contains("-")){
+                physicalID = cameraId.split("-")[1];
             }
-        } catch (CameraAccessException cameraAccessException) {
-            // Should not be possible to get here but anyway
-            cameraAccessException.printStackTrace();
-            showToast("Failed to fetch camera characteristics: " + cameraAccessException.getLocalizedMessage());
+            try {
+                mCameraCharacteristicsMap.put(physicalID, mCameraManager.getCameraCharacteristics(physicalID));
+            } catch (CameraAccessException | IllegalArgumentException e) {
+                // IllegalArgumentException "unknown device" when the camera provider dies during startup (OPPO PHY110,
+                // 2026-10-07: the app crashed in the CaptureController constructor). The other cameras are still read.
+                Log.e(TAG, "characteristics of camera " + physicalID + " unavailable: " + e.getMessage());
+                if (failure == null) failure = "camera " + physicalID + ": " + e.getMessage();
+            }
         }
-
+        mCharacteristicsIncomplete = failure != null;
+        // The usual bounded recovery (three restarts a minute); the restart reads the characteristics again.
+        if (failure != null) scheduleRecovery("camera characteristics unavailable (" + failure + ")");
     }
 
     public ManualModeConsole getManualModeConsole() {
@@ -1635,6 +1740,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // with a null handler, racing onOpened against reader replacement.
         if (mIsRecordingVideo) VideoEnd();
         closeCamera();
+        if (mCharacteristicsIncomplete) fillInCameraCharacteristics();
         mLiveRawRejected = false;
         com.particlesdevs.photoncamera.processing.PreviewLook.clear();
         cameraEventsListener.onCameraRestarted();
@@ -4800,9 +4906,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // The GL surface survived backgrounding (no onSurfaceCreated will
                 // fire on resume), so open the camera directly against the
                 // existing SurfaceTexture instead of waiting for a callback.
-                Log.d(TAG,"ID:"+mCameraCharacteristicsMap.get(physicalID));
-                Size optimal = getPreviewOutputSize(getSafeDisplay(),
-                        mCameraCharacteristicsMap.get(physicalID),
+                CameraCharacteristics chars = requestedCharacteristics();
+                if (chars == null) return;
+                Size optimal = getPreviewOutputSize(getSafeDisplay(), chars,
                         PhotonCamera.getSettings().selectedMode);
                 openCamera(optimal.getWidth(), optimal.getHeight());
             } else {
@@ -4812,8 +4918,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // the listener. Re-check so the camera is never left waiting for
                 // an event that already happened.
                 if (mTextureView.isAvailable()) {
-                    Size optimal = getPreviewOutputSize(getSafeDisplay(),
-                            mCameraCharacteristicsMap.get(physicalID),
+                    CameraCharacteristics chars = requestedCharacteristics();
+                    if (chars == null) return;
+                    Size optimal = getPreviewOutputSize(getSafeDisplay(), chars,
                             PhotonCamera.getSettings().selectedMode);
                     openCamera(optimal.getWidth(), optimal.getHeight());
                 }
