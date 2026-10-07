@@ -3816,6 +3816,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean shotHybridRoute=lmcHybridShot;
             // P35: the stream key of this shot (its stored colour block skips the detector in the processing).
             final String shotMosaicKey=com.particlesdevs.photoncamera.processing.MosaicStream.key();
+            final int shotDeclaredBlock=com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
             final int nativeBaseIndex=denoiseFrameCount/2;
             final TotalCaptureResult[] nativeBaseResult={hybridZsl?mNativeZslBase:null};
             // W1.9: the vendor-key scan of every bracket result (10-15 ms on the camera callback thread) only with diagnostics.
@@ -4098,7 +4100,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(shotTimeline);
                                         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("proc");
                                         try {
-                                            com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey);
+                                            com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey, shotDeclaredBlock);
                                             saver.runRaw(shotCharacteristics, shotResult, shotRequest,
                                                     shotShakiness, cameraRotation, shotExposures);
                                         } catch (Exception e) {
@@ -4111,7 +4113,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                         }
                                     });
                                 } else {
-                                    com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey);
+                                    com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey, shotDeclaredBlock);
                                     saver.runRaw(shotCharacteristics, shotResult, shotRequest,
                                             shotShakiness, cameraRotation, shotExposures);
                                 }

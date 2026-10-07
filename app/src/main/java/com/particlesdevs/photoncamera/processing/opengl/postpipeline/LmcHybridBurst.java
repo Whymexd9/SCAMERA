@@ -377,17 +377,20 @@ public final class LmcHybridBurst implements NiceTransport {
         return px <= SABRE_2X_MAX_INPUT && 2L * Math.max(w, h) <= gpuMaxSide && 48L * px <= Integer.MAX_VALUE;
     }
 
-    /** Worker memory of one more frame of a w x h stream (see {@link #STRIP_BYTES_PER_COLUMN}); a mosaic adds its worker copy. */
-    /** P35: block of the active module's declared ISZ sensor mode (5 Quad -> 2, 7 Tetra -> 4), else 0. */
+    /**
+     * P35: block of the active module's declared ISZ sensor mode (5 Quad -> 2, 7 Tetra -> 4), else 0. Only a fallback: a shot
+     * carries its own module's declared block from the shutter (MosaicBlockStore.setShotKey).
+     */
     private static int declaredSensorModeBlock() {
         try {
-            int mode = com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
-            return mode == 7 ? 4 : mode == 5 ? 2 : 0;
+            return com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
         } catch (RuntimeException e) {
             return 0;
         }
     }
 
+    /** Worker memory of one more frame of a w x h stream (see {@link #STRIP_BYTES_PER_COLUMN}); a mosaic adds its worker copy. */
     static double perFrameBytes(int w, int h, int mosaicBlock) {
         return perFrameBytes(w, h, mosaicBlock, false);
     }

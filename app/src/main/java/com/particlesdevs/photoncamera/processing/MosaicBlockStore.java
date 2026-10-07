@@ -83,7 +83,12 @@ public final class MosaicBlockStore {
     // ---- the app's instance -------------------------------------------------------------------------------------------
 
     private static volatile MosaicBlockStore instance;
-    private static volatile String shotKey = "";
+    /**
+     * The stream key and the declared block of the shot being processed, per processing thread: a shot queued behind
+     * another, or processed on another thread, never reads another shot's stream (or the module active at processing time).
+     */
+    private static final ThreadLocal<String> SHOT_KEY = ThreadLocal.withInitial(() -> "");
+    private static final ThreadLocal<Integer> SHOT_DECLARED = ThreadLocal.withInitial(() -> -1);
 
     /** The app's store (SharedPreferences "mosaic_blocks"; in memory when no context is available). */
     public static MosaicBlockStore get() {
@@ -119,22 +124,42 @@ public final class MosaicBlockStore {
     /** Tests: replace the app's store. */
     static void setInstance(MosaicBlockStore store) { instance = store; }
 
-    /** The stream key of the shot being processed (set on the processing thread before the shot's processing starts). */
-    public static void setShotKey(String key) { shotKey = key == null ? "" : key; }
-    public static String shotKey() { return shotKey; }
+    /**
+     * The stream key of the shot being processed and the colour block its module's sensor mode declares (2 / 4, 0 none, -1
+     * unknown), both taken at the shutter; set on the processing thread before the shot's processing starts.
+     */
+    public static void setShotKey(String key, int declaredBlock) {
+        SHOT_KEY.set(key == null ? "" : key);
+        SHOT_DECLARED.set(declaredBlock);
+    }
+    public static void setShotKey(String key) { setShotKey(key, -1); }
+    public static String shotKey() { return SHOT_KEY.get(); }
+
+    /** Block a module's ISZ sensor mode declares: 5 (Quad) -> 2, 7 (Tetra) -> 4, else 0. */
+    public static int declaredBlock(int sensorMode) {
+        return sensorMode == 7 ? 4 : sensorMode == 5 ? 2 : 0;
+    }
 
     /**
      * The block for the shot being processed without the detector: the stored block of its stream, else the block of a
-     * declared mosaic sensor mode ({@code declared} 2 / 4), else 0 (measure it).
+     * declared mosaic sensor mode, else 0 (measure it). The declared block is the shot's own (taken at the shutter); only
+     * when none was given {@code fallbackDeclared} is used. A declared Quad / Tetra mode never takes a stored 1 (that stream
+     * is a mosaic by the module's own request).
      */
-    public static int blockForShot(int declared) {
-        int s = get().stored(shotKey);
-        if (s != 0) return s;
-        return declared == 2 || declared == 4 ? declared : 0;
+    public static int blockForShot(int fallbackDeclared) {
+        int shotDeclared = SHOT_DECLARED.get();
+        int declared = shotDeclared >= 0 ? shotDeclared : fallbackDeclared;
+        return choose(get().stored(SHOT_KEY.get()), declared);
+    }
+
+    static int choose(int stored, int declared) {
+        boolean mosaicDeclared = declared == 2 || declared == 4;
+        if (stored > 1 || (stored == 1 && !mosaicDeclared)) return stored;
+        return mosaicDeclared ? declared : 0;
     }
 
     /** A detection made on the shot (no stored block): it seeds the store. */
     public static void observeShot(MosaicBlockDetector.Result r, String source) {
-        if (r != null) get().observe(shotKey, r.confident, r.block, source);
+        if (r != null) get().observe(SHOT_KEY.get(), r.confident, r.block, source);
     }
 }

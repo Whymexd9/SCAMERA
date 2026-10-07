@@ -93,6 +93,41 @@ public class MosaicBlockStoreTest {
     }
 
     @Test
+    public void declaredMosaicModeNeverTakesAStoredOne() {
+        MosaicBlockStore.setInstance(fresh());
+        MosaicBlockStore.get().observe(QUAD, true, 1, "flat scene");
+        MosaicBlockStore.setShotKey(QUAD, 2);
+        assertEquals("sensor mode 5 declares Quad: a stored 1 is not used", 2, MosaicBlockStore.blockForShot(0));
+        MosaicBlockStore.setShotKey(QUAD, 0);
+        assertEquals("plain module: the stored 1 skips the detector", 1, MosaicBlockStore.blockForShot(2));
+        assertEquals(4, MosaicBlockStore.choose(1, 4));
+        assertEquals(4, MosaicBlockStore.choose(4, 2));
+        assertEquals(0, MosaicBlockStore.choose(0, 0));
+    }
+
+    @Test
+    public void shotDeclaredBlockWinsOverTheFallback() {
+        MosaicBlockStore.setInstance(fresh());
+        MosaicBlockStore.setShotKey(QUAD, 0);
+        assertEquals("the shot's module declared nothing: the active module's block is not used", 0, MosaicBlockStore.blockForShot(2));
+        MosaicBlockStore.setShotKey(QUAD);
+        assertEquals("no declared block given: the fallback", 2, MosaicBlockStore.blockForShot(2));
+        assertEquals(2, MosaicBlockStore.declaredBlock(5));
+        assertEquals(4, MosaicBlockStore.declaredBlock(7));
+        assertEquals(0, MosaicBlockStore.declaredBlock(29));
+    }
+
+    @Test
+    public void storedOneIsCorrectedByThreeConfidentAnswers() {
+        MosaicBlockStore s = fresh();
+        s.observe(QUAD, true, 1, "first shot");
+        s.observe(QUAD, true, 2, "vf");
+        s.observe(QUAD, false, 1, "vf dark");   // unconfident: no vote either way
+        s.observe(QUAD, true, 2, "vf");
+        assertEquals(2, s.observe(QUAD, true, 2, "vf"));
+    }
+
+    @Test
     public void viewfinderSessionStartsFromTheStoredBlock() {
         MosaicBlockStore.setInstance(fresh());
         MosaicBlockStore.get().observe(QUAD, true, 2, "earlier session");
