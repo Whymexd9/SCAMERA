@@ -258,10 +258,11 @@ public final class LmcDenoise extends Node {
      * <p>
      * Its upload has always used GL_RED, which GL_R8UI does not accept (GL_INVALID_OPERATION, the "glTexSubImage2D glError
      * 0x502" of every shot): the map kept the storage the driver handed out, zero in practice, so every code read "unknown"
-     * and the strength map was 1.0 everywhere. W1.1 (step 1) clears it to zero explicitly instead: the same map, now
-     * deterministic once textures are released earlier or reused (freed GPU memory must not leak into it). The real codes
-     * (GL_RED_INTEGER) would change the denoise and are an owner decision (plan W3.5). The old model of post_ab keeps the
-     * failing upload and logs what it left in the texture.
+     * and the strength map was 1.0 everywhere. W1.1 (step 1) still makes that upload and, when the driver rejects it, clears
+     * the map to zero explicitly: the same map, now deterministic once textures are released earlier or reused (freed GPU
+     * memory must not leak into it). A driver that takes the upload kept the real codes before and keeps them now, so the
+     * map is the old one on every driver. The real codes everywhere (GL_RED_INTEGER) would change the denoise and are an
+     * owner decision (plan W3.5). The old model of post_ab keeps the failing upload and logs what it left in the texture.
      */
     static GLTexture effectiveFramesTexture(Point size, ByteBuffer eff) {
         android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT, 1);
@@ -277,10 +278,29 @@ public final class LmcDenoise extends Node {
             return t;
         }
         GLTexture t = new GLTexture(size, format, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
-        t.BufferLoad();
-        android.opengl.GLES30.glClearBufferuiv(android.opengl.GLES30.GL_COLOR, 0, new int[]{0, 0, 0, 0}, 0);
+        // The upload of the old model (the constructor's own glTexSubImage2D), with its outcome read here: errors left by
+        // earlier calls are dropped first, so only this upload decides.
+        for (int i = 0; i < 8 && android.opengl.GLES30.glGetError() != android.opengl.GLES30.GL_NO_ERROR; i++) {
+            // drain
+        }
+        t.loadData(eff);
+        final int uploadError = android.opengl.GLES30.glGetError();
+        if (uploadError != android.opengl.GLES30.GL_NO_ERROR) {
+            t.BufferLoad();
+            android.opengl.GLES30.glClearBufferuiv(android.opengl.GLES30.GL_COLOR, 0, new int[]{0, 0, 0, 0}, 0);
+        }
+        if (!effUploadLogged) {
+            effUploadLogged = true;
+            Log.i("NICE_PIPELINE", uploadError != android.opengl.GLES30.GL_NO_ERROR
+                    ? "EFFMAP upload (GL_RED into GL_R8UI) rejected by the driver (0x" + Integer.toHexString(uploadError)
+                    + ") as before: map cleared to zero (every code unknown)"
+                    : "EFFMAP upload (GL_RED into GL_R8UI) taken by the driver: its codes stay in the map as before");
+        }
         return t;
     }
+
+    /** The outcome of the effective-frame map upload is logged once per process (the driver does not change). */
+    private static volatile boolean effUploadLogged;
 
     /** Non-zero texels of an R8UI texture (read back in bands as RGBA_INTEGER / UNSIGNED_INT); -1 when the read-back fails. */
     private static long countNonZero(GLTexture t) {
