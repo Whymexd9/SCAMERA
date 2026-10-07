@@ -399,7 +399,7 @@ public class HybridSettingsTest {
                 .putString("pref_lmc_hybrid_sharp_mode","rt").putInt("pref_lmc_hybrid_defaults_rev",2).commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("ark",prefs.getString("pref_lmc_hybrid_sharp_mode",""));
-        assertEquals(3,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0)); // revisions 6 / 7 mark at once (no mosaic key stored)
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid")
                 .putString("pref_lmc_hybrid_sharp_mode","scam").commit();
@@ -425,14 +425,14 @@ public class HybridSettingsTest {
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals(5f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_shasta_frames","")),0f);
         assertEquals(3f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_shasta_ev","")),0f);
-        assertEquals(4,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0)); // revisions 6 / 7 mark at once (no mosaic key stored)
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         // revision 5: a stored former default cdm 0.07 becomes 0.2; a chosen value stays
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",4)
                 .putString("pref_lmc_hybrid_cdm","0.07").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals(0.2f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_cdm","")),1e-6f);
-        assertEquals(5,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0)); // revisions 6 / 7 mark at once (no mosaic key stored)
         prefs.edit().putString("pref_lmc_hybrid_cdm","0.1").putInt("pref_lmc_hybrid_defaults_rev",4).commit();
         SettingsMigration.migrateLmcHybrid(prefs,false);
         assertEquals("0.1",prefs.getString("pref_lmc_hybrid_cdm",""));
@@ -443,7 +443,7 @@ public class HybridSettingsTest {
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
         assertEquals(0.7f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale","")),1e-6f);
-        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0)); // revision 7 marks at once (no "Tetra path" stored)
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         prefs.edit().putString("pref_lmc_hybrid_mosaic_path","0").commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
@@ -461,12 +461,25 @@ public class HybridSettingsTest {
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
         assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale",""));
-        // a run that moves an older revision's value keeps its own marker; the next run marks 6 and 7
+        // a run that moves an older revision's value marks 6 and 7 as well (their keys are not stored), so the split and kernel
+        // scale 1 chosen before the next run (the screen first stored "1" / 0.7) stay
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",4)
                 .putString("pref_lmc_hybrid_cdm","0.07").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
-        assertEquals(5,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertEquals(0.2f,Float.parseFloat(prefs.getString("pref_lmc_hybrid_cdm","")),1e-6f);
+        assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_path","0").putString("pref_lmc_hybrid_mosaic_kernel_scale","1").commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_kernel_scale",""));
+        // a run that copied legacy keys: revisions 6 and 7 mark on the next run, which sees the copied values
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",5)
+                .putString("pref_vivo_nice_hybrid_mosaic_path","0").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        assertEquals(5,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
         assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
     }
 
@@ -505,12 +518,24 @@ public class HybridSettingsTest {
         prefs.edit().putString("pref_lmc_hybrid_mosaic_tetra","0").commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
         assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_tetra",""));
-        // a run that moves an older revision's value keeps its own marker; revision 7 marks on the next run
+        // a run that moves an older revision's value marks revision 7 as well when the key is not stored, so the split chosen
+        // before the next run (the screen first stored "1") stays
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",5)
                 .putString("pref_lmc_hybrid_mosaic_path","0").commit();
         assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
-        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_path",""));
+        assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        prefs.edit().putString("pref_lmc_hybrid_mosaic_tetra","0").commit();
         assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_tetra",""));
+        // a run that copied legacy keys (here the "Tetra path" itself): revision 7 marks on the next run, which moves the copied "0"
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_lmc_hybrid_defaults_rev",6)
+                .putString("pref_vivo_nice_hybrid_mosaic_tetra","0").commit();
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_lmc_hybrid_mosaic_tetra",""));
+        assertEquals(6,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
+        assertTrue(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_mosaic_tetra",""));
         assertEquals(7,prefs.getInt("pref_lmc_hybrid_defaults_rev",0));
     }
 
