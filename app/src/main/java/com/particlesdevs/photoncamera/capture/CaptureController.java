@@ -837,7 +837,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private static final java.util.Set<String> sGoodCameras = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private static volatile String sLastGoodCamera;
     /** The RAW target format this session replaced with YUV (no RAW stream on this camera); restored for the next camera. */
-    private static int sDemotedFrom = 0;
+    private static volatile int sDemotedFrom = 0;
     private volatile boolean mReverting;
 
     /** RAW sizes of the target format the camera lists, largest first (plain stream configuration only). */
@@ -859,9 +859,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final String id = physicalID;
         final int stage = sRawFallback.getOrDefault(id, 0);
         if (stage >= 2) return false;
+        // A camera whose session configured in this process keeps its streams: a later failure is transient (the old path), not a
+        // reason to give up its RAW size or RAW stream for the rest of the process.
+        if (sGoodCameras.contains(PhotonCamera.getSettings().mCameraID)) return false;
         int next = stage + 1;
         Size alt = null;
-        if (next == 1 && mImageReaderRaw != null && isRawFormat(mTargetFormat)) {
+        // Not with the maximum-resolution pixel mode (Quad / remosaic): a size of the default map would switch the sensor mode.
+        if (next == 1 && mImageReaderRaw != null && isRawFormat(mTargetFormat) && !useMaximumResolutionKey) {
             final long current = (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight();
             CameraCharacteristics c = mCameraCharacteristicsMap.get(id);
             StreamConfigurationMap map = c == null ? null : c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
@@ -1056,6 +1060,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public static void setTargetFormat(int targetFormat) {
         mTargetFormat = targetFormat;
+        sDemotedFrom = 0; // the user's choice: no session fallback restores a RAW target over it
     }
     /** RAW_SENSOR (16-bit container), RAW10 or RAW12 — every one is unpacked to uint16 on copy. */
     public static boolean isRawFormat(int format) {
