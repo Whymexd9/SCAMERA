@@ -167,6 +167,7 @@ public class ImageSaver {
         public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData) {
             exifData.COMPRESSION = ParseExif.COMPRESSION_JPEG;
             boolean encoded = false;
+            final long encodeStart = System.nanoTime();
             try {
                 // jpegli 4:4:4 first; if it fails, the file is rewritten from the start by Android's encoder (4:2:0).
                 if (JpegliEncoder.available()) {
@@ -194,9 +195,12 @@ public class ImageSaver {
                 try { Files.deleteIfExists(fileToSave); } catch (IOException ignored) {}
                 return false;
             }
+            final long exifStart = System.nanoTime();
+            Log.d(TAG, "JPEG encode ms=" + (exifStart - encodeStart) / 1000000); // P33
             try {
                 ExifInterface inter = ParseExif.setAllAttributes(fileToSave.toFile(), exifData);
                 if (inter != null) inter.saveAttributes();
+                Log.d(TAG, "EXIF rewrite ms=" + (System.nanoTime() - exifStart) / 1000000); // P33 W2.6
             } catch (IOException | RuntimeException e) {
                 // The image itself is complete; missing EXIF must not report the shot as lost.
                 Log.e(TAG, "EXIF write failed: " + Log.getStackTraceString(e));
