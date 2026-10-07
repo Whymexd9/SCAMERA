@@ -268,9 +268,12 @@ public final class LmcDenoise extends Node {
         final GLFormat format = new GLFormat(GLFormat.DataType.UNSIGNED_8, 1);
         if (com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
             GLTexture t = new GLTexture(size, format, eff, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            final long checkStart = System.nanoTime();
             final long nonZero = countNonZero(t);
+            // The check's read-back is part of the old run's time in the POST AB line: its own ms are logged here.
             Log.i("NICE_PIPELINE", "EFFMAP legacy upload left " + nonZero + " non-zero of " + (long) size.x * size.y + " texels"
-                    + (nonZero == 0 ? " (all zero: the cleared map is the same)" : nonZero < 0 ? " (read-back failed)" : " (NOT all zero)"));
+                    + (nonZero == 0 ? " (all zero: the cleared map is the same)" : nonZero < 0 ? " (read-back failed)" : " (NOT all zero)")
+                    + " check ms=" + (System.nanoTime() - checkStart) / 1_000_000);
             return t;
         }
         GLTexture t = new GLTexture(size, format, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
