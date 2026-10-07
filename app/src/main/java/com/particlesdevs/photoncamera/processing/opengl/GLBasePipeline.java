@@ -269,6 +269,9 @@ public class GLBasePipeline implements AutoCloseable {
             endTimeMeasure(node.Name);
             if (i != Nodes.size() - 1) {
                 drawProgramTexture(node);
+                // post_sync 1: this draw stays outside every node time, as with the old glFinish in drawBlocks; without it
+                // the GPU time of a single-pass node's draw landed in the next node's time.
+                if (syncNodes) android.opengl.GLES30.glFinish();
             }
             if (i != Nodes.size()-1) com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.gpu(node.Name,node.WorkingTexture);
             try {
