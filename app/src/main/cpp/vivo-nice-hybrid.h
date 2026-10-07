@@ -3780,7 +3780,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(!large&&!std::getenv("SCAM_NO_EARLY_GPU")){
         const bool rimPass=tune.rimRatio!=0,la=tune.localAlign>0&&n>1,chromaPass=tune.chromaDiff>0.f,nat=native!=nullptr;
         const bool bentoPass=tune.bento>0&&anyUltrashort&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
-        earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat]{
+        // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -3798,7 +3799,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
-        });
+        });}catch(const std::exception&){}
     }
     // W1.2: the CRE groups' guides (the prefetch drops what the groups did not take after the last group, or on an exception)
     struct PrefetchDrop { bool on=false; ~PrefetchDrop(){if(on&&niceAlignmentPrefetch())niceAlignmentPrefetch()(nullptr,{});} } prefetchDrop;
@@ -4393,10 +4394,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         std::thread thread;double ms=0;
         void start(std::unique_ptr<HybridGpu> gpu){
             join();gpu->release();
-            thread=std::thread([this,g=std::move(gpu)]() mutable {
+            // A thread the system refuses must not fail the merge that already succeeded (gpuMerge(true) would merge again
+            // without the local offsets): the context is then destroyed right here, as before P31.
+            try{thread=std::thread([this,g=std::move(gpu)]() mutable {
                 const auto t0=std::chrono::steady_clock::now();g.reset();
                 ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();
-            });
+            });}catch(const std::exception&){}
         }
         void join(){if(thread.joinable())thread.join();}
         ~GpuTeardown(){join();}
