@@ -327,8 +327,9 @@ public final class LmcDenoise extends Node {
      * darkNoiseU): with the fixed floor alone, the colour noise of a neutral black at high ISO or with few frames
      * reached the floor and stayed as coloured blotches (host LmcDenoise port, OPPO ISO 6400 night scene and a dark chart:
      * neutral blotch +10..22 % against the former fade, the more the noisier). The floor becomes max(lo, k sigma) and
-     * the ramp ends at max(hi, 2 k sigma), sigma^2 = G_C0 (sY mean + rY) the measured colour noise of level 0 in the
-     * luma model; k = 0.35 (the residual colour noise is ~0.18 sigma: the floor sits at ~2 x the noise left). At the
+     * the ramp ends at max(hi, 2 k sigma), sigma^2 = GC[0][1] (sY mean + rY): the measured noise of the level-0 input
+     * before the denoise (the stride-2 difference gain of Y at level 0 on the single-frame luma model, the term the chroma
+     * filters scale by UVS), in linear white-balanced RGB variance like darkChroma; k = 0.35 (the residual colour noise is ~0.18 sigma: the floor sits at ~2 x the noise left). At the
      * noise of the 37-frame ISO 6400 shot of 2026-10-07 (measured G_C0 0.034-0.046) the fixed floor stays the larger
      * one (nothing changes); at 5 / 10 x that noise variance the blotches come back to within 3 % of the former fade's
      * while 92 % / 79 % of the dark scene colour is kept (former fade 56 % / 53 %, fixed floor alone 95 % / 86 % with
