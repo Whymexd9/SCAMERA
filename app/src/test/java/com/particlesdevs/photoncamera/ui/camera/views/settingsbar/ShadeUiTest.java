@@ -62,6 +62,8 @@ public class ShadeUiTest {
 
     @Before
     public void setUp() {
+        // SCAM HDR and its settings exist only on the Snapdragon 8 Elite; these tests cover both routes.
+        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
         controller = Robolectric.buildActivity(AppCompatActivity.class);
         activity = controller.get();
         activity.setTheme(R.style.Theme_Photon_SettingsActivity);

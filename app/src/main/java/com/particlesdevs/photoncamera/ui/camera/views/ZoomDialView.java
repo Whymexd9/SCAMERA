@@ -38,6 +38,11 @@ public class ZoomDialView extends View {
     private final android.graphics.RectF card = new android.graphics.RectF();
     private final List<Float> marks = new ArrayList<>();
     private final List<String> markLabels = new ArrayList<>();
+    /** P41: ratios the drag stops at for a moment (the stock Xiaomi dial's 3.2× / 4.3× / 8.6× / 17.2×); empty elsewhere. */
+    private final List<Float> detents = new ArrayList<>();
+    private final float[] held = new float[1];
+    /** Drag (octaves) a detent holds before the scale moves on. */
+    static final float DETENT_HOLD_OCTAVES = 0.06f;
     private float min = 1f, max = 4f, zoom = 1f;
     private float lastX;
     private boolean dragging;
@@ -79,6 +84,33 @@ public class ZoomDialView extends View {
         invalidate();
     }
 
+    public void setDetents(List<Float> ratios) {
+        detents.clear();
+        if (ratios != null) detents.addAll(ratios);
+    }
+
+    /**
+     * P41: one drag step from {@code zoom} towards {@code next} with detents: a step that crosses one stops on it, the drag then
+     * spends {@code holdOctaves} there before the scale moves on. {@code held[0]} carries the spent drag between steps.
+     */
+    static float detentStep(float zoom, float next, List<Float> detents, float[] held, float holdOctaves) {
+        if (detents == null || detents.isEmpty() || next == zoom) return next;
+        for (float d : detents) {
+            if (Math.abs(zoom - d) <= 1e-4f * d) {
+                held[0] += (float) Math.abs(Math.log(next / zoom) / Math.log(2));
+                if (held[0] < holdOctaves) return zoom;
+                held[0] = 0f;
+                return next;
+            }
+        }
+        float stop = Float.NaN;
+        for (float d : detents)
+            if ((zoom < d && next > d) || (zoom > d && next < d))
+                if (Float.isNaN(stop) || Math.abs(d - zoom) < Math.abs(stop - zoom)) stop = d;
+        held[0] = 0f;
+        return Float.isNaN(stop) ? next : stop;
+    }
+
     public void setZoom(float zoom) {
         this.zoom = Math.max(min, Math.min(max, zoom));
         invalidate();
@@ -103,6 +135,7 @@ public class ZoomDialView extends View {
         float octaves = -dx / pxPerOctave();
         float next = (float) (zoom * Math.pow(2, octaves));
         next = Math.max(min, Math.min(max, next));
+        next = detentStep(zoom, next, detents, held, DETENT_HOLD_OCTAVES);
         if (next == zoom) return;
         zoom = next;
         invalidate();

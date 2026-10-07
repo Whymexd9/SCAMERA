@@ -44,7 +44,8 @@ public final class ModuleRegistry {
         List<String> out=new ArrayList<>();for(int i=0;i<8;i++)out.add(side+i);return out;
     }
     public static String camera(String slot){String manual=prefs().getString("module_id_"+slot,"").trim();return manual.isEmpty()?prefs().getString("module_auto_"+slot,slot):manual;}
-    public static String label(String slot){String custom=prefs().getString("module_name_"+slot,"").trim();return custom.isEmpty()?prefs().getString("module_label_"+slot,Lang.t("Камера","Camera")):custom;}
+    /** P41: on the Xiaomi 17 Ultra with smooth zoom the tele's automatic label reads as the stock camera's («3.2×» = 75 mm). */
+    public static String label(String slot){String custom=prefs().getString("module_name_"+slot,"").trim();return custom.isEmpty()?com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stockLabel(prefs().getString("module_label_"+slot,Lang.t("Камера","Camera"))):custom;}
     public static boolean visible(String slot){return prefs().getBoolean("module_visible_"+slot,false);}
     /** Zoom ratio of the module button; defaults to the ratio in its automatic label ("0.6×", "3×"). */
     public static float zoom(String slot){
@@ -53,7 +54,7 @@ public final class ModuleRegistry {
         java.util.regex.Pattern number=java.util.regex.Pattern.compile("[0-9]*\\.?[0-9]+");
         for(String text:new String[]{label(slot),prefs().getString("module_label_"+slot,"")}){
             java.util.regex.Matcher m=number.matcher(text.replace(',','.'));
-            if(m.find())try{return Math.max(.1f,Float.parseFloat(m.group()));}catch(NumberFormatException ignored){}
+            if(m.find())try{return com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stockRatio(Math.max(.1f,Float.parseFloat(m.group())));}catch(NumberFormatException ignored){}
         }
         return 1f;
     }

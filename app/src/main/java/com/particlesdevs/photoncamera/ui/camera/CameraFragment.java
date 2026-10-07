@@ -369,6 +369,15 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             ratios.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(slot));
             labels.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot));
         }
+        // P41: the stock dial's stops past the Xiaomi 17 Ultra tele (4.3×, 8.6×, 17.2×) as marks with a light detent
+        java.util.List<Float> stops = com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stops(ratios);
+        java.util.List<Float> detents = new java.util.ArrayList<>(stops);
+        if (!stops.isEmpty()) detents.addAll(ratios);
+        for (float stop : stops) {
+            ratios.add(stop);
+            labels.add(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stopLabel(stop));
+        }
+        zoomDial.setDetents(detents);
         zoomDial.configure(com.particlesdevs.photoncamera.control.ZoomController.minZoom(),
                 com.particlesdevs.photoncamera.control.ZoomController.maxZoom(), ratios, labels);
         zoomDial.setZoom(com.particlesdevs.photoncamera.control.ZoomController.zoom());

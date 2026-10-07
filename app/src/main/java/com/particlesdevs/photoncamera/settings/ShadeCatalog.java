@@ -383,10 +383,10 @@ public final class ShadeCatalog {
         walk(tree, new ArrayList<>(), null, true);
     }
 
-    /** The visibility rules of SettingsActivity: no SCAM HDR on MediaTek, the Xiaomi 17 Ultra zoom row only there. */
+    /** The visibility rules of SettingsActivity: SCAM HDR only on the 8 Elite, the Xiaomi 17 Ultra zoom row only there. */
     private static void applyRuntimeRules(PreferenceScreen tree) {
         Preference scamHdr = tree.findPreference("vivo_hdr_screen");
-        if (scamHdr != null && PreferenceKeys.isMediaTekSoc()) scamHdr.setVisible(false);
+        if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
         Preference xiaomiZoom = tree.findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
         if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
     }
@@ -683,14 +683,14 @@ public final class ShadeCatalog {
 
     /**
      * Why the setting does nothing now (the tile is dimmed and a tap shows this), or null when it is available: no flash
-     * on this lens, the MediaTek route lock, a nice_dev.txt override, the other route (SettingsAvailability with the
+     * on this lens, the hybrid-only route lock (no 8 Elite), a nice_dev.txt override, the other route (SettingsAvailability with the
      * effective route), a switch it depends on.
      */
     @Nullable
     public String unavailable(Entry e) {
         if (FLASH.equals(e.key)) return flashAvailable ? null : res.getString(R.string.shade_reason_no_flash);
         if (ROUTE.equals(e.key)) {
-            if (PreferenceKeys.isMediaTekSoc()) return res.getString(R.string.shade_reason_mediatek);
+            if (!PreferenceKeys.isScamHdrSupported()) return res.getString(R.string.shade_reason_scamhdr_soc);
             if (PreferenceKeys.niceDevOverrides("hybrid")) return res.getString(R.string.shade_reason_nice_dev);
             return null;
         }

@@ -26,6 +26,8 @@ public class HybridSettingsTest {
     private SharedPreferences prefs;
     private MockedStatic<PhotonCamera> camera;
     @Before public void setUp(){
+        // SCAM HDR and its settings exist only on the Snapdragon 8 Elite; these tests cover both routes.
+        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
         context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
         manager=new SettingsManager(context); prefs=manager.getDefaultPreferences();prefs.edit().clear().commit();
         camera=mockStatic(PhotonCamera.class);
@@ -52,6 +54,19 @@ public class HybridSettingsTest {
         }
     }
 
+    @Test public void scamHdrOnlyOnTheSnapdragon8Elite() {
+        manager.set("default_scope", PreferenceKeys.ROUTE_KEY, LmcHybridKeys.ROUTE_SCAM_HDR);
+        assertTrue(PreferenceKeys.isScamHdrSupported());
+        assertTrue(PreferenceKeys.isScamHdrRoute());
+        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750-AC");
+        assertTrue("8 Elite variants carry a suffix", PreferenceKeys.isScamHdrSupported());
+        for (String other : new String[]{"SM8650", "SM8850", "MT6991", ""}) {
+            org.robolectric.shadows.ShadowBuild.setSystemOnChipModel(other);
+            assertFalse(other, PreferenceKeys.isScamHdrSupported());
+            assertFalse("a stored SCAM HDR route falls back to the hybrid on " + other, PreferenceKeys.isScamHdrRoute());
+            assertEquals(LmcHybridKeys.ROUTE_HYBRID, PreferenceKeys.mergeRoute());
+        }
+    }
     @Test public void hybridSectionOwnsAllHybridKeysAndScamHdrHasNone() {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("lmc_hybrid_screen");

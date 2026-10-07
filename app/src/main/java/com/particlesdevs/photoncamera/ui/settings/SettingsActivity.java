@@ -179,17 +179,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
             ListPreference route = findPreference(PreferenceKeys.ROUTE_KEY);
-            if (route != null && PreferenceKeys.isMediaTekSoc()) {
-                // No Qualcomm NPU: SCAM HDR cannot run, the hybrid is the only route (PreferenceKeys.mergeRoute).
+            if (route != null && !PreferenceKeys.isScamHdrSupported()) {
+                // SCAM HDR needs the 8 Elite NPU: the hybrid is the only route here (PreferenceKeys.mergeRoute).
                 route.setEntries(new CharSequence[]{"Hybrid"});
                 route.setEntryValues(new CharSequence[]{"hybrid"});
                 route.setValue("hybrid");
                 route.setEnabled(false);
-                route.setSummary(Lang.t(getContext(),"MediaTek: только Hybrid (SCAM HDR и нейроремозаик работают на NPU Snapdragon)","MediaTek: Hybrid only (SCAM HDR and the neural remosaic run on the Snapdragon NPU)"));
+                route.setSummary(Lang.t(getContext(),"Только Hybrid: SCAM HDR и нейроремозаик работают только на Snapdragon 8 Elite","Hybrid only: SCAM HDR and the neural remosaic run on the Snapdragon 8 Elite only"));
             }
-            // MediaTek: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
+            // No 8 Elite: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
             Preference scamHdr = findPreference("vivo_hdr_screen");
-            if (scamHdr != null && PreferenceKeys.isMediaTekSoc()) scamHdr.setVisible(false);
+            if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
             Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
