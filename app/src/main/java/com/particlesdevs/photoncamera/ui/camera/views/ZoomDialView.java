@@ -24,6 +24,9 @@ import java.util.Locale;
 public class ZoomDialView extends View {
     public interface Listener { void onZoom(float zoom); }
 
+    /** Told when the ruler appears and when it has faded out (P32: the shade handle it may reach steps aside meanwhile). */
+    public interface ShownListener { void onShown(boolean shown); }
+
     private static final long HIDE_DELAY_MS = 1600;
     private final Paint tick = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -39,7 +42,11 @@ public class ZoomDialView extends View {
     private float lastX;
     private boolean dragging;
     private Listener listener;
-    private final Runnable hide = () -> { if (!dragging) animate().alpha(0f).setDuration(220).withEndAction(() -> setVisibility(INVISIBLE)).start(); };
+    private ShownListener shownListener;
+    private final Runnable hide = () -> { if (!dragging) animate().alpha(0f).setDuration(220).withEndAction(() -> {
+        setVisibility(INVISIBLE);
+        if (shownListener != null) shownListener.onShown(false);
+    }).start(); };
 
     public ZoomDialView(Context context) { this(context, null); }
 
@@ -58,6 +65,8 @@ public class ZoomDialView extends View {
     }
 
     public void setListener(Listener listener) { this.listener = listener; }
+
+    public void setShownListener(ShownListener listener) { this.shownListener = listener; }
 
     /** Range and labelled marks (module ratios); called whenever the module list may have changed. */
     public void configure(float min, float max, List<Float> ratios, List<String> labels) {
@@ -78,7 +87,10 @@ public class ZoomDialView extends View {
     /** Show the ruler and schedule fading it out. */
     public void poke() {
         removeCallbacks(hide);
-        if (getVisibility() != VISIBLE) setVisibility(VISIBLE);
+        if (getVisibility() != VISIBLE) {
+            setVisibility(VISIBLE);
+            if (shownListener != null) shownListener.onShown(true);
+        }
         animate().cancel();
         setAlpha(1f);
         postDelayed(hide, HIDE_DELAY_MS);

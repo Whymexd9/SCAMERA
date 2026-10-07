@@ -324,12 +324,14 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     /**
      * P32: the bottom controls sit 10 % of the bottom bar's height higher, and the shade's HIDDEN handle starts at the
-     * viewfinder's bottom edge instead of covering it.
+     * viewfinder's bottom edge instead of covering it; the manual palette and the zoom ruler keep clear of the handle
+     * (after initZoomDial).
      */
     private void initBottomChrome() {
         com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.attach(cameraFragmentBinding.layoutBottombar.getRoot(),
                 cameraFragmentBinding.layoutBottombar.bottomButtons.getRoot(), cameraFragmentBinding.layoutBottombar.auxButtonsContainer,
-                cameraFragmentBinding.settingsSheetHandleSlot, cameraFragmentBinding.layoutViewfinder.texture);
+                cameraFragmentBinding.settingsSheetHandleSlot, cameraFragmentBinding.layoutViewfinder.texture, zoomDial,
+                cameraFragmentBinding.manualMode);
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
