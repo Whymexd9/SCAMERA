@@ -4055,7 +4055,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // The validation masks are needed only when the first one can be applied: not started when its base has no mask.
         const BentoBase* shared=bentoAhead.valid()?&bentoAhead.get():nullptr;
         auto poolMask=[&b,&tune,&bentoAhead](const HybridFrame& fr,const BackwardHomography& h,int mode){
-            // the task holds the base itself (a validation mask nobody waits for may outlive this block)
+            // the task holds the base itself (a validation mask still running when an exception leaves this block outlives it)
             return [&b,&tune,base=bentoAhead,raw=fr.raw,exposure=fr.exposure,h,mode]{
                 Burst one=b;one.raw[1]=raw;one.exposure[1]=exposure;
                 HybridTuning t2=tune;if(mode)t2.bento=mode;
@@ -4138,6 +4138,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" frames="+std::to_string(usFrames.size())+" chroma sigma="+std::to_string(tune.bentoChromaSigma));
         // the mask before the check and the first frame's validity were for the validation only (bentoValids holds its copy)
         std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);
+        // P31: a validation mask nobody took (the first mask was not applied) ends here, as the std::async futures made it end
+        // before: it does not run on into the local alignment and the merge (all cores, ~50 MB at 12 MP while it is built).
+        for(auto& m:otherMasks)if(m.valid())m.wait();
     } else if(us>=0)report("HYBRID BENTO: disabled by tuning");
     bentoAhead={}; // P31: the shared base is not held through the merge (a task still running keeps its own reference)
     // Split-half diagnostics: odd or even normal donors only, no base, no Bento, no long frames (the base noise would be common
