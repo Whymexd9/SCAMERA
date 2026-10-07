@@ -392,6 +392,7 @@ public final class SettingsMigration {
             }
             if (touched) {
                 e.putInt(DEFAULTS_REV, 6);
+                revisionStored = true;
                 changed = true;
             } else if (!revisionStored && written.isEmpty()) {
                 // Neither key stored yet (they had no rows before P34): the rows store today's defaults ("1", 0.7) when the screen
@@ -399,6 +400,24 @@ public final class SettingsMigration {
                 // Mark the revision now; a run that copied legacy keys or stored an older revision marks it on the next run (which
                 // sees those values). The marker alone is not reported as a change.
                 e.putInt(DEFAULTS_REV, 6);
+                markOnly = true;
+            }
+        }
+        // Defaults revision 7 (7 October 2026, P35): Tetra streams take the native mosaic merge as well (T1 on the fast merge: on the
+        // vivo X200 Ultra +2..+5 dB detail, a quarter of the false colour, 46 % less flat noise at device noise and less time than
+        // the split's 8 frames with 17). The "Tetra path" row stored "0" (the split) as its XML default since P29; a stored "0" is
+        // that former default and moves to "1", a chosen T2 ("2") stays. As in revision 6, the marker is set when the key is not
+        // stored yet (the row stores today's "1" when the screen is first opened), so a "0" chosen after this run stays; a run that
+        // copied legacy keys or stored an older revision marks it on the next run.
+        if (revision < 7) {
+            Object tetra = values.get(LmcHybridKeys.PREFIX + "mosaic_tetra");
+            if (tetra != null) {
+                if (isNumber(tetra, 0f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_tetra", tetra instanceof String ? "1" : (Object) 1f);
+                e.putInt(DEFAULTS_REV, 7);
+                revisionStored = true;
+                changed = true;
+            } else if (!revisionStored && written.isEmpty()) {
+                e.putInt(DEFAULTS_REV, 7);
                 markOnly = true;
             }
         }

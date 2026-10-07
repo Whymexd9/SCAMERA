@@ -946,12 +946,13 @@ public class PreferenceKeys {
             // edges of the sub-frame merge (worker default 0.6), shared motion of a frame's sub-frames (worker default 1)
             {"mosaicFrames", "mosaic_frames"}, {"mosaicBlock", "mosaic_block"},
             {"mosaicEdgeScale", "mosaic_edge_scale"}, {"mosaicShare", "mosaic_share"},
-            // P29 native mosaic merge (research/p29): mosaicPath 1 = native (worker default since P34; Tetra stays on the split with
-            // mosaicTetra 0), 0 = the sub-frame split above; the keys below act only with 1 (worker defaults: window 3 full, kernel
+            // P29 native mosaic merge (research/p29): mosaicPath 1 = native (worker default since P34; Tetra too since P35, mosaicTetra
+            // 1 = T1, window 2 x mosaicWindow sensor px), 0 = the sub-frame split above; the keys below act only with 1 (worker defaults: window 3 full, kernel
             // scale 0.7, edge scale 0.6, flat-area kernel x2.4, eigenvalue clamp 2, ks 1 / 0.85, no fill, fill support 0.25; at the
             // 6.1 night key kernel scale 1 / edge scale 0.6, dev keys only; the full-window switch is written below).
             // The XML default of every row is stored when the screen is first opened (HybridSettingsTest): the stored former defaults
-            // of a P29 build ("0" = the split, kernel scale 1) move to the native merge in SettingsMigration's defaults revision 6.
+            // of a P29 build ("0" = the split, kernel scale 1) move to the native merge in SettingsMigration's defaults revision 6, the
+            // stored former "Tetra path" default "0" to T1 in revision 7 (P35).
             {"mosaicPath", "mosaic_path"}, {"mosaicWindow", "mosaic_window"}, {"mosaicKernelScale", "mosaic_kernel_scale"},
             {"mosaicNativeEdgeScale", "mosaic_native_edge_scale"}, {"mosaicKernelG", "mosaic_kernel_g"},
             {"mosaicKernelRB", "mosaic_kernel_rb"}, {"mosaicChromaFill", "mosaic_chroma_fill"},

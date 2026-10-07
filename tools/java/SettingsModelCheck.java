@@ -93,12 +93,12 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_rawca_red","-9",0),-4);
         if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_blue","4.5")==null)throw new AssertionError("RAW CA blue beyond 4 px accepted");
         if(SettingsNumericRules.error("pref_lmc_hybrid_rawca_passes","0")==null)throw new AssertionError("RAW CA without a pass accepted");
-        // P29 / P34 native mosaic merge (the default for Quad): its rows need “Native mosaic”, the fill threshold the ArkCam fill; the
-        // split's edge kernel stays live while Tetra stays on the split; bounds of the worker keys
+        // P29 / P34 / P35 native mosaic merge (the default for Quad and Tetra): its rows need “Native mosaic”, the fill threshold the
+        // ArkCam fill; the split's edge kernel is live only when Quad or Tetra (“Tetra path” 0) merges on the split; worker key bounds
         Map<String,Object> mo=new HashMap<>();
         String[] nativeRows={"window","window_full","kernel_scale","native_edge_scale","kernel_g","kernel_rb","chroma_fill","tetra",
                 "native_flat_scale","native_clamp"};
-        active(mo,"pref_lmc_hybrid_mosaic_path");active(mo,"pref_lmc_hybrid_mosaic_frames");active(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        active(mo,"pref_lmc_hybrid_mosaic_path");active(mo,"pref_lmc_hybrid_mosaic_frames");inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");
         for(String k:nativeRows)active(mo,"pref_lmc_hybrid_mosaic_"+k);
         inactive(mo,"pref_lmc_hybrid_mosaic_fill_support");
         mo.put("pref_lmc_hybrid_mosaic_path","0");
@@ -106,7 +106,9 @@ public class SettingsModelCheck {
         inactive(mo,"pref_lmc_hybrid_mosaic_fill_support");active(mo,"pref_lmc_hybrid_mosaic_edge_scale");active(mo,"pref_lmc_hybrid_mosaic_frames");
         mo.put("pref_lmc_hybrid_mosaic_path","1");
         for(String k:nativeRows)active(mo,"pref_lmc_hybrid_mosaic_"+k);
-        active(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        mo.put("pref_lmc_hybrid_mosaic_tetra","0");active(mo,"pref_lmc_hybrid_mosaic_edge_scale");
+        mo.put("pref_lmc_hybrid_mosaic_tetra","2");inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");
         mo.put("pref_lmc_hybrid_mosaic_tetra","1");inactive(mo,"pref_lmc_hybrid_mosaic_edge_scale");
         mo.put("pref_lmc_hybrid_mosaic_chroma_fill","1");active(mo,"pref_lmc_hybrid_mosaic_fill_support");
         mo.put("pref_merge_route","scamhdr");inactive(mo,"pref_lmc_hybrid_mosaic_path");inactive(mo,"pref_lmc_hybrid_mosaic_window");
@@ -115,7 +117,7 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_window","2.6",3),3);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_kernel_rb","0.1",0.85),0.5);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_edge_scale","2",0.4),1);
-        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","0",2),0); // 0 = Tetra on the split
+        eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","0",2),0); // 0 = Tetra on the split (1 = T1, the default)
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","3",0),2);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_tetra","-1",2),0);
         eq(SettingsNumericRules.value("pref_lmc_hybrid_mosaic_native_flat_scale","9",2.4),4);
