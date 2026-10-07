@@ -449,26 +449,6 @@ public class PreferenceKeys {
 
 
 
-    private static Boolean mediaTekSoc;
-    /**
-     * MediaTek SoC. The vivo networks (SCAM HDR / NICE, the neural remosaic) are QNN contexts for the Qualcomm Hexagon
-     * NPU: on MediaTek the LMC hybrid is the route, and SCAM HDR, its mosaic modes and the neural remosaic stay off
-     * whatever the stored settings say (the hybrid itself runs on Mali; user, 2026-10-05).
-     */
-    public static boolean isMediaTekSoc() {
-        if (mediaTekSoc == null) {
-            boolean mtk = false;
-            if (android.os.Build.VERSION.SDK_INT >= 31) {
-                String maker = android.os.Build.SOC_MANUFACTURER;
-                mtk = maker != null && maker.toLowerCase(java.util.Locale.ROOT).contains("mediatek");
-            }
-            String hardware = android.os.Build.HARDWARE == null ? "" : android.os.Build.HARDWARE.toLowerCase(java.util.Locale.ROOT);
-            String board = android.os.Build.BOARD == null ? "" : android.os.Build.BOARD.toLowerCase(java.util.Locale.ROOT);
-            mtk |= hardware.contains("mediatek") || hardware.matches("mt\\d{4}.*") || board.matches("mt\\d{4}.*");
-            mediaTekSoc = mtk;
-        }
-        return mediaTekSoc;
-    }
 
 
 
@@ -686,14 +666,22 @@ public class PreferenceKeys {
     }
 
     /**
+     * SCAM HDR can run here: its NICE network is a Hexagon v79 context, so only on the Snapdragon 8 Elite (SM8750). Every
+     * other phone is hybrid-only, whatever the stored route says (owner, 2026-10-07).
+     */
+    public static boolean isScamHdrSupported() {
+        return LmcHybridKeys.vivoNetSoc();
+    }
+
+    /**
      * The merge route (pref_merge_route): "hybrid" (LMC hybrid, the default on every phone) or "scamhdr" (the vivo NICE
-     * network). MediaTek has no Qualcomm NPU: always the hybrid there (see {@link #isMediaTekSoc()}). nice_dev.txt
-     * "hybrid 1/0" picks the route for A/B tests.
+     * network), the latter only where {@link #isScamHdrSupported()}. nice_dev.txt "hybrid 1/0" picks the route for A/B
+     * tests on such a phone.
      */
     public static String mergeRoute() {
+        if (!isScamHdrSupported()) return LmcHybridKeys.ROUTE_HYBRID;
         Float override = niceDevValue("hybrid");
-        if (override != null) return override > 0f ? LmcHybridKeys.ROUTE_HYBRID : isMediaTekSoc() ? LmcHybridKeys.ROUTE_HYBRID : LmcHybridKeys.ROUTE_SCAM_HDR;
-        if (isMediaTekSoc()) return LmcHybridKeys.ROUTE_HYBRID;
+        if (override != null) return override > 0f ? LmcHybridKeys.ROUTE_HYBRID : LmcHybridKeys.ROUTE_SCAM_HDR;
         String route = preferenceKeys.settingsManager.getString("default_scope", LmcHybridKeys.ROUTE, LmcHybridKeys.ROUTE_HYBRID);
         return LmcHybridKeys.ROUTE_SCAM_HDR.equals(route) ? LmcHybridKeys.ROUTE_SCAM_HDR : LmcHybridKeys.ROUTE_HYBRID;
     }
@@ -962,6 +950,9 @@ public class PreferenceKeys {
             {"mosaicFillSupport", "mosaic_fill_support"}, {"mosaicTetra", "mosaic_tetra"},
             {"mosaicNativeFlatScale", "mosaic_native_flat_scale"}, {"mosaicNativeClamp", "mosaic_native_clamp"},
             {"mosaicNativeNightKernelScale", "mosaic_native_night_kernel_scale"}, {"mosaicNativeNightEdgeScale", "mosaic_native_night_edge_scale"},
+            // Tetra's own night point (worker defaults, dev keys only): kernel / edge scale, multiplier on the flat-area kernel
+            {"mosaicTetraNightKernelScale", "mosaic_tetra_night_kernel_scale"}, {"mosaicTetraNightEdgeScale", "mosaic_tetra_night_edge_scale"},
+            {"mosaicTetraNightFlatScale", "mosaic_tetra_night_flat_scale"},
             // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
             // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},

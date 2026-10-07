@@ -421,9 +421,9 @@ public class SettingsBarLayout extends LinearLayout {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         texts.addView(title);
         TextView summary = new TextView(c);
-        // No SCAM HDR on MediaTek (its settings screen is hidden there).
-        summary.setText(com.particlesdevs.photoncamera.settings.PreferenceKeys.isMediaTekSoc()
-                ? R.string.shade_all_settings_summary_mtk : R.string.shade_all_settings_summary);
+        // SCAM HDR only on the 8 Elite (its settings screen is hidden elsewhere).
+        summary.setText(!com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamHdrSupported()
+                ? R.string.shade_all_settings_summary_hybrid_only : R.string.shade_all_settings_summary);
         summary.setTextColor(ShadeStyle.MUTED);
         summary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         texts.addView(summary);

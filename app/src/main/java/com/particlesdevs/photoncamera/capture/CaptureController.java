@@ -494,6 +494,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mLiveMetadata.image(img.getTimestamp(), img);
                     return;
                 }
+                if (!passModeBarrier(img)) { img.close(); return; }
                 watchRawPayload(img);
                 observeMosaic(img);
                 synchronized (mZslBufferLock) {
@@ -758,6 +759,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
+                if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
+                        && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true)))
+                    onZoomChanged();
                 mStabTrace.record(request, result);
                 maybeRunPendingRearm(session, request, result);
                 if(PreferenceKeys.isVivoNiceEnabled() && PreferenceKeys.useStockBracketPlanner() && isCurrentPreviewSession(session)) {
@@ -1532,14 +1536,31 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // P17: the Xiaomi 17 Ultra tele zooms optically (75-100 mm) and by ISZ (150-200 mm) over vendor keys
         if (builder != null && mCameraCharacteristics != null) {
             try {
+                // P41: a shot request takes the preview's keys as they are (it never toggles the sensor mode itself)
+                if (builder != mPreviewRequestBuilder && XiaomiTeleZoom.applyLast(builder, physicalID)) {
+                    com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(XiaomiTeleZoom.last().residual);
+                    return;
+                }
                 boolean wasIsz = XiaomiTeleZoom.isz();
+                final float moduleZoom = com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
+                final float zoom = com.particlesdevs.photoncamera.control.ZoomController.zoom();
+                boolean wasActive = XiaomiTeleZoom.active();
                 XiaomiTeleZoom.Plan plan = XiaomiTeleZoom.apply(builder, mCameraCharacteristics,
                         PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(XiaomiTeleZoom.PREF, true),
-                        com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()),
-                        com.particlesdevs.photoncamera.control.ZoomController.zoom(), physicalID);
+                        moduleZoom, zoom, physicalID, PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true),
+                        PreferenceKeys.niceDevSwitch("xiaomi_crop_mode", false));
                 if (plan != null) {
                     com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(plan.residual);
-                    if (plan.isz != wasIsz) onSensorModeChangedInSession(plan.isz);
+                    // P41: the first request of a session already carries its mode; only a change inside the session re-measures
+                    if (plan.isz != wasIsz && (wasActive || plan.isz)) onSensorModeChangedInSession(plan.isz);
+                    // a toggle held back by the debounce happens once it expires, also when the slider stopped
+                    Handler handler = mBackgroundHandler;
+                    if (builder == mPreviewRequestBuilder && XiaomiTeleZoom.togglePending(moduleZoom, zoom) && handler != null) {
+                        // one retry at a time, and only for this session (not after a module switch or a closed camera)
+                        mXiaomiToggleGeneration = mSessionGeneration.get();
+                        handler.removeCallbacks(mXiaomiToggleRetry);
+                        handler.postDelayed(mXiaomiToggleRetry, XiaomiTeleZoom.TOGGLE_MS);
+                    }
                     return;
                 }
             } catch (RuntimeException e) {
@@ -1568,19 +1589,74 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /** P41: the deferred ISZ toggle of the Xiaomi tele; dropped when the session it was posted for is gone. */
+    private volatile int mXiaomiToggleGeneration = -1;
+    private final Runnable mXiaomiToggleRetry = () -> {
+        if (isCameraResumed && mXiaomiToggleGeneration == mSessionGeneration.get() && XiaomiTeleZoom.active()) onZoomChanged();
+    };
+
+    /** P41: the result that carries the tele's own focal length (its physical result for a physical stream of a logical camera). */
+    private CaptureResult xiaomiLensResult(TotalCaptureResult result) {
+        if (Build.VERSION.SDK_INT >= 28 && !Objects.equals(physicalID, logicalID)) {
+            try {
+                CaptureResult physical = result.getPhysicalCameraResults().get(physicalID);
+                if (physical != null) return physical;
+            } catch (RuntimeException ignored) {
+                // no physical results: the logical one
+            }
+        }
+        return result;
+    }
+
     /**
      * The stream changed its sensor mode inside the session (Xiaomi ISZ): the buffered ZSL frames belong to the other mode and
      * are dropped as on a module switch, and the colour block of the stream is measured again (ISZ may deliver a Quad mosaic).
      */
     private void onSensorModeChangedInSession(boolean isz) {
         clearZslPreviewFrames();
-        com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mosaicStreamKey() + "|isz=" + isz);
-        if (mMosaicPreview && com.particlesdevs.photoncamera.processing.MosaicStream.block() <= 1) {
+        // P41: the frames already in flight still come from the old mode (the 17U log measured the old mode's block for the
+        // new one and stored it). Until a frame of the new mode arrives, RAW frames neither enter the ZSL ring nor the
+        // colour-block measurement; the measurement of the new mode starts with that frame.
+        mModeBarrierKey = mosaicStreamKey() + (isz ? "|isz" : "");
+        mModeBarrierFrames = 0;
+        mModeBarrierMatching = 0;
+        mModeBarrier = true;
+        // the new mode's key at once (a shot meanwhile finds its stored block); no frame is measured before the barrier opens
+        com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mModeBarrierKey : "off");
+        // P41: the stock camera's ISZ preview is the ISP's; the developed RAW viewfinder is not used for the Xiaomi tele
+        if (mMosaicPreview && (XiaomiTeleZoom.ispPreview() || com.particlesdevs.photoncamera.processing.MosaicStream.block() <= 1)) {
             mMosaicPreview = false;
             LiveRawFrame.setMosaicPreview(false);
             if (!mLiveRawSession) LiveRawFrame.setEnabled(false);
         }
-        Log.i(TAG, "sensor mode changed in session (ISZ " + (isz ? "on" : "off") + "): ZSL ring dropped, colour block measured again");
+        Log.i(TAG, "sensor mode changed in session (ISZ " + (isz ? "on" : "off") + "): ZSL ring dropped, waiting for the first frame of the new mode");
+    }
+
+    /** P41: RAW frames after an in-session sensor mode change are dropped until one of the new mode arrives. */
+    private volatile boolean mModeBarrier;
+    private volatile String mModeBarrierKey = "";
+    private int mModeBarrierFrames, mModeBarrierMatching;
+
+    /** True when the RAW frame may be used (no barrier, or the first frame of the new mode releases it). */
+    private boolean passModeBarrier(Image img) {
+        return passModeBarrier(img, null);
+    }
+
+    /** {@code matched}: the frame's own result when the caller has it (live RAW matcher). */
+    private boolean passModeBarrier(Image img, TotalCaptureResult matched) {
+        if (!mModeBarrier) return true;
+        TotalCaptureResult r = matched;
+        if (r == null) synchronized (mZslBufferLock) { r = mHexZslResults.get(img.getTimestamp()); }
+        // an image whose result has not arrived yet is newer than the latest completed result: that one stands for it
+        CaptureResult latest = mPreviewCaptureResult;
+        if (r == null && latest instanceof TotalCaptureResult) r = (TotalCaptureResult) latest;
+        mModeBarrierFrames++;
+        if (XiaomiTeleZoom.requestMatches(r)) mModeBarrierMatching++;
+        if (!XiaomiTeleZoom.frameReady(r, mModeBarrierFrames, mModeBarrierMatching)) return false;
+        mModeBarrier = false;
+        Log.i(TAG, "first frame of the new sensor mode after " + mModeBarrierFrames + " frames"
+                + (r == null ? " (no result)" : " (request mode " + XiaomiTeleZoom.requestMode(r) + ", reported " + XiaomiTeleZoom.resultMode(r) + ")"));
+        return true;
     }
 
     /** One zoom update waits at a time: the slider sends many, the request is rebuilt at most once per pending update. */
@@ -2270,7 +2346,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     && isRawFormat(mTargetFormat) && com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1;
             if (mMosaicPreview) LiveRawFrame.setEnabled(true);
             LiveRawFrame.setMosaicPreview(mMosaicPreview);
+            mModeBarrier = false;
+            XiaomiTeleZoom.startSession();
             setCaptureRequestBuilder();
+            if (mMosaicPreview && XiaomiTeleZoom.ispPreview()) {
+                // P41: the switch owns the tele's sensor mode (a module's tunable current_mode is overridden): ISP preview
+                mMosaicPreview = false;
+                LiveRawFrame.setMosaicPreview(false);
+                if (!mLiveRawSession) LiveRawFrame.setEnabled(false);
+            }
 
             // Here, we create a CameraCaptureSession for camera preview.
             List<Surface> surfaces = configureSurfaces(isBurstSession);
@@ -2319,6 +2403,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             applyAeMeteringRegions(mPreviewRequestBuilder);
                             Camera2ApiAutoFix.applyPrev(mPreviewRequestBuilder);
                             VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
+                            XiaomiTeleZoom.applyLast(mPreviewRequestBuilder, physicalID);
                             if (nicePreview) {
                                 try {
                                     // Detector controls only: VCF2 JPEG stream usage and
@@ -3160,7 +3245,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture || mNiceRingFrozen) return;
             watchRawPayload(img);
             publishLiveRawFrame(img, result);
-            if (isZslMode()) synchronized (mZslBufferLock) {
+            // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
+            if (isZslMode() && passModeBarrier(img, result)) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
                 mZslRingBuffer.addLast(img);
                 retained = true;
@@ -3213,7 +3299,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
                         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(samples, img.getWidth(), img.getHeight(),
                                 sampleStride, black, white, 32));
-                if (block > 1 && !mMosaicPreview && !mLiveRawSession) {
+                if (block > 1 && !mMosaicPreview && !mLiveRawSession && !XiaomiTeleZoom.ispPreview()) {
                     mMosaicPreview = true;
                     LiveRawFrame.setEnabled(true);
                     LiveRawFrame.setMosaicPreview(true);
@@ -3797,6 +3883,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 applyAeMeteringRegions(captureBuilder);
             }
             VendorTagUtils.builderSessionApply(captureBuilder, true, useMaximumResolutionKey, physicalID);
+            XiaomiTeleZoom.applyLast(captureBuilder, physicalID);
             try {
                 captureBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
             } catch (Exception e) {
