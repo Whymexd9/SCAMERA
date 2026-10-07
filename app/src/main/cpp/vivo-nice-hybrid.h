@@ -2635,6 +2635,8 @@ public:
         std::vector<float> laMaxY;                      // per frame: largest |dy| of the field (rows uploaded beyond the homography)
         // P33 W2.1: the field arrives in rows while the merge runs (laField / laMotion unused); laMaxY then holds a bound
         HybridLaStream* laStream=nullptr;
+        // P33 W2.2: called on the merge thread after each strip's readback with the output rows [0, rows) of out complete
+        std::function<void(std::vector<float>& out,int rows)> rowsDone;
         // P29: the raw mosaic behind these (binned) frames; null = every other merge. nativeFrames: its frames in merge order.
         const HybridMosaicNative* native=nullptr;
         std::vector<const uint16_t*> nativeFrames;
@@ -3282,8 +3284,41 @@ public:
                 glUniform4i(loc(markProgram,"mFlagsU"),ry0,ry1,stripMode,0);
                 const GLint frameIdx=loc(markProgram,"frameIdx");
                 int maxRows=1;for(int f=0;f<frames;++f)maxRows=std::max(maxRows,rows[f]);
+                if(stripMode==1){
+                    // P33 W2.2: cell clip only (no outlier sites): the rows of the 32-row blocks that hold a clipped sample, and of
+                    // their neighbour blocks (a canonical cell may straddle two blocks). Everywhere else the pass writes the words
+                    // back unchanged (fresh uploads: flag bits 0, no clipped cell), so it is not dispatched there.
+                    const GLint chunkLoc=loc(markProgram,"chunkU");
+                    const int chunk=chunkOf(128);
+                    const auto markStarted=std::chrono::steady_clock::now();
+                    auto clipNear=[&](int f,int bk){
+                        for(int d=-1;d<=1;++d){const int bb=bk+d;if(bb>=0&&bb<blocks&&clipBlock[size_t(f)*blocks+bb])return true;}
+                        return false;
+                    };
+                    for(int f=0;f<frames;++f){
+                        glUniform1i(frameIdx,f);
+                        int runStart=-1;
+                        const int firstBlock=row0[f]/kBlock,lastBlock=(row0[f]+rows[f]-1)/kBlock;
+                        for(int bk=firstBlock;bk<=lastBlock+1;++bk){
+                            const bool need=bk<=lastBlock&&clipNear(f,bk);
+                            const int r0=std::clamp(bk*kBlock-row0[f],0,rows[f]);
+                            if(need&&runStart<0)runStart=r0;
+                            if(!need&&runStart>=0){
+                                for(int r=runStart;r<r0;r+=chunk){
+                                    glUniform1i(chunkLoc,r);
+                                    glDispatchCompute(GLuint((w2+7)/8),GLuint((std::min(chunk,r0-r)+7)/8),1);
+                                }
+                                runStart=-1;
+                            }
+                        }
+                    }
+                    glFlush();
+                    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                    if(profile){glFinish();passMs[7]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-markStarted).count();}
+                } else {
                 glUniform1i(frameIdx,0);
                 dispatchRows(markProgram,w2,maxRows,frames,chunkOf(128),7);
+                }
                 check("mark");
             }
             if(nat&&natStripMode){ // P29: the same flags on the native sites (kHybNatMean / kHybNatFlags / kHybNatMark)
@@ -3416,10 +3451,14 @@ public:
             check("merge");
             GLsync fence=glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0);
             glFlush();
-            readStrip(pending);                      // the previous strip, while the GPU runs this one
+            {const int doneRows=pending.active?pending.oy0+pending.rows2:0;
+             readStrip(pending);                     // the previous strip, while the GPU runs this one
+             if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
             pending.active=true;pending.bank=bank;pending.oy0=oy0;pending.rows2=rows2;pending.fence=fence;
         }
-        readStrip(pending);
+        {const int doneRows=pending.active?pending.oy0+pending.rows2:0;
+         readStrip(pending);
+         if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
         if(stripsShrunk&&trace)trace("HYBRID GPU: "+std::to_string(stripsShrunk)+" of "+std::to_string(stripIndex)+" strips shrunk to fit the storage block / memory budget (smallest "
             +std::to_string(smallestStrip)+" cells)");
         std::vector<GLuint> sums(zeros.size());
@@ -4328,46 +4367,60 @@ inline HybridCa hybridRawCa(const HybridInput& in){
     ca.ok=all;
     return ca;
 }
-inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const HybridCa& ca){
-    // Bands of 512 rows, top to bottom. A band reads the original R / B of its rows +- margin: the rows above it come from the
-    // copy kept before the previous band wrote them, the rest from the image (not written yet). Only R and B are held (no copy
-    // of the whole RGB: 600 MB on the 2x grid).
-    const float g=float(grid);
-    const int margin=int(std::ceil(4.f*g))+2,band=512;
-    std::vector<float> rx(w),ry(h);
-    for(int X=0;X<w;++X)rx[X]=(0.5f*((X+0.5f)/g-0.5f)-ca.cx)*ca.invHalf;
-    for(int Y=0;Y<h;++Y)ry[Y]=(0.5f*((Y+0.5f)/g-0.5f)-ca.cy)*ca.invHalf;
-    std::vector<float> buf,saved;int savedFrom=0;
-    for(int y0=0;y0<h;y0+=band){
-        const int y1=std::min(h,y0+band),b0=std::max(0,y0-margin),b1=std::min(h,y1+margin);
-        buf.resize(size_t(b1-b0)*w*2);
-        mergeRowBands(b1-b0,[&](int a0,int a1){for(int y=b0+a0;y<b0+a1;++y){
-            float* d=buf.data()+size_t(y-b0)*w*2;
-            if(y<y0){const float* sv=saved.data()+size_t(y-savedFrom)*w*2;std::copy(sv,sv+size_t(w)*2,d);continue;}
-            const float* r=rgb.data()+size_t(y)*w*3;
-            for(int X=0;X<w;++X){d[2*X]=r[3*X];d[2*X+1]=r[3*X+2];}
-        }});
-        mergeRowBands(y1-y0,[&](int a0,int a1){
-            for(int Y=y0+a0;Y<y0+a1;++Y){
-                float* o=rgb.data()+size_t(Y)*w*3;
-                const float yy=ry[Y];
-                for(int X=0;X<w;++X){
-                    const float xx=rx[X],r2=xx*xx+yy*yy;
-                    for(int ch=0;ch<2;++ch){
-                        const float k=ca.k1[ch]+ca.k2[ch]*r2;
-                        const float dx=std::clamp(2.f*k*xx*g,-4.f*g,4.f*g),dy=std::clamp(2.f*k*yy*g,-4.f*g,4.f*g);
-                        const float sx=std::clamp(X+dx,0.f,float(w-1)),sy=std::clamp(Y+dy,float(b0),float(b1-1));
-                        const int x0=std::min(int(sx),w-2),yq=std::min(int(sy),b1-2);const float fx=sx-x0,fy=sy-yq;
-                        const float* p0=buf.data()+(size_t(yq-b0)*w+x0)*2+ch;const float* p1=p0+size_t(w)*2;
-                        o[3*X+(ch?2:0)]=(p0[0]*(1-fx)+p0[2]*fx)*(1-fy)+(p1[0]*(1-fx)+p1[2]*fx)*fy;
+// P33 W2.2: hybridCorrectCa in bands that follow the merge's strips (advance(rgb, rows): the rows [0, rows) are final). A band reads
+// the R / B of its rows +- margin and its clamps never bind inside the image (|d| <= 4 g < margin), so any band split gives the
+// same floats as one pass.
+class HybridCaBands {
+public:
+    HybridCaBands(int width,int height,int grid,const HybridCa& model):w(width),h(height),g(float(grid)),ca(model),
+            margin(int(std::ceil(4.f*float(grid)))+2),rx(width),ry(height){
+        for(int X=0;X<w;++X)rx[X]=(0.5f*((X+0.5f)/g-0.5f)-ca.cx)*ca.invHalf;
+        for(int Y=0;Y<h;++Y)ry[Y]=(0.5f*((Y+0.5f)/g-0.5f)-ca.cy)*ca.invHalf;
+    }
+    int done() const {return next;}
+    void advance(std::vector<float>& rgb,int rows){
+        const int limit=rows>=h?h:std::max(0,rows-margin);
+        while(next<limit){
+            // Bands of up to 512 rows, top to bottom. A band reads the original R / B of its rows +- margin: the rows above it come
+            // from the copy kept before the previous band wrote them, the rest from the image (not written yet). Only R and B are
+            // held (no copy of the whole RGB: 600 MB on the 2x grid).
+            const int y0=next,y1=std::min(limit,y0+512),b0=std::max(0,y0-margin),b1=std::min(h,y1+margin);
+            buf.resize(size_t(b1-b0)*w*2);
+            mergeRowBands(b1-b0,[&](int a0,int a1){for(int y=b0+a0;y<b0+a1;++y){
+                float* d=buf.data()+size_t(y-b0)*w*2;
+                if(y<y0){const float* sv=saved.data()+size_t(y-savedFrom)*w*2;std::copy(sv,sv+size_t(w)*2,d);continue;}
+                const float* r=rgb.data()+size_t(y)*w*3;
+                for(int X=0;X<w;++X){d[2*X]=r[3*X];d[2*X+1]=r[3*X+2];}
+            }});
+            mergeRowBands(y1-y0,[&](int a0,int a1){
+                for(int Y=y0+a0;Y<y0+a1;++Y){
+                    float* o=rgb.data()+size_t(Y)*w*3;
+                    const float yy=ry[Y];
+                    for(int X=0;X<w;++X){
+                        const float xx=rx[X],r2=xx*xx+yy*yy;
+                        for(int ch=0;ch<2;++ch){
+                            const float k=ca.k1[ch]+ca.k2[ch]*r2;
+                            const float dx=std::clamp(2.f*k*xx*g,-4.f*g,4.f*g),dy=std::clamp(2.f*k*yy*g,-4.f*g,4.f*g);
+                            const float sx=std::clamp(X+dx,0.f,float(w-1)),sy=std::clamp(Y+dy,float(b0),float(b1-1));
+                            const int x0=std::min(int(sx),w-2),yq=std::min(int(sy),b1-2);const float fx=sx-x0,fy=sy-yq;
+                            const float* p0=buf.data()+(size_t(yq-b0)*w+x0)*2+ch;const float* p1=p0+size_t(w)*2;
+                            o[3*X+(ch?2:0)]=(p0[0]*(1-fx)+p0[2]*fx)*(1-fy)+(p1[0]*(1-fx)+p1[2]*fx)*fy;
+                        }
                     }
                 }
-            }
-        });
-        // the original rows the next band needs above it
-        savedFrom=std::max(b0,y1-margin);
-        saved.assign(buf.begin()+size_t(savedFrom-b0)*w*2,buf.begin()+size_t(y1-b0)*w*2);
+            });
+            // the original rows the next band needs above it
+            savedFrom=std::max(b0,y1-margin);
+            saved.assign(buf.begin()+size_t(savedFrom-b0)*w*2,buf.begin()+size_t(y1-b0)*w*2);
+            next=y1;
+        }
+        if(next>=h){std::vector<float>().swap(buf);std::vector<float>().swap(saved);}
     }
+private:
+    int w,h;float g;HybridCa ca;int margin;std::vector<float> rx,ry,buf,saved;int savedFrom=0,next=0;
+};
+inline void hybridCorrectCa(std::vector<float>& rgb,int w,int h,int grid,const HybridCa& ca){
+    HybridCaBands bands(w,h,grid,ca);bands.advance(rgb,h);
 }
 
 // RAW Bracket 0.2.5 (research/rawbracket/NOTES.md) measured gain: the exposure ratio of a bracketed / ultrashort frame to the
@@ -5181,8 +5234,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         void join(){if(thread.joinable())thread.join();}
         ~GpuTeardown(){join();}
     } teardown;
+    // P33 W2.2: the P19 R / B resample of the merged rows while the GPU merges the next strips (new bands for every attempt)
+    std::unique_ptr<HybridCaBands> caBands;double caBandsMs=0;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
+        if(caModel.ok){
+            caBands=std::make_unique<HybridCaBands>(w*grid,h*grid,grid,caModel);caBandsMs=0;
+            in.rowsDone=[&](std::vector<float>& rgb,int rows){const auto t0=Clock::now();caBands->advance(rgb,rows);caBandsMs+=millis(Clock::now()-t0);};
+        }
         const bool bentoPass=bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
         std::unique_ptr<HybridGpu> held;std::string built;
         if(earlyGpu.valid()){ // P31 (W1.7): the context built during the front end, when it holds the programs this merge needs
@@ -5271,8 +5330,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     } else gpuMerge(false);
     if(caModel.ok){ // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it)
         const auto caStarted=Clock::now();
-        hybridCorrectCa(out,outW,outH,grid,caModel);
-        report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms");
+        const int during=caBands?caBands->done():0;
+        if(caBands)caBands->advance(out,outH); else hybridCorrectCa(out,outW,outH,grid,caModel);
+        in.rowsDone=nullptr;caBands.reset();
+        report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)+caBandsMs))
+            +" ms ("+std::to_string(during)+" rows during the merge, "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms after it)");
     }
     if(rawCaBase.ok)vivo_rawca::hybridRawCaApply(out,outW,outH,grid,rawCaBase,tune.rawCaAvoidShift!=0,report); // P28 base mode
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
