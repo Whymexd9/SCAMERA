@@ -275,6 +275,23 @@ public class ShadeCatalogTest {
         searchFindsTitlesSectionsAndTheOtherLanguage("Frames and capture");
     }
 
+    /** The process-wide catalog follows a language change (the activity is recreated, the process is not). */
+    @Test
+    public void processCatalogIsRebuiltAfterALanguageChange() {
+        ShadeCatalog.reset();
+        try {
+            ShadeCatalog english = ShadeCatalog.get(context);
+            assertTrue(english.entry("pref_lmc_hybrid_bento").crumb().startsWith("Frames and capture"));
+            assertSame(english, ShadeCatalog.get(context));
+            org.robolectric.RuntimeEnvironment.setQualifiers("+ru");
+            ShadeCatalog russian = ShadeCatalog.get(context);
+            assertNotSame(english, russian);
+            assertTrue(russian.entry("pref_lmc_hybrid_bento").crumb(), russian.entry("pref_lmc_hybrid_bento").crumb().startsWith("Кадры и захват"));
+        } finally {
+            ShadeCatalog.reset();
+        }
+    }
+
     private void searchFindsTitlesSectionsAndTheOtherLanguage(String captureSection) {
         List<ShadeCatalog.Entry> luma = catalog.search("Luma");
         Set<String> keys = new HashSet<>();

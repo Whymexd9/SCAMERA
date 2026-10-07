@@ -25,10 +25,11 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
-#if defined(__aarch64__)
-#include <arm_neon.h>
+// POSIX on every target: the program binary cache (trimProgramCache) runs on the host builds of CI too.
 #include <dirent.h>
 #include <sys/stat.h>
+#if defined(__aarch64__)
+#include <arm_neon.h>
 #endif
 
 namespace vivo_nice {

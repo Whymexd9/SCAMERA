@@ -272,6 +272,8 @@ public final class ShadeCatalog {
     private final Context context;
     private final Resources res;
     private final SharedPreferences prefs;
+    /** UI language the titles, labels and search text were built in (R.string.ui_language). */
+    private final String lang;
     /** Every entry, virtual first, then the tree in settings order. */
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private boolean treeBuilt;
@@ -281,8 +283,10 @@ public final class ShadeCatalog {
 
     /** The process-wide catalog (built on the application context, so no Activity is kept). */
     public static synchronized ShadeCatalog get(Context context) {
-        if (instance == null) instance = new ShadeCatalog(context.getApplicationContext() != null ? context.getApplicationContext() : context,
-                PhotonCamera.getSettingsManagerStatic().getDefaultPreferences());
+        final Context app = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        // A language change recreates the activity, not the process: the cached strings are rebuilt in the new language.
+        if (instance == null || !instance.lang.equals(app.getString(R.string.ui_language)))
+            instance = new ShadeCatalog(app, PhotonCamera.getSettingsManagerStatic().getDefaultPreferences());
         return instance;
     }
 
@@ -296,6 +300,7 @@ public final class ShadeCatalog {
         this.context = context;
         this.res = context.getResources();
         this.prefs = prefs;
+        this.lang = res.getString(R.string.ui_language);
         addVirtual(FLASH, R.string.shade_title_flash, R.array.shade_l_flash, new String[]{"0", "1"},
                 res.getString(R.string.pref_ae_mode_default).trim(), SettingType.FLASH);
         addVirtual(TIMER, R.string.shade_title_timer, R.array.shade_l_timer, new String[]{"0", "1", "2"}, "0", SettingType.TIMER);

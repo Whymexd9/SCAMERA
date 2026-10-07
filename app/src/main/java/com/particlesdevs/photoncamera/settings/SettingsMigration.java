@@ -152,6 +152,11 @@ public final class SettingsMigration {
             for (String key : in) if (!isObsolete(key)) out.add(key);
             if (out.size() != in.size()) { e.putString(ShadeTiles.KEY, ShadeTiles.join(out)); changed = true; }
         }
+        // Quad Bayer switches the RAW stream to the full sensor mode, which the hybrid's ZSL burst must not: a profile of an
+        // older build (main, a module, a restored config) cannot bring it back on. Before P25 the camera screen forced it off
+        // on every resume / lens switch; resetRemovedSettings only covers the screen's start.
+        Object quad = prefs.getAll().get("pref_quad_bayer_key");
+        if (quad != null && PreferenceNumber.bool(quad, false)) { e.putBoolean("pref_quad_bayer_key", false); changed = true; }
         if (changed) e.commit();
         return changed;
     }

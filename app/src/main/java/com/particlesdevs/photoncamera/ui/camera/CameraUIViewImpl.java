@@ -253,45 +253,37 @@ public class CameraUIViewImpl implements CameraUIView {
 
     @Override
     public void lockUIForBurst(boolean locked) {
-
-        // Lock/unlock bottom bar buttons (except shutter button)
+        // The views are taken now: the posted actions can run after the fragment is destroyed (a rescued shot completes from
+        // onPause / onDestroy), when its binding and bottom bar fields are already null.
+        // Lock/unlock bottom bar buttons (except shutter button: it stays enabled for burst control)
         if (this.bottombuttons != null) {
-                this.bottombuttons.galleryImageButton.post(() -> this.bottombuttons.galleryImageButton.setEnabled(!locked));
-            // Note: shutter button remains enabled for burst control
+            final View gallery = this.bottombuttons.galleryImageButton;
+            gallery.post(() -> gallery.setEnabled(!locked));
         }
-
-        // Lock/unlock aux buttons container - disable touch events
-        if (cameraFragment.cameraFragmentBinding != null) {
-            View strip = cameraFragment.cameraFragmentBinding.layoutBottombar.auxButtonsContainer;
+        final com.particlesdevs.photoncamera.databinding.CameraFragmentBinding binding = cameraFragment.cameraFragmentBinding;
+        if (binding != null) {
+            // aux buttons container: disabled and dimmed
+            final View strip = binding.layoutBottombar.auxButtonsContainer;
+            final com.particlesdevs.photoncamera.ui.camera.viewmodel.AuxButtonsViewModel aux = cameraFragment.auxButtonsViewModel;
             strip.post(() -> {
                 strip.setEnabled(!locked);
-                // Also set alpha to visually indicate disabled state
                 strip.setAlpha(locked ? 0.5f : 1.0f);
-                cameraFragment.auxButtonsViewModel.setEnabled(!locked);
+                if (aux != null) aux.setEnabled(!locked);
+            });
+            // settings bar and manual mode console: no touch, dimmed
+            final View settingsBar = binding.settingsBar, manualMode = binding.manualMode;
+            settingsBar.post(() -> {
+                settingsBar.setEnabled(!locked);
+                settingsBar.setAlpha(locked ? 0.5f : 1.0f);
+            });
+            manualMode.post(() -> {
+                manualMode.setEnabled(!locked);
+                manualMode.setAlpha(locked ? 0.5f : 1.0f);
             });
         }
-
-        // Lock/unlock settings bar - disable touch events and reduce alpha
-        if (cameraFragment.cameraFragmentBinding != null) {
-            cameraFragment.cameraFragmentBinding.settingsBar.post(() -> {
-                cameraFragment.cameraFragmentBinding.settingsBar.setEnabled(!locked);
-                cameraFragment.cameraFragmentBinding.settingsBar.setAlpha(locked ? 0.5f : 1.0f);
-            });
-        }
-
-        // Lock/unlock manual mode console - disable swipe gestures
-        if (cameraFragment.cameraFragmentBinding != null) {
-            cameraFragment.cameraFragmentBinding.manualMode.post(() -> {
-                cameraFragment.cameraFragmentBinding.manualMode.setEnabled(!locked);
-                cameraFragment.cameraFragmentBinding.manualMode.setAlpha(locked ? 0.5f : 1.0f);
-            });
-        }
-
-        // Lock/unlock touch focus by disabling the swipe controls
-        if (cameraFragment.textureView != null) {
-            // Disable touch events on the texture view to prevent focus/swipe during burst
-            cameraFragment.textureView.post(() -> cameraFragment.textureView.setEnabled(!locked));
-        }
+        // touch focus: no focus / swipe on the viewfinder during a burst
+        final View texture = cameraFragment.textureView;
+        if (texture != null) texture.post(() -> texture.setEnabled(!locked));
     }
 
     @Override

@@ -3852,7 +3852,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 try { zsl.materialize(); } catch (RuntimeException e) { Log.w("NICE_CAPTURE", "ZSL frame " + zsl.timestamp + " not copied: " + e); }
                             }
                             final boolean routedNice = mNiceRouted;
-                            if (!routedNice) mBackgroundHandler.post(() -> {
+                            // The camera may be closed by now (a shot rescued from onPause / onDestroy): no handler, no preview.
+                            final android.os.Handler unlockHandler = mBackgroundHandler;
+                            if (!routedNice && unlockHandler != null) unlockHandler.post(() -> {
                                 if (!isDualSession)
                                     unlockFocus();
                                 else
@@ -3942,7 +3944,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 }
                                 // Preview never stopped: no AF re-trigger or 3A reset, the
                                 // shutter is free as soon as the tail RAWs are in memory.
-                                if (routedNice) mBackgroundHandler.post(CaptureController.this::finishNiceShot);
+                                final android.os.Handler finishHandler = mBackgroundHandler;
+                                if (routedNice && finishHandler != null) finishHandler.post(CaptureController.this::finishNiceShot);
                             }
                         });
                         /*mBackgroundHandler.post(() -> {
@@ -4027,6 +4030,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     Log.w("NICE_CAPTURE", "series not completed after " + watchdogMs + " ms: aborting it, merging the frames that arrived");
                     try { if (shotSession != null) shotSession.abortCaptures(); } catch (CameraAccessException | RuntimeException ignored) {}
                     rescueInFlightShot("watchdog " + watchdogMs + " ms");
+                    // abortCaptures also dropped the repeating preview, which the NICE route keeps running (no unlockFocus
+                    // after the shot): bring it back while this session is still the camera's.
+                    if (isCameraResumed && mCaptureSession == shotSession) rebuildPreviewBuilder();
                 }, watchdogMs);
             }
                 switch (PhotonCamera.getSettings().selectedMode) {
