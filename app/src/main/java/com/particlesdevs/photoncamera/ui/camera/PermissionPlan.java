@@ -17,7 +17,9 @@ import java.util.function.Predicate;
  * Android 11+ the SAF access to DCIM is asked for after the runtime permissions.
  *
  * <p>A round starts with the activity and starts again when the user comes back from the app settings or
- * taps Retry ({@link #restart()}).
+ * taps Retry ({@link #restart()}). It ends when {@link Step#START} is reached, so a permission lost later
+ * (revoked in the system settings, a one-time grant expired) is asked for again even when the activity is
+ * recreated from its saved state.
  */
 final class PermissionPlan {
     /** Runtime requests per round: the first batch plus at most two automatic re-asks. */
@@ -85,9 +87,9 @@ final class PermissionPlan {
     }
 
     /**
-     * What to do now.
+     * What to do now. Returning {@link Step#START} ends the round.
      *
-     * @param missing       {@link #missing} at this moment
+     * @param missing      {@link #missing} at this moment
      * @param canAskAgain   whether the system would still show its prompt for a permission
      *                      (shouldShowRequestPermissionRationale); only asked after a request was made
      * @param hasDcimAccess whether SAF access to DCIM exists (ignored below Android 11)
@@ -107,6 +109,9 @@ final class PermissionPlan {
             if (dcimCancelled || dcimPicks >= MAX_DCIM_PICKS) return Step.DCIM_FAILED;
             return Step.PICK_DCIM;
         }
+        // Nothing is missing: close the round. Its state is saved with the activity, and a permission that goes
+        // missing later must start a new round with a request, not inherit this round's count.
+        restart();
         return Step.START;
     }
 
@@ -140,7 +145,7 @@ final class PermissionPlan {
         dcimGranted = true;
     }
 
-    /** A new round: the user came back from the app settings or tapped Retry. */
+    /** A new round: the user came back from the app settings or tapped Retry, or the last round reached START. */
     void restart() {
         requests = 0;
         lastAnswered = true;

@@ -122,6 +122,37 @@ public class PermissionPlanTest {
     }
 
     @Test
+    public void reachingStartEndsTheRound() {
+        // Android 10: two refusals, then a grant on the third ask; the camera starts.
+        PermissionPlan plan = new PermissionPlan(29);
+        for (int i = 0; i < PermissionPlan.MAX_REQUESTS; i++) {
+            plan.onRequest();
+            plan.onResult(true);
+        }
+        assertEquals(Step.START, plan.next(plan.missing(ALL), NONE, false));
+        // Later storage is revoked in the system settings (the process dies) and the activity comes back from
+        // its saved state: the system can still show its prompt, so the plan asks instead of the settings.
+        PermissionPlan back = PermissionPlan.restore(29, plan.save());
+        assertEquals(Step.REQUEST, back.next(back.missing(grantedOnly(CAMERA, MIC)), NONE, false));
+        assertEquals(Step.REQUEST, plan.next(plan.missing(grantedOnly(CAMERA, MIC)), NONE, false));
+    }
+
+    @Test
+    public void anExpiredOneTimeGrantIsAskedAgainAfterARecreation() {
+        // Android 11+: a one-time camera grant expires while the app is away; the rationale flag is false again.
+        PermissionPlan plan = new PermissionPlan(34);
+        plan.onRequest();
+        plan.onResult(true);
+        plan.onDcimPick();
+        plan.onDcimGranted();
+        assertEquals(Step.START, plan.next(plan.missing(ALL), NONE, true));
+        PermissionPlan back = PermissionPlan.restore(34, plan.save());
+        assertEquals(Step.REQUEST, back.next(back.missing(grantedOnly(MIC, IMAGES, VIDEO)), NONE, true));
+        // The DCIM grant of the picker is still trusted in the new round.
+        assertEquals(Step.START, back.next(back.missing(ALL), NONE, false));
+    }
+
+    @Test
     public void dcimFollowsTheRuntimePermissionsOnAndroid11AndLater() {
         PermissionPlan plan = new PermissionPlan(34);
         assertTrue(plan.needsDcimAccess());
