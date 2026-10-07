@@ -5138,6 +5138,23 @@ inline std::array<float,64> hybridMosaicGains(const HybridInput& in,const std::v
     spread=hi-lo;
     return gain;
 }
+// Continuous sign change of a pair of deviations p0, p1 with the swing gate (mosaicChromaMedian and the oscillation maps of its
+// callers). It was a hard count (p0 p1 < 0 and |p0| + |p1| > gate), so a last-bit change of the merge at a zero crossing or at the
+// gate flipped whole pixels of colour (the fast and the generic native Quad merges, 6e-7 apart, differed by up to 0.28 at ~0.05 %
+// of the pixels on the OPPO, 2.3e-3 on syn_b2 on the vivo). Now a weight in [0, 1]: the opposition min(|p0|, |p1|) of opposite
+// signs ramps to 1 over `tau` x gate, the swing |p0| + |p1| over 0.75..1.25 gate (smoothstep). A grating (p1 ~ -p0) and the two
+// sides of an edge pass as before; a pair with one side near zero counts in part (the callers' thresholds make up for that).
+inline float mosaicSoftSignChange(double p0,double p1,double gate,double tau){
+    if(!(gate>0.0))return 0.f;
+    const double opp=std::max(0.0,std::min(p0,-p1))+std::max(0.0,std::min(-p0,p1));
+    if(opp<=0.0)return 0.f;
+    auto ss=[](double x){x=std::clamp(x,0.0,1.0);return x*x*(3.0-2.0*x);};
+    return float(ss(opp/(tau*gate))*ss(((std::abs(p0)+std::abs(p1))/gate-0.75)/0.5));
+}
+// The oscillation maps of the base RAW sites (hybridReconstructMosaic / hybridReconstructMosaicNative, input side: independent of
+// the merge) use a steep opposition ramp, so that they count almost as the hard test did; the luma count of the merged result
+// (mosaicChromaMedian) a wide one, which keeps a last-bit difference of the merge a last-bit difference of the colour.
+constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
 // Chroma moire of a mosaic result: a colour lattice b times coarser than the sites aliases fine luma detail (a zone plate, fabric,
 // distant foliage) into pink / green rings. GCam 11 turns on chroma_median_filter_type dual_5_point (plus its false-colour
 // suppression) for remosaicked streams; here the separable 5-point median (horizontal, then vertical) of R/G and B/G, taps
@@ -5154,7 +5171,9 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     auto rows=[&](const std::function<void(size_t,size_t)>& body){
         mergeRowBands(h,[&](int y0,int y1){body(size_t(y0)*w,size_t(y1)*w);});
     };
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=rgb[i*3+1]+e;u[i]=(rgb[i*3]+e)/g;v[i]=(rgb[i*3+2]+e)/g;}});
+    // The green term is max(G, 0) + e (it was G + e: a pole at G = -e, where a last-bit change of a dark pixel swung its ratio from
+    // +inf to -inf); the reconstruction below uses the same term, so a ratio the passes leave unchanged gives back R and B exactly.
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=std::max(rgb[i*3+1],0.f)+e;u[i]=(rgb[i*3]+e)/g;v[i]=(rgb[i*3+2]+e)/g;}});
     // Median of five by selection only (no arithmetic: the same value nth_element picked, ~10x faster): x, y = the 2nd and 3rd
     // of a..d, the median is e clamped to [x, y].
     auto med5=[](float a,float b,float c,float d,float e){
@@ -5178,8 +5197,10 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     // False-colour suppression (GCam 11 enable_false_color_suppression for remosaicked streams): where the luma oscillates faster
     // than the colour lattice can follow, the colour is aliased (zone-plate rings, fabric moire) and becomes the wide average
     // colour around. Oscillation: sign changes of the luma high-pass between neighbours, counted only where its swing exceeds 4 %
-    // of the level (noise and smooth areas stay out); a single edge changes sign along one line only (a few % of the window),
-    // a grating of period p in 1/p of the pixels. Weight ramps over 0.6..1.2 / (2b), the colour Nyquist period of the mosaic.
+    // of the level (noise and smooth areas stay out; both tests are soft, mosaicSoftSignChange); a single edge changes sign along
+    // one line only (a few % of the window), a grating of period p in 1/p of the pixels. Weight ramps over 0.51..1.02 / (2b), the
+    // colour Nyquist period of the mosaic. Every decision of this pass is continuous (median, ratios, soft counts, smoothstep
+    // ramps, max), so a tiny change of the merge gives a tiny change of the colour.
     const int r1=block,r2=2*block,r3=3*block;
     auto box=[&](const std::vector<float>& in,std::vector<float>& out,int r){
         std::vector<float> tmp(in.size());
@@ -5205,14 +5226,16 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i)hp[i]=L[i]-hp[i];});
     mergeRowBands(h,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
         const size_t i=size_t(y)*w+x;const float a=hp[i],gate=0.04f*std::max(L[i],1e-4f);float c=0;
-        if(x+1<w){const float b2=hp[i+1];if(a*b2<0&&std::abs(a)+std::abs(b2)>gate)c+=0.5f;}
-        if(y+1<h){const float b2=hp[i+w];if(a*b2<0&&std::abs(a)+std::abs(b2)>gate)c+=0.5f;}
+        if(x+1<w)c+=0.5f*mosaicSoftSignChange(a,hp[i+1],gate,kMosaicLumaTau);
+        if(y+1<h)c+=0.5f*mosaicSoftSignChange(a,hp[i+w],gate,kMosaicLumaTau);
         sc[i]=c;}});
     std::vector<float>().swap(L);std::vector<float>().swap(hp);
     box(sc,z,r2);
     std::vector<float>().swap(sc);
     std::vector<float> ul,vl;box(u,ul,r3);box(ul,ul,r3);box(v,vl,r3);box(vl,vl,r3);
-    const float z0=0.6f/(2*block),z1=1.2f/(2*block);
+    // soft counts (mosaicSoftSignChange) are a little lower than the former hard ones on a grating: the ramp starts at 0.51 / (2b)
+    // (was 0.6), the raw-site oscillation at 0.2375 (was 0.25), which kept the false colour of syn_b2 / syn_b4 and the real bursts
+    const float z0=0.51f/(2*block),z1=1.02f/(2*block);
     const int bw=w/block,bh=h/block;
     const bool rawOsc=osc&&int(osc->size())==bw*bh;
     rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){
@@ -5220,12 +5243,12 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
         if(rawOsc){ // detail the merge already smoothed in the luma but the sites still show
             const int X=int(i%size_t(w)),Y=int(i/size_t(w));
             const float o=(*osc)[size_t(std::min(Y/block,bh-1))*bw+std::min(X/block,bw-1)];
-            const float t2=std::clamp((o-0.25f)/0.25f,0.f,1.f);k=std::max(k,t2*t2*(3.f-2.f*t2));
+            const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);k=std::max(k,t2*t2*(3.f-2.f*t2));
         }
         u[i]+=k*(ul[i]-u[i]);v[i]+=k*(vl[i]-v[i]);
     }});
     std::vector<float>().swap(z);std::vector<float>().swap(ul);std::vector<float>().swap(vl);
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=rgb[i*3+1]+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
+    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=std::max(rgb[i*3+1],0.f)+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
 }
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const NiceAlignment& alignment,
                                                   const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
@@ -5411,13 +5434,13 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
                     m/=double(b*b);
                     const double sigma=std::sqrt(std::max(slope*std::max(m,0.0)/range+offset,0.0))*range;
                     const double gate=0.04*std::max(m,0.0)+3.0*sigma;
-                    int changes=0,pairs=0;
+                    double changes=0;int pairs=0; // soft counts (mosaicSoftSignChange)
                     for(int c=0;c<b;++c)for(int a=0;a<b;++a){
                         const double p0=d[size_t(c)*b+a]-m;
-                        if(a+1<b){const double p1=d[size_t(c)*b+a+1]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
-                        if(c+1<b){const double p1=d[size_t(c+1)*b+a]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
+                        if(a+1<b){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c)*b+a+1]-m,gate,kMosaicOscTau);}
+                        if(c+1<b){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c+1)*b+a]-m,gate,kMosaicOscTau);}
                     }
-                    f[size_t(J)*bw+I]=pairs?float(changes)/float(pairs):0.f;
+                    f[size_t(J)*bw+I]=pairs?float(changes/pairs):0.f;
                 }
             });
             osc.assign(f.size(),0.f);
@@ -5660,13 +5683,13 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                     m/=double(bq*bq);
                     const double sigma=std::sqrt(std::max(slope*std::max(m,0.0)/range+offset,0.0))*range;
                     const double gate=0.04*std::max(m,0.0)+3.0*sigma;
-                    int changes=0,pairs=0;
+                    double changes=0;int pairs=0; // soft counts (mosaicSoftSignChange)
                     for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
                         const double p0=d[size_t(c)*bq+a]-m;
-                        if(a+1<bq){const double p1=d[size_t(c)*bq+a+1]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
-                        if(c+1<bq){const double p1=d[size_t(c+1)*bq+a]-m;++pairs;if(p0*p1<0&&std::abs(p0)+std::abs(p1)>gate)++changes;}
+                        if(a+1<bq){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c)*bq+a+1]-m,gate,kMosaicOscTau);}
+                        if(c+1<bq){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c+1)*bq+a]-m,gate,kMosaicOscTau);}
                     }
-                    f[size_t(J)*bw+I]=pairs?float(changes)/float(pairs):0.f;
+                    f[size_t(J)*bw+I]=pairs?float(changes/pairs):0.f;
                 }
             });
             osc.assign(f.size(),0.f);
