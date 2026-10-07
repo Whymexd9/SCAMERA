@@ -69,6 +69,8 @@ public final class ShadeCatalog {
     public static final String TIMER = "pref_countdown_timer_key";
     public static final String FORMAT = "pref_save_raw_key";
     public static final String METERING_STD = "pref_ae_metering_std_mode_key";
+    /** «Формат фото» (JPEG / HEIC / WebP): the codec the FORMAT tile and the top-bar chip name. */
+    public static final String PHOTO_FORMAT = com.particlesdevs.photoncamera.processing.PhotoFormat.KEY;
     public static final String ROUTE = LmcHybridKeys.ROUTE;
     private static final String OUTPUT = "pref_lmc_hybrid_output", DOWNSAMPLER = "pref_lmc_hybrid_downsampler";
     /** Virtual entries, in catalog order. */
@@ -95,7 +97,7 @@ public final class ShadeCatalog {
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
             new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_lmc_hybrid_ark_metering", ROUTE),
-            new Group(R.string.shade_group_format, FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
+            new Group(R.string.shade_group_format, FORMAT, PHOTO_FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
                     "pref_show_watermark_key"),
             new Group(R.string.shade_group_hybrid, "pref_lmc_hybrid_bento", "pref_lmc_hybrid_bento_frames",
                     "pref_lmc_hybrid_shasta", "pref_lmc_hybrid_zsl_frames", "pref_lmc_hybrid_dn_luma_mult",
@@ -151,6 +153,7 @@ public final class ShadeCatalog {
         spec(ROUTE, R.string.shade_t_route, R.array.shade_s_route, R.drawable.settings_ic_layers);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
+        spec(PHOTO_FORMAT, R.string.shade_t_photo_format, R.array.shade_s_photo_format, R.drawable.settings_ic_save);
         spec("pref_ultrahdr_key", R.string.shade_t_ultrahdr, 0, R.drawable.settings_ic_hdr);
         spec("pref_wide169_key", R.string.shade_t_wide169, 0, R.drawable.settings_ic_ratio);
         spec("pref_show_watermark_key", R.string.shade_t_watermark, 0, R.drawable.settings_ic_water);
@@ -199,7 +202,7 @@ public final class ShadeCatalog {
             {"мерцан|flicker|antiband", "мерцание flicker антибандинг antibanding"},
             {"вспышк|фонар|flash|torch", "вспышка flash фонарик torch"},
             {"таймер|timer", "таймер timer"},
-            {"raw|jpeg|формат|format", "формат format raw jpeg dng"},
+            {"raw|jpeg|heic|webp|формат|format", "формат format raw jpeg dng heic webp кодек codec"},
             {"звук|sound", "звук sound"},
             {"замер|\\bmeter", "замер metering экспозамер"},
             {"склейк|merge|route", "склейка merge route hybrid scam"},
@@ -603,8 +606,25 @@ public final class ShadeCatalog {
         }
     }
 
+    /**
+     * Labels of the list values for the list sheet and the segments: the FORMAT entry names the chosen codec ("RAW + HEIC"),
+     * every other entry its own labels.
+     */
+    public static CharSequence[] labels(Entry e) {
+        if (!FORMAT.equals(e.key) || e.values == null) return e.labels;
+        CharSequence[] out = new CharSequence[e.values.length];
+        for (int i = 0; i < out.length; i++) out[i] = label(e, i, false);
+        return out;
+    }
+
     /** Label of the i-th list value: the curated short label, else the entry (shortened for a tile). */
     public static String label(Entry e, int i, boolean shortForm) {
+        if (FORMAT.equals(e.key) && e.values != null && i < e.values.length) {
+            // The save mode with the chosen codec: JPEG / R+J / RAW, HEIC / R+H, WEBP / R+W (PhotoFormat).
+            int mode = (int) Math.round(PreferenceNumber.read(e.values[i], i));
+            com.particlesdevs.photoncamera.processing.PhotoFormat codec = PreferenceKeys.getPhotoFormat();
+            return shortForm ? codec.saveModeShort(mode) : codec.saveModeLong(mode);
+        }
         if (shortForm && e.shortLabels != null && i < e.shortLabels.length) return e.shortLabels[i].toString();
         String full = e.labels != null && i < e.labels.length ? e.labels[i].toString() : e.values[i].toString();
         return shortForm ? autoShort(full) : full;

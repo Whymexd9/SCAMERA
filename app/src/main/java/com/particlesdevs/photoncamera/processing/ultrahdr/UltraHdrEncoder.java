@@ -5,11 +5,8 @@ import android.graphics.Bitmap;
 import com.particlesdevs.photoncamera.api.ParseExif;
 import com.particlesdevs.photoncamera.util.Log;
 
-import androidx.exifinterface.media.ExifInterface;
-
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -127,36 +124,9 @@ public final class UltraHdrEncoder {
         return gainOut.toByteArray();
     }
 
-    /**
-     * Builds the EXIF APP1 segment of the primary on a tiny JPEG via
-     * {@link ParseExif#setAllAttributes} (the same tags the plain JPEG path
-     * writes). ExifInterface would take ImageWidth/ImageLength from the frame
-     * header of the file it edits, so the real size is set explicitly. Returns
-     * null (EXIF-less base, as before) when anything fails.
-     */
+    /** EXIF APP1 of the primary (the tags of the plain JPEG path, the real size); null without EXIF. */
     private static byte[] exifSegment(ParseExif.ExifData exif, int width, int height) {
-        File tmp = null;
-        Bitmap tiny = null;
-        try {
-            tmp = File.createTempFile("uhdr_exif_", ".jpg");
-            tiny = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
-            try (OutputStream os = Files.newOutputStream(tmp.toPath())) {
-                if (!tiny.compress(Bitmap.CompressFormat.JPEG, 50, os)) return null;
-            }
-            ExifInterface inter = ParseExif.setAllAttributes(tmp, exif);
-            if (inter == null) return null;
-            inter.setAttribute(ExifInterface.TAG_IMAGE_WIDTH, String.valueOf(width));
-            inter.setAttribute(ExifInterface.TAG_IMAGE_LENGTH, String.valueOf(height));
-            inter.saveAttributes();
-            return UltraHdrContainer.findExifSegment(Files.readAllBytes(tmp.toPath()));
-        } catch (IOException | RuntimeException e) {
-            Log.e(TAG, "EXIF segment failed, Ultra HDR base without EXIF: " + Log.getStackTraceString(e));
-            return null;
-        } finally {
-            if (tiny != null) tiny.recycle();
-            if (tmp != null) //noinspection ResultOfMethodCallIgnored
-                tmp.delete();
-        }
+        return com.particlesdevs.photoncamera.processing.ExifBlock.app1Segment(exif, width, height);
     }
 
     /** In-memory output whose already written bytes can be patched (the MPF directory). */

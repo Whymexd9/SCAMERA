@@ -639,7 +639,7 @@ public class SettingsBarLayout extends LinearLayout {
     private void openList(ShadeCatalog.Entry e) {
         CharSequence[] tags = new CharSequence[e.values.length];
         System.arraycopy(e.values, 0, tags, 0, tags.length);
-        SettingsStyle.optionSheet(getContext(), e.title, e.labels, tags, catalog().index(e), ShadeStyle.accent(getContext()), i -> {
+        SettingsStyle.optionSheet(getContext(), e.title, ShadeCatalog.labels(e), tags, catalog().index(e), ShadeStyle.accent(getContext()), i -> {
             apply(e, e.values[i].toString());
             toastValue(e);
         });

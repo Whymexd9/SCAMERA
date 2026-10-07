@@ -543,6 +543,34 @@ public class PostPipeline extends GLBasePipeline {
             this.down = down;
             this.scale = scale;
         }
+
+        /**
+         * The map following a resize of the SDR base to {@code baseW} x {@code baseH} (the hybrid's final size after the
+         * 2x pipeline): the map is resampled to the same field of view at 1/down of the new size. The encoded values are
+         * log gains, so bilinear filtering averages in the log domain. Recycles this map's bitmap when it is replaced.
+         */
+        public GainMapRaw resizedFor(int baseW, int baseH) {
+            final int gw = Math.max(1, baseW / Math.max(1, down)), gh = Math.max(1, baseH / Math.max(1, down));
+            if (gw == w && gh == h) return this;
+            // Box average through the half-size mip chain (like the "area" downsampler), then the exact size.
+            Bitmap cur = bitmap;
+            while (cur.getWidth() >= 2 * gw && cur.getHeight() >= 2 * gh) {
+                final Bitmap half = Bitmap.createScaledBitmap(cur, cur.getWidth() / 2, cur.getHeight() / 2, true);
+                if (cur != bitmap) cur.recycle();
+                cur = half;
+            }
+            final Bitmap scaled = Bitmap.createScaledBitmap(cur, gw, gh, true);
+            if (cur != bitmap && cur != scaled) cur.recycle();
+            if (scaled != bitmap) bitmap.recycle();
+            return new GainMapRaw(scaled, gw, gh, down, scale);
+        }
+
+        /** The map following a centre crop of the base (digital zoom): the same crop factor (ZoomController.crop). */
+        public GainMapRaw croppedBy(float factor) {
+            final Bitmap cropped = com.particlesdevs.photoncamera.control.ZoomController.crop(bitmap, factor);
+            if (cropped == bitmap) return this;
+            return new GainMapRaw(cropped, cropped.getWidth(), cropped.getHeight(), down, scale);
+        }
     }
 
     private void BuildDefaultPipeline() {

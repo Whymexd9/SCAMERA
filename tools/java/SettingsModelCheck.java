@@ -136,6 +136,27 @@ public class SettingsModelCheck {
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,NaN,3",new float[]{0,0,0})[0]!=0)throw new AssertionError("NaN list accepted");
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","1,2",new float[]{0,0,0}).length!=3)throw new AssertionError("short list accepted");
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","",null)!=null)throw new AssertionError("empty list");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA, native mosaic");
+        // «Формат фото»: the rows of the formats not chosen are hidden; Ultra HDR / JPEG quality need a JPEG in the shot; quality bounds
+        Map<String,Object> f=new HashMap<>();
+        for(String k:new String[]{"pref_heic_quality","pref_webp_quality","pref_webp_lossless","pref_photo_also_jpeg"})
+            if(!new SettingsAvailability(f).hidden(k))throw new AssertionError("JPEG default shows "+k);
+        if(new SettingsAvailability(f).hidden("pref_photo_format")||new SettingsAvailability(f).hidden("pref_jpeg_quality"))throw new AssertionError("format rows hidden");
+        active(f,"pref_ultrahdr_key");active(f,"pref_jpeg_quality");active(f,"pref_photo_format");
+        f.put("pref_photo_format","heic");
+        if(new SettingsAvailability(f).hidden("pref_heic_quality")||new SettingsAvailability(f).hidden("pref_photo_also_jpeg"))throw new AssertionError("HEIC rows hidden");
+        if(!new SettingsAvailability(f).hidden("pref_webp_quality")||!new SettingsAvailability(f).hidden("pref_webp_lossless"))throw new AssertionError("WebP rows shown for HEIC");
+        inactive(f,"pref_ultrahdr_key");inactive(f,"pref_jpeg_quality");active(f,"pref_heic_quality");
+        f.put("pref_photo_also_jpeg",true);active(f,"pref_ultrahdr_key");active(f,"pref_jpeg_quality");
+        f.put("pref_photo_format","webp");f.put("pref_photo_also_jpeg",false);
+        if(new SettingsAvailability(f).hidden("pref_webp_quality")||new SettingsAvailability(f).hidden("pref_webp_lossless")||!new SettingsAvailability(f).hidden("pref_heic_quality"))
+            throw new AssertionError("WebP rows");
+        inactive(f,"pref_ultrahdr_key");active(f,"pref_webp_quality");
+        f.put("pref_webp_lossless",true);inactive(f,"pref_webp_quality");active(f,"pref_webp_lossless");
+        f.put("pref_photo_format","jxl");active(f,"pref_ultrahdr_key"); // an unknown stored value is JPEG
+        if(!new SettingsAvailability(f).hidden("pref_webp_quality"))throw new AssertionError("unknown format shows WebP rows");
+        eq(SettingsNumericRules.value("pref_heic_quality","0",90),1);eq(SettingsNumericRules.value("pref_webp_quality","150",90),100);
+        eq(SettingsNumericRules.value("pref_webp_quality","NaN",90),90);
+        if(SettingsNumericRules.error("pref_heic_quality","50.5")==null)throw new AssertionError("fractional HEIC quality accepted");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA, native mosaic, photo format");
     }
 }

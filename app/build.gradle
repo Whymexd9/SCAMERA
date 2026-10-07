@@ -199,6 +199,8 @@ dependencies {
     implementation 'androidx.preference:preference-ktx:1.2.1'
     implementation 'org.jetbrains:annotations:26.1.0'
     implementation 'androidx.exifinterface:exifinterface:1.4.2'
+    // HEIC photo output (API 28+; the library's minSdk 28 is overridden in the manifest and every use is guarded)
+    implementation 'androidx.heifwriter:heifwriter:1.1.0'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'com.github.mohammadatif:Animatoo:master'
     implementation 'com.github.bumptech.glide:glide:5.0.5'

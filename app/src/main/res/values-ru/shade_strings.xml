@@ -42,6 +42,7 @@
     <string name="shade_t_flash">Вспышка</string>
     <string name="shade_t_timer">Таймер</string>
     <string name="shade_t_format">Формат</string>
+    <string name="shade_t_photo_format">Кодек</string>
     <string name="shade_t_metering_std">Замер Camera2</string>
     <string name="shade_t_metering">Замер</string>
     <string name="shade_t_route">Склейка</string>
@@ -82,6 +83,11 @@
         <item>JPEG</item>
         <item>R+J</item>
         <item>RAW</item>
+    </string-array>
+    <string-array name="shade_s_photo_format">
+        <item>JPEG</item>
+        <item>HEIC</item>
+        <item>WEBP</item>
     </string-array>
     <string-array name="shade_s_metering_std">
         <item>Авто</item>

@@ -26,6 +26,7 @@ import com.particlesdevs.photoncamera.gallery.compare.SSIVListener;
 import com.particlesdevs.photoncamera.gallery.helper.UltraHdrGalleryUtil;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.gallery.views.CustomSSIV;
+import com.particlesdevs.photoncamera.processing.PhotoFormat;
 
 import org.apache.commons.io.FileUtils;
 
@@ -100,10 +101,19 @@ public class ImageAdapter extends PagerAdapter {
             scaleImageView.setOnStateChangedListener(ssivListener);
             scaleImageView.setTouchCallBack(ssivListener);
         }
-        scaleImageView.setOnImageEventListener(imageEventListener);
-        if (!fileExt.equalsIgnoreCase("dng")) {
+        String fileName = galleryItem.getFile().getDisplayName();
+        if (PhotoFormat.isModernPhoto(fileName)) {
+            // HEIC / WebP: the tiled decoder (BitmapRegionDecoder) reads both on the versions that decode them (HEIC from
+            // Android 9; below it the page stays empty); if it still fails, the page shows a bitmap decoded by Glide.
+            scaleImageView.setOnImageEventListener(new BitmapFallback(imageEventListener, scaleImageView, galleryItem));
+            if (PhotoFormat.decodable(fileName, Build.VERSION.SDK_INT)) {
+                scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
+            }
+        } else if (!fileExt.equalsIgnoreCase("dng")) {
+            scaleImageView.setOnImageEventListener(imageEventListener);
             scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
         } else { //For DNG Files, load as a bitmap
+            scaleImageView.setOnImageEventListener(imageEventListener);
             Glide.with(container.getContext())
                     .asBitmap()
                     .load(galleryItem.getFile().getFileUri())
@@ -127,6 +137,57 @@ public class ImageAdapter extends PagerAdapter {
         }
         container.addView(scaleImageView);
         return scaleImageView;
+    }
+
+    /**
+     * Passes every image event of a HEIC / WebP page on to the host's listener; when the tiled decode fails, the page
+     * falls back to one bitmap decoded by Glide (which reads HEIC through the platform decoder on Android 9+).
+     */
+    private final class BitmapFallback implements SubsamplingScaleImageView.OnImageEventListener {
+        private final SubsamplingScaleImageView.OnImageEventListener host;
+        private final SubsamplingScaleImageView page;
+        private final GalleryItem item;
+        private boolean fellBack;
+
+        BitmapFallback(SubsamplingScaleImageView.OnImageEventListener host, SubsamplingScaleImageView page, GalleryItem item) {
+            this.host = host;
+            this.page = page;
+            this.item = item;
+        }
+
+        @Override public void onReady() { if (host != null) host.onReady(); }
+        @Override public void onImageLoaded() { if (host != null) host.onImageLoaded(); }
+        @Override public void onPreviewLoadError(Exception e) { if (host != null) host.onPreviewLoadError(e); }
+        @Override public void onTileLoadError(Exception e) { if (host != null) host.onTileLoadError(e); }
+        @Override public void onPreviewReleased() { if (host != null) host.onPreviewReleased(); }
+
+        @Override
+        public void onImageLoadError(Exception e) {
+            if (fellBack || released || !PhotoFormat.decodable(item.getFile().getDisplayName(), Build.VERSION.SDK_INT)) {
+                if (host != null) host.onImageLoadError(e);
+                return;
+            }
+            fellBack = true;
+            Glide.with(page.getContext().getApplicationContext())
+                    .asBitmap()
+                    .load(item.getFile().getFileUri())
+                    .apply(RequestOptions.signatureOf(new ObjectKey(item.getFile().getDisplayName() + item.getFile().getLastModified())))
+                    .into(new CustomViewTarget<SubsamplingScaleImageView, Bitmap>(page) {
+                        @Override
+                        public void onResourceReady(@NonNull Bitmap bitmap, Transition<? super Bitmap> transition) {
+                            if (!released) page.setImage(ImageSource.cachedBitmap(bitmap));
+                        }
+
+                        @Override
+                        protected void onResourceCleared(@Nullable Drawable placeholder) {
+                        }
+
+                        @Override
+                        public void onLoadFailed(@Nullable Drawable errorDrawable) {
+                            if (host != null) host.onImageLoadError(e);
+                        }
+                    });
+        }
     }
 
     @Override
@@ -211,7 +272,9 @@ public class ImageAdapter extends PagerAdapter {
             return;
         }
         GalleryItem galleryItem = galleryItemList.get(position);
-        if (FileUtils.getExtension(galleryItem.getFile().getDisplayName()).equalsIgnoreCase("dng")) {
+        // Ultra HDR is a JPEG container (the camera writes it only into JPEG files): DNG, HEIC and WebP pages skip the scan.
+        String ext = FileUtils.getExtension(galleryItem.getFile().getDisplayName());
+        if (!ext.equalsIgnoreCase("jpg") && !ext.equalsIgnoreCase("jpeg")) {
             return;
         }
         hdrRequested[position] = true;

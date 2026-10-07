@@ -21,7 +21,7 @@ public class JPEGSaver extends DefaultSaver {
             IMAGE_BUFFER.add(getFrame(image));
             byte[] bytes = new byte[buffer.remaining()];
             if (IMAGE_BUFFER.size() == PhotonCamera.getCaptureController().mMeasuredFrameCnt && PhotonCamera.getSettings().frameCount != 1) {
-                Path jpgPath = ImagePath.newImageFilePath();
+                Path jpgPath = PhotoFormat.JPEG.fileFor(ImagePath.newImageFilePath()); // the camera's own JPEG bytes: always .jpg
                 buffer.duplicate().get(bytes);
                 Files.write(jpgPath, bytes);
 
@@ -32,7 +32,7 @@ public class JPEGSaver extends DefaultSaver {
                 IMAGE_BUFFER.clear();
             }
             if (PhotonCamera.getSettings().frameCount == 1) {
-                Path jpgPath = ImagePath.newImageFilePath();
+                Path jpgPath = PhotoFormat.JPEG.fileFor(ImagePath.newImageFilePath()); // the camera's own JPEG bytes: always .jpg
                 IMAGE_BUFFER.clear();
                 buffer.get(bytes);
                 Files.write(jpgPath, bytes);

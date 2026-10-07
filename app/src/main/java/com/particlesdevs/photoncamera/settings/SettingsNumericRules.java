@@ -185,6 +185,7 @@ public final class SettingsNumericRules {
             case "pref_watermark_size": return new double[]{3,20,0};
             case "pref_watermark_opacity": return new double[]{10,100,1};
             case "pref_jpeg_quality": return new double[]{70,100,1};
+            case "pref_heic_quality": case "pref_webp_quality": return new double[]{1,100,1};
             case "pref_vivo_nice_luma_iso1": case "pref_vivo_nice_chroma_iso1": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso2": case "pref_vivo_nice_chroma_iso2": return new double[]{0,2,0};
             case "pref_vivo_nice_luma_iso3": case "pref_vivo_nice_chroma_iso3": return new double[]{0,2,0};

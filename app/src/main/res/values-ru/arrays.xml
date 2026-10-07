@@ -156,4 +156,9 @@
         <item>Всегда применять</item>
         <item>Не применять (HAL уже исправил)</item>
     </string-array>
+    <string-array name="photo_format_entries">
+        <item>JPEG</item>
+        <item>HEIC (файлы меньше)</item>
+        <item>WebP (файлы меньше)</item>
+    </string-array>
 </resources>

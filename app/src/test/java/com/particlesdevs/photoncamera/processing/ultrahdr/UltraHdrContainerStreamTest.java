@@ -154,6 +154,46 @@ public class UltraHdrContainerStreamTest {
         assertEquals(0xFF, file[gainStart] & 0xFF);
         assertEquals(0xD8, file[gainStart + 1] & 0xFF);
         assertEquals(0xD9, file[primaryLen - 1] & 0xFF);
+        // MP Index IFD (CIPA DC-007 5.2.3): MPFVersion UNDEFINED x4 "0100" - Skia rejects the whole directory otherwise -,
+        // NumberOfImages LONG 2, MPEntry UNDEFINED x32 at offset 50.
+        ByteBuffer ifd = ByteBuffer.wrap(file, mpf + 8, 50).slice().order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals('I', ifd.get(0));
+        assertEquals(42, ifd.getShort(2));
+        assertEquals(8, ifd.getInt(4));
+        assertEquals(3, ifd.getShort(8));
+        assertEquals((short) 0xB000, ifd.getShort(10));
+        assertEquals(7, ifd.getShort(12));
+        assertEquals(4, ifd.getInt(14));
+        assertEquals("0100", new String(file, mpf + 8 + 18, 4, StandardCharsets.US_ASCII));
+        assertEquals((short) 0xB001, ifd.getShort(22));
+        assertEquals(4, ifd.getShort(24));
+        assertEquals(2, ifd.getInt(30));
+        assertEquals((short) 0xB002, ifd.getShort(34));
+        assertEquals(7, ifd.getShort(36));
+        assertEquals(32, ifd.getInt(38));
+        assertEquals(50, ifd.getInt(42));
+        // primary entry: JPEG primary image (0x030000), offset 0
+        assertEquals(0x00030000, ByteBuffer.wrap(file, mpf + 8 + 50, 4).order(ByteOrder.LITTLE_ENDIAN).getInt());
+        assertEquals(0, ByteBuffer.wrap(file, mpf + 8 + 58, 4).order(ByteOrder.LITTLE_ENDIAN).getInt());
+    }
+
+    /** The gain map image carries its own hdrgm XMP; the primary's GContainer names its exact length. */
+    @Test
+    public void xmpDirectoryNamesTheGainMapLength() throws IOException {
+        byte[] gain = baseline(700, false);
+        byte[] file = streamed(baseline(20_000, false), null, gain, 4096);
+        String text = new String(file, StandardCharsets.ISO_8859_1);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("Item:Semantic=\"GainMap\" Item:Mime=\"image/jpeg\" Item:Length=\"([0-9]+)\"").matcher(text);
+        assertTrue(m.find());
+        byte[] gainImage = UltraHdrContainer.gainMapImage(gain, -0.25f, 3.5f, 3.5f);
+        assertEquals(gainImage.length, Integer.parseInt(m.group(1)));
+        assertEquals(file.length - gainImage.length, text.lastIndexOf("\u00FF\u00D8\u00FF\u00E1"));
+        String gainXmp = new String(gainImage, StandardCharsets.UTF_8);
+        for (String field : new String[]{"hdrgm:Version=\"1.0\"", "hdrgm:GainMapMin=\"-0.250000\"", "hdrgm:GainMapMax=\"3.500000\"",
+                "hdrgm:Gamma=\"1\"", "hdrgm:OffsetSDR=", "hdrgm:OffsetHDR=", "hdrgm:HDRCapacityMin=\"0\"",
+                "hdrgm:HDRCapacityMax=\"3.500000\"", "hdrgm:BaseRenditionIsHDR=\"False\""})
+            assertTrue(field, gainXmp.contains(field));
+        assertTrue(text.substring(0, file.length - gainImage.length).contains("hdrgm:Version=\"1.0\""));
     }
 
     @Test

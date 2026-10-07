@@ -415,7 +415,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         if (galleryItems != null && getContext() != null) {
             GalleryItem galleryItem = galleryItems.get(position);
             String fileName = galleryItem.getFile().getDisplayName();
-            String mediaType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(FileUtils.getExtension(fileName));
+            String mediaType = mediaTypeOf(fileName);
             Uri uri = galleryItem.getFile().getFileUri();
             Intent editIntent = new Intent(Intent.ACTION_EDIT);
             editIntent.setDataAndType(uri, mediaType);
@@ -467,11 +467,19 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         builder.create().show();
     }
 
+    /** MIME type for share / edit: MimeTypeMap lacks HEIC on older Android versions, the photo formats are mapped here. */
+    private static String mediaTypeOf(String fileName) {
+        String known = com.particlesdevs.photoncamera.processing.PhotoFormat.mimeForName(fileName);
+        if (known != null) return known;
+        String guessed = MimeTypeMap.getSingleton().getMimeTypeFromExtension(FileUtils.getExtension(fileName));
+        return guessed != null ? guessed : "image/*";
+    }
+
     private void onShareButtonClick(View view) {
         int position = viewPager.getCurrentItem();
         GalleryItem galleryItem = galleryItems.get(position);
         String fileName = galleryItem.getFile().getDisplayName();
-        String mediaType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(FileUtils.getExtension(fileName));
+        String mediaType = mediaTypeOf(fileName);
         Uri uri = galleryItem.getFile().getFileUri();
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.putExtra(Intent.EXTRA_STREAM, uri);

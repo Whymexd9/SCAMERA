@@ -398,9 +398,11 @@ public final class UltraHdrContainer {
         data.putInt(8);                           // IFD offset (from "II")
         // IFD
         data.putShort((short) 3);                 // entry count
-        // Entry 1: MPFormatIdentifier (0xB000), ASCII, "0100"
+        // Entry 1: MPFVersion (0xB000), UNDEFINED, 4 bytes "0100" (CIPA DC-007 5.2.3.1, as libultrahdr writes it). It was
+        // ASCII (2): Skia's MPF parser (Android 14+ decoders) requires UNDEFINED and rejected the whole MPF directory, so
+        // those decoders only found the gain map through the GContainer XMP fallback.
         data.putShort((short) 0xB000);
-        data.putShort((short) 0x0002);
+        data.putShort((short) 0x0007);
         data.putInt(4);
         data.put((byte) '0'); data.put((byte) '1'); data.put((byte) '0'); data.put((byte) '0');
         // Entry 2: NumberOfImages (0xB001), LONG = 2
@@ -415,8 +417,8 @@ public final class UltraHdrContainer {
         data.putInt(50);
         // Next IFD offset
         data.putInt(0);
-        // MPEntry data (2 x 16 bytes), per libultrahdr / CIPA DC-007.
-        // Offsets are relative to the primary SOI (file offset 0).
+        // MPEntry data (2 x 16 bytes), per libultrahdr / CIPA DC-007. The first image's offset is 0 (it starts at the file
+        // start); every other offset is relative to the MPF base (the byte after "MPF\0"), see the class comment.
         // Primary image: JPEG format (0x00000000) | primary type (0x030000).
         data.putInt(0x00030000);
         data.putInt(primaryLen);

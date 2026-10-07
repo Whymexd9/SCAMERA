@@ -100,7 +100,7 @@ public class ShadeCatalogTest {
                 assertTrue(key, e.isCurated());
             }
         }
-        assertEquals(27, curated);
+        assertEquals(28, curated); // 27 + «Кодек» (pref_photo_format) in the «Формат» group
         // The rows the owner dropped (answer 8) stay out.
         for (String gone : new String[]{"pref_lmc_hybrid_ark_tone", "pref_vivo_nice_fusion_enabled"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));

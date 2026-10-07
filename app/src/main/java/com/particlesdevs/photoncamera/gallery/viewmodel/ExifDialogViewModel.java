@@ -79,6 +79,15 @@ public class ExifDialogViewModel extends AndroidViewModel {
         String attr_fnum = exifInterface.getAttribute(ExifInterface.TAG_F_NUMBER);
         String attr_focal = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH);
         String attr_date = exifInterface.getAttribute(ExifInterface.TAG_DATETIME);
+        if (attr_width == null || attr_length == null || "0".equals(attr_width) || "0".equals(attr_length)) {
+            // A HEIC / WebP file from another app may have no size tags (ExifInterface reads no WebP bitstream size):
+            // the header gives it.
+            int[] size = decodedSize(contentResolver, imageFile);
+            if (size != null) {
+                attr_width = String.valueOf(size[0]);
+                attr_length = String.valueOf(size[1]);
+            }
+        }
 //        String attr_35mmfocal = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM);
 //        Log.d("attr_35mmfocal", "fetched attr_35mmfocal = " + attr_35mmfocal);
 
@@ -114,6 +123,19 @@ public class ExifDialogViewModel extends AndroidViewModel {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    /** {width, height} of the image from its header (BitmapFactory bounds), or null. */
+    private static int[] decodedSize(ContentResolver contentResolver, MediaFile imageFile) {
+        android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        try (InputStream in = contentResolver.openInputStream(imageFile.getFileUri())) {
+            if (in == null) return null;
+            android.graphics.BitmapFactory.decodeStream(in, null, options);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        return options.outWidth > 0 && options.outHeight > 0 ? new int[]{options.outWidth, options.outHeight} : null;
     }
 
     /**

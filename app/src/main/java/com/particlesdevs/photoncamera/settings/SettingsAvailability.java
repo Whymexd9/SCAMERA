@@ -18,6 +18,30 @@ public final class SettingsAvailability {
         for (String value : alternatives) if (key.equals(value)) return true;
         return false;
     }
+    /** «Формат фото» as stored (pref_photo_format): jpeg (default), heic or webp. */
+    private String photoFormat() {
+        String f = text("pref_photo_format", "jpeg").trim().toLowerCase(java.util.Locale.ROOT);
+        return f.equals("heic") || f.equals("webp") ? f : "jpeg";
+    }
+    /** Whether a shot writes a JPEG: the JPEG format, or HEIC / WebP with «Также сохранять JPEG». */
+    private boolean writesJpeg() {
+        return photoFormat().equals("jpeg") || on("pref_photo_also_jpeg", false);
+    }
+
+    /**
+     * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
+     * are not chosen (HEIC quality, WebP quality / lossless) and «Также сохранять JPEG» while the format is JPEG.
+     */
+    public boolean hidden(String key) {
+        String format = photoFormat();
+        switch (key) {
+            case "pref_heic_quality": return !format.equals("heic");
+            case "pref_webp_quality": case "pref_webp_lossless": return !format.equals("webp");
+            case "pref_photo_also_jpeg": return format.equals("jpeg");
+            default: return false;
+        }
+    }
+
     public String reason(String key) {
         // Route selector pref_merge_route (PreferenceKeys.mergeRoute): hybrid (default) or scamhdr. Every shot is one of them.
         boolean autonomous=text("pref_merge_route","hybrid").equals("scamhdr");
@@ -52,6 +76,17 @@ public final class SettingsAvailability {
                 return Lang.t("Только с добором ArkCam.", "Only with the ArkCam fill.");
         }
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
+        // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP shot writes only with «Также сохранять JPEG».
+        if (!writesJpeg()) {
+            if (key.equals("pref_ultrahdr_key"))
+                return Lang.t("Только для JPEG: включите «Также сохранять JPEG» — Ultra HDR будет в нём.",
+                        "JPEG only: turn on “Also save a JPEG” to get Ultra HDR in that JPEG.");
+            if (key.equals("pref_jpeg_quality"))
+                return Lang.t("Для JPEG: выберите формат JPEG или включите «Также сохранять JPEG».",
+                        "For JPEG: choose the JPEG format or turn on “Also save a JPEG”.");
+        }
+        if (key.equals("pref_webp_quality") && on("pref_webp_lossless", false))
+            return Lang.t("Не используется в WebP без потерь.", "Not used by lossless WebP.");
         if (key.startsWith("pref_vivo_nice_") && !autonomous)
             return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");
         // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.

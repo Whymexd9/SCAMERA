@@ -291,6 +291,36 @@ public class PreferenceKeys {
         return (int) Math.round(SettingsNumericRules.value("pref_jpeg_quality",
                 preferenceKeys.settingsManager.getString("default_scope", "pref_jpeg_quality", "98"), 98));
     }
+    /** «Формат фото»: the codec of the processed photo; HEIC below Android 9 is written as JPEG (PhotoFormat.effective). */
+    public static com.particlesdevs.photoncamera.processing.PhotoFormat getPhotoFormat() {
+        return com.particlesdevs.photoncamera.processing.PhotoFormat.effective(getChosenPhotoFormat(), android.os.Build.VERSION.SDK_INT);
+    }
+    /** The stored «Формат фото» value as chosen (no API fallback). */
+    public static com.particlesdevs.photoncamera.processing.PhotoFormat getChosenPhotoFormat() {
+        return com.particlesdevs.photoncamera.processing.PhotoFormat.parse(preferenceKeys.settingsManager.getString("default_scope",
+                com.particlesdevs.photoncamera.processing.PhotoFormat.KEY, "jpeg"));
+    }
+    /** HEIC quality 1-100 (default 90). */
+    public static int getHeicQuality() {
+        return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HEIC_QUALITY,
+                preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HEIC_QUALITY, "90"), 90));
+    }
+    /** WebP quality 1-100 (default 90); ignored by the lossless WebP. */
+    public static int getWebpQuality() {
+        return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_WEBP_QUALITY,
+                preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_WEBP_QUALITY, "90"), 90));
+    }
+    public static boolean isWebpLossless() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_WEBP_LOSSLESS, false);
+    }
+    /** «Также сохранять JPEG»: a JPEG next to the HEIC / WebP photo (it carries Ultra HDR when that is on). */
+    public static boolean isAlsoSaveJpeg() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_ALSO_JPEG, false);
+    }
+    /** Ultra HDR is computed only when it ends up in a file: the setting is on and the shot writes a JPEG. */
+    public static boolean isUltraHdrActive() {
+        return com.particlesdevs.photoncamera.processing.PhotoFormat.ultraHdrApplies(isUltraHdrOn(), getPhotoFormat(), isAlsoSaveJpeg());
+    }
     public static float getWatermarkOpacity() {
         return (float) SettingsNumericRules.value("pref_watermark_opacity",
                 preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_opacity", "100"), 100) / 100f;

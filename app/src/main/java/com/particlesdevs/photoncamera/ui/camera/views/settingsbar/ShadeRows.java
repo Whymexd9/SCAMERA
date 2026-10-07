@@ -241,7 +241,7 @@ final class ShadeRows {
             segments = new SegmentedView(context);
             CharSequence[] shorts = new CharSequence[entry.values.length];
             for (int i = 0; i < shorts.length; i++) shorts[i] = ShadeCatalog.label(entry, i, true);
-            segments.setOptions(shorts, entry.labels);
+            segments.setOptions(shorts, ShadeCatalog.labels(entry));
             segments.setOnPick(i -> actions.pick(entry, entry.values[i].toString()));
             segments.setContentDescription(entry.title);
             LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

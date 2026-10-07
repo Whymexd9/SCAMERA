@@ -1211,6 +1211,16 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     public void triggerMediaScanner(Uri imageUri) {
+        if (imageUri != null && "file".equals(imageUri.getScheme()) && imageUri.getPath() != null && activity != null) {
+            // The scanner gets the MIME type of the photo format (image/heic, image/webp, ...) instead of guessing it from
+            // an extension older Android versions do not map.
+            String mime = com.particlesdevs.photoncamera.processing.PhotoFormat.mimeForName(imageUri.getPath());
+            if (mime != null) {
+                android.media.MediaScannerConnection.scanFile(activity.getApplicationContext(),
+                        new String[]{imageUri.getPath()}, new String[]{mime}, null);
+                return;
+            }
+        }
         Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
 //        Bitmap bitmap = BitmapDecoder.from(Uri.fromFile(imageToSave)).scaleBy(0.1f).decode();
         mediaScanIntent.setData(imageUri);
