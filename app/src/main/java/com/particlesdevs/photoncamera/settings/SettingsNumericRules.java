@@ -162,7 +162,7 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_mosaic_native_edge_scale": return new double[]{0.25,1,0};
             case "pref_lmc_hybrid_mosaic_kernel_g": case "pref_lmc_hybrid_mosaic_kernel_rb": return new double[]{0.5,2,0};
             case "pref_lmc_hybrid_mosaic_fill_support": return new double[]{0,1,0};
-            case "pref_lmc_hybrid_mosaic_tetra": return new double[]{0,2,1}; // 0 = Tetra on the split (default), 2 = T2, 1 = T1
+            case "pref_lmc_hybrid_mosaic_tetra": return new double[]{0,2,1}; // 1 = T1 native (default since P35), 0 = the split, 2 = T2
             // P34: flat-area kernel, kernel range (0 off / 1 ArkCam per component / 2 on the eigenvalues), night kernel / edge scale
             case "pref_lmc_hybrid_mosaic_native_flat_scale": return new double[]{1,4,0};
             case "pref_lmc_hybrid_mosaic_native_clamp": return new double[]{0,2,1};
