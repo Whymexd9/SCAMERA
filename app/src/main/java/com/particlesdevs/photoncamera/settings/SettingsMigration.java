@@ -370,6 +370,26 @@ public final class SettingsMigration {
                 changed = true;
             }
         }
+        // Defaults revision 6 (7 October 2026, P34): Quad streams take the native mosaic merge (2x faster than the split, +11-12 %
+        // detail at the same noise) with kernel scale 0.7; the former XML defaults a P29 build stored (merge "0", kernel scale 1)
+        // move along, a chosen value stays.
+        if (revision < 6) {
+            boolean touched = false;
+            Object path = values.get(LmcHybridKeys.PREFIX + "mosaic_path");
+            if (path != null) {
+                if (isNumber(path, 0f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_path", path instanceof String ? "1" : (Object) 1f);
+                touched = true;
+            }
+            Object scale = values.get(LmcHybridKeys.PREFIX + "mosaic_kernel_scale");
+            if (scale != null) {
+                if (isNumber(scale, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_kernel_scale", scale instanceof String ? PreferenceNumber.format(0.7f, true) : (Object) 0.7f);
+                touched = true;
+            }
+            if (touched) {
+                e.putInt(DEFAULTS_REV, 6);
+                changed = true;
+            }
+        }
         if (changed) e.commit();
         return changed;
     }

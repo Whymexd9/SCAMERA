@@ -263,8 +263,9 @@ struct HybridTuning {
     // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
     // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
     // kHybMergeMosaic over the raw mosaic itself.
-    // DEFAULTS: mosaicPath stays 0 (today's output) until the device sweep S4 passes on the phone. The keys below only act with
-    // mosaicPath 1; their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
+    // DEFAULTS: mosaicPath 1 since P34 (Quad: the native merge, 2x faster than the split on the OPPO with +11-12 % 2-4 px detail at
+    // matched noise on the handheld bursts; Tetra stays on the split, mosaicTetra 0). The keys below only act with mosaicPath 1;
+    // their defaults are the recommended point of the S0 reference (research/p29/S0_results.md section 4: full 7x7
     // window, kernel scale 1, edge scale 0.4, ks 1 / 0.85, no fill) except where noted: Tetra stays on the split (mosaicTetra 0)
     // and the 6.1 base widening keeps the split's rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
     // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1, mosaicKernelScale 1,
@@ -274,7 +275,7 @@ struct HybridTuning {
     // Path 1 merges without the colour-difference (chromaDiff), clip-border (rimRatio) and Bento colour passes: they re-sample the
     // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
     // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
-    int mosaicPath=0;
+    int mosaicPath=1;
     int mosaicWindow=3;          // half-width r of the native window (native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites around
                                  // the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the 6.1
                                  // window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split (its

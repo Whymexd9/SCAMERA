@@ -163,6 +163,11 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_mosaic_kernel_g": case "pref_lmc_hybrid_mosaic_kernel_rb": return new double[]{0.5,2,0};
             case "pref_lmc_hybrid_mosaic_fill_support": return new double[]{0,1,0};
             case "pref_lmc_hybrid_mosaic_tetra": return new double[]{0,2,1}; // 0 = Tetra on the split (default), 2 = T2, 1 = T1
+            // P34: flat-area kernel, kernel range (0 off / 1 ArkCam per component / 2 on the eigenvalues), night kernel / edge scale
+            case "pref_lmc_hybrid_mosaic_native_flat_scale": return new double[]{1,4,0};
+            case "pref_lmc_hybrid_mosaic_native_clamp": return new double[]{0,2,1};
+            case "pref_lmc_hybrid_mosaic_native_night_kernel_scale": return new double[]{0.25,2,0};
+            case "pref_lmc_hybrid_mosaic_native_night_edge_scale": return new double[]{0.25,1,0};
             // P28 RAW CA (worker rawCa*): mode 0 off / 1 base frame / 2 every frame, RawTherapee's auto passes and manual red / blue
             case "pref_lmc_hybrid_rawca_mode": return new double[]{0,2,1};
             case "pref_lmc_hybrid_rawca_passes": return new double[]{1,5,1};
