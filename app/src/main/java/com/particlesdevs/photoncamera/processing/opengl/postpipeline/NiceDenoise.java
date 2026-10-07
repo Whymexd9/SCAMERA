@@ -196,6 +196,7 @@ public final class NiceDenoise extends Node {
         final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
         // The LMC-hybrid engine has its own strengths («Шумоподавление после склейки» in the hybrid section).
         final boolean hybrid = PreferenceKeys.isHybridShot();
+        final float[] darkChroma = LmcDenoise.darkChroma(pipeline.signedRgb); // before this node resets signedRgb
         float chroma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_chroma", 1f) : PreferenceKeys.niceInternalValue("post_chroma", 1f)));
         float luma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_luma", 0.6f) : PreferenceKeys.niceInternalValue("post_luma", 0.6f)));
         boolean despeckle = hybrid ? PreferenceKeys.hybridSwitch("despeckle", true) : PreferenceKeys.isNiceDespeckleEnabled();
@@ -309,6 +310,7 @@ public final class NiceDenoise extends Node {
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
             glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
             glProg.setVar("darkFade", 0.0008f, 0.003f);
+            glProg.setVar("darkChroma", darkChroma[0], darkChroma[1]);
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;

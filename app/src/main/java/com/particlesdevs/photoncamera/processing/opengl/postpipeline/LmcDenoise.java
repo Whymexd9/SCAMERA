@@ -304,6 +304,24 @@ public final class LmcDenoise extends Node {
     /** The successful upload of the effective-frame map is logged once per process (the driver does not change). */
     private static volatile boolean effUploadLogged;
 
+    /**
+     * Dark fade of the denoise (lmcdn/cbf, lmcdn/final2x, chromadn/apply): the colour of pixels darker than mean RGB
+     * 0.0008..0.003 fades to neutral, which hid the black-level tint, mostly the per-pixel clip bias of the clamped merge
+     * RGB. On signed hybrid input that bias is gone and the fade greyed dark saturated colours (the teal curtain of the
+     * OPPO shot 2026-10-07 at mean RGB ~0.0011 kept 18-54 % of its colour). There a colour whose deviation from neutral
+     * |RGB - mean| exceeds what a black-level tint gives keeps it: {lo, hi} = where it starts to stay / stays fully, in
+     * linear white-balanced RGB (default 1.5e-4 / 4e-4: a 0.05 DN black-level error tints a neutral black by ~1.5e-4).
+     * nice_dev.txt "hybrid_dn_dark_chroma_hi 0" (or the old run of post_ab, or clamped input such as SCAM HDR) = the
+     * fade of the luminance alone, as before; "hybrid_dn_dark_chroma_lo / _hi v" set the floor in units of 1e-4.
+     */
+    static float[] darkChroma(boolean signedInput) {
+        if (!signedInput || com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) return new float[]{0f, 0f};
+        final float hi = clamp(PreferenceKeys.hybridValue("dn_dark_chroma_hi", 4f), 0f, 100f) * 1e-4f;
+        if (hi <= 0f) return new float[]{0f, 0f};
+        final float lo = Math.min(clamp(PreferenceKeys.hybridValue("dn_dark_chroma_lo", 1.5f), 0f, 100f) * 1e-4f, 0.99f * hi);
+        return new float[]{lo, hi};
+    }
+
     /** Set once {@link #process} took the pipeline's output texture (a failure after it cannot fall back to another pass). */
     static volatile boolean lastMainTaken;
 
@@ -318,6 +336,7 @@ public final class LmcDenoise extends Node {
         final LmcDenoiseTables.Config cfg = readConfig();
         final boolean despeckle = PreferenceKeys.hybridSwitch("despeckle", true);
         final boolean darkFade = PreferenceKeys.hybridSwitch("dn_dark_fade", true);
+        final float[] darkChroma = darkChroma(pipeline.signedRgb);
         final float rhoS = clamp(PreferenceKeys.hybridValue("dn_model_shot", 1.2f), 0.25f, 4f);
         final float rhoR = clamp(PreferenceKeys.hybridValue("dn_model_read", 6f), 0.25f, 16f);
         final float snrFixed = clamp(PreferenceKeys.hybridValue("dn_snr", 0f), 0f, 200f);
@@ -579,14 +598,14 @@ public final class LmcDenoise extends Node {
                 if (deltaUV != null) {
                     // reconstruction X_L + (0, Up2(DenC_{L+1} - X_{L+1})) once per pixel (integer Up2), then the filters
                     c0 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
-                    chromaPass(glProg, c0, level, deltaUV, null, strMap, sz, 1, false, 0f, 0f, 1f, 1f, 0f, 0, false, 0f);
+                    chromaPass(glProg, c0, level, deltaUV, null, strMap, sz, 1, false, 0f, 0f, 1f, 1f, 0f, 0, false, 0f, null);
                     release(owned, deltaUV);
                     deltaUV = null;
                 }
                 if (f0) {
                     GLTexture c1 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
                     chromaPass(glProg, c1, c0, null, null, strMap, sz, 2, true, k0 * GC[L][1] * rhoS * sY, k0 * GC[L][1] * rhoR * rY,
-                            UVS[L][1], UVS[L][3], (float) (int) chroma[L + 1][1], 0, false, 0f);
+                            UVS[L][1], UVS[L][3], (float) (int) chroma[L + 1][1], 0, false, 0f, null);
                     if (c0 != level) release(owned, c0);
                     c0 = c1;
                 }
@@ -599,18 +618,18 @@ public final class LmcDenoise extends Node {
                 if (L >= 1) {
                     out = tex(owned, sz, GLFormat.DataType.FLOAT_16, 2, GL_LINEAR);
                     chromaPass(glProg, out, c0, null, level, strMap, sz, 1, f1, k1 * GC[L][0] * rhoS * sY, k1 * GC[L][0] * rhoR * rY,
-                            UVS[L][0], UVS[L][2], (float) (int) chroma[L][1], 1, false, 0f);
+                            UVS[L][0], UVS[L][2], (float) (int) chroma[L][1], 1, false, 0f, null);
                 } else if (s == 1) {
                     out = pipeline.getMain(); // the last write of this node
                     lastMainTaken = true;
                     chromaPass(glProg, out, c0, null, null, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY,
-                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f);
+                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f, darkChroma);
                     output = out;
                 } else {
                     // (Y change, UV(Den0) - keep UV(X0)): final2x upsamples this one texture
                     out = tex(owned, size0, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
                     chromaPass(glProg, out, c0, null, base, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY,
-                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 3, false, keep2x);
+                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 3, false, keep2x, null);
                     release(owned, base);
                     base = null;
                 }
@@ -627,6 +646,7 @@ public final class LmcDenoise extends Node {
                 glProg.setVar("keepU", keep2x);
                 glProg.setVar("fadeU", darkFade ? 1 : 0);
                 glProg.setVar("darkFadeU", 0.0008f, 0.003f);
+                glProg.setVar("darkChromaU", darkChroma[0], darkChroma[1]);
                 glProg.drawBlocks(output);
             }
             final long done = System.nanoTime();
@@ -640,6 +660,7 @@ public final class LmcDenoise extends Node {
                .append(" levels").append(chromaLog)
                .append(" G=").append(gainsLog(GY, GC, UVS)).append(" measured=").append(measured).append("/4")
                .append(" map=").append(mapState).append(" despeckle=").append(despeckle).append(" sigmaU=").append(sigmaU)
+               .append(" darkFade=").append(!darkFade ? "off" : darkChroma[1] > 0f ? "keep " + darkChroma[0] + ".." + darkChroma[1] : "luma")
                .append(" ms=").append((done - started) / 1_000_000)
                .append(" (prep ").append((tPrep - started) / 1_000_000).append(", stats ").append((tStats - tPrep) / 1_000_000)
                .append(", luma ").append((tLuma - tStats) / 1_000_000).append(", chroma ").append((done - tLuma) / 1_000_000).append(')');
@@ -687,7 +708,7 @@ public final class LmcDenoise extends Node {
 
     private static void chromaPass(GLProg glProg, GLTexture target, GLTexture in, GLTexture deltaUV, GLTexture orig, GLTexture strMap,
                                    Point levelSize, int stride, boolean filter, float nx, float ny, float uvsU, float uvsV, float thr,
-                                   int mode, boolean fade, float keep) {
+                                   int mode, boolean fade, float keep, float[] darkChroma) {
         glProg.useAssetProgram("lmcdn/cbf", false);
         glProg.setTexture("InputBuffer", in);
         glProg.setTexture("DeltaUV", deltaUV != null ? deltaUV : in);
@@ -705,6 +726,7 @@ public final class LmcDenoise extends Node {
         glProg.setVar("keepU", keep);
         glProg.setVar("fadeU", fade ? 1 : 0);
         glProg.setVar("darkFadeU", 0.0008f, 0.003f);
+        glProg.setVar("darkChromaU", darkChroma != null ? darkChroma[0] : 0f, darkChroma != null ? darkChroma[1] : 0f);
         glProg.drawBlocks(target);
     }
 
