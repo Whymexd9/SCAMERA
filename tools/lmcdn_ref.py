@@ -244,7 +244,7 @@ def reduce_stats(blocks, clip=0.8):
 
 # ---------------------------------------------------------------- the whole noise reduction
 def denoise(x0, G, UVS, luma, chroma, model, rho, strmap=None, out_rgb=True, base_rgb=None, dark_fade=False,
-            dark_chroma=(0.0, 0.0)):
+            dark_chroma=(0.0, 0.0), dark_noise=(0.0, 0.0)):
     """x0: level-0 YUV (h, w, 3). G: {'Y': [[g1, g2] per level], 'C': [...]}, UVS[L] = (uvsU1, uvsU2, uvsV1, uvsV2).
     luma[b] = (strength, revert, outlier), chroma[b] = (strength, outlier). model = (sY, rY), rho = (rho_s, rho_r).
     strmap: callable(level shape) -> f per pixel or None. Returns RGB (out_rgb) or the YUV change against yuv(base_rgb)."""
@@ -316,8 +316,12 @@ def denoise(x0, G, UVS, luma, chroma, model, rho, strmap=None, out_rgb=True, bas
             t = t * t * (3 - 2 * t)
             if dark_chroma[1] > 0:
                 # a colour clearly stronger than a black-level tint is kept (lmcdn/cbf darkChromaU)
-                dev = np.linalg.norm(rgb - rgb.mean(-1, keepdims=True), axis=-1)
-                k = np.clip((dev - dark_chroma[0]) / (dark_chroma[1] - dark_chroma[0]), 0, 1)
+                # the floor follows the colour noise left (darkNoiseU: floor^2 = x mean + y), the ramp ends at max(hi, 2 floor)
+                m = rgb.mean(-1)
+                dev = np.linalg.norm(rgb - m[..., None], axis=-1)
+                lo = np.maximum(dark_chroma[0], np.sqrt(np.maximum(dark_noise[0] * np.maximum(m, 0) + dark_noise[1], 0)))
+                hi = np.maximum(dark_chroma[1], 2 * lo)
+                k = np.clip((dev - lo) / (hi - lo), 0, 1)
                 t = np.maximum(t, k * k * (3 - 2 * k))
             rgb = to_rgb(np.concatenate([den_c[..., :1], den_c[..., 1:] * t[..., None]], -1))
         return np.maximum(rgb, 0)

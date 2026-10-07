@@ -322,6 +322,27 @@ public final class LmcDenoise extends Node {
         return new float[]{lo, hi};
     }
 
+    /**
+     * The keep floor of {@link #darkChroma} following the colour noise the denoise leaves (lmcdn/cbf, lmcdn/final2x
+     * darkNoiseU): with the fixed floor alone, the colour noise of a neutral black at high ISO or with few frames
+     * reached the floor and stayed as coloured blotches (host LmcDenoise port, OPPO ISO 6400 night scene and a dark chart:
+     * neutral blotch +10..22 % against the former fade, the more the noisier). The floor becomes max(lo, k sigma) and
+     * the ramp ends at max(hi, 2 k sigma), sigma^2 = GC[0][1] (sY mean + rY): the measured noise of the level-0 input
+     * before the denoise (the stride-2 difference gain of Y at level 0 on the single-frame luma model, the term the chroma
+     * filters scale by UVS), in linear white-balanced RGB variance like darkChroma; k = 0.35 (the residual colour noise is ~0.18 sigma: the floor sits at ~2 x the noise left). At the
+     * noise of the 37-frame ISO 6400 shot of 2026-10-07 (measured G_C0 0.034-0.046) the fixed floor stays the larger
+     * one (nothing changes); at 5 / 10 x that noise variance the blotches come back to within 3 % of the former fade's
+     * while 92 % / 79 % of the dark scene colour is kept (former fade 56 % / 53 %, fixed floor alone 95 % / 86 % with
+     * +18 / +22 % blotches). nice_dev.txt "hybrid_dn_dark_chroma_noise k" (0 = the fixed floor alone).
+     * Returns {lo, hi, x, y}: darkChromaU = (lo, hi), darkNoiseU = (x, y), floor^2 = x mean + y.
+     */
+    static float[] darkKeep(float[] darkChroma, float gc0, float sY, float rY) {
+        if (darkChroma == null || darkChroma[1] <= 0f) return new float[]{0f, 0f, 0f, 0f};
+        final float k = clamp(PreferenceKeys.hybridValue("dn_dark_chroma_noise", 0.35f), 0f, 4f);
+        final float g = Float.isFinite(gc0) ? Math.max(gc0, 0f) : 0f;
+        return new float[]{darkChroma[0], darkChroma[1], k * k * g * sY, k * k * g * rY};
+    }
+
     /** Set once {@link #process} took the pipeline's output texture (a failure after it cannot fall back to another pass). */
     static volatile boolean lastMainTaken;
 
@@ -461,6 +482,7 @@ public final class LmcDenoise extends Node {
                 if (gL[L] != null) measured++;
             }
 
+            final float[] darkKeep = darkKeep(darkChroma, GC[0][1], sY, rY);
             // ---- SNR of the finish input
             float mu, gain = 1f, p50 = 0f, p90 = 0f;
             if (raw0[0] != null) {
@@ -624,7 +646,7 @@ public final class LmcDenoise extends Node {
                     out = pipeline.getMain(); // the last write of this node
                     lastMainTaken = true;
                     chromaPass(glProg, out, c0, null, null, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY,
-                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f, darkChroma);
+                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f, darkKeep);
                     output = out;
                 } else {
                     // (Y change, UV(Den0) - keep UV(X0)): final2x upsamples this one texture
@@ -647,7 +669,8 @@ public final class LmcDenoise extends Node {
                 glProg.setVar("keepU", keep2x);
                 glProg.setVar("fadeU", darkFade ? 1 : 0);
                 glProg.setVar("darkFadeU", 0.0008f, 0.003f);
-                glProg.setVar("darkChromaU", darkChroma[0], darkChroma[1]);
+                glProg.setVar("darkChromaU", darkKeep[0], darkKeep[1]);
+                glProg.setVar("darkNoiseU", darkKeep[2], darkKeep[3]);
                 glProg.drawBlocks(output);
             }
             final long done = System.nanoTime();
@@ -661,7 +684,8 @@ public final class LmcDenoise extends Node {
                .append(" levels").append(chromaLog)
                .append(" G=").append(gainsLog(GY, GC, UVS)).append(" measured=").append(measured).append("/4")
                .append(" map=").append(mapState).append(" despeckle=").append(despeckle).append(" sigmaU=").append(sigmaU)
-               .append(" darkFade=").append(!darkFade ? "off" : darkChroma[1] > 0f ? "keep " + darkChroma[0] + ".." + darkChroma[1] : "luma")
+               .append(" darkFade=").append(!darkFade ? "off" : darkKeep[1] > 0f ? "keep " + darkKeep[0] + ".." + darkKeep[1]
+                       + " noise " + darkKeep[2] + "/" + darkKeep[3] : "luma")
                .append(" ms=").append((done - started) / 1_000_000)
                .append(" (prep ").append((tPrep - started) / 1_000_000).append(", stats ").append((tStats - tPrep) / 1_000_000)
                .append(", luma ").append((tLuma - tStats) / 1_000_000).append(", chroma ").append((done - tLuma) / 1_000_000).append(')');
@@ -709,7 +733,7 @@ public final class LmcDenoise extends Node {
 
     private static void chromaPass(GLProg glProg, GLTexture target, GLTexture in, GLTexture deltaUV, GLTexture orig, GLTexture strMap,
                                    Point levelSize, int stride, boolean filter, float nx, float ny, float uvsU, float uvsV, float thr,
-                                   int mode, boolean fade, float keep, float[] darkChroma) {
+                                   int mode, boolean fade, float keep, float[] darkKeep) {
         glProg.useAssetProgram("lmcdn/cbf", false);
         glProg.setTexture("InputBuffer", in);
         glProg.setTexture("DeltaUV", deltaUV != null ? deltaUV : in);
@@ -727,7 +751,8 @@ public final class LmcDenoise extends Node {
         glProg.setVar("keepU", keep);
         glProg.setVar("fadeU", fade ? 1 : 0);
         glProg.setVar("darkFadeU", 0.0008f, 0.003f);
-        glProg.setVar("darkChromaU", darkChroma != null ? darkChroma[0] : 0f, darkChroma != null ? darkChroma[1] : 0f);
+        glProg.setVar("darkChromaU", darkKeep != null ? darkKeep[0] : 0f, darkKeep != null ? darkKeep[1] : 0f);
+        glProg.setVar("darkNoiseU", darkKeep != null ? darkKeep[2] : 0f, darkKeep != null ? darkKeep[3] : 0f);
         glProg.drawBlocks(target);
     }
 

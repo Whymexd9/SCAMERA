@@ -18,6 +18,7 @@ uniform float keepU;            // share of the 2x-only colour residual kept (un
 uniform int fadeU;
 uniform vec2 darkFadeU;
 uniform vec2 darkChromaU;       // colour deviation |RGB - mean| kept despite the fade (lmcdn/cbf; 0 = off)
+uniform vec2 darkNoiseU;        // the keep floor following the colour noise (lmcdn/cbf; 0 = the fixed floor alone)
 out vec4 Output;
 const vec3 kY = vec3(0.2126, 0.7152, 0.0721996);
 const vec3 kU = vec3(-0.162450244, -0.546494309, 0.708944715);
@@ -47,7 +48,10 @@ void main() {
         vec3 rgb = toRgb(yuv);
         float m = dot(rgb, vec3(1.0 / 3.0));
         float t = smoothstep(darkFadeU.x, darkFadeU.y, m);
-        if (darkChromaU.y > 0.0) t = max(t, smoothstep(darkChromaU.x, darkChromaU.y, length(rgb - vec3(m))));
+        if (darkChromaU.y > 0.0) {
+            float lo = max(darkChromaU.x, sqrt(max(darkNoiseU.x * max(m, 0.0) + darkNoiseU.y, 0.0)));
+            t = max(t, smoothstep(lo, max(darkChromaU.y, 2.0 * lo), length(rgb - vec3(m))));
+        }
         yuv.yz *= t;
     }
     Output = vec4(max(toRgb(yuv), vec3(0.0)), 1.0);

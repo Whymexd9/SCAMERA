@@ -111,10 +111,12 @@ def estimate_noise(noisy_tex):
 
 
 def gpu_denoise(rgb_full, s, cfg, model, rho=(1.2, 6.0), snr_fixed=0.0, despeckle=False, dark_fade=False,
-                eff=None, eff_max=3.0, wp=None, force_g=None, keep2x=0.0, dark_chroma=(0.0, 0.0)):
+                eff=None, eff_max=3.0, wp=None, force_g=None, keep2x=0.0, dark_chroma=(0.0, 0.0),
+                dark_noise=0.0):
     """Mirror of LmcDenoise.process. rgb_full: (H, W, 3) linear WB-RGB on the output grid (s = 1 or 2).
     model = (S, O) per channel arrays of one base frame (normalised raw), wp = whitePoint; dark_chroma = darkChromaU
-    (LmcDenoise.darkChroma: (1.5e-4, 4e-4) on signed hybrid input, (0, 0) = the fade of the luminance alone)."""
+    (LmcDenoise.darkChroma: (1.5e-4, 4e-4) on signed hybrid input, (0, 0) = the fade of the luminance alone); dark_noise =
+    LmcDenoise.darkKeep's multiplier k (darkNoiseU = k^2 G_C0 (sY, rY); 0 = the fixed floor alone)."""
     info = {}
     H, W = rgb_full.shape[:2]
     w0, h0 = (W + s - 1) // s, (H + s - 1) // s
@@ -163,6 +165,8 @@ def gpu_denoise(rgb_full, s, cfg, model, rho=(1.2, 6.0), snr_fixed=0.0, despeckl
     if force_g is not None:
         GY, GC, UVS = force_g
     info['G'] = {'Y': GY, 'C': GC}; info['UVS'] = UVS
+    dn = (dark_noise ** 2 * GC[0][1] * sY, dark_noise ** 2 * GC[0][1] * rY) if dark_chroma[1] > 0 and dark_noise > 0 else (0.0, 0.0)
+    info['dark_noise'] = dn
     ys = raws[0][:, 0]; ys = np.sort(ys[(ys >= 0) & np.isfinite(ys)])
     p50 = ys[min(len(ys) - 1, len(ys) // 2)]; p90 = ys[min(len(ys) - 1, int(len(ys) * 0.9))]
     gain = max(1.0, min(128.0, max(math.sqrt(max(1, .05 / max(p50, 1e-5)) * max(1, .18 / max(p90, 1e-5))),
@@ -231,7 +235,7 @@ def gpu_denoise(rgb_full, s, cfg, model, rho=(1.2, 6.0), snr_fixed=0.0, despeckl
         return run('lmcdn/cbf', target, {'InputBuffer': inn, 'DeltaUV': delta_uv or inn, 'Orig': orig or inn, 'StrMap': strmap or inn},
                    strideU=stride, filterU=int(filt), useDeltaU=int(delta_uv is not None), useMapU=int(strmap is not None),
                    noiseU=(nx, ny), uvsU=tuple(uvs), thrU=thr, mapInvU=(1.0 / size[0], 1.0 / size[1]), modeU=mode,
-                   keepU=float(keep), fadeU=int(fade), darkFadeU=(0.0008, 0.003), darkChromaU=tuple(dark_chroma))
+                   keepU=float(keep), fadeU=int(fade), darkFadeU=(0.0008, 0.003), darkChromaU=tuple(dark_chroma), darkNoiseU=dn)
     delta_uv = None
     output = None
     for L in range(3, -1, -1):
@@ -262,7 +266,7 @@ def gpu_denoise(rgb_full, s, cfg, model, rho=(1.2, 6.0), snr_fixed=0.0, despeckl
         info['delta'] = read(delta_uv)[..., :3]
         info['base'] = read(base)[..., :3]
         output = run('lmcdn/final2x', E(W, H, 4), {'InputBuffer': inp, 'Delta': delta_uv}, keepU=float(keep2x),
-                     fadeU=int(dark_fade), darkFadeU=(0.0008, 0.003), darkChromaU=tuple(dark_chroma))
+                     fadeU=int(dark_fade), darkFadeU=(0.0008, 0.003), darkChromaU=tuple(dark_chroma), darkNoiseU=dn)
     res = read(output)[..., :3]
     for t in owned:
         t.release()
@@ -271,6 +275,7 @@ def gpu_denoise(rgb_full, s, cfg, model, rho=(1.2, 6.0), snr_fixed=0.0, despeckl
 
 
 def ref_denoise(rgb_full, s, info, model_y, rho, eff_map=None, dark_fade=False, keep2x=0.0, dark_chroma=(0.0, 0.0)):
+    # dark_noise: the GPU run's darkNoiseU (info['dark_noise'])
     """The reference with the GPU run's measured gains and tiers (isolates the filter arithmetic)."""
     if s == 2:
         base = R.down2x(rgb_full)
@@ -292,7 +297,8 @@ def ref_denoise(rgb_full, s, info, model_y, rho, eff_map=None, dark_fade=False, 
             a = smap[y0][:, x0_]; b = smap[y0][:, x1]; c = smap[y1][:, x0_]; d = smap[y1][:, x1]
             return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
     out = R.denoise(x0, info['G'], info['UVS'], info['luma'], info['chroma'], model_y, rho, strmap,
-                    out_rgb=(s == 1), base_rgb=base, dark_fade=dark_fade, dark_chroma=dark_chroma)
+                    out_rgb=(s == 1), base_rgb=base, dark_fade=dark_fade, dark_chroma=dark_chroma,
+                    dark_noise=info.get('dark_noise', (0.0, 0.0)))
     if s == 2:
         return R.final2x(rgb_full, out, base, keep2x)
     return out

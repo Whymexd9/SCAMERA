@@ -1090,6 +1090,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Log.d(TAG, "onSurfaceTextureAvailable(): stale texture ignored");
                 return;
             }
+            // A theme change recreates the activity after this fragment has resumed: the dying fragment's preview
+            // can still report its texture once its executor is shut down. The new fragment opens the camera.
+            if (processExecutor.isShutdown()) {
+                Log.d(TAG, "onSurfaceTextureAvailable(): controller already destroyed, ignored");
+                return;
+            }
             try {
                 // list available characteristics ids
                 for (String id : mCameraCharacteristicsMap.keySet()) {
@@ -1973,6 +1979,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // in flight fails with CAMERA_IN_USE and kills the preview.
         if (mCameraDevice != null || !mCameraOpening.compareAndSet(false, true)) {
             Log.d(TAG, "openCamera(): an open is already in flight, skipping");
+            return;
+        }
+        if (processExecutor.isShutdown()) {
+            // This controller's fragment is destroyed (activity recreated); never open a camera nobody closes.
+            mCameraOpening.set(false);
+            Log.d(TAG, "openCamera(): controller already destroyed, skipping");
             return;
         }
         //Open camera in non ui thread

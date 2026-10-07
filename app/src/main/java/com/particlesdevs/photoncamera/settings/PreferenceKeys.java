@@ -950,6 +950,9 @@ public class PreferenceKeys {
             {"mosaicFillSupport", "mosaic_fill_support"}, {"mosaicTetra", "mosaic_tetra"},
             {"mosaicNativeFlatScale", "mosaic_native_flat_scale"}, {"mosaicNativeClamp", "mosaic_native_clamp"},
             {"mosaicNativeNightKernelScale", "mosaic_native_night_kernel_scale"}, {"mosaicNativeNightEdgeScale", "mosaic_native_night_edge_scale"},
+            // Tetra's own night point (worker defaults, dev keys only): kernel / edge scale, multiplier on the flat-area kernel
+            {"mosaicTetraNightKernelScale", "mosaic_tetra_night_kernel_scale"}, {"mosaicTetraNightEdgeScale", "mosaic_tetra_night_edge_scale"},
+            {"mosaicTetraNightFlatScale", "mosaic_tetra_night_flat_scale"},
             // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
             // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
