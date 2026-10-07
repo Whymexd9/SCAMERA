@@ -88,19 +88,16 @@ public final class NiceDenoise extends Node {
         if (eff == null || eff.capacity() != size.x * size.y) return null;
         eff.rewind();
         int[] histogram = new int[256];
-        long count = 0;
-        for (int i = 0; i < eff.capacity(); i += 7) {
-            int v = eff.get(i) & 255;
-            if (v > 0) { histogram[v]++; count++; }
-        }
+        long count = LmcDenoise.effHistogram(eff, histogram);
         if (count == 0) return null;
         long seen = 0;
         int median = 1;
         for (int v = 1; v < 256; v++) { seen += histogram[v]; if (seen * 2 >= count) { median = v; break; } }
         effRef = Math.max(1f, median / 8f);
         eff.rewind();
-        android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT, 1);
-        return new GLTexture(size, new GLFormat(GLFormat.DataType.UNSIGNED_8, 1), eff, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        // W1.1: the map as it always reached the shaders (all zero where the driver rejects its upload), deterministically;
+        // see LmcDenoise.effectiveFramesTexture.
+        return LmcDenoise.effectiveFramesTexture(size, eff);
     }
 
     /** Upper clamp of the per-pixel noise boost derived from the effective-frames map (Bento regions merged from one gained frame). */

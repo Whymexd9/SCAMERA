@@ -190,8 +190,15 @@ public class Gyro {
     }
 
     public void register() {
+        synchronized (registrationLock) {
+            sensorsWanted = true;
+            registerSensors(delayUs);
+        }
+    }
+
+    private void registerSensors(int gyroDelayUs) {
         stampIterations = 0;
-        mSensorManager.registerListener(mGravityTracker, mGyroSensor, delayUs);
+        mSensorManager.registerListener(mGravityTracker, mGyroSensor, gyroDelayUs);
         if (mRotationVectorSensor != null) {
             mSensorManager.registerListener(mRotationVectorListener, mRotationVectorSensor, SensorManager.SENSOR_DELAY_FASTEST);
         }
@@ -204,10 +211,50 @@ public class Gyro {
     }
 
     public void unregister() {
+        synchronized (registrationLock) {
+            sensorsWanted = false;
+            unregisterSensors();
+        }
+    }
+
+    private void unregisterSensors() {
         if (mAngles != null)
             mAngles = mAngles.clone();
         mSensorManager.unregisterListener(mGravityTracker, mGyroSensor);
         mSensorManager.unregisterListener(mRotationVectorListener, mRotationVectorSensor);
+    }
+
+    /**
+     * W1.9: the gyro's rate changes of a shot (unregister + register, ~30-40 ms of sensor HAL calls each) run on this thread
+     * instead of the camera thread: the burst rate after the series is submitted, the preview rate after the sequence. One
+     * thread, so they keep their order; skipped once the camera screen unregistered the sensors.
+     */
+    private static final java.util.concurrent.ExecutorService REGISTRATION = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "SCAMERA-gyro-registration");
+        t.setDaemon(true);
+        return t;
+    });
+    private final Object registrationLock = new Object();
+    /** The camera screen registered the sensors (register) and did not unregister them since. */
+    private boolean sensorsWanted;
+    /** PrepareGyroBurst(..., true) left the burst-rate registration to startBurstRegistration. */
+    private volatile boolean burstRegistrationPending;
+
+    private void reRegisterLater(final int gyroDelayUs) {
+        REGISTRATION.execute(() -> {
+            synchronized (registrationLock) {
+                if (!sensorsWanted) return;
+                unregisterSensors();
+                registerSensors(gyroDelayUs);
+            }
+        });
+    }
+
+    /** W1.9: posts the burst-rate registration left by PrepareGyroBurst(..., true); nothing when none is pending. */
+    public void startBurstRegistration() {
+        if (!burstRegistrationPending) return;
+        burstRegistrationPending = false;
+        reRegisterLater(0);
     }
 
     long[] capturingTimes;
@@ -216,6 +263,14 @@ public class Gyro {
     float x,y,z;
     private ArrayList<GyroBurst> BurstShakiness;
     public void PrepareGyroBurst(long[] capturingTimes,ArrayList<GyroBurst> burstShakiness) {
+        PrepareGyroBurst(capturingTimes, burstShakiness, false);
+    }
+
+    /**
+     * deferRegistration (W1.9): the burst state is set up now, the switch of the sensor to the burst rate is left to
+     * {@link #startBurstRegistration} after the submit. The gyro only feeds the logged shakiness, never the pixels.
+     */
+    public void PrepareGyroBurst(long[] capturingTimes,ArrayList<GyroBurst> burstShakiness,boolean deferRegistration) {
         lock = true;
         capturingNumber = 0;
         x = 0.f;
@@ -233,8 +288,15 @@ public class Gyro {
         gyroBurst = new GyroBurst(requiredSamples);
         System.arraycopy(capturingTimes, 0, this.capturingTimes, 0, capturingTimes.length);
         BurstShakiness = burstShakiness;
-        unregister();
-        register();
+        if (deferRegistration) {
+            burstRegistrationPending = true;
+        } else {
+            burstRegistrationPending = false;
+            synchronized (registrationLock) {
+                unregisterSensors();
+                registerSensors(delayUs);
+            }
+        }
         lock = false;
     }
 
@@ -276,13 +338,16 @@ public class Gyro {
                                       boolean comparableClock) {
         this.BurstShakiness = result;
         synchronized (circleLock) {
+        // W1.0: one line for the ZSL frames instead of one each (OPPO's log flow control dropped the shot's rows).
+        StringBuilder shake = new StringBuilder();
         for (long frameTs : frameTimestamps) {
             GyroBurst burst = GyroExposureWindow.extract(circleIntervalStarts, circleBurst,
                     circleCount, frameTs, exposureTimeNs, comparableClock);
             result.add(burst);
-            Log.d(TAG, "ZSL gyro: start="+frameTs+" exposure="+exposureTimeNs
-                    +" comparableClock="+comparableClock+" samples="+burst.samples+" shake="+burst.shakiness);
+            shake.append(' ').append(burst.shakiness).append('/').append(burst.samples);
         }
+        Log.d(TAG, "ZSL gyro: frames=" + frameTimestamps.length + " exposure=" + exposureTimeNs + " comparableClock=" + comparableClock
+                + " shake/samples:" + shake);
         }
     }
 
@@ -290,15 +355,19 @@ public class Gyro {
         integrate = false;
         gyroburst = false;
         delayUs = delayPreview;
-        unregister();
-        register();
+        burstRegistrationPending = false;
         // A long exposure naturally contains more samples. Never truncate it
         // to the burst average or interpolate unknown motion from other frames.
+        StringBuilder shake = new StringBuilder();
         for (int i=0; i<BurstShakiness.size(); i++) {
             GyroBurst burst = BurstShakiness.get(i);
             burst.recalculateShakiness();
-            Log.d(TAG, "GyroBurst Shakiness["+i+"]:"+burst.shakiness+" sampleCount:"+burst.samples);
+            shake.append(' ').append(burst.shakiness).append('/').append(burst.samples);
         }
+        // W1.0: one line instead of one per frame.
+        Log.d(TAG, "GyroBurst Shakiness/sampleCount (" + BurstShakiness.size() + "):" + shake);
+        // W1.9: back to the preview rate off the shot's path (it was 27-42 ms before "complete matched").
+        reRegisterLater(delayPreview);
     }
 
     public int getShakiness() {

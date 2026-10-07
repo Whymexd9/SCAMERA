@@ -25,6 +25,10 @@ public final class VivoNiceCaptureLog {
                 +" frameDurationNs="+request.get(CaptureRequest.SENSOR_FRAME_DURATION));
     }
     public static void result(CaptureRequest request, TotalCaptureResult result, long cutoff) {
+        result(request, result, cutoff, true);
+    }
+    /** vendorScan false (W1.9, diagnostics off): no walk over every key of the result for the vivo plan fields. */
+    public static void result(CaptureRequest request, TotalCaptureResult result, long cutoff, boolean vendorScan) {
         Log.i("NICE_CAPTURE", "resultFrame="+result.getFrameNumber()+" role="+request.getTag()
                 +" timestamp="+result.get(CaptureResult.SENSOR_TIMESTAMP)+" zslCutoff="+cutoff
                 +" requestedExposureNs="+request.get(CaptureRequest.SENSOR_EXPOSURE_TIME)
@@ -34,6 +38,7 @@ public final class VivoNiceCaptureLog {
                 +" aeState="+result.get(CaptureResult.CONTROL_AE_STATE)
                 +" frameDurationNs="+result.get(CaptureResult.SENSOR_FRAME_DURATION)
                 +" rollingShutterSkewNs="+result.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW));
+        if (!vendorScan) return;
         try {
             Set<String> found=new HashSet<>();
             for(CaptureResult.Key<?> key:result.getKeys()) if(VENDOR.contains(key.getName())) {

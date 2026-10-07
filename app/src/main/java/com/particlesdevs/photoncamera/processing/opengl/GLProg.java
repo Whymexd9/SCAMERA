@@ -133,7 +133,41 @@ public class GLProg implements AutoCloseable {
         useAssetProgram(name,false);
     }
     public void useAssetProgram(String name,boolean compute){
-        useProgram(PhotonCamera.getAssetLoader().getString("shaders/"+name+".glsl"),compute);
+        if (PostGlMode.legacy()) {
+            useProgram(PhotonCamera.getAssetLoader().getString("shaders/"+name+".glsl"),compute);
+            return;
+        }
+        // W1.11: the asset text, its #import / #define processing and the compute layouts are the same for the same name and
+        // defines in every pass and every shot; they were read from the APK and parsed again for each of the ~84 passes.
+        final String key = assetKey(name);
+        Prepared prepared = PREPARED.get(key);
+        if (prepared == null) {
+            final String source = PhotonCamera.getAssetLoader().getString("shaders/"+name+".glsl");
+            final String shader = changedDef ? GLInterface.loadShader(source, Defines) : GLInterface.loadShader(source);
+            prepared = new Prepared(shader, GLInterface.getLayouts(shader));
+            if (PREPARED.size() >= PREPARED_LIMIT) PREPARED.clear();
+            PREPARED.put(key, prepared);
+        }
+        isCompute = compute;
+        closed = false;
+        useShader(prepared.shader, prepared.layouts, compute);
+    }
+
+    /** A processed asset program (W1.11): the source handed to the driver and its layouts. */
+    private static final class Prepared {
+        final String shader;
+        final Map<String, GLComputeLayout> layouts;
+        Prepared(String shader, Map<String, GLComputeLayout> layouts) { this.shader = shader; this.layouts = layouts; }
+    }
+    private static final java.util.concurrent.ConcurrentHashMap<String, Prepared> PREPARED = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int PREPARED_LIMIT = 512;
+
+    /** Asset name plus the pending defines, in the order readProgram applies them. */
+    private String assetKey(String name) {
+        if (!changedDef || Defines.isEmpty()) return name;
+        StringBuilder key = new StringBuilder(name);
+        for (String[] define : Defines) key.append('|').append(define[0]).append('=').append(define[1]);
+        return key.toString();
     }
     public void useUtilProgram(String name){
         useUtilProgram(name,false);
@@ -170,7 +204,10 @@ public class GLProg implements AutoCloseable {
         useShader(shader,compute);
     }
     private void useShader(String shader, boolean compute){
-        mComputeLayouts = GLInterface.getLayouts(shader);
+        useShader(shader, GLInterface.getLayouts(shader), compute);
+    }
+    private void useShader(String shader, Map<String, GLComputeLayout> layouts, boolean compute){
+        mComputeLayouts = layouts;
         if(mProgramCache.containsKey(shader)) {
             Defines.clear();
             changedDef = false;
@@ -327,9 +364,13 @@ public class GLProg implements AutoCloseable {
 
     public void draw() {
         mSquare.draw(vPosition());
-        glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
-        glMemoryBarrier(GL_ALL_SHADER_BITS);
-        glFlush();
+        if (PostGlMode.legacy()) {
+            // The old model: two memory barriers and a flush after every 256-row tile. A fragment pass writes its render
+            // target, which the GL orders with every later read of that texture; no post shader writes images or buffers.
+            glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+            glMemoryBarrier(GL_ALL_SHADER_BITS);
+            glFlush();
+        }
     }
 
     public void drawBlocks(GLTexture glTexture,Point drawsize) {
@@ -339,7 +380,9 @@ public class GLProg implements AutoCloseable {
     public void drawBlocks(GLTexture glTexture) {
         glTexture.BufferLoad();
         drawBlocks(glTexture.mSize.x, glTexture.mSize.y);
-        glFinish();
+        // W1.1: no glFinish after every pass (it also ran at the end of every node): the GPU idled while the CPU set up the
+        // next pass. Read-backs are the sync points; post_sync 1 puts a glFinish at each node end for the node timers.
+        if (PostGlMode.legacy()) glFinish();
     }
 
     public void drawBlocks(int w, int h) {
@@ -349,6 +392,8 @@ public class GLProg implements AutoCloseable {
             glViewport(0, row[0], w, row[1]);
             draw();
         }
+        // W1.1: one submission per pass (the tiles stay 256 rows, so no single draw gets long).
+        if (!PostGlMode.legacy()) glFlush();
     }
 
     public void drawBlocks(GLTexture texture, int bh) {

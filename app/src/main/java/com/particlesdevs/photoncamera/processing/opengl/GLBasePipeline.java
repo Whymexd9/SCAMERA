@@ -147,7 +147,7 @@ public class GLBasePipeline implements AutoCloseable {
      */
     public void dumpTimings(String label) {
         if (nodeTimings.isEmpty()) return;
-        Log.d(TAG, label + " " + GLProg.takeProgramStats());
+        Log.d(TAG, label + " " + GLProg.takeProgramStats() + ", textures " + GLTexture.takeCreated());
         long total = 0;
         for (long[] t : nodeTimings) total += t[0];
         StringBuilder sb = new StringBuilder();
@@ -244,6 +244,7 @@ public class GLBasePipeline implements AutoCloseable {
     /** Runs every node; the last one stays bound for the readback. */
     private void runNodes() {
         lastI();
+        final boolean syncNodes = PostGlMode.syncNodes();
         for (int i = 0; i < Nodes.size(); i++) {
             Node node = Nodes.get(i);
             try {
@@ -263,9 +264,14 @@ public class GLBasePipeline implements AutoCloseable {
                     throw nodeFailure(node, "run", error);
                 }
             }
+            // post_sync 1: the node's GPU work is finished inside its own time (W1.1 removed the glFinish per pass).
+            if (syncNodes) android.opengl.GLES30.glFinish();
             endTimeMeasure(node.Name);
             if (i != Nodes.size() - 1) {
                 drawProgramTexture(node);
+                // post_sync 1: this draw stays outside every node time, as with the old glFinish in drawBlocks; without it
+                // the GPU time of a single-pass node's draw landed in the next node's time.
+                if (syncNodes) android.opengl.GLES30.glFinish();
             }
             if (i != Nodes.size()-1) com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.gpu(node.Name,node.WorkingTexture);
             try {

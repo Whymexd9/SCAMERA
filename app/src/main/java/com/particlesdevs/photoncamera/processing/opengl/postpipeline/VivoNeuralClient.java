@@ -110,6 +110,38 @@ public final class VivoNeuralClient {
         if(children!=null)for(File child:children)deleteTree(child);
         file.delete();
     }
+    /** W1.11: the finished job's folder (unique per job) is deleted off the shot's path. */
+    private static final java.util.concurrent.ExecutorService CLEANUP=java.util.concurrent.Executors.newSingleThreadExecutor(r->{
+        Thread t=new Thread(r,"SCAMERA-job-cleanup");t.setDaemon(true);return t;
+    });
+    private static void deleteTreeLater(File dir){
+        try{CLEANUP.execute(()->deleteTree(dir));}catch(RuntimeException e){deleteTree(dir);}
+    }
+    /**
+     * W1.5: the APK opened once per process (its central directory was read again for every shot); a new install starts a new
+     * process. Only the job thread uses it (job runs inside the class's synchronized entry points).
+     */
+    private static ZipFile apkFile;
+    private static String apkPath;
+    private static synchronized ZipFile apk(Context context) throws IOException {
+        final String path=context.getApplicationInfo().sourceDir;
+        if(apkFile==null||!path.equals(apkPath)){
+            if(apkFile!=null)try{apkFile.close();}catch(IOException ignored){}
+            apkFile=new ZipFile(path);apkPath=path;
+        }
+        return apkFile;
+    }
+    /** W1.0: the Java preparation of a hybrid shot in one line, from the marks of its ShotTimeline (ms; -1 = not measured). */
+    private static String javaPrepLine(){
+        final long sharp=com.particlesdevs.photoncamera.processing.ShotTimeline.between("sharp_start","sharp_done");
+        final long mosaic=com.particlesdevs.photoncamera.processing.ShotTimeline.between("mosaic_start","mosaic_done");
+        final long beforeCall=com.particlesdevs.photoncamera.processing.ShotTimeline.between("proc","hybrid_call");
+        final long ctorAll=com.particlesdevs.photoncamera.processing.ShotTimeline.between("hybrid_call","ctor_done");
+        final long header=com.particlesdevs.photoncamera.processing.ShotTimeline.between("ctor_done","spawn");
+        final long total=com.particlesdevs.photoncamera.processing.ShotTimeline.between("proc","spawn");
+        return "HYBRID JAVA PREP ms: sharp="+sharp+" meta="+(beforeCall>=0&&sharp>=0?beforeCall-sharp:-1)+" mosaic="+mosaic
+                +" ctor="+(ctorAll>=0&&mosaic>=0?ctorAll-mosaic:-1)+" header="+header+" total="+total;
+    }
     private static File cachedAsset(Context context,ZipFile apk,java.util.zip.ZipEntry entry,String prefix,String name) throws IOException {
         File dir=new File(assetCacheDir(context),prefix.replace('/','_'));
         if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException(Lang.t("Не удалось создать кэш ресурсов","Could not create the asset cache"));
@@ -142,6 +174,7 @@ public final class VivoNeuralClient {
         if(burst!=null)loadHexProfiles(context);
         final boolean cachedProfile=burst!=null&&validatedHexProfiles.contains(profileKey);
         final long startMs=android.os.SystemClock.elapsedRealtime();
+        if(niceBurst!=null)com.particlesdevs.photoncamera.processing.ShotTimeline.mark("job");
         // A self-test must never overwrite the failed photograph's report.
         SharedPreferences prefs=context.getSharedPreferences(
                 niceBurst!=null?"vivo_nice_capture_report":niceTone?"vivo_nice_tone_report":nice?"vivo_nice_root_report":raw!=null||burst!=null?"vivo_neural_capture_report":"vivo_neural_report",Context.MODE_PRIVATE);
@@ -149,7 +182,8 @@ public final class VivoNeuralClient {
         // P27: a retry after a failed merge keeps the first attempt in its report.
         final String carried=carryReport;
         if(niceBurst!=null&&carried!=null)report.append("PREVIOUS ATTEMPT:\n").append(carried).append("\nRETRY:\n");
-        prefs.edit().putString("report",report.toString()).putBoolean("complete",false).commit();
+        // W1.5: apply (the in-memory report is current at once; the disk write leaves the shot's path).
+        prefs.edit().putString("report",report.toString()).putBoolean("complete",false).apply();
         final long[] lastReportWriteMs={startMs};
         Consumer<String> log=line->{
             synchronized(report){
@@ -161,6 +195,7 @@ public final class VivoNeuralClient {
                     prefs.edit().putString("report",report.toString()).commit();lastReportWriteMs[0]=now;
                 }
             }
+            if(niceBurst!=null)com.particlesdevs.photoncamera.processing.ShotTimeline.workerLine(line);
             observer.accept(line);
         };
         try {
@@ -177,7 +212,8 @@ public final class VivoNeuralClient {
             if(!direct && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRootEnabled())
                 throw new IOException(hex||nice?Lang.t("Обработчик не установлен в этой сборке; включите «Root-доступ» в настройках Обработки Vivo","The processor is not installed in this build; turn on “Root access” in Settings → System")
                         :Lang.t("Этот нейроремозаик работает только с root: включите «Root-доступ» в настройках Обработки Vivo","This neural remosaic works only with root: turn on “Root access” in Settings → System"));
-            try(ZipFile apk=new ZipFile(context.getApplicationInfo().sourceDir)){
+            {
+                final ZipFile apk=apk(context);
                 java.util.ArrayList<String> names=new java.util.ArrayList<>();
                 java.util.HashSet<String> niceAssets=new java.util.HashSet<>();
                 names.add("vivo-neural-worker");
@@ -282,6 +318,10 @@ public final class VivoNeuralClient {
             }
             final long inputDone=android.os.SystemClock.elapsedRealtime();
             log.accept("HEX CLIENT PREP ms: assets="+(assetsDone-startMs)+" raw_write="+(inputDone-assetsDone));
+            if(hybridMerge){
+                com.particlesdevs.photoncamera.processing.ShotTimeline.mark("spawn");
+                log.accept(javaPrepLine());
+            }
             if(direct){
                 String dirPath=dir.getAbsolutePath();
                 java.util.ArrayList<String> args=new java.util.ArrayList<>();
@@ -417,6 +457,7 @@ public final class VivoNeuralClient {
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
             log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));
+            if(niceBurst!=null)com.particlesdevs.photoncamera.processing.ShotTimeline.mark("client_done");
             return result;
         } catch(Exception e){if(validatedHexProfiles.remove(profileKey))saveHexProfiles(context);log.accept("CLIENT STOP: "+e.getMessage());throw e;}
         finally {
@@ -424,11 +465,12 @@ public final class VivoNeuralClient {
             if(niceIn!=null)niceIn.close();
             if(niceOut!=null)niceOut.close();
             synchronized(report){
-                prefs.edit().putString("report",report.toString()).putBoolean("complete",true).commit();
+                // W1.11: apply and the folder deleted on the cleanup thread (both were on the shot's path, 25 ms).
+                prefs.edit().putString("report",report.toString()).putBoolean("complete",true).apply();
                 if(niceBurst!=null)lastJobReport=report.toString();
             }
             if(niceBurst!=null)NiceDiagnostics.nativeFiles(dir,report.toString());
-            deleteTree(dir);
+            deleteTreeLater(dir);
         }
     }
 

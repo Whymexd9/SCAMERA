@@ -92,6 +92,8 @@ public final class NiceDiagnostics {
             rgb.flip();buffer("00-reference-bayer-no-wb",rgb,w,h,3,true);
         } catch(Exception e){Log.e("NICE_DIAG","Begin failed",e);}
     }
+    /** A diagnostic capture is being written on this thread (the dumps below do something). */
+    public static boolean active() { return active.get() != null; }
     public static void buffer(String stage,ByteBuffer bytes,int width,int height,int channels,boolean linear) {
         Job j=active.get();if(j==null)return;
         try {

@@ -88,6 +88,13 @@ public class PostPipeline extends GLBasePipeline {
      */
     public ByteBuffer demosaicLinear;
     public Point demosaicLinearSize;
+    /**
+     * W1.3: {@link #Run} leaves the GL state (the EGL context and the textures still open) for {@link #finishDeferredTeardown},
+     * which the caller runs after the JPEG is saved. Only at 16 MP or less without Ultra HDR ({@link #canDeferTeardown}):
+     * above it the encode would hold the GL working set next to the bitmap, which the earlier release exists for.
+     */
+    public boolean deferTeardown;
+    private boolean teardownPending;
 
     public PostPipeline() {
         super("PostPipeline");
@@ -140,6 +147,10 @@ public class PostPipeline extends GLBasePipeline {
     }
 
     public Bitmap Run(ByteBuffer inBuffer, Parameters parameters) {
+        // The old-model run of post_ab is not the shot's own: its times are in the POST AB line, not in the SHOT TIMELINE.
+        final boolean legacyRun = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
+        if (!legacyRun) com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_start");
+        com.particlesdevs.photoncamera.processing.opengl.PostGlMode.setSyncNodes(!legacyRun && PreferenceKeys.niceDevSwitch("post_sync", false));
         mParameters = parameters;
         mSettings = PhotonCamera.getSettings();
         workSize = new Point(mParameters.rawSize.x, mParameters.rawSize.y);
@@ -191,6 +202,12 @@ public class PostPipeline extends GLBasePipeline {
         // the peak is the GL working set + the bitmap, without the full-frame readback buffer (~200 MB at 50 MP) that
         // used to sit next to one or the other (textures + buffer, then buffer + bitmap).
         Bitmap res = runAllToBitmap();
+        if (!legacyRun) com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_readback");
+        if (deferTeardown && canDeferTeardown(parameters)) {
+            // W1.3: released after the encode (finishDeferredTeardown), off the press-to-saved path.
+            teardownPending = true;
+            return res;
+        }
         // The GL working set (three FP16 textures = 1.2 GB on the 50 MP Sabre 2x grid) is released right after the
         // readback. closeAll must run while the EGL context is still current; the linear scene buffer was snapshotted
         // to CPU from inside LinearExposure.Run, so the gain-map pass still works later.
@@ -199,6 +216,34 @@ public class PostPipeline extends GLBasePipeline {
         } catch (Exception ignored) {}
         GLTexture.closeAll();
         return res;
+    }
+
+    /** W1.3: the GL teardown may wait until the JPEG is saved: 16 MP or less, no Ultra HDR pass, not the old model of post_ab. */
+    public static boolean canDeferTeardown(Parameters parameters) {
+        return parameters != null && parameters.rawSize != null && !PhotonCamera.getSettings().ultraHdr
+                && (long) parameters.rawSize.x * parameters.rawSize.y <= 16_000_000L
+                && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
+    }
+
+    /**
+     * W1.3: the teardown {@link #Run} skipped with {@link #deferTeardown} (textures, framebuffers, EGL context), after the
+     * JPEG encode; also after a run with {@link #deferTeardown} that failed half way (its textures are still open).
+     */
+    public void finishDeferredTeardown() {
+        if ((teardownPending || deferTeardown) && glint != null) {
+            teardownPending = false;
+            deferTeardown = false;
+            try {
+                GLCoreBlockProcessing proc = glint.glProcessing;
+                if (proc != null) proc.makeCurrent();
+                GLES30.glFinish();
+                GLTexture.closeAll();
+            } catch (RuntimeException e) {
+                Log.e("PostPipeline", "deferred GL teardown failed: " + e);
+            }
+        }
+        teardownPending = false;
+        close();
     }
 
     /** Called from LinearExposure.Run to keep the linear scene buffer. */
@@ -425,6 +470,11 @@ public class PostPipeline extends GLBasePipeline {
 
     @Override
     public void close() {
+        if (teardownPending) {
+            // W1.3: a deferred teardown is still due (an error path): the textures go before the context.
+            finishDeferredTeardown();
+            return;
+        }
         // Safety net for paths where the gain-map pass never ran.
         releaseDemosaicLinear();
         super.close();
@@ -510,9 +560,16 @@ public class PostPipeline extends GLBasePipeline {
         // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
         if (captureDemosaic) add(new LinearExposure());
-        add(new ArkStats());
+        final ArkStats arkStats = new ArkStats();
+        add(arkStats);
         add(new ArkFusion());
-        if (arkSharp) add(new ArkLumaSharpen());
+        if (arkSharp) {
+            final ArkLumaSharpen arkLumaSharpen = new ArkLumaSharpen();
+            // W1.6: in the G_CLEAN domain the sharpening needs nothing of the AE, so ArkStats issues its GPU passes before
+            // the CPU Smart-HDR statistics run (ArkLumaSharpen then only passes the image on).
+            arkStats.earlySharpen = arkLumaSharpen;
+            add(arkLumaSharpen);
+        }
         add(new ArkCombine(arkGuard));
         // ArkCam's sharpening ran before the delta (sharp mode "ark"); otherwise, or with ark_post_sharp, the chosen
         // sharpening (rt|scam, own settings) on the toned image, weakened in lifted shadows; texture only on request

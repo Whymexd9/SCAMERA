@@ -23,6 +23,7 @@ public class GLTexture implements AutoCloseable {
     public int mBuffer;
     public boolean isBuffered = false;
     private static int count = 0;
+    private static int created = 0;
     public final GLFormat mFormat;
     private static boolean[] ids = new boolean[256];
     private static int[] textures = new int[256];
@@ -77,10 +78,11 @@ public class GLTexture implements AutoCloseable {
         mFormat.wrap = textureWrapper;
         int[] TexID = new int[1];
         glGenTextures(1,TexID,0);
-        Log.d("GLTexture","TexID:"+TexID[0] + " Size:"+mSize.x+"x"+mSize.y + " Format:"+mFormat.getGLFormatInternal() + " Filter:"+textureFilter + " Wrapper:"+textureWrapper);
+        // Shot speed (W1.0): no log line per texture (two lines each pushed the shot over OPPO's log quota); the count of
+        // textures per run is in the "runAll programs" line (takeCreated).
+        created++;
         for(int i = 1; i<ids.length;i++){
             if(!ids[i]){
-                Log.d("GLTexture","get:"+i);
                 if(count < i){
                     count = i;
                     //glGenTextures(1,TexID,0);
@@ -116,10 +118,11 @@ public class GLTexture implements AutoCloseable {
         this.mGLFormat = glFormat.getGLFormatInternal();
         int[] TexID = new int[1];
         glGenTextures(1,TexID,0);
-        Log.d("GLTexture","TexID:"+TexID[0]);
+        // Shot speed (W1.0): no log line per texture (two lines each pushed the shot over OPPO's log quota); the count of
+        // textures per run is in the "runAll programs" line (takeCreated).
+        created++;
         for(int i = 1; i<ids.length;i++){
             if(!ids[i]){
-                Log.d("GLTexture","get:"+i);
                 if(count < i){
                     count = i;
                     //glGenTextures(1,TexID,0);
@@ -163,6 +166,7 @@ public class GLTexture implements AutoCloseable {
             glGenFramebuffers(1,frameBuffer,0);
             mBuffer = frameBuffer[0];
             isBuffered = true;
+            trackFramebuffer(mTextureID, mBuffer);
         }
     }
 
@@ -241,6 +245,29 @@ public class GLTexture implements AutoCloseable {
             }
         }
         count = 0;
+        // W1.1: the framebuffers of the textures still open go with them; a texture attached to a framebuffer kept its
+        // storage until the EGL context was destroyed. The old model left them to the context (PostGlMode.legacy).
+        int[] fbos = takeFramebuffers();
+        if (fbos.length > 0 && !PostGlMode.legacy()) glDeleteFramebuffers(fbos.length, fbos, 0);
+    }
+
+    /** Textures created since the last call (per pipeline run: the "runAll programs" line). */
+    public static synchronized int takeCreated() {
+        int n = created;
+        created = 0;
+        return n;
+    }
+
+    /** Framebuffer of each texture name that has one (Bufferize), for closeAll. */
+    private static final java.util.HashMap<Integer, Integer> framebuffers = new java.util.HashMap<>();
+    private static synchronized void trackFramebuffer(int texture, int framebuffer) { framebuffers.put(texture, framebuffer); }
+    private static synchronized void untrackFramebuffer(int texture) { framebuffers.remove(texture); }
+    private static synchronized int[] takeFramebuffers() {
+        int[] out = new int[framebuffers.size()];
+        int i = 0;
+        for (int fb : framebuffers.values()) out[i++] = fb;
+        framebuffers.clear();
+        return out;
     }
 
     @Override
@@ -248,6 +275,17 @@ public class GLTexture implements AutoCloseable {
         glDeleteTextures(1,new int[]{mTextureID},0);
         ids[mTextureID] = false;
         //Log.d("GLTexture","close ID:"+mTextureID);
-        if(isBuffered) glDeleteBuffers(1,new int[]{mBuffer},0);
+        if(isBuffered) {
+            untrackFramebuffer(mTextureID);
+            if (PostGlMode.legacy()) {
+                // The old model (post_ab only): the FBO name went to glDeleteBuffers, so the framebuffer and the texture's
+                // storage attached to it stayed alive until the EGL context was destroyed.
+                glDeleteBuffers(1,new int[]{mBuffer},0);
+            } else {
+                // W1.1: the framebuffer itself, which releases the texture's storage now.
+                glDeleteFramebuffers(1,new int[]{mBuffer},0);
+                isBuffered = false;
+            }
+        }
     }
 }

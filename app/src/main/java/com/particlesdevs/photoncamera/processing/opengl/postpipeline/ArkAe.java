@@ -1,6 +1,7 @@
 package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import java.nio.FloatBuffer;
+import java.nio.ShortBuffer;
 import java.util.Locale;
 
 /**
@@ -65,12 +66,42 @@ public final class ArkAe {
         // Rows are read in bulk (one copy per row instead of a buffer call per sample: ~3 Mpixel on the phone).
         final FloatBuffer src = px.duplicate();
         final int base = px.position(), rowLen = width * channels;
+        return smartHdr((y, row) -> {
+            src.position(base + y * rowLen);
+            src.get(row, 0, rowLen);
+        }, channels, width, height, s, iso, maxIso);
+    }
+
+    /** Source of the rows of {@link #smartHdr(Rows, int, int, int, Settings, int, int)}: row y into dst (width * channels floats). */
+    public interface Rows {
+        void get(int y, float[] dst);
+    }
+
+    /**
+     * Shot speed (W1.6): {@link #smartHdr(FloatBuffer, int, int, int, Settings, int, int)} on an RGBA16F read-back kept as IEEE
+     * halves (half the bytes of the GL_FLOAT read-back and no driver conversion): every half is widened exactly through
+     * {@link HalfFloat#TABLE}, so the statistics see the same floats.
+     */
+    public static Result smartHdrHalf(ShortBuffer px, int channels, int width, int height, Settings s, int iso, int maxIso) {
+        final ShortBuffer src = px.duplicate();
+        final int base = px.position(), rowLen = width * channels;
+        final short[] halves = new short[rowLen];
+        final float[] table = HalfFloat.TABLE;
+        return smartHdr((y, row) -> {
+            src.position(base + y * rowLen);
+            src.get(halves, 0, rowLen);
+            for (int i = 0; i < rowLen; i++) row[i] = table[halves[i] & 0xffff];
+        }, channels, width, height, s, iso, maxIso);
+    }
+
+    /** ark_ae.smart_hdr on rows from any source (see the FloatBuffer variant). */
+    public static Result smartHdr(Rows rows, int channels, int width, int height, Settings s, int iso, int maxIso) {
+        final int rowLen = width * channels;
         final float[] row = new float[rowLen];
         // 0x725a8 loop: maximum over all finite samples
         float gmax = -1000f;
         for (int y = 0; y < height; y++) {
-            src.position(base + y * rowLen);
-            src.get(row, 0, rowLen);
+            rows.get(y, row);
             for (int o = 0; o < rowLen; o += channels) {
                 for (int c = 0; c < 3; c++) {
                     float v = row[o + c];
@@ -85,8 +116,7 @@ public final class ArkAe {
         final double[] hy = new double[4096], hm = new double[4096];
         double tot = 0, sumY = 0, sumLog = 0;
         for (int y = 0; y < height; y++) {
-            src.position(base + y * rowLen);
-            src.get(row, 0, rowLen);
+            rows.get(y, row);
             for (int x = 0; x < width; x++) {
                 int o = x * channels;
                 float rr = row[o], gg = row[o + 1], bb = row[o + 2];
