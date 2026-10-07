@@ -66,7 +66,9 @@ try {scamera_lanczos::resize(s,w,h,w*4+8,d,ow,oh,ow*4+12,a);return 1;}catch(...)
     assert lib.run(b.ctypes.data,8,8,b.ctypes.data,1,1,3)==0
     print('Lanczos 2–5: dense reference, DC, edges, stride, identity, alias suppression and validation passed')
 
-# Guard stage placement: the post pipeline -> the hybrid's final Lanczos resize -> gain map/encoding.
+# Guard stage placement: the post pipeline -> Ultra HDR gain map on the pipeline-size bitmap (its pass checks the base
+# against the pipeline size) -> the hybrid's final Lanczos resize -> the gain map resized to the final bitmap -> encoding.
 source=(ROOT/'app/src/main/java/com/particlesdevs/photoncamera/processing/processor/HdrxProcessor.java').read_text()
-assert source.index('pipeline.Run(jpegInput, processingParameters)')<source.index('VivoPostDownscale.resizeTo(')<source.index('gm = pipeline.RunHDRGainMap(')
+assert (source.index('pipeline.Run(jpegInput, processingParameters)')<source.index('gm = pipeline.RunHDRGainMap(')
+        <source.index('VivoPostDownscale.resizeTo(')<source.index('gm = gm.resizedFor(img.getWidth(), img.getHeight())'))
 print('Pipeline order passed')
