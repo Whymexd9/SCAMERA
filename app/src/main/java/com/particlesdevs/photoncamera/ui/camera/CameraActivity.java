@@ -1,6 +1,6 @@
 package com.particlesdevs.photoncamera.ui.camera;
 
-import android.Manifest;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -12,8 +12,10 @@ import com.particlesdevs.photoncamera.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
@@ -31,41 +33,27 @@ import com.particlesdevs.photoncamera.util.FileManager;
 import com.particlesdevs.photoncamera.util.SimpleStorageHelper;
 import com.particlesdevs.photoncamera.util.log.FragmentLifeCycleMonitor;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import static android.os.Build.VERSION.SDK_INT;
 
 
 public class CameraActivity extends BaseActivity {
 
-    private static final int CODE_REQUEST_PERMISSIONS = 1;
-    private static final int CODE_REQUEST_MEDIA = 2;
-    private static final String[] PERMISSIONS = {
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.INTERNET
-    };
-    /** Legacy storage for Android 10 and below */
-    private static final String[] PERMISSIONS2 = {
-            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-    };
-    /** Media read for gallery (system camera images) on Android 13+ */
-    private static final String[] PERMISSIONS_MEDIA_33 = {
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO,
-    };
-    /** Media read for gallery on Android 11-12 */
-    private static final String[] PERMISSIONS_MEDIA_30 = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-    };
-    private static int requestCount;
-    private ActivityResultLauncher<RequestStorageAccessContract.Options> storageAccessLauncher;
+    private static final String STATE_PERMISSION_PLAN = "permission_plan";
+    private static final String STATE_PERMISSION_PENDING = "permission_pending";
+    private static final String STATE_AWAITING_SETTINGS = "permission_awaiting_settings";
 
-    private boolean rationaleShownCamera = false;
-    private boolean rationaleShownStorage = false;
-    private boolean rationaleShownMedia = false;
-    private boolean rationaleShownDcim = false;
+    /** Startup permissions, asked like ArkCam does: one system request, no dialog of ours in front (P31). */
+    private PermissionPlan permissionPlan;
+    private ActivityResultLauncher<String[]> permissionLauncher;
+    private ActivityResultLauncher<RequestStorageAccessContract.Options> storageAccessLauncher;
+    /** A runtime request or the DCIM picker is on screen; its result callback continues the flow. */
+    private boolean permissionStepPending;
+    /** The user was sent to the app settings; onResume checks the permissions again. */
+    private boolean awaitingSettings;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,150 +69,158 @@ public class CameraActivity extends BaseActivity {
         PreferenceKeys.setDefaults(this);
         PhotonCamera.getSettings().loadCache();
 
+        permissionPlan = PermissionPlan.restore(SDK_INT,
+                savedInstanceState == null ? null : savedInstanceState.getIntArray(STATE_PERMISSION_PLAN));
+        boolean stepPending = savedInstanceState != null && savedInstanceState.getBoolean(STATE_PERMISSION_PENDING);
+        if (savedInstanceState != null && savedInstanceState.getBoolean(STATE_AWAITING_SETTINGS)) {
+            // Recreated while the user was in the app settings: this start is the return from there.
+            permissionPlan.restart();
+        }
+
+        permissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    permissionStepPending = false;
+                    Log.d("CameraActivity", "Permission result " + result);
+                    permissionPlan.onResult(!result.isEmpty());
+                    advancePermissions();
+                });
         storageAccessLauncher = registerForActivityResult(
                 new RequestStorageAccessContract(this, StorageType.EXTERNAL, SimpleStorageHelper.DCIM_BASE_PATH),
                 result -> {
+                    permissionStepPending = false;
                     if (result instanceof RequestStorageAccessResult.RootPathPermissionGranted) {
                         Log.d("CameraActivity", "Storage access granted (SimpleStorage)");
                         SimpleStorageHelper.updateFileManagerPaths(CameraActivity.this);
-                        tryLoad();
+                        permissionPlan.onDcimGranted();
+                    } else if (result instanceof RequestStorageAccessResult.CanceledByUser) {
+                        Log.e("CameraActivity", "Storage access cancelled");
+                        permissionPlan.onDcimCancelled();
                     } else {
-                        Log.e("CameraActivity", "Storage access denied or wrong folder");
-                        requestPermission();
+                        Log.e("CameraActivity", "Storage access denied or wrong folder: " + result);
                     }
+                    advancePermissions();
                 });
 
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
-        if (hasAllPermissions()) {
-            tryLoad();
-        } else {
-            requestPermission();
-        }
+        // After a recreation with a request on screen its result arrives through the launcher callback.
+        if (!stepPending) advancePermissions();
+        else permissionStepPending = true;
     }
 
-    private void requestPermission() {
-        // Step 1: Camera, microphone, internet
-        if (Arrays.stream(PERMISSIONS).anyMatch(p -> checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED)) {
-            if (!rationaleShownCamera) {
-                rationaleShownCamera = true;
-                showRationale(
-                        getString(R.string.perm_rationale_camera_title),
-                        getString(R.string.perm_rationale_camera_message),
-                        () -> requestPermissions(PERMISSIONS, CODE_REQUEST_PERMISSIONS)
-                );
-            } else {
-                requestPermissions(PERMISSIONS, CODE_REQUEST_PERMISSIONS);
-            }
-            return;
-        }
-        if (SDK_INT < Build.VERSION_CODES.R) {
-            // Step 2: Legacy storage (Android 10 and below)
-            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-                    || checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                if (!rationaleShownStorage) {
-                    rationaleShownStorage = true;
-                    showRationale(
-                            getString(R.string.perm_rationale_storage_title),
-                            getString(R.string.perm_rationale_storage_message),
-                            () -> requestPermissions(PERMISSIONS2, CODE_REQUEST_PERMISSIONS + 1)
-                    );
-                } else {
-                    requestPermissions(PERMISSIONS2, CODE_REQUEST_PERMISSIONS + 1);
-                }
-            } else {
+    /** Takes the next step of the startup permission flow; the camera starts once nothing is missing. */
+    private void advancePermissions() {
+        String[] missing = permissionPlan.missing(p -> checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED);
+        boolean hasDcimAccess = !permissionPlan.needsDcimAccess() || SimpleStorageHelper.hasStorageAccess(this);
+        PermissionPlan.Step step = permissionPlan.next(missing, this::shouldShowRequestPermissionRationale, hasDcimAccess);
+        Log.d("CameraActivity", "Permission step " + step + " missing=" + Arrays.toString(missing));
+        switch (step) {
+            case REQUEST:
+                // One batch of everything missing; ColorOS shows it as one combined system sheet.
+                permissionPlan.onRequest();
+                permissionStepPending = true;
+                permissionLauncher.launch(missing);
+                break;
+            case SETTINGS:
+                showSettingsRedirectDialog(missing);
+                break;
+            case PICK_DCIM:
+                launchDcimPicker();
+                break;
+            case DCIM_FAILED:
+                showDcimFailedDialog();
+                break;
+            case START:
                 tryLoad();
-            }
-            return;
-        }
-        // Step 3: Media read for gallery (Android 11+)
-        if (!hasMediaReadPermission()) {
-            if (!rationaleShownMedia) {
-                rationaleShownMedia = true;
-                showRationale(
-                        getString(R.string.perm_rationale_media_title),
-                        getString(R.string.perm_rationale_media_message),
-                        this::doRequestMediaPermission
-                );
-            } else {
-                doRequestMediaPermission();
-            }
-            return;
-        }
-        // Step 4: SAF DCIM folder access for RAW video and device configs
-        if (!SimpleStorageHelper.hasStorageAccess(this)) {
-            if (!rationaleShownDcim) {
-                rationaleShownDcim = true;
-                showRationale(
-                        getString(R.string.perm_rationale_dcim_title),
-                        getString(R.string.perm_rationale_dcim_message),
-                        () -> storageAccessLauncher.launch(new RequestStorageAccessContract.Options(SimpleStorageHelper.createDcimInitialPath(this)))
-                );
-            } else {
-                storageAccessLauncher.launch(new RequestStorageAccessContract.Options(SimpleStorageHelper.createDcimInitialPath(this)));
-            }
-        } else {
-            tryLoad();
+                break;
         }
     }
 
-    private void doRequestMediaPermission() {
-        if (SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestPermissions(PERMISSIONS_MEDIA_33, CODE_REQUEST_MEDIA);
-        } else {
-            requestPermissions(PERMISSIONS_MEDIA_30, CODE_REQUEST_MEDIA);
+    private void launchDcimPicker() {
+        Toast.makeText(this, permissionPlan.dcimPicks() == 0 ? R.string.perm_dcim_hint : R.string.perm_dcim_wrong_folder,
+                Toast.LENGTH_LONG).show();
+        permissionPlan.onDcimPick();
+        try {
+            permissionStepPending = true;
+            storageAccessLauncher.launch(new RequestStorageAccessContract.Options(SimpleStorageHelper.createDcimInitialPath(this)));
+        } catch (RuntimeException e) {
+            permissionStepPending = false;
+            Log.e("CameraActivity", "Cannot open the DCIM folder picker: " + e);
+            permissionPlan.onDcimCancelled();
+            showDcimFailedDialog();
         }
     }
 
-    private void showRationale(String title, String message, Runnable onProceed) {
+    private void showSettingsRedirectDialog(String[] missing) {
+        List<PermissionPlan.Group> groups = permissionPlan.groups(missing);
+        String title;
+        String message;
+        if (PermissionPlan.mediaOnly(groups)) {
+            title = getString(R.string.perm_rationale_media_title);
+            message = getString(R.string.perm_rationale_media_settings);
+        } else {
+            List<String> names = new ArrayList<>();
+            for (PermissionPlan.Group group : groups) names.add(getString(groupName(group)));
+            title = getString(R.string.perm_settings_title);
+            message = getString(R.string.perm_settings_message, String.join(", ", names));
+        }
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(message)
-                .setPositiveButton(R.string.ok, (dialog, which) -> onProceed.run())
+                .setPositiveButton(R.string.perm_open_settings, (dialog, which) -> openAppSettings())
+                .setNegativeButton(R.string.cancel, (dialog, which) -> finish())
                 .setCancelable(false)
                 .show();
     }
 
-    private void showSettingsRedirectDialog(String title, String message) {
+    private static int groupName(PermissionPlan.Group group) {
+        switch (group) {
+            case CAMERA:
+                return R.string.perm_group_camera;
+            case MICROPHONE:
+                return R.string.perm_group_microphone;
+            case PHOTOS:
+                return R.string.perm_group_photos;
+            case FILES:
+                return R.string.perm_group_files;
+            default:
+                return R.string.perm_group_storage;
+        }
+    }
+
+    private void openAppSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", getPackageName(), null));
+        try {
+            awaitingSettings = true;
+            startActivity(intent);
+        } catch (ActivityNotFoundException e) {
+            awaitingSettings = false;
+            Log.e("CameraActivity", "Cannot open the app settings: " + e);
+            advancePermissions();
+        }
+    }
+
+    private void showDcimFailedDialog() {
         new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setMessage(message)
-                .setPositiveButton(R.string.perm_open_settings, (dialog, which) -> {
-                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.fromParts("package", getPackageName(), null));
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(intent);
+                .setTitle(R.string.perm_rationale_dcim_title)
+                .setMessage(R.string.perm_dcim_failed)
+                .setPositiveButton(R.string.perm_retry, (dialog, which) -> {
+                    permissionPlan.restart();
+                    advancePermissions();
                 })
-                .setNegativeButton(R.string.cancel, (dialog, which) -> System.exit(0))
+                .setNegativeButton(R.string.cancel, (dialog, which) -> finish())
                 .setCancelable(false)
                 .show();
     }
-    
-    /** Gallery needs this to show system camera images via MediaStore */
-    private boolean hasMediaReadPermission() {
-        if (SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
-                    && checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED;
-        }
-        if (SDK_INT >= Build.VERSION_CODES.R) {
-            return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        }
-        return true;
-    }
 
-    private boolean hasAllPermissions() {
-        boolean basicPermissions = Arrays.stream(PERMISSIONS).allMatch(permission -> checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED);
-        
-        if (SDK_INT >= Build.VERSION_CODES.R) {
-            return basicPermissions
-                    && hasMediaReadPermission()
-                    && SimpleStorageHelper.hasStorageAccess(this);
-        } else {
-            // Android 10 and below - legacy storage
-            return basicPermissions
-                    && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-                    && checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        }
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putIntArray(STATE_PERMISSION_PLAN, permissionPlan.save());
+        outState.putBoolean(STATE_PERMISSION_PENDING, permissionStepPending);
+        outState.putBoolean(STATE_AWAITING_SETTINGS, awaitingSettings);
     }
 
     private void tryLoad() {
@@ -244,40 +240,6 @@ public class CameraActivity extends BaseActivity {
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.container, CameraFragment.newInstance())
                     .commit();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        Log.d("CameraActivity", "onRequestPermissionsResult() requestCode=" + requestCode + " grantResults=" + Arrays.toString(grantResults));
-
-        boolean anyDenied = Arrays.stream(grantResults).asLongStream().anyMatch(v -> v == PackageManager.PERMISSION_DENIED);
-
-        if (requestCode == CODE_REQUEST_PERMISSIONS || requestCode == CODE_REQUEST_PERMISSIONS + 1) {
-            if (anyDenied) {
-                requestCount++;
-                if (requestCount > 15) System.exit(0);
-            }
-            requestPermission();
-        } else if (requestCode == CODE_REQUEST_MEDIA) {
-            if (anyDenied) {
-                requestCount++;
-                if (requestCount > 15) System.exit(0);
-                // If user denied or selected limited access, check if we can still ask
-                boolean canAskAgain = SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                        ? Arrays.stream(PERMISSIONS_MEDIA_33).anyMatch(this::shouldShowRequestPermissionRationale)
-                        : shouldShowRequestPermissionRationale(Manifest.permission.READ_EXTERNAL_STORAGE);
-                if (!canAskAgain) {
-                    // Permanently denied or limited selection chosen — redirect to settings
-                    showSettingsRedirectDialog(
-                            getString(R.string.perm_rationale_media_title),
-                            getString(R.string.perm_rationale_media_settings)
-                    );
-                    return;
-                }
-            }
-            requestPermission();
         }
     }
 
@@ -310,6 +272,12 @@ public class CameraActivity extends BaseActivity {
         hideSystemUI();
         // Ensure portrait orientation is enforced every time activity resumes
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        if (awaitingSettings) {
+            // Back from the app settings: check again and go on, no restart of the app needed.
+            awaitingSettings = false;
+            permissionPlan.restart();
+            advancePermissions();
+        }
     }
 
     @Override
@@ -326,7 +294,8 @@ public class CameraActivity extends BaseActivity {
             case KeyEvent.KEYCODE_VOLUME_DOWN:
                 if (action == KeyEvent.ACTION_DOWN) {
                     View view = findViewById(R.id.shutter_button);
-                    if (view.isClickable())
+                    // Null while the startup permission flow runs (no camera fragment yet).
+                    if (view != null && view.isClickable())
                         view.performClick();
                 }
                 return true;

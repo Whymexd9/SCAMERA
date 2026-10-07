@@ -141,18 +141,22 @@
 
     <!-- Storage Access Framework folder picker -->
 
-    <!-- Permission rationale dialogs -->
-    <string name="ok">OK</string>
+    <!-- Startup permissions: one system request, then these only when the system will not ask again -->
     <string name="perm_open_settings">Open Settings</string>
-    <string name="perm_rationale_camera_title">Camera &amp; Microphone Access</string>
-    <string name="perm_rationale_camera_message">PhotonCamera needs access to the camera and microphone to capture photos and record video.</string>
-    <string name="perm_rationale_storage_title">Storage Access</string>
-    <string name="perm_rationale_storage_message">Storage access is required to save your photos and videos.</string>
+    <string name="perm_settings_title">Permissions needed</string>
+    <string name="perm_settings_message">The camera cannot start without: %1$s.\n\nOpen the app settings, choose Permissions and allow them.</string>
+    <string name="perm_group_camera">Camera</string>
+    <string name="perm_group_microphone">Microphone</string>
+    <string name="perm_group_photos">Photos and videos</string>
+    <string name="perm_group_files">Files and media</string>
+    <string name="perm_group_storage">Storage</string>
     <string name="perm_rationale_media_title">Photo &amp; Video Library Access</string>
-    <string name="perm_rationale_media_message">Access to photos and videos is required to display your media in the gallery.\n\nPlease grant full access — partial selection is not supported by this app.</string>
     <string name="perm_rationale_media_settings">Full access to photos and videos is required for the gallery. Please open app settings and grant full access.</string>
+    <string name="perm_dcim_hint">Select the DCIM folder and allow access to it</string>
+    <string name="perm_dcim_wrong_folder">That is not the DCIM folder. Select DCIM</string>
     <string name="perm_rationale_dcim_title">DCIM Folder Access</string>
-    <string name="perm_rationale_dcim_message">Access to the DCIM folder is required for saving RAW video files and reading device custom configs.</string>
+    <string name="perm_dcim_failed">Without access to the DCIM folder RAW video cannot be saved and device configs cannot be read. Tap Retry and select the DCIM folder.</string>
+    <string name="perm_retry">Retry</string>
 
     <!-- Sharpening, RawTherapee algorithms -->
     <string name="pref_sharp_radius_default" translatable="false">0.5</string>
