@@ -33,8 +33,12 @@ public final class LmcHybridKeys {
         return key;
     }
 
-    /** The SoC the vivo NICE network was built for (Snapdragon 8 Elite SM8750, Hexagon v79). */
+    /**
+     * The SoC the vivo NICE network was built for (Snapdragon 8 Elite SM8750, Hexagon v79). Variants report a suffix
+     * (e.g. SM8750-AC on the Galaxy edition), so the model is matched by prefix.
+     */
     public static boolean vivoNetSoc() {
-        return "SM8750".equals(android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "");
+        String model = android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : null;
+        return model != null && model.toUpperCase(java.util.Locale.ROOT).startsWith("SM8750");
     }
 }
