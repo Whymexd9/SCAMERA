@@ -148,6 +148,55 @@ public class ShotSpeedBitExactTest {
         }
     }
 
+    /** Read-backs of the 65536-half probe texture as a driver might return them (exact unless changed by the caller). */
+    private static ShortBuffer probeHalves() {
+        ShortBuffer s = ByteBuffer.allocateDirect(65536 * 2).order(ByteOrder.nativeOrder()).asShortBuffer();
+        for (int h = 0; h < 65536; h++) s.put(h, (short) h);
+        return s;
+    }
+    private static FloatBuffer probeFloats() {
+        FloatBuffer f = ByteBuffer.allocateDirect(65536 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        for (int h = 0; h < 65536; h++) f.put(h, HalfFloat.TABLE[h]);
+        return f;
+    }
+
+    @Test public void halfReadbackCheckAcceptsOnlyTheExactWidening() {
+        // A driver that widens exactly; NaNs may come back with other payloads (canonical NaN) both ways.
+        ShortBuffer halves = probeHalves();
+        FloatBuffer floats = probeFloats();
+        for (int h = 0x7c01; h < 0x7c10; h++) { halves.put(h, (short) 0x7e00); floats.put(h, Float.intBitsToFloat(0x7fc00000)); }
+        assertEquals(-1, ArkStats.firstHalfMismatch(halves, floats));
+
+        // GL_FLOAT conversion flushing denormal halves to zero (ES allows it): the first positive denormal is found.
+        floats = probeFloats();
+        for (int h = 1; h < 0x400; h++) { floats.put(h, 0f); floats.put(0x8000 | h, -0f); }
+        assertEquals(1, ArkStats.firstHalfMismatch(probeHalves(), floats));
+
+        // Only the negative ones flushed, to +0, and the sign of -0 lost: the first one in pattern order.
+        floats = probeFloats();
+        floats.put(0x8000, 0f);
+        floats.put(0x8001, 0f);
+        assertEquals(0x8000, ArkStats.firstHalfMismatch(probeHalves(), floats));
+
+        // The half read-back itself changed a pattern (flushed on upload or read): not accepted either.
+        halves = probeHalves();
+        halves.put(0x0123, (short) 0);
+        assertEquals(0x0123, ArkStats.firstHalfMismatch(halves, probeFloats()));
+
+        // A NaN read back as a number, or a number read back as NaN.
+        floats = probeFloats();
+        floats.put(0x7e00, 0f);
+        assertEquals(0x7e00, ArkStats.firstHalfMismatch(probeHalves(), floats));
+        floats = probeFloats();
+        floats.put(0x3c00, Float.NaN);
+        assertEquals(0x3c00, ArkStats.firstHalfMismatch(probeHalves(), floats));
+
+        // Infinities must stay infinities.
+        floats = probeFloats();
+        floats.put(0xfc00, -Float.MAX_VALUE);
+        assertEquals(0xfc00, ArkStats.firstHalfMismatch(probeHalves(), floats));
+    }
+
     @Test public void chunkedEffHistogramEqualsTheStrideLoop() {
         Random r = new Random(3);
         for (int size : new int[]{1, 6, 7, 8, 100, 65533, 65534, 65535, 65541, 200_000, 1_000_003}) {
