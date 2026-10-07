@@ -88,6 +88,41 @@ public final class ZoomController {
         }
     }
 
+    /**
+     * P37: the active module changed without a button tap or a zoom step (the camera was changed from outside, the
+     * module restored on start, a module's ratio edited in the settings): when the zoom is outside the active module's
+     * range [own ratio, next module's ratio) it goes to the module's own ratio, so the ruler and the next pinch / drag
+     * start there and not at 1x. Not within {@link #SWITCH_INTERVAL_MS} of a switch, when a throttled zoom may
+     * legitimately run ahead of the module.
+     */
+    public static void syncToActive() {
+        ensureInitialized();
+        if (android.os.SystemClock.elapsedRealtime() - lastSwitch < SWITCH_INTERVAL_MS) return;
+        try {
+            String active = ModuleRegistry.active();
+            if (!ModuleRegistry.slots().contains(active)) return;
+            float base = ModuleRegistry.zoom(active);
+            float upper = Float.MAX_VALUE;
+            for (String slot : lenses()) {
+                float r = ModuleRegistry.zoom(slot);
+                if (r > base + ROUNDING) upper = Math.min(upper, r);
+            }
+            float z = zoom;
+            if (!inRange(z, base, upper)) {
+                zoom = base;
+                residual = Math.max(1f, base / ModuleRegistry.nativeRatio(active));
+                Log.d(TAG, "sync slot=" + active + " zoom " + z + " -> " + base + " residual=" + residual);
+            }
+        } catch (RuntimeException notReady) {
+            // Settings not available yet.
+        }
+    }
+
+    /** P37: a zoom belongs to a module with ratio {@code base} when below the next module's ratio {@code upper}. */
+    static boolean inRange(float z, float base, float upper) {
+        return z >= base - ROUNDING && z < upper + ROUNDING;
+    }
+
     /** A lens button was tapped: zoom goes to that module's own ratio. */
     public static void onButton(String slot) {
         initialized = true;
