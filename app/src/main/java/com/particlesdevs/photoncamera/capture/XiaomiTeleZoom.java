@@ -441,15 +441,14 @@ public final class XiaomiTeleZoom {
         }
     }
 
-    /** The standard optical zoom as well, when the tele lists more than one focal length: the nearest listed one. */
+    /**
+     * The standard optical zoom as well, when the tele lists more than one focal length: the nearest listed one (Camera2
+     * accepts only values from LENS_INFO_AVAILABLE_FOCAL_LENGTHS, so never an interpolated value).
+     */
     private static Float focalRequest(Plan p) {
         float[] list = focalList;
         if (list == null || list.length < 2 || fMin <= 0f) return null;
         float want = fMin * (p.userZoom * MM_PER_USER) / OPT_MIN;
-        if (list.length == 2) {
-            float lo = Math.min(list[0], list[1]), hi = Math.max(list[0], list[1]);
-            return clamp(want, lo, hi);
-        }
         float best = list[0];
         for (float v : list) if (Math.abs(v - want) < Math.abs(best - want)) best = v;
         return best;
