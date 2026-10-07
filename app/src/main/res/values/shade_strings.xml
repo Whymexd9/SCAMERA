@@ -195,12 +195,12 @@
     <string name="shade_flip_camera">Front / back camera</string>
     <string name="shade_gallery">Gallery</string>
     <string name="shade_all_settings_summary">Hybrid, SCAM HDR, colour, capture, config</string>
-    <string name="shade_all_settings_summary_mtk">Hybrid, colour, capture, config</string>
+    <string name="shade_all_settings_summary_hybrid_only">Hybrid, colour, capture, config</string>
     <string name="shade_hint">Swipe up for the panel\nHold a tile to move it</string>
 
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
-    <string name="shade_reason_mediatek">MediaTek: Hybrid only (SCAM HDR runs on the Snapdragon NPU)</string>
+    <string name="shade_reason_scamhdr_soc">Hybrid only: SCAM HDR runs on the Snapdragon 8 Elite only</string>
     <string name="shade_reason_nice_dev">Set by nice_dev.txt</string>
     <string name="shade_reason_dependency">Turn on “%1$s”.</string>
 </resources>

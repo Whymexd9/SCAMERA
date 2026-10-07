@@ -195,12 +195,12 @@
     <string name="shade_flip_camera">Фронтальная / основная камера</string>
     <string name="shade_gallery">Галерея</string>
     <string name="shade_all_settings_summary">Hybrid, SCAM HDR, цвет, захват, конфиг</string>
-    <string name="shade_all_settings_summary_mtk">Hybrid, цвет, захват, конфиг</string>
+    <string name="shade_all_settings_summary_hybrid_only">Hybrid, цвет, захват, конфиг</string>
     <string name="shade_hint">Свайп вверх — шторка\nЗажми плитку — переставить</string>
 
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">У этого объектива нет вспышки</string>
-    <string name="shade_reason_mediatek">MediaTek: только Hybrid (SCAM HDR работает на NPU Snapdragon)</string>
+    <string name="shade_reason_scamhdr_soc">Только Hybrid: SCAM HDR работает только на Snapdragon 8 Elite</string>
     <string name="shade_reason_nice_dev">Задано в nice_dev.txt</string>
     <string name="shade_reason_dependency">Включите «%1$s».</string>
 </resources>
