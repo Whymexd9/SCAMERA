@@ -539,9 +539,9 @@
     <Preference android:key="config_portable_note" android:summary="@string/prefs_config_portable_note_summary" android:selectable="false"/>
   </PreferenceScreen>
   <PreferenceScreen android:key="camera_settings_screen" android:icon="@drawable/settings_ic_camera" android:title="@string/prefs_camera_settings_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_camera_settings_screen_summary">
+    <ListPreference android:icon="@drawable/settings_ic_palette" android:entries="@array/colorset_entries" android:title="@string/color_method" android:key="@string/pref_color_method_key" android:summary="@string/color_method_desc" android:defaultValue="@string/pref_align_method_default" android:entryValues="@array/colorset_entryValues"/>
     <SwitchPreferenceCompat android:key="pref_xiaomi_smooth_zoom" android:title="@string/prefs_xiaomi_smooth_zoom_title" android:defaultValue="true" app:iconSpaceReserved="false" android:summary="@string/prefs_xiaomi_smooth_zoom_summary" android:icon="@drawable/settings_ic_zoom"/>
     <PreferenceScreen android:icon="@drawable/settings_ic_chip" android:title="@string/sensor_configurations" android:key="pref_sensor_config_submenu" android:summary="@string/sensor_configurations_summary"/>
-    <ListPreference android:icon="@drawable/settings_ic_palette" android:entries="@array/colorset_entries" android:title="@string/color_method" android:key="@string/pref_color_method_key" android:summary="@string/color_method_desc" android:defaultValue="@string/pref_align_method_default" android:entryValues="@array/colorset_entryValues"/>
   </PreferenceScreen>
   <PreferenceScreen android:key="system_settings_screen" android:icon="@drawable/settings_ic_chip" android:title="@string/prefs_system_settings_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_system_settings_screen_summary">
     <SwitchPreferenceCompat android:key="pref_root_enabled" android:title="@string/prefs_root_enabled_title" android:defaultValue="false" android:summary="@string/prefs_root_enabled_summary" android:icon="@drawable/settings_ic_lock"/>

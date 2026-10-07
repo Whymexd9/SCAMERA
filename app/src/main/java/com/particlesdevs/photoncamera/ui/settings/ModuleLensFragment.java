@@ -11,9 +11,8 @@ import java.util.*;
 
 public class ModuleLensFragment extends ModuleConceptFragment {
     private String page;
-    public static ModuleLensFragment create(String mode){ModuleLensFragment f=new ModuleLensFragment();Bundle b=new Bundle();b.putString("mode",mode);f.setArguments(b);return f;}
-    /** P21: the page of one module (button). */
-    public static ModuleLensFragment module(String slot){ModuleLensFragment f=create("module");f.getArguments().putString("slot",slot);return f;}
+    /** P21: the page of one module (button): every module setting is edited here and nowhere else. */
+    public static ModuleLensFragment module(String slot){ModuleLensFragment f=new ModuleLensFragment();Bundle b=new Bundle();b.putString("slot",slot);f.setArguments(b);return f;}
     private void rename(String slot){
         EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));
         new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
@@ -51,27 +50,7 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         else note(Lang.t(getContext(),"Исходный модуль объектива удалить нельзя — его можно скрыть.","The original module of a lens can't be deleted, only hidden."));
     }
     @Override protected void render(){
-        String mode=getArguments()==null?"id":getArguments().getString("mode","id");
-        if(mode.equals("module")){renderModule(getArguments().getString("slot",ModuleRegistry.active()));return;}
-        page(mode.equals("names")?Lang.t(getContext(),"Названия модулей","Module names"):mode.equals("order")?Lang.t(getContext(),"Отображение кнопок","Button display"):mode.equals("zoom")?Lang.t(getContext(),"Зум-факторы кнопок","Button zoom factors"):Lang.t(getContext(),"Назначение Camera ID","Camera ID assignment"),null);
-        List<String> slots=ModuleRegistry.slots();slots.sort(Comparator.comparing((String id)->id.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
-        String side="";
-        for(String slot:slots){
-            if(!mode.equals("order")&&!ModuleRegistry.visible(slot))continue; // hidden buttons are only managed on the display page
-            String next=slot.startsWith("front")?Lang.t(getContext(),"Фронтальная камера","Front camera"):Lang.t(getContext(),"Задние камеры","Back cameras");if(!side.equals(next)){caption(next);side=next;}
-            String label=ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot);
-            if(mode.equals("order")){
-                LinearLayout c=card(),r=row();Runnable visible=()->{var prefs=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();prefs.edit().putBoolean("module_visible_"+slot,!ModuleRegistry.visible(slot)).apply();render();};
-                r.addView(mark(ModuleRegistry.visible(slot)?2:0,label,visible),new LinearLayout.LayoutParams(dp(44),dp(52)));r.addView(text(label,14,TEXT),new LinearLayout.LayoutParams(0,-2,1));
-c.addView(r);
-            }else navigation(mode.equals("names")?"◇":mode.equals("zoom")?"⌕":"▣",label,mode.equals("zoom")?String.format(java.util.Locale.US,Lang.t(getContext(),"Зум %.2f×","Zoom %.2f×"),ModuleRegistry.zoom(slot)).replaceAll("\\.?0+×","×")+(ModuleRegistry.sensorCrop(slot)?Lang.t(getContext()," · кроп на сенсоре"," · sensor crop"):""):ModuleRegistry.visible(slot)?Lang.t(getContext(),"Кнопка отображается","Button shown"):Lang.t(getContext(),"Кнопка скрыта","Button hidden"),()->{
-                page=slot;
-                if(mode.equals("zoom")){zoomDialog(slot);}
-                else if(mode.equals("names")){EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putString("module_name_"+slot,input.getText().toString().trim()).apply();render();}).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();}
-                else choose();
-            });
-        }
-        if(slots.isEmpty())note(Lang.t(getContext(),"Откройте видоискатель, чтобы определить доступные модули камеры.","Open the viewfinder to detect the available camera modules."));
+        renderModule(getArguments()==null?ModuleRegistry.active():getArguments().getString("slot",ModuleRegistry.active()));
     }
     /** Zoom ratio of the module button and whether its frame is already cropped on the sensor. */
     private void zoomDialog(String slot){
