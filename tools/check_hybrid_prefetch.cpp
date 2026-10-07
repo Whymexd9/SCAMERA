@@ -9,7 +9,7 @@
 //      deadlock), exceptions back to the caller, the task group waits for its tasks.
 //   4. P33 W2.1: LaStream (the F6 field in tile-row bands alongside the merge) against laFrameField per frame: every float of the
 //      field and the Z channel, every statistic, with 1..8 threads, 0..2 medians and odd sizes; rows read as soon as waitRows
-//      returns them are already final.
+//      returns them are already final; phase 1 queued frame by frame before the commit, a frame dropped at it.
 // vivo-nice-hybrid.h is not self-contained: the worker includes vivo-nice-capture.h first.
 #include "../app/src/main/cpp/vivo-nice-capture.h"
 #include "../app/src/main/cpp/vivo-nice-hybrid.h"
@@ -239,6 +239,18 @@ int main() {
                 assert(a.median==e.median&&a.p90==e.p90&&a.maxAbsY==e.maxAbsY&&a.accepted==e.accepted&&a.fromCoarse==e.fromCoarse&&a.motionShare==e.motionShare);
             }
             ++streams;
+            // phase 1 queued frame by frame before the refined frames are known (as during the alignment); one frame dropped at
+            // the commit (as Shasta / Bento drop frames): the others' fields are the same
+            LaStream early(b,makeBase(),eps,t,threads);
+            for(const auto& job:jobs)early.add(job);
+            std::vector<int> kept;for(const auto& job:jobs)if(job.f!=2)kept.push_back(job.f);
+            early.commit(kept);
+            std::vector<int> order2={0};for(int f:kept)order2.push_back(f);order2.push_back(2);
+            early.setMergeOrder(order2);
+            early.waitRows(ny);
+            assert(early.finish()&&early.frameCount()==int(kept.size())&&!early.hasField(int(order2.size())-1));
+            for(size_t i=1;i+1<order2.size();++i)assert(std::memcmp(early.field(int(i)),fields[order2[i]].data(),fields[order2[i]].size()*4)==0
+                &&std::memcmp(early.motion(int(i)),motions[order2[i]].data(),motions[order2[i]].size()*4)==0);
         }
     }
     assert(refined>0); // the fields hold refined tiles, not only zeros

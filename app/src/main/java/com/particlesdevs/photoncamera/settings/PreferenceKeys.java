@@ -968,8 +968,9 @@ public class PreferenceKeys {
             // P27: the measured exposure ratio instead of a disagreeing metadata ratio (worker default 0 = report only)
             {"gainMeasured", "gain_measured"},
             // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from nice_dev.txt
-            // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them).
-            {"profile", "profile"}, {"laThreads", "la_threads"},
+            // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them). P33 W2.1: "hybrid_la_stream 0" merges with
+            // the whole F6 field first (A/B), "hybrid_la_nice N" lowers the priority of the banded F6 threads.
+            {"profile", "profile"}, {"laThreads", "la_threads"}, {"laStream", "la_stream"}, {"laNice", "la_nice"},
         };
         for (String[] k : keys) {
             Float dev = niceDevValue("hybrid_" + k[1]);
