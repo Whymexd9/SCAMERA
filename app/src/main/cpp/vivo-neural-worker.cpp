@@ -145,6 +145,10 @@ int main(int argc,char** argv) {
             bool hybrid=hybridBurst.hybrid||access((std::string(argv[2])+"/hybrid-merge").c_str(),F_OK)==0||std::getenv("SCAM_HYBRID");
             std::unique_ptr<vivo_nice::Graph> graph;
             if(!hybrid) {
+                // P31: the HTP runtime sets ADSP_LIBRARY_PATH (setenv, which can move the environment array): the warm-up threads
+                // (the CRE's first calls, the EGL driver load) are joined first, so no getenv of theirs runs meanwhile.
+                joinCreWarm();
+                if(eglWarm.joinable())eglWarm.join();
                 // The forward network ships as Hexagon v79 context binaries (SM8750 only); without it the
                 // burst is merged by the LMC hybrid (vivo-nice-hybrid.h).
                 try{graph=std::make_unique<vivo_nice::Graph>(argv[2],report);}
