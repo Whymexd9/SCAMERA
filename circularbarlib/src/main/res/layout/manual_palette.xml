@@ -1,41 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Manual controls in the shade's card style (MANUAL_TASK.md). Icons only: every name lives in a content description.
+     Top: the ruler card (header: parameter icon, value pill, «Всё на авто»; body: the «Авто» button and the scale),
+     8dp above the strip. Strip: the 52dp toggle card, then one card with the five chips ISO, shutter, EV, focus, WB.
+     Card colours, radii and the accent are applied by ExpandingManualPanel (UiTokens, AccentPalette). -->
 <com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/manual_mode" android:layout_width="match_parent" android:layout_height="wrap_content">
-    <FrameLayout android:id="@+id/knobViewContainer" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:visibility="gone" android:layout_marginBottom="8dp"
-        android:background="@drawable/glass_pill">
-        <com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobView
-            android:id="@+id/knobView" android:layout_width="match_parent" android:layout_height="67.2dp" android:visibility="gone" />
-        <com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView
-            android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="61.6dp" android:visibility="gone" />
-    </FrameLayout>
-    <LinearLayout android:id="@+id/buttons_container" android:layout_width="match_parent"
-        android:layout_marginStart="48dp" android:layout_height="48dp" android:layout_below="@id/knobViewContainer" android:padding="3dp"
-        android:orientation="horizontal" android:background="@drawable/glass_pill">
-        <TextView android:id="@+id/ev_option_tv" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1" android:text="" android:contentDescription="@string/manual_tab_ev" android:foreground="@drawable/concept_manual_ev" android:foregroundGravity="center"
-            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
-            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
-            android:clickable="true" android:focusable="true" />
-        <TextView android:id="@+id/exposure_option_tv" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1" android:text="" android:contentDescription="@string/manual_tab_shutter" android:foreground="@drawable/concept_manual_exposure" android:foregroundGravity="center"
-            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
-            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
-            android:clickable="true" android:focusable="true" />
-        <TextView android:id="@+id/iso_option_tv" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1" android:text="" android:contentDescription="ISO" android:foreground="@drawable/concept_manual_iso" android:foregroundGravity="center"
-            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
-            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
-            android:clickable="true" android:focusable="true" />
-        <TextView android:id="@+id/wb_option_tv" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1" android:text="" android:contentDescription="@string/manual_tab_wb" android:foreground="@drawable/concept_manual_wb" android:foregroundGravity="center"
-            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
-            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
-            android:clickable="true" android:focusable="true" />
-        <TextView android:id="@+id/focus_option_tv" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1" android:text="" android:contentDescription="@string/manual_tab_focus" android:foreground="@drawable/concept_manual_focus" android:foregroundGravity="center"
-            android:gravity="center" android:textSize="13sp" android:includeFontPadding="false"
-            android:textColor="@color/manual_text_color" android:background="@drawable/manual_tab_background"
-            android:clickable="true" android:focusable="true" />
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/manual_mode" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout android:id="@+id/knobViewContainer" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone"
+        android:layout_marginBottom="8dp" android:paddingStart="8dp" android:paddingEnd="8dp"
+        android:paddingTop="7dp" android:paddingBottom="7dp" android:clickable="true">
+
+        <LinearLayout android:id="@+id/manual_ruler_header" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:id="@+id/manual_ruler_icon" android:layout_width="18dp" android:layout_height="18dp"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/manual_ruler_value" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:layout_marginStart="6dp" android:paddingStart="10dp"
+                android:paddingEnd="10dp" android:paddingTop="2dp" android:paddingBottom="2dp" android:textSize="13sp"
+                android:singleLine="true" android:includeFontPadding="false" android:fontFeatureSettings="tnum" />
+            <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+            <TextView android:id="@+id/manual_all_auto" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:paddingStart="8dp" android:paddingTop="2dp"
+                android:paddingBottom="2dp" android:textSize="12.5sp" android:singleLine="true"
+                android:includeFontPadding="false" android:text="@string/manual_all_auto" android:visibility="gone"
+                android:clickable="true" android:focusable="true" />
+        </LinearLayout>
+
+        <FrameLayout android:id="@+id/manual_ruler_body" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="5dp">
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobView
+                android:id="@+id/knobView" android:layout_width="match_parent" android:layout_height="67.2dp" android:visibility="gone" />
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView
+                android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="49dp"
+                android:visibility="gone" android:focusable="true" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/manual_strip" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:orientation="horizontal">
+
+        <FrameLayout android:id="@+id/manual_toggle" android:layout_width="52dp" android:layout_height="match_parent"
+            android:minHeight="58dp" android:clickable="true" android:focusable="true"
+            android:contentDescription="@string/manual_panel_open">
+            <ImageView android:id="@+id/manual_toggle_icon" android:layout_width="24dp" android:layout_height="24dp"
+                android:layout_gravity="center" android:src="@drawable/manual_ic_sliders" android:importantForAccessibility="no" />
+            <View android:id="@+id/manual_toggle_dot" android:layout_width="8dp" android:layout_height="8dp"
+                android:layout_gravity="top|end" android:layout_marginTop="8dp" android:layout_marginEnd="8dp"
+                android:visibility="gone" android:importantForAccessibility="no" />
+        </FrameLayout>
+
+        <LinearLayout android:id="@+id/buttons_container" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:layout_marginStart="8dp" android:padding="4dp"
+            android:orientation="horizontal">
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/iso_option_tv"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:contentDescription="@string/manual_tab_iso" app:manualChipIcon="@drawable/manual_ic_iso" />
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/exposure_option_tv"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_shutter"
+                app:manualChipIcon="@drawable/manual_ic_shutter" />
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/ev_option_tv"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_ev"
+                app:manualChipIcon="@drawable/manual_ic_ev" />
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/focus_option_tv"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_focus"
+                app:manualChipIcon="@drawable/manual_ic_focus" />
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/wb_option_tv"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_wb"
+                app:manualChipIcon="@drawable/manual_ic_wb" />
+        </LinearLayout>
     </LinearLayout>
 </com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel>

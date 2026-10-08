@@ -37,11 +37,11 @@ public class ViewfinderUiTest {
     }
     @After public void teardown(){camera.close();}
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void compactControlsRenderAndResetWithoutChangingTabLabels() throws Exception {
-        compactControlsRenderAndResetWithoutChangingTabLabels(new String[]{"Экспокоррекция","Выдержка","ISO","Баланс белого","Фокус"},"");
+        compactControlsRenderAndResetWithoutChangingTabLabels(new String[]{"ISO","Выдержка","Экспокоррекция","Фокус","Баланс белого"},"");
     }
     /** The same on an English system: the tab labels (content descriptions) are English. */
     @Test public void compactControlsRenderAndResetWithoutChangingTabLabelsInEnglish() throws Exception {
-        compactControlsRenderAndResetWithoutChangingTabLabels(new String[]{"Exposure compensation","Shutter","ISO","White balance","Focus"},"-en");
+        compactControlsRenderAndResetWithoutChangingTabLabels(new String[]{"ISO","Shutter","Exposure compensation","Focus","White balance"},"-en");
     }
     private void compactControlsRenderAndResetWithoutChangingTabLabels(String[] labels,String png) throws Exception {
         // Render the production XML controls. The scene is a neutral placeholder;
@@ -70,8 +70,9 @@ public class ViewfinderUiTest {
         for(int k=2000;k<=10000;k+=100)items.add(new KnobItemInfo(null,k+"K",items.size(),k));
         scale.setTemperatureMode(true);scale.setItems(items,17);
         scale.setSelectedItem(items.get(17));assertEquals("3600K",scale.getSelected().text);
-        ((TextView)manual.findViewById(R.id.wb_option_tv)).setSelected(true);
-        int[] ids={R.id.ev_option_tv,R.id.exposure_option_tv,R.id.iso_option_tv,R.id.wb_option_tv,R.id.focus_option_tv};
+        ((com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView)manual.findViewById(R.id.wb_option_tv)).setChosen(true);
+        // The strip's order (MANUAL_TASK.md §2): ISO, shutter, EV, focus, WB; the names are content descriptions only.
+        int[] ids={R.id.iso_option_tv,R.id.exposure_option_tv,R.id.ev_option_tv,R.id.focus_option_tv,R.id.wb_option_tv};
         for(int i=0;i<ids.length;i++)assertEquals(labels[i],manual.findViewById(ids[i]).getContentDescription().toString());
         // P25: the lens strip lives in the bottom bar now (above the shutter row, under the zoom ruler's place).
         View bottom=LayoutInflater.from(context).inflate(R.layout.layout_main_bottombar,screen,false);screen.addView(bottom,new LinearLayout.LayoutParams(-1,259));
@@ -82,7 +83,11 @@ public class ViewfinderUiTest {
         lensModel.setBackCameras(cameraData);lensModel.setFrontCameras(new ArrayList<>());lenses.setAuxButtonsModel(lensModel);lenses.setActiveId("1");
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
         int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
-        assertTrue(manual.getHeight()<=152);assertEquals(48,manual.findViewById(R.id.buttons_container).getHeight());
+        // §3: the compact ruler card is about 88-90dp; §2: the toggle card and the chips card share the strip's height.
+        View chipsCard=manual.findViewById(R.id.buttons_container),toggleCard=manual.findViewById(R.id.manual_toggle);
+        assertTrue("ruler card "+container.getHeight(),container.getHeight()>=86&&container.getHeight()<=92);
+        assertEquals(chipsCard.getHeight(),toggleCard.getHeight());assertTrue(toggleCard.getHeight()>=58);assertEquals(52,toggleCard.getWidth());
+        assertEquals(container.getHeight()+8+chipsCard.getHeight(),manual.getHeight());
         // Top bar: the settings gear is a 44dp square card at the end, the badges stay clear of it.
         View gear=top.findViewById(R.id.settings_button),badges=top.findViewById(R.id.topbar_badges);
         assertEquals(44,gear.getWidth());assertEquals(gear.getWidth(),gear.getHeight());
@@ -129,7 +134,8 @@ public class ViewfinderUiTest {
         scale.onTouchEvent(MotionEvent.obtain(0,4,MotionEvent.ACTION_UP,20,30,0));
         assertEquals(0,scale.getSelected().value,0);
         panel.setExpanded(false,false);assertEquals(View.GONE,container.getVisibility());assertEquals(0,scale.getSelected().value,0);
-        panel.setExpanded(true,false);assertEquals(View.VISIBLE,container.getVisibility());
+        // Collapsing closes the ruler (§2): expanding again shows the strip, not the ruler.
+        panel.setExpanded(true,false);assertEquals(View.GONE,container.getVisibility());assertEquals(View.VISIBLE,manual.findViewById(R.id.buttons_container).getVisibility());
         // The front / back switch took the place of «Фото | Ночь»: a tap reaches it once, a disabled switch ignores taps.
         try(var controller=Robolectric.buildActivity(android.app.Activity.class)){
             controller.setup();

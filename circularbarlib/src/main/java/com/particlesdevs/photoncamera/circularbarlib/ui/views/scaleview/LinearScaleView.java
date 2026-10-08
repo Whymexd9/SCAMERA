@@ -67,6 +67,27 @@ public class LinearScaleView extends View {
         return x >= 0 && x <= 52f * getResources().getDisplayMetrics().density && y >= 0 && y <= getHeight();
     }
     public void setTemperatureMode(boolean value){temperatureMode=value;invalidate();}
+
+    /** Parameters of the card-style panel, in the strip's order (the restyled ruler draws by them). */
+    public static final int MODE_GENERIC = -1, MODE_ISO = 0, MODE_SHUTTER = 1, MODE_EV = 2, MODE_FOCUS = 3, MODE_WB = 4;
+    public static int modeFor(int param) { return param >= MODE_ISO && param <= MODE_WB ? param : MODE_GENERIC; }
+    /** The parameter the stops belong to: ISO and shutter use the photographic ruler, WB the temperature strip. */
+    public void setMode(int mode, com.particlesdevs.photoncamera.circularbarlib.ui.ManualFormat.Units units) {
+        photographicMode = mode == MODE_ISO || mode == MODE_SHUTTER;
+        temperatureMode = mode == MODE_WB;
+        valuePrefix = mode == MODE_ISO ? "ISO " : "";
+        invalidate();
+    }
+    /** The items, the selected one and the auto item (this ruler finds the auto item itself). */
+    public void setItems(List<KnobItemInfo> newItems, KnobItemInfo selected, KnobItemInfo auto) {
+        setItems(newItems, newItems == null || selected == null ? 0 : Math.max(0, newItems.indexOf(selected)));
+    }
+    /** The accent comes from AccentPalette at each draw here. */
+    public void setAccent(int accent) { invalidate(); }
+    /** The auto button shows «A» here. */
+    public void setAutoLabel(String label) { invalidate(); }
+    /** The metered value is not used by this ruler. */
+    public void setMeteredValue(double value) { }
     public void setSelectedItem(KnobItemInfo item){int index=items.indexOf(item);if(index>=0){selectedIndex=index;invalidate();}}
 
     public LinearScaleView(Context context) {

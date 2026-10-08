@@ -19,4 +19,24 @@
     <string name="accent_name_pink">Pink</string>
     <string name="accent_name_cyan">Turquoise</string>
     <string name="accent_name_white">White</string>
+    <!-- Manual controls in the card style (MANUAL_TASK.md): names stay in content descriptions and toasts only. -->
+    <string name="manual_tab_iso" translatable="false">ISO</string>
+    <string name="manual_state_auto">auto</string>
+    <string name="manual_state_manual">man.</string>
+    <string name="manual_state_off">off</string>
+    <string name="manual_value_auto">Auto</string>
+    <string name="manual_all_auto">All auto</string>
+    <string name="manual_toast_auto">%1$s: auto</string>
+    <string name="manual_toast_all_auto">All parameters on auto</string>
+    <string name="manual_ev_locked">Exposure compensation unavailable: ISO and shutter are set manually</string>
+    <string name="manual_a11y_manual">%1$s: %2$s</string>
+    <string name="manual_a11y_auto">%1$s: auto, now %2$s</string>
+    <string name="manual_a11y_locked">%1$s: unavailable, ISO and shutter are set manually</string>
+    <string name="manual_a11y_unavailable">%1$s: unavailable on this camera</string>
+    <string name="manual_toggle">Manual controls</string>
+    <string name="manual_summary">Manual: %1$s</string>
+    <string name="manual_unit_seconds">s</string>
+    <string name="manual_unit_metres">m</string>
+    <string name="manual_unit_centimetres">cm</string>
+    <string name="manual_decimal_separator">.</string>
 </resources>

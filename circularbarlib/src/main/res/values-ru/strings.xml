@@ -15,4 +15,23 @@
     <string name="accent_name_pink">Розовый</string>
     <string name="accent_name_cyan">Бирюзовый</string>
     <string name="accent_name_white">Белый</string>
+    <!-- Ручные настройки в стиле карточек (MANUAL_TASK.md). -->
+    <string name="manual_state_auto">авто</string>
+    <string name="manual_state_manual">ручн.</string>
+    <string name="manual_state_off">выкл.</string>
+    <string name="manual_value_auto">Авто</string>
+    <string name="manual_all_auto">Всё на авто</string>
+    <string name="manual_toast_auto">%1$s: авто</string>
+    <string name="manual_toast_all_auto">Все параметры на авто</string>
+    <string name="manual_ev_locked">Экспокоррекция недоступна: ISO и выдержка заданы вручную</string>
+    <string name="manual_a11y_manual">%1$s: %2$s</string>
+    <string name="manual_a11y_auto">%1$s: авто, сейчас %2$s</string>
+    <string name="manual_a11y_locked">%1$s: недоступна, ISO и выдержка заданы вручную</string>
+    <string name="manual_a11y_unavailable">%1$s: недоступно для этой камеры</string>
+    <string name="manual_toggle">Ручные настройки</string>
+    <string name="manual_summary">Вручную: %1$s</string>
+    <string name="manual_unit_seconds">с</string>
+    <string name="manual_unit_metres">м</string>
+    <string name="manual_unit_centimetres">см</string>
+    <string name="manual_decimal_separator">,</string>
 </resources>
