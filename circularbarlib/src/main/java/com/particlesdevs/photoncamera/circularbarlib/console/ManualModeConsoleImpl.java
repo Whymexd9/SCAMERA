@@ -103,6 +103,45 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
         viewObserver.setMetered(meteredIso, meteredExposure, meteredFocus, meteredKelvin);
     }
 
+    // The module the models were built for and the ranges the ISO and shutter rulers cover.
+    private CameraCharacteristics characteristics;
+    private Vibrator vibrator;
+    private android.util.Range<Integer> isoRange;
+    private android.util.Range<Long> exposureRange;
+
+    /**
+     * Before the ISO or shutter ruler opens: the module's real range may have changed since the models were built (the
+     * capture path widens SENSOR_INFO_SENSITIVITY_RANGE to an ISO the camera was seen to use, e.g. a vivo tele that
+     * reports [400, 800]). Then the model is rebuilt over the current range, with its own value logic, and the stored
+     * value restored, so the ruler covers exactly what the camera can do.
+     */
+    void refreshRange(int param) {
+        if (characteristics == null || context == null) return;
+        CameraProperties now;
+        try {
+            now = new CameraProperties(characteristics);
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (param == ManualPanelState.ISO && now.isoRange != null && !now.isoRange.equals(isoRange)) {
+            isoRange = now.isoRange;
+            isoModel = new IsoModel(context, characteristics, isoRange, manualParamModel, manualModeModel::setIsoText, vibrator);
+            isoModel.restoreModuleValue();
+            viewObserver.bind(models(), manualParamModel, evStep, actions);
+        } else if (param == ManualPanelState.SHUTTER && now.expRange != null && !now.expRange.equals(exposureRange)) {
+            exposureRange = now.expRange;
+            expoTimeModel = new ShutterModel(context, characteristics, exposureRange, manualParamModel,
+                    manualModeModel::setExposureText, vibrator);
+            expoTimeModel.restoreModuleValue();
+            viewObserver.bind(models(), manualParamModel, evStep, actions);
+        }
+    }
+
+    /** The ISO range the ISO ruler covers (tests). */
+    public android.util.Range<Integer> isoRange() {
+        return isoRange;
+    }
+
     /** The models in the strip's order: ISO, shutter, EV, focus, white balance. */
     ManualModel<?>[] models() {
         return new ManualModel<?>[]{isoModel, expoTimeModel, evModel, mfModel, wbModel};
@@ -164,6 +203,7 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
             message(string(R.string.manual_ev_locked));
             return;
         }
+        if (selectedModel == null || selectedModel != model(param)) refreshRange(param);
         if (!available(param)) {
             if (param == ManualPanelState.WB) message(string(R.string.manual_wb_unavailable));
             return;
@@ -295,6 +335,11 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
                 manualModeModel::setIsoText, v);
         expoTimeModel = new ShutterModel(context, cameraCharacteristics, cameraProperties.expRange, manualParamModel,
                 manualModeModel::setExposureText, v);
+        characteristics = cameraCharacteristics;
+        vibrator = v;
+        isoRange = cameraProperties.isoRange;
+        exposureRange = cameraProperties.expRange;
+        selectedModel = null; // a new module: the old parameter's ruler is gone
         wbModel = new com.particlesdevs.photoncamera.circularbarlib.control.models.WhiteBalanceModel(context, cameraCharacteristics,
                 manualParamModel, manualModeModel::setWbText, v);
         whiteBalanceSupported = wbModel.getKnobInfoList().size() > 1;

@@ -241,6 +241,23 @@ public class LinearScaleView extends View {
         return stops.isEmpty() ? null : items.get(stops.get(idx));
     }
 
+    /** The scale's stops in order (the auto item left out, except EV's «0»): exactly the model's values. */
+    public List<KnobItemInfo> stopItems() {
+        List<KnobItemInfo> out = new ArrayList<>();
+        for (int i : stops) out.add(items.get(i));
+        return out;
+    }
+
+    /** The labels of the major stops in order (before the drawing skips labels that would collide). */
+    public List<String> majorLabels() {
+        List<String> out = new ArrayList<>();
+        for (int j = 0; j < stops.size(); j++) {
+            KnobItemInfo item = items.get(stops.get(j));
+            if (isMajor(item, j)) out.add(label(item));
+        }
+        return out;
+    }
+
     public float getOffset() {
         return offset;
     }
