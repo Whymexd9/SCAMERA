@@ -212,4 +212,9 @@
         <item>Hold</item>
         <item>Tap</item>
     </string-array>
+    <string-array name="shade_s_ark_metering">
+        <item>Frame</item>
+        <item>Centre</item>
+        <item>Spot</item>
+    </string-array>
 </resources>

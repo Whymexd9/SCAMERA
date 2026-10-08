@@ -272,6 +272,43 @@ public class SettingsAuditFixTest {
         assertEquals("Тема галереи",String.valueOf(screen.findPreference("pref_theme_key").getTitle()));
     }
 
+    /**
+     * H4: the six enum-like ARK sliders are lists with named entries; a value stored by the slider ("1.00", a float) becomes the
+     * list value in every profile and reads the same; the SCAM HDR radii are integer sliders; RawTherapee sits by «Резкость Hybrid».
+     */
+    @Test public void enumSlidersAreListsAndStoredValuesKeepWorking() {
+        String[] lists={"pref_lmc_hybrid_ark_metering","pref_lmc_hybrid_ark_agx_look","pref_lmc_hybrid_ark_sharp_domain",
+                "pref_lmc_hybrid_ark_sharp_rl1_kernel","pref_lmc_hybrid_ark_sharp_rl2_kernel","pref_lmc_hybrid_ark_sharp_rl3_kernel"};
+        SharedPreferences[] module=profiles();
+        prefs.edit().putString("pref_lmc_hybrid_ark_metering","1.00").putFloat("pref_lmc_hybrid_ark_agx_look",3f)
+                .putString("pref_lmc_hybrid_ark_sharp_rl1_kernel","7").putString("pref_vivo_nice_luma_radius","2.00")
+                .putString("pref_lmc_hybrid_ark_sharp_domain","x").commit();
+        module[0].edit().clear().putString("pref_lmc_hybrid_ark_metering","2.0").putString("pref_vivo_nice_chroma_radius","4.00").commit();
+        // read as before the migration
+        assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);
+        SettingsMigration.removeObsolete(context,prefs);
+        assertEquals("1",prefs.getString("pref_lmc_hybrid_ark_metering",""));assertEquals("3",prefs.getString("pref_lmc_hybrid_ark_agx_look",""));
+        assertEquals("clamped to the list","2",prefs.getString("pref_lmc_hybrid_ark_sharp_rl1_kernel",""));
+        assertEquals("2",prefs.getString("pref_vivo_nice_luma_radius",""));assertFalse(prefs.contains("pref_lmc_hybrid_ark_sharp_domain"));
+        assertEquals("2",module[0].getString("pref_lmc_hybrid_ark_metering",""));assertEquals("4",module[0].getString("pref_vivo_nice_chroma_radius",""));
+        assertFalse("a second run changes nothing",SettingsMigration.removeObsolete(prefs));
+        assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);assertEquals(3f,PreferenceKeys.hybridValue("ark_agx_look",4f),0f);
+        PreferenceScreen screen=inflate();
+        for(String key:lists){
+            Preference p=screen.findPreference(key);
+            assertTrue(key,p instanceof ListPreference);
+            ListPreference l=(ListPreference)p;
+            assertEquals(key,l.getEntries().length,l.getEntryValues().length);
+            assertNotNull(key+" shows a named value",l.getEntry());
+        }
+        assertEquals("1",((ListPreference)screen.findPreference("pref_lmc_hybrid_ark_metering")).getValue());
+        for(String key:new String[]{"pref_vivo_nice_luma_radius","pref_vivo_nice_chroma_radius"})
+            assertFalse(key,((com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)screen.findPreference(key)).decimal());
+        PreferenceGroup sharp=screen.findPreference("lmc_hybrid_sharp_category");
+        assertNotNull(sharp.findPreference("sharp_settings_screen"));assertNotNull(sharp.findPreference("pref_sharp_usm_enabled_key"));
+        assertNull(((PreferenceGroup)screen.findPreference("photo_processing_screen")).findPreference("sharp_settings_screen"));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

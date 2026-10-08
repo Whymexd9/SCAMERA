@@ -173,8 +173,31 @@ public final class SettingsMigration {
         // the Quad stream is set in «Quad Bayer — совместимость»); a stored one of them becomes «Авто» (-1).
         Object cfa = prefs.getAll().get(CFA_KEY);
         if (cfa != null && isRemovedCfa(cfa)) { e.putString(CFA_KEY, "-1"); changed = true; }
+        // Rows that store a whole number and were decimal sliders (settings audit H4): the ARK metering, AgX look, sharpening
+        // domain and RL kernels are lists now, the SCAM HDR radii integer sliders. A stored "1.00" or float 1.0 becomes "1"
+        // (the list value); a value that is no number at all goes, so the row's default applies.
+        for (String key : WHOLE_NUMBER_KEYS) {
+            Object value = prefs.getAll().get(key);
+            if (value == null) continue;
+            String whole = wholeNumber(key, value);
+            if (whole == null) { e.remove(key); changed = true; }
+            else if (!(value instanceof String) || !whole.equals(value)) { e.putString(key, whole); changed = true; }
+        }
         if (changed) e.commit();
         return changed;
+    }
+
+    /** Keys whose rows store a whole number but were decimal sliders before the settings audit. */
+    static final String[] WHOLE_NUMBER_KEYS = {"pref_lmc_hybrid_ark_metering", "pref_lmc_hybrid_ark_agx_look",
+            "pref_lmc_hybrid_ark_sharp_domain", "pref_lmc_hybrid_ark_sharp_rl1_kernel", "pref_lmc_hybrid_ark_sharp_rl2_kernel",
+            "pref_lmc_hybrid_ark_sharp_rl3_kernel", "pref_vivo_nice_luma_radius", "pref_vivo_nice_chroma_radius"};
+    /** The stored value as the whole number its row writes, within the key's bounds; null when it is no number. */
+    static String wholeNumber(String key, Object value) {
+        double v = PreferenceNumber.read(value, Double.NaN);
+        if (!Double.isFinite(v)) return null;
+        double[] bounds = SettingsNumericRules.bounds(key);
+        if (bounds != null) v = Math.max(bounds[0], Math.min(bounds[1], v));
+        return Long.toString(Math.round(v));
     }
 
     static final String CFA_KEY = "pref_cfa_key";

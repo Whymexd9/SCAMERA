@@ -159,7 +159,7 @@
     <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
     <string name="sharp_deconv_halo_macro_desc">Локальный контраст, выше которого подавление работает в полную силу</string>
     <string name="sharp_deconv_kernel">Тип ядра PSF</string>
-    <string name="sharp_deconv_kernel_desc">Форма функции рассеяния точки для этой ступени</string>
+    <string name="sharp_deconv_kernel_desc">%s. Форма функции рассеяния точки для этой ступени</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Гаусс (классика)</item>
         <item>Оптика / линза (Pillbox)</item>

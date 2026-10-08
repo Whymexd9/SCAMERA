@@ -228,7 +228,7 @@
     <string name="sharp_deconv_halo_macro">Macro edge threshold</string>
     <string name="sharp_deconv_halo_macro_desc">Local contrast above which the suppression works at full strength</string>
     <string name="sharp_deconv_kernel">PSF kernel type</string>
-    <string name="sharp_deconv_kernel_desc">Shape of the point spread function for this stage</string>
+    <string name="sharp_deconv_kernel_desc">%s. Shape of the point spread function for this stage</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Gaussian (classic)</item>
         <item>Optics / lens (Pillbox)</item>

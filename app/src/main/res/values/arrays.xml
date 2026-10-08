@@ -383,4 +383,37 @@
         <item>long_press</item>
         <item>tap</item>
     </string-array>
+    <!-- Settings audit H4: the enum-like ARK sliders became lists (stored values unchanged: "0", "1", ...). -->
+    <string-array name="lmc_hybrid_ark_metering_entries">
+        <item>Whole frame</item>
+        <item>Centre-weighted</item>
+        <item>Spot</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_metering_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_agx_look_entries">
+        <item>Default</item>
+        <item>Punchy</item>
+        <item>Soft</item>
+        <item>Golden</item>
+        <item>Custom</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_agx_look_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_sharp_domain_entries">
+        <item>After the ae exposure</item>
+        <item>G_CLEAN, as ArkCam</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_sharp_domain_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
 </resources>

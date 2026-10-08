@@ -107,7 +107,7 @@ public final class ShadeCatalog {
     }
 
     /**
-     * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the ARK metering slider,
+     * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the ARK metering (a list since the settings audit),
      * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the gcam engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
@@ -163,7 +163,7 @@ public final class ShadeCatalog {
                 R.drawable.ic_timeroff, R.drawable.ic_timer3s, R.drawable.ic_timer10s);
         spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
-        spec("pref_lmc_hybrid_ark_metering", R.string.shade_t_metering, 0, R.drawable.ic_shade_meter);
+        spec("pref_lmc_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
         spec(ROUTE, R.string.shade_t_route, R.array.shade_s_route, R.drawable.settings_ic_layers);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);

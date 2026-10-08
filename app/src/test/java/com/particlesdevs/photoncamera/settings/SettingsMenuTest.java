@@ -350,7 +350,8 @@ public class SettingsMenuTest {
             android.view.View processing=copy.requireView().findViewWithTag("group_photo_processing_screen");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
-            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key"));
+            // «Цвет» (the RawTherapee sharpening moved next to «Резкость Hybrid» in the settings audit): the curve strength
+            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_lmc_tone_curve_strength"));
             activity.getOnBackPressedDispatcher().onBackPressed();
             assertNotNull(copy.requireView().findViewWithTag("group_photo_processing_screen"));
         }
@@ -385,7 +386,7 @@ public class SettingsMenuTest {
     }
     private void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch(String copyRow,String partly,String png) throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
-        prefs.edit().putString("module_active","back0").putFloat("pref_sharp_amount_key",42f).putFloat("pref_sharp_micro_amount_key",14f).commit();
+        prefs.edit().putString("module_active","back0").putString("pref_lmc_tone_curve_strength","42").putString("pref_lmc_gamma_curve_strength","14").commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
@@ -394,11 +395,12 @@ public class SettingsMenuTest {
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             copy.requireView().findViewWithTag("group_photo_processing_screen").performClick();
-            copy.requireView().findViewWithTag("parameter_pref_sharp_amount_key").performClick();renderPage(copy.requireView(),"noise"+png);
+            // one row of «Цвет» (the RawTherapee sharpening moved to ArkCore in the settings audit)
+            copy.requireView().findViewWithTag("parameter_pref_lmc_tone_curve_strength").performClick();renderPage(copy.requireView(),"noise"+png);
             copy.requireView().findViewWithTag("primary_action").performClick();
             var check=copy.requireView().findViewWithTag("group_check_photo_processing_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
-            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_sharp_amount_key"),0),0);
+            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_lmc_tone_curve_strength"),0),0);
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
             var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestDialog();if(dialog!=null)dialog.dismiss();
             var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent"+png);

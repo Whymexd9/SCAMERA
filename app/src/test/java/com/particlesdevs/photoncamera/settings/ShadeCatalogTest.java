@@ -206,10 +206,11 @@ public class ShadeCatalogTest {
         catalog.write(boost, 1.5f);
         assertEquals("1.5", prefs.getString("pref_vivo_nice_long_boost_ev", null));
 
-        // «Замер» is the ARK metering slider; the Camera2 metering stays a camera control.
+        // «Замер» is the ARK metering, a list of named modes since the settings audit (H4: it was a 0-2 slider whose numbers only
+        // the summary explained); the Camera2 metering stays a camera control.
         ShadeCatalog.Entry metering = catalog.entry("pref_lmc_hybrid_ark_metering");
-        assertEquals(ShadeCatalog.SLIDER, metering.kind);
-        assertEquals("0", catalog.valueText(metering, true));
+        assertEquals(ShadeCatalog.LIST, metering.kind);
+        assertEquals(context.getResources().getStringArray(R.array.shade_s_ark_metering)[0], catalog.valueText(metering, true));
         assertTrue(catalog.entry(ShadeCatalog.METERING_STD).isVirtual());
 
         // The format tile reads the virtual key and shows the new icons.
