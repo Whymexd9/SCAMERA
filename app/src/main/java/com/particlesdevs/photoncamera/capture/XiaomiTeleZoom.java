@@ -186,6 +186,11 @@ public final class XiaomiTeleZoom {
      * The lens is declared fixed: it never moved in this process, and the commanded position has been more than 5 mm away
      * from the reported one for {@link #FOLLOW_MS}.
      */
+    /** A lens step from {@code beforeMm} to {@code nowMm} (> 1 mm) that brings it closer to the commanded position. */
+    static boolean movedToward(float commandedMm, float beforeMm, float nowMm) {
+        return Math.abs(nowMm - beforeMm) > 1f && Math.abs(commandedMm - nowMm) < Math.abs(commandedMm - beforeMm) - 0.5f;
+    }
+
     static boolean lensDoesNotFollow(float commandedMm, float reportedMm, long farForMs, boolean everMoved) {
         return !everMoved && !Float.isNaN(reportedMm) && Math.abs(commandedMm - reportedMm) > 5f && farForMs >= FOLLOW_MS;
     }
@@ -769,9 +774,12 @@ public final class XiaomiTeleZoom {
         // the position userZoomRatio claims: the commanded optics, or the standing lens in crop mode (no false alarm there)
         final float claimed = p.userZoom * MM_PER_USER;
         if (Float.isNaN(firstLensMm)) firstLensMm = mm;
-        if (!lensMoved && Math.abs(mm - firstLensMm) > 1f) {
+        // 17U, 2026-10-08 (owner's run of the dump script): the lens came from 88.7 mm (left there by the stock camera) and
+        // the HAL drove it to its own target 74.4 mm while we commanded 100 mm (isThirdParty = 1): it "moved", so it was
+        // trusted and crop mode never came. Only a move toward the command counts.
+        if (!lensMoved && !Float.isNaN(lensMm) && movedToward(claimed, lensMm, mm)) {
             lensMoved = true;
-            Log.i(TAG, String.format(Locale.ROOT, "the lens moves: %.1f -> %.1f mm (%s)", firstLensMm, mm, source));
+            Log.i(TAG, String.format(Locale.ROOT, "the lens moves toward the command %.1f mm: %.1f -> %.1f mm (%s)", claimed, lensMm, mm, source));
         }
         if (!focalReported || Math.abs(mm - lensMm) >= 2f) {
             Log.i(TAG, String.format(Locale.ROOT, "lens %.1f mm (%s), commanded %.1f mm%s", mm, source, claimed, p.isz ? " ISZ" : ""));

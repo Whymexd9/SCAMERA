@@ -325,4 +325,14 @@ public class XiaomiTeleZoomTest {
         assertTrue(XiaomiTeleZoom.stops(java.util.Arrays.asList(1f, 3.3f)).isEmpty());
         assertNull(XiaomiTeleZoom.stockLabel(null));
     }
+
+    @Test
+    public void lensDrivenAwayFromTheCommandIsNotAMove() {
+        // 17U log 2026-10-08: 88.7 -> 84.8 -> 79.0 -> 74.9 mm while 100 mm was commanded (the HAL's own target 74.4 mm)
+        float[] steps = {88.7f, 84.8f, 79.0f, 74.9f};
+        for (int i = 1; i < steps.length; ++i)
+            assertFalse(XiaomiTeleZoom.movedToward(100f, steps[i - 1], steps[i]));
+        assertTrue("toward the command", XiaomiTeleZoom.movedToward(100f, 75f, 80f));
+        assertFalse("jitter", XiaomiTeleZoom.movedToward(100f, 75f, 75.6f));
+    }
 }
