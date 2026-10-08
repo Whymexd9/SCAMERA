@@ -203,6 +203,32 @@ void main(){
         float den = dot(u, qe);
         vec3 est = den > 1.0e-4 ? min(qe * (dot(u, c) / den), vec3(top)) : c;
         vec3 r = mix(c, max(c, est), satR);
+        // Blown with at most one channel measured (vivo X200 Ultra window 2026-10-08, native Quad mosaic, no Bento: G and B
+        // clipped, R at 0.65..0.95 of its clip). The clipped channels are lower bounds, and after white balance they sit
+        // ABOVE the estimate wherever the channel left is below the highest white-balanced clip (R 1.2..1.8 against B's
+        // 1.6 and G's 1.0): max(c, est) kept B, so the order in which the channels clip turned into colour - a lavender
+        // window, and cyan threads of a net in front of it where R alone dips (the R sites see a thread the G / B sites
+        // miss). Once the channel left reaches the LOWEST white-balanced clip among the censored ones (rho ~ 1: the pixel
+        // is at least that bright in every channel) its colour is no longer measured: neutral white, faded in over rho
+        // 0.25..0.75 (continuous in the censoring weights). Not touched: a saturated light (a cyan or green sign, the
+        // channel left far below the clipped ones, rho < 0.25), and pixels with two channels left (their ratio measures
+        // the colour, the prior estimate above stays). tools/check_highlight_neutral.py (scene A).
+        {
+            // censoring as above, but a clipped-mean channel counts as a bound only from 0.8 of its clip (not 0.6): with
+            // cellClip a partially clipped sky's B at 0.8 of the clip is its measured value, and its colour (B/R) stays
+            vec3 satB = max(sat, fl * smoothstep(vec3(0.80), vec3(0.985), rel));
+            vec3 ub = vec3(1.0) - satB;
+            float Ub = ub.r + ub.g + ub.b;
+            vec3 mc = Lw / max(satB, vec3(1.0e-3));            // white-balanced clip of every censored channel, huge if not
+            float mLow = min(min(mc.r, mc.g), mc.b);
+            float rho = Ub > 1.0e-3 ? dot(ub, c) / (Ub * max(mLow, 1.0e-6)) : 1.0e3;
+            float blown = smoothstep(0.25, 0.75, rho) * clamp(2.0 - Ub, 0.0, 1.0);
+            // the level: the mean of the measured channels' level with every bound kept (G of the window raised to R),
+            // not of the prior estimate (its 8 / 32 / 128-px blocks would show as level steps) and not the highest bound
+            // (a flat band at B's clip, a step at the lamp's cool top edge, the net's threads gone)
+            vec3 rN = Ub > 1.0e-3 ? max(c, vec3(dot(ub, c) / Ub)) : vec3(max(max(c.r, c.g), c.b));
+            r = mix(r, vec3(dot(rN, vec3(1.0 / 3.0))), blown);
+        }
         // Every channel clipped: no colour left; neutral white at the brightest level, reached gradually as the
         // last channel approaches its clip (no grey plateau, no step).
         float all3 = sat.r * sat.g * sat.b;
