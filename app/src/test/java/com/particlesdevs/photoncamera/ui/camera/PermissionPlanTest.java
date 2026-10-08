@@ -262,4 +262,15 @@ public class PermissionPlanTest {
             }
         }
     }
+
+    /**
+     * Android 10 asks WRITE_EXTERNAL_STORAGE (above) and the photos are written straight into DCIM: that works only in the legacy
+     * storage mode there (Nubia NX563J, Android 10: every save failed with ImageSavingError without it).
+     */
+    @Test
+    public void android10WritesIntoDcimInTheLegacyStorageMode() throws Exception {
+        assertTrue(Arrays.asList(PermissionPlan.runtimePermissions(29)).contains(android.Manifest.permission.WRITE_EXTERNAL_STORAGE));
+        String manifest = new String(Files.readAllBytes(new File("src/main/AndroidManifest.xml").toPath()), StandardCharsets.UTF_8);
+        assertTrue("requestLegacyExternalStorage", manifest.contains("android:requestLegacyExternalStorage=\"true\""));
+    }
 }

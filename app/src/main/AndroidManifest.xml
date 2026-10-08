@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
+    <!-- Android 10 writes the photos straight into DCIM: that needs the legacy storage mode (requestLegacyExternalStorage
+         below; ignored from Android 11 on). Without it every save failed with ImageSavingError (Nubia NX563J, Android 10). -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
             android:maxSdkVersion="29" />
 
@@ -41,6 +43,7 @@
         android:roundIcon="@mipmap/scamera_launcher_round"
         android:label="@string/app_name"
         android:largeHeap="true"
+        android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.Photon.BaseApp"
         tools:targetApi="q">
