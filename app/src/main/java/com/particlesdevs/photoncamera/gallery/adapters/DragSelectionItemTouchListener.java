@@ -1,33 +1,45 @@
 package com.particlesdevs.photoncamera.gallery.adapters;
 
 import android.content.Context;
-import android.graphics.Rect;
 import android.view.MotionEvent;
 import android.view.View;
 
-import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.particlesdevs.photoncamera.gallery.interfaces.OnItemInteractionListener;
 
-import java.util.ArrayList;
-import java.util.List;
-
 // Taken from DragSelectionItemTouchListener.java created by NikolaDespotoski
 
+/**
+ * Long press starts a selection, dragging then reports the range from the long-pressed item to the item under the finger
+ * ({@link OnItemInteractionListener#onDragRange}): rows and columns alike (P59b: a vertical drag in one column hovered one
+ * cell only, the cells in between were never selected). Near the top / bottom edge the list scrolls and the range follows.
+ */
 public class DragSelectionItemTouchListener extends LongPressItemTouchListener implements RecyclerView.OnItemTouchListener {
-    private RecyclerView.ViewHolder mPreviousViewHolder;
-    private final Rect mHitRect = new Rect();
-    private final List<RecyclerView.ViewHolder> mRangeSelection = new ArrayList<>();
-
+    private int lastPosition = RecyclerView.NO_POSITION;
+    private float lastX, lastY;
+    private final int edge;
+    private RecyclerView scrolling;
+    private int scrollStep;
+    private final Runnable autoScroll = new Runnable() {
+        @Override
+        public void run() {
+            if (scrolling == null || scrollStep == 0 || mViewHolderLongPressed == null) return;
+            scrolling.scrollBy(0, scrollStep);
+            reportRange(scrolling, lastX, lastY, true);
+            scrolling.postOnAnimation(this);
+        }
+    };
 
     public DragSelectionItemTouchListener(Context context, OnItemInteractionListener listener) {
         super(context, listener);
+        edge = Math.round(56 * context.getResources().getDisplayMetrics().density);
     }
 
     @Override
     public boolean onInterceptTouchEvent(RecyclerView rv, MotionEvent e) {
-        if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_POINTER_UP) {
+        int action = e.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
             cancelPreviousSelection();
             return false;
         } else {
@@ -39,79 +51,60 @@ public class DragSelectionItemTouchListener extends LongPressItemTouchListener i
     private void cancelPreviousSelection() {
         mViewHolderLongPressed = null;
         mViewHolderInFocus = null;
-        mPreviousViewHolder = null;
-        mRangeSelection.clear();
+        lastPosition = RecyclerView.NO_POSITION;
+        stopScroll();
     }
 
-    private boolean onActionMove(RecyclerView rv, MotionEvent e) {
-        if (isMotionEventInCurrentViewHolder(e) || mViewHolderLongPressed == null) {
-            return false;
-        }
-        if (mViewHolderLongPressed != null && mPreviousViewHolder == null) {
-            mPreviousViewHolder = mViewHolderLongPressed;
-        }
-        View childViewUnder = rv.findChildViewUnder(e.getX(), e.getY());
-        if (childViewUnder == null) return false;
-        RecyclerView.ViewHolder viewHolder = rv.getChildViewHolder(childViewUnder);
-        if (mPreviousViewHolder == null && viewHolder != null && mViewHolderLongPressed != null && viewHolder.getAbsoluteAdapterPosition() != mViewHolderLongPressed.getAbsoluteAdapterPosition()) {
-            dispatchOnViewHolderHovered(rv, viewHolder);
-            return true;
-        } else if (mPreviousViewHolder != null && viewHolder != null && viewHolder.getAbsoluteAdapterPosition() != mPreviousViewHolder.getAbsoluteAdapterPosition()) {
-            dispatchOnViewHolderHovered(rv, viewHolder);
-            return true;
-        }
-        return false;
+    private void stopScroll() {
+        scrollStep = 0;
+        if (scrolling != null) scrolling.removeCallbacks(autoScroll);
+        scrolling = null;
     }
 
-
-    private boolean isMotionEventInCurrentViewHolder(MotionEvent e) {
-        if (mPreviousViewHolder != null) {
-            mPreviousViewHolder.itemView.getHitRect(mHitRect);
-            return mHitRect.contains((int) e.getX(), (int) e.getY());
-        }
-        return false;
+    /** The range from the long-pressed item to the item under (x, y) (or the nearest one), once per change. */
+    private void reportRange(RecyclerView rv, float x, float y, boolean force) {
+        if (mViewHolderLongPressed == null || mListener == null) return;
+        float cx = Math.max(1, Math.min(rv.getWidth() - 1, x)), cy = Math.max(1, Math.min(rv.getHeight() - 1, y));
+        View under = rv.findChildViewUnder(cx, cy);
+        if (under == null) under = nearest(rv, cx, cy);
+        if (under == null) return;
+        int pos = rv.getChildAdapterPosition(under);
+        if (pos == RecyclerView.NO_POSITION || (pos == lastPosition && !force)) return;
+        lastPosition = pos;
+        mListener.onDragRange(rv, mViewHolderLongPressed.getAbsoluteAdapterPosition(), pos);
     }
 
-    private void dispatchOnViewHolderHovered(RecyclerView rv, RecyclerView.ViewHolder viewHolder) {
-        if (!checkForSpanSelection(rv, viewHolder)) {
-            if (mListener != null) {
-                mListener.onViewHolderHovered(rv, viewHolder);
+    private static View nearest(RecyclerView rv, float x, float y) {
+        View best = null;
+        float bestD = Float.MAX_VALUE;
+        for (int i = 0; i < rv.getChildCount(); ++i) {
+            View v = rv.getChildAt(i);
+            float dx = Math.max(0, Math.max(v.getLeft() - x, x - v.getRight())), dy = Math.max(0, Math.max(v.getTop() - y, y - v.getBottom()));
+            float d = dx * dx + dy * dy;
+            if (d < bestD) {
+                bestD = d;
+                best = v;
             }
         }
-        mPreviousViewHolder = viewHolder;
+        return best;
     }
-
-    private boolean checkForSpanSelection(RecyclerView rv, RecyclerView.ViewHolder viewHolder) {
-        if (rv.getLayoutManager() instanceof GridLayoutManager) {
-            GridLayoutManager.LayoutParams endSelectionParams = (GridLayoutManager.LayoutParams) viewHolder.itemView.getLayoutParams();
-            GridLayoutManager.LayoutParams startSelectionParams = (GridLayoutManager.LayoutParams) mPreviousViewHolder.itemView.getLayoutParams();
-            if (endSelectionParams.getSpanIndex() != startSelectionParams.getSpanIndex()) {
-                dispatchRangeSelection(rv, viewHolder);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void dispatchRangeSelection(RecyclerView rv, RecyclerView.ViewHolder viewHolder) {
-        if (mListener != null) {
-            mRangeSelection.clear();
-            int start = Math.min(mPreviousViewHolder.getAbsoluteAdapterPosition() + 1, viewHolder.getAbsoluteAdapterPosition());
-            int end = Math.max(mPreviousViewHolder.getAbsoluteAdapterPosition() + 1, viewHolder.getAbsoluteAdapterPosition());
-            for (int i = start; i <= end; i++) {
-                mRangeSelection.add(rv.findViewHolderForAdapterPosition(i));
-            }
-            mListener.onMultipleViewHoldersSelected(rv, mRangeSelection);
-        }
-    }
-
 
     @Override
     public void onTouchEvent(RecyclerView rv, MotionEvent e) {
-        if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_POINTER_UP) {
+        int action = e.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
             cancelPreviousSelection();
         } else if (mViewHolderLongPressed != null) {
-            onActionMove(rv, e);
+            lastX = e.getX();
+            lastY = e.getY();
+            reportRange(rv, lastX, lastY, false);
+            int step = lastY < edge ? -Math.round((edge - lastY) / 4f) - 1 : lastY > rv.getHeight() - edge ? Math.round((lastY - rv.getHeight() + edge) / 4f) + 1 : 0;
+            if (step != 0 && scrollStep == 0) {
+                scrolling = rv;
+                scrollStep = step;
+                rv.postOnAnimation(autoScroll);
+            } else if (step == 0) stopScroll();
+            else scrollStep = step;
         }
     }
 

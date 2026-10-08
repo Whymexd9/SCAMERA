@@ -34,10 +34,39 @@ public class CustomSSIV extends SubsamplingScaleImageView {
         setPreferredBitmapConfig(Bitmap.Config.ARGB_8888);
     }
 
+    /** P59b: a swipe down at the fit scale (the viewer closes); set by the viewer. */
+    private Runnable swipeDown;
+    private float downX, downY;
+    private boolean multi;
+
+    public void setSwipeDownListener(Runnable listener) {
+        swipeDown = listener;
+    }
+
     @Override
     public boolean onTouchEvent(@NonNull MotionEvent event) {
         if (touchCallBack != null) {
             touchCallBack.onTouched(getId());
+        }
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = event.getX();
+                downY = event.getY();
+                multi = false;
+                break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                multi = true;
+                break;
+            case MotionEvent.ACTION_UP:
+                float dx = event.getX() - downX, dy = event.getY() - downY;
+                float limit = 110 * getResources().getDisplayMetrics().density;
+                if (swipeDown != null && !multi && isReady() && getScale() <= getMinScale() * 1.05f && dy > limit && dy > Math.abs(dx)) {
+                    Runnable r = swipeDown;
+                    post(r);
+                }
+                break;
+            default:
+                break;
         }
         return super.onTouchEvent(event);
     }

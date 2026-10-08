@@ -117,11 +117,35 @@ public class ExifDialogViewModel extends AndroidViewModel {
                         disp_fnum + " | " +
                         disp_focal + " | " +
                         resolution_mp);
+        // P59b: the details sheet's values
+        exifDialogModel.setIsoValue(attr_iso == null ? null : "ISO " + attr_iso);
+        exifDialogModel.setShutterValue(attr_exp == null ? null : exposure);
+        exifDialogModel.setFnumValue(attr_fnum == null ? null : "f/" + com.particlesdevs.photoncamera.gallery.ui.GalleryUi.decimal(parseDouble(attr_fnum), 2));
+        double focalMm = attr_focal == null ? Double.NaN : Rational.parseRational(attr_focal).doubleValue();
+        exifDialogModel.setFocalValue(Double.isNaN(focalMm) ? null : com.particlesdevs.photoncamera.gallery.ui.GalleryUi.decimal(focalMm, 1)
+                + com.particlesdevs.photoncamera.util.Lang.t(" мм", " mm"));
+        String attr_35 = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM);
+        exifDialogModel.setFocal35Value(attr_35 == null || "0".equals(attr_35) ? null : attr_35 + com.particlesdevs.photoncamera.util.Lang.t(" мм", " mm"));
+        String makeModel = ((attr_make == null ? "" : attr_make) + " " + (attr_model == null ? "" : attr_model)).trim();
+        exifDialogModel.setMakeModel(makeModel.isEmpty() ? null : makeModel);
+        exifDialogModel.setDescription(exifInterface.getAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION));
+        exifDialogModel.setWidth((int) parseDouble(attr_width));
+        exifDialogModel.setHeight((int) parseDouble(attr_length));
+        exifDialogModel.setSizeBytes(imageFile.getSize());
         exifDialogModel.notifyChange(); //important
         try {
             inputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private static double parseDouble(String v) {
+        if (v == null) return Double.NaN;
+        try {
+            return Double.parseDouble(v);
+        } catch (NumberFormatException e) {
+            return Double.NaN;
         }
     }
 

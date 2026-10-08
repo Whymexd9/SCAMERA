@@ -112,7 +112,19 @@ public class ParseExif {
         data.F_NUMBER = String.valueOf(parameters.aperture);
         data.APERTURE_VALUE = String.valueOf(parameters.aperture);
         data.EXPOSURE_TIME = getTime((long) (parameters.exposureTime * 1000000000L));
-        data.IMAGE_DESCRIPTION = parameters.toString();
+        // P59b: the merge route the shot went through, for the gallery's «Склейка» row (GalleryFormat.routeOf)
+        data.IMAGE_DESCRIPTION = parameters.toString() + routeLine();
+    }
+
+    /** "\n Route=Hybrid" / "\n Route=SCAM HDR" for the hybrid and SCAM HDR routes, empty otherwise. */
+    static String routeLine() {
+        try {
+            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamHdrRoute()) return "\n Route=SCAM HDR";
+            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isLmcHybridEnabled()) return "\n Route=Hybrid";
+        } catch (RuntimeException ignored) {
+            // no settings (tests): no route line
+        }
+        return "";
     }
 
     public static ExifInterface setAllAttributes(File file, ExifData data) {

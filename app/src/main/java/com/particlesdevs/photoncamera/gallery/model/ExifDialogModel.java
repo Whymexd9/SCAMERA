@@ -121,4 +121,31 @@ public class ExifDialogModel extends BaseObservable {
         this.histogramModel = histogramModel;
         notifyPropertyChanged(BR.histogramModel);
     }
+
+    // P59b: the values of the details sheet (GallerySheets.details), next to the old display strings
+    private String isoValue, shutterValue, fnumValue, focalValue, focal35Value, makeModel, description;
+    private int width, height;
+    private long sizeBytes;
+
+    public String getIsoValue() { return isoValue; }
+    public void setIsoValue(String v) { isoValue = v; }
+    public String getShutterValue() { return shutterValue; }
+    public void setShutterValue(String v) { shutterValue = v; }
+    public String getFnumValue() { return fnumValue; }
+    public void setFnumValue(String v) { fnumValue = v; }
+    public String getFocalValue() { return focalValue; }
+    public void setFocalValue(String v) { focalValue = v; }
+    public String getFocal35Value() { return focal35Value; }
+    public void setFocal35Value(String v) { focal35Value = v; }
+    public String getMakeModel() { return makeModel; }
+    public void setMakeModel(String v) { makeModel = v; }
+    /** The file's description (ImageDescription): a SCAMERA photo records its merge route there. */
+    public String getDescription() { return description; }
+    public void setDescription(String v) { description = v; }
+    public int getWidth() { return width; }
+    public void setWidth(int v) { width = v; }
+    public int getHeight() { return height; }
+    public void setHeight(int v) { height = v; }
+    public long getSizeBytes() { return sizeBytes; }
+    public void setSizeBytes(long v) { sizeBytes = v; }
 }
