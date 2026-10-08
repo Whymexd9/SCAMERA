@@ -89,9 +89,11 @@ public class ManualChipView extends LinearLayout {
         TextView t = new TextView(context);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         t.setIncludeFontPadding(false);
-        t.setSingleLine(true);
+        // One line without horizontal scrolling (wrap_content, centred by the chip): a single-line TextView lays its
+        // text out on a very wide line, which a centred gravity would push out of sight.
+        t.setMaxLines(1);
+        t.setHorizontallyScrolling(false);
         t.setEllipsize(null);
-        t.setGravity(Gravity.CENTER_HORIZONTAL);
         t.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         return t;
     }
@@ -203,6 +205,7 @@ public class ManualChipView extends LinearLayout {
         for (TextView t : new TextView[]{value, state}) {
             if (t.getLayout() == null) continue;
             if (t.getLayout().getEllipsisCount(0) > 0 || t.getLayout().getLineCount() > 1) return false;
+            if (t.getLayout().getWidth() > t.getWidth() + 1) return false; // laid out on a wider line than shown
             float w = t.getLayout().getLineWidth(0);
             if (w > getWidth() - getPaddingLeft() - getPaddingRight() + 0.5f) return false;
             if (t.getLeft() < 0 || t.getRight() > getWidth()) return false;

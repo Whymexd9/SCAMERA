@@ -143,7 +143,7 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
     }
 
     /** The models in the strip's order: ISO, shutter, EV, focus, white balance. */
-    ManualModel<?>[] models() {
+    public ManualModel<?>[] models() {
         return new ManualModel<?>[]{isoModel, expoTimeModel, evModel, mfModel, wbModel};
     }
 
