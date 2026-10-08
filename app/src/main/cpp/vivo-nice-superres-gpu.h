@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <array>
 #include <cstring>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -767,6 +768,23 @@ void main(){
 }
 )";
 
+// P57: the worker's GL contexts at low GPU priority (EGL_IMG_context_priority, Adreno / Mali / PowerVR), so the GPU preempts
+// the merge for the viewfinder's and the compositor's draws (owner: the viewfinder stuttered heavily while a photo was processed;
+// the X7 Ultra merge submits strips of ~1.4 s). The attribute is a hint: a driver without the extension, or one that refuses
+// it, gets the context as before (and SCAM_GPU_NORMAL_PRIORITY=1 keeps it as before for comparisons). Results are unchanged.
+inline EGLContext scamProcessingContext(EGLDisplay display,EGLConfig config){
+    const char* ext=eglQueryString(display,EGL_EXTENSIONS);
+    if(ext&&std::strstr(ext,"EGL_IMG_context_priority")&&!std::getenv("SCAM_GPU_NORMAL_PRIORITY")){
+        const EGLint low[]={EGL_CONTEXT_CLIENT_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,0x3100 /*EGL_CONTEXT_PRIORITY_LEVEL_IMG*/,
+                            0x3103 /*EGL_CONTEXT_PRIORITY_LOW_IMG*/,EGL_NONE};
+        EGLContext c=eglCreateContext(display,config,EGL_NO_CONTEXT,low);
+        if(c!=EGL_NO_CONTEXT)return c;
+        eglGetError();
+    }
+    const EGLint attrs[]={EGL_CONTEXT_CLIENT_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,EGL_NONE};
+    return eglCreateContext(display,config,EGL_NO_CONTEXT,attrs);
+}
+
 class SuperResGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
@@ -874,8 +892,7 @@ public:
             const EGLint configAttrs[]={EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RENDERABLE_TYPE,EGL_OPENGL_ES3_BIT,EGL_RED_SIZE,8,EGL_GREEN_SIZE,8,EGL_BLUE_SIZE,8,EGL_NONE};
             EGLConfig config{};EGLint count=0;
             if(!eglChooseConfig(display,configAttrs,&config,1,&count)||count!=1)throw std::runtime_error("No EGL compute configuration");
-            const EGLint attrs[]={EGL_CONTEXT_CLIENT_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,EGL_NONE};
-            context=eglCreateContext(display,config,EGL_NO_CONTEXT,attrs);
+            context=scamProcessingContext(display,config);
             if(context==EGL_NO_CONTEXT)throw std::runtime_error("Cannot create GLES 3.1 context");
             const EGLint size[]={EGL_WIDTH,1,EGL_HEIGHT,1,EGL_NONE};surface=eglCreatePbufferSurface(display,config,size);
             if(surface==EGL_NO_SURFACE||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");

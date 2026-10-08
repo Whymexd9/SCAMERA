@@ -65,7 +65,7 @@ public class GLContext implements AutoCloseable {
         if (configs[0] == null) {
             throw new RuntimeException("OpenGL config is null");
         }
-        mContext = eglCreateContext(mDisplay, configs[0], EGL_NO_CONTEXT, GLDrawParams.contextAttributeList, 0);
+        mContext = createProcessingContext(mDisplay, configs[0]);
         // P27 any resolution: every pass renders into textures / renderbuffers (FBOs), the pbuffer is never drawn to; it only has
         // to exist. A frame wider than EGL_MAX_PBUFFER_* gets a pbuffer at that limit instead of none (unchanged below it).
         final int[] limit = new int[1];
@@ -112,4 +112,26 @@ public class GLContext implements AutoCloseable {
         mContext = null;
         mSurface = null;
     }
+
+    /**
+     * P57: the processing context at low GPU priority (EGL_IMG_context_priority), so the GPU preempts the post pipeline for the
+     * viewfinder's draws; a driver without the extension, or one that refuses the hint, gets the context as before. nice_dev.txt
+     * "gpu_low_priority 0" keeps the normal priority. Rendering results are unchanged.
+     */
+    private static android.opengl.EGLContext createProcessingContext(android.opengl.EGLDisplay display, EGLConfig config) {
+        final String ext = android.opengl.EGL14.eglQueryString(display, android.opengl.EGL14.EGL_EXTENSIONS);
+        final boolean low = ext != null && ext.contains("EGL_IMG_context_priority")
+                && com.particlesdevs.photoncamera.settings.PreferenceKeys.niceDevNumber("gpu_low_priority", 1f) != 0f;
+        if (low) {
+            android.opengl.EGLContext c = eglCreateContext(display, config, EGL_NO_CONTEXT, new int[]{
+                    android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 3,
+                    EGL_CONTEXT_PRIORITY_LEVEL_IMG, EGL_CONTEXT_PRIORITY_LOW_IMG,
+                    android.opengl.EGL14.EGL_NONE}, 0);
+            if (c != null && c != EGL_NO_CONTEXT) return c;
+            android.opengl.EGL14.eglGetError();
+        }
+        return eglCreateContext(display, config, EGL_NO_CONTEXT, GLDrawParams.contextAttributeList, 0);
+    }
+
+    static final int EGL_CONTEXT_PRIORITY_LEVEL_IMG = 0x3100, EGL_CONTEXT_PRIORITY_LOW_IMG = 0x3103;
 }

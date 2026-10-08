@@ -2864,8 +2864,7 @@ public:
             const EGLint configAttrs[]={EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RENDERABLE_TYPE,EGL_OPENGL_ES3_BIT,EGL_RED_SIZE,8,EGL_GREEN_SIZE,8,EGL_BLUE_SIZE,8,EGL_NONE};
             EGLConfig config{};EGLint count=0;
             if(!eglChooseConfig(display,configAttrs,&config,1,&count)||count!=1)throw std::runtime_error("No EGL compute configuration");
-            const EGLint attrs[]={EGL_CONTEXT_CLIENT_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,EGL_NONE};
-            context=eglCreateContext(display,config,EGL_NO_CONTEXT,attrs);
+            context=scamProcessingContext(display,config);
             if(context==EGL_NO_CONTEXT)throw std::runtime_error("Cannot create GLES 3.1 context");
             const EGLint size[]={EGL_WIDTH,1,EGL_HEIGHT,1,EGL_NONE};surface=eglCreatePbufferSurface(display,config,size);
             if(surface==EGL_NO_SURFACE||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");
@@ -2876,7 +2875,10 @@ public:
              GLint blocks=0,bindings=0;glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,&blocks);glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS,&bindings);
              limits="ssbo="+std::to_string(ssbo/(1024*1024))+"MB tex="+std::to_string(tex)+" wgY="+std::to_string(wg)
                  +" blocks="+std::to_string(blocks)+" bindings="+std::to_string(bindings);
-             GLint wgX=0;glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,0,&wgX);maxGroupsX=std::max<GLint>(wgX,0);}
+             GLint wgX=0;glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,0,&wgX);maxGroupsX=std::max<GLint>(wgX,0);
+             EGLint prio=0; // P57: the priority the driver gave the context (0x3101 high, 0x3102 medium, 0x3103 low)
+             if(eglQueryContext(display,context,0x3100,&prio)&&prio)limits+=prio==0x3103?" gpuPrio=low":prio==0x3102?" gpuPrio=medium":" gpuPrio=high";
+             else eglGetError();}
             const bool adreno=renderer.find("Adreno")!=std::string::npos;
             if(early)early("HYBRID GPU: context "+renderer+" "+limits+(adreno?"":"; compiling program by program"));
             auto timed=[&](const char* name,const char* body,bool standalone=false){

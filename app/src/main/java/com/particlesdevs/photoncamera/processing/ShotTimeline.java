@@ -29,6 +29,7 @@ public final class ShotTimeline {
 
     /** Starts the timeline of a new capture at the shutter press. */
     public static synchronized void begin(String name) {
+        com.particlesdevs.photoncamera.ui.camera.views.viewfinder.VfDrawMeter.shot(); // P57: drawn viewfinder frames from here
         capturing = new ShotTimeline();
         capturing.put(name, android.os.SystemClock.elapsedRealtimeNanos());
     }
