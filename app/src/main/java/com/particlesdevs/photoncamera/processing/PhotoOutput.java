@@ -7,6 +7,7 @@ import androidx.annotation.RequiresApi;
 import androidx.exifinterface.media.ExifInterface;
 
 import com.particlesdevs.photoncamera.api.ParseExif;
+import com.particlesdevs.photoncamera.processing.avif.AvifEncoder;
 import com.particlesdevs.photoncamera.processing.opengl.GLLimits;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
 import com.particlesdevs.photoncamera.processing.ultrahdr.UltraHdrEncoder;
@@ -23,9 +24,10 @@ import java.util.List;
 
 /**
  * Writes the processed photo in the chosen format ({@link PhotoFormat}): JPEG (Ultra HDR when a gain map is given), HEIC
- * through androidx.heifwriter, WebP through Bitmap.compress, plus the optional extra JPEG («Также сохранять JPEG»).
- * A HEIC / WebP photo that cannot be written (no HEVC encoder, a WebP side above 16383 px, an encoder error) is saved as
- * JPEG instead, so a shot is never lost to the codec. Pixels are stored rotated in every format, without an Orientation
+ * through androidx.heifwriter, WebP through Bitmap.compress, AVIF through the bundled libavif + libaom (AvifEncoder), plus
+ * the optional extra JPEG («Также сохранять JPEG»). A HEIC / WebP / AVIF photo that cannot be written (no HEVC encoder, a
+ * WebP side above 16383 px, an AVIF above 64 MP or beyond the free memory, an encoder error) is saved as JPEG instead, so
+ * a shot is never lost to the codec. Pixels are stored rotated in every format, without an Orientation
  * tag (the JPEG path's convention), so all files of a shot show the same way.
  */
 public final class PhotoOutput {
@@ -75,9 +77,9 @@ public final class PhotoOutput {
         final int width = img.getWidth(), height = img.getHeight();
         final List<PhotoFormat> plan = plan(format, alsoJpeg, width, height);
         if (format != PhotoFormat.JPEG && !plan.contains(format))
-            Log.w(TAG, format + " cannot hold " + width + "x" + height + " (max side " + PhotoFormat.WEBP_MAX_SIDE + "): saved as JPEG");
+            Log.w(TAG, format + " cannot hold " + width + "x" + height + " (" + format.limit() + "): saved as JPEG");
         if (PreferenceKeys.getChosenPhotoFormat() != format)
-            Log.w(TAG, "HEIC needs Android 9: saved as JPEG");
+            Log.w(TAG, PreferenceKeys.getChosenPhotoFormat() + " is not available here (HEIC needs Android 9, AVIF Android 12 and its encoder): saved as JPEG");
         final Result result = new Result();
         try {
             for (int i = 0; i < plan.size(); i++) {
@@ -92,6 +94,9 @@ public final class PhotoOutput {
                         break;
                     case WEBP:
                         ok = saveWebp(file, img, PreferenceKeys.getWebpQuality(), PreferenceKeys.isWebpLossless(), exif);
+                        break;
+                    case AVIF:
+                        ok = saveAvif(file, img, PreferenceKeys.getAvifOptions(), exif);
                         break;
                     default:
                         ok = saveJpeg(file, img, exif, gain, last);
@@ -244,5 +249,60 @@ public final class PhotoOutput {
     /** Time limit of one HEIC encode: 30 s plus 1 s per megapixel. */
     static long heicTimeoutMs(int width, int height) {
         return 30_000L + (long) width * height / 1_000_000L * 1000L;
+    }
+
+    /** Free memory an AVIF encode leaves untouched (the camera keeps running). */
+    static final long AVIF_MEMORY_RESERVE = 256L << 20;
+
+    /**
+     * AVIF through the bundled libavif + libaom (AvifEncoder) with the EXIF block. Keeps the bitmap. False (no file left)
+     * without the encoder library, when the encode would not fit in the free memory, or on any encoder error.
+     */
+    static boolean saveAvif(Path file, Bitmap img, AvifEncoder.Options options, ParseExif.ExifData exif) {
+        final int width = img.getWidth(), height = img.getHeight();
+        if (!AvifEncoder.available()) {
+            Log.w(TAG, "AVIF: encoder library unavailable");
+            return false;
+        }
+        final long need = AvifEncoder.workingBytes(width, height, options.fullChroma()), free = availableMemory();
+        if (!avifMemoryAllows(need, free)) {
+            Log.w(TAG, "AVIF: " + width + "x" + height + " needs ~" + (need >> 20) + " MB, " + (free >> 20) + " MB available");
+            return false;
+        }
+        byte[] exifBlock = null;
+        if (exif != null) {
+            exif.COMPRESSION = null; // Compression 6 (JPEG) describes JPEG data only
+            exifBlock = ExifBlock.exifDataBlock(ExifBlock.app1Segment(exif, width, height));
+        }
+        try {
+            AvifEncoder.Result r = AvifEncoder.encode(img, file, options, exifBlock);
+            Log.d(TAG, "AVIF " + options.describe() + " (" + img.getConfig() + " " + width + "x" + height + "): " + r.depth + "-bit "
+                    + (r.yuv444 ? "4:4:4" : "4:2:0") + ", RGB to YCbCr " + r.convertMs + " ms, AV1 " + r.encodeMs + " ms, "
+                    + r.bytes / 1024 + " KB" + (exifBlock == null || r.exif ? "" : ", EXIF not stored"));
+            return true;
+        } catch (IOException | RuntimeException | OutOfMemoryError e) {
+            Log.e(TAG, "AVIF encode failed: " + android.util.Log.getStackTraceString(e));
+            return false;
+        }
+    }
+
+    /** Whether an AVIF encode needing {@code need} bytes fits in {@code free} (-1: unknown, the encode is tried). */
+    static boolean avifMemoryAllows(long need, long free) {
+        return free < 0 || need + AVIF_MEMORY_RESERVE <= free;
+    }
+
+    /** ActivityManager.MemoryInfo.availMem, -1 when unknown. */
+    private static long availableMemory() {
+        try {
+            android.content.Context context = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext();
+            android.app.ActivityManager am = context == null ? null
+                    : (android.app.ActivityManager) context.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            if (am == null) return -1;
+            android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+            am.getMemoryInfo(info);
+            return info.availMem > 0 ? info.availMem : -1;
+        } catch (RuntimeException e) {
+            return -1;
+        }
     }
 }
