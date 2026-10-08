@@ -144,6 +144,26 @@ public final class PhotoOutput {
         return out;
     }
 
+    /**
+     * P61: the encoder parameters the photo's settings give this format, as the encoders receive them (owner: "the compression
+     * made no difference" on earlier builds, when the quality settings were per-lens and a module switch restored old values).
+     */
+    static String encodeParams(PhotoFormat f) {
+        switch (f) {
+            case HEIC: return "quality " + PreferenceKeys.getHeicQuality() + (PreferenceKeys.isHeic10Bit() ? " (10-bit: CQ / VBR from it)" : "");
+            case WEBP: {
+                Object[] e = webpEncoding(PreferenceKeys.isWebpLossless(), PreferenceKeys.getWebpQuality(), Build.VERSION.SDK_INT);
+                return e[0] + " " + e[1];
+            }
+            case AVIF: return PreferenceKeys.getAvifOptions().describe();
+            default: return "quality " + PreferenceKeys.getJpegQuality();
+        }
+    }
+
+    private static long fileSize(Path file) {
+        try { return java.nio.file.Files.size(file); } catch (Exception e) { return -1; }
+    }
+
     /** Bitmap.compress format and quality of a WebP photo on {@code sdk}: {format name, quality}. */
     static Object[] webpEncoding(boolean lossless, int quality, int sdk) {
         int q = Math.max(1, Math.min(100, quality));
@@ -233,6 +253,7 @@ public final class PhotoOutput {
                         break;
                 }
                 Log.d(TAG, f + how.toString() + " " + (ok ? "saved" : "failed") + " in " + (System.nanoTime() - start) / 1000000 + " ms: " + file.getFileName());
+                if (ok) Log.i(TAG, "encode params " + f + ": " + encodeParams(f) + ", " + fileSize(file) + " bytes"); // P61
                 if (ok) {
                     result.files.add(file);
                 } else if (f != PhotoFormat.JPEG && !plan.contains(PhotoFormat.JPEG)) {
