@@ -755,10 +755,10 @@ public class SettingsMenuTest {
         assertTrue(category.isVisible());
         List<String> keys=new ArrayList<>();
         for(int i=0;i<category.getPreferenceCount();i++)if(category.getPreference(i).getKey().startsWith("pref_sensorconfig_back1_"))keys.add(category.getPreference(i).getKey().substring("pref_sensorconfig_back1_".length()));
-        // RAW levels, exposure limits, stabilization (only with OIS hardware), session; then the vendor tag button
+        // RAW levels, stabilization (only with OIS hardware), session; then the vendor tag button (the exposure limits read by
+        // nothing were removed)
         keys.remove("oismode");
-        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","exposurebalanceisolimit","exposurebalanceshutterlimit",
-                "exposurebalancemultiplier","sessiontype","add_tunablekey"),keys);
+        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","add_tunablekey"),keys);
     }
     @Test public void sharedPhotoExposureCurveIsFiniteAndRespondsToTarget() throws Exception {
         // The live RAW viewfinder's meter: its fixed target (no settings row since the legacy tone went).

@@ -2,13 +2,11 @@ package com.particlesdevs.photoncamera.processing.parameters;
 
 import android.graphics.Rect;
 import android.hardware.camera2.CameraCharacteristics;
-import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.params.TonemapCurve;
 import com.particlesdevs.photoncamera.util.Log;
 import android.util.Range;
-import android.util.SizeF;
 
 import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
@@ -151,48 +149,6 @@ public class IsoExpoSelector {
         else {
             return (long) ((Range) (key)).getLower();
         }
-    }
-
-
-    private static long getAutoSafeShutterNs(CaptureController captureController) {
-        double efl = 24.0;
-        boolean oisActive = false;
-
-        CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
-        if (characteristics != null) {
-            float fl = 4.75f;
-            float[] focalLengths = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
-            if (focalLengths != null && focalLengths.length > 0) {
-                fl = focalLengths[0];
-            }
-
-            SizeF sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
-            if (sensorSize != null && sensorSize.getWidth() > 0) {
-                efl = (36.0f / sensorSize.getWidth()) * fl;
-            }
-
-            // Explicit and safe OIS capability check
-            boolean hasHardwareOis = false;
-            int[] oisModes = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-            if (oisModes != null) {
-                for (int mode : oisModes) {
-                    if (mode == CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON) {
-                        hasHardwareOis = true;
-                        break;
-                    }
-                }
-            }
-
-            if (hasHardwareOis) {
-                oisActive = (captureController == null || captureController.oisMode != 2);
-            }
-        }
-
-        if (efl <= 0.0) efl = 24.0;
-
-        // Reciprocal rule: 8/EFL if OIS is enabled (+3 stops), 1/EFL without OIS
-        double safeSec = (oisActive ? 8.0 : 1.0) / efl;
-        return (long) (safeSec * ExposureIndex.sec);
     }
 
 
@@ -404,7 +360,7 @@ public class IsoExpoSelector {
             if (exposure <= effectiveMax) return;
 
             double targetEnergy = (double) exposure * iso;
-            double isoHighNormalized = resolveIsoLimit(-1);
+            double isoHighNormalized = (double) isohigh * (100.0 / isolow); // the sensor's highest ISO
             double requiredIso = targetEnergy / effectiveMax;
             iso = (int) Math.ceil(Math.max(MIN_ISO_NORMALIZED,
                     Math.min(isoHighNormalized, requiredIso)));
@@ -416,95 +372,6 @@ public class IsoExpoSelector {
                     + " -> exposure="
                     + ExposureIndex.sec2string(ExposureIndex.time2sec(exposure))
                     + " iso=" + iso);
-        }
-
-        public double resolveIsoLimit(int isoLimit) {
-            if (isoLimit == -4) return Math.max(100.0, (double) isoanalog / 4.0);
-            if (isoLimit == -3) return Math.max(100.0, (double) isoanalog / 2.0);
-            if (isoLimit == -2) return (double) isoanalog;
-            if (isoLimit == -1) return (double) isohigh * (100.0 / isolow);
-            return Math.min((double) isohigh, (double) isoLimit) * (100.0 / isolow);
-        }
-
-        /**
-         * Resolves the effective shutter duration limit in nanoseconds.
-         */
-        public long resolveShutterLimit(float shutterLimitSec, CaptureController cc) {
-            if (shutterLimitSec == -2.0f) return getAutoSafeShutterNs(cc);
-            if (shutterLimitSec > 0.0f) return (long) (shutterLimitSec * ExposureIndex.sec);
-            return exposurehigh;
-        }
-
-        /**
-         * Shifts the exposure balance by the given multiplier k (shutter/ISO trade-off).
-         * A multiplier > 1.0 reduces shutter duration and increases ISO (freezing motion).
-         * A multiplier < 1.0 increases shutter duration and reduces ISO (cleaner image).
-         *
-         * Uses a Dual-Axis Backtracking Clamping algorithm with Tripod Awareness.
-         *
-         * @param k               the multiplier to adjust balance
-         * @param isoLimit        the configured ISO limit (-1 = Sensor Max, -2 = Max Analog, -3 = Max Analog / 2, -4 = Max Analog / 4, >0 = Custom limit)
-         * @param shutterLimitSec the configured shutter duration limit in seconds (-1.0f = Sensor Max, >0 = Custom limit in seconds)
-         */
-        public void applyExposureBalance(double k, int isoLimit, float shutterLimitSec) {
-            isIsoLimited = false;
-            isShutterLimited = false;
-            isShutterTripodBypassed = false;
-            isIsoManualOverLimit = false;
-            isShutterManualOverLimit = false;
-
-            // 1. Save target exposure energy
-            double targetEnergy = (double) exposure * iso;
-
-            // 2. Apply theoretical shift
-            exposure = (long) (exposure / k);
-            iso = (int) (iso * k);
-
-            // 3. Resolve bounds using helper methods
-            double isoHighNormalized = resolveIsoLimit(isoLimit);
-            long userShutterNs = resolveShutterLimit(shutterLimitSec, PhotonCamera.getCaptureController());
-            long effectiveExposureHigh = useTripod ? exposurehigh : Math.min(exposurehigh, userShutterNs);
-
-            // 4. ISO limits check with backtracking to exposure
-            if (iso > isoHighNormalized) {
-                iso = (int) Math.round(isoHighNormalized);
-                if (isoLimit != -1) isIsoLimited = true;
-                exposure = (long) (targetEnergy / iso);
-            } else if (iso < 100) {
-                iso = 100;
-                exposure = (long) (targetEnergy / iso);
-            }
-
-            // 5. Exposure limits check with clean ISO snapping down
-            if (exposure > effectiveExposureHigh) {
-                exposure = effectiveExposureHigh;
-                if ((shutterLimitSec > 0.0f || shutterLimitSec == -2.0f) && !useTripod) isShutterLimited = true;
-                double continuousIso = targetEnergy / exposure;
-                iso = (int) snapToCleanIso(continuousIso, false);
-            } else if (exposure < exposurelow) {
-                exposure = exposurelow;
-                double continuousIso = targetEnergy / exposure;
-                iso = (int) snapToCleanIso(continuousIso, false);
-            }
-
-            // 6. Final safety clamps
-            if (iso > isoHighNormalized) {
-                iso = (int) Math.round(isoHighNormalized);
-                if (isoLimit != -1) isIsoLimited = true;
-            }
-            if (iso < 100) iso = 100;
-
-            if (exposure > effectiveExposureHigh) {
-                exposure = effectiveExposureHigh;
-                if ((shutterLimitSec > 0.0f || shutterLimitSec == -2.0f) && !useTripod) isShutterLimited = true;
-            }
-            if (exposure < exposurelow) exposure = exposurelow;
-
-            // 7. Check if tripod mode bypassed the user's handheld shutter limit
-            if (useTripod && userShutterNs < exposurehigh && exposure > userShutterNs) {
-                isShutterTripodBypassed = true;
-                isShutterLimited = false;
-            }
         }
 
         /**

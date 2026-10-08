@@ -240,51 +240,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     )
     public int oisMode = 0;
 
-    @SensorConfig(
-            title = "Exposure Balance",
-            description = "Сдвиг баланса между выдержкой и ISO. Только режимы «Фото» и «Ночь»",
-            entries = {
-                    "0.25x (Max SNR Bias)",
-                    "0.35x (High SNR Bias)",
-                    "0.50x (Medium SNR Bias)",
-                    "0.71x (Slight SNR Bias)",
-                    "1.00x (Balanced / Default)",
-                    "1.41x (Slight Speed Bias)",
-                    "2.00x (Medium Speed Bias)",
-                    "2.83x (High Speed Bias)",
-                    "4.00x (Max Speed Bias)"
-            },
-            entryValues = {"0.25", "0.35", "0.5", "0.71", "1.0", "1.41", "2.0", "2.83", "4.0"},
-            defaultValue = 1.0f
-    )
-    public float exposureBalanceMultiplier = 1.0f;
-
-    @SensorConfig(
-            title = "ISO Limit",
-            description = "Ограничение наибольшей чувствительности",
-            entries = {"400", "800", "1600", "3200", "6400", "12800", "Max Analog ISO / 4", "Max Analog ISO / 2", "Max Analog ISO", "Sensor Max ISO"},
-            entryValues = {"400", "800", "1600", "3200", "6400", "12800", "-4", "-3", "-2", "-1"},
-            defaultValue = -1
-    )
-    public int exposureBalanceIsoLimit = -1;
-
-    @SensorConfig(
-            title = "Shutter Limit",
-            description = "Ограничение наибольшей выдержки",
-            entries = {
-                    "1/500", "1/250", "1/125", "1/90", "1/60", "1/45", "1/30", "1/20", 
-                    "1/15", "1/10", "1/8", "1/6", "1/4", 
-                    "1/3", "1/2", "1.0", "2.0", "Auto Safe (Lens Reciprocal)", "Sensor Max Time"
-            },
-            entryValues = {
-                    "0.002", "0.004", "0.008", "0.0111", "0.0167", "0.0222", "0.0333", "0.05", 
-                    "0.0667", "0.1", "0.125", "0.1667", "0.25", 
-                    "0.3333", "0.5", "1.0", "2.0", "-2", "-1"
-            },
-            defaultValue = -1.0f
-    )
-    public float exposureBalanceShutterLimit = -1.0f;
-
     private static int mTargetFormat = RAW_FORMAT;
     private ManualModeConsole manualModeConsole;
     private final ParamController paramController;

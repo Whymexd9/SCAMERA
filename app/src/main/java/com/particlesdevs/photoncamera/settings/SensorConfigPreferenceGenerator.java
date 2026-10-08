@@ -38,11 +38,9 @@ public class SensorConfigPreferenceGenerator {
     private static final String TAG = "SensorConfigPrefGen";
 
     private static final String SUBMENU_KEY = "pref_sensor_config_submenu";
-    /** Rows in this order: RAW levels, exposure limits, stabilization, session; unknown fields after them. */
+    /** Rows in this order: RAW levels, stabilization, session; unknown fields after them. */
     private static final List<String> FIELD_ORDER = java.util.Arrays.asList(
-            "blackLevelOverride", "whiteLevelOverride",
-            "exposureBalanceIsoLimit", "exposureBalanceShutterLimit", "exposureBalanceMultiplier",
-            "oisMode", "sessionType");
+            "blackLevelOverride", "whiteLevelOverride", "oisMode", "sessionType");
 
     private SensorConfigPreferenceGenerator() {}
 
@@ -107,8 +105,8 @@ public class SensorConfigPreferenceGenerator {
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
             for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
             submenu.setTitle(Lang.t(context, "Настройки сенсоров по модулям", "Sensor settings per module"));
-            submenu.setSummary(Lang.t(context, "Уровни RAW, экспозиция, стабилизация и сессия каждого модуля",
-                    "RAW levels, exposure, stabilization and session of each module"));
+            submenu.setSummary(Lang.t(context, "Уровни RAW, стабилизация и сессия каждого модуля",
+                    "RAW levels, stabilization and session of each module"));
             if (physicalIds.isEmpty()) {
                 Log.w(TAG, "No camera ids found, cannot generate sensor config preferences.");
                 addNoSensorsPreference(context, submenu);

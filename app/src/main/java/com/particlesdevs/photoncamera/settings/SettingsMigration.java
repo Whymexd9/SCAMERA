@@ -133,9 +133,16 @@ public final class SettingsMigration {
             // P10: AgX, Exposure Fusion and the headroom tone of both routes (and the hybrid's copies)
             "pref_agx_", "pref_vivo_hdr_", "pref_vivo_nice_fusion_", "pref_lmc_hybrid_hdr_", "pref_lmc_hybrid_fusion_",
             "pref_lmc_hybrid_agx_"};
+    /**
+     * Removed rows of the per-module sensor settings (pref_sensorconfig_&lt;slot or camera id&gt;_&lt;field&gt;): the exposure limits
+     * «Максимальное ISO», «Максимальная выдержка» and «Баланс выдержки и ISO», which no capture code read (settings audit).
+     */
+    static final String[] OBSOLETE_SENSOR_FIELDS = {"exposurebalanceisolimit", "exposurebalanceshutterlimit", "exposurebalancemultiplier"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;
         for (String prefix : OBSOLETE_PREFIXES) if (key.startsWith(prefix)) return true;
+        if (key.startsWith("pref_sensorconfig_"))
+            for (String field : OBSOLETE_SENSOR_FIELDS) if (key.endsWith("_" + field)) return true;
         return false;
     }
 

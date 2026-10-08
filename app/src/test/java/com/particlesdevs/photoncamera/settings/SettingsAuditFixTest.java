@@ -86,6 +86,19 @@ public class SettingsAuditFixTest {
         prefs.edit().putString("pref_cfa_key","3").commit();assertEquals(3,PreferenceKeys.getCFAValue());
     }
 
+    /** The per-module exposure limits (ISO / shutter / balance) were read by nothing: their stored values are dropped. */
+    @Test public void sensorExposureLimitsAreDropped() {
+        prefs.edit().putString("pref_sensorconfig_back0_exposurebalanceisolimit","800")
+                .putString("pref_sensorconfig_back0_exposurebalanceshutterlimit","0.05")
+                .putString("pref_sensorconfig_2_exposurebalancemultiplier","2.0")
+                .putString("pref_sensorconfig_back0_blackleveloverride","64").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        for(String key:prefs.getAll().keySet())assertFalse(key,key.contains("exposurebalance"));
+        assertEquals("the other sensor rows stay","64",prefs.getString("pref_sensorconfig_back0_blackleveloverride",""));
+        for(java.lang.reflect.Field f:com.particlesdevs.photoncamera.capture.CaptureController.class.getFields())
+            assertFalse(f.getName(),f.getName().startsWith("exposureBalance"));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));
