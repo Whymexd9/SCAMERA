@@ -208,6 +208,27 @@ public class SettingsAuditFixTest {
             assertNotNull("the app, version and device rows stay on «Система»: "+key,system.findPreference(key));
     }
 
+    /** Owner: SCAM HDR saves no processing stages and plans with SCAMERA by default; stored former defaults move once. */
+    @Test public void scamHdrDefaultsAreDiagnosticsOffAndTheScameraPlanner() {
+        Map<String,String> xml=XmlDefaults.read(context);
+        assertEquals("0",xml.get("pref_vivo_nice_diagnostics"));assertEquals("scamera",xml.get("pref_vivo_nice_planner"));
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").commit();
+        assertFalse(PreferenceKeys.isNiceDiagnosticsEnabled());
+        prefs.edit().putBoolean("pref_root_enabled",true).commit();
+        assertFalse("no stock planner without the stored choice",PreferenceKeys.useStockBracketPlanner());
+        SharedPreferences[] module=profiles();
+        prefs.edit().putBoolean("pref_vivo_nice_diagnostics",true).putString("pref_vivo_nice_planner","stock").commit();
+        module[0].edit().clear().putString("pref_vivo_nice_diagnostics","1").putString("pref_vivo_nice_planner","stock").commit();
+        module[1].edit().clear().putInt(SettingsMigration.SCAM_DEFAULTS_REV,1).putBoolean("pref_vivo_nice_diagnostics",true).commit();
+        SettingsMigration.migrateLmcHybrid(context,prefs);
+        assertFalse(prefs.getBoolean("pref_vivo_nice_diagnostics",true));assertEquals("scamera",prefs.getString("pref_vivo_nice_planner",""));
+        assertFalse(module[0].getBoolean("pref_vivo_nice_diagnostics",true));assertEquals("scamera",module[0].getString("pref_vivo_nice_planner",""));
+        assertTrue("a profile that already moved keeps a later choice",module[1].getBoolean("pref_vivo_nice_diagnostics",false));
+        prefs.edit().putBoolean("pref_vivo_nice_diagnostics",true).putString("pref_vivo_nice_planner","stock").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertTrue(prefs.getBoolean("pref_vivo_nice_diagnostics",false));assertEquals("stock",prefs.getString("pref_vivo_nice_planner",""));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

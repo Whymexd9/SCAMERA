@@ -463,7 +463,7 @@
     <string name="prefs_vivo_nice_long_boost_ev_title">L boost</string>
     <string name="prefs_vivo_nice_long_boost_ev_summary">0–2 EV, default 1.1; 0 = stock plan. The L frame is longer than stock: our preview is exposed about 1.1 EV darker than stock, so the shadows get less signal. The shutter is extended up to 1/8 s (never shorter than stock), the rest comes from gain. Handheld blur and model artefacts at transitions are possible.</string>
     <string name="prefs_vivo_nice_diagnostics_title">Save processing stages</string>
-    <string name="prefs_vivo_nice_diagnostics_summary">After a shot a ZIP with intermediate images and numeric data is saved to Download/SCAMERA. Slows processing down and takes space; can be turned off after testing.</string>
+    <string name="prefs_vivo_nice_diagnostics_summary">After a shot a ZIP with intermediate images and numeric data is saved to Download/SCAMERA. Slows processing down and takes space; off by default, turn it on for tests.</string>
     <string name="prefs_vivo_nice_bracket_screen_title">Bracket and alignment</string>
     <string name="prefs_vivo_nice_bracket_screen_summary">CRE, L from ZSL, planner</string>
     <string name="prefs_vivo_nice_cre_source_title">Alignment (CRE)</string>

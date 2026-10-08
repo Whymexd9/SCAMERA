@@ -503,6 +503,23 @@ public final class SettingsMigration {
             e.putInt(PRECISION_REV, 1);
             markOnly = true;
         }
+        // SCAM HDR defaults (owner, 8 October 2026): «Сохранять этапы обработки» off (it wrote a ZIP and scanned the vendor keys on
+        // every shot) and the SCAMERA planner (the stock vivo AE needs Root on the vivo X200 Ultra). A stored former default (on /
+        // "stock", written when the screen was first opened) moves once; own marker, so a choice made later stays.
+        if (!values.containsKey(SCAM_DEFAULTS_REV)) {
+            Object diagnostics = values.get("pref_vivo_nice_diagnostics");
+            if (diagnostics != null && PreferenceNumber.bool(diagnostics, false)) {
+                e.putBoolean("pref_vivo_nice_diagnostics", false);
+                changed = true;
+            }
+            Object planner = values.get("pref_vivo_nice_planner");
+            if (planner != null && "stock".equals(planner.toString().trim())) {
+                e.putString("pref_vivo_nice_planner", "scamera");
+                changed = true;
+            }
+            e.putInt(SCAM_DEFAULTS_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
@@ -514,6 +531,8 @@ public final class SettingsMigration {
     static final String MOSAIC_FRAMES_REV = "pref_lmc_hybrid_mosaic_frames_rev";
     /** Marker of the one-time move of the two-decimal slider defaults "0.00" (Bento auto threshold) and "1.41" (LUT sigma). */
     static final String PRECISION_REV = "pref_lmc_hybrid_precision_rev";
+    /** Marker of the one-time move of the former SCAM HDR defaults (diagnostics on, stock planner) to off / SCAMERA. */
+    static final String SCAM_DEFAULTS_REV = "pref_vivo_nice_defaults_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {

@@ -684,9 +684,8 @@ public class PreferenceKeys {
     }
     public static boolean isNiceDiagnosticsEnabled() {
         if (isHybridShot()) return hybridSwitch("diagnostics", false);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", true);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", false);
     }
-    /** true: vivo stock AE solver via root observer; false: SCAMERA planner (no root, any device). */
     /** LMC curve presets: "off" or an asset path under assets/curves (Tone/..., Gamma/...). */
     public static String getLmcToneCurve() {
         return preferenceKeys.settingsManager.getString("default_scope", "pref_lmc_tone_curve", "off");
@@ -710,11 +709,15 @@ public class PreferenceKeys {
     public static boolean isRootEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_root_enabled", false);
     }
+    /**
+     * true: the vivo stock AE solver through the root observer («Стоковый AE vivo»: Root on, vivo X200 Ultra only); false: the
+     * SCAMERA planner (no root, any device; the default since 8 October 2026).
+     */
     public static boolean useStockBracketPlanner() {
         // The hybrid's N frames are the ZSL ring at the preview exposure: always the SCAMERA plan of that exposure.
         if (isHybridShot()) return false;
         return isRootEnabled()
-                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_planner", "stock"))
+                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_planner", "scamera"))
                 && com.particlesdevs.photoncamera.capture.VivoStockAe.supportedDevice();
     }
     /** NICE: build L from the ZSL N frames instead of capturing it after the shutter. */

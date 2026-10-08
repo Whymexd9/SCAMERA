@@ -463,7 +463,7 @@
     <string name="prefs_vivo_nice_long_boost_ev_title">Удлинение L</string>
     <string name="prefs_vivo_nice_long_boost_ev_summary">0–2 EV, по умолчанию 1.1; 0 = стоковый план. Кадр L длиннее стокового: наше превью экспонируется примерно на 1.1 EV темнее стока, поэтому тени получают меньше сигнала. Удлиняется выдержка до 1/8 с (не короче стоковой), остальное — усилением. Возможен смаз с рук и артефакты модели на переходах.</string>
     <string name="prefs_vivo_nice_diagnostics_title">Сохранять этапы обработки</string>
-    <string name="prefs_vivo_nice_diagnostics_summary">После снимка сохраняется ZIP с промежуточными изображениями и числовыми данными в Download/SCAMERA. Замедляет обработку и занимает место; после проверки можно отключить.</string>
+    <string name="prefs_vivo_nice_diagnostics_summary">После снимка сохраняется ZIP с промежуточными изображениями и числовыми данными в Download/SCAMERA. Замедляет обработку и занимает место; по умолчанию выключено, включайте для проверки.</string>
     <string name="prefs_vivo_nice_bracket_screen_title">Брекет и выравнивание</string>
     <string name="prefs_vivo_nice_bracket_screen_summary">CRE, L из ZSL, планировщик</string>
     <string name="prefs_vivo_nice_cre_source_title">Выравнивание (CRE)</string>
