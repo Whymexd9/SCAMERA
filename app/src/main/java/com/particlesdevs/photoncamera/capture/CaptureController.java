@@ -33,6 +33,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
@@ -366,6 +367,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private volatile CameraCaptureSession mRearmSession;
     /** P38: preview stabilisation keys per frame around a shot (tag STAB_TRACE). */
     private final StabilizationTrace mStabTrace = new StabilizationTrace();
+    /** P44: the viewfinder freeze of every shot from the preview timestamps (tag PREVIEW_GAP, one line per shot). */
+    private final PreviewGapMeter mPreviewGap = new PreviewGapMeter();
+    /** P44: preview frames the last shot queued right after its flush, ahead of its series (PreviewContinuity). */
+    private volatile int mLastShotLead;
     private final TimestampFrameRouter<Image> mLiveRawRouter = new TimestampFrameRouter<>((image, still) -> {
         if (still) mImageSaver.initProcess(image);
         else if (mZslCapturing) image.close();
@@ -590,6 +595,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
 
 
+        @Override public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request,
+                                              @NonNull CaptureFailure failure) {
+            // P44: a flush drops the preview requests in flight this way (counted in the shot's PREVIEW_GAP line).
+            synchronized (mPreviewStateLock) {
+                if (isCurrentPreviewSession(session)) mPreviewGap.previewFailed();
+            }
+        }
+
         private void process(CaptureResult result) {
             debugCallback.process();
             switch (mState) {
@@ -735,6 +748,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
                 mStabTrace.record(request, result);
+                final Long gapTs = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                if (gapTs != null) {
+                    final String gapLine = mPreviewGap.preview(gapTs, android.os.SystemClock.elapsedRealtimeNanos());
+                    if (gapLine != null) Log.i(PreviewGapMeter.TAG, gapLine);
+                }
                 maybeRunPendingRearm(session, request, result);
                 if(PreferenceKeys.isVivoNiceEnabled() && PreferenceKeys.useStockBracketPlanner() && isCurrentPreviewSession(session)) {
                     VivoStockAe stock=mStockAe;
@@ -2511,6 +2529,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             CameraCharacteristics traceChars = mCameraCharacteristicsMap.get(physicalID);
                             if (traceChars == null) traceChars = mCameraCharacteristics;
                             mStabTrace.startSession(physicalID, traceChars);
+                            mPreviewGap.reset();
                             mRearmPending = false;
                             if (StabilizationTrace.wantsOisSamples(traceChars))
                                 mPreviewRequestBuilder.set(CaptureRequest.STATISTICS_OIS_DATA_MODE, CaptureRequest.STATISTICS_OIS_DATA_MODE_ON);
@@ -2889,8 +2908,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Never under a queued or waiting next shot, nor under another shot's frames: that shot flushes and re-arms on its own.
      */
     private void requestPreviewRearm(boolean shotFlushed, boolean skip) {
-        int fallback = VivoNicePreview.supported() ? (shotFlushed ? 3 : 1) : 0;
-        int mode = Math.round(PreferenceKeys.niceDevNumber("stab_rearm", fallback));
+        int mode = previewRearmMode(shotFlushed, mLastShotLead);
         if (mode <= 0 || mode > 3) return;
         if (skip) {
             mStabTrace.event("re-arm skipped: a queued shot follows or the session restarts");
@@ -2904,6 +2922,32 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return;
         }
         rearmPreviewStabilisation(mCaptureSession, mode);
+    }
+
+    /** P38 / P44: the re-arm mode after a shot (nice_dev "stab_rearm" wins over the default of PreviewContinuity). */
+    private static int previewRearmMode(boolean shotFlushed, int leadFrames) {
+        int fallback = PreviewContinuity.defaultRearm(VivoNicePreview.supported(), shotFlushed, leadFrames);
+        return Math.round(PreferenceKeys.niceDevNumber("stab_rearm", fallback));
+    }
+
+    /**
+     * P44 nice_dev "preview_lead N": N frames of the normal preview request right after the flush, ahead of the series. The
+     * viewfinder gets a frame as soon as the HAL has restarted, and the restart happens on a preview request (the P38 re-arm
+     * flush after the series is then not needed). Their RAWs are routed as preview frames (dropped during the shot) like the
+     * AE restore frame's. Each one starts the series a preview frame later.
+     */
+    private void queuePreviewLead(int frames) {
+        CaptureRequest.Builder b = mPreviewRequestBuilder;
+        CameraCaptureSession session = mCaptureSession;
+        if (b == null || session == null) return;
+        try {
+            CaptureRequest lead = b.build();
+            for (int i = 0; i < frames; i++) session.capture(lead, mCaptureCallback, mBackgroundHandler);
+            Log.i("NICE_CAPTURE", "preview lead frames queued ahead of the series: " + frames);
+            mStabTrace.event("preview lead frames queued ahead of the series: " + frames);
+        } catch (CameraAccessException | RuntimeException e) {
+            Log.w("NICE_CAPTURE", "preview lead frames not queued: " + e);
+        }
     }
 
     /** P38: from the preview callback: the first repeating-preview result after the series runs the pending re-arm. */
@@ -4275,6 +4319,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (shotDone.get()) return;
                     if (mNativeRawPslCapture || mNiceRouted || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
                     if (mNiceRouted) mNiceTailTimestamp = Math.max(mNiceTailTimestamp, timestamp);
+                    mPreviewGap.seriesStart(timestamp);
                     if (sTimelineSubmitNs > 0) Log.i("NICE_TIMELINE", "bracket start frame=" + frameNumber + " dtMs=" + (timestamp - sTimelineSubmitNs) / 1_000_000
                             + " nowMs=" + (android.os.SystemClock.elapsedRealtimeNanos() - sTimelineSubmitNs) / 1_000_000);
 
@@ -4622,7 +4667,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + " lost the first requests after a flush (FlushLossStats)");
             shotFlushed.set(flushQueue);
             mLastShotFlushed = flushQueue;
+            // P44: preview frames right after the flush, ahead of the series (nice_dev "preview_lead"; off by default).
+            final int leadFrames = PreviewContinuity.leadFrames(PreferenceKeys.niceDevNumber("preview_lead", 0f), flushQueue);
+            mLastShotLead = leadFrames;
             sTimelineSubmitNs = android.os.SystemClock.elapsedRealtimeNanos();
+            {
+                final String previousGap = mPreviewGap.markShot("camera=" + physicalID + " flush=" + flushQueue + " lead=" + leadFrames
+                                + " rearm=" + previewRearmMode(flushQueue, leadFrames)
+                                + " aeRestore=" + (mNiceRouted ? Math.round(PreferenceKeys.niceDevNumber("ae_restore", 1f)) : -1),
+                        sTimelineSubmitNs, captures.size(), isGyroClockComparable());
+                if (previousGap != null) Log.i(PreviewGapMeter.TAG, previousGap + " (closed early by the next shot)");
+            }
             com.particlesdevs.photoncamera.processing.ShotTimeline.capture("submit");
             mStabTrace.markShot("submit requests=" + captures.size() + " flush=" + flushQueue + " previewKept=" + mNiceRouted);
             if (!captures.isEmpty()) {
@@ -4636,6 +4691,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 flushDevice(mCaptureSession);
                 Log.i("NICE_CAPTURE", "HAL queue flushed in " + (android.os.SystemClock.elapsedRealtime() - t0) + " ms");
                 mStabTrace.event("HAL queue flushed in " + (android.os.SystemClock.elapsedRealtime() - t0) + " ms");
+                // P44: the flush also cleared the repeating preview; lead frames go into the request queue ahead of the
+                // series (capture() requests are taken in order, the series follows them without a preview frame between).
+                if (leadFrames > 0) queuePreviewLead(leadFrames);
             }
             if(captures.isEmpty() && hybridZsl) {
                 startZslCopy(mPendingZslNormalFrames);
