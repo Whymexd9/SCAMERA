@@ -53,7 +53,10 @@ import java.util.Locale;
  * preview is not known (its request dump is missing), so by default the preview never forces current_mode: one continuous
  * zoomRatio crop from the 75 mm lens up to 400 mm, the ISP preview throughout (the HAL is free to use its in-sensor zoom by
  * itself; a reported mode change is logged). Dev switch {@code xiaomi_isz 1} brings back the forced 2x ISZ at 150 mm. The
- * tele's vendor keys around zoom / mode / remosaic are logged once to find the stock camera's switch.
+ * tele's vendor keys around zoom / mode / remosaic are logged once to find the stock camera's switch. *
+ * <p>Owner, 2026-10-08: userZoomRatio + zoomRatio ARE the optical zoom and the lens must move physically. The optical command is
+ * the default again (userZoomRatio = mm / 23.256, zoomRatio = mm / 74.419, 4.30000019 / 1.34375 at 100 mm, then the crop
+ * to 400 mm); dev switch {@code xiaomi_crop_mode 1} keeps the lens at 75 mm and crops instead.
  */
 public final class XiaomiTeleZoom {
     private static final String TAG = "XiaomiTeleZoom";
@@ -431,8 +434,8 @@ public final class XiaomiTeleZoom {
     }
 
     /**
-     * {@code forceCrop}: crop mode from the start, the lens standing at 75 mm (default: the 17U's HAL reports a focal length that
-     * follows userZoomRatio while the glass stays; dev switch {@code xiaomi_crop_mode 0} tries the optics).
+     * {@code forceCrop}: crop mode from the start, the lens standing at 75 mm (dev switch {@code xiaomi_crop_mode 1}); the
+     * default is the owner's optical command.
      */
     public static Plan apply(CaptureRequest.Builder b, CameraCharacteristics c, boolean switchOn, float moduleZoom, float zoom,
                              String physicalId, boolean lensCheck, boolean forceCrop) {
