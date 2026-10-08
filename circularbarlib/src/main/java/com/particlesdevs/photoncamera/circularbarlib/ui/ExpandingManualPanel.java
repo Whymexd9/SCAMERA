@@ -38,6 +38,39 @@ public class ExpandingManualPanel extends RelativeLayout {
         toggle.setOnClickListener(v -> setExpanded(!expanded,true));
     }
     public boolean isExpanded(){return expanded;}
+
+    /** Whether the shade allows the panel on screen (the shade is HIDDEN). */
+    private boolean shadeShown = true;
+    /** Duration of the fade and slide when the shade leaves or returns to HIDDEN. */
+    static final int SHADE_FADE_MS = 200;
+    /** How far the panel slides down while it fades out. */
+    static final float SHADE_SLIDE_DP = 16;
+
+    public boolean isShadeShown(){return shadeShown;}
+
+    /**
+     * Shows the panel while the shade is HIDDEN and hides it at the other levels: a short fade and slide (alpha, 16dp down),
+     * INVISIBLE at the end so it takes no touches. Nothing else changes, so it comes back open or closed with the same
+     * parameter selected.
+     */
+    public void setShadeShown(boolean shown, boolean animate){
+        boolean changed = shown != shadeShown;
+        shadeShown = shown;
+        animate().cancel();
+        float slide = dp(SHADE_SLIDE_DP);
+        if(!animate){
+            setAlpha(shown?1f:0f);setTranslationY(shown?0f:slide);setVisibility(shown?VISIBLE:INVISIBLE);
+            return;
+        }
+        if(!changed && (shown ? getVisibility()==VISIBLE && getAlpha()==1f : getVisibility()!=VISIBLE)) return;
+        if(shown){
+            setVisibility(VISIBLE);
+            animate().alpha(1f).translationY(0f).setDuration(SHADE_FADE_MS).start();
+        } else {
+            animate().alpha(0f).translationY(slide).setDuration(SHADE_FADE_MS)
+                    .withEndAction(() -> { if(!shadeShown) setVisibility(INVISIBLE); }).start();
+        }
+    }
     public void setExpanded(boolean value, boolean animate){
         expanded=value;
         if(animator!=null)animator.cancel();

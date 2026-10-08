@@ -43,6 +43,9 @@ public class Binding {
     }
 
     public static void togglePanelVisibility(ViewGroup manualModeContainer, Boolean visible) {
+        // The shade owns the panel's visibility while it is above HIDDEN (ExpandingManualPanel.setShadeShown).
+        if (visible && manualModeContainer instanceof ExpandingManualPanel
+                && !((ExpandingManualPanel) manualModeContainer).isShadeShown()) return;
         if (visible) {
             manualModeContainer.post(() -> {
                 manualModeContainer.animate().translationY(0).setDuration(100).alpha(1f).start();
