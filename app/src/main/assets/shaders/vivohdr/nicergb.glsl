@@ -10,6 +10,10 @@ uniform ivec2 cropOffset;
 uniform int hlModeU;              // 1: per-channel recovery (clipLoU/clipHiU), 0: legacy
 uniform vec3 clipLoU;             // clip of the base frames per camera channel, raw units before WB/LSC (<= 0: none)
 uniform vec3 clipHiU;             // clip of the Bento ultrashort (about k * white) per channel (<= 0: none)
+// 1: the ultrashort clips below the worker's flag threshold (a measured plateau under 0.975 k, OnePlus 15: 0.915 k), so
+// the worker never flags it (no bit 5, usClipped 0): inside the Bento mask a pixel without flags may still be clipped at
+// clipHiU. 0 (unset): such a pixel is unclipped ultrashort content, as before (P58, research/highlights/ONEPLUS15_PINK.md).
+uniform int clipHiUnflaggedU;
 uniform float hlStrengthU;        // 0..1
 uniform int clipFlagsU;           // 1: ClipFlags holds the worker's per-pixel clip flags (uint8 as R8)
 uniform sampler2D ClipFlags;
@@ -36,7 +40,11 @@ vec3 levelAt(ivec2 p) {
     bool lo = clipLoU.g > 0.0, hi = clipHiU.g > 0.0;
     if (clipFlagsU == 0) return hi ? clipHiU : (lo ? clipLoU : vec3(-1.0));
     uint f = uint(texelFetch(ClipFlags, p, 0).r * 255.0 + 0.5);
-    if ((f & 15u) == 0u) return vec3(-1.0);                 // every colour from unclipped samples
+    // Every colour from unclipped samples - except inside the Bento mask when the ultrashort's clip lies below the
+    // worker's threshold (clipHiUnflaggedU): there the worker cannot tell, and leaving those pixels alone while the
+    // bit-3 cells next to them were recovered gave a pink sky (R and G at the clip, B measured) with white blotches
+    // (OnePlus 15 2026-10-08).
+    if ((f & 15u) == 0u) return clipHiUnflaggedU != 0 && hi && (f & 16u) != 0u ? clipHiU : vec3(-1.0);
     if ((f & 32u) != 0u) return hi ? clipHiU : clipLoU;     // clipped mean of the ultrashort: k * white
     if ((f & 7u) != 0u) return lo ? clipLoU : clipHiU;      // clipped mean of the base frames: white
     // Clip border, every colour from unclipped samples. Inside the Bento mask the value is ultrashort content (up to k):
@@ -150,8 +158,11 @@ void main(){
                 // research/hybrid5/review_fix_rim.md
                 vec3 rf = mix(vec3(1.0), rel, fl);
                 w = (1.0 - min(min(s.r, s.g), s.b)) * smoothstep(0.12, 0.25, min(min(rf.r, rf.g), rf.b));
-            } else if ((f & 7u) == 0u && (f & 64u) == 0u) {
-                w = 1.0;                                    // no worker pass: the blanket border defringe
+            } else if ((f & 7u) == 0u && (f & 64u) == 0u && !(clipHiUnflaggedU != 0 && (f & 16u) != 0u)) {
+                // no worker pass: the blanket border defringe. Not inside the Bento mask when the ultrashort clipped below
+                // the worker's flag threshold (P58): there bit 3 only marks the base frames' clipped samples at weight
+                // 1 - m, the pixel is recovered like its unflagged neighbours (a recoloured cell was a 5 % brighter blotch)
+                w = 1.0;
             }
             w *= clamp(fringe, 0.0, 1.0);
             if (w > 0.0) {

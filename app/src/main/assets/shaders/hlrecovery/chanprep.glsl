@@ -14,6 +14,7 @@ uniform vec2 inverseSize;
 uniform ivec2 cropOffset;
 uniform vec3 clipLoU;            // as in vivohdr/nicergb
 uniform vec3 clipHiU;
+uniform int clipHiUnflaggedU;    // as in vivohdr/nicergb (P58)
 uniform int clipFlagsU;
 uniform sampler2D ClipFlags;
 uniform int blockU;              // output pixels per block (8 * outputScale)
@@ -27,7 +28,7 @@ vec3 levelAt(ivec2 p, out vec3 ref) {
     if (clipFlagsU == 0) return ref;
     uint f = uint(texelFetch(ClipFlags, p, 0).r * 255.0 + 0.5);
     if ((f & 16u) == 0u && lo) ref = clipLoU;                // outside the Bento mask: the base frames' white
-    if ((f & 15u) == 0u) return vec3(-1.0);
+    if ((f & 15u) == 0u) return clipHiUnflaggedU != 0 && hi && (f & 16u) != 0u ? clipHiU : vec3(-1.0);
     if ((f & 32u) != 0u) return hi ? clipHiU : clipLoU;
     if ((f & 7u) != 0u) return lo ? clipLoU : clipHiU;
     if ((f & 16u) != 0u) return hi ? clipHiU : vec3(-1.0);  // border inside the Bento mask: ultrashort content

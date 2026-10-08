@@ -66,6 +66,11 @@ public final class VivoNiceRgb extends Node {
         final float[] max = new float[3];
         /** Some sample reaches 85 % of a used level: the local chroma statistics are worth their pass. */
         boolean nearClip;
+        /**
+         * P58: the ultrashort clipped below the worker's flag threshold (a measured hi plateau under 0.975 k with no
+         * ultrashort clip flagged): inside the Bento mask a pixel without flags may still sit at the hi clip (clipHiUnflaggedU).
+         */
+        boolean hiUnflagged;
         String log = "";
         boolean enabled() { return lo[1] > 0f || hi[1] > 0f; }
     }
@@ -170,6 +175,8 @@ public final class VivoNiceRgb extends Node {
         final boolean useLo = !bento || flags;
         final boolean useHi = bento && k > 1f;
         StringBuilder logLo = new StringBuilder(), logHi = new StringBuilder();
+        final boolean[] hiMeasured = new boolean[3];
+        float hiPlateauMax = 0f, hiPlateauMinFrac = Float.MAX_VALUE;
         for (int c = 0; c < 3; c++) {
             float lo = 0f, hi = 0f;
             if (useLo) {
@@ -181,6 +188,7 @@ public final class VivoNiceRgb extends Node {
                 final float s = plateau(hHi[c], sHi[c], samples, 0.90f, 1.08f);
                 // No plateau and the ultrashort never clipped: nothing in the data reaches k, the level is unused.
                 hi = !Float.isNaN(s) ? s * k : (usClipped > 0f ? k : 0f);
+                if (!Float.isNaN(s)) { hiMeasured[c] = true; hiPlateauMax = Math.max(hiPlateauMax, hi); hiPlateauMinFrac = Math.min(hiPlateauMinFrac, s); }
                 logHi.append(c == 0 ? "hi=" : ",").append(hi)
                         .append(!Float.isNaN(s) ? "(plateau)" : hi > 0f ? "(nominal)" : "(off)");
             }
@@ -190,10 +198,16 @@ public final class VivoNiceRgb extends Node {
         final String log = (logLo.length() > 0 && logHi.length() > 0 ? logLo + " " + logHi : logLo.toString() + logHi);
         // A level is used for all three channels or for none (the shader divides by every component).
         if (cc.hi[1] <= 0f) java.util.Arrays.fill(cc.hi, 0f);
-        else for (int c = 0; c < 3; c++) if (cc.hi[c] <= 0f) cc.hi[c] = k;
+        else for (int c = 0; c < 3; c++) if (cc.hi[c] <= 0f) {
+            // P58: a channel without a plateau next to measured ones (OnePlus 15: R, G at 0.915 k, B "off") takes its own
+            // sampled maximum, never below the measured clips and never above k: k (as before) left the blue of a blown
+            // sky below its level, so R and G were recovered and B was not -> pink sky with white blotches.
+            cc.hi[c] = hiPlateauMax > 0f ? Math.min(k, Math.max(hiPlateauMax, cc.max[c])) : k;
+        }
+        cc.hiUnflagged = cc.hi[1] > 0f && usClipped <= 0f && hiPlateauMinFrac < 0.975f;
         for (int c = 0; c < 3; c++)
             if ((cc.lo[1] > 0f && cc.max[c] >= 0.85f * cc.lo[c]) || (cc.hi[1] > 0f && cc.max[c] >= 0.85f * cc.hi[c])) cc.nearClip = true;
-        cc.log = log + " max=" + cc.max[0] + "," + cc.max[1] + "," + cc.max[2] + " samples=" + samples;
+        cc.log = log + (cc.hiUnflagged ? " hiUnflagged" : "") + " max=" + cc.max[0] + "," + cc.max[1] + "," + cc.max[2] + " samples=" + samples;
         return cc;
     }
 
@@ -463,6 +477,7 @@ public final class VivoNiceRgb extends Node {
                     glProg.setVar("inverseSize",1f/size.x,1f/size.y);
                     glProg.setVar("cropOffset",ox,oy);
                     glProg.setVar("clipLoU",cc.lo);glProg.setVar("clipHiU",cc.hi);
+                    glProg.setVar("clipHiUnflaggedU",cc.hiUnflagged?1:0);
                     glProg.setVar("clipFlagsU",flagsTex!=null?1:0);
                     glProg.setVar("blockU",block);glProg.setVar("pxStepU",s);
                     glProg.drawBlocks(chromaNear);
@@ -483,6 +498,7 @@ public final class VivoNiceRgb extends Node {
             if(perChannel){
                 glProg.setVar("hlModeU",1);
                 glProg.setVar("clipLoU",cc.lo);glProg.setVar("clipHiU",cc.hi);
+                glProg.setVar("clipHiUnflaggedU",cc.hiUnflagged?1:0);
                 glProg.setVar("hlStrengthU",strength);
                 glProg.setVar("clipFlagsU",flagsTex!=null?1:0);
                 if(flagsTex!=null)glProg.setTexture("ClipFlags",flagsTex);

@@ -33,9 +33,16 @@ uniform sampler2D ClipFlags;        // worker flags, normalised R8 (code = r * 2
 uniform int radiusU;                // window radius in output pixels (3 at 1x, 6 on the Sabre 2x grid); <= 0 -> 3
 uniform int zoneU;                  // how far the band reaches past the flagged pixels, output pixels; <= 0 -> 2
 uniform float strengthU;            // 0..1; <= 0 -> pass-through
+uniform int clipHiUnflaggedU;       // P58, as in vivohdr/nicergb: inside the Bento mask bit 3 is no clip edge (0 = unset)
 out vec4 Output;
 
-uint flagAt(ivec2 p) { return uint(texelFetch(ClipFlags, p, 0).r * 255.0 + 0.5); }
+uint flagAt(ivec2 p) {
+    uint f = uint(texelFetch(ClipFlags, p, 0).r * 255.0 + 0.5);
+    // P58: with the ultrashort clipped below the worker's flag threshold, the base frames' clipped samples inside the Bento
+    // mask (bit 3 without a clipped mean) are no edge: the band would darken those cells (5 % blotches in a blown sky)
+    if (clipHiUnflaggedU != 0 && (f & 16u) != 0u && (f & 7u) == 0u) f &= ~8u;
+    return f;
+}
 
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);

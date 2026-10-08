@@ -115,7 +115,8 @@ def recover(tree, raw, flags, wp, lo, hi, unflagged=None, raw16=False):
                 dict(common, hlModeU=1, hlStrengthU=1.0, chromaU=1, blockU=block, chromaLimitU=0.35, defringeU=0.85,
                      signedU=1))
     band = draw(program(tree, 'vivohdr/clipband.glsl'), (w, h), {'InputBuffer': nice, 'ClipFlags': ft},
-                {'radiusU': 3, 'zoneU': 2, 'strengthU': 1.0})
+                dict({'radiusU': 3, 'zoneU': 2, 'strengthU': 1.0},
+                     **({'clipHiUnflaggedU': int(unflagged)} if unflagged is not None else {})))
     if raw16:
         out = [np.frombuffer(t.read(), np.uint16) for t in (c8, c32, c128, nice, band)]
     else:
@@ -209,7 +210,13 @@ def sky_stats(out, label):
     o = out[mag]
     magenta = (o[:, 1] < 0.97 * np.minimum(o[:, 0], o[:, 2])).sum()
     a, b = core & fl3 & erode(SCAT, 2), core & ~fl3 & ~dilate(SCAT, 2)
-    la, lb = np.median(out[a] @ LUM), np.median(out[b] @ LUM)
+    # the sky's level follows B (measured, a vertical ramp): compare each flagged cell with the unflagged pixels of its
+    # own rows, not two medians over different heights
+    lum = out @ LUM
+    rowb = np.array([np.median(lum[y][b[y]]) if b[y].any() else np.nan for y in range(lum.shape[0])])
+    ys = np.nonzero(a)[0]
+    rel = lum[a] / rowb[ys]
+    la, lb = np.nanmedian(rel), 1.0
     return {'core': core, 'chroma': ch, 'magenta': magenta, 'blot_lum': abs(la / lb - 1),
             'blot_chroma': abs(np.median(chroma(out[a])) - np.median(chroma(out[b]))), 'na': a.sum(), 'nb': b.sum()}
 
