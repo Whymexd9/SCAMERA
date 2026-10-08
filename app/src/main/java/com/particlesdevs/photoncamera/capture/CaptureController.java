@@ -1595,6 +1595,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final float moduleZoom = com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
                 final float zoom = com.particlesdevs.photoncamera.control.ZoomController.zoom();
                 boolean wasActive = XiaomiTeleZoom.active();
+                // P41, 17U dumps 2026-10-08: the HAL's own optical zoom report / target (dev switches to go back)
+                XiaomiTeleZoom.halOptics(PreferenceKeys.niceDevSwitch("xiaomi_hal_optics", true),
+                        PreferenceKeys.niceDevSwitch("xiaomi_opt_target", true));
                 XiaomiTeleZoom.Plan plan = XiaomiTeleZoom.apply(builder, mCameraCharacteristics,
                         PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(XiaomiTeleZoom.PREF, true),
                         moduleZoom, zoom, physicalID, PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true),
