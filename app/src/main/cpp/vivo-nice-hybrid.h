@@ -356,7 +356,14 @@ struct HybridTuning {
     // the synthetic Quad (binned passes off), 1 against 0: 3 frames bars +3.0 / +2.9 dB, edges +1.7 dB, background +0.5 dB, but
     // more colour on the B/W edge (0.022 -> 0.030) and flat phase bias 0.001 -> 0.004 %; 16 frames +0.05..+0.1 dB, nothing worse.
     // The device sweep (hand, its moving areas) decides.
-    int mosaicNativeWiden=0;
+    // 2 (default since 8 October 2026): smooth widening by the accepted donor frames F of the output pixel, base sigma x
+    // mix(M, 1, smoothstep(0, K, F)) with M / K = mosaicNativeWidenMul / mosaicNativeWidenFrames (Quad) or mosaicTetraWidenMul /
+    // mosaicTetraWidenFrames (Tetra), whatever s61Mode says. Rules 0 / 1 left the base alone where a moving object rejected the
+    // donors: its narrow native kernel on the sparse colour blocks of one frame drew the block lattice ("honeycomb" around a moving
+    // boat on the vivo 4x ISZ Tetra shot, a finer 2 px pattern on Quad 2x ISZ). Sweep on synthetic moving-object bursts:
+    // research/moving-objects/MOVING_OBJECTS_REPORT.md.
+    int mosaicNativeWiden=2;
+    float mosaicNativeWidenMul=2.5f,mosaicNativeWidenFrames=4.f,mosaicTetraWidenMul=3.f,mosaicTetraWidenFrames=8.f;
     // P34 diagnostics: 1 = the generic native merge kHybMergeMosaic also for Quad with the full window (where kHybMergeMosaicFast,
     // the same merge on whole colour blocks, runs by default)
     int mosaicGeneric=0;
@@ -437,6 +444,8 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
+            ||set("mosaicNativeWidenMul",&t.mosaicNativeWidenMul)||set("mosaicNativeWidenFrames",&t.mosaicNativeWidenFrames)
+            ||set("mosaicTetraWidenMul",&t.mosaicTetraWidenMul)||set("mosaicTetraWidenFrames",&t.mosaicTetraWidenFrames)
             // P28
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
@@ -1807,7 +1816,9 @@ static const char* kHybMergeMosaic=R"(
 uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (ArkCam's distance multipliers per
                    // colour, mosaicKernelG / RB), w = minimum R / B support of the colour fill relative to green (0 = off)
 uniform int natRy1;    // end of the guide cell rows held in Cov (ry1: the strip's cells + 3, clamped to the frame)
-uniform int natWidenU; // 6.1 base widening: 0 = the split's rule b^2 F + b^2 - 1 < widenBelow, 1 = S0's rule F < widenBelow
+uniform int natWidenU; // 6.1 base widening: 0 = the split's rule b^2 F + b^2 - 1 < widenBelow, 1 = S0's rule F < widenBelow,
+                       // 2 = smooth by F (any mode): sigma x mix(natWidenS.x, 1, smoothstep(0, natWidenS.y, F))
+uniform vec2 natWidenS;
 // Precision of the binned guide at binned position B, bilinear between the cell centres (2 c + 0.5) (S0, m5ref.sample_cov): the
 // nearest cell kept P constant over 2b x 2b native px squares. Rows within the held ones [ry0, natRy1) (the strip's own +-1 rows are
 // always held except at the frame's border, where S0 clamps as well), columns within the frame.
@@ -1991,7 +2002,8 @@ void main(){
     // coverage including those sites.
     if(wb>0.0){
         vec3 Pb;
-        if((mode&4)!=0)Pb=(natWidenU!=0?frames:float(bb)*frames+float(bb-1))<kD.x?P/(kD.y*kD.y):P;
+        if(natWidenU==2){ float widen=mix(natWidenS.x,1.0,smoothstep(0.0,natWidenS.y,frames)); Pb=P/(widen*widen); }
+        else if((mode&4)!=0)Pb=(natWidenU!=0?frames:float(bb)*frames+float(bb-1))<kD.x?P/(kD.y*kD.y):P;
         else { float self=natSelfCover(S,P*natK.x,(mode&2)!=0);
                float widen=mix(kD.y,1.0,smoothstep(0.5*kD.x,kD.x,a.cover+self)); Pb=P/(widen*widen); }
         natSamples(a,0,S,wb,wb,natClamp(Pb*(natK.x*cs))/cs,(mode&2)!=0&&m<=0.0);
@@ -2073,6 +2085,7 @@ layout(std430,binding=18) readonly buffer NNorm{uvec4 nnorm[];};
 uniform vec4 natK;     // as kHybMergeMosaic
 uniform int natRy1;
 uniform int natWidenU;
+uniform vec2 natWidenS; // as kHybMergeMosaic
 #define NB (NAT_R+1)
 vec3 natCov(vec2 B){
     int w2=size.x/2;
@@ -2289,10 +2302,11 @@ void main(){
     }
     if(wb>0.0){
         vec3 Pb;
+        if(natWidenU==2){float widen=mix(natWidenS.x,1.0,smoothstep(0.0,natWidenS.y,frames));Pb=P/(widen*widen);}
 #if NAT_B==4
-        if((mode&4)!=0)Pb=(natWidenU!=0?frames:16.0*frames+15.0)<kD.x?P/(kD.y*kD.y):P;
+        else if((mode&4)!=0)Pb=(natWidenU!=0?frames:16.0*frames+15.0)<kD.x?P/(kD.y*kD.y):P;
 #else
-        if((mode&4)!=0)Pb=(natWidenU!=0?frames:4.0*frames+3.0)<kD.x?P/(kD.y*kD.y):P;
+        else if((mode&4)!=0)Pb=(natWidenU!=0?frames:4.0*frames+3.0)<kD.x?P/(kD.y*kD.y):P;
 #endif
         else{
             NatSums s=natTaps(nGeo[0],S,P*natK.x,false,false,true);
@@ -2353,7 +2367,8 @@ struct HybridMosaicNative {
     float keyNoise=1.f;                  // the binned frames' noise model x this = the noise of one SENSOR site: the SNR keys of the kernel
                                          // curves (Sabre 6.1 / round 4, the night rule, the outlier gate) follow the sensor sites as on the
                                          // split and in S0, not the binned averages (nor T2's 2x2 means)
-    bool s0Widen=false;                  // HybridTuning::mosaicNativeWiden: the 6.1 base widening below widenBelow FRAMES (S0)
+    int widenRule=0;                     // HybridTuning::mosaicNativeWiden: 0 the split's rule, 1 S0's (below widenBelow FRAMES), 2 smooth
+    float widenMul=1.f,widenFrames=1.f;  // rule 2: base sigma x mix(widenMul, 1, smoothstep(0, widenFrames, F))
     bool generic=false;                  // HybridTuning::mosaicGeneric: kHybMergeMosaic even where kHybMergeMosaicFast applies
     int clampCov=0;                      // HybridTuning::mosaicNativeClamp
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
@@ -3008,7 +3023,8 @@ public:
             for(GLuint mosaicProgram:natMerge){ // P34: every merge program of the native path gets the same uniforms
                 glUseProgram(mosaicProgram);
                 glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
-                glUniform1i(loc(mosaicProgram,"natWidenU"),nat->s0Widen?1:0);
+                glUniform1i(loc(mosaicProgram,"natWidenU"),nat->widenRule);
+                glUniform2f(loc(mosaicProgram,"natWidenS"),nat->widenMul,nat->widenFrames);
                 glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
                 const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
                 glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
@@ -6173,7 +6189,12 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb;bin.mosaic=1;bin.subFrames=0;
     HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
-    nat.rawGains=!t2;nat.gains=gain;nat.s0Widen=tune.mosaicNativeWiden!=0;nat.generic=tune.mosaicGeneric!=0;nat.clampCov=std::clamp(tune.mosaicNativeClamp,0,2);
+    nat.rawGains=!t2;nat.gains=gain;nat.widenRule=std::clamp(tune.mosaicNativeWiden,0,2);
+    nat.widenMul=std::clamp(mb==4?tune.mosaicTetraWidenMul:tune.mosaicNativeWidenMul,1.f,8.f);
+    nat.widenFrames=std::max(mb==4?tune.mosaicTetraWidenFrames:tune.mosaicNativeWidenFrames,0.01f);
+    if(nat.widenRule==2)report("HYBRID MOSAIC NATIVE: base widening by accepted frames F: sigma x"+std::to_string(nat.widenMul)
+        +" at F = 0 to x1 at F >= "+std::to_string(nat.widenFrames)+" (moving areas)");
+    nat.generic=tune.mosaicGeneric!=0;nat.clampCov=std::clamp(tune.mosaicNativeClamp,0,2);
     // a binned pixel averages b^2 sites: the kernel keys (6.1 / round-4 curves, the 6.1 night rule, the outlier gate hotMaxKey) follow
     // one SENSOR site (noise x b^2 of the binned one), as the split and S0 (run_s0.py: key of the site noise); T2's merged 2x2 means
     // would raise them ~2x (a Tetra burst at sensor key 15..30 would lose the night kernel and the outlier test)
