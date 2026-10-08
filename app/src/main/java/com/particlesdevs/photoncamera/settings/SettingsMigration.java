@@ -139,7 +139,10 @@ public final class SettingsMigration {
         return false;
     }
 
-    /** Removes the obsolete keys from one preference set and from the shade tiles; returns whether anything changed. */
+    /**
+     * Removes the obsolete keys from one preference set and from the shade tiles, and resets stored values of removed list
+     * entries; returns whether anything changed. Idempotent: a second run changes nothing.
+     */
     public static boolean removeObsolete(SharedPreferences prefs) {
         SharedPreferences.Editor e = prefs.edit();
         boolean changed = false;
@@ -157,8 +160,19 @@ public final class SettingsMigration {
         // on every resume / lens switch; resetRemovedSettings only covers the screen's start.
         Object quad = prefs.getAll().get("pref_quad_bayer_key");
         if (quad != null && PreferenceNumber.bool(quad, false)) { e.putBoolean("pref_quad_bayer_key", false); changed = true; }
+        // «Фильтр Байера» lost MONO (4: every Hybrid / SCAM HDR shot failed, both need a 2x2 CFA) and QUAD (-2: did nothing,
+        // the Quad stream is set in «Quad Bayer — совместимость»); a stored one of them becomes «Авто» (-1).
+        Object cfa = prefs.getAll().get(CFA_KEY);
+        if (cfa != null && isRemovedCfa(cfa)) { e.putString(CFA_KEY, "-1"); changed = true; }
         if (changed) e.commit();
         return changed;
+    }
+
+    static final String CFA_KEY = "pref_cfa_key";
+    /** The removed «Фильтр Байера» values: MONO (4) and QUAD (-2). */
+    static boolean isRemovedCfa(Object value) {
+        double v = PreferenceNumber.read(value, -1);
+        return v == 4 || v == -2;
     }
 
     /** {@link #removeObsolete(SharedPreferences)} over the main preferences, every stored module profile and the baseline. */

@@ -1397,8 +1397,10 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_PREVIEW_FORMAT).intValue();
     }
 
+    /** «Фильтр Байера»: -1 auto (the camera's CFA) or a forced 2x2 order 0..3; anything else (the removed MONO / QUAD) is auto. */
     public static int getCFAValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CFA).intValue();
+        int v = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CFA).intValue();
+        return v >= 0 && v <= 3 ? v : -1;
     }
 
     public static int getThemeValue() {
