@@ -1459,6 +1459,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public void closeCamera() {
         rescueInFlightShot("camera closed");
+        mStabTrace.stop();
         mNiceQueuedShots = 0;
         VivoStockAe stock=mStockAe;mStockAe=null;if(stock!=null)stock.close();
         mNiceRingFrozen=false;
@@ -4585,7 +4586,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mLastShotFlushed = flushQueue;
             sTimelineSubmitNs = android.os.SystemClock.elapsedRealtimeNanos();
             com.particlesdevs.photoncamera.processing.ShotTimeline.capture("submit");
-            if (mNiceRouted) mStabTrace.markShot("submit requests=" + captures.size() + " flush=" + flushQueue);
+            mStabTrace.markShot("submit requests=" + captures.size() + " flush=" + flushQueue + " previewKept=" + mNiceRouted);
+            if (!captures.isEmpty()) {
+                mStabTrace.seriesRequest(captures.get(0), 0);
+                if (captures.size() > 1) mStabTrace.seriesRequest(captures.get(captures.size() - 1), captures.size() - 1);
+            }
             if (flushQueue) {
                 long t0 = android.os.SystemClock.elapsedRealtime();
                 // Without stopping the repeating preview first, the HAL sometimes
