@@ -65,6 +65,14 @@ jobs:
       - name: Check Ultra HDR container (MPF, GContainer XMP, gain map metadata, both images decode)
         run: python3 tools/check_ultrahdr.py --self-test
 
+      - name: Check AVIF output (the app's encoder built for the host; 8/10/12-bit, 4:4:4/4:2:0, lossless, EXIF, nclx; decoded by Pillow/dav1d)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nasm ninja-build
+          python3 -m venv /tmp/avif-check
+          /tmp/avif-check/bin/pip install pillow==12.3.0 numpy==2.3.5
+          /tmp/avif-check/bin/python tools/check_avif.py
+
       - name: Check Tetra response estimator
         run: |
           mkdir -p build/tetra-profile-check
