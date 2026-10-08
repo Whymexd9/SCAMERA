@@ -854,6 +854,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Kept for the process: the next switch to that camera starts at the step that worked.
      */
     private static final java.util.Map<String, Integer> sRawFallback = new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * A YUV session (no RAW stream) that failed to configure on a camera that never ran: 1 = the preview stream at a guaranteed
+     * size (at most 1080p), 2 = the YUV stream as well (SafeStreamSizes).
+     */
+    private static final java.util.Map<String, Integer> sSafeStreams = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Map<String, Size> sRawSizeAlt = new java.util.concurrent.ConcurrentHashMap<>();
     /** Cameras (full camera ID setting) whose session was configured in this process, and the last one of them. */
     private static final java.util.Set<String> sGoodCameras = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -877,8 +882,29 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private boolean retryConfigureFallback(CameraCaptureSession session) {
         final CameraDevice device = mCameraDevice;
-        if (device == null || mIsRecordingVideo || (!isRawFormat(mTargetFormat) && sDemotedFrom == 0)) return false;
+        if (device == null || mIsRecordingVideo) return false;
         final String id = physicalID;
+        if (!isRawFormat(mTargetFormat)) {
+            // A YUV session (the camera lists no RAW size, or its RAW sessions failed): retrying it as it is only fails again
+            // (vivo X200 Pro front camera, owner's log 2026-10-08). Smaller streams next: the preview, then the YUV stream.
+            if (sGoodCameras.contains(PhotonCamera.getSettings().mCameraID)) return false;
+            final int safe = sSafeStreams.getOrDefault(id, 0);
+            if (safe >= 2) return false;
+            sSafeStreams.put(id, safe + 1);
+            Log.w(TAG, "camera " + id + ": session configuration failed (preview " + mBufferSize + ", "
+                    + (mImageReaderRaw == null ? "no reader" : "reader " + mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight()
+                    + " format " + mImageReaderRaw.getImageFormat()) + "); retry with "
+                    + (safe == 0 ? "a preview of a guaranteed size" : "a YUV stream of a guaranteed size too"));
+            try { session.close(); } catch (Exception ignored) {}
+            final Handler handler = mBackgroundHandler;
+            if (handler == null) return false;
+            handler.post(() -> {
+                if (!isCameraResumed || mCameraDevice != device) return;
+                UpdateCameraCharacteristics(id);
+                createCameraPreviewSession(false);
+            });
+            return true;
+        }
         final int stage = sRawFallback.getOrDefault(id, 0);
         if (stage >= 2) return false;
         // A camera whose session configured in this process keeps its streams: a later failure is transient (the old path), not a
@@ -2153,6 +2179,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 + " capabilities=" + Arrays.toString(characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES))
                 + " target=" + target + " format=" + mTargetFormat
                 + " rawSizes=" + Arrays.toString(isRawFormat(mTargetFormat) ? rawSizesLargestFirst(map, mTargetFormat) : new Size[0]));
+        if (!isRawFormat(mTargetFormat) && sSafeStreams.getOrDefault(physicalID, 0) >= 2) {
+            final Size safe = SafeStreamSizes.capped(map.getOutputSizes(mTargetFormat), target, SafeStreamSizes.PREVIEW_AREA);
+            Log.w(TAG, "camera " + physicalID + ": YUV " + safe + " instead of " + target + " (session fallback)");
+            target = safe;
+            this.target = safe;
+        }
         final Size rawAlt = isRawFormat(mTargetFormat) && sRawFallback.getOrDefault(physicalID, 0) == 1 ? sRawSizeAlt.get(physicalID) : null;
         if (rawAlt != null) {
             Log.w(TAG, "camera " + physicalID + ": RAW " + rawAlt + " instead of " + target + " (session fallback)");
@@ -2171,6 +2203,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mImageReaderPreview = ImageReader.newInstance(preview.getWidth(), preview.getHeight(), mPreviewTargetFormat, maxjpg);
         mImageReaderPreview.setOnImageAvailableListener(mOnYuvImageAvailableListener, mBackgroundHandler);
             mBufferSize = getPreviewOutputSize(getSafeDisplay(),characteristics,PhotonCamera.getSettings().selectedMode);
+        if (sSafeStreams.getOrDefault(physicalID, 0) >= 1 && mBufferSize != null) {
+            // mBufferSize is portrait (short x long); the stream sizes are sensor-oriented
+            final Size sensor = new Size(Math.max(mBufferSize.getWidth(), mBufferSize.getHeight()),
+                    Math.min(mBufferSize.getWidth(), mBufferSize.getHeight()));
+            final Size safe = SafeStreamSizes.capped(map.getOutputSizes(SurfaceTexture.class), sensor, SafeStreamSizes.PREVIEW_AREA);
+            Log.w(TAG, "camera " + physicalID + ": preview " + safe + " instead of " + sensor + " (session fallback)");
+            mBufferSize = new Size(safe.getHeight(), safe.getWidth());
+        }
 
         clearZslPreviewFrames();
         if(mImageReaderRaw != null)
