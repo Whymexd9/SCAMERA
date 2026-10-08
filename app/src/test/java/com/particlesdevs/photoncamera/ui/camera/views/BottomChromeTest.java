@@ -88,14 +88,15 @@ public class BottomChromeTest {
     }
 
     @Test
-    public void theManualPaletteStaysClearOfTheHandle() {
-        // 36dp over the panel's top: the handle under the viewfinder is far below.
-        assertEquals(144, BottomChrome.manualMargin(144, 0, 32));
-        assertEquals(144, BottomChrome.manualMargin(144, 40, 32));
-        // The handle at its old place, the sheet's edge on the bar's top: still 8dp.
-        assertEquals(144, BottomChrome.manualMargin(144, -112, 32));
-        // OPPO 16:9: the handle floats 144 px over the bar's top, the palette moves up to stay 8dp above it.
-        assertEquals(176, BottomChrome.manualMargin(144, -144, 32));
+    public void theManualPaletteHangs12dpAboveTheHandle() {
+        // P43 (concept): 12dp (48 px) above the handle, which starts at the panel's top under the 3:4 viewfinder.
+        assertEquals(48, BottomChrome.manualMargin(0, 48));
+        // A handle 40 px down under a taller preview: the palette stays 12dp over the panel's top, not lower.
+        assertEquals(48, BottomChrome.manualMargin(40, 48));
+        // A handle 28dp over the bar's top (the sheet's edge on the bar): 12dp above it, 40dp over the bar.
+        assertEquals(160, BottomChrome.manualMargin(-112, 48));
+        // OPPO 16:9: the handle floats 144 px over the bar's top, the palette moves up to stay 12dp above it.
+        assertEquals(192, BottomChrome.manualMargin(-144, 48));
     }
 
     @Test
@@ -120,7 +121,7 @@ public class BottomChromeTest {
         try (ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class)) {
             controller.setup();
             // camera_fragment.xml's camera_container in short: the viewfinder from the top bar down, the bottom bar
-            // under the 3:4 block (dummy_reference_view), the manual palette 36dp over the bar, the handle's slot laid
+            // under the 3:4 block (dummy_reference_view), the manual palette 12dp over the bar, the handle's slot laid
             // out at the bar's top.
             ConstraintLayout screen = new ConstraintLayout(context);
             this.screen = screen;
@@ -140,7 +141,7 @@ public class BottomChromeTest {
             manual.setBackgroundColor(0xFF2A3238);
             ConstraintLayout.LayoutParams mp = matchWidth(dp(context, 48));
             mp.bottomToTop = bar.getId();
-            mp.bottomMargin = dp(context, 36);
+            mp.bottomMargin = dp(context, 12);
             mp.leftMargin = mp.rightMargin = dp(context, 20);
             screen.addView(manual, mp);
             FrameLayout slot = new FrameLayout(context);
@@ -174,7 +175,7 @@ public class BottomChromeTest {
             int barTop = y(bar), stripTop = y(strip), rowTop = y(row), rulerTop = y(rulerSlot), shutterTop = y(shutter),
                     manualBottom = y(manual) + manual.getHeight();
             assertEquals(TOP_BAR + VIEWFINDER, barTop);
-            assertEquals(barTop - dp(context, 36), manualBottom);
+            assertEquals(barTop - dp(context, 12), manualBottom);
 
             BottomChrome.attach(bar, row, strip, slot, viewfinder, ruler, manual);
             bar.requestLayout();
@@ -188,11 +189,12 @@ public class BottomChromeTest {
             assertEquals(rulerTop - raise, y(rulerSlot));
             assertEquals(barTop, y(bar));
             // The handle starts at the viewfinder's bottom edge; the strip stays clear of it; the ruler's place stays
-            // under the viewfinder; the manual palette keeps its place.
+            // under the viewfinder; the manual palette keeps its place, 12dp above the handle (P43).
             assertEquals(TOP_BAR + VIEWFINDER, y(slot));
             assertTrue(y(slot) + slot.getHeight() + dp(context, BottomChrome.CLEARANCE_DP) <= y(strip));
             assertTrue(y(rulerSlot) >= TOP_BAR + VIEWFINDER);
             assertEquals(manualBottom, y(manual) + manual.getHeight());
+            assertEquals(y(slot) - dp(context, BottomChrome.MANUAL_GAP_DP), manualBottom);
             assertEquals(1f, slot.getAlpha(), 0f);
             render(screen, "bottom-chrome-3x4.png");
 
@@ -232,7 +234,7 @@ public class BottomChromeTest {
             assertEquals(manualBottom, y(manual) + manual.getHeight());
 
             // 16:9 (the tile, video): the 656 px bar over the lower part of a 9:16 preview. The strip rises to the bar's
-            // top (48 px, the room inside the bar), the handle floats 8dp above it, the manual palette 8dp above that.
+            // top (48 px, the room inside the bar), the handle floats 8dp above it, the manual palette 12dp above that.
             dummy.getLayoutParams().height = HEIGHT - BAR_169;
             viewfinder.getLayoutParams().height = WIDTH * 16 / 9;
             dummy.requestLayout();
@@ -247,7 +249,7 @@ public class BottomChromeTest {
             assertEquals(y(bar), y(strip));
             assertEquals(y(bar) + BAR_169 - dp(context, 18) - (BAR_169 - controls), y(row) + row.getHeight());
             assertEquals(y(strip) - clearance, y(slot) + slot.getHeight());
-            assertEquals(y(slot) - clearance, y(manual) + manual.getHeight());
+            assertEquals(y(slot) - dp(context, BottomChrome.MANUAL_GAP_DP), y(manual) + manual.getHeight());
             // The ruler has no room inside the bar and is clipped away: the handle stays.
             assertTrue(y(rulerSlot) + rulerSlot.getHeight() <= y(bar));
             ruler.poke();

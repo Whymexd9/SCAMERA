@@ -186,7 +186,8 @@ public class ZoomDialView extends View {
         clip.addRoundRect(card, radius, radius, Path.Direction.CW);
         canvas.clipPath(clip);
         // The value, in the accent.
-        text.setTextSize(14 * getResources().getDisplayMetrics().scaledDensity);
+        // Text in sp, its growth with the font size capped (P43): the ruler is a fixed 48dp card.
+        text.setTextSize(com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.spPx(getResources(), 14));
         text.setFakeBoldText(true);
         text.setColor(pointer.getColor());
         text.setAlpha(255);
@@ -206,7 +207,7 @@ public class ZoomDialView extends View {
             canvas.drawLine(x, baseline - len, x, baseline, tick);
         }
         // Module marks with labels.
-        text.setTextSize(9 * getResources().getDisplayMetrics().scaledDensity);
+        text.setTextSize(com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.spPx(getResources(), 9));
         for (int i = 0; i < marks.size(); i++) {
             float x = cx + (float) ((Math.log(marks.get(i)) / Math.log(2) - logZoom) * ppo);
             if (x < -d * 20 || x > w + d * 20) continue;

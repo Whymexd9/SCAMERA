@@ -10,7 +10,6 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
-import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
@@ -115,10 +114,11 @@ public class LinearScaleView extends View {
         markerPaint.setStrokeWidth(2 * d);
         markerPaint.setStrokeCap(Paint.Cap.ROUND);
         labelPaint.setColor(UiTokens.alpha(UiTokens.MUTED, .8f));
-        labelPaint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 10.5f, getResources().getDisplayMetrics()));
+        // Text in sp, its growth with the font size capped (P43): the scale is a fixed 49dp box.
+        labelPaint.setTextSize(UiTokens.spPx(context, 10.5f));
         labelPaint.setTextAlign(Paint.Align.CENTER);
         labelPaint.setFontFeatureSettings("tnum");
-        autoTextPaint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 13f, getResources().getDisplayMetrics()));
+        autoTextPaint.setTextSize(UiTokens.spPx(context, 13f));
         autoTextPaint.setTextAlign(Paint.Align.CENTER);
         insetPaint.setColor(UiTokens.SCALE_INSET);
         setFocusable(true);

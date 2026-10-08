@@ -49,7 +49,8 @@ public class LensButton extends Button {
         setIncludeFontPadding(false);
         setMaxLines(1);
         setHorizontallyScrolling(false);
-        setTextSize(14);
+        // 14sp, grown with the font size only up to UiTokens.FONT_SCALE_CAP (P43): the pill is a fixed 40dp high.
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, 14);
         setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
                 new int[]{SettingsStyle.INK, SettingsStyle.MUTED}));
         GradientDrawable selected = new GradientDrawable();

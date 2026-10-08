@@ -67,8 +67,10 @@
 
             <!--    Block 1.4-->
             <!--   includes the Layout resource of Manual Mode palette: it floats above the bottom bar over the lower part of
-                   the preview, 12dp from the sides. Its 36dp keep it clear of the shade's HIDDEN handle; BottomChrome adds to
-                   them when the handle floats over the preview closer than 8dp (16:9, video). It is shown only while the
+                   the preview, 12dp from the sides. P43 (concept): its bottom is 12dp above the shade's HIDDEN handle,
+                   which starts at the bar's top (P32), i.e. 40dp above the handle's bottom edge; BottomChrome keeps it
+                   12dp above the handle when the handle floats over the preview (16:9, video). Everything in dp / sp, so
+                   it follows the phone's display size and font size. It is shown only while the
                    shade is HIDDEN: leaving HIDDEN fades and slides it out, coming back brings it in again in the same state
                    (ExpandingManualPanel.setShadeShown). -->
             <include
@@ -82,7 +84,7 @@
                     app:layout_constraintStart_toStartOf="parent"
                     android:layout_marginStart="12dp"
                     android:layout_marginEnd="12dp"
-                    android:layout_marginBottom="36dp"
+                    android:layout_marginBottom="12dp"
                     tools:visibility="visible"
                     app:layout_constraintHorizontal_bias="0.0"
                     app:layout_constraintVertical_bias="1.0" />

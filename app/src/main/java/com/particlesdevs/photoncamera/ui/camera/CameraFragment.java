@@ -337,10 +337,15 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      * (after initZoomDial).
      */
     private void initBottomChrome() {
-        com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.attach(cameraFragmentBinding.layoutBottombar.getRoot(),
-                cameraFragmentBinding.layoutBottombar.bottomButtons.getRoot(), cameraFragmentBinding.layoutBottombar.auxButtonsContainer,
-                cameraFragmentBinding.settingsSheetHandleSlot, cameraFragmentBinding.layoutViewfinder.texture, zoomDial,
-                cameraFragmentBinding.manualMode);
+        attachBottomChrome(cameraFragmentBinding, zoomDial);
+    }
+
+    /** The bottom chrome's wiring on the camera screen's views (also used by the layout tests, P43). */
+    public static void attachBottomChrome(CameraFragmentBinding binding,
+                                          @Nullable com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial) {
+        com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.attach(binding.layoutBottombar.getRoot(),
+                binding.layoutBottombar.bottomButtons.getRoot(), binding.layoutBottombar.auxButtonsContainer,
+                binding.settingsSheetHandleSlot, binding.layoutViewfinder.texture, zoomDial, binding.manualMode);
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;

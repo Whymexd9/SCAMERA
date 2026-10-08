@@ -17,7 +17,8 @@ import androidx.annotation.Nullable;
  * Neither may reach the other. Where the handle lies under the viewfinder, the raise stops where the strip would come
  * closer than {@link #CLEARANCE_DP} to it. Where the preview runs on under the controls, the handle floats over the
  * preview just above the strip, so only the panel's top limits the raise (camera_container clips whatever leaves the
- * panel), and the manual palette over the panel moves up to stay {@link #CLEARANCE_DP} above the handle. The zoom
+ * panel). The manual palette hangs {@link #MANUAL_GAP_DP} above the handle's top wherever the handle is (P43, as in
+ * the concept: 12dp above the handle, 40dp above its bottom edge), never lower than that over the panel's top. The zoom
  * ruler above the strip only shows while the zoom changes; when it would come closer than that to the handle, the
  * handle steps aside (fades out and takes no touches) until the ruler has faded out. The pure functions take pixels
  * relative to the panel's top; {@link #attach} applies them on every layout.
@@ -25,8 +26,10 @@ import androidx.annotation.Nullable;
 public final class BottomChrome {
     /** Share of the bottom panel's height the controls are raised by. */
     public static final float RAISE_FRACTION = 0.10f;
-    /** Least gap between the HIDDEN handle and the lens strip, the zoom ruler or the manual palette. */
+    /** Least gap between the HIDDEN handle and the lens strip or the zoom ruler. */
     static final float CLEARANCE_DP = 8f;
+    /** Gap between the manual palette's bottom and the HIDDEN handle's top (P43 concept: 12dp). */
+    public static final float MANUAL_GAP_DP = 12f;
     static final long YIELD_MS = 120, RETURN_MS = 220;
 
     private BottomChrome() {
@@ -70,11 +73,13 @@ public final class BottomChrome {
     }
 
     /**
-     * Bottom margin of the manual palette, which hangs over the panel's top: its own ({@code base}), or more when the
-     * handle floats higher, so the palette stays {@code clearance} above the handle.
+     * Bottom margin of the manual palette, which hangs over the panel's top: {@code gap} above the handle's top, and at
+     * least {@code gap} above the panel's top (a handle a few pixels under a taller preview leaves the palette where it
+     * is). In the 3:4 layout the handle starts at the panel's top, so this is {@code gap}; when the handle floats over
+     * the preview (16:9, video) the palette moves up with it.
      */
-    public static int manualMargin(int base, int handleTop, int clearance) {
-        return Math.max(base, clearance - handleTop);
+    public static int manualMargin(int handleTop, int gap) {
+        return Math.max(gap, gap - handleTop);
     }
 
     /**
@@ -94,8 +99,8 @@ public final class BottomChrome {
     /**
      * Keeps the views in step on every layout: the shutter row's bottom margin grows by {@link #raise} (the strip and the
      * ruler's place are chained above the row, so they follow it), {@code handle} moves to {@link #handleTop} by its
-     * translation, the manual palette's bottom margin follows {@link #manualMargin}, and the handle steps aside while the
-     * shown ruler meets it ({@link #rulerMeetsHandle}).
+     * translation, the manual palette's bottom margin follows {@link #manualMargin} ({@link #MANUAL_GAP_DP} above the
+     * handle), and the handle steps aside while the shown ruler meets it ({@link #rulerMeetsHandle}).
      *
      * @param panel      the bottom bar
      * @param row        the shutter row, anchored at the panel's bottom by its bottom margin
@@ -114,7 +119,7 @@ public final class BottomChrome {
         private final View panel, row, strip, handle, viewfinder, manual;
         private final ZoomDialView ruler;
         private final ViewGroup.MarginLayoutParams rowParams, manualParams;
-        private final int baseMargin, manualBase, clearance;
+        private final int baseMargin, manualGap, clearance;
         private boolean rulerShown, rulerMeets, yielded;
 
         Chrome(View panel, View row, View strip, View handle, View viewfinder, @Nullable ZoomDialView ruler,
@@ -129,8 +134,9 @@ public final class BottomChrome {
             rowParams = (ViewGroup.MarginLayoutParams) row.getLayoutParams();
             baseMargin = rowParams.bottomMargin;
             manualParams = manual != null ? (ViewGroup.MarginLayoutParams) manual.getLayoutParams() : null;
-            manualBase = manualParams != null ? manualParams.bottomMargin : 0;
-            clearance = Math.round(CLEARANCE_DP * panel.getResources().getDisplayMetrics().density);
+            float density = panel.getResources().getDisplayMetrics().density;
+            manualGap = Math.round(MANUAL_GAP_DP * density);
+            clearance = Math.round(CLEARANCE_DP * density);
             panel.addOnLayoutChangeListener(this);
             // The preview changes its height on its own (aspect ratio of a new camera session).
             viewfinder.addOnLayoutChangeListener(this);
@@ -165,7 +171,7 @@ public final class BottomChrome {
             float offset = panelY + handleTop - (windowY(handle) - handle.getTranslationY());
             if (handle.getTranslationY() != offset) handle.setTranslationY(offset);
             if (manualParams != null) {
-                int margin = manualMargin(manualBase, handleTop, clearance);
+                int margin = manualMargin(handleTop, manualGap);
                 if (manualParams.bottomMargin != margin) {
                     manualParams.bottomMargin = margin;
                     manual.post(() -> manual.setLayoutParams(manualParams));

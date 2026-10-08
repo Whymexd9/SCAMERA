@@ -53,6 +53,9 @@ public class ExpandingManualPanel extends LinearLayout {
         GradientDrawable round = new GradientDrawable();
         round.setShape(GradientDrawable.OVAL);
         dot.setBackground(round);
+        // The ruler header's text in sp, grown with the font size only up to UiTokens.FONT_SCALE_CAP (P43).
+        capText(R.id.manual_ruler_value, 13f);
+        capText(R.id.manual_all_auto, 12.5f);
         setAccent(UiTokens.cameraAccent(c));
         tabs.setPivotX(0);
         tabs.setVisibility(INVISIBLE);
@@ -60,6 +63,11 @@ public class ExpandingManualPanel extends LinearLayout {
         toggle.setOnClickListener(v -> setExpanded(!expanded, true));
         progress = 0;
         updateFrame();
+    }
+
+    private void capText(int id, float sp) {
+        View view = findViewById(id);
+        if (view instanceof android.widget.TextView) UiTokens.setTextSp((android.widget.TextView) view, sp);
     }
 
     /** The camera accent of the toggle icon and dot. */

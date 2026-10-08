@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Manual controls in the shade's card style (MANUAL_TASK.md). Icons only: every name lives in a content description.
      Top: the ruler card (header: parameter icon, value pill, «Всё на авто»; body: the «Авто» button and the scale),
-     8dp above the strip. Strip: the 52dp toggle card, then one card with the five chips ISO, shutter, EV, focus, WB.
+     8dp above the strip. Strip: the 52dp toggle card (at least 58dp high), then one card with the five equal chips ISO,
+     shutter, EV, focus, WB in one row (4dp padding and gaps). Sizes in dp, text in sp; the chips' text grows with the
+     font size only up to UiTokens.FONT_SCALE_CAP (P43), so the strip stays about the concept's height.
      Card colours, radii and the accent are applied by ExpandingManualPanel (UiTokens, AccentPalette). -->
 <com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -56,22 +58,22 @@
             android:layout_height="wrap_content" android:layout_marginStart="8dp" android:padding="4dp"
             android:orientation="horizontal">
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/iso_option_tv"
-                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
                 android:contentDescription="@string/manual_tab_iso" app:manualChipIcon="@drawable/manual_ic_iso" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/exposure_option_tv"
-                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
                 android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_shutter"
                 app:manualChipIcon="@drawable/manual_ic_shutter" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/ev_option_tv"
-                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
                 android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_ev"
                 app:manualChipIcon="@drawable/manual_ic_ev" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/focus_option_tv"
-                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
                 android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_focus"
                 app:manualChipIcon="@drawable/manual_ic_focus" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/wb_option_tv"
-                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
                 android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_wb"
                 app:manualChipIcon="@drawable/manual_ic_wb" />
         </LinearLayout>

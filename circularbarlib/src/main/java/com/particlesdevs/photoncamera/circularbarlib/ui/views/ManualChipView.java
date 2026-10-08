@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.circularbarlib.ui.views;
 
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextPaint;
 import android.util.AttributeSet;
@@ -63,16 +64,15 @@ public class ManualChipView extends LinearLayout {
         addView(icon, new LayoutParams(size, size));
         value = line(context, VALUE_MAX_SP);
         value.setFontFeatureSettings("tnum");
-        LayoutParams vp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        vp.topMargin = UiTokens.dp(context, 3);
-        addView(value, vp);
+        // Each line takes LINE_HEIGHT x its nominal size, whatever the system font's own metrics (P43): the chip is
+        // 7 + 22 + 3 + 16.8 + 3 + 10.8 + 6 dp as in the concept, the same for every chip (a shrunk value keeps the
+        // line), and grows with the font size only up to UiTokens.FONT_SCALE_CAP.
+        addView(value, lineParams(value, VALUE_MAX_SP, UiTokens.dp(context, 3)));
         state = line(context, STATE_SP);
         state.setAllCaps(true);
         state.setLetterSpacing(.06f);
         state.setTextColor(UiTokens.MUTED);
-        LayoutParams sp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        sp.topMargin = UiTokens.dp(context, 3);
-        addView(state, sp);
+        addView(state, lineParams(state, STATE_SP, UiTokens.dp(context, 3)));
         background.setCornerRadius(UiTokens.dp(context, 16));
         setBackground(background);
         if (attrs != null) {
@@ -85,10 +85,36 @@ public class ManualChipView extends LinearLayout {
         apply();
     }
 
+    /** Line height over the text size (the concept's «normal» line height of its font). */
+    public static final float LINE_HEIGHT = 1.2f;
+
+    /** A line's share of the chip: {@link #LINE_HEIGHT} x its nominal size, rounded. */
+    public static int lineHeight(Context context, float sp) {
+        return Math.round(UiTokens.spPx(context, sp) * LINE_HEIGHT);
+    }
+
+    /**
+     * The view keeps its font's natural line height (nothing is clipped, also with a font whose metrics are taller than
+     * Roboto's), and its margins take up the difference to {@link #lineHeight}, so every chip has the same height.
+     */
+    private static LayoutParams lineParams(TextView t, float sp, int gapAbove) {
+        Paint.FontMetricsInt fm = t.getPaint().getFontMetricsInt();
+        int natural = fm.descent - fm.ascent;
+        int extra = lineHeight(t.getContext(), sp) - natural;
+        LayoutParams lp = new LayoutParams(LayoutParams.WRAP_CONTENT, natural);
+        lp.topMargin = gapAbove + Math.floorDiv(extra, 2);
+        lp.bottomMargin = extra - Math.floorDiv(extra, 2);
+        return lp;
+    }
+
     private static TextView line(Context context, float sp) {
         TextView t = new TextView(context);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        UiTokens.setTextSp(t, sp);
         t.setIncludeFontPadding(false);
+        // The line's height comes from the primary font (lineParams), not from a taller fallback font.
+        t.setFallbackLineSpacing(false);
+        // A shrunk value is centred in its line.
+        t.setGravity(Gravity.CENTER);
         // One line without horizontal scrolling (wrap_content, centred by the chip): a single-line TextView lays its
         // text out on a very wide line, which a centred gravity would push out of sight.
         t.setMaxLines(1);
@@ -162,33 +188,40 @@ public class ManualChipView extends LinearLayout {
         // Never an ellipsis: the value and the state line shrink to the chip's width instead.
         if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED) {
             int room = MeasureSpec.getSize(widthMeasureSpec) - getPaddingLeft() - getPaddingRight();
-            fit(value, room, VALUE_MAX_SP, VALUE_MIN_SP);
+            valueSp = fit(value, room, VALUE_MAX_SP, VALUE_MIN_SP);
             fit(state, room, STATE_SP, STATE_MIN_SP);
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
-    /** The largest size from {@code maxSp} down to {@code minSp} (0.5sp steps) at which the text fits {@code room} px. */
-    static void fit(TextView view, int room, float maxSp, float minSp) {
+    private float valueSp = VALUE_MAX_SP;
+
+    /**
+     * The largest size from {@code maxSp} down to {@code minSp} (0.5sp steps) at which the text fits {@code room} px; sp
+     * are scaled by the font size up to {@link UiTokens#FONT_SCALE_CAP} (P43), so a large system font cannot make the
+     * strip twice as tall. Returns the size chosen, in sp.
+     */
+    static float fit(TextView view, int room, float maxSp, float minSp) {
         CharSequence text = view.getText();
-        float scaled = view.getResources().getDisplayMetrics().scaledDensity;
+        android.content.res.Resources res = view.getResources();
         float sp = maxSp;
         if (text != null && text.length() > 0 && room > 0) {
             TextPaint paint = new TextPaint(view.getPaint());
             String shown = view.isAllCaps() ? text.toString().toUpperCase(java.util.Locale.getDefault()) : text.toString();
             for (; sp > minSp; sp -= .5f) {
-                paint.setTextSize(sp * scaled);
+                paint.setTextSize(UiTokens.spPx(res, sp));
                 if (paint.measureText(shown) <= room) break;
             }
             sp = Math.max(minSp, sp);
         }
-        float px = sp * scaled;
+        float px = UiTokens.spPx(res, sp);
         if (Math.abs(view.getTextSize() - px) > .01f) view.setTextSize(TypedValue.COMPLEX_UNIT_PX, px);
+        return sp;
     }
 
-    /** The value's current size in sp (tests: «1/8000» must stay at 13sp or more at 360dp). */
+    /** The value's current size in sp, before the font scale (tests: «1/8000» must stay at 13sp or more at 360dp). */
     public float valueSp() {
-        return value.getTextSize() / getResources().getDisplayMetrics().scaledDensity;
+        return valueSp;
     }
 
     @Override

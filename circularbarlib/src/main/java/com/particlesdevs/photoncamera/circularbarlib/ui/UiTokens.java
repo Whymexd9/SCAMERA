@@ -31,6 +31,30 @@ public final class UiTokens {
         return Math.round(v * c.getResources().getDisplayMetrics().density);
     }
 
+    /**
+     * The most the viewfinder controls' text grows with the phone's font size (P43): text inside a fixed or tightly packed
+     * box (the manual chips, the ruler, the lens strip, the zoom ruler) follows the font scale up to this factor, so a
+     * large system font enlarges it a little but never doubles the strip or pushes text out of its box. Smaller font
+     * scales apply in full.
+     */
+    public static final float FONT_SCALE_CAP = 1.15f;
+
+    /** {@code sp} in pixels as the system scales it (font scale, non-linear on Android 14+), at most {@link #FONT_SCALE_CAP}. */
+    public static float spPx(android.content.res.Resources r, float sp) {
+        android.util.DisplayMetrics m = r.getDisplayMetrics();
+        float system = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, sp, m);
+        return Math.min(system, sp * m.density * FONT_SCALE_CAP);
+    }
+
+    public static float spPx(Context c, float sp) {
+        return spPx(c.getResources(), sp);
+    }
+
+    /** Sets a text size of {@code sp} with the growth capped as in {@link #spPx}. */
+    public static void setTextSp(android.widget.TextView view, float sp) {
+        view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, spPx(view.getResources(), sp));
+    }
+
     /** The camera accent: the user's accent, or the camera yellow with the default theme. */
     public static int cameraAccent(Context c) {
         return AccentPalette.camera(c);
