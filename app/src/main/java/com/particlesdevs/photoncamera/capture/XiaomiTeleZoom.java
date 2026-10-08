@@ -57,6 +57,15 @@ import java.util.Locale;
  * <p>Owner, 2026-10-08: userZoomRatio + zoomRatio ARE the optical zoom and the lens must move physically. The optical command is
  * the default again (userZoomRatio = mm / 23.256, zoomRatio = mm / 74.419, 4.30000019 / 1.34375 at 100 mm, then the crop
  * to 400 mm); dev switch {@code xiaomi_crop_mode 1} keeps the lens at 75 mm and crops instead.
+ *
+ * <p>Owner's 17U dumps (2026-10-08, research/xiaomi17u/ZOOM_DUMPS_REPORT.md): every tele result carries the HAL's own optical
+ * zoom report, {@code com.xiaomi.optical.zoom.opticalZoomCurrentRatio} (from the zoom driver) / {@code opticalZoomTargetRatio}
+ * / {@code opticalZoomState}, on the HAL's scale {@code optRealZoomRange} [3.4, 4.3], which its smartFOV map ties to the UI
+ * scale {@code optUiZoomRange} [3.2, 4.3] (= userZoomRatio, 75-100 mm). It stood at 3.40 (the 75 mm end) in all 16 dumps, while
+ * LENS_FOCAL_LENGTH follows the userZoomRatio claim. So the lens check reads that report (dev switch {@code xiaomi_hal_optics 0}:
+ * the focal length as before) and logs it, and the request also names the HAL's own optical target
+ * ({@code opticalZoomTargetRatio} for the commanded position; {@code xiaomi_opt_target 0} leaves it out): when the glass still
+ * does not move, the follow check now sees it and the module crops instead (the right field of view at every zoom).
  */
 public final class XiaomiTeleZoom {
     private static final String TAG = "XiaomiTeleZoom";
@@ -81,10 +90,24 @@ public final class XiaomiTeleZoom {
     /** Frames after the first request in the new mode when the results do not report the mode. */
     static final int BARRIER_BLIND_FRAMES = 4;
     public static final String PREF = "pref_xiaomi_smooth_zoom";
+    /** The HAL's optical zoom report (17U dumps 2026-10-08): the zoom driver's position, its target and state. */
+    static final String KEY_OPT_CURRENT = "com.xiaomi.optical.zoom.opticalZoomCurrentRatio";
+    static final String KEY_OPT_TARGET = "com.xiaomi.optical.zoom.opticalZoomTargetRatio";
+    static final String KEY_OPT_STATE = "com.xiaomi.optical.zoom.opticalZoomState";
+    static final String KEY_THIRD_PARTY = "xiaomi.thirdparty.isThirdParty";
+    static final String KEY_REAL_RANGE = "com.xiaomi.camera.smoothTransition.optRealZoomRange";
+    static final String KEY_UI_RANGE = "com.xiaomi.camera.smoothTransition.optUiZoomRange";
+    /** The 17U tele's optical range on the HAL's scale and on the UI (userZoomRatio) scale, as its characteristics list them. */
+    static final float[] REAL_RANGE = {3.4f, 4.3f}, UI_RANGE = {3.2f, 4.3f};
 
     private static final CaptureRequest.Key<Float> USER_ZOOM = new CaptureRequest.Key<>(KEY_USER_ZOOM, Float.class);
     private static final CaptureRequest.Key<Integer> SENSOR_MODE = new CaptureRequest.Key<>(KEY_SENSOR_MODE, Integer.class);
     private static final CaptureResult.Key<Integer> RESULT_MODE = new CaptureResult.Key<>(KEY_SENSOR_MODE, Integer.class);
+    private static final CaptureRequest.Key<Float> OPT_TARGET_REQUEST = new CaptureRequest.Key<>(KEY_OPT_TARGET, Float.class);
+    private static final CaptureResult.Key<Float> OPT_CURRENT = new CaptureResult.Key<>(KEY_OPT_CURRENT, Float.class);
+    private static final CaptureResult.Key<Float> OPT_TARGET = new CaptureResult.Key<>(KEY_OPT_TARGET, Float.class);
+    private static final CaptureResult.Key<Integer> OPT_STATE = new CaptureResult.Key<>(KEY_OPT_STATE, Integer.class);
+    private static final CaptureResult.Key<Integer> THIRD_PARTY = new CaptureResult.Key<>(KEY_THIRD_PARTY, Integer.class);
 
     private XiaomiTeleZoom() {}
 
@@ -176,6 +199,50 @@ public final class XiaomiTeleZoom {
         if (Float.isNaN(reportedMm)) return Float.NaN;
         float mm = isz && reportedMm > OPT_MAX + 5f ? reportedMm / 2f : reportedMm;
         return mm >= OPT_MIN - 10f && mm <= OPT_MAX + 10f ? mm : Float.NaN;
+    }
+
+    /** A characteristics range {lo, hi}, or {@code fallback} when the HAL does not list a usable one. */
+    static float[] rangeOr(float[] listed, float[] fallback) {
+        return listed != null && listed.length >= 2 && listed[0] > 0f && listed[1] > listed[0]
+                ? new float[]{listed[0], listed[1]} : fallback;
+    }
+
+    /**
+     * Lens position (equivalent mm) of the HAL's optical zoom ratio ({@code opticalZoomCurrentRatio}): the HAL's scale
+     * ({@code real}) mapped to the UI scale ({@code ui}, userZoomRatio) as its smartFOV map does (3.4 -> 3.2, 4.3 -> 4.3), times
+     * the main camera's mm. NaN for a ratio that is not on this lens (more than 10 % outside the range).
+     */
+    static float opticalMmOf(float halRatio, float[] real, float[] ui) {
+        if (Float.isNaN(halRatio)) return Float.NaN;
+        float f = (halRatio - real[0]) / (real[1] - real[0]);
+        if (f < -0.1f || f > 1.1f) return Float.NaN;
+        return (ui[0] + clamp(f, 0f, 1f) * (ui[1] - ui[0])) * MM_PER_USER;
+    }
+
+    /** The HAL's optical ratio for a lens position (equivalent mm), the inverse of {@link #opticalMmOf}, clamped to the range. */
+    static float halRatioOf(float lensMm, float[] real, float[] ui) {
+        float f = clamp((lensMm / MM_PER_USER - ui[0]) / (ui[1] - ui[0]), 0f, 1f);
+        return real[0] + f * (real[1] - real[0]);
+    }
+
+    /**
+     * Lens position (equivalent mm) for the follow check: the HAL's optical zoom report when it is there and used ({@code useHal},
+     * it comes from the zoom driver), else the reported focal length (on the 17U it follows the userZoomRatio claim, not the
+     * glass). NaN when neither tells a position of this lens.
+     */
+    static float lensMmFor(Float halCurrent, boolean useHal, float[] real, float[] ui, Float focal, float fMin, boolean iszFrame) {
+        if (useHal && halCurrent != null) {
+            float mm = opticalMmOf(halCurrent, real, ui);
+            if (!Float.isNaN(mm)) return mm;
+        }
+        if (focal == null || fMin <= 0f) return Float.NaN;
+        return lensPosition(equivalentOf(focal, fMin), iszFrame);
+    }
+
+    /** The HAL's optical report changed enough to log: the lens by 1 mm or more, the target by 0.01 or the state. */
+    static boolean opticsLogDue(float lastLensMm, float lensMm, float lastTarget, float target, int lastState, int state) {
+        return Float.isNaN(lastLensMm) != Float.isNaN(lensMm) || Math.abs(lensMm - lastLensMm) >= 1f
+                || Float.isNaN(lastTarget) != Float.isNaN(target) || Math.abs(target - lastTarget) >= 0.01f || lastState != state;
     }
 
     /**
@@ -343,6 +410,23 @@ public final class XiaomiTeleZoom {
     private static volatile boolean iszUsed;
     private static boolean tunableWarned;
     private static String describedCamera;
+    // the HAL's optical zoom report (dev switches xiaomi_hal_optics / xiaomi_opt_target)
+    private static volatile boolean halReport = true, halTarget = true;
+    private static volatile float[] realRange = REAL_RANGE, uiRange = UI_RANGE;
+    private static volatile Boolean targetKeyOk;
+    private static float loggedOptLens = Float.NaN, loggedOptTarget = Float.NaN;
+    private static int loggedOptState = Integer.MIN_VALUE;
+    private static boolean opticsMissingLogged, thirdPartyLogged;
+
+    /**
+     * Dev switches, set before {@link #apply}: {@code xiaomi_hal_optics} (the HAL's optical zoom report is the lens position of
+     * the follow check; off = the reported focal length as before) and {@code xiaomi_opt_target} (the request also names the
+     * HAL's optical target for the commanded position; only with the first). Both on by default.
+     */
+    public static void halOptics(boolean report, boolean target) {
+        halReport = report;
+        halTarget = report && target;
+    }
 
     public static boolean isz() { return isz; }
     public static Plan last() { return last; }
@@ -372,6 +456,9 @@ public final class XiaomiTeleZoom {
         normalMode = null; iszUsed = false;
         farSinceMs = 0; focalReported = false; focalMissingLogged = false; implausibleLogged = false; reportedMode = null; tunableWarned = false;
         describedCamera = null;
+        halReport = true; halTarget = true; realRange = REAL_RANGE; uiRange = UI_RANGE; targetKeyOk = null;
+        loggedOptLens = Float.NaN; loggedOptTarget = Float.NaN; loggedOptState = Integer.MIN_VALUE;
+        opticsMissingLogged = false; thirdPartyLogged = false;
     }
 
     /** A new camera session: the ISZ state of the previous one does not carry over (its first request sets the mode). */
@@ -383,12 +470,31 @@ public final class XiaomiTeleZoom {
         farSinceMs = 0;
         reportedMode = null;
         tunableWarned = false;
+        loggedOptLens = Float.NaN;
+        loggedOptTarget = Float.NaN;
+        loggedOptState = Integer.MIN_VALUE;
+        thirdPartyLogged = false;
+    }
+
+    private static float[] floats(CameraCharacteristics c, String name) {
+        try {
+            return c.get(new CameraCharacteristics.Key<>(name, float[].class));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static void describe(CameraCharacteristics c, String physicalId) {
         String id = String.valueOf(physicalId);
         if (id.equals(describedCamera)) return;
         describedCamera = id;
+        float[] real = floats(c, KEY_REAL_RANGE), ui = floats(c, KEY_UI_RANGE);
+        realRange = rangeOr(real, REAL_RANGE);
+        uiRange = rangeOr(ui, UI_RANGE);
+        Log.i(TAG, "tele " + id + ": HAL optical range " + Arrays.toString(realRange) + " = UI " + Arrays.toString(uiRange)
+                + (real == null || ui == null ? " (not listed: the 17U's values)" : "") + "; lens position from "
+                + (halReport ? "the HAL's " + KEY_OPT_CURRENT : "LENS_FOCAL_LENGTH (xiaomi_hal_optics 0)")
+                + (halTarget ? ", request names " + KEY_OPT_TARGET : ""));
         StringBuilder keys = new StringBuilder();
         try {
             for (CaptureResult.Key<?> k : c.getAvailableCaptureResultKeys()) {
@@ -493,7 +599,10 @@ public final class XiaomiTeleZoom {
     }
 
     private static String lensNote() {
-        return (Float.isNaN(lensMm) ? "" : String.format(Locale.ROOT, " lens %.1f mm", lensMm)) + (lensFixed ? " (crop mode)" : "");
+        Plan p = last;
+        return (Float.isNaN(lensMm) ? "" : String.format(Locale.ROOT, " lens %.1f mm", lensMm)) + (lensFixed ? " (crop mode)" : "")
+                + (p != null && halTarget && Boolean.TRUE.equals(targetKeyOk)
+                ? String.format(Locale.ROOT, " HAL target %.3f", halRatioOf(p.userZoom * MM_PER_USER, realRange, uiRange)) : "");
     }
 
     /**
@@ -512,14 +621,36 @@ public final class XiaomiTeleZoom {
         b.set(SENSOR_MODE, mode);
         Float focal = focalRequest(p);
         if (focal != null) b.set(CaptureRequest.LENS_FOCAL_LENGTH, focal);
+        // the HAL's own optical target for the position userZoomRatio claims (17U dumps: it stood at 3.4 = 75 mm)
+        final boolean targetKey = targetKeyOk(b);
+        final Float target = targetKey && halTarget ? halRatioOf(p.userZoom * MM_PER_USER, realRange, uiRange) : null;
+        if (targetKey) b.set(OPT_TARGET_REQUEST, target);
         if (physicalId != null && !physicalId.isEmpty() && Build.VERSION.SDK_INT >= 28) {
             try {
                 b.setPhysicalCameraKey(USER_ZOOM, p.userZoom, physicalId);
                 b.setPhysicalCameraKey(SENSOR_MODE, mode, physicalId);
+                if (target != null) b.setPhysicalCameraKey(OPT_TARGET_REQUEST, target, physicalId);
             } catch (RuntimeException ignored) {
                 // a logical camera without that physical stream: the logical keys apply
             }
         }
+    }
+
+    /** The request accepts the HAL's optical target key (a vendor tag of this HAL); checked once, logged. */
+    private static boolean targetKeyOk(CaptureRequest.Builder b) {
+        Boolean ok = targetKeyOk;
+        if (ok == null) {
+            try {
+                b.get(OPT_TARGET_REQUEST);
+                ok = true;
+            } catch (IllegalArgumentException e) {
+                ok = false;
+            }
+            targetKeyOk = ok;
+            Log.i(TAG, "request key " + KEY_OPT_TARGET + (ok ? " accepted" : " not in this HAL's vendor tags")
+                    + (halTarget ? "" : " (not sent: xiaomi_opt_target 0 / xiaomi_hal_optics 0)"));
+        }
+        return ok;
     }
 
     /**
@@ -609,9 +740,14 @@ public final class XiaomiTeleZoom {
             Integer asked = modeFor(p.isz, iszUsed, normalMode);
             Log.i(TAG, "sensor mode reported " + mode + " (requested " + (asked == null ? "none" : asked) + ")");
         }
+        logThirdParty(r);
+        // P41, 17U dumps: the HAL's optical zoom report is the glass; LENS_FOCAL_LENGTH follows the userZoomRatio claim
+        final Float halCurrent = halReport ? floatOf(lensResult, r, OPT_CURRENT) : null;
+        if (halReport) logOptics(lensResult, r, halCurrent, p);
+        final boolean hal = halCurrent != null && !Float.isNaN(opticalMmOf(halCurrent, realRange, uiRange));
         Float f = null;
         try { f = lensResult.get(CaptureResult.LENS_FOCAL_LENGTH); } catch (RuntimeException ignored) { /* none */ }
-        if (f == null || fMin <= 0f) {
+        if (!hal && (f == null || fMin <= 0f)) {
             if (!focalMissingLogged) {
                 focalMissingLogged = true;
                 Log.i(TAG, "results report no focal length: the lens position is not known, optical commands are not checked");
@@ -619,7 +755,7 @@ public final class XiaomiTeleZoom {
             return false;
         }
         final Integer frameMode = requestMode(r);
-        final float mm = lensPosition(equivalentOf(f, fMin), Integer.valueOf(ISZ_MODE).equals(frameMode));
+        final float mm = lensMmFor(halCurrent, halReport, realRange, uiRange, f, fMin, Integer.valueOf(ISZ_MODE).equals(frameMode));
         if (Float.isNaN(mm)) {
             if (!implausibleLogged) {
                 implausibleLogged = true;
@@ -628,28 +764,85 @@ public final class XiaomiTeleZoom {
             farSinceMs = 0;
             return false;
         }
+        final String source = hal ? String.format(Locale.ROOT, "HAL opticalZoomCurrentRatio %.3f", halCurrent)
+                : String.format(Locale.ROOT, "f %.2f mm", f);
+        // the position userZoomRatio claims: the commanded optics, or the standing lens in crop mode (no false alarm there)
+        final float claimed = p.userZoom * MM_PER_USER;
         if (Float.isNaN(firstLensMm)) firstLensMm = mm;
         if (!lensMoved && Math.abs(mm - firstLensMm) > 1f) {
             lensMoved = true;
-            Log.i(TAG, String.format(Locale.ROOT, "the lens moves: %.1f -> %.1f mm (f %.2f mm)", firstLensMm, mm, f));
+            Log.i(TAG, String.format(Locale.ROOT, "the lens moves: %.1f -> %.1f mm (%s)", firstLensMm, mm, source));
         }
         if (!focalReported || Math.abs(mm - lensMm) >= 2f) {
-            Log.i(TAG, String.format(Locale.ROOT, "lens %.1f mm (f %.2f mm), commanded %.1f mm%s", mm, f, p.opticalMm, p.isz ? " ISZ" : ""));
+            Log.i(TAG, String.format(Locale.ROOT, "lens %.1f mm (%s), commanded %.1f mm%s", mm, source, claimed, p.isz ? " ISZ" : ""));
         }
         focalReported = true;
         lensMm = mm;
         // frames of the other mode or right after an ISZ toggle do not count (the lens may be held while the mode changes)
         if (!countsForFollow(frameMode, p.isz, now - lastToggleMs)) farSinceMs = 0;
-        else if (Math.abs(p.opticalMm - mm) > 5f) {
+        else if (Math.abs(claimed - mm) > 5f) {
             if (farSinceMs == 0) farSinceMs = now;
         } else farSinceMs = 0;
-        if (lensCheck && !lensFixed && farSinceMs != 0 && lensDoesNotFollow(p.opticalMm, mm, now - farSinceMs, lensMoved)) {
+        if (lensCheck && !lensFixed && farSinceMs != 0 && lensDoesNotFollow(claimed, mm, now - farSinceMs, lensMoved)) {
             fixedLensMm = clamp(mm, OPT_MIN, OPT_MAX);
             lensFixed = true;
             Log.w(TAG, String.format(Locale.ROOT, "the lens does not follow userZoomRatio (commanded %.1f mm for %d ms, reported %.1f mm"
-                    + " and never moved): crop mode from now on (userZoomRatio = lens position, the HAL crops)", p.opticalMm, now - farSinceMs, mm));
+                    + " by %s and never moved): crop mode from now on (userZoomRatio = lens position, the HAL crops)",
+                    claimed, now - farSinceMs, mm, source));
             return true;
         }
         return false;
+    }
+
+    private static Float floatOf(CaptureResult lensResult, CaptureResult r, CaptureResult.Key<Float> key) {
+        Float v = null;
+        try { v = lensResult.get(key); } catch (RuntimeException ignored) { /* not this HAL's tag */ }
+        if (v == null && r != lensResult) {
+            try { v = r.get(key); } catch (RuntimeException ignored) { /* not this HAL's tag */ }
+        }
+        return v;
+    }
+
+    private static Integer intOf(CaptureResult lensResult, CaptureResult r, CaptureResult.Key<Integer> key) {
+        Integer v = null;
+        try { v = lensResult.get(key); } catch (RuntimeException ignored) { /* not this HAL's tag */ }
+        if (v == null && r != lensResult) {
+            try { v = r.get(key); } catch (RuntimeException ignored) { /* not this HAL's tag */ }
+        }
+        return v;
+    }
+
+    /** Once per session: whether the HAL runs its third-party pipeline for this app (17U dumps: 1). */
+    private static void logThirdParty(CaptureResult r) {
+        if (thirdPartyLogged) return;
+        Integer tp = intOf(r, r, THIRD_PARTY);
+        if (tp == null) return;
+        thirdPartyLogged = true;
+        Log.i(TAG, "HAL " + KEY_THIRD_PARTY + " = " + tp + (tp != 0 ? " (the HAL's third-party pipeline for this app)" : ""));
+    }
+
+    /** The HAL's optical zoom report when it changes: where the zoom driver stands, its target and state, against our command. */
+    private static void logOptics(CaptureResult lensResult, CaptureResult r, Float current, Plan p) {
+        Float target = floatOf(lensResult, r, OPT_TARGET);
+        Integer state = intOf(lensResult, r, OPT_STATE);
+        if (current == null && target == null) {
+            if (!opticsMissingLogged) {
+                opticsMissingLogged = true;
+                Log.i(TAG, "results carry no com.xiaomi.optical.zoom report: the lens check reads LENS_FOCAL_LENGTH");
+            }
+            return;
+        }
+        float lens = current == null ? Float.NaN : opticalMmOf(current, realRange, uiRange);
+        float tgt = target == null ? Float.NaN : target;
+        int st = state == null ? -1 : state;
+        if (!opticsLogDue(loggedOptLens, lens, loggedOptTarget, tgt, loggedOptState, st)) return;
+        loggedOptLens = lens;
+        loggedOptTarget = tgt;
+        loggedOptState = st;
+        float claimed = p.userZoom * MM_PER_USER;
+        Log.i(TAG, String.format(Locale.ROOT, "optics (HAL): current %.3f = lens %.1f mm, target %.3f = %.1f mm, state %d; commanded %.1f mm"
+                        + " (HAL %.3f%s)%s", current == null ? Float.NaN : current, lens, tgt, opticalMmOf(tgt, realRange, uiRange), st,
+                claimed, halRatioOf(claimed, realRange, uiRange), halTarget && Boolean.TRUE.equals(targetKeyOk) ? ", sent as target" : "",
+                lensFixed ? " crop mode" : ""));
     }
 }

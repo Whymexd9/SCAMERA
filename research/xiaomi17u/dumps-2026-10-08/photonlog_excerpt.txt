@@ -1,0 +1,180 @@
+2026-10-08 10:01:27.331 D/CameraManager2: CameraCount:4, CameraIDs:[1, 2, 3, 4]
+2026-10-08 10:01:27.333 D/CameraManager2: CameraCount:4, CameraIDs:[1, 2, 3, 4]
+2026-10-08 10:01:27.340 I/XiaomiTeleZoom: phone=true manufacturer=Xiaomi model=25128PNA1C device=nezha market=Xiaomi 17 Ultra by Leica
+2026-10-08 10:01:27.626 D/CaptureController: ID:4 deviceID:4 logicalID:4 physicalID:4
+2026-10-08 10:01:27.649 I/XiaomiTeleZoom: tele 4: focal lengths [19.9] (75 mm = 19.9 mm), equivalent 75.26764 mm, zoomRatio range [1.0, 13.4375], result keys: android.control.zoomMethod android.control.zoomRatio
+2026-10-08 10:01:27.649 D/XiaomiTeleZoom: zoom 75.0 mm: userZoom 3.2250 zoomRatio 1.0078 crop 1.000 optics 75.0 raw 75.0
+2026-10-08 10:01:27.751 D/VendorTagUtils: vendor tag com.xiaomi.sessionparams.clientName is supported
+2026-10-08 10:01:27.751 D/VendorTagUtils: com.xiaomi.sessionparams.clientName supported
+2026-10-08 10:01:27.943 I/XiaomiTeleZoom: sensor mode reported 4 (requested none)
+2026-10-08 10:01:27.943 I/XiaomiTeleZoom: lens 75.6 mm (f 20.05 mm), commanded 75.0 mm
+2026-10-08 10:01:28.946 D/CameraUIController: onAuxButtonClicked() called with: id = [2]
+2026-10-08 10:01:28.948 D/CaptureController: restartCamera() called from "main" Thread
+2026-10-08 10:01:29.136 D/CaptureController: ID:2 deviceID:2 logicalID:2 physicalID:2
+2026-10-08 10:01:29.170 D/VendorTagUtils: vendor tag com.xiaomi.sessionparams.clientName is supported
+2026-10-08 10:01:29.170 D/VendorTagUtils: com.xiaomi.sessionparams.clientName supported
+2026-10-08 10:01:30.023 D/CameraUIController: onAuxButtonClicked() called with: id = [4]
+2026-10-08 10:01:30.024 D/CaptureController: restartCamera() called from "main" Thread
+2026-10-08 10:01:30.237 D/CaptureController: ID:4 deviceID:4 logicalID:4 physicalID:4
+2026-10-08 10:01:30.239 D/XiaomiTeleZoom: zoom 75.0 mm: userZoom 3.2250 zoomRatio 1.0078 crop 1.000 optics 75.0 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:30.270 D/VendorTagUtils: vendor tag com.xiaomi.sessionparams.clientName is supported
+2026-10-08 10:01:30.270 D/VendorTagUtils: com.xiaomi.sessionparams.clientName supported
+2026-10-08 10:01:30.549 I/XiaomiTeleZoom: sensor mode reported 4 (requested none)
+2026-10-08 10:01:45.742 D/XiaomiTeleZoom: zoom 75.2 mm: userZoom 3.2250 zoomRatio 1.0106 crop 1.003 optics 75.2 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:46.051 D/XiaomiTeleZoom: zoom 77.3 mm: userZoom 3.2250 zoomRatio 1.0390 crop 1.031 optics 77.3 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:46.651 D/XiaomiTeleZoom: zoom 77.5 mm: userZoom 3.2250 zoomRatio 1.0418 crop 1.034 optics 77.5 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:46.954 D/XiaomiTeleZoom: zoom 78.8 mm: userZoom 3.2250 zoomRatio 1.0593 crop 1.051 optics 78.8 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:47.353 D/XiaomiTeleZoom: zoom 79.9 mm: userZoom 3.2250 zoomRatio 1.0740 crop 1.066 optics 79.9 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:47.718 D/XiaomiTeleZoom: zoom 80.8 mm: userZoom 3.2250 zoomRatio 1.0860 crop 1.078 optics 80.8 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:48.047 D/XiaomiTeleZoom: zoom 81.5 mm: userZoom 3.2250 zoomRatio 1.0950 crop 1.087 optics 81.5 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:48.498 D/XiaomiTeleZoom: zoom 82.4 mm: userZoom 3.2250 zoomRatio 1.1072 crop 1.099 optics 82.4 raw 75.0 lens 75.6 mm
+2026-10-08 10:01:48.593 W/XiaomiTeleZoom: the lens does not follow userZoomRatio (commanded 82.4 mm for 932 ms, reported 75.6 mm and never moved): crop mode from now on (userZoomRatio = lens position, the HAL crops)
+2026-10-08 10:01:48.865 D/XiaomiTeleZoom: zoom 82.9 mm: userZoom 3.2250 zoomRatio 1.1133 crop 1.105 optics 82.9 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:02.200 D/XiaomiTeleZoom: zoom 83.5 mm: userZoom 3.2250 zoomRatio 1.1226 crop 1.114 optics 83.5 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:03.029 D/XiaomiTeleZoom: zoom 86.4 mm: userZoom 3.2250 zoomRatio 1.1605 crop 1.152 optics 86.4 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:03.374 D/XiaomiTeleZoom: zoom 87.6 mm: userZoom 3.2250 zoomRatio 1.1767 crop 1.168 optics 87.6 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:03.695 D/XiaomiTeleZoom: zoom 88.8 mm: userZoom 3.2250 zoomRatio 1.1931 crop 1.184 optics 88.8 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:04.007 D/XiaomiTeleZoom: zoom 89.8 mm: userZoom 3.2250 zoomRatio 1.2063 crop 1.197 optics 89.8 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:04.342 D/XiaomiTeleZoom: zoom 90.3 mm: userZoom 3.2250 zoomRatio 1.2130 crop 1.204 optics 90.3 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:17.276 D/XiaomiTeleZoom: zoom 90.5 mm: userZoom 3.2250 zoomRatio 1.2164 crop 1.207 optics 90.5 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:17.959 D/XiaomiTeleZoom: zoom 92.0 mm: userZoom 3.2250 zoomRatio 1.2368 crop 1.227 optics 92.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:18.327 D/XiaomiTeleZoom: zoom 92.8 mm: userZoom 3.2250 zoomRatio 1.2471 crop 1.237 optics 92.8 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:18.643 D/XiaomiTeleZoom: zoom 93.6 mm: userZoom 3.2250 zoomRatio 1.2575 crop 1.248 optics 93.6 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:19.010 D/XiaomiTeleZoom: zoom 94.4 mm: userZoom 3.2250 zoomRatio 1.2679 crop 1.258 optics 94.4 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:19.357 D/XiaomiTeleZoom: zoom 95.4 mm: userZoom 3.2250 zoomRatio 1.2820 crop 1.272 optics 95.4 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:19.657 D/XiaomiTeleZoom: zoom 96.3 mm: userZoom 3.2250 zoomRatio 1.2945 crop 1.284 optics 96.3 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:19.992 D/XiaomiTeleZoom: zoom 97.5 mm: userZoom 3.2250 zoomRatio 1.3107 crop 1.301 optics 97.5 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:20.358 D/XiaomiTeleZoom: zoom 98.4 mm: userZoom 3.2250 zoomRatio 1.3217 crop 1.311 optics 98.4 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:20.675 D/XiaomiTeleZoom: zoom 99.2 mm: userZoom 3.2250 zoomRatio 1.3327 crop 1.322 optics 99.2 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:38.174 D/XiaomiTeleZoom: zoom 100.0 mm: userZoom 3.2250 zoomRatio 1.3438 crop 1.333 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:38.474 D/XiaomiTeleZoom: zoom 100.3 mm: userZoom 3.2250 zoomRatio 1.3475 crop 1.337 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:38.788 D/XiaomiTeleZoom: zoom 104.1 mm: userZoom 3.2250 zoomRatio 1.3987 crop 1.388 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:39.120 D/XiaomiTeleZoom: zoom 106.7 mm: userZoom 3.2250 zoomRatio 1.4340 crop 1.423 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:39.455 D/XiaomiTeleZoom: zoom 108.2 mm: userZoom 3.2250 zoomRatio 1.4540 crop 1.443 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:39.805 D/XiaomiTeleZoom: zoom 110.6 mm: userZoom 3.2250 zoomRatio 1.4865 crop 1.475 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:40.155 D/XiaomiTeleZoom: zoom 111.9 mm: userZoom 3.2250 zoomRatio 1.5031 crop 1.491 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:40.571 D/XiaomiTeleZoom: zoom 113.4 mm: userZoom 3.2250 zoomRatio 1.5240 crop 1.512 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:40.870 D/XiaomiTeleZoom: zoom 114.4 mm: userZoom 3.2250 zoomRatio 1.5367 crop 1.525 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:41.272 D/XiaomiTeleZoom: zoom 115.6 mm: userZoom 3.2250 zoomRatio 1.5538 crop 1.542 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:54.120 D/XiaomiTeleZoom: zoom 116.7 mm: userZoom 3.2250 zoomRatio 1.5676 crop 1.555 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:54.438 D/XiaomiTeleZoom: zoom 128.1 mm: userZoom 3.2250 zoomRatio 1.7210 crop 1.708 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:54.838 D/XiaomiTeleZoom: zoom 128.8 mm: userZoom 3.2250 zoomRatio 1.7306 crop 1.717 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:55.138 D/XiaomiTeleZoom: zoom 132.0 mm: userZoom 3.2250 zoomRatio 1.7742 crop 1.760 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:55.469 D/XiaomiTeleZoom: zoom 134.6 mm: userZoom 3.2250 zoomRatio 1.8089 crop 1.795 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:55.823 D/XiaomiTeleZoom: zoom 138.0 mm: userZoom 3.2250 zoomRatio 1.8545 crop 1.840 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:56.170 D/XiaomiTeleZoom: zoom 140.7 mm: userZoom 3.2250 zoomRatio 1.8907 crop 1.876 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:56.518 D/XiaomiTeleZoom: zoom 143.5 mm: userZoom 3.2250 zoomRatio 1.9277 crop 1.913 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:56.884 D/XiaomiTeleZoom: zoom 146.3 mm: userZoom 3.2250 zoomRatio 1.9654 crop 1.950 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:57.249 D/XiaomiTeleZoom: zoom 147.5 mm: userZoom 3.2250 zoomRatio 1.9818 crop 1.966 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:57.767 D/XiaomiTeleZoom: zoom 148.7 mm: userZoom 3.2250 zoomRatio 1.9983 crop 1.983 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:58.137 D/XiaomiTeleZoom: zoom 149.5 mm: userZoom 3.2250 zoomRatio 2.0094 crop 1.994 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:02:58.583 I/XiaomiTeleZoom: ISZ on at 150.4 mm: userZoom 3.2250 zoomRatio 1.0103 crop 1.002 optics 75.2 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:02:58.830 D/XiaomiTeleZoom: zoom 150.8 mm: userZoom 3.2250 zoomRatio 1.0131 crop 1.005 optics 75.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:02:58.911 I/XiaomiTeleZoom: sensor mode reported 9 (requested 9)
+2026-10-08 10:03:11.537 D/XiaomiTeleZoom: zoom 152.1 mm: userZoom 3.2250 zoomRatio 1.0221 crop 1.014 optics 76.1 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:11.891 D/XiaomiTeleZoom: zoom 163.7 mm: userZoom 3.2250 zoomRatio 1.0998 crop 1.091 optics 81.8 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:12.288 D/XiaomiTeleZoom: zoom 165.1 mm: userZoom 3.2250 zoomRatio 1.1090 crop 1.100 optics 82.5 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:12.625 D/XiaomiTeleZoom: zoom 166.9 mm: userZoom 3.2250 zoomRatio 1.1213 crop 1.113 optics 83.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:12.935 D/XiaomiTeleZoom: zoom 169.7 mm: userZoom 3.2250 zoomRatio 1.1401 crop 1.131 optics 84.8 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:13.258 D/XiaomiTeleZoom: zoom 171.6 mm: userZoom 3.2250 zoomRatio 1.1528 crop 1.144 optics 85.8 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:13.667 D/XiaomiTeleZoom: zoom 173.5 mm: userZoom 3.2250 zoomRatio 1.1656 crop 1.157 optics 86.7 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:25.008 D/XiaomiTeleZoom: zoom 174.6 mm: userZoom 3.2250 zoomRatio 1.1732 crop 1.164 optics 87.3 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:25.361 D/XiaomiTeleZoom: zoom 183.3 mm: userZoom 3.2250 zoomRatio 1.2315 crop 1.222 optics 91.6 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:25.743 D/XiaomiTeleZoom: zoom 184.8 mm: userZoom 3.2250 zoomRatio 1.2418 crop 1.232 optics 92.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:26.074 D/XiaomiTeleZoom: zoom 187.4 mm: userZoom 3.2250 zoomRatio 1.2591 crop 1.249 optics 93.7 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:26.376 D/XiaomiTeleZoom: zoom 190.0 mm: userZoom 3.2250 zoomRatio 1.2766 crop 1.267 optics 95.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:26.744 D/XiaomiTeleZoom: zoom 193.2 mm: userZoom 3.2250 zoomRatio 1.2980 crop 1.288 optics 96.6 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:27.044 D/XiaomiTeleZoom: zoom 194.8 mm: userZoom 3.2250 zoomRatio 1.3088 crop 1.299 optics 97.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:27.479 D/XiaomiTeleZoom: zoom 196.4 mm: userZoom 3.2250 zoomRatio 1.3197 crop 1.309 optics 98.2 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:27.810 D/XiaomiTeleZoom: zoom 198.1 mm: userZoom 3.2250 zoomRatio 1.3307 crop 1.320 optics 99.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:28.167 D/XiaomiTeleZoom: zoom 199.2 mm: userZoom 3.2250 zoomRatio 1.3381 crop 1.328 optics 99.6 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:39.103 D/XiaomiTeleZoom: zoom 201.3 mm: userZoom 3.2250 zoomRatio 1.3523 crop 1.342 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:39.418 D/XiaomiTeleZoom: zoom 226.2 mm: userZoom 3.2250 zoomRatio 1.5200 crop 1.508 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:39.717 D/XiaomiTeleZoom: zoom 241.8 mm: userZoom 3.2250 zoomRatio 1.6243 crop 1.612 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:40.018 D/XiaomiTeleZoom: zoom 265.6 mm: userZoom 3.2250 zoomRatio 1.7845 crop 1.771 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:40.340 D/XiaomiTeleZoom: zoom 316.5 mm: userZoom 3.2250 zoomRatio 2.1263 crop 2.110 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:40.650 D/XiaomiTeleZoom: zoom 338.8 mm: userZoom 3.2250 zoomRatio 2.2764 crop 2.259 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:40.970 D/XiaomiTeleZoom: zoom 381.6 mm: userZoom 3.2250 zoomRatio 2.5640 crop 2.544 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:03:41.354 D/XiaomiTeleZoom: zoom 379.0 mm: userZoom 3.2250 zoomRatio 2.5463 crop 2.527 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:04:37.042 D/CaptureController: ID:4 deviceID:4 logicalID:4 physicalID:4
+2026-10-08 10:04:37.043 D/XiaomiTeleZoom: zoom 400.0 mm: userZoom 3.2250 zoomRatio 2.6875 crop 2.667 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:04:37.071 D/VendorTagUtils: vendor tag com.xiaomi.sessionparams.clientName is supported
+2026-10-08 10:04:37.071 D/VendorTagUtils: com.xiaomi.sessionparams.clientName supported
+2026-10-08 10:04:37.331 I/XiaomiTeleZoom: sensor mode reported 9 (requested 9)
+2026-10-08 10:04:37.824 D/CameraUIController: onAuxButtonClicked() called with: id = [2]
+2026-10-08 10:04:37.826 D/CaptureController: restartCamera() called from "main" Thread
+2026-10-08 10:04:38.015 D/CaptureController: ID:2 deviceID:2 logicalID:2 physicalID:2
+2026-10-08 10:04:38.062 D/VendorTagUtils: vendor tag com.xiaomi.sessionparams.clientName is supported
+2026-10-08 10:04:38.062 D/VendorTagUtils: com.xiaomi.sessionparams.clientName supported
+2026-10-08 10:04:40.093 D/CameraUIController: onAuxButtonClicked() called with: id = [4]
+2026-10-08 10:04:40.097 D/CaptureController: restartCamera() called from "main" Thread
+2026-10-08 10:04:40.289 D/CaptureController: ID:4 deviceID:4 logicalID:4 physicalID:4
+2026-10-08 10:04:40.291 D/XiaomiTeleZoom: zoom 75.0 mm: userZoom 3.2250 zoomRatio 1.0078 crop 1.000 optics 75.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:40.326 D/VendorTagUtils: vendor tag com.xiaomi.sessionparams.clientName is supported
+2026-10-08 10:04:40.326 D/VendorTagUtils: com.xiaomi.sessionparams.clientName supported
+2026-10-08 10:04:40.604 I/XiaomiTeleZoom: sensor mode reported 4 (requested none)
+2026-10-08 10:04:51.055 D/XiaomiTeleZoom: zoom 75.1 mm: userZoom 3.2250 zoomRatio 1.0094 crop 1.002 optics 75.1 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:51.386 D/XiaomiTeleZoom: zoom 78.0 mm: userZoom 3.2250 zoomRatio 1.0478 crop 1.040 optics 78.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:51.690 D/XiaomiTeleZoom: zoom 78.6 mm: userZoom 3.2250 zoomRatio 1.0565 crop 1.048 optics 78.6 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:52.136 D/XiaomiTeleZoom: zoom 80.2 mm: userZoom 3.2250 zoomRatio 1.0772 crop 1.069 optics 80.2 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:52.453 D/XiaomiTeleZoom: zoom 81.3 mm: userZoom 3.2250 zoomRatio 1.0922 crop 1.084 optics 81.3 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:52.788 D/XiaomiTeleZoom: zoom 82.2 mm: userZoom 3.2250 zoomRatio 1.1043 crop 1.096 optics 82.2 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:04:53.090 D/XiaomiTeleZoom: zoom 83.6 mm: userZoom 3.2250 zoomRatio 1.1228 crop 1.114 optics 83.6 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:04.709 D/XiaomiTeleZoom: zoom 84.0 mm: userZoom 3.2250 zoomRatio 1.1294 crop 1.121 optics 84.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:05.041 D/XiaomiTeleZoom: zoom 88.6 mm: userZoom 3.2250 zoomRatio 1.1911 crop 1.182 optics 88.6 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:05.391 D/XiaomiTeleZoom: zoom 90.3 mm: userZoom 3.2250 zoomRatio 1.2131 crop 1.204 optics 90.3 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:05.729 D/XiaomiTeleZoom: zoom 91.0 mm: userZoom 3.2250 zoomRatio 1.2232 crop 1.214 optics 91.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:06.044 D/XiaomiTeleZoom: zoom 91.5 mm: userZoom 3.2250 zoomRatio 1.2300 crop 1.220 optics 91.5 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:06.476 D/XiaomiTeleZoom: zoom 92.3 mm: userZoom 3.2250 zoomRatio 1.2402 crop 1.231 optics 92.3 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:17.785 D/XiaomiTeleZoom: zoom 92.5 mm: userZoom 3.2250 zoomRatio 1.2433 crop 1.234 optics 92.5 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:18.118 D/XiaomiTeleZoom: zoom 95.9 mm: userZoom 3.2250 zoomRatio 1.2888 crop 1.279 optics 95.9 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:18.522 D/XiaomiTeleZoom: zoom 96.4 mm: userZoom 3.2250 zoomRatio 1.2959 crop 1.286 optics 96.4 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:18.829 D/XiaomiTeleZoom: zoom 98.7 mm: userZoom 3.2250 zoomRatio 1.3268 crop 1.316 optics 98.7 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:19.151 D/XiaomiTeleZoom: zoom 99.7 mm: userZoom 3.2250 zoomRatio 1.3397 crop 1.329 optics 99.7 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:29.365 D/XiaomiTeleZoom: zoom 100.0 mm: userZoom 3.2250 zoomRatio 1.3438 crop 1.333 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:29.674 D/XiaomiTeleZoom: zoom 100.3 mm: userZoom 3.2250 zoomRatio 1.3475 crop 1.337 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:29.988 D/XiaomiTeleZoom: zoom 104.0 mm: userZoom 3.2250 zoomRatio 1.3982 crop 1.387 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:30.292 D/XiaomiTeleZoom: zoom 107.2 mm: userZoom 3.2250 zoomRatio 1.4400 crop 1.429 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:30.603 D/XiaomiTeleZoom: zoom 112.3 mm: userZoom 3.2250 zoomRatio 1.5093 crop 1.498 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:30.903 D/XiaomiTeleZoom: zoom 115.0 mm: userZoom 3.2250 zoomRatio 1.5452 crop 1.533 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:31.323 D/XiaomiTeleZoom: zoom 116.1 mm: userZoom 3.2250 zoomRatio 1.5603 crop 1.548 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:40.780 D/XiaomiTeleZoom: zoom 117.0 mm: userZoom 3.2250 zoomRatio 1.5721 crop 1.560 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:41.114 D/XiaomiTeleZoom: zoom 123.2 mm: userZoom 3.2250 zoomRatio 1.6559 crop 1.643 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:41.430 D/XiaomiTeleZoom: zoom 126.9 mm: userZoom 3.2250 zoomRatio 1.7047 crop 1.691 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:41.744 D/XiaomiTeleZoom: zoom 132.6 mm: userZoom 3.2250 zoomRatio 1.7818 crop 1.768 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:42.044 D/XiaomiTeleZoom: zoom 137.3 mm: userZoom 3.2250 zoomRatio 1.8445 crop 1.830 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:42.344 D/XiaomiTeleZoom: zoom 143.1 mm: userZoom 3.2250 zoomRatio 1.9230 crop 1.908 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:42.711 D/XiaomiTeleZoom: zoom 148.7 mm: userZoom 3.2250 zoomRatio 1.9986 crop 1.983 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:43.027 D/XiaomiTeleZoom: zoom 149.6 mm: userZoom 3.2250 zoomRatio 2.0097 crop 1.994 optics 100.0 raw 75.0 lens 75.6 mm (crop mode)
+2026-10-08 10:05:43.246 I/XiaomiTeleZoom: ISZ on at 150.4 mm: userZoom 3.2250 zoomRatio 1.0104 crop 1.003 optics 75.2 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:43.578 I/XiaomiTeleZoom: sensor mode reported 9 (requested 9)
+2026-10-08 10:05:53.186 D/XiaomiTeleZoom: zoom 150.8 mm: userZoom 3.2250 zoomRatio 1.0132 crop 1.005 optics 75.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:53.499 D/XiaomiTeleZoom: zoom 158.1 mm: userZoom 3.2250 zoomRatio 1.0620 crop 1.054 optics 79.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:53.799 D/XiaomiTeleZoom: zoom 162.9 mm: userZoom 3.2250 zoomRatio 1.0948 crop 1.086 optics 81.5 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:54.121 D/XiaomiTeleZoom: zoom 166.8 mm: userZoom 3.2250 zoomRatio 1.1209 crop 1.112 optics 83.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:54.422 D/XiaomiTeleZoom: zoom 169.6 mm: userZoom 3.2250 zoomRatio 1.1396 crop 1.131 optics 84.8 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:54.769 D/XiaomiTeleZoom: zoom 172.5 mm: userZoom 3.2250 zoomRatio 1.1587 crop 1.150 optics 86.2 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:05:55.135 D/XiaomiTeleZoom: zoom 174.9 mm: userZoom 3.2250 zoomRatio 1.1748 crop 1.166 optics 87.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:03.679 D/XiaomiTeleZoom: zoom 175.8 mm: userZoom 3.2250 zoomRatio 1.1814 crop 1.172 optics 87.9 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:03.990 D/XiaomiTeleZoom: zoom 186.6 mm: userZoom 3.2250 zoomRatio 1.2537 crop 1.244 optics 93.3 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:04.294 D/XiaomiTeleZoom: zoom 192.1 mm: userZoom 3.2250 zoomRatio 1.2907 crop 1.281 optics 96.1 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:04.646 D/XiaomiTeleZoom: zoom 194.0 mm: userZoom 3.2250 zoomRatio 1.3033 crop 1.293 optics 97.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:04.959 D/XiaomiTeleZoom: zoom 198.9 mm: userZoom 3.2250 zoomRatio 1.3361 crop 1.326 optics 99.4 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:14.654 D/XiaomiTeleZoom: zoom 200.7 mm: userZoom 3.2250 zoomRatio 1.3486 crop 1.338 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:14.984 D/XiaomiTeleZoom: zoom 210.4 mm: userZoom 3.2250 zoomRatio 1.4136 crop 1.403 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:15.285 D/XiaomiTeleZoom: zoom 218.7 mm: userZoom 3.2250 zoomRatio 1.4694 crop 1.458 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:15.592 D/XiaomiTeleZoom: zoom 226.7 mm: userZoom 3.2250 zoomRatio 1.5232 crop 1.511 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:15.899 D/XiaomiTeleZoom: zoom 230.5 mm: userZoom 3.2250 zoomRatio 1.5487 crop 1.537 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:16.200 D/XiaomiTeleZoom: zoom 239.9 mm: userZoom 3.2250 zoomRatio 1.6121 crop 1.600 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:16.500 D/XiaomiTeleZoom: zoom 244.6 mm: userZoom 3.2250 zoomRatio 1.6436 crop 1.631 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:16.805 D/XiaomiTeleZoom: zoom 251.8 mm: userZoom 3.2250 zoomRatio 1.6920 crop 1.679 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:17.122 D/XiaomiTeleZoom: zoom 264.2 mm: userZoom 3.2250 zoomRatio 1.7749 crop 1.761 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:17.437 D/XiaomiTeleZoom: zoom 277.1 mm: userZoom 3.2250 zoomRatio 1.8615 crop 1.847 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:17.752 D/XiaomiTeleZoom: zoom 287.7 mm: userZoom 3.2250 zoomRatio 1.9328 crop 1.918 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:18.052 D/XiaomiTeleZoom: zoom 305.7 mm: userZoom 3.2250 zoomRatio 2.0542 crop 2.038 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:18.366 D/XiaomiTeleZoom: zoom 314.2 mm: userZoom 3.2250 zoomRatio 2.1111 crop 2.095 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:18.667 D/XiaomiTeleZoom: zoom 328.4 mm: userZoom 3.2250 zoomRatio 2.2067 crop 2.190 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:18.984 D/XiaomiTeleZoom: zoom 344.3 mm: userZoom 3.2250 zoomRatio 2.3129 crop 2.295 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:19.287 D/XiaomiTeleZoom: zoom 354.9 mm: userZoom 3.2250 zoomRatio 2.3844 crop 2.366 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:19.600 D/XiaomiTeleZoom: zoom 372.3 mm: userZoom 3.2250 zoomRatio 2.5012 crop 2.482 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)
+2026-10-08 10:06:19.923 D/XiaomiTeleZoom: zoom 387.0 mm: userZoom 3.2250 zoomRatio 2.6000 crop 2.580 optics 100.0 raw 150.0 ISZ lens 75.6 mm (crop mode)

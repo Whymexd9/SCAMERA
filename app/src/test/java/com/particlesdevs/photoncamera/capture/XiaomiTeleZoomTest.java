@@ -230,6 +230,84 @@ public class XiaomiTeleZoomTest {
         assertTrue(XiaomiTeleZoom.frameReady(null, null, true, XiaomiTeleZoom.BARRIER_MAX_FRAMES, 0));
     }
 
+    private static final float[] REAL = XiaomiTeleZoom.REAL_RANGE, UI = XiaomiTeleZoom.UI_RANGE;
+
+    /** 17U dumps 2026-10-08: opticalZoomCurrentRatio 3.40042..3.40052 and target 3.4 in every dump = the lens at its wide end. */
+    @Test
+    public void theHalsOpticalReportOfTheDumpsIsTheWideEnd() {
+        assertEquals("UI 3.2 x 23.256 mm", 74.42f, XiaomiTeleZoom.opticalMmOf(3.40046835f, REAL, UI), 0.02f);
+        assertEquals(74.42f, XiaomiTeleZoom.opticalMmOf(3.40000010f, REAL, UI), 0.02f);
+        assertEquals("the long end: 4.3 = 100 mm", 100f, XiaomiTeleZoom.opticalMmOf(4.30000019f, REAL, UI), 0.01f);
+        assertEquals("half way: UI 3.75", 3.75f * (100f / 4.30000019f), XiaomiTeleZoom.opticalMmOf(3.85f, REAL, UI), 0.01f);
+        assertTrue("not this lens", Float.isNaN(XiaomiTeleZoom.opticalMmOf(1f, REAL, UI)));
+        assertTrue(Float.isNaN(XiaomiTeleZoom.opticalMmOf(6f, REAL, UI)));
+        assertTrue(Float.isNaN(XiaomiTeleZoom.opticalMmOf(Float.NaN, REAL, UI)));
+        assertEquals("a little outside the range: clamped to the end", 100f, XiaomiTeleZoom.opticalMmOf(4.35f, REAL, UI), 0.01f);
+    }
+
+    /** The request's opticalZoomTargetRatio: the HAL's own UI -> optical map (smartFOV 3.2 -> 3.4, 4.3 -> 4.3) of userZoomRatio. */
+    @Test
+    public void theTargetOfACommandedPositionIsOnTheHalsScale() {
+        assertEquals(4.3f, XiaomiTeleZoom.halRatioOf(100f, REAL, UI), 1e-4f);
+        assertEquals("75 mm = userZoomRatio 3.225", 3.4f + 0.025f / 1.1f * 0.9f, XiaomiTeleZoom.halRatioOf(75f, REAL, UI), 1e-4f);
+        assertEquals("never below the optics' wide end", 3.4f, XiaomiTeleZoom.halRatioOf(60f, REAL, UI), 1e-4f);
+        assertEquals("nor past the long end", 4.3f, XiaomiTeleZoom.halRatioOf(150f, REAL, UI), 1e-4f);
+        for (float mm = 75f; mm <= 100f; mm += 0.5f) {
+            XiaomiTeleZoom.Plan p = XiaomiTeleZoom.planFor(mm, false, 0f);
+            float target = XiaomiTeleZoom.halRatioOf(p.userZoom * XiaomiTeleZoom.MM_PER_USER, REAL, UI);
+            assertEquals("round trip at " + mm, mm, XiaomiTeleZoom.opticalMmOf(target, REAL, UI), 0.01f);
+        }
+        // the lens standing at 75 mm (crop mode) names its own position
+        assertEquals(XiaomiTeleZoom.halRatioOf(75f, REAL, UI),
+                XiaomiTeleZoom.halRatioOf(XiaomiTeleZoom.planFor(180f, true, 75f).userZoom * XiaomiTeleZoom.MM_PER_USER, REAL, UI), 1e-5f);
+    }
+
+    /**
+     * Build b087541 on the 17U: the focal length followed userZoomRatio to 100 mm, the preview did not zoom. The HAL's optical
+     * report (3.40 = the wide end) shows the glass did not move, so the follow check now goes to crop mode; with
+     * xiaomi_hal_optics 0 (the focal length, as before) it never did.
+     */
+    @Test
+    public void theFollowCheckReadsTheGlassNotTheClaim() {
+        final float fMin = 19.9f;
+        final Float claimed100 = 26.533f, halWide = 3.40046835f;
+        float glass = XiaomiTeleZoom.lensMmFor(halWide, true, REAL, UI, claimed100, fMin, false);
+        assertEquals(74.42f, glass, 0.02f);
+        assertTrue("never moved, 25 mm short for FOLLOW_MS: crop mode",
+                XiaomiTeleZoom.lensDoesNotFollow(100f, glass, XiaomiTeleZoom.FOLLOW_MS, false));
+        float claim = XiaomiTeleZoom.lensMmFor(halWide, false, REAL, UI, claimed100, fMin, false);
+        assertEquals("xiaomi_hal_optics 0: the focal length as before", 100f, claim, 0.01f);
+        assertFalse(XiaomiTeleZoom.lensDoesNotFollow(100f, claim, XiaomiTeleZoom.FOLLOW_MS, false));
+        assertEquals("no HAL report: the focal length", 100f, XiaomiTeleZoom.lensMmFor(null, true, REAL, UI, claimed100, fMin, false), 0.01f);
+        assertEquals("a HAL report off this lens: the focal length", 100f,
+                XiaomiTeleZoom.lensMmFor(1f, true, REAL, UI, claimed100, fMin, false), 0.01f);
+        assertTrue("nothing at all", Float.isNaN(XiaomiTeleZoom.lensMmFor(null, true, REAL, UI, null, fMin, false)));
+        assertEquals("the HAL report alone is enough", 100f, XiaomiTeleZoom.lensMmFor(4.3f, true, REAL, UI, null, 0f, false), 0.01f);
+        // glass that follows: trusted, no crop mode
+        float moved = XiaomiTeleZoom.lensMmFor(4.29f, true, REAL, UI, claimed100, fMin, false);
+        assertFalse(XiaomiTeleZoom.lensDoesNotFollow(100f, moved, XiaomiTeleZoom.FOLLOW_MS, false));
+        // in ISZ the report is still the lens position (never doubled)
+        assertEquals(100f, XiaomiTeleZoom.lensMmFor(4.3f, true, REAL, UI, 53.07f, fMin, true), 0.01f);
+    }
+
+    @Test
+    public void theHalRangesFallBackToThe17UValues() {
+        assertTrue(java.util.Arrays.equals(REAL, XiaomiTeleZoom.rangeOr(null, REAL)));
+        assertTrue(java.util.Arrays.equals(REAL, XiaomiTeleZoom.rangeOr(new float[]{4.3f, 3.4f}, REAL)));
+        assertTrue(java.util.Arrays.equals(REAL, XiaomiTeleZoom.rangeOr(new float[]{3.4f}, REAL)));
+        assertTrue(java.util.Arrays.equals(new float[]{3.5f, 4.5f}, XiaomiTeleZoom.rangeOr(new float[]{3.5f, 4.5f, 0f}, REAL)));
+    }
+
+    @Test
+    public void theOpticalReportIsLoggedOnlyWhenItChanges() {
+        assertTrue("the first report", XiaomiTeleZoom.opticsLogDue(Float.NaN, 74.4f, Float.NaN, 3.4f, Integer.MIN_VALUE, 0));
+        assertFalse("the same", XiaomiTeleZoom.opticsLogDue(74.4f, 74.6f, 3.4f, 3.405f, 0, 0));
+        assertTrue("the lens by 1 mm", XiaomiTeleZoom.opticsLogDue(74.4f, 75.5f, 3.4f, 3.4f, 0, 0));
+        assertTrue("a new target", XiaomiTeleZoom.opticsLogDue(74.4f, 74.4f, 3.4f, 3.6f, 0, 0));
+        assertTrue("the state", XiaomiTeleZoom.opticsLogDue(74.4f, 74.4f, 3.4f, 3.4f, 0, 1));
+        assertFalse("nothing reported twice", XiaomiTeleZoom.opticsLogDue(Float.NaN, Float.NaN, Float.NaN, Float.NaN, -1, -1));
+    }
+
     @Test
     public void theZoomLadderReadsLikeTheStockDial() {
         assertEquals("3.2×", XiaomiTeleZoom.label(XiaomiTeleZoom.STOCK_RATIO));

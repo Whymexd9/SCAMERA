@@ -13,6 +13,7 @@ import java.util.List;
 public class VendorTagUtils {
     private static final String TAG = "VendorTagUtils";
     private static volatile boolean remosaicApplied;
+    private static volatile boolean clientNameSkipLogged;
     public static boolean wasRemosaicApplied() { return remosaicApplied; }
     private static boolean isSupported(CaptureRequest.Builder builder,
                                        CaptureRequest.Key<?> key) {
@@ -217,7 +218,15 @@ public class VendorTagUtils {
             byte enable = (byte) (requestRemosaic ? 1 : 0);
             remosaicApplied = false;
              var clientName = new CaptureRequest.Key<>("com.xiaomi.sessionparams.clientName", String.class);
-            if(isSupported(builder,clientName)) {
+            if (com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) {
+                // Owner: no impersonation of the stock camera on the Xiaomi 17 Ultra. Its dumps (2026-10-08) showed this
+                // clientName in our requests while the HAL still reported xiaomi.thirdparty.isThirdParty = 1 (it knows the
+                // real package), so the key only claimed to be the stock camera without changing the HAL's pipeline.
+                if (!clientNameSkipLogged) {
+                    clientNameSkipLogged = true;
+                    Log.i(TAG, "Xiaomi 17 Ultra: com.xiaomi.sessionparams.clientName not sent (no stock-camera impersonation)");
+                }
+            } else if(isSupported(builder,clientName)) {
                 Log.d(TAG, "com.xiaomi.sessionparams.clientName supported");
                 builder.set(clientName, "com.android.camera");
                 setPhysical(builder, clientName, "com.android.camera", physicalId);
