@@ -263,6 +263,10 @@ struct HybridTuning {
     // MAD, consistent across the frames of the exposure, 0.5..2 x the metadata), all others with the metadata ratio; 0 = report
     // only (HYBRID GAIN CHECK). -1 is internal (decided before the merge).
     int gainMeasured=1;
+    // P62 Mochi (GCam 11 PhotometricMerge): each bracketed frame gets a per-tile photometric correction against the base on the GPU
+    // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = GCam's rule (more than 3 non-bracketed frames),
+    // 2 = whenever a bracketed frame is merged.
+    int mochi=0;
     int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
     // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
@@ -451,7 +455,8 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
             // P27
-            ||set("gainMeasured",nullptr,&t.gainMeasured);
+            ||set("gainMeasured",nullptr,&t.gainMeasured)
+            ||set("mochi",nullptr,&t.mochi);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
@@ -2375,6 +2380,149 @@ struct HybridMosaicNative {
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
 };
 
+// P62 Mochi (GCam 11 PhotometricMerge, research/mochi/MOCHI_IMPL.md): photometric correction of a bracketed (longer) frame against
+// the base before the merge, on the GPU. Standalone programs with their own buffers (bindings 0..5; merge() binds its own again),
+// compiled only when the tuning key mochi is on, so a merge without it runs exactly the programs and buffers as before.
+// kHybMochiStats: one invocation per 16x16 RAW tile of the bracketed frame (its own geometry). Per 2x2 cell: the frame's sites and
+// the base sampled at the same scene point (bilinear on each phase's grid, the frame's homography inverted to first order), both
+// unclipped (< clipAt). A cell whose difference exceeds 3 sigma of the noise plus the largest correction kept is motion or
+// misalignment, not a photometric offset (GCam weights by its rejection map instead), and is left out. The mean difference
+// base - frame of the accepted cells, in the frame's own normalised units, becomes GCam's correction: in 10-bit DN zeroed when
+// |c_rggb|^2 > 500, otherwise clamped to +-20; with the base SNR weight min(1, snr / 5) (SNRWeight(snr, 5.0)).
+static const char* kHybMochiStats=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=0) readonly buffer Base{uint base[];};
+layout(std430,binding=1) readonly buffer Alt{uint alt[];};
+layout(std430,binding=2) buffer Tiles{vec4 tiles[];};   // per tile: correction (frame's own normalised units) per RAW phase
+layout(std430,binding=3) buffer Info{vec4 info[];};     // per tile: x SNR weight, y accepted cells, z zeroed, w measured
+uniform ivec2 size;      // w, h of the frames
+uniform ivec2 altRows;   // RAW rows held in Alt [x, y)
+uniform ivec2 baseRows;  // RAW rows held in Base [x, y)
+uniform ivec2 tileRows;  // tile rows of this band [x, y)
+uniform ivec2 tileCount; // nx, ny
+uniform ivec2 greens;    // the two green RAW phases
+uniform vec4 black;
+uniform vec4 inv;
+uniform vec4 hA;         // homography h0..h3 (base -> frame)
+uniform vec4 hB;         // h4..h7
+uniform vec4 noise;      // base slope, offset; frame slope, offset (each in its own exposure)
+uniform vec2 expo;       // x = exposure ratio t of the frame, y = 1 / t
+uniform float clipAt;
+uniform float bound;     // the largest correction kept (own normalised units)
+float site(bool b,int x,int y){
+    uint i=uint((y-(b?baseRows.x:altRows.x))*size.x+x);
+    uint word=b?base[i>>1]:alt[i>>1];
+    int ph=((y&1)<<1)|(x&1);
+    return (float((word>>((i&1u)*16u))&0xFFFFu)-black[ph])*inv[ph];
+}
+vec2 project(vec2 p){
+    return vec2(hA.x*p.x+hA.y*p.y+hA.z,hA.w*p.x+hB.x*p.y+hB.y)/(hB.z*p.x+hB.w*p.y+1.0);
+}
+void main(){
+    ivec2 t=ivec2(gl_GlobalInvocationID.xy);
+    int ty=t.y+tileRows.x;
+    if(t.x>=tileCount.x||ty>=tileRows.y)return;
+    vec4 sd=vec4(0.0);float n=0.0,sg=0.0;
+    for(int cy=0;cy<8;++cy)for(int cx=0;cx<8;++cx){
+        int X=16*t.x+2*cx,Y=16*ty+2*cy;
+        if(X+1>=size.x||Y<altRows.x||Y+1>=altRows.y)continue;
+        vec2 q=vec2(float(X),float(Y));
+        vec2 d=project(q)-q;     // base -> frame displacement near q
+        vec2 uv0=(q-d)*0.5;      // the base cell grid at the same scene point
+        vec4 a=vec4(0.0),b=vec4(0.0);bool ok=true;
+        for(int ph=0;ph<4;++ph){
+            int sx=ph&1,sy=ph>>1;
+            float an=site(false,X+sx,Y+sy);
+            vec2 i0=floor(uv0),f=uv0-i0;
+            int bx=2*int(i0.x)+sx,by=2*int(i0.y)+sy;
+            if(an>=clipAt||bx<0||by<baseRows.x||bx+2>=size.x||by+2>=baseRows.y){ok=false;break;}
+            float b00=site(true,bx,by),b10=site(true,bx+2,by),b01=site(true,bx,by+2),b11=site(true,bx+2,by+2);
+            if(max(max(b00,b10),max(b01,b11))>=clipAt){ok=false;break;}
+            b[ph]=mix(mix(b00,b10,f.x),mix(b01,b11,f.x),f.y);
+            a[ph]=an;
+        }
+        if(!ok)continue;
+        vec4 dd=b-a*expo.y;      // base units
+        vec4 v=noise.x*max(b,0.0)+noise.y+(noise.z*max(a,0.0)+noise.w)*expo.y*expo.y;
+        if(any(greaterThan(abs(dd),3.0*sqrt(v)+bound*expo.y)))continue;
+        sd+=dd;n+=1.0;sg+=0.5*(b[greens.x]+b[greens.y]);
+    }
+    int ti=ty*tileCount.x+t.x;
+    if(n<16.0){tiles[ti]=vec4(0.0);info[ti]=vec4(0.0,n,0.0,0.0);return;}
+    vec4 u=sd/n*expo.x*1023.0; // GCam's correction in 10-bit DN of the frame
+    float zeroed=dot(u,u)>500.0?1.0:0.0;
+    tiles[ti]=zeroed>0.0?vec4(0.0):clamp(u,-20.0,20.0)/1023.0;
+    float g=clamp(sg/n,0.0,1.0);
+    float snr=g/sqrt(noise.x*g+noise.y+1e-7);
+    info[ti]=vec4(min(1.0,max(snr,0.0)/5.0),n,zeroed,1.0);
+}
+)";
+// kHybMochiBlur: GCam's "GaussianBlur correction" and "GaussianBlur SNR map" on the tile grid ([1 2 1]^2), the SNR weight applied:
+// Final = blur(correction) * blur(weight). Only measured tiles count (renormalised): a tile without accepted cells (motion,
+// clipping) takes its neighbours' correction instead of diluting theirs with a zero (GCam's rejection-weighted tile mean is 0
+// there and its blur pulls the neighbours toward it: around a moving object the background kept up to 2 DN of the offset).
+static const char* kHybMochiBlur=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=2) readonly buffer Tiles{vec4 tiles[];};
+layout(std430,binding=3) readonly buffer Info{vec4 info[];};
+layout(std430,binding=4) writeonly buffer Final{vec4 finalC[];};
+uniform ivec2 tileCount;
+void main(){
+    ivec2 t=ivec2(gl_GlobalInvocationID.xy);
+    if(t.x>=tileCount.x||t.y>=tileCount.y)return;
+    vec4 c=vec4(0.0);float s=0.0,k=0.0;
+    for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){
+        ivec2 p=t+ivec2(dx,dy);
+        if(p.x<0||p.y<0||p.x>=tileCount.x||p.y>=tileCount.y)continue;
+        int i=p.y*tileCount.x+p.x;
+        float wgt=float((2-abs(dx))*(2-abs(dy)))*info[i].w;
+        c+=wgt*tiles[i];s+=wgt*info[i].x;k+=wgt;
+    }
+    finalC[t.y*tileCount.x+t.x]=k>0.0?c/k*(s/k):vec4(0.0);
+}
+)";
+// kHybMochiApply: one invocation per RAW word (two sites of a row) of the frame's band: site + bilinear(Final) in DN, rounded and
+// kept below the merge's clip level; a site already >= clipAt (its clip state included) is not touched.
+static const char* kHybMochiApply=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=1) readonly buffer Alt{uint alt[];};
+layout(std430,binding=4) readonly buffer Final{vec4 finalC[];};
+layout(std430,binding=5) writeonly buffer Out{uint outw[];};
+uniform ivec2 size;
+uniform ivec2 altRows;   // RAW rows held in Alt [x, y)
+uniform ivec2 applyRows; // RAW rows written [x, y) (Out starts at row x)
+uniform ivec2 tileCount;
+uniform vec4 black;
+uniform vec4 inv;
+uniform float clipAt;
+uniform float capLevel;
+uint corrected(uint v,int x,int y){
+    int ph=((y&1)<<1)|(x&1);
+    float r=1.0/inv[ph];
+    if((float(v)-black[ph])*inv[ph]>=clipAt)return v;
+    vec2 tc=clamp((vec2(float(x),float(y))+0.5)/16.0-0.5,vec2(0.0),vec2(tileCount-1));
+    ivec2 i0=ivec2(floor(tc));ivec2 i1=min(i0+1,tileCount-1);vec2 f=tc-vec2(i0);
+    float c00=finalC[i0.y*tileCount.x+i0.x][ph],c10=finalC[i0.y*tileCount.x+i1.x][ph];
+    float c01=finalC[i1.y*tileCount.x+i0.x][ph],c11=finalC[i1.y*tileCount.x+i1.x][ph];
+    float c=mix(mix(c00,c10,f.x),mix(c01,c11,f.x),f.y);
+    return uint(clamp(floor(float(v)+c*r+0.5),0.0,min(65535.0,black[ph]+capLevel*r)));
+}
+void main(){
+    int xw=int(gl_GlobalInvocationID.x),y=int(gl_GlobalInvocationID.y)+applyRows.x;
+    if(2*xw>=size.x||y>=applyRows.y)return;
+    uint i=uint((y-altRows.x)*size.x+2*xw);
+    uint word=alt[i>>1];
+    uint lo=corrected(word&0xFFFFu,2*xw,y),hi=corrected(word>>16,2*xw+1,y);
+    outw[uint((y-applyRows.x)*size.x+2*xw)>>1]=lo|(hi<<16);
+}
+)";
+
 // P33 W2.1 (research/speed/SHOT_SPEED_PLAN.md): the F6 field computed in tile-row bands while the GPU merges (LaStream below).
 // HybridGpu::merge waits before each strip for the field rows that strip reads and uploads them; the rows are final when
 // waitRows returns (the same floats as the whole-frame laFrameField). waitRows throws HybridLaStreamFailed when F6 failed.
@@ -2400,6 +2548,9 @@ class HybridGpu {
     // P34: the fast native merge (kHybNatNorm + kHybMergeMosaicFast [block Quad / Tetra][window r][marked][fill], compiled when
     // first used) and the normalised 2x2 cells of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
     GLuint natNormProgram=0,natFast[2][9][2][2]{},natNormBuf=0;
+    // P62 Mochi (compiled on first use): programs and buffers (0 base rows, 1 frame rows, 2 tiles, 3 tile info, 4 final, 5 out)
+    GLuint mochiStatsProgram=0,mochiBlurProgram=0,mochiApplyProgram=0,mochiBuf[6]{};
+    size_t mochiCap[6]{};
     size_t natNormCap=0;
     GLuint natFastProgram(int block,int r,bool marked,bool fill){
         const bool tetra=block==4;
@@ -2455,6 +2606,8 @@ class HybridGpu {
             for(auto& byBlock:natFast)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
             if(natNormBuf)glDeleteBuffers(1,&natNormBuf);
+            for(GLuint program:{mochiStatsProgram,mochiBlurProgram,mochiApplyProgram})if(program)glDeleteProgram(program); // P62
+            for(GLuint b:mochiBuf)if(b)glDeleteBuffers(1,&b);
             glDeleteBuffers(kSlots,buffers);
             glDeleteBuffers(kSlots,bankBuffers);
             if(frameTable)glDeleteBuffers(1,&frameTable);
@@ -2785,6 +2938,117 @@ public:
     void release(){if(display!=EGL_NO_DISPLAY)eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);}
     void acquire(){if(display==EGL_NO_DISPLAY||!eglMakeCurrent(display,surface,surface,context))throw std::runtime_error("Cannot activate GLES context");}
     bool hasBentoPass() const {return bentoProgram!=0;}
+    // P62 Mochi: the photometric correction of merge frame f (a bracketed frame) against the base, on the GPU (kHybMochiStats /
+    // Blur / Apply), into out (w x h RAW words, the frame's own geometry). Bands of 16-row tiles keep every buffer within the
+    // storage block. false (nothing written) when the frame cannot be corrected (upRatio != 1, a band larger than the block).
+    struct MochiStats {int tiles=0,measured=0,zeroed=0,bands=0;double meanAbsDn[4]{};double ms=0;};
+    bool mochi(const Frames& in,int f,float clipLevel,std::vector<uint16_t>& out,MochiStats& st){
+        const auto t0=std::chrono::steady_clock::now();
+        const int w=in.w,h=in.h;
+        const BackwardHomography& H=in.homography[f];
+        if(f<=0||f>=int(in.frames.size())||(w&1)||(h&1)||H.upRatio!=1.f)return false;
+        if(!mochiStatsProgram){
+            compileName="mochiStats";mochiStatsProgram=compile(kHybMochiStats,true);
+            compileName="mochiBlur";mochiBlurProgram=compile(kHybMochiBlur,true);
+            compileName="mochiApply";mochiApplyProgram=compile(kHybMochiApply,true);
+        }
+        const int nx=(w+15)/16,ny=(h+15)/16;
+        // base rows behind the frame's rows: the vertical displacement of the homography over the frame (+ the bilinear support)
+        float dMin=0,dMax=0;
+        for(int k=0;k<9;++k){
+            const int x=(k%3)*(w-1)/2,y=(k/3)*(h-1)/2;
+            const float dy=H.project(x,y).y-float(y);
+            if(!std::isfinite(dy))return false;
+            if(k==0||dy<dMin)dMin=dy;
+            if(k==0||dy>dMax)dMax=dy;
+        }
+        const int marginLo=int(std::ceil(std::max(dMax,0.f)))+8,marginHi=int(std::ceil(std::max(-dMin,0.f)))+8;
+        const size_t rowBytes=size_t(w)*2,block=std::min<size_t>(maxStorageBlock?maxStorageBlock:(size_t(64)<<20),size_t(64)<<20);
+        int bandTiles=int((block/rowBytes-size_t(marginLo+marginHi))/16);
+        if(block/rowBytes<=size_t(marginLo+marginHi)+16||bandTiles<1)return false;
+        bandTiles=std::min(bandTiles,ny);
+        auto buffer=[&](int k,size_t bytes){
+            GLuint& b=mochiBuf[k];if(!b)glGenBuffers(1,&b);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER,b);
+            if(mochiCap[k]<bytes){glBufferData(GL_SHADER_STORAGE_BUFFER,GLsizeiptr(bytes),nullptr,GL_DYNAMIC_DRAW);mochiCap[k]=bytes;}
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER,GLuint(k),b);
+        };
+        auto upload=[&](int k,const uint16_t* raw,int r0,int r1){
+            buffer(k,size_t(r1-r0)*rowBytes);
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER,0,GLsizeiptr(size_t(r1-r0)*rowBytes),raw+size_t(r0)*w);
+        };
+        const size_t tileBytes=size_t(nx)*ny*16;
+        buffer(2,tileBytes);buffer(3,tileBytes);buffer(4,tileBytes);
+        const float t=1.f/std::max(in.gain[f],1e-6f);
+        const int greens[2]={1^in.cfa,2^in.cfa};
+        auto common=[&](GLuint p){
+            glUseProgram(p);
+            glUniform2i(glGetUniformLocation(p,"size"),w,h);
+            glUniform2i(glGetUniformLocation(p,"tileCount"),nx,ny);
+            glUniform4f(glGetUniformLocation(p,"black"),in.black[0],in.black[1],in.black[2],in.black[3]);
+            glUniform4f(glGetUniformLocation(p,"inv"),in.inv[0],in.inv[1],in.inv[2],in.inv[3]);
+            glUniform1f(glGetUniformLocation(p,"clipAt"),0.95f);
+        };
+        // statistics, band by band (the frame's rows and the base rows behind them)
+        int altR0=-1,altR1=-1;
+        for(int ty0=0;ty0<ny;ty0+=bandTiles){
+            const int ty1=std::min(ny,ty0+bandTiles),r0=16*ty0,r1=std::min(h,16*ty1);
+            const int b0=std::max(0,r0-marginLo)&~1,b1=std::min(h,r1+marginHi+1)&~1;
+            upload(0,in.frames[0],b0,b1);upload(1,in.frames[f],r0,r1);altR0=r0;altR1=r1;
+            buffer(2,tileBytes);buffer(3,tileBytes);
+            common(mochiStatsProgram);
+            const GLuint p=mochiStatsProgram;
+            glUniform2i(glGetUniformLocation(p,"altRows"),r0,r1);
+            glUniform2i(glGetUniformLocation(p,"baseRows"),b0,b1);
+            glUniform2i(glGetUniformLocation(p,"tileRows"),ty0,ty1);
+            glUniform2i(glGetUniformLocation(p,"greens"),greens[0],greens[1]);
+            glUniform4f(glGetUniformLocation(p,"hA"),H.h[0],H.h[1],H.h[2],H.h[3]);
+            glUniform4f(glGetUniformLocation(p,"hB"),H.h[4],H.h[5],H.h[6],H.h[7]);
+            glUniform4f(glGetUniformLocation(p,"noise"),in.baseSlope,in.baseOffset,in.noiseSlope[f],in.noiseOffset[f]);
+            glUniform2f(glGetUniformLocation(p,"expo"),t,1.f/t);
+            glUniform1f(glGetUniformLocation(p,"bound"),22.4f/1023.f);
+            glDispatchCompute(GLuint((nx+7)/8),GLuint((ty1-ty0+7)/8),1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            ++st.bands;
+        }
+        buffer(2,tileBytes);buffer(3,tileBytes);buffer(4,tileBytes);
+        common(mochiBlurProgram);
+        glDispatchCompute(GLuint((nx+7)/8),GLuint((ny+7)/8),1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        check("mochi stats");
+        // the corrected frame, band by band (the last statistics band is still in Alt)
+        out.resize(size_t(w)*h);
+        const int lastTy0=((ny-1)/bandTiles)*bandTiles;
+        for(int ty0=lastTy0;ty0>=0;ty0-=bandTiles){
+            const int ty1=std::min(ny,ty0+bandTiles),r0=16*ty0,r1=std::min(h,16*ty1);
+            if(!(ty0==lastTy0&&r0==altR0&&r1==altR1))upload(1,in.frames[f],r0,r1);
+            buffer(4,tileBytes);buffer(5,size_t(r1-r0)*rowBytes);
+            common(mochiApplyProgram);
+            const GLuint p=mochiApplyProgram;
+            glUniform2i(glGetUniformLocation(p,"altRows"),r0,r1);
+            glUniform2i(glGetUniformLocation(p,"applyRows"),r0,r1);
+            glUniform1f(glGetUniformLocation(p,"capLevel"),std::max(clipLevel-0.005f,0.95f));
+            glDispatchCompute(GLuint((w/2+7)/8),GLuint((r1-r0+7)/8),1);
+            glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
+            check("mochi apply");
+            getBuffer(mochiBuf[5],5,out.data()+size_t(r0)*w,size_t(r1-r0)*rowBytes,false);
+        }
+        { // report: measured / zeroed tiles and the mean |correction| per phase (10-bit DN, before the SNR weight)
+            std::vector<float> tiles(size_t(nx)*ny*4),info(size_t(nx)*ny*4);
+            getBuffer(mochiBuf[2],2,tiles.data(),tileBytes,false);
+            getBuffer(mochiBuf[3],3,info.data(),tileBytes,false);
+            st.tiles=nx*ny;
+            for(size_t i=0;i<size_t(nx)*ny;++i){
+                if(info[i*4+3]<=0.f)continue;
+                ++st.measured;if(info[i*4+2]>0.f)++st.zeroed;
+                for(int c=0;c<4;++c)st.meanAbsDn[c]+=std::abs(tiles[i*4+c])*1023.0;
+            }
+            if(st.measured)for(double& v:st.meanAbsDn)v/=st.measured;
+        }
+        for(int k=0;k<6;++k)if(buffers[k])glBindBufferBase(GL_SHADER_STORAGE_BUFFER,GLuint(k),buffers[k]); // merge()'s bindings
+        st.ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();
+        return true;
+    }
     // P35 / P33: the native mosaic merge programs merge() compiles on first use (prewarm on module open, hybridPrewarmGpu): the fast
     // merge plain and, when the strips may carry site flags, marked; or the generic merge where the fast one does not apply.
     void prewarmNative(int block,int window,bool fill,bool fullWindow,bool generic,bool mayMark){
@@ -5538,6 +5802,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     } teardown;
     // P33 W2.2: the P19 R / B resample of the merged rows while the GPU merges the next strips (new bands for every attempt)
     std::unique_ptr<HybridCaBands> caBands;double caBandsMs=0;
+    // P62 Mochi: the corrected bracketed frames (in.frames points at them once made; made once, a retry merges them again)
+    std::vector<std::vector<uint16_t>> mochiRaw;bool mochiPending=tune.mochi>0;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
         if(caModel.ok){
@@ -5559,6 +5825,36 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);
+        if(mochiPending){
+            mochiPending=false;
+            int bracketed=0,others=1;
+            for(size_t i=1;i<in.frames.size();++i)++(in.role[i]==kRoleBracketed?bracketed:others);
+            if(native)report("HYBRID MOCHI: off (native mosaic merge)");
+            else if(!bracketed)report("HYBRID MOCHI: no bracketed frame in the merge");
+            else if(tune.mochi==1&&others<=3)report("HYBRID MOCHI: off ("+std::to_string(others)+" non-bracketed frames, GCam's rule needs more than 3; mochi 2 forces it)");
+            else {
+                mochiRaw.reserve(size_t(bracketed));
+                for(size_t i=1;i<in.frames.size();++i){
+                    if(in.role[i]!=kRoleBracketed)continue;
+                    HybridGpu::MochiStats st;mochiRaw.emplace_back();
+                    try{
+                        if(!gpu.mochi(in,int(i),tune.clipLevel,mochiRaw.back(),st)){
+                            report("HYBRID MOCHI: frame "+std::to_string(index[i])+" not corrected (scaled homography or rows beyond the storage block)");
+                            mochiRaw.pop_back();continue;
+                        }
+                    }catch(const std::exception& error){
+                        while(glGetError()!=GL_NO_ERROR){}
+                        report(std::string("HYBRID MOCHI: failed (")+error.what()+"); the remaining frames merge uncorrected");
+                        mochiRaw.pop_back();break;
+                    }
+                    in.frames[i]=mochiRaw.back().data();
+                    char line[260];
+                    std::snprintf(line,sizeof(line),"HYBRID MOCHI: frame %d (TET x%.2f) corrected: %d of %d tiles measured, %d zeroed (|c|^2 > 500), mean |c| %.2f/%.2f/%.2f/%.2f DN10 per RAW phase, %d band(s), %.0f ms",
+                        index[i],1.f/in.gain[i],st.measured,st.tiles,st.zeroed,st.meanAbsDn[0],st.meanAbsDn[1],st.meanAbsDn[2],st.meanAbsDn[3],st.bands,st.ms);
+                    report(line);
+                }
+            }
+        }
         gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
