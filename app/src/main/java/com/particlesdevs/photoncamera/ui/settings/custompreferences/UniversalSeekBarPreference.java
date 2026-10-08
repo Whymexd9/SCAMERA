@@ -20,7 +20,6 @@ import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.control.Vibration;
 
-import java.util.Locale;
 import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 
 /**
@@ -45,6 +44,8 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     private final boolean isFloat, showSeekBarValue;
     private float mStepPerUnit;
     private final int mSeekBarMax;
+    /** Decimals of a decimal value on the step grid (PreferenceNumber.gridDecimals): 4 for steps of 0.0001, at least 2. */
+    private final int mDecimals;
     private int seekBarProgress;
     private TextView seekBarValue;
     private SeekBar seekBar;
@@ -67,6 +68,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         // Rounded, not truncated: (1.0f - -0.2f) * 20 evaluates to 24.00000095 in float32,
         // and a range like 0.3f * 10 would truncate to 2 instead of 3.
         mSeekBarMax = Math.max(1, (int) Math.round(((double) mMax - (double) mMin) * (double) mStepPerUnit));
+        mDecimals = PreferenceNumber.gridDecimals(mStepPerUnit, mMin);
     }
 
     public UniversalSeekBarPreference(Context context, AttributeSet attrs, int defStyleAttr) {
@@ -132,8 +134,11 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         // First run only: seed the store so backups/exports contain the key.
         // Afterwards this is a pure refresh, so an off-grid value is preserved.
         if (NOT_PERSISTED.equals(readStoredString(NOT_PERSISTED))) {
-            float seed = clamp(parseValue((defaultValue == null ? Float.toString(mMin) : defaultValue.toString()), mMin));
-            String seedText = isFloat ? formatGridValue(seed) : formatExactValue(seed);
+            String defaultText = defaultValue == null ? Float.toString(mMin) : defaultValue.toString();
+            float seed = clamp(parseValue(defaultText, mMin));
+            // The XML default exactly (1.414 on a 0.01 grid stays 1.414), else as the bar writes it.
+            String seedText = isFloat ? PreferenceNumber.gridText(seed, Math.max(mDecimals, PreferenceNumber.decimalsOf(defaultText)))
+                    : formatExactValue(seed);
             seekBarProgress = valueToProgress(seed);
             updateLabel(seedText);
             updateSeekbar(seekBarProgress);
@@ -247,7 +252,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     private String convertToValue(int progress) {
         double value = (double) progress / (double) mStepPerUnit + (double) mMin;
         if (isFloat)
-            return String.format(Locale.ROOT, "%.2f", value);
+            return PreferenceNumber.gridText(value, mDecimals);
         else
             return String.valueOf((int) Math.round(value));
     }
@@ -255,11 +260,6 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     /** Trimmed representation used for off-grid values and for dialog hints. */
     private String formatExactValue(float value) {
         return PreferenceNumber.format(value, isFloat);
-    }
-
-    /** Grid representation, identical to what dragging the bar produces. */
-    private String formatGridValue(float value) {
-        return isFloat ? String.format(Locale.ROOT, "%.2f", value) : String.valueOf(Math.round(value));
     }
 
     private String readStoredString(String fallback) {

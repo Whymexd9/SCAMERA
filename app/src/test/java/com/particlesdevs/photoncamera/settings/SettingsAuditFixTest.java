@@ -85,4 +85,39 @@ public class SettingsAuditFixTest {
         prefs.edit().putString("pref_cfa_key","-2").commit();assertEquals(-1,PreferenceKeys.getCFAValue());
         prefs.edit().putString("pref_cfa_key","3").commit();assertEquals(3,PreferenceKeys.getCFAValue());
     }
+
+    /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
+    @Test public void slidersKeepTheirPrecision() {
+        assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));
+        assertEquals("0.001",PreferenceNumber.gridText(0.001,PreferenceNumber.gridDecimals(100,0.001f)));
+        assertEquals("0.011",PreferenceNumber.gridText(1/100.0+0.001,PreferenceNumber.gridDecimals(100,0.001f)));
+        assertEquals("0.50",PreferenceNumber.gridText(0.5,PreferenceNumber.gridDecimals(100,0)));
+        assertEquals("0.20",PreferenceNumber.gridText(0.2,PreferenceNumber.gridDecimals(1000,0.01f)));
+        inflate();
+        assertEquals("0.0005",prefs.getString("pref_lmc_hybrid_bento_trigger",""));
+        assertEquals("1.414",prefs.getString("pref_lmc_hybrid_lut_sigma",""));
+        assertEquals(0.0005f,PreferenceKeys.hybridValue("bento_trigger",0.0005f),1e-9f);
+    }
+
+    /** H1: the "0.00" / "1.41" the old sliders seeded move to 0.0005 / 1.414 once, in every profile; later choices stay. */
+    @Test public void roundedSliderDefaultsMoveOnce() {
+        SharedPreferences[] module=profiles();
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_bento_trigger","0.00")
+                .putString("pref_lmc_hybrid_lut_sigma","1.41").commit();
+        module[0].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_bento_trigger","0.00").commit();
+        module[1].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_bento_trigger","0.01")
+                .putString("pref_lmc_hybrid_lut_sigma","1.50").commit();
+        module[2].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_lut_sigma","1.41").commit();
+        SettingsMigration.migrateLmcHybrid(context,prefs);
+        assertEquals("0.0005",prefs.getString("pref_lmc_hybrid_bento_trigger",""));
+        assertEquals("1.414",prefs.getString("pref_lmc_hybrid_lut_sigma",""));
+        assertEquals("0.0005",module[0].getString("pref_lmc_hybrid_bento_trigger",""));
+        assertEquals("a chosen value stays","0.01",module[1].getString("pref_lmc_hybrid_bento_trigger",""));
+        assertEquals("1.50",module[1].getString("pref_lmc_hybrid_lut_sigma",""));
+        assertEquals("1.414",module[2].getString("pref_lmc_hybrid_lut_sigma",""));
+        // A 0.00 chosen after the move is the user's.
+        prefs.edit().putString("pref_lmc_hybrid_bento_trigger","0.00").commit();
+        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
+        assertEquals("0.00",prefs.getString("pref_lmc_hybrid_bento_trigger",""));
+    }
 }

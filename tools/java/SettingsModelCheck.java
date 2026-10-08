@@ -11,6 +11,11 @@ public class SettingsModelCheck {
         if(!PreferenceNumber.bool("1.0",false)||PreferenceNumber.bool("0",true))throw new AssertionError("mixed boolean storage");
         if(!PreferenceNumber.floating(float.class))throw new AssertionError("float step=1 still float");
         if(!PreferenceNumber.format(.00390625f,true).equals("0.00390625"))throw new AssertionError("precision lost");
+        // H1: a slider stores the decimals its step and minimum need (Bento auto threshold 0.0005 was stored as "0.00")
+        if(!PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)).equals("0.0005"))throw new AssertionError("0.0005 rounded");
+        if(!PreferenceNumber.gridText(1.414f,Math.max(PreferenceNumber.gridDecimals(100,1),PreferenceNumber.decimalsOf("1.414"))).equals("1.414"))throw new AssertionError("1.414 rounded");
+        if(!PreferenceNumber.gridText(0.001,PreferenceNumber.gridDecimals(100,.001f)).equals("0.001"))throw new AssertionError("0.001 rounded");
+        if(!PreferenceNumber.gridText(0.5,PreferenceNumber.gridDecimals(20,0)).equals("0.50"))throw new AssertionError("two decimals kept");
         eq(PreferenceNumber.progress(.30f,.10f,100,100),20);
         if(SettingsNumericRules.error("pref_antibanding_hz_key","100.5")==null)throw new AssertionError("integer validation");
         if(SettingsNumericRules.bounds("pref_mfsr_frames_key")!=null)throw new AssertionError("removed RAW MFSR key still bounded");

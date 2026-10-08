@@ -459,6 +459,22 @@ public final class SettingsMigration {
             e.putInt(MOSAIC_FRAMES_REV, 1);
             markOnly = true;
         }
+        // Slider precision (settings audit H1, 8 October 2026): the sliders stored two decimals, so the first opening of the
+        // screen wrote the XML default 0.0005 of the Bento auto threshold as "0.00" (Bento then triggered on almost every
+        // shot) and 1.414 of the LUT sigma as "1.41". Exactly those stored strings are that rounding, not a choice, and move
+        // to the defaults. Own one-time marker, set in the first run whatever it finds, so a "0.00" chosen later stays.
+        if (!values.containsKey(PRECISION_REV)) {
+            if ("0.00".equals(values.get(LmcHybridKeys.PREFIX + "bento_trigger"))) {
+                e.putString(LmcHybridKeys.PREFIX + "bento_trigger", "0.0005");
+                changed = true;
+            }
+            if ("1.41".equals(values.get(LmcHybridKeys.PREFIX + "lut_sigma"))) {
+                e.putString(LmcHybridKeys.PREFIX + "lut_sigma", "1.414");
+                changed = true;
+            }
+            e.putInt(PRECISION_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
@@ -468,6 +484,8 @@ public final class SettingsMigration {
     static final String ZSL_FRAMES_REV = "pref_lmc_hybrid_zsl_frames_rev";
     /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_mosaic_frames (24) to 30. */
     static final String MOSAIC_FRAMES_REV = "pref_lmc_hybrid_mosaic_frames_rev";
+    /** Marker of the one-time move of the two-decimal slider defaults "0.00" (Bento auto threshold) and "1.41" (LUT sigma). */
+    static final String PRECISION_REV = "pref_lmc_hybrid_precision_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {
