@@ -650,7 +650,7 @@
     <string name="prefs_theme_accent_title">Цветовой акцент</string>
     <string name="prefs_theme_accent_summary">Цвет выделения, переключателей и элементов камеры</string>
     <string name="prefs_output_settings_screen_title">Конфиг</string>
-    <string name="prefs_output_settings_screen_summary">Формат фото (JPEG / HEIC / WebP) и качество, Ultra HDR, 16:9, водяной знак, сохранение настроек</string>
+    <string name="prefs_output_settings_screen_summary">Формат фото (JPEG / HEIC / WebP / AVIF) и качество, Ultra HDR, 16:9, водяной знак, сохранение настроек</string>
     <string name="prefs_jpeg_quality_title">Качество JPEG</string>
     <string name="prefs_jpeg_quality_summary">Сжатие каждого JPEG: обычного, Ultra HDR и его карты усиления. 98 по умолчанию (как раньше); меньше — файл меньше, мелкая деталь и плавные градиенты теряются раньше. Ниже 90 разница заметна на увеличении.</string>
     <string name="prefs_watermark_screen_title">Подпись и вид знака</string>

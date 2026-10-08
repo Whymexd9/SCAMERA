@@ -650,7 +650,7 @@
     <string name="prefs_theme_accent_title">Accent colour</string>
     <string name="prefs_theme_accent_summary">Colour of highlights, switches and camera controls</string>
     <string name="prefs_output_settings_screen_title">Config</string>
-    <string name="prefs_output_settings_screen_summary">Photo format (JPEG / HEIC / WebP) and quality, Ultra HDR, 16:9, watermark, saving settings</string>
+    <string name="prefs_output_settings_screen_summary">Photo format (JPEG / HEIC / WebP / AVIF) and quality, Ultra HDR, 16:9, watermark, saving settings</string>
     <string name="prefs_jpeg_quality_title">JPEG quality</string>
     <string name="prefs_jpeg_quality_summary">Compression of every JPEG: normal, Ultra HDR and its gain map. Default 98 (as before); lower gives a smaller file, and fine detail and smooth gradients are lost sooner. Below 90 the difference shows when zoomed in.</string>
     <string name="prefs_watermark_screen_title">Caption and watermark look</string>
