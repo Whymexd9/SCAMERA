@@ -29,11 +29,15 @@ assert 'hexQuad' not in pipeline and not (java/'processing/opengl/postpipeline/H
 print('HexQuad controls: visible screen, matching defaults, versioned header, removed legacy rows PASS')
 
 expected={'hexquad_model':'2','hexquad_noise_overall':'1','hexquad_noise_photon':'1','hexquad_noise_readout':'1','hexquad_auto_iso':'false','hexquad_texture':'0','hexquad_iso_low_luma':'35','hexquad_iso_low_chroma':'85','hexquad_iso_high_luma':'70','hexquad_iso_high_chroma':'100'}
-activity=(java/'ui/settings/SettingsActivity.java').read_text()
+# The rows' enabled state comes from SettingsAvailability, which the settings screen applies on every change (SettingsActivity
+# had a copy of these rules that the availability pass overrode; it was removed in the settings audit, S5).
+availability=(java/'settings/SettingsAvailability.java').read_text()
+assert '(key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")' in availability
+assert 'any(key, p + "luma", p + "chroma") && auto' in availability and 'key.startsWith(p + "iso_") && !auto' in availability
 for key,default in expected.items():
     es=[e for e in xml.iter() if e.get(a+'key')==key]
     assert len(es)==1 and es[0] in list(screen.iter()) and es[0].get(a+'defaultValue')==default
-    assert key in settings and key in activity
+    assert key in settings and key.startswith('hexquad_')
 assert 'burst.options.profileKey(burst.iso,burst.red)' in (java/'processing/opengl/postpipeline/VivoNeuralClient.java').read_text()
 assert 'burst.options.outputBytes(w,h)' in (java/'processing/opengl/postpipeline/VivoNeuralClient.java').read_text()
 print('HexQuad v14: model, output dimensions, ISO policy, profile cache, texture and UI wiring PASS')
@@ -48,6 +52,6 @@ for key in ['hexquad_noise_overall','hexquad_noise_photon','hexquad_noise_readou
 es=[e for e in xml.iter() if e.get(a+'key')=='hexquad_compute']
 assert len(es)==1 and es[0] in list(screen.iter()) and es[0].get(a+'selectable')=='false' and es[0].tag=='Preference'
 assert 'true /* Unified hybrid;' in settings
-assert 'getString("default_scope","hexquad_compute"' not in settings and 'hexquad_compute' in activity
+assert 'getString("default_scope","hexquad_compute"' not in settings
 assert 'gpu?4:3' in options and 'putInt(gpu?1:0)' in options
 print('HexQuad unified hybrid: automatic mode, legacy selector ignored, captured transport PASS')
