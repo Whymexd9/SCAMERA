@@ -700,4 +700,9 @@
     <string name="prefs_webp_lossless_summary">Exact pixels: files several times larger than lossy WebP and slower to save. Quality is not used.</string>
     <string name="prefs_photo_also_jpeg_title">Also save a JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">A JPEG copy next to the HEIC / WebP photo for apps that cannot open them. With Ultra HDR on, this JPEG carries it.</string>
+    <!-- P42: face detection and tracking autofocus (after ArkCamera v50) -->
+    <string name="prefs_face_detect_title">Face detection</string>
+    <string name="prefs_face_detect_summary">Faces are framed on the viewfinder and steer autofocus and exposure (manual focus, manual exposure and a tap focus take precedence). Camera modes are used only where the lens offers them; Software reads the viewfinder image.</string>
+    <string name="prefs_tracking_af_title">Tracking autofocus</string>
+    <string name="prefs_tracking_af_summary">Locks focus and exposure onto a subject and follows it across the frame. When it is lost, continuous autofocus takes over again. Tapping elsewhere returns to the tap focus.</string>
 </resources>

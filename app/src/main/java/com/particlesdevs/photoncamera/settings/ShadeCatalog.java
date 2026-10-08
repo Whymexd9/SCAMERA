@@ -110,7 +110,7 @@ public final class ShadeCatalog {
                     "pref_vivo_nice_mosaic"),
             new Group(R.string.shade_group_color, "pref_lmc_tone_curve", "pref_sharp_usm_enabled_key"),
             new Group(R.string.shade_group_view, "pref_show_grid_key", "pref_peak_method_key", "pref_live_viewfinder_raw_key",
-                    "pref_show_afdata_key")));
+                    "pref_show_afdata_key", "pref_face_detect_mode", "pref_tracking_af_mode")));
 
     /** Read when the camera session is built: a change restarts the camera (owner's answer 7). */
     static final Set<String> SESSION_KEYS = new HashSet<>(Arrays.asList("pref_live_viewfinder_raw_key", "pref_wide169_key",
@@ -178,6 +178,9 @@ public final class ShadeCatalog {
         spec("pref_peak_method_key", R.string.shade_t_peak, R.array.shade_s_peak, R.drawable.ic_shade_focus);
         spec("pref_live_viewfinder_raw_key", R.string.shade_t_live_raw, 0, R.drawable.settings_ic_eye);
         spec("pref_show_afdata_key", R.string.shade_t_debug, R.array.shade_s_debug, R.drawable.settings_ic_diag);
+        // P42: face detection and tracking autofocus.
+        spec("pref_face_detect_mode", R.string.shade_t_faces, R.array.shade_s_faces, R.drawable.settings_ic_face);
+        spec("pref_tracking_af_mode", R.string.shade_t_tracking, R.array.shade_s_tracking, R.drawable.ic_shade_focus);
     }
 
     /**
@@ -197,6 +200,8 @@ public final class ShadeCatalog {
             {"мозаик|mosaic|quad|tetra|байер|bayer|hp9", "мозаика ремозаик quad tetra bayer mosaic"},
             {"сетк|grid", "сетка grid"},
             {"фокус|focus|peak", "фокус focus пик peaking"},
+            {"лиц|face", "лица лицо распознавание face faces detection"},
+            {"трек|track|следящ", "трекинг слежение следящий tracking track"},
             {"отладк|hud|диагност|diagnost|журнал|debug", "отладка debug hud лог log"},
             {"водян|подпис|watermark|caption", "водяной знак watermark подпись caption"},
             {"agx|aces|кривая|гамма|gamma|curve", "кривая curve тон agx гамма gamma"},
