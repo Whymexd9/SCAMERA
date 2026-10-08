@@ -296,6 +296,15 @@ public class PreferenceKeys {
         return new com.particlesdevs.photoncamera.processing.avif.AvifEncoder.Options(getAvifQuality(), isAvifLossless(), getAvifDepth(),
                 isAvifYuv444(), getAvifSpeed(), Runtime.getRuntime().availableProcessors());
     }
+    /** P46 «Цветовое пространство» as stored: sRGB (default) or Display P3; the pipeline renders and every file is tagged in it. */
+    public static com.particlesdevs.photoncamera.processing.color.OutputColour.Space getOutputColourSpace() {
+        return com.particlesdevs.photoncamera.processing.color.OutputColour.Space.parse(preferenceKeys.settingsManager.getString("default_scope",
+                com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_COLOR_SPACE, "srgb"));
+    }
+    /** P46 «HDR в HEIC / AVIF» as stored (default off); whether a shot uses it: processing.color.HdrOutput.wanted. */
+    public static boolean isHdrOutputOn() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HDR, false);
+    }
     /** «Также сохранять JPEG»: a JPEG next to the HEIC / WebP / AVIF photo (it carries Ultra HDR when that is on). */
     public static boolean isAlsoSaveJpeg() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_ALSO_JPEG, false);

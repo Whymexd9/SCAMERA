@@ -124,6 +124,75 @@ public final class UltraHdrGalleryUtil {
         return false;
     }
 
+    /** P46: colour of an image file ({@link #colourOf}): sRGB (or unknown), a wider gamut (Display P3, BT.2020), HDR (HLG / PQ). */
+    public static final int COLOUR_SRGB = 0, COLOUR_WIDE = 1, COLOUR_HDR = 2;
+
+    /**
+     * P46: the colour space the platform decoder reads from the file header (ICC profile, nclx): a Display P3 photo
+     * («Цветовое пространство» Display P3) is {@link #COLOUR_WIDE}, an HLG / PQ HEIC or AVIF («HDR в HEIC / AVIF», Android 14
+     * names those spaces) {@link #COLOUR_HDR}. Bounds-only decode: no pixels.
+     */
+    public static int colourOf(Context context, Uri uri) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context == null || uri == null) {
+            return COLOUR_SRGB;
+        }
+        try (InputStream in = context.getContentResolver().openInputStream(uri)) {
+            if (in == null) {
+                return COLOUR_SRGB;
+            }
+            android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeStream(in, null, options);
+            return classify(options.outColorSpace);
+        } catch (Exception e) {
+            Log.d(TAG, "colour space probe failed: " + e);
+            return COLOUR_SRGB;
+        }
+    }
+
+    /** {@link #COLOUR_SRGB} for sRGB (and spaces Android takes as sRGB) or none, HDR for BT.2020 HLG / PQ, wide otherwise. */
+    static int classify(android.graphics.ColorSpace space) {
+        if (space == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return COLOUR_SRGB;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                && (space.equals(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.BT2020_HLG))
+                || space.equals(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.BT2020_PQ)))) {
+            return COLOUR_HDR;
+        }
+        if (space.isSrgb() || space.getModel() != android.graphics.ColorSpace.Model.RGB) {
+            return COLOUR_SRGB;
+        }
+        return COLOUR_WIDE;
+    }
+
+    /**
+     * P46: the window colour mode for a page: HDR for an active Ultra HDR rendition or an HLG / PQ file on an HDR display,
+     * wide colour for a Display P3 (or other wide-gamut) file on a wide-gamut display, the default otherwise - so an sRGB
+     * page gets exactly {@link #setWindowHdr}'s modes.
+     */
+    public static void setWindowMode(Activity activity, boolean hdr, int colour) {
+        if (activity == null) {
+            return;
+        }
+        if (hdr || colour == COLOUR_SRGB) {
+            setWindowHdr(activity, hdr);
+            return;
+        }
+        try {
+            int mode = ActivityInfo.COLOR_MODE_DEFAULT;
+            if (colour == COLOUR_HDR && isDeviceHdrCapable(activity)) {
+                mode = ActivityInfo.COLOR_MODE_HDR;
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    && activity.getResources().getConfiguration().isScreenWideColorGamut()) {
+                mode = ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT;
+            }
+            activity.getWindow().setColorMode(mode);
+        } catch (Exception e) {
+            Log.d(TAG, "Failed to set window color mode: " + e);
+        }
+    }
+
     /**
      * Toggles the window HDR color mode. HWUI automatically applies a
      * bitmap's gainmap when it is drawn on a hardware canvas inside an

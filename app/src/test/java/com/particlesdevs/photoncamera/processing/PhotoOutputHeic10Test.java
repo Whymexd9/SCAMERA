@@ -89,8 +89,9 @@ public class PhotoOutputHeic10Test {
 
     /** Stub writer: records the call and writes a marker file when {@code ok}. */
     private void stub(boolean ok) {
-        PhotoOutput.tenBitHeic = (file, img, quality, exifBlock, timeoutMs, detail) -> {
+        PhotoOutput.tenBitHeic = (file, img, quality, exifBlock, timeoutMs, detail, colour) -> {
             configs.add(img.getConfig());
+            assertTrue("the default photo declares the default colour", colour.isDefault());
             exifBlocks.add(exifBlock);
             assertTrue(timeoutMs >= 30_000);
             if (!ok) return false;
@@ -168,7 +169,7 @@ public class PhotoOutputHeic10Test {
     public void throwingTenBitWriterNeverLosesTheShot() {
         Heic10Support.setForTesting(HW);
         prefs("heic", true, false);
-        PhotoOutput.tenBitHeic = (file, img, quality, exifBlock, timeoutMs, detail) -> {
+        PhotoOutput.tenBitHeic = (file, img, quality, exifBlock, timeoutMs, detail, colour) -> {
             throw new IllegalStateException("codec died");
         };
         final Path base = tmp.getRoot().toPath().resolve("IMG_T");

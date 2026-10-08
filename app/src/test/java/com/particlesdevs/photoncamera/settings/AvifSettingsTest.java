@@ -196,7 +196,9 @@ public class AvifSettingsTest {
         for (int i = 0; i < config.getPreferenceCount(); i++) order.add(config.getPreference(i).getKey());
         int at = order.indexOf(PhotoFormat.KEY_WEBP_LOSSLESS);
         assertEquals(Arrays.asList(AVIF_ROWS), order.subList(at + 1, at + 1 + AVIF_ROWS.length));
-        assertEquals(PhotoFormat.KEY_ALSO_JPEG, order.get(at + 1 + AVIF_ROWS.length));
+        // P46: «Цветовое пространство» and «HDR в HEIC / AVIF» come between the AVIF rows and «Также сохранять JPEG»
+        assertEquals(Arrays.asList(PhotoFormat.KEY_COLOR_SPACE, PhotoFormat.KEY_HDR, PhotoFormat.KEY_ALSO_JPEG),
+                order.subList(at + 1 + AVIF_ROWS.length, at + 4 + AVIF_ROWS.length));
         assertTrue(config.findPreference(PhotoFormat.KEY_AVIF_QUALITY) instanceof UniversalSeekBarPreference);
         assertTrue(config.findPreference(PhotoFormat.KEY_AVIF_LOSSLESS) instanceof ManagedSwitchPreference);
         ListPreference depth = config.findPreference(PhotoFormat.KEY_AVIF_DEPTH);

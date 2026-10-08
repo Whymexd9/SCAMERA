@@ -269,6 +269,10 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
                 UltraHdrGalleryUtil.setWindowHdr(getActivity(), true);
                 updateHdrToggleUi(adapter.isHdrAvailable(position), true);
             } else {
+                if (!isCompareMode()) {
+                    applyWindowColour(position, false);
+                    probePageColour(position);
+                }
                 adapter.loadHdrForPosition(getSsivAt(position), position);
                 updateHdrToggleUi(adapter.isHdrAvailable(position), false);
             }
@@ -306,14 +310,35 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         // readiness (via the listener) and cleared on pause, so no pane can
         // stomp the other's window state.
         if (!isCompareMode() && getActivity() != null) {
-            UltraHdrGalleryUtil.setWindowHdr(getActivity(), adapter.isHdrActive(position));
+            applyWindowColour(position, adapter.isHdrActive(position));
+            probePageColour(position);
         }
+    }
+
+    /**
+     * P46: the window colour mode of the page: HDR for its Ultra HDR rendition, else by the colour of its file - wide colour
+     * for a Display P3 photo, HDR for an HLG HEIC / AVIF, the default for sRGB (as before P46).
+     */
+    private void applyWindowColour(int position, boolean hdr) {
+        if (getActivity() == null || adapter == null) return;
+        UltraHdrGalleryUtil.setWindowMode(getActivity(), hdr, adapter.colourOf(position));
+    }
+
+    /** P46: learns the colour of the page's file; a wide-gamut / HLG page switches the window when it is still shown. */
+    private void probePageColour(int position) {
+        if (adapter == null) return;
+        adapter.probeColour(position, getContext(), () -> {
+            if (viewPager != null && adapter != null && position == viewPager.getCurrentItem() && !isCompareMode()
+                    && !adapter.isHdrActive(position)) {
+                applyWindowColour(position, false);
+            }
+        });
     }
 
     @Override
     public void onHdrStateChanged(int position, boolean isHdr) {
         if (getActivity() != null && viewPager != null && position == viewPager.getCurrentItem()) {
-            UltraHdrGalleryUtil.setWindowHdr(getActivity(), isHdr);
+            applyWindowColour(position, isHdr);
             updateHdrToggleUi(adapter != null && adapter.isHdrAvailable(position), isHdr);
         }
     }
@@ -335,7 +360,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         }
         if (adapter.isHdrActive(position)) {
             adapter.releaseHdrForPosition(getSsivAt(position), position);
-            UltraHdrGalleryUtil.setWindowHdr(getActivity(), false);
+            applyWindowColour(position, false);
             updateHdrToggleUi(true, false);
         } else {
             adapter.loadHdrForPosition(getSsivAt(position), position);

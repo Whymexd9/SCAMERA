@@ -9,6 +9,7 @@ import android.os.Build;
 
 import androidx.annotation.RequiresApi;
 
+import com.particlesdevs.photoncamera.processing.color.OutputColour;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.io.BufferedOutputStream;
@@ -32,6 +33,9 @@ import java.util.concurrent.TimeUnit;
  * sibling has a high-bit-depth switch. The RGB -> P010 conversion ({@link P010}) runs on a few threads, one tile band
  * (512 image rows) ahead of the encoder, without a full-frame copy of the image. Any failure returns false (partial file
  * deleted, codec released) so PhotoOutput falls back to the 8-bit HEIC and then to JPEG.
+ * P46: {@link #write(Path, Bitmap, int, byte[], long, Stats, OutputColour.Signal)} declares another colour - Display P3
+ * (nclx 12/13/1 + ICC profile in the container; the VUI stays BT.709, MediaFormat has no P3 standard) or HLG (BT.2020
+ * matrix in the P010 conversion, VUI BT.2020 / HLG / full range, nclx 9/18/9). The sRGB default is the path above.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 public final class Heic10Encoder {
@@ -59,6 +63,12 @@ public final class Heic10Encoder {
      * null. True when the file is complete; false (no file left) otherwise.
      */
     public static boolean write(Path file, Bitmap img, int quality, byte[] exifBlock, long timeoutMs, Stats stats) {
+        return write(file, img, quality, exifBlock, timeoutMs, stats, OutputColour.Signal.SRGB);
+    }
+
+    /** As above, declaring {@code colour} (P46); {@link OutputColour.Signal#SRGB} is the call above. */
+    public static boolean write(Path file, Bitmap img, int quality, byte[] exifBlock, long timeoutMs, Stats stats,
+                                OutputColour.Signal colour) {
         final long started = System.nanoTime();
         final List<Heic10Support.Encoder> candidates = Heic10Support.ranked(Heic10Support.candidates());
         if (candidates.isEmpty()) {
@@ -81,7 +91,7 @@ public final class Heic10Encoder {
                 stats.codec = enc.name;
                 try {
                     codec = MediaCodec.createByCodecName(enc.name);
-                    input = configure(codec, enc, quality, grid.tile, stats);
+                    input = configure(codec, enc, quality, grid.tile, stats, colour);
                     codec.start();
                     break;
                 } catch (Exception e) {
@@ -93,7 +103,7 @@ public final class Heic10Encoder {
                 }
             }
             if (codec == null) throw new IllegalStateException("no encoder took 512x512 Main10 P010");
-            source = new TileSource(img, grid);
+            source = new TileSource(img, grid, P010.Matrix.forCode(colour.matrix));
             final Encoded encoded = run(codec, source, input, grid, deadline);
             stats.convertMs = source.convertNanos / 1_000_000;
             final HevcNal.Sps sps = HevcNal.parseSps(encoded.sets.sps.get(0));
@@ -105,6 +115,7 @@ public final class Heic10Encoder {
             final HeifContainerWriter writer = new HeifContainerWriter(grid, encoded.sets.hvcC(), sps.bitDepthLuma);
             for (byte[] sample : encoded.samples) writer.addTile(sample);
             writer.setExif(exifBlock);
+            if (!colour.isDefault()) writer.setColour(colour);
             try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file), 1 << 20)) {
                 writer.writeTo(out);
             }
@@ -128,11 +139,12 @@ public final class Heic10Encoder {
     }
 
     /** Configures the encoder for 512 x 512 Main10 P010 intra frames: CQ at the HEIC quality when it has CQ, else VBR. */
-    private static MediaFormat configure(MediaCodec codec, Heic10Support.Encoder enc, int quality, int tile, Stats stats) {
+    private static MediaFormat configure(MediaCodec codec, Heic10Support.Encoder enc, int quality, int tile, Stats stats,
+                                         OutputColour.Signal colour) {
         if (enc.cq) {
             try {
                 final int q = Heic10Support.cqQuality(quality, enc.qualityLow, enc.qualityHigh);
-                codec.configure(format(tile, true, q, 0), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+                codec.configure(format(tile, true, q, 0, colour), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
                 stats.mode = "CQ " + q;
                 return codec.getInputFormat();
             } catch (RuntimeException e) {
@@ -142,22 +154,38 @@ public final class Heic10Encoder {
             }
         }
         final int bitrate = Heic10Support.vbrBitrate(quality, tile, FPS, enc.bitrateLow, enc.bitrateHigh);
-        codec.configure(format(tile, false, 0, bitrate), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        codec.configure(format(tile, false, 0, bitrate, colour), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         stats.mode = "VBR " + bitrate / 1000 + " kbit/s";
         return codec.getInputFormat();
     }
 
     static MediaFormat format(int tile, boolean cq, int cqQuality, int bitrate) {
+        return format(tile, cq, cqQuality, bitrate, OutputColour.Signal.SRGB);
+    }
+
+    /**
+     * The encoder format; the VUI follows {@code colour} only for HDR (BT.2020 / HLG or PQ / its range): an SDR colour keeps
+     * the BT.709 SDR VUI of the default (MediaFormat cannot name P3 primaries; the container's colr boxes do).
+     */
+    static MediaFormat format(int tile, boolean cq, int cqQuality, int bitrate, OutputColour.Signal colour) {
         final MediaFormat f = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, tile, tile);
         f.setInteger(MediaFormat.KEY_COLOR_FORMAT, Heic10Support.COLOR_FORMAT_YUV_P010);
         f.setInteger(MediaFormat.KEY_PROFILE, Heic10Support.HEVC_PROFILE_MAIN10);
         f.setInteger(MediaFormat.KEY_FRAME_RATE, FPS);
         f.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 0); // every tile an intra frame
         f.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0);
-        f.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709);
-        f.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_FULL);
-        // The bitstream says SDR video; the container's colr box carries the real sRGB transfer.
-        f.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
+        if (colour.hdr()) {
+            // HDR (P46): the bitstream itself says BT.2020 + HLG (or PQ), so decoders that read only the VUI see HDR too.
+            f.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020);
+            f.setInteger(MediaFormat.KEY_COLOR_RANGE, colour.fullRange ? MediaFormat.COLOR_RANGE_FULL : MediaFormat.COLOR_RANGE_LIMITED);
+            f.setInteger(MediaFormat.KEY_COLOR_TRANSFER, colour.transfer == OutputColour.TRANSFER_PQ
+                    ? MediaFormat.COLOR_TRANSFER_ST2084 : MediaFormat.COLOR_TRANSFER_HLG);
+        } else {
+            f.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709);
+            f.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_FULL);
+            // The bitstream says SDR video; the container's colr box carries the real sRGB transfer.
+            f.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
+        }
         if (cq) {
             f.setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ);
             f.setInteger(MediaFormat.KEY_QUALITY, cqQuality);
@@ -344,6 +372,7 @@ public final class Heic10Encoder {
      */
     static final class TileSource implements AutoCloseable {
         private final TileGrid grid;
+        private final P010.Matrix matrix;
         private final TenBitBitmaps.RowReader reader;
         private final ExecutorService pool;
         private final int[][] bands;
@@ -352,8 +381,9 @@ public final class Heic10Encoder {
         long convertNanos;
 
         @SuppressWarnings("unchecked")
-        TileSource(Bitmap img, TileGrid grid) {
+        TileSource(Bitmap img, TileGrid grid, P010.Matrix matrix) {
             this.grid = grid;
+            this.matrix = matrix;
             reader = new TenBitBitmaps.RowReader(img, TenBitBitmaps.STRIP_ROWS);
             final int threads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
             pool = Executors.newFixedThreadPool(threads, r -> {
@@ -377,7 +407,7 @@ public final class Heic10Encoder {
                 final int column = c;
                 f[c] = pool.submit(() -> {
                     final byte[] out = new byte[P010.tileBytes(grid.tile, grid.tile)];
-                    P010.convertTile(band, grid.width, validRows, grid.x0(column), grid.validWidth(column), grid.tile, grid.tile, out);
+                    P010.convertTile(band, grid.width, validRows, grid.x0(column), grid.validWidth(column), grid.tile, grid.tile, out, matrix);
                     return out;
                 });
             }

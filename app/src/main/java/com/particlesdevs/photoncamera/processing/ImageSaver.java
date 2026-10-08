@@ -170,6 +170,15 @@ public class ImageSaver {
 
         /** As above; {@code recycle} false keeps the bitmap for another encode (a HEIC / WebP photo with its extra JPEG). */
         public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData, boolean recycle) {
+            return saveBitmapAsJPG(fileToSave, img, jpgQuality, exifData, recycle, null);
+        }
+
+        /**
+         * As above; {@code icc} (P46, «Цветовое пространство» Display P3) goes into the JPEG as APP2 ICC_PROFILE right after SOI
+         * (ExifInterface keeps it when it writes the EXIF). Null: the encoders write into the file stream as before.
+         */
+        public static boolean saveBitmapAsJPG(Path fileToSave, Bitmap img, int jpgQuality, ParseExif.ExifData exifData, boolean recycle,
+                                              byte[] icc) {
             exifData.COMPRESSION = ParseExif.COMPRESSION_JPEG;
             boolean encoded = false;
             final long encodeStart = System.nanoTime();
@@ -177,7 +186,13 @@ public class ImageSaver {
                 // jpegli 4:4:4 first; if it fails, the file is rewritten from the start by Android's encoder (4:2:0).
                 if (JpegliEncoder.available()) {
                     try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
-                        JpegliEncoder.compress(img, jpgQuality, outputStream);
+                        if (icc == null) {
+                            JpegliEncoder.compress(img, jpgQuality, outputStream);
+                        } else {
+                            final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(outputStream, icc);
+                            JpegliEncoder.compress(img, jpgQuality, tagged);
+                            tagged.close();
+                        }
                         outputStream.flush();
                         encoded = true;
                     } catch (IOException | RuntimeException e) {
@@ -186,7 +201,13 @@ public class ImageSaver {
                 }
                 if (!encoded) {
                     try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
-                        JpegliEncoder.compressFallback(img, jpgQuality, outputStream);
+                        if (icc == null) {
+                            JpegliEncoder.compressFallback(img, jpgQuality, outputStream);
+                        } else {
+                            final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(outputStream, icc);
+                            JpegliEncoder.compressFallback(img, jpgQuality, tagged);
+                            tagged.close();
+                        }
                         outputStream.flush();
                         encoded = true;
                     } catch (IOException | RuntimeException e) {

@@ -18,6 +18,7 @@ public final class DeviceAvailability {
     public static SettingsAvailability of(Map<String, ?> values) {
         return new SettingsAvailability(values)
                 .heic10Unavailable(com.particlesdevs.photoncamera.processing.heif.Heic10Support.unavailableReason())
+                .hdrUnavailable(com.particlesdevs.photoncamera.processing.color.HdrOutput.unavailableReason())
                 .stockAeDevice(com.particlesdevs.photoncamera.capture.VivoStockAe.supportedDevice())
                 .colorMethodOverride(colorMethodOverride())
                 .scamHdrSupported(PreferenceKeys.isScamHdrSupported())

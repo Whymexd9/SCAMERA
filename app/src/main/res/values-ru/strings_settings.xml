@@ -713,6 +713,10 @@
     <string name="prefs_avif_chroma_summary">4:4:4 (по умолчанию) — цвет в полном разрешении: чёткие цветные края и мелкая цветная деталь. 4:2:0 — цвет в половинном разрешении, файл меньше, цветные края размываются.</string>
     <string name="prefs_avif_speed_title">Скорость кодирования</string>
     <string name="prefs_avif_speed_summary">«Баланс» (по умолчанию) сохраняет снимок 12 Мп примерно за 1–2 с на современном телефоне. «Тщательно» — примерно в 5 раз дольше, деталь чуть лучше; «Быстро» и «Очень быстро» — примерно в 3 раза быстрее, деталь чуть хуже.</string>
+    <string name="prefs_photo_color_space_title">Цветовое пространство</string>
+    <string name="prefs_photo_color_space_summary">sRGB (по умолчанию) — цвета, которые одинаково показывает любой экран и любое приложение. Display P3 — шире диапазон цветов (глубже красные, оранжевые, зелёные, бирюзовые) на экранах P3 (большинство современных телефонов, планшетов, Mac); в файле профиль Display P3, приложения, которые его не читают, покажут фото чуть бледнее. Для JPEG (и Ultra HDR), HEIC, WebP и AVIF; RAW не меняется.</string>
+    <string name="prefs_photo_hdr_title">HDR в HEIC / AVIF</string>
+    <string name="prefs_photo_hdr_summary">Сохраняет HEIC / AVIF как настоящую HDR-картинку (HLG, BT.2020, 10 бит): на HDR-экране света ярче белого — из тех же данных сцены, что и Ultra HDR. Нужен «HEIC 10 бит» или AVIF 10 / 12 бит и Android 13+. Приложения без HDR покажут её темнее или бледнее. Выкл. (по умолчанию) — обычный SDR-файл.</string>
     <string name="prefs_photo_also_jpeg_title">Также сохранять JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с фото HEIC / WebP / AVIF — для приложений, которые их не открывают. С включённым Ultra HDR он будет в этом JPEG.</string>
     <!-- P42: распознавание лиц и следящий автофокус (по ArkCamera v50) -->

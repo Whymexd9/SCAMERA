@@ -591,6 +591,9 @@ public class HdrxProcessor extends ProcessorBase {
         // are. Off: the pipeline output is the ARGB_8888 bitmap as before.
         pipeline.tenBitOutput = com.particlesdevs.photoncamera.processing.heif.Heic10Support.wanted()
                 || com.particlesdevs.photoncamera.processing.avif.AvifEncoder.tenBitImageWanted();
+        // P46 «Цветовое пространство»: Display P3 renders the final image in P3 primaries; every file of the shot says so.
+        final com.particlesdevs.photoncamera.processing.color.OutputColour.Space colourSpace = PhotonCamera.getSettings().colourSpace;
+        pipeline.p3Output = colourSpace == com.particlesdevs.photoncamera.processing.color.OutputColour.Space.DISPLAY_P3;
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
         pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters);
         if (pipeline.deferTeardown) deferredPipeline = pipeline;
@@ -604,13 +607,14 @@ public class HdrxProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
-        // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG): the gain-map pass runs on the bitmap exactly
+        // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG) and the HDR HEIC / AVIF (P46, settings.hdrOutput)
+        // take the same gain map (settings.gainMapPass). Ultra HDR: the gain-map pass runs on the bitmap exactly
         // as the pipeline produced it - the pass checks the base against the pipeline size. It used to run after the hybrid
         // resize below, so every hybrid shot on the 2x grid with a 12/16/20 MP output failed the check and was saved as SDR,
         // and the digital zoom crop was skipped with Ultra HDR on. Now the map follows the resize and the crop instead.
         // Must run before the raw frame buffer is freed.
         PostPipeline.GainMapRaw gm = null;
-        if (PhotonCamera.getSettings().ultraHdr) {
+        if (PhotonCamera.getSettings().gainMapPass()) {
             processingStage = "Ultra HDR gain map";
             try {
                 gm = pipeline.RunHDRGainMap(jpegInput, processingParameters, img,
@@ -697,8 +701,13 @@ public class HdrxProcessor extends ProcessorBase {
             }
         }
         // imageFile has no extension yet: PhotoOutput names the files by the chosen format (.jpg / .heic / .webp).
-        final com.particlesdevs.photoncamera.processing.PhotoOutput.Result saved =
-                com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData, gain);
+        // P46: the gain map makes the JPEG an Ultra HDR JPEG only with Ultra HDR in effect, and the HEIC / AVIF HDR only with
+        // «HDR в HEIC / AVIF» in effect; without either option this is the call as before (sRGB, the map for the JPEG).
+        final boolean hdrOutput = PhotonCamera.getSettings().hdrOutput;
+        final com.particlesdevs.photoncamera.processing.PhotoOutput.Result saved = hdrOutput || pipeline.p3Output
+                ? com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData,
+                        PhotonCamera.getSettings().ultraHdr ? gain : null, hdrOutput ? gain : null, colourSpace)
+                : com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData, gain);
         if (gain != null) gain.gainMap.recycle();
         final java.util.List<Path> savedFiles = saved.notifyOrder();
         if (savedFiles.isEmpty()) savedFiles.add(com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG.fileFor(imageFile));

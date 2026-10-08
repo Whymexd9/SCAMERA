@@ -83,6 +83,8 @@ public final class ArkCombine extends Node {
                 glProg.setVar("detailClipU", sharp ? st.sharpMul : r.ae);
                 glProg.drawBlocks(st.detailRef);
             }
+            // P46 Display P3: the same shader with P3_OUT 1 (colour source, OKLab and gamut in P3); sRGB sets no define.
+            if (pipeline.p3Output) glProg.setDefine("P3_OUT", 1);
             glProg.useAssetProgram("ark/combine", false);
             glProg.setTexture("InputBuffer", input);
             ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
@@ -140,6 +142,6 @@ public final class ArkCombine extends Node {
                 + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
-                + " guard=" + guard + " ms=" + (System.currentTimeMillis() - started));
+                + " guard=" + guard + (pipeline.p3Output ? " output=DisplayP3" : "") + " ms=" + (System.currentTimeMillis() - started));
     }
 }

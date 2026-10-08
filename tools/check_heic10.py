@@ -13,7 +13,9 @@
       4. broken variants (wrong grid count, missing hvcC essential flag, iloc offset outside the file, no 'heic' brand)
          must be rejected;
       5. the 8-bit path stays as it was: PhotoOutput still writes the 8-bit HEIC through HeifWriter with the same builder
-         and the post pipeline renders the 8-bit final image into the same RGBA8 target (source guard).
+         and the post pipeline renders the 8-bit final image into the same RGBA8 target (source guard);
+      6. P46 colours: the same grid declared Display P3 (nclx 12/13/1 + the ICC profile libheif hands out, pixels as the
+         sRGB file) and an HLG grid (tiles coded with the BT.2020 matrix, nclx 9/18/9, decoded within the codec tolerance).
 
 What a file must have (ISO/IEC 23008-12, ISO/IEC 14496-15):
   * ftyp with 'mif1' and 'heic' among the brands (androidx ExifInterface needs both, Skia / MediaExtractor take either);
@@ -382,11 +384,13 @@ def self_test():
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         classes = tmp / 'classes'
+        colour = HEIF.parent / 'color'
         subprocess.run([javac, '-encoding', 'UTF-8', '-d', str(classes), str(HEIF / 'HevcNal.java'), str(HEIF / 'TileGrid.java'),
-                        str(HEIF / 'HeifContainerWriter.java'), str(ROOT / 'tools/java/Heic10ContainerSample.java')], check=True)
-        cases = [(1100, 700, 512), (300, 200, 128), (256, 256, 256)]
-        for width, height, tile in cases:
-            work = tmp / ('%dx%d' % (width, height))
+                        str(HEIF / 'HeifContainerWriter.java'), str(colour / 'OutputColour.java'), str(colour / 'IccProfiles.java'),
+                        str(ROOT / 'tools/java/Heic10ContainerSample.java')], check=True)
+        cases = [(1100, 700, 512, 'srgb'), (300, 200, 128, 'srgb'), (256, 256, 256, 'srgb'), (600, 300, 256, 'hlg')]
+        for width, height, tile, colour_name in cases:
+            work = tmp / ('%dx%d' % (width, height) + ('' if colour_name == 'srgb' else '_' + colour_name))
             work.mkdir()
             # 10-bit source: smooth gradients (the banding case) + a few sharp patches, not a multiple of the tile size.
             y, x = np.mgrid[0:height, 0:width]
@@ -404,9 +408,14 @@ def self_test():
                     heif = pillow_heif.from_bytes(mode='RGB;16', size=(tile, tile),
                                                   data=(block.astype(np.uint16) << 6).tobytes())
                     out = tmp / 'enc.heic'
-                    # BT.709 full range, the matrix Heic10Encoder converts with and the container's colr names.
-                    heif.save(str(out), quality=96, chroma=420, matrix_coefficients=1, color_primaries=1,
-                              transfer_characteristic=13, full_range_flag=1)
+                    # BT.709 full range, the matrix Heic10Encoder converts with and the container's colr names; the HDR
+                    # HEIC (P46) converts with the BT.2020 matrix.
+                    if colour_name == 'hlg':
+                        heif.save(str(out), quality=96, chroma=420, matrix_coefficients=9, color_primaries=9,
+                                  transfer_characteristic=18, full_range_flag=1)
+                    else:
+                        heif.save(str(out), quality=96, chroma=420, matrix_coefficients=1, color_primaries=1,
+                                  transfer_characteristic=13, full_range_flag=1)
                     arrays, sample = hevc_of(out.read_bytes())
                     sets = arrays[32] + arrays[33] + arrays[34]
                     if first_sets is None:
@@ -422,12 +431,12 @@ def self_test():
             (work / 'exif.bin').write_bytes(tiff_exif('SCAMERA'))
             heic = work / 'out.heic'
             subprocess.run([java, '-cp', str(classes), 'Heic10ContainerSample', str(work), str(width), str(height), str(tile),
-                            str(heic)], check=True)
+                            str(heic), colour_name], check=True)
             s = check_file(heic)
             need(s['bits'] == 10 and s['chroma'] == 1, 'not a 10-bit 4:2:0 stream: %s' % s)
             need((s['width'], s['height']) == (width, height), 'size %dx%d' % (s['width'], s['height']))
             need(s['grid'] == (cols, rows) and s['tile'] == (tile, tile), 'grid %s of %s' % (s['grid'], s['tile']))
-            need(s.get('nclx') == (1, 13, 1, 1), 'colr nclx %s' % (s.get('nclx'),))
+            need(s.get('nclx') == ((9, 18, 9, 1) if colour_name == 'hlg' else (1, 13, 1, 1)), 'colr nclx %s' % (s.get('nclx'),))
             decoded = pillow_heif.open_heif(str(heic), convert_hdr_to_8bit=False)
             need(decoded.info.get('bit_depth') == 10, 'libheif decodes %s bits' % decoded.info.get('bit_depth'))
             need(decoded.size == (width, height), 'libheif size %s' % (decoded.size,))
@@ -453,9 +462,22 @@ def self_test():
             pillow_heif.register_heif_opener()
             with Image.open(heic) as im:
                 need(im.getexif().get(0x010F) == 'SCAMERA', 'Pillow does not read Make from the Exif item')
-            print('  %dx%d in %dx%d tiles of %d: 10-bit (%.0f %% off the 8-bit grid), mean error %.2f, gradient p99 %.0f,'
-                  ' %d red levels, Exif OK, %d bytes' % (width, height, cols, rows, tile, 100 * fine, err.mean(),
+            print('  %dx%d in %dx%d tiles of %d (%s): 10-bit (%.0f %% off the 8-bit grid), mean error %.2f, gradient p99 %.0f,'
+                  ' %d red levels, Exif OK, %d bytes' % (width, height, cols, rows, tile, colour_name, 100 * fine, err.mean(),
                                                          np.percentile(err[smooth], 99), levels, heic.stat().st_size))
+            if colour_name == 'srgb' and tile == 512:
+                # P46 Display P3: the same tiles declared P3 - nclx 12/13/1 and the ICC profile, the same pixels
+                p3 = work / 'out_p3.heic'
+                subprocess.run([java, '-cp', str(classes), 'Heic10ContainerSample', str(work), str(width), str(height), str(tile),
+                                str(p3), 'p3'], check=True)
+                sp = check_file(p3)
+                need(sp.get('nclx') == (12, 13, 1, 1), 'P3 colr nclx %s' % (sp.get('nclx'),))
+                dp = pillow_heif.open_heif(str(p3), convert_hdr_to_8bit=False)
+                icc = dp.info.get('icc_profile')
+                need(icc is not None and icc[36:40] == b'acsp' and 'Display P3'.encode('utf-16-be') in icc,
+                     'libheif does not hand out the Display P3 profile')
+                need(np.array_equal(np.asarray(dp), np.asarray(decoded)), 'the P3 file decodes differently from the sRGB one')
+                print('  the same grid declared Display P3: nclx 12/13/1, ICC profile (%d bytes) read by libheif, same pixels' % len(icc))
         good = bytearray((tmp / '1100x700' / 'out.heic').read_bytes())
         # Broken variants.
         bad = bytearray(good)
@@ -477,7 +499,8 @@ def self_test():
         bad[ftyp + 4:ftyp + 8] = b'heix'
         bad[ftyp + 16:ftyp + 20] = b'heix'
         must_fail(bad, "no 'heic' brand", tmp)
-    print('HEIC 10-bit self-test PASS: 3 grids (padding, small tiles, one tile) decode at 10 bits with Exif, '
+    print('HEIC 10-bit self-test PASS: 3 grids (padding, small tiles, one tile) and an HLG grid (nclx 9/18/9, BT.2020 matrix) '
+          'decode at 10 bits with Exif, Display P3 declared (nclx 12 + ICC), '
           '4 broken variants rejected, 8-bit path unchanged')
 
 

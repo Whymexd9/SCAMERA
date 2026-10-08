@@ -5,13 +5,56 @@ package com.particlesdevs.photoncamera.processing.heif;
  * HEVC Main10 encoder: BT.709 matrix, full range (Y 0..1023, Cb / Cr 0..1023 around 512), each chroma sample the average of
  * its 2x2 pixel block, every sample a 16-bit little-endian word with the 10-bit value in its high bits. Layout of a tile:
  * the Y plane (tileW x tileH words) followed by the interleaved CbCr plane (tileW/2 x tileH/2 pairs, Cb first). Pixels of
- * the tile past the image (right / bottom padding of the grid) repeat the last image column / row. Pure Java.
+ * the tile past the image (right / bottom padding of the grid) repeat the last image column / row. P46: the HDR HEIC
+ * (HLG, BT.2020) converts with the BT.2020 non-constant-luminance matrix ({@link Matrix#BT2020}); every other HEIC with
+ * BT.709 exactly as before. Pure Java.
  */
 public final class P010 {
     // BT.709 luma and colour-difference coefficients in 1/65536 (each row sums to 65536 / 0).
     static final int KR = 13933, KG = 46871, KB = 4732;
     static final int CB_R = -7509, CB_G = -25259, CB_B = 32768;
     static final int CR_R = 32768, CR_G = -29763, CR_B = -3005;
+
+    /** Luma and colour-difference coefficients of a YCbCr matrix in 1/65536 (each row sums to 65536 / 0). */
+    public static final class Matrix {
+        final int kr, kg, kb, cbR, cbG, cbB, crR, crG, crB;
+        /** H.273 matrix_coefficients code (1 BT.709, 9 BT.2020 NCL). */
+        public final int code;
+
+        Matrix(int code, int kr, int kg, int kb, int cbR, int cbG, int cbB, int crR, int crG, int crB) {
+            this.code = code;
+            this.kr = kr;
+            this.kg = kg;
+            this.kb = kb;
+            this.cbR = cbR;
+            this.cbG = cbG;
+            this.cbB = cbB;
+            this.crR = crR;
+            this.crG = crG;
+            this.crB = crB;
+        }
+
+        /**
+         * The matrix of luma weights {@code kr}, {@code kb} (kg = 1 - kr - kb): each coefficient rounded to 1/65536, the
+         * green one taking the rounding so the rows sum exactly (BT.709 gives the constants above).
+         */
+        static Matrix of(int code, double kr, double kb) {
+            final int r = (int) Math.round(kr * 65536.0), b = (int) Math.round(kb * 65536.0);
+            final int cbR = (int) Math.round(-kr / (2.0 * (1.0 - kb)) * 65536.0);
+            final int crB = (int) Math.round(-kb / (2.0 * (1.0 - kr)) * 65536.0);
+            return new Matrix(code, r, 65536 - r - b, b, cbR, -(32768 + cbR), 32768, 32768, -(32768 + crB), crB);
+        }
+
+        /** BT.709 (the constants above, unchanged). */
+        public static final Matrix BT709 = new Matrix(1, KR, KG, KB, CB_R, CB_G, CB_B, CR_R, CR_G, CR_B);
+        /** BT.2020 non-constant luminance (kr 0.2627, kb 0.0593). */
+        public static final Matrix BT2020 = of(9, 0.2627, 0.0593);
+
+        /** The matrix of an H.273 matrix_coefficients code: BT.2020 for 9 (and 10), BT.709 otherwise. */
+        public static Matrix forCode(int code) {
+            return code == 9 || code == 10 ? BT2020 : BT709;
+        }
+    }
     /** 512 (the chroma zero) and the rounding half for sums of 4 pixels in 1/65536 (shift 18). */
     private static final int CHROMA_BIAS = (512 << 18) + (1 << 17);
 
@@ -54,6 +97,12 @@ public final class P010 {
      * @param validCols  image columns in the tile (1..tileW): columns to the right repeat the last one
      */
     public static void convertTile(int[] band, int stride, int validRows, int x0, int validCols, int tileW, int tileH, byte[] out) {
+        convertTile(band, stride, validRows, x0, validCols, tileW, tileH, out, Matrix.BT709);
+    }
+
+    /** {@link #convertTile} with the YCbCr matrix {@code m}. */
+    public static void convertTile(int[] band, int stride, int validRows, int x0, int validCols, int tileW, int tileH, byte[] out,
+                                   Matrix m) {
         if ((tileW & 1) != 0 || (tileH & 1) != 0) throw new IllegalArgumentException("odd tile " + tileW + "x" + tileH);
         if (validRows < 1 || validCols < 1 || validRows > tileH || validCols > tileW)
             throw new IllegalArgumentException("valid " + validCols + "x" + validRows + " in a tile of " + tileW + "x" + tileH);
@@ -73,13 +122,13 @@ public final class P010 {
                 final int br = b & 0x3FF, bg = (b >>> 10) & 0x3FF, bb = (b >>> 20) & 0x3FF;
                 final int cr = c & 0x3FF, cg = (c >>> 10) & 0x3FF, cb = (c >>> 20) & 0x3FF;
                 final int dr = d & 0x3FF, dg = (d >>> 10) & 0x3FF, db = (d >>> 20) & 0x3FF;
-                y0 = put(out, y0, luma(ar, ag, ab));
-                y0 = put(out, y0, luma(br, bg, bb));
-                y1 = put(out, y1, luma(cr, cg, cb));
-                y1 = put(out, y1, luma(dr, dg, db));
+                y0 = put(out, y0, clamp((m.kr * ar + m.kg * ag + m.kb * ab + 32768) >> 16));
+                y0 = put(out, y0, clamp((m.kr * br + m.kg * bg + m.kb * bb + 32768) >> 16));
+                y1 = put(out, y1, clamp((m.kr * cr + m.kg * cg + m.kb * cb + 32768) >> 16));
+                y1 = put(out, y1, clamp((m.kr * dr + m.kg * dg + m.kb * db + 32768) >> 16));
                 final int sr = ar + br + cr + dr, sg = ag + bg + cg + dg, sb = ab + bb + cb + db;
-                uv = put(out, uv, cb4(sr, sg, sb));
-                uv = put(out, uv, cr4(sr, sg, sb));
+                uv = put(out, uv, clamp((m.cbR * sr + m.cbG * sg + m.cbB * sb + CHROMA_BIAS) >> 18));
+                uv = put(out, uv, clamp((m.crR * sr + m.crG * sg + m.crB * sb + CHROMA_BIAS) >> 18));
             }
         }
     }

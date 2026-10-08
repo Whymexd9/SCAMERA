@@ -713,6 +713,10 @@
     <string name="prefs_avif_chroma_summary">4:4:4 (default): colour at full resolution - sharp coloured edges and fine coloured detail. 4:2:0: colour at half resolution, a smaller file, coloured edges blur.</string>
     <string name="prefs_avif_speed_title">Encoding speed</string>
     <string name="prefs_avif_speed_summary">Balanced (default) saves a 12 MP photo in about 1-2 s on a recent phone. Thorough takes about 5 times longer for slightly better detail; Fast and Fastest are about 3 times quicker with slightly less detail.</string>
+    <string name="prefs_photo_color_space_title">Colour space</string>
+    <string name="prefs_photo_color_space_summary">sRGB (default): the colours every screen and app shows the same way. Display P3: a wider range of colours (deeper reds, oranges, greens and cyans) on P3 screens (most current phones, tablets and Macs); the file carries a Display P3 profile, apps that ignore it show the photo a little flatter. For JPEG (Ultra HDR too), HEIC, WebP and AVIF; RAW does not change.</string>
+    <string name="prefs_photo_hdr_title">HDR in HEIC / AVIF</string>
+    <string name="prefs_photo_hdr_summary">Saves the HEIC / AVIF as a real HDR picture (HLG, BT.2020, 10 bit): on an HDR screen the highlights shine above white, from the same scene data as Ultra HDR. Needs 10-bit HEIC, or AVIF at 10 / 12 bit, and Android 13+. Apps without HDR show it dimmer or flatter. Off (default): an ordinary SDR file.</string>
     <string name="prefs_photo_also_jpeg_title">Also save a JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">A JPEG copy next to the HEIC / WebP / AVIF photo for apps that cannot open them. With Ultra HDR on, this JPEG carries it.</string>
     <!-- P42: face detection and tracking autofocus (after ArkCamera v50) -->

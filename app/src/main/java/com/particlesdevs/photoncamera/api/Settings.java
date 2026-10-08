@@ -15,6 +15,11 @@ public class Settings {
     public boolean roundEdge;
     /** Ultra HDR in effect: the switch is on and the shot writes a JPEG (JPEG format or «Также сохранять JPEG»). */
     public boolean ultraHdr;
+    /** P46 «HDR в HEIC / AVIF» in effect for this shot (processing.color.HdrOutput.wanted): the HEIC / AVIF is HLG. */
+    public boolean hdrOutput;
+    /** P46 «Цветовое пространство»: the primaries the post pipeline renders in and the files declare. */
+    public com.particlesdevs.photoncamera.processing.color.OutputColour.Space colourSpace =
+            com.particlesdevs.photoncamera.processing.color.OutputColour.Space.SRGB;
     public int contrastConst = 0;//TODO
     public double mergeStrength;
     public int rawSaver;
@@ -53,6 +58,8 @@ public class Settings {
         fpsMode = PreferenceKeys.getFpsMode();
         // The gain-map pass (linear snapshot, no deferred GL teardown, no in-pipeline resize) runs only when a JPEG carries it.
         ultraHdr = PreferenceKeys.isUltraHdrActive();
+        hdrOutput = com.particlesdevs.photoncamera.processing.color.HdrOutput.wanted();
+        colourSpace = PreferenceKeys.getOutputColourSpace();
         alignAlgorithm = PreferenceKeys.getAlignMethodValue();
         colorMethod = PreferenceKeys.getColorMethodValue();
         focusPeak = PreferenceKeys.getFocusPeakValue();
@@ -61,6 +68,14 @@ public class Settings {
         gamma = parseGammaArray();
         mCameraID = PreferenceKeys.getCameraID();
         theme = PreferenceKeys.getThemeValue();
+    }
+
+    /**
+     * Whether the shot runs the Ultra HDR gain-map pass (linear snapshot, no deferred GL teardown, no in-pipeline resize):
+     * for an Ultra HDR JPEG or for the HDR HEIC / AVIF (P46). Without «HDR в HEIC / AVIF» this is {@link #ultraHdr}.
+     */
+    public boolean gainMapPass() {
+        return ultraHdr || hdrOutput;
     }
 
     public void saveID() {

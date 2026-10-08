@@ -163,6 +163,10 @@
         <item>4:4:4 (полный цвет)</item>
         <item>4:2:0 (файл меньше)</item>
     </string-array>
+    <string-array name="photo_color_space_entries">
+        <item>sRGB (стандарт)</item>
+        <item>Display P3 (широкий цвет)</item>
+    </string-array>
     <string-array name="avif_speed_entries">
         <item>Тщательно (медленно)</item>
         <item>Баланс</item>

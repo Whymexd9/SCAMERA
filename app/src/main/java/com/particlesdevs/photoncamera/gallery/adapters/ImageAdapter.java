@@ -45,6 +45,8 @@ public class ImageAdapter extends PagerAdapter {
     private final boolean[] hdrAvailable;
     private final Bitmap[] hdrBitmaps;
     private final Target<Bitmap>[] hdrTargets;
+    /** P46: colour of each page's file, 1 + UltraHdrGalleryUtil.COLOUR_*; 0 = not probed yet. */
+    private final byte[] colour;
     private ImageViewClickListener imageViewClickListener;
     private SSIVListener ssivListener;
     private SubsamplingScaleImageView.OnImageEventListener imageEventListener;
@@ -61,6 +63,7 @@ public class ImageAdapter extends PagerAdapter {
         this.hdrAvailable = new boolean[size];
         this.hdrBitmaps = new Bitmap[size];
         this.hdrTargets = new Target[size];
+        this.colour = new byte[size];
     }
 
     public void setSsivListener(SSIVListener ssivListener) {
@@ -389,6 +392,41 @@ public class ImageAdapter extends PagerAdapter {
                         .diskCacheStrategy(DiskCacheStrategy.DATA)
                         .skipMemoryCache(true))
                 .into(target);
+    }
+
+    /** P46: the colour of the page's file (UltraHdrGalleryUtil.COLOUR_*); sRGB until {@link #probeColour} knows it. */
+    public int colourOf(int position) {
+        return inBounds(position) && colour[position] > 0 ? colour[position] - 1 : UltraHdrGalleryUtil.COLOUR_SRGB;
+    }
+
+    /**
+     * P46: reads the colour space of the page's file once (header only, on the HDR executor); {@code wider} runs on the
+     * main thread when it turns out wider than sRGB (Display P3, HLG), so the host can switch the window's colour mode.
+     */
+    public void probeColour(int position, @Nullable Context context, @Nullable Runnable wider) {
+        if (context == null || !inBounds(position) || colour[position] != 0) {
+            return;
+        }
+        GalleryItem galleryItem = galleryItemList.get(position);
+        if (FileUtils.getExtension(galleryItem.getFile().getDisplayName()).equalsIgnoreCase("dng")) {
+            colour[position] = 1 + UltraHdrGalleryUtil.COLOUR_SRGB;
+            return;
+        }
+        final Context app = context.getApplicationContext();
+        final android.net.Uri uri = galleryItem.getFile().getFileUri();
+        final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        HDR_EXECUTOR.execute(() -> {
+            final int kind = UltraHdrGalleryUtil.colourOf(app, uri);
+            main.post(() -> {
+                if (released || !inBounds(position) || colour[position] != 0) {
+                    return;
+                }
+                colour[position] = (byte) (1 + kind);
+                if (kind != UltraHdrGalleryUtil.COLOUR_SRGB && wider != null) {
+                    wider.run();
+                }
+            });
+        });
     }
 
     private boolean inBounds(int position) {
