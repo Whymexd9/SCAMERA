@@ -6,7 +6,6 @@
     <string name="backup_file_name" translatable="false">SCAMERA_%1$s</string>
     <string name="app_name" translatable="false">SCAMERA</string>
     <string name="gallery_name" translatable="false">PGallery</string>
-    <string name="device_support" translatable="false">HDR+ Ultra RAW</string>
     <string name="request_permission">This app needs camera permission.</string>
     <string name="camera_error">This device doesn\'t support Camera2 API.</string>
     <string name="frame_count">Normal RAW frames</string>
@@ -27,7 +26,6 @@
     <string name="ai_denoise_model">AI noise reduction model</string>
     <string name="turn_on_grid">Show Grid</string>
     <string name="turn_on_round_edges">Enable Round Edges</string>
-    <string name="telegram">Telegram Group ↗</string>
     <string name="turn_on_watermark">Watermark</string>
     <string name="sure_delete">Are you sure to delete this image?</string>
     <string name="sure_delete_multiple">Are you sure to delete %1$s image(s)? %2$s will be cleared.</string>
@@ -40,7 +38,6 @@
     <string name="focus_peaking">Focus Peaking</string>
     <string name="focus_peaking_auto">Auto</string>
     <string name="show_horizon_on_preview">Show horizon on preview</string>
-    <string name="about">About</string>
     <string name="camera_sounds">Camera Sounds</string>
     <string name="energy_saving">Battery Saver</string>
     <string name="hide_gallery_icon">Hide Gallery Icon</string>
@@ -53,7 +50,6 @@
     <string name="frame_count_summary">Number of constant-exposure denoising frames</string>
     <string name="photon_camera_summary">An Open-Source Android Camera with Enhanced Image Processing</string>
     <string name="version_title">Version</string>
-    <string name="contributors_title">Contributors ↗</string>
     <string name="eis_toggle_text">Image Stabilization</string>
     <string name="fps_60_toggle_text">Frame rate</string>
     <string name="fps_auto" translatable="false">AUTO</string>
@@ -70,13 +66,8 @@
     <string name="restore">Restore</string>
     <string name="restore_summary_json">Load settings from an XML file in Download/SCAMERA/XML, or pick a file</string>
     <string name="empty_file_name_error">File name cannot be an empty string</string>
-    <string name="device_unsupport">Warning: Uncalibrated device</string>
     <string name="af_mode">Auto Focus Mode</string>
     <string name="multiple_deleted_success">%1$s file(s) deleted! %2$s cleared.</string>
-    <string name="supported_devices">Supported Devices</string>
-    <string name="list_not_loaded" translatable="false"><![CDATA[<list not loaded>]]></string>
-    <string name="fetch_configurations">Fetch Configurations</string>
-    <string name="fetch_configurations_summary">Download device-specific tuning from the network and update cached settings</string>
     <string name="sensor_configurations">Sensor settings per module</string>
     <string name="sensor_configurations_summary">RAW levels, exposure, stabilization and session of each module</string>
     <string name="this_device">Your Device - %1$s</string>

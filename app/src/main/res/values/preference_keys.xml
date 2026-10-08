@@ -34,8 +34,6 @@
     <string name="pref_horizon" translatable="false">pref_horizon</string>
     <string name="pref_cfa_key" translatable="false">pref_cfa_key</string>
     <string name="pref_remosaic_key" translatable="false">pref_remosaic_key</string>
-    <string name="pref_telegram_channel_key" translatable="false">pref_telegram_channel_key</string>
-    <string name="pref_contributors_key" translatable="false">pref_contributors_key</string>
     <string name="pref_theme_key" translatable="false">pref_theme_key</string>
     <string name="pref_theme_accent_key" translatable="false">pref_theme_accent_key</string>
     <string name="pref_show_gradient_key" translatable="false">pref_show_gradient_key</string>
@@ -60,7 +58,6 @@
 
     <string name="_cameras" translatable="false">_cameras</string>
     <string name="_devices" translatable="false">_devices</string>
-    <string name="all_devices_names" translatable="false">all_devices_names</string>
     <string name="pref_this_device_key" translatable="false">pref_this_device_key</string>
     <string name="_per_lens" translatable="false">_per_lens</string>
 
@@ -69,12 +66,10 @@
     <string name="pref_backup_preferences_key" translatable="false">pref_backup_preferences_key</string>
     <string name="pref_restore_preferences_key" translatable="false">pref_restore_preferences_key</string>
     <string name="pref_reset_preferences_key" translatable="false">pref_reset_preferences_key</string>
-    <string name="pref_about_key" translatable="false">pref_about_key</string>
     <string name="pref_photoncamera" translatable="false">pref_photoncamera</string>
     <string name="pref_version_key" translatable="false">pref_version_key</string>
     <string name="pref_folders_list" translatable="false">pref_folders_list</string>
     <string name="pref_hide_gallery_icon_key" translatable="false">pref_hide_gallery_icon_key</string>
-    <string name="pref_fetch_configurations_key" translatable="false">pref_fetch_configurations_key</string>
     <string name="pref_sharp_usm_enabled_key" translatable="false">pref_sharp_usm_enabled_key</string>
     <string name="pref_sharp_deconv_enabled_key" translatable="false">pref_sharp_deconv_enabled_key</string>
     <string name="pref_sharp_micro_enabled_key" translatable="false">pref_sharp_micro_enabled_key</string>

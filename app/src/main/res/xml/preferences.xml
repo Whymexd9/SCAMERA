@@ -564,14 +564,8 @@
       <Preference android:key="pref_camera_package_spoof_help" android:selectable="false" android:title="@string/prefs_camera_package_spoof_help_title" android:summary="@string/prefs_camera_package_spoof_help_summary"/>
     </PreferenceScreen>
     <SwitchPreferenceCompat android:key="scamera_full_debug" android:title="@string/prefs_scamera_full_debug_title" android:summary="@string/full_debug_summary" android:defaultValue="false" android:icon="@drawable/settings_ic_list"/>
-    <Preference android:icon="@drawable/settings_ic_restore" android:persistent="false" android:title="@string/fetch_configurations" android:key="@string/pref_fetch_configurations_key" android:summary="@string/fetch_configurations_summary"/>
-    <PreferenceScreen android:icon="@drawable/settings_ic_info" android:title="@string/about" android:key="@string/pref_about_key">
-      <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_photoncamera" android:summary="@string/photon_camera_summary" android:selectable="false"/>
-      <Preference android:title="@string/version_title" android:key="@string/pref_version_key" android:summary="@string/version_summary" android:icon="@drawable/settings_ic_info" android:selectable="false"/>
-      <Preference android:persistent="false" android:key="@string/pref_this_device_key" app:singleLineTitle="true" android:icon="@drawable/settings_ic_camera" android:selectable="false"/>
-      <Preference android:icon="@drawable/settings_ic_list" android:title="@string/contributors_title" android:key="@string/pref_contributors_key" android:summary="eszdman, assasinfil, killerink, mirai, Urnyx05, vibhorSrv, snajdovski"/>
-      <Preference android:icon="@drawable/settings_ic_copy" android:title="@string/telegram" android:key="@string/pref_telegram_channel_key"/>
-      <Preference android:persistent="false" android:title="@string/supported_devices" android:key="@string/all_devices_names" android:icon="@drawable/settings_ic_list" android:selectable="false"/>
-    </PreferenceScreen>
+    <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_photoncamera" android:summary="@string/photon_camera_summary" android:selectable="false"/>
+    <Preference android:title="@string/version_title" android:key="@string/pref_version_key" android:summary="@string/version_summary" android:icon="@drawable/settings_ic_info" android:selectable="false"/>
+    <Preference android:persistent="false" android:key="@string/pref_this_device_key" app:singleLineTitle="true" android:icon="@drawable/settings_ic_camera" android:selectable="false"/>
   </PreferenceScreen>
 </PreferenceScreen>

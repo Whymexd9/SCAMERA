@@ -1537,8 +1537,6 @@ public class PreferenceKeys {
         KEY_ALIGN_METHOD(R.string.pref_align_method_key),
         KEY_COLOR_METHOD(R.string.pref_color_method_key),
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),
-        KEY_TELEGRAM(R.string.pref_telegram_channel_key),
-        KEY_CONTRIBUTORS(R.string.pref_contributors_key),
         KEY_THEME(R.string.pref_theme_key),
         KEY_THEME_ACCENT(R.string.pref_theme_accent_key),
         KEY_SHOW_GRADIENT(R.string.pref_show_gradient_key),
@@ -1571,7 +1569,6 @@ public class PreferenceKeys {
         ALL_CAMERA_LENS_KEY(R.string.all_camera_lens),
         CAMERA_COUNT_KEY(R.string.all_camera_count),
         DEVICES_PREFERENCE_FILE_NAME(R.string._devices),
-        ALL_DEVICES_NAMES_KEY(R.string.all_devices_names),
         PER_LENS_FILE_NAME(R.string._per_lens),
         FOLDERS_LIST(R.string.pref_folders_list);
 

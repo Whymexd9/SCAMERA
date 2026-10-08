@@ -197,6 +197,17 @@ public class SettingsAuditFixTest {
         assertEquals("0.9",String.valueOf(PreferenceKeys.profiles().snapshot("back1").get("pref_lmc_hybrid_cdm")));
     }
 
+    /** Owner: the upstream PhotonCamera rows (about page, contributors, Telegram, device list, config download) are gone. */
+    @Test public void upstreamRowsAreGone() {
+        PreferenceScreen screen=inflate();
+        for(String key:new String[]{"pref_about_key","pref_contributors_key","pref_telegram_channel_key","all_devices_names",
+                "pref_fetch_configurations_key"})
+            assertNull(key,screen.findPreference(key));
+        PreferenceScreen system=screen.findPreference("system_settings_screen");
+        for(String key:new String[]{"pref_photoncamera","pref_version_key","pref_this_device_key"})
+            assertNotNull("the app, version and device rows stay on «Система»: "+key,system.findPreference(key));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

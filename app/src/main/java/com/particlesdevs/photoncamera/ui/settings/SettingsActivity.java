@@ -8,7 +8,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -52,13 +51,11 @@ import com.particlesdevs.photoncamera.util.log.FragmentLifeCycleMonitor;
 import com.particlesdevs.photoncamera.util.Lang;
 
 import java.text.SimpleDateFormat;
-import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.TimeZone;
 
-import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.ALL_DEVICES_NAMES_KEY;
 import static com.particlesdevs.photoncamera.settings.PreferenceKeys.SCOPE_GLOBAL;
 
 public class SettingsActivity extends BaseActivity implements PreferenceFragmentCompat.OnPreferenceStartScreenCallback {
@@ -169,7 +166,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private Context mContext;
         private View mRootView;
         private PreferenceScreen fullPreferenceScreen;
-        private SupportedDevice supportedDevice;
         private boolean tunablePreferencesGenerated = false;
         private boolean sensorConfigPreferencesGenerated = false;
         private ActivityResultLauncher<String[]> lutImportLauncher;
@@ -457,7 +453,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             activity = getActivity();
             mContext = getContext();
             mSettingsManager = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSettingsManager();
-            supportedDevice = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSupportedDevice();
 
             // Register PNG import launcher for TunablePngPreference
             // Uses OpenDocument to show the system file picker instead of gallery
@@ -527,14 +522,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // Keep every category reachable regardless of the last camera mode.
             setVersionDetails();
             checkEszdTheme();
-            setTelegramPref();
-            setGithubPref();
             setBackupPref();
             setRestorePref();
-            setSupportedDevices();
-            setProTitle();
             setThisDevice();
-            setFetchConfigurationsPref();
             updateSettingsAvailability();
         }
         
@@ -735,30 +725,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
-        private void setTelegramPref() {
-            activity.runOnUiThread(()-> {
-                Preference myPref = findPreference(PreferenceKeys.Key.KEY_TELEGRAM.mValue);
-                if (myPref != null)
-                    myPref.setOnPreferenceClickListener(preference -> {
-                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/photon_camera_channel"));
-                        startActivity(browserIntent);
-                        return true;
-                    });
-            });
-        }
-
-        private void setGithubPref() {
-            activity.runOnUiThread(()-> {
-            Preference github = findPreference(PreferenceKeys.Key.KEY_CONTRIBUTORS.mValue);
-            if (github != null)
-                github.setOnPreferenceClickListener(preference -> {
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/eszdman/PhotonCamera"));
-                    startActivity(browserIntent);
-                    return true;
-                });
-            });
-        }
-
         private void setRestorePref() {
                 activity.runOnUiThread(()-> {
             Preference restorePref = findPreference(mContext.getString(R.string.pref_restore_preferences_key));
@@ -790,56 +756,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
            });
         }
-        private void setSupportedDevices() {
-            activity.runOnUiThread(()-> {
-                Preference preference = findPreference(PreferenceKeys.Key.ALL_DEVICES_NAMES_KEY.mValue);
-                if (preference != null) {
-                    preference.setSummary((mSettingsManager.getStringSet(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue,
-                            ALL_DEVICES_NAMES_KEY, Collections.singleton(mContext.getString(R.string.list_not_loaded)))
-                            .stream().sorted().map(s -> s + "\n").reduce("\n", String::concat)));
-                }
-           });
-        }
-
-        private void setProTitle() {
-            activity.runOnUiThread(()-> {
-                    Preference preference = findPreference(mContext.getString(R.string.pref_about_key));
-                    if (preference != null && supportedDevice.isSupportedDevice()) {
-                        preference.setTitle(R.string.device_support);
-                    }
-            });
-        }
-
         private void setThisDevice() {
             Preference preference = findPreference(mContext.getString(R.string.pref_this_device_key));
             if (preference != null) {
                 preference.setSummary(mContext.getString(R.string.this_device, SupportedDevice.THIS_DEVICE));
             }
         }
-
-        private void setFetchConfigurationsPref() {
-            Preference fetchPref = findPreference(mContext.getString(R.string.pref_fetch_configurations_key));
-            if (fetchPref != null) {
-                fetchPref.setOnPreferenceClickListener(preference -> {
-                    preference.setSummary(mContext.getString(R.string.fetch_configurations_summary) + " (fetching…)");
-                    new Thread(() -> {
-                        supportedDevice.fetchFromNetwork();
-                    if (activity != null) {
-                        activity.runOnUiThread(() -> {
-                            preference.setSummary(mContext.getString(R.string.fetch_configurations_summary));
-                            com.google.android.material.snackbar.Snackbar.make(
-                                    activity.findViewById(android.R.id.content),
-                                    "Device configurations updated. Restart to apply camera changes.",
-                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
-                            ).show();
-                        });
-                    }
-                    }).start();
-                    return true;
-                });
-            }
-        }
-
 
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {

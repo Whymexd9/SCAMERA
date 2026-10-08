@@ -4,34 +4,23 @@ import android.content.Context;
 import android.os.Build;
 import com.particlesdevs.photoncamera.util.Log;
 
-import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
-import com.particlesdevs.photoncamera.util.HttpLoader;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.LinkedHashSet;
-import java.util.Set;
-
-import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.ALL_CAMERA_IDS_KEY;
-import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.ALL_CAMERA_LENS_KEY;
-import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.CAMERAS_PREFERENCE_FILE_NAME;
-import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.CAMERA_COUNT_KEY;
-import static com.particlesdevs.photoncamera.settings.PreferenceKeys.Key.ALL_DEVICES_NAMES_KEY;
-
+/**
+ * Device-specific tuning of this phone: {@link Specific} (dual session, black level, camera ids) and {@link SensorSpecifics}
+ * (noise model, colour transforms per sensor), from a local tuning file or the assets bundled with the app. The upstream
+ * PhotonCamera downloads («Подгрузить конфигурации», the supported-devices list) are gone (owner, 8 October 2026).
+ */
 public class SupportedDevice {
     public static final String THIS_DEVICE = Build.BRAND.toLowerCase() + ":" + Build.DEVICE.toLowerCase();
     private static final String TAG = "SupportedDevice";
+    /** Left in the devices file by the removed downloads: the supported-devices list and the downloaded sensor tuning. */
+    private static final String[] DOWNLOADED = {"all_devices_names", "sensor_specific_val"};
     private final SettingsManager mSettingsManager;
     private final Context mContext;
-    private Set<String> mSupportedDevicesSet = new LinkedHashSet<>();
     public Specific specific;
     public SensorSpecifics sensorSpecifics;
-    private boolean loaded = false;
     private int checkedCount = 0;
 
     public SupportedDevice(SettingsManager manager, Context context) {
@@ -40,92 +29,31 @@ public class SupportedDevice {
         sensorSpecifics = new SensorSpecifics();
         specific = new Specific(mSettingsManager);
     }
+
     public void loadCheck() {
-        //new Thread(() -> {
-            if (checkedCount < 1) {
-                checkedCount++;
-                specific.loadSpecific(mContext);
-            }
-            if (!loaded && mSettingsManager.isSet(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, ALL_DEVICES_NAMES_KEY)) {
-                mSupportedDevicesSet = mSettingsManager.getStringSet(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, ALL_DEVICES_NAMES_KEY, null);
-            } else if (!loaded) {
-                try {
-                    loadSupportedDevicesListFromAssets();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to load supported devices from assets: " + e.toString());
-                }
-            }
-        //}).start();
+        if (checkedCount < 1) {
+            checkedCount++;
+            dropDownloads();
+            specific.loadSpecific(mContext);
+        }
         Log.d(TAG, "Checked count:" + checkedCount);
-        //new Thread(() -> sensorSpecifics.loadSpecifics(mSettingsManager, mContext)).start();
         sensorSpecifics.loadSpecifics(mSettingsManager, mContext); // No need for thread with assets
     }
 
-    public void fetchFromNetwork() {
-        new Thread(() -> {
-            Log.d(TAG, "Fetching all configurations from network");
-            try {
-                loadSupportedDevicesList();
-                isSupported();
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to fetch supported devices list: " + e.toString());
+    /** An earlier download must not keep acting: the bundled assets or the local tuning file are the only sources now. */
+    private void dropDownloads() {
+        try {
+            android.content.SharedPreferences devices = mContext.getSharedPreferences(
+                    mContext.getPackageName() + PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, Context.MODE_PRIVATE);
+            android.content.SharedPreferences.Editor editor = null;
+            for (String key : DOWNLOADED) {
+                if (!devices.contains(key)) continue;
+                if (editor == null) editor = devices.edit();
+                editor.remove(key);
             }
-            specific.fetchFromNetwork(mContext);
-            sensorSpecifics.fetchFromNetwork(mSettingsManager, mContext);
-            clearCameraCache();
-        }).start();
-    }
-
-    private void clearCameraCache() {
-        String camerasScope = CAMERAS_PREFERENCE_FILE_NAME.mValue;
-        mSettingsManager.remove(camerasScope, ALL_CAMERA_IDS_KEY);
-        mSettingsManager.remove(camerasScope, ALL_CAMERA_LENS_KEY);
-        mSettingsManager.remove(camerasScope, CAMERA_COUNT_KEY);
-        Log.d(TAG, "Camera ID and characteristics cache cleared");
-    }
-
-    private void isSupported() {
-        checkedCount++;
-        if (mSupportedDevicesSet == null) {
-            return;
+            if (editor != null) editor.apply();
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Downloaded device configurations not removed: " + e);
         }
-        if (mSupportedDevicesSet.contains(THIS_DEVICE)) {
-            PhotonCamera.showToastFast(R.string.device_support);
-        } else {
-            PhotonCamera.showToastFast(R.string.device_unsupport);
-        }
-    }
-
-    public boolean isSupportedDevice() {
-        if (mSupportedDevicesSet == null) {
-            return false;
-        }
-        return mSupportedDevicesSet.contains(THIS_DEVICE);
-    }
-
-    private void loadSupportedDevicesListFromAssets() throws IOException {
-        InputStream is = mContext.getAssets().open("specific/SupportedList.txt");
-        BufferedReader in = new BufferedReader(new InputStreamReader(is));
-        String str;
-        while ((str = in.readLine()) != null) {
-            Log.d(TAG, "read asset:" + str);
-            mSupportedDevicesSet.add(str);
-        }
-        in.close();
-        loaded = true;
-        Log.d(TAG, "Supported devices loaded from assets, count: " + mSupportedDevicesSet.size());
-        mSettingsManager.set(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, ALL_DEVICES_NAMES_KEY, mSupportedDevicesSet);
-    }
-
-    private void loadSupportedDevicesList() throws IOException {
-        BufferedReader in = HttpLoader.readURL("https://raw.githubusercontent.com/eszdman/PhotonCamera/dev/app/src/main/assets/specific/SupportedList.txt",250);
-        String str;
-        while ((str = in.readLine()) != null) {
-            mSupportedDevicesSet.add(str);
-        }
-
-        loaded = true;
-        in.close();
-        mSettingsManager.set(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, ALL_DEVICES_NAMES_KEY, mSupportedDevicesSet);
     }
 }

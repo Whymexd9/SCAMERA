@@ -7,7 +7,6 @@ import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.processing.render.SpecificSettingSensor;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
-import com.particlesdevs.photoncamera.util.HttpLoader;
 import com.particlesdevs.photoncamera.util.SimpleStorageHelper;
 
 import java.io.BufferedReader;
@@ -23,18 +22,6 @@ public class SensorSpecifics {
     public SpecificSettingSensor selectedSensorSpecifics = new SpecificSettingSensor();
 
     private static final String SENSOR_SPECIFICS_PATH = "DCIM/PhotonCamera/Tuning/SensorSpecifics.txt";
-
-    ArrayList<String> loadCache(Context context, SettingsManager mSettingsManager) {
-        String cached = mSettingsManager.getString(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, "sensor_specific_val", "");
-        ArrayList<String> inputStr = new ArrayList<>();
-        if (!cached.isEmpty()) {
-            for (String line : cached.split("\n", -1)) {
-                inputStr.add(line + "\n");
-            }
-        }
-        Log.d(TAG, "Loaded cache:" + inputStr.size());
-        return inputStr;
-    }
 
     ArrayList<String> loadLocal(Context context) throws Exception {
         ArrayList<String> inputStr = new ArrayList<>();
@@ -60,18 +47,6 @@ public class SensorSpecifics {
             inputStr.add(str + "\n");
         }
         indevice.close();
-        return inputStr;
-    }
-
-    ArrayList<String> loadNetwork(String device) throws IOException {
-        ArrayList<String> inputStr = new ArrayList<>();
-        BufferedReader indevice = HttpLoader.readURL(
-                "https://raw.githubusercontent.com/eszdman/PhotonCamera/dev/app/src/main/assets/specific/sensors/" + device + ".txt", 150);
-        String str;
-        while ((str = indevice.readLine()) != null) {
-            Log.d(TAG, "read network:" + str);
-            inputStr.add(str + "\n");
-        }
         return inputStr;
     }
 
@@ -245,14 +220,10 @@ public class SensorSpecifics {
                 inputStr = loadLocal(context);
             } else {
                 try {
-                    Log.d(TAG, "Loading from cache");
-                    inputStr = loadCache(context, mSettingsManager);
-                    if(inputStr.isEmpty()) {
-                        Log.d(TAG, "Loading from assets");
-                        inputStr = loadAssets(context, device);
-                    }
+                    Log.d(TAG, "Loading from assets");
+                    inputStr = loadAssets(context, device);
                 } catch (IOException e) {
-                    Log.d(TAG, "No asset found for device, skipping network: " + device);
+                    Log.d(TAG, "No asset found for device: " + device);
                     if (loaded[0]) {
                         inputStr = mSettingsManager.getArrayList(
                                 PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue,
@@ -267,25 +238,6 @@ public class SensorSpecifics {
             Log.d(TAG, "Failed to load sensor specific:" + Log.getStackTraceString(e));
         }
         mSettingsManager.set(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, "sensor_specific_loaded", loaded[0]);
-    }
-
-    public void fetchFromNetwork(SettingsManager mSettingsManager, Context context) {
-        String device = Build.BRAND.toLowerCase() + "/" + Build.DEVICE.toLowerCase();
-        Log.d(TAG, "Fetching from network for device: " + device);
-        try {
-            final boolean[] loaded = {false};
-            ArrayList<String> inputStr = loadNetwork(device);
-            if (!inputStr.isEmpty()) {
-                parseAndApply(inputStr, mSettingsManager, loaded);
-                mSettingsManager.set(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, "sensor_specific_loaded", loaded[0]);
-                StringBuilder cache = new StringBuilder();
-                for (String line : inputStr) cache.append(line);
-                mSettingsManager.set(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, "sensor_specific_val", cache.toString());
-                Log.d(TAG, "Network fetch successful");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Network fetch failed: " + e.toString());
-        }
     }
 
     public void selectSpecifics(int id) {

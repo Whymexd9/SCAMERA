@@ -13,7 +13,6 @@
 
     <string name="turn_on_grid">Сетка</string>
     <string name="turn_on_round_edges">Включить закруглённые края</string>
-    <string name="telegram">Группа Telegram</string>
     <string name="turn_on_watermark">Водяной знак</string>
     <string name="turn_on_afdata">Показать данные отладки</string>
     <string name="image_deleted">Изображение удалено</string>
@@ -23,7 +22,6 @@
     <string name="hide_gallery_icon">Скрыть иконку галереи</string>
     <string name="theme">Тема</string>
     <string name="camera_sounds">Звуки камеры</string>
-    <string name="about">О нас</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_follow_system">Как в системе</string>
@@ -32,7 +30,6 @@
     <string name="show_gradient">Показать градиентный фон</string>
     <string name="photon_camera_summary">Камера с открытым исходным кодом, с улучшенной обработкой фото</string>
     <string name="version_title">Версия</string>
-    <string name="contributors_title">Разработчики</string>
     <string name="eis_toggle_text">Стабилизация тряски</string>
     <string name="fps_60_toggle_text">Частота кадров</string>
     <string name="quad_bayer_toggle_text">Сверхвысокое разрешение</string>
@@ -47,13 +44,9 @@
     <string name="empty_file_name_error">Название не может быть пустым</string>
     <string name="reset">Сбросить всё</string>
     <string name="backup_restore">Сохранение/Восстановление настроек</string>
-    <string name="device_unsupport">Предупреждение: Неподдерживаемое устройство</string>
     <string name="sure_delete_multiple">Вы уверены, что хотите удалить %1$s изображение(-ий)? %2$s будут удалены.</string>
     <string name="af_mode">Режим автофокуса</string>
     <string name="multiple_deleted_success">%1$s файл(ов) удалены! %2$s очищено.</string>
-    <string name="supported_devices">Поддерживаемые устройства</string>
-    <string name="fetch_configurations">Подгрузить конфигурации</string>
-    <string name="fetch_configurations_summary">Скачать устройство-зависимые настройки с сети и обновить кеш</string>
     <string name="this_device">Ваше устройство - %1$s</string>
     <string name="on">Вкл.</string>
     <string name="t_3s">3 сек.</string>
