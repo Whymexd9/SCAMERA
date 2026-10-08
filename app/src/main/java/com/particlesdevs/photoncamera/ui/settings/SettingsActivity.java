@@ -724,6 +724,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     new com.particlesdevs.photoncamera.settings.SettingsAvailability(mSettingsManager.getDefaultPreferences().getAll(),
                             PhotonCamera.getSpecificSensor() != null && PhotonCamera.getSpecificSensor().selectedSensorSpecifics != null
                                     && PhotonCamera.getSpecificSensor().selectedSensorSpecifics.ModelerExists);
+            state.heic10Unavailable(com.particlesdevs.photoncamera.processing.heif.Heic10Support.unavailableReason());
             applyAvailability(getPreferenceScreen(), state);
         }
         @SuppressWarnings({"unchecked", "rawtypes"})
