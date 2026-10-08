@@ -61,6 +61,7 @@ public final class PostAb {
         p.vivoNiceRgbOwned = true;
         final PostPipeline old = new PostPipeline();
         old.tenBitOutput = pipeline.tenBitOutput; // the same output format in both runs
+        old.p3Output = pipeline.p3Output; // and the same colour space (P46)
         final boolean uploadOnly = PreferenceKeys.niceDevSwitch("post_ab_upload", false);
         if (uploadOnly) forceRgbUpload = true; else PostGlMode.setLegacy(true);
         try {

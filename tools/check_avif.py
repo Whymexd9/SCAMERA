@@ -9,6 +9,11 @@ PSNR against the source, exactness of the lossless files and the EXIF tags.
 
     python3 tools/check_avif.py                 # build (or reuse) the host encoder and run the checks
     python3 tools/check_avif.py --bench a.jpg   # also time 12 MP and 50 MP encodes (photo mosaics) at the defaults
+    python3 tools/check_avif.py --baseline-exe OLD/avif_host_encode   # + the default files byte for byte against an older
+                                                                       # build (P46: the colour options change nothing)
+
+P46 colours: Display P3 (CICP 12/13/1 + an ICC profile, read back by Pillow, the same pixels as the default file) and HDR
+HLG (CICP 9/18/9 with the BT.2020 matrix, lossless with identity) from RGBA_1010102.
 
 Needs: CMake 3.18+, a C / C++ compiler (on Windows `zig cc` from the ziglang package is used when CC is unset), Perl,
 nasm on x86 hosts, Pillow >= 11.3 with AVIF and numpy.
@@ -305,6 +310,8 @@ def parse_avif(data: bytes) -> dict:
         elif kind == 'colr' and body[:4] == b'nclx':
             p, t, m = struct.unpack('>HHH', body[4:10])
             out['nclx'] = dict(primaries=p, transfer=t, matrix=m, full_range=body[10] >> 7)
+        elif kind == 'colr' and body[:4] in (b'prof', b'rICC'):
+            out['icc'] = bytes(body[4:])
     exif_ids = [i for i, t in items.items() if t == 'Exif']
     if exif_ids:
         offset, length = locations[exif_ids[0]][0]
@@ -421,6 +428,64 @@ def run_cases(exe: Path, work: Path, width: int, height: int) -> None:
           f'4:2:0 {stripes["10-bit 4:2:0 q90"]:.1f} dB')
 
 
+def run_colour(exe: Path, work: Path, width: int, height: int, baseline: Path | None) -> None:
+    """P46: Display P3 and HLG signalling; with an older build, the default files byte for byte."""
+    from PIL import ImageCms
+    rgb10 = synthetic(width, height)
+    raw = work / f'colour1010102_{width}x{height}.raw'
+    raw.write_bytes(pack1010102(rgb10))
+    raw8 = work / f'colour8888_{width}x{height}.raw'
+    raw8.write_bytes(pack8888(to8(rgb10)))
+    icc = work / 'profile.icc'
+    profile = ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes()  # any valid profile: it is carried, not applied
+    icc.write_bytes(profile)
+    common = dict(quality=90, depth=10, yuv='444', speed=6, threads=4)
+    plain = work / 'colour_default.avif'
+    encode(exe, raw, width, height, '1010102', plain, None, **common)
+    p3 = work / 'colour_p3.avif'
+    encode(exe, raw, width, height, '1010102', p3, None, cicp='12/13/1', icc=icc, **common)
+    box = parse_avif(p3.read_bytes())
+    check(box.get('nclx') == dict(primaries=12, transfer=13, matrix=1, full_range=1), f'Display P3: nclx {box.get("nclx")}')
+    check(box.get('icc') == profile, 'Display P3: the colr prof box does not hold the profile')
+    check('icc' not in parse_avif(plain.read_bytes()), 'the default file has a profile')
+    with Image.open(p3) as a, Image.open(plain) as b:
+        check(a.info.get('icc_profile') == profile, 'Display P3: Pillow does not read the profile')
+        same = np.array_equal(np.asarray(a.convert('RGB')), np.asarray(b.convert('RGB')))
+        check(same, 'Display P3: the pixels differ from the default file')
+    print(f'  Display P3: nclx 12/13/1 + ICC ({len(profile)} B) read back by Pillow, pixels as the default file')
+    for name, options, matrix, minimum in (('HLG 10-bit 4:4:4', dict(common), 9, 45.0),
+                                           ('HLG 12-bit 4:4:4', dict(common, depth=12), 9, 45.0),
+                                           ('HLG lossless', dict(common, lossless=1), 0, None)):
+        out = work / ('colour_' + name.replace(' ', '_').replace(':', '') + '.avif')
+        encode(exe, raw, width, height, '1010102', out, None, cicp='9/18/9', **options)
+        box = parse_avif(out.read_bytes())
+        check(box.get('nclx') == dict(primaries=9, transfer=18, matrix=matrix, full_range=1), f'{name}: nclx {box.get("nclx")}')
+        check('icc' not in box, f'{name}: an ICC profile next to HLG')
+        with Image.open(out) as im:
+            decoded = np.asarray(im.convert('RGB'))
+        # Pillow (libavif) converts YCbCr -> RGB with the signalled BT.2020 matrix: the HLG signal comes back as coded
+        if minimum is None:
+            diff = int(np.abs(decoded.astype(int) - to8(rgb10).astype(int)).max())
+            check(diff == 0, f'{name}: differs by {diff}')
+            print(f'  {name}: nclx 9/18/{matrix}, exact')
+        else:
+            value = psnr(decoded, to8(rgb10))
+            check(value >= minimum, f'{name}: PSNR {value:.2f} dB < {minimum} dB (wrong YCbCr matrix?)')
+            print(f'  {name}: nclx 9/18/{matrix}, PSNR {value:.2f} dB against the signal')
+    if baseline:
+        same = 0
+        for name, layout, options, _, _ in CASES:
+            a, b = work / 'base_old.avif', work / 'base_new.avif'
+            source = raw if layout == '1010102' else raw8
+            encode(baseline, source, width, height, layout, a, None, speed=6, threads=4, **options)
+            encode(exe, source, width, height, layout, b, None, speed=6, threads=4, **options)
+            if a.read_bytes() == b.read_bytes():
+                same += 1
+            else:
+                check(False, f'{name}: the default file differs from the older build')
+        print(f'  default colour: {same} of {len(CASES)} files byte-identical to {baseline}')
+
+
 def bench(exe: Path, work: Path, photos: list[Path]) -> None:
     """12 MP and 50 MP (2 x 2 mosaic) photos at the app's defaults, 8 threads (the phones' core count)."""
     tiles = []
@@ -458,6 +523,7 @@ def main() -> int:
     parser.add_argument('--nasm', help='nasm for libaom on x86 hosts (default: $NASM or PATH)')
     parser.add_argument('--bench', nargs='+', type=Path, metavar='PHOTO', help='time 12 MP / 50 MP encodes of these photos')
     parser.add_argument('--keep', type=Path, help='keep the encoded files in this directory')
+    parser.add_argument('--baseline-exe', type=Path, help='an older host encoder: the default files must match it byte for byte')
     args = parser.parse_args()
 
     if not features.check('avif'):
@@ -469,13 +535,14 @@ def main() -> int:
         work.mkdir(parents=True, exist_ok=True)
         for width, height in ((512, 384), (333, 211)):
             run_cases(exe, work, width, height)
+        run_colour(exe, work, 512, 384, args.baseline_exe)
         if args.bench:
             bench(exe, work, args.bench)
     if failures:
         print(f'{len(failures)} AVIF check(s) failed')
         return 1
     print(f'AVIF output OK: {len(CASES) * 2} files (8 / 10 / 12-bit, 4:4:4 / 4:2:0, lossless, RGBA_8888 / RGBA_1010102)'
-          ' decode independently with the expected depth, colour, EXIF and quality')
+          ' decode independently with the expected depth, colour, EXIF and quality; Display P3 and HLG signalled')
     return 0
 
 
