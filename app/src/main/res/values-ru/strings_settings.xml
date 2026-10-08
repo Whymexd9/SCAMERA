@@ -700,4 +700,9 @@
     <string name="prefs_webp_lossless_summary">Пиксели без изменений: файл в несколько раз больше, чем WebP с потерями, и сохраняется дольше. Качество не используется.</string>
     <string name="prefs_photo_also_jpeg_title">Также сохранять JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с фото HEIC / WebP — для приложений, которые их не открывают. С включённым Ultra HDR он будет в этом JPEG.</string>
+    <!-- P42: распознавание лиц и следящий автофокус (по ArkCamera v50) -->
+    <string name="prefs_face_detect_title">Распознавание лиц</string>
+    <string name="prefs_face_detect_summary">Лица обводятся в видоискателе и ведут автофокус и экспозицию (ручной фокус, ручная экспозиция и фокус касанием важнее). Режимы камеры работают только там, где объектив их поддерживает; «Программный» анализирует изображение видоискателя.</string>
+    <string name="prefs_tracking_af_title">Следящий автофокус</string>
+    <string name="prefs_tracking_af_summary">Фокус и экспозиция цепляются за объект и следуют за ним по кадру. Если объект потерян, снова работает непрерывный автофокус. Касание в другом месте возвращает обычный фокус касанием.</string>
 </resources>

@@ -41,6 +41,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private final LiveSceneMeter mSceneMeter = new LiveSceneMeter();
     /** Develops the preview RAW stream; replaces the ISP image when it has a frame. */
     private final LiveRawRenderer mRawRenderer = new LiveRawRenderer();
+    /** P42: downscaled copies of the drawn frame for the tracking autofocus (only while it asks for them). */
+    private final SubjectFrameGrabber mSubjectGrabber = new SubjectFrameGrabber();
     private ManualModeConsole mManualModeConsole;
 
     public void setManualModeConsole(ManualModeConsole console) {
@@ -87,7 +89,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
             Log.d("MainRenderer", "viewfinder requestedRAW="+rawLook+" displaying="+(rawActive?"developed RAW":"ISP (RAW disabled, waiting, stale or unavailable)"));
             mLastRawActive = rawActive;
         }
+        com.particlesdevs.photoncamera.control.subject.SubjectFrames.setRawDisplayed(rawActive);
         if (rawActive) {
+            mSubjectGrabber.afterDraw();
             GLES20.glUseProgram(hProgramHandle);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
@@ -137,6 +141,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
         }
+        mSubjectGrabber.afterDraw();
         // GLES20.glFlush();
     }
 
@@ -191,6 +196,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mUpdateST = false;
         mRawRenderer.onContextCreated();
         mSceneMeter.onContextCreated();
+        mSubjectGrabber.onContextCreated();
         initTex();
         mSTexture = new SurfaceTexture(hTex[0]);
         mSTexture.setOnFrameAvailableListener(this);
@@ -226,6 +232,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     public void onSurfaceChanged(GL10 unused, int width, int height) {
         GLES30.glViewport(0, 0, width, height);
+        mSubjectGrabber.onSurfaceChanged(width, height);
     }
 
     public SurfaceTexture getmSTexture() {

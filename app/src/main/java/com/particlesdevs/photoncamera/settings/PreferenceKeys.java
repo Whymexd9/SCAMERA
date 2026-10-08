@@ -111,6 +111,9 @@ public class PreferenceKeys {
         COMMON_KEYS.add(Key.KEY_AE_MODE.mValue);
         COMMON_KEYS.add(Key.CAMERA_MODE.mValue);
         COMMON_KEYS.add(Key.KEY_SAVE_RAW.mValue);
+        // P42: face detection and tracking AF are viewfinder behaviour, not per-lens tuning.
+        COMMON_KEYS.add(com.particlesdevs.photoncamera.control.subject.FaceDetectModes.KEY);
+        COMMON_KEYS.add(com.particlesdevs.photoncamera.control.subject.SubjectPolicy.TRACKING_KEY);
     }
 
     private PreferenceKeys(SettingsManager settingsManager) {
@@ -1299,6 +1302,20 @@ public class PreferenceKeys {
     /** P24: DNGs with lossless JPEG (LJ92, compression 7) inside; off by default until the owner's readers are checked. */
     public static boolean isDngLossless() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_dng_lossless", false);
+    }
+
+    /** P42: face detection mode (FaceDetectModes values). */
+    public static String getFaceDetectMode() {
+        return com.particlesdevs.photoncamera.control.subject.FaceDetectModes.normalize(preferenceKeys.settingsManager.getString(
+                "default_scope", com.particlesdevs.photoncamera.control.subject.FaceDetectModes.KEY,
+                com.particlesdevs.photoncamera.control.subject.FaceDetectModes.DEFAULT));
+    }
+
+    /** P42: tracking autofocus gesture (SubjectPolicy TRACK_* values). */
+    public static String getTrackingAfMode() {
+        return com.particlesdevs.photoncamera.control.subject.SubjectPolicy.normalizeTracking(preferenceKeys.settingsManager.getString(
+                "default_scope", com.particlesdevs.photoncamera.control.subject.SubjectPolicy.TRACKING_KEY,
+                com.particlesdevs.photoncamera.control.subject.SubjectPolicy.TRACK_DEFAULT));
     }
 
     public static boolean isLiveViewfinderRawEnabled() {
