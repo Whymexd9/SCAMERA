@@ -159,6 +159,7 @@ jobs:
         run: |
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libmobileRemosaic.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/liblanczosDownscale.so'
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libscameraAvif.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/vivo-neural/arm64-v8a/vivo-neural-worker'
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
           python3 tools/fetch_vivo_ae_runtime.py --apk "$APK"
