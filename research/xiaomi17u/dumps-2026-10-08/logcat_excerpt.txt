@@ -1,0 +1,60 @@
+10-08 10:01:26.287  3774  6484 I wm_set_resumed_activity: [0,com.miui.home/.launcher.Launcher,resumeTopActivity - onActivityStateChanged]
+10-08 10:01:26.346  3774  6488 I wm_set_resumed_activity: [0,com.miui.home/.launcher.Launcher,setFocusedTask-alreadyTop]
+10-08 10:01:27.137  3774  3995 I am_proc_start: [0,24080,10650,org.codeaurora.snapcam,prestart-top-activity,{org.codeaurora.snapcam/com.particlesdevs.photoncamera.ui.SplashActivity}]
+10-08 10:01:27.268  3774  6370 I wm_set_resumed_activity: [0,org.codeaurora.snapcam/com.particlesdevs.photoncamera.ui.SplashActivity,realStartActivityLocked - onActivityStateChanged]
+10-08 10:01:27.294  3774  6370 I wm_set_resumed_activity: [0,org.codeaurora.snapcam/com.particlesdevs.photoncamera.ui.camera.CameraActivity,realStartActivityLocked - onActivityStateChanged]
+10-08 10:01:27.532  3774  3995 I am_proc_start: [0,25221,1000,miui.systemui.plugin:flashlight,broadcast,{miui.systemui.plugin/miui.systemui.flashlight.MiFlashlightReceiver}]
+10-08 10:01:27.757  3774  5420 D SSRU-CpuResourceTracker: [deal]doCpuMonitor:AppCpuState{uid=10154, pkgName='com.android.camera', usages=0.024, duringTime=120174, details={com.android.camera=0.024}, state=0, stateUpdateTime={}, restricter=0}
+10-08 10:01:28.166  3774  3995 I am_proc_start: [0,25415,1000,com.xiaomi.misettings:remote,service,{com.xiaomi.misettings/com.xiaomi.misettings.features.visualhealth.sensor.VisualSensorService}]
+10-08 10:01:28.232  3774  3995 I am_proc_start: [0,25477,1000,com.xiaomi.misettings,service,{com.xiaomi.misettings/androidx.room.MultiInstanceInvalidationService}]
+10-08 10:01:27.629 25365 25365 I CAM_INFO: MI-CAM-ZOOM: cam_zoom_driver_cmd: 1580: Failed in zoom Parsing, it has been flushed
+10-08 10:01:27.629 25365 25365 I CAM_INFO: MI-CAM-ZOOM: cam_zoom_subdev_ioctl: 87: Failed for driver_cmd: -53, it has been flushed
+10-08 10:01:38.179  3774  3995 I am_proc_start: [0,25870,1000,com.xiaomi.misettings:widgetProvider,service,{com.xiaomi.misettings/com.xiaomi.misettings.usagestats.widget.desktop.service.UsageStatsUpdateService}]
+10-08 10:01:48.191  3774  3995 I am_proc_start: [0,25952,10130,com.android.vending,service,{com.android.vending/com.google.android.finsky.services.LicensingService}]
+10-08 10:01:57.126  3774  3995 I am_proc_start: [0,26043,1000,com.android.settings,broadcast,{com.android.settings/com.android.settings.MiuiSettingsReceiver}]
+10-08 10:01:57.319  3774  3995 I am_proc_start: [0,26123,10099,com.android.htmlviewer:remote,content provider,{com.android.htmlviewer/com.android.settings.cloud.CloudSettingsProvider}]
+10-08 10:01:57.336  3774  3995 I am_proc_start: [0,26149,10219,com.android.cellbroadcastreceiver,broadcast,{com.android.cellbroadcastreceiver/com.android.cellbroadcastreceiver.CellBroadcastReceiver}]
+10-08 10:01:58.389  3774  3995 I am_proc_start: [0,26301,10130,com.android.vending:background,service,{com.android.vending/com.google.frameworks.client.data.android.server.play.BackgroundProcessEndpointService}]
+10-08 10:02:02.203  2848 25770 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1168 xmDevCheckAppMatch() xmDevInputRule app: com.android.camera, target app: org.codeaurora.snapcam
+10-08 10:02:02.203  2848 25770 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1168 xmDevCheckAppMatch() xmDevInputRule app: com.android.camera, target app: org.codeaurora.snapcam
+10-08 10:02:02.204  2848 25770 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1176 xmDevCheckAppMatch() app xmDevInputRule config is empty
+10-08 10:02:02.204  2848 25770 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1176 xmDevCheckAppMatch() app xmDevInputRule config is empty
+10-08 10:02:23.447 16621 25831 E CamX    : [ERROR][SENSOR ] nezha_semco_s5khpe_sem1218s_tele_i_zoom.cpp:591 FormatZOOMOpticalRatioData() !!! Error Return:0 data, max 10, TimeStamp:180402870531041
+10-08 10:02:23.447 16621 25831 E CamX    : [ERROR][SENSOR ] camxzoomdata.cpp:1581 FormatOpticalRatioData() ZOOM library failed to Format
+10-08 10:02:23.447 16621 25831 E CamX    : [ERROR][SENSOR ] camxzoom.cpp:2722 FormatOpticalRatioData() [OPZOOMING]Zoom[3] Format Optical Ratio data failed
+10-08 10:02:23.447 16621 25831 E CamX    : [ERROR][SENSOR ] camxzoom.cpp:2391 OpticalRatioThread() Failed to format Optical Ratio data
+10-08 10:02:23.455 16621 16767 E CamX    : [ERROR][SENSOR ] camxzoom.cpp:1316 NotifyCSLMessage() [ZoomExecute] gettime:0 ValidSamples is 0, zoom data is not available.
+10-08 10:02:23.459 16621 16767 E CamX    : [ERROR][SENSOR ] camxzoom.cpp:1316 NotifyCSLMessage() [ZoomExecute] gettime:1 ValidSamples is 0, zoom data is not available.
+10-08 10:02:57.405 25821 25821 I CAM_INFO: CAM-SENSOR: cam_sensor_handle_res_info: 251: Sensor[nezha_semco_s5khpe_tele_i-3] Feature: 0x20 updated for request id: 0, res index: 9, width: 4080, height: 3072, capability: QUADCFA (NOR)INSENSORZOOM (NOR)2PD, fps: 30
+10-08 10:02:57.434 16943 16943 I CAM_INFO: CAM-SENSOR: cam_sensor_handle_res_info: 251: Sensor[nezha_semco_s5khpe_tele_i-3] Feature: 0x20 updated for request id: 2653, res index: 9, width: 4080, height: 3072, capability: QUADCFA (NOR)INSENSORZOOM (NOR)2PD, fps: 30
+10-08 10:03:07.646 16621 25831 E CamX    : [ERROR][SENSOR ] nezha_semco_s5khpe_sem1218s_tele_i_zoom.cpp:591 FormatZOOMOpticalRatioData() !!! Error Return:0 data, max 10, TimeStamp:180447070450416
+10-08 10:03:07.647 16621 25831 E CamX    : [ERROR][SENSOR ] camxzoomdata.cpp:1581 FormatOpticalRatioData() ZOOM library failed to Format
+10-08 10:03:07.647 16621 25831 E CamX    : [ERROR][SENSOR ] camxzoom.cpp:2722 FormatOpticalRatioData() [OPZOOMING]Zoom[3] Format Optical Ratio data failed
+10-08 10:03:07.647 16621 25831 E CamX    : [ERROR][SENSOR ] camxzoom.cpp:2391 OpticalRatioThread() Failed to format Optical Ratio data
+10-08 10:03:16.241  3774  3995 I am_proc_start: [0,24083,10365,ru.sbcs.store,broadcast,{ru.sbcs.store/com.google.firebase.iid.FirebaseInstanceIdReceiver}]
+10-08 10:03:27.922  3774  5420 D SSRU-CpuResourceTracker: [deal]doCpuMonitor:AppCpuState{uid=10154, pkgName='com.android.camera', usages=0.008, duringTime=120118, details={com.android.camera=0.008}, state=0, stateUpdateTime={}, restricter=0}
+10-08 10:03:50.884  3774  6368 I wm_set_resumed_activity: [0,com.miui.home/.launcher.Launcher,resumeTopActivity - onActivityStateChanged]
+10-08 10:03:50.965  3774  6488 I wm_set_resumed_activity: [0,com.miui.home/.launcher.Launcher,setFocusedTask-alreadyTop]
+10-08 10:03:52.077  3774  6368 I wm_set_resumed_activity: [0,com.termux/.app.TermuxActivity,resumeTopActivity - onActivityStateChanged]
+10-08 10:03:52.086  2848  4793 I Camera3-Device: flush: Camera 4: Flushing all requests
+10-08 10:03:50.762 25831 25831 I CAM_INFO: MI-CAM-ZOOM: cam_zoom_driver_cmd: 1580: Failed in zoom Parsing, it has been flushed
+10-08 10:03:52.103  2848  4793 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1168 xmDevCheckAppMatch() xmDevInputRule app: com.android.camera, target app: org.codeaurora.snapcam
+10-08 10:03:52.103  2848  4793 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1168 xmDevCheckAppMatch() xmDevInputRule app: com.android.camera, target app: org.codeaurora.snapcam
+10-08 10:03:52.103  2848  4793 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1176 xmDevCheckAppMatch() app xmDevInputRule config is empty
+10-08 10:03:52.103  2848  4793 V XmDevCamRFConfig: XmDevCamRFConfig.cpp:1176 xmDevCheckAppMatch() app xmDevInputRule config is empty
+10-08 10:03:52.103  2848  4793 I Camera3-Device: disconnectImpl: Camera: 4 E
+10-08 10:03:52.103  2848  4793 I Camera3-Device: CameraServiceWatchdog watch close process
+10-08 10:03:50.762 25831 25831 I CAM_INFO: MI-CAM-ZOOM: cam_zoom_subdev_ioctl: 87: Failed for driver_cmd: -53, it has been flushed
+10-08 10:03:52.134  2848  4793 I Camera3-Device: disconnectImpl: X
+10-08 10:03:52.136  2848  4793 I CameraService: disconnect: Disconnected client for camera 4 for PID 24080
+10-08 10:03:52.148  3774  3995 I am_proc_start: [0,26846,1000,miui.systemui.plugin:flashlight,broadcast,{miui.systemui.plugin/miui.systemui.flashlight.MiFlashlightReceiver}]
+10-08 10:03:54.163  3774  3995 I am_proc_start: [0,26924,1000,com.xiaomi.misettings:remote,service,{com.xiaomi.misettings/com.xiaomi.misettings.features.visualhealth.sensor.VisualSensorService}]
+
+Repeated patterns (count):
+  1300  N N V XmDevCamRFConfig: XmDevCamRFConfig.cpp:N xmDevCheckAppMatch() xmDevInputRule app: com.android.camera, target app: org.codeaurora.snapcam
+  1300  N N V XmDevCamRFConfig: XmDevCamRFConfig.cpp:N xmDevCheckAppMatch() app xmDevInputRule config is empty
+     4  N  N V XmDevCamRFConfig: XmDevCamRFConfig.cpp:N xmDevCheckAppMatch() xmDevInputRule app: com.android.camera, target app: org.codeaurora.snapcam
+     4  N  N V XmDevCamRFConfig: XmDevCamRFConfig.cpp:N xmDevCheckAppMatch() app xmDevInputRule config is empty
+     3  N N I CAM_INFO: MI-CAM-ZOOM: cam_zoom_driver_cmd: N: Failed in zoom Parsing, it has been flushed
+     3  N N I CAM_INFO: MI-CAM-ZOOM: cam_zoom_subdev_ioctl: N: Failed for driver_cmd: -N, it has been flushed
+     3  N N E CamX    : [ERROR][SENSOR ] camxzoom.cpp:N NotifyCSLMessage() [ZoomExecute] gettime:N ValidSamples is N, zoom data is not available.
