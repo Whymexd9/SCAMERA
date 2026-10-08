@@ -691,7 +691,7 @@
     <string name="prefs_camera_package_spoof_help_summary">OnePlus/OPPO — OplusCameraManager.saveOpPackageName (открывает скрытые камеры и вендорные режимы Oplus). Общий Android — подменяет пакет в контексте CameraManager, проверку UID в CameraService не обходит. BinderHook — переписывает имя пакета прямо в транзакциях ICameraService (экспериментально). Пустое поле — собственный пакет. Пример: com.android.camera на vivo, com.oplus.camera на OPPO.</string>
     <string name="prefs_scamera_full_debug_title">Полный журнал обработки</string>
     <string name="prefs_photo_format_title">Формат фото</string>
-    <string name="prefs_photo_format_summary">JPEG открывается везде, и только он несёт Ultra HDR. HEIC — примерно вдвое меньше при том же виде; открывают Android 9+, iPhone, Windows / macOS с кодеком. WebP — меньше JPEG; открывают браузеры и большинство приложений, но не каждая галерея; до 16383 px по стороне, фото больше сохраняется в JPEG. RAW сохраняет данные сенсора в DNG; RAW + формат сохраняет оба файла.</string>
+    <string name="prefs_photo_format_summary">JPEG открывается везде, и только он несёт Ultra HDR. HEIC — примерно вдвое меньше при том же виде; открывают Android 9+, iPhone, Windows / macOS с кодеком. WebP — меньше JPEG; открывают браузеры и большинство приложений, но не каждая галерея; до 16383 px по стороне, фото больше сохраняется в JPEG. AVIF — наилучшее качество: цвет 10 / 12 бит, цветность в полном разрешении, файл меньше половины JPEG; открывают Android 12+, Chrome, Google Фото, Windows 11 / macOS 13 (предлагается с Android 12). RAW сохраняет данные сенсора в DNG; RAW + формат сохраняет оба файла.</string>
     <string name="prefs_heic_quality_title">Качество HEIC</string>
     <string name="prefs_heic_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше. Если в телефоне нет кодировщика HEVC, фото сохраняется в JPEG.</string>
     <string name="prefs_heic_10bit_title">HEIC 10 бит</string>
@@ -700,8 +700,18 @@
     <string name="prefs_webp_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше.</string>
     <string name="prefs_webp_lossless_title">WebP без потерь</string>
     <string name="prefs_webp_lossless_summary">Пиксели без изменений: файл в несколько раз больше, чем WebP с потерями, и сохраняется дольше. Качество не используется.</string>
+    <string name="prefs_avif_quality_title">Качество AVIF</string>
+    <string name="prefs_avif_quality_summary">90 по умолчанию: потерь не видно, около 2 МБ на снимок 12 Мп в 10 бит 4:4:4. Меньше — файл меньше, мелкая деталь теряется раньше. В AVIF без потерь не используется.</string>
+    <string name="prefs_avif_lossless_title">Без потерь</string>
+    <string name="prefs_avif_lossless_summary">Пиксели без изменений, в глубине цвета самого снимка: файл примерно в 6 раз больше, чем при качестве 90, и сохраняется дольше. Качество, глубина цвета и субдискретизация не используются.</string>
+    <string name="prefs_avif_depth_title">Глубина цвета</string>
+    <string name="prefs_avif_depth_summary">10 бит (по умолчанию) — плавное небо и тени без ступенек. 12 бит — запас для обработки, файл больше. 8 бит — как в JPEG. С Android 13 снимок для него обрабатывается в 10 битах (8 бит, если GPU не умеет 10-битный вывод).</string>
+    <string name="prefs_avif_chroma_title">Цветовая субдискретизация</string>
+    <string name="prefs_avif_chroma_summary">4:4:4 (по умолчанию) — цвет в полном разрешении: чёткие цветные края и мелкая цветная деталь. 4:2:0 — цвет в половинном разрешении, файл меньше, цветные края размываются.</string>
+    <string name="prefs_avif_speed_title">Скорость кодирования</string>
+    <string name="prefs_avif_speed_summary">«Баланс» (по умолчанию) сохраняет снимок 12 Мп примерно за 1–2 с на современном телефоне. «Тщательно» — примерно в 5 раз дольше, деталь чуть лучше; «Быстро» и «Очень быстро» — примерно в 3 раза быстрее, деталь чуть хуже.</string>
     <string name="prefs_photo_also_jpeg_title">Также сохранять JPEG</string>
-    <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с фото HEIC / WebP — для приложений, которые их не открывают. С включённым Ultra HDR он будет в этом JPEG.</string>
+    <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с фото HEIC / WebP / AVIF — для приложений, которые их не открывают. С включённым Ultra HDR он будет в этом JPEG.</string>
     <!-- P42: распознавание лиц и следящий автофокус (по ArkCamera v50) -->
     <string name="prefs_face_detect_title">Распознавание лиц</string>
     <string name="prefs_face_detect_summary">Лица обводятся в видоискателе и ведут автофокус и экспозицию (ручной фокус, ручная экспозиция и фокус касанием важнее). Режимы камеры работают только там, где объектив их поддерживает; «Программный» анализирует изображение видоискателя.</string>

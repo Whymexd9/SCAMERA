@@ -80,7 +80,7 @@ public class ExifDialogViewModel extends AndroidViewModel {
         String attr_focal = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH);
         String attr_date = exifInterface.getAttribute(ExifInterface.TAG_DATETIME);
         if (attr_width == null || attr_length == null || "0".equals(attr_width) || "0".equals(attr_length)) {
-            // A HEIC / WebP file from another app may have no size tags (ExifInterface reads no WebP bitstream size):
+            // A HEIC / WebP / AVIF file from another app may have no size tags (ExifInterface reads no WebP bitstream size):
             // the header gives it.
             int[] size = decodedSize(contentResolver, imageFile);
             if (size != null) {

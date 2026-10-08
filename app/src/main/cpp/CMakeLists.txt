@@ -106,6 +106,15 @@ set_property(TARGET scameraJpeg PROPERTY CXX_STANDARD 17)
 target_compile_options(scameraJpeg PRIVATE -O3 -fvisibility=hidden -fvisibility-inlines-hidden)
 target_link_libraries(scameraJpeg PRIVATE scameraJpegli jnigraphics log)
 
+# AVIF photo output: libavif + libaom (pinned releases, scamera-avif-deps.cmake), 8/10/12-bit, 4:4:4 / 4:2:0, lossless.
+include(${SRC_DIR}/scamera-avif-deps.cmake)
+add_library(scameraAvif SHARED scamera-avif.cpp)
+set_property(TARGET scameraAvif PROPERTY CXX_STANDARD 17)
+target_compile_options(scameraAvif PRIVATE -O3 -fvisibility=hidden -fvisibility-inlines-hidden)
+# The codec libraries are linked in privately: their symbols stay hidden, unused code is dropped.
+target_link_options(scameraAvif PRIVATE -Wl,--exclude-libs,ALL -Wl,--gc-sections)
+target_link_libraries(scameraAvif PRIVATE scameraLibavif jnigraphics log)
+
 # Final, memory-bounded resampling of successful Vivo RGB output.
 add_library(lanczosDownscale SHARED lanczos-downscale-jni.cpp)
 target_compile_options(lanczosDownscale PRIVATE -O3)

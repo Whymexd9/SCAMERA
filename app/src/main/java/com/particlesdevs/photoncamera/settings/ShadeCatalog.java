@@ -68,12 +68,12 @@ public final class ShadeCatalog {
     public static final String FLASH = "pref_ae_mode_key";
     public static final String TIMER = "pref_countdown_timer_key";
     /**
-     * The one format choice (FormatChoice: JPEG, HEIC, WebP, RAW, RAW + JPEG / HEIC / WebP), stored as the save mode
-     * under this key plus the codec under {@link #PHOTO_FORMAT}. Its list values are FormatChoice ordinals.
+     * The one format choice (FormatChoice: JPEG, HEIC, WebP, AVIF, RAW, RAW + JPEG / HEIC / WebP / AVIF), stored as the
+     * save mode under this key plus the codec under {@link #PHOTO_FORMAT}. Its list values are FormatChoice ordinals.
      */
     public static final String FORMAT = "pref_save_raw_key";
     public static final String METERING_STD = "pref_ae_metering_std_mode_key";
-    /** «Формат фото» (JPEG / HEIC / WebP): the codec half of the FORMAT choice; no tile of its own (FORMAT covers it). */
+    /** «Формат фото» (JPEG / HEIC / WebP / AVIF): the codec half of the FORMAT choice; no tile of its own (FORMAT covers it). */
     public static final String PHOTO_FORMAT = com.particlesdevs.photoncamera.processing.PhotoFormat.KEY;
     public static final String ROUTE = LmcHybridKeys.ROUTE;
     private static final String OUTPUT = "pref_lmc_hybrid_output", DOWNSAMPLER = "pref_lmc_hybrid_downsampler";
@@ -209,7 +209,7 @@ public final class ShadeCatalog {
             {"мерцан|flicker|antiband", "мерцание flicker антибандинг antibanding"},
             {"вспышк|фонар|flash|torch", "вспышка flash фонарик torch"},
             {"таймер|timer", "таймер timer"},
-            {"raw|jpeg|heic|webp|формат|format", "формат format raw jpeg dng heic webp кодек codec"},
+            {"raw|jpeg|heic|webp|avif|формат|format", "формат format raw jpeg dng heic webp avif кодек codec"},
             {"звук|sound", "звук sound"},
             {"замер|\\bmeter", "замер metering экспозамер"},
             {"склейк|merge|route", "склейка merge route hybrid scam"},

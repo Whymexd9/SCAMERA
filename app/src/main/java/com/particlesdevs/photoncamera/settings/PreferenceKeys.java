@@ -294,9 +294,13 @@ public class PreferenceKeys {
         return (int) Math.round(SettingsNumericRules.value("pref_jpeg_quality",
                 preferenceKeys.settingsManager.getString("default_scope", "pref_jpeg_quality", "98"), 98));
     }
-    /** «Формат фото»: the codec of the processed photo; HEIC below Android 9 is written as JPEG (PhotoFormat.effective). */
+    /**
+     * «Формат фото»: the codec of the processed photo; HEIC below Android 9 and AVIF below Android 12 or without its encoder
+     * library are written as JPEG (PhotoFormat.effective).
+     */
     public static com.particlesdevs.photoncamera.processing.PhotoFormat getPhotoFormat() {
-        return com.particlesdevs.photoncamera.processing.PhotoFormat.effective(getChosenPhotoFormat(), android.os.Build.VERSION.SDK_INT);
+        return com.particlesdevs.photoncamera.processing.PhotoFormat.effective(getChosenPhotoFormat(), android.os.Build.VERSION.SDK_INT,
+                com.particlesdevs.photoncamera.processing.avif.AvifEncoder.available());
     }
     /** The stored «Формат фото» value as chosen (no API fallback). */
     public static com.particlesdevs.photoncamera.processing.PhotoFormat getChosenPhotoFormat() {
@@ -324,7 +328,38 @@ public class PreferenceKeys {
     public static boolean isWebpLossless() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_WEBP_LOSSLESS, false);
     }
-    /** «Также сохранять JPEG»: a JPEG next to the HEIC / WebP photo (it carries Ultra HDR when that is on). */
+    /** AVIF quality 1-100 (default 90); not used by the lossless AVIF. */
+    public static int getAvifQuality() {
+        return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_QUALITY,
+                preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_QUALITY, "90"), 90));
+    }
+    /** AVIF «Без потерь»: exact pixels (identity matrix, 4:4:4, the photo's own bit depth). */
+    public static boolean isAvifLossless() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_LOSSLESS, false);
+    }
+    /** AVIF «Глубина цвета»: 8, 10 (default) or 12 bit. */
+    public static int getAvifDepth() {
+        int depth = (int) Math.round(PreferenceNumber.read(preferenceKeys.settingsManager.getString("default_scope",
+                com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_DEPTH, "10"), 10));
+        return depth == 8 || depth == 12 ? depth : com.particlesdevs.photoncamera.processing.PhotoFormat.AVIF_DEFAULT_DEPTH;
+    }
+    /** AVIF «Цветовая субдискретизация»: 4:4:4 (default, "444") or 4:2:0 ("420"). */
+    public static boolean isAvifYuv444() {
+        return !"420".equals(preferenceKeys.settingsManager.getString("default_scope",
+                com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_CHROMA, "444").trim());
+    }
+    /** AVIF «Скорость кодирования»: libavif speed 0-10 (default 6). */
+    public static int getAvifSpeed() {
+        return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_SPEED,
+                preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_AVIF_SPEED, "6"),
+                com.particlesdevs.photoncamera.processing.PhotoFormat.AVIF_DEFAULT_SPEED));
+    }
+    /** The AVIF settings of a shot; the encoder uses every core. */
+    public static com.particlesdevs.photoncamera.processing.avif.AvifEncoder.Options getAvifOptions() {
+        return new com.particlesdevs.photoncamera.processing.avif.AvifEncoder.Options(getAvifQuality(), isAvifLossless(), getAvifDepth(),
+                isAvifYuv444(), getAvifSpeed(), Runtime.getRuntime().availableProcessors());
+    }
+    /** «Также сохранять JPEG»: a JPEG next to the HEIC / WebP / AVIF photo (it carries Ultra HDR when that is on). */
     public static boolean isAlsoSaveJpeg() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_ALSO_JPEG, false);
     }

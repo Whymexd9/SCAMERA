@@ -217,9 +217,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         }
 
         /**
-         * «Формат фото» is the one format choice of the top bar and the shade (FormatChoice): JPEG, HEIC, WebP, RAW,
-         * RAW + JPEG / HEIC / WebP, stored as the save mode and the codec, never as a value of its own (the list is not
-         * persistent). HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK): below it the HEIC options are not offered.
+         * «Формат фото» is the one format choice of the top bar and the shade (FormatChoice): JPEG, HEIC, WebP, AVIF, RAW,
+         * RAW + JPEG / HEIC / WebP / AVIF, stored as the save mode and the codec, never as a value of its own (the list is
+         * not persistent). HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK), AVIF Android 12 and its encoder: without them
+         * those options are not offered.
          */
         private void setupPhotoFormat() {
             ListPreference format = findPreference(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY);

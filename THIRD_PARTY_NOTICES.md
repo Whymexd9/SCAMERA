@@ -32,3 +32,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## Google LiteRT
 
 LiteRT runtime libraries are distributed under the Apache License 2.0.
+
+## libavif and libaom (AVIF photo output)
+
+`libscameraAvif.so` statically links libavif 1.4.2 (<https://github.com/AOMediaCodec/libavif>, BSD 2-Clause License,
+Copyright 2019 Joe Drago; it carries a libyuv subset under the BSD 3-Clause License and dav1d's OBU parser under the
+BSD 2-Clause License) and libaom 3.15.1 (<https://aomedia.googlesource.com/aom>, BSD 2-Clause License, Copyright (c)
+2016, Alliance for Open Media, with the Alliance for Open Media Patent License 1.0). Both are fetched at build time
+from their pinned release archives (`app/src/main/cpp/scamera-avif-deps.cmake`, SHA-256 checked); the full licence
+texts are the `LICENSE` and `PATENTS` files of those archives.

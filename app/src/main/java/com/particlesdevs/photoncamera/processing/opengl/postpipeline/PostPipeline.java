@@ -103,8 +103,9 @@ public class PostPipeline extends GLBasePipeline {
     public boolean deferTeardown;
     private boolean teardownPending;
     /**
-     * 10-bit HEIC (heif.Heic10Support.wanted, set by the caller before {@link #Run}): the last pass renders into an RGB10_A2
-     * target and Run returns an RGBA_1010102 bitmap. Off: the RGBA8 target and ARGB_8888 bitmap as always.
+     * 10-bit HEIC / AVIF (heif.Heic10Support.wanted, avif.AvifEncoder.tenBitImageWanted, set by the caller before
+     * {@link #Run}): the last pass renders into an RGB10_A2 target and Run returns an RGBA_1010102 bitmap. Off: the RGBA8
+     * target and ARGB_8888 bitmap as always.
      */
     public boolean tenBitOutput;
 
@@ -218,7 +219,7 @@ public class PostPipeline extends GLBasePipeline {
         // used to sit next to one or the other (textures + buffer, then buffer + bitmap).
         Bitmap res = runAllToBitmap();
         if (tenBitOutput) Log.i("PostPipeline", "final image " + res.getWidth() + "x" + res.getHeight() + " " + res.getConfig()
-                + (res.getConfig() == Bitmap.Config.ARGB_8888 ? " (10-bit target unavailable)" : " for the 10-bit HEIC"));
+                + (res.getConfig() == Bitmap.Config.ARGB_8888 ? " (10-bit target unavailable)" : " for the 10-bit HEIC / AVIF"));
         if (!legacyRun) com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_readback");
         if (deferTeardown && canDeferTeardown(parameters)) {
             // W1.3: released after the encode (finishDeferredTeardown), off the press-to-saved path.
