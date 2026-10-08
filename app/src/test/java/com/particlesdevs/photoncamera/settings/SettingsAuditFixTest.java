@@ -116,6 +116,38 @@ public class SettingsAuditFixTest {
         assertNotNull(screen.findPreference("vivo_nice_probe"));assertNotNull(screen.findPreference("vivo_neural_probe"));
     }
 
+    /**
+     * S2: a Key getter without a default of its own falls back to the row's android:defaultValue, not to 0 / false, when its
+     * key is not stored (a restored config or module snapshot without it).
+     */
+    @Test public void keyGettersFallBackToTheXmlDefaults() {
+        prefs.edit().clear().commit();
+        assertEquals(Integer.parseInt(context.getString(R.string.pref_af_mode_default_value)),PreferenceKeys.getAfMode());
+        assertEquals(4,PreferenceKeys.getAfMode()); // CONTROL_AF_MODE_CONTINUOUS_PICTURE, not 0 = AF off
+        assertEquals(-1,PreferenceKeys.getCFAValue()); // auto, not 0 = forced RGGB
+        assertTrue(PreferenceKeys.isCameraSoundsOn());assertTrue(PreferenceKeys.isRoundEdgeOn());assertTrue(PreferenceKeys.isShowWatermarkOn());
+        assertEquals(2,PreferenceKeys.getFocusPeakValue());assertEquals(1,PreferenceKeys.getColorMethodValue());
+        assertEquals(-1,PreferenceKeys.getThemeValue());
+        assertTrue(PreferenceKeys.isRemosaicSteered());assertTrue(PreferenceKeys.isRemosaicClampDiffs());assertEquals(2,PreferenceKeys.getRemosaicProfile());
+        assertTrue(PreferenceKeys.isSharpUsmEnabled());assertTrue(PreferenceKeys.isSharpHaloControl());
+        assertEquals(0.5f,PreferenceKeys.getSharpRadius(),0f);assertEquals(75f,PreferenceKeys.getSharpAmount(),0f);
+        assertEquals(1800,PreferenceKeys.getSharpEdgesTolerance());assertEquals(0.4f,PreferenceKeys.getSharpDeconvHaloMacro(),1e-6f);
+        // Every Key whose row declares a default reads that default (switches as "1" / "0").
+        Map<String,String> xml=XmlDefaults.read(context);
+        int checked=0;
+        for(PreferenceKeys.Key k:PreferenceKeys.Key.values()){
+            String d=xml.get(k.mValue);
+            if(d==null)continue;
+            assertEquals(k.name(),d,manager.getStringDefault(k));
+            checked++;
+        }
+        assertTrue(checked>40);
+        assertEquals("1",xml.get("pref_camera_sounds_key"));assertEquals("0",xml.get("pref_horizon"));
+        // A stored value still wins.
+        prefs.edit().putString("pref_af_mode_key","1").putBoolean("pref_camera_sounds_key",false).commit();
+        assertEquals(1,PreferenceKeys.getAfMode());assertFalse(PreferenceKeys.isCameraSoundsOn());
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

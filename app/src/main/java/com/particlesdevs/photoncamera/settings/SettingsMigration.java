@@ -535,7 +535,8 @@ public final class SettingsMigration {
         String v = engine == null ? "auto" : engine.toString();
         return "hybrid".equals(v) || !"nice".equals(v) && !LmcHybridKeys.vivoNetSoc();
     }
-    private static String attribute(Context context, XmlResourceParser parser, String name) {
+    /** An android: attribute of the current tag, a resource reference resolved to its text (also used by XmlDefaults). */
+    static String attribute(Context context, XmlResourceParser parser, String name) {
         int id=parser.getAttributeResourceValue(ANDROID,name,0);
         if(id==0) return parser.getAttributeValue(ANDROID,name);
         android.util.TypedValue value=new android.util.TypedValue();
