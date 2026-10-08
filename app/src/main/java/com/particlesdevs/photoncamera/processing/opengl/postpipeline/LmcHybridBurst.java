@@ -150,9 +150,12 @@ public final class LmcHybridBurst implements NiceTransport {
             if (mosaic != null) Log.i("NICE_HDR", "hybrid stream colour block: " + mosaic);
             if (p.rawBinning <= 1) com.particlesdevs.photoncamera.processing.MosaicBlockStore.observeShot(mosaic, "hybrid shot");
         }
-        // A mosaic's own sites already fill the sensor grid of the stream (the worker merges them on the 2x grid of its plain-Bayer
-        // sub-frames): its output is the sensor grid.
-        final boolean wants2x = !conservative && !"sensor".equals(PreferenceKeys.hybridOutputMode()) && mosaicBlock <= 1;
+        // A Tetra mosaic's own sites fill the sensor grid of the stream: its output is the sensor grid. P56: a Quad mosaic (2x ISZ)
+        // gets the Sabre 2x grid too, merged natively by the worker (kHybMergeMosaic at g = 4: the sites at +-0.25 px).
+        final boolean outputMode2x = !conservative && !"sensor".equals(PreferenceKeys.hybridOutputMode());
+        final boolean wants2x = outputMode2x && mosaicBlock <= 2;
+        if (outputMode2x && !wants2x) Log.i("NICE_HDR", "hybrid output: sensor grid " + width + "x" + height + " (Sabre 2x grid off for a "
+                + (mosaicBlock == 4 ? "Tetra" : "block " + mosaicBlock) + " mosaic stream: its sites already fill the sensor grid, the native merge has no 2x grid for it)");
         // P27 any resolution: the 2x grid only where it fits (input up to 16 MP, 2w x 2h within the GPU's limit, 2x RGB within one
         // Java buffer); otherwise the sensor grid. Up to 16 MP on a GPU of 16384 (Adreno 750) this is today's choice exactly.
         final boolean twoX = wants2x && sabre2xFits(width, height, gpuMaxSide);
