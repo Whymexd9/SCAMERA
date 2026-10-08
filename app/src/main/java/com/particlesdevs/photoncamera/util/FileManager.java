@@ -15,7 +15,7 @@ import java.util.List;
 
 public class FileManager {
     private static final String TAG = "FileManager";
-    /** Photos in every format the camera writes (JPEG, HEIC / HEIF, WebP) and DNG: PhotoFormat.isGalleryFile. */
+    /** Photos in every format the camera writes (JPEG, HEIC / HEIF, WebP, AVIF) and DNG: PhotoFormat.isGalleryFile. */
     private static final FilenameFilter FILENAME_FILTER = (dir, name) ->
             com.particlesdevs.photoncamera.processing.PhotoFormat.isGalleryFile(name) && new File(dir, name).length() > 0;
     public static File sEXTERNAL_DIR = Environment.getExternalStorageDirectory();

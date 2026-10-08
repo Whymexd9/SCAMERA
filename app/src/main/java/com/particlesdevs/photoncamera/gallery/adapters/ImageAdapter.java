@@ -103,8 +103,9 @@ public class ImageAdapter extends PagerAdapter {
         }
         String fileName = galleryItem.getFile().getDisplayName();
         if (PhotoFormat.isModernPhoto(fileName)) {
-            // HEIC / WebP: the tiled decoder (BitmapRegionDecoder) reads both on the versions that decode them (HEIC from
-            // Android 9; below it the page stays empty); if it still fails, the page shows a bitmap decoded by Glide.
+            // HEIC / WebP / AVIF: the tiled decoder (BitmapRegionDecoder) reads them on the versions that decode them (HEIC
+            // from Android 9, AVIF from 12; below it the page stays empty); if it still fails, the page shows a bitmap
+            // decoded by Glide.
             scaleImageView.setOnImageEventListener(new BitmapFallback(imageEventListener, scaleImageView, galleryItem));
             if (PhotoFormat.decodable(fileName, Build.VERSION.SDK_INT)) {
                 scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
@@ -140,8 +141,9 @@ public class ImageAdapter extends PagerAdapter {
     }
 
     /**
-     * Passes every image event of a HEIC / WebP page on to the host's listener; when the tiled decode fails, the page
-     * falls back to one bitmap decoded by Glide (which reads HEIC through the platform decoder on Android 9+).
+     * Passes every image event of a HEIC / WebP / AVIF page on to the host's listener; when the tiled decode fails, the
+     * page falls back to one bitmap decoded by Glide (which reads HEIC on Android 9+ and AVIF on 12+ through the platform
+     * decoder).
      */
     private final class BitmapFallback implements SubsamplingScaleImageView.OnImageEventListener {
         private final SubsamplingScaleImageView.OnImageEventListener host;
@@ -272,7 +274,7 @@ public class ImageAdapter extends PagerAdapter {
             return;
         }
         GalleryItem galleryItem = galleryItemList.get(position);
-        // Ultra HDR is a JPEG container (the camera writes it only into JPEG files): DNG, HEIC and WebP pages skip the scan.
+        // Ultra HDR is a JPEG container (the camera writes it only into JPEG files): DNG, HEIC, WebP and AVIF pages skip the scan.
         String ext = FileUtils.getExtension(galleryItem.getFile().getDisplayName());
         if (!ext.equalsIgnoreCase("jpg") && !ext.equalsIgnoreCase("jpeg")) {
             return;
