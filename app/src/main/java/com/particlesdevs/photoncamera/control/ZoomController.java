@@ -28,6 +28,14 @@ public final class ZoomController {
     private static volatile float zoom = 1f;
     private static volatile float residual = 1f;
     private static volatile float shotResidual = 1f;
+    /**
+     * The crop the camera's stream already holds: a module whose vendor request put the sensor into a full-resolution crop
+     * mode (ISZ / in-sensor zoom) without being marked as a sensor crop delivers a Quad / Tetra mosaic at the binned size,
+     * i.e. the centre 1/b of the field. The residual is divided by it, so the preview and the photo are not cropped a second
+     * time (OPPO Find X9 Ultra tele with the 2x ISZ vendor tag, 2026-10-08: 6x module on the 3x camera, the photo came out
+     * 2048x1536 instead of 4096x3072). Set by the camera per session ({@link #setStreamCrop}).
+     */
+    private static volatile float streamCrop = 1f;
     private static boolean initialized;
     private static long lastSwitch;
     /** P37: the module the zoom and residual were last set for (a different active module means it changed from outside). */
@@ -36,10 +44,38 @@ public final class ZoomController {
     private ZoomController() {}
 
     public static float zoom() { ensureInitialized(); return zoom; }
-    public static float residual() { ensureInitialized(); return residual; }
+    public static float residual() { ensureInitialized(); return effective(residual, streamCrop); }
     /** Centre-crop factor of the frame being processed (recorded at the shutter). */
     public static float shotResidual() { return shotResidual; }
-    public static void markShot() { shotResidual = residual; }
+    public static void markShot() { shotResidual = effective(residual, streamCrop); }
+
+    /** The crop still to do when the stream already holds {@code streamCrop}: never below 1. */
+    static float effective(float residual, float streamCrop) {
+        return Math.max(1f, residual / Math.max(1f, streamCrop));
+    }
+
+    /**
+     * The session's stream crop ({@link #streamCrop}); returns true when it changed (the caller re-applies the preview zoom).
+     */
+    public static boolean setStreamCrop(float crop) {
+        float c = Math.max(1f, crop);
+        if (Math.abs(c - streamCrop) < 1e-3f) return false;
+        Log.i(TAG, "stream crop x" + c + " (was x" + streamCrop + "): residual " + residual + " -> " + effective(residual, c));
+        streamCrop = c;
+        return true;
+    }
+
+    /**
+     * The stream crop of a module's session: the measured colour block {@code block} of its stream when the module asks the
+     * sensor for something through vendor keys ({@code vendorRequest}) without being a declared sensor-crop module and the
+     * stream is not the maximum-resolution (remosaic) one; a mosaic there means the sensor read its full-resolution sites of
+     * the centre of the field. An explicit sensor-crop setting ({@code explicitCrop} true or false) wins: true = the module's
+     * zoom already accounts for it, false = the owner says there is no crop.
+     */
+    public static float streamCropFor(int block, boolean vendorRequest, boolean declaredCrop, Boolean explicitCrop, boolean maxResolution) {
+        if (block <= 1 || maxResolution || declaredCrop || explicitCrop != null || !vendorRequest) return 1f;
+        return block;
+    }
     /**
      * The crop the camera does not do itself, when a module zooms optically (Xiaomi 17 Ultra tele, XiaomiTeleZoom): set after
      * every zoom change of that module, in place of zoom / nativeRatio.

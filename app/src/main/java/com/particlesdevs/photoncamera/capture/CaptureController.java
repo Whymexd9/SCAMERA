@@ -2425,6 +2425,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
             mMosaicMeasure = PreferenceKeys.niceDevSwitch("mosaic_preview", true);
             com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
+            updateStreamCrop(false);
             // P35 / P33: the GPU programs of this module's merge route (its stored / declared colour block) built now, not on the shutter
             // (an optimisation only: a failure here must never stop the session from starting)
             if (photoMode && !isBurstSession && !mIsRecordingVideo && PreferenceKeys.isLmcHybridEnabled()) try {
@@ -3406,6 +3407,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } finally { if (!retained) img.close(); }
     }
 
+    /**
+     * The crop the stream already holds (ZoomController.streamCrop): a module with vendor requests whose binned-size stream is a
+     * Quad / Tetra mosaic reads the centre of the sensor at full resolution (ISZ by a vendor tag), so its zoom must not be
+     * cropped again. {@code reapply}: re-issue the preview zoom when it changed (after the stream was measured).
+     */
+    private void updateStreamCrop(boolean reapply) {
+        try {
+            String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+            int block = com.particlesdevs.photoncamera.processing.MosaicStream.block();
+            boolean vendor = !com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID).isEmpty();
+            float crop = XiaomiTeleZoom.phone() ? 1f : com.particlesdevs.photoncamera.control.ZoomController.streamCropFor(block, vendor,
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorCrop(slot),
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorCropExplicit(slot), useMaximumResolutionKey);
+            if (com.particlesdevs.photoncamera.control.ZoomController.setStreamCrop(crop) && reapply) onZoomChanged();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "stream crop: " + e.getMessage());
+        }
+    }
+
     /** Key of the stream's sensor mode for MosaicStream: the physical sensor, its vendor requests and the RAW size. */
     private String mosaicStreamKey() {
         String size = mImageReaderRaw == null ? "" : mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight();
@@ -3447,6 +3467,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
                         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(samples, img.getWidth(), img.getHeight(),
                                 sampleStride, black, white, 32));
+                updateStreamCrop(true);
                 if (block > 1 && !mMosaicPreview && !mLiveRawSession && !XiaomiTeleZoom.ispPreview()) {
                     mMosaicPreview = true;
                     LiveRawFrame.setEnabled(true);

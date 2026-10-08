@@ -59,6 +59,10 @@ public final class ModuleRegistry {
         return 1f;
     }
     /** True when the module's frames are already cropped on the sensor (vendor mode), not by digital zoom. */
+    /** The owner's explicit «crop on the sensor» setting of the module, or null when it is on «Auto». */
+    public static Boolean sensorCropExplicit(String slot){
+        return prefs().contains("module_sensorcrop_"+slot)?prefs().getBoolean("module_sensorcrop_"+slot,false):null;
+    }
     public static boolean sensorCrop(String slot){
         if(prefs().contains("module_sensorcrop_"+slot))return prefs().getBoolean("module_sensorcrop_"+slot,false);
         java.util.regex.Matcher m=java.util.regex.Pattern.compile("forceSensorMode\"[^}]*\"value\":\"(\\d+)\"").matcher(prefs().getString("pref_sensorconfig_"+slot+"_tunablekeys",""));
