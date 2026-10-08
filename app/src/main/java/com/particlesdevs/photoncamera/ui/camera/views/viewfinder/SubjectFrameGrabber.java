@@ -34,6 +34,8 @@ final class SubjectFrameGrabber {
     private int surfaceW, surfaceH;
     private boolean ready, failed, pending;
     private int pendingW, pendingH;
+    /** The sink that asked for the pending frame (the tracker or the P60 field-of-view check). */
+    private SubjectFrames.Sink pendingSink;
 
     /** New GL context: every name is gone with the old one. */
     void onContextCreated() {
@@ -52,13 +54,21 @@ final class SubjectFrameGrabber {
     /** Called after a frame was drawn into the default framebuffer, before the swap. */
     void afterDraw() {
         if (failed) return;
+        final long now = System.nanoTime();
         SubjectFrames.Sink sink = SubjectFrames.sink();
-        boolean want = sink != null && surfaceW >= 16 && surfaceH >= 16 && sink.wantsFrame(System.nanoTime());
+        boolean want = sink != null && surfaceW >= 16 && surfaceH >= 16 && sink.wantsFrame(now);
+        if (!want) { // P60: the field-of-view self-check takes the frames the tracker does not want
+            SubjectFrames.Sink second = SubjectFrames.secondarySink();
+            if (second != null && surfaceW >= 16 && surfaceH >= 16 && second.wantsFrame(now)) {
+                sink = second;
+                want = true;
+            }
+        }
         if (!pending && !want) return;
         // Errors left by earlier passes were already reported by them; start from a clean queue so the
         // checks below only see this grabber's own calls.
         for (int i = 0; i < 8 && GLES20.glGetError() != GLES20.GL_NO_ERROR; i++) { /* drain */ }
-        if (pending) deliver(sink);
+        if (pending) deliver(pendingSink);
         if (!want || failed) return;
         if (!ready && !allocate()) return;
         try {
@@ -80,6 +90,7 @@ final class SubjectFrameGrabber {
             GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0);
             pendingW = levelW[last];
             pendingH = levelH[last];
+            pendingSink = sink;
             pending = true;
         } finally {
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);

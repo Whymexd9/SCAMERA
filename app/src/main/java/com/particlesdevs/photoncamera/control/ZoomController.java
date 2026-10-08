@@ -45,6 +45,8 @@ public final class ZoomController {
 
     public static float zoom() { ensureInitialized(); return zoom; }
     public static float residual() { ensureInitialized(); return effective(residual, streamCrop); }
+    /** The crop the session's stream already holds ({@link #setStreamCrop}). */
+    public static float streamCrop() { return streamCrop; }
     /** Centre-crop factor of the frame being processed (recorded at the shutter). */
     public static float shotResidual() { return shotResidual; }
     public static void markShot() { shotResidual = effective(residual, streamCrop); }

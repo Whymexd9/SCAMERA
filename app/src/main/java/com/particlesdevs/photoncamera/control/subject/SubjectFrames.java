@@ -24,6 +24,16 @@ public final class SubjectFrames {
     }
 
     private static volatile Sink sink;
+    /** P60: a second consumer (FovSelfCheck), served when the primary one does not want the frame. */
+    private static volatile Sink secondary;
+
+    public static void setSecondarySink(Sink s) {
+        secondary = s;
+    }
+
+    public static Sink secondarySink() {
+        return secondary;
+    }
     private static volatile boolean rawDisplayed;
 
     public static void setSink(Sink s) {

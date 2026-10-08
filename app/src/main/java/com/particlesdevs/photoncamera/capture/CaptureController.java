@@ -2425,6 +2425,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
             mMosaicMeasure = PreferenceKeys.niceDevSwitch("mosaic_preview", true);
             com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
+            // P60: a vendor module measures its field of view against the plain module of its camera (cached once measured)
+            if (photoMode && !XiaomiTeleZoom.phone() && PreferenceKeys.niceDevSwitch("fov_check", true)) try {
+                com.particlesdevs.photoncamera.control.FovSelfCheck.get().session(PhotonCamera.getAppContext(), physicalID,
+                        com.particlesdevs.photoncamera.settings.ModuleRegistry.active(),
+                        com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID), this::onZoomChanged);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "FOV self-check: " + e.getMessage());
+            }
             updateStreamCrop(false);
             // P35 / P33: the GPU programs of this module's merge route (its stored / declared colour block) built now, not on the shutter
             // (an optimisation only: a failure here must never stop the session from starting)
@@ -3420,6 +3428,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             float crop = XiaomiTeleZoom.phone() ? 1f : com.particlesdevs.photoncamera.control.ZoomController.streamCropFor(block, vendor,
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorCrop(slot),
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorCropExplicit(slot), useMaximumResolutionKey);
+            // P60: a measured field of view wins over the block rule (an explicit sensor-crop setting still wins over both)
+            float measured = com.particlesdevs.photoncamera.control.FovSelfCheck.get().sessionCrop();
+            if (vendor && !XiaomiTeleZoom.phone() && !Float.isNaN(measured)
+                    && com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorCropExplicit(slot) == null
+                    && !com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorCrop(slot)) crop = measured;
             if (com.particlesdevs.photoncamera.control.ZoomController.setStreamCrop(crop) && reapply) onZoomChanged();
         } catch (RuntimeException e) {
             Log.w(TAG, "stream crop: " + e.getMessage());
