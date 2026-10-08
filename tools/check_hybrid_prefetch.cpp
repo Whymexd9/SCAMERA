@@ -9,7 +9,11 @@
 //      deadlock), exceptions back to the caller, the task group waits for its tasks.
 //   4. P33 W2.1: LaStream (the F6 field in tile-row bands alongside the merge) against laFrameField per frame: every float of the
 //      field and the Z channel, every statistic, with 1..8 threads, 0..2 medians and odd sizes; rows read as soon as waitRows
-//      returns them are already final; phase 1 queued frame by frame before the commit, a frame dropped at it.
+//      returns them are already final; phase 1 queued frame by frame before the commit, a frame dropped at it. P48: the same
+//      streams with windowed gray rows, identical.
+//   5. P48: windowed gray on a tall frame under strong motion (large translations, rotation, perspective, a translation beyond
+//      the image, LK iteration counts that move the field far): identical to laFrameField, and the gray rows held at once stay
+//      below half of the whole gray images.
 // vivo-nice-hybrid.h is not self-contained: the worker includes vivo-nice-capture.h first.
 #include "../app/src/main/cpp/vivo-nice-capture.h"
 #include "../app/src/main/cpp/vivo-nice-hybrid.h"
@@ -178,7 +182,7 @@ int main() {
     }
     std::printf("pool: %d threads; rows once each, nested rows from 40 tasks, exceptions, task group wait\n",pool.size());
     // ---- 4. F6 in bands (LaStream) against laFrameField
-    int streams=0;double refined=0;
+    int streams=0,windowedStreams=0;double refined=0;
     for(int trial=0;trial<4;++trial){
         const int w=trial%2?538:520,h=trial%2?410:392;
         const float white=1023,black=64;
@@ -239,6 +243,20 @@ int main() {
                 assert(a.median==e.median&&a.p90==e.p90&&a.maxAbsY==e.maxAbsY&&a.accepted==e.accepted&&a.fromCoarse==e.fromCoarse&&a.motionShare==e.motionShare);
             }
             ++streams;
+            // P48: the same stream with windowed gray rows (each band computes the rows it reads): every float identical
+            {
+                LaStream windowed(b,makeBase(),eps,t,jobs,threads,true);
+                windowed.setMergeOrder(order);
+                windowed.waitRows(ny);
+                assert(windowed.finish()&&windowed.windowed()&&windowed.frameCount()==int(jobs.size()));
+                for(int k=0;k<windowed.frameCount();++k){
+                    const auto& fr=windowed.frameAt(k);const LaFrameStats& a=fr.st;const LaFrameStats& e=stats[fr.job.f];
+                    assert(std::memcmp(windowed.field(k+1),fields[fr.job.f].data(),fields[fr.job.f].size()*4)==0);
+                    assert(std::memcmp(windowed.motion(k+1),motions[fr.job.f].data(),motions[fr.job.f].size()*4)==0);
+                    assert(a.median==e.median&&a.p90==e.p90&&a.maxAbsY==e.maxAbsY&&a.accepted==e.accepted&&a.fromCoarse==e.fromCoarse&&a.motionShare==e.motionShare);
+                }
+                ++windowedStreams;
+            }
             // phase 1 queued frame by frame before the refined frames are known (as during the alignment); one frame dropped at
             // the commit (as Shasta / Bento drop frames): the others' fields are the same
             LaStream early(b,makeBase(),eps,t,threads);
@@ -254,8 +272,80 @@ int main() {
         }
     }
     assert(refined>0); // the fields hold refined tiles, not only zeros
-    std::printf("f6 stream: %d banded fields (1..8 threads, 0..2 medians) identical to laFrameField, rows final when returned (refined share %.2f)\n",
-        streams,refined/std::max(1,streams*5));
+    std::printf("f6 stream: %d banded fields (1..8 threads, 0..2 medians) identical to laFrameField, rows final when returned (refined share %.2f); %d windowed\n",
+        streams,refined/std::max(1,streams*5),windowedStreams);
+
+    // ---- 5. P48: windowed gray on a tall frame under strong motion (large translations, rotation, perspective; LK iteration
+    // counts that move the field far): the rows each band reads are within its bound (identical fields), and far fewer gray rows
+    // are held than the whole images
+    int tall=0;
+    for(int trial=0;trial<3;++trial){
+        const int w=trial==2?262:256,h=1600;
+        const float white=4095,black=256;
+        const int n=5;
+        std::vector<std::vector<uint16_t>> raws(n,std::vector<uint16_t>(size_t(w)*h));
+        std::uniform_real_distribution<float> u(0.f,1.f);
+        for(int f=0;f<n;++f){
+            const float sx=f*3.7f-6.f,sy=9.f-f*5.3f; // RAW px; the homographies below carry most of it
+            for(int y=0;y<h;++y)for(int x=0;x<w;++x){
+                const float lx=x+sx+(f?1.6f*std::sin(y*0.013f+f):0.f),ly=y+sy+(f?1.2f*std::cos(x*0.02f+f):0.f);
+                float v=0.4f+0.22f*std::sin(lx*0.09f+trial)*std::cos(ly*0.061f)+0.12f*std::sin(lx*0.27f-ly*0.19f);
+                v+=0.02f*u(rng);
+                if(((int(lx)/41+int(ly)/37+trial)%13)==0)v=1.3f;
+                raws[f][size_t(y)*w+x]=uint16_t(std::clamp(black+v*(white-black),0.f,white));
+            }
+        }
+        Burst b;b.w=w;b.h=h;b.cfa=(trial+1)%4;b.canonicalRggb=true;b.white=white;b.black.fill(black);
+        b.raw.fill(raws[0].data());b.exposure.fill(1.f);b.iso.fill(100);
+        const int iterSets[3][2]={{3,3},{6,1},{1,6}}; // laIters, laItersCoarse
+        for(const auto& its:iterSets)for(int threads:{1,4,8}){
+            HybridTuning t;t.laIters=its[0];t.laItersCoarse=its[1];t.laMedian=trial%3;
+            const float eps=1e-5f;
+            auto makeBase=[&]{
+                LaBase lb;laGray(b,raws[0].data(),1.f,eps,lb.l0,true);laDown(lb.l0,lb.l1,true);laBaseLevel(lb.l1,true);laBaseLevel(lb.l0,true);
+                const int win=std::clamp(t.laWin,4,kLaMaxWin)&~3,stride=std::clamp(t.laStride,2,win);
+                lb.g0=laGrid(lb.l0,win,stride,2);lb.g1=laGrid(lb.l1,16,8,4);lb.v0=4e-5f/16.f;return lb;
+            };
+            const LaBase ref=makeBase();
+            std::vector<LaStream::Job> jobs;
+            for(int f=1;f<n;++f){
+                LaStream::Job job;job.f=f;job.raw=raws[f].data();job.gain=1.f;
+                const float a=0.012f*float(f)*(f%2?1.f:-1.f); // rotation (rad) about the origin: up to ~19 RAW px across the width
+                job.H.h={std::cos(a),-std::sin(a),f*4.1f-7.f,std::sin(a),std::cos(a),11.f-f*6.2f,2e-6f*f,-3e-6f*f};
+                if(trial==1&&f==3)job.H.h[5]=float(2*h); // a translation beyond the image: that frame reads every row
+                jobs.push_back(job);
+            }
+            std::vector<std::vector<float>> fields(n),motions(n);std::vector<LaFrameStats> stats(n);
+            for(const auto& job:jobs){
+                LaImage D0;laGray(b,job.raw,job.gain,eps,D0,false);
+                laFrameField(ref,D0,job.H,t,fields[job.f],stats[job.f],&motions[job.f]);
+            }
+            LaStream stream(b,makeBase(),eps,t,jobs,threads,true);
+            std::vector<int> order={0};for(const auto& job:jobs)order.push_back(job.f);
+            stream.setMergeOrder(order);
+            const int nx=ref.g0.nx,ny=ref.g0.ny;
+            for(int rows=1;rows<=ny;rows+=7){
+                stream.waitRows(rows);
+                for(size_t i=1;i<order.size();++i){
+                    assert(std::memcmp(stream.field(int(i)),fields[order[i]].data(),size_t(rows)*nx*2*4)==0);
+                    assert(std::memcmp(stream.motion(int(i)),motions[order[i]].data(),size_t(rows)*nx*4)==0);
+                }
+            }
+            stream.waitRows(ny);
+            assert(stream.finish());
+            for(int k=0;k<stream.frameCount();++k){
+                const auto& fr=stream.frameAt(k);const LaFrameStats& a=fr.st;const LaFrameStats& e=stats[fr.job.f];
+                assert(std::memcmp(stream.field(k+1),fields[fr.job.f].data(),fields[fr.job.f].size()*4)==0);
+                assert(std::memcmp(stream.motion(k+1),motions[fr.job.f].data(),motions[fr.job.f].size()*4)==0);
+                assert(a.median==e.median&&a.p90==e.p90&&a.maxAbsY==e.maxAbsY&&a.accepted==e.accepted&&a.fromCoarse==e.fromCoarse&&a.motionShare==e.motionShare);
+            }
+            // the whole gray images of the frames that do not read every row: (n - 1) * w/2 * h/2 * 4 B; trial 1 has one such frame
+            const double wholeMB=double(n-1)*(w/2)*(h/2)*4/1048576.0,oneMB=double(w/2)*(h/2)*4/1048576.0;
+            assert(stream.peakRowMB()<=(trial==1?oneMB+0.5*wholeMB:0.5*wholeMB));
+            ++tall;
+        }
+    }
+    std::printf("f6 windowed: %d tall streams under strong motion identical to laFrameField, gray rows held below half the whole images\n",tall);
     std::printf("PASS: P31 prefetch work is bit-identical to the code it replaced\n");
     return 0;
 }

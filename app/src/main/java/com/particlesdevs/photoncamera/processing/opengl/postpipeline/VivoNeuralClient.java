@@ -89,8 +89,50 @@ public final class VivoNeuralClient {
         }
         FileChannel writeChannel() { return new FileOutputStream(fd.getFileDescriptor()).getChannel(); }
         FileChannel readChannel() { return new FileInputStream(fd.getFileDescriptor()).getChannel(); }
+        /** P48: dst.remaining() bytes from {@code position} into dst (its position ends at its limit), pread in parallel parts. */
+        void readFully(ByteBuffer dst, long position) throws IOException {
+            final java.io.FileDescriptor raw = fd.getFileDescriptor();
+            readParallel((d, at) -> {
+                try { return android.system.Os.pread(raw, d, at); }
+                catch (android.system.ErrnoException e) { throw new IOException(e); }
+            }, dst, position, READ_PART);
+        }
         @Override public void close() { try { fd.close(); } catch (IOException ignored) {} }
         static SharedMemory wrap(android.os.ParcelFileDescriptor fd) { return new SharedMemory(fd); }
+    }
+    /** A positional read (pread): bytes from {@code position} into dst from its position, the count read (0 / -1 = end). */
+    interface PositionalReader { int read(ByteBuffer dst, long position) throws IOException; }
+    static final int READ_PART = 16 << 20;
+    /**
+     * P48 (research/speed/PLAIN_SHOT_SPEED.md): dst.remaining() bytes from {@code position} into dst in parts of {@code part}
+     * bytes on {@link com.particlesdevs.photoncamera.util.ParallelWork}, each part by positional reads of its own; dst's position
+     * ends at its limit. The same bytes as one sequential read (the worker's 600 MB result of the 2x grid: 422 ms on one core on
+     * the vivo X200 Ultra). A short file is an EOFException, as before.
+     */
+    static void readParallel(PositionalReader reader, ByteBuffer dst, long position, int part) throws IOException {
+        final int start = dst.position(), total = dst.remaining();
+        final int parts = (int) ((total + (long) part - 1) / part);
+        try {
+            com.particlesdevs.photoncamera.util.ParallelWork.forEach(parts, k -> {
+                final ByteBuffer d = dst.duplicate();
+                final int a = start + k * part, e = (int) Math.min((long) start + total, (long) a + part);
+                d.limit(e);
+                d.position(a);
+                long at = position + (a - start);
+                try {
+                    while (d.hasRemaining()) {
+                        final int n = reader.read(d, at);
+                        if (n <= 0) throw new EOFException(Lang.t("Неполный результат", "Incomplete result"));
+                        at += n;
+                    }
+                } catch (IOException io) {
+                    throw new UncheckedIOException(io);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+        dst.position(start + total);
     }
     private static File assetCacheDir(Context context) throws IOException {
         long stamp;
@@ -464,9 +506,12 @@ public final class VivoNeuralClient {
             ByteBuffer result=(burst!=null||niceBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException(Lang.t("Недостаточно памяти для результата","Not enough memory for the result"));
             result.order(ByteOrder.nativeOrder());
-            try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
-                long position=0;
-                while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException(Lang.t("Неполный результат","Incomplete result"));position+=n;}
+            try{
+                if(niceOut!=null)niceOut.readFully(result,0); // P48: parallel pread of the memfd
+                else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                    long position=0;
+                    while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException(Lang.t("Неполный результат","Incomplete result"));position+=n;}
+                }
             }
             catch(Exception e){if(burst!=null||niceBurst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
             result.flip();
@@ -474,9 +519,12 @@ public final class VivoNeuralClient {
                 ByteBuffer dng=com.particlesdevs.photoncamera.util.Allocator.allocate((int)dngBytes);
                 if(dng!=null){
                     dng.order(ByteOrder.nativeOrder());
-                    try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
-                        long position=expected;
-                        while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException(Lang.t("Неполный RAW","Incomplete RAW"));position+=n;}
+                    try{
+                        if(niceOut!=null)niceOut.readFully(dng,expected);
+                        else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                            long position=expected;
+                            while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException(Lang.t("Неполный RAW","Incomplete RAW"));position+=n;}
+                        }
                         dng.flip();VivoNiceBurst.lastMergedDng=dng;
                     }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
                 }
@@ -486,18 +534,24 @@ public final class VivoNeuralClient {
             ByteBuffer eff=null;
             if(effBytes>0)try{eff=ByteBuffer.allocateDirect((int)effBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: effective-frame map skipped: "+oom);}
             if(eff!=null){
-                try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
-                    long position=expected+dngBytes;
-                    while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException(Lang.t("Неполная карта кадров","Incomplete frame map"));position+=n;}
+                try{
+                    if(niceOut!=null)niceOut.readFully(eff,expected+dngBytes);
+                    else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                        long position=expected+dngBytes;
+                        while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException(Lang.t("Неполная карта кадров","Incomplete frame map"));position+=n;}
+                    }
                     eff.flip();VivoNiceBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
             ByteBuffer clip=null;
             if(clipBytes>0)try{clip=ByteBuffer.allocateDirect((int)clipBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: clip flags skipped: "+oom);}
             if(clip!=null){
-                try(FileChannel channel=niceOut!=null?niceOut.readChannel():new FileInputStream(output).getChannel()){
-                    long position=expected+dngBytes+effBytes;
-                    while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException(Lang.t("Неполные флаги клипа","Incomplete clip flags"));position+=n;}
+                try{
+                    if(niceOut!=null)niceOut.readFully(clip,expected+dngBytes+effBytes);
+                    else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                        long position=expected+dngBytes+effBytes;
+                        while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException(Lang.t("Неполные флаги клипа","Incomplete clip flags"));position+=n;}
+                    }
                     clip.flip();VivoNiceRgb.lastClipFlags=clip;
                 }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
             }else if(niceBurst!=null&&niceBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
