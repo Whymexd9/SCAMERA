@@ -9,6 +9,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.opengl.GLES30;
 import android.opengl.GLUtils;
+import android.os.Build;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.nio.ByteBuffer;
@@ -50,6 +51,11 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
     private final long mOutCapacity;
 
     public GLDrawParams.Allocate allocation = GLDrawParams.Allocate.Heap;
+    /**
+     * 10-bit HEIC: the tile target is RGB10_A2 and {@link #drawBlocksToBitmap()} returns an RGBA_1010102 bitmap
+     * ({@link #drawBlocksToBitmap1010102()}). Off for every other use; cleared when the driver cannot render or read it.
+     */
+    private boolean tenBit;
 
     public static void checkEglError(String op) {
         int error = GLES30.glGetError();
@@ -63,6 +69,15 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         this(size, glFormat,alloc);
         allocation = alloc;
         mOut = out;
+    }
+
+    /**
+     * The post pipeline's output processing; {@code tenBitOutput} (Android 13+, an RGBA8 output format) renders the last
+     * pass into an RGB10_A2 tile target and reads it back as RGBA_1010102 for the 10-bit HEIC. Same 4 bytes per pixel.
+     */
+    public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat, GLDrawParams.Allocate alloc, boolean tenBitOutput) {
+        this(size, out, glFormat, alloc);
+        if (tenBitOutput) enableTenBit();
     }
     public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat) {
         this(size, glFormat, GLDrawParams.Allocate.Direct);
@@ -109,6 +124,48 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         glBindRenderbuffer(GL_RENDERBUFFER,bindRB[0]);
         glRenderbufferStorage(GL_RENDERBUFFER, glFormat.getGLFormatInternal(), mOutWidth, rows);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER,bindFB[0]);
+        glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, bindRB[0]);
+    }
+
+    /** Whether the readback gives the RGBA_1010102 bitmap of the 10-bit HEIC. */
+    public boolean isTenBit() {
+        return tenBit;
+    }
+
+    /**
+     * Re-stores the tile target as RGB10_A2 (a colour-renderable format of GL ES 3.0 that glReadPixels returns as RGBA /
+     * UNSIGNED_INT_2_10_10_10_REV: R in the low 10 bits, the layout of Bitmap.Config.RGBA_1010102). The output stays
+     * RGBA8-sized (4 bytes per pixel). Falls back to the RGBA8 target when the framebuffer is not complete.
+     */
+    private void enableTenBit() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || mglFormat.mChannels != 4 || mglFormat.mFormat.mSize != 1) {
+            Log.w(TAG, "10-bit readback needs Android 13 and an RGBA8 output: 8-bit output");
+            return;
+        }
+        final int rows = Math.max(1, Math.min(mOutHeight, GLDrawParams.TileSize));
+        glBindRenderbuffer(GL_RENDERBUFFER, bindRB[0]);
+        glRenderbufferStorage(GL_RENDERBUFFER, GLES30.GL_RGB10_A2, mOutWidth, rows);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, bindFB[0]);
+        glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, bindRB[0]);
+        final int status = GLES30.glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        final int error = glGetError();
+        if (status == GLES30.GL_FRAMEBUFFER_COMPLETE && error == GL_NO_ERROR) {
+            tenBit = true;
+            Log.d(TAG, "10-bit output: RGB10_A2 tile target " + mOutWidth + "x" + rows);
+        } else {
+            Log.w(TAG, "RGB10_A2 target unusable (status 0x" + Integer.toHexString(status) + ", error 0x" + Integer.toHexString(error)
+                    + "): 8-bit output");
+            restoreRgba8Target();
+        }
+    }
+
+    /** Back to the RGBA8 tile target of the output format (after a failed 10-bit setup or readback). */
+    private void restoreRgba8Target() {
+        tenBit = false;
+        final int rows = Math.max(1, Math.min(mOutHeight, GLDrawParams.TileSize));
+        glBindRenderbuffer(GL_RENDERBUFFER, bindRB[0]);
+        glRenderbufferStorage(GL_RENDERBUFFER, mglFormat.getGLFormatInternal(), mOutWidth, rows);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, bindFB[0]);
         glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, bindRB[0]);
     }
 
@@ -172,6 +229,7 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
      * for 4-channel 8-bit output formats.
      */
     public Bitmap drawBlocksToBitmap() {
+        if (tenBit) return drawBlocksToBitmap1010102();
         if (mglFormat.mChannels != 4 || mglFormat.mFormat.mSize != 1)
             throw new IllegalStateException("bitmap readback needs an RGBA8 output, not " + mglFormat.mFormat + "x" + mglFormat.mChannels);
         final int tileRows = GLDrawParams.TileSize;
@@ -207,9 +265,60 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
     }
 
     /**
+     * {@link #drawBlocksToBitmap()} of the 10-bit HEIC: the same tiles rendered into the RGB10_A2 target, read back as
+     * GL_UNSIGNED_INT_2_10_10_10_REV words and blitted into an RGBA_1010102 bitmap (the bytes of both are the same packed
+     * 32-bit pixels). If the driver rejects the first 10-bit readback, the whole output is rendered again in 8 bits.
+     */
+    private Bitmap drawBlocksToBitmap1010102() {
+        final int tileRows = GLDrawParams.TileSize;
+        if (mBlockBuffer == null || mBlockBuffer.capacity() < mOutWidth * 4 * Math.min(tileRows, mOutHeight))
+            throw new IllegalStateException("tile buffer does not match TileSize " + tileRows);
+        final int stripRows = tileRows % BITMAP_STRIP_ROWS == 0 ? BITMAP_STRIP_ROWS : tileRows;
+        final Bitmap dst = Bitmap.createBitmap(mOutWidth, mOutHeight, Bitmap.Config.RGBA_1010102);
+        boolean done = false;
+        try (TileBlitter blitter = new TileBlitter(dst, stripRows)) {
+            glBindFramebuffer(GL_FRAMEBUFFER, bindFB[0]);
+            GLProg program = super.mProgram;
+            GLBlockDivider divider = new GLBlockDivider(mOutHeight, tileRows);
+            int[] row = new int[2];
+            boolean first = true;
+            while (divider.nextBlock(row)) {
+                int y = row[0];
+                int height = row[1];
+                glViewport(0, 0, mOutWidth, height);
+                checkEglError("glViewport");
+                program.setVar("yOffset", y);
+                program.draw();
+                checkEglError("program");
+                mBlockBuffer.clear();
+                glReadPixels(0, 0, mOutWidth, height, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_INT_2_10_10_10_REV, mBlockBuffer);
+                if (first) {
+                    first = false;
+                    final int error = glGetError();
+                    if (error != GL_NO_ERROR) {
+                        Log.w(TAG, "10-bit readback rejected (0x" + Integer.toHexString(error) + "): the output is rendered in 8 bits");
+                        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                        restoreRgba8Target();
+                        dst.recycle();
+                        return drawBlocksToBitmap();
+                    }
+                }
+                blitter.blit(mBlockBuffer, y, height);
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            mBlockBuffer = null;
+            done = true;
+            return dst;
+        } finally {
+            if (!done && !dst.isRecycled()) dst.recycle();
+        }
+    }
+
+    /**
      * Copies tightly packed RGBA8 rows (a read-back tile, row 0 first) into rows of a destination bitmap through
      * a small strip bitmap: raw bytes as {@code Bitmap.copyPixelsFromBuffer} takes them, blitted with SRC (no
-     * blending, filtering or colour conversion between two sRGB ARGB_8888 bitmaps).
+     * blending, filtering or colour conversion between two sRGB ARGB_8888 bitmaps). The strip has the destination's
+     * config: an RGBA_1010102 destination (10-bit HEIC) takes packed 2_10_10_10 words the same way.
      */
     static final class TileBlitter implements AutoCloseable {
         private final Bitmap strip;
@@ -226,7 +335,7 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
             width = dst.getWidth();
             rowBytes = width * 4;
             this.stripRows = Math.max(1, Math.min(stripRows, dst.getHeight()));
-            strip = Bitmap.createBitmap(width, this.stripRows, Bitmap.Config.ARGB_8888);
+            strip = Bitmap.createBitmap(width, this.stripRows, dst.getConfig());
             stripBytes = rowBytes * this.stripRows;
             canvas = new Canvas(dst);
             copy.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));

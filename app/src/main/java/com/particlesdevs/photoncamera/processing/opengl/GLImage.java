@@ -20,9 +20,21 @@ public class GLImage implements AutoCloseable {
 
     public GLImage(Bitmap image){
         this.size = new Point(image.getWidth(),image.getHeight());
-        glFormat = new GLFormat(GLFormat.DataType.SIMPLE_8,image.getByteCount()/(image.getWidth()*image.getHeight()));
-        byteBuffer = getByteBuffer(image);
+        if (rawBytes(image)) {
+            glFormat = new GLFormat(GLFormat.DataType.SIMPLE_8,image.getByteCount()/(image.getWidth()*image.getHeight()));
+            byteBuffer = getByteBuffer(image);
+        } else {
+            // RGBA_1010102 (the 10-bit HEIC's final image, a 10-bit HEIF decoded by the gallery), RGBA_F16, RGB_565 or a
+            // hardware bitmap: its bytes are not RGBA8, so the texture gets them converted to 8-bit sRGB.
+            glFormat = new GLFormat(GLFormat.DataType.SIMPLE_8, 4);
+            byteBuffer = com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.rgba8(image);
+        }
         mBmp = image;
+    }
+
+    /** Whether the bitmap's own bytes are the texture: ARGB_8888 (RGBA8) and ALPHA_8 (R8). */
+    static boolean rawBytes(Bitmap image) {
+        return image.getConfig() == Bitmap.Config.ARGB_8888 || image.getConfig() == Bitmap.Config.ALPHA_8;
     }
     public GLImage(File inputFile) {
         Bitmap image = BitmapFactory.decodeFile(inputFile.getAbsolutePath());
