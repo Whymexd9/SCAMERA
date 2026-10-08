@@ -174,6 +174,26 @@ public final class VivoNicePreview {
         // Stock places this in the session's global parameters as well as preview.
         builder.get(MAGIC); // Resolve the vendor key before changing the builder.
         builder.set(MAGIC, 1);
+        applyPreviewEis(builder);
+    }
+
+    /**
+     * The stock Photo mode's preview EIS (vivo camera app log 2026-09-20, X200 Ultra: «setSessionParameter, key:
+     * vivo.control.eis.config.enable, value: 5», also in every request's global parameters). Without it the preview had OIS
+     * only, and the X300 Ultra's preview lost its stabilisation after a shot (P38; the 2026-10-08 trace shows OIS on before and
+     * after and no EIS key in our requests). A HAL without the tag skips it; nice_dev.txt "vivo_preview_eis 0" turns it off.
+     */
+    static final String EIS_CONFIG = "vivo.control.eis.config.enable";
+    static final int STOCK_PHOTO_EIS = 5;
+
+    static boolean applyPreviewEis(CaptureRequest.Builder builder) {
+        if (!com.particlesdevs.photoncamera.settings.PreferenceKeys.niceDevSwitch("vivo_preview_eis", true)) return false;
+        try {
+            builder.set(new CaptureRequest.Key<>(EIS_CONFIG, Integer.class), STOCK_PHOTO_EIS);
+            return true;
+        } catch (RuntimeException unsupported) {
+            return false;
+        }
     }
 
     public static void applyRepeating(CaptureRequest.Builder builder) {
@@ -191,7 +211,7 @@ public final class VivoNicePreview {
             // consecutive real frames under this scene mode.
             builder.set(SCENE_MODE, NICE_SCENE_MODE);
             android.util.Log.i("NICE_CAPTURE", "stock preview profile tags=" + applyStockProfile(builder)
-                    + "/" + STOCK_PREVIEW.length);
+                    + "/" + STOCK_PREVIEW.length + " eis=" + applyPreviewEis(builder));
         } catch (RuntimeException failure) {
             try {
                 builder.set(MAGIC, magic);
