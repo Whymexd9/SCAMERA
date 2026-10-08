@@ -343,6 +343,22 @@ final class StabilizationTrace {
         if (dump) dump();
     }
 
+    /**
+     * P54: the stabilisation keys of one request on one line ("ois=1 vivo.control.eis.config.enable=[5] ..."), for the requests
+     * the shot path sets after the series (the re-armed repeating request): the session-start dump does not show them.
+     */
+    static String stabKeysLine(CaptureRequest request) {
+        StringBuilder b = new StringBuilder();
+        try {
+            for (CaptureRequest.Key<?> k : request.getKeys()) {
+                String name = k.getName();
+                if (isStabName(name) || name.equals("android.control.captureIntent"))
+                    b.append(b.length() == 0 ? "" : " ").append(name).append('=').append(format(request.get(k)));
+            }
+        } catch (RuntimeException ignored) { }
+        return b.toString();
+    }
+
     /** The stabilisation keys the preview actually asks for (standard and vendor), logged once per session. */
     private static Runnable describeRequest(CaptureRequest request) {
         final List<String> lines = new ArrayList<>();

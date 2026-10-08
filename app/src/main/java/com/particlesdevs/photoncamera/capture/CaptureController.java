@@ -3000,7 +3000,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     flushDevice(session);
                 }
                 session.setRepeatingRequest(mPreviewInputRequest = mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
-                String what = "preview stabilisation re-armed mode=" + mode + " in " + (android.os.SystemClock.elapsedRealtime() - t0) + " ms";
+                String what = "preview stabilisation re-armed mode=" + mode + " in " + (android.os.SystemClock.elapsedRealtime() - t0) + " ms"
+                        + " keys[" + StabilizationTrace.stabKeysLine(mPreviewInputRequest) + "]";
                 Log.i("NICE_CAPTURE", what);
                 mStabTrace.event(what);
             } catch (CameraAccessException | RuntimeException e) {
