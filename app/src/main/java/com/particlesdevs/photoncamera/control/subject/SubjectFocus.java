@@ -127,7 +127,7 @@ public final class SubjectFocus implements SubjectFrames.Sink {
     private final Object poolLock = new Object();
     private final byte[][] pool = new byte[2][];
     private final boolean[] busy = new boolean[2];
-    private volatile byte[] frame;
+    private final java.util.concurrent.atomic.AtomicReference<byte[]> frame = new java.util.concurrent.atomic.AtomicReference<>();
     private volatile int frameW, frameH;
     private long lastTrackFrameNs, lastSoftFrameNs;
     private byte[] luma;
@@ -146,7 +146,7 @@ public final class SubjectFocus implements SubjectFrames.Sink {
         this.preview = preview;
         this.overlay = overlay;
         this.touchFocus = touchFocus;
-        workerThread = new HandlerThread("SubjectTracker", Process.THREAD_PRIORITY_DISPLAY);
+        workerThread = new HandlerThread("SubjectTracker", Process.THREAD_PRIORITY_DEFAULT);
         workerThread.start();
         worker = new Handler(workerThread.getLooper());
         preview.addOnLayoutChangeListener(layoutListener);
@@ -690,10 +690,9 @@ public final class SubjectFocus implements SubjectFrames.Sink {
             releaseBuffer(rgba);
             return;
         }
-        byte[] previous = frame;
         frameW = width;
         frameH = height;
-        frame = rgba;
+        byte[] previous = frame.getAndSet(rgba);
         if (previous != null) releaseBuffer(previous); // never processed: the newer frame replaces it
         worker.removeCallbacks(frameRunnable);
         worker.post(frameRunnable);
@@ -702,13 +701,12 @@ public final class SubjectFocus implements SubjectFrames.Sink {
     // ================================================================== worker thread
 
     private void processFrame() {
-        byte[] rgba = frame;
-        frame = null;
+        byte[] rgba = frame.getAndSet(null);
         if (rgba == null) return;
         int w = frameW, h = frameH;
         try {
-            if (released) return;
             int n = w * h;
+            if (released || w <= 0 || h <= 0 || rgba.length < n * 4) return; // size changed in between: next frame
             if (luma == null || luma.length < n) luma = new byte[n];
             // RGBA bottom-up (GL) -> luma top-down.
             for (int y = 0; y < h; y++) {
