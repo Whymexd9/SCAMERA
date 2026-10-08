@@ -6,6 +6,7 @@ import com.particlesdevs.photoncamera.processing.opengl.*;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.BufferUtils;
+import com.particlesdevs.photoncamera.util.ParallelWork;
 import static android.opengl.GLES20.*;
 
 /**
@@ -116,22 +117,56 @@ public final class VivoNiceRgb extends Node {
      * passes smoothly through 1.0 and must not be read as clipped there.
      */
     static ChannelClip channelClip(java.nio.ByteBuffer rgb, boolean bento, float k, float usClipped, boolean flags) {
-        ChannelClip cc = new ChannelClip();
-        java.nio.FloatBuffer f = rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
-        final int n = f.limit() / 3;
-        final float inv = bento && k > 1f ? 1f / k : 0f;
+        return channelClip(rgb, bento, k, usClipped, flags, ParallelWork.threads());
+    }
+
+    /** One part of the clip statistics: samples [s0, s1) of the every-17th-pixel walk. */
+    private static final class ClipPart {
         final int[][] hLo = new int[3][HIST_BINS], hHi = new int[3][HIST_BINS];
         final double[][] sLo = new double[3][HIST_BINS], sHi = new double[3][HIST_BINS];
-        long samples = 0;
-        for (int i = 0; i < n; i += 17) {
-            samples++;
-            for (int c = 0; c < 3; c++) {
-                final float v = f.get(i * 3 + c);
-                if (v > cc.max[c]) cc.max[c] = v;
-                histogram(hLo[c], sLo[c], v);
-                if (inv > 0f) histogram(hHi[c], sHi[c], v * inv);
+        final float[] max = new float[3];
+    }
+
+    /**
+     * P48 (research/speed/PLAIN_SHOT_SPEED.md): the statistics in {@code parts} parts on {@link ParallelWork} (482 ms on one
+     * core for the 50 MP Sabre 2x grid). The same result for any split: counts are integers, the maxima are maxima, and every
+     * histogram sum is exact in double (its values lie in [0.8, 1.1), multiples of 2^-24: below 2^28 samples the sum needs
+     * fewer than 53 bits), so the order of the additions does not matter. parts 1 = the single walk as before.
+     */
+    static ChannelClip channelClip(java.nio.ByteBuffer rgb, boolean bento, float k, float usClipped, boolean flags, int parts) {
+        ChannelClip cc = new ChannelClip();
+        final java.nio.ByteBuffer view = rgb.duplicate().order(java.nio.ByteOrder.nativeOrder());
+        final int n = view.asFloatBuffer().limit() / 3;
+        final float inv = bento && k > 1f ? 1f / k : 0f;
+        final long samples = (n + 16L) / 17L;
+        final int chunks = parts <= 1 || samples < 65536 ? 1 : 4 * parts;
+        final ClipPart[] part = new ClipPart[chunks];
+        final java.util.function.IntConsumer walk = c -> {
+            final ClipPart p = new ClipPart();
+            final java.nio.FloatBuffer f = view.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            final long s1 = samples * (c + 1) / chunks;
+            for (long s = samples * c / chunks; s < s1; s++) {
+                final int i = (int) (s * 17L);
+                for (int ch = 0; ch < 3; ch++) {
+                    final float v = f.get(i * 3 + ch);
+                    if (v > p.max[ch]) p.max[ch] = v;
+                    histogram(p.hLo[ch], p.sLo[ch], v);
+                    if (inv > 0f) histogram(p.hHi[ch], p.sHi[ch], v * inv);
+                }
             }
-        }
+            part[c] = p;
+        };
+        if (chunks == 1) walk.accept(0); else ParallelWork.forEach(chunks, walk);
+        final int[][] hLo = new int[3][HIST_BINS], hHi = new int[3][HIST_BINS];
+        final double[][] sLo = new double[3][HIST_BINS], sHi = new double[3][HIST_BINS];
+        for (ClipPart p : part)
+            for (int c = 0; c < 3; c++) {
+                if (p.max[c] > cc.max[c]) cc.max[c] = p.max[c];
+                for (int b = 0; b < HIST_BINS; b++) {
+                    hLo[c][b] += p.hLo[c][b]; sLo[c][b] += p.sLo[c][b];
+                    hHi[c][b] += p.hHi[c][b]; sHi[c][b] += p.sHi[c][b];
+                }
+            }
         final boolean useLo = !bento || flags;
         final boolean useHi = bento && k > 1f;
         StringBuilder logLo = new StringBuilder(), logHi = new StringBuilder();
@@ -183,6 +218,127 @@ public final class VivoNiceRgb extends Node {
         for(int i=0,k=0;i<n;i+=stride,k++){o.put(k*3,f.get(i*3));o.put(k*3+1,f.get(i*3+1));o.put(k*3+2,f.get(i*3+2));}
         return out;
     }
+    private static final ThreadLocal<int[][]> REPACK_ROW = ThreadLocal.withInitial(() -> new int[][]{new int[0], new int[0]});
+
+    /**
+     * P48: rows [y0, y0 + rows) of the w-wide RGB float32 buffer as RGBA (alpha 1.0) into dst from its start: the same bits
+     * (copied as raw ints), the rows on {@link ParallelWork}.
+     */
+    static void rgbToRgbaRows(java.nio.ByteBuffer rgb, int w, int y0, int rows, java.nio.ByteBuffer dst) {
+        final java.nio.ByteBuffer src = rgb.duplicate().order(java.nio.ByteOrder.nativeOrder());
+        final java.nio.ByteBuffer out = dst.duplicate().order(java.nio.ByteOrder.nativeOrder());
+        out.position(0);
+        final int one = Float.floatToRawIntBits(1f);
+        ParallelWork.forEach(rows, r -> {
+            int[][] t = REPACK_ROW.get();
+            if (t[0].length < 3 * w) { t[0] = new int[3 * w]; t[1] = new int[4 * w]; }
+            final int[] a3 = t[0], a4 = t[1];
+            final java.nio.IntBuffer s = src.asIntBuffer();
+            s.position((y0 + r) * 3 * w);
+            s.get(a3, 0, 3 * w);
+            for (int x = 0, i = 0, o = 0; x < w; x++, i += 3, o += 4) {
+                a4[o] = a3[i]; a4[o + 1] = a3[i + 1]; a4[o + 2] = a3[i + 2]; a4[o + 3] = one;
+            }
+            final java.nio.IntBuffer d = out.asIntBuffer();
+            d.position(r * 4 * w);
+            d.put(a4, 0, 4 * w);
+        });
+    }
+
+    /**
+     * P48: the RGB result uploaded as RGBA32F in row bands of ~32 MB (alpha 1.0), the next band repacked while the driver takes
+     * the current one. On Adreno the RGB32F upload is a CPU repack in the driver: 2240 ms for the 50 MP Sabre 2x grid on the
+     * vivo X200 Ultra (Adreno 830), 230-258 ms at 12 MP on the Find X7 Ultra. nicergb and chanprep read .rgb with texelFetch, so
+     * the texture gives the same floats. Default on Adreno; nice_dev.txt "rgba_upload 0 / 1" overrides. Null when the staging
+     * memory is not there (the caller uploads RGB32F as before).
+     */
+    static GLTexture uploadRgba(Point size, java.nio.ByteBuffer rgb) {
+        final int w = size.x, h = size.y;
+        final int band = Math.max(1, Math.min(h, (32 << 20) / (16 * w)));
+        final java.nio.ByteBuffer[] stage = new java.nio.ByteBuffer[2];
+        stage[0] = com.particlesdevs.photoncamera.util.Allocator.allocate(band * w * 16);
+        stage[1] = stage[0] == null ? null : com.particlesdevs.photoncamera.util.Allocator.allocate(band * w * 16);
+        if (stage[1] == null) {
+            if (stage[0] != null) com.particlesdevs.photoncamera.util.Allocator.free(stage[0]);
+            return null;
+        }
+        final java.util.concurrent.ExecutorService repack = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "SCAMERA-rgba-repack");
+            t.setDaemon(true);
+            return t;
+        });
+        java.util.concurrent.Future<?> next = null;
+        GLTexture tex = null;
+        try {
+            tex = new GLTexture(size, new GLFormat(GLFormat.DataType.FLOAT_32, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            next = repack.submit(() -> rgbToRgbaRows(rgb, w, 0, Math.min(band, h), stage[0]));
+            for (int y0 = 0, k = 0; y0 < h; y0 += band, k++) {
+                next.get();
+                next = null;
+                final int rows = Math.min(band, h - y0), y1 = y0 + band, k1 = k + 1;
+                if (y1 < h) next = repack.submit(() -> rgbToRgbaRows(rgb, w, y1, Math.min(band, h - y1), stage[k1 & 1]));
+                glBindTexture(GL_TEXTURE_2D, tex.mTextureID);
+                stage[k & 1].position(0);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y0, w, rows, GL_RGBA, GL_FLOAT, stage[k & 1]);
+            }
+            return tex;
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (tex != null) tex.close();
+            final Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw new IllegalStateException(cause);
+        } catch (InterruptedException e) {
+            if (tex != null) tex.close();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while uploading the RGB", e);
+        } finally {
+            if (next != null) try { next.get(); } catch (Exception ignored) {} // never free a buffer the repack still writes
+            repack.shutdown();
+            com.particlesdevs.photoncamera.util.Allocator.free(stage[0]);
+            com.particlesdevs.photoncamera.util.Allocator.free(stage[1]);
+        }
+    }
+
+    /** P48: whether the RGB goes up as RGBA32F bands ({@link #uploadRgba}): nice_dev.txt "rgba_upload", else on Adreno. */
+    static boolean rgbaUploadWanted(String renderer) {
+        if (PreferenceKeys.niceDevOverrides("rgba_upload")) return PreferenceKeys.niceDevSwitch("rgba_upload", false);
+        return renderer != null && renderer.contains("Adreno");
+    }
+
+    /** P48: what the helper thread computes from the big RGB while the GL thread uploads it (both only read it). */
+    private static final class InputStats {
+        ChannelClip cc;
+        float[] clip;
+        java.nio.ByteBuffer decimated;
+        long statMs, decimateMs;
+    }
+
+    /** The helper's result; its exception is rethrown here. */
+    private static <T> T await(java.util.concurrent.FutureTask<T> task) {
+        boolean interrupted = false;
+        try {
+            for (;;) {
+                try {
+                    return task.get();
+                } catch (InterruptedException e) {
+                    interrupted = true; // the helper reads the buffer this thread frees next: wait for it in any case
+                }
+            }
+        } catch (java.util.concurrent.ExecutionException e) {
+            final Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw new IllegalStateException(cause);
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void awaitQuietly(java.util.concurrent.FutureTask<?> task) {
+        try { await(task); } catch (RuntimeException | Error ignored) {}
+    }
+
     @Override public void Run(){
         PostPipeline p=(PostPipeline)basePipeline;
         // Bento is applied only by the hybrid merge (reset for every NICE burst): a safety net for the shot profile.
@@ -194,13 +350,42 @@ public final class VivoNiceRgb extends Node {
                     +" bytes="+flags.capacity()+" expected="+(long)size.x*size.y+")");
             flags=null;
         }
-        // Clip statistics before the upload, so the big buffer can be released right after it (2x grid: 604 MB).
+        // P48: the clip statistics and the decimated copy on a helper thread while this thread uploads the big buffer (both
+        // only read it); the big buffer is released once all three are done (2x grid: 604 MB). The same results as one after
+        // the other (channelClip parallel: see there).
         float[] clip=null;ChannelClip cc=null;float strength=0f;
-        final long statStart=System.currentTimeMillis();
+        final java.nio.ByteBuffer big=p.mParameters.vivoNiceRgb;
+        final boolean owned=p.mParameters.vivoNiceRgbOwned;
+        final boolean bento=LmcHybridBurst.lastBentoApplied;
+        final float bentoK=LmcHybridBurst.lastBentoFactor,bentoUs=LmcHybridBurst.lastBentoUsClipped;
+        final boolean withFlags=flags!=null;
+        if(hybrid)strength=Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_recovery",100f)/100f));
+        final java.util.concurrent.FutureTask<InputStats> side=new java.util.concurrent.FutureTask<>(()->{
+            InputStats s=new InputStats();
+            final long t0=System.currentTimeMillis();
+            if(hybrid)s.cc=channelClip(big,bento,bentoK,bentoUs,withFlags); else s.clip=clipLevels(big);
+            final long t1=System.currentTimeMillis();
+            if(owned)s.decimated=decimate(big,61);
+            s.statMs=t1-t0;s.decimateMs=System.currentTimeMillis()-t1;
+            return s;
+        });
+        final Thread sideThread=new Thread(side,"SCAMERA-nicergb-stats");
+        sideThread.setDaemon(true);
+        sideThread.start();
+        final long uploadStart=System.nanoTime();
+        GLTexture input=null;
+        boolean rgbaBands=false;
+        try{
+            if(rgbaUploadWanted(glGetString(GL_RENDERER))){input=uploadRgba(size,big);rgbaBands=input!=null;}
+            if(input==null)input=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_32,3),big,GL_NEAREST,GL_CLAMP_TO_EDGE);
+        }finally{
+            if(input==null)awaitQuietly(side); // never release the buffer under the helper thread (an exception on its way out)
+        }
+        final long uploadDone=System.nanoTime();
+        final InputStats stats=await(side);
+        final long sideDone=System.nanoTime();
         if(hybrid){
-            strength=Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_recovery",100f)/100f));
-            final boolean bento=LmcHybridBurst.lastBentoApplied;
-            cc=channelClip(p.mParameters.vivoNiceRgb,bento,LmcHybridBurst.lastBentoFactor,LmcHybridBurst.lastBentoUsClipped,flags!=null);
+            cc=stats.cc;
             final float[] top=cc.hi[1]>0f?cc.hi:cc.lo;
             final float[] wp=p.mParameters.whitePoint;
             float white=0f;
@@ -208,29 +393,25 @@ public final class VivoNiceRgb extends Node {
             lastClipWhite=white;
             lastRealClip=cc.enabled();
             com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","highlight recovery per channel: strength="+strength
-                    +" bento="+bento+" k="+LmcHybridBurst.lastBentoFactor+" usClipped="+LmcHybridBurst.lastBentoUsClipped
-                    +" flags="+(flags!=null)+" "+cc.log+" nearClip="+cc.nearClip+" clipWhite="+white
-                    +" ms="+(System.currentTimeMillis()-statStart));
+                    +" bento="+bento+" k="+bentoK+" usClipped="+bentoUs
+                    +" flags="+withFlags+" "+cc.log+" nearClip="+cc.nearClip+" clipWhite="+white
+                    +" ms="+stats.statMs);
         } else {
             lastClipWhite=0f;
-            clip=clipLevels(p.mParameters.vivoNiceRgb);
+            clip=stats.clip;
             lastRealClip=clip[1]<1e29f;
         }
         final boolean perChannel=cc!=null&&strength>0f&&cc.enabled();
-        final long uploadStart=System.nanoTime();
-        GLTexture input=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_32,3),
-                p.mParameters.vivoNiceRgb,GL_NEAREST,GL_CLAMP_TO_EDGE);
-        final long uploadDone=System.nanoTime();long decimateDone=uploadDone;
-        if(p.mParameters.vivoNiceRgbOwned){
-            java.nio.ByteBuffer big=p.mParameters.vivoNiceRgb;
-            p.mParameters.vivoNiceRgb=decimate(big,61);
-            decimateDone=System.nanoTime();
+        if(owned){
+            p.mParameters.vivoNiceRgb=stats.decimated;
             p.mParameters.vivoNiceRgbOwned=false;
             com.particlesdevs.photoncamera.util.Allocator.free(big);
         }
-        // P33 W2.4: where the time between the clip statistics and the lens shading goes
+        // P33 W2.4 / P48: where the time between the worker result and the lens shading goes (stats and decimate on the helper
+        // thread, alongside the upload; wait = what the upload left of them)
         com.particlesdevs.photoncamera.util.Log.i("NICE_PIPELINE","nicergb input ms: upload="+(uploadDone-uploadStart)/1000000
-                +" decimate="+(decimateDone-uploadDone)/1000000+" free="+(System.nanoTime()-decimateDone)/1000000);
+                +(rgbaBands?" (rgba bands)":" (rgb)")+" stats="+stats.statMs+" decimate="+stats.decimateMs
+                +" wait="+(sideDone-uploadDone)/1000000+" free="+(System.nanoTime()-sideDone)/1000000);
         GLTexture flagsTex=null,chromaNear=null,chromaWide=null,chromaHuge=null;
         try {
             float[] gm=p.mParameters.gainMap;
