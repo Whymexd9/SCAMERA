@@ -189,9 +189,28 @@ public final class SettingsMigration {
         removeObsolete(main);
         SharedPreferences meta = context.getSharedPreferences("module_profiles_meta", Context.MODE_PRIVATE);
         for (Map.Entry<String, ?> e : meta.getAll().entrySet())
-            if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue()))
-                removeObsolete(context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE));
-        removeObsolete(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE));
+            if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue())) {
+                SharedPreferences profile = context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE);
+                removeObsolete(profile);
+                dropGlobal(profile);
+            }
+        SharedPreferences baseline = context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE);
+        removeObsolete(baseline);
+        dropGlobal(baseline);
+    }
+
+    /**
+     * Settings shared by every lens (ModuleProfiles.isGlobal, owner 8 October 2026) leave a module profile or the baseline:
+     * the main settings hold their one value (the active module's when they were still per module), and an old per-module
+     * copy can never come back. Returns whether anything changed.
+     */
+    static boolean dropGlobal(SharedPreferences profile) {
+        SharedPreferences.Editor e = profile.edit();
+        boolean changed = false;
+        for (String key : profile.getAll().keySet())
+            if (ModuleProfiles.isGlobal(key)) { e.remove(key); changed = true; }
+        if (changed) e.commit();
+        return changed;
     }
 
     /** Quick buttons of the concept E sheet: SettingType names, comma separated, oldest first. */

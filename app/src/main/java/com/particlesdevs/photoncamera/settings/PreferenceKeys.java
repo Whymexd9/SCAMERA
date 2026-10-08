@@ -16,11 +16,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
+
 
 /* loaded from: classes8.dex */
 public class PreferenceKeys {
-    private static final Set<String> COMMON_KEYS = new HashSet();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String PER_LENS_KEY_PREFIX = "settings_for_camera_";
     public static final String SCOPE_GLOBAL = "default_scope";
@@ -92,30 +91,6 @@ public class PreferenceKeys {
 
 
 
-    static {
-        COMMON_KEYS.add(Key.CAMERA_ID.mValue);
-        COMMON_KEYS.add(Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
-        COMMON_KEYS.add("settings_audit_schema");
-        COMMON_KEYS.add(Key.FOLDERS_LIST.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_AF_DATA.mValue);
-        COMMON_KEYS.add(Key.KEY_THEME_ACCENT.mValue);
-        COMMON_KEYS.add(Key.KEY_THEME.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_GRID.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_WATERMARK.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_ROUND_EDGE.mValue);
-        COMMON_KEYS.add(Key.KEY_CAMERA_SOUNDS.mValue);
-        COMMON_KEYS.add(Key.KEY_TIMER_SOUND.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_GRADIENT.mValue);
-        COMMON_KEYS.add(Key.KEY_AF_MODE.mValue);
-        COMMON_KEYS.add(Key.KEY_FOCUS_PEAK.mValue);
-        COMMON_KEYS.add(Key.KEY_AE_MODE.mValue);
-        COMMON_KEYS.add(Key.CAMERA_MODE.mValue);
-        COMMON_KEYS.add(Key.KEY_SAVE_RAW.mValue);
-        // P42: face detection and tracking AF are viewfinder behaviour, not per-lens tuning.
-        COMMON_KEYS.add(com.particlesdevs.photoncamera.control.subject.FaceDetectModes.KEY);
-        COMMON_KEYS.add(com.particlesdevs.photoncamera.control.subject.SubjectPolicy.TRACKING_KEY);
-    }
-
     private PreferenceKeys(SettingsManager settingsManager) {
         this.settingsManager = settingsManager;
     }
@@ -173,13 +148,8 @@ public class PreferenceKeys {
             Log.d(TAG, "Added IDS:" + Arrays.toString(ids));
             settingsManager.setDefaults(Key.CAMERA_ID, ids[0], ids);
             Map<String, ?> map = settingsManager.getDefaultPreferences().getAll();
-            map.keySet().removeAll(COMMON_KEYS);
-            map.keySet().removeIf(new Predicate() { // from class: com.particlesdevs.photoncamera.settings.PreferenceKeys$$ExternalSyntheticLambda2
-                @Override // java.util.function.Predicate
-                public final boolean test(Object obj) {
-                    return PreferenceKeys.lambda$addIds$1((String) obj);
-                }
-            });
+            // Only the per-module settings (ModuleProfiles.isLocal: not the shared ones of ModuleProfiles.GLOBAL_KEYS).
+            map.keySet().removeIf(key -> !ModuleProfiles.isLocal(key) || lambda$addIds$1(key));
             String json = GSON.toJson(map);
             for (String cameraId : ids) {
                 settingsManager.setInitial(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraId, json);
@@ -188,27 +158,6 @@ public class PreferenceKeys {
     }
 
     static /* synthetic */ boolean lambda$addIds$1(String key) {
-        return key != null && (key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_"));
-    }
-
-    private static void saveJsonForCamera(String cameraID) {
-        SettingsManager settingsManager = preferenceKeys.settingsManager;
-        Map<String, ?> map = settingsManager.getDefaultPreferences().getAll();
-        map.keySet().removeAll(COMMON_KEYS);
-        map.keySet().removeIf(new Predicate() { // from class: com.particlesdevs.photoncamera.settings.PreferenceKeys$$ExternalSyntheticLambda0
-            @Override // java.util.function.Predicate
-            public final boolean test(Object obj) {
-                return PreferenceKeys.lambda$saveJsonForCamera$2((String) obj);
-            }
-        });
-        String hashmapAsJson = GSON.toJson(map);
-        String alreadySavedJSON = settingsManager.getString(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraID, "");
-        if (!alreadySavedJSON.equals(hashmapAsJson)) {
-            settingsManager.set(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + getCameraID(), hashmapAsJson);
-        }
-    }
-
-    static /* synthetic */ boolean lambda$saveJsonForCamera$2(String key) {
         return key != null && (key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_"));
     }
 

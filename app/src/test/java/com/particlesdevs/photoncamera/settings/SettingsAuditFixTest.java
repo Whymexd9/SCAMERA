@@ -148,6 +148,55 @@ public class SettingsAuditFixTest {
         assertEquals(1,PreferenceKeys.getAfMode());assertFalse(PreferenceKeys.isCameraSoundsOn());
     }
 
+    /** S1 (owner): the shared settings are one list, never per module; processing / tuning / sensor settings stay per module. */
+    @Test public void sharedSettingsAreNeverPerModule() {
+        String[] global={PreferenceKeys.ROUTE_KEY,"pref_camera_sounds_key","pref_timer_sound_key","pref_show_grid_key","pref_photo_format",
+                "pref_jpeg_quality","pref_heic_quality","pref_heic_10bit","pref_webp_quality","pref_webp_lossless","pref_photo_also_jpeg",
+                "pref_avif_quality","pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key","pref_watermark_line1",
+                "pref_watermark_line2","pref_watermark_logo","pref_watermark_size","pref_watermark_opacity","pref_root_enabled",
+                "pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",
+                "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
+                "pref_theme_key","pref_show_gradient_key","pref_antibanding_hz_key"};
+        for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
+        for(String key:new String[]{"pref_lmc_hybrid_cdm","pref_vivo_nice_luma","pref_sharp_radius_key","pref_cfa_key","pref_dng_lossless",
+                "pref_lmc_tone_curve","pref_raw_stream_format","hexquad_luma"})
+            assertTrue(key,ModuleProfiles.isLocal(key));
+        // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade).
+        PreferenceScreen screen=inflate();
+        for(String key:ModuleProfiles.GLOBAL_KEYS)
+            if(!key.equals(ShadeCatalog.FORMAT))assertNotNull(key,screen.findPreference(key));
+        // Old per-module copies leave the module profiles and the baseline; the main settings keep their value.
+        SharedPreferences[] module=profiles();
+        prefs.edit().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").putBoolean("pref_camera_sounds_key",false).commit();
+        for(SharedPreferences p:module)p.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putBoolean("pref_camera_sounds_key",true)
+                .putString("pref_watermark_line1","OLD").putString("pref_lmc_hybrid_cdm","0.5").commit();
+        SettingsMigration.removeObsolete(context,prefs);
+        for(SharedPreferences p:module){
+            assertFalse(p.contains(PreferenceKeys.ROUTE_KEY));assertFalse(p.contains("pref_camera_sounds_key"));assertFalse(p.contains("pref_watermark_line1"));
+            assertEquals("per-module tuning stays","0.5",p.getString("pref_lmc_hybrid_cdm",""));
+        }
+        assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));assertFalse(prefs.getBoolean("pref_camera_sounds_key",true));
+    }
+
+    /** S1: with per-lens settings on, a lens switch swaps the tuning but keeps the shared settings. */
+    @Test public void lensSwitchKeepsSharedSettings() {
+        for(int i=0;i<2;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.6×"}[i])
+                .putBoolean("module_visible_back"+i,true).commit();
+        prefs.edit().putString("module_active","back0").putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_cdm","0.5")
+                .putString("pref_watermark_line1","ONE").commit();
+        String perLens=PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue;
+        prefs.edit().putBoolean(perLens,true).commit();PreferenceKeys.profiles().changed(perLens);
+        PreferenceKeys.profiles().activate("back1");
+        prefs.edit().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").putString("pref_lmc_hybrid_cdm","0.9").putString("pref_watermark_line1","TWO").commit();
+        PreferenceKeys.profiles().changed("pref_lmc_hybrid_cdm");PreferenceKeys.profiles().changed(PreferenceKeys.ROUTE_KEY);
+        PreferenceKeys.profiles().activate("back0");
+        assertEquals("0.5",prefs.getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
+        assertEquals("TWO",prefs.getString("pref_watermark_line1",""));
+        assertFalse(PreferenceKeys.profiles().snapshot("back1").containsKey(PreferenceKeys.ROUTE_KEY));
+        assertEquals("0.9",String.valueOf(PreferenceKeys.profiles().snapshot("back1").get("pref_lmc_hybrid_cdm")));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));
