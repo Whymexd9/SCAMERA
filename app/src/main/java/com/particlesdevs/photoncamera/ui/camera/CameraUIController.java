@@ -223,11 +223,14 @@ final class CameraUIController implements CameraUIEventsListener,
                     case RAW:
                         PreferenceKeys.setSaveRaw((Integer) value);
                         break;
-                    case FORMAT_CHOICE:
+                    case FORMAT_CHOICE: {
                         // Save mode and codec together; the capture and saving read them as before.
+                        com.particlesdevs.photoncamera.settings.FormatChoice before = com.particlesdevs.photoncamera.settings.FormatChoice.current();
                         com.particlesdevs.photoncamera.settings.FormatChoice.store(
                                 com.particlesdevs.photoncamera.settings.FormatChoice.values()[(Integer) value]);
+                        Log.i(TAG, "format choice " + before + " -> " + com.particlesdevs.photoncamera.settings.FormatChoice.current());
                         break;
+                    }
                     case BRACKETING:
                         PreferenceKeys.setBracketingMode((Integer) value);
                         // Update HDR class to use the new bracketing mode

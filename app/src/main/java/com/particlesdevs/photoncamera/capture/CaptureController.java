@@ -428,6 +428,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     // instead of stopRepeating + restart, which froze the viewfinder, emptied the
     // ZSL ring and threw AE off for the next shot.
     private volatile boolean mNiceRouted = false;
+    /**
+     * Preview stall watchdog (PreviewStall): the last preview result, the configured session and the frame duration
+     * (elapsedRealtime ms), and the restarts in a row that brought no frame.
+     */
+    private volatile long mLastPreviewResultMs, mPreviewSessionStartMs, mPreviewFrameMs;
+    private volatile int mStallRestarts;
+    private final Runnable mStallCheck = this::checkPreviewStall;
     // Shutter presses made while a NICE shot is still capturing; fired in order.
     private int mNiceQueuedShots = 0;
     // Sensor timestamp of the newest tail frame (L/S/ES) of the current NICE shot.
@@ -719,6 +726,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                        @NonNull TotalCaptureResult result) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
+                mLastPreviewResultMs = android.os.SystemClock.elapsedRealtime();
+                mStallRestarts = 0;
+                Long frameNs = result.get(CaptureResult.SENSOR_FRAME_DURATION);
+                if (frameNs != null) mPreviewFrameMs = frameNs / 1_000_000L;
                 Object exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Object iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
                 Object focus = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
@@ -1460,6 +1471,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public void closeCamera() {
         rescueInFlightShot("camera closed");
         mStabTrace.stop();
+        mPreviewSessionStartMs = 0;
+        if (mBackgroundHandler != null) mBackgroundHandler.removeCallbacks(mStallCheck);
         mNiceQueuedShots = 0;
         VivoStockAe stock=mStockAe;mStockAe=null;if(stock!=null)stock.close();
         mNiceRingFrozen=false;
@@ -1850,6 +1863,43 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return allTargets;
     }
     @SuppressLint("MissingPermission")
+    /**
+     * Preview stall watchdog, every second on the camera thread while a session runs: the camera stopped delivering preview
+     * frames (black viewfinder, vivo 5x tele) while no shot is in flight: log the state and restart the camera, as switching the
+     * module did by hand. At most PreviewStall.MAX_RESTARTS restarts in a row without a frame in between.
+     */
+    private void checkPreviewStall() {
+        final Handler handler = mBackgroundHandler;
+        if (handler == null || !isCameraResumed || mPreviewSessionStartMs == 0) return;
+        handler.postDelayed(mStallCheck, 1000);
+        final CameraMode mode = PhotonCamera.getSettings().selectedMode;
+        if (mIsRecordingVideo || mShotInProgress || mZslCapturing || mHybridZslCapture || mNiceRingFrozen || burst
+                || (mode != CameraMode.PHOTO && mode != CameraMode.NIGHT && mode != CameraMode.MOTION)) return;
+        final long now = android.os.SystemClock.elapsedRealtime();
+        // A shot stops or holds the preview for a moment on some routes: none of that counts.
+        if (sTimelineSubmitNs > 0 && now - sTimelineSubmitNs / 1_000_000L < 6000) return;
+        if (!PreviewStall.stalled(now, mLastPreviewResultMs, mPreviewSessionStartMs, mPreviewFrameMs)) return;
+        final long noFrame = now - Math.max(mLastPreviewResultMs, mPreviewSessionStartMs);
+        Log.w(TAG, "PREVIEW_STALL camera " + physicalID + ": no preview frame for " + noFrame + " ms ("
+                + (mLastPreviewResultMs == 0 ? "none since the session started" : "frames stopped") + ", session "
+                + (now - mPreviewSessionStartMs) + " ms) liveRaw=" + mLiveRawSession + " mosaicPreview=" + mMosaicPreview
+                + " block=" + com.particlesdevs.photoncamera.processing.MosaicStream.block() + " niceRouted=" + mNiceRouted
+                + " frameMs=" + mPreviewFrameMs + " restartsInARow=" + mStallRestarts);
+        if (!PreviewStall.mayRestart(mStallRestarts)) {
+            mPreviewSessionStartMs = 0;   // one log line, no more restarts until the next session
+            Log.w(TAG, "PREVIEW_STALL: " + mStallRestarts + " restarts brought no frame, leaving the camera as it is");
+            return;
+        }
+        mStallRestarts++;
+        mPreviewSessionStartMs = 0;
+        handler.removeCallbacks(mStallCheck);
+        activity.runOnUiThread(() -> {
+            if (!isCameraResumed) return;
+            Log.w(TAG, "PREVIEW_STALL: restarting the camera");
+            restartCamera();
+        });
+    }
+
     public void restartCamera() {
         Log.d(TAG, "restartCamera() called from \"" + Thread.currentThread().getName() + "\" Thread");
         // Reuse the normal resume path: it prepares readers/outputs before
@@ -2458,6 +2508,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         sLastGoodCamera = runningId;
                         mConfiguredSessionGeneration = generation;
+                        mLastPreviewResultMs = 0;
+                        mPreviewSessionStartMs = android.os.SystemClock.elapsedRealtime();
+                        if (mBackgroundHandler != null) {
+                            mBackgroundHandler.removeCallbacks(mStallCheck);
+                            mBackgroundHandler.postDelayed(mStallCheck, 1000);
+                        }
                         mPreviewCaptureResult = null;
                         mPreviewCaptureRequest = null;
                         try {
