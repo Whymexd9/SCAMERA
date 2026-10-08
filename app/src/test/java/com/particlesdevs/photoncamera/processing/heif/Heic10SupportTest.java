@@ -33,6 +33,13 @@ public class Heic10SupportTest {
         assertNull(Heic10Support.choose(Arrays.asList(hw8, hwNoP010)));
         assertNull(Heic10Support.choose(Collections.emptyList()));
         assertNull("no 512 x 512 frames", Heic10Support.choose(Collections.singletonList(enc("x", true, true, true, false, true))));
+        // OPPO PHY110 (8 Gen 3) lists the VBR / CBR encoder before the CQ tile encoder: the CQ one is taken
+        final Heic10Support.Encoder vbr = enc("c2.qti.hevc.encoder", true, true, true, true, false);
+        final Heic10Support.Encoder cq = enc("c2.qti.hevc.encoder.cq", true, true, true, true, true);
+        assertSame(cq, Heic10Support.choose(Arrays.asList(vbr, cq, sw)));
+        assertSame("hardware without CQ before software with CQ", vbr, Heic10Support.choose(Arrays.asList(sw, vbr)));
+        // the order the encoder tries them in when one refuses Main10 / P010
+        assertEquals(Arrays.asList(cq, hw, vbr, sw), Heic10Support.ranked(Arrays.asList(sw, hw8, vbr, cq, hwNoP010, hw)));
     }
 
     @Test

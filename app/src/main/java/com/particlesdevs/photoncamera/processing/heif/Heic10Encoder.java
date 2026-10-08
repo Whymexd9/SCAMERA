@@ -60,8 +60,8 @@ public final class Heic10Encoder {
      */
     public static boolean write(Path file, Bitmap img, int quality, byte[] exifBlock, long timeoutMs, Stats stats) {
         final long started = System.nanoTime();
-        final Heic10Support.Encoder enc = Heic10Support.encoder();
-        if (enc == null) {
+        final List<Heic10Support.Encoder> candidates = Heic10Support.ranked(Heic10Support.candidates());
+        if (candidates.isEmpty()) {
             Log.w(TAG, "no HEVC Main10 encoder with P010 input");
             return false;
         }
@@ -69,16 +69,30 @@ public final class Heic10Encoder {
             Log.w(TAG, "not a 10-bit image: " + img.getConfig());
             return false;
         }
-        stats.codec = enc.name;
         final TileGrid grid = new TileGrid(img.getWidth(), img.getHeight());
         final long deadline = started + timeoutMs * 1_000_000L;
         MediaCodec codec = null;
         TileSource source = null;
         boolean ok = false;
         try {
-            codec = MediaCodec.createByCodecName(enc.name);
-            final MediaFormat input = configure(codec, enc, quality, grid.tile, stats);
-            codec.start();
+            MediaFormat input = null;
+            // An encoder that refuses Main10 / P010 at configure or start (nothing coded yet) hands over to the next one.
+            for (Heic10Support.Encoder enc : candidates) {
+                stats.codec = enc.name;
+                try {
+                    codec = MediaCodec.createByCodecName(enc.name);
+                    input = configure(codec, enc, quality, grid.tile, stats);
+                    codec.start();
+                    break;
+                } catch (Exception e) {
+                    Log.w(TAG, enc.name + " refused 512x512 Main10 P010: " + e);
+                    if (codec != null) {
+                        try { codec.release(); } catch (RuntimeException ignored) {}
+                        codec = null;
+                    }
+                }
+            }
+            if (codec == null) throw new IllegalStateException("no encoder took 512x512 Main10 P010");
             source = new TileSource(img, grid);
             final Encoded encoded = run(codec, source, input, grid, deadline);
             stats.convertMs = source.convertNanos / 1_000_000;

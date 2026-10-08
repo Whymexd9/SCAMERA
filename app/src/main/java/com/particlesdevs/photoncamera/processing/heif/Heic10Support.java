@@ -65,15 +65,27 @@ public final class Heic10Support {
 
     private Heic10Support() {}
 
-    /** The encoder the 10-bit HEIC uses: the first usable hardware encoder, else the first usable software one, else null. */
+    /**
+     * The encoder the 10-bit HEIC uses among the usable ones: hardware before software, and within each a CQ-capable one
+     * first (the OPPO 8 Gen 3 lists "c2.qti.hevc.encoder", VBR / CBR only, before "c2.qti.hevc.encoder.cq", the 128..512 px
+     * CQ tile encoder HeifWriter uses); list order breaks ties. Null when none can.
+     */
     public static Encoder choose(List<Encoder> encoders) {
-        Encoder software = null;
-        for (Encoder e : encoders) {
-            if (!e.usable()) continue;
-            if (e.hardware) return e;
-            if (software == null) software = e;
-        }
-        return software;
+        final List<Encoder> ranked = ranked(encoders);
+        return ranked.isEmpty() ? null : ranked.get(0);
+    }
+
+    /** The usable encoders in the order {@link #choose} prefers them (the encoder tries the next when one refuses). */
+    public static List<Encoder> ranked(List<Encoder> encoders) {
+        final List<Encoder> out = new ArrayList<>();
+        for (Encoder e : encoders) if (e.usable()) out.add(e);
+        // stable: list order within the same rank
+        java.util.Collections.sort(out, (a, b) -> Integer.compare(rank(b), rank(a)));
+        return out;
+    }
+
+    private static int rank(Encoder e) {
+        return (e.hardware ? 2 : 0) + (e.cq ? 1 : 0);
     }
 
     /** Why the 10-bit HEIC cannot be written on Android {@code sdk} with {@code chosen} (null: it can), in the UI language. */
@@ -165,6 +177,12 @@ public final class Heic10Support {
     public static Encoder encoder() {
         if (testing) return forTesting;
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? choose(encoders()) : null;
+    }
+
+    /** The phone's HEVC encoders (the test encoder alone under {@link #setForTesting}). */
+    public static List<Encoder> candidates() {
+        if (testing) return forTesting == null ? Collections.emptyList() : Collections.singletonList(forTesting);
+        return encoders();
     }
 
     /** Whether this phone can write the 10-bit HEIC. */
