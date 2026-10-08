@@ -247,7 +247,7 @@
     <string name="sharp_deconv_damping_desc">Fades the correction where noise explains the difference</string>
     <string name="pref_zsl_buffer_count_default" translatable="false">50</string>
     <string name="zsl_buffer_count">ZSL buffer frames</string>
-    <string name="zsl_buffer_count_summary">RAW buffer before the shutter press: 1–100 frames, 50 by default (~25 MB per frame; with 100 the camera does not start on the X200 Ultra). One size for all modules and for the photo and night modes, MFSR included. The number of merged frames is set separately.</string>
+    <string name="zsl_buffer_count_summary">RAW buffer before the shutter press: 1–100 frames, 50 by default (~25 MB per frame; with 100 the camera does not start on the X200 Ultra). One size for all modules and for the photo and night modes. The number of merged frames is set separately.</string>
     <string name="live_viewfinder_raw">Live viewfinder</string>
     <string name="live_viewfinder_raw_summary">Preview developed from RAW. When it is off or RAW is unavailable, the standard camera preview is shown. The full processing of the shot runs after capture.</string>
     <string name="pref_remosaic_phase_default" translatable="false">0</string>

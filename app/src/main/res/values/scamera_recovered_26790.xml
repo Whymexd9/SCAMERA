@@ -362,7 +362,7 @@
     <string name="max_hdr_ratio">HDR ratio cap</string>
     <string name="max_hdr_ratio_summary">Limit on the ratio of the longest frame to the shortest; the short one is raised. GCam: 9.8 (night 15.3). 0: no cap</string>
     <string name="antibanding_hz">Flicker frequency, Hz</string>
-    <string name="antibanding_hz_summary">The TET model shutter is rounded to a whole number of periods. 120 for 60 Hz mains, 100 for 50 Hz, 0: no rounding. Works only with the TET model on</string>
+    <string name="antibanding_hz_summary">The shutter of the Hybrid Shasta frames (taken after the press), when it is longer than the normal frames’, is rounded to a whole number of flicker periods. 120 for 60 Hz mains, 100 for 50 Hz, 0: no rounding</string>
     <string name="tet_model_enabled">TET exposure model</string>
     <string name="tet_model_enabled_summary">The shutter comes from the shutter/gain curve of the GCam dump and stays the same for the whole burst; the bracket differs only in gain. Off: the previous heuristics</string>
     <string name="mosaic_sr_enabled_desc">Super-resolution on the Bayer mosaic: scaling runs before demosaicing, on the raw samples</string>
@@ -387,7 +387,7 @@
     <string name="binning_desc">Combines neighbouring pixels 4:1. Lower resolution, cleaner image in the dark</string>
     <string name="energy_safe_desc">Saves power: less load and heat at the cost of processing speed</string>
     <string name="camera_sounds_desc">Shutter sound when shooting</string>
-    <string name="hide_gallery_icon_desc">Hide the gallery button on the camera screen</string>
+    <string name="hide_gallery_icon_desc">Hide the separate gallery icon in the app list (the SCAMERA icon stays)</string>
     <string name="show_grid_desc">Composition grid over the viewfinder</string>
     <string name="show_roundedge_desc">Rounded viewfinder corners</string>
     <string name="show_watermark_desc">Caption on saved photos</string>
@@ -398,7 +398,7 @@
     <string name="cfa_desc">Colour filter pattern of the sensor. A wrong one gives broken colours</string>
     <string name="color_method_desc">Colour method: how raw samples are turned into colour</string>
     <string name="horizon_desc">Horizon indicator in the viewfinder</string>
-    <string name="theme_desc">App appearance</string>
+    <string name="theme_desc">Light or dark gallery. The camera and the settings are always dark</string>
     <string name="show_gradient_desc">Gradient background in the interface</string>
     <string name="zsl_merge_algorithm">ZSL merge algorithm</string>
     <string name="night_merge_algorithm">Night merge algorithm</string>

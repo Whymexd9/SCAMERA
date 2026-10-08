@@ -146,7 +146,7 @@
     <string name="v7_preference_off">ВЫКЛ.</string>
     <string name="v7_preference_on">ВКЛ.</string>
     <string name="zsl_buffer_count">Кадров в буфере ZSL</string>
-    <string name="zsl_buffer_count_summary">Размер RAW-буфера до нажатия: 1–100 кадров, по умолчанию 50. Один размер для всех модулей и режимов фото/ночь, включая MFSR. Число кадров склейки задаётся отдельно.</string>
+    <string name="zsl_buffer_count_summary">Размер RAW-буфера до нажатия: 1–100 кадров, по умолчанию 50. Один размер для всех модулей и режимов фото/ночь. Число кадров склейки задаётся отдельно.</string>
     <string name="zsl_merge_algorithm">Алгоритм склейки ZSL</string>
     <string name="manual_mode_auto">Авто</string>
     <string name="manual_mode_fixed">Фиксированный</string>
@@ -223,7 +223,7 @@
     <string name="max_hdr_ratio">Потолок HDR ratio</string>
     <string name="max_hdr_ratio_summary">Предел отношения самого длинного кадра к самому короткому; короткий поджимается вверх. GCam: 9.8 (ночь 15.3). 0 — без потолка</string>
     <string name="antibanding_hz">Частота мерцания, Гц</string>
-    <string name="antibanding_hz_summary">Выдержка TET-модели округляется до целого числа периодов. 120 для сети 60 Гц, 100 для 50 Гц, 0 — без округления. Действует только при включённой TET-модели</string>
+    <string name="antibanding_hz_summary">Выдержка кадров Shasta в Hybrid (снимаются после нажатия), когда она длиннее обычных кадров, округляется до целого числа периодов мерцания. 120 для сети 60 Гц, 100 для 50 Гц, 0 — без округления</string>
     <string name="tet_model_enabled">TET-модель экспозиций</string>
     <string name="tet_model_enabled_summary">Выдержка выбирается по ломаной выдержка/усиление из дампа GCam и держится единой для всей серии; брекет разносится только усилением. Выключено — прежние эвристики</string>
     <string name="mosaic_sr_enabled_desc">Супер-разрешение по мозаике Байера: масштабирование выполняется до дебайера, по сырым отсчётам</string>
@@ -248,7 +248,7 @@
     <string name="binning_desc">Объединение соседних пикселей 4:1. Меньше разрешение, чище картинка в темноте</string>
     <string name="energy_safe_desc">Экономия энергии: снижает нагрузку и нагрев ценой скорости обработки</string>
     <string name="camera_sounds_desc">Звук затвора при съёмке</string>
-    <string name="hide_gallery_icon_desc">Скрыть кнопку галереи с экрана съёмки</string>
+    <string name="hide_gallery_icon_desc">Скрыть отдельный значок галереи в списке приложений (значок SCAMERA остаётся)</string>
     <string name="show_grid_desc">Сетка кадрирования поверх видоискателя</string>
     <string name="show_roundedge_desc">Скруглённые углы у видоискателя</string>
     <string name="show_watermark_desc">Подпись на сохранённых снимках</string>
@@ -259,6 +259,6 @@
     <string name="cfa_desc">Шаблон цветового фильтра сенсора. Неверный даёт ломаные цвета</string>
     <string name="color_method_desc">Метод цветопередачи: как сырые отсчёты переводятся в цвет</string>
     <string name="horizon_desc">Указатель горизонта на видоискателе</string>
-    <string name="theme_desc">Оформление приложения</string>
+    <string name="theme_desc">Светлая или тёмная галерея. Камера и настройки всегда тёмные</string>
     <string name="show_gradient_desc">Градиентная подложка в интерфейсе</string>
 </resources>

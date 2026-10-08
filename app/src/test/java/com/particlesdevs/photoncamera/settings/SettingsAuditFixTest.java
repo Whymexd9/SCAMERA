@@ -257,6 +257,21 @@ public class SettingsAuditFixTest {
         assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
     }
 
+    /** Texts: the generated RAW-metadata rows speak Russian on a Russian system; the two denoise pairs have distinct names. */
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void russianTitlesAndDistinctDenoiseNames() {
+        PreferenceScreen screen=inflate();
+        for(Class<?> type:TunableRegistry.TUNABLE_CLASSES)TunablePreferenceGenerator.registerTunableClass(type);
+        TunablePreferenceGenerator.generatePreferences(context,screen);
+        assertEquals("Динамический уровень чёрного",String.valueOf(screen.findPreference("pref_tunable_parameters_usedynamicblacklevel").getTitle()));
+        assertEquals("Не зеркалить фронтальную камеру",String.valueOf(screen.findPreference("pref_tunable_parameters_disablemirror").getTitle()));
+        assertEquals("Параметры",String.valueOf(screen.findPreference("pref_category_tunable_parameters").getTitle()));
+        Set<String> titles=new HashSet<>();
+        for(String key:new String[]{"pref_lmc_hybrid_post_luma","pref_lmc_hybrid_post_chroma","pref_lmc_hybrid_dn_luma_mult","pref_lmc_hybrid_dn_chroma_mult"})
+            assertTrue(key,titles.add(String.valueOf(screen.findPreference(key).getTitle())));
+        assertEquals("Шумодав NLM: яркость",String.valueOf(screen.findPreference("pref_lmc_hybrid_post_luma").getTitle()));
+        assertEquals("Тема галереи",String.valueOf(screen.findPreference("pref_theme_key").getTitle()));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

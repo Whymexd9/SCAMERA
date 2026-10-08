@@ -173,6 +173,8 @@
     <string name="prefs_lmc_hybrid_bento_denoise_max_title">Bento: denoise boost limit in highlights</string>
     <string name="prefs_lmc_hybrid_bento_denoise_max_summary">How many times stronger the denoiser cleans areas merged from a single ultra-short frame (by the merge\'s effective frame map). 3 as before; 8–12 is closer to the real noise of a frame with gain ×8…16 (GCam does not model this noise at all).</string>
     <string name="prefs_lmc_hybrid_post_luma_summary">NLM engine only. Strength of the NLM luma denoiser on the merged frame (0: off). Default 0.6; the noise level is measured on the frame itself.</string>
+    <string name="prefs_lmc_hybrid_post_luma_title">NLM denoise: luma</string>
+    <string name="prefs_lmc_hybrid_post_chroma_title">NLM denoise: chroma</string>
     <string name="prefs_lmc_hybrid_post_chroma_summary">NLM engine only. Strength of the bilateral chroma denoiser and colour blotch suppression (0: off). Default 1.0.</string>
     <string name="prefs_lmc_hybrid_nr_snr_screen_title">SNR and noise model</string>
     <string name="prefs_lmc_hybrid_nr_snr_screen_summary">Manual SNR, multiplier, ρs and ρr, strength map</string>
@@ -189,6 +191,8 @@
     <string name="prefs_lmc_hybrid_nr_mult_screen_title">Multipliers</string>
     <string name="prefs_lmc_hybrid_nr_mult_screen_summary">As in the patcher</string>
     <string name="prefs_lmc_hybrid_dn_luma_mult_summary">0–4, default 1: all luma strength values (pref_luma_denoise_multiplier). 0: luma is left alone.</string>
+    <string name="prefs_lmc_hybrid_dn_luma_mult_title">GCam denoise: luma</string>
+    <string name="prefs_lmc_hybrid_dn_chroma_mult_title">GCam denoise: chroma</string>
     <string name="prefs_lmc_hybrid_dn_sabre_luma_mult_summary">0–4, default 1: SNR points 5 / 20 / 40 (Sabre table).</string>
     <string name="prefs_lmc_hybrid_dn_luma_gid14_mult_summary">0–4, default 1: SNR points 10 / 80 (luma_denoise_004).</string>
     <string name="prefs_lmc_hybrid_dn_chroma_mult_summary">0–4, default 1: all chroma strength values (with the lower limit). 0: colour is left alone.</string>
@@ -261,7 +265,7 @@
     <string name="prefs_lmc_hybrid_ark_sharp_screen_summary">ARK, RawTherapee, SCAM or off</string>
     <string name="prefs_lmc_hybrid_sharp_category_title">Mode</string>
     <string name="prefs_lmc_hybrid_sharp_mode_title">Hybrid sharpening</string>
-    <string name="prefs_lmc_hybrid_sharp_mode_summary">%s. ARK: ArkCam sharpening before the tone (needs the ARK tone; settings: “ARK tone” → “ARK sharpening”); without the ARK tone RawTherapee works instead. RawTherapee: Unsharp Mask, RL deconvolution and microcontrast with the “Sharpening and detail” settings (radii are rescaled on the 2× grid); SCAM: a halo-free luma unsharp mask that weakens by itself on noisy frames.</string>
+    <string name="prefs_lmc_hybrid_sharp_mode_summary">%s. ARK: ArkCam sharpening before the tone (its settings are below on this page). RawTherapee: Unsharp Mask, RL deconvolution and microcontrast with the “RawTherapee sharpening” settings below (radii are rescaled on the 2× grid). SCAM: a halo-free luma unsharp mask that weakens by itself on noisy frames.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_note_title">ArkCam sharpening (process_luma)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_note_summary">Works when “Hybrid sharpening” = ARK. As in ArkCam 2.85: bilateral lift, local contrast and two Richardson–Lucy stages on luma before the tone; the detail enters as the delta ∛S − ∛reference. Defaults: ArkCam X8U, main camera.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_gain_title">ARK sharpening detail strength</string>
@@ -424,7 +428,7 @@
     <string name="prefs_lmc_hybrid_ark_detail_gain_title">Sabre detail</string>
     <string name="prefs_lmc_hybrid_ark_detail_gain_summary">Without ARK sharpening: strength of the fine detail of the full-size merge added after the tone (not boosted in lifted shadows, half as strong towards white). 1 matches the ArkCam detail. Default 2: on Oppo at night +22 % fine detail over ArkCam with lower luma noise than ArkCam.</string>
     <string name="prefs_lmc_hybrid_ark_texture_title">Texture in the ARK tone</string>
-    <string name="prefs_lmc_hybrid_ark_texture_summary">ArkCam has no midtone frequency lift, so “Texture” is off with the ARK tone. On: SCAMERA local contrast with the strength from the “Texture” slider in the “Tone” section.</string>
+    <string name="prefs_lmc_hybrid_ark_texture_summary">ArkCam has no midtone frequency lift, so this is off by default. On: SCAMERA local contrast after the tone, with a fixed strength per detail band.</string>
     <string name="prefs_lmc_hybrid_ark_artifacts_category_title">Artefacts and recovery</string>
     <string name="prefs_lmc_hybrid_highlight_recovery_title">Per-channel highlight recovery, %</string>
     <string name="prefs_lmc_hybrid_highlight_recovery_summary">Clip level of each channel before white balance; a clipped channel is raised by the colour of the surrounding light (a white lamp stays white, no magenta), fully clipped areas smoothly go to neutral white, a single coloured channel (neon, laser) is left alone. Also works with Bento (clip flags from the worker). Default 100, 0: off.</string>
@@ -534,7 +538,7 @@
     <string name="prefs_hexquad_denoise_screen_title">HP9 HexQuad neural remosaic</string>
     <string name="prefs_hexquad_denoise_screen_summary">Tetra 4×4: strength, noise profile, ISO</string>
     <string name="prefs_hexquad_note_title">For the HP9 HexQuad algorithm</string>
-    <string name="prefs_hexquad_note_summary">Works on the telephoto lens in 4× ISZ mode, Tetra 4×4. Settings apply to the next shot. For the old result: x2, original size, multipliers 1, auto by ISO off, texture 0.</string>
+    <string name="prefs_hexquad_note_summary">Works on the telephoto lens in 4× ISZ mode, Tetra 4×4. Settings apply to the next shot. For the old result: x2, multipliers 1, auto by ISO off, texture 0.</string>
     <string name="prefs_hexquad_model_category_title">Luma and model</string>
     <string name="prefs_hexquad_compute_title">CPU + GPU + NPU working together</string>
     <string name="prefs_hexquad_compute_summary">The CPU aligns frames and prepares the input in parallel with the neural network on the NPU. The GPU restores detail and blends luma/chroma. The mode is on automatically; if the GPU fails, the CPU runs its stages.</string>
@@ -602,7 +606,7 @@
     <string name="prefs_dcp_profile_summary">Import and choose the colour matrix of the module</string>
     <string name="prefs_lmc_curves_screen_title">Hybrid curves</string>
     <string name="prefs_lmc_curves_note_title">How it works</string>
-    <string name="prefs_lmc_curves_note_summary">First the tone curve (17 points), then the gamma curve (33 points), per RGB channel, as in GCam. Strength blends the curve with the original shot: 0 changes nothing, 100 applies the full curve. Has no effect when tone processing is “Off” (linear output).</string>
+    <string name="prefs_lmc_curves_note_summary">First the tone curve (17 points), then the gamma curve (33 points), per RGB channel, as in GCam. Strength blends the curve with the original shot: 0 changes nothing, 100 applies the full curve.</string>
     <string name="prefs_lmc_tone_curve_title">Tone curve</string>
     <string name="prefs_lmc_tone_curve_strength_title">Tone curve strength, %</string>
     <string name="prefs_lmc_gamma_curve_title">Gamma curve</string>
@@ -635,7 +639,8 @@
     <string name="prefs_quad_compatibility_screen_summary">Direct Quad 2×2 path and DNG metadata</string>
     <string name="prefs_noise_model_screen_title">Sensor noise model</string>
     <string name="prefs_noise_model_screen_summary">Profile, import and export</string>
-    <string name="prefs_noise_model_note_summary">The profile is used when the noise source “From settings” is chosen in Hybrid or SCAM HDR.</string>
+    <string name="prefs_noise_model_note_summary">A chosen profile replaces the noise model the camera reports: the Hybrid GCam denoise and the noise profile of the DNG always use it; the Hybrid and SCAM HDR merges use it when their noise source is “From settings”.</string>
+    <string name="prefs_theme_gallery_title">Gallery theme</string>
     <string name="prefs_viewfinder_settings_screen_title">Viewfinder and interface</string>
     <string name="prefs_viewfinder_settings_screen_summary">Preview, grid, focus, sounds and appearance</string>
     <string name="prefs_camera_sounds_title">Shutter sound</string>
