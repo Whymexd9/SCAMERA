@@ -691,13 +691,23 @@
     <string name="prefs_camera_package_spoof_help_summary">OnePlus/OPPO: OplusCameraManager.saveOpPackageName (unlocks hidden cameras and Oplus vendor modes). Generic Android: replaces the package in the CameraManager context, does not bypass the UID check in CameraService. BinderHook: rewrites the package name directly in ICameraService transactions (experimental). Empty field: the app\'s own package. Example: com.android.camera on vivo, com.oplus.camera on OPPO.</string>
     <string name="prefs_scamera_full_debug_title">Full processing log</string>
     <string name="prefs_photo_format_title">Photo format</string>
-    <string name="prefs_photo_format_summary">JPEG opens everywhere and is the only format with Ultra HDR. HEIC: about half the size at the same look; Android 9+, iPhone, and Windows / macOS with the codec open it. WebP: smaller than JPEG; browsers and most apps open it, not every gallery; up to 16383 px per side, a larger photo is saved as JPEG. RAW keeps the sensor data as DNG; RAW + a format saves both.</string>
+    <string name="prefs_photo_format_summary">JPEG opens everywhere and is the only format with Ultra HDR. HEIC: about half the size at the same look; Android 9+, iPhone, and Windows / macOS with the codec open it. WebP: smaller than JPEG; browsers and most apps open it, not every gallery; up to 16383 px per side, a larger photo is saved as JPEG. AVIF: the best quality - 10 / 12-bit colour, full-resolution chroma, under half the size of a JPEG; Android 12+, Chrome, Google Photos and Windows 11 / macOS 13 open it (offered from Android 12). RAW keeps the sensor data as DNG; RAW + a format saves both.</string>
     <string name="prefs_heic_quality_title">HEIC quality</string>
     <string name="prefs_heic_quality_summary">Default 90. Lower gives a smaller file; fine detail goes sooner. Without an HEVC encoder on the phone the photo is saved as JPEG.</string>
     <string name="prefs_webp_quality_title">WebP quality</string>
     <string name="prefs_webp_quality_summary">Default 90. Lower gives a smaller file; fine detail goes sooner.</string>
     <string name="prefs_webp_lossless_title">Lossless WebP</string>
     <string name="prefs_webp_lossless_summary">Exact pixels: files several times larger than lossy WebP and slower to save. Quality is not used.</string>
+    <string name="prefs_avif_quality_title">AVIF quality</string>
+    <string name="prefs_avif_quality_summary">Default 90: no visible loss, about 2 MB for a 12 MP photo at 10-bit 4:4:4. Lower gives a smaller file; fine detail goes sooner. Not used by lossless AVIF.</string>
+    <string name="prefs_avif_lossless_title">Lossless</string>
+    <string name="prefs_avif_lossless_summary">Exact pixels at the photo\'s own colour depth: files about 6 times larger than at quality 90 and slower to save. Quality, colour depth and chroma are not used.</string>
+    <string name="prefs_avif_depth_title">Colour depth</string>
+    <string name="prefs_avif_depth_summary">10 bit (default): smooth skies and shadows without banding. 12 bit: more room for editing, larger files. 8 bit: like JPEG. A 10-bit processed photo keeps all its bits.</string>
+    <string name="prefs_avif_chroma_title">Chroma subsampling</string>
+    <string name="prefs_avif_chroma_summary">4:4:4 (default): colour at full resolution - sharp coloured edges and fine coloured detail. 4:2:0: colour at half resolution, a smaller file, coloured edges blur.</string>
+    <string name="prefs_avif_speed_title">Encoding speed</string>
+    <string name="prefs_avif_speed_summary">Balanced (default) saves a 12 MP photo in about 1-2 s on a recent phone. Thorough takes about 5 times longer for slightly better detail; Fast and Fastest are about 3 times quicker with slightly less detail.</string>
     <string name="prefs_photo_also_jpeg_title">Also save a JPEG</string>
-    <string name="prefs_photo_also_jpeg_summary">A JPEG copy next to the HEIC / WebP photo for apps that cannot open them. With Ultra HDR on, this JPEG carries it.</string>
+    <string name="prefs_photo_also_jpeg_summary">A JPEG copy next to the HEIC / WebP / AVIF photo for apps that cannot open them. With Ultra HDR on, this JPEG carries it.</string>
 </resources>

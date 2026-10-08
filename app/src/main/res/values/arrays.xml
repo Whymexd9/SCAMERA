@@ -366,10 +366,43 @@
         <item>JPEG</item>
         <item>HEIC (smaller files)</item>
         <item>WebP (smaller files)</item>
+        <item>AVIF (best quality)</item>
     </string-array>
     <string-array name="photo_format_values" translatable="false">
         <item>jpeg</item>
         <item>heic</item>
         <item>webp</item>
+        <item>avif</item>
+    </string-array>
+    <string-array name="avif_depth_entries">
+        <item>8 bit</item>
+        <item>10 bit</item>
+        <item>12 bit</item>
+    </string-array>
+    <string-array name="avif_depth_values" translatable="false">
+        <item>8</item>
+        <item>10</item>
+        <item>12</item>
+    </string-array>
+    <string-array name="avif_chroma_entries">
+        <item>4:4:4 (full colour)</item>
+        <item>4:2:0 (smaller file)</item>
+    </string-array>
+    <string-array name="avif_chroma_values" translatable="false">
+        <item>444</item>
+        <item>420</item>
+    </string-array>
+    <!-- libavif speed (libaom cpu-used); PhotoFormat.AVIF_DEFAULT_SPEED -->
+    <string-array name="avif_speed_entries">
+        <item>Thorough (slow)</item>
+        <item>Balanced</item>
+        <item>Fast</item>
+        <item>Fastest</item>
+    </string-array>
+    <string-array name="avif_speed_values" translatable="false">
+        <item>5</item>
+        <item>6</item>
+        <item>8</item>
+        <item>9</item>
     </string-array>
 </resources>

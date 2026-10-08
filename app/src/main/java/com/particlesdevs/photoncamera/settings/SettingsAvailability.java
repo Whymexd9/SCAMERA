@@ -18,25 +18,28 @@ public final class SettingsAvailability {
         for (String value : alternatives) if (key.equals(value)) return true;
         return false;
     }
-    /** «Формат фото» as stored (pref_photo_format): jpeg (default), heic or webp. */
+    /** «Формат фото» as stored (pref_photo_format): jpeg (default), heic, webp or avif. */
     private String photoFormat() {
         String f = text("pref_photo_format", "jpeg").trim().toLowerCase(java.util.Locale.ROOT);
-        return f.equals("heic") || f.equals("webp") ? f : "jpeg";
+        return f.equals("heic") || f.equals("webp") || f.equals("avif") ? f : "jpeg";
     }
-    /** Whether a shot writes a JPEG: the JPEG format, or HEIC / WebP with «Также сохранять JPEG». */
+    /** Whether a shot writes a JPEG: the JPEG format, or HEIC / WebP / AVIF with «Также сохранять JPEG». */
     private boolean writesJpeg() {
         return photoFormat().equals("jpeg") || on("pref_photo_also_jpeg", false);
     }
 
     /**
      * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
-     * are not chosen (HEIC quality, WebP quality / lossless) and «Также сохранять JPEG» while the format is JPEG.
+     * are not chosen (HEIC quality, WebP quality / lossless, the AVIF rows) and «Также сохранять JPEG» while the format is
+     * JPEG.
      */
     public boolean hidden(String key) {
         String format = photoFormat();
         switch (key) {
             case "pref_heic_quality": return !format.equals("heic");
             case "pref_webp_quality": case "pref_webp_lossless": return !format.equals("webp");
+            case "pref_avif_quality": case "pref_avif_lossless": case "pref_avif_depth": case "pref_avif_chroma":
+            case "pref_avif_speed": return !format.equals("avif");
             case "pref_photo_also_jpeg": return format.equals("jpeg");
             default: return false;
         }
@@ -76,7 +79,7 @@ public final class SettingsAvailability {
                 return Lang.t("Только с добором ArkCam.", "Only with the ArkCam fill.");
         }
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
-        // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP shot writes only with «Также сохранять JPEG».
+        // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP / AVIF shot writes only with «Также сохранять JPEG».
         if (!writesJpeg()) {
             if (key.equals("pref_ultrahdr_key"))
                 return Lang.t("Только для JPEG: включите «Также сохранять JPEG» — Ultra HDR будет в нём.",
@@ -87,6 +90,14 @@ public final class SettingsAvailability {
         }
         if (key.equals("pref_webp_quality") && on("pref_webp_lossless", false))
             return Lang.t("Не используется в WebP без потерь.", "Not used by lossless WebP.");
+        // AVIF «Без потерь» stores the exact pixels: identity matrix, 4:4:4 and the photo's own bit depth.
+        if (on("pref_avif_lossless", false)) {
+            if (key.equals("pref_avif_quality")) return Lang.t("Не используется в AVIF без потерь.", "Not used by lossless AVIF.");
+            if (key.equals("pref_avif_depth"))
+                return Lang.t("Без потерь — глубина самого снимка: 8 бит, у 10-битного снимка 10.",
+                        "Lossless keeps the photo's own depth: 8 bit, 10 for a 10-bit photo.");
+            if (key.equals("pref_avif_chroma")) return Lang.t("Без потерь — всегда 4:4:4.", "Lossless is always 4:4:4.");
+        }
         if (key.startsWith("pref_vivo_nice_") && !autonomous)
             return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");
         // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.

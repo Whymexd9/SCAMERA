@@ -160,5 +160,21 @@
         <item>JPEG</item>
         <item>HEIC (файлы меньше)</item>
         <item>WebP (файлы меньше)</item>
+        <item>AVIF (наилучшее качество)</item>
+    </string-array>
+    <string-array name="avif_depth_entries">
+        <item>8 бит</item>
+        <item>10 бит</item>
+        <item>12 бит</item>
+    </string-array>
+    <string-array name="avif_chroma_entries">
+        <item>4:4:4 (полный цвет)</item>
+        <item>4:2:0 (файл меньше)</item>
+    </string-array>
+    <string-array name="avif_speed_entries">
+        <item>Тщательно (медленно)</item>
+        <item>Баланс</item>
+        <item>Быстро</item>
+        <item>Очень быстро</item>
     </string-array>
 </resources>

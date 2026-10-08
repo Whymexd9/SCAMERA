@@ -138,8 +138,10 @@ public class SettingsModelCheck {
         if(SettingsNumericRules.listValue("pref_lmc_hybrid_x","",null)!=null)throw new AssertionError("empty list");
         // «Формат фото»: the rows of the formats not chosen are hidden; Ultra HDR / JPEG quality need a JPEG in the shot; quality bounds
         Map<String,Object> f=new HashMap<>();
+        String[] avifRows={"pref_avif_quality","pref_avif_lossless","pref_avif_depth","pref_avif_chroma","pref_avif_speed"};
         for(String k:new String[]{"pref_heic_quality","pref_webp_quality","pref_webp_lossless","pref_photo_also_jpeg"})
             if(!new SettingsAvailability(f).hidden(k))throw new AssertionError("JPEG default shows "+k);
+        for(String k:avifRows)if(!new SettingsAvailability(f).hidden(k))throw new AssertionError("JPEG default shows "+k);
         if(new SettingsAvailability(f).hidden("pref_photo_format")||new SettingsAvailability(f).hidden("pref_jpeg_quality"))throw new AssertionError("format rows hidden");
         active(f,"pref_ultrahdr_key");active(f,"pref_jpeg_quality");active(f,"pref_photo_format");
         f.put("pref_photo_format","heic");
@@ -154,6 +156,19 @@ public class SettingsModelCheck {
         f.put("pref_webp_lossless",true);inactive(f,"pref_webp_quality");active(f,"pref_webp_lossless");
         f.put("pref_photo_format","jxl");active(f,"pref_ultrahdr_key"); // an unknown stored value is JPEG
         if(!new SettingsAvailability(f).hidden("pref_webp_quality"))throw new AssertionError("unknown format shows WebP rows");
+        // AVIF: its five rows only with AVIF chosen (not with WebP / HEIC), «Без потерь» explains quality, depth and chroma
+        f.put("pref_photo_format","webp");
+        for(String k:avifRows)if(!new SettingsAvailability(f).hidden(k))throw new AssertionError("WebP shows "+k);
+        f.put("pref_photo_format","avif");f.remove("pref_webp_lossless");
+        for(String k:avifRows){if(new SettingsAvailability(f).hidden(k))throw new AssertionError("AVIF hides "+k);active(f,k);}
+        if(!new SettingsAvailability(f).hidden("pref_webp_quality")||!new SettingsAvailability(f).hidden("pref_heic_quality")||new SettingsAvailability(f).hidden("pref_photo_also_jpeg"))
+            throw new AssertionError("AVIF rows");
+        inactive(f,"pref_ultrahdr_key");inactive(f,"pref_jpeg_quality");
+        f.put("pref_avif_lossless",true);
+        inactive(f,"pref_avif_quality");inactive(f,"pref_avif_depth");inactive(f,"pref_avif_chroma");active(f,"pref_avif_speed");active(f,"pref_avif_lossless");
+        f.put("pref_photo_also_jpeg",true);active(f,"pref_ultrahdr_key");
+        eq(SettingsNumericRules.value("pref_avif_quality","0",90),1);eq(SettingsNumericRules.value("pref_avif_quality","101",90),100);
+        eq(SettingsNumericRules.value("pref_avif_speed","12",6),10);eq(SettingsNumericRules.value("pref_avif_speed","x",6),6);
         eq(SettingsNumericRules.value("pref_heic_quality","0",90),1);eq(SettingsNumericRules.value("pref_webp_quality","150",90),100);
         eq(SettingsNumericRules.value("pref_webp_quality","NaN",90),90);
         if(SettingsNumericRules.error("pref_heic_quality","50.5")==null)throw new AssertionError("fractional HEIC quality accepted");
