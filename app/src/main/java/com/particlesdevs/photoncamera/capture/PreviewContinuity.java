@@ -9,11 +9,15 @@ package com.particlesdevs.photoncamera.capture;
  * frames of the normal preview request right after the flush, ahead of the series: the viewfinder gets a fresh frame after
  * the restart and the pipeline restarts on a preview request (what the P38 re-arm flush did after the series, so the re-arm
  * then only re-sends the repeating request and drops nothing). Each lead frame starts the series one preview frame later
- * (~33 ms), so it stays off by default until the phone shows the trade (PREVIEW_GAP lines: gap vs "first series frame").
+ * (~33 ms). On by default (one frame) since the OPPO Find X7 Ultra measurement of 2026-10-08 (camera 2, 4 shots each):
+ * gap 400 -> 267 ms, first series frame +121..137 -> +129..174 ms after the submit; without the flush (hybrid_fast_capture 0)
+ * the gap was 267 ms too but the series started at +158..190 ms. "preview_lead 0" restores the old behaviour.
  * Without a flush the preview keeps running into the series and a lead frame would only delay it: none then.
  */
 final class PreviewContinuity {
     static final int MAX_LEAD = 3;
+    /** Lead frames without a nice_dev "preview_lead" line. */
+    static final float DEFAULT_LEAD = 1f;
 
     private PreviewContinuity() {}
 

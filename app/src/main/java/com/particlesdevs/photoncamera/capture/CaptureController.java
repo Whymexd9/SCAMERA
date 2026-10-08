@@ -4667,8 +4667,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + " lost the first requests after a flush (FlushLossStats)");
             shotFlushed.set(flushQueue);
             mLastShotFlushed = flushQueue;
-            // P44: preview frames right after the flush, ahead of the series (nice_dev "preview_lead"; off by default).
-            final int leadFrames = PreviewContinuity.leadFrames(PreferenceKeys.niceDevNumber("preview_lead", 0f), flushQueue);
+            // P44: preview frames right after the flush, ahead of the series (nice_dev "preview_lead"; one by default).
+            final int leadFrames = PreviewContinuity.leadFrames(
+                    PreferenceKeys.niceDevNumber("preview_lead", PreviewContinuity.DEFAULT_LEAD), flushQueue);
             mLastShotLead = leadFrames;
             sTimelineSubmitNs = android.os.SystemClock.elapsedRealtimeNanos();
             {

@@ -59,12 +59,12 @@ Reading:
 - `PreviewGapMeter`: one line per shot, tag **PREVIEW_GAP**, from the preview results' sensor timestamps (all routes, always
   on): gap, A / B / C, later max gap (D), preview requests failed (flushed), first series frame after the submit (latency),
   and the switches used (flush, lead, rearm, aeRestore).
-- nice_dev **`preview_lead N`** (0..3, default 0): N frames of the normal preview request queued right after the flush, ahead
+- nice_dev **`preview_lead N`** (0..3, default 1 since the OPPO measurement below): N frames of the normal preview request queued right after the flush, ahead
   of the series (only when the queue was flushed). The viewfinder gets a frame as soon as the HAL restarted, the pipeline
   restarts on a preview request, and the P38 re-arm default then becomes 1 (re-send the repeating request, no second flush).
   Cost on a HAL that restarts as fast on a RAW request (OPPO: series start 85-89 ms): one preview frame (~33 ms) of start
   latency. Expected on the vivo tele from the numbers above: shorter series start, C ~ one frame, no D.
-- Default unchanged (`preview_lead 0`): the shot-start latency must not get worse without a phone measurement.
+- `preview_lead 0` restores the behaviour before P44.
 
 ## What to measure on the phone
 
@@ -77,3 +77,15 @@ Reading:
 
 Compare `gap=`, `later max gap`, and `first series frame +X ms after the submit` (latency). Keep `preview_lead 1` as the
 default for a HAL where the gap drops and the latency does not rise.
+
+## OPPO Find X7 Ultra measurement (2026-10-08, local build 27099, camera 2, dark scene, `PREVIEW_GAP` lines)
+
+| setting | shots | gap | preview -> series | first series frame after the submit |
+|---|---|---|---|---|
+| default before (`preview_lead 0`) | 4 | 400 ms | 167 ms | +120..137 ms |
+| `preview_lead 1` | 4 | 267 ms | 34 ms | +129..174 ms |
+| `hybrid_fast_capture 0` (no flush) | 3 | 267 ms | 34 ms | +158..190 ms |
+
+The rest of the gap is the 7-frame RAW-only series itself (199 ms) and one frame back to the preview. `preview_lead 1` is the
+default now; the vivo (re-arm mode 1 instead of the second flush) still needs the owner's check: freeze and the X300 Ultra's
+stabilisation after a shot.
