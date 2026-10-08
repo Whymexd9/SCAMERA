@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.app;
 
 import android.app.Activity;
 import android.app.Application;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -269,38 +268,10 @@ public class PhotonCamera extends Application {
      */
     private void applyGalleryIconVisibility() {
         try {
-            // Get the hide gallery icon preference
-            boolean hideGalleryIcon = mSettingsManager.getBoolean(
-                    SettingsManager.SCOPE_GLOBAL,
-                    PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON
-            );
-            
-            Log.d("PhotonCamera", "Applying gallery icon visibility: hideGalleryIcon=" + hideGalleryIcon);
-            
-            // Get the ComponentName for the activity-alias using explicit package name
-            String packageName = getPackageName();
-            ComponentName galleryLauncher = new ComponentName(
-                    packageName,
-                    "com.particlesdevs.photoncamera.gallery.ui.GalleryActivityLauncher"
-            );
-            
-            // Set the component enabled state based on the preference
-            int newState = hideGalleryIcon ? 
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED : 
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
-            
-            Log.d("PhotonCamera", "Setting component " + galleryLauncher + " to state: " + newState);
-            
-            getPackageManager().setComponentEnabledSetting(
-                    galleryLauncher,
-                    newState,
-                    PackageManager.DONT_KILL_APP
-            );
-            
-            Log.d("PhotonCamera", "Gallery icon visibility applied successfully");
+            com.particlesdevs.photoncamera.gallery.GalleryLauncherIcon.apply(this,
+                    mSettingsManager.getBoolean(SettingsManager.SCOPE_GLOBAL, PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON));
         } catch (Exception e) {
             Log.e("PhotonCamera", "Error applying gallery icon visibility: " + e.getMessage());
-            e.printStackTrace();
         }
     }
     //  a MemoryInfo object for the device's current memory status.

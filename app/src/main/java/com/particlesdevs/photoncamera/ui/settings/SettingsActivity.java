@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.ui.settings;
 
 import android.app.Activity;
 import android.app.ActivityOptions;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -805,64 +804,20 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
 
         private void toggleGalleryIconVisibility(boolean hideIcon) {
+            String message;
             try {
-                // Get the ComponentName for the activity-alias using explicit package name
-                String packageName = mContext.getPackageName();
-                ComponentName galleryLauncher = new ComponentName(
-                        packageName,
-                        "com.particlesdevs.photoncamera.gallery.ui.GalleryActivityLauncher"
-                );
-                
-                // Get the package manager
-                PackageManager pm = mContext.getPackageManager();
-                
-                // Set the component enabled state based on hideIcon preference
-                // If hideIcon is true, disable the launcher icon; otherwise enable it
-                int newState = hideIcon ? 
-                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED : 
-                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
-                
-                Log.d("SettingsFragment", "Toggling gallery icon visibility:");
-                Log.d("SettingsFragment", "  hideIcon=" + hideIcon);
-                Log.d("SettingsFragment", "  newState=" + newState);
-                Log.d("SettingsFragment", "  component=" + galleryLauncher);
-                
-                int currentState = pm.getComponentEnabledSetting(galleryLauncher);
-                if (currentState == newState || (currentState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && !hideIcon)) return;
-                pm.setComponentEnabledSetting(
-                        galleryLauncher,
-                        newState,
-                        PackageManager.DONT_KILL_APP
-                );
-                
-                Log.d("SettingsFragment", "Component state changed successfully");
-                
-                // Show a message to user
-                if (activity != null) {
-                    String message = hideIcon ? 
-                            "Gallery icon will be hidden from launcher" : 
-                            "Gallery icon will be visible in launcher";
-                    activity.runOnUiThread(() -> 
-                            com.google.android.material.snackbar.Snackbar.make(
-                                    activity.findViewById(android.R.id.content),
-                                    message,
-                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
-                            ).show()
-                    );
-                }
+                if (!com.particlesdevs.photoncamera.gallery.GalleryLauncherIcon.apply(mContext, hideIcon)) return;
+                message = hideIcon
+                        ? com.particlesdevs.photoncamera.util.Lang.t("Значок галереи убран с рабочего стола", "The gallery icon is removed from the launcher")
+                        : com.particlesdevs.photoncamera.util.Lang.t("Галерея появится на рабочем столе отдельным значком", "The gallery appears in the launcher as its own icon");
             } catch (Exception e) {
                 Log.e("SettingsFragment", "Error in toggleGalleryIconVisibility: " + e.getMessage());
-                e.printStackTrace();
-                // Show error message to user
-                if (activity != null) {
-                    activity.runOnUiThread(() -> 
-                            com.google.android.material.snackbar.Snackbar.make(
-                                    activity.findViewById(android.R.id.content),
-                                    "Error toggling gallery icon: " + e.getMessage(),
-                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
-                            ).show()
-                    );
-                }
+                message = com.particlesdevs.photoncamera.util.Lang.t("Не удалось изменить значок галереи: ", "Could not change the gallery icon: ") + e.getMessage();
+            }
+            if (activity != null) {
+                final String text = message;
+                activity.runOnUiThread(() -> com.google.android.material.snackbar.Snackbar.make(
+                        activity.findViewById(android.R.id.content), text, com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show());
             }
         }
 
