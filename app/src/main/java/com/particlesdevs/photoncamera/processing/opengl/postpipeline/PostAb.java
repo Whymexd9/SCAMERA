@@ -29,6 +29,12 @@ import java.security.MessageDigest;
 public final class PostAb {
     private PostAb() {}
 
+    /**
+     * P48: nice_dev "post_ab_upload 1": the old run is the new GL model too, with only the worker RGB uploaded as RGB32F
+     * instead of the RGBA32F bands (VivoNiceRgb.rgbaUploadWanted), so EQUAL proves the band upload bit-exact on the phone.
+     */
+    static volatile boolean forceRgbUpload;
+
     /** post_ab is on and this shot can take it. */
     public static boolean wanted(Parameters p) {
         if (!PreferenceKeys.niceDevSwitch("post_ab", false)) return false;
@@ -55,7 +61,8 @@ public final class PostAb {
         p.vivoNiceRgbOwned = true;
         final PostPipeline old = new PostPipeline();
         old.tenBitOutput = pipeline.tenBitOutput; // the same output format in both runs
-        PostGlMode.setLegacy(true);
+        final boolean uploadOnly = PreferenceKeys.niceDevSwitch("post_ab_upload", false);
+        if (uploadOnly) forceRgbUpload = true; else PostGlMode.setLegacy(true);
         try {
             final long t0 = System.nanoTime();
             final Bitmap a = old.Run(input, p);
@@ -71,6 +78,7 @@ public final class PostAb {
             try { old.close(); } catch (RuntimeException ignored) {}
         } finally {
             PostGlMode.setLegacy(false);
+            forceRgbUpload = false;
             // VivoNiceRgb freed the copy after its upload and left a small decimated one; a run that failed earlier did not.
             if (p.vivoNiceRgb == copy) Allocator.free(copy);
             p.vivoNiceRgb = rgb;

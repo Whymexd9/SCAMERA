@@ -302,6 +302,9 @@ public final class VivoNiceRgb extends Node {
 
     /** P48: whether the RGB goes up as RGBA32F bands ({@link #uploadRgba}): nice_dev.txt "rgba_upload", else on Adreno. */
     static boolean rgbaUploadWanted(String renderer) {
+        // post_ab's old run is the pipeline before the speed work: the RGB32F upload; "post_ab_upload" runs the old run in the
+        // new model with only this upload changed (PostAb.forceRgbUpload)
+        if (com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy() || PostAb.forceRgbUpload) return false;
         if (PreferenceKeys.niceDevOverrides("rgba_upload")) return PreferenceKeys.niceDevSwitch("rgba_upload", false);
         return renderer != null && renderer.contains("Adreno");
     }
