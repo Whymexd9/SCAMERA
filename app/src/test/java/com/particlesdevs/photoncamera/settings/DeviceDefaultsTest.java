@@ -11,7 +11,10 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowBuild;
 import static org.junit.Assert.*;
 
-/** Device defaults: versioned, an update adds only the newer entries (owner 2026-10-06: RAW10 on the Find X8 Ultra). */
+/**
+ * Device defaults: versioned, an update adds only the newer entries (owner 2026-10-06: RAW10 on the Find X8 Ultra). The v1
+ * SCAM HDR set of both OPPO phones is gone (owner 2026-10-08: SCAM HDR never runs there), so no pref_vivo_nice_ value is written.
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class)
 public class DeviceDefaultsTest {
@@ -27,7 +30,7 @@ public class DeviceDefaultsTest {
         SharedPreferences main = prefs("defaults_x8u");
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
         assertEquals("raw10", main.getString("pref_raw_stream_format", "auto"));
-        assertEquals("scamera", main.getString("pref_vivo_nice_planner", ""));
+        assertNoScamHdrSet(main);
         assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
     }
 
@@ -52,7 +55,31 @@ public class DeviceDefaultsTest {
         SharedPreferences main = prefs("defaults_x7u");
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
         assertFalse(main.contains("pref_raw_stream_format"));
-        assertEquals("scamera", main.getString("pref_vivo_nice_planner", ""));
+        assertNoScamHdrSet(main);
+    }
+
+    private static void assertNoScamHdrSet(SharedPreferences main) {
+        for (String key : main.getAll().keySet())
+            assertFalse(key, key.startsWith("pref_vivo_nice_") || key.startsWith("pref_nice_"));
+    }
+
+    /** The spoof is shared by every lens (ModuleProfiles.isGlobal): main settings only; the ARK saturation reaches the profiles. */
+    @Test public void sharedEntriesStayOutOfModuleProfiles() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PHY110");
+        Context context = RuntimeEnvironment.getApplication();
+        SharedPreferences meta = prefs("module_profiles_meta");
+        meta.edit().putBoolean("exists_back1", true).putBoolean("baseline", true).commit();
+        SharedPreferences module = prefs("module_profile_v2_back1"), baseline = prefs("module_profile_v2_common");
+        SharedPreferences main = prefs("defaults_x7u_profiles");
+        DeviceDefaults.applyOnce(context, main);
+        assertTrue(main.getBoolean("pref_camera_package_spoof_enabled", false));
+        for (SharedPreferences p : new SharedPreferences[]{module, baseline}) {
+            assertFalse(p.contains("pref_camera_package_spoof_enabled"));
+            assertFalse(p.contains("pref_oplus_spoof_package_key"));
+            assertEquals("1.1", p.getString("pref_lmc_hybrid_ark_ccm_sat", ""));
+        }
+        meta.edit().clear().commit();
     }
 
     /** Owner 2026-10-08: the X7 Ultra lists 5 cameras with the aweme package on all three spoof methods; ARK saturation 1.1. */
