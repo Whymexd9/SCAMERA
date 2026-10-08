@@ -99,6 +99,16 @@ public class SettingsAuditFixTest {
             assertFalse(f.getName(),f.getName().startsWith("exposureBalance"));
     }
 
+    /** «Формат превью» only added an ImageReader nobody read to the session: row, stored value and shade session key go. */
+    @Test public void previewFormatIsGone() {
+        assertNull(inflate().findPreference("pref_preview_format_key"));
+        prefs.edit().putString("pref_preview_format_key","35").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertFalse(prefs.contains("pref_preview_format_key"));
+        assertFalse(ShadeCatalog.SESSION_KEYS.contains("pref_preview_format_key"));
+        assertEquals(android.graphics.ImageFormat.JPEG,com.particlesdevs.photoncamera.capture.CaptureController.mPreviewTargetFormat);
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

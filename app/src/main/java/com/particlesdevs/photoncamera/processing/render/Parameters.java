@@ -846,7 +846,6 @@ public class Parameters {
                 "\n Noise Merging=" + FltFormat(PhotonCamera.getSettings().mergeStrength) +
                 "\n Align=" + PhotonCamera.getSettings().alignAlgorithm +
                 "\n Color=" + PhotonCamera.getSettings().colorMethod +
-                "\n PreviewFormat=" + PhotonCamera.getSettings().previewFormat +
                 "\n FocalL=" + FltFormat(focalLength) +
                 "\n Version=" + PhotonCamera.getVersion();
     }

@@ -28,7 +28,6 @@
     <string name="theme_dark">Тёмная</string>
     <string name="theme_follow_system">Как в системе</string>
     <string name="cfa">Фильтр Байера</string>
-    <string name="preview_format">Формат превью</string>
     <string name="energy_saving">Энергосбережение</string>
     <string name="show_gradient">Показать градиентный фон</string>
     <string name="photon_camera_summary">Камера с открытым исходным кодом, с улучшенной обработкой фото</string>

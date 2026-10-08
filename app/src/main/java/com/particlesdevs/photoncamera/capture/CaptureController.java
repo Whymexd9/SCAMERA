@@ -223,7 +223,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public static volatile CaptureResult mPreviewCaptureResult;
     public static CaptureRequest mPreviewCaptureRequest;
-    public static int mPreviewTargetFormat = ImageFormat.JPEG;
+    /**
+     * Format of the extra ImageReader a dual session (device-specific isDualSessionSupported) adds; its JPEG sizes also bound
+     * the RAW size choice. Always JPEG since «Формат превью» (which only added an unread stream to the plain session) is gone.
+     */
+    public static final int mPreviewTargetFormat = ImageFormat.JPEG;
     public boolean isDualSession = false;
 
     @SensorConfig(title = "Session Type",
@@ -1126,11 +1130,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     };
     public CaptureController(Activity activity, ExecutorService processExecutor, CameraEventsListener cameraEventsListener) {
-        if(PhotonCamera.getSettings().previewFormat != 0) {
-            mPreviewTargetFormat = PhotonCamera.getSettings().previewFormat;
-        } else {
-            mPreviewTargetFormat = ImageFormat.JPEG;
-        }
         this.activity = activity;
         this.cameraEventsListener = cameraEventsListener;
         this.mTextureView = activity.findViewById(R.id.texture);
@@ -2615,14 +2614,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 surfaces = Arrays.asList(surface, mImageReaderPreview.getSurface());
             }
         } else {
-           if(Build.BRAND.equalsIgnoreCase("samsung")){
-                surfaces = Arrays.asList(surface, mImageReaderRaw.getSurface());
-            } else {
-                surfaces = Arrays.asList(surface, mImageReaderPreview.getSurface(), mImageReaderRaw.getSurface());
-            }
-           if(PhotonCamera.getSettings().previewFormat == 0) {
-                surfaces = Arrays.asList(surface, mImageReaderRaw.getSurface());
-           }
+            // The viewfinder and the RAW stream; the preview reader belongs to the dual session only.
+            surfaces = Arrays.asList(surface, mImageReaderRaw.getSurface());
         }
         if (mLiveRawSession && !surfaces.contains(mImageReaderRaw.getSurface())) {
             surfaces = new ArrayList<>(surfaces);
@@ -5085,11 +5078,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
     public void resumeCamera() {
         isCameraResumed = true;
-        if(PhotonCamera.getSettings().previewFormat != 0) {
-            mPreviewTargetFormat = PhotonCamera.getSettings().previewFormat;
-        } else {
-            mPreviewTargetFormat = ImageFormat.JPEG;
-        }
         processExecutor.execute(() -> {
             if (mTextureView == null)
                 mTextureView = new GLPreview(activity);

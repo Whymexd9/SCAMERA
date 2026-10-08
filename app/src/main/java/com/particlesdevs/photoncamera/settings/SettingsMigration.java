@@ -121,7 +121,9 @@ public final class SettingsMigration {
             "pref_lmc_hybrid_boost",
             // P25: the Quad toggle of the top bar is gone, and with it its tunable «Enable Quad Resolution»; the quick
             // buttons of concept E and the ☆ favourites became the shade's tiles (migrateShadeTiles reads them first)
-            "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys"));
+            "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys",
+            // Settings audit (8 October 2026): «Формат превью» only added an ImageReader nobody read to the session
+            "pref_preview_format_key"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes

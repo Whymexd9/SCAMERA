@@ -259,7 +259,6 @@
     <string name="cfa_desc">Шаблон цветового фильтра сенсора. Неверный даёт ломаные цвета</string>
     <string name="color_method_desc">Метод цветопередачи: как сырые отсчёты переводятся в цвет</string>
     <string name="horizon_desc">Указатель горизонта на видоискателе</string>
-    <string name="preview_format_desc">Формат потока видоискателя. Влияет на точность превью и нагрузку</string>
     <string name="theme_desc">Оформление приложения</string>
     <string name="show_gradient_desc">Градиентная подложка в интерфейсе</string>
 </resources>

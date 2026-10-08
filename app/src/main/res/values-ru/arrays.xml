@@ -28,12 +28,6 @@
         <item>Вкл.</item>
         <item>@string/focus_peaking_auto</item>
     </string-array>
-    <string-array name="preview_format_entries">
-        <item>YUV_420_888</item>
-        <item>JPEG</item>
-        <item>HEIC</item>
-        <item>Нет</item>
-    </string-array>
     <string-array name="af_mode_entries">
         <item>Непрерывный (фото)</item>
         <item>Непрерывный (видео)</item>

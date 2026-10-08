@@ -1393,10 +1393,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FOCUS_PEAK).intValue();
     }
 
-    public static int getPreviewFormatValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_PREVIEW_FORMAT).intValue();
-    }
-
     /** «Фильтр Байера»: -1 auto (the camera's CFA) or a forced 2x2 order 0..3; anything else (the removed MONO / QUAD) is auto. */
     public static int getCFAValue() {
         int v = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CFA).intValue();
@@ -1592,7 +1588,6 @@ public class PreferenceKeys {
         KEY_ALIGN_METHOD(R.string.pref_align_method_key),
         KEY_COLOR_METHOD(R.string.pref_color_method_key),
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),
-        KEY_PREVIEW_FORMAT(R.string.pref_preview_format_key),
         KEY_TELEGRAM(R.string.pref_telegram_channel_key),
         KEY_CONTRIBUTORS(R.string.pref_contributors_key),
         KEY_THEME(R.string.pref_theme_key),

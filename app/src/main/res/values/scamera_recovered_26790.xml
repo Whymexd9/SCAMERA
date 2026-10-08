@@ -398,7 +398,6 @@
     <string name="cfa_desc">Colour filter pattern of the sensor. A wrong one gives broken colours</string>
     <string name="color_method_desc">Colour method: how raw samples are turned into colour</string>
     <string name="horizon_desc">Horizon indicator in the viewfinder</string>
-    <string name="preview_format_desc">Viewfinder stream format. Affects preview accuracy and load</string>
     <string name="theme_desc">App appearance</string>
     <string name="show_gradient_desc">Gradient background in the interface</string>
     <string name="zsl_merge_algorithm">ZSL merge algorithm</string>

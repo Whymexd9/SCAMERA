@@ -114,7 +114,7 @@ public final class ShadeCatalog {
 
     /** Read when the camera session is built: a change restarts the camera (owner's answer 7). */
     static final Set<String> SESSION_KEYS = new HashSet<>(Arrays.asList("pref_live_viewfinder_raw_key", "pref_wide169_key",
-            "pref_raw_stream_format", "pref_zsl_buffer_count_key", "pref_af_mode_key", "pref_preview_format_key"));
+            "pref_raw_stream_format", "pref_zsl_buffer_count_key", "pref_af_mode_key"));
     /** Free-text rows that hold one number: a slider with the bounds of SettingsNumericRules and this step. */
     private static final Map<String, Float> NUMERIC_TEXT = new HashMap<>();
     static {

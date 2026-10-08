@@ -46,12 +46,6 @@
         <item>On</item>
         <item>@string/focus_peaking_auto</item>
     </string-array>
-    <string-array name="preview_format_entries">
-        <item>YUV_420_888</item>
-        <item>JPEG</item>
-        <item>HEIC</item>
-        <item>None</item>
-    </string-array>
     <string-array name="colorset_entryValues" translatable="false">
         <item>0</item>
         <item>1</item>
@@ -61,12 +55,6 @@
         <item>0</item>
         <item>1</item>
         <item>2</item>
-    </string-array>
-    <string-array name="preview_format_entryValues" translatable="false">
-        <item>35</item>
-        <item>256</item>
-        <item>1212500294</item>
-        <item>0</item>
     </string-array>
     <string-array name="theme_entries" translatable="false">
         <item>@string/theme_follow_system</item>
