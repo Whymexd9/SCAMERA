@@ -239,14 +239,42 @@ int main(int argc,char** argv) {
                 while(bytes){const ssize_t n=write(out,p,bytes);if(n<0&&errno==EINTR)continue;
                     if(n<=0){close(out);throw std::runtime_error("Incomplete NICE output");}p+=n;bytes-=size_t(n);}
             };
-            writeAll(result.data(),result.size()*sizeof(float));
+            std::vector<std::pair<const void*,size_t>> parts{{result.data(),result.size()*sizeof(float)}};
             // Optional trailer: merged Bayer RAW (uint16, sensor layout) for the DNG.
-            if(!mergedDng.empty())writeAll(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
+            if(!mergedDng.empty())parts.emplace_back(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
             // Optional second trailer: effective merged frames per pixel (uint8, 1/8 frame), w*h bytes.
-            if(!effMap.empty()&&effMap.size()*3==result.size())writeAll(effMap.data(),effMap.size());
+            if(!effMap.empty()&&effMap.size()*3==result.size())parts.emplace_back(effMap.data(),effMap.size());
             // Optional third trailer (only on request, after the effective map): clip flags, uint8 per output pixel (bits: 0/1/2 R/G/B
             // from the clipped mean, 3 clip border, 4 Bento mask, 5 ultrashort clipped mean).
-            if(!clipFlags.empty()&&clipFlags.size()==effMap.size())writeAll(clipFlags.data(),clipFlags.size());
+            if(!clipFlags.empty()&&clipFlags.size()==effMap.size())parts.emplace_back(clipFlags.data(),clipFlags.size());
+            // P48 (research/speed/PLAIN_SHOT_SPEED.md): the output (the app's memfd, or a replay's file) reserved with fallocate,
+            // mapped and filled on all cores: write() moved the 600 MB of the 2x grid on one core (~300 ms on the vivo X200 Ultra).
+            // The same bytes in the same order; anything the mapping cannot take (a pipe, a sealed or non-empty file, no memory for
+            // the reservation, SCAM_NO_MAP_WRITE) is written as before.
+            bool mappedWrite=false;
+            if(!std::getenv("SCAM_NO_MAP_WRITE")){
+                size_t total=0;for(const auto& part:parts)total+=part.second;
+                struct stat st{};
+                if(total>0&&fstat(out,&st)==0&&S_ISREG(st.st_mode)&&st.st_size==0&&lseek(out,0,SEEK_CUR)==0
+                        &&fallocate(out,0,0,off_t(total))==0){
+                    void* map=mmap(nullptr,total,PROT_READ|PROT_WRITE,MAP_SHARED,out,0);
+                    if(map!=MAP_FAILED){
+                        char* dst=static_cast<char*>(map);
+                        for(const auto& part:parts){
+                            const char* src=static_cast<const char*>(part.first);const size_t bytes=part.second;
+                            constexpr size_t kChunk=size_t(4)<<20;
+                            vivo_nice::mergeRowBands(int((bytes+kChunk-1)/kChunk),[&](int c0,int c1){
+                                const size_t a=size_t(c0)*kChunk,e=std::min(bytes,size_t(c1)*kChunk);
+                                if(e>a)std::memcpy(dst+a,src+a,e-a);
+                            });
+                            dst+=bytes;
+                        }
+                        mappedWrite=munmap(map,total)==0;
+                        if(!mappedWrite){close(out);throw std::runtime_error("Incomplete NICE output");}
+                    } else if(ftruncate(out,0)!=0){close(out);throw std::runtime_error("Incomplete NICE output");}
+                }
+            }
+            if(!mappedWrite)for(const auto& part:parts)writeAll(part.first,part.second);
             if(close(out))throw std::runtime_error("Incomplete NICE output");
             {
                 char line[200];
