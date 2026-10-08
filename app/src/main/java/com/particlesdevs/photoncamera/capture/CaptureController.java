@@ -2560,6 +2560,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
                         if (retryWithoutLiveRaw(cameraCaptureSession)) return;
+                        if (retryWithoutNiceSession(cameraCaptureSession)) return;
                         if (retryConfigureFallback(cameraCaptureSession)) return;
                         if (revertToLastGoodCamera("session configuration")) return;
                         showToast(activity.getString(R.string.session_on_configure_failed));
@@ -2591,6 +2592,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
+    }
+
+    /**
+     * A camera that refuses the session with the vivo stock preview profile in its session parameters (vivo X200 Pro front
+     * camera, owner's log 2026-10-08: every stream size failed, the back cameras of the same session code ran) retries once
+     * with the plain Camera2 preview, before smaller streams; the camera keeps the plain preview for this process.
+     */
+    private boolean retryWithoutNiceSession(CameraCaptureSession session) {
+        final CameraDevice device = mCameraDevice;
+        final Handler handler = mBackgroundHandler;
+        if (!mNicePreviewActive || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
+        Log.w("NICE_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo stock preview profile;"
+                + " retry with the plain Camera2 preview");
+        try { session.close(); } catch (Exception ignored) {}
+        handler.post(() -> {
+            if (!isCameraResumed || mCameraDevice != device) return;
+            createCameraPreviewSession(false);
+        });
+        return true;
     }
 
     private boolean retryWithoutLiveRaw(CameraCaptureSession session) {
