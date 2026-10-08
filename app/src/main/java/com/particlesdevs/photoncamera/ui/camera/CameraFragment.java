@@ -148,6 +148,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     public AuxButtonsViewModel auxButtonsViewModel;
     public CameraFragmentBinding cameraFragmentBinding;
     private TouchFocus mTouchFocus;
+    /** P42: face detection and tracking autofocus, created with the touch focus. */
+    private com.particlesdevs.photoncamera.control.subject.SubjectFocus mSubjectFocus;
     public Swipe mSwipe;
     // Created on an AsyncTask thread in onResume and consumed from the camera
     // callback threads; volatile + local-copy access keeps them consistent.
@@ -171,6 +173,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     public TouchFocus getTouchFocus() {
         return mTouchFocus;
+    }
+
+    @androidx.annotation.Nullable
+    public com.particlesdevs.photoncamera.control.subject.SubjectFocus getSubjectFocus() {
+        return mSubjectFocus;
     }
 
     public CaptureController getCaptureController() {
@@ -713,12 +720,24 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 if (captureController == null || mCameraUIView == null) return;
                 mTouchFocus = new TouchFocus(captureController,focusCircle,textureView);
                 captureController.mTouchFocus = mTouchFocus;
+                if (mSubjectFocus != null) mSubjectFocus.release();
+                mSubjectFocus = null;
+                // Paused before this ran: the next resume creates it (it owns a worker thread and the frame sink).
+                if (!isResumed() || cameraFragmentBinding == null) return;
+                mSubjectFocus = new com.particlesdevs.photoncamera.control.subject.SubjectFocus(captureController, textureView,
+                        cameraFragmentBinding.layoutViewfinder.subjectOverlay, mTouchFocus);
+                captureController.mSubjectFocus = mSubjectFocus;
             });
         }
     }
 
     @Override
     public void onPause() {
+        if (mSubjectFocus != null) {
+            if (captureController != null) captureController.mSubjectFocus = null;
+            mSubjectFocus.release();
+            mSubjectFocus = null;
+        }
         PhotonCamera.getGravity().unregister();
         PhotonCamera.getGyro().unregister();
         PhotonCamera.getSettings().saveID();
@@ -1574,6 +1593,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             if (detached()) return;
             surfaceView.clear();
             ui().refresh(CaptureController.isProcessing);
+            if (mSubjectFocus != null) mSubjectFocus.stopTracking(false);
             mTouchFocus.resetFocusCircle();
         }
 

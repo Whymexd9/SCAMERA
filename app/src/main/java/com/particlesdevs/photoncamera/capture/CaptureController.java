@@ -289,6 +289,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private ManualModeConsole manualModeConsole;
     private final ParamController paramController;
     public TouchFocus mTouchFocus;
+    /** P42: face detection and tracking AF (null until the viewfinder is ready). */
+    public volatile com.particlesdevs.photoncamera.control.subject.SubjectFocus mSubjectFocus;
 
     public final boolean mFlashEnabled = false;
     private CameraEventsListener cameraEventsListener;
@@ -777,6 +779,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (mTouchFocus != null) {
                     mTouchFocus.onCaptureResult(result);
                 }
+                final com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = mSubjectFocus;
+                if (subject != null) subject.onPreviewResult(result);
                 cameraEventsListener.onPreviewCaptureCompleted(result);
                 if(PreferenceKeys.getAfMode() == CaptureRequest.CONTROL_AF_MODE_AUTO && !burst && (mTouchFocus == null || !mTouchFocus.isTouchFocus)) {
                     CaptureRequest.Builder builder = mPreviewRequestBuilder;
@@ -2664,6 +2668,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mPreviewMeteringAE = mInitialMeteringAE;
         mPreviewAEMode = mPreviewRequestBuilder.get(CONTROL_AE_MODE);
         applyZoom(mPreviewRequestBuilder, false);
+        // P42: face statistics on the preview request only (modes the module advertises).
+        com.particlesdevs.photoncamera.control.subject.SubjectFocus.applyFaceDetectMode(mPreviewRequestBuilder, mCameraCharacteristics);
     }
 
     private void showToast(String msg) {
@@ -2958,6 +2964,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P27: a shot is between its press and the end of its post-shutter frames. */
     private boolean shotInFlight() {
         return mInFlightRescue != null || mZslCapturing || burst;
+    }
+
+    /** P42: face / tracking regions must not change the repeating request while a shot is being captured. */
+    public boolean subjectRegionsFrozen() {
+        return shotInFlight() || mShotInProgress;
     }
 
     private void finishNiceShot() {

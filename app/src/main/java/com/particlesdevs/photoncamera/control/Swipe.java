@@ -57,6 +57,13 @@ public class Swipe {
             }
 
             @Override
+            public void onLongPress(MotionEvent e) {
+                // P42: a long press locks the tracking autofocus onto the subject (setting «Tracking autofocus»).
+                if (cameraFragmentViewModel.getSheetLevel() == CameraFragmentModel.SHEET_FULL) return;
+                startTracking(e);
+            }
+
+            @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 float diffY = e2.getY() - e1.getY();
                 float diffX = e2.getX() - e1.getX();
@@ -126,8 +133,23 @@ public class Swipe {
         if (viewfinderRect.contains(event.getX(), event.getY())) {
             float translateX = event.getX() - camera_container.getLeft();
             float translateY = event.getY() - camera_container.getTop();
-            if (manualModeConsole.getManualParamModel().getCurrentFocusValue() == ManualParamModel.FOCUS_AUTO)
+            if (manualModeConsole.getManualParamModel().getCurrentFocusValue() == ManualParamModel.FOCUS_AUTO) {
+                // P42: in «tap» mode the tap starts / stops tracking; otherwise a running track gives way to the tap focus.
+                com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
+                if (subject != null && subject.onTap(event.getRawX(), event.getRawY())) return;
                 cameraFragment.getTouchFocus().processTouchToFocus(translateX, translateY);
+            }
+        }
+    }
+
+    /** P42: long press on the viewfinder -> tracking autofocus (auto focus only, as the tap focus). */
+    private void startTracking(MotionEvent event) {
+        com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
+        if (subject == null) return;
+        if (manualModeConsole.getManualParamModel().getCurrentFocusValue() != ManualParamModel.FOCUS_AUTO) return;
+        if (subject.onLongPress(event.getRawX(), event.getRawY())) {
+            android.view.View holder = cameraFragment.findViewById(R.id.textureHolder);
+            if (holder != null) holder.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
         }
     }
 
@@ -137,6 +159,8 @@ public class Swipe {
         cameraFragmentViewModel.sheetLevelUp();
         // With the settings closed, a swipe up has always reset touch focus to auto. Keep that.
         if (wasHidden) {
+            com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
+            if (subject != null) subject.stopTracking(false); // the reset below restores the default regions
             TouchFocus touchFocus = cameraFragment.getTouchFocus();
             if (touchFocus != null) touchFocus.resetFocusCircle();
         }

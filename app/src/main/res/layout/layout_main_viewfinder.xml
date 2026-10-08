@@ -40,6 +40,18 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent" />
 
+            <!-- P42: face boxes and the tracking box; never takes a touch. -->
+            <com.particlesdevs.photoncamera.ui.camera.views.SubjectOverlayView
+                    android:id="@+id/subjectOverlay"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:clickable="false"
+                    android:focusable="false"
+                    app:layout_constraintBottom_toBottomOf="@id/texture"
+                    app:layout_constraintEnd_toEndOf="@id/texture"
+                    app:layout_constraintStart_toStartOf="@id/texture"
+                    app:layout_constraintTop_toTopOf="@id/texture" />
+
             <com.particlesdevs.photoncamera.ui.camera.views.FocusCircleView
                     android:id="@+id/touchFocus"
                     android:layout_width="@dimen/focus_circle_size"
