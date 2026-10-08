@@ -42,3 +42,17 @@
 - Логическая камера 5 сторонним приложениям не видна (SCAMERA видит 0–4). Если владелец через «Поиск камер» найдёт 5 —
   проверить на ней target оптики при isThirdParty = 1.
 - Дамп стока на 6, 7, 8× — где включается режим 9.
+
+## Добавлено 2026-10-09: теги владельца уже отправляются, HAL их игнорирует на камере 4
+
+- Лог прогона x17u (21:31:49–21:31:50): SCAMERA шлёт в камеру 4 `userZoomRatio` 4.3000 + `zoomRatio` 1.3609 (+ `opticalZoomTargetRatio`
+  4.3). HAL отвечает `opticalZoomTargetRatio` 3.400 и уводит стекло, оставленное стоком на 88.7 мм, на 74.4 мм. Теги доходят, но на
+  физической камере 4 при `isThirdParty` = 1 оптикой управляет HAL.
+- HAL-камера 0 — логическая SAT (физические 3, 2, 4; zoomRatioRange 0.6–10; `enableOptZoomratio` 1, те же optReal/optUi).
+  Это та же схема, что у стоковой камеры 5, и сторонним приложениям она доступна (`getCameraCharacteristics("0")` работает).
+  SCAMERA её не открывает: `CameraManager2.scanAllCameras` пропускает логические камеры (`!isLogical`).
+- Новые ключи в availableRequestKeys / SessionKeys всех камер: `android.control.zoomMethod` (AOSP, сток AUTO) и
+  `com.xiaomi.camera.thirdPartyCalled` (сессия, byte, по умолчанию 0). На оптику, судя по названиям, не влияют.
+- Проверка без кода: стороннее приложение на камере 0 (Open Camera, Camera2) → зум 3.5–4.3× → `dumpsys media.camera`,
+  поле `com.xiaomi.optical.zoom.opticalZoomCurrentRatio`. Если оно уходит от 3.40 — путь через камеру 0 рабочий, и SCAMERA
+  надо открывать на 75–100 мм логическую камеру 0 (zoomRatio = UI 3.2–4.3) вместо камеры 4.
