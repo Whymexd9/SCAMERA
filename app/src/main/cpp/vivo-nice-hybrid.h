@@ -4924,7 +4924,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             const uint64_t need=uint64_t(n-1)*(uint64_t(w/2)*uint64_t(h/2)*4+tiles*40);
             const uint64_t needWindowed=uint64_t(n-1)*(uint64_t(LaStream::windowRowsEstimate(tune,win,stride))*uint64_t(w/2)*4+tiles*40)
                                         +uint64_t(std::clamp(tune.laThreads,1,8))*uint64_t(w/4)*uint64_t(h/4)*4;
-            bool windowed=tune.laStream==2;
+            const bool forced=tune.laStream==2;
+            bool windowed=forced;
             if(!windowed&&avail>0&&need>avail/4){
                 if(needWindowed>avail/4){
                     report("HYBRID LOCAL ALIGN: field not streamed ("+hybridMB(need)+" MB of gray images, "+hybridMB(needWindowed)
@@ -4932,9 +4933,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                     return;
                 }
                 windowed=true;
-                report("HYBRID LOCAL ALIGN: field streamed with windowed gray rows ("+hybridMB(need)+" MB of gray images, about "
-                    +hybridMB(needWindowed)+" MB windowed, MemAvailable "+hybridMB(avail)+" MB)");
             }
+            if(windowed)report(std::string("HYBRID LOCAL ALIGN: field streamed with windowed gray rows (")+(forced?"laStream 2, ":"")
+                +hybridMB(need)+" MB of gray images, about "+hybridMB(needWindowed)+" MB windowed, MemAvailable "+hybridMB(avail)+" MB)");
             LaBaseBuilt built=laAhead.get(); // P31: the base pyramid, built on the pool since the alignment started
             LaBase laBase=std::move(built.base);laStreamBaseMs=built.ms;
             laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
