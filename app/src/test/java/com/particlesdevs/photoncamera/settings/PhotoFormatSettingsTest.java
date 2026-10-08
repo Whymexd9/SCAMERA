@@ -48,8 +48,8 @@ import static org.mockito.Mockito.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class, qualifiers = "w400dp-h880dp-mdpi")
 public class PhotoFormatSettingsTest {
-    private static final String[] NEW_KEYS = {PhotoFormat.KEY, PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_WEBP_QUALITY,
-            PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_ALSO_JPEG};
+    private static final String[] NEW_KEYS = {PhotoFormat.KEY, PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_HEIC_10BIT,
+            PhotoFormat.KEY_WEBP_QUALITY, PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_ALSO_JPEG};
     @Rule public TemporaryFolder tmp = new TemporaryFolder();
     private Context context;
     private SettingsManager manager;
@@ -96,8 +96,11 @@ public class PhotoFormatSettingsTest {
         List<String> order = new ArrayList<>();
         for (int i = 0; i < config.getPreferenceCount(); i++) order.add(config.getPreference(i).getKey());
         int jpeg = order.indexOf("pref_jpeg_quality");
-        assertEquals(Arrays.asList(PhotoFormat.KEY, "pref_jpeg_quality", PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_WEBP_QUALITY,
-                PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_ALSO_JPEG, "pref_ultrahdr_key"), order.subList(jpeg - 1, jpeg + 6));
+        // «HEIC 10 бит» sits right under the HEIC quality
+        assertEquals(Arrays.asList(PhotoFormat.KEY, "pref_jpeg_quality", PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_HEIC_10BIT,
+                PhotoFormat.KEY_WEBP_QUALITY, PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_ALSO_JPEG, "pref_ultrahdr_key"),
+                order.subList(jpeg - 1, jpeg + 7));
+        assertFalse(((androidx.preference.TwoStatePreference) config.findPreference(PhotoFormat.KEY_HEIC_10BIT)).isChecked());
         ListPreference format = config.findPreference(PhotoFormat.KEY);
         assertArrayEquals(new CharSequence[]{"jpeg", "heic", "webp"}, format.getEntryValues());
         assertEquals(3, format.getEntries().length);
@@ -109,7 +112,8 @@ public class PhotoFormatSettingsTest {
         int[] ids = {R.string.prefs_photo_format_title, R.string.prefs_photo_format_summary, R.string.prefs_heic_quality_title,
                 R.string.prefs_heic_quality_summary, R.string.prefs_webp_quality_title, R.string.prefs_webp_quality_summary,
                 R.string.prefs_webp_lossless_title, R.string.prefs_webp_lossless_summary, R.string.prefs_photo_also_jpeg_title,
-                R.string.prefs_photo_also_jpeg_summary, R.string.topbar_group, R.string.topbar_format};
+                R.string.prefs_photo_also_jpeg_summary, R.string.topbar_group, R.string.topbar_format,
+                R.string.prefs_heic_10bit_title, R.string.prefs_heic_10bit_summary};
         Context en = localized(Locale.ENGLISH), ru = localized(new Locale("ru"));
         for (int id : ids) {
             String e = en.getString(id), r = ru.getString(id);
@@ -120,6 +124,8 @@ public class PhotoFormatSettingsTest {
         }
         assertEquals("Формат фото", ru.getString(R.string.prefs_photo_format_title));
         assertEquals("Также сохранять JPEG", ru.getString(R.string.prefs_photo_also_jpeg_title));
+        assertEquals("HEIC 10 бит", ru.getString(R.string.prefs_heic_10bit_title));
+        assertEquals("10-bit HEIC", en.getString(R.string.prefs_heic_10bit_title));
         assertEquals(3, ru.getResources().getStringArray(R.array.photo_format_entries).length);
     }
 
@@ -130,6 +136,7 @@ public class PhotoFormatSettingsTest {
         assertEquals(90, PreferenceKeys.getWebpQuality());
         assertFalse(PreferenceKeys.isWebpLossless());
         assertFalse(PreferenceKeys.isAlsoSaveJpeg());
+        assertFalse("10-bit HEIC is off by default", PreferenceKeys.isHeic10Bit());
         prefs.edit().putBoolean("pref_ultrahdr_key", true).commit();
         assertTrue(PreferenceKeys.isUltraHdrActive());
         prefs.edit().putString(PhotoFormat.KEY, "heic").putString(PhotoFormat.KEY_HEIC_QUALITY, "250").commit();
@@ -148,13 +155,17 @@ public class PhotoFormatSettingsTest {
     public void availabilityHidesOtherFormatsAndExplainsUltraHdr() {
         Map<String, Object> values = new HashMap<>();
         SettingsAvailability jpeg = new SettingsAvailability(values);
-        for (String key : new String[]{PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_WEBP_QUALITY, PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_ALSO_JPEG})
+        for (String key : new String[]{PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_HEIC_10BIT, PhotoFormat.KEY_WEBP_QUALITY,
+                PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_ALSO_JPEG})
             assertTrue(key, jpeg.hidden(key));
         assertNull(jpeg.reason("pref_ultrahdr_key"));
         values.put(PhotoFormat.KEY, "heic");
         SettingsAvailability heic = new SettingsAvailability(values);
         assertFalse(heic.hidden(PhotoFormat.KEY_HEIC_QUALITY));
         assertFalse(heic.hidden(PhotoFormat.KEY_ALSO_JPEG));
+        assertFalse(heic.hidden(PhotoFormat.KEY_HEIC_10BIT));
+        assertNull(heic.reason(PhotoFormat.KEY_HEIC_10BIT));
+        assertEquals("no encoder", new SettingsAvailability(values).heic10Unavailable("no encoder").reason(PhotoFormat.KEY_HEIC_10BIT));
         assertTrue(heic.hidden(PhotoFormat.KEY_WEBP_QUALITY));
         assertNotNull(heic.reason("pref_ultrahdr_key"));
         assertNotNull(heic.reason("pref_jpeg_quality"));

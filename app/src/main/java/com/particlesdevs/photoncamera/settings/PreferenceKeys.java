@@ -309,6 +309,10 @@ public class PreferenceKeys {
         return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HEIC_QUALITY,
                 preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HEIC_QUALITY, "90"), 90));
     }
+    /** «HEIC 10 бит» as stored (default off); whether a shot uses it: processing.heif.Heic10Support.wanted. */
+    public static boolean isHeic10Bit() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HEIC_10BIT, false);
+    }
     /** WebP quality 1-100 (default 90); ignored by the lossless WebP. */
     public static int getWebpQuality() {
         return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_WEBP_QUALITY,

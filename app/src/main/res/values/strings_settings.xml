@@ -694,6 +694,8 @@
     <string name="prefs_photo_format_summary">JPEG opens everywhere and is the only format with Ultra HDR. HEIC: about half the size at the same look; Android 9+, iPhone, and Windows / macOS with the codec open it. WebP: smaller than JPEG; browsers and most apps open it, not every gallery; up to 16383 px per side, a larger photo is saved as JPEG. RAW keeps the sensor data as DNG; RAW + a format saves both.</string>
     <string name="prefs_heic_quality_title">HEIC quality</string>
     <string name="prefs_heic_quality_summary">Default 90. Lower gives a smaller file; fine detail goes sooner. Without an HEVC encoder on the phone the photo is saved as JPEG.</string>
+    <string name="prefs_heic_10bit_title">10-bit HEIC</string>
+    <string name="prefs_heic_10bit_summary">The photo keeps 10 bits per colour instead of 8 (HEVC Main10): smoother gradients in the sky and on walls, no banding. Android 13+ with a suitable encoder; otherwise an 8-bit HEIC. JPEG and WebP do not change.</string>
     <string name="prefs_webp_quality_title">WebP quality</string>
     <string name="prefs_webp_quality_summary">Default 90. Lower gives a smaller file; fine detail goes sooner.</string>
     <string name="prefs_webp_lossless_title">Lossless WebP</string>

@@ -694,6 +694,8 @@
     <string name="prefs_photo_format_summary">JPEG открывается везде, и только он несёт Ultra HDR. HEIC — примерно вдвое меньше при том же виде; открывают Android 9+, iPhone, Windows / macOS с кодеком. WebP — меньше JPEG; открывают браузеры и большинство приложений, но не каждая галерея; до 16383 px по стороне, фото больше сохраняется в JPEG. RAW сохраняет данные сенсора в DNG; RAW + формат сохраняет оба файла.</string>
     <string name="prefs_heic_quality_title">Качество HEIC</string>
     <string name="prefs_heic_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше. Если в телефоне нет кодировщика HEVC, фото сохраняется в JPEG.</string>
+    <string name="prefs_heic_10bit_title">HEIC 10 бит</string>
+    <string name="prefs_heic_10bit_summary">Фото хранит 10 бит на цвет вместо 8 (HEVC Main10): плавнее градиенты неба и стен, без ступенек. Android 13+ с подходящим кодировщиком, иначе — 8-битный HEIC. JPEG и WebP не меняются.</string>
     <string name="prefs_webp_quality_title">Качество WebP</string>
     <string name="prefs_webp_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше.</string>
     <string name="prefs_webp_lossless_title">WebP без потерь</string>
