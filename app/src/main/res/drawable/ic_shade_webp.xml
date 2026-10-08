@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WebP: a globe (web format). From the manual-controls concept (MANUAL_TASK.md): 24 viewport, stroke 1.7, round caps and joins; white, tinted at runtime. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M3.5,12a8.5,8.5 0 1 0 17,0a8.5,8.5 0 1 0 -17,0z" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M3.5,12h17M12,3.5c-2.6,2.4 -2.6,14.6 0,17M12,3.5c2.6,2.4 2.6,14.6 0,17M5.2,7.5h13.6M5.2,16.5h13.6" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>

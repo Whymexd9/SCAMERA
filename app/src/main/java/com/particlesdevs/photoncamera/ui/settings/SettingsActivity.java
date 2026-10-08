@@ -216,20 +216,30 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             SettingsStyle.apply(getPreferenceScreen());
         }
 
-        /** HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK): below it the format list offers JPEG and WebP only. */
+        /**
+         * «Формат фото» is the one format choice of the top bar and the shade (FormatChoice): JPEG, HEIC, WebP, RAW,
+         * RAW + JPEG / HEIC / WebP, stored as the save mode and the codec, never as a value of its own (the list is not
+         * persistent). HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK): below it the HEIC options are not offered.
+         */
         private void setupPhotoFormat() {
             ListPreference format = findPreference(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY);
-            if (format == null || android.os.Build.VERSION.SDK_INT >= com.particlesdevs.photoncamera.processing.PhotoFormat.HEIC_MIN_SDK) return;
-            java.util.List<CharSequence> entries = new java.util.ArrayList<>(), values = new java.util.ArrayList<>();
-            for (int i = 0; i < format.getEntryValues().length; i++) {
-                if (com.particlesdevs.photoncamera.processing.PhotoFormat.HEIC.value.contentEquals(format.getEntryValues()[i])) continue;
-                entries.add(format.getEntries()[i]);
-                values.add(format.getEntryValues()[i]);
+            if (format == null) return;
+            java.util.List<com.particlesdevs.photoncamera.settings.FormatChoice> offered =
+                    com.particlesdevs.photoncamera.settings.FormatChoice.offered(android.os.Build.VERSION.SDK_INT);
+            CharSequence[] entries = new CharSequence[offered.size()], values = new CharSequence[offered.size()];
+            for (int i = 0; i < entries.length; i++) {
+                entries[i] = offered.get(i).longLabel();
+                values[i] = offered.get(i).name();
             }
-            format.setEntries(entries.toArray(new CharSequence[0]));
-            format.setEntryValues(values.toArray(new CharSequence[0]));
-            if (com.particlesdevs.photoncamera.processing.PhotoFormat.HEIC.value.equals(format.getValue()))
-                format.setValue(com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG.value);
+            format.setPersistent(false);
+            format.setEntries(entries);
+            format.setEntryValues(values);
+            format.setValue(com.particlesdevs.photoncamera.settings.FormatChoice.current().name());
+            format.setOnPreferenceChangeListener((preference, value) -> {
+                com.particlesdevs.photoncamera.settings.FormatChoice.store(
+                        com.particlesdevs.photoncamera.settings.FormatChoice.valueOf(value.toString()));
+                return true;
+            });
         }
 
         // ───── P6b: the card look of «Камеры и сенсоры» on every page ─────

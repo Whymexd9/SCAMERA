@@ -374,6 +374,15 @@ public final class SettingsStyle {
      */
     public static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
                                                 int selected, int accent, java.util.function.IntConsumer onPick) {
+        return optionSheet(c, title, labels, tags, selected, accent, null, onPick);
+    }
+
+    /**
+     * The list picker with an accent icon per option (between the radio and the name), e.g. the format choice of the top
+     * bar and the shade. {@code icons} null or shorter than the list: no icon for the rest.
+     */
+    public static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
+                                                int selected, int accent, int[] icons, java.util.function.IntConsumer onPick) {
         LinearLayout body = sheetBody(c, title);
         LinearLayout options = new LinearLayout(c);
         options.setOrientation(LinearLayout.VERTICAL);
@@ -390,6 +399,15 @@ public final class SettingsStyle {
             row.setMinimumHeight(dp(c, 52));
             row.setBackground(shape(c, i == selected ? tint(accent, .10f) : 0, 0, 14));
             row.addView(radio(c, i == selected, accent), new LinearLayout.LayoutParams(dp(c, 24), dp(c, 24)));
+            if (icons != null && i < icons.length && icons[i] != 0) {
+                ImageView icon = new ImageView(c);
+                icon.setImageResource(icons[i]);
+                icon.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
+                icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(c, 24), dp(c, 24));
+                ip.leftMargin = dp(c, 14);
+                row.addView(icon, ip);
+            }
             TextView label = text(c, labels[i], 16, TEXT);
             label.setPadding(dp(c, 14), 0, 0, 0);
             row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));

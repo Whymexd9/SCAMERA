@@ -2,16 +2,11 @@ package com.particlesdevs.photoncamera.ui.camera;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
 import android.widget.TextView;
 
 import com.particlesdevs.photoncamera.app.PhotonCamera;
@@ -139,38 +134,32 @@ public class CameraUIViewImpl implements CameraUIView {
         if (topbar != null) bindBadges(topbar);
     }
 
-    /** The top bar's badges: «Склейка Hybrid / SCAM HDR» (the route in effect) and the save format (with its codec) and icon. */
+    /**
+     * The top bar's group card (MANUAL_TASK.md §4): the route in effect (Hybrid: monogram H, SCAM HDR: monogram S) and the
+     * format choice (FormatChoice: JPEG, HEIC, WebP, RAW, RAW + JPEG / HEIC / WebP) as 24dp accent icons. Their names
+     * («Склейка Hybrid», «Формат RAW + HEIC») are the content descriptions and the long-press tooltips; a tap on the
+     * format opens the chooser (CameraFragment.openFormatChooser).
+     */
     public static void bindBadges(LayoutMainTopbarBinding topbar) {
         Context context = topbar.getRoot().getContext();
         int accent = ShadeStyle.accent(context);
-        String route = PreferenceKeys.isScamHdrRoute() ? "SCAM HDR" : "Hybrid";
-        SpannableStringBuilder text = new SpannableStringBuilder(context.getString(R.string.shade_badge_route, route));
-        int at = text.toString().lastIndexOf(route);
-        if (at >= 0) {
-            text.setSpan(new ForegroundColorSpan(accent), at, at + route.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            text.setSpan(new StyleSpan(Typeface.BOLD), at, at + route.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-        topbar.routeBadge.setText(text);
-        badgeIcon(topbar.routeBadge, R.drawable.settings_ic_layers, accent);
-        int format = Math.max(0, Math.min(2, PreferenceKeys.isSaveRaw()));
-        int[] icons = {R.drawable.ic_shade_jpeg, R.drawable.ic_shade_rawjpeg, R.drawable.ic_shade_raw};
-        // The save mode with the chosen codec: JPEG / R+J / RAW, HEIC / R+H, WEBP / R+W.
-        com.particlesdevs.photoncamera.processing.PhotoFormat codec = PreferenceKeys.getPhotoFormat();
-        topbar.formatBadge.setText(codec.saveModeShort(format));
-        topbar.formatBadge.setContentDescription(codec.saveModeLong(format));
-        badgeIcon(topbar.formatBadge, icons[format], accent);
+        boolean scam = PreferenceKeys.isScamHdrRoute();
+        String route = context.getString(R.string.shade_badge_route, scam ? "SCAM HDR" : "Hybrid");
+        icon(topbar.routeBadge, scam ? R.drawable.topbar_ic_route_scamhdr : R.drawable.topbar_ic_route_hybrid, accent, route);
+        com.particlesdevs.photoncamera.settings.FormatChoice format = com.particlesdevs.photoncamera.settings.FormatChoice.current();
+        icon(topbar.formatBadge, format.icon, accent, context.getString(R.string.topbar_format, format.longLabel()));
+        topbar.formatBadge.setTag(format.name());
     }
 
-    private static void badgeIcon(TextView badge, int icon, int accent) {
-        Drawable d = badge.getContext().getDrawable(icon);
-        if (d == null) return;
-        d = d.mutate();
-        d.setTint(accent);
-        int size = ShadeStyle.dp(badge.getContext(), 18);
-        d.setBounds(0, 0, size, size);
-        // Left, not start: the camera screen is laid out left to right, and a start drawable waits for the layout
-        // direction to resolve.
-        badge.setCompoundDrawables(d, null, null, null);
+    private static void icon(ImageButton button, int icon, int accent, String name) {
+        button.setImageResource(icon);
+        button.setImageTintList(ColorStateList.valueOf(accent));
+        button.setContentDescription(name);
+        button.setTooltipText(name);
+        if (button.getBackground() == null) {
+            android.graphics.drawable.GradientDrawable mask = ShadeStyle.card(button.getContext(), 0xFFFFFFFF, 0, 14);
+            button.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x29FFFFFF), null, mask));
+        }
     }
 
     @Override

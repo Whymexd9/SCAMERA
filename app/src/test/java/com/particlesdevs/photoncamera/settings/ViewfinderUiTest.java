@@ -88,15 +88,19 @@ public class ViewfinderUiTest {
         assertTrue("ruler card "+container.getHeight(),container.getHeight()>=86&&container.getHeight()<=92);
         assertEquals(chipsCard.getHeight(),toggleCard.getHeight());assertTrue(toggleCard.getHeight()>=58);assertEquals(52,toggleCard.getWidth());
         assertEquals(container.getHeight()+8+chipsCard.getHeight(),manual.getHeight());
-        // Top bar: the settings gear is a 44dp square card at the end, the badges stay clear of it.
+        // Top bar: the settings gear is a 44dp square card at the end, the group card stays clear of it.
         View gear=top.findViewById(R.id.settings_button),badges=top.findViewById(R.id.topbar_badges);
         assertEquals(44,gear.getWidth());assertEquals(gear.getWidth(),gear.getHeight());
+        assertEquals("the gear is pinned to the right edge",top.getWidth()-top.getPaddingRight(),gear.getRight());
         assertTrue("badges must not run under the gear",badges.getRight()<=gear.getLeft());
-        TextView route=top.findViewById(R.id.route_badge),format=top.findViewById(R.id.format_badge);
-        assertTrue(route.getText().toString().endsWith("Hybrid"));assertEquals("JPEG",format.getText().toString());
-        assertNotNull(route.getCompoundDrawables()[0]);assertNotNull(format.getCompoundDrawables()[0]);
-        assertTrue("badge icon has its space",route.getCompoundPaddingLeft()>route.getPaddingLeft());
-        for(TextView badge:new TextView[]{route,format})assertTrue("badge text must fit",badge.getLayout().getEllipsisCount(0)==0&&badge.getLayout().getLineCount()==1);
+        // §4: route and format are 24dp accent icons in one 44dp card, 40dp buttons with a 1dp divider; names are descriptions.
+        ImageButton route=top.findViewById(R.id.route_badge),format=top.findViewById(R.id.format_badge);
+        assertEquals(44,badges.getHeight());assertEquals(40,route.getWidth());assertEquals(40,format.getWidth());
+        assertEquals(1,top.findViewById(R.id.topbar_divider).getWidth());
+        assertTrue(route.getContentDescription().toString().endsWith("Hybrid"));assertTrue(format.getContentDescription().toString().endsWith("JPEG"));
+        assertEquals(route.getContentDescription(),route.getTooltipText());assertEquals(format.getContentDescription(),format.getTooltipText());
+        assertNotNull(route.getDrawable());assertNotNull(format.getDrawable());
+        for(ImageButton b:new ImageButton[]{route,format}){assertEquals(24,b.getDrawable().getIntrinsicWidth());assertEquals(24,b.getWidth()-b.getPaddingLeft()-b.getPaddingRight());}
         assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
         // Shutter row: gallery card | shutter exactly in the centre | front / back switch, none overlapping.

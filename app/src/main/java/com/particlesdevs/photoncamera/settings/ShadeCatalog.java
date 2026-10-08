@@ -67,9 +67,13 @@ public final class ShadeCatalog {
 
     public static final String FLASH = "pref_ae_mode_key";
     public static final String TIMER = "pref_countdown_timer_key";
+    /**
+     * The one format choice (FormatChoice: JPEG, HEIC, WebP, RAW, RAW + JPEG / HEIC / WebP), stored as the save mode
+     * under this key plus the codec under {@link #PHOTO_FORMAT}. Its list values are FormatChoice ordinals.
+     */
     public static final String FORMAT = "pref_save_raw_key";
     public static final String METERING_STD = "pref_ae_metering_std_mode_key";
-    /** «Формат фото» (JPEG / HEIC / WebP): the codec the FORMAT tile and the top-bar chip name. */
+    /** «Формат фото» (JPEG / HEIC / WebP): the codec half of the FORMAT choice; no tile of its own (FORMAT covers it). */
     public static final String PHOTO_FORMAT = com.particlesdevs.photoncamera.processing.PhotoFormat.KEY;
     public static final String ROUTE = LmcHybridKeys.ROUTE;
     private static final String OUTPUT = "pref_lmc_hybrid_output", DOWNSAMPLER = "pref_lmc_hybrid_downsampler";
@@ -97,7 +101,7 @@ public final class ShadeCatalog {
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
             new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_lmc_hybrid_ark_metering", ROUTE),
-            new Group(R.string.shade_group_format, FORMAT, PHOTO_FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
+            new Group(R.string.shade_group_format, FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
                     "pref_show_watermark_key"),
             new Group(R.string.shade_group_hybrid, "pref_lmc_hybrid_bento", "pref_lmc_hybrid_bento_frames",
                     "pref_lmc_hybrid_shasta", "pref_lmc_hybrid_zsl_frames", "pref_lmc_hybrid_dn_luma_mult",
@@ -116,9 +120,9 @@ public final class ShadeCatalog {
     static {
         NUMERIC_TEXT.put("pref_vivo_nice_long_boost_ev", 0.1f);
     }
-    /** Never pinnable: switches a sensor mode (Quad) or belongs to one phone only. */
+    /** Never pinnable: switches a sensor mode (Quad), belongs to one phone only, or is part of the FORMAT choice (the codec). */
     private static final Set<String> NOT_PINNABLE = new HashSet<>(Arrays.asList(
-            PreferenceKeys.Key.KEY_QUAD_BAYER.mValue,
+            PreferenceKeys.Key.KEY_QUAD_BAYER.mValue, PHOTO_FORMAT,
             PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue, PreferenceKeys.Key.CAMERA_MODE.mValue));
 
     /** Curated look of a key: short tile name, short value labels, icon of the setting and of each value. */
@@ -146,14 +150,12 @@ public final class ShadeCatalog {
         spec(FLASH, R.string.shade_t_flash, R.array.shade_s_flash, R.drawable.ic_flash_on, R.drawable.ic_torch, R.drawable.ic_flash_off);
         spec(TIMER, R.string.shade_t_timer, R.array.shade_s_timer, R.drawable.ic_sheet_timer,
                 R.drawable.ic_timeroff, R.drawable.ic_timer3s, R.drawable.ic_timer10s);
-        spec(FORMAT, R.string.shade_t_format, R.array.shade_s_format, R.drawable.ic_shade_jpeg,
-                R.drawable.ic_shade_jpeg, R.drawable.ic_shade_rawjpeg, R.drawable.ic_shade_raw);
+        spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
         spec("pref_lmc_hybrid_ark_metering", R.string.shade_t_metering, 0, R.drawable.ic_shade_meter);
         spec(ROUTE, R.string.shade_t_route, R.array.shade_s_route, R.drawable.settings_ic_layers);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
-        spec(PHOTO_FORMAT, R.string.shade_t_photo_format, R.array.shade_s_photo_format, R.drawable.settings_ic_save);
         spec("pref_ultrahdr_key", R.string.shade_t_ultrahdr, 0, R.drawable.settings_ic_hdr);
         spec("pref_wide169_key", R.string.shade_t_wide169, 0, R.drawable.settings_ic_ratio);
         spec("pref_show_watermark_key", R.string.shade_t_watermark, 0, R.drawable.settings_ic_water);
@@ -307,10 +309,41 @@ public final class ShadeCatalog {
         addVirtual(FLASH, R.string.shade_title_flash, R.array.shade_l_flash, new String[]{"0", "1"},
                 res.getString(R.string.pref_ae_mode_default).trim(), SettingType.FLASH);
         addVirtual(TIMER, R.string.shade_title_timer, R.array.shade_l_timer, new String[]{"0", "1", "2"}, "0", SettingType.TIMER);
-        addVirtual(FORMAT, R.string.shade_title_format, R.array.shade_l_format, new String[]{"0", "1", "2"},
-                res.getString(R.string.pref_raw_mode_default_value).trim(), SettingType.RAW);
+        addFormat();
         addVirtual(METERING_STD, R.string.shade_title_metering_std, R.array.shade_l_metering_std,
                 new String[]{"-1", "0", "1", "2"}, "-1", SettingType.AE_METERING_STD);
+    }
+
+    /** The FORMAT choice: the options this Android version offers, each with its label and icon (FormatChoice). */
+    private void addFormat() {
+        java.util.List<FormatChoice> offered = FormatChoice.offered(android.os.Build.VERSION.SDK_INT);
+        Entry e = new Entry(FORMAT);
+        e.kind = LIST;
+        e.title = res.getString(R.string.shade_title_format);
+        e.values = new CharSequence[offered.size()];
+        e.labels = new CharSequence[offered.size()];
+        e.shortLabels = new CharSequence[offered.size()];
+        e.valueIcons = new int[offered.size()];
+        for (int i = 0; i < offered.size(); i++) {
+            FormatChoice c = offered.get(i);
+            e.values[i] = String.valueOf(c.ordinal());
+            e.labels[i] = c.longLabel();
+            e.shortLabels[i] = c.shortLabel();
+            e.valueIcons[i] = c.icon;
+        }
+        int defaultSaveMode = (int) Math.round(PreferenceNumber.read(res.getString(R.string.pref_raw_mode_default_value).trim(), 0));
+        e.defaultValue = String.valueOf(FormatChoice.of(defaultSaveMode, com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG).ordinal());
+        e.settingType = SettingType.FORMAT_CHOICE;
+        e.storage = STORE_VIRTUAL;
+        e.path.add(res.getString(R.string.shade_group_shoot));
+        CharSequence[] labels = e.labels, shorts = e.shortLabels;
+        int[] icons = e.valueIcons;
+        decorate(e);
+        // decorate() puts the curated spec's (empty) labels and icons; the choice keeps its own.
+        e.labels = labels;
+        e.shortLabels = shorts;
+        e.valueIcons = icons;
+        entries.put(FORMAT, e);
     }
 
     public SharedPreferences prefs() {
@@ -530,7 +563,7 @@ public final class ShadeCatalog {
             switch (e.key) {
                 case FLASH: return String.valueOf(PreferenceKeys.getAeMode());
                 case TIMER: return String.valueOf(PreferenceKeys.getCountdownTimerIndex());
-                case FORMAT: return String.valueOf(PreferenceKeys.isSaveRaw());
+                case FORMAT: return String.valueOf(FormatChoice.current().ordinal());
                 default: return String.valueOf(PreferenceKeys.getAeMeteringStd());
             }
         }
@@ -552,6 +585,9 @@ public final class ShadeCatalog {
             deviceDefaults = d == null ? Collections.emptyMap() : d;
         }
         Object d = deviceDefaults.get(e.key);
+        if (d != null && FORMAT.equals(e.key)) // a device default names the save mode; the choice adds the default codec
+            return String.valueOf(FormatChoice.of((int) Math.round(PreferenceNumber.read(d, 0)),
+                    com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG).ordinal());
         return d != null ? d : e.defaultValue;
     }
 
@@ -606,25 +642,13 @@ public final class ShadeCatalog {
         }
     }
 
-    /**
-     * Labels of the list values for the list sheet and the segments: the FORMAT entry names the chosen codec ("RAW + HEIC"),
-     * every other entry its own labels.
-     */
+    /** Labels of the list values for the list sheet and the segments (FORMAT: «RAW + HEIC» and the like). */
     public static CharSequence[] labels(Entry e) {
-        if (!FORMAT.equals(e.key) || e.values == null) return e.labels;
-        CharSequence[] out = new CharSequence[e.values.length];
-        for (int i = 0; i < out.length; i++) out[i] = label(e, i, false);
-        return out;
+        return e.labels;
     }
 
     /** Label of the i-th list value: the curated short label, else the entry (shortened for a tile). */
     public static String label(Entry e, int i, boolean shortForm) {
-        if (FORMAT.equals(e.key) && e.values != null && i < e.values.length) {
-            // The save mode with the chosen codec: JPEG / R+J / RAW, HEIC / R+H, WEBP / R+W (PhotoFormat).
-            int mode = (int) Math.round(PreferenceNumber.read(e.values[i], i));
-            com.particlesdevs.photoncamera.processing.PhotoFormat codec = PreferenceKeys.getPhotoFormat();
-            return shortForm ? codec.saveModeShort(mode) : codec.saveModeLong(mode);
-        }
         if (shortForm && e.shortLabels != null && i < e.shortLabels.length) return e.shortLabels[i].toString();
         String full = e.labels != null && i < e.labels.length ? e.labels[i].toString() : e.values[i].toString();
         return shortForm ? autoShort(full) : full;

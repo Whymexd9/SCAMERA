@@ -13,42 +13,81 @@
                 type="com.particlesdevs.photoncamera.ui.camera.model.CameraFragmentModel"/>
     </data>
 
-    <!-- P25 top bar: two card badges (the merge route in effect, the save format) and the settings gear. Flash,
-         self-timer and grid live in the quick-settings shade; the Quad toggle is gone. -->
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <!-- Top bar (MANUAL_TASK.md §4): [route | format] group card, the manual summary in the free width, the settings gear
+         pinned to the right edge. The route and format are 24dp accent icons; their names are content descriptions and
+         tooltips. The bar grows when the summary wraps; the preview starts below its actual height. -->
+    <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
             tools:visibility="visible">
 
         <LinearLayout
                 android:id="@+id/topbar_badges"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginEnd="8dp"
-                app:layout_constrainedWidth="true"
-                app:layout_constraintHorizontal_bias="0"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toStartOf="@id/settings_button"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent">
+                android:background="@drawable/shade_badge"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:contentDescription="@string/topbar_group">
 
-            <TextView
+            <ImageButton
                     android:id="@+id/route_badge"
-                    style="@style/ShadeBadge"
-                    tools:drawableLeft="@drawable/settings_ic_layers"
-                    tools:text="Merge Hybrid"/>
+                    android:layout_width="40dp"
+                    android:layout_height="match_parent"
+                    android:minHeight="42dp"
+                    android:minWidth="0dp"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:background="@null"
+                    tools:src="@drawable/topbar_ic_route_hybrid"/>
 
-            <TextView
+            <View
+                    android:id="@+id/topbar_divider"
+                    android:layout_width="1dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginTop="9dp"
+                    android:layout_marginBottom="9dp"
+                    android:background="@color/settings_line"/>
+
+            <ImageButton
                     android:id="@+id/format_badge"
-                    style="@style/ShadeBadge"
-                    android:layout_marginStart="8dp"
-                    tools:drawableLeft="@drawable/ic_shade_jpeg"
-                    tools:text="JPEG"/>
+                    android:layout_width="40dp"
+                    android:layout_height="match_parent"
+                    android:minHeight="42dp"
+                    android:minWidth="0dp"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:background="@null"
+                    android:onClick="@{top_bar_click_listener}"
+                    tools:src="@drawable/ic_shade_jpeg"/>
         </LinearLayout>
+
+        <!-- The manual summary: all the width between the group and the gear (weight 1, min width 0), never under the
+             gear; gone while no parameter is manual (ViewObserver). -->
+        <FrameLayout
+                android:id="@+id/topbar_summary_slot"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minWidth="0dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp">
+
+            <com.particlesdevs.photoncamera.circularbarlib.ui.ManualSummaryView
+                    android:id="@id/manual_summary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"/>
+        </FrameLayout>
 
         <!-- The settings entry at every level (in FULL under the scrim: a tap there lowers the shade first). -->
         <ImageButton
@@ -63,10 +102,7 @@
                 android:padding="11dp"
                 android:contentDescription="@string/sheet_all_settings"
                 android:tooltipText="@string/sheet_all_settings"
-                bindRotate="@{uimodel}"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent"/>
+                bindRotate="@{uimodel}"/>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
 </layout>

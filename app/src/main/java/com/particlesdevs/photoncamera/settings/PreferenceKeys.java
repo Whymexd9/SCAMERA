@@ -300,6 +300,10 @@ public class PreferenceKeys {
         return com.particlesdevs.photoncamera.processing.PhotoFormat.parse(preferenceKeys.settingsManager.getString("default_scope",
                 com.particlesdevs.photoncamera.processing.PhotoFormat.KEY, "jpeg"));
     }
+    /** Stores «Формат фото» (the codec) as the settings screen stores it (the list value). */
+    public static void setChosenPhotoFormat(com.particlesdevs.photoncamera.processing.PhotoFormat format) {
+        preferenceKeys.settingsManager.set("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY, format.value);
+    }
     /** HEIC quality 1-100 (default 90). */
     public static int getHeicQuality() {
         return (int) Math.round(SettingsNumericRules.value(com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HEIC_QUALITY,

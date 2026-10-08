@@ -95,6 +95,8 @@ public class ShadeUiTest {
                 if (type == SettingType.FLASH) PreferenceKeys.setAeMode(value);
                 else if (type == SettingType.TIMER) PreferenceKeys.setCountdownTimerIndex(value);
                 else if (type == SettingType.RAW) PreferenceKeys.setSaveRaw(value);
+                else if (type == SettingType.FORMAT_CHOICE)
+                    com.particlesdevs.photoncamera.settings.FormatChoice.store(com.particlesdevs.photoncamera.settings.FormatChoice.values()[value]);
                 else if (type == SettingType.AE_METERING_STD) PreferenceKeys.setAeMeteringStd(value);
             }
 
@@ -475,9 +477,16 @@ public class ShadeUiTest {
         ultra.performClick();
         assertEquals(!ultraDefault, prefs.getBoolean("pref_ultrahdr_key", ultraDefault));
         assertTrue(tile("pref_ultrahdr_key").active);
-        // Camera controls go through CameraUIController's path.
+        // Camera controls go through CameraUIController's path. The format choice has seven options: a tap opens its list
+        // sheet (icons and names), a pick stores it.
         tile(ShadeCatalog.FORMAT).performClick();
-        assertEquals(Arrays.asList("RAW=1"), cameraControls);
+        android.app.Dialog formats = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull(formats);
+        View rawJpeg = formats.getWindow().getDecorView().findViewWithTag("option_" + com.particlesdevs.photoncamera.settings.FormatChoice.RAW_JPEG.ordinal());
+        assertNotNull(rawJpeg);
+        rawJpeg.performClick();
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertEquals(Arrays.asList("FORMAT_CHOICE=" + com.particlesdevs.photoncamera.settings.FormatChoice.RAW_JPEG.ordinal()), cameraControls);
         assertTrue(tile(ShadeCatalog.FORMAT).active);
         assertEquals("R+J", tile(ShadeCatalog.FORMAT).value.getText().toString());
         layoutFull();
