@@ -237,7 +237,8 @@ struct HybridTuning {
     int laMedian=2;              // 3x3 median passes over the L0 field
     int laUltrashort=0;          // 1: refine the ultrashort (Bento) frame too (x8..16 gain: noisy, isotropic 1 px kernel)
     int laThreads=6;             // worker threads (one frame each; ~15 MB per thread)
-    int laStream=1;              // P33 W2.1: 1 = the field in tile-row bands alongside the GPU merge (LaStream), 0 = the whole field first
+    int laStream=1;              // P33 W2.1: 1 = the field in tile-row bands alongside the GPU merge (LaStream), 0 = the whole field first;
+                                 // P48: 1 takes windowed gray rows when the whole gray images do not fit, 2 = always windowed (A/B)
     int laNice=0;                // P33 W2.1: nice value of the LaStream threads (0 = as the merge thread; > 0 leaves the CPU to it)
     int isoKernel=0;             // diagnostics, round-4 kernel only (sabre61 off): 1 = isotropic sigma = base (no edge shaping), 2 = also no
                                  // flat widening: a "spatial RGB"-like isotropic Gaussian (LMC 9.6 spatial_rgb: sigma 0.28..0.40 px)
@@ -3787,65 +3788,74 @@ struct LaImage {
     int w=0,h=0;
     std::vector<float> v;       // sqrt-domain gray; < 0 = no sample (clipped quad; base: also next to one, its gradient is not real)
     std::vector<float> gx,gy;   // central differences (base only)
+    // P48: a donor gray image held as separate rows (LaStream's windowed gray under memory pressure): row y at rows[y], v empty.
+    // Only laTilePass reads a donor through row(); every row it reads is held while it runs (LaStream::ensureRows).
+    const float* const* rows=nullptr;
+    const float* row(int y) const {return rows?rows[y]:v.data()+size_t(y)*w;}
 };
 // Rows of a level image, in parallel (the base, once) or not (a frame inside the per-frame worker pool).
 template<class F> inline void laRows(bool parallel,int h,const F& body){if(parallel)mergeRowBands(h,body); else body(0,h);}
+// One gray row j (ow quads) of laGray into o; inv[p] = 1 / (white - black[p]). P48: also LaStream's windowed rows (the same floats).
+inline void laGrayRow(const Burst& b,const uint16_t* raw,float gain,float eps,const float* inv,int j,int ow,float* o){
+    const int sx=b.cfa&1,sy=b.cfa>>1;
+    const int Y=2*j+sy;
+    const bool rowsIn=Y+1<b.h;
+    const uint16_t* r0=raw+size_t(std::min(Y,b.h-1))*b.w;const uint16_t* r1=rowsIn?r0+b.w:r0;
+    const int p0=(Y&1)<<1,p1=((Y+1)&1)<<1;
+    int i=0;
+#if defined(__aarch64__)
+    if(rowsIn){ // four quads per step, the same arithmetic in the same order as the scalar loop (identical floats)
+        const int q0=sx&1,q1=(sx+1)&1;
+        const float32x4_t b00=vdupq_n_f32(b.black[p0|q0]),b01=vdupq_n_f32(b.black[p0|q1]),b10=vdupq_n_f32(b.black[p1|q0]),b11=vdupq_n_f32(b.black[p1|q1]);
+        const float32x4_t i00=vdupq_n_f32(inv[p0|q0]),i01=vdupq_n_f32(inv[p0|q1]),i10=vdupq_n_f32(inv[p1|q0]),i11=vdupq_n_f32(inv[p1|q1]);
+        const float32x4_t zero=vdupq_n_f32(0.f),one=vdupq_n_f32(1.f),quarter=vdupq_n_f32(0.25f),gv=vdupq_n_f32(gain),ev=vdupq_n_f32(eps);
+        const float32x4_t clipLv=vdupq_n_f32(0.95f),none=vdupq_n_f32(-1.f);
+        auto site=[&](uint16x4_t v,float32x4_t bl,float32x4_t iv){
+            return vminq_f32(vmaxq_f32(vmulq_f32(vsubq_f32(vcvtq_f32_u32(vmovl_u16(v)),bl),iv),zero),one);
+        };
+        for(;i+4<=ow&&2*i+sx+7<b.w;i+=4){
+            const int X=2*i+sx;
+            const uint16x4x2_t a=vld2_u16(r0+X),c=vld2_u16(r1+X);
+            const float32x4_t u0=site(a.val[0],b00,i00),u1=site(a.val[1],b01,i01),u2=site(c.val[0],b10,i10),u3=site(c.val[1],b11,i11);
+            const float32x4_t sum=vaddq_f32(vaddq_f32(vaddq_f32(u0,u1),u2),u3),mx=vmaxq_f32(vmaxq_f32(u0,u1),vmaxq_f32(u2,u3));
+            const float32x4_t val=vsqrtq_f32(vaddq_f32(vmaxq_f32(vmulq_f32(vmulq_f32(quarter,sum),gv),zero),ev));
+            vst1q_f32(o+i,vbslq_f32(vcgeq_f32(mx,clipLv),none,val));
+        }
+    }
+#endif
+    for(;i<ow;++i){
+        const int X=2*i+sx;
+        float s=0,m=0;
+        if(rowsIn&&X+1<b.w){
+            const int q0=X&1,q1=(X+1)&1;
+            const float v[4]={(float(r0[X])-b.black[p0|q0])*inv[p0|q0],(float(r0[X+1])-b.black[p0|q1])*inv[p0|q1],
+                              (float(r1[X])-b.black[p1|q0])*inv[p1|q0],(float(r1[X+1])-b.black[p1|q1])*inv[p1|q1]};
+            for(float u:v){u=std::clamp(u,0.f,1.f);s+=u;m=std::max(m,u);}
+        } else for(int p=0;p<4;++p){const float u=b.sampleRaw(raw,2*i+(p&1),2*j+(p>>1));s+=u;m=std::max(m,u);}
+        o[i]=m>=0.95f?-1.f:std::sqrt(std::max(0.25f*s*gain,0.f)+eps);
+    }
+}
+inline void laGrayInv(const Burst& b,float inv[4]){for(int p=0;p<4;++p)inv[p]=1.f/(b.white-b.black[p]);}
 // Gray of a frame: canonical quad (i, j) = sensor sites (2i + cfa&1 .. +1, 2j + cfa>>1 .. +1), normalised by black / white of each
 // phase and clamped to [0, 1] like Burst::sampleRaw (which handles the reflected border quads); -1 where a site >= 0.95 of white.
 inline void laGray(const Burst& b,const uint16_t* raw,float gain,float eps,LaImage& out,bool parallel){
     out.w=b.w/2;out.h=b.h/2;out.v.resize(size_t(out.w)*out.h);
-    const int sx=b.cfa&1,sy=b.cfa>>1;
-    float inv[4];for(int p=0;p<4;++p)inv[p]=1.f/(b.white-b.black[p]);
+    float inv[4];laGrayInv(b,inv);
     laRows(parallel,out.h,[&](int y0,int y1){
-        for(int j=y0;j<y1;++j){
-            const int Y=2*j+sy;
-            const bool rowsIn=Y+1<b.h;
-            const uint16_t* r0=raw+size_t(std::min(Y,b.h-1))*b.w;const uint16_t* r1=rowsIn?r0+b.w:r0;
-            const int p0=(Y&1)<<1,p1=((Y+1)&1)<<1;
-            float* o=out.v.data()+size_t(j)*out.w;
-            int i=0;
-#if defined(__aarch64__)
-            if(rowsIn){ // four quads per step, the same arithmetic in the same order as the scalar loop (identical floats)
-                const int q0=sx&1,q1=(sx+1)&1;
-                const float32x4_t b00=vdupq_n_f32(b.black[p0|q0]),b01=vdupq_n_f32(b.black[p0|q1]),b10=vdupq_n_f32(b.black[p1|q0]),b11=vdupq_n_f32(b.black[p1|q1]);
-                const float32x4_t i00=vdupq_n_f32(inv[p0|q0]),i01=vdupq_n_f32(inv[p0|q1]),i10=vdupq_n_f32(inv[p1|q0]),i11=vdupq_n_f32(inv[p1|q1]);
-                const float32x4_t zero=vdupq_n_f32(0.f),one=vdupq_n_f32(1.f),quarter=vdupq_n_f32(0.25f),gv=vdupq_n_f32(gain),ev=vdupq_n_f32(eps);
-                const float32x4_t clipLv=vdupq_n_f32(0.95f),none=vdupq_n_f32(-1.f);
-                auto site=[&](uint16x4_t v,float32x4_t bl,float32x4_t iv){
-                    return vminq_f32(vmaxq_f32(vmulq_f32(vsubq_f32(vcvtq_f32_u32(vmovl_u16(v)),bl),iv),zero),one);
-                };
-                for(;i+4<=out.w&&2*i+sx+7<b.w;i+=4){
-                    const int X=2*i+sx;
-                    const uint16x4x2_t a=vld2_u16(r0+X),c=vld2_u16(r1+X);
-                    const float32x4_t u0=site(a.val[0],b00,i00),u1=site(a.val[1],b01,i01),u2=site(c.val[0],b10,i10),u3=site(c.val[1],b11,i11);
-                    const float32x4_t sum=vaddq_f32(vaddq_f32(vaddq_f32(u0,u1),u2),u3),mx=vmaxq_f32(vmaxq_f32(u0,u1),vmaxq_f32(u2,u3));
-                    const float32x4_t val=vsqrtq_f32(vaddq_f32(vmaxq_f32(vmulq_f32(vmulq_f32(quarter,sum),gv),zero),ev));
-                    vst1q_f32(o+i,vbslq_f32(vcgeq_f32(mx,clipLv),none,val));
-                }
-            }
-#endif
-            for(;i<out.w;++i){
-                const int X=2*i+sx;
-                float s=0,m=0;
-                if(rowsIn&&X+1<b.w){
-                    const int q0=X&1,q1=(X+1)&1;
-                    const float v[4]={(float(r0[X])-b.black[p0|q0])*inv[p0|q0],(float(r0[X+1])-b.black[p0|q1])*inv[p0|q1],
-                                      (float(r1[X])-b.black[p1|q0])*inv[p1|q0],(float(r1[X+1])-b.black[p1|q1])*inv[p1|q1]};
-                    for(float u:v){u=std::clamp(u,0.f,1.f);s+=u;m=std::max(m,u);}
-                } else for(int p=0;p<4;++p){const float u=b.sampleRaw(raw,2*i+(p&1),2*j+(p>>1));s+=u;m=std::max(m,u);}
-                o[i]=m>=0.95f?-1.f:std::sqrt(std::max(0.25f*s*gain,0.f)+eps);
-            }
-        }
+        for(int j=y0;j<y1;++j)laGrayRow(b,raw,gain,eps,inv,j,out.w,out.v.data()+size_t(j)*out.w);
     });
+}
+// One row of laDown: o[i] from the rows a (2j) and c (2j + 1) of the finer level.
+inline void laDownRow(const float* a,const float* c,int ow,float* o){
+    for(int i=0;i<ow;++i){
+        const float p=a[2*i],q=a[2*i+1],r=c[2*i],s=c[2*i+1];
+        o[i]=std::min(std::min(p,q),std::min(r,s))<0.f?-1.f:0.25f*(p+q+r+s);
+    }
 }
 inline void laDown(const LaImage& in,LaImage& out,bool parallel){
     out.w=in.w/2;out.h=in.h/2;out.v.resize(size_t(out.w)*out.h);
     laRows(parallel,out.h,[&](int y0,int y1){
-        for(int j=y0;j<y1;++j)for(int i=0;i<out.w;++i){
-            const size_t a=size_t(2*j)*in.w+2*i,b=a+in.w;
-            const float p=in.v[a],q=in.v[a+1],r=in.v[b],s=in.v[b+1];
-            out.v[size_t(j)*out.w+i]=std::min(std::min(p,q),std::min(r,s))<0.f?-1.f:0.25f*(p+q+r+s);
-        }
+        for(int j=y0;j<y1;++j)laDownRow(in.v.data()+size_t(2*j)*in.w,in.v.data()+size_t(2*j+1)*in.w,out.w,out.v.data()+size_t(j)*out.w);
     });
 }
 // Base level: central differences, then every pixel whose difference stencil touches a clipped quad loses its sample.
@@ -3885,8 +3895,8 @@ inline LaTile laTilePass(const LaImage& B,const LaImage& D,int ox,int oy,int win
         const uint32x4_t one=vreinterpretq_u32_f32(vdupq_n_f32(1.f));
         const float32x4_t cc=vdupq_n_f32(c),v00=vdupq_n_f32(w00),v10=vdupq_n_f32(w10),v01=vdupq_n_f32(w01),v11=vdupq_n_f32(w11);
         for(int wy=0;wy<win;++wy){
-            const size_t kb=size_t(oy+wy)*B.w+ox,k0=size_t(oy+wy+iy)*D.w+size_t(ox+ix),k1=k0+D.w;
-            const float *br=B.v.data()+kb,*d0=D.v.data()+k0,*d1=D.v.data()+k1,*g1r=B.gx.data()+kb,*g2r=B.gy.data()+kb;
+            const size_t kb=size_t(oy+wy)*B.w+ox;
+            const float *br=B.v.data()+kb,*d0=D.row(oy+wy+iy)+(ox+ix),*d1=D.row(oy+wy+iy+1)+(ox+ix),*g1r=B.gx.data()+kb,*g2r=B.gy.data()+kb;
             for(int x=0;x<win;x+=4){
                 const float32x4_t bv=vld1q_f32(br+x),a00=vld1q_f32(d0+x),a10=vld1q_f32(d0+x+1),a01=vld1q_f32(d1+x),a11=vld1q_f32(d1+x+1);
                 const float32x4_t mn=vminq_f32(vminq_f32(bv,vminq_f32(a00,a10)),vminq_f32(a01,a11));
@@ -3914,10 +3924,10 @@ inline LaTile laTilePass(const LaImage& B,const LaImage& D,int ox,int oy,int win
         const int Y=oy+wy;
         const size_t kb=size_t(Y)*B.w+ox;
         const int y0=std::clamp(Y+iy,0,D.h-1),y1=std::clamp(Y+iy+1,0,D.h-1);
-        const size_t a=size_t(y0)*D.w,e=size_t(y1)*D.w;
+        const float *a=D.row(y0),*e=D.row(y1); // P48: rows of a windowed donor as well
         for(int wx=0;wx<win;++wx){
             const int x0=std::clamp(ox+wx+ix,0,D.w-1),x1=std::clamp(ox+wx+ix+1,0,D.w-1);
-            const float bv=B.v[kb+wx],a00=D.v[a+x0],a10=D.v[a+x1],a01=D.v[e+x0],a11=D.v[e+x1];
+            const float bv=B.v[kb+wx],a00=a[x0],a10=a[x1],a01=e[x0],a11=e[x1];
             const float m=std::min(std::min(bv,std::min(a00,a10)),std::min(a01,a11))>=0.f?1.f:0.f;
             const float b=bv-c,d=w00*a00+w10*a10+w01*a01+w11*a11-c;
             S.n+=m;S.sb+=m*b;S.sd+=m*d;S.sbb+=m*b*b;S.sdd+=m*d*d;S.sbd+=m*b*d;
@@ -4083,24 +4093,41 @@ inline void laFrameField(const LaBase& base,const LaImage& D0,const BackwardHomo
 // rows (every tile alone, as in laFrameField), and, as the rows below them arrive, the Z channel and the medians (3x3: one row of
 // halo each). Every value is the one laFrameField computes (the same functions on the same tiles); only the order of the tiles
 // differs. A frame's gray image is freed when its field is complete (or when the merge drops the frame).
+// P48 (research/speed/PLAIN_SHOT_SPEED.md): windowed gray. Every frame holding its whole gray image until its field is complete
+// costs 4 B per quad and frame (469-497 MB at 12 MP): the stream was refused above MemAvailable / 4 (vivo 2x, Pixel 7) and F6 ran
+// whole before the merge (1.5 s on the vivo, 3-16 s on the Pixel). Windowed, phase 1 builds L1 from two gray rows at a time and
+// each band computes the gray rows its tile passes can read (laGrayRow, the same floats as laGray) just before it runs; the rows
+// no later band of the frame can read go back to a per-frame spare list. The rows a band reads are bounded: the homography's
+// translation of every tile of the band, plus the L1 field (|r| <= 4 RAW px per coarse LK step) and the L0 LK steps (<= 1 level
+// px each), plus the bilinear row and rounding. The field is bit-identical to the full stream (tools/check_hybrid_prefetch.cpp).
 class LaStream final : public HybridLaStream {
 public:
     struct Job { int f=0;const uint16_t* raw=nullptr;float gain=1;BackwardHomography H; };
     struct Frame {
         Job job;LaImage D0;std::vector<float> r1,s0,lk,z;std::vector<std::vector<float>> stage;std::vector<uint8_t> ok,coarse,lkDone;
         std::vector<int> stageRows;int lkPrefix=0,zRows=0,ready=0;bool p1=false,done=false,dropped=false;LaFrameStats st;
+        // P48 windowed gray: D0.rows = rowPtr; rows [bandLo[k], bandHi[k]] read by band k, loFrom[k] = min bandLo of bands >= k
+        std::mutex rowLock;std::vector<const float*> rowPtr;std::vector<std::unique_ptr<float[]>> rowMem,spare;
+        std::vector<int> bandLo,bandHi,loFrom;std::vector<uint8_t> bandDone;int bandPrefix=0,freedRows=0,buffers=0;
     };
     static constexpr int kBandRows=4; // tile rows per task (191 rows at 12 MP: 48 bands)
-    LaStream(const Burst& burst,LaBase&& laBase,float epsilon,const HybridTuning& tune,int threads)
-            :b(burst),base(std::move(laBase)),t(tune),eps(epsilon),started(std::chrono::steady_clock::now()){
+    // P48: gray rows one frame holds at most in the windowed mode, for the memory estimate before the stream starts (the bound of
+    // one band's rows, twice for the band in flight and the next, plus 64 rows of rotation / perspective across the frame)
+    static int windowRowsEstimate(const HybridTuning& t,int win,int stride){
+        return 2*(kBandRows*stride+win+2*(2*std::max(0,t.laItersCoarse)+std::max(0,t.laIters)+3))+64;
+    }
+    LaStream(const Burst& burst,LaBase&& laBase,float epsilon,const HybridTuning& tune,int threads,bool windowedGray=false)
+            :b(burst),base(std::move(laBase)),t(tune),eps(epsilon),started(std::chrono::steady_clock::now()),win(windowedGray){
         bands=(base.g0.ny+kBandRows-1)/kBandRows;
+        laGrayInv(b,inv);
         for(int k=0;k<std::max(1,threads);++k){
             try{pool.emplace_back([this]{work();});}catch(const std::exception&){if(pool.empty())throw;break;} // fewer threads
         }
     }
     // the jobs at once (tests, and a merge whose frames are known)
-    LaStream(const Burst& burst,LaBase&& laBase,float epsilon,const HybridTuning& tune,const std::vector<Job>& jobs,int threads)
-            :LaStream(burst,std::move(laBase),epsilon,tune,threads){
+    LaStream(const Burst& burst,LaBase&& laBase,float epsilon,const HybridTuning& tune,const std::vector<Job>& jobs,int threads,
+             bool windowedGray=false)
+            :LaStream(burst,std::move(laBase),epsilon,tune,threads,windowedGray){
         std::vector<int> fs;for(const auto& job:jobs){add(job);fs.push_back(job.f);}
         commit(fs);
     }
@@ -4171,16 +4198,26 @@ public:
     double doneMs=0;  // field of every frame complete, after the start
     double phase1Ms=0;// phase 1 of every refined frame done, after the start
     double commitMs=0;// commit, after the start
+    bool windowed() const {return win;}
+    // P48: the most gray-row bytes all frames held at once (windowed mode)
+    double peakRowMB() const {return double(peakRowBytes.load())/1048576.0;}
 private:
     using Clock=std::chrono::steady_clock;
     static double ms(Clock::time_point a){return std::chrono::duration<double,std::milli>(Clock::now()-a).count();}
     Burst b;LaBase base;HybridTuning t;float eps;Clock::time_point started;
+    bool win=false;float inv[4]{};std::atomic<int64_t> rowBytes{0},peakRowBytes{0};
     std::vector<std::unique_ptr<Frame>> all;std::vector<int> frames,slots;int bands=0,framesDone=0;
     std::deque<std::pair<int,int>> queue; // (index into all, band; -1 = phase 1)
     std::vector<std::thread> pool;
     std::mutex m;std::condition_variable cv;bool committed=false,failed=false,stopping=false;std::string failure;
     void fail(const std::string& why){std::lock_guard<std::mutex> l(m);if(!failed){failed=true;failure=why;}cv.notify_all();}
-    static void release(Frame& fr){
+    void release(Frame& fr){
+        if(win){ // P48: every gray row of the frame and its spare buffers
+            std::lock_guard<std::mutex> l(fr.rowLock);
+            std::vector<std::unique_ptr<float[]>>().swap(fr.rowMem);std::vector<std::unique_ptr<float[]>>().swap(fr.spare);
+            std::vector<const float*>().swap(fr.rowPtr);
+            rowBytes-=int64_t(fr.buffers)*int64_t(b.w/2)*4;fr.buffers=0;
+        }
         fr.D0=LaImage{};std::vector<float>().swap(fr.r1);std::vector<float>().swap(fr.s0);std::vector<float>().swap(fr.lk);
         for(size_t s=0;s+1<fr.stage.size();++s)std::vector<float>().swap(fr.stage[s]);
         if(fr.dropped){std::vector<std::vector<float>>().swap(fr.stage);std::vector<float>().swap(fr.z);}
@@ -4209,8 +4246,23 @@ private:
     }
     void phase1(Frame& fr){
         double part[3]{};auto tick=Clock::now();
-        laGray(b,fr.job.raw,fr.job.gain,eps,fr.D0,false);part[0]=ms(tick);tick=Clock::now();
-        LaImage D1;laDown(fr.D0,D1,false);part[1]=ms(tick);tick=Clock::now();
+        LaImage D1;
+        if(win){ // P48: L1 from two gray rows at a time (laDown of laGray, row by row: the same floats); D0 rows come with the bands
+            const int w0=b.w/2,h0=b.h/2;
+            D1.w=w0/2;D1.h=h0/2;D1.v.resize(size_t(D1.w)*D1.h);
+            std::vector<float> ra(static_cast<size_t>(w0)),rc(static_cast<size_t>(w0));
+            for(int j=0;j<D1.h;++j){
+                laGrayRow(b,fr.job.raw,fr.job.gain,eps,inv,2*j,w0,ra.data());
+                laGrayRow(b,fr.job.raw,fr.job.gain,eps,inv,2*j+1,w0,rc.data());
+                laDownRow(ra.data(),rc.data(),D1.w,D1.v.data()+size_t(j)*D1.w);
+            }
+            part[0]=ms(tick);
+            windowBounds(fr,w0,h0);
+            tick=Clock::now();
+        } else {
+            laGray(b,fr.job.raw,fr.job.gain,eps,fr.D0,false);part[0]=ms(tick);tick=Clock::now();
+            laDown(fr.D0,D1,false);part[1]=ms(tick);tick=Clock::now();
+        }
         const LaGrid& g0=base.g0;const LaGrid& g1=base.g1;
         fr.r1.assign(size_t(g1.nx)*g1.ny*2,0.f);
         laLK(base.l1,D1,g1,fr.job.H,base.v0*0.25f,t.laMu,t.laKappa,std::max(0,t.laItersCoarse),fr.r1);
@@ -4228,10 +4280,67 @@ private:
         }
         cv.notify_all();
     }
+    // P48: the donor rows of every band. laTilePass reads rows oy + floor(ty) .. oy + floor(ty) + win (clamped to the image), ty =
+    // the tile's homography translation + the field's y in level px: the L1 field moves <= 4 RAW px (2 level px) per coarse LK
+    // step, each L0 step <= 1 level px; 3 rows more for floor and rounding. A non-finite or out-of-image translation: every row.
+    void windowBounds(Frame& fr,int w0,int h0){
+        const LaGrid& g0=base.g0;
+        const long reach=2L*std::max(0,t.laItersCoarse)+std::max(0,t.laIters)+3;
+        fr.bandLo.assign(size_t(bands),0);fr.bandHi.assign(size_t(bands),h0-1);fr.loFrom.assign(size_t(bands)+1,h0);
+        fr.bandDone.assign(size_t(bands),0);fr.bandPrefix=0;fr.freedRows=0;
+        for(int band=0;band<bands;++band){
+            const int j0=band*kBandRows,j1=std::min(g0.ny,j0+kBandRows);
+            long lo=std::numeric_limits<long>::max(),hi=std::numeric_limits<long>::min();bool whole=false;
+            for(int j=j0;j<j1&&!whole;++j)for(int i=0;i<g0.nx;++i){
+                float tx0,ty0;laT0(g0,fr.job.H,i,j,tx0,ty0);
+                if(!std::isfinite(ty0)||std::abs(ty0)>float(h0)){whole=true;break;}
+                const long iy=long(std::floor(ty0)),oy=long(g0.stride)*j;
+                lo=std::min(lo,oy+iy-reach);hi=std::max(hi,oy+iy+g0.win+reach);
+            }
+            if(whole||lo>hi){lo=0;hi=h0-1;}
+            fr.bandLo[band]=int(std::clamp<long>(lo,0,h0-1));fr.bandHi[band]=int(std::clamp<long>(hi,0,h0-1));
+        }
+        for(int band=bands-1;band>=0;--band)fr.loFrom[band]=std::min(fr.loFrom[size_t(band)+1],fr.bandLo[band]);
+        std::lock_guard<std::mutex> l(fr.rowLock);
+        fr.rowPtr.assign(size_t(h0),nullptr);fr.rowMem.clear();fr.rowMem.resize(size_t(h0));
+        fr.D0=LaImage{};fr.D0.w=w0;fr.D0.h=h0;fr.D0.rows=fr.rowPtr.data();
+    }
+    // P48: the gray rows band k reads, computed where missing (into a spare buffer of the frame first); the ms it took
+    double ensureRows(Frame& fr,int band){
+        const auto t0=Clock::now();
+        std::lock_guard<std::mutex> l(fr.rowLock);
+        const int w0=fr.D0.w;
+        for(int y=fr.bandLo[band];y<=fr.bandHi[band];++y){
+            if(fr.rowPtr[y])continue;
+            std::unique_ptr<float[]> row;
+            if(!fr.spare.empty()){row=std::move(fr.spare.back());fr.spare.pop_back();}
+            else {
+                row.reset(new float[size_t(w0)]);++fr.buffers;
+                const int64_t now=rowBytes+=int64_t(w0)*4;
+                int64_t peak=peakRowBytes.load();
+                while(now>peak&&!peakRowBytes.compare_exchange_weak(peak,now)){}
+            }
+            laGrayRow(b,fr.job.raw,fr.job.gain,eps,inv,y,w0,row.get());
+            fr.rowPtr[y]=row.get();fr.rowMem[y]=std::move(row);
+        }
+        return ms(t0);
+    }
+    // P48: band k done; the rows below every band of the frame still to finish go to its spare list
+    void bandFinished(Frame& fr,int band){
+        std::lock_guard<std::mutex> l(fr.rowLock);
+        fr.bandDone[band]=1;
+        while(fr.bandPrefix<bands&&fr.bandDone[fr.bandPrefix])++fr.bandPrefix;
+        const int limit=fr.bandPrefix<bands?fr.loFrom[fr.bandPrefix]:fr.D0.h;
+        for(;fr.freedRows<limit;++fr.freedRows){
+            auto& row=fr.rowMem[fr.freedRows];
+            if(row){fr.rowPtr[fr.freedRows]=nullptr;fr.spare.push_back(std::move(row));}
+        }
+    }
     void runBand(Frame& fr,int band){
         const LaGrid& g0=base.g0;const LaGrid& g1=base.g1;
         const int j0=band*kBandRows,j1=std::min(g0.ny,j0+kBandRows);
         const float minN=0.5f*float(g0.win*g0.win);
+        const double grayMs=win?ensureRows(fr,band):0.0;
         double part[3]{};auto tick=Clock::now();
         std::vector<float>& field=fr.lk;
         // start: the better of the homography and the L1 field (window SSD); laFrameField's loop on these rows
@@ -4264,8 +4373,9 @@ private:
             acc[k*2]=rr[0];acc[k*2+1]=rr[1];
         }
         part[2]=ms(tick);
+        if(win)bandFinished(fr,band);
         std::lock_guard<std::mutex> l(m);
-        fr.st.ms[3]+=part[0];fr.st.ms[4]+=part[1];fr.st.ms[5]+=part[2];
+        fr.st.ms[0]+=grayMs;fr.st.ms[3]+=part[0];fr.st.ms[4]+=part[1];fr.st.ms[5]+=part[2];
         for(int j=j0;j<j1;++j)fr.lkDone[j]=1;
         advance(fr);
         cv.notify_all();
@@ -4807,15 +4917,31 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             laStreamTried=true;
             const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
             const uint64_t tiles=uint64_t(std::max(1,(w/2-win)/stride+1))*uint64_t(std::max(1,(h/2-win)/stride+1));
-            const uint64_t avail=hybridMemAvailable(),need=uint64_t(n-1)*(uint64_t(w/2)*uint64_t(h/2)*4+tiles*40);
-            if(avail>0&&need>avail/4){report("HYBRID LOCAL ALIGN: field not streamed ("+hybridMB(need)+" MB of gray images, MemAvailable "+hybridMB(avail)+" MB)");return;}
+            // P48: SCAM_F6_MEMAVAIL_MB stands in for MemAvailable in this decision only (replays of the low-memory route on a
+            // phone with more memory); tune laStream 2 forces the windowed gray (replay A/B: the same field)
+            uint64_t avail=hybridMemAvailable();
+            if(const char* fake=std::getenv("SCAM_F6_MEMAVAIL_MB"))avail=uint64_t(std::max(0L,std::atol(fake)))<<20;
+            const uint64_t need=uint64_t(n-1)*(uint64_t(w/2)*uint64_t(h/2)*4+tiles*40);
+            const uint64_t needWindowed=uint64_t(n-1)*(uint64_t(LaStream::windowRowsEstimate(tune,win,stride))*uint64_t(w/2)*4+tiles*40)
+                                        +uint64_t(std::clamp(tune.laThreads,1,8))*uint64_t(w/4)*uint64_t(h/4)*4;
+            bool windowed=tune.laStream==2;
+            if(!windowed&&avail>0&&need>avail/4){
+                if(needWindowed>avail/4){
+                    report("HYBRID LOCAL ALIGN: field not streamed ("+hybridMB(need)+" MB of gray images, "+hybridMB(needWindowed)
+                        +" MB windowed, MemAvailable "+hybridMB(avail)+" MB)");
+                    return;
+                }
+                windowed=true;
+                report("HYBRID LOCAL ALIGN: field streamed with windowed gray rows ("+hybridMB(need)+" MB of gray images, about "
+                    +hybridMB(needWindowed)+" MB windowed, MemAvailable "+hybridMB(avail)+" MB)");
+            }
             LaBaseBuilt built=laAhead.get(); // P31: the base pyramid, built on the pool since the alignment started
             LaBase laBase=std::move(built.base);laStreamBaseMs=built.ms;
             laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
             const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f); // baseSlope, baseOffset
             laBase.v0=slope/16.f;
             const int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
-            laStream=std::make_unique<LaStream>(b,std::move(laBase),std::max(offset/std::max(slope,1e-9f),1e-5f),tune,threads);
+            laStream=std::make_unique<LaStream>(b,std::move(laBase),std::max(offset/std::max(slope,1e-9f),1e-5f),tune,threads,windowed);
         }
         LaStream::Job job;job.f=f;job.raw=input.frames[f].raw;job.gain=1.f/input.frames[f].exposure;job.H=H[f];
         laStream->add(job);
@@ -5472,7 +5598,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         report(line+per);
         std::snprintf(line,sizeof(line),"HYBRID F6 STREAM: phase 1 from the alignment, bands of %d tile rows alongside the merge: committed %.0f ms, phase 1 done %.0f ms, field done %.0f ms after the first frame; strips waited %.0f ms (%d waits)",
             LaStream::kBandRows,laStream->commitMs,laStream->phase1Ms,laStream->doneMs,laStream->waitMs,laStream->waits);
-        report(line);
+        if(laStream->windowed()){ // P48
+            char more[96];std::snprintf(more,sizeof(more),"; windowed gray rows, %.0f MB held at most",laStream->peakRowMB());
+            report(line+std::string(more));
+        } else report(line);
         if(tune.profile){
             std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN ms (thread sums): base=%.0f gray=%.0f down=%.0f L1=%.0f start=%.0f L0=%.0f accept=%.0f median=%.0f",
                 laStreamBaseMs,partMs[0],partMs[1],partMs[2],partMs[3],partMs[4],partMs[5],partMs[6]);
