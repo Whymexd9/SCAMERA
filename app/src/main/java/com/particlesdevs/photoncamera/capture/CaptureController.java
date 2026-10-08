@@ -1554,7 +1554,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 XiaomiTeleZoom.Plan plan = XiaomiTeleZoom.apply(builder, mCameraCharacteristics,
                         PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(XiaomiTeleZoom.PREF, true),
                         moduleZoom, zoom, physicalID, PreferenceKeys.niceDevSwitch("xiaomi_lens_check", true),
-                        PreferenceKeys.niceDevSwitch("xiaomi_crop_mode", true));
+                        PreferenceKeys.niceDevSwitch("xiaomi_crop_mode", true),
+                        PreferenceKeys.niceDevSwitch("xiaomi_isz", false));
                 if (plan != null) {
                     com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(plan.residual);
                     // P41: the first request of a session already carries its mode; only a change inside the session re-measures

@@ -46,6 +46,14 @@ import java.util.Locale;
  * "ISZ off" the sensor stayed in mode 9 until the camera restarted (a request without current_mode keeps the last one), so once
  * ISZ was on, the way back requests the mode the tele reported before explicitly; and the ISP preview of mode 9 is the raw
  * colour mosaic (purple), so ISZ shows the developed RAW viewfinder.
+ *
+ * <p>Owner's recordings of build 30607 next to the stock camera (2026-10-08): the stock dial zooms 75-400 mm in one smooth
+ * motion with the ISP's colours everywhere; ours flashed purple when mode 9 came on, the developed RAW viewfinder looked
+ * greenish next to the ISP, and the mode flapped on/off around 150 mm. The stock camera's way to an ISP-processed mode-9
+ * preview is not known (its request dump is missing), so by default the preview never forces current_mode: one continuous
+ * zoomRatio crop from the 75 mm lens up to 400 mm, the ISP preview throughout (the HAL is free to use its in-sensor zoom by
+ * itself; a reported mode change is logged). Dev switch {@code xiaomi_isz 1} brings back the forced 2x ISZ at 150 mm. The
+ * tele's vendor keys around zoom / mode / remosaic are logged once to find the stock camera's switch.
  */
 public final class XiaomiTeleZoom {
     private static final String TAG = "XiaomiTeleZoom";
@@ -267,6 +275,8 @@ public final class XiaomiTeleZoom {
     // ---------------------------------------------------------------- UI (zoom ladder like the stock camera)
 
     private static volatile float teleRatio;
+    /** The forced 2x ISZ (current_mode 9 from 150 mm) is in use; off by default (dev switch xiaomi_isz 1). */
+    private static volatile boolean iszEnabled;
 
     /** ModuleRegistry: the automatic ratio of the tele module reads as the stock 3.2× (75 mm) while the switch is on. */
     public static float stockRatio(float autoRatio) {
@@ -385,6 +395,24 @@ public final class XiaomiTeleZoom {
         } catch (RuntimeException ignored) {
             // no key list
         }
+        // P41: the tele's vendor keys around zoom / sensor mode / remosaic, to find the stock camera's ISP-processed ISZ preview
+        StringBuilder vendor = new StringBuilder();
+        try {
+            for (CaptureRequest.Key<?> k : c.getAvailableCaptureRequestKeys()) {
+                String n = k.getName().toLowerCase(Locale.ROOT);
+                if (!n.startsWith("android.") && (n.contains("isz") || n.contains("remosaic") || n.contains("insensor") || n.contains("zoom")
+                        || n.contains("mode") || n.contains("sat") || n.contains("crop") || n.contains("binning") || n.contains("fullsize")))
+                    vendor.append(k.getName()).append(' ');
+            }
+            if (Build.VERSION.SDK_INT >= 28) {
+                StringBuilder session = new StringBuilder();
+                for (CaptureRequest.Key<?> k : c.getAvailableSessionKeys()) session.append(k.getName()).append(' ');
+                Log.i(TAG, "tele " + id + " session keys: " + session.toString().trim());
+            }
+        } catch (RuntimeException ignored) {
+            // no key list
+        }
+        Log.i(TAG, "tele " + id + " vendor request keys (zoom/mode/remosaic): " + vendor.toString().trim());
         Object range = null;
         try { if (Build.VERSION.SDK_INT >= 30) range = c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE); } catch (RuntimeException ignored) { /* none */ }
         Log.i(TAG, "tele " + id + ": focal lengths " + Arrays.toString(focalList) + " (75 mm = " + fMin + " mm), equivalent "
@@ -408,6 +436,13 @@ public final class XiaomiTeleZoom {
      */
     public static Plan apply(CaptureRequest.Builder b, CameraCharacteristics c, boolean switchOn, float moduleZoom, float zoom,
                              String physicalId, boolean lensCheck, boolean forceCrop) {
+        return apply(b, c, switchOn, moduleZoom, zoom, physicalId, lensCheck, forceCrop, false);
+    }
+
+    /** {@code iszMode}: dev switch {@code xiaomi_isz 1}, the forced 2x ISZ (current_mode 9) from 150 mm. */
+    public static Plan apply(CaptureRequest.Builder b, CameraCharacteristics c, boolean switchOn, float moduleZoom, float zoom,
+                             String physicalId, boolean lensCheck, boolean forceCrop, boolean iszMode) {
+        iszEnabled = iszMode;
         if (b == null || !switchOn || !phone() || !teleModule(c) || !supported(b) || moduleZoom <= 0f) return null;
         if (fMin <= 0f) {
             float[] focal = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
@@ -422,7 +457,7 @@ public final class XiaomiTeleZoom {
         teleRatio = moduleZoom;
         final long now = android.os.SystemClock.elapsedRealtime();
         final float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
-        final boolean nextIsz = nextIsz(mm, isz, last == null ? Long.MAX_VALUE : now - lastToggleMs);
+        final boolean nextIsz = iszEnabled && nextIsz(mm, isz, last == null ? Long.MAX_VALUE : now - lastToggleMs);
         // forced crop mode: the lens stands at 75 mm (its reported position follows the claim, so it is not read back)
         final float fixed = forceCrop ? OPT_MIN : lensFixed && lensCheck
                 ? (!Float.isNaN(fixedLensMm) ? fixedLensMm : Float.isNaN(lensMm) ? OPT_MIN : clamp(lensMm, OPT_MIN, OPT_MAX)) : 0f;
@@ -451,7 +486,7 @@ public final class XiaomiTeleZoom {
         Plan p = last;
         if (p == null || moduleZoom <= 0f) return false;
         float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
-        return nextIsz(mm, isz) != isz;
+        return (iszEnabled && nextIsz(mm, isz)) != isz;
     }
 
     private static String lensNote() {

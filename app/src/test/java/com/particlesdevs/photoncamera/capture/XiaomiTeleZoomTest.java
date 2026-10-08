@@ -153,6 +153,27 @@ public class XiaomiTeleZoomTest {
         assertEquals(1f, XiaomiTeleZoom.cropOf(null), E);
     }
 
+    /**
+     * Build 30607 next to the stock camera: by default no forced ISZ, one continuous zoomRatio crop of the 75 mm lens from
+     * 75 to 400 mm (ISP preview throughout, no colour change), inside the HAL's zoomRatio range.
+     */
+    @Test
+    public void withoutTheForcedIszTheWholeSliderIsOneContinuousCrop() {
+        float prev = Float.NaN;
+        for (float mm = 75f; mm <= 400f; mm += 0.5f) {
+            XiaomiTeleZoom.Plan p = XiaomiTeleZoom.planFor(mm, false, 75f);
+            assertFalse(p.isz);
+            assertEquals(USER_75, p.userZoom, E);
+            assertEquals("HAL field of view at " + mm, mm, XiaomiTeleZoom.halFieldOfView(p, 75f), 0.01f * mm);
+            assertEquals("shot crop at " + mm, mm / 75f, p.residual, 1e-3f);
+            assertTrue("zoomRatio inside [1, 13.4375] at " + mm, p.zoomRatio >= 1f && p.zoomRatio <= 13.4375f);
+            float fov = XiaomiTeleZoom.halFieldOfView(p, 75f);
+            if (!Float.isNaN(prev)) assertTrue("jump at " + mm, Math.abs(fov / prev - 1f) < 0.008f);
+            prev = fov;
+        }
+        assertNull("no forced mode without ISZ", XiaomiTeleZoom.modeFor(false, false, 4));
+    }
+
     /** Build 30595 recording: the sensor stayed in mode 9 after ISZ off until a restart; the way back names the old mode. */
     @Test
     public void afterIszTheRequestNamesTheModeToGoBackTo() {
