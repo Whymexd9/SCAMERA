@@ -64,8 +64,6 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_zsl_frames": return new double[]{4,44,1};
             case "pref_lmc_hybrid_sharp_strength": return new double[]{0,2,0};
             case "pref_lmc_hybrid_sharp_amount": return new double[]{0,2,0};
-            case "pref_lmc_hybrid_ae_high": return new double[]{0.02,0.5,0};
-            case "pref_lmc_hybrid_ae_gain_max": return new double[]{1,256,0};
             case "pref_lmc_hybrid_noise_photon": case "pref_lmc_hybrid_noise_readout": return new double[]{0.25,4,0};
             // Per-channel highlight recovery of the hybrid (VivoNiceRgb clamps the strength to 100 %).
             case "pref_lmc_hybrid_highlight_recovery": return new double[]{0,100,0};
@@ -179,7 +177,6 @@ public final class SettingsNumericRules {
             case "pref_lmc_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_lmc_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_lmc_hybrid_highlight_band": return new double[]{0,1,0};
-            case "pref_vivo_nice_sharp_amount": return new double[]{0,2,0};
             case "pref_vivo_nice_chroma_radius": return new double[]{1,12,1};
             case "pref_vivo_nice_post_chroma": case "pref_vivo_nice_post_luma": return new double[]{0,2,0};
             case "pref_watermark_size": return new double[]{3,20,0};

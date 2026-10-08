@@ -9,26 +9,14 @@
     <string name="pref_category_rawvideo_key" translatable="false">pref_category_rawvideo_key</string>
     <string name="pref_theme_category_key" translatable="false">pref_theme_category_key</string>
 
-    <string name="pref_preview_resolution_key" translatable="false">pref_show_afdata_key</string>
     <string name="pref_show_afdata_key" translatable="false">pref_show_afdata_key</string>
-    <string name="pref_enable_system_nr_key" translatable="false">pref_enable_system_nr_key</string>
     <string name="pref_save_per_lens_settings" translatable="false">pref_save_per_lens_settings</string>
-    <string name="pref_disable_aligning_key" translatable="false">pref_disable_aligning_key</string>
     <string name="pref_show_watermark_key" translatable="false">pref_show_watermark_key</string>
-    <string name="pref_enhanced_processing_key" translatable="false">pref_enhanced_processing_key</string>
-    <string name="pref_hdrx_nr_key" translatable="false">pref_hdrx_nr_key</string>
     <string name="pref_save_raw_key" translatable="false">pref_save_raw_key</string>
     <string name="pref_show_roundedge_key" translatable="false">pref_show_roundedge_key</string>
     <string name="pref_show_grid_key" translatable="false">pref_show_grid_key</string>
     <string name="pref_camera_sounds_key" translatable="false">pref_camera_sounds_key</string>
     <string name="pref_timer_sound_key" translatable="false">pref_timer_sound_key</string>
-    <string name="pref_chroma_nr_seekbar_key" translatable="false">pref_chroma_nr_seekbar_key</string>
-    <string name="pref_luma_nr_seekbar_key" translatable="false">pref_luma_nr_seekbar_key</string>
-    <string name="pref_gain_seekbar_key" translatable="false">pref_gain_seekbar_key</string>
-    <string name="pref_sharpness_seekbar_key" translatable="false">pref_sharpness_seekbar_key</string>
-    <string name="pref_nr_luma_enabled_key" translatable="false">pref_nr_luma_enabled_key</string>
-    <string name="pref_nr_chroma_enabled_key" translatable="false">pref_nr_chroma_enabled_key</string>
-    <string name="pref_align_method_key" translatable="false">pref_align_method_key</string>
     <string name="pref_color_method_key" translatable="false">pref_color_method_key</string>
     <string name="pref_peak_method_key" translatable="false">pref_peak_method_key</string>
     <string name="pref_horizon" translatable="false">pref_horizon</string>

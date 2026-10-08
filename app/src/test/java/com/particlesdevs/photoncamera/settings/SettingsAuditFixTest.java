@@ -309,6 +309,18 @@ public class SettingsAuditFixTest {
         assertNull(((PreferenceGroup)screen.findPreference("photo_processing_screen")).findPreference("sharp_settings_screen"));
     }
 
+    /** S5: PhotonCamera keys without a row that api/Settings still read are dropped; the AF data key they aliased stays. */
+    @Test public void readersOfRemovedPhotonCameraKeysAreGone() {
+        prefs.edit().putString("pref_hdrx_nr_key","1").putString("pref_enable_system_nr_key","2").putString("pref_sharpness_seekbar_key","0.5")
+                .putBoolean("pref_live_viewfinder_look_key",true).putString("pref_show_afdata_key","1").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        for(String key:new String[]{"pref_hdrx_nr_key","pref_enable_system_nr_key","pref_sharpness_seekbar_key","pref_live_viewfinder_look_key"})
+            assertFalse(key,prefs.contains(key));
+        assertEquals("1",prefs.getString("pref_show_afdata_key",""));
+        for(java.lang.reflect.Field f:com.particlesdevs.photoncamera.api.Settings.class.getFields())
+            assertFalse(f.getName(),Arrays.asList("noiseReduction","hdrxNR","sharpness","gain","previewFormat").contains(f.getName()));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

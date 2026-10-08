@@ -69,10 +69,6 @@ public class PreferenceKeys {
 
 
 
-    private static float getAcesFloat(String str, String str2) {
-        return Float.parseFloat(getAcesString(str, str2));
-    }
-
 
 
 
@@ -207,16 +203,8 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_SHOW_HORIZON);
     }
 
-    public static int isSystemNrOn() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ENABLE_SYSTEM_NR).intValue();
-    }
-
     public static boolean isRemosaicOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_REMOSAIC);
-    }
-
-    public static boolean isDisableAligningOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_DISABLE_ALIGNINIG);
     }
 
     public static boolean isShowWatermarkOn() {
@@ -290,14 +278,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_SAVE_PER_LENS_SETTINGS);
     }
 
-    public static boolean isEnhancedProcessionOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_ENHANCED_PROCESSING);
-    }
-
-    public static boolean isHdrxNrOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_HDRX_NR);
-    }
-
     public static int isSaveRaw() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SAVE_RAW).intValue();
     }
@@ -328,13 +308,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_TIMER_SOUND, true);
     }
 
-    public static int getChromaNrValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CHROMA_NR_SEEKBAR).intValue();
-    }
-
-    public static int getLumaNrValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LUMA_NR_SEEKBAR).intValue();
-    }
 
 
 
@@ -342,11 +315,6 @@ public class PreferenceKeys {
 
 
 
-
-
-    public static float getSharpnessValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_SHARPNESS_SEEKBAR).floatValue();
-    }
 
     private static float sharpFloat(Key key) {
         return preferenceKeys.settingsManager.getFloat("default_scope", key).floatValue();
@@ -861,12 +829,7 @@ public class PreferenceKeys {
     }
     private static final String[] HYBRID_OUTPUT_VALUES = {"sensor", "12", "16", "20", "2x"};
     private static final String[] HYBRID_DOWNSAMPLER_VALUES = {"lanczos", "bicubic", "area", "bilinear"};
-    /** Index of pref_lmc_hybrid_output in {sensor, 12, 16, 20, 2x} for the quick-settings chips. */
-    public static int hybridOutputIndex() {
-        String m = hybridOutputMode();
-        for (int i = 0; i < HYBRID_OUTPUT_VALUES.length; i++) if (HYBRID_OUTPUT_VALUES[i].equals(m)) return i;
-        return 0;
-    }
+    /** Stores pref_lmc_hybrid_output by its index in {sensor, 12, 16, 20, 2x} (quick-settings chips). */
     public static void setHybridOutputIndex(int index) {
         setHybridValue("output", HYBRID_OUTPUT_VALUES[Math.max(0, Math.min(HYBRID_OUTPUT_VALUES.length - 1, index))]);
     }
@@ -1185,12 +1148,6 @@ public class PreferenceKeys {
         }
         return scamInternalValue(key, fallback);
     }
-    private static boolean scamInternalSwitch(String key, boolean fallback) {
-        Float override = niceDevValue(key);
-        if (override != null) return override > 0f;
-        try { return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_" + key, fallback); }
-        catch (RuntimeException error) { return fallback; }
-    }
     private static float scamInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;
         Float override = niceDevValue(key);
@@ -1208,16 +1165,6 @@ public class PreferenceKeys {
 
 
 
-
-    private static float mfsrFloat(Key key, float fallback) {
-        try {
-            String v = preferenceKeys.settingsManager.getString(
-                    "default_scope", key, String.valueOf(fallback));
-            return (float) SettingsNumericRules.value(key.mValue, v, fallback);
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
 
     /**
      * Highlight handling. Recovery merges from the unclipped channels of a partly
@@ -1326,10 +1273,6 @@ public class PreferenceKeys {
 
 
 
-
-    public static float getGainValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_GAIN_SEEKBAR).floatValue();
-    }
 
 
 
@@ -1473,20 +1416,12 @@ public class PreferenceKeys {
 
     public enum Key {
         KEY_PREF_VERSION(R.string._pref_version),
-        KEY_ENABLE_SYSTEM_NR(R.string.pref_enable_system_nr_key),
         KEY_SAVE_PER_LENS_SETTINGS(R.string.pref_save_per_lens_settings),
-        KEY_DISABLE_ALIGNINIG(R.string.pref_disable_aligning_key),
         KEY_SHOW_WATERMARK(R.string.pref_show_watermark_key),
-        KEY_ENHANCED_PROCESSING(R.string.pref_enhanced_processing_key),
-        KEY_HDRX_NR(R.string.pref_hdrx_nr_key),
         KEY_SHOW_ROUND_EDGE(R.string.pref_show_roundedge_key),
         KEY_SHOW_GRID(R.string.pref_show_grid_key),
         KEY_CAMERA_SOUNDS(R.string.pref_camera_sounds_key),
         KEY_TIMER_SOUND(R.string.pref_timer_sound_key),
-        KEY_CHROMA_NR_SEEKBAR(R.string.pref_chroma_nr_seekbar_key),
-        KEY_LUMA_NR_SEEKBAR(R.string.pref_luma_nr_seekbar_key),
-        KEY_GAIN_SEEKBAR(R.string.pref_gain_seekbar_key),
-        KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
         KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
         KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
@@ -1531,13 +1466,9 @@ public class PreferenceKeys {
         KEY_SHARP_MICRO_UNIFORMITY(R.string.pref_sharp_micro_uniformity_key),
         KEY_SHARP_MICRO_CONTRAST(R.string.pref_sharp_micro_contrast_key),
         KEY_SHARP_MICRO_MATRIX_3X3(R.string.pref_sharp_micro_matrix_key),
-        KEY_NR_LUMA_ENABLED(R.string.pref_nr_luma_enabled_key),
-        KEY_NR_CHROMA_ENABLED(R.string.pref_nr_chroma_enabled_key),
-        KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
-        KEY_ALIGN_METHOD(R.string.pref_align_method_key),
         KEY_COLOR_METHOD(R.string.pref_color_method_key),
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),
         KEY_THEME(R.string.pref_theme_key),
@@ -1549,7 +1480,6 @@ public class PreferenceKeys {
         KEY_AE_METERING_STD(R.string.pref_ae_metering_std_key),
         KEY_BRACKETING_MODE(R.string.pref_bracketing_key),
         KEY_COUNTDOWN_TIMER(R.string.pref_countdown_timer_key),
-        KEY_PREVIEW_RESOLUTION(R.string.pref_preview_resolution_key),
         KEY_VIDEO_RESOLUTION(R.string.pref_video_resolution_key),
         KEY_SHOW_AF_DATA(R.string.pref_show_afdata_key),
         KEY_SHOW_HORIZON(R.string.pref_horizon),

@@ -221,7 +221,6 @@
     <string name="snr_veryhigh_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
     <string name="hdrplus_snr_target">HDR+: target SNR</string>
     <string name="hdrplus_snr_target_summary">The signal-to-noise ratio the merge aims for. Noise reduction strength scales with how far the frame falls short of it. GCam estimates about 110 after the merge on a bright scene</string>
-    <string name="pref_live_viewfinder_look_key" translatable="false">pref_live_viewfinder_look_key</string>
     <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
     <string name="searchbar_scrolling_view_behavior" translatable="false">com.google.android.material.search.SearchBar$ScrollingViewBehavior</string>
     <string name="side_sheet_accessibility_pane_title">Side Sheet</string>

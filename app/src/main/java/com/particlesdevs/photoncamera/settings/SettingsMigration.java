@@ -123,7 +123,11 @@ public final class SettingsMigration {
             // buttons of concept E and the ☆ favourites became the shade's tiles (migrateShadeTiles reads them first)
             "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys",
             // Settings audit (8 October 2026): «Формат превью» only added an ImageReader nobody read to the session
-            "pref_preview_format_key"));
+            "pref_preview_format_key",
+            // Settings audit S5: keys of PhotonCamera settings with no row since P4 / P5 that api/Settings still read
+            "pref_enable_system_nr_key", "pref_disable_aligning_key", "pref_enhanced_processing_key", "pref_hdrx_nr_key",
+            "pref_chroma_nr_seekbar_key", "pref_luma_nr_seekbar_key", "pref_gain_seekbar_key", "pref_sharpness_seekbar_key",
+            "pref_nr_luma_enabled_key", "pref_nr_chroma_enabled_key", "pref_live_viewfinder_look_key", "pref_align_method_key"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes

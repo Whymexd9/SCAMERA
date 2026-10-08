@@ -214,7 +214,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
             setupPhotoFormat();
             setupRemosaicBackend();
-            updateHexQuadDenoiseControls();
             SettingsStyle.apply(getPreferenceScreen());
         }
 
@@ -372,39 +371,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     if(error!=null) PhotonCamera.showToast(error);
                     return error==null;
                 });
-            }
-        }
-
-        /** SCAM HDR mosaic «neural» (Quad 2x2 model): manual Luma / Chroma or the ISO table. */
-        private void updateQuadDenoiseControls() {
-            boolean active=true;
-            boolean auto=com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic()!=null
-                    && com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic().getBoolean("default_scope","quad2x2_auto_iso",false);
-            for(String key:new String[]{"quad2x2_noise_overall","quad2x2_noise_photon","quad2x2_noise_readout",
-                    "quad2x2_auto_iso","quad2x2_luma","quad2x2_chroma","quad2x2_iso_low_luma","quad2x2_iso_low_chroma",
-                    "quad2x2_iso_high_luma","quad2x2_iso_high_chroma"}){
-                Preference p=findPreference(key);if(p==null)continue;
-                boolean enabled=active;
-                if(key.equals("quad2x2_luma")||key.equals("quad2x2_chroma"))enabled &= !auto;
-                if(key.startsWith("quad2x2_iso_"))enabled &= auto;
-                p.setEnabled(enabled);
-            }
-        }
-
-        /** SCAM HDR mosaic «neural» (HexQuad model on Tetra 4x4): manual Luma / Chroma or the ISO table. */
-        private void updateHexQuadDenoiseControls() {
-            updateQuadDenoiseControls();
-            boolean active=true;
-            boolean auto=PreferenceKeys.isHexQuadAutoIso();
-            for(String key:new String[]{"hexquad_compute","hexquad_model","hexquad_noise_overall",
-                    "hexquad_noise_photon","hexquad_noise_readout","hexquad_auto_iso","hexquad_luma","hexquad_chroma",
-                    "hexquad_iso_low_luma","hexquad_iso_low_chroma","hexquad_iso_high_luma","hexquad_iso_high_chroma",
-                    "hexquad_texture"}){
-                Preference p=findPreference(key);if(p==null)continue;
-                boolean enabled=active;
-                if(key.equals("hexquad_luma")||key.equals("hexquad_chroma"))enabled &= !auto;
-                if(key.startsWith("hexquad_iso_"))enabled &= auto;
-                p.setEnabled(enabled);
             }
         }
 
