@@ -90,12 +90,13 @@ public final class ArkTone {
     }
 
     /**
-     * AgX saturation factor for shots rendered with the OPPO tuned ISP matrix (its bright-scene group saturates about
-     * 1.6x more than the DNG matrices GCam/ArkCam use): 0.6 matched ArkCam's chroma on the Oppo within a few percent in
-     * every hue sector and lightness band (night, registered pair, research/hybrid5). 1 = no compensation.
+     * AgX saturation factor for shots rendered with the OPPO tuned ISP matrix (Find X7 Ultra). 0.6 matched ArkCam 2.85 with
+     * the X8U config at night (research/hybrid5); against ArkCam LMC 9.6 with its X7U config (owner's pair 2026-10-08, main and
+     * 3x tele, indoor ~3800 K) 0.6 left half of ArkCam's chroma (C*ab x0.48, lightness-normalised), and the numpy reference of
+     * the tone put the match at 1.1. 1 = no compensation.
      */
     static float ccmSatComp(Parameters p) {
-        return p != null && p.oppoTunedCcm ? Math.max(value("ccm_sat", 0.6f), 0f) : 1f;
+        return p != null && p.oppoTunedCcm ? Math.max(value("ccm_sat", 1.1f), 0f) : 1f;
     }
 
     /** ef_gamma; the mod takes 2.2 for a value at or below 0.1 [pushCurrentLut 0x80da4]. */

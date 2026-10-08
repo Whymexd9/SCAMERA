@@ -404,7 +404,7 @@
     <string name="prefs_lmc_hybrid_ark_agx_sat_title">Насыщенность AgX</string>
     <string name="prefs_lmc_hybrid_ark_agx_ev_title">Экспозиция AgX (EV)</string>
     <string name="prefs_lmc_hybrid_ark_ccm_sat_title">Насыщенность при матрице OPPO</string>
-    <string name="prefs_lmc_hybrid_ark_ccm_sat_summary">Только на OPPO Find X7 Ultra: наша цветовая матрица ISP насыщеннее DNG-матриц, которыми рисует ArkCam (≈1.6×). Множитель насыщенности AgX для таких снимков; 0.6 — как ArkCam, 1 — без компенсации.</string>
+    <string name="prefs_lmc_hybrid_ark_ccm_sat_summary">Только на OPPO Find X7 Ultra: множитель насыщенности AgX для снимков с нашей цветовой матрицей ISP. 1.1 — как ArkCam 9.6 с конфигом X7U; 0.6 — прежнее значение (вдвое меньше цвета), 1 — без изменений.</string>
     <string name="prefs_lmc_hybrid_ark_aces_category_title">Кривая ACES</string>
     <string name="prefs_lmc_hybrid_ark_aces_toe_title">Мягкость глубоких теней (ACES Toe)</string>
     <string name="prefs_lmc_hybrid_ark_aces_toe_summary">Носок ACES в яркостях фьюжна и в обратном преобразовании. ArkCam 2.85: 0,05.</string>

@@ -404,7 +404,7 @@
     <string name="prefs_lmc_hybrid_ark_agx_sat_title">AgX saturation</string>
     <string name="prefs_lmc_hybrid_ark_agx_ev_title">AgX exposure (EV)</string>
     <string name="prefs_lmc_hybrid_ark_ccm_sat_title">Saturation with the OPPO matrix</string>
-    <string name="prefs_lmc_hybrid_ark_ccm_sat_summary">OPPO Find X7 Ultra only: our ISP colour matrix is more saturated than the DNG matrices ArkCam renders with (≈1.6×). AgX saturation multiplier for such shots; 0.6 as in ArkCam, 1: no compensation.</string>
+    <string name="prefs_lmc_hybrid_ark_ccm_sat_summary">OPPO Find X7 Ultra only: AgX saturation multiplier for shots with our ISP colour matrix. 1.1 matches ArkCam 9.6 with its X7U config; 0.6 is the old value (half the colour), 1: no change.</string>
     <string name="prefs_lmc_hybrid_ark_aces_category_title">ACES curve</string>
     <string name="prefs_lmc_hybrid_ark_aces_toe_title">Deep shadow softness (ACES Toe)</string>
     <string name="prefs_lmc_hybrid_ark_aces_toe_summary">ACES toe in the fusion brightness and in the inverse transform. ArkCam 2.85: 0.05.</string>
