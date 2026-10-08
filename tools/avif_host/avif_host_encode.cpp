@@ -5,6 +5,7 @@
 //   avif_host_encode in=<raw> width=<w> height=<h> layout=8888|1010102 out=<file.avif>
 //                    [quality=90] [lossless=0] [depth=10] [yuv=444|420] [speed=6] [threads=<cpus>] [exif=<file>]
 //                    [aom=<key>:<value>,...]   (extra libaom options, for tuning runs)
+//                    [cicp=<primaries>/<transfer>/<matrix>] [icc=<file>]   (P46 colour; default 1/13/1, no ICC)
 //
 // The raw file holds rows of 4-byte pixels without padding, in the Android Bitmap memory layout of the layout.
 #include <cstdio>
@@ -89,6 +90,12 @@ int main(int argc, char** argv) {
         if (colon == std::string::npos) fail("aom option without ':': " + item);
         options.codecOptions.emplace_back(item.substr(0, colon), item.substr(colon + 1));
     }
+
+    const std::string cicp = get("cicp", "");
+    if (!cicp.empty() && std::sscanf(cicp.c_str(), "%d/%d/%d", &options.primaries, &options.transfer, &options.matrix) != 3)
+        fail("cicp must be primaries/transfer/matrix");
+    const std::string iccPath = get("icc", "");
+    if (!iccPath.empty() && !readFile(iccPath, &options.icc)) fail("cannot read icc");
 
     std::vector<uint8_t> pixels, exif;
     if (!readFile(get("in", nullptr), &pixels)) fail("cannot read in");

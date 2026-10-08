@@ -3,8 +3,9 @@
 // 8 / 10 / 12-bit, YCbCr 4:4:4 or 4:2:0, or lossless (identity matrix, 4:4:4, the source's own bit depth). Pixels come
 // from an Android Bitmap: RGBA_8888 or RGBA_1010102 (a 10-bit processing output keeps its 10 bits; an 8-bit one is
 // expanded when a higher depth is chosen). Colour: BT.709 primaries, sRGB transfer (13), BT.709 matrix (identity when
-// lossless), full range. Shared by the JNI library (scamera-avif.cpp) and the host check (tools/check_avif.py), so both
-// encode the same way. Dependencies: scamera-avif-deps.cmake.
+// lossless), full range - unless the options name another colour (P46: Display P3 12/13/1 with its ICC profile, HDR HLG
+// 9/18/9; the matrix also drives libavif's RGB -> YCbCr conversion). Shared by the JNI library (scamera-avif.cpp) and the
+// host check (tools/check_avif.py), so both encode the same way. Dependencies: scamera-avif-deps.cmake.
 #include <avif/avif.h>
 
 #include <algorithm>
@@ -34,6 +35,11 @@ struct Options {
     int threads = 1;        // conversion and encoder threads
     // Extra libaom options (aomenc names, e.g. {"tune", "ssim"}): only the host check's tuning runs set them.
     std::vector<std::pair<std::string, std::string>> codecOptions;
+    // P46: H.273 colour of the file (CICP / nclx) and an optional ICC profile. The defaults are the pre-P46 colour.
+    int primaries = 1;      // 1 BT.709, 12 Display P3 (SMPTE EG 432-1), 9 BT.2020
+    int transfer = 13;      // 13 sRGB, 18 HLG, 16 PQ
+    int matrix = 1;         // 1 BT.709, 9 BT.2020 non-constant luminance (identity when lossless)
+    std::vector<uint8_t> icc;
 };
 
 struct Stats {
@@ -133,9 +139,10 @@ inline ImagePtr toYuv(const uint8_t* pixels, int width, int height, size_t strid
         *error = "out of memory (image)";
         return nullptr;
     }
-    image->colorPrimaries = AVIF_COLOR_PRIMARIES_BT709;
-    image->transferCharacteristics = AVIF_TRANSFER_CHARACTERISTICS_SRGB;
-    image->matrixCoefficients = o.lossless ? AVIF_MATRIX_COEFFICIENTS_IDENTITY : AVIF_MATRIX_COEFFICIENTS_BT709;
+    // Defaults 1 / 13 / 1: AVIF_COLOR_PRIMARIES_BT709, AVIF_TRANSFER_CHARACTERISTICS_SRGB, AVIF_MATRIX_COEFFICIENTS_BT709.
+    image->colorPrimaries = avifColorPrimaries(o.primaries);
+    image->transferCharacteristics = avifTransferCharacteristics(o.transfer);
+    image->matrixCoefficients = o.lossless ? AVIF_MATRIX_COEFFICIENTS_IDENTITY : avifMatrixCoefficients(o.matrix);
     image->yuvRange = AVIF_RANGE_FULL;
     avifResult r = avifImageAllocatePlanes(image.get(), AVIF_PLANES_YUV);
     if (r != AVIF_RESULT_OK) {
@@ -189,6 +196,12 @@ inline std::string encodeImage(avifImage* image, const Options& o, const uint8_t
                                const std::string& path, Stats* stats) {
     const auto start = detail::Clock::now();
     bool exifStored = false;
+    if (!o.icc.empty()) {
+        // P46: the ICC profile (colr 'prof', written next to the nclx box). A colour the file cannot declare fails the
+        // encode: the photo is then saved as a JPEG with the same profile instead of an AVIF with the wrong colours.
+        const avifResult iccResult = avifImageSetProfileICC(image, o.icc.data(), o.icc.size());
+        if (iccResult != AVIF_RESULT_OK) return std::string("ICC profile: ") + avifResultToString(iccResult);
+    }
     if (exif != nullptr && exifSize > 0) {
         // A block libavif cannot parse costs the EXIF, never the photo.
         exifStored = avifImageSetMetadataExif(image, exif, exifSize) == AVIF_RESULT_OK;

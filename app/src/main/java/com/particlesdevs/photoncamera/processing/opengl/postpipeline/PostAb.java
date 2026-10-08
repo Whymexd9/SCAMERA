@@ -39,7 +39,7 @@ public final class PostAb {
     public static boolean wanted(Parameters p) {
         if (!PreferenceKeys.niceDevSwitch("post_ab", false)) return false;
         final boolean fits = p != null && p.vivoNiceRgb != null && p.vivoNiceRgbOwned && p.rawSize != null
-                && (long) p.rawSize.x * p.rawSize.y <= 16_000_000L && !PhotonCamera.getSettings().ultraHdr;
+                && (long) p.rawSize.x * p.rawSize.y <= 16_000_000L && !PhotonCamera.getSettings().gainMapPass();
         if (!fits) Log.i("NICE_PIPELINE", "POST AB skipped: needs the owned worker RGB of 16 MP or less without Ultra HDR");
         return fits;
     }

@@ -108,6 +108,11 @@ public class PostPipeline extends GLBasePipeline {
      * target and ARGB_8888 bitmap as always.
      */
     public boolean tenBitOutput;
+    /**
+     * P46 «Цветовое пространство» Display P3 (set by the caller before {@link #Run}): ArkCombine renders the final image in
+     * Display P3 primaries (ark/combine.glsl with P3_OUT 1). Off: the sRGB shader exactly as before (the define is not set).
+     */
+    public boolean p3Output;
 
     public PostPipeline() {
         super("PostPipeline");
@@ -168,7 +173,7 @@ public class PostPipeline extends GLBasePipeline {
         mSettings = PhotonCamera.getSettings();
         workSize = new Point(mParameters.rawSize.x, mParameters.rawSize.y);
         computeNoise(parameters);
-        captureDemosaic = mSettings.ultraHdr;
+        captureDemosaic = mSettings.gainMapPass();
         mCaptured = false;
         linearDisplayGain = 1.0f;
         niceNoiseSigma = 0f;
@@ -182,7 +187,7 @@ public class PostPipeline extends GLBasePipeline {
         cropSize = new Point(parameters.rawSize);
         finalSize = null;
         finalResized = false;
-        if (!mSettings.ultraHdr && parameters.hybridFinalSize != null
+        if (!mSettings.gainMapPass() && parameters.hybridFinalSize != null
                 && parameters.hybridFinalSize.x < parameters.rawSize.x && parameters.hybridFinalSize.y < parameters.rawSize.y) {
             // The output image, the crop and the rotation work on the resized image (HybridFinalResize before Rotate).
             finalSize = new Point(parameters.hybridFinalSize);
@@ -238,7 +243,7 @@ public class PostPipeline extends GLBasePipeline {
 
     /** W1.3: the GL teardown may wait until the JPEG is saved: 16 MP or less, no Ultra HDR pass, not the old model of post_ab. */
     public static boolean canDeferTeardown(Parameters parameters) {
-        return parameters != null && parameters.rawSize != null && !PhotonCamera.getSettings().ultraHdr
+        return parameters != null && parameters.rawSize != null && !PhotonCamera.getSettings().gainMapPass()
                 && (long) parameters.rawSize.x * parameters.rawSize.y <= 16_000_000L
                 && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
     }

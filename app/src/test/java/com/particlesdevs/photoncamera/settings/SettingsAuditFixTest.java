@@ -152,6 +152,7 @@ public class SettingsAuditFixTest {
     @Test public void sharedSettingsAreNeverPerModule() {
         String[] global={PreferenceKeys.ROUTE_KEY,"pref_camera_sounds_key","pref_timer_sound_key","pref_show_grid_key","pref_photo_format",
                 "pref_jpeg_quality","pref_heic_quality","pref_heic_10bit","pref_webp_quality","pref_webp_lossless","pref_photo_also_jpeg",
+                "pref_photo_color_space","pref_photo_hdr",
                 "pref_avif_quality","pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key","pref_watermark_line1",
                 "pref_watermark_line2","pref_watermark_logo","pref_watermark_size","pref_watermark_opacity","pref_root_enabled",
                 "pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",

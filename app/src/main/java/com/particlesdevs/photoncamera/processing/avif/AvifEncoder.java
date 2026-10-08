@@ -7,6 +7,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 import com.particlesdevs.photoncamera.processing.PhotoFormat;
+import com.particlesdevs.photoncamera.processing.color.OutputColour;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -19,7 +20,8 @@ import java.nio.file.Path;
  * an AV1 still image, 8 / 10 / 12-bit, YCbCr 4:4:4 or 4:2:0, or lossless (identity matrix, 4:4:4). BT.709 primaries, sRGB
  * transfer, BT.709 matrix, full range. Takes an ARGB_8888 bitmap or an RGBA_1010102 one (a 10-bit processing output keeps
  * its 10 bits; 8-bit pixels are expanded when a higher depth is chosen). Every failure is an IOException: the caller saves
- * the photo as JPEG instead.
+ * the photo as JPEG instead. P46: {@link Options#withColour} declares another colour - Display P3 (CICP 12/13/1 and the
+ * P3 ICC profile) or HDR HLG (CICP 9/18/9, the BT.2020 matrix of the RGB -> YCbCr conversion); the default is the above.
  */
 public final class AvifEncoder {
     private static final String TAG = "AvifEncoder";
@@ -74,14 +76,26 @@ public final class AvifEncoder {
         public final int speed;
         /** Conversion and encoder threads. */
         public final int threads;
+        /** P46: the colour the file declares (CICP + optional ICC); {@link OutputColour.Signal#SRGB} by default. */
+        public final OutputColour.Signal colour;
 
         public Options(int quality, boolean lossless, int depth, boolean yuv444, int speed, int threads) {
+            this(quality, lossless, depth, yuv444, speed, threads, OutputColour.Signal.SRGB);
+        }
+
+        private Options(int quality, boolean lossless, int depth, boolean yuv444, int speed, int threads, OutputColour.Signal colour) {
             this.quality = Math.max(1, Math.min(100, quality));
             this.lossless = lossless;
             this.depth = depth == 8 || depth == 12 ? depth : 10;
             this.yuv444 = yuv444;
             this.speed = Math.max(0, Math.min(10, speed));
             this.threads = Math.max(1, threads);
+            this.colour = colour == null ? OutputColour.Signal.SRGB : colour;
+        }
+
+        /** These settings declaring {@code signal} (P46). */
+        public Options withColour(OutputColour.Signal signal) {
+            return new Options(quality, lossless, depth, yuv444, speed, threads, signal);
         }
 
         /** Whether the file has full-resolution chroma (lossless always does). */
@@ -91,7 +105,8 @@ public final class AvifEncoder {
 
         /** "10-bit 4:4:4 q90 speed 6" / "lossless speed 6": the log's description. */
         public String describe() {
-            return (lossless ? "lossless" : depth + "-bit " + (yuv444 ? "4:4:4" : "4:2:0") + " q" + quality) + " speed " + speed;
+            return (lossless ? "lossless" : depth + "-bit " + (yuv444 ? "4:4:4" : "4:2:0") + " q" + quality) + " speed " + speed
+                    + (colour.isDefault() ? "" : " " + colour);
         }
     }
 
@@ -139,7 +154,8 @@ public final class AvifEncoder {
 
     /** Null on success, else the reason; stats: depth, 4:4:4, conversion ms, encode ms, bytes, EXIF stored. */
     private static native String encode(Bitmap bitmap, String path, int quality, boolean lossless, int depth, boolean yuv444,
-                                        int speed, int threads, byte[] exif, long[] stats);
+                                        int speed, int threads, byte[] exif, int primaries, int transfer, int matrix,
+                                        byte[] icc, long[] stats);
 
     /**
      * Writes {@code bitmap} (ARGB_8888 or RGBA_1010102) to {@code file} as AVIF with {@code exif} ("Exif\0\0" + TIFF, the
@@ -152,8 +168,9 @@ public final class AvifEncoder {
         long[] stats = new long[6];
         String error;
         try {
+            final OutputColour.Signal c = options.colour;
             error = encode(bitmap, file.toString(), options.quality, options.lossless, options.depth, options.yuv444,
-                    options.speed, options.threads, exif, stats);
+                    options.speed, options.threads, exif, c.primaries, c.transfer, c.matrix, c.icc(), stats);
         } catch (RuntimeException | LinkageError e) {
             error = String.valueOf(e);
         }

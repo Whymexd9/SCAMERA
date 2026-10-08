@@ -63,13 +63,15 @@ std::string encode(JNIEnv* env, jobject bitmap, jstring path, const scamera_avif
 }
 }  // namespace
 
-// Returns null on success, else the reason (no file is left behind). stats (long[6] or null) receives: bit depth,
+// Returns null on success, else the reason (no file is left behind). primaries / transfer / matrix: the H.273 colour of
+// the file (1 / 13 / 1 by default), icc: an ICC profile or null (P46). stats (long[6] or null) receives: bit depth,
 // 1 when 4:4:4, conversion ms, encode ms, file bytes, 1 when the EXIF block was stored.
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_particlesdevs_photoncamera_processing_avif_AvifEncoder_encode(JNIEnv* env, jclass, jobject bitmap, jstring path,
                                                                        jint quality, jboolean lossless, jint depth,
                                                                        jboolean yuv444, jint speed, jint threads,
-                                                                       jbyteArray exif, jlongArray stats) {
+                                                                       jbyteArray exif, jint primaries, jint transfer,
+                                                                       jint matrix, jbyteArray icc, jlongArray stats) {
     scamera_avif::Options options;
     options.quality = quality;
     options.lossless = lossless == JNI_TRUE;
@@ -77,10 +79,19 @@ Java_com_particlesdevs_photoncamera_processing_avif_AvifEncoder_encode(JNIEnv* e
     options.yuv444 = yuv444 == JNI_TRUE;
     options.speed = speed;
     options.threads = threads;
+    options.primaries = primaries;
+    options.transfer = transfer;
+    options.matrix = matrix;
     scamera_avif::Stats result;
     std::string error;
     try {
-        error = encode(env, bitmap, path, options, exif, &result);
+        if (icc != nullptr) {
+            const jsize n = env->GetArrayLength(icc);
+            options.icc.resize(size_t(n));
+            if (n > 0) env->GetByteArrayRegion(icc, 0, n, reinterpret_cast<jbyte*>(options.icc.data()));
+            if (env->ExceptionCheck()) error = "ICC profile unreadable";
+        }
+        if (error.empty()) error = encode(env, bitmap, path, options, exif, &result);
     } catch (const std::bad_alloc&) {
         error = "out of memory";
     } catch (const std::exception& e) {

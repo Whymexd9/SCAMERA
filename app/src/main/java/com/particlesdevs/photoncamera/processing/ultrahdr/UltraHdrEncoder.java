@@ -77,6 +77,16 @@ public final class UltraHdrEncoder {
     /** As above, with the JPEG quality of the base image and the gain map (P24 «Качество JPEG»). */
     public static void encodeToFile(Path file, Bitmap sdr, GainMapComputer.Result gm, ParseExif.ExifData exif, int quality)
             throws IOException {
+        encodeToFile(file, sdr, gm, exif, quality, null);
+    }
+
+    /**
+     * As above; {@code icc} (P46, Display P3) is the ICC profile of the base image, an APP2 ICC_PROFILE of the primary JPEG
+     * (the gain map has none: it is applied in the base image's colour space, and a scalar gain is the same in any
+     * primaries). Null: the base image is encoded straight into the container as before.
+     */
+    public static void encodeToFile(Path file, Bitmap sdr, GainMapComputer.Result gm, ParseExif.ExifData exif, int quality,
+                                    byte[] icc) throws IOException {
         final byte[] gainMapJpeg = compressGainMap(gm, quality);
         final byte[] exifApp1 = exif != null ? exifSegment(exif, sdr.getWidth(), sdr.getHeight()) : null;
         boolean done = false;
@@ -87,7 +97,11 @@ public final class UltraHdrEncoder {
                 final ByteBuffer patch = ByteBuffer.wrap(bytes);
                 long at = offset;
                 while (patch.hasRemaining()) at += channel.write(patch, at);
-            }, o -> compressPrimary(sdr, o, quality), exifApp1, gainMapJpeg, gm.gainMapMin, gm.gainMapMax, gm.hdrCapacityMax);
+            }, icc == null ? o -> compressPrimary(sdr, o, quality) : o -> {
+                final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(o, icc);
+                compressPrimary(sdr, tagged, quality);
+                tagged.close();
+            }, exifApp1, gainMapJpeg, gm.gainMapMin, gm.gainMapMax, gm.hdrCapacityMax);
             out.flush();
             done = true;
         } finally {

@@ -30,6 +30,10 @@ public enum PhotoFormat {
     public static final String KEY_AVIF_SPEED = "pref_avif_speed";
     /** «Также сохранять JPEG»: a JPEG (with Ultra HDR when that is on) next to the HEIC / WebP / AVIF photo. */
     public static final String KEY_ALSO_JPEG = "pref_photo_also_jpeg";
+    /** P46 «Цветовое пространство»: srgb (default) or p3 (processing.color.OutputColour.Space), every format. */
+    public static final String KEY_COLOR_SPACE = "pref_photo_color_space";
+    /** P46 «HDR в HEIC / AVIF»: an HLG BT.2020 picture in the 10-bit HEIC / 10-12-bit AVIF (processing.color.HdrOutput). */
+    public static final String KEY_HDR = "pref_photo_hdr";
     public static final int DEFAULT_QUALITY = 90;
     /** HEIC needs the platform HEIF support of Android 9 (androidx.heifwriter's minSdk, HEIF decode in the gallery). */
     public static final int HEIC_MIN_SDK = 28;

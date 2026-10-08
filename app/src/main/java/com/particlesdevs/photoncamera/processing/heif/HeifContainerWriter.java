@@ -1,5 +1,7 @@
 package com.particlesdevs.photoncamera.processing.heif;
 
+import com.particlesdevs.photoncamera.processing.color.OutputColour;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -13,14 +15,16 @@ import java.util.List;
  * ftyp  major 'heic', compatible 'mif1' 'heic' 'heix' 'miaf'
  * meta  hdlr 'pict' | pitm = grid | iinf: tiles 1..N ('hvc1', hidden), grid N+1, Exif N+2
  *       iref: 'dimg' grid -> tiles (raster order), 'cdsc' Exif -> grid
- *       iprp: ipco [1 hvcC, 2 ispe tile, 3 ispe image, 4 colr nclx, 5 pixi]; ipma: tile -> 1 (essential), 2, 4, 5;
- *             grid -> 3, 4, 5
+ *       iprp: ipco [1 hvcC, 2 ispe tile, 3 ispe image, 4 colr nclx, 5 pixi(, 6 colr prof)]; ipma: tile -> 1 (essential),
+ *             2, 4, 5(, 6); grid -> 3, 4, 5(, 6)
  *       iloc (version 1, construction_method 0): every item's data in mdat (absolute file offsets)
  * mdat  ImageGrid | Exif (4-byte tiff header offset + "Exif\0\0" + TIFF) | tile samples (4-byte length-prefixed NAL units)
  * </pre>
  * 'heic' and 'mif1' are both listed because androidx ExifInterface takes a file as HEIF only with both brands; 'heix'
  * names the Main10 profile. colr: BT.709 primaries, sRGB transfer (13), BT.709 matrix, full range - the encoder's VUI says
- * BT.709 SDR video, the container carries the real sRGB transfer. Pure Java (no Android types).
+ * BT.709 SDR video, the container carries the real sRGB transfer. P46 ({@link #setColour}): another nclx (Display P3
+ * 12/13/1, HLG 9/18/9) and, when the colour has one, an ICC profile as a second colr ('prof') on the tiles and the grid;
+ * the default colour writes exactly the boxes above. Pure Java (no Android types).
  */
 public final class HeifContainerWriter {
     /** nclx colour of the image: BT.709 primaries, sRGB transfer, BT.709 matrix, full range. */
@@ -34,6 +38,7 @@ public final class HeifContainerWriter {
     private final int bitDepth;
     private final List<byte[]> tiles = new ArrayList<>();
     private byte[] exif;
+    private OutputColour.Signal colour = OutputColour.Signal.SRGB;
 
     /**
      * @param grid     the tile layout of the image
@@ -64,6 +69,11 @@ public final class HeifContainerWriter {
      */
     public void setExif(byte[] exifDataBlock) {
         exif = exifDataBlock == null || exifDataBlock.length == 0 ? null : exifDataBlock.clone();
+    }
+
+    /** P46: the colour the file declares (nclx codes, optional ICC profile); {@link OutputColour.Signal#SRGB} by default. */
+    public void setColour(OutputColour.Signal signal) {
+        colour = signal == null ? OutputColour.Signal.SRGB : signal;
     }
 
     /** Exif item data: exif_tiff_header_offset (bytes from the start of the payload to the TIFF header) + the payload. */
@@ -208,31 +218,40 @@ public final class HeifContainerWriter {
         ispe(b, grid.width, grid.height); // 3
         b.start("colr"); // 4
         b.fourcc("nclx");
-        b.u16(PRIMARIES);
-        b.u16(TRANSFER_SRGB);
-        b.u16(MATRIX);
-        b.u8(FULL_RANGE ? 0x80 : 0);
+        b.u16(colour.primaries);
+        b.u16(colour.transfer);
+        b.u16(colour.matrix);
+        b.u8(colour.fullRange ? 0x80 : 0);
         b.end();
         b.startFull("pixi", 0, 0); // 5
         b.u8(3);
         for (int c = 0; c < 3; c++) b.u8(bitDepth);
         b.end();
+        final boolean icc = colour.hasIcc();
+        if (icc) {
+            b.start("colr"); // 6: the ICC profile (HEIF allows one nclx and one ICC colr per item)
+            b.fourcc("prof");
+            b.raw(colour.icc());
+            b.end();
+        }
         b.end(); // ipco
         b.startFull("ipma", 0, 0);
         b.u32(n + 1); // entry_count: the tiles and the grid (the Exif item has no properties)
         for (int id = 1; id <= n; id++) {
             b.u16(id);
-            b.u8(4);
+            b.u8(icc ? 5 : 4);
             b.u8(0x80 | 1); // hvcC, essential
             b.u8(2);
             b.u8(4);
             b.u8(5);
+            if (icc) b.u8(6);
         }
         b.u16(gridId);
-        b.u8(3);
+        b.u8(icc ? 4 : 3);
         b.u8(3);
         b.u8(4);
         b.u8(5);
+        if (icc) b.u8(6);
         b.end(); // ipma
         b.end(); // iprp
 

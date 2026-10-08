@@ -189,6 +189,24 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_heic_quality","0",90),1);eq(SettingsNumericRules.value("pref_webp_quality","150",90),100);
         eq(SettingsNumericRules.value("pref_webp_quality","NaN",90),90);
         if(SettingsNumericRules.error("pref_heic_quality","50.5")==null)throw new AssertionError("fractional HEIC quality accepted");
+        // P46 «Цветовое пространство» serves every format; «HDR в HEIC / AVIF» only HEIC with «HEIC 10 бит» and AVIF at 10 / 12 bit
+        // (lossless keeps 10), never JPEG / WebP, and not below Android 13 (device fact).
+        Map<String,Object> c=new HashMap<>();
+        for(String fmt:new String[]{"jpeg","heic","webp","avif"}){
+            c.put("pref_photo_format",fmt);
+            if(new SettingsAvailability(c).hidden("pref_photo_color_space"))throw new AssertionError("colour space hidden for "+fmt);
+            active(c,"pref_photo_color_space");
+            if(new SettingsAvailability(c).hidden("pref_photo_hdr")!=(fmt.equals("jpeg")||fmt.equals("webp")))throw new AssertionError("HDR row visibility for "+fmt);
+        }
+        c.put("pref_photo_format","heic");inactive(c,"pref_photo_hdr");
+        c.put("pref_heic_10bit",true);active(c,"pref_photo_hdr");
+        if(!new SettingsAvailability(c).heic10Unavailable("нет кодека").reason("pref_photo_hdr").endsWith("нет кодека"))throw new AssertionError("HDR reason without the 10-bit HEIC reason");
+        if(!"старый".equals(new SettingsAvailability(c).hdrUnavailable("старый").reason("pref_photo_hdr")))throw new AssertionError("HDR device reason lost");
+        if(new SettingsAvailability(c).hdrUnavailable("старый").reason("pref_heic_10bit")!=null)throw new AssertionError("HDR reason on 10-bit HEIC");
+        c.put("pref_photo_format","avif");c.remove("pref_heic_10bit");active(c,"pref_photo_hdr");
+        c.put("pref_avif_depth","8");inactive(c,"pref_photo_hdr");
+        c.put("pref_avif_lossless",true);active(c,"pref_photo_hdr");
+        c.put("pref_avif_lossless",false);c.put("pref_avif_depth","12");active(c,"pref_photo_hdr");
         // Settings audit H3: rows that do nothing in the current configuration explain why.
         Map<String,Object> sh=new HashMap<>(); // sharpening "ark" (default), no extra sharpening after the tone
         active(sh,"pref_lmc_hybrid_ark_sharp_gain");active(sh,"pref_lmc_hybrid_ark_sharp_rl1_kernel");active(sh,"pref_lmc_hybrid_ark_post_sharp");

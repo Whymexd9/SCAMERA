@@ -12,6 +12,8 @@ public final class SettingsAvailability {
     private final Map<String, ?> values;
     /** Why this phone cannot write the 10-bit HEIC (heif.Heic10Support.unavailableReason), null when it can or is not known. */
     private String heic10Unavailable;
+    /** Why «HDR в HEIC / AVIF» cannot act on this phone (processing.color.HdrOutput.unavailableReason: Android 13), or null. */
+    private String hdrUnavailable;
     /** The vivo stock AE observer runs on this phone (capture.VivoStockAe.supportedDevice: the vivo X200 Ultra). */
     private boolean stockAeDevice;
     /** Why «Цветовой метод» does not act here (a tuned / ISP matrix replaces it), null when it does. */
@@ -23,6 +25,8 @@ public final class SettingsAvailability {
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
     /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
     public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
+    /** The device fact behind «HDR в HEIC / AVIF»: the reason it cannot act here (Android version) or null. */
+    public SettingsAvailability hdrUnavailable(String reason) { hdrUnavailable = reason; return this; }
     /** The device fact behind «Стоковый AE vivo»: the stock AE observer exists on this phone. */
     public SettingsAvailability stockAeDevice(boolean supported) { stockAeDevice = supported; return this; }
     /** The device fact behind «Цветовой метод»: the matrix that replaces the choice on this phone, or null. */
@@ -56,8 +60,8 @@ public final class SettingsAvailability {
 
     /**
      * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
-     * are not chosen (HEIC quality / 10 bit, WebP quality / lossless, the AVIF rows) and «Также сохранять JPEG» while the
-     * format is JPEG; and the rows of what this phone does not have (SCAM HDR and its checks without the 8 Elite, the Xiaomi
+     * are not chosen (HEIC quality / 10 bit, WebP quality / lossless, the AVIF rows, «HDR в HEIC / AVIF» outside HEIC / AVIF)
+     * and «Также сохранять JPEG» while the format is JPEG («Цветовое пространство» serves every format); and the rows of what this phone does not have (SCAM HDR and its checks without the 8 Elite, the Xiaomi
      * smooth zoom).
      */
     public boolean hidden(String key) {
@@ -71,6 +75,7 @@ public final class SettingsAvailability {
             case "pref_avif_quality": case "pref_avif_lossless": case "pref_avif_depth": case "pref_avif_chroma":
             case "pref_avif_speed": return !format.equals("avif");
             case "pref_photo_also_jpeg": return format.equals("jpeg");
+            case "pref_photo_hdr": return !format.equals("heic") && !format.equals("avif");
             default: return false;
         }
     }
@@ -153,6 +158,22 @@ public final class SettingsAvailability {
         }
         // «HEIC 10 бит» needs Android 13 and an HEVC Main10 encoder with P010 input; without them the shot is an 8-bit HEIC.
         if (key.equals("pref_heic_10bit") && heic10Unavailable != null) return heic10Unavailable;
+        // «HDR в HEIC / AVIF» (P46): HLG needs 10 bits - the 10-bit HEIC, or AVIF at 10 / 12 bit (lossless keeps 10) - and
+        // RGBA_1010102 bitmaps (Android 13); otherwise the HEIC / AVIF stays SDR.
+        if (key.equals("pref_photo_hdr")) {
+            if (hdrUnavailable != null) return hdrUnavailable;
+            if (photoFormat().equals("heic")) {
+                if (!on("pref_heic_10bit", false))
+                    return Lang.t("Включите «HEIC 10 бит»: HDR хранится только в 10-битном HEIC.",
+                            "Turn on “10-bit HEIC”: HDR needs the 10-bit HEIC.");
+                if (heic10Unavailable != null)
+                    return Lang.t("HDR хранится только в 10-битном HEIC, а он здесь недоступен. ", "HDR needs the 10-bit HEIC, which is unavailable here. ")
+                            + heic10Unavailable;
+            }
+            if (photoFormat().equals("avif") && !on("pref_avif_lossless", false) && text("pref_avif_depth", "10").trim().startsWith("8"))
+                return Lang.t("Выберите «Глубина цвета» 10 или 12 бит: в 8 битах HDR не хранится.",
+                        "Choose “Colour depth” 10 or 12 bit: 8 bits cannot hold HDR.");
+        }
         if (key.equals("pref_webp_quality") && on("pref_webp_lossless", false))
             return Lang.t("Не используется в WebP без потерь.", "Not used by lossless WebP.");
         // AVIF «Без потерь» stores the exact pixels: identity matrix, 4:4:4 and the photo's own bit depth.

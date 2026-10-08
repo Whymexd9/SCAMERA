@@ -376,6 +376,15 @@
         <item>444</item>
         <item>420</item>
     </string-array>
+    <!-- «Цветовое пространство» (P46, processing.color.OutputColour.Space) -->
+    <string-array name="photo_color_space_entries">
+        <item>sRGB (standard)</item>
+        <item>Display P3 (wide colour)</item>
+    </string-array>
+    <string-array name="photo_color_space_values" translatable="false">
+        <item>srgb</item>
+        <item>p3</item>
+    </string-array>
     <!-- libavif speed (libaom cpu-used); PhotoFormat.AVIF_DEFAULT_SPEED -->
     <string-array name="avif_speed_entries">
         <item>Thorough (slow)</item>

@@ -27,6 +27,13 @@ precision highp sampler2D;
 // clamp per tap lifted the mean of a channel near zero (red mottling of a dark teal curtain under the shadow lift).
 // 0 (unset: SCAM HDR, the hybrid after the LMC/GCam denoise): per tap as before. The taps can be negative there as well (a
 // saturated colour outside sRGB after the colour matrix); clamping those after the interpolation would move colour edges.
+// P3_OUT 1 (P46 «Цветовое пространство» Display P3, ArkCombine sets it): the working colour stays linear sRGB / Rec.709
+// coordinates, but nothing clamps it at the sRGB gamut - the clamps at 0 act on the P3 coordinates (clampP3), AgX takes the
+// colour with its OKLab chroma reduced into the positive sRGB range and the chroma lost there comes back afterwards
+// (x C_in / C_reduced), the gamut limit is P3, and the output is display-encoded P3. A colour inside sRGB takes exactly the
+// sRGB operations (the same image, written in P3 primaries); a wider one keeps up to P3 of its chroma. P3_OUT 0 (the
+// default): every #if P3_OUT block below drops out and the #else branches are the sRGB shader unchanged.
+#define P3_OUT 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -66,6 +73,15 @@ uniform float hlWhiteU;             // path to white of saturated light entering
 out vec4 Output;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+#if P3_OUT == 1
+// Linear sRGB <-> linear Display P3 (D65), column-major (processing.color.OutputColour.srgbToP3 / p3ToSrgb).
+const mat3 SRGB_TO_P3 = mat3(0.8224619687, 0.0331941989, 0.0170826307, 0.1775380313, 0.9668058011, 0.0723974407,
+                             0.0, 0.0, 0.9105199286);
+const mat3 P3_TO_SRGB = mat3(1.2249401763, -0.0420569547, -0.0196375546, -0.2249401763, 1.0420569547, -0.0786360456,
+                             0.0, 0.0, 1.0982736001);
+// sRGB coordinates of a colour with its negative P3 components set to 0 (the P3 counterpart of max(c, 0)).
+vec3 clampP3(vec3 c) { return P3_TO_SRGB * max(SRGB_TO_P3 * c, vec3(0.0)); }
+#endif
 
 vec3 sceneLinear(ivec2 xy, ivec2 size) {
     vec3 inColor = max(texelFetch(InputBuffer, xy, 0).rgb, vec3(0.0));
@@ -131,6 +147,38 @@ vec3 toOklab(vec3 c) {
 
 // OKLab -> linear sRGB without the final clamp (the kernel clamps or floors at the call site).
 vec3 fromOklab(vec3 lab);
+
+#if P3_OUT == 1
+// OKLab -> linear sRGB coordinates of a colour inside the P3 gamut [0, 1]: the counterpart of fromOklabInGamut for P3.
+vec3 fromOklabInGamutP3(vec3 lab) {
+    lab.x = clamp(lab.x, 0.0, 1.0);
+    vec3 c = SRGB_TO_P3 * fromOklab(lab);
+    if (all(greaterThanEqual(c, vec3(-0.0005))) && all(lessThanEqual(c, vec3(1.0005)))) return P3_TO_SRGB * clamp(c, 0.0, 1.0);
+    float lo = 0.0, hi = 1.0;
+    for (int i = 0; i < 10; i++) {
+        float mid = 0.5 * (lo + hi);
+        vec3 t = SRGB_TO_P3 * fromOklab(vec3(lab.x, lab.yz * mid));
+        if (all(greaterThanEqual(t, vec3(-0.0005))) && all(lessThanEqual(t, vec3(1.0005)))) lo = mid; else hi = mid;
+    }
+    return P3_TO_SRGB * clamp(SRGB_TO_P3 * fromOklab(vec3(lab.x, lab.yz * lo)), 0.0, 1.0);
+}
+
+// The colour with its OKLab chroma reduced (L and hue kept) until no sRGB channel is negative - AgX's inset and log take
+// non-negative input - and k = the chroma ratio in / out (1 for a colour inside sRGB, which is returned unchanged).
+vec3 intoSrgbPositive(vec3 c, out float k) {
+    k = 1.0;
+    if (min(c.r, min(c.g, c.b)) >= 0.0) return c;
+    vec3 lab = toOklab(c);
+    float lo = 0.0, hi = 1.0;
+    for (int i = 0; i < 12; i++) {
+        float mid = 0.5 * (lo + hi);
+        vec3 t = fromOklab(vec3(lab.x, lab.yz * mid));
+        if (all(greaterThanEqual(t, vec3(0.0)))) lo = mid; else hi = mid;
+    }
+    k = 1.0 / max(lo, 0.05);
+    return max(fromOklab(vec3(lab.x, lab.yz * lo)), vec3(0.0));
+}
+#endif
 
 // OKLab -> linear sRGB inside [0, 1]: L is kept, the chroma is reduced (hue kept) until every channel fits, so a bright
 // saturated colour does not lose its texture to a per-channel clamp (a positive detail delta lowers its chroma instead).
@@ -198,7 +246,11 @@ void main() {
     bool bounded = detailRefU == 1 && f != 1;
     if (f == 1) {
         // same size as the low grid: the kernel's full-resolution bypass (no interpolation)
+#if P3_OUT == 1
+        orig = clampP3(finiteTap(texelFetch(ArkColour, xy, 0).rgb));
+#else
         orig = sanitize(texelFetch(ArkColour, xy, 0).rgb);
+#endif
         fused = max(texelFetch(ArkFused, xy, 0).r, 0.0);
         yLow = max(dot(texelFetch(ArkLow, xy, 0).rgb, LUMA), 0.000001);
     } else {
@@ -227,10 +279,18 @@ void main() {
             for (int dx = -1; dx <= 2; dx++) {
                 ivec2 p = clamp(ivec2(bx + dx, by + dy), ivec2(0), lastColour);
                 vec3 tap = texelFetch(ArkColour, p, 0).rgb;
+#if P3_OUT == 1
+                orig += (signedColourU != 0 ? finiteTap(tap) : clampP3(finiteTap(tap))) * (wx[dx + 1] * wy[dy + 1]);
+#else
                 orig += (signedColourU != 0 ? finiteTap(tap) : sanitize(tap)) * (wx[dx + 1] * wy[dy + 1]);
+#endif
             }
         }
+#if P3_OUT == 1
+        if (signedColourU != 0) orig = clampP3(orig);
+#else
         if (signedColourU != 0) orig = max(orig, vec3(0.0));
+#endif
     }
 
     // === 2. ACES inversion and base gain [:1500-1509] ===
@@ -295,7 +355,11 @@ void main() {
     }
     float inChroma = length(lab.yz);
     vec2 hueDir = inChroma > 0.000001 ? lab.yz / inChroma : vec2(0.0);
+#if P3_OUT == 1
+    vec3 scene = clampP3(fromOklab(lab));
+#else
     vec3 scene = max(fromOklab(lab), vec3(0.0));
+#endif
     // Bento roll-off of the linear maximum above 0.5 [:1673-1681] (same shoulder measure as the ceiling)
     if (headroom) {
         float ml = mix(max3(scene), dot(scene, LUMA), satW);
@@ -315,6 +379,10 @@ void main() {
     }
 
     // === AgX (Blender 4 / Kraken matrices of the kernel) [:1079-1094, :1687-1730] ===
+#if P3_OUT == 1
+    float chromaBack;
+    scene = intoSrgbPositive(scene, chromaBack);
+#endif
     vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
                         0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
                         0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
@@ -337,7 +405,13 @@ void main() {
         graded = vec3(ol) + (graded - vec3(ol)) * agxA.w;
     }
     // In gamut by chroma, not per channel: a channel of a saturated light over 1 would otherwise stop its brightening.
+#if P3_OUT == 1
+    vec3 gradedLab = toOklab(max(graded, vec3(0.0)));
+    gradedLab.yz *= chromaBack;
+    graded = fromOklabInGamutP3(gradedLab);
+#else
     graded = fromOklabInGamut(toOklab(max(graded, vec3(0.0))));
+#endif
 
     // === hue lock and post-tone detail [:1763-1802] ===
     vec3 post = toOklab(graded);
@@ -354,14 +428,27 @@ void main() {
     // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling
     // a, b with L there (a uniform linear scale of the colour) keeps the hue and the relative chroma instead.
     if (deltaChromaU > 0.0 && post.x < lBefore) post.yz *= mix(1.0, post.x / max(lBefore, 0.0001), clamp(deltaChromaU, 0.0, 1.0));
+#if P3_OUT == 1
+    graded = fromOklabInGamutP3(post);
+#else
     graded = fromOklabInGamut(post);
+#endif
 
     // === display: power 1/gamma, film toe [:1805-1825], dither [:1836-1843] ===
+#if P3_OUT == 1
+    // P3 values, display-encoded; the film toe scales them by the factor the sRGB render takes (same linear scale).
+    vec3 outRgb = pow(max(SRGB_TO_P3 * graded, vec3(0.000001)), vec3(gammaInv));
+    if (filmToeU > 0.0) {
+        float ls = max(dot(pow(max(graded, vec3(0.000001)), vec3(gammaInv)), LUMA), 0.0001);
+        if (ls < 0.15) outRgb *= (pow(max(ls / 0.15, 0.000001), 1.0 + filmToeU) * 0.15) / ls;
+    }
+#else
     vec3 outRgb = pow(max(graded, vec3(0.000001)), vec3(gammaInv));
     if (filmToeU > 0.0) {
         float ls = max(dot(outRgb, LUMA), 0.0001);
         if (ls < 0.15) outRgb *= (pow(max(ls / 0.15, 0.000001), 1.0 + filmToeU) * 0.15) / ls;
     }
+#endif
     if (ditherU == 1) {
         float d1 = fract(0.06711056 * float(xy.x) + 0.00583715 * float(xy.y));
         outRgb += (fract(52.9829189 * d1) - 0.5) / 255.0;
