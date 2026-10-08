@@ -162,7 +162,7 @@ public class TunablePreferenceGenerator {
         // Create new category
         PreferenceCategory category = new PreferenceCategory(context);
         category.setKey(categoryKey);
-        category.setTitle(categoryName.isEmpty() ? Lang.t(context, "Параметры", "Parameters") : categoryName);
+        category.setTitle(categoryName.isEmpty() ? Lang.t(context, "Параметры", "Parameters") : title(categoryName));
         screen.addPreference(category);
         
         return category;
@@ -202,7 +202,7 @@ public class TunablePreferenceGenerator {
             if (isCheckbox) {
                 TunableCheckBoxPreference checkBox = new TunableCheckBoxPreference(context);
                 checkBox.setKey(prefKey);
-                checkBox.setTitle(annotation.title());
+                checkBox.setTitle(title(annotation.title()));
 
                 if (!annotation.description().isEmpty()) {
                     checkBox.setSummary(description(annotation.description()));
@@ -220,7 +220,7 @@ public class TunablePreferenceGenerator {
                 // Create seekbar preference for other numeric types
                 TunableSeekBarPreference seekBar = new TunableSeekBarPreference(context);
                 seekBar.setKey(prefKey);
-                seekBar.setTitle(annotation.title());
+                seekBar.setTitle(title(annotation.title()));
 
                 if (!annotation.description().isEmpty()) {
                     seekBar.setSummary(description(annotation.description()));
@@ -261,7 +261,7 @@ public class TunablePreferenceGenerator {
             // Create PNG preference for File type fields
             TunablePngPreference pngPref = new TunablePngPreference(context);
             pngPref.setKey(prefKey);
-            pngPref.setTitle(annotation.title());
+            pngPref.setTitle(title(annotation.title()));
             pngPref.setAllowedPngSizes(annotation.allowedPngSizes());
 
             if (!annotation.description().isEmpty()) {
@@ -287,8 +287,8 @@ public class TunablePreferenceGenerator {
 
         EditTextPreference editText = new EditTextPreference(context);
         editText.setKey(prefKey);
-        editText.setTitle(annotation.title());
-        editText.setDialogTitle(annotation.title());
+        editText.setTitle(title(annotation.title()));
+        editText.setDialogTitle(title(annotation.title()));
         editText.setIconSpaceReserved(false);
 
         int inputType;
@@ -339,8 +339,8 @@ public class TunablePreferenceGenerator {
         Tunable annotation = info.annotation;
         ListPreference listPref = new ListPreference(context);
         listPref.setKey(prefKey);
-        listPref.setTitle(annotation.title());
-        listPref.setDialogTitle(annotation.title());
+        listPref.setTitle(title(annotation.title()));
+        listPref.setDialogTitle(title(annotation.title()));
 
         listPref.setEntries(annotation.entries());
         listPref.setEntryValues(annotation.entryValues());
@@ -373,6 +373,20 @@ public class TunablePreferenceGenerator {
             listPref.setValue(defaultValue);
         }
         Log.d(TAG, "Added list preference: " + prefKey + " with default: " + defaultValue);
+    }
+
+    /**
+     * A @Tunable title or category (the annotations hold English) in the UI language, as ModuleSensorSettings.title does for
+     * the sensor rows; other texts as they are.
+     */
+    static String title(String text) {
+        switch (text) {
+            case "Parameters": return Lang.t("Параметры", "Parameters");
+            case "Use Dynamic Black Level": return Lang.t("Динамический уровень чёрного", "Dynamic black level");
+            case "Use Dynamic White Level": return Lang.t("Динамический уровень белого", "Dynamic white level");
+            case "Disable front mirror": return Lang.t("Не зеркалить фронтальную камеру", "Don’t mirror the front camera");
+            default: return text;
+        }
     }
 
     /** English text of a @Tunable description (the annotations hold the Russian text); other texts as they are. */

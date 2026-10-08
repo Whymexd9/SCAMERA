@@ -89,9 +89,16 @@ public class HybridSettingsTest {
         assertNull(root.findPreference("pref_lmc_hybrid_enabled"));
         assertTrue(root.findPreference(PreferenceKeys.ROUTE_KEY) instanceof androidx.preference.ListPreference);
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);collect(ark,inside);
+        // The RawTherapee sharpening (pref_sharp_*, shared by both routes) sits next to «Резкость Hybrid» since the settings audit;
+        // it keeps its own keys, so its page is the one part of ArkCore without the hybrid prefix.
+        PreferenceScreen rt=ark.findPreference("sharp_settings_screen");
+        assertNotNull(rt);assertNotNull(((PreferenceGroup)ark.findPreference("lmc_hybrid_sharp_category")).findPreference("sharp_settings_screen"));
+        List<Preference> rtRows=new ArrayList<>();collect(rt,rtRows);
         Set<String> insideKeys=new HashSet<>();
         for(Preference p:inside){
-            String key=p.getKey();assertNotNull(key);insideKeys.add(key);
+            String key=p.getKey();
+            if(rtRows.contains(p)){assertTrue(String.valueOf(key),key==null||key.startsWith("pref_sharp_")||key.endsWith("_screen")||key.startsWith("rl_stage_")||key.equals("sharp_rt_note"));continue;}
+            assertNotNull(key);insideKeys.add(key);
             if(p instanceof PreferenceGroup)continue;
             assertTrue(key,key.startsWith(PreferenceKeys.HYBRID_PREFIX));
             assertTrue(key,ModuleProfiles.isLocal(key));

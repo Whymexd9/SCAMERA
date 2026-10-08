@@ -173,6 +173,8 @@
     <string name="prefs_lmc_hybrid_bento_denoise_max_title">Bento: denoise boost limit in highlights</string>
     <string name="prefs_lmc_hybrid_bento_denoise_max_summary">How many times stronger the denoiser cleans areas merged from a single ultra-short frame (by the merge\'s effective frame map). 3 as before; 8–12 is closer to the real noise of a frame with gain ×8…16 (GCam does not model this noise at all).</string>
     <string name="prefs_lmc_hybrid_post_luma_summary">NLM engine only. Strength of the NLM luma denoiser on the merged frame (0: off). Default 0.6; the noise level is measured on the frame itself.</string>
+    <string name="prefs_lmc_hybrid_post_luma_title">NLM denoise: luma</string>
+    <string name="prefs_lmc_hybrid_post_chroma_title">NLM denoise: chroma</string>
     <string name="prefs_lmc_hybrid_post_chroma_summary">NLM engine only. Strength of the bilateral chroma denoiser and colour blotch suppression (0: off). Default 1.0.</string>
     <string name="prefs_lmc_hybrid_nr_snr_screen_title">SNR and noise model</string>
     <string name="prefs_lmc_hybrid_nr_snr_screen_summary">Manual SNR, multiplier, ρs and ρr, strength map</string>
@@ -189,6 +191,8 @@
     <string name="prefs_lmc_hybrid_nr_mult_screen_title">Multipliers</string>
     <string name="prefs_lmc_hybrid_nr_mult_screen_summary">As in the patcher</string>
     <string name="prefs_lmc_hybrid_dn_luma_mult_summary">0–4, default 1: all luma strength values (pref_luma_denoise_multiplier). 0: luma is left alone.</string>
+    <string name="prefs_lmc_hybrid_dn_luma_mult_title">GCam denoise: luma</string>
+    <string name="prefs_lmc_hybrid_dn_chroma_mult_title">GCam denoise: chroma</string>
     <string name="prefs_lmc_hybrid_dn_sabre_luma_mult_summary">0–4, default 1: SNR points 5 / 20 / 40 (Sabre table).</string>
     <string name="prefs_lmc_hybrid_dn_luma_gid14_mult_summary">0–4, default 1: SNR points 10 / 80 (luma_denoise_004).</string>
     <string name="prefs_lmc_hybrid_dn_chroma_mult_summary">0–4, default 1: all chroma strength values (with the lower limit). 0: colour is left alone.</string>
@@ -261,13 +265,13 @@
     <string name="prefs_lmc_hybrid_ark_sharp_screen_summary">ARK, RawTherapee, SCAM or off</string>
     <string name="prefs_lmc_hybrid_sharp_category_title">Mode</string>
     <string name="prefs_lmc_hybrid_sharp_mode_title">Hybrid sharpening</string>
-    <string name="prefs_lmc_hybrid_sharp_mode_summary">%s. ARK: ArkCam sharpening before the tone (needs the ARK tone; settings: “ARK tone” → “ARK sharpening”); without the ARK tone RawTherapee works instead. RawTherapee: Unsharp Mask, RL deconvolution and microcontrast with the “Sharpening and detail” settings (radii are rescaled on the 2× grid); SCAM: a halo-free luma unsharp mask that weakens by itself on noisy frames.</string>
+    <string name="prefs_lmc_hybrid_sharp_mode_summary">%s. ARK: ArkCam sharpening before the tone (its settings are below on this page). RawTherapee: Unsharp Mask, RL deconvolution and microcontrast with the “RawTherapee sharpening” settings below (radii are rescaled on the 2× grid). SCAM: a halo-free luma unsharp mask that weakens by itself on noisy frames.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_note_title">ArkCam sharpening (process_luma)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_note_summary">Works when “Hybrid sharpening” = ARK. As in ArkCam 2.85: bilateral lift, local contrast and two Richardson–Lucy stages on luma before the tone; the detail enters as the delta ∛S − ∛reference. Defaults: ArkCam X8U, main camera.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_gain_title">ARK sharpening detail strength</string>
     <string name="prefs_lmc_hybrid_ark_sharp_gain_summary">Multiplier of the ArkCam detail delta (∛S(guide) − ∛reference) added after the tone. 1 as in ArkCam.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_domain_title">Sharpening domain</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_domain_summary">1 as in ArkCam: the guide at the G_CLEAN scale (without the ae exposure); halo and highlight thresholds are computed on it. 0: after the ae exposure; brighter in dark scenes, strong edges fade earlier.</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_domain_summary">%s. G_CLEAN as in ArkCam: the guide at the G_CLEAN scale (without the ae exposure); halo and highlight thresholds are computed on it. After ae: brighter in dark scenes, strong edges fade earlier.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_scale_title">Kernel scale, ×</string>
     <string name="prefs_lmc_hybrid_ark_sharp_scale_summary">0: auto, 1 on the 12 MP grid, 2 on the 50 MP grid (radii ×2, so that a shot scaled down to 12 MP is sharpened as in ArkCam).</string>
     <string name="prefs_lmc_hybrid_ark_post_sharp_title">Extra sharpening after the tone</string>
@@ -312,21 +316,21 @@
     <string name="prefs_lmc_hybrid_ark_sharp_rl_halo_macro_summary">3×3 range from which RL fades out on strong edges. ArkCam: 0.4.</string>
     <string name="prefs_lmc_hybrid_ark_rl_stage1_category_title">Stage 1 (optical diffraction)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_kernel_title">RL 1: PSF type</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_rl1_kernel_summary">0: Gaussian, 1: disc, 2: Airy. ArkCam: 2.</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_rl1_kernel_summary">%s. ArkCam: Airy.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_rad_title">RL 1: blur radius</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_rad_summary">px on the 12 MP grid; 0: stage off. ArkCam: 1.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_amount_title">RL 1: amount</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_iters_title">RL 1: iterations</string>
     <string name="prefs_lmc_hybrid_ark_rl_stage2_category_title">Stage 2 (medium detail / defocus)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_kernel_title">RL 2: PSF type</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_rl2_kernel_summary">0: Gaussian, 1: disc, 2: Airy. ArkCam: 1 (stage off).</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_rl2_kernel_summary">%s. ArkCam: disc (stage off).</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_rad_title">RL 2: blur radius</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_rad_summary">0: stage off. ArkCam: 0.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_amount_title">RL 2: amount</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_iters_title">RL 2: iterations</string>
     <string name="prefs_lmc_hybrid_ark_rl_stage3_category_title">Stage 3 (microtexture)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_kernel_title">RL 3: PSF type</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_rl3_kernel_summary">0: Gaussian, 1: disc, 2: Airy. ArkCam: 0.</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_rl3_kernel_summary">%s. ArkCam: Gaussian.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_rad_title">RL 3: blur radius</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_rad_summary">px on the 12 MP grid (σ for Gaussian); 0: stage off. ArkCam: 0.5.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_amount_title">RL 3: amount</string>
@@ -342,7 +346,7 @@
     <string name="prefs_lmc_hybrid_ark_tone_screen_summary">AE, Smart HDR, layer weights, curves</string>
     <string name="prefs_lmc_hybrid_ark_ae_category_title">Auto exposure and metering</string>
     <string name="prefs_lmc_hybrid_ark_metering_title">AE metering mode</string>
-    <string name="prefs_lmc_hybrid_ark_metering_summary">0: whole frame, 1: centre-weighted, 2: spot. ArkCam: 0.</string>
+    <string name="prefs_lmc_hybrid_ark_metering_summary">%s. ArkCam: whole frame.</string>
     <string name="prefs_lmc_hybrid_ark_ae_target_title">AE base exposure</string>
     <string name="prefs_lmc_hybrid_ark_ae_target_summary">Target geometric mean brightness after AE (by day; at night the night factor lowers the target). ArkCam 2.85: 0.15.</string>
     <string name="prefs_lmc_hybrid_ark_face_priority_title">Face priority</string>
@@ -394,7 +398,7 @@
     <string name="prefs_lmc_hybrid_ark_curves_screen_summary">Look, contrast, shoulder, toe, range</string>
     <string name="prefs_lmc_hybrid_ark_agx_category_title">AgX curve</string>
     <string name="prefs_lmc_hybrid_ark_agx_look_title">AgX look (Look Preset)</string>
-    <string name="prefs_lmc_hybrid_ark_agx_look_summary">0: Default, 1: Punchy, 2: Soft, 3: Golden (warm highlights, no hue hold), 4: Custom (the parameters below). ArkCam 2.85: 4.</string>
+    <string name="prefs_lmc_hybrid_ark_agx_look_summary">%s. Golden: warm highlights, no hue hold; Custom: the parameters below. ArkCam 2.85: Custom.</string>
     <string name="prefs_lmc_hybrid_ark_agx_slope_title">AgX contrast (Slope)</string>
     <string name="prefs_lmc_hybrid_ark_agx_slope_summary">ArkCam 2.85: 2.7 (for flat scenes plus the Smart HDR contrast strength).</string>
     <string name="prefs_lmc_hybrid_ark_agx_sp_title">Highlight shape (Shoulder Power)</string>
@@ -424,7 +428,7 @@
     <string name="prefs_lmc_hybrid_ark_detail_gain_title">Sabre detail</string>
     <string name="prefs_lmc_hybrid_ark_detail_gain_summary">Without ARK sharpening: strength of the fine detail of the full-size merge added after the tone (not boosted in lifted shadows, half as strong towards white). 1 matches the ArkCam detail. Default 2: on Oppo at night +22 % fine detail over ArkCam with lower luma noise than ArkCam.</string>
     <string name="prefs_lmc_hybrid_ark_texture_title">Texture in the ARK tone</string>
-    <string name="prefs_lmc_hybrid_ark_texture_summary">ArkCam has no midtone frequency lift, so “Texture” is off with the ARK tone. On: SCAMERA local contrast with the strength from the “Texture” slider in the “Tone” section.</string>
+    <string name="prefs_lmc_hybrid_ark_texture_summary">ArkCam has no midtone frequency lift, so this is off by default. On: SCAMERA local contrast after the tone, with a fixed strength per detail band.</string>
     <string name="prefs_lmc_hybrid_ark_artifacts_category_title">Artefacts and recovery</string>
     <string name="prefs_lmc_hybrid_highlight_recovery_title">Per-channel highlight recovery, %</string>
     <string name="prefs_lmc_hybrid_highlight_recovery_summary">Clip level of each channel before white balance; a clipped channel is raised by the colour of the surrounding light (a white lamp stays white, no magenta), fully clipped areas smoothly go to neutral white, a single coloured channel (neon, laser) is left alone. Also works with Bento (clip flags from the worker). Default 100, 0: off.</string>
@@ -463,7 +467,7 @@
     <string name="prefs_vivo_nice_long_boost_ev_title">L boost</string>
     <string name="prefs_vivo_nice_long_boost_ev_summary">0–2 EV, default 1.1; 0 = stock plan. The L frame is longer than stock: our preview is exposed about 1.1 EV darker than stock, so the shadows get less signal. The shutter is extended up to 1/8 s (never shorter than stock), the rest comes from gain. Handheld blur and model artefacts at transitions are possible.</string>
     <string name="prefs_vivo_nice_diagnostics_title">Save processing stages</string>
-    <string name="prefs_vivo_nice_diagnostics_summary">After a shot a ZIP with intermediate images and numeric data is saved to Download/SCAMERA. Slows processing down and takes space; can be turned off after testing.</string>
+    <string name="prefs_vivo_nice_diagnostics_summary">After a shot a ZIP with intermediate images and numeric data is saved to Download/SCAMERA. Slows processing down and takes space; off by default, turn it on for tests.</string>
     <string name="prefs_vivo_nice_bracket_screen_title">Bracket and alignment</string>
     <string name="prefs_vivo_nice_bracket_screen_summary">CRE, L from ZSL, planner</string>
     <string name="prefs_vivo_nice_cre_source_title">Alignment (CRE)</string>
@@ -534,7 +538,7 @@
     <string name="prefs_hexquad_denoise_screen_title">HP9 HexQuad neural remosaic</string>
     <string name="prefs_hexquad_denoise_screen_summary">Tetra 4×4: strength, noise profile, ISO</string>
     <string name="prefs_hexquad_note_title">For the HP9 HexQuad algorithm</string>
-    <string name="prefs_hexquad_note_summary">Works on the telephoto lens in 4× ISZ mode, Tetra 4×4. Settings apply to the next shot. For the old result: x2, original size, multipliers 1, auto by ISO off, texture 0.</string>
+    <string name="prefs_hexquad_note_summary">Works on the telephoto lens in 4× ISZ mode, Tetra 4×4. Settings apply to the next shot. For the old result: x2, multipliers 1, auto by ISO off, texture 0.</string>
     <string name="prefs_hexquad_model_category_title">Luma and model</string>
     <string name="prefs_hexquad_compute_title">CPU + GPU + NPU working together</string>
     <string name="prefs_hexquad_compute_summary">The CPU aligns frames and prepares the input in parallel with the neural network on the NPU. The GPU restores detail and blends luma/chroma. The mode is on automatically; if the GPU fails, the CPU runs its stages.</string>
@@ -596,20 +600,20 @@
     <string name="prefs_remosaic_block_title">Colour block size</string>
     <string name="prefs_remosaic_block_summary">2 × 2: Quad Bayer; 4 × 4: Tetra² (telephoto 4× ISZ).</string>
     <string name="prefs_tetra_response_title">Tetra: periodic grid correction</string>
-    <string name="prefs_photo_processing_screen_title">Colour and sharpness</string>
-    <string name="prefs_photo_processing_screen_summary">DCP, Hybrid curves, RawTherapee sharpening</string>
+    <string name="prefs_photo_processing_screen_title">Colour</string>
+    <string name="prefs_photo_processing_screen_summary">DCP, Hybrid curves</string>
     <string name="prefs_dcp_profile_title">DCP matrices</string>
     <string name="prefs_dcp_profile_summary">Import and choose the colour matrix of the module</string>
     <string name="prefs_lmc_curves_screen_title">Hybrid curves</string>
     <string name="prefs_lmc_curves_note_title">How it works</string>
-    <string name="prefs_lmc_curves_note_summary">First the tone curve (17 points), then the gamma curve (33 points), per RGB channel, as in GCam. Strength blends the curve with the original shot: 0 changes nothing, 100 applies the full curve. Has no effect when tone processing is “Off” (linear output).</string>
+    <string name="prefs_lmc_curves_note_summary">First the tone curve (17 points), then the gamma curve (33 points), per RGB channel, as in GCam. Strength blends the curve with the original shot: 0 changes nothing, 100 applies the full curve.</string>
     <string name="prefs_lmc_tone_curve_title">Tone curve</string>
     <string name="prefs_lmc_tone_curve_strength_title">Tone curve strength, %</string>
     <string name="prefs_lmc_gamma_curve_title">Gamma curve</string>
     <string name="prefs_lmc_gamma_curve_strength_title">Gamma curve strength, %</string>
     <string name="prefs_sharp_settings_screen_title">RawTherapee sharpening</string>
     <string name="prefs_sharp_settings_screen_summary">USM, RL deconvolution, microcontrast</string>
-    <string name="prefs_sharp_rt_note_summary">Works in the “RawTherapee” sharpening modes of Hybrid and SCAM HDR.</string>
+    <string name="prefs_sharp_rt_note_summary">Works when “Hybrid sharpening” is RawTherapee, or ARK with “Extra sharpening after the tone”; on both routes.</string>
     <string name="prefs_unsharp_settings_screen_summary">Radius, thresholds, edges, halos</string>
     <string name="prefs_deconvolution_settings_screen_title">RL deconvolution</string>
     <string name="prefs_deconvolution_settings_screen_summary">Three stages, PSF kernels, iterations</string>
@@ -635,7 +639,8 @@
     <string name="prefs_quad_compatibility_screen_summary">Direct Quad 2×2 path and DNG metadata</string>
     <string name="prefs_noise_model_screen_title">Sensor noise model</string>
     <string name="prefs_noise_model_screen_summary">Profile, import and export</string>
-    <string name="prefs_noise_model_note_summary">The profile is used when the noise source “From settings” is chosen in Hybrid or SCAM HDR.</string>
+    <string name="prefs_noise_model_note_summary">A chosen profile replaces the noise model the camera reports: the Hybrid GCam denoise and the noise profile of the DNG always use it; the Hybrid and SCAM HDR merges use it when their noise source is “From settings”.</string>
+    <string name="prefs_theme_gallery_title">Gallery theme</string>
     <string name="prefs_viewfinder_settings_screen_title">Viewfinder and interface</string>
     <string name="prefs_viewfinder_settings_screen_summary">Preview, grid, focus, sounds and appearance</string>
     <string name="prefs_camera_sounds_title">Shutter sound</string>
@@ -675,8 +680,6 @@
     <string name="prefs_vivo_nice_probe_summary">Check the original HDR model inside the app and copy the report</string>
     <string name="prefs_vivo_neural_probe_title">Neural remosaic: check and reports</string>
     <string name="prefs_vivo_neural_probe_summary">Check loading the model onto the neural accelerator and copy the report</string>
-    <string name="prefs_remosaic_vivo_probe_title">Vivo system library: diagnostics</string>
-    <string name="prefs_remosaic_vivo_probe_summary">A separate check of the old system path. Not needed for the built-in HP9 HexQuad.</string>
     <string name="prefs_camera_package_spoof_screen_title">Camera package spoofing</string>
     <string name="prefs_camera_package_spoof_screen_summary">For OPPO / OnePlus and generic Android: unlock hidden modules</string>
     <string name="prefs_camera_package_spoof_enabled_title">Package spoofing</string>

@@ -13,7 +13,6 @@
 
     <string name="turn_on_grid">Сетка</string>
     <string name="turn_on_round_edges">Включить закруглённые края</string>
-    <string name="telegram">Группа Telegram</string>
     <string name="turn_on_watermark">Водяной знак</string>
     <string name="turn_on_afdata">Показать данные отладки</string>
     <string name="image_deleted">Изображение удалено</string>
@@ -23,17 +22,14 @@
     <string name="hide_gallery_icon">Скрыть иконку галереи</string>
     <string name="theme">Тема</string>
     <string name="camera_sounds">Звуки камеры</string>
-    <string name="about">О нас</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_follow_system">Как в системе</string>
     <string name="cfa">Фильтр Байера</string>
-    <string name="preview_format">Формат превью</string>
     <string name="energy_saving">Энергосбережение</string>
     <string name="show_gradient">Показать градиентный фон</string>
     <string name="photon_camera_summary">Камера с открытым исходным кодом, с улучшенной обработкой фото</string>
     <string name="version_title">Версия</string>
-    <string name="contributors_title">Разработчики</string>
     <string name="eis_toggle_text">Стабилизация тряски</string>
     <string name="fps_60_toggle_text">Частота кадров</string>
     <string name="quad_bayer_toggle_text">Сверхвысокое разрешение</string>
@@ -48,13 +44,9 @@
     <string name="empty_file_name_error">Название не может быть пустым</string>
     <string name="reset">Сбросить всё</string>
     <string name="backup_restore">Сохранение/Восстановление настроек</string>
-    <string name="device_unsupport">Предупреждение: Неподдерживаемое устройство</string>
     <string name="sure_delete_multiple">Вы уверены, что хотите удалить %1$s изображение(-ий)? %2$s будут удалены.</string>
     <string name="af_mode">Режим автофокуса</string>
     <string name="multiple_deleted_success">%1$s файл(ов) удалены! %2$s очищено.</string>
-    <string name="supported_devices">Поддерживаемые устройства</string>
-    <string name="fetch_configurations">Подгрузить конфигурации</string>
-    <string name="fetch_configurations_summary">Скачать устройство-зависимые настройки с сети и обновить кеш</string>
     <string name="this_device">Ваше устройство - %1$s</string>
     <string name="on">Вкл.</string>
     <string name="t_3s">3 сек.</string>
@@ -167,7 +159,7 @@
     <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
     <string name="sharp_deconv_halo_macro_desc">Локальный контраст, выше которого подавление работает в полную силу</string>
     <string name="sharp_deconv_kernel">Тип ядра PSF</string>
-    <string name="sharp_deconv_kernel_desc">Форма функции рассеяния точки для этой ступени</string>
+    <string name="sharp_deconv_kernel_desc">%s. Форма функции рассеяния точки для этой ступени</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Гаусс (классика)</item>
         <item>Оптика / линза (Pillbox)</item>
@@ -210,9 +202,6 @@
         <item>HP9 HexQuad — NPU, 6 кадров (тест)</item>
         <item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item>
     </string-array>
-    <string name="remosaic_vivo_probe_desc">Проверка совместимости на этом телефоне. Обработка снимков не запускается.</string>
-    <string name="remosaic_vivo_checking">Проверка…</string>
-    <string name="remosaic_vivo_result">Результат проверки Vivo</string>
     <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
     <string-array name="hexquad_model_entries">
         <item>x2 — текущая модель</item>

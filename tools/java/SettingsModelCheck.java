@@ -11,6 +11,11 @@ public class SettingsModelCheck {
         if(!PreferenceNumber.bool("1.0",false)||PreferenceNumber.bool("0",true))throw new AssertionError("mixed boolean storage");
         if(!PreferenceNumber.floating(float.class))throw new AssertionError("float step=1 still float");
         if(!PreferenceNumber.format(.00390625f,true).equals("0.00390625"))throw new AssertionError("precision lost");
+        // H1: a slider stores the decimals its step and minimum need (Bento auto threshold 0.0005 was stored as "0.00")
+        if(!PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)).equals("0.0005"))throw new AssertionError("0.0005 rounded");
+        if(!PreferenceNumber.gridText(1.414f,Math.max(PreferenceNumber.gridDecimals(100,1),PreferenceNumber.decimalsOf("1.414"))).equals("1.414"))throw new AssertionError("1.414 rounded");
+        if(!PreferenceNumber.gridText(0.001,PreferenceNumber.gridDecimals(100,.001f)).equals("0.001"))throw new AssertionError("0.001 rounded");
+        if(!PreferenceNumber.gridText(0.5,PreferenceNumber.gridDecimals(20,0)).equals("0.50"))throw new AssertionError("two decimals kept");
         eq(PreferenceNumber.progress(.30f,.10f,100,100),20);
         if(SettingsNumericRules.error("pref_antibanding_hz_key","100.5")==null)throw new AssertionError("integer validation");
         if(SettingsNumericRules.bounds("pref_mfsr_frames_key")!=null)throw new AssertionError("removed RAW MFSR key still bounded");
@@ -35,6 +40,8 @@ public class SettingsModelCheck {
         p.put("pref_camera_mode_key", "3");
         p.put("pref_merge_route", "scamhdr");
         p.put("pref_vivo_nice_route", "vcf2");
+        // RawTherapee sharpening acts only in the "rt" mode (or ARK + «Доп. резкость после тона»), so it is chosen here.
+        p.put("pref_lmc_hybrid_sharp_mode", "rt");
         Map<String,Object> saved = new HashMap<>(p);
         // Retired route values from saved/imported configs must not bypass RAW
         // processing or hide sharpening. Exercise every mode, not only Photo.
@@ -59,7 +66,9 @@ public class SettingsModelCheck {
         h.remove("pref_merge_route");
         active(h,"pref_lmc_hybrid_cdm");active(h,"pref_lmc_hybrid_sabre61");active(h,"pref_lmc_hybrid_highlight_recovery");
         inactive(h,"pref_vivo_nice_noise_photon");
-        active(h,"pref_sharp_usm_enabled_key");
+        // Default sharpening is ARK without «Доп. резкость после тона»: RawTherapee does not run, its rows explain it (audit H3)
+        inactive(h,"pref_sharp_usm_enabled_key");
+        h.put("pref_lmc_hybrid_sharp_mode","rt");active(h,"pref_sharp_usm_enabled_key");h.remove("pref_lmc_hybrid_sharp_mode");
         // the removed legacy switches (RAW MFSR, standalone remosaic) no longer take the hybrid off
         h.put("pref_raw_mfsr_enabled_key",true);h.put("pref_remosaic_enabled_key",true);active(h,"pref_lmc_hybrid_cdm");
         // LMC hybrid (own section): pref_lmc_hybrid_* bounds; copies of SCAM HDR knobs keep the original bounds; number lists.
@@ -180,6 +189,53 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_heic_quality","0",90),1);eq(SettingsNumericRules.value("pref_webp_quality","150",90),100);
         eq(SettingsNumericRules.value("pref_webp_quality","NaN",90),90);
         if(SettingsNumericRules.error("pref_heic_quality","50.5")==null)throw new AssertionError("fractional HEIC quality accepted");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA, native mosaic, photo format, 10-bit HEIC, AVIF");
+        // Settings audit H3: rows that do nothing in the current configuration explain why.
+        Map<String,Object> sh=new HashMap<>(); // sharpening "ark" (default), no extra sharpening after the tone
+        active(sh,"pref_lmc_hybrid_ark_sharp_gain");active(sh,"pref_lmc_hybrid_ark_sharp_rl1_kernel");active(sh,"pref_lmc_hybrid_ark_post_sharp");
+        active(sh,"pref_lmc_hybrid_ark_sharp_note");
+        inactive(sh,"pref_sharp_usm_enabled_key");inactive(sh,"pref_sharp_radius_key");inactive(sh,"pref_sharp_micro_enabled_key");
+        inactive(sh,"pref_lmc_hybrid_sharp_strength");inactive(sh,"pref_lmc_hybrid_sharp_amount");inactive(sh,"pref_lmc_hybrid_ark_sharp_guard");
+        inactive(sh,"pref_lmc_hybrid_ark_detail_gain");
+        sh.put("pref_lmc_hybrid_ark_post_sharp",true);
+        active(sh,"pref_sharp_usm_enabled_key");active(sh,"pref_lmc_hybrid_sharp_strength");active(sh,"pref_lmc_hybrid_ark_sharp_guard");
+        inactive(sh,"pref_lmc_hybrid_sharp_amount");
+        sh.put("pref_lmc_hybrid_sharp_mode","rt");
+        active(sh,"pref_sharp_usm_enabled_key");active(sh,"pref_lmc_hybrid_ark_sharp_guard");active(sh,"pref_lmc_hybrid_ark_detail_gain");
+        inactive(sh,"pref_lmc_hybrid_ark_sharp_gain");inactive(sh,"pref_lmc_hybrid_ark_post_sharp");inactive(sh,"pref_lmc_hybrid_sharp_amount");
+        sh.put("pref_lmc_hybrid_sharp_mode","scam");
+        active(sh,"pref_lmc_hybrid_sharp_amount");active(sh,"pref_lmc_hybrid_ark_sharp_guard");inactive(sh,"pref_sharp_usm_enabled_key");
+        inactive(sh,"pref_lmc_hybrid_sharp_strength");inactive(sh,"pref_lmc_hybrid_ark_sharp_usm_amount");
+        sh.put("pref_lmc_hybrid_sharp_mode","off");
+        inactive(sh,"pref_lmc_hybrid_ark_sharp_guard");inactive(sh,"pref_sharp_usm_enabled_key");active(sh,"pref_lmc_hybrid_ark_detail_gain");
+        active(sh,"pref_lmc_hybrid_sharp_mode");
+        // the master switches of RawTherapee still apply inside the RawTherapee mode
+        sh.put("pref_lmc_hybrid_sharp_mode","rt");sh.put("pref_sharp_usm_enabled_key",false);inactive(sh,"pref_sharp_radius_key");
+        Map<String,Object> dn=new HashMap<>(); // denoise engine "gcam" (default)
+        active(dn,"pref_lmc_hybrid_dn_luma_mult");active(dn,"pref_lmc_hybrid_dn_luma_t1_snr");active(dn,"pref_lmc_hybrid_dn_engine");
+        inactive(dn,"pref_lmc_hybrid_post_luma");inactive(dn,"pref_lmc_hybrid_post_chroma");
+        dn.put("pref_lmc_hybrid_dn_engine","nlm");
+        active(dn,"pref_lmc_hybrid_post_luma");active(dn,"pref_lmc_hybrid_post_chroma");active(dn,"pref_lmc_hybrid_dn_engine");
+        inactive(dn,"pref_lmc_hybrid_dn_luma_mult");inactive(dn,"pref_lmc_hybrid_dn_dark_fade");active(dn,"pref_lmc_hybrid_despeckle");
+        Map<String,Object> out=new HashMap<>(); // output "sensor" (default)
+        inactive(out,"pref_lmc_hybrid_downsampler");inactive(out,"pref_lmc_hybrid_dn_chroma_2x_keep");active(out,"pref_lmc_hybrid_output");
+        out.put("pref_lmc_hybrid_output","2x");inactive(out,"pref_lmc_hybrid_downsampler");active(out,"pref_lmc_hybrid_dn_chroma_2x_keep");
+        for(String mp:new String[]{"12","16","20"}){out.put("pref_lmc_hybrid_output",mp);active(out,"pref_lmc_hybrid_downsampler");active(out,"pref_lmc_hybrid_dn_chroma_2x_keep");}
+        // SCAM HDR's pref_nice_ rows follow the route like pref_vivo_nice_; the stock planner needs the X200 Ultra and Root
+        Map<String,Object> nice=new HashMap<>();
+        inactive(nice,"pref_nice_zsl_long");
+        nice.put("pref_merge_route","scamhdr");active(nice,"pref_nice_zsl_long");
+        inactive(nice,"pref_vivo_nice_planner");
+        if(new SettingsAvailability(nice).stockAeDevice(true).reason("pref_vivo_nice_planner")==null)throw new AssertionError("stock planner without Root");
+        nice.put("pref_root_enabled",true);
+        if(new SettingsAvailability(nice).stockAeDevice(true).reason("pref_vivo_nice_planner")!=null)throw new AssertionError("stock planner with Root on the X200 Ultra");
+        inactive(nice,"pref_vivo_nice_planner"); // another phone
+        // «Цветовой метод»: inactive where a tuned / ISP matrix replaces it
+        active(nice,"pref_color_method_key");
+        if(!"matrix".equals(new SettingsAvailability(nice).colorMethodOverride("matrix").reason("pref_color_method_key")))throw new AssertionError("colour method reason");
+        // Without the 8 Elite the SCAM HDR screen and its checks stay hidden (the availability pass used to show them again)
+        for(String k:new String[]{"vivo_hdr_screen","vivo_diagnostics_screen","vivo_nice_probe","vivo_neural_probe"})
+            if(!new SettingsAvailability(nice).scamHdrSupported(false).hidden(k)||new SettingsAvailability(nice).hidden(k))throw new AssertionError("SCAM HDR row visibility "+k);
+        if(!new SettingsAvailability(nice).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, LMC hybrid bounds, RAW CA, native mosaic, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / planner / colour method availability");
     }
 }

@@ -14,7 +14,7 @@ import java.util.function.Predicate;
  * A "ui_" key on purpose: every "pref_" key is per module when per-lens settings are on (ModuleProfiles.isLocal), and the
  * tiles must not change with the lens. Being in the main settings, the list travels in the config file's main part.
  * <p>
- * Nothing stored yet: {@link ShadeCatalog#DEFAULT_TILES}. An empty string is a valid choice (every tile removed). Keys the
+ * Nothing stored yet: {@link ShadeCatalog#defaultTiles()}. An empty string is a valid choice (every tile removed). Keys the
  * catalog does not know on this phone, repeats and everything after {@link ShadeCatalog#MAX_TILES} are dropped on read;
  * keys of removed settings are also dropped from the stored value by SettingsMigration.removeObsolete.
  */
@@ -33,7 +33,7 @@ public final class ShadeTiles {
     /** The tiles to show: the stored keys (or the defaults) that {@code known} accepts, without repeats, at most 12. */
     public static List<String> load(SharedPreferences prefs, Predicate<String> known) {
         List<String> stored = stored(prefs);
-        return clean(stored == null ? ShadeCatalog.DEFAULT_TILES : stored, known);
+        return clean(stored == null ? ShadeCatalog.defaultTiles() : stored, known);
     }
 
     /** Known keys in order, without repeats, the first {@link ShadeCatalog#MAX_TILES}. */

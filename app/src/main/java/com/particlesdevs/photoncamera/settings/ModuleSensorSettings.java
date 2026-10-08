@@ -14,9 +14,6 @@ public final class ModuleSensorSettings {
         switch(title){
             case "Black Level Override":return Lang.t("Уровень чёрного","Black level");
             case "White Level Override":return Lang.t("Уровень белого","White level");
-            case "ISO Limit":return Lang.t("Максимальное ISO","Max ISO");
-            case "Exposure Balance":return Lang.t("Баланс выдержки и ISO","Shutter / ISO balance");
-            case "Shutter Limit":return Lang.t("Максимальная выдержка","Max shutter");
             case "OIS Mode":return Lang.t("Оптическая стабилизация","Optical stabilization");
             case "Session Type":return Lang.t("Тип сессии камеры","Camera session type");
             default:return title;
@@ -27,9 +24,6 @@ public final class ModuleSensorSettings {
         switch(text){
             case "Уровень чёрного этого сенсора вручную (-1 = авто)":return Lang.t(text,"Manual black level of this sensor (-1 = auto)");
             case "Уровень белого для всех каналов вручную (-1 = из метаданных)":return Lang.t(text,"Manual white level for all channels (-1 = from metadata)");
-            case "Ограничение наибольшей чувствительности":return Lang.t(text,"Limits the highest sensitivity");
-            case "Сдвиг баланса между выдержкой и ISO. Только режимы «Фото» и «Ночь»":return Lang.t(text,"Shifts the balance between shutter and ISO. Photo and Night modes only");
-            case "Ограничение наибольшей выдержки":return Lang.t(text,"Limits the longest shutter");
             case "Оптическая стабилизация. В режиме «Авто» OIS выключается на штативе и в Unlimited, чтобы кадр не дрейфовал":return Lang.t(text,"Optical stabilization. In “Auto” OIS turns off on a tripod and in Unlimited so the frame does not drift");
             case "Тип capture-сессии Camera2 (0 = обычная)":return Lang.t(text,"Camera2 capture session type (0 = normal)");
             default:return text;

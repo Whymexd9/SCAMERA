@@ -16,8 +16,30 @@ public final class ModuleProfiles {
         if(!meta.getBoolean("baseline",false)){write(file("common"),current());meta.edit().putBoolean("baseline",true).apply();}
     }
     public boolean isApplying(){return applying;}
+    /**
+     * Settings shared by every lens (owner, 8 October 2026): never part of a module profile, whatever per-lens settings say.
+     * The one list behind {@link #isLocal} and PreferenceKeys' legacy per-lens JSON. Sounds, grid, the photo format with every
+     * format / quality option (JPEG, HEIC, HEIC 10 bit, WebP, AVIF, «Также сохранять JPEG», the RAW save mode, Ultra HDR), the
+     * watermark and its caption, Root, the camera package spoof, face detection and tracking AF, the gallery icon and theme,
+     * the flicker frequency and the merge route. Processing, tuning and sensor settings stay per module.
+     */
+    static final Set<String> GLOBAL_KEYS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "pref_camera_sounds_key","pref_timer_sound_key","pref_show_grid_key",
+            "pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key",
+            "pref_root_enabled","pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",
+            "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
+            "pref_show_gradient_key","pref_antibanding_hz_key",LmcHybridKeys.ROUTE)));
+    /** Key prefixes of {@link #GLOBAL_KEYS}: the photo format rows (pref_photo_format, pref_photo_also_jpeg, the qualities, AVIF), the caption, the theme. */
+    static final String[] GLOBAL_PREFIXES={"pref_photo_","pref_jpeg_","pref_heic_","pref_webp_","pref_avif_","pref_watermark_","pref_theme"};
+    /** A setting shared by every lens ({@link #GLOBAL_KEYS}). */
+    public static boolean isGlobal(String key){
+        if(key==null)return false;
+        if(GLOBAL_KEYS.contains(key))return true;
+        for(String prefix:GLOBAL_PREFIXES)if(key.startsWith(prefix))return true;
+        return false;
+    }
     public static boolean isLocal(String key) {
-        if(key==null || key.equals("pref_zsl_buffer_count_key"))return false;
+        if(key==null || key.equals("pref_zsl_buffer_count_key") || isGlobal(key))return false;
         if(key.equals(PreferenceKeys.Key.CAMERA_ID.mValue)||key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue))return false;
         if(key.startsWith("lens_")||key.startsWith("module_")||key.startsWith("pref_sensorconfig_")||key.startsWith("settings_")||key.startsWith("pref_theme")||key.contains("debug")||key.contains("folder")||key.contains("config_file"))return false;
         if(key.equals("user_camera_ids")||key.equals("hidden_camera_ids")||key.equals(PreferenceKeys.Key.CAMERA_MODE.mValue))return false;

@@ -6,7 +6,6 @@ import com.particlesdevs.photoncamera.util.Log;
 
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
-import com.particlesdevs.photoncamera.util.HttpLoader;
 import com.particlesdevs.photoncamera.util.SimpleStorageHelper;
 
 import java.io.BufferedReader;
@@ -53,18 +52,6 @@ public class Specific {
             inputStr.add(str + "\n");
         }
         indevice.close();
-        return inputStr;
-    }
-
-    ArrayList<String> loadNetwork(String device) throws IOException {
-        ArrayList<String> inputStr = new ArrayList<>();
-        BufferedReader indevice = HttpLoader.readURL(
-                "https://raw.githubusercontent.com/eszdman/PhotonCamera/dev/app/src/main/assets/specific/" + device + "_specificsettings.txt", 100);
-        String str;
-        while ((str = indevice.readLine()) != null) {
-            Log.d(TAG, "read network:" + str);
-            inputStr.add(str + "\n");
-        }
         return inputStr;
     }
 
@@ -116,7 +103,7 @@ public class Specific {
                             Log.d(TAG, "Loading from assets");
                             inputStr = loadAssets(context, device);
                         } catch (IOException e) {
-                            Log.d(TAG, "No asset found for device, skipping network: " + device);
+                            Log.d(TAG, "No asset found for device: " + device);
                         }
                     }
 
@@ -135,22 +122,6 @@ public class Specific {
             saveSpecific();
         }
         isLoaded = true;
-    }
-
-    public void fetchFromNetwork(Context context) {
-        try {
-            String device = Build.BRAND.toLowerCase() + "/" + Build.DEVICE.toLowerCase();
-            Log.d(TAG, "Fetching from network for device: " + device);
-            ArrayList<String> inputStr = loadNetwork(device);
-            if (!inputStr.isEmpty()) {
-                parseAndApply(inputStr);
-                mSettingsManager.set(PreferenceKeys.Key.DEVICES_PREFERENCE_FILE_NAME.mValue, "specific_loaded", true);
-                saveSpecific();
-                Log.d(TAG, "Network fetch successful");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Network fetch failed: " + e.toString());
-        }
     }
 
     private void saveSpecific() {

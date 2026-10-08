@@ -16,11 +16,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
+
 
 /* loaded from: classes8.dex */
 public class PreferenceKeys {
-    private static final Set<String> COMMON_KEYS = new HashSet();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String PER_LENS_KEY_PREFIX = "settings_for_camera_";
     public static final String SCOPE_GLOBAL = "default_scope";
@@ -70,10 +69,6 @@ public class PreferenceKeys {
 
 
 
-    private static float getAcesFloat(String str, String str2) {
-        return Float.parseFloat(getAcesString(str, str2));
-    }
-
 
 
 
@@ -91,30 +86,6 @@ public class PreferenceKeys {
 
 
 
-
-    static {
-        COMMON_KEYS.add(Key.CAMERA_ID.mValue);
-        COMMON_KEYS.add(Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
-        COMMON_KEYS.add("settings_audit_schema");
-        COMMON_KEYS.add(Key.FOLDERS_LIST.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_AF_DATA.mValue);
-        COMMON_KEYS.add(Key.KEY_THEME_ACCENT.mValue);
-        COMMON_KEYS.add(Key.KEY_THEME.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_GRID.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_WATERMARK.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_ROUND_EDGE.mValue);
-        COMMON_KEYS.add(Key.KEY_CAMERA_SOUNDS.mValue);
-        COMMON_KEYS.add(Key.KEY_TIMER_SOUND.mValue);
-        COMMON_KEYS.add(Key.KEY_SHOW_GRADIENT.mValue);
-        COMMON_KEYS.add(Key.KEY_AF_MODE.mValue);
-        COMMON_KEYS.add(Key.KEY_FOCUS_PEAK.mValue);
-        COMMON_KEYS.add(Key.KEY_AE_MODE.mValue);
-        COMMON_KEYS.add(Key.CAMERA_MODE.mValue);
-        COMMON_KEYS.add(Key.KEY_SAVE_RAW.mValue);
-        // P42: face detection and tracking AF are viewfinder behaviour, not per-lens tuning.
-        COMMON_KEYS.add(com.particlesdevs.photoncamera.control.subject.FaceDetectModes.KEY);
-        COMMON_KEYS.add(com.particlesdevs.photoncamera.control.subject.SubjectPolicy.TRACKING_KEY);
-    }
 
     private PreferenceKeys(SettingsManager settingsManager) {
         this.settingsManager = settingsManager;
@@ -173,13 +144,8 @@ public class PreferenceKeys {
             Log.d(TAG, "Added IDS:" + Arrays.toString(ids));
             settingsManager.setDefaults(Key.CAMERA_ID, ids[0], ids);
             Map<String, ?> map = settingsManager.getDefaultPreferences().getAll();
-            map.keySet().removeAll(COMMON_KEYS);
-            map.keySet().removeIf(new Predicate() { // from class: com.particlesdevs.photoncamera.settings.PreferenceKeys$$ExternalSyntheticLambda2
-                @Override // java.util.function.Predicate
-                public final boolean test(Object obj) {
-                    return PreferenceKeys.lambda$addIds$1((String) obj);
-                }
-            });
+            // Only the per-module settings (ModuleProfiles.isLocal: not the shared ones of ModuleProfiles.GLOBAL_KEYS).
+            map.keySet().removeIf(key -> !ModuleProfiles.isLocal(key) || lambda$addIds$1(key));
             String json = GSON.toJson(map);
             for (String cameraId : ids) {
                 settingsManager.setInitial(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraId, json);
@@ -188,27 +154,6 @@ public class PreferenceKeys {
     }
 
     static /* synthetic */ boolean lambda$addIds$1(String key) {
-        return key != null && (key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_"));
-    }
-
-    private static void saveJsonForCamera(String cameraID) {
-        SettingsManager settingsManager = preferenceKeys.settingsManager;
-        Map<String, ?> map = settingsManager.getDefaultPreferences().getAll();
-        map.keySet().removeAll(COMMON_KEYS);
-        map.keySet().removeIf(new Predicate() { // from class: com.particlesdevs.photoncamera.settings.PreferenceKeys$$ExternalSyntheticLambda0
-            @Override // java.util.function.Predicate
-            public final boolean test(Object obj) {
-                return PreferenceKeys.lambda$saveJsonForCamera$2((String) obj);
-            }
-        });
-        String hashmapAsJson = GSON.toJson(map);
-        String alreadySavedJSON = settingsManager.getString(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraID, "");
-        if (!alreadySavedJSON.equals(hashmapAsJson)) {
-            settingsManager.set(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + getCameraID(), hashmapAsJson);
-        }
-    }
-
-    static /* synthetic */ boolean lambda$saveJsonForCamera$2(String key) {
         return key != null && (key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_"));
     }
 
@@ -258,16 +203,8 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_SHOW_HORIZON);
     }
 
-    public static int isSystemNrOn() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_ENABLE_SYSTEM_NR).intValue();
-    }
-
     public static boolean isRemosaicOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_REMOSAIC);
-    }
-
-    public static boolean isDisableAligningOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_DISABLE_ALIGNINIG);
     }
 
     public static boolean isShowWatermarkOn() {
@@ -376,14 +313,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_SAVE_PER_LENS_SETTINGS);
     }
 
-    public static boolean isEnhancedProcessionOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_ENHANCED_PROCESSING);
-    }
-
-    public static boolean isHdrxNrOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_HDRX_NR);
-    }
-
     public static int isSaveRaw() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_SAVE_RAW).intValue();
     }
@@ -414,13 +343,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_TIMER_SOUND, true);
     }
 
-    public static int getChromaNrValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CHROMA_NR_SEEKBAR).intValue();
-    }
-
-    public static int getLumaNrValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_LUMA_NR_SEEKBAR).intValue();
-    }
 
 
 
@@ -428,11 +350,6 @@ public class PreferenceKeys {
 
 
 
-
-
-    public static float getSharpnessValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_SHARPNESS_SEEKBAR).floatValue();
-    }
 
     private static float sharpFloat(Key key) {
         return preferenceKeys.settingsManager.getFloat("default_scope", key).floatValue();
@@ -770,9 +687,8 @@ public class PreferenceKeys {
     }
     public static boolean isNiceDiagnosticsEnabled() {
         if (isHybridShot()) return hybridSwitch("diagnostics", false);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", true);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", false);
     }
-    /** true: vivo stock AE solver via root observer; false: SCAMERA planner (no root, any device). */
     /** LMC curve presets: "off" or an asset path under assets/curves (Tone/..., Gamma/...). */
     public static String getLmcToneCurve() {
         return preferenceKeys.settingsManager.getString("default_scope", "pref_lmc_tone_curve", "off");
@@ -796,11 +712,15 @@ public class PreferenceKeys {
     public static boolean isRootEnabled() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_root_enabled", false);
     }
+    /**
+     * true: the vivo stock AE solver through the root observer («Стоковый AE vivo»: Root on, vivo X200 Ultra only); false: the
+     * SCAMERA planner (no root, any device; the default since 8 October 2026).
+     */
     public static boolean useStockBracketPlanner() {
         // The hybrid's N frames are the ZSL ring at the preview exposure: always the SCAMERA plan of that exposure.
         if (isHybridShot()) return false;
         return isRootEnabled()
-                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_planner", "stock"))
+                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_planner", "scamera"))
                 && com.particlesdevs.photoncamera.capture.VivoStockAe.supportedDevice();
     }
     /** NICE: build L from the ZSL N frames instead of capturing it after the shutter. */
@@ -944,12 +864,7 @@ public class PreferenceKeys {
     }
     private static final String[] HYBRID_OUTPUT_VALUES = {"sensor", "12", "16", "20", "2x"};
     private static final String[] HYBRID_DOWNSAMPLER_VALUES = {"lanczos", "bicubic", "area", "bilinear"};
-    /** Index of pref_lmc_hybrid_output in {sensor, 12, 16, 20, 2x} for the quick-settings chips. */
-    public static int hybridOutputIndex() {
-        String m = hybridOutputMode();
-        for (int i = 0; i < HYBRID_OUTPUT_VALUES.length; i++) if (HYBRID_OUTPUT_VALUES[i].equals(m)) return i;
-        return 0;
-    }
+    /** Stores pref_lmc_hybrid_output by its index in {sensor, 12, 16, 20, 2x} (quick-settings chips). */
     public static void setHybridOutputIndex(int index) {
         setHybridValue("output", HYBRID_OUTPUT_VALUES[Math.max(0, Math.min(HYBRID_OUTPUT_VALUES.length - 1, index))]);
     }
@@ -1268,12 +1183,6 @@ public class PreferenceKeys {
         }
         return scamInternalValue(key, fallback);
     }
-    private static boolean scamInternalSwitch(String key, boolean fallback) {
-        Float override = niceDevValue(key);
-        if (override != null) return override > 0f;
-        try { return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_" + key, fallback); }
-        catch (RuntimeException error) { return fallback; }
-    }
     private static float scamInternalValue(String key, float fallback) {
         String fullKey="pref_vivo_nice_"+key;
         Float override = niceDevValue(key);
@@ -1291,16 +1200,6 @@ public class PreferenceKeys {
 
 
 
-
-    private static float mfsrFloat(Key key, float fallback) {
-        try {
-            String v = preferenceKeys.settingsManager.getString(
-                    "default_scope", key, String.valueOf(fallback));
-            return (float) SettingsNumericRules.value(key.mValue, v, fallback);
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
 
     /**
      * Highlight handling. Recovery merges from the unclipped channels of a partly
@@ -1410,10 +1309,6 @@ public class PreferenceKeys {
 
 
 
-    public static float getGainValue() {
-        return preferenceKeys.settingsManager.getFloat("default_scope", Key.KEY_GAIN_SEEKBAR).floatValue();
-    }
-
 
 
     public static int getAlignMethodValue() {
@@ -1428,12 +1323,10 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_FOCUS_PEAK).intValue();
     }
 
-    public static int getPreviewFormatValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_PREVIEW_FORMAT).intValue();
-    }
-
+    /** «Фильтр Байера»: -1 auto (the camera's CFA) or a forced 2x2 order 0..3; anything else (the removed MONO / QUAD) is auto. */
     public static int getCFAValue() {
-        return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CFA).intValue();
+        int v = preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_CFA).intValue();
+        return v >= 0 && v <= 3 ? v : -1;
     }
 
     public static int getThemeValue() {
@@ -1558,20 +1451,12 @@ public class PreferenceKeys {
 
     public enum Key {
         KEY_PREF_VERSION(R.string._pref_version),
-        KEY_ENABLE_SYSTEM_NR(R.string.pref_enable_system_nr_key),
         KEY_SAVE_PER_LENS_SETTINGS(R.string.pref_save_per_lens_settings),
-        KEY_DISABLE_ALIGNINIG(R.string.pref_disable_aligning_key),
         KEY_SHOW_WATERMARK(R.string.pref_show_watermark_key),
-        KEY_ENHANCED_PROCESSING(R.string.pref_enhanced_processing_key),
-        KEY_HDRX_NR(R.string.pref_hdrx_nr_key),
         KEY_SHOW_ROUND_EDGE(R.string.pref_show_roundedge_key),
         KEY_SHOW_GRID(R.string.pref_show_grid_key),
         KEY_CAMERA_SOUNDS(R.string.pref_camera_sounds_key),
         KEY_TIMER_SOUND(R.string.pref_timer_sound_key),
-        KEY_CHROMA_NR_SEEKBAR(R.string.pref_chroma_nr_seekbar_key),
-        KEY_LUMA_NR_SEEKBAR(R.string.pref_luma_nr_seekbar_key),
-        KEY_GAIN_SEEKBAR(R.string.pref_gain_seekbar_key),
-        KEY_SHARPNESS_SEEKBAR(R.string.pref_sharpness_seekbar_key),
         KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
         KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
         KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
@@ -1616,18 +1501,11 @@ public class PreferenceKeys {
         KEY_SHARP_MICRO_UNIFORMITY(R.string.pref_sharp_micro_uniformity_key),
         KEY_SHARP_MICRO_CONTRAST(R.string.pref_sharp_micro_contrast_key),
         KEY_SHARP_MICRO_MATRIX_3X3(R.string.pref_sharp_micro_matrix_key),
-        KEY_NR_LUMA_ENABLED(R.string.pref_nr_luma_enabled_key),
-        KEY_NR_CHROMA_ENABLED(R.string.pref_nr_chroma_enabled_key),
-        KEY_LIVE_VIEWFINDER_LOOK(R.string.pref_live_viewfinder_look_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),
-        KEY_ALIGN_METHOD(R.string.pref_align_method_key),
         KEY_COLOR_METHOD(R.string.pref_color_method_key),
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),
-        KEY_PREVIEW_FORMAT(R.string.pref_preview_format_key),
-        KEY_TELEGRAM(R.string.pref_telegram_channel_key),
-        KEY_CONTRIBUTORS(R.string.pref_contributors_key),
         KEY_THEME(R.string.pref_theme_key),
         KEY_THEME_ACCENT(R.string.pref_theme_accent_key),
         KEY_SHOW_GRADIENT(R.string.pref_show_gradient_key),
@@ -1637,7 +1515,6 @@ public class PreferenceKeys {
         KEY_AE_METERING_STD(R.string.pref_ae_metering_std_key),
         KEY_BRACKETING_MODE(R.string.pref_bracketing_key),
         KEY_COUNTDOWN_TIMER(R.string.pref_countdown_timer_key),
-        KEY_PREVIEW_RESOLUTION(R.string.pref_preview_resolution_key),
         KEY_VIDEO_RESOLUTION(R.string.pref_video_resolution_key),
         KEY_SHOW_AF_DATA(R.string.pref_show_afdata_key),
         KEY_SHOW_HORIZON(R.string.pref_horizon),
@@ -1660,7 +1537,6 @@ public class PreferenceKeys {
         ALL_CAMERA_LENS_KEY(R.string.all_camera_lens),
         CAMERA_COUNT_KEY(R.string.all_camera_count),
         DEVICES_PREFERENCE_FILE_NAME(R.string._devices),
-        ALL_DEVICES_NAMES_KEY(R.string.all_devices_names),
         PER_LENS_FILE_NAME(R.string._per_lens),
         FOLDERS_LIST(R.string.pref_folders_list);
 

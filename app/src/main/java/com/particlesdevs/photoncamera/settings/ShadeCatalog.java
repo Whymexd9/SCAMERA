@@ -80,9 +80,20 @@ public final class ShadeCatalog {
     /** Virtual entries, in catalog order. */
     public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD));
 
-    /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins). */
+    /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins); see {@link #defaultTiles()}. */
     public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, ROUTE,
             OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_lmc_hybrid_bento"));
+
+    /**
+     * The default tiles of this phone: {@link #DEFAULT_TILES}, without the route tile where SCAM HDR cannot run (no Snapdragon
+     * 8 Elite: the route is always Hybrid, the tile would only ever be dimmed).
+     */
+    public static List<String> defaultTiles() {
+        if (PreferenceKeys.isScamHdrSupported()) return DEFAULT_TILES;
+        List<String> tiles = new ArrayList<>(DEFAULT_TILES);
+        tiles.remove(ROUTE);
+        return Collections.unmodifiableList(tiles);
+    }
 
     /** A curated group of the FULL level. */
     public static final class Group {
@@ -96,7 +107,7 @@ public final class ShadeCatalog {
     }
 
     /**
-     * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the ARK metering slider,
+     * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the ARK metering (a list since the settings audit),
      * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the gcam engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
@@ -114,7 +125,7 @@ public final class ShadeCatalog {
 
     /** Read when the camera session is built: a change restarts the camera (owner's answer 7). */
     static final Set<String> SESSION_KEYS = new HashSet<>(Arrays.asList("pref_live_viewfinder_raw_key", "pref_wide169_key",
-            "pref_raw_stream_format", "pref_zsl_buffer_count_key", "pref_af_mode_key", "pref_preview_format_key"));
+            "pref_raw_stream_format", "pref_zsl_buffer_count_key", "pref_af_mode_key"));
     /** Free-text rows that hold one number: a slider with the bounds of SettingsNumericRules and this step. */
     private static final Map<String, Float> NUMERIC_TEXT = new HashMap<>();
     static {
@@ -152,7 +163,7 @@ public final class ShadeCatalog {
                 R.drawable.ic_timeroff, R.drawable.ic_timer3s, R.drawable.ic_timer10s);
         spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
-        spec("pref_lmc_hybrid_ark_metering", R.string.shade_t_metering, 0, R.drawable.ic_shade_meter);
+        spec("pref_lmc_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
         spec(ROUTE, R.string.shade_t_route, R.array.shade_s_route, R.drawable.settings_ic_layers);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
@@ -748,7 +759,7 @@ public final class ShadeCatalog {
             return res.getString(R.string.shade_reason_nice_dev);
         Map<String, Object> values = new HashMap<>(prefs.getAll());
         values.put(ROUTE, PreferenceKeys.mergeRoute());
-        String reason = new SettingsAvailability(values).reason(e.key);
+        String reason = DeviceAvailability.of(values).reason(e.key);
         if (reason != null) return reason;
         if (e.dependency != null) {
             Entry master = entry(e.dependency);

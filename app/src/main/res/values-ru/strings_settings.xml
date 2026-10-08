@@ -173,6 +173,8 @@
     <string name="prefs_lmc_hybrid_bento_denoise_max_title">Bento: предел усиления шумодава в светах</string>
     <string name="prefs_lmc_hybrid_bento_denoise_max_summary">Во сколько раз сильнее шумодав чистит участки, слитые из одного ультракороткого кадра (по карте эффективных кадров склейки). 3 — как раньше; 8–12 ближе к реальному шуму кадра с усилением ×8…16 (GCam этот шум не моделирует вовсе).</string>
     <string name="prefs_lmc_hybrid_post_luma_summary">Только движок NLM. Сила NLM-шумодава яркости слитого кадра (0 — выкл). По умолчанию 0.6; уровень шума измеряется по самому кадру.</string>
+    <string name="prefs_lmc_hybrid_post_luma_title">Шумодав NLM: яркость</string>
+    <string name="prefs_lmc_hybrid_post_chroma_title">Шумодав NLM: цвет</string>
     <string name="prefs_lmc_hybrid_post_chroma_summary">Только движок NLM. Сила билатерального цветового шумодава и подавления цветных пятен (0 — выкл). По умолчанию 1.0.</string>
     <string name="prefs_lmc_hybrid_nr_snr_screen_title">SNR и модель шума</string>
     <string name="prefs_lmc_hybrid_nr_snr_screen_summary">Ручной SNR, множитель, ρs и ρr, карта силы</string>
@@ -189,6 +191,8 @@
     <string name="prefs_lmc_hybrid_nr_mult_screen_title">Множители</string>
     <string name="prefs_lmc_hybrid_nr_mult_screen_summary">Как в патчере</string>
     <string name="prefs_lmc_hybrid_dn_luma_mult_summary">0–4, по умолчанию 1: все strength яркости (pref_luma_denoise_multiplier). 0 — яркость не трогается.</string>
+    <string name="prefs_lmc_hybrid_dn_luma_mult_title">Шумодав GCam: яркость</string>
+    <string name="prefs_lmc_hybrid_dn_chroma_mult_title">Шумодав GCam: цвет</string>
     <string name="prefs_lmc_hybrid_dn_sabre_luma_mult_summary">0–4, по умолчанию 1: точки SNR 5 / 20 / 40 (таблица Sabre).</string>
     <string name="prefs_lmc_hybrid_dn_luma_gid14_mult_summary">0–4, по умолчанию 1: точки SNR 10 / 80 (luma_denoise_004).</string>
     <string name="prefs_lmc_hybrid_dn_chroma_mult_summary">0–4, по умолчанию 1: все strength цвета (вместе с нижним пределом). 0 — цвет не трогается.</string>
@@ -261,13 +265,13 @@
     <string name="prefs_lmc_hybrid_ark_sharp_screen_summary">ARK, RawTherapee, SCAM или выкл.</string>
     <string name="prefs_lmc_hybrid_sharp_category_title">Режим</string>
     <string name="prefs_lmc_hybrid_sharp_mode_title">Резкость Hybrid</string>
-    <string name="prefs_lmc_hybrid_sharp_mode_summary">%s. ARK — резкость ArkCam до тона (нужен тон ARK; настройки: «Тон ARK» → «Резкость ARK»), без тона ARK работает RawTherapee. RawTherapee — Unsharp Mask, RL-деконволюция и микроконтраст с настройками «Резкость и детализация» (радиусы на сетке 2× пересчитываются); SCAM — нерезкая маска по яркости без ореолов, сама слабеет на шумных кадрах.</string>
+    <string name="prefs_lmc_hybrid_sharp_mode_summary">%s. ARK — резкость ArkCam до тона (её настройки ниже на этой странице). RawTherapee — Unsharp Mask, RL-деконволюция и микроконтраст с настройками «Резкость RawTherapee» ниже (радиусы на сетке 2× пересчитываются). SCAM — нерезкая маска по яркости без ореолов, сама слабеет на шумных кадрах.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_note_title">Резкость ArkCam (process_luma)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_note_summary">Работает, когда «Резкость Hybrid» = ARK. Как в ArkCam 2.85: билатеральный подъём, локальный контраст и две ступени Richardson–Lucy по яркости до тона, деталь входит дельтой ∛S − ∛опора. Значения по умолчанию — ArkCam X8U, основная камера.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_gain_title">Сила детали резкости ARK</string>
     <string name="prefs_lmc_hybrid_ark_sharp_gain_summary">Множитель дельты детали ArkCam (∛S(гайд) − ∛опора), добавляемой после тона. 1 — как ArkCam.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_domain_title">Домен резкости</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_domain_summary">1 — как ArkCam: гайд в масштабе G_CLEAN (без экспозиции ae), пороги ореолов и светов считаются по нему. 0 — после экспозиции ae: в тёмных сценах ярче, сильные края гасятся раньше.</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_domain_summary">%s. G_CLEAN, как ArkCam: гайд в масштабе G_CLEAN (без экспозиции ae), пороги ореолов и светов считаются по нему. После экспозиции ae: в тёмных сценах ярче, сильные края гасятся раньше.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_scale_title">Масштаб ядер, ×</string>
     <string name="prefs_lmc_hybrid_ark_sharp_scale_summary">0 — авто: 1 на сетке 12 МП, 2 на сетке 50 МП (радиусы ×2, чтобы снимок, уменьшенный до 12 МП, был заточен как у ArkCam).</string>
     <string name="prefs_lmc_hybrid_ark_post_sharp_title">Доп. резкость после тона</string>
@@ -312,21 +316,21 @@
     <string name="prefs_lmc_hybrid_ark_sharp_rl_halo_macro_summary">Размах 3×3, с которого RL гасится на сильных краях. ArkCam: 0,4.</string>
     <string name="prefs_lmc_hybrid_ark_rl_stage1_category_title">Ступень 1 (Оптическая дифракция)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_kernel_title">RL 1: тип PSF</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_rl1_kernel_summary">0 — Гаусс, 1 — диск, 2 — Эйри. ArkCam: 2.</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_rl1_kernel_summary">%s. ArkCam: Эйри.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_rad_title">RL 1: радиус размытия</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_rad_summary">px на сетке 12 МП; 0 — ступень выключена. ArkCam: 1.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_amount_title">RL 1: сила</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl1_iters_title">RL 1: итерации</string>
     <string name="prefs_lmc_hybrid_ark_rl_stage2_category_title">Ступень 2 (Средние детали / Дефокус)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_kernel_title">RL 2: тип PSF</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_rl2_kernel_summary">0 — Гаусс, 1 — диск, 2 — Эйри. ArkCam: 1 (ступень выключена).</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_rl2_kernel_summary">%s. ArkCam: диск (ступень выключена).</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_rad_title">RL 2: радиус размытия</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_rad_summary">0 — ступень выключена. ArkCam: 0.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_amount_title">RL 2: сила</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl2_iters_title">RL 2: итерации</string>
     <string name="prefs_lmc_hybrid_ark_rl_stage3_category_title">Ступень 3 (Микротекстуры)</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_kernel_title">RL 3: тип PSF</string>
-    <string name="prefs_lmc_hybrid_ark_sharp_rl3_kernel_summary">0 — Гаусс, 1 — диск, 2 — Эйри. ArkCam: 0.</string>
+    <string name="prefs_lmc_hybrid_ark_sharp_rl3_kernel_summary">%s. ArkCam: Гаусс.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_rad_title">RL 3: радиус размытия</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_rad_summary">px на сетке 12 МП (σ для Гаусса); 0 — ступень выключена. ArkCam: 0,5.</string>
     <string name="prefs_lmc_hybrid_ark_sharp_rl3_amount_title">RL 3: сила</string>
@@ -342,7 +346,7 @@
     <string name="prefs_lmc_hybrid_ark_tone_screen_summary">AE, Smart HDR, веса слоёв, кривые</string>
     <string name="prefs_lmc_hybrid_ark_ae_category_title">Автоэкспозиция и замер</string>
     <string name="prefs_lmc_hybrid_ark_metering_title">Режим экспозамера AE</string>
-    <string name="prefs_lmc_hybrid_ark_metering_summary">0 — по всему кадру, 1 — центровзвешенный, 2 — точечный. ArkCam: 0.</string>
+    <string name="prefs_lmc_hybrid_ark_metering_summary">%s. ArkCam: по всему кадру.</string>
     <string name="prefs_lmc_hybrid_ark_ae_target_title">Базовая экспозиция AE</string>
     <string name="prefs_lmc_hybrid_ark_ae_target_summary">Целевое среднее геометрическое яркости после AE (днём; ночью цель снижается ночным фактором). ArkCam 2.85: 0,15.</string>
     <string name="prefs_lmc_hybrid_ark_face_priority_title">Приоритет лица</string>
@@ -394,7 +398,7 @@
     <string name="prefs_lmc_hybrid_ark_curves_screen_summary">Стиль, контраст, плечо, носок, диапазон</string>
     <string name="prefs_lmc_hybrid_ark_agx_category_title">Кривая AgX</string>
     <string name="prefs_lmc_hybrid_ark_agx_look_title">Стиль AgX (Look Preset)</string>
-    <string name="prefs_lmc_hybrid_ark_agx_look_summary">0 — Default, 1 — Punchy, 2 — Soft, 3 — Golden (тёплые света, без удержания оттенка), 4 — Custom: параметры ниже. ArkCam 2.85: 4.</string>
+    <string name="prefs_lmc_hybrid_ark_agx_look_summary">%s. Golden — тёплые света, без удержания оттенка; Custom — параметры ниже. ArkCam 2.85: Custom.</string>
     <string name="prefs_lmc_hybrid_ark_agx_slope_title">Контраст AgX (Slope)</string>
     <string name="prefs_lmc_hybrid_ark_agx_slope_summary">ArkCam 2.85: 2,7 (у плоских сцен — плюс сила контраста Smart HDR).</string>
     <string name="prefs_lmc_hybrid_ark_agx_sp_title">Форма светов (Shoulder Power)</string>
@@ -424,7 +428,7 @@
     <string name="prefs_lmc_hybrid_ark_detail_gain_title">Деталь Sabre</string>
     <string name="prefs_lmc_hybrid_ark_detail_gain_summary">Без резкости ARK: сила мелкой детали полноразмерной склейки, добавляемой после тона (в поднятых тенях не усиливается, к белому — вдвое слабее). 1 — как деталь ArkCam. По умолчанию 2: на Oppo ночью +22 % мелкой детали к ArkCam при шуме яркости ниже, чем у ArkCam.</string>
     <string name="prefs_lmc_hybrid_ark_texture_title">Текстура в тоне ARK</string>
-    <string name="prefs_lmc_hybrid_ark_texture_summary">У ArkCam нет подъёма средних частот, поэтому с тоном ARK «Текстура» выключена. Включено — локальный контраст SCAMERA с силой из ползунка «Текстура» раздела «Тон».</string>
+    <string name="prefs_lmc_hybrid_ark_texture_summary">У ArkCam нет подъёма средних частот, поэтому по умолчанию выключено. Включено — локальный контраст SCAMERA после тона с постоянной силой для каждой полосы деталей.</string>
     <string name="prefs_lmc_hybrid_ark_artifacts_category_title">Артефакты и восстановление</string>
     <string name="prefs_lmc_hybrid_highlight_recovery_title">Восстановление светов по каналам, %</string>
     <string name="prefs_lmc_hybrid_highlight_recovery_summary">Уровень клипа каждого канала до баланса белого; выбитый канал поднимается по цвету окружающего света (белая лампа остаётся белой, без пурпура), полностью выбитое плавно уходит в нейтральный белый, одиночный цветной канал (неон, лазер) не трогается. Работает и с Bento (флаги клипа от воркера). 100 по умолчанию, 0 — выкл.</string>
@@ -463,7 +467,7 @@
     <string name="prefs_vivo_nice_long_boost_ev_title">Удлинение L</string>
     <string name="prefs_vivo_nice_long_boost_ev_summary">0–2 EV, по умолчанию 1.1; 0 = стоковый план. Кадр L длиннее стокового: наше превью экспонируется примерно на 1.1 EV темнее стока, поэтому тени получают меньше сигнала. Удлиняется выдержка до 1/8 с (не короче стоковой), остальное — усилением. Возможен смаз с рук и артефакты модели на переходах.</string>
     <string name="prefs_vivo_nice_diagnostics_title">Сохранять этапы обработки</string>
-    <string name="prefs_vivo_nice_diagnostics_summary">После снимка сохраняется ZIP с промежуточными изображениями и числовыми данными в Download/SCAMERA. Замедляет обработку и занимает место; после проверки можно отключить.</string>
+    <string name="prefs_vivo_nice_diagnostics_summary">После снимка сохраняется ZIP с промежуточными изображениями и числовыми данными в Download/SCAMERA. Замедляет обработку и занимает место; по умолчанию выключено, включайте для проверки.</string>
     <string name="prefs_vivo_nice_bracket_screen_title">Брекет и выравнивание</string>
     <string name="prefs_vivo_nice_bracket_screen_summary">CRE, L из ZSL, планировщик</string>
     <string name="prefs_vivo_nice_cre_source_title">Выравнивание (CRE)</string>
@@ -534,7 +538,7 @@
     <string name="prefs_hexquad_denoise_screen_title">Нейроремозаик HP9 HexQuad</string>
     <string name="prefs_hexquad_denoise_screen_summary">Tetra 4×4: сила, шумовой профиль, ISO</string>
     <string name="prefs_hexquad_note_title">Для алгоритма HP9 HexQuad</string>
-    <string name="prefs_hexquad_note_summary">Работает на телевике в режиме 4× ISZ, Tetra 4×4. Настройки применяются к следующему снимку. Для прежнего результата: x2, исходный размер, множители 1, авто по ISO выключено, текстуры 0.</string>
+    <string name="prefs_hexquad_note_summary">Работает на телевике в режиме 4× ISZ, Tetra 4×4. Настройки применяются к следующему снимку. Для прежнего результата: x2, множители 1, авто по ISO выключено, текстуры 0.</string>
     <string name="prefs_hexquad_model_category_title">Яркость и модель</string>
     <string name="prefs_hexquad_compute_title">Совместная работа CPU + GPU + NPU</string>
     <string name="prefs_hexquad_compute_summary">CPU выравнивает кадры и готовит вход параллельно с работой нейросети на NPU. GPU восстанавливает детали и смешивает люму/хрому. Режим включён автоматически; при ошибке GPU его этапы выполняет CPU.</string>
@@ -596,20 +600,20 @@
     <string name="prefs_remosaic_block_title">Размер цветового блока</string>
     <string name="prefs_remosaic_block_summary">2 × 2 — Quad Bayer; 4 × 4 — Tetra² (телевик 4× ISZ).</string>
     <string name="prefs_tetra_response_title">Tetra — коррекция периодической сетки</string>
-    <string name="prefs_photo_processing_screen_title">Цвет и резкость</string>
-    <string name="prefs_photo_processing_screen_summary">DCP, кривые Hybrid, резкость RawTherapee</string>
+    <string name="prefs_photo_processing_screen_title">Цвет</string>
+    <string name="prefs_photo_processing_screen_summary">DCP, кривые Hybrid</string>
     <string name="prefs_dcp_profile_title">Матрицы DCP</string>
     <string name="prefs_dcp_profile_summary">Импорт и выбор цветовой матрицы модуля</string>
     <string name="prefs_lmc_curves_screen_title">Кривые Hybrid</string>
     <string name="prefs_lmc_curves_note_title">Как работает</string>
-    <string name="prefs_lmc_curves_note_summary">Сначала тоновая кривая (17 точек), затем гамма-кривая (33 точки), по каналам RGB, как в GCam. Сила смешивает кривую с исходным снимком: 0 — без изменений, 100 — кривая целиком. Не действует при тональной обработке «Выкл.» (линейный выход).</string>
+    <string name="prefs_lmc_curves_note_summary">Сначала тоновая кривая (17 точек), затем гамма-кривая (33 точки), по каналам RGB, как в GCam. Сила смешивает кривую с исходным снимком: 0 — без изменений, 100 — кривая целиком.</string>
     <string name="prefs_lmc_tone_curve_title">Тоновая кривая</string>
     <string name="prefs_lmc_tone_curve_strength_title">Сила тоновой кривой, %</string>
     <string name="prefs_lmc_gamma_curve_title">Гамма-кривая</string>
     <string name="prefs_lmc_gamma_curve_strength_title">Сила гамма-кривой, %</string>
     <string name="prefs_sharp_settings_screen_title">Резкость RawTherapee</string>
     <string name="prefs_sharp_settings_screen_summary">USM, RL-деконволюция, микроконтраст</string>
-    <string name="prefs_sharp_rt_note_summary">Работает в режимах резкости «RawTherapee» Hybrid и SCAM HDR.</string>
+    <string name="prefs_sharp_rt_note_summary">Работает, когда «Резкость Hybrid» — RawTherapee или ARK с «Доп. резкость после тона»; на обоих маршрутах.</string>
     <string name="prefs_unsharp_settings_screen_summary">Радиус, пороги, края, ореолы</string>
     <string name="prefs_deconvolution_settings_screen_title">RL-деконволюция</string>
     <string name="prefs_deconvolution_settings_screen_summary">Три ступени, ядра PSF, итерации</string>
@@ -635,7 +639,8 @@
     <string name="prefs_quad_compatibility_screen_summary">Прямой путь Quad 2×2 и метаданные DNG</string>
     <string name="prefs_noise_model_screen_title">Модель шума сенсора</string>
     <string name="prefs_noise_model_screen_summary">Профиль, импорт и экспорт</string>
-    <string name="prefs_noise_model_note_summary">Профиль используется, когда в Hybrid или SCAM HDR выбран источник шума «Из настроек».</string>
+    <string name="prefs_noise_model_note_summary">Выбранный профиль заменяет модель шума камеры: шумодав GCam в Hybrid и профиль шума в DNG используют его всегда, склейки Hybrid и SCAM HDR — когда их источник шума «Из настроек».</string>
+    <string name="prefs_theme_gallery_title">Тема галереи</string>
     <string name="prefs_viewfinder_settings_screen_title">Видоискатель и интерфейс</string>
     <string name="prefs_viewfinder_settings_screen_summary">Предпросмотр, сетка, фокус, звуки и оформление</string>
     <string name="prefs_camera_sounds_title">Звук затвора</string>
@@ -675,8 +680,6 @@
     <string name="prefs_vivo_nice_probe_summary">Проверить оригинальную HDR-модель внутри приложения и скопировать отчёт</string>
     <string name="prefs_vivo_neural_probe_title">Нейроремозаик — проверка и отчёты</string>
     <string name="prefs_vivo_neural_probe_summary">Проверить загрузку модели на нейроускоритель и скопировать отчёт</string>
-    <string name="prefs_remosaic_vivo_probe_title">Системная библиотека Vivo — диагностика</string>
-    <string name="prefs_remosaic_vivo_probe_summary">Отдельная проверка старого системного пути. Не требуется для встроенного HP9 HexQuad.</string>
     <string name="prefs_camera_package_spoof_screen_title">Подмена пакета камеры</string>
     <string name="prefs_camera_package_spoof_screen_summary">Для OPPO / OnePlus и общего Android: открыть скрытые модули</string>
     <string name="prefs_camera_package_spoof_enabled_title">Спуф пакета</string>

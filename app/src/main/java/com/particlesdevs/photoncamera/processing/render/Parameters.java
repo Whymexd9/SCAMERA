@@ -841,12 +841,9 @@ public class Parameters {
                 "\n hasGainMap=" + hasGainMap +
                 "\n FrameCount=" + (multiFrameCount>0 ? multiFrameCount : FrameNumberSelector.frameCount) +
                 "\n CameraID=" + cameraID +
-                "\n DenoiseOn=" + PhotonCamera.getSettings().hdrxNR +
-                "\n Sharp=" + FltFormat(PreferenceKeys.getSharpnessValue()) +
                 "\n Noise Merging=" + FltFormat(PhotonCamera.getSettings().mergeStrength) +
                 "\n Align=" + PhotonCamera.getSettings().alignAlgorithm +
                 "\n Color=" + PhotonCamera.getSettings().colorMethod +
-                "\n PreviewFormat=" + PhotonCamera.getSettings().previewFormat +
                 "\n FocalL=" + FltFormat(focalLength) +
                 "\n Version=" + PhotonCamera.getVersion();
     }

@@ -266,7 +266,8 @@ public class ShadeUiTest {
         row.performClick();
         assertTrue(sheet.pinnedKeys().contains("pref_lmc_hybrid_post_luma"));
         assertEquals(sheet.pinnedKeys(), ShadeTiles.stored(prefs));
-        assertEquals(activity.getString(R.string.shade_added, "Luma Denoise"), messages.get(messages.size() - 1));
+        // the NLM and GCam luma rows of one page have distinct names since the settings audit (H5)
+        assertEquals(activity.getString(R.string.shade_added, "NLM denoise: luma"), messages.get(messages.size() - 1));
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
         Bitmap image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);

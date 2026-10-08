@@ -212,4 +212,9 @@
         <item>Удерж.</item>
         <item>Касание</item>
     </string-array>
+    <string-array name="shade_s_ark_metering">
+        <item>Кадр</item>
+        <item>Центр</item>
+        <item>Точка</item>
+    </string-array>
 </resources>

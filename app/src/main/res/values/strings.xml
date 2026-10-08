@@ -6,7 +6,6 @@
     <string name="backup_file_name" translatable="false">SCAMERA_%1$s</string>
     <string name="app_name" translatable="false">SCAMERA</string>
     <string name="gallery_name" translatable="false">PGallery</string>
-    <string name="device_support" translatable="false">HDR+ Ultra RAW</string>
     <string name="request_permission">This app needs camera permission.</string>
     <string name="camera_error">This device doesn\'t support Camera2 API.</string>
     <string name="frame_count">Normal RAW frames</string>
@@ -27,7 +26,6 @@
     <string name="ai_denoise_model">AI noise reduction model</string>
     <string name="turn_on_grid">Show Grid</string>
     <string name="turn_on_round_edges">Enable Round Edges</string>
-    <string name="telegram">Telegram Group ↗</string>
     <string name="turn_on_watermark">Watermark</string>
     <string name="sure_delete">Are you sure to delete this image?</string>
     <string name="sure_delete_multiple">Are you sure to delete %1$s image(s)? %2$s will be cleared.</string>
@@ -40,8 +38,6 @@
     <string name="focus_peaking">Focus Peaking</string>
     <string name="focus_peaking_auto">Auto</string>
     <string name="show_horizon_on_preview">Show horizon on preview</string>
-    <string name="preview_format">Preview Format</string>
-    <string name="about">About</string>
     <string name="camera_sounds">Camera Sounds</string>
     <string name="energy_saving">Battery Saver</string>
     <string name="hide_gallery_icon">Hide Gallery Icon</string>
@@ -54,7 +50,6 @@
     <string name="frame_count_summary">Number of constant-exposure denoising frames</string>
     <string name="photon_camera_summary">An Open-Source Android Camera with Enhanced Image Processing</string>
     <string name="version_title">Version</string>
-    <string name="contributors_title">Contributors ↗</string>
     <string name="eis_toggle_text">Image Stabilization</string>
     <string name="fps_60_toggle_text">Frame rate</string>
     <string name="fps_auto" translatable="false">AUTO</string>
@@ -71,13 +66,8 @@
     <string name="restore">Restore</string>
     <string name="restore_summary_json">Load settings from an XML file in Download/SCAMERA/XML, or pick a file</string>
     <string name="empty_file_name_error">File name cannot be an empty string</string>
-    <string name="device_unsupport">Warning: Uncalibrated device</string>
     <string name="af_mode">Auto Focus Mode</string>
     <string name="multiple_deleted_success">%1$s file(s) deleted! %2$s cleared.</string>
-    <string name="supported_devices">Supported Devices</string>
-    <string name="list_not_loaded" translatable="false"><![CDATA[<list not loaded>]]></string>
-    <string name="fetch_configurations">Fetch Configurations</string>
-    <string name="fetch_configurations_summary">Download device-specific tuning from the network and update cached settings</string>
     <string name="sensor_configurations">Sensor settings per module</string>
     <string name="sensor_configurations_summary">RAW levels, exposure, stabilization and session of each module</string>
     <string name="this_device">Your Device - %1$s</string>
@@ -238,7 +228,7 @@
     <string name="sharp_deconv_halo_macro">Macro edge threshold</string>
     <string name="sharp_deconv_halo_macro_desc">Local contrast above which the suppression works at full strength</string>
     <string name="sharp_deconv_kernel">PSF kernel type</string>
-    <string name="sharp_deconv_kernel_desc">Shape of the point spread function for this stage</string>
+    <string name="sharp_deconv_kernel_desc">%s. Shape of the point spread function for this stage</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Gaussian (classic)</item>
         <item>Optics / lens (Pillbox)</item>
@@ -257,7 +247,7 @@
     <string name="sharp_deconv_damping_desc">Fades the correction where noise explains the difference</string>
     <string name="pref_zsl_buffer_count_default" translatable="false">50</string>
     <string name="zsl_buffer_count">ZSL buffer frames</string>
-    <string name="zsl_buffer_count_summary">RAW buffer before the shutter press: 1–100 frames, 50 by default (~25 MB per frame; with 100 the camera does not start on the X200 Ultra). One size for all modules and for the photo and night modes, MFSR included. The number of merged frames is set separately.</string>
+    <string name="zsl_buffer_count_summary">RAW buffer before the shutter press: 1–100 frames, 50 by default (~25 MB per frame; with 100 the camera does not start on the X200 Ultra). One size for all modules and for the photo and night modes. The number of merged frames is set separately.</string>
     <string name="live_viewfinder_raw">Live viewfinder</string>
     <string name="live_viewfinder_raw_summary">Preview developed from RAW. When it is off or RAW is unavailable, the standard camera preview is shown. The full processing of the shot runs after capture.</string>
     <string name="pref_remosaic_phase_default" translatable="false">0</string>
@@ -296,9 +286,6 @@
     <string name="remosaic_backend_title">Remosaic algorithm</string>
     <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — after Vivo</item><item>Vivo Neural — NPU, root (experimental)</item><item>HP9 HexQuad — NPU, 6 frames (test)</item><item>Quad 2×2 — NPU, 4 frames (main, 2x ISZ)</item></string-array>
     <string-array name="remosaic_backend_values" translatable="false"><item>scamera</item><item>tetra_detail</item><item>vivo_neural</item><item>hp9_hexquad</item><item>imx06c_quad</item></string-array>
-    <string name="remosaic_vivo_probe_desc">Compatibility check on this phone. No shot processing runs.</string>
-    <string name="remosaic_vivo_checking">Checking…</string>
-    <string name="remosaic_vivo_result">Vivo check result</string>
     <string name="tetra_response_summary">Estimates the 4×4 pixel response and its smooth change across the frame. With too little data a common correction is used. If texture or colour changes, compare with the correction off.</string>
     <string-array name="hexquad_model_entries"><item>x2 — current model</item><item>x1 — experimental</item></string-array>
     <string-array name="hexquad_model_values" translatable="false"><item>2</item><item>1</item></string-array>

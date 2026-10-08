@@ -121,7 +121,13 @@ public final class SettingsMigration {
             "pref_lmc_hybrid_boost",
             // P25: the Quad toggle of the top bar is gone, and with it its tunable «Enable Quad Resolution»; the quick
             // buttons of concept E and the ☆ favourites became the shade's tiles (migrateShadeTiles reads them first)
-            "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys"));
+            "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys",
+            // Settings audit (8 October 2026): «Формат превью» only added an ImageReader nobody read to the session
+            "pref_preview_format_key",
+            // Settings audit S5: keys of PhotonCamera settings with no row since P4 / P5 that api/Settings still read
+            "pref_enable_system_nr_key", "pref_disable_aligning_key", "pref_enhanced_processing_key", "pref_hdrx_nr_key",
+            "pref_chroma_nr_seekbar_key", "pref_luma_nr_seekbar_key", "pref_gain_seekbar_key", "pref_sharpness_seekbar_key",
+            "pref_nr_luma_enabled_key", "pref_nr_chroma_enabled_key", "pref_live_viewfinder_look_key", "pref_align_method_key"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -133,13 +139,23 @@ public final class SettingsMigration {
             // P10: AgX, Exposure Fusion and the headroom tone of both routes (and the hybrid's copies)
             "pref_agx_", "pref_vivo_hdr_", "pref_vivo_nice_fusion_", "pref_lmc_hybrid_hdr_", "pref_lmc_hybrid_fusion_",
             "pref_lmc_hybrid_agx_"};
+    /**
+     * Removed rows of the per-module sensor settings (pref_sensorconfig_&lt;slot or camera id&gt;_&lt;field&gt;): the exposure limits
+     * «Максимальное ISO», «Максимальная выдержка» and «Баланс выдержки и ISO», which no capture code read (settings audit).
+     */
+    static final String[] OBSOLETE_SENSOR_FIELDS = {"exposurebalanceisolimit", "exposurebalanceshutterlimit", "exposurebalancemultiplier"};
     static boolean isObsolete(String key) {
         if (OBSOLETE_KEYS.contains(key)) return true;
         for (String prefix : OBSOLETE_PREFIXES) if (key.startsWith(prefix)) return true;
+        if (key.startsWith("pref_sensorconfig_"))
+            for (String field : OBSOLETE_SENSOR_FIELDS) if (key.endsWith("_" + field)) return true;
         return false;
     }
 
-    /** Removes the obsolete keys from one preference set and from the shade tiles; returns whether anything changed. */
+    /**
+     * Removes the obsolete keys from one preference set and from the shade tiles, and resets stored values of removed list
+     * entries; returns whether anything changed. Idempotent: a second run changes nothing.
+     */
     public static boolean removeObsolete(SharedPreferences prefs) {
         SharedPreferences.Editor e = prefs.edit();
         boolean changed = false;
@@ -157,8 +173,42 @@ public final class SettingsMigration {
         // on every resume / lens switch; resetRemovedSettings only covers the screen's start.
         Object quad = prefs.getAll().get("pref_quad_bayer_key");
         if (quad != null && PreferenceNumber.bool(quad, false)) { e.putBoolean("pref_quad_bayer_key", false); changed = true; }
+        // «Фильтр Байера» lost MONO (4: every Hybrid / SCAM HDR shot failed, both need a 2x2 CFA) and QUAD (-2: did nothing,
+        // the Quad stream is set in «Quad Bayer — совместимость»); a stored one of them becomes «Авто» (-1).
+        Object cfa = prefs.getAll().get(CFA_KEY);
+        if (cfa != null && isRemovedCfa(cfa)) { e.putString(CFA_KEY, "-1"); changed = true; }
+        // Rows that store a whole number and were decimal sliders (settings audit H4): the ARK metering, AgX look, sharpening
+        // domain and RL kernels are lists now, the SCAM HDR radii integer sliders. A stored "1.00" or float 1.0 becomes "1"
+        // (the list value); a value that is no number at all goes, so the row's default applies.
+        for (String key : WHOLE_NUMBER_KEYS) {
+            Object value = prefs.getAll().get(key);
+            if (value == null) continue;
+            String whole = wholeNumber(key, value);
+            if (whole == null) { e.remove(key); changed = true; }
+            else if (!(value instanceof String) || !whole.equals(value)) { e.putString(key, whole); changed = true; }
+        }
         if (changed) e.commit();
         return changed;
+    }
+
+    /** Keys whose rows store a whole number but were decimal sliders before the settings audit. */
+    static final String[] WHOLE_NUMBER_KEYS = {"pref_lmc_hybrid_ark_metering", "pref_lmc_hybrid_ark_agx_look",
+            "pref_lmc_hybrid_ark_sharp_domain", "pref_lmc_hybrid_ark_sharp_rl1_kernel", "pref_lmc_hybrid_ark_sharp_rl2_kernel",
+            "pref_lmc_hybrid_ark_sharp_rl3_kernel", "pref_vivo_nice_luma_radius", "pref_vivo_nice_chroma_radius"};
+    /** The stored value as the whole number its row writes, within the key's bounds; null when it is no number. */
+    static String wholeNumber(String key, Object value) {
+        double v = PreferenceNumber.read(value, Double.NaN);
+        if (!Double.isFinite(v)) return null;
+        double[] bounds = SettingsNumericRules.bounds(key);
+        if (bounds != null) v = Math.max(bounds[0], Math.min(bounds[1], v));
+        return Long.toString(Math.round(v));
+    }
+
+    static final String CFA_KEY = "pref_cfa_key";
+    /** The removed «Фильтр Байера» values: MONO (4) and QUAD (-2). */
+    static boolean isRemovedCfa(Object value) {
+        double v = PreferenceNumber.read(value, -1);
+        return v == 4 || v == -2;
     }
 
     /** {@link #removeObsolete(SharedPreferences)} over the main preferences, every stored module profile and the baseline. */
@@ -166,9 +216,28 @@ public final class SettingsMigration {
         removeObsolete(main);
         SharedPreferences meta = context.getSharedPreferences("module_profiles_meta", Context.MODE_PRIVATE);
         for (Map.Entry<String, ?> e : meta.getAll().entrySet())
-            if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue()))
-                removeObsolete(context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE));
-        removeObsolete(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE));
+            if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue())) {
+                SharedPreferences profile = context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE);
+                removeObsolete(profile);
+                dropGlobal(profile);
+            }
+        SharedPreferences baseline = context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE);
+        removeObsolete(baseline);
+        dropGlobal(baseline);
+    }
+
+    /**
+     * Settings shared by every lens (ModuleProfiles.isGlobal, owner 8 October 2026) leave a module profile or the baseline:
+     * the main settings hold their one value (the active module's when they were still per module), and an old per-module
+     * copy can never come back. Returns whether anything changed.
+     */
+    static boolean dropGlobal(SharedPreferences profile) {
+        SharedPreferences.Editor e = profile.edit();
+        boolean changed = false;
+        for (String key : profile.getAll().keySet())
+            if (ModuleProfiles.isGlobal(key)) { e.remove(key); changed = true; }
+        if (changed) e.commit();
+        return changed;
     }
 
     /** Quick buttons of the concept E sheet: SettingType names, comma separated, oldest first. */
@@ -190,7 +259,7 @@ public final class SettingsMigration {
     /**
      * P25: the first value of the shade's tiles (ui_shade_tiles) is the user's old pins, then the 8 defaults (owner's
      * answer 10): the concept E quick buttons (ui_sheet_quick, mapped to their keys, other names dropped), then the ☆
-     * favourites (settings_favorite_keys, obsolete keys dropped), then ShadeCatalog.DEFAULT_TILES, without repeats.
+     * favourites (settings_favorite_keys, obsolete keys dropped), then ShadeCatalog.defaultTiles(), without repeats.
      * Keys the catalog does not know and everything after 12 are dropped on read (ShadeTiles.load). A stored tile list
      * is never overwritten. Both old keys are removed; a second run changes nothing.
      *
@@ -217,7 +286,7 @@ public final class SettingsMigration {
                     }
                 } catch (org.json.JSONException ignored) {}
             }
-            for (String key : ShadeCatalog.DEFAULT_TILES) if (!tiles.contains(key)) tiles.add(key);
+            for (String key : ShadeCatalog.defaultTiles()) if (!tiles.contains(key)) tiles.add(key);
             e.putString(ShadeTiles.KEY, ShadeTiles.join(tiles));
         }
         e.remove(LEGACY_QUICK).remove(LEGACY_FAVOURITES).commit();
@@ -445,6 +514,39 @@ public final class SettingsMigration {
             e.putInt(MOSAIC_FRAMES_REV, 1);
             markOnly = true;
         }
+        // Slider precision (settings audit H1, 8 October 2026): the sliders stored two decimals, so the first opening of the
+        // screen wrote the XML default 0.0005 of the Bento auto threshold as "0.00" (Bento then triggered on almost every
+        // shot) and 1.414 of the LUT sigma as "1.41". Exactly those stored strings are that rounding, not a choice, and move
+        // to the defaults. Own one-time marker, set in the first run whatever it finds, so a "0.00" chosen later stays.
+        if (!values.containsKey(PRECISION_REV)) {
+            if ("0.00".equals(values.get(LmcHybridKeys.PREFIX + "bento_trigger"))) {
+                e.putString(LmcHybridKeys.PREFIX + "bento_trigger", "0.0005");
+                changed = true;
+            }
+            if ("1.41".equals(values.get(LmcHybridKeys.PREFIX + "lut_sigma"))) {
+                e.putString(LmcHybridKeys.PREFIX + "lut_sigma", "1.414");
+                changed = true;
+            }
+            e.putInt(PRECISION_REV, 1);
+            markOnly = true;
+        }
+        // SCAM HDR defaults (owner, 8 October 2026): «Сохранять этапы обработки» off (it wrote a ZIP and scanned the vendor keys on
+        // every shot) and the SCAMERA planner (the stock vivo AE needs Root on the vivo X200 Ultra). A stored former default (on /
+        // "stock", written when the screen was first opened) moves once; own marker, so a choice made later stays.
+        if (!values.containsKey(SCAM_DEFAULTS_REV)) {
+            Object diagnostics = values.get("pref_vivo_nice_diagnostics");
+            if (diagnostics != null && PreferenceNumber.bool(diagnostics, false)) {
+                e.putBoolean("pref_vivo_nice_diagnostics", false);
+                changed = true;
+            }
+            Object planner = values.get("pref_vivo_nice_planner");
+            if (planner != null && "stock".equals(planner.toString().trim())) {
+                e.putString("pref_vivo_nice_planner", "scamera");
+                changed = true;
+            }
+            e.putInt(SCAM_DEFAULTS_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
@@ -454,6 +556,10 @@ public final class SettingsMigration {
     static final String ZSL_FRAMES_REV = "pref_lmc_hybrid_zsl_frames_rev";
     /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_mosaic_frames (24) to 30. */
     static final String MOSAIC_FRAMES_REV = "pref_lmc_hybrid_mosaic_frames_rev";
+    /** Marker of the one-time move of the two-decimal slider defaults "0.00" (Bento auto threshold) and "1.41" (LUT sigma). */
+    static final String PRECISION_REV = "pref_lmc_hybrid_precision_rev";
+    /** Marker of the one-time move of the former SCAM HDR defaults (diagnostics on, stock planner) to off / SCAMERA. */
+    static final String SCAM_DEFAULTS_REV = "pref_vivo_nice_defaults_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {
@@ -494,7 +600,8 @@ public final class SettingsMigration {
         String v = engine == null ? "auto" : engine.toString();
         return "hybrid".equals(v) || !"nice".equals(v) && !LmcHybridKeys.vivoNetSoc();
     }
-    private static String attribute(Context context, XmlResourceParser parser, String name) {
+    /** An android: attribute of the current tag, a resource reference resolved to its text (also used by XmlDefaults). */
+    static String attribute(Context context, XmlResourceParser parser, String name) {
         int id=parser.getAttributeResourceValue(ANDROID,name,0);
         if(id==0) return parser.getAttributeValue(ANDROID,name);
         android.util.TypedValue value=new android.util.TypedValue();

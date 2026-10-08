@@ -17,8 +17,6 @@
         <item>BGGR</item>
         <item>GRBG</item>
         <item>GBRG</item>
-        <item>MONO</item>
-        <item>QUAD</item>
     </string-array>
     <string-array name="colorset_entries">
         <item>Авто</item>
@@ -29,12 +27,6 @@
         <item>Выкл.</item>
         <item>Вкл.</item>
         <item>@string/focus_peaking_auto</item>
-    </string-array>
-    <string-array name="preview_format_entries">
-        <item>YUV_420_888</item>
-        <item>JPEG</item>
-        <item>HEIC</item>
-        <item>Нет</item>
     </string-array>
     <string-array name="af_mode_entries">
         <item>Непрерывный (фото)</item>
@@ -190,5 +182,21 @@
         <item>Выкл</item>
         <item>Долгое нажатие</item>
         <item>Касание</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_metering_entries">
+        <item>По всему кадру</item>
+        <item>Центровзвешенный</item>
+        <item>Точечный</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_agx_look_entries">
+        <item>Default</item>
+        <item>Punchy</item>
+        <item>Soft</item>
+        <item>Golden</item>
+        <item>Custom</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_sharp_domain_entries">
+        <item>После экспозиции ae</item>
+        <item>G_CLEAN, как ArkCam</item>
     </string-array>
 </resources>

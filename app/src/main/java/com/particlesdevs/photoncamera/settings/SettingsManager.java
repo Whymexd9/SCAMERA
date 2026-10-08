@@ -256,34 +256,33 @@ public class SettingsManager {
     }
 
     /**
-     * Retrieve a default from the DefaultsStore as a String.
+     * Retrieve a default as a String: the one set in the DefaultsStore, else the android:defaultValue of the key's row in
+     * res/xml/preferences.xml ({@link XmlDefaults}), else null.
      */
     public String getStringDefault(PreferenceKeys.Key key) {
-        return mDefaultsStore.getDefaultValue(key.mValue);
+        String stored = mDefaultsStore.getDefaultValue(key.mValue);
+        return stored != null ? stored : XmlDefaults.get(mContext, key.mValue);
     }
 
     /**
-     * Retrieve a default from the DefaultsStore as an Integer.
+     * Retrieve a default (see {@link #getStringDefault}) as an Integer; 0 without one.
      */
     public Integer getIntegerDefault(PreferenceKeys.Key key) {
-        String defaultValueString = mDefaultsStore.getDefaultValue(key.mValue);
-        return defaultValueString == null ? 0 : Integer.parseInt(defaultValueString);
+        return (int) Math.round(PreferenceNumber.read(getStringDefault(key), 0));
     }
 
     /**
-     * Retrieve a default from the DefaultsStore as a Float.
+     * Retrieve a default (see {@link #getStringDefault}) as a Float; 0 without one.
      */
     public Float getFloatDefault(PreferenceKeys.Key key) {
-        String defaultValueString = mDefaultsStore.getDefaultValue(key.mValue);
-        return defaultValueString == null ? 0.0f : Float.parseFloat(defaultValueString);
+        return (float) PreferenceNumber.read(getStringDefault(key), 0);
     }
 
     /**
-     * Retrieve a default from the DefaultsStore as a boolean.
+     * Retrieve a default (see {@link #getStringDefault}) as a boolean; false without one.
      */
     public boolean getBooleanDefault(PreferenceKeys.Key key) {
-        String defaultValueString = mDefaultsStore.getDefaultValue(key.mValue);
-        return defaultValueString != null && (Integer.parseInt(defaultValueString) != 0);
+        return PreferenceNumber.bool(getStringDefault(key), false);
     }
 
     /**

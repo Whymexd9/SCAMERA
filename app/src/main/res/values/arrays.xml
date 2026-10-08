@@ -28,8 +28,6 @@
         <item>BGGR</item>
         <item>GRBG</item>
         <item>GBRG</item>
-        <item>MONO</item>
-        <item>QUAD</item>
     </string-array>
     <string-array name="cfapat_entryValues" translatable="false">
         <item>-1</item>
@@ -37,8 +35,6 @@
         <item>3</item>
         <item>1</item>
         <item>2</item>
-        <item>4</item>
-        <item>-2</item>
     </string-array>
     <string-array name="colorset_entries">
         <item>Auto</item>
@@ -50,12 +46,6 @@
         <item>On</item>
         <item>@string/focus_peaking_auto</item>
     </string-array>
-    <string-array name="preview_format_entries">
-        <item>YUV_420_888</item>
-        <item>JPEG</item>
-        <item>HEIC</item>
-        <item>None</item>
-    </string-array>
     <string-array name="colorset_entryValues" translatable="false">
         <item>0</item>
         <item>1</item>
@@ -65,12 +55,6 @@
         <item>0</item>
         <item>1</item>
         <item>2</item>
-    </string-array>
-    <string-array name="preview_format_entryValues" translatable="false">
-        <item>35</item>
-        <item>256</item>
-        <item>1212500294</item>
-        <item>0</item>
     </string-array>
     <string-array name="theme_entries" translatable="false">
         <item>@string/theme_follow_system</item>
@@ -431,5 +415,38 @@
         <item>off</item>
         <item>long_press</item>
         <item>tap</item>
+    </string-array>
+    <!-- Settings audit H4: the enum-like ARK sliders became lists (stored values unchanged: "0", "1", ...). -->
+    <string-array name="lmc_hybrid_ark_metering_entries">
+        <item>Whole frame</item>
+        <item>Centre-weighted</item>
+        <item>Spot</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_metering_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_agx_look_entries">
+        <item>Default</item>
+        <item>Punchy</item>
+        <item>Soft</item>
+        <item>Golden</item>
+        <item>Custom</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_agx_look_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_sharp_domain_entries">
+        <item>After the ae exposure</item>
+        <item>G_CLEAN, as ArkCam</item>
+    </string-array>
+    <string-array name="lmc_hybrid_ark_sharp_domain_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
     </string-array>
 </resources>
