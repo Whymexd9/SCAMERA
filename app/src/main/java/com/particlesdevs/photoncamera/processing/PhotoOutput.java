@@ -359,6 +359,13 @@ public final class PhotoOutput {
         return saveAvif(file, tenBitSource ? pixels.image : pixels.eightBit(last), options, exif);
     }
 
+    /** Writes the AVIF file (AvifEncoder.encode); replaced in tests. */
+    interface AvifWriter {
+        AvifEncoder.Result write(Bitmap img, Path file, AvifEncoder.Options options, byte[] exifBlock) throws IOException;
+    }
+
+    static AvifWriter avifWriter = AvifEncoder::encode;
+
     /** Free memory an AVIF encode leaves untouched (the camera keeps running). */
     static final long AVIF_MEMORY_RESERVE = 256L << 20;
 
@@ -383,13 +390,14 @@ public final class PhotoOutput {
             exifBlock = ExifBlock.exifDataBlock(ExifBlock.app1Segment(exif, width, height));
         }
         try {
-            AvifEncoder.Result r = AvifEncoder.encode(img, file, options, exifBlock);
+            AvifEncoder.Result r = avifWriter.write(img, file, options, exifBlock);
             Log.d(TAG, "AVIF " + options.describe() + " (" + img.getConfig() + " " + width + "x" + height + "): " + r.depth + "-bit "
                     + (r.yuv444 ? "4:4:4" : "4:2:0") + ", RGB to YCbCr " + r.convertMs + " ms, AV1 " + r.encodeMs + " ms, "
                     + r.bytes / 1024 + " KB" + (exifBlock == null || r.exif ? "" : ", EXIF not stored"));
             return true;
         } catch (IOException | RuntimeException | OutOfMemoryError e) {
             Log.e(TAG, "AVIF encode failed: " + android.util.Log.getStackTraceString(e));
+            try { Files.deleteIfExists(file); } catch (IOException ignored) {}
             return false;
         }
     }

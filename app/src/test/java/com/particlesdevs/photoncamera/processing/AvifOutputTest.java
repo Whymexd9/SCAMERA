@@ -30,8 +30,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -226,6 +228,90 @@ public class AvifOutputTest {
             assertTrue(expected.getMessage(), expected.getMessage().contains("AVIF"));
         }
         assertFalse(bmp.isRecycled());
+    }
+
+    @Test
+    public void tenBitImageWantedForADeepAvifOnAndroid13() {
+        AvifEncoder.Options ten = new AvifEncoder.Options(90, false, 10, true, 6, 8);
+        assertTrue(AvifEncoder.tenBitImageWanted(PhotoFormat.AVIF, ten, AvifEncoder.TEN_BIT_MIN_SDK));
+        assertTrue(AvifEncoder.tenBitImageWanted(PhotoFormat.AVIF, new AvifEncoder.Options(90, false, 12, false, 6, 8), 35));
+        assertTrue("lossless keeps the 10 bits", AvifEncoder.tenBitImageWanted(PhotoFormat.AVIF, new AvifEncoder.Options(90, true, 8, true, 6, 8), 33));
+        assertFalse("RGBA_1010102 needs Android 13", AvifEncoder.tenBitImageWanted(PhotoFormat.AVIF, ten, 32));
+        assertFalse(AvifEncoder.tenBitImageWanted(PhotoFormat.AVIF, new AvifEncoder.Options(90, false, 8, true, 6, 8), 35));
+        assertFalse(AvifEncoder.tenBitImageWanted(PhotoFormat.JPEG, ten, 35));
+        assertFalse(AvifEncoder.tenBitImageWanted(PhotoFormat.HEIC, ten, 35));
+        // the stored settings (Android 15 here): AVIF is 10-bit by default
+        AvifEncoder.setAvailableForTesting(true);
+        assertFalse("JPEG by default", AvifEncoder.tenBitImageWanted());
+        manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY, "avif").commit();
+        assertTrue(AvifEncoder.tenBitImageWanted());
+        manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY_AVIF_DEPTH, "8").commit();
+        assertFalse(AvifEncoder.tenBitImageWanted());
+        manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY_AVIF_DEPTH, "12").commit();
+        AvifEncoder.setAvailableForTesting(false);
+        assertFalse("no encoder: the shot is a JPEG", AvifEncoder.tenBitImageWanted());
+    }
+
+    @Test
+    public void aTenBitImageGoesToADeepAvifAsItIs() throws Exception {
+        AvifEncoder.setAvailableForTesting(true);
+        final List<Bitmap.Config> seen = new ArrayList<>();
+        try {
+            PhotoOutput.avifWriter = (img, file, options, exifBlock) -> {
+                seen.add(img.getConfig());
+                assertFalse(img.isRecycled());
+                assertNotNull("the EXIF block goes into the AVIF", exifBlock);
+                Files.write(file, new byte[]{0, 0, 0, 0x1C, 'f', 't', 'y', 'p', 'a', 'v', 'i', 'f'});
+                return new AvifEncoder.Result(new long[]{options.depth, options.yuv444 ? 1 : 0, 1, 2, 12, 1});
+            };
+            // 10-bit AVIF with the extra JPEG: the AVIF takes the 10-bit pixels, the JPEG an 8-bit copy
+            manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY, "avif").putBoolean(PhotoFormat.KEY_ALSO_JPEG, true).commit();
+            Path base = tmp.getRoot().toPath().resolve("IMG_T1");
+            Bitmap ten = tenBitPicture(16, 12);
+            PhotoOutput.Result result = PhotoOutput.save(base, ten, exif(), null);
+            assertEquals(Arrays.asList(PhotoFormat.AVIF.fileFor(base), PhotoFormat.JPEG.fileFor(base)), result.files);
+            assertEquals(Collections.singletonList(Bitmap.Config.RGBA_1010102), seen);
+            assertTrue(ten.isRecycled());
+            // 8-bit AVIF: the 8-bit copy of the 10-bit image
+            seen.clear();
+            manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY_AVIF_DEPTH, "8").putBoolean(PhotoFormat.KEY_ALSO_JPEG, false).commit();
+            base = tmp.getRoot().toPath().resolve("IMG_T2");
+            result = PhotoOutput.save(base, tenBitPicture(16, 12), exif(), null);
+            assertEquals(Collections.singletonList(PhotoFormat.AVIF.fileFor(base)), result.files);
+            assertEquals(Collections.singletonList(Bitmap.Config.ARGB_8888), seen);
+            // an 8-bit image goes in as it is at any depth (expanded to 10 / 12 bits by the encoder)
+            seen.clear();
+            manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY_AVIF_DEPTH, "12").commit();
+            base = tmp.getRoot().toPath().resolve("IMG_T3");
+            Bitmap eight = picture(16, 12);
+            result = PhotoOutput.save(base, eight, exif(), null);
+            assertEquals(Collections.singletonList(PhotoFormat.AVIF.fileFor(base)), result.files);
+            assertEquals(Collections.singletonList(Bitmap.Config.ARGB_8888), seen);
+            assertTrue(eight.isRecycled());
+            // a failing encode: the photo is a JPEG and the partial AVIF is gone
+            PhotoOutput.avifWriter = (img, file, options, exifBlock) -> {
+                Files.write(file, new byte[]{1, 2});
+                throw new IOException("AVIF: stub failure");
+            };
+            base = tmp.getRoot().toPath().resolve("IMG_T4");
+            result = PhotoOutput.save(base, tenBitPicture(16, 12), exif(), null);
+            assertEquals(Collections.singletonList(PhotoFormat.JPEG.fileFor(base)), result.files);
+            assertFalse(Files.exists(PhotoFormat.AVIF.fileFor(base)));
+        } finally {
+            PhotoOutput.avifWriter = AvifEncoder::encode;
+        }
+    }
+
+    /** A 10-bit RGBA_1010102 ramp (R in bits 0-9, G 10-19, B 20-29, alpha 30-31). */
+    private static Bitmap tenBitPicture(int w, int h) {
+        final int[] px = new int[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) px[y * w + x] = x * 1023 / (w - 1) | (y * 1023 / (h - 1)) << 10 | 513 << 20 | 3 << 30;
+        final Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.RGBA_1010102);
+        final java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocateDirect(w * h * 4).order(java.nio.ByteOrder.nativeOrder());
+        buf.asIntBuffer().put(px);
+        b.copyPixelsFromBuffer(buf);
+        return b;
     }
 
     private static Bitmap picture(int w, int h) {

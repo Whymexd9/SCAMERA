@@ -103,7 +103,8 @@ public final class AvifEncoder {
         /** Whether the EXIF block is in the file. */
         public final boolean exif;
 
-        Result(long[] stats) {
+        /** {@code stats} as the native side fills them: depth, 4:4:4, conversion ms, encode ms, bytes, EXIF stored. */
+        public Result(long[] stats) {
             depth = (int) stats[0];
             yuv444 = stats[1] != 0;
             convertMs = stats[2];
