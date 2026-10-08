@@ -74,6 +74,9 @@ final class CameraUIController implements CameraUIEventsListener,
             case R.id.settings_button:
                 cameraFragment.launchSettings();
                 break;
+            case R.id.format_badge:
+                cameraFragment.openFormatChooser();
+                break;
 
             case R.id.gallery_image_button:
                 cameraFragment.launchGallery();
@@ -219,6 +222,11 @@ final class CameraUIController implements CameraUIEventsListener,
                         break;
                     case RAW:
                         PreferenceKeys.setSaveRaw((Integer) value);
+                        break;
+                    case FORMAT_CHOICE:
+                        // Save mode and codec together; the capture and saving read them as before.
+                        com.particlesdevs.photoncamera.settings.FormatChoice.store(
+                                com.particlesdevs.photoncamera.settings.FormatChoice.values()[(Integer) value]);
                         break;
                     case BRACKETING:
                         PreferenceKeys.setBracketingMode((Integer) value);

@@ -37,7 +37,7 @@ public class ApprovedConceptsTest {
     }
     @Test public void photographicRulerDragsUnderFixedMarkerAndHonorsCancel() throws Exception {
         Context c=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
-        LinearScaleView v=new LinearScaleView(c);v.setPhotographicMode(true);
+        LinearScaleView v=new LinearScaleView(c);v.setMode(LinearScaleView.MODE_ISO,com.particlesdevs.photoncamera.circularbarlib.ui.ManualFormat.EN);
         List<KnobItemInfo> items=new ArrayList<>();items.add(new KnobItemInfo(null,"A",0,0));
         for(long iso:ManualStops.iso(72,12800)) {
             KnobItemInfo item=new KnobItemInfo(null,""+iso,items.size(),iso);item.majorTick=ManualStops.majorIso(iso);items.add(item);

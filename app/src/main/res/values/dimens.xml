@@ -2,7 +2,6 @@
 <resources>
     <dimen name="topbar_padding">0dp</dimen>
     <dimen name="viewfinder_top_padding">0dp</dimen>
-    <dimen name="bottombar_to_modeswitcher_margin">@dimen/bottombar_padding</dimen>
     <dimen name="bottombar_padding">0dp</dimen>
     <!-- The shutter dominates the row in the concept: the side buttons are
          roughly half its diameter, not two thirds. -->

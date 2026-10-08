@@ -15,4 +15,6 @@ public enum SettingType {
     HYBRID_OUTPUT,
     /** SCAM HDR hybrid: downsampler of the 2x image (Lanczos, bicubic, area, bilinear). */
     HYBRID_DOWNSAMPLER,
+    /** The one format choice (FormatChoice ordinal): save mode and codec together. */
+    FORMAT_CHOICE,
 }

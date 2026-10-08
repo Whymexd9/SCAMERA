@@ -691,7 +691,7 @@
     <string name="prefs_camera_package_spoof_help_summary">OnePlus/OPPO — OplusCameraManager.saveOpPackageName (открывает скрытые камеры и вендорные режимы Oplus). Общий Android — подменяет пакет в контексте CameraManager, проверку UID в CameraService не обходит. BinderHook — переписывает имя пакета прямо в транзакциях ICameraService (экспериментально). Пустое поле — собственный пакет. Пример: com.android.camera на vivo, com.oplus.camera на OPPO.</string>
     <string name="prefs_scamera_full_debug_title">Полный журнал обработки</string>
     <string name="prefs_photo_format_title">Формат фото</string>
-    <string name="prefs_photo_format_summary">JPEG открывается везде, и только он несёт Ultra HDR. HEIC — примерно вдвое меньше при том же виде; открывают Android 9+, iPhone, Windows / macOS с кодеком. WebP — меньше JPEG; открывают браузеры и большинство приложений, но не каждая галерея; до 16383 px по стороне, фото больше сохраняется в JPEG.</string>
+    <string name="prefs_photo_format_summary">JPEG открывается везде, и только он несёт Ultra HDR. HEIC — примерно вдвое меньше при том же виде; открывают Android 9+, iPhone, Windows / macOS с кодеком. WebP — меньше JPEG; открывают браузеры и большинство приложений, но не каждая галерея; до 16383 px по стороне, фото больше сохраняется в JPEG. RAW сохраняет данные сенсора в DNG; RAW + формат сохраняет оба файла.</string>
     <string name="prefs_heic_quality_title">Качество HEIC</string>
     <string name="prefs_heic_quality_summary">90 по умолчанию. Меньше — файл меньше, мелкая деталь теряется раньше. Если в телефоне нет кодировщика HEVC, фото сохраняется в JPEG.</string>
     <string name="prefs_webp_quality_title">Качество WebP</string>

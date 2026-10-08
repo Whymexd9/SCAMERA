@@ -66,19 +66,22 @@
                     app:layout_constraintVertical_bias="0.0" />
 
             <!--    Block 1.4-->
-            <!--   includes the Layout resource of Manual Mode palette. Its 36dp keep it clear of the shade's HIDDEN
-                   handle; BottomChrome adds to them when the handle floats over the preview closer than 8dp (16:9, video). -->
+            <!--   includes the Layout resource of Manual Mode palette: it floats above the bottom bar over the lower part of
+                   the preview, 12dp from the sides. Its 36dp keep it clear of the shade's HIDDEN handle; BottomChrome adds to
+                   them when the handle floats over the preview closer than 8dp (16:9, video). It is shown only while the
+                   shade is HIDDEN: leaving HIDDEN fades and slides it out, coming back brings it in again in the same state
+                   (ExpandingManualPanel.setShadeShown). -->
             <include
                     android:id="@+id/manual_mode"
                     layout="@layout/manual_palette"
-                    android:visibility="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN ? View.VISIBLE : View.INVISIBLE}"
+                    app:manualPanelShown="@{uimodel.sheetLevel == CameraFragmentModel.SHEET_HIDDEN}"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     app:layout_constraintBottom_toTopOf="@+id/layout_bottombar"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
-                    android:layout_marginStart="20dp"
-                    android:layout_marginEnd="20dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
                     android:layout_marginBottom="36dp"
                     tools:visibility="visible"
                     app:layout_constraintHorizontal_bias="0.0"
@@ -196,7 +199,7 @@
                 android:id="@+id/layout_topbar"
                 layout="@layout/layout_main_topbar"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
+                android:layout_height="wrap_content"
                 app:adjustTopBar="@{uimodel.screenAspectRatio}"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"

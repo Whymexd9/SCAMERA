@@ -36,6 +36,7 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
+import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.BackupPreferences;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPreferences;
@@ -58,36 +59,30 @@ import java.util.Set;
 public final class SettingsStyle {
     private SettingsStyle() {}
 
-    // Same values as res/values/settings_style.xml (layouts use those).
-    public static final int BG = 0xFF101416, CARD = 0xFF1B2023, TEXT = 0xFFF4F3F7, MUTED = 0xFFB2BAC9, LINE = 0xFF30363C;
-    public static final int FIELD = 0xFF121417, SHEET = 0xFF202428, WARN = 0xFFFFB4A8, INK = 0xFF17141F;
+    // The shared tokens live in circularbarlib's UiTokens (one source of truth for the settings, the shade and the manual
+    // controls); res/values/settings_style.xml mirrors them for the layouts.
+    public static final int BG = UiTokens.BG, CARD = UiTokens.CARD, TEXT = UiTokens.TEXT, MUTED = UiTokens.MUTED, LINE = UiTokens.LINE;
+    public static final int FIELD = UiTokens.FIELD, SHEET = UiTokens.SHEET, INK = UiTokens.INK;
+    public static final int WARN = 0xFFFFB4A8;
     public static final int OFF_TRACK = 0xFF3A3E45, OFF_THUMB = 0xFF9AA0A7;
-    public static final float DIMMED = .45f;
+    public static final float DIMMED = UiTokens.DIMMED;
 
     /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
     static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key", "vivo_hdr_ark_link"));
 
-    public static int dp(Context c, float v) { return Math.round(v * c.getResources().getDisplayMetrics().density); }
+    public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
     public static int accent(Context c) { return AccentPalette.color(c); }
 
     /** The accent at a given alpha over the card colour (chips, pills). */
     public static int tint(int accent, float alpha) {
-        int a = Math.round(alpha * 255);
-        int r = (((accent >> 16) & 255) * a + ((CARD >> 16) & 255) * (255 - a)) / 255;
-        int g = (((accent >> 8) & 255) * a + ((CARD >> 8) & 255) * (255 - a)) / 255;
-        int b = ((accent & 255) * a + (CARD & 255) * (255 - a)) / 255;
-        return 0xFF000000 | r << 16 | g << 8 | b;
+        return UiTokens.tint(accent, alpha);
     }
 
     public static GradientDrawable shape(Context c, int color, int stroke, float radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(dp(c, radius));
-        if (stroke != 0) d.setStroke(dp(c, 1), stroke);
-        return d;
+        return UiTokens.shape(c, color, stroke, radius);
     }
 
     public static TextView text(Context c, CharSequence value, float size, int color) {
@@ -379,6 +374,15 @@ public final class SettingsStyle {
      */
     public static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
                                                 int selected, int accent, java.util.function.IntConsumer onPick) {
+        return optionSheet(c, title, labels, tags, selected, accent, null, onPick);
+    }
+
+    /**
+     * The list picker with an accent icon per option (between the radio and the name), e.g. the format choice of the top
+     * bar and the shade. {@code icons} null or shorter than the list: no icon for the rest.
+     */
+    public static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
+                                                int selected, int accent, int[] icons, java.util.function.IntConsumer onPick) {
         LinearLayout body = sheetBody(c, title);
         LinearLayout options = new LinearLayout(c);
         options.setOrientation(LinearLayout.VERTICAL);
@@ -395,6 +399,15 @@ public final class SettingsStyle {
             row.setMinimumHeight(dp(c, 52));
             row.setBackground(shape(c, i == selected ? tint(accent, .10f) : 0, 0, 14));
             row.addView(radio(c, i == selected, accent), new LinearLayout.LayoutParams(dp(c, 24), dp(c, 24)));
+            if (icons != null && i < icons.length && icons[i] != 0) {
+                ImageView icon = new ImageView(c);
+                icon.setImageResource(icons[i]);
+                icon.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
+                icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(c, 24), dp(c, 24));
+                ip.leftMargin = dp(c, 14);
+                row.addView(icon, ip);
+            }
             TextView label = text(c, labels[i], 16, TEXT);
             label.setPadding(dp(c, 14), 0, 0, 0);
             row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));

@@ -304,6 +304,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         this.mCameraUIView.setCameraUIEventsListener(mCameraUIEventsListener);
         this.captureController = new CaptureController(activity, processExecutorService, new CameraEventsListenerImpl());
         this.manualModeConsole.addParamObserver(captureController.getParamController());
+        // The manual panel's toasts («ISO: авто», the EV lock) use the camera screen's card toast.
+        this.manualModeConsole.setMessageSink(this::showCardToast);
         this.textureView.setManualModeConsole(manualModeConsole);
         PhotonCamera.setCaptureController(captureController);
         captureController.isDualSession = supportedDevice.specific.specificSetting.isDualSessionSupported;
@@ -555,6 +557,61 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         View toast = cameraFragmentBinding == null ? null : cameraFragmentBinding.shadeToast;
         if (toast != null) toast.animate().alpha(0f).setDuration(250).withEndAction(() -> toast.setVisibility(View.GONE)).start();
     };
+
+    /**
+     * The top bar's format chooser: the card-style list sheet of the format choice (FormatChoice) with each option's icon
+     * and name, the current one marked. A pick goes through CameraUIController like the shade's FORMAT tile.
+     */
+    public void openFormatChooser() {
+        android.content.Context c = getContext();
+        if (c == null || mCameraUIEventsListener == null) return;
+        java.util.List<com.particlesdevs.photoncamera.settings.FormatChoice> offered =
+                com.particlesdevs.photoncamera.settings.FormatChoice.offered(android.os.Build.VERSION.SDK_INT);
+        CharSequence[] labels = new CharSequence[offered.size()], tags = new CharSequence[offered.size()];
+        int[] icons = new int[offered.size()];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = offered.get(i).longLabel();
+            tags[i] = offered.get(i).name();
+            icons[i] = offered.get(i).icon;
+        }
+        int selected = offered.indexOf(com.particlesdevs.photoncamera.settings.FormatChoice.current());
+        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.optionSheet(c, getString(R.string.shade_title_format), labels, tags,
+                selected, com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c), icons, i -> {
+                    if (mCameraUIEventsListener == null) return;
+                    mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(
+                            com.particlesdevs.photoncamera.settings.SettingType.FORMAT_CHOICE, offered.get(i).ordinal()));
+                    if (mCameraUIView != null) mCameraUIView.updateBadges();
+                    if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
+                });
+    }
+
+    /** The AWB colour temperature for the white-balance chip in auto. */
+    private final AwbKelvin awbKelvin = new AwbKelvin();
+    /** Uptime of the last metered values sent to the manual panel (at most 4 per second). */
+    private volatile long lastMeteredPost;
+
+    /**
+     * The camera's metered values (ISO, shutter, focus distance, AWB kelvin) for the manual chips of parameters in auto.
+     * Called on the camera thread for every preview result; posted to the main thread at most every 250 ms.
+     */
+    private void postMetered(CaptureResult result) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (result == null || now - lastMeteredPost < 250) return;
+        lastMeteredPost = now;
+        Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Float focus = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+        Integer awbMode = result.get(CaptureResult.CONTROL_AWB_MODE);
+        int kelvin = awbMode != null && awbMode == CaptureResult.CONTROL_AWB_MODE_AUTO
+                ? awbKelvin.kelvin(result.get(CaptureResult.COLOR_CORRECTION_GAINS)) : 0;
+        View target = textureView;
+        if (target == null) return;
+        target.post(() -> {
+            if (manualModeConsole != null && cameraFragmentBinding != null)
+                manualModeConsole.setMeteredValues(iso == null ? 0 : iso, exposure == null ? 0 : exposure,
+                        focus == null ? Float.NaN : focus, kelvin);
+        });
+    }
 
     /** A short message in the card style (CARD, LINE, MUTED text) above the bottom bar. */
     public void showCardToast(CharSequence text) {
@@ -1498,6 +1555,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onPreviewCaptureCompleted(CaptureResult captureResult) {
             updateScreenLog(captureResult);
+            postMetered(captureResult);
         }
 
         /**
@@ -1526,6 +1584,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             auxButtonsViewModel.setActiveId(PreferenceKeys.getCameraID());
             Boolean flashAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
             ui().showFlashButton(flashAvailable != null && flashAvailable);
+            awbKelvin.setCharacteristics(characteristics);
             manualModeConsole.init(activity, characteristics);
             manualModeConsole.onResume();
         }

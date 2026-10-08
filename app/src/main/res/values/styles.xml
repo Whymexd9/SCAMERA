@@ -98,23 +98,6 @@
         <item name="android:paddingEnd">16dp</item>
     </style>
 
-    <!-- P25 camera top bar badge: CARD + LINE, 16dp corners, 13sp. -->
-    <style name="ShadeBadge">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:background">@drawable/shade_badge</item>
-        <item name="android:paddingStart">12dp</item>
-        <item name="android:paddingEnd">13dp</item>
-        <item name="android:paddingTop">9dp</item>
-        <item name="android:paddingBottom">9dp</item>
-        <item name="android:textSize">13sp</item>
-        <item name="android:textColor">@color/settings_text</item>
-        <item name="android:drawablePadding">8dp</item>
-        <item name="android:gravity">center_vertical</item>
-        <item name="android:maxLines">1</item>
-        <item name="android:includeFontPadding">false</item>
-    </style>
-
     <!-- P25 gallery thumbnail inside its 18dp card. -->
     <style name="ShapeAppearance.Scamera.Thumb" parent="">
         <item name="cornerFamily">rounded</item>

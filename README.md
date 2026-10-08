@@ -24,7 +24,6 @@ Android Camera that uses Enhanced Image Processing
 * [GSON](https://github.com/google/gson)
 * [MaterialComponents](https://github.com/material-components/material-components-android)
 * [CircleImageView](https://github.com/hdodenhof/CircleImageView)
-* [HorizontalPicker](https://github.com/blazsolar/HorizontalPicker)
 
 ## License
 

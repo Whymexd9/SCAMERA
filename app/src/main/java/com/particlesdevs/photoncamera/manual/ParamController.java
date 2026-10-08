@@ -25,6 +25,7 @@ import com.particlesdevs.photoncamera.util.Log;
 import androidx.annotation.NonNull;
 
 import com.particlesdevs.photoncamera.circularbarlib.control.ManualParamModel;
+import com.particlesdevs.photoncamera.circularbarlib.ui.ManualPanelState;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
 
@@ -143,6 +144,22 @@ public class ParamController implements Observer {
         captureController.rebuildPreviewBuilder();
     }
 
+    /**
+     * The EV index the request gets: the stored {@link #EV}, or 0 while ISO and shutter are both manual (the owner's rule:
+     * exposure compensation is unavailable then). The stored value is kept and applies again when either returns to auto.
+     */
+    public int effectiveEv() {
+        if (manualParamModel == null) return EV;
+        return ManualPanelState.effectiveEvIndex(EV, manualParamModel.getCurrentISOValue() != ManualParamModel.ISO_AUTO,
+                manualParamModel.getCurrentExposureValue() != ManualParamModel.EXPOSURE_AUTO);
+    }
+
+    /** ISO or shutter changed: the EV lock may have changed, so the builder gets the effective EV before the rebuild. */
+    private void syncEvLock() {
+        CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
+        if (builder != null && EV != 0) builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, effectiveEv());
+    }
+
     public boolean isManualMode() {
         if (manualParamModel != null)
             return manualParamModel.isManualMode();
@@ -157,14 +174,16 @@ public class ParamController implements Observer {
             if (object.equals(ManualParamModel.ID_WB)) setWhiteBalance(model.getWhiteBalanceKelvin());
             if (object.equals(ManualParamModel.ID_ISO)) {
                 ISO = (int) model.getCurrentISOValue();
+                syncEvLock();
                 setISO((int) model.getCurrentISOValue(), model.getCurrentExposureValue());
             }
             if (object.equals(ManualParamModel.ID_EV)) {
                 EV = (int) model.getCurrentEvValue();
-                setEV((int) model.getCurrentEvValue());
+                setEV(effectiveEv());
             }
             if (object.equals(ManualParamModel.ID_SHUTTER)) {
                 SHUTTER = (long) model.getCurrentExposureValue();
+                syncEvLock();
                 setShutter((long) model.getCurrentExposureValue(), (int) model.getCurrentISOValue());
             }
             if (object.equals(ManualParamModel.ID_FOCUS)) {
@@ -190,7 +209,7 @@ public class ParamController implements Observer {
             if(ISO != -1)
                 setISO(ISO, manualParamModel.getCurrentExposureValue());
             if(EV != 0)
-                setEV(EV);
+                setEV(effectiveEv());
             if(SHUTTER != -1)
                 setShutter(SHUTTER, ISO);
             if(FOCUS != -1)

@@ -26,11 +26,6 @@
         <item>3 seconds</item>
         <item>10 seconds</item>
     </string-array>
-    <string-array name="shade_l_format">
-        <item>JPEG</item>
-        <item>RAW + JPEG</item>
-        <item>RAW</item>
-    </string-array>
     <string-array name="shade_l_metering_std">
         <item>Auto</item>
         <item>Center-weighted</item>
@@ -42,7 +37,6 @@
     <string name="shade_t_flash">Flash</string>
     <string name="shade_t_timer">Timer</string>
     <string name="shade_t_format">Format</string>
-    <string name="shade_t_photo_format">Codec</string>
     <string name="shade_t_metering_std">Camera2 metering</string>
     <string name="shade_t_metering">Metering</string>
     <string name="shade_t_route">Merge</string>
@@ -78,16 +72,6 @@
         <item>Off</item>
         <item>3 s</item>
         <item>10 s</item>
-    </string-array>
-    <string-array name="shade_s_format">
-        <item>JPEG</item>
-        <item>R+J</item>
-        <item>RAW</item>
-    </string-array>
-    <string-array name="shade_s_photo_format">
-        <item>JPEG</item>
-        <item>HEIC</item>
-        <item>WEBP</item>
     </string-array>
     <string-array name="shade_s_metering_std">
         <item>Auto</item>
@@ -197,6 +181,9 @@
 
     <!-- Viewfinder chrome -->
     <string name="shade_badge_route">Merge %1$s</string>
+    <!-- Top bar group card (MANUAL_TASK.md §4): the route and format icons; the names are content descriptions and tooltips. -->
+    <string name="topbar_group">Merge and format</string>
+    <string name="topbar_format">Format %1$s</string>
     <string name="shade_shutter">Take a photo</string>
     <string name="shade_flip_camera">Front / back camera</string>
     <string name="shade_gallery">Gallery</string>

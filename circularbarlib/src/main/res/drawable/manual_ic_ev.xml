@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EV: a square split diagonally, plus top-left and minus bottom-right (exposure compensation). From the manual-controls concept (MANUAL_TASK.md): 24 viewport, stroke 1.7, round caps and joins; white, tinted at runtime. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M7,4h10a3,3 0 0 1 3,3v10a3,3 0 0 1 -3,3h-10a3,3 0 0 1 -3,-3v-10a3,3 0 0 1 3,-3z" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M19,5L5,19M7,9.5h4M9,7.5v4M13.5,16h4" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>

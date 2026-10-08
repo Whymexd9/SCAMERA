@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RAW + HEIC: a film frame behind (drawn only outside the front shape) a small framed leaf. From the manual-controls concept (MANUAL_TASK.md): 24 viewport, stroke 1.7, round caps and joins; white, tinted at runtime. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M8,10V5.5A2.5,2.5 0 0 1 10.5,3h8A2.5,2.5 0 0 1 21,5.5v6a2.5,2.5 0 0 1 -2.5,2.5H16M18,3v7.5" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M5.5,10h8a2.5,2.5 0 0 1 2.5,2.5v6a2.5,2.5 0 0 1 -2.5,2.5h-8a2.5,2.5 0 0 1 -2.5,-2.5v-6a2.5,2.5 0 0 1 2.5,-2.5z" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M6.3,18.7c0,-3.4 2.5,-5.6 6.3,-5.8c0,3.8 -2.4,6 -6.3,5.8zM6.3,18.7l3.6,-3.6" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>

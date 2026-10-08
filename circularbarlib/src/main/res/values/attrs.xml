@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A chip of the manual strip: its parameter icon. -->
+    <declare-styleable name="ManualChipView">
+        <attr name="manualChipIcon" format="reference"/>
+    </declare-styleable>
+</resources>

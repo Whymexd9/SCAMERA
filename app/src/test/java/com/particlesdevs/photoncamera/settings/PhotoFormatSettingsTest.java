@@ -109,7 +109,7 @@ public class PhotoFormatSettingsTest {
         int[] ids = {R.string.prefs_photo_format_title, R.string.prefs_photo_format_summary, R.string.prefs_heic_quality_title,
                 R.string.prefs_heic_quality_summary, R.string.prefs_webp_quality_title, R.string.prefs_webp_quality_summary,
                 R.string.prefs_webp_lossless_title, R.string.prefs_webp_lossless_summary, R.string.prefs_photo_also_jpeg_title,
-                R.string.prefs_photo_also_jpeg_summary, R.string.shade_t_photo_format};
+                R.string.prefs_photo_also_jpeg_summary, R.string.topbar_group, R.string.topbar_format};
         Context en = localized(Locale.ENGLISH), ru = localized(new Locale("ru"));
         for (int id : ids) {
             String e = en.getString(id), r = ru.getString(id);
@@ -185,18 +185,17 @@ public class PhotoFormatSettingsTest {
         assertEquals("RAW + HEIC", catalog.valueText(format, false));
         prefs.edit().putString(PhotoFormat.KEY, "webp").commit();
         assertEquals("R+W", catalog.valueText(format, true));
-        assertArrayEquals(new CharSequence[]{"WebP", "RAW + WebP", "RAW"}, ShadeCatalog.labels(format));
+        // one format choice with seven options (MANUAL_TASK.md §4 and the owner's request)
+        assertArrayEquals(new CharSequence[]{"JPEG", "HEIC", "WebP", "RAW", "RAW + JPEG", "RAW + HEIC", "RAW + WebP"},
+                ShadeCatalog.labels(format));
         PreferenceKeys.setSaveRaw(2);
         assertEquals("RAW", catalog.valueText(format, true));
-        // the codec itself is a curated row of the «Формат» group
-        ShadeCatalog.Entry codec = catalog.entry(ShadeCatalog.PHOTO_FORMAT);
-        assertNotNull(codec);
-        assertTrue(codec.isCurated());
-        assertEquals(ShadeCatalog.LIST, codec.kind);
-        assertEquals("WEBP", catalog.valueText(codec, true));
+        assertEquals("webp", prefs.getString(PhotoFormat.KEY, null)); // RAW only keeps the stored codec
+        // the codec has no tile of its own any more: the FORMAT choice covers it
+        assertNull(catalog.entry(ShadeCatalog.PHOTO_FORMAT));
         Set<String> group = new HashSet<>();
         for (ShadeCatalog.Group g : ShadeCatalog.GROUPS) if (g.keys.contains(ShadeCatalog.FORMAT)) group.addAll(g.keys);
-        assertTrue(group.contains(ShadeCatalog.PHOTO_FORMAT));
+        assertFalse(group.contains(ShadeCatalog.PHOTO_FORMAT));
         // other entries keep their own labels
         ShadeCatalog.Entry route = catalog.entry(ShadeCatalog.ROUTE);
         assertSame(route.labels, ShadeCatalog.labels(route));

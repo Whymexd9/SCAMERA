@@ -96,6 +96,19 @@ public class CustomBinding {
             layout.setActiveId(cameraId);
     }
 
+    /**
+     * The manual panel follows the shade: shown while the shade is HIDDEN, faded and slid out at the other levels. The panel
+     * keeps its own state (open or closed, the selected parameter), so it comes back as it was.
+     */
+    @BindingAdapter("manualPanelShown")
+    public static void setManualPanelShown(View view, boolean shown) {
+        if (view instanceof com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) {
+            ((com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) view).setShadeShown(shown, view.isLaidOut());
+        } else if (view != null) {
+            view.setVisibility(shown ? View.VISIBLE : View.INVISIBLE);
+        }
+    }
+
     @BindingAdapter("layoutMarginTop")
     public static void setLayoutMarginTop(View view, float margin) {
         ViewGroup.MarginLayoutParams layoutParams = ((ViewGroup.MarginLayoutParams) view.getLayoutParams());

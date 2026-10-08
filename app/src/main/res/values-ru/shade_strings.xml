@@ -26,11 +26,6 @@
         <item>3 секунды</item>
         <item>10 секунд</item>
     </string-array>
-    <string-array name="shade_l_format">
-        <item>JPEG</item>
-        <item>RAW + JPEG</item>
-        <item>RAW</item>
-    </string-array>
     <string-array name="shade_l_metering_std">
         <item>Авто</item>
         <item>Центровзвешенный</item>
@@ -42,7 +37,6 @@
     <string name="shade_t_flash">Вспышка</string>
     <string name="shade_t_timer">Таймер</string>
     <string name="shade_t_format">Формат</string>
-    <string name="shade_t_photo_format">Кодек</string>
     <string name="shade_t_metering_std">Замер Camera2</string>
     <string name="shade_t_metering">Замер</string>
     <string name="shade_t_route">Склейка</string>
@@ -78,16 +72,6 @@
         <item>Выкл.</item>
         <item>3 с</item>
         <item>10 с</item>
-    </string-array>
-    <string-array name="shade_s_format">
-        <item>JPEG</item>
-        <item>R+J</item>
-        <item>RAW</item>
-    </string-array>
-    <string-array name="shade_s_photo_format">
-        <item>JPEG</item>
-        <item>HEIC</item>
-        <item>WEBP</item>
     </string-array>
     <string-array name="shade_s_metering_std">
         <item>Авто</item>
@@ -197,6 +181,9 @@
 
     <!-- Viewfinder chrome -->
     <string name="shade_badge_route">Склейка %1$s</string>
+    <!-- Карточка группы в верхней панели: значки склейки и формата. -->
+    <string name="topbar_group">Склейка и формат</string>
+    <string name="topbar_format">Формат %1$s</string>
     <string name="shade_shutter">Снимок</string>
     <string name="shade_flip_camera">Фронтальная / основная камера</string>
     <string name="shade_gallery">Галерея</string>

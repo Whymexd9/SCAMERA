@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The top-bar manual summary (ManualSummaryView), placed by the app's top bar and bound by ViewObserver. -->
+    <item name="manual_summary" type="id"/>
+</resources>
