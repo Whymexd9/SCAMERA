@@ -55,6 +55,45 @@ public class DeviceDefaultsTest {
         assertEquals("scamera", main.getString("pref_vivo_nice_planner", ""));
     }
 
+    /** Owner 2026-10-08: the X7 Ultra lists 5 cameras with the aweme package on all three spoof methods; ARK saturation 1.1. */
+    @Test public void findX7UltraSpoofsAwemeAndRaisesTheOppoMatrixSaturation() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PHY110");
+        SharedPreferences main = prefs("defaults_x7u_v3");
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertTrue(main.getBoolean("pref_camera_package_spoof_enabled", false));
+        for (String key : new String[]{"pref_oplus_spoof_package_key", "pref_generic_spoof_package_key", "pref_binder_spoof_package_key"})
+            assertEquals(key, "com.ss.android.ugc.aweme", main.getString(key, ""));
+        assertEquals("1.1", main.getString("pref_lmc_hybrid_ark_ccm_sat", ""));
+        assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
+    }
+
+    @Test public void updateFromVersionTwoAddsOnlyTheX7UltraEntries() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PHY110");
+        SharedPreferences main = prefs("defaults_x7u_update");
+        // v2 applied, the user then changed a v1 setting and stored the old saturation default
+        main.edit().putInt("device_defaults_version", 2).putString("pref_vivo_nice_zsl_frames", "12")
+                .putString("pref_lmc_hybrid_ark_ccm_sat", "0.6").commit();
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertEquals("12", main.getString("pref_vivo_nice_zsl_frames", ""));
+        assertEquals("1.1", main.getString("pref_lmc_hybrid_ark_ccm_sat", ""));
+        assertTrue(main.getBoolean("pref_camera_package_spoof_enabled", false));
+        // applied once: switching the spoof off afterwards stays off
+        main.edit().putBoolean("pref_camera_package_spoof_enabled", false).commit();
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertFalse(main.getBoolean("pref_camera_package_spoof_enabled", true));
+    }
+
+    @Test public void findX8UltraGetsNoSpoof() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PKJ110");
+        SharedPreferences main = prefs("defaults_x8u_v3");
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertFalse(main.contains("pref_camera_package_spoof_enabled"));
+        assertFalse(main.contains("pref_lmc_hybrid_ark_ccm_sat"));
+    }
+
     @Test public void otherPhonesGetNothing() {
         ShadowBuild.setManufacturer("vivo");
         ShadowBuild.setModel("V2366GA");

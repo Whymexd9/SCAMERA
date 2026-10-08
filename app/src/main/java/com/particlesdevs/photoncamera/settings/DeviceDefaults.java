@@ -22,10 +22,14 @@ public final class DeviceDefaults {
     private static final String TAG = "DeviceDefaults";
     private static final String MARKER = "device_defaults_version";
     /**
-     * 1: the SCAM HDR set of both OPPO phones. 2 (owner, 2026-10-06): the Find X8 Ultra streams RAW10 by default. A phone
+     * 1: the SCAM HDR set of both OPPO phones. 2 (owner, 2026-10-06): the Find X8 Ultra streams RAW10 by default. 3 (owner,
+     * 2026-10-08): the Find X7 Ultra opens with the camera package spoof of com.ss.android.ugc.aweme (all three methods: the
+     * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the ARK tone at 1.1. A phone
      * whose marker is older gets only the entries of the newer versions, so an update never resets the user's other settings.
      */
-    static final int VERSION = 2;
+    static final int VERSION = 3;
+    /** The package the Find X7 Ultra's camera service shows every lens to (owner's choice). */
+    static final String X7U_SPOOF_PACKAGE = "com.ss.android.ugc.aweme";
     private DeviceDefaults() {}
 
     private static final Map<String, Object> OPPO = new LinkedHashMap<>();
@@ -87,6 +91,15 @@ public final class DeviceDefaults {
         if (since < 1) out.putAll(OPPO);
         // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit on copy; the RAW viewfinder needs RAW_SENSOR and is off).
         if (since < 2 && oppo && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
+        // v3: the Find X7 Ultra shows its tele / ultra-wide lenses to a whitelisted package only, and its tuned ISP matrix
+        // under the ARK tone needs AgX saturation 1.1 (not 0.6) to match ArkCam LMC 9.6 with the X7U config (2026-10-08 pair).
+        if (since < 3 && oppo && model.equals("PHY110")) {
+            out.put("pref_camera_package_spoof_enabled", true);
+            out.put("pref_oplus_spoof_package_key", X7U_SPOOF_PACKAGE);
+            out.put("pref_generic_spoof_package_key", X7U_SPOOF_PACKAGE);
+            out.put("pref_binder_spoof_package_key", X7U_SPOOF_PACKAGE);
+            out.put("pref_lmc_hybrid_ark_ccm_sat", "1.1");
+        }
         return out;
     }
 

@@ -196,4 +196,20 @@
     <string name="shade_reason_scamhdr_soc">Только Hybrid: SCAM HDR работает только на Snapdragon 8 Elite</string>
     <string name="shade_reason_nice_dev">Задано в nice_dev.txt</string>
     <string name="shade_reason_dependency">Включите «%1$s».</string>
+    <!-- P42 -->
+    <string name="shade_t_faces">Лица</string>
+    <string name="shade_t_tracking">Трекинг</string>
+    <string-array name="shade_s_faces">
+        <item>Выкл.</item>
+        <item>Авто</item>
+        <item>Базовый</item>
+        <item>Полный</item>
+        <item>Расшир.</item>
+        <item>Прогр.</item>
+    </string-array>
+    <string-array name="shade_s_tracking">
+        <item>Выкл.</item>
+        <item>Удерж.</item>
+        <item>Касание</item>
+    </string-array>
 </resources>

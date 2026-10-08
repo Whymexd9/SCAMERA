@@ -8,6 +8,9 @@ import androidx.exifinterface.media.ExifInterface;
 
 import com.particlesdevs.photoncamera.api.ParseExif;
 import com.particlesdevs.photoncamera.processing.avif.AvifEncoder;
+import com.particlesdevs.photoncamera.processing.heif.Heic10Encoder;
+import com.particlesdevs.photoncamera.processing.heif.Heic10Support;
+import com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps;
 import com.particlesdevs.photoncamera.processing.opengl.GLLimits;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
 import com.particlesdevs.photoncamera.processing.ultrahdr.UltraHdrEncoder;
@@ -29,6 +32,11 @@ import java.util.List;
  * WebP side above 16383 px, an AVIF above 64 MP or beyond the free memory, an encoder error) is saved as JPEG instead, so
  * a shot is never lost to the codec. Pixels are stored rotated in every format, without an Orientation
  * tag (the JPEG path's convention), so all files of a shot show the same way.
+ * «HEIC 10 бит»: the image comes as RGBA_1010102 (PostPipeline.tenBitOutput) and the HEIC goes through
+ * {@link Heic10Encoder} (HEVC Main10); if that fails, through HeifWriter at 8 bits, then JPEG. Every 8-bit encoder (JPEG,
+ * Ultra HDR, WebP, the 8-bit HEIC, an 8-bit AVIF) gets one ARGB_8888 copy of the 10-bit image; a 10 / 12-bit or lossless
+ * AVIF takes the 10-bit pixels as they are (AvifEncoder.tenBitImageWanted asks the pipeline for them). An ARGB_8888 image
+ * takes the paths as before.
  */
 public final class PhotoOutput {
     private static final String TAG = "PhotoOutput";
@@ -36,6 +44,56 @@ public final class PhotoOutput {
     static final int WEBP_LOSSLESS_EFFORT = 75;
 
     private PhotoOutput() {}
+
+    /** Writes the 10-bit HEIC; {@code detail} receives the encoder's summary for the log. Replaced in tests. */
+    interface TenBitHeicWriter {
+        boolean write(Path file, Bitmap img, int quality, byte[] exifBlock, long timeoutMs, StringBuilder detail);
+    }
+
+    static TenBitHeicWriter tenBitHeic = (file, img, quality, exifBlock, timeoutMs, detail) -> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false;
+        final Heic10Encoder.Stats stats = new Heic10Encoder.Stats();
+        final boolean ok = Heic10Encoder.write(file, img, quality, exifBlock, timeoutMs, stats);
+        detail.append(stats);
+        return ok;
+    };
+
+    /** Whether the HEIC of a shot goes through the 10-bit encoder: a 10-bit image and «HEIC 10 бит» in effect. */
+    static boolean heic10Path(boolean tenBitImage, boolean heic10Wanted) {
+        return tenBitImage && heic10Wanted;
+    }
+
+    /**
+     * The photo's pixels for each encoder: the image itself, and for a 10-bit image one ARGB_8888 copy made at the first
+     * 8-bit encode (Bitmap.copy: 10-bit sRGB rounded to 8-bit sRGB). An ARGB_8888 image is its own 8-bit version.
+     */
+    static final class Pixels {
+        final Bitmap image;
+        final boolean tenBit;
+        private Bitmap eight;
+
+        Pixels(Bitmap image) {
+            this.image = image;
+            this.tenBit = TenBitBitmaps.isTenBit(image);
+        }
+
+        /** The 8-bit version; {@code lastUse}: the 10-bit image is not needed after this encode and is released now. */
+        Bitmap eightBit(boolean lastUse) {
+            if (!tenBit) return image;
+            if (eight == null || eight.isRecycled()) {
+                final long start = System.nanoTime();
+                eight = TenBitBitmaps.toArgb8888(image);
+                Log.d(TAG, "8-bit copy of the 10-bit image in " + (System.nanoTime() - start) / 1000000 + " ms");
+            }
+            if (lastUse && !image.isRecycled()) image.recycle();
+            return eight;
+        }
+
+        void recycle() {
+            if (!image.isRecycled()) image.recycle();
+            if (eight != null && !eight.isRecycled()) eight.recycle();
+        }
+    }
 
     /** The files of a shot, in write order: the photo format first, the JPEG (if any) after it. */
     public static List<PhotoFormat> plan(PhotoFormat format, boolean alsoJpeg, int width, int height) {
@@ -81,28 +139,30 @@ public final class PhotoOutput {
         if (PreferenceKeys.getChosenPhotoFormat() != format)
             Log.w(TAG, PreferenceKeys.getChosenPhotoFormat() + " is not available here (HEIC needs Android 9, AVIF Android 12 and its encoder): saved as JPEG");
         final Result result = new Result();
+        final Pixels pixels = new Pixels(img);
         try {
             for (int i = 0; i < plan.size(); i++) {
                 final PhotoFormat f = plan.get(i);
                 final boolean last = i == plan.size() - 1;
                 final Path file = f.fileFor(base);
                 final long start = System.nanoTime();
+                final StringBuilder how = new StringBuilder();
                 boolean ok;
                 switch (f) {
                     case HEIC:
-                        ok = Build.VERSION.SDK_INT >= PhotoFormat.HEIC_MIN_SDK && saveHeic(file, img, PreferenceKeys.getHeicQuality(), exif);
+                        ok = Build.VERSION.SDK_INT >= PhotoFormat.HEIC_MIN_SDK && writeHeic(file, pixels, PreferenceKeys.getHeicQuality(), exif, how);
                         break;
                     case WEBP:
-                        ok = saveWebp(file, img, PreferenceKeys.getWebpQuality(), PreferenceKeys.isWebpLossless(), exif);
+                        ok = saveWebp(file, pixels.eightBit(last), PreferenceKeys.getWebpQuality(), PreferenceKeys.isWebpLossless(), exif);
                         break;
                     case AVIF:
-                        ok = saveAvif(file, img, PreferenceKeys.getAvifOptions(), exif);
+                        ok = writeAvif(file, pixels, PreferenceKeys.getAvifOptions(), exif, last, how);
                         break;
                     default:
-                        ok = saveJpeg(file, img, exif, gain, last);
+                        ok = saveJpeg(file, pixels.eightBit(last), exif, gain, last);
                         break;
                 }
-                Log.d(TAG, f + " " + (ok ? "saved" : "failed") + " in " + (System.nanoTime() - start) / 1000000 + " ms: " + file.getFileName());
+                Log.d(TAG, f + how.toString() + " " + (ok ? "saved" : "failed") + " in " + (System.nanoTime() - start) / 1000000 + " ms: " + file.getFileName());
                 if (ok) {
                     result.files.add(file);
                 } else if (f != PhotoFormat.JPEG && !plan.contains(PhotoFormat.JPEG)) {
@@ -111,9 +171,46 @@ public final class PhotoOutput {
                 }
             }
         } finally {
-            if (!img.isRecycled()) img.recycle();
+            pixels.recycle();
         }
         return result;
+    }
+
+    /**
+     * The HEIC of a shot: the 10-bit encoder for a 10-bit image when «HEIC 10 бит» is in effect, and HeifWriter at 8 bits
+     * otherwise or when the 10-bit encode fails. {@code how} gets " 10-bit" / " 8-bit" for the save log line.
+     */
+    static boolean writeHeic(Path file, Pixels pixels, int quality, ParseExif.ExifData exif, StringBuilder how) {
+        final Bitmap img = pixels.image;
+        if (pixels.tenBit && heic10Path(true, Heic10Support.wanted())) {
+            final int width = img.getWidth(), height = img.getHeight();
+            byte[] exifBlock = null;
+            if (exif != null) {
+                exif.COMPRESSION = null;
+                exifBlock = ExifBlock.exifDataBlock(ExifBlock.app1Segment(exif, width, height));
+            }
+            final long start = System.nanoTime();
+            final StringBuilder detail = new StringBuilder();
+            boolean ok;
+            try {
+                ok = tenBitHeic.write(file, img, quality, exifBlock, heicTimeoutMs(width, height), detail);
+            } catch (RuntimeException | Error e) {
+                Log.e(TAG, "10-bit HEIC writer threw: " + android.util.Log.getStackTraceString(e));
+                ok = false;
+            }
+            Log.i(TAG, "HEIC 10-bit " + (ok ? "written" : "failed, 8-bit HEIC instead") + " in " + (System.nanoTime() - start) / 1000000
+                    + " ms, " + width + "x" + height + ": " + detail);
+            if (ok) {
+                how.append(" 10-bit");
+                return true;
+            }
+            try { Files.deleteIfExists(file); } catch (IOException ignored) {}
+        } else if (pixels.tenBit) {
+            Log.w(TAG, "10-bit image without the 10-bit HEIC in effect: 8-bit HEIC");
+        }
+        if (Build.VERSION.SDK_INT < PhotoFormat.HEIC_MIN_SDK) return false;
+        how.append(" 8-bit");
+        return saveHeic(file, pixels.eightBit(false), quality, exif);
     }
 
     private static boolean saveJpeg(Path file, Bitmap img, ParseExif.ExifData exif, GainMapComputer.Result gain, boolean recycle) {
@@ -249,6 +346,17 @@ public final class PhotoOutput {
     /** Time limit of one HEIC encode: 30 s plus 1 s per megapixel. */
     static long heicTimeoutMs(int width, int height) {
         return 30_000L + (long) width * height / 1_000_000L * 1000L;
+    }
+
+    /**
+     * The AVIF of a shot: a 10-bit image goes to the encoder as it is when the AVIF keeps more than 8 bits (10 / 12-bit or
+     * lossless), otherwise its 8-bit version. {@code how} gets " from 10-bit" for the save log line.
+     */
+    static boolean writeAvif(Path file, Pixels pixels, AvifEncoder.Options options, ParseExif.ExifData exif, boolean last,
+                             StringBuilder how) {
+        final boolean tenBitSource = pixels.tenBit && AvifEncoder.keepsTenBits(options);
+        if (tenBitSource) how.append(" from 10-bit");
+        return saveAvif(file, tenBitSource ? pixels.image : pixels.eightBit(last), options, exif);
     }
 
     /** Free memory an AVIF encode leaves untouched (the camera keeps running). */

@@ -18,6 +18,8 @@ public enum PhotoFormat {
     /** ListPreference key of the format; values {@link #value}. */
     public static final String KEY = "pref_photo_format";
     public static final String KEY_HEIC_QUALITY = "pref_heic_quality";
+    /** «HEIC 10 бит»: the HEIC is coded in HEVC Main10 from a 10-bit final image (Android 13+, heif/Heic10Support). */
+    public static final String KEY_HEIC_10BIT = "pref_heic_10bit";
     public static final String KEY_WEBP_QUALITY = "pref_webp_quality";
     public static final String KEY_WEBP_LOSSLESS = "pref_webp_lossless";
     /** AVIF: quality 1-100, «Без потерь», «Глубина цвета» (8 / 10 / 12), chroma (444 / 420) and the encoder speed. */

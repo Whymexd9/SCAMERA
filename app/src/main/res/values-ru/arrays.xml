@@ -177,4 +177,18 @@
         <item>Быстро</item>
         <item>Очень быстро</item>
     </string-array>
+    <!-- P42 -->
+    <string-array name="face_detect_entries">
+        <item>Выкл</item>
+        <item>Авто</item>
+        <item>Камера: базовый</item>
+        <item>Камера: полный (глаза, рот)</item>
+        <item>Камера: расширенный (0x80)</item>
+        <item>Программный</item>
+    </string-array>
+    <string-array name="tracking_af_entries">
+        <item>Выкл</item>
+        <item>Долгое нажатие</item>
+        <item>Касание</item>
+    </string-array>
 </resources>

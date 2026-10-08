@@ -54,6 +54,7 @@ public final class PostAb {
         p.vivoNiceRgb = copy;
         p.vivoNiceRgbOwned = true;
         final PostPipeline old = new PostPipeline();
+        old.tenBitOutput = pipeline.tenBitOutput; // the same output format in both runs
         PostGlMode.setLegacy(true);
         try {
             final long t0 = System.nanoTime();

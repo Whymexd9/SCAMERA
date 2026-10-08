@@ -8,8 +8,12 @@ import java.util.Map;
 public final class SettingsAvailability {
     private final Map<String, ?> values;
     private final boolean calibratedSensor;
+    /** Why this phone cannot write the 10-bit HEIC (heif.Heic10Support.unavailableReason), null when it can or is not known. */
+    private String heic10Unavailable;
     public SettingsAvailability(Map<String, ?> values) { this(values,false); }
     public SettingsAvailability(Map<String, ?> values, boolean calibratedSensor) { this.values = values; this.calibratedSensor = calibratedSensor; }
+    /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
+    public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
     private String text(String key, String fallback) {
         Object value = values.get(key); return value == null ? fallback : value.toString();
     }
@@ -30,13 +34,13 @@ public final class SettingsAvailability {
 
     /**
      * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
-     * are not chosen (HEIC quality, WebP quality / lossless, the AVIF rows) and «Также сохранять JPEG» while the format is
-     * JPEG.
+     * are not chosen (HEIC quality / 10 bit, WebP quality / lossless, the AVIF rows) and «Также сохранять JPEG» while the
+     * format is JPEG.
      */
     public boolean hidden(String key) {
         String format = photoFormat();
         switch (key) {
-            case "pref_heic_quality": return !format.equals("heic");
+            case "pref_heic_quality": case "pref_heic_10bit": return !format.equals("heic");
             case "pref_webp_quality": case "pref_webp_lossless": return !format.equals("webp");
             case "pref_avif_quality": case "pref_avif_lossless": case "pref_avif_depth": case "pref_avif_chroma":
             case "pref_avif_speed": return !format.equals("avif");
@@ -88,14 +92,16 @@ public final class SettingsAvailability {
                 return Lang.t("Для JPEG: выберите формат JPEG или включите «Также сохранять JPEG».",
                         "For JPEG: choose the JPEG format or turn on “Also save a JPEG”.");
         }
+        // «HEIC 10 бит» needs Android 13 and an HEVC Main10 encoder with P010 input; without them the shot is an 8-bit HEIC.
+        if (key.equals("pref_heic_10bit") && heic10Unavailable != null) return heic10Unavailable;
         if (key.equals("pref_webp_quality") && on("pref_webp_lossless", false))
             return Lang.t("Не используется в WebP без потерь.", "Not used by lossless WebP.");
         // AVIF «Без потерь» stores the exact pixels: identity matrix, 4:4:4 and the photo's own bit depth.
         if (on("pref_avif_lossless", false)) {
             if (key.equals("pref_avif_quality")) return Lang.t("Не используется в AVIF без потерь.", "Not used by lossless AVIF.");
             if (key.equals("pref_avif_depth"))
-                return Lang.t("Без потерь — глубина самого снимка: 8 бит, у 10-битного снимка 10.",
-                        "Lossless keeps the photo's own depth: 8 bit, 10 for a 10-bit photo.");
+                return Lang.t("Без потерь — глубина самого снимка: 10 бит с Android 13, иначе 8.",
+                        "Lossless keeps the photo's own depth: 10 bit from Android 13, else 8.");
             if (key.equals("pref_avif_chroma")) return Lang.t("Без потерь — всегда 4:4:4.", "Lossless is always 4:4:4.");
         }
         if (key.startsWith("pref_vivo_nice_") && !autonomous)

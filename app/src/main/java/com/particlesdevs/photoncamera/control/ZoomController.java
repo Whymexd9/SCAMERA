@@ -169,13 +169,16 @@ public final class ZoomController {
         return result;
     }
 
-    /** Centre crop of a finished image by the zoom factor (aspect ratio kept). */
+    /**
+     * Centre crop of a finished image by the zoom factor (aspect ratio kept). An RGBA_1010102 image (10-bit HEIC) stays
+     * 10-bit: Bitmap.createBitmap would return it as ARGB_8888.
+     */
     public static Bitmap crop(Bitmap image, float factor) {
         if (image == null || factor <= 1.005f) return image;
         int w = Math.max(2, Math.round(image.getWidth() / factor) & ~1);
         int h = Math.max(2, Math.round(image.getHeight() / factor) & ~1);
         int x = (image.getWidth() - w) / 2, y = (image.getHeight() - h) / 2;
-        Bitmap out = Bitmap.createBitmap(image, x, y, w, h);
+        Bitmap out = com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.crop(image, x, y, w, h);
         if (out != image) image.recycle();
         return out;
     }

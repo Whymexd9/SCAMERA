@@ -586,6 +586,11 @@ public class HdrxProcessor extends ProcessorBase {
             Log.i("NICE_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
         }
         PostPipeline pipeline = new PostPipeline();
+        // «HEIC 10 бит»: the final image comes out RGBA_1010102 for the HEVC Main10 HEIC; every 8-bit file of the shot gets an
+        // 8-bit copy at its encode (PhotoOutput). The same for a 10 / 12-bit or lossless AVIF, which takes the 10 bits as they
+        // are. Off: the pipeline output is the ARGB_8888 bitmap as before.
+        pipeline.tenBitOutput = com.particlesdevs.photoncamera.processing.heif.Heic10Support.wanted()
+                || com.particlesdevs.photoncamera.processing.avif.AvifEncoder.tenBitImageWanted();
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
         pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters);
         if (pipeline.deferTeardown) deferredPipeline = pipeline;

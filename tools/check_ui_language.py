@@ -60,6 +60,8 @@ ALLOW = {
             'мозаик|mosaic|quad|tetra|байер|bayer|hp9', 'мозаика ремозаик quad tetra bayer mosaic',
             'сетк|grid', 'сетка grid',
             'фокус|focus|peak', 'фокус focus пик peaking',
+            'лиц|face', 'лица лицо распознавание face faces detection',
+            'трек|track|следящ', 'трекинг слежение следящий tracking track',
             'отладк|hud|диагност|diagnost|журнал|debug', 'отладка debug hud лог log',
             'водян|подпис|watermark|caption', 'водяной знак watermark подпись caption',
             'agx|aces|кривая|гамма|gamma|curve', 'кривая curve тон agx гамма gamma',

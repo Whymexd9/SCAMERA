@@ -405,4 +405,31 @@
         <item>8</item>
         <item>9</item>
     </string-array>
+    <!-- P42 -->
+    <string-array name="face_detect_entries">
+        <item>Off</item>
+        <item>Auto</item>
+        <item>Camera: simple</item>
+        <item>Camera: full (eyes, mouth)</item>
+        <item>Camera: extended (0x80)</item>
+        <item>Software</item>
+    </string-array>
+    <string-array name="face_detect_values" translatable="false">
+        <item>off</item>
+        <item>auto</item>
+        <item>simple</item>
+        <item>full</item>
+        <item>extended</item>
+        <item>software</item>
+    </string-array>
+    <string-array name="tracking_af_entries">
+        <item>Off</item>
+        <item>Long press</item>
+        <item>Tap</item>
+    </string-array>
+    <string-array name="tracking_af_values" translatable="false">
+        <item>off</item>
+        <item>long_press</item>
+        <item>tap</item>
+    </string-array>
 </resources>

@@ -1,10 +1,13 @@
 package com.particlesdevs.photoncamera.processing.avif;
 
 import android.graphics.Bitmap;
+import android.os.Build;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
+import com.particlesdevs.photoncamera.processing.PhotoFormat;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.io.IOException;
@@ -26,6 +29,8 @@ public final class AvifEncoder {
      * about 20 at 4:2:0.
      */
     static final int BYTES_PER_PIXEL_444 = 36, BYTES_PER_PIXEL_420 = 20;
+    /** Bitmap.Config.RGBA_1010102 (the 10-bit final image) exists from Android 13. */
+    public static final int TEN_BIT_MIN_SDK = 33;
     private static final boolean LOADED;
     private static volatile Boolean availableForTesting;
 
@@ -106,6 +111,24 @@ public final class AvifEncoder {
             bytes = stats[4];
             exif = stats[5] != 0;
         }
+    }
+
+    /** Whether an AVIF with these settings keeps more than 8 bits of a 10-bit image: 10 / 12-bit or lossless. */
+    public static boolean keepsTenBits(Options options) {
+        return options.lossless || options.depth > 8;
+    }
+
+    /**
+     * Whether the shot's final image should come out 10-bit (RGBA_1010102, PostPipeline.tenBitOutput): the effective
+     * format is AVIF on Android 13+ and the AVIF keeps more than 8 bits. The pipeline falls back to 8 bits by itself.
+     */
+    public static boolean tenBitImageWanted(PhotoFormat format, Options options, int sdk) {
+        return format == PhotoFormat.AVIF && sdk >= TEN_BIT_MIN_SDK && keepsTenBits(options);
+    }
+
+    /** {@link #tenBitImageWanted(PhotoFormat, Options, int)} for the stored settings on this phone. */
+    public static boolean tenBitImageWanted() {
+        return tenBitImageWanted(PreferenceKeys.getPhotoFormat(), PreferenceKeys.getAvifOptions(), Build.VERSION.SDK_INT);
     }
 
     /** Estimated native working memory of encoding a {@code width} x {@code height} photo (bytes). */
