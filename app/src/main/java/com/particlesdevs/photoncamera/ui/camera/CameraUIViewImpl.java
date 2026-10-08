@@ -136,9 +136,9 @@ public class CameraUIViewImpl implements CameraUIView {
 
     /**
      * The top bar's group card (MANUAL_TASK.md §4): the route in effect (Hybrid: monogram H, SCAM HDR: monogram S) and the
-     * format choice (FormatChoice: JPEG, HEIC, WebP, RAW, RAW + JPEG / HEIC / WebP) as 24dp accent icons. Their names
-     * («Склейка Hybrid», «Формат RAW + HEIC») are the content descriptions and the long-press tooltips; a tap on the
-     * format opens the chooser (CameraFragment.openFormatChooser).
+     * format choice (FormatChoice: JPEG, HEIC, WebP, AVIF, RAW, RAW + JPEG / HEIC / WebP / AVIF) as 24dp accent icons.
+     * Their names («Склейка Hybrid», «Формат RAW + HEIC») are the content descriptions and the long-press tooltips; a tap
+     * on the format opens the chooser (CameraFragment.openFormatChooser).
      */
     public static void bindBadges(LayoutMainTopbarBinding topbar) {
         Context context = topbar.getRoot().getContext();

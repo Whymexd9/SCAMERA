@@ -5,17 +5,19 @@ import androidx.annotation.Nullable;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.processing.PhotoFormat;
+import com.particlesdevs.photoncamera.processing.avif.AvifEncoder;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * The one format choice of the top bar, the shade's FORMAT tile and «Формат фото» (MANUAL_TASK.md §4): seven options,
+ * The one format choice of the top bar, the shade's FORMAT tile and «Формат фото» (MANUAL_TASK.md §4): nine options,
  * each with its icon, mapped onto the two stored settings without changing capture or saving. The save mode
  * (pref_save_raw_key: 0 photo only, 1 RAW + photo, 2 RAW only) and the photo codec («Формат фото», pref_photo_format:
- * JPEG / HEIC / WebP). RAW only keeps whatever codec is stored. HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK): below it
- * the HEIC options are not offered.
+ * JPEG / HEIC / WebP / AVIF). RAW only keeps whatever codec is stored. HEIC needs Android 9 (PhotoFormat.HEIC_MIN_SDK),
+ * AVIF Android 12 and its encoder library (PhotoFormat.avifOffered): without them those options are not offered.
+ * The ordinals are the shade's list values: new options are appended (AVIF, RAW_AVIF), the menus show {@link #ORDER}.
  */
 public enum FormatChoice {
     JPEG(0, PhotoFormat.JPEG, R.drawable.ic_shade_jpeg),
@@ -24,7 +26,12 @@ public enum FormatChoice {
     RAW(2, null, R.drawable.ic_shade_raw),
     RAW_JPEG(1, PhotoFormat.JPEG, R.drawable.ic_shade_rawjpeg),
     RAW_HEIC(1, PhotoFormat.HEIC, R.drawable.ic_shade_rawheic),
-    RAW_WEBP(1, PhotoFormat.WEBP, R.drawable.ic_shade_rawwebp);
+    RAW_WEBP(1, PhotoFormat.WEBP, R.drawable.ic_shade_rawwebp),
+    AVIF(0, PhotoFormat.AVIF, R.drawable.ic_shade_avif),
+    RAW_AVIF(1, PhotoFormat.AVIF, R.drawable.ic_shade_rawavif);
+
+    /** Menu order: the photo codecs, RAW, then RAW + each codec. */
+    static final FormatChoice[] ORDER = {JPEG, HEIC, WEBP, AVIF, RAW, RAW_JPEG, RAW_HEIC, RAW_WEBP, RAW_AVIF};
 
     /** The save mode: 0 photo only, 1 RAW + photo, 2 RAW only. */
     public final int saveMode;
@@ -46,14 +53,24 @@ public enum FormatChoice {
         switch (c) {
             case HEIC: return raw ? RAW_HEIC : HEIC;
             case WEBP: return raw ? RAW_WEBP : WEBP;
+            case AVIF: return raw ? RAW_AVIF : AVIF;
             default: return raw ? RAW_JPEG : JPEG;
         }
     }
 
-    /** The options this Android version offers, in order: no HEIC below Android 9. */
+    /** The options this phone offers, in menu order (AvifEncoder.available() tells whether the AVIF encoder loaded). */
     public static List<FormatChoice> offered(int sdk) {
+        return offered(sdk, AvifEncoder.available());
+    }
+
+    /** The options offered, in menu order: no HEIC below Android 9, no AVIF below Android 12 or without its encoder. */
+    public static List<FormatChoice> offered(int sdk, boolean avifEncoder) {
         List<FormatChoice> out = new ArrayList<>();
-        for (FormatChoice c : values()) if (c.codec != PhotoFormat.HEIC || sdk >= PhotoFormat.HEIC_MIN_SDK) out.add(c);
+        for (FormatChoice c : ORDER) {
+            if (c.codec == PhotoFormat.HEIC && sdk < PhotoFormat.HEIC_MIN_SDK) continue;
+            if (c.codec == PhotoFormat.AVIF && !PhotoFormat.avifOffered(sdk, avifEncoder)) continue;
+            out.add(c);
+        }
         return Collections.unmodifiableList(out);
     }
 
@@ -62,12 +79,12 @@ public enum FormatChoice {
         return codec != null ? codec : stored == null ? PhotoFormat.JPEG : stored;
     }
 
-    /** Short label (shade tile): JPEG, HEIC, WEBP, RAW, R+J, R+H, R+W. */
+    /** Short label (shade tile): JPEG, HEIC, WEBP, AVIF, RAW, R+J, R+H, R+W, R+A. */
     public String shortLabel() {
         return codec == null ? "RAW" : codec.saveModeShort(saveMode);
     }
 
-    /** Full label (chooser, tooltip, toast): JPEG, HEIC, WebP, RAW, RAW + JPEG, RAW + HEIC, RAW + WebP. */
+    /** Full label (chooser, tooltip, toast): JPEG, HEIC, WebP, AVIF, RAW, RAW + JPEG, RAW + HEIC, RAW + WebP, RAW + AVIF. */
     public String longLabel() {
         return codec == null ? "RAW" : codec.saveModeLong(saveMode);
     }

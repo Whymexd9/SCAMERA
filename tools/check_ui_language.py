@@ -67,7 +67,7 @@ ALLOW = {
             'мерцан|flicker|antiband', 'мерцание flicker антибандинг antibanding',
             'вспышк|фонар|flash|torch', 'вспышка flash фонарик torch',
             'таймер|timer', 'таймер timer',
-            'raw|jpeg|heic|webp|формат|format', 'формат format raw jpeg dng heic webp кодек codec',
+            'raw|jpeg|heic|webp|avif|формат|format', 'формат format raw jpeg dng heic webp avif кодек codec',
             'звук|sound', 'звук sound',
             r'замер|\\bmeter', 'замер metering экспозамер',
             'склейк|merge|route', 'склейка merge route hybrid scam',
