@@ -203,6 +203,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // No 8 Elite: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
             Preference scamHdr = findPreference("vivo_hdr_screen");
             if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
+            // Nor its launch check and the neural remosaic check (the only rows of the diagnostics page).
+            if (!PreferenceKeys.isScamHdrSupported())
+                for (String key : new String[]{"vivo_nice_probe", "vivo_neural_probe", "vivo_diagnostics_screen"}) {
+                    Preference probe = findPreference(key);
+                    if (probe != null) probe.setVisible(false);
+                }
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
             Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
@@ -682,10 +688,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void updateSettingsAvailability() {
             if (!isAdded() || mSettingsManager == null) return;
             com.particlesdevs.photoncamera.settings.SettingsAvailability state =
-                    new com.particlesdevs.photoncamera.settings.SettingsAvailability(mSettingsManager.getDefaultPreferences().getAll(),
-                            PhotonCamera.getSpecificSensor() != null && PhotonCamera.getSpecificSensor().selectedSensorSpecifics != null
-                                    && PhotonCamera.getSpecificSensor().selectedSensorSpecifics.ModelerExists);
-            state.heic10Unavailable(com.particlesdevs.photoncamera.processing.heif.Heic10Support.unavailableReason());
+                    com.particlesdevs.photoncamera.settings.DeviceAvailability.of(mSettingsManager.getDefaultPreferences().getAll());
             applyAvailability(getPreferenceScreen(), state);
         }
         @SuppressWarnings({"unchecked", "rawtypes"})

@@ -80,9 +80,20 @@ public final class ShadeCatalog {
     /** Virtual entries, in catalog order. */
     public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD));
 
-    /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins). */
+    /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins); see {@link #defaultTiles()}. */
     public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, ROUTE,
             OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_lmc_hybrid_bento"));
+
+    /**
+     * The default tiles of this phone: {@link #DEFAULT_TILES}, without the route tile where SCAM HDR cannot run (no Snapdragon
+     * 8 Elite: the route is always Hybrid, the tile would only ever be dimmed).
+     */
+    public static List<String> defaultTiles() {
+        if (PreferenceKeys.isScamHdrSupported()) return DEFAULT_TILES;
+        List<String> tiles = new ArrayList<>(DEFAULT_TILES);
+        tiles.remove(ROUTE);
+        return Collections.unmodifiableList(tiles);
+    }
 
     /** A curated group of the FULL level. */
     public static final class Group {
@@ -748,7 +759,7 @@ public final class ShadeCatalog {
             return res.getString(R.string.shade_reason_nice_dev);
         Map<String, Object> values = new HashMap<>(prefs.getAll());
         values.put(ROUTE, PreferenceKeys.mergeRoute());
-        String reason = new SettingsAvailability(values).reason(e.key);
+        String reason = DeviceAvailability.of(values).reason(e.key);
         if (reason != null) return reason;
         if (e.dependency != null) {
             Entry master = entry(e.dependency);

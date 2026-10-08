@@ -229,6 +229,34 @@ public class SettingsAuditFixTest {
         assertTrue(prefs.getBoolean("pref_vivo_nice_diagnostics",false));assertEquals("stock",prefs.getString("pref_vivo_nice_planner",""));
     }
 
+    /** Without the 8 Elite there is no SCAM HDR: no route tile among the default tiles, no SCAM HDR / neural checks. */
+    @Test public void noScamHdrChecksOrRouteTileWithoutThe8Elite() {
+        assertTrue(ShadeCatalog.defaultTiles().contains(ShadeCatalog.ROUTE));
+        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8650");
+        assertFalse(ShadeCatalog.defaultTiles().contains(ShadeCatalog.ROUTE));
+        assertEquals(ShadeCatalog.DEFAULT_TILES.size()-1,ShadeCatalog.defaultTiles().size());
+        assertFalse(ShadeTiles.load(prefs,key->true).contains(ShadeCatalog.ROUTE));
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();
+            PreferenceFragmentCompat page=(PreferenceFragmentCompat)controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container);
+            for(String key:new String[]{"vivo_nice_probe","vivo_neural_probe","vivo_diagnostics_screen","vivo_hdr_screen"})
+                assertFalse(key,page.findPreference(key).isVisible());
+            assertTrue(page.findPreference("pref_root_enabled").isVisible());
+        }
+    }
+
+    /** The settings screen and the shade see the same device facts (DeviceAvailability). */
+    @Test public void deviceFactsReachTheAvailability() {
+        Map<String,Object> values=new HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");values.put("pref_root_enabled",true);
+        // Robolectric is no vivo X200 Ultra: the stock planner is explained; no OPPO / vivo matrix replaces the colour method.
+        assertNotNull(DeviceAvailability.of(values).reason("pref_vivo_nice_planner"));
+        assertNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
+        org.robolectric.shadows.ShadowBuild.setManufacturer("vivo");
+        assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
+        org.robolectric.shadows.ShadowBuild.setManufacturer("OPPO");org.robolectric.shadows.ShadowBuild.setModel("PHY110");
+        assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

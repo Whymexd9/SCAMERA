@@ -4,16 +4,33 @@ import com.particlesdevs.photoncamera.util.Lang;
 
 import java.util.Map;
 
-/** Conditions mirror the capture/post-pipeline branches. Pages stay open to explain inactive rows. */
+/**
+ * Conditions mirror the capture/post-pipeline branches. Pages stay open to explain inactive rows. The facts of the phone
+ * (they need Android; tools/check_settings_model.py compiles this class alone) are set by DeviceAvailability.
+ */
 public final class SettingsAvailability {
     private final Map<String, ?> values;
-    private final boolean calibratedSensor;
     /** Why this phone cannot write the 10-bit HEIC (heif.Heic10Support.unavailableReason), null when it can or is not known. */
     private String heic10Unavailable;
-    public SettingsAvailability(Map<String, ?> values) { this(values,false); }
-    public SettingsAvailability(Map<String, ?> values, boolean calibratedSensor) { this.values = values; this.calibratedSensor = calibratedSensor; }
+    /** The vivo stock AE observer runs on this phone (capture.VivoStockAe.supportedDevice: the vivo X200 Ultra). */
+    private boolean stockAeDevice;
+    /** Why «Цветовой метод» does not act here (a tuned / ISP matrix replaces it), null when it does. */
+    private String colorMethodOverride;
+    /** SCAM HDR runs on this phone (PreferenceKeys.isScamHdrSupported: the Snapdragon 8 Elite); assumed unless told otherwise. */
+    private boolean scamHdrSupported = true;
+    /** The tele's smooth optical zoom exists here (capture.XiaomiTeleZoom.phone: the Xiaomi 17 Ultra); assumed unless told otherwise. */
+    private boolean xiaomiSmoothZoom = true;
+    public SettingsAvailability(Map<String, ?> values) { this.values = values; }
     /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
     public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
+    /** The device fact behind «Стоковый AE vivo»: the stock AE observer exists on this phone. */
+    public SettingsAvailability stockAeDevice(boolean supported) { stockAeDevice = supported; return this; }
+    /** The device fact behind «Цветовой метод»: the matrix that replaces the choice on this phone, or null. */
+    public SettingsAvailability colorMethodOverride(String reason) { colorMethodOverride = reason; return this; }
+    /** The device fact behind the SCAM HDR screen and its checks: they are hidden where SCAM HDR cannot run. */
+    public SettingsAvailability scamHdrSupported(boolean supported) { scamHdrSupported = supported; return this; }
+    /** The device fact behind «Плавный оптический зум»: hidden on any other phone than the Xiaomi 17 Ultra. */
+    public SettingsAvailability xiaomiSmoothZoom(boolean supported) { xiaomiSmoothZoom = supported; return this; }
     private String text(String key, String fallback) {
         Object value = values.get(key); return value == null ? fallback : value.toString();
     }
@@ -27,6 +44,11 @@ public final class SettingsAvailability {
         String f = text("pref_photo_format", "jpeg").trim().toLowerCase(java.util.Locale.ROOT);
         return f.equals("heic") || f.equals("webp") ? f : "jpeg";
     }
+    /** «Резкость Hybrid» as stored (PreferenceKeys.niceSharpenMode): ark (default), rt, scam or off. */
+    private String sharpMode() {
+        String v = text("pref_lmc_hybrid_sharp_mode", "ark").trim();
+        return v.equals("rt") || v.equals("scam") || v.equals("off") ? v : "ark";
+    }
     /** Whether a shot writes a JPEG: the JPEG format, or HEIC / WebP with «Также сохранять JPEG». */
     private boolean writesJpeg() {
         return photoFormat().equals("jpeg") || on("pref_photo_also_jpeg", false);
@@ -34,9 +56,13 @@ public final class SettingsAvailability {
 
     /**
      * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
-     * are not chosen (HEIC quality / 10 bit, WebP quality / lossless) and «Также сохранять JPEG» while the format is JPEG.
+     * are not chosen (HEIC quality / 10 bit, WebP quality / lossless) and «Также сохранять JPEG» while the format is JPEG;
+     * and the rows of what this phone does not have (SCAM HDR and its checks without the 8 Elite, the Xiaomi smooth zoom).
      */
     public boolean hidden(String key) {
+        // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
+        if (!scamHdrSupported && any(key, "vivo_hdr_screen", "vivo_diagnostics_screen", "vivo_nice_probe", "vivo_neural_probe")) return true;
+        if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
         String format = photoFormat();
         switch (key) {
             case "pref_heic_quality": case "pref_heic_10bit": return !format.equals("heic");
@@ -56,8 +82,41 @@ public final class SettingsAvailability {
         // The ARK tone (ArkCore) and its sharpening are shared by both routes.
         boolean arkShared = key.startsWith("pref_lmc_hybrid_ark_") || key.equals("pref_lmc_hybrid_sharp_mode");
         if (key.startsWith("pref_lmc_hybrid_") && !hybrid && !arkShared) return Lang.t("Выберите склейку «Hybrid».", "Select the “Hybrid” merge.");
+        // Sharpening after the merge (PostPipeline.BuildDefaultPipeline): "ark" runs ArkLumaSharpen before the detail delta and
+        // RawTherapee after the tone only with «Доп. резкость после тона»; "rt" / "scam" sharpen after the tone; "off" nothing.
+        String sharp = sharpMode();
+        boolean arkSharp = sharp.equals("ark");
+        boolean postSharp = arkSharp ? on("pref_lmc_hybrid_ark_post_sharp", false) : !sharp.equals("off");
+        boolean rtSharp = sharp.equals("rt") || arkSharp && postSharp;
+        if ((key.startsWith("pref_lmc_hybrid_ark_sharp_") && !any(key, "pref_lmc_hybrid_ark_sharp_guard", "pref_lmc_hybrid_ark_sharp_note")
+                || key.equals("pref_lmc_hybrid_ark_post_sharp")) && !arkSharp)
+            return Lang.t("Только для резкости ARK в «Резкость Hybrid».", "ARK sharpening only (“Hybrid sharpening”).");
+        if (key.equals("pref_lmc_hybrid_ark_sharp_guard") && !postSharp)
+            return Lang.t("Только с резкостью после тона: RawTherapee, SCAM или ARK с «Доп. резкость после тона».",
+                    "Only with sharpening after the tone: RawTherapee, SCAM, or ARK with “Extra sharpening after the tone”.");
+        if (key.equals("pref_lmc_hybrid_ark_detail_gain") && arkSharp)
+            return Lang.t("Только без резкости ARK: с ней деталь задаёт «Сила детали резкости ARK».",
+                    "Only without ARK sharpening: with it “ARK sharpening detail strength” sets the detail.");
+        if ((key.startsWith("pref_sharp_") || key.equals("pref_lmc_hybrid_sharp_strength")) && !rtSharp)
+            return Lang.t("Только для резкости RawTherapee: выберите её в «Резкость Hybrid» или включите «Доп. резкость после тона» у ARK.",
+                    "RawTherapee sharpening only: choose it in “Hybrid sharpening” or turn on “Extra sharpening after the tone” with ARK.");
+        if (key.equals("pref_lmc_hybrid_sharp_amount") && !sharp.equals("scam"))
+            return Lang.t("Только для резкости SCAM в «Резкость Hybrid».", "SCAM sharpening only (“Hybrid sharpening”).");
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
         if (key.startsWith("pref_lmc_hybrid_dn_") && !on("pref_lmc_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
+        // Denoise engine (pref_lmc_hybrid_dn_engine): the GCam finish (LmcDenoise) reads the dn_ rows, NLM (NiceDenoise) its two strengths.
+        boolean nlm = text("pref_lmc_hybrid_dn_engine", "gcam").trim().equals("nlm");
+        if (key.startsWith("pref_lmc_hybrid_dn_") && !key.equals("pref_lmc_hybrid_dn_engine") && nlm)
+            return Lang.t("Только для шумодава GCam в «Шумодав Hybrid».", "GCam denoiser only (“Hybrid denoiser”).");
+        if (any(key, "pref_lmc_hybrid_post_luma", "pref_lmc_hybrid_post_chroma") && !nlm)
+            return Lang.t("Только для шумодава NLM в «Шумодав Hybrid».", "NLM denoiser only (“Hybrid denoiser”).");
+        // Output size (pref_lmc_hybrid_output): every size but the sensor's merges on the Sabre 2x grid; 12 / 16 / 20 MP are
+        // then made with the downsampler (HybridFinalResize), 2x is kept as it is.
+        String output = text("pref_lmc_hybrid_output", "sensor").trim();
+        if (key.equals("pref_lmc_hybrid_downsampler") && !any(output, "12", "16", "20"))
+            return Lang.t("Только при «Разрешение» 12, 16 или 20 МП.", "Only with “Resolution” 12, 16 or 20 MP.");
+        if (key.equals("pref_lmc_hybrid_dn_chroma_2x_keep") && output.equals("sensor"))
+            return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2×.", "2× grid only: “Resolution” 12, 16, 20 MP or 2×.");
         // P28 RAW CA: the rows under the mode list follow it and the auto switch.
         if (key.startsWith("pref_lmc_hybrid_rawca_") && !key.equals("pref_lmc_hybrid_rawca_mode")) {
             if (text("pref_lmc_hybrid_rawca_mode", "0").equals("0")) return Lang.t("Выберите режим «Коррекция ХА в RAW».", "Select a “RAW CA correction” mode.");
@@ -93,8 +152,15 @@ public final class SettingsAvailability {
         if (key.equals("pref_heic_10bit") && heic10Unavailable != null) return heic10Unavailable;
         if (key.equals("pref_webp_quality") && on("pref_webp_lossless", false))
             return Lang.t("Не используется в WebP без потерь.", "Not used by lossless WebP.");
-        if (key.startsWith("pref_vivo_nice_") && !autonomous)
+        // pref_nice_* (the L frame from the ZSL ring) are SCAM HDR keys too: the hybrid takes no L frame (PreferenceKeys.isNiceZslLong).
+        if ((key.startsWith("pref_vivo_nice_") || key.startsWith("pref_nice_")) && !autonomous)
             return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");
+        // The stock vivo AE plans only with Root on the vivo X200 Ultra (PreferenceKeys.useStockBracketPlanner); else SCAMERA plans.
+        if (key.equals("pref_vivo_nice_planner") && !(stockAeDevice && on("pref_root_enabled", false)))
+            return stockAeDevice ? Lang.t("Стоковому AE vivo нужен «Root-доступ» (раздел «Система»); без него планирует SCAMERA.",
+                            "The stock vivo AE needs “Root access” (System); without it SCAMERA plans.")
+                    : Lang.t("Стоковый AE vivo есть только на vivo X200 Ultra с Root-доступом; здесь планирует SCAMERA.",
+                            "The stock vivo AE exists only on the vivo X200 Ultra with Root access; SCAMERA plans here.");
         // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.
         if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
             if (!neuralMosaic) return Lang.t("Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).", "Used in SCAM HDR with a “Neural remosaic” mosaic mode (ISZ modules).");
@@ -115,6 +181,7 @@ public final class SettingsAvailability {
             if (any(key,"pref_sharp_edges_radius_key","pref_sharp_edges_tolerance_key") && !on("pref_sharp_edges_only_key",false)) return Lang.t("Включите режим «Только края».", "Turn on the “Edges only” mode.");
             if (key.equals("pref_sharp_halo_amount_key") && !on("pref_sharp_halo_control_key",false)) return Lang.t("Включите контроль ореолов Unsharp Mask.", "Turn on Unsharp Mask halo control.");
         }
+        if (key.equals("pref_color_method_key") && colorMethodOverride != null) return colorMethodOverride;
         if (key.equals("pref_show_gradient_key") && text("pref_theme_accent_key","default").equals("eszdman")) return Lang.t("Оформление задаётся выбранной темой.", "The look is set by the selected theme.");
         return null;
     }

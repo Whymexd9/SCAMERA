@@ -13,7 +13,7 @@ import android.os.Build;
  * The tuning holds ~6 colour-temperature bands per lux-index group; the bright-scene group is used
  * (its lower groups only shrink the correction to hide low-light noise, which SCAMERA denoises itself).
  */
-final class OppoTunedColor {
+public final class OppoTunedColor {
     private OppoTunedColor() {}
 
     // {focal length mm, nodes {CCT K, 3x3 CCM row-major}} per sensor; nodes ascend in CCT.
@@ -60,7 +60,7 @@ final class OppoTunedColor {
             0.2225045f, 0.7168786f, 0.0606169f,
             0.0139322f, 0.0971045f, 0.7141733f};
 
-    static boolean applies() {
+    public static boolean applies() {
         return "PHY110".equals(Build.MODEL);
     }
 

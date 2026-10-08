@@ -232,7 +232,7 @@ public final class SettingsMigration {
     /**
      * P25: the first value of the shade's tiles (ui_shade_tiles) is the user's old pins, then the 8 defaults (owner's
      * answer 10): the concept E quick buttons (ui_sheet_quick, mapped to their keys, other names dropped), then the ☆
-     * favourites (settings_favorite_keys, obsolete keys dropped), then ShadeCatalog.DEFAULT_TILES, without repeats.
+     * favourites (settings_favorite_keys, obsolete keys dropped), then ShadeCatalog.defaultTiles(), without repeats.
      * Keys the catalog does not know and everything after 12 are dropped on read (ShadeTiles.load). A stored tile list
      * is never overwritten. Both old keys are removed; a second run changes nothing.
      *
@@ -259,7 +259,7 @@ public final class SettingsMigration {
                     }
                 } catch (org.json.JSONException ignored) {}
             }
-            for (String key : ShadeCatalog.DEFAULT_TILES) if (!tiles.contains(key)) tiles.add(key);
+            for (String key : ShadeCatalog.defaultTiles()) if (!tiles.contains(key)) tiles.add(key);
             e.putString(ShadeTiles.KEY, ShadeTiles.join(tiles));
         }
         e.remove(LEGACY_QUICK).remove(LEGACY_FAVOURITES).commit();
