@@ -209,9 +209,6 @@
         <item>HP9 HexQuad — NPU, 6 кадров (тест)</item>
         <item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item>
     </string-array>
-    <string name="remosaic_vivo_probe_desc">Проверка совместимости на этом телефоне. Обработка снимков не запускается.</string>
-    <string name="remosaic_vivo_checking">Проверка…</string>
-    <string name="remosaic_vivo_result">Результат проверки Vivo</string>
     <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
     <string-array name="hexquad_model_entries">
         <item>x2 — текущая модель</item>

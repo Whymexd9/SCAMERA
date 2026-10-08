@@ -295,9 +295,6 @@
     <string name="remosaic_backend_title">Remosaic algorithm</string>
     <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — after Vivo</item><item>Vivo Neural — NPU, root (experimental)</item><item>HP9 HexQuad — NPU, 6 frames (test)</item><item>Quad 2×2 — NPU, 4 frames (main, 2x ISZ)</item></string-array>
     <string-array name="remosaic_backend_values" translatable="false"><item>scamera</item><item>tetra_detail</item><item>vivo_neural</item><item>hp9_hexquad</item><item>imx06c_quad</item></string-array>
-    <string name="remosaic_vivo_probe_desc">Compatibility check on this phone. No shot processing runs.</string>
-    <string name="remosaic_vivo_checking">Checking…</string>
-    <string name="remosaic_vivo_result">Vivo check result</string>
     <string name="tetra_response_summary">Estimates the 4×4 pixel response and its smooth change across the frame. With too little data a common correction is used. If texture or colour changes, compare with the correction off.</string>
     <string-array name="hexquad_model_entries"><item>x2 — current model</item><item>x1 — experimental</item></string-array>
     <string-array name="hexquad_model_values" translatable="false"><item>2</item><item>1</item></string-array>

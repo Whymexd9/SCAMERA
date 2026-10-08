@@ -675,8 +675,6 @@
     <string name="prefs_vivo_nice_probe_summary">Проверить оригинальную HDR-модель внутри приложения и скопировать отчёт</string>
     <string name="prefs_vivo_neural_probe_title">Нейроремозаик — проверка и отчёты</string>
     <string name="prefs_vivo_neural_probe_summary">Проверить загрузку модели на нейроускоритель и скопировать отчёт</string>
-    <string name="prefs_remosaic_vivo_probe_title">Системная библиотека Vivo — диагностика</string>
-    <string name="prefs_remosaic_vivo_probe_summary">Отдельная проверка старого системного пути. Не требуется для встроенного HP9 HexQuad.</string>
     <string name="prefs_camera_package_spoof_screen_title">Подмена пакета камеры</string>
     <string name="prefs_camera_package_spoof_screen_summary">Для OPPO / OnePlus и общего Android: открыть скрытые модули</string>
     <string name="prefs_camera_package_spoof_enabled_title">Спуф пакета</string>

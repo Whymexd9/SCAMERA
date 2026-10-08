@@ -675,8 +675,6 @@
     <string name="prefs_vivo_nice_probe_summary">Check the original HDR model inside the app and copy the report</string>
     <string name="prefs_vivo_neural_probe_title">Neural remosaic: check and reports</string>
     <string name="prefs_vivo_neural_probe_summary">Check loading the model onto the neural accelerator and copy the report</string>
-    <string name="prefs_remosaic_vivo_probe_title">Vivo system library: diagnostics</string>
-    <string name="prefs_remosaic_vivo_probe_summary">A separate check of the old system path. Not needed for the built-in HP9 HexQuad.</string>
     <string name="prefs_camera_package_spoof_screen_title">Camera package spoofing</string>
     <string name="prefs_camera_package_spoof_screen_summary">For OPPO / OnePlus and generic Android: unlock hidden modules</string>
     <string name="prefs_camera_package_spoof_enabled_title">Package spoofing</string>

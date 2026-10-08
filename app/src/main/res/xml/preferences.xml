@@ -555,7 +555,6 @@
     <PreferenceScreen android:key="vivo_diagnostics_screen" android:title="@string/prefs_vivo_diagnostics_screen_title" android:summary="@string/prefs_vivo_diagnostics_screen_summary" app:iconSpaceReserved="false" android:icon="@drawable/settings_ic_diag">
       <Preference android:key="vivo_nice_probe" android:title="@string/prefs_vivo_nice_probe_title" android:summary="@string/prefs_vivo_nice_probe_summary" android:icon="@drawable/settings_ic_hdr"/>
       <Preference android:key="vivo_neural_probe" android:title="@string/prefs_vivo_neural_probe_title" android:summary="@string/prefs_vivo_neural_probe_summary" android:icon="@drawable/settings_ic_mosaic"/>
-      <Preference android:key="remosaic_vivo_probe" android:title="@string/prefs_remosaic_vivo_probe_title" android:summary="@string/prefs_remosaic_vivo_probe_summary" android:icon="@drawable/settings_ic_chip"/>
     </PreferenceScreen>
     <PreferenceScreen android:key="camera_package_spoof_screen" android:title="@string/prefs_camera_package_spoof_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_camera_package_spoof_screen_summary" android:icon="@drawable/settings_ic_tag">
       <SwitchPreferenceCompat android:key="pref_camera_package_spoof_enabled" android:title="@string/prefs_camera_package_spoof_enabled_title" android:defaultValue="false" android:summary="@string/prefs_camera_package_spoof_enabled_summary"/>

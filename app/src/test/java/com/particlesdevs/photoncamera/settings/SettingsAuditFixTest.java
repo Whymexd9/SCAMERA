@@ -109,6 +109,13 @@ public class SettingsAuditFixTest {
         assertEquals(android.graphics.ImageFormat.JPEG,com.particlesdevs.photoncamera.capture.CaptureController.mPreviewTargetFormat);
     }
 
+    /** The probe of the old vivo system remosaic path (removed in P4) is gone; the SCAM HDR and neural checks stay. */
+    @Test public void vivoRemosaicProbeIsGone() {
+        PreferenceScreen screen=inflate();
+        assertNull(screen.findPreference("remosaic_vivo_probe"));
+        assertNotNull(screen.findPreference("vivo_nice_probe"));assertNotNull(screen.findPreference("vivo_neural_probe"));
+    }
+
     /** H1: a decimal slider stores as many decimals as its step needs, and the screen seeds the exact XML default. */
     @Test public void slidersKeepTheirPrecision() {
         assertEquals("0.0005",PreferenceNumber.gridText(5/10000.0,PreferenceNumber.gridDecimals(10000,0)));

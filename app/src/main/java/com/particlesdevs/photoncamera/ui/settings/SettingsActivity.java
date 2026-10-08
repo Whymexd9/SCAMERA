@@ -420,35 +420,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 startActivity(new android.content.Intent(requireContext(), VivoNeuralActivity.class));
                 return true;
             });
-            Preference probe = findPreference("remosaic_vivo_probe");
-            if (probe == null) return;
-            probe.setOnPreferenceClickListener(pref -> {
-                pref.setEnabled(false);
-                pref.setSummary(R.string.remosaic_vivo_checking);
-                android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
-                new Thread(() -> {
-                    String report = com.particlesdevs.photoncamera.processing.opengl.postpipeline
-                            .VivoRemosaicAvailability.probe();
-                    com.particlesdevs.photoncamera.util.ScameraDebugLog.log("vivo-remosaic", report);
-                    main.post(() -> {
-                        if (!isAdded()) return;
-                        pref.setEnabled(true);
-                        pref.setSummary(R.string.remosaic_vivo_probe_desc);
-                        new androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                                .setTitle(R.string.remosaic_vivo_result)
-                                .setMessage(report)
-                                .setPositiveButton(android.R.string.ok, null)
-                                .setNeutralButton(android.R.string.copy, (dialog, which) -> {
-                                    android.content.ClipboardManager clipboard =
-                                            (android.content.ClipboardManager) requireContext()
-                                                    .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-                                    if (clipboard != null) clipboard.setPrimaryClip(
-                                            android.content.ClipData.newPlainText("Vivo remosaic", report));
-                                }).show();
-                    });
-                }, "VivoRemosaicProbe").start();
-                return true;
-            });
         }
 
 
