@@ -95,6 +95,43 @@ public final class RawPayloadCheck {
         return new Result(null, share, zeroShare, false);
     }
 
+    /**
+     * Row stride in bytes of a packed MIPI RAW10 payload behind a RAW_SENSOR buffer, 0 when it cannot be read from the data.
+     * <p>
+     * Xiaomi 17 Ultra, tele 4 through logical camera 0 (owner's log, 2026-10-09): 4080x3072 RAW_SENSOR, rowStride 8160, the
+     * first 62.5 % of the buffer packed RAW10 and the rest zero. The reported rowStride is the RAW16 one, so the packed rows'
+     * stride is found from where the data ends: every packed group holds four high bytes of samples above black (never zero),
+     * so the payload is one run of non-zero 64-byte blocks followed by zeros. The smallest stride from width*10/8 whose
+     * {@code height} rows end there (last row with or without its padding) is the stride.
+     */
+    public static int packedStride(ByteBuffer buffer, int width, int height) {
+        if (buffer == null || width < 4 || (width & 3) != 0 || height < 2) return 0;
+        final int rowBytes = width * 10 / 8, capacity = buffer.capacity(), block = 64;
+        if ((long) rowBytes * height > capacity) return 0;
+        // Binary search for the first all-zero block after which the buffer stays zero.
+        int lo = 0, hi = capacity / block;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (zeroBlock(buffer, mid * block, Math.min(block, capacity - mid * block))) hi = mid; else lo = mid + 1;
+        }
+        int end = Math.min(capacity, lo * block);
+        while (end > 0 && buffer.get(end - 1) == 0) end--;
+        // No zero tail (a plain frame, or packed rows over a stale frame): nothing to read the stride from.
+        if (end <= 0 || end > capacity - rowBytes) return 0;
+        for (int stride = rowBytes; stride <= rowBytes + 512; stride++) {
+            long first = (long) (height - 1) * stride + rowBytes, all = (long) height * stride;
+            if (all > capacity) break;
+            // A zero last low-bits byte (or a zero padding tail) ends the data a few bytes early.
+            if (first <= end + 8L && end <= all) return stride;
+        }
+        return 0;
+    }
+
+    private static boolean zeroBlock(ByteBuffer buffer, int from, int length) {
+        for (int i = 0; i < length; i++) if (buffer.get(from + i) != 0) return false;
+        return true;
+    }
+
     /** White level the check compares against: the larger of the static and the frame's dynamic white, 0 when unknown. */
     public static int whiteLevel(CameraCharacteristics characteristics, CaptureResult result) {
         int white = 0;

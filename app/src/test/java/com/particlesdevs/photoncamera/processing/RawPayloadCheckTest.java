@@ -44,6 +44,22 @@ public class RawPayloadCheckTest {
         return into;
     }
 
+    /** MIPI RAW10 rows {@code stride} bytes apart, the padding after each row filled with {@code pad}. */
+    private static ByteBuffer packedMipi10Strided(int[][] v, int stride, int pad) {
+        ByteBuffer into = zeroed();
+        for (int y = 0; y < H; y++) {
+            int at = y * stride;
+            for (int x = 0; x < W; x += 4) {
+                int p0 = v[y][x], p1 = v[y][x + 1], p2 = v[y][x + 2], p3 = v[y][x + 3];
+                into.put(at++, (byte) (p0 >> 2)); into.put(at++, (byte) (p1 >> 2));
+                into.put(at++, (byte) (p2 >> 2)); into.put(at++, (byte) (p3 >> 2));
+                into.put(at++, (byte) ((p3 & 3) << 6 | (p2 & 3) << 4 | (p1 & 3) << 2 | (p0 & 3)));
+            }
+            for (int i = W * 5 / 4; i < stride; i++) into.put(y * stride + i, (byte) pad);
+        }
+        return into;
+    }
+
     private static ByteBuffer zeroed() {
         return ByteBuffer.allocateDirect(STRIDE * H).order(ByteOrder.LITTLE_ENDIAN);
     }
@@ -105,5 +121,38 @@ public class RawPayloadCheckTest {
         assertFalse(RawPayloadCheck.check(zeroed(), W, H, W, WHITE).plain()); // rowStride < 2 * width
         ByteBuffer small = ByteBuffer.allocateDirect(STRIDE * (H - 1)).order(ByteOrder.LITTLE_ENDIAN);
         assertFalse(RawPayloadCheck.check(small, W, H, STRIDE, WHITE).plain());
+    }
+
+    @Test
+    public void packedStrideOfContiguousRowsIsTheirLength() {
+        // Xiaomi 17 Ultra tele (logical camera 0): rows of width*10/8 bytes one after another, the rest of the buffer zero.
+        ByteBuffer b = packedMipi10(scene(1, 9), zeroed());
+        assertTrue(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).isPacked10());
+        assertEquals(W * 5 / 4, RawPayloadCheck.packedStride(b, W, H));
+        assertEquals(W * 5 / 4, RawPayloadCheck.packedStride(packedMipi10(scene(0.02, 10), zeroed()), W, H));
+    }
+
+    @Test
+    public void packedStrideFindsAlignedRows() {
+        assertEquals(656, RawPayloadCheck.packedStride(packedMipi10Strided(scene(1, 11), 656, 0), W, H));
+        assertEquals(704, RawPayloadCheck.packedStride(packedMipi10Strided(scene(1, 12), 704, 0x5a), W, H));
+    }
+
+    @Test
+    public void packedStrideNeedsAZeroTail() {
+        assertEquals(0, RawPayloadCheck.packedStride(plain(scene(1, 13), 1), W, H));
+        assertEquals(0, RawPayloadCheck.packedStride(packedMipi10(scene(1, 14), plain(scene(1, 15), 1)), W, H));
+        assertEquals(0, RawPayloadCheck.packedStride(zeroed(), W, H));
+    }
+
+    @Test
+    public void packedFrameUnpacksToItsSamples() {
+        int[][] v = scene(1, 16);
+        ByteBuffer b = packedMipi10Strided(v, 656, 0);
+        int stride = RawPayloadCheck.packedStride(b, W, H);
+        ByteBuffer out = ByteBuffer.allocateDirect(W * H * 2).order(ByteOrder.nativeOrder());
+        assertTrue(com.particlesdevs.photoncamera.util.RawUnpack.unpack(b.duplicate(), android.graphics.ImageFormat.RAW10, W, H, stride, out));
+        for (int y = 0; y < H; y += 37) for (int x = 0; x < W; x += 13)
+            assertEquals(v[y][x], out.getShort((y * W + x) * 2) & 0xffff);
     }
 }

@@ -3857,13 +3857,24 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * four left the existing normal-back path takes N after the shutter (those frames were plain on the X100 Ultra).
      */
     private void dropNonPlainRaw(List<Image> images, java.util.Map<Long, TotalCaptureResult> results) {
-        int dropped = 0;
+        mZslPackedStride.clear();
+        int dropped = 0, packed = 0;
         String first = null;
         for (java.util.Iterator<Image> it = images.iterator(); it.hasNext();) {
             Image image = it.next();
             com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
                     com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(image, rawPayloadWhite(results.get(image.getTimestamp())));
             if (payload.plain()) continue;
+            if (payload.isPacked10()) {
+                // Xiaomi 17 Ultra tele through logical camera 0: packed MIPI RAW10 behind RAW_SENSOR, unpacked on copy.
+                Image.Plane plane = image.getPlanes()[0];
+                int stride = com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedStride(plane.getBuffer(), image.getWidth(), image.getHeight());
+                if (stride > 0) {
+                    mZslPackedStride.put(image.getTimestamp(), stride);
+                    packed++;
+                    continue;
+                }
+            }
             if (first == null) {
                 first = payload.error;
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.dumpOnce(image, payload, physicalID);
@@ -3873,7 +3884,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             dropped++;
         }
         if (dropped > 0) Log.w("SCAM_HDR", "ZSL: " + dropped + " ring RAWs dropped (" + first + "), " + images.size() + " kept");
+        if (packed > 0) Log.w("SCAM_HDR", "ZSL: " + packed + " ring RAWs hold packed MIPI RAW10 (stride "
+                + mZslPackedStride.values().iterator().next() + "), unpacked on copy");
     }
+
+    /** Ring RAWs (by timestamp) whose RAW_SENSOR buffer holds packed MIPI RAW10, with the packed rows' stride. */
+    private final java.util.Map<Long, Integer> mZslPackedStride = new java.util.HashMap<>();
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount,ScamStockAe.Plan stockPlan,boolean defer) {
         return drainZslNormalFrames(requestedCount,stockPlan,defer,false);
@@ -3957,12 +3973,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         List<ImageFrame> selected = new ArrayList<>();
         for (int i = skip; i < rawImages.size(); i++) {
             Image img = rawImages.get(i);
+            int format = img.getFormat();
             int rowStride = img.getPlanes()[0].getRowStride();
             int pixelStride = img.getPlanes()[0].getPixelStride();
-            int width = com.particlesdevs.photoncamera.util.Allocator.isPackedRaw(img.getFormat()) ? img.getWidth()
+            int width = com.particlesdevs.photoncamera.util.Allocator.isPackedRaw(format) ? img.getWidth()
                     : (pixelStride > 0 ? rowStride / pixelStride : img.getWidth());
             int height = img.getHeight();
             int capacity = img.getPlanes()[0].getBuffer().capacity();
+            Integer packedStride = mZslPackedStride.get(img.getTimestamp());
+            if (packedStride != null) {
+                format = ImageFormat.RAW10;
+                width = img.getWidth();
+                rowStride = packedStride;
+                capacity = packedStride * height;
+            }
             int offset = 0;
             if (PhotonCamera.getSettings().aspect169 && width > height) {
                 // Even rows (P27): a 4080-wide stream gave 2295 rows, which the merges refuse.
@@ -3976,8 +4000,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // Deferred: the copy of ~20 RAWs (~200 ms) runs after the bracket is
             // submitted, in parallel with its exposure (startZslCopy).
             ImageFrame frame = defer
-                    ? ImageFrame.deferred(img, img.getFormat(), width, rowStride, offset, capacity)
-                    : new ImageFrame(img.getPlanes()[0].getBuffer(), img.getFormat(), width, rowStride, offset, capacity);
+                    ? ImageFrame.deferred(img, format, width, rowStride, offset, capacity)
+                    : new ImageFrame(img.getPlanes()[0].getBuffer(), format, width, rowStride, offset, capacity);
             frame.timestamp = img.getTimestamp();frame.fromZsl=true;
             frame.setCaptureMetadata(selectedMetadata.get(frame.timestamp));
             frame.width = PhotonCamera.getSettings().binning ? width / 2 : width;

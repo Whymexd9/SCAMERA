@@ -35,43 +35,49 @@ public class SaverImplementation {
             // This image is not valid, skip it
             return null;
         }
-        int width;
-        int height;
-        int offset = 0;
-        int capacity = image.getPlanes()[0].getBuffer().capacity();
-        if(image.getFormat() == 0x25){
-            width = image.getWidth();
-            height = image.getHeight();
-        } else {
-            width = image.getPlanes()[0].getRowStride() /
-                    image.getPlanes()[0].getPixelStride();
-            height = image.getHeight();
-        }
-        if(PhotonCamera.getSettings().aspect169){
-            if(width > height){
-                height = width * 9 / 16;
-                int offsetH = (image.getHeight() - height) / 2;
-                offsetH -= offsetH % 2;
-                offset = image.getPlanes()[0].getRowStride() * offsetH;
-                capacity = image.getPlanes()[0].getRowStride() * height;
-            }
-        }
-        Allocator.binning = PhotonCamera.getSettings().binning;
         // Post-shutter frames are kept but marked: the burst writers drop or refuse a frame that is not plain 16-bit.
         RawPayloadCheck.Result payload = RawPayloadCheck.check(image,
                 RawPayloadCheck.whiteLevel(CaptureController.mCameraCharacteristics, null));
         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
         int format = image.getFormat();
         int rowStride = image.getPlanes()[0].getRowStride();
+        int width;
+        int height = image.getHeight();
+        int offset = 0;
+        int capacity = buffer.capacity();
+        if (format == 0x25) {
+            width = image.getWidth();
+        } else {
+            width = rowStride / image.getPlanes()[0].getPixelStride();
+        }
         if (payload.isPacked10()) {
-            com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter RAW_SENSOR holds packed MIPI RAW10 payload, unpacking to plain uint16");
-            format = ImageFormat.RAW10;
-            rowStride = width * 5 / 4;
-            payload = new RawPayloadCheck.Result(null, payload.impossibleShare, payload.zeroRowShare, true);
-        } else if (!payload.plain()) {
+            // Xiaomi 17 Ultra tele through logical camera 0: packed MIPI RAW10 behind RAW_SENSOR. The frame is read as RAW10
+            // with the packed rows' own stride and size (the RAW16 capacity made a 4080x4915 frame the merge refused).
+            int packedStride = RawPayloadCheck.packedStride(buffer, image.getWidth(), height);
+            if (packedStride > 0) {
+                com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter RAW_SENSOR holds packed MIPI RAW10 (stride "
+                        + packedStride + "), unpacking to plain uint16");
+                format = ImageFormat.RAW10;
+                width = image.getWidth();
+                rowStride = packedStride;
+                capacity = packedStride * height;
+                payload = new RawPayloadCheck.Result(null, payload.impossibleShare, payload.zeroRowShare, true);
+            }
+        }
+        if (!payload.plain()) {
             com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
             RawPayloadCheck.dumpOnce(image, payload, PhotonCamera.getSettings().mCameraID);
         }
+        if(PhotonCamera.getSettings().aspect169){
+            if(width > height){
+                height = width * 9 / 16;
+                int offsetH = (image.getHeight() - height) / 2;
+                offsetH -= offsetH % 2;
+                offset = rowStride * offsetH;
+                capacity = rowStride * height;
+            }
+        }
+        Allocator.binning = PhotonCamera.getSettings().binning;
         ImageFrame frame = new ImageFrame(buffer, format, width, rowStride, offset, capacity, shotArena);
         frame.rawPayloadError = payload.error;
         frame.timestamp = image.getTimestamp();

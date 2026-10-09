@@ -110,3 +110,6 @@ app/src/main/assets/scam-aec/frida-inject.gz
 app/src/main/assets/scam-aec/frida-inject.bin
 tools/__pycache__/
 .claude/
+
+# Local handoff notes (owner: not for git)
+research/handoff/HANDOFF.md
