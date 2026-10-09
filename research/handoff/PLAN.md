@@ -1655,6 +1655,14 @@ The settings live in different places now; the curated groups use these keys.
     3. **Repeating request restart**: call `stopRepeating()` and explicitly recreate the repeating request via `setRepeatingRequest()` with clean builder after sequence completion rather than queuing re-arm into existing repeating flow.
     4. **Capture Intent**: hybrid series requests were sent with `CONTROL_CAPTURE_INTENT = 1` (PREVIEW) instead of `STILL_CAPTURE`. Verify whether the HAL's OIS expects STILL_CAPTURE for series and PREVIEW afterwards, or if the intent transition caused OIS disarming.
     5. **Session Re-creation fallback**: if the HAL driver cannot recover OIS without a session reconfigure, implement seamless session restart on X300U after burst capture.
+- P54b (owner 2026-10-09: «зафорсить постоянную стабилизацию для Vivo X300 Ultra»; local, not pushed): capture/ForcedStabilization —
+  on vivo V2562 in photo modes: OIS ON in every request (preview, lead / AE restore via the preview builder, the series; not
+  when the user chose OIS off), vivo.control.eis.config.enable=5 as a session parameter and in every request (only this key,
+  not the PD2454 profile; a session refused with it retries once plain, as the stock profile does), and no HAL flush on the
+  shot (re-arm then defaults to 1 = re-send the repeating request). Log: "forced stabilisation (P54b) camera N: preview ois=1
+  eis=5, no HAL flush on the shot", "HAL queue not flushed: camera N holds the forced stabilisation". scam_dev: force_stab 0/1,
+  force_stab_eis 0, force_stab_noflush 0. Cost: the series starts ~0.1-0.2 s later (no flush). Owner: X300U shot + STAB_TRACE log;
+  if still lost, A/B force_stab_eis 0 and force_stab_noflush 0 to tell which part matters.
 
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; DONE e465ab4, see HANDOFF §5; phone names kept per owner 2026-10-09)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».

@@ -2414,6 +2414,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     && ScamPreview.vendorKeys() && !isBurstSession && !mIsRecordingVideo
                     && !sPlainPreviewCameras.contains(physicalID);
             mScamPreviewActive = scamPreview;
+            // P54b: X300 Ultra - stabilisation held on for the whole session (OIS + vivo EIS key in every request, no flush)
+            mForcedStab = photoMode && !isBurstSession && !mIsRecordingVideo && ForcedStabilization.active();
+            mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !sPlainPreviewCameras.contains(physicalID);
             mPayloadFrames = 0;
             mPayloadBad = false;
             Log.i("SCAM_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
@@ -2535,6 +2538,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                             // Apply dynamic OIS for preview stream
                             applyOisMode(mPreviewRequestBuilder, false);
+                            if (mForcedStab) Log.i("SCAM_CAPTURE", "forced stabilisation (P54b) camera " + physicalID + ": preview "
+                                    + ForcedStabilization.apply(mPreviewRequestBuilder, oisForceable(), mForcedStabEis)
+                                    + (ForcedStabilization.noFlush() ? ", no HAL flush on the shot" : ""));
                             // P38: stabilisation trace of this session; OIS samples only on the dev switch.
                             CameraCharacteristics traceChars = mCameraCharacteristicsMap.get(physicalID);
                             if (traceChars == null) traceChars = mCameraCharacteristics;
@@ -2603,12 +2609,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         processExecutor,
                         stateCallback
                 );
-                if (scamPreview) {
+                if (scamPreview || mForcedStabEis) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
                         VendorTagUtils.builderSessionApply(scamSession, false, useMaximumResolutionKey, physicalID);
-                        ScamPreview.applySession(scamSession);
+                        if (scamPreview) ScamPreview.applySession(scamSession);
+                        // P54b: the stock Photo mode sets the EIS key as a session parameter too
+                        if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
                         configuration.setSessionParameters(scamSession.build());
                     } catch (IllegalArgumentException unsupported) {
                         Log.w("SCAM_CAPTURE", "SCAM session control unavailable", unsupported);
@@ -2631,9 +2639,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean retryWithoutScamSession(CameraCaptureSession session) {
         final CameraDevice device = mCameraDevice;
         final Handler handler = mBackgroundHandler;
-        if (!mScamPreviewActive || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
-        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo stock preview profile;"
-                + " retry with the plain Camera2 preview");
+        if ((!mScamPreviewActive && !mForcedStabEis) || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
+        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo "
+                + (mScamPreviewActive ? "stock preview profile" : "EIS session key (P54b)") + "; retry with the plain Camera2 preview");
         try { session.close(); } catch (Exception ignored) {}
         handler.post(() -> {
             if (!isCameraResumed || mCameraDevice != device) return;
@@ -3365,6 +3373,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private int mPayloadFrames;
     private volatile boolean mPayloadBad;
     private boolean mScamPreviewActive;
+    /** P54b: this session holds the stabilisation on (ForcedStabilization: X300 Ultra); with the vivo EIS key. */
+    private boolean mForcedStab;
+    private boolean mForcedStabEis;
     /**
      * Cameras whose preview RAW was not plain 16-bit while ScamPreview's stock profile ran (vivo X100 Ultra main: packed
      * 10-bit ZSL frames under the PD2454 stagger / HDR preview tags). Their sessions run the plain Camera2 preview from then on
@@ -4057,6 +4068,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Log.d(TAG, "LENS_OPTICAL_STABILIZATION_MODE");
                 applyOisMode(captureBuilder, true);//Fix ois bugs for preview and burst
             }
+            // P54b: the series keeps the session's stabilisation (OIS ON, the vivo EIS key), as the stock app's requests do
+            if (mForcedStab) ForcedStabilization.apply(captureBuilder, oisForceable(), mForcedStabEis);
 
             for (int i = 0; i < 3; i++) {
                 Log.d(TAG, "Temperature:" + mPreviewTemp[i]);
@@ -4698,9 +4711,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean flushWanted = mScamRouted && scamSequence != null && PreferenceKeys.isScamFastCapture()
                     && !captures.isEmpty() && (mStockObserverReady || !PreferenceKeys.useStockBracketPlanner());
             // P27 (M6): a camera whose HAL lost the first requests after the flush twice in a row is not flushed any more.
-            final boolean flushQueue = flushWanted && !flushStats.skipFlush();
+            // P54b: nor a camera under the forced stabilisation (the flush restarts the HAL pipeline; the stock app never flushes).
+            final boolean forcedNoFlush = mForcedStab && ForcedStabilization.noFlush();
+            final boolean flushQueue = ForcedStabilization.flush(flushWanted && !flushStats.skipFlush(), forcedNoFlush);
             if (flushWanted && !flushQueue) Log.i("SCAM_CAPTURE", "HAL queue not flushed: camera " + flushStats.camera
-                    + " lost the first requests after a flush (FlushLossStats)");
+                    + (forcedNoFlush ? " holds the forced stabilisation (P54b)" : " lost the first requests after a flush (FlushLossStats)"));
             shotFlushed.set(flushQueue);
             mLastShotFlushed = flushQueue;
             // P44: preview frames right after the flush, ahead of the series (scam_dev "preview_lead"; one by default).
@@ -5237,6 +5252,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     (long) rhs.getWidth() * rhs.getHeight());
         }
 
+    }
+
+    /** P54b: OIS can be forced on: the camera has OIS and the user did not choose «OIS off» (oisMode 2). */
+    private boolean oisForceable() {
+        int[] modes = mCameraCharacteristics == null ? null
+                : mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
+        return modes != null && modes.length > 1 && oisMode != 2;
     }
 
     /**
