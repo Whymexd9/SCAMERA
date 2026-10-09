@@ -80,6 +80,9 @@
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_rawca_blue" android:title="@string/prefs_scam_hybrid_rawca_blue_title" android:summary="@string/prefs_scam_hybrid_rawca_blue_summary" android:defaultValue="0" app:minValue="-4" app:maxValue="4" app:stepPerUnit="20" app:isFloat="true"/>
         <SwitchPreferenceCompat android:key="pref_scam_hybrid_rawca_avoid_shift" android:title="@string/prefs_scam_hybrid_rawca_avoid_shift_title" android:defaultValue="true" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_rawca_avoid_shift_summary" android:icon="@drawable/settings_ic_palette"/>
       </PreferenceScreen>
+      <PreferenceScreen android:key="scam_hybrid_mochi_screen" android:title="@string/prefs_scam_hybrid_mochi_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_mochi_screen_summary" android:icon="@drawable/settings_ic_sun">
+        <ListPreference android:key="pref_scam_hybrid_mochi" android:title="@string/prefs_scam_hybrid_mochi_title" android:defaultValue="0" android:entries="@array/scam_hybrid_mochi_entries" android:entryValues="@array/scam_hybrid_mochi_values" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_mochi_summary" android:icon="@drawable/settings_ic_sun"/>
+      </PreferenceScreen>
     </PreferenceScreen>
     <PreferenceScreen android:key="scam_hybrid_photo_screen" android:title="@string/prefs_scam_hybrid_photo_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_photo_screen_summary" android:icon="@drawable/settings_ic_noise">
       <SwitchPreferenceCompat android:key="pref_scam_hybrid_denoise" android:title="@string/prefs_scam_hybrid_denoise_title" android:defaultValue="true" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_denoise_summary" android:icon="@drawable/settings_ic_noise"/>

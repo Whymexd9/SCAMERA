@@ -80,6 +80,29 @@
   (`bundle`, `hexquad`, `nice`). Выход: `SCAMERA-PC/deliverables/local-20260923/SCAMERA-0.98-<код>-NICE-local.apk`.
   Последний: `...-27074-NICE-local.apk` от 2026-10-09 10:04 (код = `e465ab4`, воркер md5 15f606e6).
 
+**Приватный бандл нейросетей (модели NICE / HexQuad / Quad / tele, QNN-рантайм, CRE vivo) и ключи к нему**
+
+Вендорные модели не лежат в git открыто. Содержимое значения ключа никогда не печатать, не коммитить и не писать в документы.
+- **Ключ расшифровки (AES-256-GCM, 64 hex-символа):** локально — файл `SCAMERA-PC/local-secrets/neural-assets-v2.key`
+  (вне репозитория). То же значение лежит в секрете GitHub Actions `SCAMERA_NEURAL_ASSETS_KEY_V2`
+  (Settings → Secrets and variables → Actions репозитория `Whymexd9/SCAMERA`). Второй, запасной секрет —
+  `SCAMERA_NEURAL_ASSETS_URL` (приватная HTTPS-ссылка на архив).
+- **Зашифрованный архив:** в git, ветка `origin/neural-assets-v2`, коммит `e9fedd2` (53 части). Описание частей и
+  контрольные суммы — `tools/neural-assets-encrypted.json`; SHA256 расшифрованного архива `b7698172…` записан в
+  `tools/ci_neural_assets.py`.
+- **Как CI его получает** (`tools/ci_neural_assets.py`, шаг «Restore and verify private neural assets»): с ключом —
+  читает части из ветки, расшифровывает, сверяет SHA256; без ключа — берёт последний артефакт Actions
+  `SCAMERA-neural-assets-v2` (хранится 90 дней, обновляется каждой сборкой) или скачивает по `SCAMERA_NEURAL_ASSETS_URL`.
+  Затем раскладывает по группам `bundle/`, `hexquad/`, `nice/` (эти имена внутри архива менять нельзя) и сверяет каждый
+  файл с SHA256 из `ScamNeuralWorker.java` (`FILES`, `HEX_FILES`, `QUAD_FILES`, `SCAM_FILES`, `SCAM_TONE_FILES`).
+- **Упаковка в APK:** `tools/package_scam_neural.py` (`--bundle-dir`, `--hexquad-dir`, `--scam-dir` = папка `nice`):
+  кладёт файлы в `assets/scam-neural/`, `assets/scam-hexquad/`, `assets/scam/` (каждая `arm64-v8a/`) и `lib/arm64-v8a/`, переподписывает, проверяет.
+- **Локально расшифрованная копия** (для `build-local.sh`): папка `neural-assets` в scratchpad `fb20fea7-…` (путь выше).
+  Если её нет: `python tools/ci_neural_assets.py --archive <zip>` проверяет архив без сети; или расшифровать части ветки
+  `neural-assets-v2` тем же кодом (`encrypted_seed`) с ключом из `local-secrets/neural-assets-v2.key` в переменной
+  `SCAMERA_NEURAL_ASSETS_KEY_V2`.
+- Без бандла APK собирается, но SCAM HDR / нейроремозаик не работают; CI в этом случае APK не публикует.
+
 **Python и шейдеры**
 - Системный Python 3.12 (`C:/Users/MECHREVO/AppData/Local/Programs/Python/Python312/python.exe`): numpy, cv2, moderngl.
   Запускать с `PYTHONUTF8=1` и JDK в PATH. На нём GL-проверки и `tools/check_hybrid_mochi.py`.

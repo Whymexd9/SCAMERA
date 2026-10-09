@@ -959,6 +959,8 @@ public class PreferenceKeys {
             // P27: the measured exposure ratio instead of a metadata ratio the data reliably disagrees with (worker default 1 since
             // 7 October 2026; 0 = report only, scam_dev.txt "hybrid_gain_measured 0")
             {"gainMeasured", "gain_measured"},
+            // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto (GCam rule) / 2 force
+            {"mochi", "mochi"},
             // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from scam_dev.txt
             // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them). P33 W2.1: "hybrid_la_stream 0" merges with
             // the whole F6 field first (A/B), "hybrid_la_scam N" lowers the priority of the banded F6 threads.
@@ -986,6 +988,11 @@ public class PreferenceKeys {
     /** The hybrid's N frames from the ZSL ring (pref_scam_hybrid_zsl_frames, 4..44, default 30). */
     public static int getHybridZslFrames() {
         return Math.round(hybridValue("zsl_frames", 30f));
+    }
+    /** P62 Mochi: GCam 11 photometric merge of bracketed frames on GPU (pref_scam_hybrid_mochi: 0 off, 1 auto, 2 force). */
+    public static int getHybridMochi() {
+        return (int) Math.round(SettingsNumericRules.value("pref_scam_hybrid_mochi",
+                preferenceKeys.settingsManager.getString("default_scope", "pref_scam_hybrid_mochi", "0"), 0));
     }
     /**
      * SCAM Hybrid tone: the ArkCam 1.23 / SCAM 9.6 photo tone (ArkStats -> ArkFusion -> ArkCombine: Smart-HDR AE, exposure

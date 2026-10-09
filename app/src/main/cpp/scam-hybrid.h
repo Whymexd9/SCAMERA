@@ -4501,6 +4501,7 @@ private:
         try{
             for(;;){
                 std::pair<int,int> task;
+                Frame* target=nullptr;
                 {
                     std::unique_lock<std::mutex> l(m);
                     cv.wait(l,[&]{return failed||stopping||!queue.empty()||committed;});
@@ -4510,8 +4511,9 @@ private:
                         cv.wait(l,[&]{return all[task.first]->p1||failed||stopping;});
                         if(failed||stopping)return;
                     }
+                    target=all[task.first].get();
                 }
-                if(task.second<0)phase1(*all[task.first]); else runBand(*all[task.first],task.second);
+                if(task.second<0)phase1(*target); else runBand(*target,task.second);
             }
         }catch(const std::exception& error){fail(error.what());}
         catch(...){fail("unknown error");}

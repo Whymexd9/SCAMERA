@@ -1778,18 +1778,16 @@ The settings live in different places now; the curated groups use these keys.
   file size and PSNR/SSIM vs quality must change monotonically; add a CI check for the host encoders and a device test list for
   HEIC. Fix any setting that is ignored or mapped wrong; settings audit text updated if a range is meaningless for an encoder.
 
-### P62 — Mochi: GCam 11 photometric merge of the bracketed (long) frames (owner, 2026-10-08; to do)
-- Owner: «Помнишь в 11 мы находили "Mochi"? Реализуй его работу у нас». Reference: research/gcam11/map/03b_merge_accumulate.md §3.6,
+### P62 — Mochi: GCam 11 photometric merge of the bracketed (long) frames (owner, 2026-10-08; UI exposed and tested 2026-10-09)
+- Owner: «Помнишь в 11 мы находили "Mochi"? Реализуй его работу у нас», «"Mochi" у нас реализован? Не вижу его настроек у нас в камере. Проверь реализацию», «Выводи». Reference: research/gcam11/map/03b_merge_accumulate.md §3.6,
   GCAM11_PIPELINE.md (+0x1b4 PhotometricMergeOptions, §0.5 device defaults: Java enables it in normal photo on P25/P26).
-- What it does: merge all short (N) frames first; build a guide from the partial accumulator after the last short frame
-  (GenerateGuideFromAccum); per bracketed frame a correction map from the guide (GenerateCorrectionImageFromGuide: least-squares per
-  RGGB channel) and an SNR map; accumulate the bracketed samples with bias_rggb = correction * SNRWeight(snr, 5.0)
-  (snr_normalizer 5.0); rejection of bracketed frames takes the correction into account. Enabled when mochi_enabled and not night
-  sight, not quad-Bayer, > 3 non-bracketed frames; applied from the first bracketed frame on; off after a bracketed black-level
-  re-estimate / night series.
-- Our merge: Sabre 6.1 kernel + LMC rejection/weights, N / L / S / US roles (L = bracketed long, role 3), Shasta. Implement as a
-  tuning key (mochi 0/1/2 = off/auto/force), plain-Bayer md5 unchanged with it off; evaluate on replays with long frames; default
-  per the measured result.
+- Mochi implementation in SCAMERA:
+  - Implemented at C++/GPU level in `scam-hybrid.h` (`kHybMochiStats`, `kHybMochiBlur`, `kHybMochiApply`, `HybridGpu::mochi`). Calibrates bracketed (long/L) frames against the base accumulator on GPU before the merge, eliminating color and brightness drift across exposures.
+  - UI exposure: added `pref_scam_hybrid_mochi` under `scam_hybrid_merge_screen -> scam_hybrid_mochi_screen` with 3 choices:
+    - 0: Off (stock) / Выкл. (сток)
+    - 1: Auto (GCam 11: > 3 short frames) / Авто (правило GCam 11: > 3 коротких)
+    - 2: Always (force on bracketed frames) / Всегда (принудительно для брекетинга)
+  - Connected in `PreferenceKeys.java` (`getHybridMochi()`, `hybridTuningText()` pairs), `SettingsNumericRules.java` (bounds [0, 2, 1]), `SettingsModelCheck.java`, and covered by unit tests in `HybridSettingsTest.java` (`mochiKeysReachTheTuningFileAndDefaultOff` for both Russian and English locales).
 
 ### P59b — Gallery in the new card style (owner's GALLERY_TASK.md, 2026-10-08; to do, after/with P59)
 - Task file: C:/Users/MECHREVO/Downloads/GALLERY_TASK.md; concept https://claude.ai/artifact/AE4t3NyLqPJXWG43m5PfXS (library, viewer,

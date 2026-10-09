@@ -98,6 +98,11 @@
         <item>Оценка по базовому кадру</item>
         <item>Коррекция каждого кадра (GPU)</item>
     </string-array>
+    <string-array name="scam_hybrid_mochi_entries">
+        <item>Выкл. (сток)</item>
+        <item>Авто (правило GCam 11: &gt; 3 коротких)</item>
+        <item>Всегда (принудительно для брекетинга)</item>
+    </string-array>
     <string-array name="scam_hybrid_mosaic_path_entries">
         <item>Разбиение на подкадры</item>
         <item>Нативная мозаика (по умолчанию)</item>

@@ -162,6 +162,10 @@
     <string name="prefs_scam_hybrid_rawca_blue_summary">The same for blue. Default 0.</string>
     <string name="prefs_scam_hybrid_rawca_avoid_shift_title">No colour shift</string>
     <string name="prefs_scam_hybrid_rawca_avoid_shift_summary">The geometric R / B correction can slightly change the overall colour of an area: the before / after ratio is smoothed (σ 60 px) and put back, and the fringe stays corrected (Avoid color shift in RawTherapee).</string>
+    <string name="prefs_scam_hybrid_mochi_screen_title">Mochi photometric merge</string>
+    <string name="prefs_scam_hybrid_mochi_screen_summary">GCam 11 per-tile photometric calibration of bracketed (long) frames on GPU before the merge</string>
+    <string name="prefs_scam_hybrid_mochi_title">Mochi mode</string>
+    <string name="prefs_scam_hybrid_mochi_summary">%s. GCam 11 PhotometricMerge: per-tile photometric correction of bracketed (long) frames against the base on the GPU before the merge, eliminating color and brightness drift across exposures.</string>
     <string name="prefs_scam_hybrid_photo_screen_title">Noise reduction</string>
     <string name="prefs_scam_hybrid_photo_screen_summary">GCam / Hybrid, SNR, Luma and Chroma tables</string>
     <string name="prefs_scam_hybrid_denoise_title">Noise reduction</string>

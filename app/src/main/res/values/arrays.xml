@@ -237,6 +237,16 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <string-array name="scam_hybrid_mochi_entries">
+        <item>Off (stock)</item>
+        <item>Auto (GCam 11: &gt; 3 short frames)</item>
+        <item>Always (force on bracketed frames)</item>
+    </string-array>
+    <string-array name="scam_hybrid_mochi_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
     <string-array name="scam_hybrid_mosaic_path_entries">
         <item>Subframe split</item>
         <item>Native mosaic (default)</item>

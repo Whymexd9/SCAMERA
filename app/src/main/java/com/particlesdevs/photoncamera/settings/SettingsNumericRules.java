@@ -172,6 +172,8 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mosaic_tetra_night_flat_scale": return new double[]{0.25,4,0};
             // P28 RAW CA (worker rawCa*): mode 0 off / 1 base frame / 2 every frame, RawTherapee's auto passes and manual red / blue
             case "pref_scam_hybrid_rawca_mode": return new double[]{0,2,1};
+            // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto (GCam rule) / 2 force
+            case "pref_scam_hybrid_mochi": return new double[]{0,2,1};
             case "pref_scam_hybrid_rawca_passes": return new double[]{1,5,1};
             case "pref_scam_hybrid_rawca_red": case "pref_scam_hybrid_rawca_blue": return new double[]{-4,4,0};
             case "pref_scam_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};

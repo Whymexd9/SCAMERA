@@ -285,6 +285,44 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
     }
 
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void mochiKeysReachTheTuningFileAndDefaultOff() {
+        mochiKeysReachTheTuningFileAndDefaultOff("Фотометрия Mochi");
+    }
+
+    @Test public void mochiKeysReachTheTuningFileAndDefaultOffInEnglish() {
+        mochiKeysReachTheTuningFileAndDefaultOff("Mochi photometric merge");
+    }
+
+    private void mochiKeysReachTheTuningFileAndDefaultOff(String pageTitle) {
+        // P62: unset, nothing is written (worker default mochi 0 = off)
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertFalse(tuning,tuning.contains("mochi "));
+        assertEquals(0,PreferenceKeys.getHybridMochi());
+
+        manager.set("default_scope","pref_scam_hybrid_mochi","1");
+        assertEquals(1,PreferenceKeys.getHybridMochi());
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("mochi 1.0\n"));
+
+        manager.set("default_scope","pref_scam_hybrid_mochi","2");
+        assertEquals(2,PreferenceKeys.getHybridMochi());
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("mochi 2.0\n"));
+
+        // the page: «Hybrid -> Склейка -> Фотометрия Mochi», XML defaults = worker defaults (off: 0)
+        PreferenceScreen settings=inflate(),merge=settings.findPreference("scam_hybrid_merge_screen");
+        PreferenceScreen page=merge.findPreference("scam_hybrid_mochi_screen");
+        assertNotNull(page);assertEquals(pageTitle,page.getTitle().toString());
+        ListPreference mode=page.findPreference("pref_scam_hybrid_mochi");
+        assertNotNull(mode);
+        assertArrayEquals(new CharSequence[]{"0","1","2"},mode.getEntryValues());
+        prefs.edit().clear().commit();
+        settings=inflate();
+        assertEquals("0",prefs.getString("pref_scam_hybrid_mochi","?"));
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("mochi 0.0\n"));
+    }
+
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge() {
         nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge("Склейка мозаики","Нативная мозаика (по умолчанию)","Диапазон ядра");
     }

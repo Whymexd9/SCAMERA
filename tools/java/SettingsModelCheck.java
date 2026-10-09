@@ -102,6 +102,10 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_scam_hybrid_rawca_red","-9",0),-4);
         if(SettingsNumericRules.error("pref_scam_hybrid_rawca_blue","4.5")==null)throw new AssertionError("RAW CA blue beyond 4 px accepted");
         if(SettingsNumericRules.error("pref_scam_hybrid_rawca_passes","0")==null)throw new AssertionError("RAW CA without a pass accepted");
+        // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto / 2 force
+        eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","1",0),1);
+        eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","5",0),2);
+        eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","-1",0),0);
         // P29 / P34 / P35 native mosaic merge (the default for Quad and Tetra): its rows need “Native mosaic”, the fill threshold the
         // ArkCam fill; the split's edge kernel is live only when Quad or Tetra (“Tetra path” 0) merges on the split; worker key bounds
         Map<String,Object> mo=new HashMap<>();
