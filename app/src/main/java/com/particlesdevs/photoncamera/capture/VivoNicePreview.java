@@ -37,15 +37,20 @@ public final class VivoNicePreview {
     static final String PROFILE_DEVICE = "PD2454";
 
     /**
-     * P54 (owner, 2026-10-09: the vivo vendor keys may be what breaks the X300 Ultra's preview stabilisation): the recorded
-     * stock preview profile (the tag list below, vivo.control.zoom_ratio, the motion metering array, the Camera2 scene mode
-     * FACE_PRIORITY and the preview EIS key) is sent only on the phone it was recorded on. Other vivo phones get the three NICE
-     * keys alone (MagicEnable, capture.nice, sceneMode = the NICE bracket bank). nice_dev.txt "vivo_stock_profile 1" sends the
-     * whole profile everywhere, "vivo_stock_profile 0" nowhere.
+     * P54 (owner, 2026-10-09): SCAM HDR runs only on the X200 Ultra (and on 8 Elite phones, which are not vivo), and the vivo
+     * vendor keys may be what breaks the X300 Ultra's preview stabilisation. So the NICE preview keys and the recorded stock
+     * profile (the tag list below, vivo.control.zoom_ratio, the motion metering array, the Camera2 scene mode FACE_PRIORITY,
+     * the preview EIS key, the session's MagicEnable) go only to the phone they were recorded on; every other phone gets the
+     * plain Camera2 preview. nice_dev.txt "vivo_stock_profile 1" sends them on any vivo HAL, "vivo_stock_profile 0" nowhere.
      */
     static boolean stockProfile(String device) {
         return com.particlesdevs.photoncamera.settings.PreferenceKeys.niceDevSwitch("vivo_stock_profile",
                 PROFILE_DEVICE.equalsIgnoreCase(device));
+    }
+
+    /** The NICE preview's vendor keys are sent at all (a vivo HAL and {@link #stockProfile()}). */
+    public static boolean vendorKeys() {
+        return supported() && stockProfile();
     }
 
     static boolean stockProfile() {
@@ -193,7 +198,7 @@ public final class VivoNicePreview {
         // Stock places this in the session's global parameters as well as preview.
         builder.get(MAGIC); // Resolve the vendor key before changing the builder.
         builder.set(MAGIC, 1);
-        if (stockProfile()) applyPreviewEis(builder);
+        applyPreviewEis(builder);
     }
 
     /**
@@ -201,7 +206,7 @@ public final class VivoNicePreview {
      * vivo.control.eis.config.enable, value: 5», also in every request's global parameters). Without it the preview had OIS
      * only, and the X300 Ultra's preview lost its stabilisation after a shot (P38; the 2026-10-08 trace shows OIS on before and
      * after and no EIS key in our requests). A HAL without the tag skips it; nice_dev.txt "vivo_preview_eis 0" turns it off. P54: part of
-     * the stock profile, so sent only where {@link #stockProfile()} holds (the X300 Ultra lost EIS with it anyway).
+     * the stock profile, sent only where {@link #vendorKeys()} holds (the X300 Ultra lost EIS with it anyway).
      */
     static final String EIS_CONFIG = "vivo.control.eis.config.enable";
     static final int STOCK_PHOTO_EIS = 5;
@@ -230,13 +235,8 @@ public final class VivoNicePreview {
             // non-degenerate short/extra-short plan once it has several
             // consecutive real frames under this scene mode.
             builder.set(SCENE_MODE, NICE_SCENE_MODE);
-            if (stockProfile()) {
-                android.util.Log.i("NICE_CAPTURE", "stock preview profile tags=" + applyStockProfile(builder)
-                        + "/" + STOCK_PREVIEW.length + " eis=" + applyPreviewEis(builder));
-            } else {
-                android.util.Log.i("NICE_CAPTURE", "stock preview profile off on " + android.os.Build.DEVICE + " (recorded on "
-                        + PROFILE_DEVICE + "; nice_dev vivo_stock_profile 1 sends it): NICE keys only, no EIS / scene-mode tags");
-            }
+            android.util.Log.i("NICE_CAPTURE", "stock preview profile tags=" + applyStockProfile(builder)
+                    + "/" + STOCK_PREVIEW.length + " eis=" + applyPreviewEis(builder));
         } catch (RuntimeException failure) {
             try {
                 builder.set(MAGIC, magic);

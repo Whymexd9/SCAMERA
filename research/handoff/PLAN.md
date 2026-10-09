@@ -1638,8 +1638,10 @@ The settings live in different places now; the curated groups use these keys.
   VivoNicePreview.supported() is vivo / iQOO only and the HAL rejects unknown tags). Done: the stock preview profile recorded on
   the X200 Ultra (≈80 vivo.control / vivo.capability tags, vivo.control.zoom_ratio, motion metering, Camera2 scene mode
   FACE_PRIORITY, preview EIS 5) is sent only on PD2454; other vivo phones (X300U v2562) get the NICE keys alone (MagicEnable,
-  capture.nice, sceneMode NICE bank). nice_dev "vivo_stock_profile 1" = old behaviour. Owner: check X300U stabilisation after a
-  shot and the SCAM HDR exposure (the stock-profile AE policy is gone there).
+  capture.nice, sceneMode NICE bank). Then the owner: «Scam HDR на остальных виво не работает, он работает только на 200 ультра и
+  смартфонах на 8 элит» — so the NICE preview (all its vivo keys, session MagicEnable included) runs only on PD2454
+  (VivoNicePreview.vendorKeys()); other vivo phones get the plain Camera2 preview. nice_dev "vivo_stock_profile 1" = old
+  behaviour. Owner: check X300U stabilisation after a shot.
 
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; to do)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».

@@ -2408,9 +2408,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             boolean photoMode = PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
                     || PhotonCamera.getSettings().selectedMode == CameraMode.NIGHT
                     || PhotonCamera.getSettings().selectedMode == CameraMode.MOTION;
-            // Vendor detector tags exist only on a vivo HAL; elsewhere SCAM HDR uses the plain preview.
+            // Vendor detector tags exist only on a vivo HAL and were recorded on the X200 Ultra, the one vivo phone SCAM HDR runs
+            // on (P54: none on the X300 Ultra and other vivo phones); elsewhere SCAM HDR uses the plain preview.
             final boolean nicePreview = PreferenceKeys.isVivoNiceEnabled() && photoMode
-                    && VivoNicePreview.supported() && !isBurstSession && !mIsRecordingVideo
+                    && VivoNicePreview.vendorKeys() && !isBurstSession && !mIsRecordingVideo
                     && !sPlainPreviewCameras.contains(physicalID);
             mNicePreviewActive = nicePreview;
             mPayloadFrames = 0;
