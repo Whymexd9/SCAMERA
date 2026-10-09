@@ -30,6 +30,7 @@ import com.particlesdevs.photoncamera.processing.PhotoFormat;
 
 import org.apache.commons.io.FileUtils;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -105,18 +106,9 @@ public class ImageAdapter extends PagerAdapter {
             scaleImageView.setTouchCallBack(ssivListener);
         }
         String fileName = galleryItem.getFile().getDisplayName();
-        if (PhotoFormat.isModernPhoto(fileName)) {
-            // HEIC / WebP / AVIF: the tiled decoder (BitmapRegionDecoder) reads them on the versions that decode them (HEIC
-            // from Android 9, AVIF from 12; below it the page stays empty); if it still fails, the page shows a bitmap
-            // decoded by Glide.
-            scaleImageView.setOnImageEventListener(new BitmapFallback(imageEventListener, scaleImageView, galleryItem));
-            if (PhotoFormat.decodable(fileName, Build.VERSION.SDK_INT)) {
-                scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
-            }
-        } else if (!fileExt.equalsIgnoreCase("dng")) {
-            scaleImageView.setOnImageEventListener(imageEventListener);
-            scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
-        } else { //For DNG Files, load as a bitmap
+        if (fileExt.equalsIgnoreCase("avif") || fileExt.equalsIgnoreCase("dng")) {
+            // AVIF and DNG: BitmapRegionDecoder cannot tile these (AVIF is not supported by BitmapRegionDecoder on
+            // any Android version, DNG is TIFF-based). They load as full bitmaps through Glide.
             scaleImageView.setOnImageEventListener(imageEventListener);
             Glide.with(container.getContext())
                     .asBitmap()
@@ -135,9 +127,21 @@ public class ImageAdapter extends PagerAdapter {
 
                         @Override
                         public void onLoadFailed(@Nullable Drawable errorDrawable) {
-
+                            if (imageEventListener != null) {
+                                imageEventListener.onImageLoadError(new IOException("Glide failed to decode " + fileName));
+                            }
                         }
                     });
+        } else if (PhotoFormat.isModernPhoto(fileName)) {
+            // HEIC / WebP: the tiled decoder (BitmapRegionDecoder) reads them on supported versions;
+            // if it fails, falls back to Glide.
+            scaleImageView.setOnImageEventListener(new BitmapFallback(imageEventListener, scaleImageView, galleryItem));
+            if (PhotoFormat.decodable(fileName, Build.VERSION.SDK_INT)) {
+                scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
+            }
+        } else {
+            scaleImageView.setOnImageEventListener(imageEventListener);
+            scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
         }
         container.addView(scaleImageView);
         return scaleImageView;
