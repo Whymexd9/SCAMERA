@@ -14,6 +14,7 @@ import androidx.viewpager.widget.PagerAdapter;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.target.CustomViewTarget;
@@ -39,6 +40,8 @@ import java.util.concurrent.Executors;
 
 public class ImageAdapter extends PagerAdapter {
     private static final int BASE_ID = View.generateViewId();
+    /** Gallery decode problems in the app's log file (log-DATE.txt). */
+    private static final String GALLERY_TAG = "GALLERY_DECODE";
     private static final ExecutorService HDR_EXECUTOR = Executors.newSingleThreadExecutor();
     private final List<GalleryItem> galleryItemList;
     private final boolean[] hdrRequested;
@@ -94,7 +97,7 @@ public class ImageAdapter extends PagerAdapter {
     @Override
     public Object instantiateItem(@NonNull ViewGroup container, int position) {
         GalleryItem galleryItem = galleryItemList.get(position);
-        String fileExt = FileUtils.getExtension(galleryItem.getFile().getDisplayName());
+        String fileName = galleryItem.getFile().getDisplayName();
 
         CustomSSIV scaleImageView = new CustomSSIV(container.getContext());
         scaleImageView.setId(getSsivId(position));
@@ -105,52 +108,71 @@ public class ImageAdapter extends PagerAdapter {
             scaleImageView.setOnStateChangedListener(ssivListener);
             scaleImageView.setTouchCallBack(ssivListener);
         }
-        String fileName = galleryItem.getFile().getDisplayName();
-        if (fileExt.equalsIgnoreCase("avif") || fileExt.equalsIgnoreCase("dng")) {
-            // AVIF and DNG: BitmapRegionDecoder cannot tile these (AVIF is not supported by BitmapRegionDecoder on
-            // any Android version, DNG is TIFF-based). They load as full bitmaps through Glide.
-            scaleImageView.setOnImageEventListener(imageEventListener);
-            Glide.with(container.getContext())
-                    .asBitmap()
-                    .load(galleryItem.getFile().getFileUri())
-                    .apply(RequestOptions.signatureOf(new ObjectKey(galleryItem.getFile().getDisplayName() + galleryItem.getFile().getLastModified())))
-                    .into(new CustomViewTarget<SubsamplingScaleImageView, Bitmap>(scaleImageView) {
-                        @Override
-                        public void onResourceReady(@NonNull Bitmap bitmap, Transition<? super Bitmap> transition) {
-                            scaleImageView.setImage(ImageSource.cachedBitmap(bitmap));
-                        }
 
-                        @Override
-                        protected void onResourceCleared(@Nullable Drawable placeholder) {
-
-                        }
-
-                        @Override
-                        public void onLoadFailed(@Nullable Drawable errorDrawable) {
-                            if (imageEventListener != null) {
-                                imageEventListener.onImageLoadError(new IOException("Glide failed to decode " + fileName));
-                            }
-                        }
-                    });
-        } else if (PhotoFormat.isModernPhoto(fileName)) {
-            // HEIC / WebP: the tiled decoder (BitmapRegionDecoder) reads them on supported versions;
-            // if it fails, falls back to Glide.
+        if (GalleryDecodeRetry.shouldUseTiledDecode(fileName)) {
+            // JPEG: BitmapRegionDecoder tiles smoothly and safely on Android; falls back to Glide if tiling fails.
             scaleImageView.setOnImageEventListener(new BitmapFallback(imageEventListener, scaleImageView, galleryItem));
-            if (PhotoFormat.decodable(fileName, Build.VERSION.SDK_INT)) {
-                scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
-            }
-        } else {
-            scaleImageView.setOnImageEventListener(imageEventListener);
             scaleImageView.setImage(ImageSource.uri(galleryItem.getFile().getFileUri()));
+        } else {
+            // HEIC, WebP, AVIF, DNG: platform BitmapRegionDecoder causes native SIGSEGV crashes on HEIC
+            // (libheif concurrency, 10-bit Main10) and dropped tiles / black screens on WebP.
+            // These formats load safely via Glide into a cached bitmap with automatic retry.
+            scaleImageView.setOnImageEventListener(imageEventListener);
+            loadGlideBitmap(scaleImageView, galleryItem, 0, imageEventListener);
         }
         container.addView(scaleImageView);
         return scaleImageView;
     }
 
     /**
-     * Passes every image event of a HEIC / WebP / AVIF page on to the host's listener; when the tiled decode fails, the
-     * page falls back to one bitmap decoded by Glide (which reads HEIC on Android 9+ and AVIF on 12+ through the platform
-     * decoder).
+     * Decodes an image into a bounded bitmap via Glide and sets it as the page's cached bitmap.
+     * Retries automatically if the file is still being written or flushed right after capture.
+     */
+    private void loadGlideBitmap(SubsamplingScaleImageView page, GalleryItem item, int retryCount,
+                                 SubsamplingScaleImageView.OnImageEventListener listener) {
+        if (released || page.getParent() == null) return;
+        final String name = item.getFile().getDisplayName();
+        Glide.with(page.getContext().getApplicationContext())
+                .asBitmap()
+                .load(item.getFile().getFileUri())
+                .apply(RequestOptions.signatureOf(new ObjectKey(name + item.getFile().getLastModified())))
+                // Zoomable but bounded: at most 4096 px on the long side (~50 MB), never upscaled.
+                .override(GalleryDecodeRetry.FALLBACK_MAX_SIDE, GalleryDecodeRetry.FALLBACK_MAX_SIDE)
+                .downsample(DownsampleStrategy.CENTER_INSIDE)
+                .into(new CustomViewTarget<SubsamplingScaleImageView, Bitmap>(page) {
+                    @Override
+                    public void onResourceReady(@NonNull Bitmap bitmap, @Nullable Transition<? super Bitmap> transition) {
+                        if (!released && page.getParent() != null) {
+                            page.setImage(ImageSource.cachedBitmap(bitmap));
+                        }
+                    }
+
+                    @Override
+                    protected void onResourceCleared(@Nullable Drawable placeholder) {
+                    }
+
+                    @Override
+                    public void onLoadFailed(@Nullable Drawable errorDrawable) {
+                        if (released || page.getParent() == null) return;
+                        if (GalleryDecodeRetry.mayRetry(retryCount)) {
+                            long delay = GalleryDecodeRetry.delayMs(retryCount);
+                            com.particlesdevs.photoncamera.util.Log.w(GALLERY_TAG,
+                                    "Glide could not decode " + name + " - retrying in " + delay + " ms (retry " + (retryCount + 1) + ")");
+                            page.postDelayed(() -> loadGlideBitmap(page, item, retryCount + 1, listener), delay);
+                        } else {
+                            com.particlesdevs.photoncamera.util.Log.w(GALLERY_TAG,
+                                    "Glide failed to decode " + name + " after " + retryCount + " retries - giving up");
+                            if (listener != null) {
+                                listener.onImageLoadError(new IOException("Failed to decode " + name));
+                            }
+                        }
+                    }
+                });
+    }
+
+    /**
+     * Passes every image event of a tiled JPEG page on to the host's listener; when the tiled decode fails,
+     * the page falls back to one bitmap decoded by Glide.
      */
     private final class BitmapFallback implements SubsamplingScaleImageView.OnImageEventListener {
         private final SubsamplingScaleImageView.OnImageEventListener host;
@@ -166,36 +188,35 @@ public class ImageAdapter extends PagerAdapter {
 
         @Override public void onReady() { if (host != null) host.onReady(); }
         @Override public void onImageLoaded() { if (host != null) host.onImageLoaded(); }
-        @Override public void onPreviewLoadError(Exception e) { if (host != null) host.onPreviewLoadError(e); }
-        @Override public void onTileLoadError(Exception e) { if (host != null) host.onTileLoadError(e); }
         @Override public void onPreviewReleased() { if (host != null) host.onPreviewReleased(); }
 
         @Override
+        public void onPreviewLoadError(Exception e) {
+            if (host != null) host.onPreviewLoadError(e);
+        }
+
+        @Override
+        public void onTileLoadError(Exception e) {
+            if (host != null) host.onTileLoadError(e);
+            // A zoomed-in tile that fails later is retried by the view on the next pan; a page with no image yet stays black.
+            if (GalleryDecodeRetry.fallBackOnTileError(page.isImageLoaded(), fellBack)) fallBack(e);
+        }
+
+        @Override
         public void onImageLoadError(Exception e) {
-            if (fellBack || released || !PhotoFormat.decodable(item.getFile().getDisplayName(), Build.VERSION.SDK_INT)) {
+            fallBack(e);
+        }
+
+        private void fallBack(Exception e) {
+            if (fellBack || released) {
                 if (host != null) host.onImageLoadError(e);
                 return;
             }
             fellBack = true;
-            Glide.with(page.getContext().getApplicationContext())
-                    .asBitmap()
-                    .load(item.getFile().getFileUri())
-                    .apply(RequestOptions.signatureOf(new ObjectKey(item.getFile().getDisplayName() + item.getFile().getLastModified())))
-                    .into(new CustomViewTarget<SubsamplingScaleImageView, Bitmap>(page) {
-                        @Override
-                        public void onResourceReady(@NonNull Bitmap bitmap, Transition<? super Bitmap> transition) {
-                            if (!released) page.setImage(ImageSource.cachedBitmap(bitmap));
-                        }
-
-                        @Override
-                        protected void onResourceCleared(@Nullable Drawable placeholder) {
-                        }
-
-                        @Override
-                        public void onLoadFailed(@Nullable Drawable errorDrawable) {
-                            if (host != null) host.onImageLoadError(e);
-                        }
-                    });
+            final String name = item.getFile().getDisplayName();
+            com.particlesdevs.photoncamera.util.Log.w(GALLERY_TAG, "tiled decode failed for " + name + ": " + e
+                    + " - decoding one bitmap through Glide");
+            loadGlideBitmap(page, item, 0, host);
         }
     }
 
@@ -221,6 +242,13 @@ public class ImageAdapter extends PagerAdapter {
         page.setOnClickListener(null);
         if (page instanceof CustomSSIV) {
             ((CustomSSIV) page).setTouchCallBack(null);
+        }
+        Context ctx = page.getContext();
+        if (ctx != null) {
+            try {
+                Glide.with(ctx.getApplicationContext()).clear(page);
+            } catch (Throwable ignored) {
+            }
         }
         page.recycle();
     }

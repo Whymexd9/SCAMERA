@@ -1739,6 +1739,24 @@ The settings live in different places now; the curated groups use these keys.
   (tiled BitmapRegionDecoder, Glide, ImageDecoder) on Android 10 / 12 / 13+ behaviour; thumbnails in the filmstrip and the viewfinder
   thumbnail for every format; DNG: our own preview (embedded preview at save time, or our decoder) when the platform decoder fails;
   share / delete / info for every format; Robolectric / instrumentation tests where possible.
+- 2026-10-09 AVIF (owner: AVIF pages black): done fdaab04 (AvifGlideDecoder, AVIF / DNG pages through a Glide bitmap).
+- 2026-10-09 WebP & HEIC gallery stability (owner: «не всегда фото прогружаются», «HEIC тоже исправь, галерея может переодически вылетать»):
+  Only JPEG uses Android's tiled `BitmapRegionDecoder` (mature SkJpegCodec / libjpeg-turbo).
+  For HEIC/HEIF, `BitmapRegionDecoder` caused periodic native crashes (SIGSEGV / abort in libstagefright/libheif/MediaCodec)
+  due to concurrent tile decoding across threads, and failed on 10-bit HEIC (Main10).
+  For WebP, `BitmapRegionDecoder` dropped tiles or left pages blank on VP8X / ICC files.
+  All non-JPEG formats (HEIC, HEIF, WebP, AVIF, DNG) now load directly through Glide into `ImageSource.cachedBitmap(bitmap)`:
+  - Bounded decode size: at most 4096 px (`FALLBACK_MAX_SIDE` in `GalleryDecodeRetry`): a 12 MP photo is 100% full uncompressed
+    pixel resolution (zero downsampling), while a 50 MP photo uses ~48 MB RAM instead of 200 MB, preventing OOM while keeping crisp detail.
+  - Automatic retry with backoff (0.7 s, 1.4 s) when files are opened immediately after capture while still being written / flushed.
+  - `ImageAdapter.detachPage` calls `Glide.clear(page)` to eliminate late callbacks on recycled views.
+  - `UltraHdrGalleryUtil.colourOf` catches `Throwable` to safely handle any decode errors during bounds probe.
+- 2026-10-09 SGallery renaming & minimalist companion icon (owner: «преименуй галерею в SGallery и измени иконку под наш стиль интерфейса», «Сделай иконку более минималистичной»):
+  - Renamed `gallery_name` string from `PGallery` to `SGallery`.
+  - Created minimalist companion icon matching `scamera_launcher` aesthetic: upright rounded photo frame with clean geometric
+    navy mountain peaks and warm orange circular sun accent on the identical dark squircle background (`#1E1E1E`).
+  - Generated `sgallery_icon_generated.png`, configured adaptive `ic_gallery_launcher.xml` and `ic_gallery_launcher_round.xml`,
+    and rendered mipmap PNGs for mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi.
 
 ### P60 — Any phone: never crop a sensor-cropped stream twice (owner, 2026-10-08; part done 9cfae80)
 - X9 Ultra bug (P-fix 9cfae80): ISZ by a vendor tag not recognised as a sensor crop -> preview and photo cropped again by the

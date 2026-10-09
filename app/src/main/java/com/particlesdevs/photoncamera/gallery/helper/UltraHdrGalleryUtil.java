@@ -144,7 +144,7 @@ public final class UltraHdrGalleryUtil {
             options.inJustDecodeBounds = true;
             android.graphics.BitmapFactory.decodeStream(in, null, options);
             return classify(options.outColorSpace);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.d(TAG, "colour space probe failed: " + e);
             return COLOUR_SRGB;
         }

@@ -81,6 +81,7 @@
                 android:taskAffinity=""
                 android:theme="@style/Theme.Photon.BaseApp"
                 android:icon="@mipmap/ic_gallery_launcher"
+                android:roundIcon="@mipmap/ic_gallery_launcher_round"
                 android:exported="true">
             <!-- REVIEW intent - Camera apps use this to review captured images -->
             <intent-filter>
@@ -156,9 +157,10 @@
                 android:targetActivity="com.particlesdevs.photoncamera.gallery.ui.GalleryActivity"
                 android:label="@string/gallery_name"
                 android:icon="@mipmap/ic_gallery_launcher"
+                android:roundIcon="@mipmap/ic_gallery_launcher_round"
                 android:enabled="true"
                 android:exported="true">
-            <!-- Launcher intent - Shows PGallery in app drawer -->
+            <!-- Launcher intent - Shows SGallery in app drawer -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -5,7 +5,7 @@
     <string name="icon_string" translatable="false">Icon</string>
     <string name="backup_file_name" translatable="false">SCAMERA_%1$s</string>
     <string name="app_name" translatable="false">SCAMERA</string>
-    <string name="gallery_name" translatable="false">PGallery</string>
+    <string name="gallery_name" translatable="false">SGallery</string>
     <string name="request_permission">This app needs camera permission.</string>
     <string name="camera_error">This device doesn\'t support Camera2 API.</string>
     <string name="frame_count">Normal RAW frames</string>
