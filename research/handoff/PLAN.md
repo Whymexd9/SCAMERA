@@ -1617,6 +1617,9 @@ The settings live in different places now; the curated groups use these keys.
 - Agent in a worktree implements both; coordinator checks on the OPPO (files decode, profile / CICP present, sRGB default
   byte-identical to before).
 
+- Owner 2026-10-09: «На пикселе теперь днг обрабатывается также быстро как и жпег» — processing time closed. The black main-camera
+  DNG in the gallery is covered by the P59 DNG decoder (own raw render); owner to confirm in the new gallery.
+
 ### P54 — vivo X300 Ultra: preview stabilisation still lost after a shot (owner's log 2026-10-08 «log-2026-10-08 X300U.txt»; to do)
 - Build before CI #344 (no PREVIEW_GAP lines): camera 5, 9 shots 10:04-16:15. The preview request has vivo.control.eis.config.enable=[5]
   (session start, also after the restart at 16:15:42), OIS on before and after every shot, videoStabilizationMode 0, crop region
@@ -1630,6 +1633,13 @@ The settings live in different places now; the curated groups use these keys.
   CI #344, re-arm mode 1 = no second flush), stab_rearm 0/1/3, hybrid_fast_capture 0 (no flush), and a session re-creation after the
   shot as the last resort; ask the owner which variant keeps EIS (screen recording + log). Also check vivo.control.eis.enhance /
   EISsolution / qcamera3 EISMode session keys the stock app sets.
+
+- 2026-10-09, owner: the vivo vendor keys may be what breaks the X300U's stabilisation (non-vivo phones never get them:
+  VivoNicePreview.supported() is vivo / iQOO only and the HAL rejects unknown tags). Done: the stock preview profile recorded on
+  the X200 Ultra (≈80 vivo.control / vivo.capability tags, vivo.control.zoom_ratio, motion metering, Camera2 scene mode
+  FACE_PRIORITY, preview EIS 5) is sent only on PD2454; other vivo phones (X300U v2562) get the NICE keys alone (MagicEnable,
+  capture.nice, sceneMode NICE bank). nice_dev "vivo_stock_profile 1" = old behaviour. Owner: check X300U stabilisation after a
+  shot and the SCAM HDR exposure (the stock-profile AE policy is gone there).
 
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; to do)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».
