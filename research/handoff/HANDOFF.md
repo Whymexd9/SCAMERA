@@ -1,43 +1,60 @@
-# SCAMERA — передача работы (состояние на 2026-10-08)
+# SCAMERA — передача работы (состояние на 2026-10-09)
 
-Документ для продолжения работы в другой нейросети. Читать целиком перед первым изменением.
+Документ для продолжения работы в другой нейросети. Читать целиком перед первым изменением. Полные формулировки задач —
+`research/handoff/PLAN.md` (по номеру P..).
 
 ## 1. Что это за проект
 
 - **SCAMERA** — Android-камера, форк PhotonCamera. Своя многокадровая склейка RAW («Hybrid»):
   - ядро Sabre 6.1 (GCam) + отбраковка/веса LMC 9.6 + Bento (света из ультракоротких кадров) + Shasta;
-  - нативный путь склейки мозаик Quad/Tetra (ISZ);
-  - тон ARK (порт ArkCam), шумодав, восстановление светов, Ultra HDR, форматы JPEG/HEIC (8/10 бит)/WebP/AVIF/DNG.
+  - нативный путь склейки мозаик Quad/Tetra (ISZ), Sabre ×2 (выход 2× сенсора), Mochi (фотометрия брекетинга, GCam 11);
+  - тон ARK (порт ArkCam), шумодав, восстановление светов, Ultra HDR, форматы JPEG/HEIC (8/10 бит)/WebP/AVIF/DNG;
+  - SCAM HDR — нейросетевой маршрут (модели vivo NICE на NPU); работает только на vivo X200 Ultra и телефонах на 8 Elite.
 - **Репозиторий:** `C:/Users/MECHREVO/Downloads/x200u/SCAMERA-PC/project`, GitHub `Whymexd9/SCAMERA`.
-  - Рабочая ветка `migration/nice-camera2`, пушится **только** так: `git push origin HEAD:main`.
-  - CI: `.github/workflows/build-test-apk.yml` (юнит-тесты по списку `--tests`, C++ проверки g++, python-проверки, сборка APK).
-- **Владелец пишет по-русски.**
+  - Рабочая ветка `migration/nice-camera2` (имя ветки старое, не менять), пушится **только** так: `git push origin HEAD:main`.
+  - При обрыве пуша (HTTP 408): `git -c http.postBuffer=524288000 push origin HEAD:main`.
+  - CI: `.github/workflows/build-test-apk.yml` (юнит-тесты по списку `--tests`, C++ проверки g++, python-проверки, сборка
+    APK с приватным бандлом моделей). Артефакт `SCAMERA-Build-<код>` + `SHA256SUMS.txt`.
+- **Владелец пишет по-русски.** Отвечать по-русски, кратко.
   - Код, комментарии и коммиты на английском.
-  - Тексты UI: `values` = английский, `values-ru` = русский. Java-тексты UI через `util/Lang.t(ru, en)`. Проверка: `tools/check_ui_language.py`.
+  - Тексты UI: `values` = английский, `values-ru` = русский. Java-тексты UI через `util/Lang.t(ru, en)`. Проверка:
+    `tools/check_ui_language.py`.
 
 ## 2. Правила владельца (обязательны)
 
 **Git и сборки**
-- Ничего не пушить без явной команды владельца. Пушить одним пушем `HEAD:main`.
-- Никогда не коммитить `*.key` (особенно `SCAMERA-PC/local-secrets/neural-assets-v2.key`), `local.properties`, `app/version.properties`.
-- APK из CI не скачивать. Локальные сборки — только для своих тестов.
-- После локальной сборки вернуть `app/version.properties`: он должен остаться `VERSION_BUILD=27074`, `VERSION_NAME=0.93`.
+- Пушить только по команде владельца, одним пушем `HEAD:main`, когда все текущие задачи сделаны.
+- Никогда не коммитить `*.key` (особенно `SCAMERA-PC/local-secrets/neural-assets-v2.key`), `local.properties`,
+  `app/version.properties`. После локальной сборки: `git checkout -- app/version.properties` (должно быть
+  `VERSION_BUILD=27074`).
+- APK для владельца по умолчанию — из CI (`project/AGENTS.md`: артефакт CI, сверка с `SHA256SUMS.txt`, ничего не
+  пересобирать и не переподписывать). Локальный APK — только если владелец сам просит. Локальная подпись другая: поверх
+  CI-версии без удаления не встанет.
 
 **Склейка и тесты**
 - Не править GLSL `kHybMergeMain1` в `app/src/main/cpp/scam-hybrid.h`.
-- md5 выхода воркера на обычном Bayer должен оставаться прежним, если изменение не задумано.
+- md5 выхода воркера на контрольных сериях не должен меняться, если изменение не задумано (таблица в §3).
 - Тесты никогда не пропускать, не отключать и не ослаблять.
 - Части ArkCam **комбинировать** с нашим пайплайном, а не заменять им.
 - Приложение работает **без root**.
 
 **Камера и сенсор**
-- Режимы сенсора не переключать. Исключение: tele mode 9 на Xiaomi 17 Ultra в «Плавный оптический зум».
-- Не выдавать себя за стоковую камеру (clientName=com.android.camera на 17U отключён по решению владельца).
+- Режимы сенсора не переключать. Исключение: tele mode 9 на Xiaomi 17 Ultra («Плавный оптический зум»).
+- Не выдавать себя за стоковую камеру (подмена пакета / clientName на 17U запрещены).
+
+**Названия (P55)**
+- В APK нет «LMC», «NICE», «Vivo» как наших названий — всё «SCAM». **Названия смартфонов и бренд vivo в значении
+  производителя не трогать** (владелец: «Названия смартфонов в нашей камере заменять нельзя»).
+- Вендорные данные остаются как есть: ключи HAL `vivo.*`, `com.vivo.*`, библиотеки `libvivo*`, пути `/vendor`,
+  символы для dlsym (`vivoNiceTce*`, `vivoShareBuf*`, `vivoNiceCREGetVersion`), имена графов QNN, файлы моделей
+  `nice-*-v79.bin`, группа `nice/` внутри приватного бандла (`tools/ci_neural_assets.py`), режимы тюнинга `nicehdr*`.
 
 **Телефоны владельца**
-- Нажимать только когда в фокусе SCAMERA. Если владелец пользуется телефоном — только `adb shell`.
-- Проверять, свободен ли OPPO: `dumpsys window | grep mCurrentFocus`, `dumpsys power | grep lastUserActivityTime`, `dumpsys media.camera | grep "Client Package"`.
-- Не удалять пользовательские данные, не выдавать разрешения, не принимать соглашения, не менять системные настройки. Диалоги закрывать кнопкой «Назад».
+- Нажимать только когда в фокусе SCAMERA. Если владелец пользуется телефоном — только `adb shell` без UI.
+- Проверять, свободен ли OPPO: `dumpsys window | grep mCurrentFocus`, `dumpsys power | grep lastUserActivityTime`,
+  `dumpsys media.camera | grep "Client Package"`.
+- Не удалять пользовательские данные, не выдавать разрешения, не принимать соглашения, не менять системные настройки.
+  Диалоги закрывать кнопкой «Назад».
 
 ## 3. Окружение и инструменты (Windows, Git Bash)
 
@@ -47,25 +64,38 @@
   ```
   ./gradlew.bat :app:testDebugUnitTest --tests <...> -x :app:buildScamNeuralWorker -I ../local-tools/compile-installed-sdk.gradle --console=plain --offline
   ```
-  Проверять, что XML-отчёты в `app/build/test-results` действительно обновились.
-  - Известный падающий тест вне списка CI: `CaptureControllerTest.testGetCameraOutputSize_withTwoParameter` (NPE PhotonCamera, падал и раньше).
-  - Весь список CI прогоняется так: вытащить все `--tests "..."` из workflow и передать в gradle.
-- Воркер (нативный, отдельный процесс):
+  Проверять, что XML-отчёты в `app/build/test-results/testDebugUnitTest` действительно обновились (лучше удалить папку
+  перед прогоном). Весь список CI: вытащить все `--tests "..."` из workflow и передать в gradle. Сейчас **584 теста,
+  все проходят**. Известный падающий тест вне списка CI: `CaptureControllerTest.testGetCameraOutputSize_withTwoParameter`.
+- Воркер (нативный исполняемый файл, gradle-задача на Windows не работает — собирать вручную):
   ```
-  NDK clang++ -std=c++17 -O2 -pthread -fPIE -pie -static-libstdc++ app/src/main/cpp/scam-neural-worker.cpp -ldl -lEGL -lGLESv3
+  cd app/src/main/cpp
+  <NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android26-clang++.cmd -std=c++17 -O2 -Wall -Wextra -pthread -fPIE -pie -static-libstdc++ -Wl,-z,max-page-size=16384 scam-neural-worker.cpp -ldl -lEGL -lGLESv3 -o <out>
   ```
-  Результат в `app/build/generated/scamNeuralAssets/vivo-neural/arm64-v8a/vivo-neural-worker`. Скрипт: `bwt.sh` в старом scratchpad (`C:/Users/MECHREVO/AppData/Local/Temp/claude/C--Users-MECHREVO-Downloads-x200u/821626a3-.../scratchpad/bwt.sh`).
-- APK: `SCAMERA_VERSION_CODE=271xx bash local-tools/build-local.sh` (из `SCAMERA-PC`). Выход: `SCAMERA-PC/deliverables/local-20260923/SCAMERA-0.98-<код>-NICE-local.apk`. Подписан локально: поверх CI-версии без удаления не встанет.
+  Для APK положить результат в `app/build/generated/scamNeuralAssets/scam-neural/arm64-v8a/scam-neural-worker`.
+- CMake-библиотеки: `./gradlew.bat :app:externalNativeBuildDebug -x :app:buildScamNeuralWorker ...` (выход в
+  `app/build/intermediates/cxx/Release/*/obj/arm64-v8a/libscam*.so`).
+- Локальный APK: `bash local-tools/build-local.sh` (из `SCAMERA-PC`; уже на новых именах). Берёт приватный бандл из
+  `C:/Users/MECHREVO/AppData/Local/Temp/claude/C--Users-MECHREVO-Downloads-x200u/fb20fea7-c9cd-45a2-b1ae-e879a37ea0a0/scratchpad/neural-assets`
+  (`bundle`, `hexquad`, `nice`). Выход: `SCAMERA-PC/deliverables/local-20260923/SCAMERA-0.98-<код>-NICE-local.apk`.
+  Последний: `...-27074-NICE-local.apk` от 2026-10-09 10:04 (код = `e465ab4`, воркер md5 15f606e6).
 
 **Python и шейдеры**
-- Системный Python 3.12 (`C:/Users/MECHREVO/AppData/Local/Programs/Python/Python312/python.exe`): numpy, cv2, moderngl. На нём GL-проверки (`tools/check_highlight_*.py`, `check_ark_*.py`, `check_colour_output.py`).
-- venv с pillow-heif (для HEIC/AVIF): `.../821626a3-.../scratchpad/heicvenv`.
-- GLSL перед сборкой компилировать офлайн: `ndk/27.2.12479018/shader-tools/windows-x86_64/glslc.exe --target-env=opengl -std=310es ...`. Не называть uniform именами встроенных функций (`step` и т.п.).
+- Системный Python 3.12 (`C:/Users/MECHREVO/AppData/Local/Programs/Python/Python312/python.exe`): numpy, cv2, moderngl.
+  Запускать с `PYTHONUTF8=1` и JDK в PATH. На нём GL-проверки и `tools/check_hybrid_mochi.py`.
+- venv с pillow-heif (для HEIC/AVIF): `.../821626a3-f17b-4a79-9a40-c85f28791791/scratchpad/heicvenv`.
+- GLSL перед сборкой компилировать офлайн: `ndk/27.2.12479018/shader-tools/windows-x86_64/glslc.exe --target-env=opengl -std=310es ...`.
+  Не называть uniform именами встроенных функций (`step` и т.п.).
+- Проверки C++ (`tools/check_*.cpp`) локально g++ нет: собирать NDK-clang под arm64 и запускать на OPPO через `adb shell`
+  (`TMPDIR=/data/local/tmp`), иначе их прогонит CI.
 
-**C++ проверки и replay на OPPO**
-- `tools/check_hybrid_*.cpp` в CI собираются g++. Локально их можно собрать NDK-clang под arm64 и запустить на OPPO через `adb shell` (`TMPDIR=/data/local/tmp`).
-- Replay склейки на OPPO (без UI, только `adb shell`). Скрипт `mvtools/rp0.sh <label> <burst> <worker> [tuning lines]` в scratchpad `bf400803-...` — печатает md5 выхода. Серии на телефоне: `/data/local/tmp/syn_b1|b2|b4.nch` (синтетика), `hand.nch`, `isz2.nch`, `x7u_1x.nch`, `syn_b4m/b2m/b4p2/b4p6.nch` (движущиеся объекты).
-- Эталоны md5 на текущем воркере:
+**Replay склейки на OPPO** (без UI, только `adb shell`)
+- Скрипт: `C:/Users/MECHREVO/AppData/Local/Temp/claude/C--Users-MECHREVO-Downloads-x200u/5445ed52-44f3-436e-802a-cafb55817883/scratchpad/rp/rp0.sh <label> <burst> <worker> [строки тюнинга]`
+  — печатает `rc` и md5 выхода. Аргумент воркера теперь `--scam-capture`. Пути передавать в виде `C:/...`, не `/c/...`
+  (иначе adb не найдёт файл и молча запустит старый воркер).
+- Серии на телефоне: `/data/local/tmp/syn_b1|b2|b4.nch` (синтетика), `hand.nch` (штатив), `isz2.nch`, `x7u_1x.nch`,
+  `uw.nch`, `hh_*.nch`, `q1x.nch`, `syn_b4m/b2m/b4p2/b4p6.nch` (движущиеся объекты).
+- Эталоны md5 (проверены после P55 на воркере 15f606e6):
 
   | серия | md5 |
   |---|---|
@@ -76,162 +106,131 @@
   | isz2 | 06947ccd |
   | x7u_1x | ae73516c |
 
-  syn_b2 и syn_b4 изменились намеренно из-за P51.
-
 **Телефоны**
-- OPPO Find X7 Ultra PHY110 (adb `fb27034c`, Android 16) — телефон владельца.
-  - Координаты (портрет): спуск (716,2853), значок формата (303,163), шестерёнка (1300,163).
-  - Настройки открываются в ландшафте: поиск (3023,136), поле поиска (1549,426).
-  - Лучше использовать `uiautomator dump` и брать координаты оттуда.
-  - Оставлять на рабочем столе, формат JPEG, sRGB, HDR выкл., «HEIC 10 бит» вкл.
-- vivo X200 Ultra (основной телефон владельца) сейчас не подключён.
-- Логи у владельца: `DCIM/PhotonCamera/PhotonLog/log-*.txt`, `SCAMERA-debug.log`. Диагностические архивы: `Download/SCAMERA/NICE-*.zip` (диагностика замедляет съёмку).
-- `scam_dev.txt` (dev-переключатели): `/sdcard/Android/data/org.codeaurora.snapcam/files/scam_dev.txt`, строки `key value`.
+- OPPO Find X7 Ultra PHY110 (adb `fb27034c`, Android 16) — подключён, на нём replay и тесты.
+  - Координаты (портрет): спуск (716,2853), значок формата (303,163), шестерёнка (1300,163). Лучше `uiautomator dump`.
+- vivo X200 Ultra (основной телефон владельца), vivo X300 Ultra, Xiaomi 17 Ultra, Pixel 7, OnePlus 15, X200 Pro —
+  у владельца, не подключены. Данные с них — только логи/дампы от владельца.
+- Логи у владельца: `DCIM/PhotonCamera/PhotonLog/log-*.txt`. Диагностические архивы: `Download/SCAMERA/SCAM-*.zip`.
+- Dev-переключатели: `/sdcard/Android/data/org.codeaurora.snapcam/files/scam_dev.txt`, строки `key value`
+  (старый `nice_dev.txt` приложение само переименует при первом запуске после P55).
 
-## 4. Карта кода
+## 4. Карта кода (имена после P55)
 
 **Захват и превью** (`app/src/main/java/com/particlesdevs/photoncamera/`)
 - `capture/CaptureController.java`: сессии, ZSL, брекетинг гибрида, фолбэки конфигурации, стабилизация.
-- `capture/ScamPreview.java`: стоковый профиль vivo, EIS.
-- `capture/PreviewContinuity.java`, `PreviewGapMeter.java`: P44.
-- `capture/StabilizationTrace.java`: STAB_TRACE.
-- `capture/XiaomiTeleZoom.java`.
-- `control/ZoomController.java`: модули, остаточный цифровой кроп, stream crop.
-- `settings/ModuleRegistry.java`: модули, `sensorCrop`, `nativeRatio`.
+- `capture/ScamPreview.java`: стоковый профиль превью vivo (теги записаны с X200 Ultra), EIS; `vendorKeys()` — только PD2454.
+- `capture/PreviewContinuity.java`, `PreviewGapMeter.java`, `StabilizationTrace.java`, `PreviewStall.java`.
+- `capture/XiaomiTeleZoom.java`: зум 17 Ultra (75–400 мм, оптика HAL, режим кропа, ISZ режим 9).
+- `control/ZoomController.java`, `control/FovSelfCheck.java` (P60), `settings/ModuleRegistry.java`.
+- `ui/camera/views/viewfinder/MainRenderer.java` + `VfDrawMeter` (P57, строки `VF_DRAW`).
 
-**Склейка (Java)**
-- `processing/opengl/postpipeline/ScamHybridBurst.java`: подготовка серии, размер выхода, Sabre 2×.
-- `ScamBurst.java`, `ScamNeuralClient.java`: запуск воркера.
-- `ScamRgb.java`: импорт RGB, поканальное восстановление светов.
-- `PostAb.java`: A/B поста.
+**Склейка (Java)** (`processing/opengl/postpipeline/`)
+- `ScamHybridBurst.java` (серия, размер выхода, Sabre 2×), `ScamBurst.java`, `ScamNeuralClient.java` (запуск воркера),
+  `ScamNeuralWorker.java` (списки файлов бандла с SHA256), `ScamRgb.java` (импорт RGB, света), `ScamDenoise.java`,
+  `ScamHdrDenoise.java`, `ScamSharpen.java`, `ScamLocalContrast.java`, `PostAb.java`.
 
-**Склейка (нативно)**
-- `app/src/main/cpp/scam-hybrid.h`: HybridTuning, шейдеры склейки, нативные мозаики `kHybMergeMosaic`/`Fast`.
-- `scam-neural-worker.cpp`.
+**Склейка (нативно)** (`app/src/main/cpp/`)
+- `scam-hybrid.h`: HybridTuning, шейдеры склейки, нативные мозаики `kHybMergeMosaic`/`Fast`, Mochi (`kHybMochi*`).
+- `scam-neural-worker.cpp` (точка входа воркера), `scam-superres-gpu.h` (`scamProcessingContext`, низкий приоритет EGL).
+- `scam-aec-*.h` / `scam-aec-jni.cpp` → библиотека `libscamAe.so`; `scam-*.h` — порт SCAM HDR (бывший vivo-nice-*).
 
-**Вывод**
-- `processing/processor/HdrxProcessor.java`: оркестрация снимка, DNG, финальный размер, цифровой кроп.
-- `processing/PhotoOutput.java`.
-- `processing/heif/*`: HEIC 10 бит (свой HEIF-контейнер).
-- `processing/avif/*` + `cpp/scamera-avif*`.
-- `processing/color/*`: Display P3 / HLG (P46).
+**Вывод**: `processing/processor/HdrxProcessor.java`, `processing/PhotoOutput.java`, `processing/heif/*`, `processing/avif/*`,
+`processing/color/*`.
 
-**Шейдеры (`app/src/main/assets/shaders`)**
-- `ark/*`: тон.
-- `scamhdr/scamrgb.glsl`, `hlrecovery/*`, `clipband`: света.
+**Шейдеры** (`app/src/main/assets/shaders`): `ark/*` (тон), `scamhdr/scamrgb.glsl`, `scamhdr/clipband.glsl`, `hlrecovery/*`,
+`scam/`, `scamdn/`, `scamlc/`, `scamsharp/` (бывшие lmc, lmcdn, nicelc, nicesharp).
 
-**Настройки**
-- `settings/PreferenceKeys.java`, `res/xml/preferences*.xml`, `SettingsAvailability`, `DeviceDefaults`.
-- Проверка модели настроек: `tools/check_settings_model.py`.
+**Настройки**: `settings/PreferenceKeys.java`, `res/xml/preferences*.xml`, `SettingsAvailability`, `DeviceDefaults`,
+`SettingsMigration`, `ScamHybridKeys.java`, `BrandMigration.java` (P55, перенос старых имён).
+- Префиксы ключей: `pref_scam_hybrid_` (бывш. `pref_lmc_hybrid_`), `pref_scamhdr_` (бывш. `pref_vivo_nice_`),
+  `pref_scamold_` (бывш. `pref_nice_`), `pref_scamroute_` (бывш. `pref_vivo_hdr_`). Ни один новый префикс не начинается
+  с другого — проверки `startsWith` сохранили смысл.
 
-**Галерея**
-- `gallery/**`: `GalleryActivity`, фрагменты Library/Viewer/Compare, адаптеры, `UltraHdrGalleryUtil`.
+**Галерея**: `gallery/**` — `ui/GalleryUi`, `GalleryFormat`, `LibraryAdapter`, `SelectionBar`, `GallerySheets`,
+`ViewerChrome`, фрагменты Library/Viewer/Compare, `dng/DngPreview` + `Lj92Decoder` (своя отрисовка DNG),
+`glide/ScameraGlideModule`, `GalleryLauncherIcon`.
 
-**Документация по темам** (`research/`)
-- `bento/BENTO_IN_SABRE.md`: Бенто.
-- `moving-objects/`: P51.
-- `viewfinder-freeze/`: P44.
-- `speed/PLAIN_SHOT_SPEED.md`: P48.
-- `colour-hdr/P3_HDR_REPORT.md`: P46.
-- `heic10/`, `avif/`.
-- `mochi/MOCHI_IMPL.md`: заметки P62.
-- `settings-audit/`.
+**Документация по темам** (`research/`): `mochi/MOCHI_IMPL.md`, `xiaomi17u/*`, `bento/BENTO_IN_SABRE.md`,
+`moving-objects/`, `viewfinder-freeze/`, `speed/`, `colour-hdr/`, `heic10/`, `avif/`, `settings-audit/`.
+Большие разборы GCam/LMC вне репозитория: `SCAMERA-PC/research/gcam11`, `research/scam`, `research/p29`.
+`docs/` — старые исследовательские заметки (старые имена там остались, в APK не попадают).
 
-Большие разборы GCam/LMC лежат вне репозитория: `SCAMERA-PC/research/gcam11`, `research/scam`, `research/p29`.
+## 5. Что сделано и залито
 
-## 5. Что сделано и залито (main = последний пуш этой передачи)
+`origin/main` = `e465ab4`, CI #346 success, сборка **SCAMERA-Build-30713**
+(https://github.com/Whymexd9/SCAMERA/actions/runs/37881494903). APK из CI не скачивался.
 
-Последние крупные пункты. Подробности — в `research/handoff/PLAN.md` по номеру.
+С прошлой передачи (dd284cb):
+- **P58** — OnePlus 15: нет розового неба, когда у канала нет плато клипа Bento.
+- **P61** — в лог пишутся фактические параметры кодировщика и размер каждого файла; отчёт проверки сжатия.
+- **P62 Mochi** — фотометрическая поправка брекетинга GCam 11 на GPU перед склейкой. Ключ тюнинга `mochi`
+  (0 = выкл., по умолчанию; 1 = правило GCam, >3 небрекетированных; 2 = всегда). На нативном мозаичном пути не применяется.
+- **P41 17U** — проверка «стекло пошло за командой» считает только движение к команде; режим кропа теперь включается
+  (раньше поле зрения на 100–400 мм было в 1.33 раза шире). Разбор стоковых дампов: `research/xiaomi17u/STOCK_ZOOM_2026-10-08.md`.
+- **P57** — видоискатель после снимка: низкий приоритет EGL у контекстов обработки, приоритет DISPLAY у потока
+  видоискателя, счётчик `VF_DRAW`. dev: `gpu_low_priority`, `vf_priority`.
+- **P60** — модуль с вендорными тегами сам меряет своё поле зрения против обычного модуля той же камеры (NCC), чтобы не
+  обрезать ISZ дважды. dev: `fov_check`.
+- **P56** — Sabre ×2 для ISZ 2× (Quad): на OPPO 8192×6144. Для Tetra (4×) ещё нет.
+- **P59 / P53** — галерея показывает любые DNG (встроенное превью или своя отрисовка). Владелец: DNG на Pixel теперь
+  обрабатывается так же быстро, как JPEG.
+- **P59b** — новая галерея в карточном стиле (сетка по дням, просмотр, лист сведений, удаление, папки, сравнение,
+  выделение протяжкой).
+- **P54** — SCAM HDR работает только на X200 Ultra (и 8 Elite), поэтому вендорные ключи превью vivo (≈80 тегов,
+  сценарный режим, EIS) отправляются только на PD2454. На X300U и других vivo — обычное превью Camera2. Подозрение
+  владельца: эти ключи ломали стабилизацию на X300U. dev: `scam_stock_profile 1` = старое поведение.
+- **P55** — переименование LMC / Vivo / NICE → SCAM во всём, что попадает в APK (1 315 идентификаторов, ~150 путей),
+  с переносом сохранённых настроек (`BrandMigration`: ключи и значения всех файлов настроек, резервные копии, профили
+  модулей, `nice_dev.txt` → `scam_dev.txt`, удаление старой папки извлечённого бандла). Тест `BrandMigrationTest`
+  сверяет Java-правило со всеми словами инструмента (`app/src/test/resources/brand/vectors.tsv`). Инструмент:
+  `.../5445ed52-44f3-436e-802a-cafb55817883/scratchpad/p55/rebrand.py` (+ `prefix_check.py`).
 
-**Склейка и захват**
-- **P51** — «соты» на движущихся объектах в ISZ Quad/Tetra: плавное расширение ядра базового кадра.
-- **P52** — фронталка vivo X200 Pro: повтор сессии без стокового профиля vivo.
-- **P44** — видоискатель замирал на 400 мс при спуске. Теперь ~267 мс на OPPO; по умолчанию один кадр превью после сброса очереди. Вернуть старое: `preview_lead 0`.
+Локально, **не залито**: `ca1c4c4`, `6871db9` — скрипты съёма стоковой камеры 17U (`research/xiaomi17u/x17u_stock.sh`)
+и эта передача.
 
-**Скорость (P48/P53), всё побайтово**
-- F6 выравнивание в потоке при нехватке памяти (оконные серые строки).
-- Запись результата воркера через mmap.
-- Параллельное чтение результата.
-- Загрузка RGB полосами RGBA на Adreno; на OPPO побайтово равно, проверено через `nice_dev post_ab 1` + `post_ab_upload 1`.
+## 6. Что осталось
 
-**Интерфейс**
-- **P43** — панель ручника: 12 dp над ручкой шторки, размеры по концепту при любом масштабе.
+### Xiaomi 17 Ultra — оптический зум (главное открытое)
+- Наши теги (`com.xiaomi.camera.userZoomRatio.userZoomRatio` + `android.control.zoomRatio`, 4.30000019 / 1.34375 на
+  100 мм; `org.codeaurora.qcamera3.sensor_meta_data.current_mode` = 9 для ISZ 2×) SCAMERA **уже отправляет** на камеру 4.
+  HAL при `xiaomi.thirdparty.isThirdParty` = 1 держит свою цель `opticalZoomTargetRatio` 3.400 и уводит стекло на 74.4 мм
+  (лог прогона x17u, 21:31:49).
+- Сток открывает логическую SAT-камеру 5 (физические 3, 2, 4). Сторонним приложениям доступна такая же логическая
+  камера **0** (те же физические, zoomRatio 0.6–10, `enableOptZoomratio` 1), но SCAMERA её не открывает:
+  `CameraManager2.scanAllCameras` пропускает логические камеры (`!isLogical`).
+- Оптика стока: `target = 3.4 + (UI − 3.2)·0.9/1.1` (UI 3.2–4.3 → HAL 3.4–4.3, 75–100 мм), выше 4.3× — кроп, на 10× режим 9.
+- **Ждём** от владельца архив `/sdcard/x17u_stock` (скрипт `research/xiaomi17u/x17u_stock.sh`: 16 шагов зума 0.6–30×,
+  история ключей по кадрам `dumpsys -m`, дампы после снимков на 3.5/7/10×, logcat, getprop, JPEG).
+- **Дальше:** по дампам повторить у нас последовательность стока — логическая камера 0 для 75–100 мм (и выше),
+  те же ключи сессии/запроса, точка включения режима 9. Если на камере 0 HAL стекло стороннему приложению не даёт —
+  без подмены пакета (запрещено) оптика недоступна, остаётся режим кропа.
 
-**Цвет и форматы**
-- **P46** — настройка «Цветовое пространство» sRGB/Display P3 (по умолчанию sRGB, побайтово как раньше) и «HDR в HEIC / AVIF» (HLG BT.2020, по умолчанию выкл.).
-- Проверено на OPPO:
-  - JPEG по умолчанию без ICC;
-  - P3 JPEG с ICC Display P3;
-  - HEIC 10 бит + HDR → nclx 9/18/9.
-- AVIF HDR проверен только хост-проверками.
-
-**Зум**
-- Цифровой кроп не повторяется, если сенсор уже обрезал кадр по вендорному тегу ISZ (OPPO X9 Ultra). Правило общее: мозаика Quad/Tetra в бинированном размере у модуля с вендорными запросами считается кропом сенсора.
-- На OPPO X7U модуль 2× = ровно 2.00× поля 1×.
-
-**Диагностика и документация**
-- **P54** (частично) — после снимка в лог пишутся ключи стабилизации перезапущенного запроса превью.
-- Документ по Бенто: `research/bento/BENTO_IN_SABRE.md`.
-
-## 6. Что осталось (по приоритету владельца). Полные формулировки — в `research/handoff/PLAN.md`
-
-### Ждёт данных владельца
-- **P53 (Pixel 7):** RAW основной камеры чёрные в галерее. Нужны один DNG основной и один DNG ширика; повторный замер скорости с выключенной диагностикой.
-- **P54 (X300 Ultra):** стабилизация пропадает после снимка. Нужен новый лог + запись экрана на свежей сборке (в CI 30692 уже нет второго сброса очереди). Дальше перебор `nice_dev`: `preview_lead`, `stab_rearm 0/1/3`, `hybrid_fast_capture 0`; пересоздание сессии.
-- **P45:** чёрный видоискатель после смены формата (vivo) — нужен лог с `PREVIEW_STALL`/`format choice`.
-- **Xiaomi 17 Ultra:** реальные дампы стоковой камеры. У владельца новый скрипт `x17u.sh`: работает в фоне, шаги показывает уведомлениями, файлы пишет в `/sdcard/x17u`, кто держал камеру — в `*_holders.txt`.
-- **P49/P38:** проверки на конкретных телефонах.
+### Ждёт проверки владельцем (сборка 30713)
+- Настройки после обновления сохранились (перенос P55 проверен только тестами).
+- X300 Ultra: стабилизация после снимка (P54).
+- P57: строки `VF_DRAW` в логе после снимка; новая галерея (жесты, удаление, сравнение); P60 на X9U; P56 Sabre ×2 на ISZ 2×.
+- P45: чёрный видоискатель после смены формата (vivo) — нужен лог с `PREVIEW_STALL` / `format choice`.
+- P49/P38: проверки на конкретных телефонах.
 
 ### Можно делать сразу
-- **P62 Mochi** (фотометрическая склейка брекетинга из GCam 11). Заметки по дизайну — `research/mochi/MOCHI_IMPL.md`; источник — `SCAMERA-PC/research/gcam11/map/03b_merge_accumulate.md` §3.6.
-  - Ключ тюнинга `mochi` 0/1/2, по умолчанию 0.
-  - Двухфазная склейка: сначала N-кадры, затем guide из частичного аккумулятора, МНК-поправка по каналам RGGB для каждого длинного кадра, `bias = correction·SNRWeight(snr, 5.0)`.
-  - md5 при `mochi 0` не меняется. Проверка replay на сериях с длинными кадрами; плюс `tools/check_hybrid_mochi.cpp`.
-- **P58 OnePlus 15** — розовое небо с белыми пятнами в пересвете.
-  - Причина найдена: ультракороткий кадр упирается в клип ниже порога флагов воркера (0.915 k < 0.98). Пиксели внутри маски Bento без флагов не восстанавливаются, а соседние с флагами восстанавливаются. Синий получает «off».
-  - Наработка: `research/handoff/wip/P58_shaders.patch` (uniform `clipHiUnflaggedU` в `scamrgb.glsl` и `chanprep.glsl`) + проверка `wip/P58_check_highlight_one_channel_off.py`.
-  - **Не сделано:** Java-часть в `ScamRgb.channelClip`. Нужно выставлять `clipHiUnflaggedU`, когда измеренное плато ультракороткого ниже 0.975 k, и брать уровень B из измеренного клипа/своего максимума вместо `off`. Плюс юнит-тест `ScamRgbOneChannelOffTest`.
-  - Байт-идентичность для снимков без «off» — проверка с `--baseline` (старое дерево шейдеров).
-  - Материал: архив владельца распакован в scratchpad `bf400803-.../op15/` (фото, логи, NICE zip).
-- **P61** — проверить, что настройки сжатия реально работают во всех форматах (на старых версиях «разницы не было»).
-  - Проследить каждую настройку до кодировщика.
-  - Логировать фактические параметры каждого файла.
-  - HEIC 10 бит: проверить поддержку CQ/качества кодировщиком, иначе VBR.
-  - Хост-проверка монотонности размер/PSNR — `tools/check_compression.py`.
-  - Наработка: `wip/P61_avif_host_cmake.patch` (сборка libaom на хосте без nasm).
-- **Галерея P59 + P59b + P53-DNG:**
-  - Новый дизайн по `research/handoff/GALLERY_TASK.md` и концепту https://claude.ai/artifact/AE4t3NyLqPJXWG43m5PfXS.
-  - Поддержка всех форматов: HEIC 10 бит/HLG, AVIF 8/10/12, P3, DNG, пары RAW+X.
-  - Встроенное превью в DNG и своя отрисовка DNG, если системный декодер дал чёрный кадр.
-  - Находки и заметки: `wip/GALLERY_PROGRESS.md`. Отдельная иконка галереи **уже есть** (alias `GalleryActivityLauncher` + настройка «Скрыть иконку галереи»): нужно только перевести снэкбары на `Lang.t` и убрать дублирование кода.
-  - Баг drag-select: вертикальное перетаскивание не выделяет ячейки между.
-- **P57** — видоискатель тормозит после снимка. Камера отдаёт 30 к/с, значит тормозит отрисовка.
-  - Сначала замер `VF_DRAW` (нарисованные кадры) и jank главного потока.
-  - Потом: приоритет процесса воркера и число потоков, низкий приоритет EGL-контекста для обработки, дробление больших GPU-задач с `glFlush`, вынос работы из главного потока.
-  - Фото должно остаться побайтово тем же.
-- **P60** — самопроверка поля зрения модуля с вендорными тегами относительно соседнего модуля на той же камере (масштаб по первым кадрам). Нужна для ISZ, которое телефон пересобирает в Bayer. Тестовая пара: 1×/2× с OPPO, истинный масштаб 2.00.
-- **P56** — Sabre ×2 для ISZ. Сейчас запрещено: `ScamHybridBurst` выставляет `wants2x` только при `mosaicBlock <= 1`. Нужно:
-  - нативная склейка с сеткой ×2 (`kG.x = g` уже есть в шейдере);
-  - бюджет памяти 50 МП;
-  - лог причины отказа.
-
-  Делать после Mochi (тот же файл `scam-hybrid.h`).
-- **P55** — убрать из APK все упоминания LMC/Vivo/NICE, заменить на «scam».
-  - Охват: классы, файлы, ключи настроек (с миграцией), теги логов, `scam_dev.txt`, имена архивов, строки в нативном воркере.
-  - Вендорные ключи HAL `vivo.control.*` остаются.
-  - Делать **последним**: переименования ломают все слияния.
-- **P37/P36/P42 и прочее:** см. `PLAN.md`. P36/P37 сделаны раньше.
+- **P56 для Tetra (4×)**: Sabre ×2 на нативном мозаичном пути с блоком 4 (сейчас только Quad, блок 2).
+- **Mochi на нативном мозаичном пути** (`in.nativeFrames`) и решение о включении по умолчанию (A/B через `hybrid_tuning.txt`:
+  `mochi 2`) — по снимкам владельца.
+- Остальное — `PLAN.md`.
 
 ## 7. Как проверять перед пушем
 
-1. Полный список юнит-тестов CI проходит, XML-отчёты свежие.
-2. Python-проверки CI запускать с JDK в PATH. Проверки, которым нужен g++/EGL, — только в CI.
-3. md5 replay на OPPO не изменились (таблица выше), если изменение не задумано.
-4. Изменения поста — через `nice_dev post_ab 1` (+ `post_ab_upload 1` для загрузки).
-5. Пуш: `git push origin HEAD:main`, затем следить за CI. API без gh: `https://api.github.com/repos/Whymexd9/SCAMERA/actions/runs?per_page=2`.
+1. Полный список юнит-тестов CI проходит (584), XML-отчёты свежие.
+2. `tools/check_ui_language.py`, `tools/check_settings_model.py` и python-проверки CI — PASS (с JDK в PATH, `PYTHONUTF8=1`).
+3. md5 replay на OPPO не изменились (таблица в §3), если изменение не задумано.
+4. Изменения поста — через `scam_dev post_ab 1` (+ `post_ab_upload 1`).
+5. Пуш: `git push origin HEAD:main`, затем CI: `https://api.github.com/repos/Whymexd9/SCAMERA/actions/runs?per_page=2`.
 
 ## 8. Состояние на момент передачи
 
-- Агенты в worktree (`project/.claude/worktrees/*`) остановлены лимитом/сетью. Их полезные куски сохранены в `research/handoff/wip/`. Сами worktree можно удалить.
-- Последняя CI-сборка до этого пуша: SCAMERA-Build-30692 (#344, success).
-- Память прошлых сессий Claude (контекст устройств, решения владельца): `C:/Users/MECHREVO/.claude/projects/C--Users-MECHREVO-Downloads-x200u/memory/*.md`. Особенно `pending-user-tasks.md` (журнал решений владельца) и `MEMORY.md` (индекс).
+- Рабочее дерево чистое, кроме неотслеживаемой `.claude/` (старые worktree агентов — без уникальной работы, можно удалить).
+- Память прошлых сессий Claude: `C:/Users/MECHREVO/.claude/projects/C--Users-MECHREVO-Downloads-x200u/memory/*.md`
+  (`MEMORY.md` — индекс, `pending-user-tasks.md` — журнал решений владельца, `p55-rebrand-done.md` — новые имена).
+  В старых заметках файлы и классы названы по-старому: vivo-nice-hybrid.h = scam-hybrid.h, LmcHybridBurst =
+  ScamHybridBurst, VivoNice* = Scam*, nice_dev.txt = scam_dev.txt.

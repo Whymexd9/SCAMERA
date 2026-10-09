@@ -1643,7 +1643,7 @@ The settings live in different places now; the curated groups use these keys.
   (ScamPreview.vendorKeys()); other vivo phones get the plain Camera2 preview. nice_dev "vivo_stock_profile 1" = old
   behaviour. Owner: check X300U stabilisation after a shot.
 
-### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; to do)
+### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; DONE e465ab4, see HANDOFF §5; phone names kept per owner 2026-10-09)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».
 - Scope: everything that ships in the APK — UI strings (values / values-ru), settings keys shown to the user, log tags and log
   lines (NICE_HDR, NICE_CAPTURE, NICE_PIPELINE, NICE_DIAG, "LMC hybrid", "Vivo Neural"...), class / package / file names
