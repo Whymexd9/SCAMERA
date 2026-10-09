@@ -1663,6 +1663,17 @@ The settings live in different places now; the curated groups use these keys.
   eis=5, no HAL flush on the shot", "HAL queue not flushed: camera N holds the forced stabilisation". scam_dev: force_stab 0/1,
   force_stab_eis 0, force_stab_noflush 0. Cost: the series starts ~0.1-0.2 s later (no flush). Owner: X300U shot + STAB_TRACE log;
   if still lost, A/B force_stab_eis 0 and force_stab_noflush 0 to tell which part matters.
+- P54c (owner 2026-10-09: ArkCam v73 keeps the X300U stabilisation after shots; «fix it without changing the merge and the
+  result»). ArkCam v73 study (jadx, com/arkcam/CameraManager): preview = TEMPLATE_PREVIEW + RAW (ZSL), AE / AF / AWB auto,
+  OIS 1, no vivo / EIS keys at all, session op mode 0; the shot is taken from the ZSL ring, no stopRepeating / abortCaptures /
+  flush; an optional 2-frame STILL_CAPTURE burst (AE OFF, OIS 1) goes to the RAW stream ONLY while the preview keeps running,
+  the repeating request is re-set in onCaptureSequenceCompleted. Ours on the X300U (log 09:50): series already RAW only
+  (unchanged), flush gone since P54b, but the AE restore frame behind the series is an AE OFF request ON THE VIEWFINDER
+  stream. Done (X300U / force_stab only): the AE restore frame goes to the RAW stream only (same exposure / ISO / RAW, so the
+  AE hand-back and the next shot's ZSL ring are unchanged; the viewfinder misses one frame); the vivo EIS key of P54b is
+  opt-in (scam_dev force_stab_eis 1), as ArkCam sends none - session / series requests are back to the pre-P54b keys.
+  Merge, series and output untouched. scam_dev force_stab_rawonly 0 = old frame. Log: "AE restore frame queued ... (RAW
+  stream only, P54c)". Owner: X300U shot + STAB_TRACE log.
 
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; DONE e465ab4, see HANDOFF §5; phone names kept per owner 2026-10-09)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».

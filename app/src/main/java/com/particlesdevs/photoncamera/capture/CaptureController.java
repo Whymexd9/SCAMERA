@@ -2540,7 +2540,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             applyOisMode(mPreviewRequestBuilder, false);
                             if (mForcedStab) Log.i("SCAM_CAPTURE", "forced stabilisation (P54b) camera " + physicalID + ": preview "
                                     + ForcedStabilization.apply(mPreviewRequestBuilder, oisForceable(), mForcedStabEis)
-                                    + (ForcedStabilization.noFlush() ? ", no HAL flush on the shot" : ""));
+                                    + (ForcedStabilization.noFlush() ? ", no HAL flush on the shot" : "")
+                                    + (ForcedStabilization.rawOnlySwitch() ? ", AE restore frame on the RAW stream only (P54c)" : ""));
                             // P38: stabilisation trace of this session; OIS samples only on the dev switch.
                             CameraCharacteristics traceChars = mCameraCharacteristicsMap.get(physicalID);
                             if (traceChars == null) traceChars = mCameraCharacteristics;
@@ -2872,18 +2873,30 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Long oldExposure = b.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
         Integer oldIso = b.get(CaptureRequest.SENSOR_SENSITIVITY);
         Long oldDuration = b.get(CaptureRequest.SENSOR_FRAME_DURATION);
+        // P54c: under the forced stabilisation (X300U) the manual frame skips the viewfinder stream, as ArkCam's manual
+        // frames do: the HAL's preview / stabilisation path never sees an AE OFF request. Same exposure, ISO and RAW.
+        final Surface viewfinder = surface;
+        final boolean dropViewfinder = viewfinder != null && ForcedStabilization.dropViewfinder(mForcedStab,
+                ForcedStabilization.rawOnlySwitch(), isZslMode() || mLiveRawSession, mIsRecordingVideo);
+        boolean viewfinderRemoved = false;
         try {
             b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
             b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
             if (duration != null && duration > 0) b.set(CaptureRequest.SENSOR_FRAME_DURATION, duration);
+            if (dropViewfinder) {
+                b.removeTarget(viewfinder);
+                viewfinderRemoved = true;
+            }
             CaptureRequest restore = b.build();
             mCaptureSession.capture(restore, mCaptureCallback, mBackgroundHandler);
-            Log.i("SCAM_CAPTURE", "AE restore frame queued exposureNs=" + exposure + " ISO=" + iso);
-            mStabTrace.event("AE restore frame queued (AE OFF) exposureNs=" + exposure + " ISO=" + iso);
+            String where = viewfinderRemoved ? " (RAW stream only, P54c)" : "";
+            Log.i("SCAM_CAPTURE", "AE restore frame queued exposureNs=" + exposure + " ISO=" + iso + where);
+            mStabTrace.event("AE restore frame queued (AE OFF) exposureNs=" + exposure + " ISO=" + iso + where);
         } catch (CameraAccessException | RuntimeException e) {
             Log.w("SCAM_CAPTURE", "AE restore frame not queued: " + e);
         } finally {
+            if (viewfinderRemoved) b.addTarget(viewfinder);
             b.set(CaptureRequest.CONTROL_AE_MODE, aeMode);
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, oldExposure);
             b.set(CaptureRequest.SENSOR_SENSITIVITY, oldIso);

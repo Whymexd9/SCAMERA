@@ -24,4 +24,15 @@ public class ForcedStabilizationTest {
         assertFalse(ForcedStabilization.flush(false, false));
         assertFalse(ForcedStabilization.flush(false, true));
     }
+
+    /** P54c: the AE restore frame leaves the viewfinder only on the forced phone, with the RAW stream in the repeating request. */
+    @Test
+    public void aeRestoreFrameSkipsTheViewfinderOnlyWhenSafe() {
+        assertTrue(ForcedStabilization.dropViewfinder(true, true, true, false));
+        assertFalse(ForcedStabilization.dropViewfinder(false, true, true, false));
+        assertFalse(ForcedStabilization.dropViewfinder(true, false, true, false));
+        // Without the RAW stream the frame would have no target left.
+        assertFalse(ForcedStabilization.dropViewfinder(true, true, false, false));
+        assertFalse(ForcedStabilization.dropViewfinder(true, true, true, true));
+    }
 }
