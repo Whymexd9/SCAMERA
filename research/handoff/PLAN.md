@@ -1643,6 +1643,19 @@ The settings live in different places now; the curated groups use these keys.
   (ScamPreview.vendorKeys()); other vivo phones get the plain Camera2 preview. nice_dev "vivo_stock_profile 1" = old
   behaviour. Owner: check X300U stabilisation after a shot.
 
+- 2026-10-09, owner log `log-2026-10-09.txt` (V2562 / X300 Ultra, tele camera 5, shot 09:50:47):
+  - Result: vendor keys removal (`vendorKeys=` empty) did NOT fix the issue; owner reports stabilisation is STILL broken after the shot.
+  - Evidence from trace:
+    - Camera2 metadata keeps reporting `req[ois=1 vs=0]` and `res[ois=1 vs=0]`, so at the Camera2 framework level OIS appears enabled, but hardware OIS actuator / HAL EIS enters an inactive / frozen state after the burst.
+    - Shutter timeline: `submit requests=5 flush=true previewKept=true` -> `HAL queue flushed in 12 ms` -> preview lead frame queued -> AE restore frame queued (AE OFF) -> preview repeating restarted.
+    - PREVIEW_GAP logs: `preview requests failed 5`, preview gap 233 ms.
+  - Hypotheses & Action Plan:
+    1. **HAL queue flush (`abortCaptures()`)**: on X300U (V2562), flushing the queue during capture series breaks the HAL's internal OIS/EIS loop or puts the lens actuator into parked/limp state. Test with flush disabled (`scam_dev hybrid_fast_capture 0` / skip `abortCaptures()` on X300U).
+    2. **OIS cycle (wake-up pulse)**: after the burst sequence completes, explicitly cycle optical stabilization off and on (`LENS_OPTICAL_STABILIZATION_MODE = 0` for 1-2 repeating frames, then back to `1`) to force the HAL / OIS driver to re-initialize the lens actuator.
+    3. **Repeating request restart**: call `stopRepeating()` and explicitly recreate the repeating request via `setRepeatingRequest()` with clean builder after sequence completion rather than queuing re-arm into existing repeating flow.
+    4. **Capture Intent**: hybrid series requests were sent with `CONTROL_CAPTURE_INTENT = 1` (PREVIEW) instead of `STILL_CAPTURE`. Verify whether the HAL's OIS expects STILL_CAPTURE for series and PREVIEW afterwards, or if the intent transition caused OIS disarming.
+    5. **Session Re-creation fallback**: if the HAL driver cannot recover OIS without a session reconfigure, implement seamless session restart on X300U after burst capture.
+
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; DONE e465ab4, see HANDOFF §5; phone names kept per owner 2026-10-09)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».
 - Scope: everything that ships in the APK — UI strings (values / values-ru), settings keys shown to the user, log tags and log
