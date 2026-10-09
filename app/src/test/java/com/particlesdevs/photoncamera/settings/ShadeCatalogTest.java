@@ -100,9 +100,10 @@ public class ShadeCatalogTest {
                 assertTrue(key, e.isCurated());
             }
         }
-        assertEquals(29, curated); // «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»
+        assertEquals(28, curated); // «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»;
+                                   // P64 removed «Кривая» (the Hybrid tone curve)
         // The rows the owner dropped (answer 8) stay out.
-        for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled"})
+        for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
         assertEquals(8, ShadeCatalog.DEFAULT_TILES.size());
@@ -136,12 +137,8 @@ public class ShadeCatalogTest {
                 for (String key : group.keys) {
                     ShadeCatalog.Entry e = c.entry(key);
                     if (e.kind != ShadeCatalog.LIST) continue;
-                    if (e.shortLabels == null) {
-                        // Without short labels only the tone curve: dozens of asset names, shown in the list sheet.
-                        assertEquals(key, "pref_scam_tone_curve", key);
-                        assertTrue(key, e.isLongList());
-                        continue;
-                    }
+                    // Every list has short labels (the tone curve, the one long list of asset names, is gone: P64).
+                    assertNotNull(key, e.shortLabels);
                     assertEquals(locale + " " + key, e.values.length, e.shortLabels.length);
                     for (int i = 0; i < e.shortLabels.length; i++) {
                         String label = e.shortLabels[i].toString();

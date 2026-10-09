@@ -160,6 +160,8 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         paneLabel.setBackground(GalleryUi.round(c, GalleryUi.PILL_BG, GalleryUi.LINE, 12));
         paneLabel.setPadding(GalleryUi.dp(c, 9), GalleryUi.dp(c, 5), GalleryUi.dp(c, 9), GalleryUi.dp(c, 5));
         paneLabel.setCompoundDrawablePadding(GalleryUi.dp(c, 6));
+        paneLabel.setMaxLines(2);
+        paneLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
         lp.leftMargin = lp.topMargin = lp.rightMargin = GalleryUi.dp(c, 10);
         root.addView(paneLabel, lp);
@@ -586,13 +588,28 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         String time = when.substring(Math.max(0, when.lastIndexOf(' ') + 1));
         String text = paneFullExif ? joinDot(time, m.getIsoValue(), m.getShutterValue(), m.getFnumValue(), m.getFocalValue(), format.label)
                 : joinDot(time, m.getIsoValue());
-        paneLabel.setText(text);
+        // P65: the file name on a second, smaller and muted line (which two shots are compared)
+        String name = item.getFile().getDisplayName();
+        paneLabel.setText(paneText(text, name));
         android.graphics.drawable.Drawable routeD = route != null ? c.getDrawable(GalleryFormat.routeIcon(route)) : null;
         android.graphics.drawable.Drawable fmt = c.getDrawable(format.icon);
         int s = GalleryUi.dp(c, 15), accent = GalleryUi.accent(c);
         android.graphics.drawable.Drawable icons = combine(c, routeD, fmt, s, accent);
         paneLabel.setCompoundDrawables(icons, null, null, null);
-        paneLabel.setContentDescription((route != null ? route + ", " : "") + format.label + ", " + text);
+        paneLabel.setContentDescription((route != null ? route + ", " : "") + format.label + ", " + text
+                + (name == null || name.isEmpty() ? "" : ", " + name));
+    }
+
+    /** The label's text: the EXIF line, then the file name (85 %, muted) when there is one. */
+    static CharSequence paneText(String text, @Nullable String name) {
+        if (name == null || name.isEmpty()) return text;
+        android.text.SpannableStringBuilder s = new android.text.SpannableStringBuilder(text);
+        if (s.length() > 0) s.append('\n');
+        int start = s.length();
+        s.append(name);
+        s.setSpan(new android.text.style.RelativeSizeSpan(0.85f), start, s.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        s.setSpan(new android.text.style.ForegroundColorSpan(GalleryUi.MUTED), start, s.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return s;
     }
 
     private static android.graphics.drawable.Drawable combine(Context c, @Nullable android.graphics.drawable.Drawable a,

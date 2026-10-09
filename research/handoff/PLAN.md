@@ -1715,7 +1715,7 @@ The settings live in different places now; the curated groups use these keys.
 - Check: unzip the APK and grep -i for scam|vivo|nice (strings, dex via dexdump/strings, .so via strings) — only vendor HAL tag names
   and third-party library internals may remain; list them in the report.
 
-### P56 — Sabre x2 (2x output grid) does not work with ISZ (owner, 2026-10-08; to do)
+### P56 — Sabre x2 (2x output grid) does not work with ISZ (owner, 2026-10-08; Quad done; Tetra done 2026-10-10)
 - Owner: «с isz не работает Sabre X2».
 - Cause (by design today): ScamHybridBurst.java ~line 155: wants2x = ... && mosaicBlock <= 1 — a Quad / Tetra (ISZ) stream never
   gets the 2x grid; the native mosaic merge (P29/P35) outputs the sensor grid 4080x3072 ("HYBRID OUTPUT: Sabre 4x grid 4080x3072"
@@ -1727,6 +1727,14 @@ The settings live in different places now; the curated groups use these keys.
   limits), and the post pipeline at 50 MP (P48 numbers: ~6 s post + 3.7 s WebP at 2x). (3) Measure on ISZ 2x / 4x bursts: detail vs
   the sensor-grid output (owner's 4x ISZ Tetra and 2x Quad), time and memory; keep plain Bayer 2x and the sensor-grid ISZ output
   byte-identical; replay md5 gates (hand / isz2 / syn_b2 / syn_b4 at 1x grid must not change).
+
+- 2026-10-10 Tetra (Realme GT8 Pro 4x ISZ log: "Sabre 2x grid off for a Tetra mosaic stream"; vivo X200 Ultra 10x): the native
+  merge writes the Tetra 2x grid itself (g = 8: kHybMergeMosaicFast position (X + 0.5) 4 / g - 2, HybridGpu grid 8 for native
+  Tetra only, k2 for Tetra T1); ScamHybridBurst allows 2x for block 4. md5 gates at 1x and Quad 2x unchanged. vivo 10x burst
+  (grabbed from the worker's memfd, root) on the OPPO: merge 4.7 s at 1x, 16.3 s at 2x with window 6; new key
+  mosaicTetraWindow2x = 5 (12.3 s, 62 dB from window 6, flat dark noise +4 %; 4 = 8.8 s, 57 dB, +20 %). Tried and dropped
+  (Adreno 750): 2 / 4 output pixels per invocation (exact, but 26x slower / GPU reset: register spills), the window test before
+  exp2 (exact, 6 % slower). Owner to check on the GT8 Pro and the vivo 10x.
 
 ### P57 — The viewfinder stutters heavily after a shot, while the photo is processed (owner, 2026-10-08; to do)
 - Owner: «после съемки у нас видоискатель очень сильно тормозит».
@@ -1822,3 +1830,52 @@ The settings live in different places now; the curated groups use these keys.
   Robolectric + 360 dp layout tests; phone checks listed in the task. No push until the owner says.
 - Owner addition: a setting to show / hide the gallery as a separate app in the launcher (its own icon; activity-alias enabled /
   disabled with PackageManager.setComponentEnabledSetting(DONT_KILL_APP)), ru + en, default = today's behaviour.
+
+### P64 — Remove the "Hybrid curves" settings completely (owner, 2026-10-09; done 2026-10-10)
+- Owner (screenshot of the settings category «Кривые Hybrid»): «удалить пункты полностью».
+- The category `scam_curves_screen` in `res/xml/preferences.xml` (~line 476): the note `scam_curves_note`, `pref_scam_tone_curve`
+  (17-point tone curve) + `pref_scam_tone_curve_strength`, `pref_scam_gamma_curve` (33-point per-channel gamma curve) +
+  `pref_scam_gamma_curve_strength`. Not the separate `scam_hybrid_ark_curves_category` (ARK) unless the owner says so.
+- Do: remove the preferences, their strings (`values/` + `values-ru/`, incl. `scam_curves.xml` arrays), the keys in
+  `PreferenceKeys`, the processing (`postpipeline/ScamCurves.java` and its call in `PostPipeline`, plus any use in
+  `ToneCurveBuilder` / `PreviewLook` / `MainRenderer` that only serves these keys), settings search / availability / migration
+  entries; drop the stored values in `SettingsMigration` (old installs must not keep applying a curve). Default today = "off", so
+  photos with the default settings must stay byte-identical (post_ab / replay check). Tests: check_settings_model.py,
+  check_ui_language.py, the settings unit tests; update `app/src/test/resources/brand/vectors.tsv` if it lists ScamCurves.
+- Done 2026-10-10: category, strings, arrays (`scam_curves.xml`), PreferenceKeys getters, `ScamCurves` + its PostPipeline node,
+  `assets/curves`, the shade tile «Кривая»; the four keys in SettingsMigration.OBSOLETE_KEYS (main, module profiles, baseline).
+  The curves were off by default, so default photos do not change. brand/vectors.tsv keeps its rename rows (the P55 rename
+  table; the renamed keys are then dropped as obsolete). Tests moved to the DCP profile / DNG lossless rows.
+
+### P65 — Gallery: every format we shoot must display, file names in the info bubbles (owner, 2026-10-10; done, device check pending)
+- Owner (screenshot of SGallery «Сравнение», two shots «22:53 · ISO 12800»): «исправить отображение всех форматов которые
+  поддерживает наша камера. Avif как пример в нашей галерее не отображается. Так же добавь в "пузыри" с информацией о фото название
+  файлов».
+- AVIF still does not show (after fdaab04 AvifGlideDecoder): check every view that decodes a photo — filmstrip / grid thumbnails,
+  the viewer page, the compare screen (`gallery/ui/fragments/ImageCompareFragment`, `gallery/compare/*`), share / info — for JPEG
+  (incl. Ultra HDR), HEIC 8 / 10 bit, WebP, AVIF 8 / 10 / 12 bit, DNG, on Android 12 / 13+ (platform AVIF decode exists only from
+  Android 12; our own decoder otherwise). Robolectric / instrumentation tests with files from our encoders.
+- Info bubbles (the time · ISO chips over each photo in the compare screen, and the same chip in the viewer): add the file name
+  (ellipsized in the middle, no overlap at 360 dp), ru + en.
+- Done 2026-10-10: AvifGlideDecoder tries ImageDecoder (Android 12+), and when it throws, returns null or an all-black bitmap, or
+  below Android 12, decodes with the app's own libavif + libaom AV1 decoder (`processing/avif/AvifDecoder`, JNI
+  `scamera_avif::decodeToRgba8`, scaled to the request before YUV -> RGB; libaom built with CONFIG_AV1_DECODER, +~1 MB). Every
+  gallery view (filmstrip, viewer, compare) goes through it. tools/check_avif.py (CI) decodes every test file with the host build
+  of the same code against Pillow (libavif + dav1d): exact for lossless, >= 45 dB otherwise, maxside scaling. The compare labels
+  carry the file name on a second, smaller muted line. HLG / PQ AVIF is shown as coded (no tone mapping) by the own decoder.
+
+### P66 — Pixel 7: every module works (owner, 2026-10-10; partly done, device check pending)
+- Owner sent the Pixel 7 camera characteristics (`research/pixel7_camera_characteristics_2026-10-09.html`): «изучи и проверь что
+  все модули работают на Pixel 7. Так же если найдешь что-то полезное для него, используй/исправь».
+- From the dump: logical back 0 (zoomRatio 0.67..8) = physical 2 (main, 6.81 mm, 4080x3072, GRBG cfa 2, OIS [0,1]) + 3
+  (ultra-wide 2.35 mm, 4032x3016, RGGB cfa 0, no OIS); camera 4 = the main sensor's 2x in-sensor crop (6.81 mm, half the physical
+  size 4.896x3.6864, 4080x3072, exposure up to 23.8 s); fronts 1 / 6 (3440x2448) and 5 (3840x2736, capability 13); RAW10 and
+  RAW_SENSOR everywhere, white 1023, black 64.
+- Do: check ModuleRegistry / DeviceDefaults / SettingsAvailability for Pixel 7 (panther) so 0.6x / 1x / 2x / front modules exist
+  and open (2x = camera 4, a sensor crop: no second crop of the stream, P60; colour block measured), RAW stream / CFA per camera,
+  zoom ratios, OIS / stabilization keys; fix what the dump shows wrong.
+- Found 2026-10-10: the camera scan (CameraManager2.scanAllCameras) dropped camera 4 (the 2x crop) and front 5 as duplicates of
+  cameras 2 / 1: CameraLensData.equals compares facing, focal length, aperture and flash only (6.81 mm f/1.85 both). On Google
+  devices the scan now also compares the 35 mm focal length (50 vs 25 mm; 21 vs 23.5 mm), and a Pixel rescans once (scan_revision
+  p66). The 2x module then gets zoom 2.0 from its own field (no second crop). Needs the owner's Pixel 7 log: the modules list,
+  opening 0-4 / 0-5, the RAW colour block of camera 4.

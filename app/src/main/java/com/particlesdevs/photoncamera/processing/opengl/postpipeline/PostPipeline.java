@@ -624,19 +624,16 @@ public class PostPipeline extends GLBasePipeline {
         add(new ArkCombine(arkGuard));
         // ArkCam's sharpening ran before the delta (sharp mode "ark"); otherwise, or with ark_post_sharp, the chosen
         // sharpening (rt|scam, own settings) on the toned image, weakened in lifted shadows; texture only on request
-        // (ArkCam has no mid-frequency boost); SCAM curves only for the user's tone/gamma presets.
+        // (ArkCam has no mid-frequency boost).
         final boolean texture = PreferenceKeys.hybridSwitch("ark_texture", false);
-        final boolean curves = (!"off".equals(PreferenceKeys.getScamToneCurve()) && PreferenceKeys.getScamToneCurveStrength() > 0f)
-                || (!"off".equals(PreferenceKeys.getScamGammaCurve()) && PreferenceKeys.getScamGammaCurveStrength() > 0f);
         Log.i("SCAM_PIPELINE", "ARK tail: sharpen=" + sharpen + (arkSharp ? " (ArkLumaSharpen, post=" + arkPostSharp + ")" : "")
-                + " guard=" + arkGuard + " texture=" + texture + " scamCurves=" + curves);
+                + " guard=" + arkGuard + " texture=" + texture);
         if (arkPostSharp) {
             if ("scam".equals(sharpen)) add(new ScamSharpen());
             else add(new RTSharpening());
         }
         if (arkGuard > 0f) add(new ArkSharpenGuard());
         if (texture) add(new ScamLocalContrast());
-        if (curves) add(new ScamCurves());
         if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
         add(new RotateWatermark(getRotation()));
     }

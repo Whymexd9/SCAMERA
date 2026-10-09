@@ -608,13 +608,6 @@
     <string name="prefs_photo_processing_screen_summary">DCP, Hybrid curves</string>
     <string name="prefs_dcp_profile_title">DCP matrices</string>
     <string name="prefs_dcp_profile_summary">Import and choose the colour matrix of the module</string>
-    <string name="prefs_scam_curves_screen_title">Hybrid curves</string>
-    <string name="prefs_scam_curves_note_title">How it works</string>
-    <string name="prefs_scam_curves_note_summary">First the tone curve (17 points), then the gamma curve (33 points), per RGB channel, as in GCam. Strength blends the curve with the original shot: 0 changes nothing, 100 applies the full curve.</string>
-    <string name="prefs_scam_tone_curve_title">Tone curve</string>
-    <string name="prefs_scam_tone_curve_strength_title">Tone curve strength, %</string>
-    <string name="prefs_scam_gamma_curve_title">Gamma curve</string>
-    <string name="prefs_scam_gamma_curve_strength_title">Gamma curve strength, %</string>
     <string name="prefs_sharp_settings_screen_title">RawTherapee sharpening</string>
     <string name="prefs_sharp_settings_screen_summary">USM, RL deconvolution, microcontrast</string>
     <string name="prefs_sharp_rt_note_summary">Works when “Hybrid sharpening” is RawTherapee, or ARK with “Extra sharpening after the tone”; on both routes.</string>

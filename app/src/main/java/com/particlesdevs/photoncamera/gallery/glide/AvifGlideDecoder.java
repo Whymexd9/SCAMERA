@@ -8,40 +8,45 @@ import android.util.Size;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 
 import com.bumptech.glide.load.Options;
 import com.bumptech.glide.load.ResourceDecoder;
 import com.bumptech.glide.load.engine.Resource;
 import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool;
 import com.bumptech.glide.load.resource.bitmap.BitmapResource;
+import com.bumptech.glide.request.target.Target;
+import com.particlesdevs.photoncamera.processing.avif.AvifDecoder;
 import com.particlesdevs.photoncamera.util.Log;
 
-import java.io.File;
-import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
 /**
- * Glide decoder for AVIF images on Android 12+ (API 31+) using {@link ImageDecoder}.
- * Android platform {@link android.graphics.BitmapRegionDecoder} and {@link android.graphics.BitmapFactory}
- * do not support AVIF, which causes black screens in the gallery and blank thumbnails without this decoder.
+ * Glide decoder for AVIF images. Android's {@link android.graphics.BitmapRegionDecoder} and {@link android.graphics.BitmapFactory}
+ * do not read AVIF (black screens and blank thumbnails without this decoder). Android 12+ (API 31+) first tries
+ * {@link ImageDecoder}; P65 (owner, 2026-10-10: AVIF photos still blank in SGallery and its compare): when the platform cannot
+ * decode the file, returns nothing or an all-black bitmap, and below Android 12, the app's own decoder
+ * ({@link AvifDecoder}: libavif + libaom) takes it.
  */
 public final class AvifGlideDecoder implements ResourceDecoder<InputStream, Bitmap> {
     private static final String TAG = "AvifGlideDecoder";
-    private final Context context;
     private final BitmapPool pool;
 
     public AvifGlideDecoder(Context context, BitmapPool pool) {
-        this.context = context != null ? context.getApplicationContext() : null;
         this.pool = pool;
+    }
+
+    /** Whether any decoder can read AVIF here: the platform (Android 12+) or the native one. */
+    static boolean decodable() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || AvifDecoder.available();
     }
 
     @Override
     public boolean handles(@NonNull InputStream source, @NonNull Options options) throws IOException {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return false;
-        }
+        if (!decodable()) return false;
         final int readLimit = 64;
         source.mark(readLimit);
         try {
@@ -64,42 +69,71 @@ public final class AvifGlideDecoder implements ResourceDecoder<InputStream, Bitm
     @Nullable
     @Override
     public Resource<Bitmap> decode(@NonNull InputStream source, int width, int height, @NonNull Options options) throws IOException {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return null;
-        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream(1 << 20);
+        byte[] buf = new byte[1 << 16];
+        for (int r; (r = source.read(buf)) > 0; ) out.write(buf, 0, r);
+        return BitmapResource.obtain(decodeBytes(out.toByteArray(), width, height), pool);
+    }
+
+    /** The platform decoder first (Android 12+), the native one when it fails; IOException when neither decodes. */
+    static Bitmap decodeBytes(byte[] data, int width, int height) throws IOException {
         final long t0 = System.nanoTime();
-        File tmp = File.createTempFile("avif", ".tmp", context.getCacheDir());
-        try {
-            try (FileOutputStream out = new FileOutputStream(tmp)) {
-                byte[] buf = new byte[1 << 16];
-                for (int r; (r = source.read(buf)) > 0; ) {
-                    out.write(buf, 0, r);
+        String platformError = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                Bitmap bitmap = decodePlatform(ByteBuffer.wrap(data), width, height);
+                if (bitmap != null && !looksBlank(bitmap)) {
+                    Log.d(TAG, "decoded " + bitmap.getWidth() + "x" + bitmap.getHeight() + " in "
+                            + (System.nanoTime() - t0) / 1_000_000 + " ms (request " + width + "x" + height + ")");
+                    return bitmap;
                 }
+                platformError = bitmap == null ? "ImageDecoder returned null" : "ImageDecoder returned a blank bitmap";
+                if (bitmap != null) bitmap.recycle();
+            } catch (Exception | OutOfMemoryError e) {
+                platformError = String.valueOf(e);
             }
-            ImageDecoder.Source decoderSource = ImageDecoder.createSource(tmp);
-            Bitmap bitmap = ImageDecoder.decodeBitmap(decoderSource, (decoder, info, s) -> {
-                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
-                if (width > 0 && height > 0) {
-                    int sample = 1;
-                    Size size = info.getSize();
-                    int w = size.getWidth();
-                    int h = size.getHeight();
-                    while (w / (sample * 2) >= width && h / (sample * 2) >= height) {
-                        sample *= 2;
-                    }
-                    decoder.setTargetSampleSize(sample);
-                }
-            });
-            if (bitmap == null) {
-                throw new IOException("AVIF ImageDecoder returned null");
-            }
-            Log.d(TAG, "decoded " + bitmap.getWidth() + "x" + bitmap.getHeight()
-                    + " in " + (System.nanoTime() - t0) / 1_000_000 + " ms (request " + width + "x" + height + ")");
-            return BitmapResource.obtain(bitmap, pool);
-        } finally {
-            //noinspection ResultOfMethodCallIgnored
-            tmp.delete();
+            Log.w(TAG, "platform AVIF decode failed (" + platformError + "), native decode");
         }
+        Bitmap bitmap = AvifDecoder.decodeBitmap(data, maxSide(width, height));
+        if (bitmap == null) throw new IOException("AVIF decode failed" + (platformError != null ? " (" + platformError + ")" : ""));
+        return bitmap;
+    }
+
+    /** The long side the native decode scales to: the request's (Glide's override), 0 for the original size. */
+    @VisibleForTesting
+    static int maxSide(int width, int height) {
+        if (width == Target.SIZE_ORIGINAL || height == Target.SIZE_ORIGINAL || width <= 0 || height <= 0) return 0;
+        return Math.max(width, height);
+    }
+
+    private static Bitmap decodePlatform(ByteBuffer data, int width, int height) throws IOException {
+        ImageDecoder.Source decoderSource = ImageDecoder.createSource(data);
+        return ImageDecoder.decodeBitmap(decoderSource, (decoder, info, s) -> {
+            decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+            if (width > 0 && height > 0) {
+                int sample = 1;
+                Size size = info.getSize();
+                int w = size.getWidth();
+                int h = size.getHeight();
+                while (w / (sample * 2) >= width && h / (sample * 2) >= height) {
+                    sample *= 2;
+                }
+                decoder.setTargetSampleSize(sample);
+            }
+        });
+    }
+
+    /** All of 64 sampled pixels transparent or black: a decode that produced nothing (a photo never is). */
+    @VisibleForTesting
+    static boolean looksBlank(Bitmap bitmap) {
+        int w = bitmap.getWidth(), h = bitmap.getHeight();
+        if (w <= 0 || h <= 0) return true;
+        for (int j = 0; j < 8; j++)
+            for (int i = 0; i < 8; i++) {
+                int p = bitmap.getPixel((2 * i + 1) * w / 16, (2 * j + 1) * h / 16);
+                if ((p & 0x00FFFFFF) != 0) return false;
+            }
+        return true;
     }
 
     /**
@@ -149,9 +183,7 @@ public final class AvifGlideDecoder implements ResourceDecoder<InputStream, Bitm
 
         @Override
         public boolean handles(@NonNull ByteBuffer source, @NonNull Options options) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                return false;
-            }
+            if (!decodable()) return false;
             int len = source.remaining();
             if (len < 12) return false;
             byte[] header = new byte[Math.min(len, 64)];
@@ -164,30 +196,9 @@ public final class AvifGlideDecoder implements ResourceDecoder<InputStream, Bitm
         @Nullable
         @Override
         public Resource<Bitmap> decode(@NonNull ByteBuffer source, int width, int height, @NonNull Options options) throws IOException {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                return null;
-            }
-            final long t0 = System.nanoTime();
-            ImageDecoder.Source decoderSource = ImageDecoder.createSource(source);
-            Bitmap bitmap = ImageDecoder.decodeBitmap(decoderSource, (decoder, info, s) -> {
-                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
-                if (width > 0 && height > 0) {
-                    int sample = 1;
-                    Size size = info.getSize();
-                    int w = size.getWidth();
-                    int h = size.getHeight();
-                    while (w / (sample * 2) >= width && h / (sample * 2) >= height) {
-                        sample *= 2;
-                    }
-                    decoder.setTargetSampleSize(sample);
-                }
-            });
-            if (bitmap == null) {
-                throw new IOException("AVIF ImageDecoder returned null");
-            }
-            Log.d(TAG, "decoded " + bitmap.getWidth() + "x" + bitmap.getHeight()
-                    + " in " + (System.nanoTime() - t0) / 1_000_000 + " ms (request " + width + "x" + height + ")");
-            return BitmapResource.obtain(bitmap, pool);
+            byte[] data = new byte[source.remaining()];
+            source.duplicate().get(data);
+            return BitmapResource.obtain(decodeBytes(data, width, height), pool);
         }
     }
 }

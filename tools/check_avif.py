@@ -36,6 +36,7 @@ from PIL import Image, features
 ROOT = Path(__file__).resolve().parents[1]
 HOST_SOURCE = ROOT / 'tools' / 'avif_host'
 EXE_NAME = 'avif_host_encode.exe' if os.name == 'nt' else 'avif_host_encode'
+DECODE_EXE_NAME = 'avif_host_decode.exe' if os.name == 'nt' else 'avif_host_decode'
 # The app's defaults (PhotoFormat / AvifEncoder): quality 90, 10-bit, 4:4:4, speed 6.
 DEFAULTS = dict(quality=90, depth=10, yuv='444', speed=6)
 MAKE = 'SCAMERA'
@@ -115,7 +116,8 @@ def build(build_dir: Path, nasm: str | None) -> Path:
     if nasm:
         args.append('-DCMAKE_ASM_NASM_COMPILER=' + Path(nasm).resolve().as_posix())
     subprocess.run(args, check=True, env=env)
-    subprocess.run([cmake, '--build', str(build_dir), '--target', 'avif_host_encode', '--parallel'], check=True, env=env)
+    subprocess.run([cmake, '--build', str(build_dir), '--target', 'avif_host_encode', 'avif_host_decode', '--parallel'], check=True,
+                   env=env)
     exe = build_dir / EXE_NAME
     if not exe.exists():
         sys.exit(f'{exe} was not built')
@@ -368,6 +370,35 @@ def regions(width: int, height: int) -> dict:
     return {'all': np.s_[:, :], 'gray': np.s_[2 * band:, :2 * third], 'stripes': np.s_[2 * band:, 2 * third:]}
 
 
+def check_own_decode(exe: Path, avif: Path, pillow: np.ndarray, label: str, lossless: bool) -> None:
+    """P65: the gallery's own decode (avif_host_decode, the app's decodeToRgba8) against Pillow's (libavif + dav1d): the same
+    AV1 picture, so the RGB may differ only by the YUV to RGB rounding; maxside scales the long side."""
+    decoder = exe.with_name(DECODE_EXE_NAME)
+    if not decoder.exists():
+        check(False, f'{label}: {decoder} missing')
+        return
+    raw = avif.with_suffix('.dec.raw')
+    run = subprocess.run([str(decoder), f'in={avif}', f'out={raw}'], capture_output=True, text=True)
+    info = json.loads(run.stdout.strip().splitlines()[-1]) if run.stdout.strip() else {'error': run.stderr}
+    if 'error' in info:
+        check(False, f'{label}: own decode failed: {info["error"]}')
+        return
+    h, w = pillow.shape[:2]
+    check((info['width'], info['height']) == (w, h), f'{label}: own decode size {info}')
+    rgba = np.frombuffer(raw.read_bytes(), dtype=np.uint8).reshape(info['height'], info['width'], 4)
+    check(int(rgba[..., 3].min()) == 255, f'{label}: own decode alpha not opaque')
+    diff = int(np.abs(rgba[..., :3].astype(int) - pillow.astype(int)).max())
+    value = psnr(rgba[..., :3], pillow)
+    check(diff == 0 if lossless else (value >= 45.0 and diff <= 4), f'{label}: own decode vs Pillow PSNR {value:.2f} dB, max diff {diff}')
+    small = subprocess.run([str(decoder), f'in={avif}', f'out={raw}', 'maxside=100'], capture_output=True, text=True)
+    sinfo = json.loads(small.stdout.strip().splitlines()[-1])
+    k = 100 / max(w, h)
+    check('error' not in sinfo and max(sinfo['width'], sinfo['height']) == 100
+          and abs(sinfo['width'] - round(w * k)) <= 1 and abs(sinfo['height'] - round(h * k)) <= 1,
+          f'{label}: own decode at maxside 100: {sinfo}')
+    raw.unlink(missing_ok=True)
+
+
 def run_cases(exe: Path, work: Path, width: int, height: int) -> None:
     rgb10 = synthetic(width, height)
     rgb8 = to8(rgb10)
@@ -414,6 +445,7 @@ def run_cases(exe: Path, work: Path, width: int, height: int) -> None:
             region = part['all' if yuv444 else 'gray']
             value = psnr(decoded[region], reference[region])
             check(value >= min_psnr, f'{label}: PSNR {value:.2f} dB < {min_psnr} dB')
+        check_own_decode(exe, out, decoded, label, lossless=min_psnr is None)
         stripes[name] = psnr(decoded[part['stripes']], reference[part['stripes']])
         sizes[name] = len(data)
         where = 'all' if yuv444 else 'grey detail'

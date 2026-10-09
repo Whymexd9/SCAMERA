@@ -160,7 +160,7 @@ public class SettingsAuditFixTest {
                 "pref_theme_key","pref_show_gradient_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
         for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scamhdr_luma","pref_sharp_radius_key","pref_cfa_key","pref_dng_lossless",
-                "pref_scam_tone_curve","pref_raw_stream_format","hexquad_luma"})
+                "pref_dcp_profile_key","pref_raw_stream_format","hexquad_luma"})
             assertTrue(key,ModuleProfiles.isLocal(key));
         // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade).
         PreferenceScreen screen=inflate();

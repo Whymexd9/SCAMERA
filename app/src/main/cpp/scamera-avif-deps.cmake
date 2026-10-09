@@ -92,14 +92,15 @@ if(NOT SCAMERA_PERL)
     message(FATAL_ERROR "libaom (AVIF photo output) needs Perl to build: install it or pass -DSCAMERA_PERL=<perl>")
 endif()
 
-# libaom: encoder only (Android decodes AVIF itself), high bit depth on (10 / 12-bit photos), runtime CPU detection
+# libaom: encoder and decoder (P65: the gallery decodes AVIF itself where ImageDecoder cannot), high bit depth on (10 / 12-bit
+# photos), runtime CPU detection
 # (NEON / dot product / i8mm / SVE on arm64), no apps, tests or docs.
 set(aom_build "${CMAKE_CURRENT_BINARY_DIR}/scamera-aom")
 set(aom_lib "${aom_build}/${CMAKE_STATIC_LIBRARY_PREFIX}aom${CMAKE_STATIC_LIBRARY_SUFFIX}")
 set(aom_args
     -DCMAKE_BUILD_TYPE=Release
     -DBUILD_SHARED_LIBS=0
-    -DCONFIG_AV1_DECODER=0
+    -DCONFIG_AV1_DECODER=1
     -DCONFIG_AV1_ENCODER=1
     -DCONFIG_AV1_HIGHBITDEPTH=1
     -DCONFIG_PIC=1
@@ -145,7 +146,7 @@ add_library(scamera_aom STATIC IMPORTED GLOBAL)
 set_target_properties(scamera_aom PROPERTIES IMPORTED_LOCATION "${aom_lib}")
 add_dependencies(scamera_aom scamera_aom_build)
 
-# libavif: core + the aom encoder glue; its bundled libyuv subset serves the scaler (unused here, but referenced).
+# libavif: core + the aom encoder and decoder glue; its bundled libyuv subset serves the scaler (the gallery decode, P65).
 set(avif "${SCAMERA_AVIF_SOURCE_DIR}")
 add_library(scameraLibavif STATIC
     ${avif}/src/alpha.c ${avif}/src/avif.c ${avif}/src/colr.c ${avif}/src/colrconvert.c ${avif}/src/diag.c
@@ -160,7 +161,7 @@ set_property(TARGET scameraLibavif PROPERTY C_STANDARD 11)
 set_property(TARGET scameraLibavif PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(scameraLibavif PUBLIC "${avif}/include"
     PRIVATE "${avif}/third_party/libyuv/include" "${SCAMERA_AOM_SOURCE_DIR}")
-target_compile_definitions(scameraLibavif PRIVATE AVIF_CODEC_AOM=1 AVIF_CODEC_AOM_ENCODE=1)
+target_compile_definitions(scameraLibavif PRIVATE AVIF_CODEC_AOM=1 AVIF_CODEC_AOM_ENCODE=1 AVIF_CODEC_AOM_DECODE=1)
 if(NOT MSVC)
     target_compile_options(scameraLibavif PRIVATE -O2 -ffunction-sections -fdata-sections -Wno-unused-parameter)
 endif()

@@ -110,3 +110,50 @@ Java_com_particlesdevs_photoncamera_processing_avif_AvifEncoder_encode(JNIEnv* e
     }
     return error.empty() ? nullptr : env->NewStringUTF(error.c_str());
 }
+
+// P65: processing/avif/AvifDecoder.decode: the first image of an AVIF file (bytes) as RGBA_8888 rows (no padding) of at most
+// maxSide px on the long side; size (int[4] or null) receives width, height, source width, source height. Returns null on
+// failure (the reason goes to error[0] when error is a String[1]); never throws into Java.
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_particlesdevs_photoncamera_processing_avif_AvifDecoder_decode(JNIEnv* env, jclass, jbyteArray data, jint maxSide,
+                                                                       jint threads, jintArray size, jobjectArray error) {
+    std::string reason;
+    jbyteArray result = nullptr;
+    try {
+        const jsize n = data == nullptr ? 0 : env->GetArrayLength(data);
+        std::vector<uint8_t> bytes(static_cast<size_t>(n));
+        if (n > 0) env->GetByteArrayRegion(data, 0, n, reinterpret_cast<jbyte*>(bytes.data()));
+        if (env->ExceptionCheck()) reason = "data unreadable";
+        scamera_avif::Decoded decoded;
+        if (reason.empty()) reason = scamera_avif::decodeToRgba8(bytes.data(), bytes.size(), maxSide, threads, &decoded);
+        if (reason.empty()) {
+            std::vector<uint8_t>().swap(bytes);
+            result = env->NewByteArray(jsize(decoded.rgba.size()));
+            if (result == nullptr) reason = "out of memory";
+            else env->SetByteArrayRegion(result, 0, jsize(decoded.rgba.size()), reinterpret_cast<const jbyte*>(decoded.rgba.data()));
+            if (size != nullptr && env->GetArrayLength(size) >= 4) {
+                const jint dims[4] = {jint(decoded.width), jint(decoded.height), jint(decoded.sourceWidth), jint(decoded.sourceHeight)};
+                env->SetIntArrayRegion(size, 0, 4, dims);
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        reason = "out of memory";
+    } catch (const std::exception& e) {
+        reason = e.what();
+    } catch (...) {
+        reason = "unknown native error";
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (reason.empty()) reason = "JNI exception";
+    }
+    if (!reason.empty()) {
+        if (error != nullptr && env->GetArrayLength(error) >= 1) {
+            jstring s = env->NewStringUTF(reason.c_str());
+            if (s != nullptr) env->SetObjectArrayElement(error, 0, s);
+            if (env->ExceptionCheck()) env->ExceptionClear();
+        }
+        return nullptr;
+    }
+    return result;
+}

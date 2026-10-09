@@ -65,8 +65,12 @@ public class SettingsMenuTest {
         for(String old:new String[]{"agx_screen","scam_hybrid_scamera_tone_screen","pref_scam_hybrid_ark_tone","pref_scamroute_gamma",
                 "pref_scamhdr_soft_tone","pref_scamhdr_fusion_enabled","pref_scamold_ae_mid","pref_expocompensation_seekbar_key"})
             assertNull(old,screen.findPreference(old));
-        for(String kept:new String[]{"scam_hybrid_ark_tone_screen","pref_scam_hybrid_ark_ae_target","pref_scam_hybrid_sharp_mode","scam_curves_screen"})
+        for(String kept:new String[]{"scam_hybrid_ark_tone_screen","pref_scam_hybrid_ark_ae_target","pref_scam_hybrid_sharp_mode"})
             assertNotNull(kept,screen.findPreference(kept));
+        // P64: the «Hybrid curves» presets are gone (owner, 2026-10-09)
+        for(String old:new String[]{"scam_curves_screen","pref_scam_tone_curve","pref_scam_tone_curve_strength","pref_scam_gamma_curve",
+                "pref_scam_gamma_curve_strength"})
+            assertNull(old,screen.findPreference(old));
         java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
         SettingsAvailability scam=new SettingsAvailability(values);
         assertNull(scam.reason("pref_scam_hybrid_ark_ae_target"));assertNull(scam.reason("pref_scam_hybrid_sharp_mode"));
@@ -213,7 +217,7 @@ public class SettingsMenuTest {
                 "expert_tone_screen","pref_tunable_postpipeline_tonepipeline","pref_tunable_postpipeline_demosaicingmethod",
                 "pref_saturation_seekbar_key","pref_contrast_seekbar_key","pref_sensor_sharpening_enabled","pref_noise_iso_curve_key"))
             assertNull(key,screen.findPreference(key));
-        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key","scam_curves_screen","sharp_settings_screen"))
+        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key","sharp_settings_screen"))
             assertNotNull(key,screen.findPreference(key));
         android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
                 org.robolectric.RuntimeEnvironment.getApplication());
@@ -350,8 +354,9 @@ public class SettingsMenuTest {
             android.view.View processing=copy.requireView().findViewWithTag("group_photo_processing_screen");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
-            // «Цвет» (the RawTherapee sharpening moved next to «Резкость Hybrid» in the settings audit): the curve strength
-            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_scam_tone_curve_strength"));
+            // «Цвет» (the RawTherapee sharpening moved next to «Резкость Hybrid» in the settings audit, the curves are gone, P64):
+            // the DCP profile
+            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
             activity.getOnBackPressedDispatcher().onBackPressed();
             assertNotNull(copy.requireView().findViewWithTag("group_photo_processing_screen"));
         }
@@ -386,7 +391,7 @@ public class SettingsMenuTest {
     }
     private void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch(String copyRow,String partly,String png) throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
-        prefs.edit().putString("module_active","back0").putString("pref_scam_tone_curve_strength","42").putString("pref_scam_gamma_curve_strength","14").commit();
+        prefs.edit().putString("module_active","back0").putBoolean("pref_dng_lossless",true).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
@@ -394,13 +399,13 @@ public class SettingsMenuTest {
             modules.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
-            copy.requireView().findViewWithTag("group_photo_processing_screen").performClick();
-            // one row of «Цвет» (the RawTherapee sharpening moved to ArkCore in the settings audit)
-            copy.requireView().findViewWithTag("parameter_pref_scam_tone_curve_strength").performClick();renderPage(copy.requireView(),"noise"+png);
+            // one row of «Съёмка» («Цвет» keeps a single row since the curves are gone, P64: no partial selection there)
+            copy.requireView().findViewWithTag("group_capture_settings_screen").performClick();
+            copy.requireView().findViewWithTag("parameter_pref_dng_lossless").performClick();renderPage(copy.requireView(),"noise"+png);
             copy.requireView().findViewWithTag("primary_action").performClick();
-            var check=copy.requireView().findViewWithTag("group_check_photo_processing_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
+            var check=copy.requireView().findViewWithTag("group_check_capture_settings_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
-            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_scam_tone_curve_strength"),0),0);
+            assertEquals(Boolean.TRUE,PreferenceKeys.profiles().snapshot("back1").get("pref_dng_lossless"));
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
             var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestDialog();if(dialog!=null)dialog.dismiss();
             var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent"+png);

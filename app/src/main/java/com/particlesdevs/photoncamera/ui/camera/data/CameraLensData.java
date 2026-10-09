@@ -106,6 +106,15 @@ public class CameraLensData {
         return facing == that.facing && Float.compare(that.cameraFocalLength, cameraFocalLength) == 0 && Float.compare(that.cameraAperture, cameraAperture) == 0 && flashSupported == that.flashSupported;
     }
 
+    /**
+     * P66 (CameraManager2's camera scan): equal lens data and, with byField, 35 mm focal lengths within 1 mm, i.e. the same field
+     * of view (a sensor-crop ID of the same lens is another module).
+     */
+    public static boolean sameLens(CameraLensData a, CameraLensData b, boolean byField) {
+        if (a == null || b == null || !a.equals(b)) return false;
+        return !byField || Math.abs(a.getCamera35mmFocalLength() - b.getCamera35mmFocalLength()) < 1f;
+    }
+
     @Override
     public int hashCode() {
         return Objects.hash(facing, cameraFocalLength, cameraAperture, flashSupported);

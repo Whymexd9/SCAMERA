@@ -17,3 +17,11 @@ target_link_libraries(avif_host_encode PRIVATE scameraLibavif)
 if(NOT MSVC)
     target_compile_options(avif_host_encode PRIVATE -O2 -Wall -Wextra)
 endif()
+
+# P65: the gallery's AVIF decode (decodeToRgba8), checked against Pillow's libavif + dav1d by tools/check_avif.py
+add_executable(avif_host_decode avif_host_decode.cpp)
+target_include_directories(avif_host_decode PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../app/src/main/cpp)
+target_link_libraries(avif_host_decode PRIVATE scameraLibavif)
+if(NOT MSVC)
+    target_compile_options(avif_host_decode PRIVATE -O2 -Wall -Wextra)
+endif()

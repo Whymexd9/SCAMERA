@@ -267,7 +267,10 @@ struct HybridTuning {
     // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = GCam's rule (more than 3 non-bracketed frames),
     // 2 = whenever a bracketed frame is merged.
     int mochi=0;
-    int mosaicNative2x=1;        // P56: a Quad mosaic with the 2x output grid merges it natively (0: resample the sensor-grid result)
+    int mosaicNative2x=1;        // P56: a Quad / Tetra T1 mosaic with the 2x output grid merges it natively (0: resample the sensor-grid result)
+    // P56: the native Tetra merge's window (sensor px, 1..8) on the Sabre 2x grid; 0 = 2 x mosaicWindow as on its sensor grid. 5 on the
+    // vivo 10x burst (OPPO PHY110): merge 16.3 -> 12.3 s, 62 dB from window 6, flat dark noise +4 %; 4: 8.8 s, 57 dB, noise +20 %
+    int mosaicTetraWindow2x=5;
     int mosaicShare=1;           // 1: the sub-frames of one mosaic frame share its local motion (laShareSubFrames), 0: one field each
     // Sub-frames of a mosaic (P22): the Sabre kernel sigmas are in sub-frame px, b native px of the stream. Their density (b² sub-frames
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
@@ -441,7 +444,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
-            ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
+            ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
             ||set("mosaicNativeFlatScale",&t.mosaicNativeFlatScale)||set("mosaicNativeClamp",nullptr,&t.mosaicNativeClamp)
             ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)
@@ -2275,7 +2278,9 @@ void main(){
     int ox=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
     if(ox>=ow||row>=2*(cy1-cy0)*g)return;
 #if NAT_B==4
-    vec2 S=vec2(float(ox),float(2*cy0*g+row))-1.5; // native canonical position of the output pixel (X - (b-1)/2)
+    vec2 X=vec2(float(ox),float(2*cy0*g+row));
+    vec2 S=g==4?X-1.5:(X+0.5)*(4.0/float(g))-2.0; // native canonical position of the output pixel (X - (b-1)/2; P56: on the Sabre
+                                                  // 2x grid g = 8, X = (X + 0.5) 4 / g - 0.5; the sensor grid's expression kept)
     vec2 B0=(S-1.5)*0.25;                         // the same in the binned base frame
 #else
     vec2 S=(vec2(float(ox),float(2*cy0*g+row))+0.5)*(2.0/float(g))-1.0; // native position of the output pixel (X - (b-1)/2;
@@ -3078,7 +3083,8 @@ public:
                std::vector<uint8_t>* clipFlags=nullptr){
         const int frames=int(in.frames.size()),w=in.w,h=in.h,w2=w/2,h2=h/2;
         if(frames<1||frames>kHybridGpuFrames||(w&1)||(h&1)||int(in.homography.size())!=frames)throw std::runtime_error("HYBRID GPU unsupported burst shape");
-        if(grid!=1&&grid!=2&&grid!=4)throw std::runtime_error("HYBRID GPU grid");
+        // grid 8: only the native Tetra merge on the Sabre 2x grid (P56)
+        if(grid!=1&&grid!=2&&grid!=4&&!(grid==8&&in.native&&in.native->block==4))throw std::runtime_error("HYBRID GPU grid");
         const int g=grid,ow=w*g;
         // The widest dispatch runs (ow + 7) / 8 work groups in x (the output passes; the site passes w).
         if(maxGroupsX>0&&(int64_t(std::max(ow,w))+7)/8>maxGroupsX)
@@ -3123,8 +3129,8 @@ public:
         bool natFastOn=false;GLuint natPlain=0,natMarked=0;std::vector<GLuint> natMerge;
         if(nat){
             if(!natMarkProgram||!natNormProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
-            // P56: the output grid is the native sites (g = b) or, for a Quad mosaic, the Sabre 2x grid of the sensor (g = 2b = 4)
-            if(int(in.nativeFrames.size())!=frames||(nat->block!=2&&nat->block!=4)||(g!=nat->block&&!(nat->block==2&&g==4))
+            // P56: the output grid is the native sites (g = b) or the Sabre 2x grid of the sensor (g = 2b: 4 Quad, 8 Tetra)
+            if(int(in.nativeFrames.size())!=frames||(nat->block!=2&&nat->block!=4)||(g!=nat->block&&g!=2*nat->block)
                ||nat->W!=w*nat->block||nat->H!=h*nat->block)
                 throw std::runtime_error("HYBRID GPU native mosaic shape");
             for(const uint16_t* p:in.nativeFrames)if(!p)throw std::runtime_error("HYBRID GPU native mosaic frame");
@@ -5785,8 +5791,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // ---- merge
     const auto mergeStarted=Clock::now();
     std::vector<float> out,effective,sensorRgb;std::vector<double> share;std::vector<uint8_t> flagsRaw;
-    // grid 4 only for the Tetra sub-frames of hybridReconstructMosaic (their 4x grid is the sensor grid of the stream)
-    int grid=tune.grid==4?4:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    // grid 4 only for the Tetra sub-frames of hybridReconstructMosaic (their 4x grid is the sensor grid of the stream) and the native
+    // mosaic merge (Tetra sensor grid, Quad Sabre 2x grid); grid 8 only for the native Tetra Sabre 2x grid (P56)
+    int grid=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     if(grid>1&&fineGridRefused){
         report("HYBRID OUTPUT: "+std::to_string(grid)+"x grid refused for "+std::to_string(w)+"x"+std::to_string(h)+" ("+std::to_string(grid)+"x RGB "
             +hybridMB(uint64_t(w)*h*grid*grid*12)+" MB, only up to 16 MP); sensor grid");
@@ -6583,7 +6590,12 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
     // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
     // Quad pass on its Quad mosaic with mosaicWindow itself
-    const int window=b==4&&!t2?std::clamp(2*tune.mosaicWindow,1,8):std::clamp(tune.mosaicWindow,1,6);
+    // P56: a Tetra T1 burst merged natively on the Sabre 2x grid (4x the output pixels of its sensor grid) takes its own window
+    // (mosaicTetraWindow2x sensor px, 0 = as the sensor grid)
+    const int gridAsked=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const bool tetra2x=b==4&&!t2&&gridAsked==2&&int64_t(W)*Ht<=kHybridClassicPixels&&tune.mosaicNative2x!=0;
+    const int window=b==4&&!t2?std::clamp(tetra2x&&tune.mosaicTetraWindow2x>0?tune.mosaicTetraWindow2x:2*tune.mosaicWindow,1,8)
+                              :std::clamp(tune.mosaicWindow,1,6);
     const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
@@ -6641,18 +6653,19 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
         }
     });
     // ---- the binned burst through hybridReconstruct with the native merge pass
-    // The requested output: sensor grid W x H, or the 2x grid (only up to 16 MP, as the split). P56: a Quad mosaic merges the 2x grid
-    // itself (kHybMergeMosaic / Fast at g = 2b: the Sabre sub-positions of the native sites); Tetra (g would be 8) and T2 resample
-    // their sensor-grid result below.
+    // The requested output: sensor grid W x H, or the 2x grid (only up to 16 MP, as the split). P56: a Quad or Tetra T1 mosaic merges
+    // the 2x grid itself (kHybMergeMosaic / Fast at g = 2b: the Sabre sub-positions of the native sites); T2 resamples its
+    // sensor-grid result below.
     int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     if(gridOut==2&&int64_t(W)*Ht>kHybridClassicPixels){
         report("HYBRID OUTPUT: 2x grid refused for "+std::to_string(W)+"x"+std::to_string(Ht)+" (2x RGB "+hybridMB(uint64_t(W)*Ht*48)
             +" MB, only up to 16 MP); sensor grid");
         gridOut=1;
     }
-    const int k2=gridOut==2&&mb==2&&!t2&&tune.mosaicNative2x!=0?2:1;
-    if(gridOut==2)report(k2==2?"HYBRID MOSAIC NATIVE: Sabre 2x grid merged natively ("+std::to_string(2*W)+"x"+std::to_string(2*Ht)+", Quad sites at +-0.25 px)"
-        :std::string("HYBRID MOSAIC NATIVE: 2x grid resampled from the sensor-grid merge (")+(mb==4?"Tetra: a native 2x grid needs g = 8":t2?"Tetra T2":"mosaicNative2x 0")+")");
+    const int k2=gridOut==2&&!t2&&tune.mosaicNative2x!=0?2:1;
+    if(gridOut==2)report(k2==2?"HYBRID MOSAIC NATIVE: Sabre 2x grid merged natively ("+std::to_string(2*W)+"x"+std::to_string(2*Ht)+", "
+            +(mb==4?"Tetra":"Quad")+" sites at +-0.25 px)"
+        :std::string("HYBRID MOSAIC NATIVE: 2x grid resampled from the sensor-grid merge (")+(t2?"Tetra T2":"mosaicNative2x 0")+")");
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb*k2;bin.mosaic=1;bin.subFrames=0;
     HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
@@ -6732,7 +6745,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                 osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
         }
         mosaicChromaMedian(rgb,ow,oh,mb*k2,&osc); // P56: the block (and its taps) in output px
-        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result) "
+        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result) "
             +std::to_string(int(millis(Clock::now()-c0)))+" ms");
     }
     std::vector<uint16_t>().swap(quad);

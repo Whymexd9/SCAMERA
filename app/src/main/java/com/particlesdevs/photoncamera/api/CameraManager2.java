@@ -75,6 +75,14 @@ public final class CameraManager2 {
                 mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
                 Log.d("CameraManager2", "Package spoof changed (" + spoofSignature + "): camera scan cache dropped");
             }
+            // P66: a Pixel scanned before the sensor-crop modules were told apart (knownLens) scans once more.
+            if (Build.BRAND.equalsIgnoreCase("google") && !"p66".equals(mSettingsManager.getString(_CAMERAS, "scan_revision", ""))) {
+                mSettingsManager.set(_CAMERAS, "scan_revision", "p66");
+                mSettingsManager.remove(_CAMERAS, ALL_CAMERA_IDS_KEY);
+                mSettingsManager.remove(_CAMERAS, ALL_CAMERA_LENS_KEY);
+                mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
+                Log.d("CameraManager2", "Pixel: camera scan cache dropped (P66 sensor-crop modules)");
+            }
             if (!isLoaded()) {
                 if(ids == null)
                     scanAllCameras(cameraManager);
@@ -189,6 +197,7 @@ public final class CameraManager2 {
 
     private void scanAllCameras(CameraManager cameraManager) {
         boolean isSamsung = Build.BRAND.equalsIgnoreCase("samsung") || Build.BRAND.equalsIgnoreCase("google");
+        boolean isGoogle = Build.BRAND.equalsIgnoreCase("google");
             CameraLensData mainLensData = null;
             try {
                 mainLensData = createNewCameraLensData("0", cameraManager.getCameraCharacteristics("0"));
@@ -204,13 +213,13 @@ public final class CameraManager2 {
                         if (mainLensData.getCameraFocalLength() == cameraLensData.getCameraFocalLength()) {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                                 boolean isLogical = !cameraCharacteristics.getPhysicalCameraIds().isEmpty();
-                                if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isLogical && !isAuxiliarySensor(cameraCharacteristics)) {
+                                if (!getBit(6, num) && !knownLens(cameraLensData, isGoogle) && !isLogical && !isAuxiliarySensor(cameraCharacteristics)) {
                                     mAllCameraIDsSet.add(formatID);
                                     mCameraLensDataMap.put(formatID, cameraLensData);
                                     break;
                                 }
                             } else {
-                                if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isAuxiliarySensor(cameraCharacteristics)) {
+                                if (!getBit(6, num) && !knownLens(cameraLensData, isGoogle) && !isAuxiliarySensor(cameraCharacteristics)) {
                                     mAllCameraIDsSet.add(formatID);
                                     mCameraLensDataMap.put(formatID, cameraLensData);
                                     break;
@@ -234,12 +243,12 @@ public final class CameraManager2 {
                     CameraLensData cameraLensData = createNewCameraLensData(formatID, cameraCharacteristics);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         boolean isLogical = !cameraCharacteristics.getPhysicalCameraIds().isEmpty();
-                        if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isLogical && !isAuxiliarySensor(cameraCharacteristics)) {
+                        if (!getBit(6, num) && !knownLens(cameraLensData, isGoogle) && !isLogical && !isAuxiliarySensor(cameraCharacteristics)) {
                             mAllCameraIDsSet.add(formatID);
                             mCameraLensDataMap.put(formatID, cameraLensData);
                         }
                     } else {
-                        if (!getBit(6, num) && !mCameraLensDataMap.containsValue(cameraLensData) && !isAuxiliarySensor(cameraCharacteristics)) {
+                        if (!getBit(6, num) && !knownLens(cameraLensData, isGoogle) && !isAuxiliarySensor(cameraCharacteristics)) {
                             mAllCameraIDsSet.add(formatID);
                             mCameraLensDataMap.put(formatID, cameraLensData);
                         }
@@ -264,6 +273,19 @@ public final class CameraManager2 {
             }
 
         findLensZoomFactor(mCameraLensDataMap);
+    }
+
+    /**
+     * Whether the scan already holds this lens. CameraLensData equals by facing, focal length, aperture and flash; P66: on a
+     * Pixel (Pixel 7: camera 4 is the main sensor's 2x in-sensor crop, 6.81 mm f/1.85 like camera 2 on half the sensor width,
+     * 50 mm instead of 25 mm equivalent; front 5 is a wider crop of the front sensor) an ID whose sensor area gives another
+     * field of view is another module, so the 35 mm focal length must match too.
+     */
+    private boolean knownLens(CameraLensData lens, boolean byField) {
+        if (!byField) return mCameraLensDataMap.containsValue(lens);
+        for (CameraLensData known : mCameraLensDataMap.values())
+            if (CameraLensData.sameLens(known, lens, true)) return true;
+        return false;
     }
 
     private CameraLensData createNewCameraLensData(String cameraId, CameraCharacteristics characteristics) {

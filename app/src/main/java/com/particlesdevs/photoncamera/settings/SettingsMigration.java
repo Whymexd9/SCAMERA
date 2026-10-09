@@ -119,6 +119,8 @@ public final class SettingsMigration {
             "pref_scamhdr_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
             // P12b: the old texture boost switch never reached the worker; pref_scam_hybrid_motion_boost replaces it
             "pref_scam_hybrid_boost",
+            // P64: the «Hybrid curves» presets (tone / gamma curve and their strengths) are gone (owner, 2026-10-09)
+            "pref_scam_tone_curve", "pref_scam_tone_curve_strength", "pref_scam_gamma_curve", "pref_scam_gamma_curve_strength",
             // P25: the Quad toggle of the top bar is gone, and with it its tunable «Enable Quad Resolution»; the quick
             // buttons of concept E and the ☆ favourites became the shade's tiles (migrateShadeTiles reads them first)
             "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys",

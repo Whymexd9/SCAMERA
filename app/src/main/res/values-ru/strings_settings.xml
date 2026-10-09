@@ -608,13 +608,6 @@
     <string name="prefs_photo_processing_screen_summary">DCP, кривые Hybrid</string>
     <string name="prefs_dcp_profile_title">Матрицы DCP</string>
     <string name="prefs_dcp_profile_summary">Импорт и выбор цветовой матрицы модуля</string>
-    <string name="prefs_scam_curves_screen_title">Кривые Hybrid</string>
-    <string name="prefs_scam_curves_note_title">Как работает</string>
-    <string name="prefs_scam_curves_note_summary">Сначала тоновая кривая (17 точек), затем гамма-кривая (33 точки), по каналам RGB, как в GCam. Сила смешивает кривую с исходным снимком: 0 — без изменений, 100 — кривая целиком.</string>
-    <string name="prefs_scam_tone_curve_title">Тоновая кривая</string>
-    <string name="prefs_scam_tone_curve_strength_title">Сила тоновой кривой, %</string>
-    <string name="prefs_scam_gamma_curve_title">Гамма-кривая</string>
-    <string name="prefs_scam_gamma_curve_strength_title">Сила гамма-кривой, %</string>
     <string name="prefs_sharp_settings_screen_title">Резкость RawTherapee</string>
     <string name="prefs_sharp_settings_screen_summary">USM, RL-деконволюция, микроконтраст</string>
     <string name="prefs_sharp_rt_note_summary">Работает, когда «Резкость Hybrid» — RawTherapee или ARK с «Доп. резкость после тона»; на обоих маршрутах.</string>

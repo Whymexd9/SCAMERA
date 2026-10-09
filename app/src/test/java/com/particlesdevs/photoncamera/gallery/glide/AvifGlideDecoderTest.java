@@ -4,8 +4,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import android.os.Build;
-
 import com.bumptech.glide.load.Options;
 
 import org.junit.Test;
@@ -99,13 +97,9 @@ public class AvifGlideDecoderTest {
         ByteArrayInputStream is = new ByteArrayInputStream(data);
         AvifGlideDecoder decoder = new AvifGlideDecoder(null, null);
 
-        // When SDK >= 31, handles returns true; on SDK < 31, handles returns false.
+        // Handled when a decoder exists: the platform's (SDK >= 31) or the native one (P65).
         boolean handled = decoder.handles(is, new Options());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            assertTrue(handled);
-        } else {
-            assertFalse(handled);
-        }
+        assertEquals(AvifGlideDecoder.decodable(), handled);
         // Stream must be rewound to offset 0
         assertEquals(0, data.length - is.available());
     }
@@ -117,12 +111,16 @@ public class AvifGlideDecoderTest {
         AvifGlideDecoder.ByteBufferDecoder decoder = new AvifGlideDecoder.ByteBufferDecoder(null);
 
         boolean handled = decoder.handles(buf, new Options());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            assertTrue(handled);
-        } else {
-            assertFalse(handled);
-        }
+        assertEquals(AvifGlideDecoder.decodable(), handled);
         // Buffer position must be preserved
         assertEquals(0, buf.position());
+    }
+
+    @Test
+    public void nativeDecodeScalesToTheRequestOrKeepsTheOriginal() {
+        assertEquals(4096, AvifGlideDecoder.maxSide(4096, 4096));
+        assertEquals(300, AvifGlideDecoder.maxSide(200, 300));
+        assertEquals(0, AvifGlideDecoder.maxSide(com.bumptech.glide.request.target.Target.SIZE_ORIGINAL, 300));
+        assertEquals(0, AvifGlideDecoder.maxSide(0, 0));
     }
 }

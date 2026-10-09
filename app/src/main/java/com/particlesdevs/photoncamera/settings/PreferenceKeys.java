@@ -698,20 +698,6 @@ public class PreferenceKeys {
         if (isHybridShot()) return hybridSwitch("diagnostics", false);
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamhdr_diagnostics", false);
     }
-    /** SCAM curve presets: "off" or an asset path under assets/curves (Tone/..., Gamma/...). */
-    public static String getScamToneCurve() {
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_scam_tone_curve", "off");
-    }
-    public static String getScamGammaCurve() {
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_scam_gamma_curve", "off");
-    }
-    /** Curve strength as a 0..1 blend with the identity. */
-    public static float getScamToneCurveStrength() {
-        return RawTherapeeSettings.number("pref_scam_tone_curve_strength", 100, 0, 100) / 100f;
-    }
-    public static float getScamGammaCurveStrength() {
-        return RawTherapeeSettings.number("pref_scam_gamma_curve_strength", 100, 0, 100) / 100f;
-    }
 
     /**
      * Optional root features (off by default; everything works without root):

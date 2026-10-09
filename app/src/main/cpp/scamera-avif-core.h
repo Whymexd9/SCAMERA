@@ -251,4 +251,67 @@ inline std::string encodeToFile(const uint8_t* pixels, int width, int height, si
     return encodeImage(image.get(), o, exif, exifSize, path, stats);
 }
 
+// P65: the gallery's own AVIF decode (Android's ImageDecoder reads AVIF only from Android 12 and not every file there): the
+// first image of an AVIF file to 8-bit RGBA (alpha opaque when the file has none), scaled to at most maxSide px on its long
+// side (0 = full size) before the YUV to RGB conversion. HLG / PQ files are converted as coded (no tone mapping).
+struct Decoded {
+    std::vector<uint8_t> rgba;
+    uint32_t width = 0, height = 0, sourceWidth = 0, sourceHeight = 0, depth = 0;
+};
+
+namespace detail {
+struct DecoderDeleter {
+    void operator()(avifDecoder* d) const { if (d) avifDecoderDestroy(d); }
+};
+}  // namespace detail
+
+inline std::string decodeToRgba8(const uint8_t* data, size_t size, int maxSide, int threads, Decoded* out) {
+    if (data == nullptr || size == 0 || out == nullptr) return "no data";
+    std::unique_ptr<avifDecoder, detail::DecoderDeleter> decoder(avifDecoderCreate());
+    if (!decoder) return "avifDecoderCreate failed";
+    decoder->codecChoice = AVIF_CODEC_CHOICE_AOM;
+    decoder->maxThreads = std::max(1, threads);
+    decoder->ignoreExif = AVIF_TRUE;
+    decoder->ignoreXMP = AVIF_TRUE;
+    decoder->strictFlags = AVIF_STRICT_DISABLED; // files of other writers too
+    avifResult r = avifDecoderSetIOMemory(decoder.get(), data, size);
+    if (r == AVIF_RESULT_OK) r = avifDecoderParse(decoder.get());
+    if (r == AVIF_RESULT_OK) r = avifDecoderNextImage(decoder.get());
+    if (r != AVIF_RESULT_OK) return std::string("decode: ") + avifResultToString(r) + " " + decoder->diag.error;
+    const avifImage* decoded = decoder->image;
+    out->sourceWidth = decoded->width;
+    out->sourceHeight = decoded->height;
+    out->depth = decoded->depth;
+    ImagePtr scaled;
+    const avifImage* image = decoded;
+    const uint32_t longSide = std::max(decoded->width, decoded->height);
+    if (maxSide > 0 && longSide > uint32_t(maxSide)) {
+        scaled.reset(avifImageCreateEmpty());
+        if (!scaled) return "avifImageCreateEmpty failed";
+        r = avifImageCopy(scaled.get(), decoded, AVIF_PLANES_ALL);
+        const double k = double(maxSide) / double(longSide);
+        const uint32_t w = std::max<uint32_t>(1, uint32_t(decoded->width * k + 0.5)),
+                       h = std::max<uint32_t>(1, uint32_t(decoded->height * k + 0.5));
+        if (r == AVIF_RESULT_OK) r = avifImageScale(scaled.get(), w, h, &decoder->diag);
+        if (r != AVIF_RESULT_OK) return std::string("scale: ") + avifResultToString(r) + " " + decoder->diag.error;
+        image = scaled.get();
+    }
+    avifRGBImage rgb;
+    avifRGBImageSetDefaults(&rgb, image);
+    rgb.format = AVIF_RGB_FORMAT_RGBA;
+    rgb.depth = 8;
+    rgb.maxThreads = std::max(1, threads);
+    out->width = image->width;
+    out->height = image->height;
+    out->rgba.assign(size_t(image->width) * image->height * 4, 255);
+    rgb.pixels = out->rgba.data();
+    rgb.rowBytes = image->width * 4;
+    r = avifImageYUVToRGB(image, &rgb);
+    if (r != AVIF_RESULT_OK) {
+        out->rgba.clear();
+        return std::string("YUV to RGB: ") + avifResultToString(r);
+    }
+    return "";
+}
+
 }  // namespace scamera_avif
