@@ -35,4 +35,14 @@ public class ForcedStabilizationTest {
         assertFalse(ForcedStabilization.dropViewfinder(true, true, false, false));
         assertFalse(ForcedStabilization.dropViewfinder(true, true, true, true));
     }
+
+    /** Test that OIS is detected correctly for both Qualcomm [0, 1] and MediaTek/Vivo [1] HALs. */
+    @Test
+    public void oisSupportDetectionHandlesVariousHalModes() {
+        assertTrue(CaptureController.isOisSupported(new int[]{1}));
+        assertTrue(CaptureController.isOisSupported(new int[]{0, 1}));
+        assertFalse(CaptureController.isOisSupported(new int[]{0}));
+        assertFalse(CaptureController.isOisSupported(new int[0]));
+        assertFalse(CaptureController.isOisSupported((int[]) null));
+    }
 }

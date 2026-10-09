@@ -1681,6 +1681,24 @@ The settings live in different places now; the curated groups use these keys.
   opt-in (scam_dev force_stab_eis 1), as ArkCam sends none - session / series requests are back to the pre-P54b keys.
   Merge, series and output untouched. scam_dev force_stab_rawonly 0 = old frame. Log: "AE restore frame queued ... (RAW
   stream only, P54c)". Owner: X300U shot + STAB_TRACE log.
+- P54d (owner 2026-10-09: «На Vivo X200FE вообще не работает стабилизация ни на одной камере, исправь»):
+  Root cause analysis on vivo V2503 (Dimensity / MTK HAL):
+  1. OIS modes check: `mCameraCharacteristics.get(LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)` returned `[1]` (length 1)
+     on cameras 2 (main) and 3 (tele). Previous code checked `modes.length > 1` (assuming Qualcomm `[0, 1]` format),
+     evaluating to false on MTK HAL! Thus OIS was never turned on in `applyPrev`, `applyOisMode`, or still capture.
+  2. Electronic Image Stabilization (EIS): `CONTROL_VIDEO_STABILIZATION_MODE` was only set inside `if (mIsRecordingVideo)`.
+     In photo mode, `CONTROL_VIDEO_STABILIZATION_MODE` remained 0 (OFF) for all cameras, including camera 4 (ultrawide)
+     and camera 1 (front) which have no OIS hardware.
+  3. Session parameters: `CONTROL_VIDEO_STABILIZATION_MODE` and `vivo.control.eis.config.enable` were absent from session
+     parameters because `ScamPreview.stockProfile` was restricted to PD2454 and `ForcedStabilization` to V2562.
+  Fix:
+  - `CaptureController.isOisSupported(modes)`: checks if array contains `LENS_OPTICAL_STABILIZATION_MODE_ON` (1) instead of
+    relying on `length > 1`. Applied across `CaptureController`, `Camera2ApiAutoFix`, `CameraFragment`, and `SensorConfigPreferenceGenerator`.
+  - `getPreferredVideoStabilizationMode()`: in photo mode when `isEisPhotoOn` is enabled, activates `PREVIEW_STABILIZATION` (mode 2,
+    Android 13+) if supported, or `ON` (mode 1) for non-OIS cameras (ultrawide/front).
+  - Vivo EIS key `vivo.control.eis.config.enable = 5` and video stabilization mode configured in both session parameters and
+    repeating preview requests for vivo devices.
+  - Comprehensive unit test added in `ForcedStabilizationTest.oisSupportDetectionHandlesVariousHalModes`.
 
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; DONE e465ab4, see HANDOFF §5; phone names kept per owner 2026-10-09)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».

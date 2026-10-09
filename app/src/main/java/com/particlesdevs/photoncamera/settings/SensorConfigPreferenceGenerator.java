@@ -11,6 +11,7 @@ import androidx.preference.PreferenceScreen;
 
 import com.google.gson.Gson;
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
+import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyDialog;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference;
@@ -516,7 +517,7 @@ public class SensorConfigPreferenceGenerator {
             if (manager != null) {
                 android.hardware.camera2.CameraCharacteristics chars = manager.getCameraCharacteristics(sensorId);
                 int[] modes = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-                return modes != null && modes.length > 1;
+                return CaptureController.isOisSupported(modes);
             }
         } catch (Exception ignored) {
         }

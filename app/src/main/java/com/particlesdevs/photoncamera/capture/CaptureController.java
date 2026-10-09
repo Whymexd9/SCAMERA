@@ -2617,6 +2617,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                             // Apply dynamic OIS for preview stream
                             applyOisMode(mPreviewRequestBuilder, false);
+                            applyVideoStabilization(mPreviewRequestBuilder);
+                            if (ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID)) {
+                                ScamPreview.applyPreviewEis(mPreviewRequestBuilder);
+                            }
                             if (mForcedStab) Log.i("SCAM_CAPTURE", "forced stabilisation (P54b) camera " + physicalID + ": preview "
                                     + ForcedStabilization.apply(mPreviewRequestBuilder, oisForceable(), mForcedStabEis)
                                     + (ForcedStabilization.noFlush() ? ", no HAL flush on the shot" : "")
@@ -2690,7 +2694,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         processExecutor,
                         stateCallback
                 );
-                if (scamPreview || mForcedStabEis || xiaomiLogical) {
+                boolean vivoEis = ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID);
+                mVivoEisSession = vivoEis;
+                int vsMode = getPreferredVideoStabilizationMode(mCameraCharacteristics, mIsRecordingVideo, PreferenceKeys.isEisPhotoOn());
+                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
@@ -2698,6 +2705,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         if (scamPreview) ScamPreview.applySession(scamSession);
                         // P54b: the stock Photo mode sets the EIS key as a session parameter too
                         if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
+                        if (vivoEis) ScamPreview.applyPreviewEis(scamSession);
+                        if (vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
+                            scamSession.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, vsMode);
+                        }
                         // P41b: the stock camera's session keys of the logical camera
                         if (xiaomiLogical) Log.i(TAG, "P41b: logical session keys: " + XiaomiTeleZoom.applySessionKeys(scamSession));
                         configuration.setSessionParameters(scamSession.build());
@@ -2729,9 +2740,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean retryWithoutScamSession(CameraCaptureSession session) {
         final CameraDevice device = mCameraDevice;
         final Handler handler = mBackgroundHandler;
-        if ((!mScamPreviewActive && !mForcedStabEis) || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
+        if ((!mScamPreviewActive && !mForcedStabEis && !mVivoEisSession) || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
         Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo "
-                + (mScamPreviewActive ? "stock preview profile" : "EIS session key (P54b)") + "; retry with the plain Camera2 preview");
+                + (mScamPreviewActive ? "stock preview profile" : "EIS session key") + "; retry with the plain Camera2 preview");
         try { session.close(); } catch (Exception ignored) {}
         handler.post(() -> {
             if (!isCameraResumed || mCameraDevice != device) return;
@@ -2815,10 +2826,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mIsRecordingVideo) {
             mPreviewRequestBuilder.set(CONTROL_AF_MODE, CONTROL_AF_MODE_CONTINUOUS_VIDEO);
             mPreviewAFMode = CONTROL_AF_MODE_CONTINUOUS_VIDEO;
-            if (PreferenceKeys.isEisPhotoOn()) {
-                mPreviewRequestBuilder.set(CONTROL_VIDEO_STABILIZATION_MODE, CONTROL_VIDEO_STABILIZATION_MODE_ON);
-            }
         }
+        applyVideoStabilization(mPreviewRequestBuilder);
         mInitialMeteringAE = mPreviewRequestBuilder.get(CONTROL_AE_REGIONS);
         mPreviewMeteringAE = mInitialMeteringAE;
         mPreviewAEMode = mPreviewRequestBuilder.get(CONTROL_AE_MODE);
@@ -3478,6 +3487,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P54b: this session holds the stabilisation on (ForcedStabilization: X300 Ultra); with the vivo EIS key. */
     private boolean mForcedStab;
     private boolean mForcedStabEis;
+    private boolean mVivoEisSession;
     /**
      * Cameras whose preview RAW was not plain 16-bit while ScamPreview's stock profile ran (vivo X100 Ultra main: packed
      * 10-bit ZSL frames under the PD2454 stagger / HDR preview tags). Their sessions run the plain Camera2 preview from then on
@@ -4167,7 +4177,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             captureBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL);
 
             int[] stabilizationModes = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-            if (stabilizationModes != null && stabilizationModes.length > 1) {
+            if (isOisSupported(stabilizationModes)) {
                 Log.d(TAG, "LENS_OPTICAL_STABILIZATION_MODE");
                 applyOisMode(captureBuilder, true);//Fix ois bugs for preview and burst
             }
@@ -5357,11 +5367,79 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     }
 
+    /**
+     * Returns true if the optical image stabilization modes indicate OIS hardware support.
+     * Android spec: LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION contains supported modes.
+     * Qualcomm HALs typically return [0, 1] (OFF, ON); MediaTek/Vivo HALs often return [1] (ON only).
+     * Any array containing LENS_OPTICAL_STABILIZATION_MODE_ON (1) supports OIS.
+     */
+    public static boolean isOisSupported(int[] modes) {
+        if (modes == null) return false;
+        for (int mode : modes) {
+            if (mode == CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isOisSupported(CameraCharacteristics chars) {
+        if (chars == null) return false;
+        return isOisSupported(chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION));
+    }
+
+    /**
+     * Selects the best video/preview stabilization mode supported by this camera and Android version.
+     * In video mode: prefers CONTROL_VIDEO_STABILIZATION_MODE_ON.
+     * In photo mode: if EIS Photo is enabled, prefers CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
+     * (Android 13+, API 33) to stabilize the viewfinder without affecting still capture framing.
+     * On cameras lacking OIS (e.g. UltraWide/Front), falls back to CONTROL_VIDEO_STABILIZATION_MODE_ON.
+     */
+    public static int getPreferredVideoStabilizationMode(CameraCharacteristics chars, boolean isRecordingVideo, boolean eisPhotoOn) {
+        if (!eisPhotoOn || chars == null) {
+            return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+        }
+        int[] vsModes = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
+        if (vsModes == null || vsModes.length == 0) {
+            return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+        }
+        boolean hasPreviewStab = false;
+        boolean hasOn = false;
+        for (int m : vsModes) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && m == CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION) {
+                hasPreviewStab = true;
+            }
+            if (m == CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) {
+                hasOn = true;
+            }
+        }
+        if (isRecordingVideo) {
+            if (hasOn) return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON;
+            if (hasPreviewStab) return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION;
+        } else {
+            if (hasPreviewStab) {
+                return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION;
+            }
+            if (!isOisSupported(chars) && hasOn) {
+                return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON;
+            }
+        }
+        return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+    }
+
+    private void applyVideoStabilization(CaptureRequest.Builder builder) {
+        int vsMode = getPreferredVideoStabilizationMode(mCameraCharacteristics, mIsRecordingVideo, PreferenceKeys.isEisPhotoOn());
+        if (vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
+            builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, vsMode);
+        }
+    }
+
     /** P54b: OIS can be forced on: the camera has OIS and the user did not choose «OIS off» (oisMode 2). */
     private boolean oisForceable() {
         int[] modes = mCameraCharacteristics == null ? null
                 : mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-        return modes != null && modes.length > 1 && oisMode != 2;
+        return isOisSupported(modes) && oisMode != 2;
     }
 
     /**
@@ -5373,7 +5451,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void applyOisMode(CaptureRequest.Builder builder, boolean isStillCapture) {
         int[] stabilizationModes = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-        if (stabilizationModes != null && stabilizationModes.length > 1) {
+        if (isOisSupported(stabilizationModes)) {
             int oisMode = this.oisMode;
             if (oisMode == 2) {
                 // Always Off
@@ -5390,12 +5468,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
                 }
             } else {
-                // Default: Maintain 100% identical behavior with the original code.
-                // For still captures, we explicitly force OIS ON.
-                // For preview/video streams, we do NOT set the OIS key, letting the HAL default handle it.
-                if (isStillCapture) {
-                    builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
-                }
+                // Default: OIS ON for both preview and still capture.
+                builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
             }
         }
     }

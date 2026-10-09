@@ -1048,7 +1048,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         boolean oisActive = true;
         if (chars != null) {
             int[] stabModes = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-            oisSupported = (stabModes != null && stabModes.length > 1);
+            oisSupported = CaptureController.isOisSupported(stabModes);
             if (oisSupported && captureController != null) {
                 int oisMode = captureController.oisMode;
                 if (oisMode == 2) {

@@ -211,7 +211,7 @@ public final class ScamPreview {
     static final String EIS_CONFIG = "vivo.control.eis.config.enable";
     static final int STOCK_PHOTO_EIS = 5;
 
-    static boolean applyPreviewEis(CaptureRequest.Builder builder) {
+    public static boolean applyPreviewEis(CaptureRequest.Builder builder) {
         if (!com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("scam_preview_eis", true)) return false;
         try {
             builder.set(new CaptureRequest.Key<>(EIS_CONFIG, Integer.class), STOCK_PHOTO_EIS);
