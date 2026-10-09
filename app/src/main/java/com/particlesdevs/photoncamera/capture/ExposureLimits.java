@@ -58,7 +58,7 @@ public final class ExposureLimits {
             if (shutterVotes >= 2) shutterCap = Math.min(shutterCap, rt);
         }
         final String after = toString();
-        if (!before.equals(after)) Log.i("NICE_CAPTURE", "honoured exposure " + after);
+        if (!before.equals(after)) Log.i("SCAM_CAPTURE", "honoured exposure " + after);
         return isoOk && timeOk;
     }
 

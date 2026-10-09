@@ -80,7 +80,7 @@ public class CameraResumeTest {
     }
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
-    public void niceAcceptsArbitraryBayerSensorAndRequiresItsNoiseProfile() throws Exception {
+    public void scamAcceptsArbitraryBayerSensorAndRequiresItsNoiseProfile() throws Exception {
         var p=new com.particlesdevs.photoncamera.processing.render.Parameters();
         p.rawSize=new android.graphics.Point(64,64);p.physicalID=77;p.cfaPattern=3;p.whiteLevel=1023;
         var frames=new java.util.ArrayList<com.particlesdevs.photoncamera.processing.ImageFrame>();
@@ -102,7 +102,7 @@ public class CameraResumeTest {
             f.pair=mock(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair.class);
         }
         var normal=frames.get(0);
-        var constructor=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.class
+        var constructor=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.class
                 .getDeclaredConstructor(java.util.List.class,com.particlesdevs.photoncamera.processing.render.Parameters.class);
         constructor.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class)) {
@@ -119,8 +119,8 @@ public class CameraResumeTest {
     }
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
-    public void niceZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
-        put(controller,"niceZslShutterTimestamp",9L);
+    public void scamZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
+        put(controller,"scamZslShutterTimestamp",9L);
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         java.util.List<Image> raws=new java.util.ArrayList<>();
@@ -128,13 +128,13 @@ public class CameraResumeTest {
             Image image=rawImage(timestamp);raws.add(image);ring.add(image);
             if(timestamp<9)metadata.put(timestamp,exposure(24_999_987L,10775));
         }
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         // Native copying is unrelated to timestamp selection; retain the actual
         // controller method and inspect which metadata it attaches to each copy.
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
-            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            prefs.when(PreferenceKeys::isScamEnabled).thenReturn(true);
             var results=new java.util.HashMap<>(metadata);
             var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,8,null,false);
             assertEquals(8,frames.size());assertEquals(8,copies.constructed().size());
@@ -148,7 +148,7 @@ public class CameraResumeTest {
     }
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
-    public void niceZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
+    public void scamZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         // Out-of-order delivery, a post-press frame and an unrelated preview
@@ -157,34 +157,34 @@ public class CameraResumeTest {
             ring.add(rawImage(timestamp));metadata.put(timestamp,exposure(timestamp*1000000,100));
         }
         TotalCaptureResult expected=metadata.get(6L);
-        put(controller,"niceZslShutterTimestamp",6L);
+        put(controller,"scamZslShutterTimestamp",6L);
         put(controller,"mPreviewCaptureResult",exposure(99000000,800));
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
-            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            prefs.when(PreferenceKeys::isScamEnabled).thenReturn(true);
             var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,4,null,false);
             assertEquals(4,frames.size());
             for(int i=0;i<4;i++)assertEquals(i+3,frames.get(i).timestamp);
             assertSame(expected,get(controller,"mNativeZslBase"));
         }
     }
-    @Test public void niceZslWithoutShutterTimestampDoesNotClaimBufferedFrames() throws Exception {
+    @Test public void scamZslWithoutShutterTimestampDoesNotClaimBufferedFrames() throws Exception {
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         Image image=rawImage(1);ring.add(image);metadata.put(1L,exposure(25000000,100));
-        put(controller,"niceZslShutterTimestamp",0L);
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
+        put(controller,"scamZslShutterTimestamp",0L);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
-            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            prefs.when(PreferenceKeys::isScamEnabled).thenReturn(true);
             assertTrue(((java.util.List<?>)method.invoke(controller,4,null,false)).isEmpty());
             assertTrue(copies.constructed().isEmpty());verify(image).close();
         }
     }
-    @Test public void delayedPreviewCannotConsumeNiceBracketSlot() throws Exception {
+    @Test public void delayedPreviewCannotConsumeScamBracketSlot() throws Exception {
         var saver=mock(com.particlesdevs.photoncamera.processing.ImageSaver.class);
         put(controller,"mImageSaver",saver);put(controller,"mZslCapturing",true);
         var router=(TimestampFrameRouter<Image>)get(controller,"mLiveRawRouter");
@@ -194,18 +194,18 @@ public class CameraResumeTest {
         verify(preview).close();verify(saver).initProcess(shortRaw);
         verify(saver,never()).initProcess(preview);
     }
-    @Test public void niceZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
-        put(controller,"niceZslShutterTimestamp",3L);
+    @Test public void scamZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
+        put(controller,"scamZslShutterTimestamp",3L);
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         Image missing=rawImage(1),zeroTime=rawImage(2),zeroIso=rawImage(3);
         ring.add(missing);ring.add(zeroTime);ring.add(zeroIso);
         metadata.put(2L,exposure(0,100));metadata.put(3L,exposure(25_000_000,0));
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class)) {
-            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            prefs.when(PreferenceKeys::isScamEnabled).thenReturn(true);
             assertTrue(((java.util.List<?>)method.invoke(controller,8,null,false)).isEmpty());
             assertTrue(copies.constructed().isEmpty());
             verify(missing).close();verify(zeroTime).close();verify(zeroIso).close();
@@ -336,15 +336,15 @@ public class CameraResumeTest {
 
     @SuppressWarnings("unchecked")
     private java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame> drainHybrid(long cutoff,long[] timestamps,int[] isos,int requested) throws Exception {
-        put(controller,"niceZslShutterTimestamp",cutoff);
+        put(controller,"scamZslShutterTimestamp",cutoff);
         var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         for(int i=0;i<timestamps.length;i++){ring.add(rawImage(timestamps[i]));metadata.put(timestamps[i],exposure(10_000_000L,isos[i]));}
-        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,VivoStockAe.Plan.class,boolean.class,boolean.class);
+        var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
             var copies=mockConstruction(com.particlesdevs.photoncamera.processing.ImageFrame.class,(frame,c)->{})) {
-            prefs.when(PreferenceKeys::isVivoNiceEnabled).thenReturn(true);
+            prefs.when(PreferenceKeys::isScamEnabled).thenReturn(true);
             var frames=(java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame>)method.invoke(controller,requested,null,false,true);
             return new java.util.ArrayList<>(frames);
         }

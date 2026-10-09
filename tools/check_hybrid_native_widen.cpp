@@ -2,16 +2,16 @@
 // (mosaicNativeWiden 2). Without it the base's narrow native kernel on the sparse colour blocks of one frame drew the block lattice
 // around moving objects (vivo 4x ISZ Tetra "honeycomb", 2026-10-08). Checks the defaults, the tuning keys and that both native merge
 // shaders carry the rule (research/moving-objects/MOVING_OBJECTS_REPORT.md has the device sweep).
-// vivo-nice-hybrid.h is not self-contained: the worker includes vivo-nice-capture.h first.
-#include "../app/src/main/cpp/vivo-nice-capture.h"
-#include "../app/src/main/cpp/vivo-nice-hybrid.h"
+// scam-hybrid.h is not self-contained: the worker includes scam-capture.h first.
+#include "../app/src/main/cpp/scam-capture.h"
+#include "../app/src/main/cpp/scam-hybrid.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <string>
 #include <unistd.h>
-using namespace vivo_nice;
+using namespace scam;
 
 static int count(const std::string& s, const std::string& what) {
     int n = 0;

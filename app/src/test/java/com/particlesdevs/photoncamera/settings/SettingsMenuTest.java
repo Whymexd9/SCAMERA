@@ -42,56 +42,56 @@ public class SettingsMenuTest {
         PhotonCamera app=mock(PhotonCamera.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
         camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
     }
-    @Test public void niceInternalTuningKeepsValidatedValues() {
+    @Test public void scamInternalTuningKeepsValidatedValues() {
         PreferenceScreen screen=inflate();
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr"); // SCAM HDR keys (the hybrid reads its own copies)
-        assertNotNull(screen.findPreference("vivo_nice_internal_screen"));
+        assertNotNull(screen.findPreference("scam_internal_screen"));
         for(String key:new String[]{"norm","noise_scale"}) {
-            assertNotNull(screen.findPreference("pref_vivo_nice_"+key));
-            assertTrue(ModuleProfiles.isLocal("pref_vivo_nice_"+key));
+            assertNotNull(screen.findPreference("pref_scamhdr_"+key));
+            assertTrue(ModuleProfiles.isLocal("pref_scamhdr_"+key));
         }
-        manager.set("default_scope","pref_vivo_nice_norm","1,3");
-        assertEquals(1.3f,PreferenceKeys.niceInternalValue("norm",1.1f),0f);
-        manager.set("default_scope","pref_vivo_nice_noise_scale","0");
-        assertEquals(.25f,PreferenceKeys.niceInternalValue("noise_scale",1f),0f);
-        manager.set("default_scope","pref_vivo_nice_noise_scale","NaN");
-        assertEquals(1f,PreferenceKeys.niceInternalValue("noise_scale",1f),0f);
-        manager.set("default_scope","pref_vivo_nice_norm","999");
-        assertEquals(2.2f,PreferenceKeys.niceInternalValue("norm",1.1f),0f);
+        manager.set("default_scope","pref_scamhdr_norm","1,3");
+        assertEquals(1.3f,PreferenceKeys.routeInternalValue("norm",1.1f),0f);
+        manager.set("default_scope","pref_scamhdr_noise_scale","0");
+        assertEquals(.25f,PreferenceKeys.routeInternalValue("noise_scale",1f),0f);
+        manager.set("default_scope","pref_scamhdr_noise_scale","NaN");
+        assertEquals(1f,PreferenceKeys.routeInternalValue("noise_scale",1f),0f);
+        manager.set("default_scope","pref_scamhdr_norm","999");
+        assertEquals(2.2f,PreferenceKeys.routeInternalValue("norm",1.1f),0f);
     }
     @Test public void oneArkToneForBothRoutes() {
         PreferenceScreen screen=inflate();
         // P10: the SCAMERA tone (AgX / Exposure Fusion / headroom) is gone; ArkCore and its sharpening serve both routes.
-        for(String old:new String[]{"agx_screen","lmc_hybrid_scamera_tone_screen","pref_lmc_hybrid_ark_tone","pref_vivo_hdr_gamma",
-                "pref_vivo_nice_soft_tone","pref_vivo_nice_fusion_enabled","pref_nice_ae_mid","pref_expocompensation_seekbar_key"})
+        for(String old:new String[]{"agx_screen","scam_hybrid_scamera_tone_screen","pref_scam_hybrid_ark_tone","pref_scamroute_gamma",
+                "pref_scamhdr_soft_tone","pref_scamhdr_fusion_enabled","pref_scamold_ae_mid","pref_expocompensation_seekbar_key"})
             assertNull(old,screen.findPreference(old));
-        for(String kept:new String[]{"lmc_hybrid_ark_tone_screen","pref_lmc_hybrid_ark_ae_target","pref_lmc_hybrid_sharp_mode","lmc_curves_screen"})
+        for(String kept:new String[]{"scam_hybrid_ark_tone_screen","pref_scam_hybrid_ark_ae_target","pref_scam_hybrid_sharp_mode","scam_curves_screen"})
             assertNotNull(kept,screen.findPreference(kept));
         java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
         SettingsAvailability scam=new SettingsAvailability(values);
-        assertNull(scam.reason("pref_lmc_hybrid_ark_ae_target"));assertNull(scam.reason("pref_lmc_hybrid_sharp_mode"));
-        assertNotNull(scam.reason("pref_lmc_hybrid_cdm"));
-        prefs.edit().putString("pref_agx_contrast","20").putString("pref_vivo_hdr_gamma","1.2").putBoolean("pref_lmc_hybrid_ark_tone",false)
-                .putString("pref_lmc_hybrid_ark_ae_target","0.2").commit();
+        assertNull(scam.reason("pref_scam_hybrid_ark_ae_target"));assertNull(scam.reason("pref_scam_hybrid_sharp_mode"));
+        assertNotNull(scam.reason("pref_scam_hybrid_cdm"));
+        prefs.edit().putString("pref_agx_contrast","20").putString("pref_scamroute_gamma","1.2").putBoolean("pref_scam_hybrid_ark_tone",false)
+                .putString("pref_scam_hybrid_ark_ae_target","0.2").commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));
-        assertFalse(prefs.contains("pref_agx_contrast"));assertFalse(prefs.contains("pref_vivo_hdr_gamma"));
-        assertFalse(prefs.contains("pref_lmc_hybrid_ark_tone"));assertEquals("0.2",prefs.getString("pref_lmc_hybrid_ark_ae_target",""));
+        assertFalse(prefs.contains("pref_agx_contrast"));assertFalse(prefs.contains("pref_scamroute_gamma"));
+        assertFalse(prefs.contains("pref_scam_hybrid_ark_tone"));assertEquals("0.2",prefs.getString("pref_scam_hybrid_ark_ae_target",""));
     }
-    @Test public void scamHdrControlsPersistAndEveryRouteIsAVivoRoute() {
+    @Test public void scamHdrControlsPersistAndEveryRouteIsAScamRoute() {
         PreferenceScreen screen=inflate();
-        assertNotNull(screen.findPreference("vivo_hdr_screen"));
+        assertNotNull(screen.findPreference("scam_hdr_screen"));
         // the hybrid by default: no state without a vivo route any more
-        assertTrue(PreferenceKeys.isVivoHdrEnabled());
+        assertTrue(PreferenceKeys.isScamHdrEnabled());
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
-        assertTrue(PreferenceKeys.isVivoHdrEnabled());
-        // P4: the extra RGB luma / chroma denoise and sharpen rows are gone, SCAM HDR keeps its own NICE controls
-        for(String control:new String[]{"luma","chroma","sharpen"}) assertNull(screen.findPreference("pref_vivo_hdr_"+control));
+        assertTrue(PreferenceKeys.isScamHdrEnabled());
+        // P4: the extra RGB luma / chroma denoise and sharpen rows are gone, SCAM HDR keeps its own SCAM controls
+        for(String control:new String[]{"luma","chroma","sharpen"}) assertNull(screen.findPreference("pref_scamroute_"+control));
         // the removed legacy switches no longer take a shot off the vivo routes
         manager.set("default_scope","pref_raw_mfsr_enabled_key",true);
         manager.set("default_scope","pref_remosaic_enabled_key",true);
-        assertTrue(PreferenceKeys.isVivoHdrEnabled());
+        assertTrue(PreferenceKeys.isScamHdrEnabled());
         manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
-        assertTrue(PreferenceKeys.isVivoHdrEnabled());assertTrue(PreferenceKeys.isLmcHybridEnabled());
+        assertTrue(PreferenceKeys.isScamHdrEnabled());assertTrue(PreferenceKeys.isScamHybridEnabled());
     }
     @After public void tearDown(){if(camera!=null)camera.close();}
     private PreferenceScreen inflate(){
@@ -151,59 +151,59 @@ public class SettingsMenuTest {
     @Test public void mixedTypeMigrationAndRebindPreservePreciseValues(){
         prefs.edit().putInt("pref_remosaic_block_key",4).putBoolean("pref_tunable_parameters_usedynamicwhitelevel",false)
                 .putString("hexquad_luma","37.12345")
-                .putInt("pref_vivo_nice_post_despeckle",1).putString("pref_lmc_hybrid_cdm","0.18973").commit();
+                .putInt("pref_scamhdr_post_despeckle",1).putString("pref_scam_hybrid_cdm","0.18973").commit();
         PreferenceScreen screen=inflate();
-        assertEquals("4",prefs.getString("pref_remosaic_block_key",""));assertTrue(prefs.getBoolean("pref_vivo_nice_post_despeckle",false));
+        assertEquals("4",prefs.getString("pref_remosaic_block_key",""));assertTrue(prefs.getBoolean("pref_scamhdr_post_despeckle",false));
         visit(screen,new HashSet<>(),new ArrayList<>());
-        assertEquals("0.18973",prefs.getString("pref_lmc_hybrid_cdm",""));assertEquals("37.12345",prefs.getString("hexquad_luma",""));
+        assertEquals("0.18973",prefs.getString("pref_scam_hybrid_cdm",""));assertEquals("37.12345",prefs.getString("hexquad_luma",""));
         assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_tunable_parameters_usedynamicwhitelevel"),true));
     }
     @Test public void perLensRestorePreservesBooleanTypesAndSharedSettings(){
         prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").commit();
         manager.set(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_audit",
-                "{\"pref_vivo_nice_post_despeckle\":true,\"pref_remosaic_block_key\":4,\"hexquad_luma\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
+                "{\"pref_scamhdr_post_despeckle\":true,\"pref_remosaic_block_key\":4,\"hexquad_luma\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         PreferenceKeys.loadSettingsForCamera("audit");
-        assertTrue(prefs.getBoolean("pref_vivo_nice_post_despeckle",false));
+        assertTrue(prefs.getBoolean("pref_scamhdr_post_despeckle",false));
         assertEquals(4.0,PreferenceNumber.read(manager.getString("default_scope","pref_remosaic_block_key","2"),2),0.0);
         assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","hexquad_luma","0"),0),0.0);
         assertFalse(prefs.contains("ignored_null"));assertEquals("keep",prefs.getString(PreferenceKeys.Key.KEY_THEME.mValue,""));
     }
 
     @Test public void moduleProfilesKeepTypedValuesAndCopyOnlySelection(){
-        prefs.edit().putFloat("hexquad_luma",37.125f).putBoolean("pref_vivo_nice_post_despeckle",true)
+        prefs.edit().putFloat("hexquad_luma",37.125f).putBoolean("pref_scamhdr_post_despeckle",true)
                 .putString("pref_tunable_test","1.234567").putString("pref_sensorconfig_test","hardware").commit();
         ModuleProfiles profiles=PreferenceKeys.profiles();
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");
-        prefs.edit().putFloat("hexquad_luma",12.25f).putBoolean("pref_vivo_nice_post_despeckle",false).commit();
+        prefs.edit().putFloat("hexquad_luma",12.25f).putBoolean("pref_scamhdr_post_despeckle",false).commit();
         profiles.activate("back1");
         assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
         prefs.edit().putString("pref_tunable_test","destination").commit();
         profiles.copy("back0",Arrays.asList("back1"),new HashSet<>(Arrays.asList("hexquad_luma","pref_sensorconfig_test")));
         assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
         assertEquals("destination",prefs.getString("pref_tunable_test",""));
-        assertTrue(prefs.getBoolean("pref_vivo_nice_post_despeckle",false));
+        assertTrue(prefs.getBoolean("pref_scamhdr_post_despeckle",false));
         assertEquals("hardware",prefs.getString("pref_sensorconfig_test",""));
-        profiles.activate("back0");assertFalse(prefs.getBoolean("pref_vivo_nice_post_despeckle",true));
+        profiles.activate("back0");assertFalse(prefs.getBoolean("pref_scamhdr_post_despeckle",true));
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,false).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
     }
-    @Test public void removedVivoUpscaleSettingsAreGoneAndTheirStoredValuesCleared() {
+    @Test public void removedScamUpscaleSettingsAreGoneAndTheirStoredValuesCleared() {
         PreferenceScreen screen=inflate();
-        for (String key:Arrays.asList("raisr_settings_screen","pref_raisr_enabled_key","pref_vivo_upscale_backend_key",
-                "pref_vivo_downscale_kernel_key","pref_vivo_downscale_size_key","softpqe_sr_only_info","vivo_downscale_explanation"))
+        for (String key:Arrays.asList("raisr_settings_screen","pref_raisr_enabled_key","pref_scam_upscale_backend_key",
+                "pref_scam_downscale_kernel_key","pref_scam_downscale_size_key","softpqe_sr_only_info","scam_downscale_explanation"))
             assertNull(key,screen.findPreference(key));
         android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
                 org.robolectric.RuntimeEnvironment.getApplication());
-        prefs.edit().putBoolean("pref_raisr_enabled_key",true).putString("pref_vivo_upscale_backend_key","vsr")
-                .putString("pref_vivo_downscale_kernel_key","3").putString("pref_lmc_hybrid_cdm","0.2").commit();
+        prefs.edit().putBoolean("pref_raisr_enabled_key",true).putString("pref_scam_upscale_backend_key","vsr")
+                .putString("pref_scam_downscale_kernel_key","3").putString("pref_scam_hybrid_cdm","0.2").commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));
-        assertFalse(prefs.contains("pref_raisr_enabled_key"));assertFalse(prefs.contains("pref_vivo_upscale_backend_key"));
-        assertFalse(prefs.contains("pref_vivo_downscale_kernel_key"));assertEquals("0.2",prefs.getString("pref_lmc_hybrid_cdm",""));
+        assertFalse(prefs.contains("pref_raisr_enabled_key"));assertFalse(prefs.contains("pref_scam_upscale_backend_key"));
+        assertFalse(prefs.contains("pref_scam_downscale_kernel_key"));assertEquals("0.2",prefs.getString("pref_scam_hybrid_cdm",""));
         assertFalse(SettingsMigration.removeObsolete(prefs));
     }
     @Test public void legacyPostProcessingSettingsAreGoneAndTheirStoredValuesCleared() {
@@ -213,7 +213,7 @@ public class SettingsMenuTest {
                 "expert_tone_screen","pref_tunable_postpipeline_tonepipeline","pref_tunable_postpipeline_demosaicingmethod",
                 "pref_saturation_seekbar_key","pref_contrast_seekbar_key","pref_sensor_sharpening_enabled","pref_noise_iso_curve_key"))
             assertNull(key,screen.findPreference(key));
-        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key","lmc_curves_screen","sharp_settings_screen"))
+        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key","scam_curves_screen","sharp_settings_screen"))
             assertNotNull(key,screen.findPreference(key));
         android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
                 org.robolectric.RuntimeEnvironment.getApplication());
@@ -256,29 +256,29 @@ public class SettingsMenuTest {
         android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
         android.content.SharedPreferences meta=app.getSharedPreferences(BackupRestoreUtil.META,0);
         android.content.SharedPreferences main1=app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"main1",0);
-        main.edit().clear().putString("pref_lmc_hybrid_cdm","0.2").putBoolean("pref_wide169_key",true).putInt("pref_lmc_hybrid_frames_x",7)
-                .putLong("scamera_long",1L<<40).putFloat("pref_lmc_hybrid_gamma_x",7.18973f)
+        main.edit().clear().putString("pref_scam_hybrid_cdm","0.2").putBoolean("pref_wide169_key",true).putInt("pref_scam_hybrid_frames_x",7)
+                .putLong("scamera_long",1L<<40).putFloat("pref_scam_hybrid_gamma_x",7.18973f)
                 .putStringSet("hidden_camera_ids",new HashSet<>(Arrays.asList("2","5"))).putString("pref_watermark_line1","<SHOT & \"ON\">").commit();
         meta.edit().clear().putBoolean("exists_main1",true).putString("active","main1").commit();
-        main1.edit().clear().putString("pref_lmc_hybrid_cdm","0.3").commit();
+        main1.edit().clear().putString("pref_scam_hybrid_cdm","0.3").commit();
         java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
         ConfigXml.write(out,BackupRestoreUtil.header(app),BackupRestoreUtil.collect(app));
         ConfigXml.Config config=ConfigXml.read(new java.io.ByteArrayInputStream(out.toByteArray()));
         assertEquals(BackupRestoreUtil.device(),config.attributes.get("device"));
         assertEquals(new HashMap<>(main.getAll()),new HashMap<>(config.files.get(ConfigXml.MAIN)));
-        assertEquals("0.3",config.files.get(BackupRestoreUtil.PROFILE_PREFIX+"main1").get("pref_lmc_hybrid_cdm"));
+        assertEquals("0.3",config.files.get(BackupRestoreUtil.PROFILE_PREFIX+"main1").get("pref_scam_hybrid_cdm"));
         // same phone: everything comes back, including the module profile
         main.edit().clear().putString("stale","x").commit();main1.edit().clear().commit();
         assertEquals(samePhone,BackupRestoreUtil.apply(app,config));
         assertFalse(main.contains("stale"));assertEquals(1L<<40,main.getLong("scamera_long",0));
-        assertEquals(7.18973f,main.getFloat("pref_lmc_hybrid_gamma_x",0),0f);assertEquals(7,main.getInt("pref_lmc_hybrid_frames_x",0));
+        assertEquals(7.18973f,main.getFloat("pref_scam_hybrid_gamma_x",0),0f);assertEquals(7,main.getInt("pref_scam_hybrid_frames_x",0));
         assertEquals(new HashSet<>(Arrays.asList("2","5")),main.getStringSet("hidden_camera_ids",null));
         assertEquals("<SHOT & \"ON\">",main.getString("pref_watermark_line1",""));
-        assertEquals("0.3",main1.getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.3",main1.getString("pref_scam_hybrid_cdm",""));
         // another phone: main settings only, module profiles stay as they are
-        config.attributes.put("device","oppo/op627cl1");main1.edit().clear().putString("pref_lmc_hybrid_cdm","0.5").commit();
+        config.attributes.put("device","oppo/op627cl1");main1.edit().clear().putString("pref_scam_hybrid_cdm","0.5").commit();
         assertTrue(BackupRestoreUtil.apply(app,config).startsWith(otherPhone));
-        assertEquals("0.5",main1.getString("pref_lmc_hybrid_cdm",""));assertEquals("0.2",main.getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.5",main1.getString("pref_scam_hybrid_cdm",""));assertEquals("0.2",main.getString("pref_scam_hybrid_cdm",""));
         // an old plain shared_prefs XML reads as the main settings
         ConfigXml.Config legacy=ConfigXml.read(new java.io.ByteArrayInputStream(("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
                 +"<map><boolean name=\"pref_wide169_key\" value=\"false\" /><string name=\"pref_save_raw_key\">1</string></map>").getBytes("UTF-8")));
@@ -300,17 +300,17 @@ public class SettingsMenuTest {
         main.edit().clear().putString("module_auto_back0","0").putBoolean("module_visible_back0",true).putString("module_label_back0","1×")
                 .putString("module_auto_back1","2").putBoolean("module_visible_back1",true).putString("module_label_back1","3×")
                 .putString("module_auto_front0","1").putBoolean("module_visible_front0",true).putString("module_label_front0","Фронт")
-                .putString("module_active","back1").putString("pref_lmc_hybrid_cdm","0.9").commit();
+                .putString("module_active","back1").putString("pref_scam_hybrid_cdm","0.9").commit();
         ConfigXml.Config config=new ConfigXml.Config();
         config.attributes.put("device","oppo/op627cl1");
         java.util.Map<String,Object> srcMain=new java.util.HashMap<>();
-        srcMain.put("pref_lmc_hybrid_cdm","0.2");srcMain.put("module_auto_back0","9");srcMain.put("pref_save_per_lens_settings",true);
+        srcMain.put("pref_scam_hybrid_cdm","0.2");srcMain.put("module_auto_back0","9");srcMain.put("pref_save_per_lens_settings",true);
         config.files.put(ConfigXml.MAIN,srcMain);
         java.util.Map<String,Object> meta=new java.util.HashMap<>();meta.put("active","back1");meta.put("exists_back0",true);
         config.files.put(BackupRestoreUtil.META,meta);
-        java.util.Map<String,Object> p0=new java.util.HashMap<>();p0.put("pref_lmc_hybrid_cdm","0.5");p0.put("module_auto_back0","7");
+        java.util.Map<String,Object> p0=new java.util.HashMap<>();p0.put("pref_scam_hybrid_cdm","0.5");p0.put("module_auto_back0","7");
         config.files.put(BackupRestoreUtil.PROFILE_PREFIX+"back0",p0);
-        java.util.Map<String,Object> common=new java.util.HashMap<>();common.put("pref_lmc_hybrid_cdm","0.1");
+        java.util.Map<String,Object> common=new java.util.HashMap<>();common.put("pref_scam_hybrid_cdm","0.1");
         config.files.put(BackupRestoreUtil.PROFILE_PREFIX+"common",common);
         java.util.Map<String,Object> lenses=new java.util.LinkedHashMap<>();
         String[][] src={{"back0","14","0.6","0.6×"},{"back1","23","1","1×"},{"back2","70","3","3×"}};
@@ -321,14 +321,14 @@ public class SettingsMenuTest {
         assertTrue(message,message.startsWith(mapped));
         // 1x <- the source's active 1x (its values are in the source's main settings); 3x <- the source's 3x, which had no
         // saved profile: the baseline; the front has no source lens: the baseline
-        assertEquals("0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).getString("pref_lmc_hybrid_cdm",""));
-        assertEquals("0.1",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back1",0).getString("pref_lmc_hybrid_cdm",""));
-        assertEquals("0.1",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"front0",0).getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).getString("pref_scam_hybrid_cdm",""));
+        assertEquals("0.1",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back1",0).getString("pref_scam_hybrid_cdm",""));
+        assertEquals("0.1",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"front0",0).getString("pref_scam_hybrid_cdm",""));
         assertFalse(app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).contains("module_auto_back0"));
         android.content.SharedPreferences m=app.getSharedPreferences(BackupRestoreUtil.META,0);
         assertTrue(m.getBoolean("exists_back1",false));assertTrue(m.getBoolean("exists_front0",false));assertEquals("back1",m.getString("active",""));
         // this phone's slots stay; the active slot (3x) is in the main settings; the source's global settings came over
-        assertEquals("0",main.getString("module_auto_back0",""));assertEquals("0.1",main.getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0",main.getString("module_auto_back0",""));assertEquals("0.1",main.getString("pref_scam_hybrid_cdm",""));
         assertTrue(main.getBoolean("pref_save_per_lens_settings",false));
         // the file this phone saves carries its own lens passports
         java.util.Map<String,?> own=BackupRestoreUtil.collect(app).get(BackupRestoreUtil.LENSES);
@@ -338,8 +338,8 @@ public class SettingsMenuTest {
         message=BackupRestoreUtil.apply(app,config);
         assertTrue(message,message.contains(allModules));
         for(String slot:new String[]{"back0","back1","front0"})
-            assertEquals(slot,"0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+slot,0).getString("pref_lmc_hybrid_cdm",""));
-        assertEquals("0.2",main.getString("pref_lmc_hybrid_cdm",""));
+            assertEquals(slot,"0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+slot,0).getString("pref_scam_hybrid_cdm",""));
+        assertEquals("0.2",main.getString("pref_scam_hybrid_cdm",""));
     }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
@@ -351,7 +351,7 @@ public class SettingsMenuTest {
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
             // «Цвет» (the RawTherapee sharpening moved next to «Резкость Hybrid» in the settings audit): the curve strength
-            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_lmc_tone_curve_strength"));
+            assertNotNull(copy.requireView().findViewWithTag("parameter_pref_scam_tone_curve_strength"));
             activity.getOnBackPressedDispatcher().onBackPressed();
             assertNotNull(copy.requireView().findViewWithTag("group_photo_processing_screen"));
         }
@@ -386,7 +386,7 @@ public class SettingsMenuTest {
     }
     private void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch(String copyRow,String partly,String png) throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
-        prefs.edit().putString("module_active","back0").putString("pref_lmc_tone_curve_strength","42").putString("pref_lmc_gamma_curve_strength","14").commit();
+        prefs.edit().putString("module_active","back0").putString("pref_scam_tone_curve_strength","42").putString("pref_scam_gamma_curve_strength","14").commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
@@ -396,11 +396,11 @@ public class SettingsMenuTest {
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             copy.requireView().findViewWithTag("group_photo_processing_screen").performClick();
             // one row of «Цвет» (the RawTherapee sharpening moved to ArkCore in the settings audit)
-            copy.requireView().findViewWithTag("parameter_pref_lmc_tone_curve_strength").performClick();renderPage(copy.requireView(),"noise"+png);
+            copy.requireView().findViewWithTag("parameter_pref_scam_tone_curve_strength").performClick();renderPage(copy.requireView(),"noise"+png);
             copy.requireView().findViewWithTag("primary_action").performClick();
             var check=copy.requireView().findViewWithTag("group_check_photo_processing_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
-            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_lmc_tone_curve_strength"),0),0);
+            assertEquals(42,PreferenceNumber.read(PreferenceKeys.profiles().snapshot("back1").get("pref_scam_tone_curve_strength"),0),0);
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
             var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestDialog();if(dialog!=null)dialog.dismiss();
             var accent=new com.particlesdevs.photoncamera.ui.settings.AccentSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,accent).commitNow();renderPage(accent.requireView(),"accent"+png);
@@ -436,14 +436,14 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            PreferenceScreen tone=root.findPreference("lmc_hybrid_ark_tone_screen");
+            PreferenceScreen tone=root.findPreference("scam_hybrid_ark_tone_screen");
             activity.onPreferenceStartScreen(root,tone);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            assertEquals("lmc_hybrid_ark_tone_screen",page.getPreferenceScreen().getKey());
+            assertEquals("scam_hybrid_ark_tone_screen",page.getPreferenceScreen().getKey());
             // shared by both routes: active on SCAM HDR too
-            assertTrue(page.findPreference("pref_lmc_hybrid_ark_ae_target").isEnabled());
-            assertTrue(PreferenceKeys.isVivoHdrEnabled());
+            assertTrue(page.findPreference("pref_scam_hybrid_ark_ae_target").isEnabled());
+            assertTrue(PreferenceKeys.isScamHdrEnabled());
             camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
         }
     }
@@ -457,7 +457,7 @@ public class SettingsMenuTest {
             fm.executePendingTransactions();
             com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment root=
                     (com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            PreferenceScreen first=root.findPreference("vivo_hdr_screen");
+            PreferenceScreen first=root.findPreference("scam_hdr_screen");
             assertNotNull(first);activity.onPreferenceStartScreen(root,first);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals(1,fm.getBackStackEntryCount());
@@ -505,15 +505,15 @@ public class SettingsMenuTest {
     }
 
 
-    /** P6a: the engine is «Hybrid» in Latin letters everywhere the user can read it; no «LMC», no Russian «гибрид». */
-    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void noLmcOrRussianHybridInTheSettingsTexts(){
-        noLmcOrRussianHybridInTheSettingsTexts("Выберите склейку «Hybrid».");
+    /** P6a: the engine is «Hybrid» in Latin letters everywhere the user can read it; no Russian «гибрид». P55: no old names («LMC», «NICE»). */
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void noOldNamesOrRussianHybridInTheSettingsTexts(){
+        noOldNamesOrRussianHybridInTheSettingsTexts("Выберите склейку «Hybrid».");
     }
     /** The same check over the English texts. */
-    @Test public void noLmcOrRussianHybridInTheSettingsTextsInEnglish(){
-        noLmcOrRussianHybridInTheSettingsTexts("Select the “Hybrid” merge.");
+    @Test public void noOldNamesOrRussianHybridInTheSettingsTextsInEnglish(){
+        noOldNamesOrRussianHybridInTheSettingsTexts("Select the “Hybrid” merge.");
     }
-    private void noLmcOrRussianHybridInTheSettingsTexts(String selectHybrid){
+    private void noOldNamesOrRussianHybridInTheSettingsTexts(String selectHybrid){
         PreferenceScreen screen=inflate();SensorConfigPreferenceGenerator.generatePreferences(context,screen);
         List<String> found=new ArrayList<>();int checked=0;
         java.util.ArrayDeque<Preference> queue=new java.util.ArrayDeque<>();queue.add(screen);
@@ -526,13 +526,13 @@ public class SettingsMenuTest {
             for(CharSequence t:texts){
                 if(t==null)continue;checked++;
                 String s=t.toString();
-                if(s.contains("LMC")||s.toLowerCase(Locale.ROOT).contains("гибрид"))found.add(p.getKey()+": "+s);
+                if(s.contains("LMC")||s.contains("NICE")||s.contains("Nice")||s.toLowerCase(Locale.ROOT).contains("гибрид"))found.add(p.getKey()+": "+s);
             }
         }
         assertTrue(found.toString(),found.isEmpty());assertTrue(checked>500);
         assertEquals("Hybrid",((ListPreference)screen.findPreference(PreferenceKeys.ROUTE_KEY)).getEntries()[0].toString());
         java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
-        assertEquals(selectHybrid,new SettingsAvailability(values).reason("pref_lmc_hybrid_cdm"));
+        assertEquals(selectHybrid,new SettingsAvailability(values).reason("pref_scam_hybrid_cdm"));
     }
 
     private android.view.View row(Preference p){
@@ -621,7 +621,7 @@ public class SettingsMenuTest {
             chip=view.findViewWithTag("settings_chip");assertTrue(chip.getText().toString(),chip.getText().toString().startsWith(active+"SCAM HDR"));
             androidx.recyclerview.widget.RecyclerView list=root.getListView();
             androidx.preference.PreferenceGroupAdapter adapter=(androidx.preference.PreferenceGroupAdapter)list.getAdapter();
-            int hybrid=adapter.getPreferenceAdapterPosition("lmc_hybrid_screen"),scamRow=adapter.getPreferenceAdapterPosition("vivo_hdr_screen");
+            int hybrid=adapter.getPreferenceAdapterPosition("scam_hybrid_screen"),scamRow=adapter.getPreferenceAdapterPosition("scam_hdr_screen");
             assertEquals(.45f,list.findViewHolderForAdapterPosition(hybrid).itemView.getAlpha(),1e-3);
             assertEquals(1f,list.findViewHolderForAdapterPosition(scamRow).itemView.getAlpha(),1e-3);
             android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(view.getMeasuredWidth(),1600,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
@@ -635,7 +635,7 @@ public class SettingsMenuTest {
     @Test public void innerPagesRenderAsCards() throws Exception {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
-            for(String key:new String[]{"lmc_hybrid_screen","lmc_hybrid_capture_screen","output_settings_screen","lmc_hybrid_ark_sharp_screen","vivo_hdr_screen"}){
+            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","scam_hdr_screen"}){
                 var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
                 PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
                     root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}

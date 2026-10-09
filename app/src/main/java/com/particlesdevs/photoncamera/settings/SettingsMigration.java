@@ -78,11 +78,11 @@ public final class SettingsMigration {
      */
     static final java.util.Set<String> OBSOLETE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             // P1: vivo upscale (RAISR, SoftPQE, VSR) and the Lanczos after it
-            "pref_vivo_upscale_backend_key", "pref_vivo_downscale_kernel_key", "pref_vivo_downscale_size_key",
+            "pref_scam_upscale_backend_key", "pref_scam_downscale_kernel_key", "pref_scam_downscale_size_key",
             // P2: "Кадрирование DNG" (the 16:9 crop is always centred now)
             "pref_tunable_imagesaversettings_croptype",
-            // P3: the route switches, replaced by pref_merge_route (migrateLmcHybrid converts them first)
-            "pref_lmc_hybrid_enabled", "pref_vivo_hdr_enabled", "pref_vivo_nice_enabled",
+            // P3: the route switches, replaced by pref_merge_route (migrateScamHybrid converts them first)
+            "pref_scam_hybrid_enabled", "pref_scamroute_enabled", "pref_scamhdr_enabled",
             // P4: the legacy capture and merge (frame counts / brackets, HDR+ / ESD4D merge, RAW MFSR, mosaic SR, the
             // standalone remosaic and neural bursts, AI Bayer denoise, software binning)
             "pref_frame_count_key", "pref_short_frame_count_key", "pref_short_exposure_ev_key",
@@ -96,8 +96,8 @@ public final class SettingsMigration {
             "pref_highlight_protection_strength_key", "pref_binning_key", "pref_energy_safe_key",
             "pref_raw_mfsr_enabled_key", "pref_remosaic_enabled_key", "pref_remosaic_backend_key",
             "pref_hexquad_frames", "pref_quad_frames", "hexquad_exposure_ev", "hexquad_full_resolution",
-            "hexquad_post_denoise", "quad2x2_exposure_ev", "quad2x2_post_denoise", "pref_vivo_hdr_luma",
-            "pref_vivo_hdr_chroma", "pref_vivo_hdr_sharpen", "pref_ai_denoise_enabled_key",
+            "hexquad_post_denoise", "quad2x2_exposure_ev", "quad2x2_post_denoise", "pref_scamroute_luma",
+            "pref_scamroute_chroma", "pref_scamroute_sharpen", "pref_ai_denoise_enabled_key",
             "pref_ai_denoise_strength_key", "pref_ai_denoise_luma_key", "pref_ai_denoise_chroma_key",
             "pref_ai_denoise_model_key", "pref_remosaic_dump_key", "pref_noise_dynamic_enabled_key",
             // P5: the legacy post-processing (RT / ESD3D denoise, GCam finish, tone pipelines, ACES, Capture One,
@@ -110,15 +110,15 @@ public final class SettingsMigration {
             "pref_noise_iso_curve_key", "pref_noise_iso_min_key", "pref_noise_iso_max_key", "pref_noise_iso_manual_key",
             "pref_noise_seekbar_key", "pref_agx_local_highlights", "pref_agx_local_start",
             // P10: one tone (ARK) for both routes; the SCAMERA tone of SCAM HDR and the hybrid's «Тон SCAMERA» go
-            "pref_expocompensation_seekbar_key", "pref_nice_ae_mid", "pref_nice_ae_high", "pref_nice_ae_gain_max",
-            "pref_vivo_nice_soft_tone", "pref_vivo_nice_tone_key", "pref_vivo_nice_sharp_amount", "pref_vivo_nice_texture",
-            "pref_vivo_nice_warm_retention", "pref_vivo_nice_gcam_tone", "pref_lmc_hybrid_ae_mid", "pref_lmc_hybrid_ae_high",
-            "pref_lmc_hybrid_ae_gain_max", "pref_lmc_hybrid_bento_fusion", "pref_lmc_hybrid_texture", "pref_lmc_hybrid_ark_tone",
-            "pref_lmc_hybrid_soft_tone", "pref_lmc_hybrid_tone_key", "pref_lmc_hybrid_warm_retention", "pref_lmc_hybrid_gcam_tone",
+            "pref_expocompensation_seekbar_key", "pref_scamold_ae_mid", "pref_scamold_ae_high", "pref_scamold_ae_gain_max",
+            "pref_scamhdr_soft_tone", "pref_scamhdr_tone_key", "pref_scamhdr_sharp_amount", "pref_scamhdr_texture",
+            "pref_scamhdr_warm_retention", "pref_scamhdr_gcam_tone", "pref_scam_hybrid_ae_mid", "pref_scam_hybrid_ae_high",
+            "pref_scam_hybrid_ae_gain_max", "pref_scam_hybrid_bento_fusion", "pref_scam_hybrid_texture", "pref_scam_hybrid_ark_tone",
+            "pref_scam_hybrid_soft_tone", "pref_scam_hybrid_tone_key", "pref_scam_hybrid_warm_retention", "pref_scam_hybrid_gcam_tone",
             // P8: the retired VCF2 route selector and the unreachable RAW video mode
-            "pref_vivo_nice_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
-            // P12b: the old texture boost switch never reached the worker; pref_lmc_hybrid_motion_boost replaces it
-            "pref_lmc_hybrid_boost",
+            "pref_scamhdr_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
+            // P12b: the old texture boost switch never reached the worker; pref_scam_hybrid_motion_boost replaces it
+            "pref_scam_hybrid_boost",
             // P25: the Quad toggle of the top bar is gone, and with it its tunable «Enable Quad Resolution»; the quick
             // buttons of concept E and the ☆ favourites became the shade's tiles (migrateShadeTiles reads them first)
             "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys",
@@ -137,8 +137,8 @@ public final class SettingsMigration {
             "pref_tunable_linearexposure_", "pref_tunable_headroomrender_", "pref_tunable_bayer2float_",
             "pref_tunable_amaze_",
             // P10: AgX, Exposure Fusion and the headroom tone of both routes (and the hybrid's copies)
-            "pref_agx_", "pref_vivo_hdr_", "pref_vivo_nice_fusion_", "pref_lmc_hybrid_hdr_", "pref_lmc_hybrid_fusion_",
-            "pref_lmc_hybrid_agx_"};
+            "pref_agx_", "pref_scamroute_", "pref_scamhdr_fusion_", "pref_scam_hybrid_hdr_", "pref_scam_hybrid_fusion_",
+            "pref_scam_hybrid_agx_"};
     /**
      * Removed rows of the per-module sensor settings (pref_sensorconfig_&lt;slot or camera id&gt;_&lt;field&gt;): the exposure limits
      * «Максимальное ISO», «Максимальная выдержка» and «Баланс выдержки и ISO», which no capture code read (settings audit).
@@ -192,9 +192,9 @@ public final class SettingsMigration {
     }
 
     /** Keys whose rows store a whole number but were decimal sliders before the settings audit. */
-    static final String[] WHOLE_NUMBER_KEYS = {"pref_lmc_hybrid_ark_metering", "pref_lmc_hybrid_ark_agx_look",
-            "pref_lmc_hybrid_ark_sharp_domain", "pref_lmc_hybrid_ark_sharp_rl1_kernel", "pref_lmc_hybrid_ark_sharp_rl2_kernel",
-            "pref_lmc_hybrid_ark_sharp_rl3_kernel", "pref_vivo_nice_luma_radius", "pref_vivo_nice_chroma_radius"};
+    static final String[] WHOLE_NUMBER_KEYS = {"pref_scam_hybrid_ark_metering", "pref_scam_hybrid_ark_agx_look",
+            "pref_scam_hybrid_ark_sharp_domain", "pref_scam_hybrid_ark_sharp_rl1_kernel", "pref_scam_hybrid_ark_sharp_rl2_kernel",
+            "pref_scam_hybrid_ark_sharp_rl3_kernel", "pref_scamhdr_luma_radius", "pref_scamhdr_chroma_radius"};
     /** The stored value as the whole number its row writes, within the key's bounds; null when it is no number. */
     static String wholeNumber(String key, Object value) {
         double v = PreferenceNumber.read(value, Double.NaN);
@@ -252,8 +252,8 @@ public final class SettingsMigration {
         QUICK_KEYS.put("RAW", ShadeCatalog.FORMAT);
         QUICK_KEYS.put("GRID", "pref_show_grid_key");
         QUICK_KEYS.put("AE_METERING_STD", ShadeCatalog.METERING_STD);
-        QUICK_KEYS.put("HYBRID_OUTPUT", "pref_lmc_hybrid_output");
-        QUICK_KEYS.put("HYBRID_DOWNSAMPLER", "pref_lmc_hybrid_downsampler");
+        QUICK_KEYS.put("HYBRID_OUTPUT", "pref_scam_hybrid_output");
+        QUICK_KEYS.put("HYBRID_DOWNSAMPLER", "pref_scam_hybrid_downsampler");
     }
 
     /**
@@ -293,60 +293,60 @@ public final class SettingsMigration {
         return true;
     }
 
-    private static final String LEGACY_HYBRID = LmcHybridKeys.LEGACY_PREFIX;
-    /** SCAM HDR knobs (pref_vivo_nice_&lt;k&gt;) the hybrid route read until it got its own settings. */
-    private static final java.util.Set<String> SHARED_NICE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
+    private static final String LEGACY_HYBRID = ScamHybridKeys.LEGACY_PREFIX;
+    /** SCAM HDR knobs (pref_scamhdr_&lt;k&gt;) the hybrid route read until it got its own settings. */
+    private static final java.util.Set<String> SHARED_SCAM_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             "zsl_frames", "gcam_tone", "highlight_recovery", "isp_ccm", "noise_photon", "noise_readout",
             "noise_source", "cre_source", "diagnostics"));
-    private static final String[] SHARED_NICE_PREFIXES = {"fusion_", "tone_", "look", "warm_", "sharp_", "texture", "grain_"};
-    /** Autonomous HDR keys that are not on the hybrid route (vivo HDR denoise, capture sharpening, the reset action). */
+    private static final String[] SHARED_SCAM_PREFIXES = {"fusion_", "tone_", "look", "warm_", "sharp_", "texture", "grain_"};
+    /** Autonomous HDR keys that are not on the hybrid route (scam HDR denoise, capture sharpening, the reset action). */
     private static final java.util.Set<String> UNSHARED_HDR_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             "enabled", "luma", "chroma", "sharpen", "reset_tone"));
 
     /**
-     * The LMC hybrid left SCAM HDR (section «LMC-гибрид», 3 October 2026). Applied to the main preferences, the module
-     * baseline and every stored module profile; restored snapshots go through {@link #migrateLmcHybrid(SharedPreferences, boolean)}.
+     * The SCAM Hybrid left SCAM HDR (section «SCAM-гибрид», 3 October 2026). Applied to the main preferences, the module
+     * baseline and every stored module profile; restored snapshots go through {@link #migrateScamHybrid(SharedPreferences, boolean)}.
      */
-    public static void migrateLmcHybrid(Context context, SharedPreferences main) {
+    public static void migrateScamHybrid(Context context, SharedPreferences main) {
         // Fresh install: androidx has never written the XML defaults and nothing set the autonomous HDR switch.
         boolean fresh = !context.getSharedPreferences("_has_set_default_values", Context.MODE_PRIVATE)
-                .getBoolean("_has_set_default_values", false) && !main.contains(LmcHybridKeys.LEGACY_HDR)
-                && !main.contains(LmcHybridKeys.ROUTE);
-        migrateLmcHybrid(main, fresh);
+                .getBoolean("_has_set_default_values", false) && !main.contains(ScamHybridKeys.LEGACY_HDR)
+                && !main.contains(ScamHybridKeys.ROUTE);
+        migrateScamHybrid(main, fresh);
         SharedPreferences meta = context.getSharedPreferences("module_profiles_meta", Context.MODE_PRIVATE);
         for (Map.Entry<String, ?> e : meta.getAll().entrySet())
             if (e.getKey().startsWith("exists_") && Boolean.TRUE.equals(e.getValue()))
-                migrateLmcHybrid(context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE), false);
+                migrateScamHybrid(context.getSharedPreferences("module_profile_v2_" + e.getKey().substring(7), Context.MODE_PRIVATE), false);
         if (meta.getBoolean("baseline", false))
-            migrateLmcHybrid(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE), false);
+            migrateScamHybrid(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE), false);
     }
 
     /**
-     * One preference set: pref_vivo_nice_hybrid_&lt;k&gt; moves to pref_lmc_hybrid_&lt;k&gt; (except the soft tone, gone for
-     * the hybrid, and the Bento factor, which starts again from the LMC default 8). Where the hybrid took the shots so far
-     * (SCAM HDR on and pref_vivo_nice_engine resolving to the hybrid), the SCAM HDR knobs it read (Exposure Fusion, tone,
+     * One preference set: pref_scamhdr_hybrid_&lt;k&gt; moves to pref_scam_hybrid_&lt;k&gt; (except the soft tone, gone for
+     * the hybrid, and the Bento factor, which starts again from the SCAM default 8). Where the hybrid took the shots so far
+     * (SCAM HDR on and pref_scamhdr_engine resolving to the hybrid), the SCAM HDR knobs it read (Exposure Fusion, tone,
      * look, texture, sharpening, AE, AgX highlights, autonomous HDR tone, noise and CRE source, N frames, diagnostics,
-     * fast capture) are copied to the hybrid's keys (LmcHybridKeys.copyKey), so the hybrid keeps its look while SCAM HDR
-     * keeps its own values; elsewhere (e.g. SCAM HDR NICE on SM8750) the hybrid starts from its own defaults (N 30, ...).
-     * The copy happens once, in the run that creates pref_lmc_hybrid_enabled (= the hybrid took the shots so far; on a
-     * fresh install: on wherever the NICE network does not run), so later SCAM HDR changes never reach the hybrid.
-     * pref_vivo_nice_engine and the first switch pref_vivo_nice_hybrid are removed. Keys that already exist under the new
+     * fast capture) are copied to the hybrid's keys (ScamHybridKeys.copyKey), so the hybrid keeps its look while SCAM HDR
+     * keeps its own values; elsewhere (e.g. SCAM HDR SCAM on SM8750) the hybrid starts from its own defaults (N 30, ...).
+     * The copy happens once, in the run that creates pref_scam_hybrid_enabled (= the hybrid took the shots so far; on a
+     * fresh install: on wherever the SCAM network does not run), so later SCAM HDR changes never reach the hybrid.
+     * pref_scamhdr_engine and the first switch pref_scamhdr_hybrid are removed. Keys that already exist under the new
      * names are never overwritten, so a second run changes nothing.
      *
      * @return whether anything changed
      */
-    public static boolean migrateLmcHybrid(SharedPreferences prefs, boolean freshInstall) {
+    public static boolean migrateScamHybrid(SharedPreferences prefs, boolean freshInstall) {
         Map<String, ?> values = prefs.getAll();
         SharedPreferences.Editor e = prefs.edit();
         java.util.Set<String> written = new java.util.HashSet<>();
         boolean changed = false;
-        final boolean firstRun = !values.containsKey(LmcHybridKeys.ENABLED) && !values.containsKey(LmcHybridKeys.ROUTE);
+        final boolean firstRun = !values.containsKey(ScamHybridKeys.ENABLED) && !values.containsKey(ScamHybridKeys.ROUTE);
         final boolean hybridShots = firstRun && !freshInstall && legacyHybridShots(values);
         for (Map.Entry<String, ?> entry : values.entrySet()) {
             String key = entry.getKey();
             if (!key.startsWith(LEGACY_HYBRID)) continue;
             String k = key.substring(LEGACY_HYBRID.length());
-            String target = LmcHybridKeys.PREFIX + k;
+            String target = ScamHybridKeys.PREFIX + k;
             if (!k.equals("soft_tone") && !k.equals("bento_factor") && entry.getValue() != null && !values.containsKey(target)) {
                 ModuleProfiles.put(e, target, entry.getValue());
                 written.add(target);
@@ -357,9 +357,9 @@ public final class SettingsMigration {
         if (hybridShots) for (Map.Entry<String, ?> entry : values.entrySet()) {
             String key = entry.getKey();
             if (entry.getValue() == null || !sharedWithHybrid(key)) continue;
-            // The hybrid's noise profile list is auto | settings; the NICE-only sources mean auto for it.
-            if (key.equals("pref_vivo_nice_noise_source") && !"settings".equals(entry.getValue().toString())) continue;
-            String target = LmcHybridKeys.copyKey(key);
+            // The hybrid's noise profile list is auto | settings; the SCAM-only sources mean auto for it.
+            if (key.equals("pref_scamhdr_noise_source") && !"settings".equals(entry.getValue().toString())) continue;
+            String target = ScamHybridKeys.copyKey(key);
             if (target.equals(key) || values.containsKey(target) || !written.add(target)) continue;
             ModuleProfiles.put(e, target, entry.getValue());
             changed = true;
@@ -367,26 +367,26 @@ public final class SettingsMigration {
         // Route selector (October 2026): the three switches become pref_merge_route. The hybrid switch on (or the hybrid
         // took the shots before its separation, or a fresh install) -> hybrid; otherwise SCAM HDR's two switches on ->
         // scamhdr; otherwise -> hybrid (the plain legacy route is gone). The hybrid is the default on every phone: the
-        // former SM8750 exclusion (d875840, SCAM HDR stayed the default where the NICE network runs) is dropped.
-        if (!values.containsKey(LmcHybridKeys.ROUTE)) {
-            boolean hybrid = firstRun ? freshInstall || hybridShots : PreferenceNumber.bool(values.get(LmcHybridKeys.ENABLED), false);
-            boolean scam = PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_HDR), false)
-                    && PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_NICE), false);
-            e.putString(LmcHybridKeys.ROUTE, hybrid || !scam ? LmcHybridKeys.ROUTE_HYBRID : LmcHybridKeys.ROUTE_SCAM_HDR);
+        // former SM8750 exclusion (d875840, SCAM HDR stayed the default where the SCAM network runs) is dropped.
+        if (!values.containsKey(ScamHybridKeys.ROUTE)) {
+            boolean hybrid = firstRun ? freshInstall || hybridShots : PreferenceNumber.bool(values.get(ScamHybridKeys.ENABLED), false);
+            boolean scam = PreferenceNumber.bool(values.get(ScamHybridKeys.LEGACY_HDR), false)
+                    && PreferenceNumber.bool(values.get(ScamHybridKeys.LEGACY_SCAM), false);
+            e.putString(ScamHybridKeys.ROUTE, hybrid || !scam ? ScamHybridKeys.ROUTE_HYBRID : ScamHybridKeys.ROUTE_SCAM_HDR);
             changed = true;
         }
-        for (String old : new String[]{LmcHybridKeys.ENABLED, LmcHybridKeys.LEGACY_HDR, LmcHybridKeys.LEGACY_NICE})
+        for (String old : new String[]{ScamHybridKeys.ENABLED, ScamHybridKeys.LEGACY_HDR, ScamHybridKeys.LEGACY_SCAM})
             if (values.containsKey(old)) { e.remove(old); changed = true; }
-        for (String old : new String[]{"pref_vivo_nice_engine", "pref_vivo_nice_hybrid"})
+        for (String old : new String[]{"pref_scamhdr_engine", "pref_scamhdr_hybrid"})
             if (values.containsKey(old)) { e.remove(old); changed = true; }
         // Defaults revision 2 (4 October 2026): the Sabre detail of the ARK tone moved from 1 to 2 after the A/B against
         // ArkCam on the Oppo; a stored 1 is the old XML default written by the first round-5 build, not a user choice.
         Object rev = values.get(DEFAULTS_REV);
         int revision = rev instanceof Integer ? (Integer) rev : 0;
         boolean markOnly = false; // a revision block below only moves the marker (not reported as a change)
-        Object detail = values.get(LmcHybridKeys.PREFIX + "ark_detail_gain");
+        Object detail = values.get(ScamHybridKeys.PREFIX + "ark_detail_gain");
         if (detail != null && revision < 2) {
-            if (isNumber(detail, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
+            if (isNumber(detail, 1f)) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
             e.putInt(DEFAULTS_REV, 2);
             changed = true;
         }
@@ -395,17 +395,17 @@ public final class SettingsMigration {
         // equal to the former XML defaults ("rt", 2, 0.5, 2.75) are those defaults, not user choices.
         if (revision < 3) {
             boolean touched = false;
-            Object sharpMode = values.get(LmcHybridKeys.PREFIX + "sharp_mode");
+            Object sharpMode = values.get(ScamHybridKeys.PREFIX + "sharp_mode");
             if (sharpMode != null) {
-                if ("rt".equals(sharpMode.toString().trim())) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "sharp_mode", "ark");
+                if ("rt".equals(sharpMode.toString().trim())) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "sharp_mode", "ark");
                 touched = true;
             }
             String[] keys = {"dn_revert_max", "dn_coarse_stock", "dn_chroma_floor"};
             float[] former = {2f, 0.5f, 2.75f}, ark = {9f, 0f, 0f};
             for (int i = 0; i < keys.length; i++) {
-                Object v = values.get(LmcHybridKeys.PREFIX + keys[i]);
+                Object v = values.get(ScamHybridKeys.PREFIX + keys[i]);
                 if (v == null) continue;
-                if (isNumber(v, former[i])) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(ark[i], true) : (Object) ark[i]);
+                if (isNumber(v, former[i])) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(ark[i], true) : (Object) ark[i]);
                 touched = true;
             }
             if (touched) {
@@ -420,9 +420,9 @@ public final class SettingsMigration {
             String[] keys = {"shasta_frames", "shasta_ev"};
             float[] former = {2f, 2f}, now = {5f, 1f};
             for (int i = 0; i < keys.length; i++) {
-                Object v = values.get(LmcHybridKeys.PREFIX + keys[i]);
+                Object v = values.get(ScamHybridKeys.PREFIX + keys[i]);
                 if (v == null) continue;
-                if (isNumber(v, former[i])) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(now[i], i == 1) : (Object) now[i]);
+                if (isNumber(v, former[i])) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(now[i], i == 1) : (Object) now[i]);
                 touched = true;
             }
             if (touched) {
@@ -430,12 +430,12 @@ public final class SettingsMigration {
                 changed = true;
             }
         }
-        // Defaults revision 5 (4 October 2026): the rejection colour multiplier 0.07 (LMC) let wind-moved leaves through (luma
+        // Defaults revision 5 (4 October 2026): the rejection colour multiplier 0.07 (SCAM) let wind-moved leaves through (luma
         // zipper); a stored 0.07 is the former XML default and moves to 0.2.
         if (revision < 5) {
-            Object cdm = values.get(LmcHybridKeys.PREFIX + "cdm");
+            Object cdm = values.get(ScamHybridKeys.PREFIX + "cdm");
             if (cdm != null) {
-                if (isNumber(cdm, 0.07f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "cdm", cdm instanceof String ? PreferenceNumber.format(0.2f, true) : (Object) 0.2f);
+                if (isNumber(cdm, 0.07f)) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "cdm", cdm instanceof String ? PreferenceNumber.format(0.2f, true) : (Object) 0.2f);
                 e.putInt(DEFAULTS_REV, 5);
                 changed = true;
             }
@@ -445,14 +445,14 @@ public final class SettingsMigration {
         // move along, a chosen value stays.
         if (revision < 6) {
             boolean touched = false;
-            Object path = values.get(LmcHybridKeys.PREFIX + "mosaic_path");
+            Object path = values.get(ScamHybridKeys.PREFIX + "mosaic_path");
             if (path != null) {
-                if (isNumber(path, 0f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_path", path instanceof String ? "1" : (Object) 1f);
+                if (isNumber(path, 0f)) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "mosaic_path", path instanceof String ? "1" : (Object) 1f);
                 touched = true;
             }
-            Object scale = values.get(LmcHybridKeys.PREFIX + "mosaic_kernel_scale");
+            Object scale = values.get(ScamHybridKeys.PREFIX + "mosaic_kernel_scale");
             if (scale != null) {
-                if (isNumber(scale, 1f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_kernel_scale", scale instanceof String ? PreferenceNumber.format(0.7f, true) : (Object) 0.7f);
+                if (isNumber(scale, 1f)) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "mosaic_kernel_scale", scale instanceof String ? PreferenceNumber.format(0.7f, true) : (Object) 0.7f);
                 touched = true;
             }
             if (touched) {
@@ -477,9 +477,9 @@ public final class SettingsMigration {
         // stored yet (the row stores today's "1" when the screen is first opened), so a "0" chosen after this run stays, also when
         // an older revision moved its stored keys in this run; only a run that copied legacy keys marks it on the next run.
         if (revision < 7) {
-            Object tetra = values.get(LmcHybridKeys.PREFIX + "mosaic_tetra");
+            Object tetra = values.get(ScamHybridKeys.PREFIX + "mosaic_tetra");
             if (tetra != null) {
-                if (isNumber(tetra, 0f)) ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_tetra", tetra instanceof String ? "1" : (Object) 1f);
+                if (isNumber(tetra, 0f)) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "mosaic_tetra", tetra instanceof String ? "1" : (Object) 1f);
                 e.putInt(DEFAULTS_REV, 7);
                 changed = true;
             } else if (written.isEmpty()) {
@@ -493,9 +493,9 @@ public final class SettingsMigration {
         // finds: a value copied from SCAM HDR in this run (the hybrid took the shots with it) is not in `values` and stays,
         // and a 20 chosen after this run is never moved.
         if (!values.containsKey(ZSL_FRAMES_REV)) {
-            Object frames = values.get(LmcHybridKeys.PREFIX + "zsl_frames");
+            Object frames = values.get(ScamHybridKeys.PREFIX + "zsl_frames");
             if (frames != null && isNumber(frames, 20f)) {
-                ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "zsl_frames", frames instanceof String ? "30" : (Object) 30f);
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "zsl_frames", frames instanceof String ? "30" : (Object) 30f);
                 changed = true;
             }
             e.putInt(ZSL_FRAMES_REV, 1);
@@ -506,9 +506,9 @@ public final class SettingsMigration {
         // one-time marker, as the N frames' (the key has no legacy or SCAM HDR source to copy from): set in the first run
         // whatever it finds, so a 24 chosen after this run is never moved.
         if (!values.containsKey(MOSAIC_FRAMES_REV)) {
-            Object frames = values.get(LmcHybridKeys.PREFIX + "mosaic_frames");
+            Object frames = values.get(ScamHybridKeys.PREFIX + "mosaic_frames");
             if (frames != null && isNumber(frames, 24f)) {
-                ModuleProfiles.put(e, LmcHybridKeys.PREFIX + "mosaic_frames", frames instanceof String ? "30" : (Object) 30f);
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "mosaic_frames", frames instanceof String ? "30" : (Object) 30f);
                 changed = true;
             }
             e.putInt(MOSAIC_FRAMES_REV, 1);
@@ -519,12 +519,12 @@ public final class SettingsMigration {
         // shot) and 1.414 of the LUT sigma as "1.41". Exactly those stored strings are that rounding, not a choice, and move
         // to the defaults. Own one-time marker, set in the first run whatever it finds, so a "0.00" chosen later stays.
         if (!values.containsKey(PRECISION_REV)) {
-            if ("0.00".equals(values.get(LmcHybridKeys.PREFIX + "bento_trigger"))) {
-                e.putString(LmcHybridKeys.PREFIX + "bento_trigger", "0.0005");
+            if ("0.00".equals(values.get(ScamHybridKeys.PREFIX + "bento_trigger"))) {
+                e.putString(ScamHybridKeys.PREFIX + "bento_trigger", "0.0005");
                 changed = true;
             }
-            if ("1.41".equals(values.get(LmcHybridKeys.PREFIX + "lut_sigma"))) {
-                e.putString(LmcHybridKeys.PREFIX + "lut_sigma", "1.414");
+            if ("1.41".equals(values.get(ScamHybridKeys.PREFIX + "lut_sigma"))) {
+                e.putString(ScamHybridKeys.PREFIX + "lut_sigma", "1.414");
                 changed = true;
             }
             e.putInt(PRECISION_REV, 1);
@@ -534,14 +534,14 @@ public final class SettingsMigration {
         // every shot) and the SCAMERA planner (the stock vivo AE needs Root on the vivo X200 Ultra). A stored former default (on /
         // "stock", written when the screen was first opened) moves once; own marker, so a choice made later stays.
         if (!values.containsKey(SCAM_DEFAULTS_REV)) {
-            Object diagnostics = values.get("pref_vivo_nice_diagnostics");
+            Object diagnostics = values.get("pref_scamhdr_diagnostics");
             if (diagnostics != null && PreferenceNumber.bool(diagnostics, false)) {
-                e.putBoolean("pref_vivo_nice_diagnostics", false);
+                e.putBoolean("pref_scamhdr_diagnostics", false);
                 changed = true;
             }
-            Object planner = values.get("pref_vivo_nice_planner");
+            Object planner = values.get("pref_scamhdr_planner");
             if (planner != null && "stock".equals(planner.toString().trim())) {
-                e.putString("pref_vivo_nice_planner", "scamera");
+                e.putString("pref_scamhdr_planner", "scamera");
                 changed = true;
             }
             e.putInt(SCAM_DEFAULTS_REV, 1);
@@ -551,15 +551,15 @@ public final class SettingsMigration {
         return changed;
     }
 
-    private static final String DEFAULTS_REV = "pref_lmc_hybrid_defaults_rev";
-    /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_zsl_frames (20) to 30. */
-    static final String ZSL_FRAMES_REV = "pref_lmc_hybrid_zsl_frames_rev";
-    /** Marker of the one-time move of a stored former default of pref_lmc_hybrid_mosaic_frames (24) to 30. */
-    static final String MOSAIC_FRAMES_REV = "pref_lmc_hybrid_mosaic_frames_rev";
+    private static final String DEFAULTS_REV = "pref_scam_hybrid_defaults_rev";
+    /** Marker of the one-time move of a stored former default of pref_scam_hybrid_zsl_frames (20) to 30. */
+    static final String ZSL_FRAMES_REV = "pref_scam_hybrid_zsl_frames_rev";
+    /** Marker of the one-time move of a stored former default of pref_scam_hybrid_mosaic_frames (24) to 30. */
+    static final String MOSAIC_FRAMES_REV = "pref_scam_hybrid_mosaic_frames_rev";
     /** Marker of the one-time move of the two-decimal slider defaults "0.00" (Bento auto threshold) and "1.41" (LUT sigma). */
-    static final String PRECISION_REV = "pref_lmc_hybrid_precision_rev";
+    static final String PRECISION_REV = "pref_scam_hybrid_precision_rev";
     /** Marker of the one-time move of the former SCAM HDR defaults (diagnostics on, stock planner) to off / SCAMERA. */
-    static final String SCAM_DEFAULTS_REV = "pref_vivo_nice_defaults_rev";
+    static final String SCAM_DEFAULTS_REV = "pref_scamhdr_defaults_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {
@@ -570,35 +570,35 @@ public final class SettingsMigration {
         }
     }
 
-    /** A SCAM HDR key whose value the hybrid route used before the separation (see {@link #migrateLmcHybrid(SharedPreferences, boolean)}). */
+    /** A SCAM HDR key whose value the hybrid route used before the separation (see {@link #migrateScamHybrid(SharedPreferences, boolean)}). */
     static boolean sharedWithHybrid(String key) {
-        if (key.startsWith(LEGACY_HYBRID) || key.equals("pref_vivo_nice_hybrid")) return false;
-        if (key.startsWith("pref_vivo_nice_")) {
-            String k = key.substring("pref_vivo_nice_".length());
+        if (key.startsWith(LEGACY_HYBRID) || key.equals("pref_scamhdr_hybrid")) return false;
+        if (key.startsWith("pref_scamhdr_")) {
+            String k = key.substring("pref_scamhdr_".length());
             // sharp_mode is a number for SCAM HDR and a list (rt/scam/off) for the hybrid; the soft tone is gone for it.
             if (k.equals("sharp_mode") || k.equals("soft_tone")) return false;
-            if (SHARED_NICE_KEYS.contains(k)) return true;
-            for (String prefix : SHARED_NICE_PREFIXES) if (k.startsWith(prefix)) return true;
+            if (SHARED_SCAM_KEYS.contains(k)) return true;
+            for (String prefix : SHARED_SCAM_PREFIXES) if (k.startsWith(prefix)) return true;
             return false;
         }
-        if (key.startsWith("pref_nice_")) {
-            String k = key.substring("pref_nice_".length());
+        if (key.startsWith("pref_scamold_")) {
+            String k = key.substring("pref_scamold_".length());
             return k.startsWith("ae_") || k.equals("fast_capture");
         }
-        if (key.startsWith("pref_agx_nice_")) return true;
-        if (key.startsWith("pref_vivo_hdr_")) return !UNSHARED_HDR_KEYS.contains(key.substring("pref_vivo_hdr_".length()));
+        if (key.startsWith("pref_agx_scam_")) return true;
+        if (key.startsWith("pref_scamroute_")) return !UNSHARED_HDR_KEYS.contains(key.substring("pref_scamroute_".length()));
         return false;
     }
 
-    /** The hybrid merged the shots before the separation: SCAM HDR on and the engine "hybrid", or "auto" away from the NICE SoC. */
+    /** The hybrid merged the shots before the separation: SCAM HDR on and the engine "hybrid", or "auto" away from the SCAM SoC. */
     private static boolean legacyHybridShots(Map<String, ?> values) {
-        if (!PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_HDR), false)
-                || !PreferenceNumber.bool(values.get(LmcHybridKeys.LEGACY_NICE), false)) return false;
-        Object engine = values.get("pref_vivo_nice_engine");
-        if (engine == null && values.containsKey("pref_vivo_nice_hybrid"))
-            return PreferenceNumber.bool(values.get("pref_vivo_nice_hybrid"), true);
+        if (!PreferenceNumber.bool(values.get(ScamHybridKeys.LEGACY_HDR), false)
+                || !PreferenceNumber.bool(values.get(ScamHybridKeys.LEGACY_SCAM), false)) return false;
+        Object engine = values.get("pref_scamhdr_engine");
+        if (engine == null && values.containsKey("pref_scamhdr_hybrid"))
+            return PreferenceNumber.bool(values.get("pref_scamhdr_hybrid"), true);
         String v = engine == null ? "auto" : engine.toString();
-        return "hybrid".equals(v) || !"nice".equals(v) && !LmcHybridKeys.vivoNetSoc();
+        return "hybrid".equals(v) || !"scam".equals(v) && !ScamHybridKeys.scamNetSoc();
     }
     /** An android: attribute of the current tag, a resource reference resolved to its text (also used by XmlDefaults). */
     static String attribute(Context context, XmlResourceParser parser, String name) {

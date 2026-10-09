@@ -120,7 +120,7 @@ public class ParseExif {
     static String routeLine() {
         try {
             if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamHdrRoute()) return "\n Route=SCAM HDR";
-            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isLmcHybridEnabled()) return "\n Route=Hybrid";
+            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamHybridEnabled()) return "\n Route=Hybrid";
         } catch (RuntimeException ignored) {
             // no settings (tests): no route line
         }

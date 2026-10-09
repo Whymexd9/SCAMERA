@@ -93,12 +93,12 @@ public final class HexQuadBurst {
      * SCAM HDR on a mosaic stream: the equal-exposure N frames through the NPU model, returned as sensor-domain plain
      * bayer (uint16, the frames' black and white levels, output size = input size). The parameters are not touched.
      */
-    public static ByteBuffer processForNice(Context context,List<ImageFrame> frames,Parameters p,boolean quad) throws Exception {
+    public static ByteBuffer processForScam(Context context,List<ImageFrame> frames,Parameters p,boolean quad) throws Exception {
         HexQuadBurst burst=new HexQuadBurst(frames,p,quad);
-        ByteBuffer result=VivoNeuralClient.processBurst(context,burst);
+        ByteBuffer result=ScamNeuralClient.processBurst(context,burst);
         // Normalized linear bayer16, black 0 / white 65535: back to the frames' own levels.
         ShortBuffer s=result.order(ByteOrder.nativeOrder()).asShortBuffer();
-        float black=burst.black,span=burst.white-burst.black,gain=PreferenceKeys.niceInternalValue("mosaic_gain",1f);
+        float black=burst.black,span=burst.white-burst.black,gain=PreferenceKeys.routeInternalValue("mosaic_gain",1f);
         double sumIn=0,sumOut=0;int n=s.limit();
         for(int i=0;i<n;i++){
             int v=s.get(i)&0xffff;
@@ -106,7 +106,7 @@ public final class HexQuadBurst {
             if((i&63)==0){sumIn+=v;sumOut+=raw;}
             s.put(i,(short)Math.round(raw));
         }
-        com.particlesdevs.photoncamera.util.Log.i("NICE_MOSAIC","neural output "+(quad?"Quad 2x2":"HexQuad")+": mean "
+        com.particlesdevs.photoncamera.util.Log.i("SCAM_MOSAIC","neural output "+(quad?"Quad 2x2":"HexQuad")+": mean "
                 +String.format(java.util.Locale.US,"%.1f -> %.1f",sumIn/Math.max(1,(n+63)/64),sumOut/Math.max(1,(n+63)/64))
                 +" (black "+black+", white "+burst.white+")");
         result.position(0);

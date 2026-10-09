@@ -14,7 +14,7 @@ public:
     ~BitmapPixels() { AndroidBitmap_unlockPixels(env,bitmap); }
 };
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_particlesdevs_photoncamera_processing_ml_VivoPostDownscale_nativeResize(
+Java_com_particlesdevs_photoncamera_processing_ml_ScamPostDownscale_nativeResize(
         JNIEnv* env,jclass,jobject source,jobject destination,jint lobes) {
     AndroidBitmapInfo src{},dst{};
     if (AndroidBitmap_getInfo(env,source,&src)!=ANDROID_BITMAP_RESULT_SUCCESS ||

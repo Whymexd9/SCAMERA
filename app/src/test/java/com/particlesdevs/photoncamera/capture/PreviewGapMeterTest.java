@@ -20,7 +20,7 @@ public class PreviewGapMeterTest {
 
     /** vivo X200 Ultra tele, shot 14:01:40 (SCAMERA-debug.log (15)): flush, 5 frames, AE restore, then the P38 re-arm flush. */
     @Test
-    public void theVivoShotSplitsIntoFlushRestartSeriesAndResume() {
+    public void theScamShotSplitsIntoFlushRestartSeriesAndResume() {
         final long t0 = 128156227841192L;                      // the last preview frame before the press (ZSL cutoff)
         long[] before = run(t0 - 29 * FRAME, 30);
         long[] series = {128156696749221L, 128156763292346L, 128156793204109L, 128156826475567L, 128156859747234L};

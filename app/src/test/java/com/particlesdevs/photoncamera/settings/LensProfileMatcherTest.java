@@ -38,7 +38,7 @@ public class LensProfileMatcherTest {
             new Lens("back3", false, 135f, 6f, false, "6×"),
             new Lens("front0", true, 21f, 1f, false, "Фронт"));
 
-    @Test public void vivoToOppoMapsEveryLensByWhatItIs() {
+    @Test public void scamToOppoMapsEveryLensByWhatItIs() {
         Map<String, String> m = LensProfileMatcher.match(VIVO, OPPO);
         assertEquals("back3", m.get("back0"));   // UW <- UW
         assertEquals("back1", m.get("back1"));   // main <- main (35 vs 23 mm, same role)
@@ -47,7 +47,7 @@ public class LensProfileMatcherTest {
         assertEquals("front0", m.get("front0"));
     }
 
-    @Test public void oppoToVivoFeedsOneSourceTeleToSeveralTargets() {
+    @Test public void oppoToScamFeedsOneSourceTeleToSeveralTargets() {
         Map<String, String> m = LensProfileMatcher.match(OPPO, VIVO);
         assertEquals("back2", m.get("back0"));   // 2.4x <- 3x
         assertEquals("back1", m.get("back1"));

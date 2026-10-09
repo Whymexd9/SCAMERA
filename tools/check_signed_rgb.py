@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Signed merge RGB through the LMC hybrid import and the stages after it, on the SHIPPED shaders: no mean bias.
+"""Signed merge RGB through the SCAM Hybrid import and the stages after it, on the SHIPPED shaders: no mean bias.
 
 The hybrid merge keeps its noise signed and clips once. A per-pixel max(0) of a channel near zero lifts its mean by up to
 half its noise: on the OPPO Find X8 Ultra (2026-10-07, ISO 489) the red of a dark teal curtain came out x1.5 along the
@@ -7,7 +7,7 @@ frame edge, where fewer donor frames overlap and the noise is twice as high, and
 band and red mottling. The scene here: a dark field with a low red channel (R ~ its noise, a third of the samples
 negative), the first columns twice as noisy (the frame edge), a few non-finite samples.
 Checks:
-- vivohdr/nicergb (hlModeU 1, as VivoNiceRgb on a hybrid shot, signedU 1): the per-column mean colour of the edge and of
+- scamhdr/scamrgb (hlModeU 1, as ScamRgb on a hybrid shot, signedU 1): the per-column mean colour of the edge and of
   the inside equals the input's (white balance only, |bias| < 0.5 %); with signedU 0 (the former clamp, still the SCAM HDR
   route) the edge red is lifted by > 20 % (the check sees the bias); where no channel is negative both modes give the same
   output, bit for bit; non-finite samples come out as 0;
@@ -15,10 +15,10 @@ Checks:
 - chromadn/down (NLM colour stage): the box mean of the signed values (no lift), as numpy;
 - ark/low colour mode: the box mean of the signed values (no lift); DETAIL_REF 1 keeps its per-pixel clamp, the box mean
   of min(ae * Y(max(rgb, 0)), 1), as ark/combine's detail luminance;
-- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the LMC denoise) is the former per-tap clamp,
+- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the SCAM denoise) is the former per-tap clamp,
   bit for bit, also for the negative taps of a colour outside sRGB; signedColourU 1 (signed hybrid input) clamps after the
   interpolation (the red of a dark teal field is not lifted); non-negative taps give the same output in both modes;
-- the NLM denoise engine (NiceDenoise.runNlm: chromadn/luma, down, filter, nlm, down4, coarse, apply as the Java sets them,
+- the NLM denoise engine (ScamHdrDenoise.runNlm: chromadn/luma, down, filter, nlm, down4, coarse, apply as the Java sets them,
   despeckle off; signedU 1 = signed hybrid input): non-negative input gives the output of signedU 0 bit for bit (luma and
   chroma on, luma alone, chroma alone); on the signed dark field the luminance is not lifted by a clamp per pixel (chroma
   alone: |Y bias| < 0.5 %, the clamp lifts the noisy edge by > 3 %), with the chroma denoise off the colour is not lifted
@@ -117,8 +117,8 @@ def column_bias(out_wb, raw, cols):
     return o.reshape(-1, 3).mean(0) / r.reshape(-1, 3).mean(0)
 
 
-def nicergb(raw, signed):
-    p = program('vivohdr/nicergb.glsl')
+def scamrgb(raw, signed):
+    p = program('scamhdr/scamrgb.glsl')
     t = texture(raw)
     g = texture(np.ones((1, 1, 4), np.float32), linear=True)
     try:
@@ -183,12 +183,12 @@ def combine_checks():
 
 
 LW = np.array([0.2126, 0.7152, 0.0722])
-OFFSET_C = 0.008                                         # NiceDenoise offsetC
-DARK_CHROMA = (1.5e-4, 4.0e-4)                           # LmcDenoise.darkChroma on signed hybrid input (defaults)
+OFFSET_C = 0.008                                         # ScamHdrDenoise offsetC
+DARK_CHROMA = (1.5e-4, 4.0e-4)                           # ScamDenoise.darkChroma on signed hybrid input (defaults)
 
 
 def nlm_engine(field, signed, luma, chroma, sigma):
-    """NiceDenoise.runNlm without the despeckle (checked alone above), 1x grid, no effective-frame map: chromadn/luma ->
+    """ScamHdrDenoise.runNlm without the despeckle (checked alone above), 1x grid, no effective-frame map: chromadn/luma ->
     down -> filter (stepU 1, 2) -> nlm -> down4 -> coarse -> apply with the uniforms the Java sets (strengths 0 / 1)."""
     h_, w_ = field.shape[:2]
     tin = texture(np.concatenate([field, np.ones((h_, w_, 1))], -1).astype(np.float32))
@@ -301,24 +301,24 @@ def main():
     raw, mean = scene()
     edge, inside = slice(0, EDGE), slice(EDGE + 8, W - 8)
 
-    # ---- nicergb
-    new = nicergb(raw, True)
-    old = nicergb(raw, False)
+    # ---- scamrgb
+    new = scamrgb(raw, True)
+    old = scamrgb(raw, False)
     be, bi = column_bias(new, raw, edge), column_bias(new, raw, inside)
     oe, oi = column_bias(old, raw, edge), column_bias(old, raw, inside)
     neg_share = (raw[:, edge, 0] < 0).mean()
     if REPORT:
-        print('nicergb signed: edge %s inside %s | clamped: edge %s inside %s | red samples < 0 at the edge %.0f %%'
+        print('scamrgb signed: edge %s inside %s | clamped: edge %s inside %s | red samples < 0 at the edge %.0f %%'
               % (np.round(be, 4), np.round(bi, 4), np.round(oe, 4), np.round(oi, 4), 100 * neg_share))
     if np.max(np.abs(be - 1)) > 0.005 or np.max(np.abs(bi - 1)) > 0.005:
-        fails.append('nicergb signed: mean colour biased (edge %s, inside %s)' % (np.round(be, 4), np.round(bi, 4)))
+        fails.append('scamrgb signed: mean colour biased (edge %s, inside %s)' % (np.round(be, 4), np.round(bi, 4)))
     if oe[0] < 1.2:
-        fails.append('nicergb clamped: edge red lift %.3f <= 1.2 - the scene no longer shows the bias' % oe[0])
+        fails.append('scamrgb clamped: edge red lift %.3f <= 1.2 - the scene no longer shows the bias' % oe[0])
     if not np.all(np.isfinite(new)) or np.any(new[H - 1, W - 1, [0, 2]] != 0.0):
-        fails.append('nicergb signed: non-finite input not zeroed (%s)' % new[H - 1, W - 1])
+        fails.append('scamrgb signed: non-finite input not zeroed (%s)' % new[H - 1, W - 1])
     ok = np.all(raw >= 0, axis=-1) & np.all(np.isfinite(raw), axis=-1)
     if not np.array_equal(new[ok], old[ok]):
-        fails.append('nicergb: pixels without a negative channel differ between signed and clamped (%d)'
+        fails.append('scamrgb: pixels without a negative channel differ between signed and clamped (%d)'
                      % int(np.any(new[ok] != old[ok], axis=-1).sum()))
 
     # ---- chromadn/despeckle on the signed white-balanced field (the denoise input; numpy, so each stage is checked alone)
@@ -392,7 +392,7 @@ def main():
         for f in fails:
             print('FAIL:', f)
         sys.exit(1)
-    print('signed RGB PASS: nicergb edge bias %+.2f %% (clamped %+.1f %%), despeckle / down / ark low keep the mean, '
+    print('signed RGB PASS: scamrgb edge bias %+.2f %% (clamped %+.1f %%), despeckle / down / ark low keep the mean, '
           'NLM chroma 0 edge red %+.1f %% (clamped %+.1f %%)'
           % (100 * (be[0] - 1), 100 * (oe[0] - 1), 100 * nlm_signed, 100 * nlm_clamped))
 

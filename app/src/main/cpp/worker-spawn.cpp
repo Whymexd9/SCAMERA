@@ -1,4 +1,4 @@
-// Starts the native NICE/neural worker as a child of the app (no su): the
+// Starts the native SCAM/neural worker as a child of the app (no su): the
 // worker runs in the app sandbox from nativeLibraryDir, with chosen file
 // descriptors (memfd burst/result) mapped to 3, 4, ... and stdout+stderr on a pipe.
 #include <jni.h>

@@ -216,8 +216,8 @@ public class PhotonCamera extends Application {
         // The firmware test has its own process. Do not open cameras, initialize
         // GPU pipelines or start background modules inside that process.
         if (android.os.Build.VERSION.SDK_INT >= 28 &&
-                (android.app.Application.getProcessName().endsWith(":vivo_neural")
-                || android.app.Application.getProcessName().endsWith(":vivo_nice"))) {
+                (android.app.Application.getProcessName().endsWith(":scam_neural")
+                || android.app.Application.getProcessName().endsWith(":scam"))) {
             super.onCreate();
             return;
         }

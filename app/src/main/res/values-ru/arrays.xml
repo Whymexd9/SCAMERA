@@ -39,7 +39,7 @@
         <item>HUD + гистограмма</item>
         <item>Полная отладка</item>
     </string-array>
-    <string-array name="vivo_nice_noise_source_entries">
+    <string-array name="scam_noise_source_entries">
         <item>Авто (по камере)</item>
         <item>IMX06C — стоковый (основная и широкоугольная)</item>
         <item>HP9 — стоковый (телевик)</item>
@@ -52,89 +52,89 @@
         <item>RAW10 (упакованный)</item>
         <item>RAW12 (упакованный)</item>
     </string-array>
-    <string-array name="lmc_hybrid_output_entries">
+    <string-array name="scam_hybrid_output_entries">
         <item>Сенсор (1×, по умолчанию)</item>
         <item>12 МП (2× → 12)</item>
         <item>16 МП (2× → 16)</item>
         <item>20 МП (2× → 20)</item>
         <item>2× (≈50 МП, без уменьшения)</item>
     </string-array>
-    <string-array name="lmc_hybrid_bento_entries">
+    <string-array name="scam_hybrid_bento_entries">
         <item>Выключено</item>
         <item>Авто (при клиппинге)</item>
         <item>Всегда</item>
     </string-array>
-    <string-array name="lmc_hybrid_bento_validate_entries">
+    <string-array name="scam_hybrid_bento_validate_entries">
         <item>Только первый кадр (как раньше)</item>
         <item>Каждый ультракороткий кадр</item>
         <item>Каждый кадр + движение на незасвеченной базе (по умолчанию)</item>
     </string-array>
-    <string-array name="lmc_hybrid_bento_frames_entries">
+    <string-array name="scam_hybrid_bento_frames_entries">
         <item>1 кадр</item>
         <item>2 кадра (по умолчанию)</item>
     </string-array>
-    <string-array name="lmc_hybrid_sharp_mode_entries">
+    <string-array name="scam_hybrid_sharp_mode_entries">
         <item>ARK: как ArkCam (по умолчанию)</item>
         <item>RawTherapee</item>
         <item>SCAM: без ореолов</item>
         <item>Выключено</item>
     </string-array>
-    <string-array name="lmc_hybrid_dn_engine_entries">
+    <string-array name="scam_hybrid_dn_engine_entries">
         <item>GCam / Hybrid (ArkCam)</item>
         <item>NLM (прежний)</item>
     </string-array>
-    <string-array name="lmc_hybrid_dn_map_entries">
+    <string-array name="scam_hybrid_dn_map_entries">
         <item>Авто (карта кадров, если склейка её дала)</item>
         <item>Карта эффективных кадров</item>
         <item>Равномерно</item>
     </string-array>
-    <string-array name="lmc_hybrid_local_align_entries">
+    <string-array name="scam_hybrid_local_align_entries">
         <item>Выкл.</item>
         <item>Поле по тайлам (по умолчанию)</item>
         <item>Постоянное на тайл (как 6.1)</item>
     </string-array>
-    <string-array name="lmc_hybrid_rawca_entries">
+    <string-array name="scam_hybrid_rawca_entries">
         <item>Выкл.</item>
         <item>Оценка по базовому кадру</item>
         <item>Коррекция каждого кадра (GPU)</item>
     </string-array>
-    <string-array name="lmc_hybrid_mosaic_path_entries">
+    <string-array name="scam_hybrid_mosaic_path_entries">
         <item>Разбиение на подкадры</item>
         <item>Нативная мозаика (по умолчанию)</item>
     </string-array>
-    <string-array name="lmc_hybrid_mosaic_native_clamp_entries">
+    <string-array name="scam_hybrid_mosaic_native_clamp_entries">
         <item>Выкл.</item>
         <item>ArkCam: по компонентам ковариации</item>
         <item>Диапазон ArkCam по осям ядра (по умолчанию)</item>
     </string-array>
-    <string-array name="lmc_hybrid_mosaic_chroma_fill_entries">
+    <string-array name="scam_hybrid_mosaic_chroma_fill_entries">
         <item>Выкл. (по умолчанию)</item>
         <item>ArkCam: средние цветовых блоков</item>
     </string-array>
-    <string-array name="lmc_hybrid_mosaic_tetra_entries">
+    <string-array name="scam_hybrid_mosaic_tetra_entries">
         <item>Разбиение на подкадры</item>
         <item>T2: биннинг 2×2 в Quad</item>
         <item>T1: нативная Tetra (по умолчанию)</item>
     </string-array>
-    <string-array name="lmc_hybrid_sabre61_entries">
+    <string-array name="scam_hybrid_sabre61_entries">
         <item>Выключено (ядро раунда 4)</item>
         <item>Всегда</item>
         <item>Авто (ночью)</item>
     </string-array>
-    <string-array name="lmc_hybrid_noise_source_entries">
+    <string-array name="scam_hybrid_noise_source_entries">
         <item>Camera2 SENSOR_NOISE_PROFILE каждого кадра</item>
         <item>Из настроек «Модель шума сенсора»</item>
     </string-array>
-    <string-array name="vivo_nice_planner_entries">
+    <string-array name="scam_planner_entries">
         <item>Стоковый AE vivo (root)</item>
         <item>SCAMERA (без root)</item>
     </string-array>
-    <string-array name="vivo_nice_cre_entries">
+    <string-array name="scam_cre_entries">
         <item>Авто (системная, иначе встроенная)</item>
         <item>Системная (/vendor, только vivo)</item>
         <item>Встроенная в приложение</item>
     </string-array>
-    <string-array name="vivo_nice_mosaic_entries">
+    <string-array name="scam_mosaic_entries">
         <item>Выключено (только обычный Bayer)</item>
         <item>GPU-ремозаик SCAMERA — каждый кадр</item>
         <item>GPU Tetra Detail v2 — каждый кадр (только Tetra 4×4)</item>
@@ -187,19 +187,19 @@
         <item>Долгое нажатие</item>
         <item>Касание</item>
     </string-array>
-    <string-array name="lmc_hybrid_ark_metering_entries">
+    <string-array name="scam_hybrid_ark_metering_entries">
         <item>По всему кадру</item>
         <item>Центровзвешенный</item>
         <item>Точечный</item>
     </string-array>
-    <string-array name="lmc_hybrid_ark_agx_look_entries">
+    <string-array name="scam_hybrid_ark_agx_look_entries">
         <item>Default</item>
         <item>Punchy</item>
         <item>Soft</item>
         <item>Golden</item>
         <item>Custom</item>
     </string-array>
-    <string-array name="lmc_hybrid_ark_sharp_domain_entries">
+    <string-array name="scam_hybrid_ark_sharp_domain_entries">
         <item>После экспозиции ae</item>
         <item>G_CLEAN, как ArkCam</item>
     </string-array>

@@ -12,18 +12,18 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 /**
- * P48 (research/speed/PLAIN_SHOT_SPEED.md): the faster input stage of VivoNiceRgb gives bit for bit what it replaces.
+ * P48 (research/speed/PLAIN_SHOT_SPEED.md): the faster input stage of ScamRgb gives bit for bit what it replaces.
  * channelClip in parts on the shared pool against the single walk it replaced (copied below as it was), and the RGB to RGBA
  * repack of the banded upload against the RGB floats (raw bits, alpha 1.0).
  */
 public class PlainShotSpeedTest {
-    /** The clip statistics before P48: one walk over every 17th pixel (VivoNiceRgb.channelClip as it was). */
-    private static VivoNiceRgb.ChannelClip legacyChannelClip(ByteBuffer rgb, boolean bento, float k, float usClipped, boolean flags) {
-        VivoNiceRgb.ChannelClip cc = new VivoNiceRgb.ChannelClip();
+    /** The clip statistics before P48: one walk over every 17th pixel (ScamRgb.channelClip as it was). */
+    private static ScamRgb.ChannelClip legacyChannelClip(ByteBuffer rgb, boolean bento, float k, float usClipped, boolean flags) {
+        ScamRgb.ChannelClip cc = new ScamRgb.ChannelClip();
         FloatBuffer f = rgb.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer();
         final int n = f.limit() / 3;
         final float inv = bento && k > 1f ? 1f / k : 0f;
-        final int bins = VivoNiceRgb.HIST_BINS;
+        final int bins = ScamRgb.HIST_BINS;
         final int[][] hLo = new int[3][bins], hHi = new int[3][bins];
         final double[][] sLo = new double[3][bins], sHi = new double[3][bins];
         long samples = 0;
@@ -42,12 +42,12 @@ public class PlainShotSpeedTest {
         for (int c = 0; c < 3; c++) {
             float lo = 0f, hi = 0f;
             if (useLo) {
-                final float s = VivoNiceRgb.plateau(hLo[c], sLo[c], samples, 0.92f, 1.03f);
+                final float s = ScamRgb.plateau(hLo[c], sLo[c], samples, 0.92f, 1.03f);
                 lo = Float.isNaN(s) ? 1f : s;
                 logLo.append(c == 0 ? "lo=" : ",").append(lo).append(Float.isNaN(s) ? "(nominal)" : "(plateau)");
             }
             if (useHi) {
-                final float s = VivoNiceRgb.plateau(hHi[c], sHi[c], samples, 0.90f, 1.08f);
+                final float s = ScamRgb.plateau(hHi[c], sHi[c], samples, 0.90f, 1.08f);
                 hi = !Float.isNaN(s) ? s * k : (usClipped > 0f ? k : 0f);
                 logHi.append(c == 0 ? "hi=" : ",").append(hi)
                         .append(!Float.isNaN(s) ? "(plateau)" : hi > 0f ? "(nominal)" : "(off)");
@@ -65,8 +65,8 @@ public class PlainShotSpeedTest {
     }
 
     private static void histogram(int[] h, double[] sum, float t) {
-        final int b = (int) Math.floor((t - VivoNiceRgb.HIST_T0) / VivoNiceRgb.HIST_BIN);
-        if (b >= 0 && b < VivoNiceRgb.HIST_BINS) { h[b]++; sum[b] += t; }
+        final int b = (int) Math.floor((t - ScamRgb.HIST_T0) / ScamRgb.HIST_BIN);
+        if (b >= 0 && b < ScamRgb.HIST_BINS) { h[b]++; sum[b] += t; }
     }
 
     private static void assertSameBits(String what, float[] expected, float[] actual) {
@@ -109,9 +109,9 @@ public class PlainShotSpeedTest {
                 final boolean bento = variant >= 2, flags = variant % 2 == 1;
                 final float k = bento ? 16f : 1f;
                 final ByteBuffer b = rgb(r, pixels, k, variant != 1);
-                final VivoNiceRgb.ChannelClip expected = legacyChannelClip(b, bento, k, bento ? 0.001f : 0f, flags);
+                final ScamRgb.ChannelClip expected = legacyChannelClip(b, bento, k, bento ? 0.001f : 0f, flags);
                 for (int parts : new int[]{1, 2, 3, 8}) {
-                    final VivoNiceRgb.ChannelClip got = VivoNiceRgb.channelClip(b, bento, k, bento ? 0.001f : 0f, flags, parts);
+                    final ScamRgb.ChannelClip got = ScamRgb.channelClip(b, bento, k, bento ? 0.001f : 0f, flags, parts);
                     final String what = pixels + " px, variant " + variant + ", parts " + parts;
                     assertSameBits(what + " lo", expected.lo, got.lo);
                     assertSameBits(what + " hi", expected.hi, got.hi);
@@ -134,19 +134,19 @@ public class PlainShotSpeedTest {
         java.nio.file.Files.write(file.toPath(), bytes);
         try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(file.toPath())) {
             // short reads (at most 1000 bytes per call), as a pread may return
-            final VivoNeuralClient.PositionalReader reader = (d, at) -> {
+            final ScamNeuralClient.PositionalReader reader = (d, at) -> {
                 ByteBuffer part = d.duplicate();
                 part.limit(Math.min(d.limit(), d.position() + 1000));
                 final int n = channel.read(part, at);
                 if (n > 0) d.position(d.position() + n);
                 return n;
             };
-            for (int part : new int[]{1 << 20, 4096, 7, VivoNeuralClient.READ_PART}) {
+            for (int part : new int[]{1 << 20, 4096, 7, ScamNeuralClient.READ_PART}) {
                 for (int[] range : new int[][]{{0, bytes.length}, {12345, 2_000_000}, {bytes.length - 10, 10}}) {
                     final int from = range[0], length = range[1];
                     ByteBuffer dst = ByteBuffer.allocateDirect(length + 33);
                     dst.position(33);
-                    VivoNeuralClient.readParallel(reader, dst, from, part);
+                    ScamNeuralClient.readParallel(reader, dst, from, part);
                     assertEquals(length + 33, dst.position());
                     byte[] got = new byte[length];
                     dst.position(33);
@@ -156,7 +156,7 @@ public class PlainShotSpeedTest {
             }
             ByteBuffer beyond = ByteBuffer.allocateDirect(100);
             try {
-                VivoNeuralClient.readParallel(reader, beyond, bytes.length - 50, 16);
+                ScamNeuralClient.readParallel(reader, beyond, bytes.length - 50, 16);
                 org.junit.Assert.fail("a read past the end must fail");
             } catch (java.io.EOFException expected) {
                 // as the sequential read: an incomplete result
@@ -180,7 +180,7 @@ public class PlainShotSpeedTest {
                 final int rows = Math.min(Math.max(1, h / 3), h - y0);
                 ByteBuffer dst = ByteBuffer.allocateDirect(rows * w * 16).order(ByteOrder.nativeOrder());
                 dst.position(rows * w * 8); // the repack writes from the start whatever the position
-                VivoNiceRgb.rgbToRgbaRows(src, w, y0, rows, dst);
+                ScamRgb.rgbToRgbaRows(src, w, y0, rows, dst);
                 ByteBuffer view = dst.duplicate().order(ByteOrder.nativeOrder());
                 view.position(0);
                 IntBuffer d = view.asIntBuffer();

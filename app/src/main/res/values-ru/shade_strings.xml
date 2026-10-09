@@ -194,7 +194,7 @@
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">У этого объектива нет вспышки</string>
     <string name="shade_reason_scamhdr_soc">Только Hybrid: SCAM HDR работает только на Snapdragon 8 Elite</string>
-    <string name="shade_reason_nice_dev">Задано в nice_dev.txt</string>
+    <string name="shade_reason_scam_dev">Задано в scam_dev.txt</string>
     <string name="shade_reason_dependency">Включите «%1$s».</string>
     <!-- P42 -->
     <string name="shade_t_faces">Лица</string>

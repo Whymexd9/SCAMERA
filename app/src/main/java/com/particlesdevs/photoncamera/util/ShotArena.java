@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * P30: the RAW frames of one Hybrid shot in one memfd (allocator.cpp). Frames are copied out of the camera's reader straight
- * into their slot; the merge worker maps the same memfd (LmcHybridBurst.sharedBurst writes the header into the first
+ * into their slot; the merge worker maps the same memfd (ScamHybridBurst.sharedBurst writes the header into the first
  * {@link #HEADER} bytes), so the ~680 MB copy into the transport before every merge is gone. A frame buffer here is an
  * arena view: Allocator.free drops its reference, the memfd goes once the shot has released the arena and every view is
  * freed. Any failure (no memfd, a frame larger than a slot, the arena full or released) gives null: the caller copies into a

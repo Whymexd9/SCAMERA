@@ -122,7 +122,7 @@ public final class ArkFusion extends Node {
         glProg.closed = true;
         ab[0].close();
         ab[1].close();
-        Log.i("NICE_PIPELINE", "ARK fusion em=" + em[0] + "," + em[1] + "," + em[2] + "," + em[3] + " lw=" + lw[0] + "," + lw[1] + ","
+        Log.i("SCAM_PIPELINE", "ARK fusion em=" + em[0] + "," + em[1] + "," + em[2] + "," + em[3] + " lw=" + lw[0] + "," + lw[1] + ","
                 + lw[2] + "," + lw[3] + " r=" + radius + " eps=" + eps + " bracketDn=" + (st.lowDn != st.low ? strength : 0f)
                 + " half=" + half.x + "x" + half.y + " ms=" + (System.currentTimeMillis() - started));
     }

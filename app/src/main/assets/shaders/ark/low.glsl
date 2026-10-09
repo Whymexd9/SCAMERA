@@ -1,7 +1,7 @@
 precision highp float;
 precision highp sampler2D;
 // ARK tone, step 1 (ArkStats): the G_CLEAN equivalent "arkLow" - the box mean (factorU x factorU output pixels) of the
-// linear Rec.709 scene, i.e. Google's ds_linear_rgb that the ArkCam / LMC 9.6 photo tone reads (half the sensor:
+// linear Rec.709 scene, i.e. Google's ds_linear_rgb that the ArkCam / SCAM 9.6 photo tone reads (half the sensor:
 // factor 2 on the 1x grid, 4 on the Sabre 2x grid). Same colour chain as the former headroom/render.glsl
 // (intermediateToSRGB * sensorToIntermediate * (in * NEUTRALPOINT * LSC)) with the FULL lens-shading gain and
 // without any clip: Bento content above 1 is kept. Factor 2 on the 2x grid gives "arkMid", the 1x-equivalent colour
@@ -10,13 +10,13 @@ precision highp sampler2D;
 // DETAIL_REF 1 (ArkCombine): .r = box mean of min(ae * Y709, 1), the bounded reference of the detail delta - the
 // kernel's guide a3 is "normalized to [0, 1]"; the mean of the clipped values (not the clip of the mean) keeps a
 // lamp's headroom out of the reference of its dark neighbours.
-// Signed input (LMC hybrid, nicergb signedU; the denoise clamps its output, without the denoise the merge's signed noise
+// Signed input (SCAM Hybrid, scamrgb signedU; the denoise clamps its output, without the denoise the merge's signed noise
 // arrives here): the colour box mean averages the signed values, a clamp per pixel would lift the mean of a channel near
 // zero (red mottling of a dark teal curtain under the ARK shadow lift). DETAIL_REF clamps per pixel as ark/combine's
 // detail luminance does (the delta compares the two). For non-negative input both are the former means.
 #define DETAIL_REF 0
 #import interpolation
-uniform sampler2D InputBuffer;      // white-balanced linear camera RGB (VivoNiceRgb .. NiceDenoise), output grid
+uniform sampler2D InputBuffer;      // white-balanced linear camera RGB (ScamRgb .. ScamHdrDenoise), output grid
 uniform sampler2D GainMap;          // lens shading gains (r, g_even, g_odd, b)
 uniform mat3 sensorToIntermediate;  // sensor -> ProPhoto
 uniform mat3 intermediateToSRGB;    // ProPhoto -> linear sRGB / Rec.709

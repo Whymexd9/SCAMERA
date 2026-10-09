@@ -5,7 +5,7 @@ import java.nio.ShortBuffer;
 import java.util.Locale;
 
 /**
- * Smart-HDR statistics and auto exposure of the ArkCam 1.23 / LMC 9.6 photo tone: libfc_suppressor.so
+ * Smart-HDR statistics and auto exposure of the ArkCam 1.23 / SCAM 9.6 photo tone: libfc_suppressor.so
  * run_unified_hdr_pipeline (0x724e0), ported line by line from research/hybrid5/ref/tone/ark_ae.py (that reference
  * matches the native code under emulation within 5e-5). Pure Java on a linear Rec.709 buffer (the G_CLEAN equivalent
  * "arkLow"), no GL and no Android, so it is unit-tested against the Python reference.

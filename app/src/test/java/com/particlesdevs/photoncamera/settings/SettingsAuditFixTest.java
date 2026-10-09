@@ -110,10 +110,10 @@ public class SettingsAuditFixTest {
     }
 
     /** The probe of the old vivo system remosaic path (removed in P4) is gone; the SCAM HDR and neural checks stay. */
-    @Test public void vivoRemosaicProbeIsGone() {
+    @Test public void scamRemosaicProbeIsGone() {
         PreferenceScreen screen=inflate();
-        assertNull(screen.findPreference("remosaic_vivo_probe"));
-        assertNotNull(screen.findPreference("vivo_nice_probe"));assertNotNull(screen.findPreference("vivo_neural_probe"));
+        assertNull(screen.findPreference("remosaic_scam_probe"));
+        assertNotNull(screen.findPreference("scam_probe"));assertNotNull(screen.findPreference("scam_neural_probe"));
     }
 
     /**
@@ -159,8 +159,8 @@ public class SettingsAuditFixTest {
                 "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
                 "pref_theme_key","pref_show_gradient_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
-        for(String key:new String[]{"pref_lmc_hybrid_cdm","pref_vivo_nice_luma","pref_sharp_radius_key","pref_cfa_key","pref_dng_lossless",
-                "pref_lmc_tone_curve","pref_raw_stream_format","hexquad_luma"})
+        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scamhdr_luma","pref_sharp_radius_key","pref_cfa_key","pref_dng_lossless",
+                "pref_scam_tone_curve","pref_raw_stream_format","hexquad_luma"})
             assertTrue(key,ModuleProfiles.isLocal(key));
         // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade).
         PreferenceScreen screen=inflate();
@@ -170,11 +170,11 @@ public class SettingsAuditFixTest {
         SharedPreferences[] module=profiles();
         prefs.edit().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").putBoolean("pref_camera_sounds_key",false).commit();
         for(SharedPreferences p:module)p.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putBoolean("pref_camera_sounds_key",true)
-                .putString("pref_watermark_line1","OLD").putString("pref_lmc_hybrid_cdm","0.5").commit();
+                .putString("pref_watermark_line1","OLD").putString("pref_scam_hybrid_cdm","0.5").commit();
         SettingsMigration.removeObsolete(context,prefs);
         for(SharedPreferences p:module){
             assertFalse(p.contains(PreferenceKeys.ROUTE_KEY));assertFalse(p.contains("pref_camera_sounds_key"));assertFalse(p.contains("pref_watermark_line1"));
-            assertEquals("per-module tuning stays","0.5",p.getString("pref_lmc_hybrid_cdm",""));
+            assertEquals("per-module tuning stays","0.5",p.getString("pref_scam_hybrid_cdm",""));
         }
         assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));assertFalse(prefs.getBoolean("pref_camera_sounds_key",true));
     }
@@ -183,19 +183,19 @@ public class SettingsAuditFixTest {
     @Test public void lensSwitchKeepsSharedSettings() {
         for(int i=0;i<2;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.6×"}[i])
                 .putBoolean("module_visible_back"+i,true).commit();
-        prefs.edit().putString("module_active","back0").putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_cdm","0.5")
+        prefs.edit().putString("module_active","back0").putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_cdm","0.5")
                 .putString("pref_watermark_line1","ONE").commit();
         String perLens=PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue;
         prefs.edit().putBoolean(perLens,true).commit();PreferenceKeys.profiles().changed(perLens);
         PreferenceKeys.profiles().activate("back1");
-        prefs.edit().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").putString("pref_lmc_hybrid_cdm","0.9").putString("pref_watermark_line1","TWO").commit();
-        PreferenceKeys.profiles().changed("pref_lmc_hybrid_cdm");PreferenceKeys.profiles().changed(PreferenceKeys.ROUTE_KEY);
+        prefs.edit().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").putString("pref_scam_hybrid_cdm","0.9").putString("pref_watermark_line1","TWO").commit();
+        PreferenceKeys.profiles().changed("pref_scam_hybrid_cdm");PreferenceKeys.profiles().changed(PreferenceKeys.ROUTE_KEY);
         PreferenceKeys.profiles().activate("back0");
-        assertEquals("0.5",prefs.getString("pref_lmc_hybrid_cdm",""));
+        assertEquals("0.5",prefs.getString("pref_scam_hybrid_cdm",""));
         assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         assertEquals("TWO",prefs.getString("pref_watermark_line1",""));
         assertFalse(PreferenceKeys.profiles().snapshot("back1").containsKey(PreferenceKeys.ROUTE_KEY));
-        assertEquals("0.9",String.valueOf(PreferenceKeys.profiles().snapshot("back1").get("pref_lmc_hybrid_cdm")));
+        assertEquals("0.9",String.valueOf(PreferenceKeys.profiles().snapshot("back1").get("pref_scam_hybrid_cdm")));
     }
 
     /** Owner: the upstream PhotonCamera rows (about page, contributors, Telegram, device list, config download) are gone. */
@@ -212,22 +212,22 @@ public class SettingsAuditFixTest {
     /** Owner: SCAM HDR saves no processing stages and plans with SCAMERA by default; stored former defaults move once. */
     @Test public void scamHdrDefaultsAreDiagnosticsOffAndTheScameraPlanner() {
         Map<String,String> xml=XmlDefaults.read(context);
-        assertEquals("0",xml.get("pref_vivo_nice_diagnostics"));assertEquals("scamera",xml.get("pref_vivo_nice_planner"));
+        assertEquals("0",xml.get("pref_scamhdr_diagnostics"));assertEquals("scamera",xml.get("pref_scamhdr_planner"));
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").commit();
-        assertFalse(PreferenceKeys.isNiceDiagnosticsEnabled());
+        assertFalse(PreferenceKeys.isScamDiagnosticsEnabled());
         prefs.edit().putBoolean("pref_root_enabled",true).commit();
         assertFalse("no stock planner without the stored choice",PreferenceKeys.useStockBracketPlanner());
         SharedPreferences[] module=profiles();
-        prefs.edit().putBoolean("pref_vivo_nice_diagnostics",true).putString("pref_vivo_nice_planner","stock").commit();
-        module[0].edit().clear().putString("pref_vivo_nice_diagnostics","1").putString("pref_vivo_nice_planner","stock").commit();
-        module[1].edit().clear().putInt(SettingsMigration.SCAM_DEFAULTS_REV,1).putBoolean("pref_vivo_nice_diagnostics",true).commit();
-        SettingsMigration.migrateLmcHybrid(context,prefs);
-        assertFalse(prefs.getBoolean("pref_vivo_nice_diagnostics",true));assertEquals("scamera",prefs.getString("pref_vivo_nice_planner",""));
-        assertFalse(module[0].getBoolean("pref_vivo_nice_diagnostics",true));assertEquals("scamera",module[0].getString("pref_vivo_nice_planner",""));
-        assertTrue("a profile that already moved keeps a later choice",module[1].getBoolean("pref_vivo_nice_diagnostics",false));
-        prefs.edit().putBoolean("pref_vivo_nice_diagnostics",true).putString("pref_vivo_nice_planner","stock").commit();
-        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
-        assertTrue(prefs.getBoolean("pref_vivo_nice_diagnostics",false));assertEquals("stock",prefs.getString("pref_vivo_nice_planner",""));
+        prefs.edit().putBoolean("pref_scamhdr_diagnostics",true).putString("pref_scamhdr_planner","stock").commit();
+        module[0].edit().clear().putString("pref_scamhdr_diagnostics","1").putString("pref_scamhdr_planner","stock").commit();
+        module[1].edit().clear().putInt(SettingsMigration.SCAM_DEFAULTS_REV,1).putBoolean("pref_scamhdr_diagnostics",true).commit();
+        SettingsMigration.migrateScamHybrid(context,prefs);
+        assertFalse(prefs.getBoolean("pref_scamhdr_diagnostics",true));assertEquals("scamera",prefs.getString("pref_scamhdr_planner",""));
+        assertFalse(module[0].getBoolean("pref_scamhdr_diagnostics",true));assertEquals("scamera",module[0].getString("pref_scamhdr_planner",""));
+        assertTrue("a profile that already moved keeps a later choice",module[1].getBoolean("pref_scamhdr_diagnostics",false));
+        prefs.edit().putBoolean("pref_scamhdr_diagnostics",true).putString("pref_scamhdr_planner","stock").commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertTrue(prefs.getBoolean("pref_scamhdr_diagnostics",false));assertEquals("stock",prefs.getString("pref_scamhdr_planner",""));
     }
 
     /** Without the 8 Elite there is no SCAM HDR: no route tile among the default tiles, no SCAM HDR / neural checks. */
@@ -240,7 +240,7 @@ public class SettingsAuditFixTest {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();
             PreferenceFragmentCompat page=(PreferenceFragmentCompat)controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container);
-            for(String key:new String[]{"vivo_nice_probe","vivo_neural_probe","vivo_diagnostics_screen","vivo_hdr_screen"})
+            for(String key:new String[]{"scam_probe","scam_neural_probe","scam_diagnostics_screen","scam_hdr_screen"})
                 assertFalse(key,page.findPreference(key).isVisible());
             assertTrue(page.findPreference("pref_root_enabled").isVisible());
         }
@@ -250,7 +250,7 @@ public class SettingsAuditFixTest {
     @Test public void deviceFactsReachTheAvailability() {
         Map<String,Object> values=new HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");values.put("pref_root_enabled",true);
         // Robolectric is no vivo X200 Ultra: the stock planner is explained; no OPPO / vivo matrix replaces the colour method.
-        assertNotNull(DeviceAvailability.of(values).reason("pref_vivo_nice_planner"));
+        assertNotNull(DeviceAvailability.of(values).reason("pref_scamhdr_planner"));
         assertNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
         org.robolectric.shadows.ShadowBuild.setManufacturer("vivo");
         assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
@@ -267,9 +267,9 @@ public class SettingsAuditFixTest {
         assertEquals("Не зеркалить фронтальную камеру",String.valueOf(screen.findPreference("pref_tunable_parameters_disablemirror").getTitle()));
         assertEquals("Параметры",String.valueOf(screen.findPreference("pref_category_tunable_parameters").getTitle()));
         Set<String> titles=new HashSet<>();
-        for(String key:new String[]{"pref_lmc_hybrid_post_luma","pref_lmc_hybrid_post_chroma","pref_lmc_hybrid_dn_luma_mult","pref_lmc_hybrid_dn_chroma_mult"})
+        for(String key:new String[]{"pref_scam_hybrid_post_luma","pref_scam_hybrid_post_chroma","pref_scam_hybrid_dn_luma_mult","pref_scam_hybrid_dn_chroma_mult"})
             assertTrue(key,titles.add(String.valueOf(screen.findPreference(key).getTitle())));
-        assertEquals("Шумодав NLM: яркость",String.valueOf(screen.findPreference("pref_lmc_hybrid_post_luma").getTitle()));
+        assertEquals("Шумодав NLM: яркость",String.valueOf(screen.findPreference("pref_scam_hybrid_post_luma").getTitle()));
         assertEquals("Тема галереи",String.valueOf(screen.findPreference("pref_theme_key").getTitle()));
     }
 
@@ -278,20 +278,20 @@ public class SettingsAuditFixTest {
      * list value in every profile and reads the same; the SCAM HDR radii are integer sliders; RawTherapee sits by «Резкость Hybrid».
      */
     @Test public void enumSlidersAreListsAndStoredValuesKeepWorking() {
-        String[] lists={"pref_lmc_hybrid_ark_metering","pref_lmc_hybrid_ark_agx_look","pref_lmc_hybrid_ark_sharp_domain",
-                "pref_lmc_hybrid_ark_sharp_rl1_kernel","pref_lmc_hybrid_ark_sharp_rl2_kernel","pref_lmc_hybrid_ark_sharp_rl3_kernel"};
+        String[] lists={"pref_scam_hybrid_ark_metering","pref_scam_hybrid_ark_agx_look","pref_scam_hybrid_ark_sharp_domain",
+                "pref_scam_hybrid_ark_sharp_rl1_kernel","pref_scam_hybrid_ark_sharp_rl2_kernel","pref_scam_hybrid_ark_sharp_rl3_kernel"};
         SharedPreferences[] module=profiles();
-        prefs.edit().putString("pref_lmc_hybrid_ark_metering","1.00").putFloat("pref_lmc_hybrid_ark_agx_look",3f)
-                .putString("pref_lmc_hybrid_ark_sharp_rl1_kernel","7").putString("pref_vivo_nice_luma_radius","2.00")
-                .putString("pref_lmc_hybrid_ark_sharp_domain","x").commit();
-        module[0].edit().clear().putString("pref_lmc_hybrid_ark_metering","2.0").putString("pref_vivo_nice_chroma_radius","4.00").commit();
+        prefs.edit().putString("pref_scam_hybrid_ark_metering","1.00").putFloat("pref_scam_hybrid_ark_agx_look",3f)
+                .putString("pref_scam_hybrid_ark_sharp_rl1_kernel","7").putString("pref_scamhdr_luma_radius","2.00")
+                .putString("pref_scam_hybrid_ark_sharp_domain","x").commit();
+        module[0].edit().clear().putString("pref_scam_hybrid_ark_metering","2.0").putString("pref_scamhdr_chroma_radius","4.00").commit();
         // read as before the migration
         assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);
         SettingsMigration.removeObsolete(context,prefs);
-        assertEquals("1",prefs.getString("pref_lmc_hybrid_ark_metering",""));assertEquals("3",prefs.getString("pref_lmc_hybrid_ark_agx_look",""));
-        assertEquals("clamped to the list","2",prefs.getString("pref_lmc_hybrid_ark_sharp_rl1_kernel",""));
-        assertEquals("2",prefs.getString("pref_vivo_nice_luma_radius",""));assertFalse(prefs.contains("pref_lmc_hybrid_ark_sharp_domain"));
-        assertEquals("2",module[0].getString("pref_lmc_hybrid_ark_metering",""));assertEquals("4",module[0].getString("pref_vivo_nice_chroma_radius",""));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_ark_metering",""));assertEquals("3",prefs.getString("pref_scam_hybrid_ark_agx_look",""));
+        assertEquals("clamped to the list","2",prefs.getString("pref_scam_hybrid_ark_sharp_rl1_kernel",""));
+        assertEquals("2",prefs.getString("pref_scamhdr_luma_radius",""));assertFalse(prefs.contains("pref_scam_hybrid_ark_sharp_domain"));
+        assertEquals("2",module[0].getString("pref_scam_hybrid_ark_metering",""));assertEquals("4",module[0].getString("pref_scamhdr_chroma_radius",""));
         assertFalse("a second run changes nothing",SettingsMigration.removeObsolete(prefs));
         assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);assertEquals(3f,PreferenceKeys.hybridValue("ark_agx_look",4f),0f);
         PreferenceScreen screen=inflate();
@@ -302,10 +302,10 @@ public class SettingsAuditFixTest {
             assertEquals(key,l.getEntries().length,l.getEntryValues().length);
             assertNotNull(key+" shows a named value",l.getEntry());
         }
-        assertEquals("1",((ListPreference)screen.findPreference("pref_lmc_hybrid_ark_metering")).getValue());
-        for(String key:new String[]{"pref_vivo_nice_luma_radius","pref_vivo_nice_chroma_radius"})
+        assertEquals("1",((ListPreference)screen.findPreference("pref_scam_hybrid_ark_metering")).getValue());
+        for(String key:new String[]{"pref_scamhdr_luma_radius","pref_scamhdr_chroma_radius"})
             assertFalse(key,((com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)screen.findPreference(key)).decimal());
-        PreferenceGroup sharp=screen.findPreference("lmc_hybrid_sharp_category");
+        PreferenceGroup sharp=screen.findPreference("scam_hybrid_sharp_category");
         assertNotNull(sharp.findPreference("sharp_settings_screen"));assertNotNull(sharp.findPreference("pref_sharp_usm_enabled_key"));
         assertNull(((PreferenceGroup)screen.findPreference("photo_processing_screen")).findPreference("sharp_settings_screen"));
     }
@@ -330,30 +330,30 @@ public class SettingsAuditFixTest {
         assertEquals("0.50",PreferenceNumber.gridText(0.5,PreferenceNumber.gridDecimals(100,0)));
         assertEquals("0.20",PreferenceNumber.gridText(0.2,PreferenceNumber.gridDecimals(1000,0.01f)));
         inflate();
-        assertEquals("0.0005",prefs.getString("pref_lmc_hybrid_bento_trigger",""));
-        assertEquals("1.414",prefs.getString("pref_lmc_hybrid_lut_sigma",""));
+        assertEquals("0.0005",prefs.getString("pref_scam_hybrid_bento_trigger",""));
+        assertEquals("1.414",prefs.getString("pref_scam_hybrid_lut_sigma",""));
         assertEquals(0.0005f,PreferenceKeys.hybridValue("bento_trigger",0.0005f),1e-9f);
     }
 
     /** H1: the "0.00" / "1.41" the old sliders seeded move to 0.0005 / 1.414 once, in every profile; later choices stay. */
     @Test public void roundedSliderDefaultsMoveOnce() {
         SharedPreferences[] module=profiles();
-        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_bento_trigger","0.00")
-                .putString("pref_lmc_hybrid_lut_sigma","1.41").commit();
-        module[0].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_bento_trigger","0.00").commit();
-        module[1].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_bento_trigger","0.01")
-                .putString("pref_lmc_hybrid_lut_sigma","1.50").commit();
-        module[2].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_lmc_hybrid_lut_sigma","1.41").commit();
-        SettingsMigration.migrateLmcHybrid(context,prefs);
-        assertEquals("0.0005",prefs.getString("pref_lmc_hybrid_bento_trigger",""));
-        assertEquals("1.414",prefs.getString("pref_lmc_hybrid_lut_sigma",""));
-        assertEquals("0.0005",module[0].getString("pref_lmc_hybrid_bento_trigger",""));
-        assertEquals("a chosen value stays","0.01",module[1].getString("pref_lmc_hybrid_bento_trigger",""));
-        assertEquals("1.50",module[1].getString("pref_lmc_hybrid_lut_sigma",""));
-        assertEquals("1.414",module[2].getString("pref_lmc_hybrid_lut_sigma",""));
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_bento_trigger","0.00")
+                .putString("pref_scam_hybrid_lut_sigma","1.41").commit();
+        module[0].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_bento_trigger","0.00").commit();
+        module[1].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_bento_trigger","0.01")
+                .putString("pref_scam_hybrid_lut_sigma","1.50").commit();
+        module[2].edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_lut_sigma","1.41").commit();
+        SettingsMigration.migrateScamHybrid(context,prefs);
+        assertEquals("0.0005",prefs.getString("pref_scam_hybrid_bento_trigger",""));
+        assertEquals("1.414",prefs.getString("pref_scam_hybrid_lut_sigma",""));
+        assertEquals("0.0005",module[0].getString("pref_scam_hybrid_bento_trigger",""));
+        assertEquals("a chosen value stays","0.01",module[1].getString("pref_scam_hybrid_bento_trigger",""));
+        assertEquals("1.50",module[1].getString("pref_scam_hybrid_lut_sigma",""));
+        assertEquals("1.414",module[2].getString("pref_scam_hybrid_lut_sigma",""));
         // A 0.00 chosen after the move is the user's.
-        prefs.edit().putString("pref_lmc_hybrid_bento_trigger","0.00").commit();
-        assertFalse(SettingsMigration.migrateLmcHybrid(prefs,false));
-        assertEquals("0.00",prefs.getString("pref_lmc_hybrid_bento_trigger",""));
+        prefs.edit().putString("pref_scam_hybrid_bento_trigger","0.00").commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("0.00",prefs.getString("pref_scam_hybrid_bento_trigger",""));
     }
 }

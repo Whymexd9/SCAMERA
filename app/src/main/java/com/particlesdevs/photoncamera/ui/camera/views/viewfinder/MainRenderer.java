@@ -201,9 +201,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mGLInit = false;
         // P57: the viewfinder's GL thread above the processing threads (the post pipeline, encoders, the worker run at the
         // default priority and took its CPU time after a shot: the viewfinder stuttered while the camera kept 30 fps)
-        // (nice_dev.txt "vf_priority 0": as before, for A/B)
+        // (scam_dev.txt "vf_priority 0": as before, for A/B)
         try {
-            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.niceDevNumber("vf_priority", 1f) != 0f)
+            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("vf_priority", 1f) != 0f)
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY);
         } catch (RuntimeException e) {
             Log.w("MainRenderer", "viewfinder thread priority not raised: " + e);

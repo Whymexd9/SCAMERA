@@ -86,7 +86,7 @@ public final class RawBin {
             factor *= 2;
             block = Math.max(1, block / 2);
         }
-        Log.i("NICE_HDR", "RAW " + w0 + "x" + h0 + " beyond the hard limits (" + reason + "): last resort, binned x" + factor
+        Log.i("SCAM_HDR", "RAW " + w0 + "x" + h0 + " beyond the hard limits (" + reason + "): last resort, binned x" + factor
                 + " to " + w + "x" + h + " (colour block " + block0 + (mosaic == null ? ", not measured" : mosaic.confident ? "" : ", not confident")
                 + ") in " + (System.nanoTime() - started) / 1_000_000 + " ms");
         return factor;

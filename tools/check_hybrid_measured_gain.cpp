@@ -2,16 +2,16 @@
 // bursts: hybridMeasuredGain must find the data ratios (a dim, moved ultrashort frame included: the former per-frame noise test
 // biased it upwards), and hybridApplyMeasuredGains must take the measured ratio only for an exposure whose frames reliably and
 // consistently disagree with their metadata, and keep every other ratio bit for bit.
-// vivo-nice-hybrid.h is not self-contained: the worker includes vivo-nice-capture.h first.
-#include "../app/src/main/cpp/vivo-nice-capture.h"
-#include "../app/src/main/cpp/vivo-nice-hybrid.h"
+// scam-hybrid.h is not self-contained: the worker includes scam-capture.h first.
+#include "../app/src/main/cpp/scam-capture.h"
+#include "../app/src/main/cpp/scam-hybrid.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <random>
 #include <string>
 #include <vector>
-using namespace vivo_nice;
+using namespace scam;
 
 static const int w = 512, h = 512;
 static const float black = 64, white = 1023;

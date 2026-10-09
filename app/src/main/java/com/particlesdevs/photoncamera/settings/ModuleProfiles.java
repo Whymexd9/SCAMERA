@@ -28,7 +28,7 @@ public final class ModuleProfiles {
             "pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key",
             "pref_root_enabled","pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",
             "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
-            "pref_show_gradient_key","pref_antibanding_hz_key",LmcHybridKeys.ROUTE)));
+            "pref_show_gradient_key","pref_antibanding_hz_key",ScamHybridKeys.ROUTE)));
     /** Key prefixes of {@link #GLOBAL_KEYS}: the photo format rows (pref_photo_format, pref_photo_also_jpeg, the qualities, AVIF), the caption, the theme. */
     static final String[] GLOBAL_PREFIXES={"pref_photo_","pref_jpeg_","pref_heic_","pref_webp_","pref_avif_","pref_watermark_","pref_theme"};
     /** A setting shared by every lens ({@link #GLOBAL_KEYS}). */
@@ -63,8 +63,9 @@ public final class ModuleProfiles {
         return meta.getBoolean("baseline",false)?new HashMap<>(file("common").getAll()):current();
     }
     private void restore(Map<String,?> values){
+        values=BrandMigration.map(values); // P55: a profile written before the SCAM rename
         applying=true;
-        try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();SettingsMigration.migrateMultiFrame(prefs);SettingsMigration.migrateLmcHybrid(prefs,false);SettingsMigration.removeObsolete(prefs);}
+        try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();SettingsMigration.migrateMultiFrame(prefs);SettingsMigration.migrateScamHybrid(prefs,false);SettingsMigration.removeObsolete(prefs);}
         finally{applying=false;}
         if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings()!=null)com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().loadCache();
     }

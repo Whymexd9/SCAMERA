@@ -37,16 +37,16 @@ import java.util.Scanner;
 
 public class Parameters {
     /** Frozen for the submitted RAW processing job. */
-    public boolean vivoHdrMode = false;
-    public float vivoHdrRawScale = 1f;
+    public boolean scamHdrMode = false;
+    public float scamHdrRawScale = 1f;
     /** Pixel scale of the merged RGB against the sensor grid (SCAM HDR hybrid on the Sabre 2x grid: 0.98..2). */
     public float outputScale = 1f;
     /** SCAM HDR hybrid 2x grid: final image size (sensor orientation) produced by the GPU resize node at the end of the pipeline; null = no resize. */
     public android.graphics.Point hybridFinalSize;
-    /** Processor-owned linear sensor RGB; null unless NICE completed a real burst. */
-    public java.nio.ByteBuffer vivoNiceRgb;
-    /** vivoNiceRgb is an Allocator buffer the pipeline may free as soon as it is uploaded (replaced by a decimated copy). */
-    public boolean vivoNiceRgbOwned;
+    /** Processor-owned linear sensor RGB; null unless SCAM completed a real burst. */
+    public java.nio.ByteBuffer scamRgb;
+    /** scamRgb is an Allocator buffer the pipeline may free as soon as it is uploaded (replaced by a decimated copy). */
+    public boolean scamRgbOwned;
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;
@@ -185,7 +185,7 @@ public class Parameters {
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
                 && !VendorTagUtils.wasRemosaicApplied()
-                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isNiceMosaic();
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamMosaic();
         if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         if (flen == null || flen.length <= 0) {
@@ -402,7 +402,7 @@ public class Parameters {
     public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height) {
         if (buffer == null || width < 128 || height < 128 || blackLevelOverride >= 0) return;
         if (!PreferenceKeys.isRawBlackFromData()) return;
-        // Same frame again (NICE re-reads the reference metadata): reuse the floor.
+        // Same frame again (SCAM re-reads the reference metadata): reuse the floor.
         if (buffer == blackFloorSource) { applyBlackFloor(blackFloorEstimate); return; }
         java.nio.ShortBuffer data = buffer.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
         if (data.capacity() < width * height) return;
@@ -770,7 +770,7 @@ public class Parameters {
 
     /** The reported transform of a vivo SCAM HDR capture: a full matrix whose rows sum to about 1 (white stays white). */
     private static boolean ispCcmUsable(ColorSpaceTransform cst) {
-        if (cst == null || !PreferenceKeys.isVivoNiceEnabled() || PreferenceKeys.niceInternalValue("isp_ccm", 1f) <= 0f) return false;
+        if (cst == null || !PreferenceKeys.isScamEnabled() || PreferenceKeys.routeInternalValue("isp_ccm", 1f) <= 0f) return false;
         Rational[] r = new Rational[9];
         cst.copyElements(r, 0);
         int nonZero = 0;

@@ -4,15 +4,15 @@
 The denoise fades the colour of pixels darker than mean RGB 0.0008..0.003 to neutral, to hide the black-level tint (mostly
 the per-pixel clip bias of the clamped merge RGB, gone on signed hybrid input). It also greyed dark saturated colours: the
 teal curtain of the OPPO shot 2026-10-07 (mean RGB ~0.0011) kept 18-54 % of its colour. With darkChromaU / darkChroma =
-(lo, hi) (LmcDenoise.darkChroma: 1.5e-4 / 4e-4 on signed hybrid input) a colour whose deviation from neutral |RGB - mean|
+(lo, hi) (ScamDenoise.darkChroma: 1.5e-4 / 4e-4 on signed hybrid input) a colour whose deviation from neutral |RGB - mean|
 exceeds hi keeps it, one below lo still fades.
-Checks, for lmcdn/cbf (mode 2, the 1x output), lmcdn/final2x (the Sabre 2x grid) and chromadn/apply (the NLM engine), on a
+Checks, for scamdn/cbf (mode 2, the 1x output), scamdn/final2x (the Sabre 2x grid) and chromadn/apply (the NLM engine), on a
 dark colour chart (colours and neutral grey with a small tint, mean RGB 2e-4 .. 5e-2, flat patches, no filtering):
 - off ((0, 0), clamped input such as SCAM HDR): the fade of the luminance alone, as numpy (the former shaders' output);
 - on: every patch whose colour deviation is at least hi keeps >= 99 % of it (the former fade kept < 50 % of these at mean
   RGB <= 0.0012); a neutral patch whose tint is below lo still fades to <= 2 %; patches at mean RGB >= 0.003 are the same
   bit for bit in both modes.
-Noise floor (lmcdn/cbf and lmcdn/final2x darkNoiseU = (x, y), LmcDenoise.darkKeep): the keep floor becomes
+Noise floor (scamdn/cbf and scamdn/final2x darkNoiseU = (x, y), ScamDenoise.darkKeep): the keep floor becomes
 max(lo, sqrt(x mean + y)) and the ramp ends at max(hi, 2 floor), so the colour noise the denoise leaves at high ISO fades
 while a colour clearly above it stays. On a second chart (neutral tints 2-3e-4 and colours, dark means): every patch keeps
 exactly the share the rule gives (numpy, within 2e-3); a tint of 2.5e-4 under a floor of 3e-4 fades to <= 2 % (the fixed
@@ -121,7 +121,7 @@ def run_cbf(img, keep, noise=None):
     u = {'strideU': 1, 'filterU': 0, 'useDeltaU': 0, 'useMapU': 0, 'modeU': 2, 'fadeU': 1, 'darkFadeU': FADE, 'darkChromaU': keep}
     if noise is not None:
         u['darkNoiseU'] = noise
-    out = draw('lmcdn/cbf.glsl', (w, h), {'InputBuffer': t, 'DeltaUV': t, 'Orig': t, 'StrMap': t}, u)
+    out = draw('scamdn/cbf.glsl', (w, h), {'InputBuffer': t, 'DeltaUV': t, 'Orig': t, 'StrMap': t}, u)
     t.release()
     return out
 
@@ -133,7 +133,7 @@ def run_final2x(img, keep, noise=None):
     u = {'keepU': 1.0, 'fadeU': 1, 'darkFadeU': FADE, 'darkChromaU': keep}
     if noise is not None:
         u['darkNoiseU'] = noise
-    out = draw('lmcdn/final2x.glsl', (w, h), {'InputBuffer': t, 'Delta': d}, u)
+    out = draw('scamdn/final2x.glsl', (w, h), {'InputBuffer': t, 'Delta': d}, u)
     t.release(); d.release()
     return out
 
@@ -243,7 +243,7 @@ def main():
     dev_in = patch_dev(img, rows)
     means = np.array([[img[j * P + P // 2, i * P + P // 2].mean() for i in range(len(LUMS))] for j in range(len(rows))])
     fails = []
-    for name, fn in (('lmcdn/cbf', run_cbf), ('lmcdn/final2x', run_final2x), ('chromadn/apply', run_apply)):
+    for name, fn in (('scamdn/cbf', run_cbf), ('scamdn/final2x', run_final2x), ('chromadn/apply', run_apply)):
         off = fn(img, (0.0, 0.0))
         on = fn(img, KEEP)
         r_off = patch_dev(off, rows) / dev_in
@@ -274,7 +274,7 @@ def main():
         pix_bright = np.repeat(np.repeat(bright, P, 0), P, 1)
         if not np.array_equal(on[pix_bright], off[pix_bright]):
             fails.append('%s: patches at mean RGB >= %.4f differ between the modes' % (name, FADE[1]))
-    for name, fn in (('lmcdn/cbf', run_cbf), ('lmcdn/final2x', run_final2x)):
+    for name, fn in (('scamdn/cbf', run_cbf), ('scamdn/final2x', run_final2x)):
         check_noise_floor(name, fn, fails)
     if fails:
         for f in fails:

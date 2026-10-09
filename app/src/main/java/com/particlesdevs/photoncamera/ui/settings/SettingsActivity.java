@@ -200,11 +200,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 route.setSummary(Lang.t(getContext(),"Только Hybrid: SCAM HDR и нейроремозаик работают только на Snapdragon 8 Elite","Hybrid only: SCAM HDR and the neural remosaic run on the Snapdragon 8 Elite only"));
             }
             // No 8 Elite: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
-            Preference scamHdr = findPreference("vivo_hdr_screen");
+            Preference scamHdr = findPreference("scam_hdr_screen");
             if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
             // Nor its launch check and the neural remosaic check (the only rows of the diagnostics page).
             if (!PreferenceKeys.isScamHdrSupported())
-                for (String key : new String[]{"vivo_nice_probe", "vivo_neural_probe", "vivo_diagnostics_screen"}) {
+                for (String key : new String[]{"scam_probe", "scam_neural_probe", "scam_diagnostics_screen"}) {
                     Preference probe = findPreference(key);
                     if (probe != null) probe.setVisible(false);
                 }
@@ -378,14 +378,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
 
         private void setupRemosaicBackend() {
-            Preference nice = findPreference("vivo_nice_probe");
-            if (nice != null) nice.setOnPreferenceClickListener(pref -> {
-                startActivity(new android.content.Intent(requireContext(), VivoNiceActivity.class));
+            Preference scam = findPreference("scam_probe");
+            if (scam != null) scam.setOnPreferenceClickListener(pref -> {
+                startActivity(new android.content.Intent(requireContext(), ScamActivity.class));
                 return true;
             });
-            Preference neural = findPreference("vivo_neural_probe");
+            Preference neural = findPreference("scam_neural_probe");
             if (neural != null) neural.setOnPreferenceClickListener(pref -> {
-                startActivity(new android.content.Intent(requireContext(), VivoNeuralActivity.class));
+                startActivity(new android.content.Intent(requireContext(), ScamNeuralActivity.class));
                 return true;
             });
         }
@@ -909,9 +909,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
             }
-            if ("vivo_hdr_ark_link".equals(preference.getKey())) {
+            if ("scam_hdr_ark_link".equals(preference.getKey())) {
                 // SCAM HDR shares the ArkCore finish of the Hybrid: one page, opened from both routes
-                PreferenceScreen ark = fullPreferenceScreen.findPreference("lmc_hybrid_arkcore_screen");
+                PreferenceScreen ark = fullPreferenceScreen.findPreference("scam_hybrid_arkcore_screen");
                 if (ark != null && activity instanceof SettingsActivity) ((SettingsActivity) activity).onPreferenceStartScreen(this, ark);
                 return true;
             }

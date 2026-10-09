@@ -7,7 +7,7 @@ owner's rule is that it may only STRENGTHEN the denoise where fewer than the med
 rejected motion): at or above the median the strength stays exactly that of the cleared map. The former shaders also
 weakened the filter there (noise factor down to 0.5, variance 0.25).
 Checks:
-- lmcdn/strmap (LmcDenoise strength map): the variance multiplier is the mean of clamp(sqrt(ref / code), 1, effMax)^2 over
+- scamdn/strmap (ScamDenoise strength map): the variance multiplier is the mean of clamp(sqrt(ref / code), 1, effMax)^2 over
   factor x factor pixels (code 0 = 1), as numpy; a block of codes >= the median or 0 gives exactly 1.0, a block below it
   more than 1;
 - chromadn/nlm and chromadn/apply (the NLM engine): a map of codes at or above the median gives the output of the cleared
@@ -93,7 +93,7 @@ def maps(rng):
 
 
 def check_strmap(rng, fails):
-    p = program('lmcdn/strmap.glsl')
+    p = program('scamdn/strmap.glsl')
     codes = rng.integers(0, 256, (H, W)).astype(np.uint8)
     codes[:, :EDGE] = rng.integers(1, REF, (H, EDGE))
     t = texture(codes, 'u1')
@@ -110,14 +110,14 @@ def check_strmap(rng, fails):
         at_or_above = np.all((block == 0) | (block >= REF), axis=(1, 3))
         below = np.any((block > 0) & (block < REF), axis=(1, 3))
         if err > 1e-5:
-            fails.append('lmcdn/strmap F=%d: not mean(clamp(sqrt(ref/code), 1, max)^2) (rel error %.2e)' % (F, err))
+            fails.append('scamdn/strmap F=%d: not mean(clamp(sqrt(ref/code), 1, max)^2) (rel error %.2e)' % (F, err))
         if not np.all(got[at_or_above] == 1.0):
-            fails.append('lmcdn/strmap F=%d: blocks at or above the median are not exactly 1 (min %.4f max %.4f)'
+            fails.append('scamdn/strmap F=%d: blocks at or above the median are not exactly 1 (min %.4f max %.4f)'
                          % (F, got[at_or_above].min(), got[at_or_above].max()))
         if not np.all(got[below] > 1.0):
-            fails.append('lmcdn/strmap F=%d: blocks below the median are not strengthened' % F)
+            fails.append('scamdn/strmap F=%d: blocks below the median are not strengthened' % F)
     if REPORT:
-        print('lmcdn/strmap: max rel error %.1e vs numpy' % worst)
+        print('scamdn/strmap: max rel error %.1e vs numpy' % worst)
     t.release()
     p.release()
 
@@ -188,7 +188,7 @@ def check_nlm_apply(rng, fails):
 def check_guard(fails):
     """Codes at or above the median must skip the division: a GPU dividing through an approximate reciprocal (Adreno) can
     give ref / ref slightly above 1, which the clamp at 1 would keep (llvmpipe divides exactly, so only the source shows it)."""
-    for name, guard in (('lmcdn/strmap.glsl', 'float(v) < ref'), ('chromadn/nlm.glsl', 'float(v) * 0.125 < effRef'),
+    for name, guard in (('scamdn/strmap.glsl', 'float(v) < ref'), ('chromadn/nlm.glsl', 'float(v) * 0.125 < effRef'),
                         ('chromadn/apply.glsl', 'float(v) * 0.125 < effRef')):
         if guard not in (SH / name).read_text(encoding='utf-8'):
             fails.append('%s: no "%s" guard before the division (median pixels may be strengthened on the GPU)' % (name, guard))

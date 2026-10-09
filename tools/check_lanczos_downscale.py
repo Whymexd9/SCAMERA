@@ -70,5 +70,5 @@ try {scamera_lanczos::resize(s,w,h,w*4+8,d,ow,oh,ow*4+12,a);return 1;}catch(...)
 # against the pipeline size) -> the hybrid's final Lanczos resize -> the gain map resized to the final bitmap -> encoding.
 source=(ROOT/'app/src/main/java/com/particlesdevs/photoncamera/processing/processor/HdrxProcessor.java').read_text()
 assert (source.index('pipeline.Run(jpegInput, processingParameters)')<source.index('gm = pipeline.RunHDRGainMap(')
-        <source.index('VivoPostDownscale.resizeTo(')<source.index('gm = gm.resizedFor(img.getWidth(), img.getHeight())'))
+        <source.index('ScamPostDownscale.resizeTo(')<source.index('gm = gm.resizedFor(img.getWidth(), img.getHeight())'))
 print('Pipeline order passed')

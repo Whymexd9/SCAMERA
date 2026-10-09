@@ -73,14 +73,14 @@ public final class ShotTimeline {
         final char c = line.charAt(0);
         if (c != 'H' && c != 'N') return;
         final String name;
-        if (line.startsWith("NICE STOCK MOTION")) name = "w_align";
+        if (line.startsWith("SCAM STOCK MOTION")) name = "w_align";
         else if (line.startsWith("HYBRID SHASTA")) name = "w_shasta";
         else if (line.startsWith("HYBRID BENTO")) name = "w_bento";
         else if (line.startsWith("HYBRID LOCAL ALIGN")) name = "w_f6";
         else if (line.startsWith("HYBRID GPU")) name = "w_gpu";
         else if (line.startsWith("HYBRID RAW CA")) name = "w_rawca";
         else if (line.startsWith("HYBRID STAGES")) name = "w_stages";
-        else if (line.equals("NICE CAPTURE OK")) name = "w_ok";
+        else if (line.equals("SCAM CAPTURE OK")) name = "w_ok";
         else return;
         mark(name);
     }

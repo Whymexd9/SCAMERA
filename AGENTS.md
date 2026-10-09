@@ -1,7 +1,7 @@
 # ZSL/bracket port scope
 
 The target Vivo X200 Ultra has root, confirmed by the user. Root-backed workers
-are allowed and already used by VivoNeuralClient/VivoNeuralWorker. Do not treat
+are allowed and already used by ScamNeuralClient/ScamNeuralWorker. Do not treat
 ordinary app-UID limitations as the only available implementation path. Root on
 the phone does not imply that this workspace has a live connection to it.
 

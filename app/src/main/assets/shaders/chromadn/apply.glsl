@@ -6,7 +6,7 @@ precision highp usampler2D;
 // samples are weighted by how close their luminance is to the pixel's own, so colour edges stay
 // on the luminance edges); its luminance follows the non-local-means result. Very dark pixels
 // carry no measurable colour (black-level error shows as a tint) and fade to neutral.
-// Signed input (LMC hybrid: nicergb signedU, signedU 1 here): the 3x3 colour averages the signed values and clamps the
+// Signed input (SCAM Hybrid: scamrgb signedU, signedU 1 here): the 3x3 colour averages the signed values and clamps the
 // mean, so a channel near zero is not lifted by a clamp per pixel. A pixel with a negative channel is not clamped either:
 // its luminance is the non-local-means result (chromadn/luma took its signed luminance) or, without the luma pass, its own
 // signed luminance; its colour difference is the filtered colour's (chroma pass) or its own signed one (chroma 0). Such a

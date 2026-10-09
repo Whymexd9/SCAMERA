@@ -44,13 +44,13 @@ public final class DeviceDefaults {
         // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit on copy; the RAW viewfinder needs RAW_SENSOR and is off).
         if (since < 2 && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
         // v3: the Find X7 Ultra shows its tele / ultra-wide lenses to a whitelisted package only, and its tuned ISP matrix
-        // under the ARK tone needs AgX saturation 1.1 (not 0.6) to match ArkCam LMC 9.6 with the X7U config (2026-10-08 pair).
+        // under the ARK tone needs AgX saturation 1.1 (not 0.6) to match ArkCam SCAM 9.6 with the X7U config (2026-10-08 pair).
         if (since < 3 && model.equals("PHY110")) {
             out.put("pref_camera_package_spoof_enabled", true);
             out.put("pref_oplus_spoof_package_key", X7U_SPOOF_PACKAGE);
             out.put("pref_generic_spoof_package_key", X7U_SPOOF_PACKAGE);
             out.put("pref_binder_spoof_package_key", X7U_SPOOF_PACKAGE);
-            out.put("pref_lmc_hybrid_ark_ccm_sat", "1.1");
+            out.put("pref_scam_hybrid_ark_ccm_sat", "1.1");
         }
         return out;
     }

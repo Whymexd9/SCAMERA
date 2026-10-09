@@ -97,11 +97,13 @@ public class SettingsManager {
     public SettingsManager(Context context) {
         mContext = context;
         mPackageName = mContext.getPackageName();
+        // P55: settings written before the SCAM rename get their new names before anything reads them.
+        BrandMigration.migrateAll(mContext);
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
         SettingsMigration.migrateMultiFrame(mDefaultPreferences);
         DeviceDefaults.applyOnce(mContext, mDefaultPreferences);
-        // After the device defaults: the LMC hybrid's own section takes over the SCAM HDR engine choice.
-        SettingsMigration.migrateLmcHybrid(mContext, mDefaultPreferences);
+        // After the device defaults: the SCAM Hybrid's own section takes over the SCAM HDR engine choice.
+        SettingsMigration.migrateScamHybrid(mContext, mDefaultPreferences);
         // The old quick buttons and favourites become the shade's tiles before their keys become obsolete.
         SettingsMigration.migrateShadeTiles(mDefaultPreferences);
         // After the route migration, which reads the former route switches before they become obsolete.

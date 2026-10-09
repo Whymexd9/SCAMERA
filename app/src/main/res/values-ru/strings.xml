@@ -198,7 +198,7 @@
     <string-array name="remosaic_backend_entries">
         <item>SCAMERA</item>
         <item>Tetra Detail v2 — по мотивам Vivo</item>
-        <item>Vivo Neural — NPU, root (эксперимент)</item>
+        <item>SCAM Neural — NPU, root (эксперимент)</item>
         <item>HP9 HexQuad — NPU, 6 кадров (тест)</item>
         <item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item>
     </string-array>

@@ -1,10 +1,10 @@
 precision highp float;
 precision highp sampler2D;
-// Per-channel highlight recovery (LMC hybrid), statistics: per block of output pixels, the white-balanced colour of the
+// Per-channel highlight recovery (SCAM Hybrid), statistics: per block of output pixels, the white-balanced colour of the
 // pixels that are bright but unclipped (the light around a clipped highlight) and their weight.
 // rgba = (sum of weight * colour, sum of weight), both divided by the number of samples: rgb/a is their mean colour,
 // its normalised chromaticity the light's colour, its level the brightness a clipped neighbour must at least reach.
-// Reduced 4x4 twice by hlrecovery/reduce (32- and 128-blocks), read by vivohdr/nicergb (localLight). Statistics only:
+// Reduced 4x4 twice by hlrecovery/reduce (32- and 128-blocks), read by scamhdr/scamrgb (localLight). Statistics only:
 // on the Sabre 2x grid the samples are taken one SENSOR pixel apart (pxStepU), so the cost and the neighbourhood are
 // those of the sensor grid.
 uniform sampler2D InputBuffer;   // worker RGB: camera channels, base-frame white = 1, before WB and lens shading
@@ -12,16 +12,16 @@ uniform sampler2D GainMap;
 uniform vec3 whitePoint;
 uniform vec2 inverseSize;
 uniform ivec2 cropOffset;
-uniform vec3 clipLoU;            // as in vivohdr/nicergb
+uniform vec3 clipLoU;            // as in scamhdr/scamrgb
 uniform vec3 clipHiU;
-uniform int clipHiUnflaggedU;    // as in vivohdr/nicergb (P58)
+uniform int clipHiUnflaggedU;    // as in scamhdr/scamrgb (P58)
 uniform int clipFlagsU;
 uniform sampler2D ClipFlags;
 uniform int blockU;              // output pixels per block (8 * outputScale)
 uniform int pxStepU;             // sample spacing in output pixels (outputScale; 1 when unset)
 out vec4 Output;
 
-// Same selection as vivohdr/nicergb levelAt (keep in sync), plus the level the brightness is measured against.
+// Same selection as scamhdr/scamrgb levelAt (keep in sync), plus the level the brightness is measured against.
 vec3 levelAt(ivec2 p, out vec3 ref) {
     bool lo = clipLoU.g > 0.0, hi = clipHiU.g > 0.0;
     ref = hi ? clipHiU : clipLoU;

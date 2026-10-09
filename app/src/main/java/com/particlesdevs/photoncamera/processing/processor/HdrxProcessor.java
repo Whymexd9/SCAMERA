@@ -47,10 +47,10 @@ public class HdrxProcessor extends ProcessorBase {
     private CameraMode cameraMode;
     private ArrayList<GyroBurst> BurstShakiness;
     private String processingStage = "initialization";
-    private ByteBuffer niceOwnedOutput;
-    private Parameters niceOutputParameters;
-    private boolean niceCapture;
-    /** This shot is merged by the LMC hybrid (its own settings profile), not by SCAM HDR (NICE). */
+    private ByteBuffer scamOwnedOutput;
+    private Parameters scamOutputParameters;
+    private boolean scamCapture;
+    /** This shot is merged by the SCAM Hybrid (its own settings profile), not by SCAM HDR (SCAM). */
     private boolean hybridShot;
     /** P27: the merge route the queued shot was captured for (null: the current setting). */
     public Boolean ownedHybridRoute;
@@ -96,12 +96,12 @@ public class HdrxProcessor extends ProcessorBase {
         this.characteristics = characteristics;
         this.captureResult = captureResult;
         this.captureRequest = captureRequest;
-        this.niceCapture = PreferenceKeys.isVivoNiceEnabled();
-        // The route of the shot fixes the settings profile of its whole processing: pref_lmc_hybrid_* for a hybrid shot,
+        this.scamCapture = PreferenceKeys.isScamEnabled();
+        // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
-        this.hybridShot = niceCapture && (ownedHybridRoute != null ? ownedHybridRoute : PreferenceKeys.isLmcHybridEnabled());
+        this.hybridShot = scamCapture && (ownedHybridRoute != null ? ownedHybridRoute : PreferenceKeys.isScamHybridEnabled());
         ownedHybridRoute = null;
-        android.util.Log.i("NICE_HDR", "route=" + PreferenceKeys.mergeRoute() + (hybridShot ? " (LMC hybrid merges)" : niceCapture ? " (SCAM HDR merges)" : " (no NICE route)"));
+        android.util.Log.i("SCAM_HDR", "route=" + PreferenceKeys.mergeRoute() + (hybridShot ? " (SCAM Hybrid merges)" : scamCapture ? " (SCAM HDR merges)" : " (no SCAM route)"));
         this.fullpairs = ownedPairs != null ? ownedPairs : IsoExpoSelector.fullpairs;
         Log.d(TAG, "HdrxProcessor called start()");
         PreferenceKeys.beginShotProfile(hybridShot);
@@ -147,13 +147,13 @@ public class HdrxProcessor extends ProcessorBase {
                     + processingStage + " — " + detail);
          } finally {
             finishDeferredTeardown();
-            com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.finish();
-            if (niceOwnedOutput != null) {
-                // VivoNiceRgb may already have freed the big buffer after the GL upload (then vivoNiceRgb is a small copy).
-                if (niceOutputParameters == null || niceOutputParameters.vivoNiceRgb == niceOwnedOutput) Allocator.free(niceOwnedOutput);
-                niceOwnedOutput=null;
-                if(niceOutputParameters!=null){niceOutputParameters.vivoNiceRgb=null;niceOutputParameters.vivoNiceRgbOwned=false;}
-                niceOutputParameters=null;
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamDiagnostics.finish();
+            if (scamOwnedOutput != null) {
+                // ScamRgb may already have freed the big buffer after the GL upload (then scamRgb is a small copy).
+                if (scamOutputParameters == null || scamOutputParameters.scamRgb == scamOwnedOutput) Allocator.free(scamOwnedOutput);
+                scamOwnedOutput=null;
+                if(scamOutputParameters!=null){scamOutputParameters.scamRgb=null;scamOutputParameters.scamRgbOwned=false;}
+                scamOutputParameters=null;
             }
             if (mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
@@ -174,17 +174,17 @@ public class HdrxProcessor extends ProcessorBase {
     }
 
     /**
-     * W1.11 test switch: nice_dev.txt "post_priority N" runs the post pipeline at thread nice value N (the processing thread
+     * W1.11 test switch: scam_dev.txt "post_priority N" runs the post pipeline at thread nice value N (the processing thread
      * runs at Java priority NORM_PRIORITY - 1); returns the previous nice value to restore, or Integer.MIN_VALUE when unset.
      */
     private static int raisePostPriority() {
-        if (!PreferenceKeys.niceDevOverrides("post_priority")) return Integer.MIN_VALUE;
+        if (!PreferenceKeys.scamDevOverrides("post_priority")) return Integer.MIN_VALUE;
         try {
             final int tid = android.os.Process.myTid();
             final int before = android.os.Process.getThreadPriority(tid);
-            final int nice = Math.max(-8, Math.min(19, Math.round(PreferenceKeys.niceDevNumber("post_priority", before))));
-            android.os.Process.setThreadPriority(nice);
-            Log.i(TAG, "post pipeline at thread priority " + nice + " (was " + before + ")");
+            final int scam = Math.max(-8, Math.min(19, Math.round(PreferenceKeys.scamDevNumber("post_priority", before))));
+            android.os.Process.setThreadPriority(scam);
+            Log.i(TAG, "post pipeline at thread priority " + scam + " (was " + before + ")");
             return before;
         } catch (RuntimeException e) {
             Log.w(TAG, "post_priority not applied: " + e);
@@ -264,10 +264,10 @@ public class HdrxProcessor extends ProcessorBase {
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
         processingParameters.rawBinning = rawBinning;
-        processingParameters.vivoHdrMode = PreferenceKeys.isVivoHdrEnabled();
+        processingParameters.scamHdrMode = PreferenceKeys.isScamHdrEnabled();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
-        // Every shot is merged by the LMC hybrid or SCAM HDR (the legacy merge routes are gone).
-        if (!niceCapture) throw new IllegalStateException("no merge route: Hybrid or SCAM HDR needs the ZSL RAW stream");
+        // Every shot is merged by the SCAM Hybrid or SCAM HDR (the legacy merge routes are gone).
+        if (!scamCapture) throw new IllegalStateException("no merge route: Hybrid or SCAM HDR needs the ZSL RAW stream");
         // sort by timestamp first
         mImageFramesToProcess.sort(Comparator.comparingLong(ImageFrame::getTimestamp));
         if(PhotonCamera.getCaptureController()!=null) for(ImageFrame frame:mImageFramesToProcess)
@@ -280,7 +280,7 @@ public class HdrxProcessor extends ProcessorBase {
                     || frame.measuredExposure <= 0 || frame.measuredIso <= 0
                     || frame.width != width || frame.height != height) {
                 // P27: one frame without a clear role, exposure or size never costs the shot: it leaves the burst.
-                Log.w("NICE_HDR", (hybridShot ? "Hybrid" : "SCAM HDR") + ": RAW timestamp=" + frame.timestamp
+                Log.w("SCAM_HDR", (hybridShot ? "Hybrid" : "SCAM HDR") + ": RAW timestamp=" + frame.timestamp
                         + " dropped (no clear role/exposure/size: role=" + frame.getCaptureRole() + " exposureNs=" + frame.measuredExposure
                         + " ISO=" + frame.measuredIso + " " + frame.width + "x" + frame.height + ")");
                 frame.close();
@@ -396,7 +396,7 @@ public class HdrxProcessor extends ProcessorBase {
         // which lowers the noise part of the gradient energy on its own - so it is logged for diagnosis and used only
         // against the same exposure, never as a cross-exposure threshold.
         // W1.5: the frames are independent, so they are measured in parallel (each writes its own sharpness).
-        final int sharpnessBlock = PreferenceKeys.isNiceMosaic() || processingParameters.quadCfa ? PreferenceKeys.getRemosaicBlockSize() : 1;
+        final int sharpnessBlock = PreferenceKeys.isScamMosaic() || processingParameters.quadCfa ? PreferenceKeys.getRemosaicBlockSize() : 1;
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("sharp_start");
         final ArrayList<ImageFrame> measured = images;
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(measured.size(), k -> measured.get(k).computeSharpness(sharpnessBlock));
@@ -434,30 +434,30 @@ public class HdrxProcessor extends ProcessorBase {
             processingStage="SCAM HDR neural burst";
             try {
                 // The oldest N frame calibrates the shot (as before); P27: without any N frame the frame closest to N does.
-                ImageFrame niceReference = images.stream()
+                ImageFrame scamReference = images.stream()
                         .filter(f -> !f.pair.isHighlightFrame && !f.pair.isLongFrame && f.getCaptureRole() == ImageFrame.CaptureRole.NORMAL)
                         .findFirst().orElse(null);
-                if (niceReference == null) {
+                if (scamReference == null) {
                     final ArrayList<ImageFrame> candidates = images;
-                    niceReference = candidates.stream().filter(f -> f.getCaptureRole() == ImageFrame.CaptureRole.LONG)
+                    scamReference = candidates.stream().filter(f -> f.getCaptureRole() == ImageFrame.CaptureRole.LONG)
                             .min(Comparator.comparingDouble(f -> (double) f.measuredExposure * f.measuredIso))
                             .orElseGet(() -> candidates.stream().max(Comparator.comparingDouble(f -> (double) f.measuredExposure * f.measuredIso)).get());
-                    Log.w("NICE_HDR", "no N frame in the burst: frame " + niceReference.number + " (" + niceReference.getCaptureRole()
+                    Log.w("SCAM_HDR", "no N frame in the burst: frame " + scamReference.number + " (" + scamReference.getCaptureRole()
                             + ") calibrates the shot");
                 }
-                images.remove(niceReference);
-                images.add(0, niceReference);
-                CaptureResult referenceMetadata = niceReference.getMatchedCaptureMetadata();
+                images.remove(scamReference);
+                images.add(0, scamReference);
+                CaptureResult referenceMetadata = scamReference.getMatchedCaptureMetadata();
                 if (referenceMetadata == null)
                     throw new IllegalStateException(Lang.t("SCAM HDR: нет метаданных опорного RAW timestamp=", "SCAM HDR: no metadata of the reference RAW timestamp=")
-                            + niceReference.timestamp);
+                            + scamReference.timestamp);
                 captureResult = referenceMetadata;
                 captureRequest = referenceMetadata.getRequest();
                 processingParameters.FillDynamicParameters(referenceMetadata, captureRequest,
-                        niceReference.measuredIso);
+                        scamReference.measuredIso);
                 refineBlackFromDarkestFrame(processingParameters, images);
                 ParseExif.syncWithParameters(exifData, processingParameters);
-                Log.i("NICE_HDR", "Reference calibration timestamp=" + niceReference.timestamp
+                Log.i("SCAM_HDR", "Reference calibration timestamp=" + scamReference.timestamp
                         + " ISO=" + processingParameters.iso
                         + " exposureSeconds=" + processingParameters.exposureTime);
                 if (!hybridShot) {
@@ -465,66 +465,66 @@ public class HdrxProcessor extends ProcessorBase {
                     // (frames lost, exposures off plan, the worker failed) is merged by the Hybrid from the same frames
                     // instead of losing the photo.
                     try {
-                        if (PreferenceKeys.isNiceMosaic() && niceMosaicStream(images, processingParameters)) {
+                        if (PreferenceKeys.isScamMosaic() && scamMosaicStream(images, processingParameters)) {
                             // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
                             processingStage = Lang.t("SCAM HDR: ремозаик мозаики", "SCAM HDR: mosaic remosaic");
-                            images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceMosaic.prepare(
+                            images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamMosaic.prepare(
                                     PhotonCamera.getAppContext(), images, processingParameters));
                             ParseExif.syncWithParameters(exifData, processingParameters);
                         }
                         processingStage = "SCAM HDR neural burst";
-                        niceOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.process(
+                        scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.process(
                                 PhotonCamera.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                     } catch (Exception scam) {
-                        Log.w("NICE_HDR", "SCAM HDR fallback=hybrid reason=" + scam.getMessage());
-                        android.util.Log.w("NICE_HDR", "SCAM HDR fallback=hybrid", scam);
-                        com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng = null;
+                        Log.w("SCAM_HDR", "SCAM HDR fallback=hybrid reason=" + scam.getMessage());
+                        android.util.Log.w("SCAM_HDR", "SCAM HDR fallback=hybrid", scam);
+                        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng = null;
                         hybridShot = true;
                         PreferenceKeys.endShotProfile();
                         PreferenceKeys.beginShotProfile(true);
-                        // VivoNiceMosaic may have closed frames it did not keep: the hybrid drops frames without data.
+                        // ScamMosaic may have closed frames it did not keep: the hybrid drops frames without data.
                         images.removeIf(f -> f == null || f.buffer == null);
                     }
                 }
                 if (hybridShot) {
                     processingStage = "Hybrid merge";
                     com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
-                    niceOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.process(
+                    scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
                             PhotonCamera.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                 }
-                niceOutputParameters=processingParameters;
-                processingParameters.vivoNiceRgb=niceOwnedOutput;
-                processingParameters.vivoNiceRgbOwned=true;
-                processingParameters.vivoHdrRawScale=1f;
-                Log.i("NICE_HDR","Original model capture completed; RGB goes directly to WB/LSC/tone. DNG retains the reference RAW.");
+                scamOutputParameters=processingParameters;
+                processingParameters.scamRgb=scamOwnedOutput;
+                processingParameters.scamRgbOwned=true;
+                processingParameters.scamHdrRawScale=1f;
+                Log.i("SCAM_HDR","Original model capture completed; RGB goes directly to WB/LSC/tone. DNG retains the reference RAW.");
             } catch(Exception e) {
-                throw new IllegalStateException("NICE capture failed: "+e.getMessage(),e);
+                throw new IllegalStateException("SCAM capture failed: "+e.getMessage(),e);
             }
         }
         ImageFrame ref=images.get(0);
         ByteBuffer output=ref.buffer;ref.buffer=null;
         if ((long) width * height > 16_000_000L) output = outOfArena(output);
         for(ImageFrame frame:images)frame.close();
-        ByteBuffer niceMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng;
-        com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceBurst.lastMergedDng=null;
+        ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng;
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng=null;
         Log.d(TAG, "HDRX Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
         if ((saveRAW >= 1) && alignAlgorithm != 2) {
             boolean imageSaved = false;
             try {
-            if (niceMergedDng != null) {
-                // Whole-burst merge (like the merged DNG of GCam/LMC), 14-bit levels.
+            if (scamMergedDng != null) {
+                // Whole-burst merge (like the merged DNG of GCam/SCAM), 14-bit levels.
                 float[] black = processingParameters.blackLevel.clone();
                 int white = processingParameters.whiteLevel;
                 float k = 16383f / white;
                 for (int i = 0; i < 4; i++) processingParameters.blackLevel[i] = Math.round(black[i] * k);
                 processingParameters.whiteLevel = 16383;
                 try {
-                    imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, niceMergedDng, processingParameters);
-                    Log.i("NICE_HDR", "DNG: merged burst RAW (all N frames), 14-bit");
+                    imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
+                    Log.i("SCAM_HDR", "DNG: merged burst RAW (all N frames), 14-bit");
                 } finally {
                     System.arraycopy(black, 0, processingParameters.blackLevel, 0, 4);
                     processingParameters.whiteLevel = white;
-                    Allocator.free(niceMergedDng);
+                    Allocator.free(scamMergedDng);
                 }
             } else imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
                     processingParameters);
@@ -552,8 +552,8 @@ public class HdrxProcessor extends ProcessorBase {
         processingParameters.noiseModeler.computeStackingNoiseModel(effective,Allocator.binning?4:1);
 
         // The autonomous mode owns denoising; do not run a second AI/vendor pass.
-        if (processingParameters.vivoHdrMode) {
-            double scale=processingParameters.vivoHdrRawScale;
+        if (processingParameters.scamHdrMode) {
+            double scale=processingParameters.scamHdrRawScale;
             for (int c=0;c<processingParameters.noiseModeler.computeModel.length;c++) {
                 android.util.Pair<Double,Double> n=processingParameters.noiseModeler.computeModel[c];
                 processingParameters.noiseModeler.computeModel[c]=new android.util.Pair<>(n.first*scale,n.second*scale*scale);
@@ -566,12 +566,12 @@ public class HdrxProcessor extends ProcessorBase {
         // size). Like mosaic SR, the pipeline size follows the RGB; the LSC map is sampled in normalised coordinates.
         // Only a hybrid shot has the hybrid's output size: the static keeps the last hybrid shot's size, which a SCAM HDR
         // shot (sensor size) must not take (it rendered the SCAM HDR RGB at the 2x size, black).
-        final Point hybridOut = hybridShot ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastOutputSize : null;
+        final Point hybridOut = hybridShot ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastOutputSize : null;
         processingParameters.hybridFinalSize = null;
         if (hybridOut != null && (hybridOut.x != width || hybridOut.y != height)) {
             // 12/16/20 MP from the 2x grid: resized on the GPU at the end of the pipeline (HybridFinalResize); the CPU
             // resize below only remains as a fallback when the pipeline did not apply it.
-            final Point fin = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastFinalSize;
+            final Point fin = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastFinalSize;
             if (fin != null && (long) fin.x * fin.y < (long) hybridOut.x * hybridOut.y) processingParameters.hybridFinalSize = new Point(fin.x, fin.y);
             final float sx = (float) hybridOut.x / width, sy = (float) hybridOut.y / height;
             processingParameters.rawSize = new Point(hybridOut.x, hybridOut.y);
@@ -583,7 +583,7 @@ public class HdrxProcessor extends ProcessorBase {
             processingParameters.alignmentSize = new Point(hybridOut.x / processingParameters.tile + 1, hybridOut.y / processingParameters.tile + 1);
             processingParameters.tilesX = hybridOut.x / 800 + 1;
             processingParameters.outputScale = sx;
-            Log.i("NICE_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
+            Log.i("SCAM_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
         }
         PostPipeline pipeline = new PostPipeline();
         // «HEIC 10 бит»: the final image comes out RGBA_1010102 for the HEVC Main10 HEIC; every 8-bit file of the shot gets an
@@ -626,15 +626,15 @@ public class HdrxProcessor extends ProcessorBase {
         }
         // SCAM HDR hybrid on the Sabre 2x grid: the whole pipeline (including sharpening) ran on the 2x image; the
         // final size (12/16/20 MP, or the sensor size) is produced here, keeping the bitmap's aspect and rotation.
-        final Point hybridFinal = hybridOut != null ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurst.lastFinalSize : null;
+        final Point hybridFinal = hybridOut != null ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastFinalSize : null;
         if (hybridFinal != null && (long) hybridFinal.x * hybridFinal.y < (long) img.getWidth() * img.getHeight()) {
             final double s = Math.sqrt((double) hybridFinal.x * hybridFinal.y / ((double) img.getWidth() * img.getHeight()));
             final int tw = Math.max(2, (int) Math.round(img.getWidth() * s)) & ~1, th = Math.max(2, (int) Math.round(img.getHeight() * s)) & ~1;
             processingStage = "SCAM HDR: resize " + img.getWidth() + "x" + img.getHeight() + " -> " + tw + "x" + th;
             try {
-                Bitmap reduced = com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale.resizeTo(img, tw, th, PreferenceKeys.hybridDownsampler());
+                Bitmap reduced = com.particlesdevs.photoncamera.processing.ml.ScamPostDownscale.resizeTo(img, tw, th, PreferenceKeys.hybridDownsampler());
                 if (reduced != img) { img.recycle(); img = reduced; }
-                Log.i("NICE_HDR", "hybrid final size " + tw + "x" + th + " (" + PreferenceKeys.hybridDownsamplerName() + ")");
+                Log.i("SCAM_HDR", "hybrid final size " + tw + "x" + th + " (" + PreferenceKeys.hybridDownsamplerName() + ")");
             } catch (Throwable resizeError) {
                 Log.e(TAG, "hybrid resize failed; keeping the 2x image", resizeError);
             }
@@ -731,12 +731,12 @@ public class HdrxProcessor extends ProcessorBase {
      * colour block measured on the first frame. A plain-Bayer module keeps its Bayer frames (vivo X100 Ultra main, owner's log
      * 2026-10-05: 'mode=neural_sabre block=4' remosaicked a 4096x3072 Bayer stream as Tetra).
      */
-    private static boolean niceMosaicStream(java.util.List<ImageFrame> images, Parameters p) {
-        if (PreferenceKeys.niceMosaicDeclared()) return true;
+    private static boolean scamMosaicStream(java.util.List<ImageFrame> images, Parameters p) {
+        if (PreferenceKeys.scamMosaicDeclared()) return true;
         // P35: the stream's stored block decides without the detector (a binned burst is always measured).
         final int stored = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
         if (stored > 0) {
-            Log.i("NICE_HDR", "SCAM HDR mosaic: stored stream colour block " + stored + " for "
+            Log.i("SCAM_HDR", "SCAM HDR mosaic: stored stream colour block " + stored + " for "
                     + com.particlesdevs.photoncamera.processing.MosaicBlockStore.shotKey()
                     + (stored > 1 ? "" : "; mosaic mode ignored, plain Bayer") + " (detector skipped)");
             return stored > 1;
@@ -748,7 +748,7 @@ public class HdrxProcessor extends ProcessorBase {
                     com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(f.buffer, f.width, f.height, f.width * 2,
                             black, p.whiteLevel, 8);
             boolean mosaic = r.confident && r.block > 1;
-            Log.i("NICE_HDR", "SCAM HDR mosaic: stream colour block " + r + (mosaic ? "" : "; mosaic mode ignored, plain Bayer"));
+            Log.i("SCAM_HDR", "SCAM HDR mosaic: stream colour block " + r + (mosaic ? "" : "; mosaic mode ignored, plain Bayer"));
             if (p.rawBinning <= 1) com.particlesdevs.photoncamera.processing.MosaicBlockStore.observeShot(r, "SCAM HDR shot");
             return mosaic;
         }

@@ -20,7 +20,7 @@ import static android.opengl.GLES20.GL_NEAREST;
 
 /**
  * ARK tone, step 1 (tone_port.md 2.1 / 7.2): builds "arkLow", the equivalent of Google's ds_linear_rgb (G_CLEAN) that
- * the ArkCam / LMC 9.6 photo tone reads - the box mean at half the sensor grid of the linear Rec.709 scene with the
+ * the ArkCam / SCAM 9.6 photo tone reads - the box mean at half the sensor grid of the linear Rec.709 scene with the
  * full lens shading and no clip (Bento content above 1 stays) - reads it back once and runs the Smart-HDR statistics
  * and auto exposure of the mod on it (ArkAe). The ceiling clip comes from the data (max of arkLow, at most 4), the
  * night factor from the ISO of the reference frame (a ZSL frame at the preview exposure, as the mod's preview ISO)
@@ -74,7 +74,7 @@ public final class ArkStats extends Node {
             failure = e.toString();
         }
         halfReadbackState = mismatch < 0 ? 1 : -1;
-        Log.i("NICE_PIPELINE", "ARK half read-back check: " + (mismatch < 0 ? "exact for all 65536 halves"
+        Log.i("SCAM_PIPELINE", "ARK half read-back check: " + (mismatch < 0 ? "exact for all 65536 halves"
                 : failure != null ? "failed (" + failure + "), float read-back kept"
                 : mismatch > 0xffff ? "GL error, float read-back kept"
                 : "half 0x" + Integer.toHexString(mismatch) + " differs, float read-back kept")
@@ -183,7 +183,7 @@ public final class ArkStats extends Node {
             // CPU, instead of the driver's conversion into a 50 MB float buffer. The diagnostics dump and the old model read
             // floats as before, and so does a driver whose native read type is not RGBA / HALF_FLOAT or whose float
             // conversion is not the exact widening (halfReadbackExact).
-            final int halfType = legacy || NiceDiagnostics.active() ? 0 : halfReadType();
+            final int halfType = legacy || ScamDiagnostics.active() ? 0 : halfReadType();
             boolean half = halfType != 0 && halfReadbackExact(halfType);
             if (half) {
                 int bytes = lowSize.x * lowSize.y * 8;
@@ -207,7 +207,7 @@ public final class ArkStats extends Node {
                 st.low.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_16, 4), pixels);
             }
             pixels.rewind();
-            if (!half) NiceDiagnostics.buffer("02-ArkLow", pixels, lowSize.x, lowSize.y, 4, true);
+            if (!half) ScamDiagnostics.buffer("02-ArkLow", pixels, lowSize.x, lowSize.y, 4, true);
             final boolean early = !legacy && earlySharpen != null && earlySharpen.runEarly(pipeline, WorkingTexture);
             int iso = pipeline.mParameters.iso, maxIso = maxAnalogIso();
             ArkAe.Settings settings = ArkTone.settings();
@@ -217,7 +217,7 @@ public final class ArkStats extends Node {
             st.ae = r;
             // Ultra HDR and anything else downstream that reads the display gain: the mod's exposure.
             pipeline.linearDisplayGain = r.ae;
-            Log.i("NICE_PIPELINE", "ARK SMART_HDR_STAT " + r.describe() + " iso=" + iso + " maxIso=" + maxIso
+            Log.i("SCAM_PIPELINE", "ARK SMART_HDR_STAT " + r.describe() + " iso=" + iso + " maxIso=" + maxIso
                     + " inScale=" + st.inScale + " low=" + lowSize.x + "x" + lowSize.y + " factor=" + st.factor
                     + " ms=" + (System.currentTimeMillis() - started) + " readback=" + (half ? "half" : "float")
                     + (early ? " sharpen=early" : ""));

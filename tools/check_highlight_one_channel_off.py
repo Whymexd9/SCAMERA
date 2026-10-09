@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Blown Bento sky with one channel 'off' stays neutral and seamless: the LMC hybrid highlight recovery (VivoNiceRgb) on the
-SHIPPED shaders, wired as VivoNiceRgb.Run does (hlrecovery/chanprep -> hlrecovery/reduce x2 -> vivohdr/nicergb hlModeU 1 ->
-vivohdr/clipband) with the worker's clip flags, 1x grid. research/highlights/ONEPLUS15_PINK.md (P58).
+"""Blown Bento sky with one channel 'off' stays neutral and seamless: the SCAM Hybrid highlight recovery (ScamRgb) on the
+SHIPPED shaders, wired as ScamRgb.Run does (hlrecovery/chanprep -> hlrecovery/reduce x2 -> scamhdr/scamrgb hlModeU 1 ->
+scamhdr/clipband) with the worker's clip flags, 1x grid. research/highlights/ONEPLUS15_PINK.md (P58).
 
 Scene after the OnePlus 15 shot IMG_20261008_180208 (camera 2, Bento k = 2.7085 from 2 ultrashorts, white point
 0.456 / 1 / 0.63; log: "hi=2.4784698(plateau),2.4837546(plateau),0.0(off) max=2.75,2.52,2.52 usClipped=0.0", CLIP FLAGS
@@ -14,8 +14,8 @@ sky (where the base frames' clipped samples were excluded), an unclipped pink cl
 measured) inside the mask.
 Before the fix the sky was pink / magenta (R > B > G: no level inside the mask without flags, raw R = G after white
 balance) with white blotches on the bit-3 cells (the only pixels that were recovered).
-Levels: the old ones as VivoNiceRgb.channelClip gave them (B filled with k) and the new ones (B from the measured clip /
-its own maximum, the unflagged-clip gate on: VivoNiceRgbOneChannelOffTest asserts the same numbers from the same
+Levels: the old ones as ScamRgb.channelClip gave them (B filled with k) and the new ones (B from the measured clip /
+its own maximum, the unflagged-clip gate on: ScamRgbOneChannelOffTest asserts the same numbers from the same
 histograms).
 Checks (new shaders + new levels):
 - the sky and the sun are neutral (OKLab chroma < 0.02; before: about 0.1, pink);
@@ -90,7 +90,7 @@ def read(t, n=3):
 
 
 def recover(tree, raw, flags, wp, lo, hi, unflagged=None, raw16=False):
-    """VivoNiceRgb.Run, per-channel branch with clip flags and the chroma statistics (scale 1). unflagged None: the
+    """ScamRgb.Run, per-channel branch with clip flags and the chroma statistics (scale 1). unflagged None: the
     uniform is not set at all (as the old Java never set it); raw16: every intermediate as float16 bits (byte-identity)."""
     h, w = flags.shape
     inp = texture(raw.astype(np.float32))
@@ -110,18 +110,18 @@ def recover(tree, raw, flags, wp, lo, hi, unflagged=None, raw16=False):
     c32.filter = (moderngl.LINEAR, moderngl.LINEAR)
     c128 = draw(program(tree, 'hlrecovery/reduce.glsl'), ((wide[0] + 3) // 4, (wide[1] + 3) // 4), {'InputBuffer': c32}, {})
     c128.filter = (moderngl.LINEAR, moderngl.LINEAR)
-    nice = draw(program(tree, 'vivohdr/nicergb.glsl'), (w, h),
+    scam = draw(program(tree, 'scamhdr/scamrgb.glsl'), (w, h),
                 {'InputBuffer': inp, 'GainMap': gm, 'ClipFlags': ft, 'Chroma8': c8, 'Chroma32': c32, 'Chroma128': c128},
                 dict(common, hlModeU=1, hlStrengthU=1.0, chromaU=1, blockU=block, chromaLimitU=0.35, defringeU=0.85,
                      signedU=1))
-    band = draw(program(tree, 'vivohdr/clipband.glsl'), (w, h), {'InputBuffer': nice, 'ClipFlags': ft},
+    band = draw(program(tree, 'scamhdr/clipband.glsl'), (w, h), {'InputBuffer': scam, 'ClipFlags': ft},
                 dict({'radiusU': 3, 'zoneU': 2, 'strengthU': 1.0},
                      **({'clipHiUnflaggedU': int(unflagged)} if unflagged is not None else {})))
     if raw16:
-        out = [np.frombuffer(t.read(), np.uint16) for t in (c8, c32, c128, nice, band)]
+        out = [np.frombuffer(t.read(), np.uint16) for t in (c8, c32, c128, scam, band)]
     else:
         out = read(band).astype(np.float32)
-    for t in (inp, gm, ft, c8, c32, c128, nice, band):
+    for t in (inp, gm, ft, c8, c32, c128, scam, band):
         t.release()
     return out
 
@@ -277,7 +277,7 @@ if BASE is not None:
         b = recover(SH, sc, fg, wp, lo, hi, 0, raw16=True)
         same = all(np.array_equal(x, y) for x, y in zip(a, b))
         diff = sum(int((x != y).sum()) for x, y in zip(a, b))
-        check(same, 'byte-identity vs %s: %s (chroma 8/32/128, nicergb, clipband: %d differing halves)' % (BASE, name, diff))
+        check(same, 'byte-identity vs %s: %s (chroma 8/32/128, scamrgb, clipband: %d differing halves)' % (BASE, name, diff))
 
 if REPORT:
     try:

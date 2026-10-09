@@ -194,7 +194,7 @@ public final class ArkLumaSharpen extends Node {
             earlyInput = null;
             if (same) return;
             // Not expected (ArkFusion passes the image on): the passes run again on this node's own input.
-            Log.w("NICE_PIPELINE", "ARK luma sharpen: input changed after the early passes, sharpening again");
+            Log.w("SCAM_PIPELINE", "ARK luma sharpen: input changed after the early passes, sharpening again");
             if (st != null && st.lumaS != null) { st.lumaS.close(); st.lumaS = null; }
         }
         if (st == null || st.ae == null) throw new IllegalStateException("ARK sharpen: no statistics (ArkStats did not run)");
@@ -348,7 +348,7 @@ public final class ArkLumaSharpen extends Node {
         for (GLTexture t : pool) if (t != obs) t.close();
         st.lumaS = obs;
         st.sharpMul = mul;
-        Log.i("NICE_PIPELINE", "ARK luma sharpen grid=" + size.x + "x" + size.y + " scale=" + s + " domain=" + (gClean ? "G_CLEAN" : "ae")
+        Log.i("SCAM_PIPELINE", "ARK luma sharpen grid=" + size.x + "x" + size.y + " scale=" + s + " domain=" + (gClean ? "G_CLEAN" : "ae")
                 + " mul=" + mul + " bil=" + (bil ? bilAmount * scaleComp(s, SCALE2_BIL) : 0f) + " gf=" + (gf ? gfLc + "@r" + gfBox + "/" + down : "off")
                 + " usm=" + (usm ? usmAmount + "@" + usmRadius * s : "off") + stages + " ms=" + (System.currentTimeMillis() - started)
                 + (early ? " (issued before the AE)" : ""));

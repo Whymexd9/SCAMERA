@@ -30,8 +30,8 @@ android {
 
     packagingOptions {
         jniLibs {
-            // Extracted to nativeLibraryDir: the NICE/neural worker and its QNN
-            // runtime (added by tools/package_vivo_neural.py) run from there without root.
+            // Extracted to nativeLibraryDir: the SCAM/neural worker and its QNN
+            // runtime (added by tools/package_scam_neural.py) run from there without root.
             useLegacyPackaging true
         }
     }
@@ -167,26 +167,26 @@ android {
 }
 // This must be an executable launched with exec(), never a JNI shared object:
 // app_process/System.load creates an ART namespace that excludes FastRPC deps.
-def neuralAssets = layout.buildDirectory.dir('generated/vivoNeuralAssets')
-def buildVivoNeuralWorker = tasks.register('buildVivoNeuralWorker', Exec) {
-    inputs.files(fileTree('src/main/cpp') { include 'vivo-neural-*', 'vivo-hexquad-*', 'vivo-nice-*' })
+def neuralAssets = layout.buildDirectory.dir('generated/scamNeuralAssets')
+def buildScamNeuralWorker = tasks.register('buildScamNeuralWorker', Exec) {
+    inputs.files(fileTree('src/main/cpp') { include 'scam-neural-*', 'scam-hexquad-*', 'scam-*' })
     inputs.property('ndkVersion', '27.2.12479018')
-    outputs.file(neuralAssets.map { it.file('vivo-neural/arm64-v8a/vivo-neural-worker') })
+    outputs.file(neuralAssets.map { it.file('scam-neural/arm64-v8a/scam-neural-worker') })
     doFirst {
         def host = System.getProperty('os.name').toLowerCase()
         def tag = host.contains('mac') ? 'darwin-x86_64' : 'linux-x86_64'
         if (host.contains('windows')) throw new GradleException('Native worker build requires Linux or macOS')
         def clang = new File(android.sdkDirectory, "ndk/27.2.12479018/toolchains/llvm/prebuilt/${tag}/bin/aarch64-linux-android26-clang++")
-        def output = neuralAssets.get().file('vivo-neural/arm64-v8a/vivo-neural-worker').asFile
+        def output = neuralAssets.get().file('scam-neural/arm64-v8a/scam-neural-worker').asFile
         output.parentFile.mkdirs()
         commandLine clang.absolutePath, '-std=c++17', '-O2', '-Wall', '-Wextra',
                 '-pthread', '-fPIE', '-pie', '-static-libstdc++', '-Wl,-z,max-page-size=16384',
-                file('src/main/cpp/vivo-neural-worker.cpp').absolutePath, '-ldl', '-lEGL', '-lGLESv3', '-o', output.absolutePath
+                file('src/main/cpp/scam-neural-worker.cpp').absolutePath, '-ldl', '-lEGL', '-lGLESv3', '-o', output.absolutePath
     }
 }
 android.sourceSets.main.assets.srcDir(neuralAssets)
 tasks.configureEach {
-    if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn(buildVivoNeuralWorker)
+    if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn(buildScamNeuralWorker)
 }
 
 dependencies {

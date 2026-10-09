@@ -12,7 +12,7 @@ import static android.opengl.GLES20.GL_LINEAR;
  * SCAM HDR hybrid on the Sabre 2x grid: the final 12/16/20 MP size is produced on the GPU as the last processing
  * step (after sharpening, before the rotation), so the readback buffer, the bitmap and the JPEG encoder never see the
  * 50 MP image (the CPU resize of a 201 MB bitmap got the process killed on a phone that was already low on memory).
- * Kernels follow {@link com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale}: lanczos, bicubic, area, bilinear.
+ * Kernels follow {@link com.particlesdevs.photoncamera.processing.ml.ScamPostDownscale}: lanczos, bicubic, area, bilinear.
  */
 public class HybridFinalResize extends Node {
     private final Point target;
@@ -59,7 +59,7 @@ public class HybridFinalResize extends Node {
         WorkingTexture = new GLTexture(target, in.mFormat, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
         glProg.drawBlocks(WorkingTexture);
         ((PostPipeline) basePipeline).finalResized = true;
-        android.util.Log.i("NICE_HDR", "hybrid final size " + target.x + "x" + target.y + " (" + kernelName + ", GPU) from "
+        android.util.Log.i("SCAM_HDR", "hybrid final size " + target.x + "x" + target.y + " (" + kernelName + ", GPU) from "
                 + in.mSize.x + "x" + in.mSize.y + " ms=" + (System.nanoTime() - started) / 1000000);
     }
 }

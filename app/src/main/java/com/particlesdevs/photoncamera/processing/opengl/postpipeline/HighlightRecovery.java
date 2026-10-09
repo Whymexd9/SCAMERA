@@ -21,8 +21,8 @@ import static android.opengl.GLES20.GL_LINEAR;
  * highlight recovery): pixels whose channels all clipped at the sensor white carry no colour,
  * and white balance turns them magenta (the R and B gains exceed G). Their colour is rebuilt
  * from the surrounding unclipped pixels, keeping only their luminance. Runs on the
- * white-balanced linear image right after {@link VivoNiceRgb}; tone and colour stay untouched.
- * SCAM HDR (NICE network) route only: LMC hybrid shots get the per-channel recovery inside {@link VivoNiceRgb}.
+ * white-balanced linear image right after {@link ScamRgb}; tone and colour stay untouched.
+ * SCAM HDR (SCAM network) route only: SCAM Hybrid shots get the per-channel recovery inside {@link ScamRgb}.
  */
 public final class HighlightRecovery extends Node {
     public HighlightRecovery() { super("", "HighlightRecovery"); }
@@ -49,20 +49,20 @@ public final class HighlightRecovery extends Node {
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
-        float strength = Math.max(0f, Math.min(1f, PreferenceKeys.niceInternalValue("highlight_recovery", 100f) / 100f));
+        float strength = Math.max(0f, Math.min(1f, PreferenceKeys.routeInternalValue("highlight_recovery", 100f) / 100f));
         float[] wp = pipeline.mParameters.whitePoint;
         // Fully clipped pixel: equal raw channels, so after white balance min(R,B)/G = min(wpG/wpR, wpG/wpB).
         float kFull = Math.min(wp[1] / Math.max(wp[0], 1e-6f), wp[1] / Math.max(wp[2], 1e-6f));
-        // LMC hybrid (with or without Bento): the per-channel recovery already ran in VivoNiceRgb, on the camera channels
+        // SCAM Hybrid (with or without Bento): the per-channel recovery already ran in ScamRgb, on the camera channels
         // before WB (G of a white highlight from R and B, all clipped -> neutral white). Propagating the surroundings'
         // colour into those whites here would undo it.
-        if (PreferenceKeys.isHybridShot() || LmcHybridBurst.lastBentoApplied) {
-            Log.i("NICE_PIPELINE", "highlightRecovery skipped: LMC hybrid, per-channel recovery in VivoNiceRgb");
+        if (PreferenceKeys.isHybridShot() || ScamHybridBurst.lastBentoApplied) {
+            Log.i("SCAM_PIPELINE", "highlightRecovery skipped: SCAM Hybrid, per-channel recovery in ScamRgb");
             glProg.closed = true;
             return;
         }
-        if (strength <= 0f || kFull < 1.15f || pipeline.mParameters.vivoNiceRgb == null) { glProg.closed = true; return; }
-        float yRef = highlightReference(pipeline.mParameters.vivoNiceRgb, wp);
+        if (strength <= 0f || kFull < 1.15f || pipeline.mParameters.scamRgb == null) { glProg.closed = true; return; }
+        float yRef = highlightReference(pipeline.mParameters.scamRgb, wp);
         if (yRef <= 0f) { glProg.closed = true; return; }
         long started = System.currentTimeMillis();
         GLTexture input = previousNode.WorkingTexture;
@@ -101,7 +101,7 @@ public final class HighlightRecovery extends Node {
             chromaNear.close();
             chromaWide.close();
         }
-        Log.i("NICE_PIPELINE", "highlightRecovery strength=" + strength + " kFull=" + kFull + " yRef=" + yRef
+        Log.i("SCAM_PIPELINE", "highlightRecovery strength=" + strength + " kFull=" + kFull + " yRef=" + yRef
                 + " ms=" + (System.currentTimeMillis() - started));
     }
 }

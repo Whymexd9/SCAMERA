@@ -1,14 +1,14 @@
-// Diagnostic only (not shipped): measures NICE graph execution time and dumps the
+// Diagnostic only (not shipped): measures SCAM graph execution time and dumps the
 // HTP device infrastructure returned by QnnDevice_getInfrastructure (interface
 // slot 39), so the performance-vote ABI is read from the device, not guessed.
-#define NICE_HOST_TEST 1
-#include "vivo-nice-probe.cpp"
+#define SCAM_HOST_TEST 1
+#include "scam-probe.cpp"
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
 #include <dlfcn.h>
 
-static double timeExecutions(vivo_nice::Graph& g,int n) {
+static double timeExecutions(scam::Graph& g,int n) {
     const auto t0=std::chrono::steady_clock::now();
     for(int i=0;i<n;++i)g.execute();
     return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()/n;
@@ -17,13 +17,13 @@ static double timeExecutions(vivo_nice::Graph& g,int n) {
 int main(int argc,char** argv) {
     if(argc<2){std::fprintf(stderr,"usage: %s <asset dir>\n",argv[0]);return 2;}
     try {
-        vivo_nice::Graph g(argv[1],[](const std::string& s){std::printf("%s\n",s.c_str());});
+        scam::Graph g(argv[1],[](const std::string& s){std::printf("%s\n",s.c_str());});
         std::fill(g.input.begin(),g.input.end(),0.1f);
         g.execute();g.execute();
         std::printf("BASELINE ms/exec: %.2f\n",timeExecutions(g,20));
-        auto getInfra=g.s.fn<vivo_nn::Error(*)(void**)>(39);
+        auto getInfra=g.s.fn<scam_nn::Error(*)(void**)>(39);
         void* infra=nullptr;
-        vivo_nn::Error e=getInfra(&infra);
+        scam_nn::Error e=getInfra(&infra);
         std::printf("getInfrastructure error=%" PRIu64 " ptr=%p\n",e,infra);
         if(!e&&infra){
             auto u32=static_cast<const uint32_t*>(infra);
@@ -40,9 +40,9 @@ int main(int argc,char** argv) {
             // +16 destroy(id), +24 setPowerConfig(id,const cfg**); cfg: option(1=DCVS_V3) then
             // contextId,setDcvsEnable,dcvsEnable,powerMode,setSleepLatency,sleepLatency,setSleepDisable,
             // sleepDisable,setBusParams,busMin,busTarget,busMax,setCoreParams,coreMin,coreTarget,coreMax.
-            using Create=vivo_nn::Error(*)(uint32_t,uint32_t,uint32_t*);
-            using Destroy=vivo_nn::Error(*)(uint32_t);
-            using Set=vivo_nn::Error(*)(uint32_t,const void**);
+            using Create=scam_nn::Error(*)(uint32_t,uint32_t,uint32_t*);
+            using Destroy=scam_nn::Error(*)(uint32_t);
+            using Set=scam_nn::Error(*)(uint32_t,const void**);
             auto create=reinterpret_cast<Create>(u64[1]);auto destroy=reinterpret_cast<Destroy>(u64[2]);
             auto set=reinterpret_cast<Set>(u64[3]);
             uint32_t id=0;e=create(0,0,&id);

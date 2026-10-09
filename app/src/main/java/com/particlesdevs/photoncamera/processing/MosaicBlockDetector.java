@@ -11,7 +11,7 @@ import java.nio.ByteOrder;
  * plain-Bayer merge then render it purple with a lattice. The block is what the viewfinder and the hybrid need to treat it
  * right, and the metadata does not say it.
  *
- * <p>Model (the same as {@code detectMosaicBlock} in vivo-nice-hybrid.h): every 8x8 tile of the frame centre is fitted to the
+ * <p>Model (the same as {@code detectMosaicBlock} in scam-hybrid.h): every 8x8 tile of the frame centre is fitted to the
  * colour-block models of block 1, 2 and 4 (each the mean of its four phase classes inside the tile). The CFA's own model leaves
  * only noise and texture; a wrong one also leaves the colour step between the classes. A tile votes when its best model leaves at
  * most 1/3 of the residual of the next one. Periodic scene detail at a period dividing 8 (bars, a zone plate, fabric) can make a

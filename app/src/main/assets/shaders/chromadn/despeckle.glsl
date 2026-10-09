@@ -6,7 +6,7 @@ precision highp sampler2D;
 // Edges and texture fail the homogeneity test; text on a flat ground (the strokes of small spaced capitals, the dots
 // of an ellipsis) passes it, so a candidate must also be alone: at most two of its eight direct neighbours may be
 // off the ring level as well (a defect pixel or a pair), while a stroke two or three pixels wide has more.
-// Signed input (LMC hybrid: nicergb signedU): the tests run on the clamped values as before, the output keeps the signed
+// Signed input (SCAM Hybrid: scamrgb signedU): the tests run on the clamped values as before, the output keeps the signed
 // value (a kept pixel unchanged, a scaled one scaled, a replaced one the mean of the signed ring), so the despeckle does not
 // lift the mean of a channel near zero. For non-negative input the output is the former one.
 uniform sampler2D InputBuffer;

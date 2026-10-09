@@ -18,7 +18,7 @@ public class ImageFrame {
     public boolean fromZsl = false;
     /** RawPayloadCheck verdict of the reader Image this frame was copied from; null = plain 16-bit. */
     public String rawPayloadError;
-    /** NICE: L exposure ratio for an L built from the ZSL N frames (0 = L was captured). */
+    /** SCAM: L exposure ratio for an L built from the ZSL N frames (0 = L was captured). */
     public float syntheticLongRatio = 0;
     public int width, height;
     public GyroBurst frameGyro;
@@ -47,12 +47,12 @@ public class ImageFrame {
     public double blurPixels = Double.NaN;
     private android.hardware.camera2.CaptureResult captureMetadata;
     public enum CaptureRole { NORMAL, LONG, SHORT, EXTRA_SHORT }
-    public static final class NiceCaptureTag {
+    public static final class ScamCaptureTag {
         public final long generation;
         public final int index;
         public final CaptureRole role;
-        public NiceCaptureTag(long generation, int index, CaptureRole role) {
-            if (index < 0 || role == null) throw new IllegalArgumentException("Invalid NICE request tag");
+        public ScamCaptureTag(long generation, int index, CaptureRole role) {
+            if (index < 0 || role == null) throw new IllegalArgumentException("Invalid SCAM request tag");
             this.generation = generation;
             this.index = index;
             this.role = role;
@@ -62,7 +62,7 @@ public class ImageFrame {
 
     /**
      * P27: the role this post-shutter frame really has by its measured exposure when the HAL delivered another exposure than
-     * the request asked for (HybridPlan.classify, set by VivoNiceCaptureSequence.bindAndValidate); null = the request's role.
+     * the request asked for (HybridPlan.classify, set by ScamCaptureSequence.bindAndValidate); null = the request's role.
      */
     public CaptureRole measuredRole;
 
@@ -74,7 +74,7 @@ public class ImageFrame {
         if (measuredRole != null) return measuredRole;
         android.hardware.camera2.CaptureRequest request = matched.getRequest();
         Object tag = request == null ? null : request.getTag();
-        if (tag instanceof NiceCaptureTag) return ((NiceCaptureTag) tag).role;
+        if (tag instanceof ScamCaptureTag) return ((ScamCaptureTag) tag).role;
         return tag instanceof CaptureRole ? (CaptureRole) tag : null;
     }
 

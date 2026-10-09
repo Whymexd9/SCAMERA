@@ -7,7 +7,7 @@ package com.particlesdevs.photoncamera.processing.opengl;
  *     memory barriers and a flush per 256-row tile, FBO names given to glDeleteBuffers, the cleared effective-frame map
  *     of before W3.5, the sequential denoise statistics, the GL_FLOAT read-back of ArkStats, ArkLumaSharpen after the
  *     AE, the watermark texture always built, no shader source cache. Off in every normal shot.</li>
- * <li>{@link #syncNodes()}: nice_dev.txt "post_sync 1": a glFinish at the end of every node, so the per-node times of the
+ * <li>{@link #syncNodes()}: scam_dev.txt "post_sync 1": a glFinish at the end of every node, so the per-node times of the
  *     "runAll timings" table include their GPU time again (without it the GPU time shows up at the next sync point).</li>
  * </ul>
  */

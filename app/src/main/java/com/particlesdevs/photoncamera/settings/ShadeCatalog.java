@@ -75,14 +75,14 @@ public final class ShadeCatalog {
     public static final String METERING_STD = "pref_ae_metering_std_mode_key";
     /** «Формат фото» (JPEG / HEIC / WebP / AVIF): the codec half of the FORMAT choice; no tile of its own (FORMAT covers it). */
     public static final String PHOTO_FORMAT = com.particlesdevs.photoncamera.processing.PhotoFormat.KEY;
-    public static final String ROUTE = LmcHybridKeys.ROUTE;
-    private static final String OUTPUT = "pref_lmc_hybrid_output", DOWNSAMPLER = "pref_lmc_hybrid_downsampler";
+    public static final String ROUTE = ScamHybridKeys.ROUTE;
+    private static final String OUTPUT = "pref_scam_hybrid_output", DOWNSAMPLER = "pref_scam_hybrid_downsampler";
     /** Virtual entries, in catalog order. */
     public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD));
 
     /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins); see {@link #defaultTiles()}. */
     public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, ROUTE,
-            OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_lmc_hybrid_bento"));
+            OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_scam_hybrid_bento"));
 
     /**
      * The default tiles of this phone: {@link #DEFAULT_TILES}, without the route tile where SCAM HDR cannot run (no Snapdragon
@@ -111,15 +111,15 @@ public final class ShadeCatalog {
      * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the gcam engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
-            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_lmc_hybrid_ark_metering", ROUTE),
+            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_ark_metering", ROUTE),
             new Group(R.string.shade_group_format, FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
                     "pref_show_watermark_key"),
-            new Group(R.string.shade_group_hybrid, "pref_lmc_hybrid_bento", "pref_lmc_hybrid_bento_frames",
-                    "pref_lmc_hybrid_shasta", "pref_lmc_hybrid_zsl_frames", "pref_lmc_hybrid_dn_luma_mult",
-                    "pref_lmc_hybrid_dn_chroma_mult", "pref_lmc_hybrid_sharp_mode", "pref_lmc_hybrid_cdm"),
-            new Group(R.string.shade_group_scamhdr, "pref_vivo_nice_zsl_frames", "pref_vivo_nice_long_boost_ev",
-                    "pref_vivo_nice_mosaic"),
-            new Group(R.string.shade_group_color, "pref_lmc_tone_curve", "pref_sharp_usm_enabled_key"),
+            new Group(R.string.shade_group_hybrid, "pref_scam_hybrid_bento", "pref_scam_hybrid_bento_frames",
+                    "pref_scam_hybrid_shasta", "pref_scam_hybrid_zsl_frames", "pref_scam_hybrid_dn_luma_mult",
+                    "pref_scam_hybrid_dn_chroma_mult", "pref_scam_hybrid_sharp_mode", "pref_scam_hybrid_cdm"),
+            new Group(R.string.shade_group_scamhdr, "pref_scamhdr_zsl_frames", "pref_scamhdr_long_boost_ev",
+                    "pref_scamhdr_mosaic"),
+            new Group(R.string.shade_group_color, "pref_scam_tone_curve", "pref_sharp_usm_enabled_key"),
             new Group(R.string.shade_group_view, "pref_show_grid_key", "pref_peak_method_key", "pref_live_viewfinder_raw_key",
                     "pref_show_afdata_key", "pref_face_detect_mode", "pref_tracking_af_mode")));
 
@@ -129,7 +129,7 @@ public final class ShadeCatalog {
     /** Free-text rows that hold one number: a slider with the bounds of SettingsNumericRules and this step. */
     private static final Map<String, Float> NUMERIC_TEXT = new HashMap<>();
     static {
-        NUMERIC_TEXT.put("pref_vivo_nice_long_boost_ev", 0.1f);
+        NUMERIC_TEXT.put("pref_scamhdr_long_boost_ev", 0.1f);
     }
     /** Never pinnable: switches a sensor mode (Quad), belongs to one phone only, or is part of the FORMAT choice (the codec). */
     private static final Set<String> NOT_PINNABLE = new HashSet<>(Arrays.asList(
@@ -163,25 +163,25 @@ public final class ShadeCatalog {
                 R.drawable.ic_timeroff, R.drawable.ic_timer3s, R.drawable.ic_timer10s);
         spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
-        spec("pref_lmc_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
+        spec("pref_scam_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
         spec(ROUTE, R.string.shade_t_route, R.array.shade_s_route, R.drawable.settings_ic_layers);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
         spec("pref_ultrahdr_key", R.string.shade_t_ultrahdr, 0, R.drawable.settings_ic_hdr);
         spec("pref_wide169_key", R.string.shade_t_wide169, 0, R.drawable.settings_ic_ratio);
         spec("pref_show_watermark_key", R.string.shade_t_watermark, 0, R.drawable.settings_ic_water);
-        spec("pref_lmc_hybrid_bento", R.string.shade_t_bento, R.array.shade_s_bento, R.drawable.settings_ic_flash);
-        spec("pref_lmc_hybrid_bento_frames", R.string.shade_t_bento_frames, R.array.shade_s_bento_frames, R.drawable.settings_ic_frames);
-        spec("pref_lmc_hybrid_shasta", R.string.shade_t_shasta, 0, R.drawable.settings_ic_layers);
-        spec("pref_lmc_hybrid_zsl_frames", R.string.shade_t_hybrid_frames, 0, R.drawable.settings_ic_frames);
-        spec("pref_lmc_hybrid_dn_luma_mult", R.string.shade_t_luma, 0, R.drawable.settings_ic_noise);
-        spec("pref_lmc_hybrid_dn_chroma_mult", R.string.shade_t_chroma, 0, R.drawable.settings_ic_palette);
-        spec("pref_lmc_hybrid_sharp_mode", R.string.shade_t_sharp, R.array.shade_s_sharp, R.drawable.settings_ic_sharp);
-        spec("pref_lmc_hybrid_cdm", R.string.shade_t_rejection, 0, R.drawable.settings_ic_eye);
-        spec("pref_vivo_nice_zsl_frames", R.string.shade_t_scam_frames, 0, R.drawable.settings_ic_frames);
-        spec("pref_vivo_nice_long_boost_ev", R.string.shade_t_long_boost, 0, R.drawable.settings_ic_sun);
-        spec("pref_vivo_nice_mosaic", R.string.shade_t_mosaic, R.array.shade_s_mosaic, R.drawable.settings_ic_mosaic);
-        spec("pref_lmc_tone_curve", R.string.shade_t_tone_curve, 0, R.drawable.settings_ic_diag);
+        spec("pref_scam_hybrid_bento", R.string.shade_t_bento, R.array.shade_s_bento, R.drawable.settings_ic_flash);
+        spec("pref_scam_hybrid_bento_frames", R.string.shade_t_bento_frames, R.array.shade_s_bento_frames, R.drawable.settings_ic_frames);
+        spec("pref_scam_hybrid_shasta", R.string.shade_t_shasta, 0, R.drawable.settings_ic_layers);
+        spec("pref_scam_hybrid_zsl_frames", R.string.shade_t_hybrid_frames, 0, R.drawable.settings_ic_frames);
+        spec("pref_scam_hybrid_dn_luma_mult", R.string.shade_t_luma, 0, R.drawable.settings_ic_noise);
+        spec("pref_scam_hybrid_dn_chroma_mult", R.string.shade_t_chroma, 0, R.drawable.settings_ic_palette);
+        spec("pref_scam_hybrid_sharp_mode", R.string.shade_t_sharp, R.array.shade_s_sharp, R.drawable.settings_ic_sharp);
+        spec("pref_scam_hybrid_cdm", R.string.shade_t_rejection, 0, R.drawable.settings_ic_eye);
+        spec("pref_scamhdr_zsl_frames", R.string.shade_t_scam_frames, 0, R.drawable.settings_ic_frames);
+        spec("pref_scamhdr_long_boost_ev", R.string.shade_t_long_boost, 0, R.drawable.settings_ic_sun);
+        spec("pref_scamhdr_mosaic", R.string.shade_t_mosaic, R.array.shade_s_mosaic, R.drawable.settings_ic_mosaic);
+        spec("pref_scam_tone_curve", R.string.shade_t_tone_curve, 0, R.drawable.settings_ic_diag);
         spec("pref_sharp_usm_enabled_key", R.string.shade_t_usm, 0, R.drawable.settings_ic_sharp);
         spec("pref_show_grid_key", R.string.shade_t_grid, R.array.shade_s_grid, R.drawable.settings_ic_grid,
                 R.drawable.ic_sheet_grid_off, R.drawable.ic_grid_3x3, R.drawable.ic_grid_4x4, R.drawable.ic_grid_golden,
@@ -437,7 +437,7 @@ public final class ShadeCatalog {
 
     /** The visibility rules of SettingsActivity: SCAM HDR only on the 8 Elite, the Xiaomi 17 Ultra zoom row only there. */
     private static void applyRuntimeRules(PreferenceScreen tree) {
-        Preference scamHdr = tree.findPreference("vivo_hdr_screen");
+        Preference scamHdr = tree.findPreference("scam_hdr_screen");
         if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
         Preference xiaomiZoom = tree.findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
         if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
@@ -573,7 +573,7 @@ public final class ShadeCatalog {
 
     // ───────────────────────────────── values
 
-    /** The stored value, the effective one for the route and the hybrid's output (MediaTek lock, nice_dev.txt). */
+    /** The stored value, the effective one for the route and the hybrid's output (MediaTek lock, scam_dev.txt). */
     public Object value(Entry e) {
         if (e.isVirtual()) {
             switch (e.key) {
@@ -743,7 +743,7 @@ public final class ShadeCatalog {
 
     /**
      * Why the setting does nothing now (the tile is dimmed and a tap shows this), or null when it is available: no flash
-     * on this lens, the hybrid-only route lock (no 8 Elite), a nice_dev.txt override, the other route (SettingsAvailability with the
+     * on this lens, the hybrid-only route lock (no 8 Elite), a scam_dev.txt override, the other route (SettingsAvailability with the
      * effective route), a switch it depends on.
      */
     @Nullable
@@ -751,12 +751,12 @@ public final class ShadeCatalog {
         if (FLASH.equals(e.key)) return flashAvailable ? null : res.getString(R.string.shade_reason_no_flash);
         if (ROUTE.equals(e.key)) {
             if (!PreferenceKeys.isScamHdrSupported()) return res.getString(R.string.shade_reason_scamhdr_soc);
-            if (PreferenceKeys.niceDevOverrides("hybrid")) return res.getString(R.string.shade_reason_nice_dev);
+            if (PreferenceKeys.scamDevOverrides("hybrid")) return res.getString(R.string.shade_reason_scam_dev);
             return null;
         }
-        if (e.key.startsWith(LmcHybridKeys.PREFIX)
-                && PreferenceKeys.niceDevOverrides("hybrid_" + e.key.substring(LmcHybridKeys.PREFIX.length())))
-            return res.getString(R.string.shade_reason_nice_dev);
+        if (e.key.startsWith(ScamHybridKeys.PREFIX)
+                && PreferenceKeys.scamDevOverrides("hybrid_" + e.key.substring(ScamHybridKeys.PREFIX.length())))
+            return res.getString(R.string.shade_reason_scam_dev);
         Map<String, Object> values = new HashMap<>(prefs.getAll());
         values.put(ROUTE, PreferenceKeys.mergeRoute());
         String reason = DeviceAvailability.of(values).reason(e.key);

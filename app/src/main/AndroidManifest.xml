@@ -183,12 +183,12 @@
         <meta-data
             android:name="firebase_performance_logcat_enabled"
             android:value="false" />
-        <activity android:name=".ui.settings.VivoNeuralActivity"
-            android:exported="false" android:process=":vivo_neural"
+        <activity android:name=".ui.settings.ScamNeuralActivity"
+            android:exported="false" android:process=":scam_neural"
             android:configChanges="orientation|screenSize|keyboardHidden" />
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
-        <activity android:name=".ui.settings.VivoNiceActivity"
-            android:exported="false" android:process=":vivo_nice"
+        <activity android:name=".ui.settings.ScamActivity"
+            android:exported="false" android:process=":scam"
             android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>

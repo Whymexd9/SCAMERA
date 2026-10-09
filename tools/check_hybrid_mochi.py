@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """P62 Mochi (GCam 11 PhotometricMerge) on the GPU: the shipped programs kHybMochiStats / kHybMochiBlur / kHybMochiApply of
-app/src/main/cpp/vivo-nice-hybrid.h, wired as HybridGpu::mochi does (one band), on synthetic base / bracketed pairs.
+app/src/main/cpp/scam-hybrid.h, wired as HybridGpu::mochi does (one band), on synthetic base / bracketed pairs.
 research/mochi/MOCHI_IMPL.md.
 
 Scene: a smooth colour gradient (RAW 10-bit, black 64, RGGB), the bracketed frame at t = 2 with a known photometric offset
@@ -22,7 +22,7 @@ import numpy as np
 import moderngl
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = (ROOT / 'app/src/main/cpp/vivo-nice-hybrid.h').read_text(encoding='utf-8')
+SRC = (ROOT / 'app/src/main/cpp/scam-hybrid.h').read_text(encoding='utf-8')
 
 try:
     ctx = moderngl.create_standalone_context(backend='egl', require=430)

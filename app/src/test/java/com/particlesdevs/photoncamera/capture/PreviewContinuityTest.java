@@ -8,7 +8,7 @@ import org.junit.Test;
 public class PreviewContinuityTest {
     @Test
     public void leadFramesOnlyAfterAFlushAndBounded() {
-        assertEquals(0, PreviewContinuity.leadFrames(0f, true));          // nice_dev "preview_lead 0": off
+        assertEquals(0, PreviewContinuity.leadFrames(0f, true));          // scam_dev "preview_lead 0": off
         assertEquals(1, PreviewContinuity.leadFrames(PreviewContinuity.DEFAULT_LEAD, true)); // default: one lead frame
         assertEquals(1, PreviewContinuity.leadFrames(1f, true));
         assertEquals(2, PreviewContinuity.leadFrames(2.4f, true));

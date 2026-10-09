@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from package_vivo_neural import pinned_assets
+from package_scam_neural import pinned_assets
 
 # v2 (4 October 2026): v1 plus the CRE motion runtime and the Quad/VSR contexts, which v1 lacked, so the Actions APK
 # shipped without them while local builds had them. All 28 entries are required.
@@ -112,7 +112,7 @@ def unpack(data, output):
         raise ValueError('Private bundle SHA256 mismatch')
     manifests = {'bundle': pinned_assets(),
                  'hexquad': {**pinned_assets('HEX_FILES', 6), **pinned_assets('QUAD_FILES', 3), **BUNDLE_ONLY['hexquad']},
-                 'nice': {**pinned_assets('NICE_FILES', 6), **pinned_assets('NICE_TONE_FILES', 5)}}
+                 'nice': {**pinned_assets('SCAM_FILES', 6), **pinned_assets('SCAM_TONE_FILES', 5)}}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         expected = {group + '/' + name for group, manifest in manifests.items() for name in manifest}
         if len(archive.namelist()) != len(expected) or set(archive.namelist()) != expected:

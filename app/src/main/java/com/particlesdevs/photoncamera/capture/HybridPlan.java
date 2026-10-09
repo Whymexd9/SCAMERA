@@ -13,14 +13,14 @@ import java.util.Locale;
 import com.particlesdevs.photoncamera.util.Lang;
 
 /**
- * Post-shutter requests of the LMC hybrid (its own route, not SCAM HDR): the N frames come from the ZSL ring at the
+ * Post-shutter requests of the SCAM Hybrid (its own route, not SCAM HDR): the N frames come from the ZSL ring at the
  * preview exposure, after the press the camera exposes
  * <ul>
- * <li>one or two ultrashort frames (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (LMC: one at 8),
+ * <li>one or two ultrashort frames (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (SCAM: one at 8),
  *     only when the newest buffered frame clips (or Bento is forced),</li>
  * <li>up to five bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}) at N x 2^ev, gain first at the N shutter,
  *     the shutter lengthens only where the sensor's gain range ends (up to the handheld cap); skipped when the ratio is below
- *     1.5 or above the limit. As ArkCam 1.23 / LMC 9.6 on the same Oppo by day (research/lmc/device/oppo_debug_20261004):
+ *     1.5 or above the limit. As ArkCam 1.23 / SCAM 9.6 on the same Oppo by day (research/scam/device/oppo_debug_20261004):
  *     5 frames at 10 ms x analog gain 2.22 (TET x1.9 of N), sharpness 97-106 % of the base, none discarded, 82 % of the
  *     pixels weighted from them. The former shutter-first rule (33 ms x ISO 145 for N = 10 ms) blurred them by hand shake
  *     and ship vibration: 33-82 % of the base sharpness, below the 80 % gate in every shot, never merged.</li>
@@ -69,16 +69,16 @@ public final class HybridPlan {
         this.nShutterNs = nShutterNs; this.nIso = nIso; this.description = description;
     }
 
-    /** Preferences of the plan: the hybrid's own pref_lmc_hybrid_* (nice_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
+    /** Preferences of the plan: the hybrid's own pref_scam_hybrid_* (scam_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
     public static boolean shastaEnabled() { return PreferenceKeys.hybridSwitch("shasta", true); }
     public static int bracketCount() { return Math.max(0, Math.min(5, Math.round(PreferenceKeys.hybridValue("shasta_frames", 5f)))); }
     public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 1f))); }
     /** 0 off, 1 auto (needs clipping in the buffered frame), 2 force. */
     public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 1f)))); }
-    /** Ultrashort exposure = N / factor; LMC ultrashort_tet_factor 8 (default). */
+    /** Ultrashort exposure = N / factor; SCAM ultrashort_tet_factor 8 (default). */
     public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.hybridValue("bento_factor", 8f))); }
     /**
-     * Ultrashort frames per shot: 1 = LMC 9.6, 2 (default) = a second one at the same exposure; the worker merges both inside the
+     * Ultrashort frames per shot: 1 = SCAM 9.6, 2 (default) = a second one at the same exposure; the worker merges both inside the
      * mask (half the noise of the x8 replacement, the hand shake between them fills the R/B lattice of a single Bayer frame).
      */
     public static int bentoFrames() { return Math.max(1, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento_frames", 2f)))); }
@@ -226,8 +226,8 @@ public final class HybridPlan {
      */
     public ImageFrame.CaptureRole classify(CaptureRequest request, CaptureResult result) {
         Object tag = request == null ? null : request.getTag();
-        if (!(tag instanceof ImageFrame.NiceCaptureTag) || result == null) return null;
-        int index = ((ImageFrame.NiceCaptureTag) tag).index;
+        if (!(tag instanceof ImageFrame.ScamCaptureTag) || result == null) return null;
+        int index = ((ImageFrame.ScamCaptureTag) tag).index;
         if (index < 0 || index >= requests.size()) return null;
         Request r = requests.get(index);
         Long ns = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
@@ -240,7 +240,7 @@ public final class HybridPlan {
         ImageFrame.CaptureRole role = ratio >= 1.5 ? ImageFrame.CaptureRole.LONG
                 : ratio <= 0.5 ? ImageFrame.CaptureRole.EXTRA_SHORT
                 : ratio >= NORMAL_DARKER_RATIO && ratio <= NORMAL_BRIGHTER_RATIO ? ImageFrame.CaptureRole.NORMAL : null;
-        com.particlesdevs.photoncamera.util.Log.w("NICE_CAPTURE", String.format(Locale.ROOT,
+        com.particlesdevs.photoncamera.util.Log.w("SCAM_CAPTURE", String.format(Locale.ROOT,
                 "hybrid: %s #%d delivered x%.3f of N (plan x%.3f; ISO %d/%d, shutter %d/%d, %.2f EV off) -> %s",
                 r.role, index, ratio, r.ratio, iso, r.iso, ns, r.shutterNs, planEv, role == null ? "dropped" : "used as " + role));
         return role;

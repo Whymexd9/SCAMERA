@@ -5,7 +5,7 @@
 //      exposures and ceilings, with samples above white.
 //   2. bentoBase (the stamped dilation) against the search dilation it replaced, and bentoMask with a shared base against
 //      bentoMask building its own: every float of the mask, every count.
-//   3. NicePool / NiceTasks / mergeRowBands inside pool tasks: every row exactly once, nested rows from many tasks at once (no
+//   3. ScamPool / ScamTasks / mergeRowBands inside pool tasks: every row exactly once, nested rows from many tasks at once (no
 //      deadlock), exceptions back to the caller, the task group waits for its tasks.
 //   4. P33 W2.1: LaStream (the F6 field in tile-row bands alongside the merge) against laFrameField per frame: every float of the
 //      field and the Z channel, every statistic, with 1..8 threads, 0..2 medians and odd sizes; rows read as soon as waitRows
@@ -14,17 +14,17 @@
 //   5. P48: windowed gray on a tall frame under strong motion (large translations, rotation, perspective, a translation beyond
 //      the image, LK iteration counts that move the field far): identical to laFrameField, and the gray rows held at once stay
 //      below half of the whole gray images.
-// vivo-nice-hybrid.h is not self-contained: the worker includes vivo-nice-capture.h first.
-#include "../app/src/main/cpp/vivo-nice-capture.h"
-#include "../app/src/main/cpp/vivo-nice-hybrid.h"
-#include "../app/src/main/cpp/vivo-nice-stock-motion.h"
+// scam-hybrid.h is not self-contained: the worker includes scam-capture.h first.
+#include "../app/src/main/cpp/scam-capture.h"
+#include "../app/src/main/cpp/scam-hybrid.h"
+#include "../app/src/main/cpp/scam-stock-motion.h"
 #include <cassert>
 #include <cstring>
 #include <cstdio>
 #include <random>
 #include <string>
 #include <vector>
-using namespace vivo_nice;
+using namespace scam;
 
 // The base part of bentoMask before P31 (search dilation), for item 2.
 static std::vector<float> oldBentoBase(const Burst& b,const HybridTuning& t,double& clippedFraction) {
@@ -154,12 +154,12 @@ int main() {
     std::printf("bento: %d stamped base masks identical to the search dilation, shared and own bentoMask identical\n",masks);
 
     // ---- 3. pool
-    auto& pool=NicePool::get();
+    auto& pool=ScamPool::get();
     {
         std::vector<int> hits(10007,0);
         pool.rows(int(hits.size()),13,[&](int y0,int y1){for(int y=y0;y<y1;++y)++hits[y];});
         for(int v:hits)assert(v==1);
-        NiceTasks tasks;
+        ScamTasks tasks;
         std::vector<std::future<long>> sums;
         for(int k=0;k<40;++k)sums.push_back(tasks.run([k]{ // nested rows from many tasks at once
             std::vector<long> part(4096,0);
@@ -175,7 +175,7 @@ int main() {
         assert(thrown);
         std::atomic<int> done{0};
         {
-            NiceTasks group;
+            ScamTasks group;
             for(int k=0;k<20;++k)group.run([&done]{std::this_thread::sleep_for(std::chrono::milliseconds(2));++done;return 0;});
         } // the group waits for its tasks
         assert(done==20);

@@ -36,7 +36,7 @@ import static org.mockito.Mockito.*;
 @Config(sdk = 35, application = Application.class, qualifiers = "w400dp-h880dp-mdpi")
 public class ShadeCatalogTest {
     /** Short labels allowed to be longer than 8 characters (they wrap to two lines on the tile). */
-    private static final Set<String> LONG_SHORT_LABELS = new HashSet<>(Arrays.asList("pref_vivo_nice_mosaic:neural_sabre"));
+    private static final Set<String> LONG_SHORT_LABELS = new HashSet<>(Arrays.asList("pref_scamhdr_mosaic:neural_sabre"));
 
     private Context context;
     private SettingsManager manager;
@@ -102,7 +102,7 @@ public class ShadeCatalogTest {
         }
         assertEquals(29, curated); // «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»
         // The rows the owner dropped (answer 8) stay out.
-        for (String gone : new String[]{"pref_lmc_hybrid_ark_tone", "pref_vivo_nice_fusion_enabled"})
+        for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
         assertEquals(8, ShadeCatalog.DEFAULT_TILES.size());
@@ -138,7 +138,7 @@ public class ShadeCatalogTest {
                     if (e.kind != ShadeCatalog.LIST) continue;
                     if (e.shortLabels == null) {
                         // Without short labels only the tone curve: dozens of asset names, shown in the list sheet.
-                        assertEquals(key, "pref_lmc_tone_curve", key);
+                        assertEquals(key, "pref_scam_tone_curve", key);
                         assertTrue(key, e.isLongList());
                         continue;
                     }
@@ -178,37 +178,37 @@ public class ShadeCatalogTest {
         assertEquals(R.drawable.ic_grid_3x3, grid.valueIcons[catalog.index(grid)]);
 
         // A toggle that is on by default is highlighted when off («Вкл./Выкл.» on the tile).
-        ShadeCatalog.Entry shasta = catalog.entry("pref_lmc_hybrid_shasta");
+        ShadeCatalog.Entry shasta = catalog.entry("pref_scam_hybrid_shasta");
         assertEquals(ShadeCatalog.TOGGLE, shasta.kind);
         assertTrue(catalog.on(shasta));
         assertFalse(catalog.changed(shasta));
         catalog.write(shasta, false);
-        assertFalse(prefs.getBoolean("pref_lmc_hybrid_shasta", true));
+        assertFalse(prefs.getBoolean("pref_scam_hybrid_shasta", true));
         assertTrue(catalog.changed(shasta));
         assertEquals(context.getString(R.string.shade_off), catalog.valueText(shasta, true));
 
-        ShadeCatalog.Entry luma = catalog.entry("pref_lmc_hybrid_dn_luma_mult");
+        ShadeCatalog.Entry luma = catalog.entry("pref_scam_hybrid_dn_luma_mult");
         assertEquals(ShadeCatalog.SLIDER, luma.kind);
         assertEquals(0.01f, luma.step, 1e-6f);
         assertEquals("1" + point + "00", catalog.valueText(luma, true));
         catalog.write(luma, 0.6f);
-        assertEquals("0.6", prefs.getString("pref_lmc_hybrid_dn_luma_mult", null));
+        assertEquals("0.6", prefs.getString("pref_scam_hybrid_dn_luma_mult", null));
         assertEquals("0" + point + "60", catalog.valueText(luma, true));
         assertTrue(catalog.changed(luma));
 
         // «Удлинение L» is free text in the settings; the shade shows it as a 0-2 slider (owner's answer 8).
-        ShadeCatalog.Entry boost = catalog.entry("pref_vivo_nice_long_boost_ev");
+        ShadeCatalog.Entry boost = catalog.entry("pref_scamhdr_long_boost_ev");
         assertEquals(ShadeCatalog.SLIDER, boost.kind);
         assertEquals(0f, boost.min, 0f);
         assertEquals(2f, boost.max, 0f);
         assertEquals(0.1f, boost.step, 1e-6f);
         assertEquals("1" + point + "1", catalog.valueText(boost, true));
         catalog.write(boost, 1.5f);
-        assertEquals("1.5", prefs.getString("pref_vivo_nice_long_boost_ev", null));
+        assertEquals("1.5", prefs.getString("pref_scamhdr_long_boost_ev", null));
 
         // «Замер» is the ARK metering, a list of named modes since the settings audit (H4: it was a 0-2 slider whose numbers only
         // the summary explained); the Camera2 metering stays a camera control.
-        ShadeCatalog.Entry metering = catalog.entry("pref_lmc_hybrid_ark_metering");
+        ShadeCatalog.Entry metering = catalog.entry("pref_scam_hybrid_ark_metering");
         assertEquals(ShadeCatalog.LIST, metering.kind);
         assertEquals(context.getResources().getStringArray(R.array.shade_s_ark_metering)[0], catalog.valueText(metering, true));
         assertTrue(catalog.entry(ShadeCatalog.METERING_STD).isVirtual());
@@ -233,18 +233,18 @@ public class ShadeCatalogTest {
 
     @Test
     public void availabilityUsesTheEffectiveRouteDependenciesAndTheFlash() {
-        ShadeCatalog.Entry cdm = catalog.entry("pref_lmc_hybrid_cdm");
+        ShadeCatalog.Entry cdm = catalog.entry("pref_scam_hybrid_cdm");
         assertNull(catalog.unavailable(cdm));
         manager.set("default_scope", PreferenceKeys.ROUTE_KEY, "scamhdr");
         assertNotNull(catalog.unavailable(cdm));
-        assertNull(catalog.unavailable(catalog.entry("pref_vivo_nice_zsl_frames")));
+        assertNull(catalog.unavailable(catalog.entry("pref_scamhdr_zsl_frames")));
         manager.set("default_scope", PreferenceKeys.ROUTE_KEY, "hybrid");
-        assertNotNull(catalog.unavailable(catalog.entry("pref_vivo_nice_zsl_frames")));
+        assertNotNull(catalog.unavailable(catalog.entry("pref_scamhdr_zsl_frames")));
 
-        ShadeCatalog.Entry frames = catalog.entry("pref_lmc_hybrid_shasta_frames");
-        assertEquals("pref_lmc_hybrid_shasta", frames.dependency);
+        ShadeCatalog.Entry frames = catalog.entry("pref_scam_hybrid_shasta_frames");
+        assertEquals("pref_scam_hybrid_shasta", frames.dependency);
         assertNull(catalog.unavailable(frames));
-        prefs.edit().putBoolean("pref_lmc_hybrid_shasta", false).commit();
+        prefs.edit().putBoolean("pref_scam_hybrid_shasta", false).commit();
         assertEquals(context.getString(R.string.shade_reason_dependency, "Shasta"), catalog.unavailable(frames));
 
         ShadeCatalog.Entry flash = catalog.entry(ShadeCatalog.FLASH);
@@ -258,11 +258,11 @@ public class ShadeCatalogTest {
     public void onlyPortablePinnableSettingsAreInTheCatalog() {
         for (String key : new String[]{"pref_dcp_profile_key", "pref_camera_package_spoof_enabled", "pref_antibanding_hz_key",
                 "pref_watermark_line1", "pref_theme_key", "pref_tunable_camerauiviewimpl_enablequadres",
-                "pref_restore_preferences_key", "pref_backup_preferences_key", "settings_favorites", "lmc_hybrid_screen"})
+                "pref_restore_preferences_key", "pref_backup_preferences_key", "settings_favorites", "scam_hybrid_screen"})
             assertFalse(key, catalog.isKnown(key));
         // Free text of the hybrid denoise tables is not pinnable.
-        for (ShadeCatalog.Entry e : catalog.all()) assertFalse(e.key, e.key.startsWith("pref_lmc_hybrid_ark_luma_"));
-        assertTrue(catalog.isKnown("pref_lmc_hybrid_post_luma"));
+        for (ShadeCatalog.Entry e : catalog.all()) assertFalse(e.key, e.key.startsWith("pref_scam_hybrid_ark_luma_"));
+        assertTrue(catalog.isKnown("pref_scam_hybrid_post_luma"));
         assertTrue(catalog.isKnown("pref_jpeg_quality"));
     }
 
@@ -284,12 +284,12 @@ public class ShadeCatalogTest {
         ShadeCatalog.reset();
         try {
             ShadeCatalog english = ShadeCatalog.get(context);
-            assertTrue(english.entry("pref_lmc_hybrid_bento").crumb().startsWith("Frames and capture"));
+            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("Frames and capture"));
             assertSame(english, ShadeCatalog.get(context));
             org.robolectric.RuntimeEnvironment.setQualifiers("+ru");
             ShadeCatalog russian = ShadeCatalog.get(context);
             assertNotSame(english, russian);
-            assertTrue(russian.entry("pref_lmc_hybrid_bento").crumb(), russian.entry("pref_lmc_hybrid_bento").crumb().startsWith("Кадры и захват"));
+            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("Кадры и захват"));
         } finally {
             ShadeCatalog.reset();
         }
@@ -299,17 +299,17 @@ public class ShadeCatalogTest {
         List<ShadeCatalog.Entry> luma = catalog.search("Luma");
         Set<String> keys = new HashSet<>();
         for (ShadeCatalog.Entry e : luma) keys.add(e.key);
-        assertTrue(keys.contains("pref_lmc_hybrid_post_luma"));
-        assertTrue(keys.contains("pref_lmc_hybrid_dn_luma_mult"));
+        assertTrue(keys.contains("pref_scam_hybrid_post_luma"));
+        assertTrue(keys.contains("pref_scam_hybrid_dn_luma_mult"));
         Set<String> cyrillic = new HashSet<>();
         for (ShadeCatalog.Entry e : catalog.search("люма")) cyrillic.add(e.key);
-        assertTrue(cyrillic.contains("pref_lmc_hybrid_post_luma"));
+        assertTrue(cyrillic.contains("pref_scam_hybrid_post_luma"));
         Set<String> grid = new HashSet<>();
         for (ShadeCatalog.Entry e : catalog.search("grid")) grid.add(e.key);
         assertTrue(grid.contains("pref_show_grid_key"));
         assertEquals(catalog.all().size(), catalog.search("  ").size());
         // Sections come from the tree: the hybrid's Bento rows are under «Hybrid › Кадры и захват».
-        ShadeCatalog.Entry bento = catalog.entry("pref_lmc_hybrid_bento");
+        ShadeCatalog.Entry bento = catalog.entry("pref_scam_hybrid_bento");
         assertEquals("Hybrid", bento.section(context));
         assertTrue(bento.crumb(), bento.crumb().startsWith(captureSection));
         assertEquals(context.getString(R.string.shade_group_shoot), catalog.entry(ShadeCatalog.ROUTE).section(context));

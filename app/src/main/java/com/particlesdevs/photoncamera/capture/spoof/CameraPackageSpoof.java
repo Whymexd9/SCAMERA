@@ -5,7 +5,7 @@ import android.hardware.camera2.CameraManager;
 import android.util.Log;
 
 /**
- * Applies the three package spoof methods in the same order as the LMC mod:
+ * Applies the three package spoof methods in the same order as the SCAM mod:
  * OplusCameraManager.saveOpPackageName, CameraManager context, raw ICameraService Binder.
  * Called before the camera list is read and again right before every openCamera(),
  * so a changed setting or a restarted camera service is picked up without a relaunch.

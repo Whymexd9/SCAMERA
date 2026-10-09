@@ -90,9 +90,9 @@ public class IsoExpoSelector {
     public static ExpoPair GenerateExpoPair(int step, CaptureController captureController) {
         ExpoPair pair = new ExpoPair(captureController.mPreviewExposureTime, getEXPLOW(), getEXPHIGH(),
                 captureController.mPreviewIso, getISOLOW(), getISOHIGH(),getISOAnalog());
-        // Both routes (LMC hybrid, SCAM HDR) use the metered sensor exposure, without the former legacy AE curves.
+        // Both routes (SCAM Hybrid, SCAM HDR) use the metered sensor exposure, without the former legacy AE curves.
         if (pair.exposure <= 0 || pair.iso <= 0)
-            throw new IllegalStateException("NICE: missing preview exposure/ISO");
+            throw new IllegalStateException("SCAM: missing preview exposure/ISO");
         return pair;
     }
 

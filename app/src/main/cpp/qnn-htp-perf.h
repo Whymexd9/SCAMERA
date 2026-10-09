@@ -1,6 +1,6 @@
 #pragma once
 // HTP performance vote through QnnDevice_getInfrastructure (QNN interface slot 39).
-// Without a vote the HTP runs under default DCVS; measured on SM8750 with the NICE
+// Without a vote the HTP runs under default DCVS; measured on SM8750 with the SCAM
 // graph: 29.8 ms -> 14.5 ms per execution. The ABI below was read from the bundled
 // libQnnHtp.so (v2.29.8): the infrastructure holds type (0 = PERF) and, at +8/+16/+24,
 // htpPerfInfrastructure{CreatePowerConfigId(deviceId,coreId,uint32_t*),

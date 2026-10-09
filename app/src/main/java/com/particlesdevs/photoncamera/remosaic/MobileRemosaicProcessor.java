@@ -73,7 +73,7 @@ public final class MobileRemosaicProcessor {
      * SCAM HDR on a mosaic stream: one plain-bayer frame (the frames' own black/white levels) merged from the equal-exposure
      * N frames. Updates the bayer layout in the parameters like the ordinary path.
      */
-    public static ByteBuffer mergeForNice(List<ImageFrame> frames, Parameters p, int block, String cfa) {
+    public static ByteBuffer mergeForScam(List<ImageFrame> frames, Parameters p, int block, String cfa) {
         return processGroup(frames,p,block,cfa,3);
     }
 }

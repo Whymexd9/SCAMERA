@@ -34,7 +34,7 @@ public final class ArkSharpenGuard extends Node {
         if (WorkingTexture == sharp || WorkingTexture == pre) WorkingTexture = pipeline.getMain();
         glProg.drawBlocks(WorkingTexture);
         glProg.closed = true;
-        Log.i("NICE_PIPELINE", "ARK sharpen guard exponent=" + st.guard + (sharp == pre ? " (no sharpening ran)" : "")
+        Log.i("SCAM_PIPELINE", "ARK sharpen guard exponent=" + st.guard + (sharp == pre ? " (no sharpening ran)" : "")
                 + " ms=" + (System.currentTimeMillis() - started));
         pipeline.ark = null;
     }

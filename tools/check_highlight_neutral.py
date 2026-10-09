@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Blown highlights stay neutral and clip edges carry no blue / violet / cyan fringe: the LMC hybrid highlight recovery
-(VivoNiceRgb) on the SHIPPED shaders, wired as VivoNiceRgb.Run does (hlrecovery/chanprep -> hlrecovery/reduce x2 ->
-vivohdr/nicergb hlModeU 1 -> vivohdr/clipband) with the worker's clip flags, 1x grid.
+"""Blown highlights stay neutral and clip edges carry no blue / violet / cyan fringe: the SCAM Hybrid highlight recovery
+(ScamRgb) on the SHIPPED shaders, wired as ScamRgb.Run does (hlrecovery/chanprep -> hlrecovery/reduce x2 ->
+scamhdr/scamrgb hlModeU 1 -> scamhdr/clipband) with the worker's clip flags, 1x grid.
 
 Scene A, after the vivo X200 Ultra window of 2026-10-08 (native Quad mosaic, no Bento, white point 0.526 / 1 / 0.623,
 base-frame clip 1.0 per channel, cellClip flags): a blown window where G and B clipped and R stayed at 0.65..0.95 of its
@@ -85,7 +85,7 @@ def read(t):
 
 
 def recover(raw, flags, wp, lo, hi):
-    """VivoNiceRgb.Run, per-channel branch with clip flags and the chroma statistics (scale 1)."""
+    """ScamRgb.Run, per-channel branch with clip flags and the chroma statistics (scale 1)."""
     h, w = flags.shape
     inp = texture(raw.astype(np.float32))
     gm = texture(np.ones((1, 1, 4), np.float16), 'f2', linear=True)
@@ -102,14 +102,14 @@ def recover(raw, flags, wp, lo, hi):
     c32.filter = (moderngl.LINEAR, moderngl.LINEAR)
     c128 = draw(program('hlrecovery/reduce.glsl'), ((wide[0] + 3) // 4, (wide[1] + 3) // 4), {'InputBuffer': c32}, {})
     c128.filter = (moderngl.LINEAR, moderngl.LINEAR)
-    nice = draw(program('vivohdr/nicergb.glsl'), (w, h),
+    scam = draw(program('scamhdr/scamrgb.glsl'), (w, h),
                 {'InputBuffer': inp, 'GainMap': gm, 'ClipFlags': ft, 'Chroma8': c8, 'Chroma32': c32, 'Chroma128': c128},
                 dict(common, hlModeU=1, hlStrengthU=1.0, chromaU=1, blockU=block, chromaLimitU=0.35, defringeU=0.85,
                      signedU=1))
-    band = draw(program('vivohdr/clipband.glsl'), (w, h), {'InputBuffer': nice, 'ClipFlags': ft},
+    band = draw(program('scamhdr/clipband.glsl'), (w, h), {'InputBuffer': scam, 'ClipFlags': ft},
                 {'radiusU': 3, 'zoneU': 2, 'strengthU': 1.0})
     out = read(band)
-    for t in (inp, gm, ft, c8, c32, c128, nice, band):
+    for t in (inp, gm, ft, c8, c32, c128, scam, band):
         t.release()
     return out
 

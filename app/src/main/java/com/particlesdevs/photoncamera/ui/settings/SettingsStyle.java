@@ -70,7 +70,7 @@ public final class SettingsStyle {
     /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
-    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key", "vivo_hdr_ark_link"));
+    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key", "scam_hdr_ark_link"));
 
     public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
@@ -282,8 +282,8 @@ public final class SettingsStyle {
     static boolean inRoute(String key) {
         String route;
         try { route = PreferenceKeys.mergeRoute(); } catch (RuntimeException e) { return true; }
-        if ("lmc_hybrid_screen".equals(key)) return "hybrid".equals(route);
-        if ("vivo_hdr_screen".equals(key)) return !"hybrid".equals(route);
+        if ("scam_hybrid_screen".equals(key)) return "hybrid".equals(route);
+        if ("scam_hdr_screen".equals(key)) return !"hybrid".equals(route);
         return true;
     }
 

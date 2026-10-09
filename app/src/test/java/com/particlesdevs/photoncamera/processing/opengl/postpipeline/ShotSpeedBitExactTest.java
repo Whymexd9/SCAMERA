@@ -33,7 +33,7 @@ public class ShotSpeedBitExactTest {
             assertEquals(what + " [" + i + "]", Float.floatToRawIntBits(expected[i]), Float.floatToRawIntBits(actual[i]));
     }
 
-    /** Block statistics as lmcdn/stats returns them, with ties (quantised values), signed zeros and invalid blocks. */
+    /** Block statistics as scamdn/stats returns them, with ties (quantised values), signed zeros and invalid blocks. */
     private static float[] blocks(Random r, int count, int levels) {
         float[] b = new float[8 * count];
         for (int i = 0; i < count; i++) {
@@ -61,13 +61,13 @@ public class ShotSpeedBitExactTest {
             for (int levels : new int[]{0, 3, 16, 256}) {
                 float[] b = blocks(r, count, levels);
                 assertSameBits("count " + count + " levels " + levels,
-                        LmcDenoiseTables.reduceLegacy(b, count, 0.8f), LmcDenoiseTables.reduce(b, count, 0.8f));
+                        ScamDenoiseTables.reduceLegacy(b, count, 0.8f), ScamDenoiseTables.reduce(b, count, 0.8f));
             }
         }
         // Fewer than 16 valid blocks: null in both.
         float[] few = blocks(new Random(1), 10, 0);
-        assertNull(LmcDenoiseTables.reduce(few, 10, 0.8f));
-        assertNull(LmcDenoiseTables.reduceLegacy(few, 10, 0.8f));
+        assertNull(ScamDenoiseTables.reduce(few, 10, 0.8f));
+        assertNull(ScamDenoiseTables.reduceLegacy(few, 10, 0.8f));
     }
 
     @Test public void sortableBitsKeepTheFloatCompareOrder() {
@@ -75,7 +75,7 @@ public class ShotSpeedBitExactTest {
                 Float.MIN_VALUE, Float.MIN_NORMAL, 1f, Float.MAX_VALUE, Float.POSITIVE_INFINITY, Float.NaN};
         for (float a : v) for (float b : v)
             assertEquals(a + " vs " + b, Integer.signum(Float.compare(a, b)),
-                    Integer.signum(Integer.compare(LmcDenoiseTables.sortableBits(a), LmcDenoiseTables.sortableBits(b))));
+                    Integer.signum(Integer.compare(ScamDenoiseTables.sortableBits(a), ScamDenoiseTables.sortableBits(b))));
     }
 
     /** An independent IEEE half decoder (Math.scalb), the reference of the read-back table. */
@@ -209,7 +209,7 @@ public class ShotSpeedBitExactTest {
                 if (v > 0) { expected[v]++; expectedCount++; }
             }
             int[] got = new int[256];
-            assertEquals("size " + size, expectedCount, LmcDenoise.effHistogram(eff, got));
+            assertEquals("size " + size, expectedCount, ScamDenoise.effHistogram(eff, got));
             for (int v = 0; v < 256; v++) assertEquals("size " + size + " code " + v, expected[v], got[v]);
             assertEquals(0, eff.position());
         }

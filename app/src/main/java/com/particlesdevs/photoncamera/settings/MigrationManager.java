@@ -26,7 +26,7 @@ public class MigrationManager {
             readAgain = true;
             // This reset also runs on a fresh install (no stored version), after SettingsManager wrote the route: write it
             // again now (hybrid on a fresh install).
-            SettingsMigration.migrateLmcHybrid(settingsManager.getContext(), defaultPreferences);
+            SettingsMigration.migrateScamHybrid(settingsManager.getContext(), defaultPreferences);
         }
     }
 }

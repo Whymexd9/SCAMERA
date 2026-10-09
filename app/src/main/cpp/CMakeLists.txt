@@ -72,15 +72,15 @@ target_link_libraries(
         log
 )
 
-add_library(vivoAe SHARED vivo-aec-jni.cpp)
-set_property(TARGET vivoAe PROPERTY CXX_STANDARD 17)
-target_compile_options(vivoAe PRIVATE -ffp-contract=off)
+add_library(scamAe SHARED scam-aec-jni.cpp)
+set_property(TARGET scamAe PROPERTY CXX_STANDARD 17)
+target_compile_options(scamAe PRIVATE -ffp-contract=off)
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
-    add_library(vivoNeuralProbe SHARED vivo-neural-probe.cpp)
-    target_link_libraries(vivoNeuralProbe PRIVATE dl)
-    add_library(vivoNiceProbe SHARED vivo-nice-probe.cpp)
-    target_link_libraries(vivoNiceProbe PRIVATE dl)
+    add_library(scamNeuralProbe SHARED scam-neural-probe.cpp)
+    target_link_libraries(scamNeuralProbe PRIVATE dl)
+    add_library(scamProbe SHARED scam-probe.cpp)
+    target_link_libraries(scamProbe PRIVATE dl)
 endif()
 
 # P24: every saved JPEG through jpegli, 4:4:4 (third_party/README.md); Highway gives it NEON / SVE.

@@ -273,7 +273,7 @@ public class GLBasePipeline implements AutoCloseable {
                 // the GPU time of a single-pass node's draw landed in the next node's time.
                 if (syncNodes) android.opengl.GLES30.glFinish();
             }
-            if (i != Nodes.size()-1) com.particlesdevs.photoncamera.processing.opengl.postpipeline.NiceDiagnostics.gpu(node.Name,node.WorkingTexture);
+            if (i != Nodes.size()-1) com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamDiagnostics.gpu(node.Name,node.WorkingTexture);
             try {
                 node.AfterRun();
             } catch (RuntimeException error) {

@@ -1,6 +1,6 @@
 precision highp float;
 precision highp sampler2D;
-// Colour noise removal, step 2 (NiceDenoise runs it twice, stepU 1 then 2): 5x5 dilated bilateral
+// Colour noise removal, step 2 (ScamHdrDenoise runs it twice, stepU 1 then 2): 5x5 dilated bilateral
 // filter of the colour at half resolution. A neighbour counts when its colour ratios differ by
 // no more than the colour noise expected at that brightness and its luminance is close; the
 // pixel keeps its own luminance. Averaging is done on the linear values, not on the ratios, so

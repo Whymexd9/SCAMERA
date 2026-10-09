@@ -3,7 +3,7 @@ precision highp int;
 precision highp sampler2D;
 // SCAM HDR hybrid: final resize of the display-encoded image (after sharpening) on the GPU, so the 50 MP Sabre 2x
 // grid never reaches the readback / JPEG stage. Filtering runs in linear light (sRGB decode/encode) like the CPU
-// VivoPostDownscale. kernel: 0 Lanczos-3, 1 bicubic (Lanczos-2), 2 area (box of the scale ratio, partial coverage),
+// ScamPostDownscale. kernel: 0 Lanczos-3, 1 bicubic (Lanczos-2), 2 area (box of the scale ratio, partial coverage),
 // 3 bilinear. The support scales with the ratio (scale-aware), ratios up to 4:1; taps outside the image are dropped
 // and the weights renormalised (as cpp/lanczos-downscale.h).
 //

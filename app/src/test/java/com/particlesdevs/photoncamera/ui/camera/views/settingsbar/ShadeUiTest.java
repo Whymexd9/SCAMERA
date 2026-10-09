@@ -233,11 +233,11 @@ public class ShadeUiTest {
             image.compress(Bitmap.CompressFormat.PNG, 100, out);
         }
         // Pinning from a row adds the tile; the row's pin turns on.
-        View pin = sheet.findViewWithTag("shade_pin_pref_lmc_hybrid_cdm");
+        View pin = sheet.findViewWithTag("shade_pin_pref_scam_hybrid_cdm");
         assertFalse(pin.isSelected());
         pin.performClick();
-        assertTrue(sheet.pinnedKeys().contains("pref_lmc_hybrid_cdm"));
-        assertTrue(sheet.findViewWithTag("shade_pin_pref_lmc_hybrid_cdm").isSelected());
+        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_cdm"));
+        assertTrue(sheet.findViewWithTag("shade_pin_pref_scam_hybrid_cdm").isSelected());
     }
 
     @Test
@@ -253,18 +253,18 @@ public class ShadeUiTest {
         assertEquals(ShadeCatalog.VIRTUAL, view.shownKeys().subList(0, 4));
         android.widget.EditText search = view.findViewWithTag("shade_catalog_search");
         search.setText("Luma");
-        assertTrue(view.shownKeys().contains("pref_lmc_hybrid_post_luma"));
-        assertTrue(view.shownKeys().contains("pref_lmc_hybrid_dn_luma_mult"));
+        assertTrue(view.shownKeys().contains("pref_scam_hybrid_post_luma"));
+        assertTrue(view.shownKeys().contains("pref_scam_hybrid_dn_luma_mult"));
         assertFalse(view.shownKeys().contains("pref_show_grid_key"));
         String counter = ((android.widget.TextView) view.findViewWithTag("shade_catalog_count")).getText().toString();
         assertTrue(counter, counter.contains("8"));
         int width = dp(360), height = dp(800);
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
-        View row = view.findViewWithTag("catalog_row_pref_lmc_hybrid_post_luma");
+        View row = view.findViewWithTag("catalog_row_pref_scam_hybrid_post_luma");
         assertNotNull(row);
         row.performClick();
-        assertTrue(sheet.pinnedKeys().contains("pref_lmc_hybrid_post_luma"));
+        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_post_luma"));
         assertEquals(sheet.pinnedKeys(), ShadeTiles.stored(prefs));
         // the NLM and GCam luma rows of one page have distinct names since the settings audit (H5)
         assertEquals(activity.getString(R.string.shade_added, "NLM denoise: luma"), messages.get(messages.size() - 1));
@@ -279,7 +279,7 @@ public class ShadeUiTest {
         }
         // The pinned setting outside the curated groups gets a row in FULL under «Добавлено из настроек».
         layoutFull();
-        assertNotNull(sheet.findViewWithTag("shade_row_pref_lmc_hybrid_post_luma"));
+        assertNotNull(sheet.findViewWithTag("shade_row_pref_scam_hybrid_post_luma"));
         ((View) view.findViewWithTag("shade_catalog_close")).performClick();
         assertEquals(1, closed[0]);
     }
@@ -361,8 +361,8 @@ public class ShadeUiTest {
         assertTrue(sheet.isEditing());
         layoutFull();
         // In the edit mode a press-drag lifts the tile at once (no long press).
-        drag("pref_lmc_hybrid_bento", ShadeCatalog.FLASH, 150);
-        assertEquals(0, sheet.pinnedKeys().indexOf("pref_lmc_hybrid_bento"));
+        drag("pref_scam_hybrid_bento", ShadeCatalog.FLASH, 150);
+        assertEquals(0, sheet.pinnedKeys().indexOf("pref_scam_hybrid_bento"));
         assertTrue(sheet.isEditing());
         edit.performClick();
         assertFalse(sheet.isEditing());
@@ -429,16 +429,16 @@ public class ShadeUiTest {
     @Config(qualifiers = "ru-w360dp-h800dp-xhdpi")
     public void russianTilesFitAt360dpWithoutEllipsis() throws Exception {
         // The twelve longest names and values of the curated rows, in Russian, on the narrowest phone.
-        List<String> longest = Arrays.asList("pref_lmc_hybrid_downsampler", "pref_show_watermark_key", "pref_lmc_hybrid_zsl_frames",
-                "pref_vivo_nice_zsl_frames", "pref_vivo_nice_long_boost_ev", "pref_vivo_nice_mosaic", "pref_peak_method_key",
-                "pref_live_viewfinder_raw_key", "pref_show_afdata_key", "pref_lmc_hybrid_cdm", ShadeCatalog.METERING_STD,
-                "pref_lmc_hybrid_bento_frames");
+        List<String> longest = Arrays.asList("pref_scam_hybrid_downsampler", "pref_show_watermark_key", "pref_scam_hybrid_zsl_frames",
+                "pref_scamhdr_zsl_frames", "pref_scamhdr_long_boost_ev", "pref_scamhdr_mosaic", "pref_peak_method_key",
+                "pref_live_viewfinder_raw_key", "pref_show_afdata_key", "pref_scam_hybrid_cdm", ShadeCatalog.METERING_STD,
+                "pref_scam_hybrid_bento_frames");
         ShadeTiles.save(prefs, longest);
-        prefs.edit().putString("pref_vivo_nice_mosaic", "neural_sabre").putString("pref_show_afdata_key", "2")
-                .putString("pref_lmc_hybrid_downsampler", "bilinear").commit();
+        prefs.edit().putString("pref_scamhdr_mosaic", "neural_sabre").putString("pref_show_afdata_key", "2")
+                .putString("pref_scam_hybrid_downsampler", "bilinear").commit();
         layoutFull();
         assertEquals(longest, sheet.pinnedKeys());
-        assertEquals("Даунсемплер", catalog.entry("pref_lmc_hybrid_downsampler").shortTitle.toString());
+        assertEquals("Даунсемплер", catalog.entry("pref_scam_hybrid_downsampler").shortTitle.toString());
         RecyclerView grid = grid();
         assertEquals(12, grid.getChildCount());
         for (int i = 0; i < grid.getChildCount(); i++) assertTileTextFits((ShadeTileView) grid.getChildAt(i));
@@ -500,13 +500,13 @@ public class ShadeUiTest {
         manager.set("default_scope", PreferenceKeys.ROUTE_KEY, "scamhdr");
         sheet.refresh();
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        ShadeTileView bento = tile("pref_lmc_hybrid_bento");
+        ShadeTileView bento = tile("pref_scam_hybrid_bento");
         assertTrue(bento.dimmed);
         assertEquals(ShadeStyle.DIMMED, bento.card.getAlpha(), 1e-6f);
-        String before = prefs.getString("pref_lmc_hybrid_bento", "1");
+        String before = prefs.getString("pref_scam_hybrid_bento", "1");
         bento.performClick();
-        assertEquals(before, prefs.getString("pref_lmc_hybrid_bento", "1"));
-        assertEquals(catalog.unavailable(catalog.entry("pref_lmc_hybrid_bento")), messages.get(messages.size() - 1));
+        assertEquals(before, prefs.getString("pref_scam_hybrid_bento", "1"));
+        assertEquals(catalog.unavailable(catalog.entry("pref_scam_hybrid_bento")), messages.get(messages.size() - 1));
         // No flash on this lens: the flash tile is dimmed, a tap says why.
         sheet.setFlashAvailable(false);
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
@@ -520,27 +520,27 @@ public class ShadeUiTest {
     @Test
     public void sliderTileOpensTheInlineCardAndPinsAreLimitedToTwelve() throws Exception {
         layoutFull();
-        sheet.togglePin("pref_lmc_hybrid_dn_luma_mult");
+        sheet.togglePin("pref_scam_hybrid_dn_luma_mult");
         assertEquals(9, sheet.pinnedKeys().size());
         assertEquals(sheet.pinnedKeys(), ShadeTiles.stored(prefs));
         layoutFull();
         View card = sheet.findViewWithTag("shade_slider_card");
         assertEquals(View.GONE, card.getVisibility());
-        tile("pref_lmc_hybrid_dn_luma_mult").performClick();
+        tile("pref_scam_hybrid_dn_luma_mult").performClick();
         layoutFull();
         assertEquals(View.VISIBLE, card.getVisibility());
         render("shade-full-slider.png");
-        tile("pref_lmc_hybrid_dn_luma_mult").performClick();
+        tile("pref_scam_hybrid_dn_luma_mult").performClick();
         layoutFull();
         assertEquals(View.GONE, card.getVisibility());
-        for (String key : new String[]{"pref_lmc_hybrid_shasta", "pref_lmc_hybrid_cdm", "pref_lmc_hybrid_sharp_mode"}) sheet.togglePin(key);
+        for (String key : new String[]{"pref_scam_hybrid_shasta", "pref_scam_hybrid_cdm", "pref_scam_hybrid_sharp_mode"}) sheet.togglePin(key);
         assertEquals(12, sheet.pinnedKeys().size());
         layoutFull();
         assertNull("no «Добавить» tile at 12", addTile());
-        sheet.togglePin("pref_vivo_nice_mosaic");
+        sheet.togglePin("pref_scamhdr_mosaic");
         assertEquals(12, sheet.pinnedKeys().size());
         assertEquals(activity.getString(R.string.shade_full, 12), messages.get(messages.size() - 1));
-        sheet.togglePin("pref_lmc_hybrid_cdm");
+        sheet.togglePin("pref_scam_hybrid_cdm");
         layoutFull();
         assertEquals(11, sheet.pinnedKeys().size());
         assertNotNull(addTile());

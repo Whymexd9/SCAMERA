@@ -26,7 +26,7 @@ import java.util.Locale;
  * shot). Every preview result keeps the requested and reported LENS_OPTICAL_STABILIZATION_MODE (OIS) /
  * CONTROL_VIDEO_STABILIZATION_MODE (EIS), the request's AE mode (the AE restore frame is AE OFF), the exposure, the crop region
  * (an EIS that moves the crop shows here), the OIS samples (STATISTICS_OIS_DATA_MODE: on by default on vivo when the camera
- * offers it, elsewhere nice_dev.txt "stab_trace_ois 1"), the hand shake from the phone's gyroscope over the frame and the vendor
+ * offers it, elsewhere scam_dev.txt "stab_trace_ois 1"), the hand shake from the phone's gyroscope over the frame and the vendor
  * result keys whose names mention OIS / EIS / stabilisation / gyro.
  *
  * What is logged (tag STAB_TRACE):
@@ -41,7 +41,7 @@ import java.util.Locale;
  * whatever the result key says; OIS travel fine while the preview still jitters = the EIS (crop / warp) stopped.
  *
  * Cost per frame: a handful of metadata reads into a fixed ring, no allocation and no string formatting; the dumps copy under
- * the lock and format on their own thread, never on the camera callback thread. nice_dev.txt "stab_trace 0" turns it off.
+ * the lock and format on their own thread, never on the camera callback thread. scam_dev.txt "stab_trace 0" turns it off.
  */
 final class StabilizationTrace {
     static final String TAG = "STAB_TRACE";
@@ -194,7 +194,7 @@ final class StabilizationTrace {
     synchronized void startSession(String cameraId, CameraCharacteristics chars) {
         head = 0; size = 0; shotNs = -1; lastEventNs = -1; events.clear(); eventNames.clear(); vendorKeys = null; vendorScans = 0;
         firstRequestLogged = false; period = new Stats(); periodStartNs = -1;
-        enabled = PreferenceKeys.niceDevSwitch("stab_trace", true);
+        enabled = PreferenceKeys.scamDevSwitch("stab_trace", true);
         if (!enabled || chars == null) { stopGyro(); return; }
         int[] ois = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
         int[] vs = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
@@ -251,8 +251,8 @@ final class StabilizationTrace {
 
     /** True when the preview should ask for OIS samples: vivo by default, elsewhere the dev switch "stab_trace_ois 1". */
     static boolean wantsOisSamples(CameraCharacteristics chars) {
-        if (Build.VERSION.SDK_INT < 28 || chars == null || !PreferenceKeys.niceDevSwitch("stab_trace", true)
-                || !PreferenceKeys.niceDevSwitch("stab_trace_ois", VivoNicePreview.supported())) return false;
+        if (Build.VERSION.SDK_INT < 28 || chars == null || !PreferenceKeys.scamDevSwitch("stab_trace", true)
+                || !PreferenceKeys.scamDevSwitch("stab_trace_ois", ScamPreview.supported())) return false;
         int[] modes = chars.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_OIS_DATA_MODES);
         if (modes == null) return false;
         for (int m : modes) if (m == CaptureRequest.STATISTICS_OIS_DATA_MODE_ON) return true;
@@ -378,7 +378,7 @@ final class StabilizationTrace {
     /** The shutter submitted the series: the frames from one second before to one second after it are dumped. */
     synchronized void markShot(String what) {
         if (!enabled) return;
-        enabled = PreferenceKeys.niceDevSwitch("stab_trace", true);
+        enabled = PreferenceKeys.scamDevSwitch("stab_trace", true);
         if (!enabled) return;
         if (shotNs >= 0) { events.clear(); eventNames.clear(); }  // a shot that is still open: restart the window
         shotNs = SystemClock.elapsedRealtimeNanos();

@@ -50,7 +50,7 @@ public class HybridPlanTest {
     }
     private static CaptureRequest request(int index, ImageFrame.CaptureRole role) {
         CaptureRequest q = mock(CaptureRequest.class);
-        when(q.getTag()).thenReturn(new ImageFrame.NiceCaptureTag(1, index, role));
+        when(q.getTag()).thenReturn(new ImageFrame.ScamCaptureTag(1, index, role));
         return q;
     }
     private static CaptureResult result(Long ns, Integer iso) {

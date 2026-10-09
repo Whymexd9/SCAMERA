@@ -2,7 +2,7 @@ precision highp float;
 precision highp sampler2D;
 // Post-network luma noise, step 1: variance-stabilised luminance u = sqrt(Y + c), so the
 // noise of the model output (about a*Y + b) has the constant variance a/4 everywhere.
-// Signed input (signedU 1, the LMC hybrid: PostPipeline.signedRgb): a pixel with a negative channel takes the luminance of
+// Signed input (signedU 1, the SCAM Hybrid: PostPipeline.signedRgb): a pixel with a negative channel takes the luminance of
 // its signed values, held at -offsetC only for the square root; a clamp per channel lifted the luminance of dark pixels and
 // the non-local means averaged the lifted values (the hybrid clips once, after averaging). Pixels without a negative
 // channel, and signedU 0, give the value of before bit for bit.

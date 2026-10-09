@@ -5,7 +5,7 @@ import android.graphics.Bitmap;
 
 import com.particlesdevs.photoncamera.control.ZoomController;
 import com.particlesdevs.photoncamera.processing.ml.Lanczos1010102;
-import com.particlesdevs.photoncamera.processing.ml.VivoPostDownscale;
+import com.particlesdevs.photoncamera.processing.ml.ScamPostDownscale;
 import com.particlesdevs.photoncamera.processing.opengl.GLImage;
 
 import org.junit.Test;
@@ -139,7 +139,7 @@ public class TenBitBitmapsTest {
         final int sw = 64, sh = 48, dw = 40, dh = 30;
         final int[] px = random(sw * sh, 9);
         for (String kernel : new String[]{"lanczos", "bicubic", "area", "bilinear"}) {
-            final Bitmap out = VivoPostDownscale.resizeTo(tenBit(sw, sh, px), dw, dh, kernel);
+            final Bitmap out = ScamPostDownscale.resizeTo(tenBit(sw, sh, px), dw, dh, kernel);
             assertEquals(kernel, Bitmap.Config.RGBA_1010102, out.getConfig());
             assertEquals(dw, out.getWidth());
             assertEquals(dh, out.getHeight());
@@ -152,12 +152,12 @@ public class TenBitBitmapsTest {
         } catch (Exception e) {
             throw new AssertionError(e);
         }
-        assertArrayEquals(expected, pixels(VivoPostDownscale.resizeTo(tenBit(sw, sh, px), dw, dh, "lanczos")));
+        assertArrayEquals(expected, pixels(ScamPostDownscale.resizeTo(tenBit(sw, sh, px), dw, dh, "lanczos")));
         // flat 10-bit levels survive the bilinear / area canvas draws (no 8-bit quantisation)
         final int[] flat = new int[sw * sh];
         java.util.Arrays.fill(flat, pack(513, 257, 901));
         for (String kernel : new String[]{"area", "bilinear"})
-            for (int p : pixels(VivoPostDownscale.resizeTo(tenBit(sw, sh, flat), 20, 15, kernel)))
+            for (int p : pixels(ScamPostDownscale.resizeTo(tenBit(sw, sh, flat), 20, 15, kernel)))
                 assertEquals(kernel, pack(513, 257, 901) & 0x3FFFFFFF, p & 0x3FFFFFFF);
     }
 }

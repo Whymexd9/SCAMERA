@@ -230,6 +230,7 @@ public class BackupRestoreUtil {
     private static Map<String, Object> portable(Context context, Map<String, ?> values) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (values == null) return out;
+        values = BrandMigration.map(values); // P55: a profile written before the SCAM rename
         for (Map.Entry<String, ?> e : values.entrySet()) if (ModuleProfiles.isLocal(e.getKey())) out.put(e.getKey(), e.getValue());
         sanitize(context, out);
         return out;
@@ -246,8 +247,9 @@ public class BackupRestoreUtil {
     }
 
     private static void migrate(SharedPreferences prefs) {
+        BrandMigration.migrate(prefs); // P55: a backup written before the SCAM rename
         SettingsMigration.migrateMultiFrame(prefs);
-        SettingsMigration.migrateLmcHybrid(prefs, false);
+        SettingsMigration.migrateScamHybrid(prefs, false);
         SettingsMigration.migrateShadeTiles(prefs);
         SettingsMigration.removeObsolete(prefs);
     }

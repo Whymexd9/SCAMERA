@@ -371,7 +371,7 @@ public class PreferenceKeys {
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
     public static int getRemosaicBlockSize() {
-        if (isNiceMosaic()) return niceMosaicBlock();
+        if (isScamMosaic()) return scamMosaicBlock();
         return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
@@ -380,30 +380,30 @@ public class PreferenceKeys {
      * every frame), detail (Tetra Detail v2 on every frame), mfr (Multi-frame Remosaic of the N frames), neural
      * (the NPU quad / HexQuad models on the N frames); the short and long frames always take the GPU remosaic.
      */
-    public static String niceMosaicMode() {
-        String mode = preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_mosaic", "off");
+    public static String scamMosaicMode() {
+        String mode = preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_mosaic", "off");
         return mode == null ? "off" : mode;
     }
 
     /** The Sabre kernel over the frames' own mosaic samples (sabre / neural_sabre): the donors of the merge are the raw Quad / Tetra sites. */
-    public static boolean isNiceMosaicSabre() {
-        String mode = niceMosaicMode();
+    public static boolean isScamMosaicSabre() {
+        String mode = scamMosaicMode();
         return "sabre".equals(mode) || "neural_sabre".equals(mode);
     }
 
     /** How the plain-bayer burst for the network is built: scamera / detail / mfr / neural (sabre = scamera, neural_sabre = neural). */
-    public static String niceMosaicBase() {
-        String mode = niceMosaicMode();
+    public static String scamMosaicBase() {
+        String mode = scamMosaicMode();
         return "sabre".equals(mode) ? "scamera" : "neural_sabre".equals(mode) ? "neural" : mode;
     }
 
-    /** Raw preferences only: this is consulted by isRemosaicEnabled() and isVivoHdrEnabled(). */
-    public static boolean isNiceMosaic() {
-        return isScamHdrRoute() && !"off".equals(niceMosaicMode());
+    /** Raw preferences only: this is consulted by isRemosaicEnabled() and isScamHdrEnabled(). */
+    public static boolean isScamMosaic() {
+        return isScamHdrRoute() && !"off".equals(scamMosaicMode());
     }
 
     /** Colour block of the module's mosaic: from its forced sensor mode (7 = Tetra 4x4, 5 = Quad 2x2), else the remosaic block. */
-    public static int niceMosaicBlock() {
+    public static int scamMosaicBlock() {
         int forced = Math.round(scamInternalValue("mosaic_block", 0f)); // SCAM HDR only: the hybrid merges plain Bayer
         if (forced == 2 || forced == 4) return forced;
         int mode = ModuleRegistry.sensorMode(ModuleRegistry.active());
@@ -413,7 +413,7 @@ public class PreferenceKeys {
     }
 
     /** A forced colour block or an ISZ sensor mode (5 Quad, 7 Tetra): the module streams a mosaic by its own settings. */
-    public static boolean niceMosaicDeclared() {
+    public static boolean scamMosaicDeclared() {
         int forced = Math.round(scamInternalValue("mosaic_block", 0f));
         int mode = ModuleRegistry.sensorMode(ModuleRegistry.active());
         return forced == 2 || forced == 4 || mode == 5 || mode == 7;
@@ -421,7 +421,7 @@ public class PreferenceKeys {
 
     /** Colour-block side of the RAW stream for statistics and the raw viewfinder: 1 for plain bayer. */
     public static int mosaicBlock() {
-        return isNiceMosaic() ? getRemosaicBlockSize() : 1;
+        return isScamMosaic() ? getRemosaicBlockSize() : 1;
     }
 
     /** Interpolate green along edges instead of across them. */
@@ -446,7 +446,7 @@ public class PreferenceKeys {
     }
 
     public static String getRemosaicBackend() {
-        return isNiceMosaic() && "detail".equals(niceMosaicMode()) && niceMosaicBlock() == 4 ? "tetra_detail" : "scamera";
+        return isScamMosaic() && "detail".equals(scamMosaicMode()) && scamMosaicBlock() == 4 ? "tetra_detail" : "scamera";
     }
 
 
@@ -632,10 +632,10 @@ public class PreferenceKeys {
         return getBool(Key.KEY_SHARP_MICRO_MATRIX_3X3);
     }
 
-    /** NICE: flush the HAL request queue before the bracket (shutter lag ~0.4 s -> ~0.15 s). */
-    public static boolean isNiceFastCapture() {
+    /** SCAM: flush the HAL request queue before the bracket (shutter lag ~0.4 s -> ~0.15 s). */
+    public static boolean isScamFastCapture() {
         if (isHybridShot()) return hybridSwitch("fast_capture", true);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_nice_fast_capture", true);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamold_fast_capture", true);
     }
 
 
@@ -655,12 +655,12 @@ public class PreferenceKeys {
 
 
     /**
-     * The vivo-style processing route (own merge, SCAMERA tone, no second HDR+ denoise): the LMC hybrid (its own switch,
-     * section «LMC-гибрид») or the autonomous HDR / SCAM HDR switches. Exclusive with the native remosaic engines and
+     * The scam-style processing route (own merge, SCAMERA tone, no second HDR+ denoise): the SCAM Hybrid (its own switch,
+     * section «SCAM-гибрид») or the autonomous HDR / SCAM HDR switches. Exclusive with the native remosaic engines and
      * RAW MFSR; stored choices are retained.
      */
-    public static boolean isVivoHdrEnabled() {
-        return isLmcHybridEnabled() || isAutonomousHdrSwitchOn();
+    public static boolean isScamHdrEnabled() {
+        return isScamHybridEnabled() || isAutonomousHdrSwitchOn();
     }
     /** The SCAM HDR route is selected and the RAW path is one SCAM HDR can merge. */
     private static boolean isAutonomousHdrSwitchOn() {
@@ -668,54 +668,54 @@ public class PreferenceKeys {
     }
 
     /**
-     * SCAM HDR can run here: its NICE network is a Hexagon v79 context, so only on the Snapdragon 8 Elite (SM8750). Every
+     * SCAM HDR can run here: its SCAM network is a Hexagon v79 context, so only on the Snapdragon 8 Elite (SM8750). Every
      * other phone is hybrid-only, whatever the stored route says (owner, 2026-10-07).
      */
     public static boolean isScamHdrSupported() {
-        return LmcHybridKeys.vivoNetSoc();
+        return ScamHybridKeys.scamNetSoc();
     }
 
     /**
-     * The merge route (pref_merge_route): "hybrid" (LMC hybrid, the default on every phone) or "scamhdr" (the vivo NICE
-     * network), the latter only where {@link #isScamHdrSupported()}. nice_dev.txt "hybrid 1/0" picks the route for A/B
+     * The merge route (pref_merge_route): "hybrid" (SCAM Hybrid, the default on every phone) or "scamhdr" (the SCAM HDR
+     * network), the latter only where {@link #isScamHdrSupported()}. scam_dev.txt "hybrid 1/0" picks the route for A/B
      * tests on such a phone.
      */
     public static String mergeRoute() {
-        if (!isScamHdrSupported()) return LmcHybridKeys.ROUTE_HYBRID;
-        Float override = niceDevValue("hybrid");
-        if (override != null) return override > 0f ? LmcHybridKeys.ROUTE_HYBRID : LmcHybridKeys.ROUTE_SCAM_HDR;
-        String route = preferenceKeys.settingsManager.getString("default_scope", LmcHybridKeys.ROUTE, LmcHybridKeys.ROUTE_HYBRID);
-        return LmcHybridKeys.ROUTE_SCAM_HDR.equals(route) ? LmcHybridKeys.ROUTE_SCAM_HDR : LmcHybridKeys.ROUTE_HYBRID;
+        if (!isScamHdrSupported()) return ScamHybridKeys.ROUTE_HYBRID;
+        Float override = scamDevValue("hybrid");
+        if (override != null) return override > 0f ? ScamHybridKeys.ROUTE_HYBRID : ScamHybridKeys.ROUTE_SCAM_HDR;
+        String route = preferenceKeys.settingsManager.getString("default_scope", ScamHybridKeys.ROUTE, ScamHybridKeys.ROUTE_HYBRID);
+        return ScamHybridKeys.ROUTE_SCAM_HDR.equals(route) ? ScamHybridKeys.ROUTE_SCAM_HDR : ScamHybridKeys.ROUTE_HYBRID;
     }
     public static boolean isScamHdrRoute() {
-        return LmcHybridKeys.ROUTE_SCAM_HDR.equals(mergeRoute());
+        return ScamHybridKeys.ROUTE_SCAM_HDR.equals(mergeRoute());
     }
-    public static boolean isNiceDespeckleEnabled() {
+    public static boolean isScamDespeckleEnabled() {
         if (isHybridShot()) return hybridSwitch("despeckle", true);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_post_despeckle", true);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamhdr_post_despeckle", true);
     }
-    public static boolean isNiceDiagnosticsEnabled() {
+    public static boolean isScamDiagnosticsEnabled() {
         if (isHybridShot()) return hybridSwitch("diagnostics", false);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_diagnostics", false);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamhdr_diagnostics", false);
     }
-    /** LMC curve presets: "off" or an asset path under assets/curves (Tone/..., Gamma/...). */
-    public static String getLmcToneCurve() {
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_lmc_tone_curve", "off");
+    /** SCAM curve presets: "off" or an asset path under assets/curves (Tone/..., Gamma/...). */
+    public static String getScamToneCurve() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_scam_tone_curve", "off");
     }
-    public static String getLmcGammaCurve() {
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_lmc_gamma_curve", "off");
+    public static String getScamGammaCurve() {
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_scam_gamma_curve", "off");
     }
     /** Curve strength as a 0..1 blend with the identity. */
-    public static float getLmcToneCurveStrength() {
-        return RawTherapeeSettings.number("pref_lmc_tone_curve_strength", 100, 0, 100) / 100f;
+    public static float getScamToneCurveStrength() {
+        return RawTherapeeSettings.number("pref_scam_tone_curve_strength", 100, 0, 100) / 100f;
     }
-    public static float getLmcGammaCurveStrength() {
-        return RawTherapeeSettings.number("pref_lmc_gamma_curve_strength", 100, 0, 100) / 100f;
+    public static float getScamGammaCurveStrength() {
+        return RawTherapeeSettings.number("pref_scam_gamma_curve_strength", 100, 0, 100) / 100f;
     }
 
     /**
      * Optional root features (off by default; everything works without root):
-     * the vivo stock-AE observer for the NICE bracket, and su as the fallback
+     * the vivo stock-AE observer for the SCAM bracket, and su as the fallback
      * launcher when the worker is not installed as a native library.
      */
     public static boolean isRootEnabled() {
@@ -729,22 +729,22 @@ public class PreferenceKeys {
         // The hybrid's N frames are the ZSL ring at the preview exposure: always the SCAMERA plan of that exposure.
         if (isHybridShot()) return false;
         return isRootEnabled()
-                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_planner", "scamera"))
-                && com.particlesdevs.photoncamera.capture.VivoStockAe.supportedDevice();
+                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_planner", "scamera"))
+                && com.particlesdevs.photoncamera.capture.ScamStockAe.supportedDevice();
     }
-    /** NICE: build L from the ZSL N frames instead of capturing it after the shutter. */
-    public static boolean isNiceZslLong() {
+    /** SCAM: build L from the ZSL N frames instead of capturing it after the shutter. */
+    public static boolean isScamZslLong() {
         if (isHybridShot()) return false; // the hybrid takes no L frame (Shasta brackets after the press instead)
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_nice_zsl_long", true);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamold_zsl_long", true);
     }
-    public static boolean isNicePlannerAdaptive() {
+    public static boolean isScamPlannerAdaptive() {
         if (isHybridShot()) return hybridSwitch("planner_adaptive", true);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_vivo_nice_planner_adaptive", true);
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamhdr_planner_adaptive", true);
     }
-    /** NICE noise profile source: auto | imx06c | camera2 | settings. */
-    public static String getNiceNoiseSource() {
+    /** SCAM noise profile source: auto | imx06c | camera2 | settings. */
+    public static String getScamNoiseSource() {
         if (isHybridShot()) return hybridString("noise_source", "auto");
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_noise_source", "auto");
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_noise_source", "auto");
     }
     /** RAW lens shading map: auto | apply | skip (HAL already corrected RAW_SENSOR). */
     public static String getRawLscMode() {
@@ -754,72 +754,72 @@ public class PreferenceKeys {
     public static boolean isRawBlackFromData() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_raw_black_from_data", true);
     }
-    /** NICE motion (CRE) source: auto (vendor, else APK copy) | bundled (always APK copy). */
-    public static String getNiceCreSource() {
+    /** SCAM motion (CRE) source: auto (vendor, else APK copy) | bundled (always APK copy). */
+    public static String getScamCreSource() {
         if (isHybridShot()) return hybridString("cre_source", "auto");
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_vivo_nice_cre_source", "auto");
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_cre_source", "auto");
     }
-    /** ISO level 1..5 of the NICE normal reference, as in the settings screen. */
-    public static int niceIsoLevel(int iso) {
+    /** ISO level 1..5 of the SCAM normal reference, as in the settings screen. */
+    public static int scamIsoLevel(int iso) {
         return iso <= 200 ? 1 : iso <= 800 ? 2 : iso <= 3200 ? 3 : iso <= 12800 ? 4 : 5;
     }
-    /** Luma/chroma strength inside NICE (0..2, 1 = model as trained), with the ISO-level multiplier. */
-    public static float getNiceLuma(int iso) {
-        return Math.max(0f, Math.min(2f, niceInternalValue("luma", 1f) * niceInternalValue("luma_iso" + niceIsoLevel(iso), 1f)));
+    /** Luma/chroma strength inside SCAM (0..2, 1 = model as trained), with the ISO-level multiplier. */
+    public static float getScamLuma(int iso) {
+        return Math.max(0f, Math.min(2f, routeInternalValue("luma", 1f) * routeInternalValue("luma_iso" + scamIsoLevel(iso), 1f)));
     }
-    public static float getNiceChroma(int iso) {
-        return Math.max(0f, Math.min(2f, niceInternalValue("chroma", 1f) * niceInternalValue("chroma_iso" + niceIsoLevel(iso), 1f)));
+    public static float getScamChroma(int iso) {
+        return Math.max(0f, Math.min(2f, routeInternalValue("chroma", 1f) * routeInternalValue("chroma_iso" + scamIsoLevel(iso), 1f)));
     }
-    /** The SoC the vivo NICE network was built for (Hexagon v79): SCAM HDR (NICE) runs there; the LMC hybrid runs anywhere. */
-    public static boolean isVivoNetSoc() {
-        return LmcHybridKeys.vivoNetSoc();
+    /** The SoC the SCAM HDR network was built for (Hexagon v79): SCAM HDR (SCAM) runs there; the SCAM Hybrid runs anywhere. */
+    public static boolean isScamNetSoc() {
+        return ScamHybridKeys.scamNetSoc();
     }
 
-    // ---- LMC hybrid: a route of its own (section «LMC-гибрид», lmc_hybrid_screen), separate from SCAM HDR ----
+    // ---- SCAM Hybrid: a route of its own (section «SCAM-гибрид», scam_hybrid_screen), separate from SCAM HDR ----
 
     /**
-     * Prefix of every LMC hybrid preference: pref_lmc_hybrid_&lt;key&gt;. A new hybrid setting gets a key with this prefix in
-     * res/xml/preferences.xml (category of lmc_hybrid_screen), numeric bounds in SettingsNumericRules, and is read with
+     * Prefix of every SCAM Hybrid preference: pref_scam_hybrid_&lt;key&gt;. A new hybrid setting gets a key with this prefix in
+     * res/xml/preferences.xml (category of scam_hybrid_screen), numeric bounds in SettingsNumericRules, and is read with
      * {@link #hybridValue}, {@link #hybridSwitch}, {@link #hybridString} or {@link #hybridList}.
      */
-    public static final String HYBRID_PREFIX = LmcHybridKeys.PREFIX;
+    public static final String HYBRID_PREFIX = ScamHybridKeys.PREFIX;
     /** The merge route selector (hybrid | scamhdr), see {@link #mergeRoute()}. */
-    public static final String ROUTE_KEY = LmcHybridKeys.ROUTE;
+    public static final String ROUTE_KEY = ScamHybridKeys.ROUTE;
     /** Hybrid defaults that differ from the fallback the shared nodes pass; any other key keeps the caller's fallback. */
     private static final Map<String, Float> HYBRID_DEFAULTS = new HashMap<>();
     static {
         // The Sabre kernel shows detail from ~12-15 frames and keeps gaining towards ArkCam's ~30 (owner 2026-10-07: 20 -> 30,
-        // SettingsMigration moves a stored former default); SCAM HDR NICE: 4.
+        // SettingsMigration moves a stored former default); SCAM HDR SCAM: 4.
         HYBRID_DEFAULTS.put("zsl_frames", 30f);
         HYBRID_DEFAULTS.put("soft_tone", 0f);    // AgX + Exposure Fusion with the Bento headroom
-        HYBRID_DEFAULTS.put("bento_factor", 8f); // LMC ultrashort_tet_factor
+        HYBRID_DEFAULTS.put("bento_factor", 8f); // SCAM ultrashort_tet_factor
     }
 
     /** The hybrid route is selected (pref_merge_route, see {@link #mergeRoute()}). */
-    public static boolean isLmcHybridSwitchOn() {
-        return LmcHybridKeys.ROUTE_HYBRID.equals(mergeRoute());
+    public static boolean isScamHybridSwitchOn() {
+        return ScamHybridKeys.ROUTE_HYBRID.equals(mergeRoute());
     }
     /**
-     * The LMC hybrid (Sabre 6.1 kernel x LMC 9.6 rejection x Bento x Shasta, any GLES 3.1 GPU) takes the shot: its route is
+     * The SCAM Hybrid (Sabre 6.1 kernel x SCAM 9.6 rejection x Bento x Shasta, any GLES 3.1 GPU) takes the shot: its route is
      * selected and the RAW path is plain Bayer or the SCAMERA remosaic without RAW MFSR.
      */
-    public static boolean isLmcHybridEnabled() {
-        return isLmcHybridSwitchOn();
+    public static boolean isScamHybridEnabled() {
+        return isScamHybridSwitchOn();
     }
     /** The SCAM HDR route is selected on a RAW path it can merge. */
     public static boolean isScamHdrSwitchOn() {
         return isAutonomousHdrSwitchOn();
     }
-    /** SCAM HDR (the vivo NICE network) takes the shot: its switches are on and the hybrid does not take it. */
-    public static boolean isScamHdrNiceEnabled() {
-        return isScamHdrSwitchOn() && !isLmcHybridEnabled();
+    /** SCAM HDR (the SCAM HDR network) takes the shot: its switches are on and the hybrid does not take it. */
+    public static boolean isScamHdrScamEnabled() {
+        return isScamHdrSwitchOn() && !isScamHybridEnabled();
     }
     /**
-     * The NICE capture route is used (ZSL RAW ring, SCAMERA plan, worker, SCAMERA tone), by the LMC hybrid or by SCAM HDR;
-     * {@link #isLmcHybridEnabled()} and {@link #isScamHdrNiceEnabled()} tell them apart.
+     * The SCAM capture route is used (ZSL RAW ring, SCAMERA plan, worker, SCAMERA tone), by the SCAM Hybrid or by SCAM HDR;
+     * {@link #isScamHybridEnabled()} and {@link #isScamHdrScamEnabled()} tell them apart.
      */
-    public static boolean isVivoNiceEnabled() {
-        return isLmcHybridEnabled() || isScamHdrSwitchOn();
+    public static boolean isScamEnabled() {
+        return isScamHybridEnabled() || isScamHdrSwitchOn();
     }
 
     private static final int SHOT_SCAM = 1, SHOT_HYBRID = 2;
@@ -828,52 +828,52 @@ public class PreferenceKeys {
      * (merge, post pipeline, saving) and clears it afterwards. The nodes shared by SCAM HDR and the hybrid then read the
      * knobs of the route that merged the shot, even when the switches changed between the press and the processing.
      * Thread-confined on purpose: the camera thread plans and captures the next shot (and the viewfinder runs) while the
-     * NICE processing thread still works on the previous one, and those must keep reading the live route.
+     * SCAM processing thread still works on the previous one, and those must keep reading the live route.
      */
     private static final ThreadLocal<Integer> shotProfile = new ThreadLocal<>();
     public static void beginShotProfile(boolean hybrid) { shotProfile.set(hybrid ? SHOT_HYBRID : SHOT_SCAM); }
     public static void endShotProfile() { shotProfile.remove(); }
     /**
-     * The LMC hybrid's settings are in force: on a thread processing a shot, whether the hybrid merged it; on any other
+     * The SCAM Hybrid's settings are in force: on a thread processing a shot, whether the hybrid merged it; on any other
      * thread (viewfinder, capture and plan of the next shot) whether the hybrid takes the next shot. Then every SCAM HDR
-     * getter of this class (niceInternalValue/Switch, vivoHdrValue, fusion, despeckle, noise and CRE source, ...) reads the
-     * hybrid's copy pref_lmc_hybrid_&lt;key&gt; instead of the SCAM HDR key.
+     * getter of this class (routeInternalValue/Switch, scamHdrValue, fusion, despeckle, noise and CRE source, ...) reads the
+     * hybrid's copy pref_scam_hybrid_&lt;key&gt; instead of the SCAM HDR key.
      */
     public static boolean isHybridShot() {
         final Integer profile = shotProfile.get();
-        return profile != null ? profile == SHOT_HYBRID : isLmcHybridEnabled();
+        return profile != null ? profile == SHOT_HYBRID : isScamHybridEnabled();
     }
     /** A hybrid shot is being post-processed on this thread (strict: false outside HdrxProcessor). */
     public static boolean isHybridShotProcessing() {
         final Integer profile = shotProfile.get();
         return profile != null && profile == SHOT_HYBRID;
     }
-    /** @deprecated the hybrid is not a SCAM HDR engine any more: {@link #isHybridShot()} (per shot) or {@link #isLmcHybridEnabled()}. */
+    /** @deprecated the hybrid is not a SCAM HDR engine any more: {@link #isHybridShot()} (per shot) or {@link #isScamHybridEnabled()}. */
     @Deprecated
-    public static boolean isNiceHybridEnabled() { return isHybridShot(); }
+    public static boolean isScamHybridShot() { return isHybridShot(); }
 
     /**
-     * Output of the hybrid merge (pref_lmc_hybrid_output): "sensor" (1x grid, default), "12"/"16"/"20" = Sabre 6.1 2x
+     * Output of the hybrid merge (pref_scam_hybrid_output): "sensor" (1x grid, default), "12"/"16"/"20" = Sabre 6.1 2x
      * grid resized to that many megapixels (4:3 of the sensor; the sensor size itself when within 10 %), "2x" = the native
-     * 2x grid. nice_dev.txt: "hybrid_output 0|12|16|20|2".
+     * 2x grid. scam_dev.txt: "hybrid_output 0|12|16|20|2".
      */
     public static String hybridOutputMode() {
-        Float dev = niceDevValue("hybrid_output");
+        Float dev = scamDevValue("hybrid_output");
         if (dev != null) { int v = Math.round(dev); return v == 2 ? "2x" : v == 12 || v == 16 || v == 20 ? String.valueOf(v) : "sensor"; }
         return hybridString("output", "sensor");
     }
     /**
-     * Downsampler of the final bitmap after the 2x pipeline (pref_lmc_hybrid_downsampler): "lanczos" (3 lobes),
-     * "bicubic" (Catmull-Rom), "area" (box average), "bilinear". nice_dev.txt: "hybrid_downsampler 0..3".
+     * Downsampler of the final bitmap after the 2x pipeline (pref_scam_hybrid_downsampler): "lanczos" (3 lobes),
+     * "bicubic" (Catmull-Rom), "area" (box average), "bilinear". scam_dev.txt: "hybrid_downsampler 0..3".
      */
     public static String hybridDownsampler() {
-        Float dev = niceDevValue("hybrid_downsampler");
+        Float dev = scamDevValue("hybrid_downsampler");
         if (dev != null) { int v = Math.round(dev); return v == 1 ? "bicubic" : v == 2 ? "area" : v == 3 ? "bilinear" : "lanczos"; }
         return hybridString("downsampler", "lanczos");
     }
     private static final String[] HYBRID_OUTPUT_VALUES = {"sensor", "12", "16", "20", "2x"};
     private static final String[] HYBRID_DOWNSAMPLER_VALUES = {"lanczos", "bicubic", "area", "bilinear"};
-    /** Stores pref_lmc_hybrid_output by its index in {sensor, 12, 16, 20, 2x} (quick-settings chips). */
+    /** Stores pref_scam_hybrid_output by its index in {sensor, 12, 16, 20, 2x} (quick-settings chips). */
     public static void setHybridOutputIndex(int index) {
         setHybridValue("output", HYBRID_OUTPUT_VALUES[Math.max(0, Math.min(HYBRID_OUTPUT_VALUES.length - 1, index))]);
     }
@@ -905,7 +905,7 @@ public class PreferenceKeys {
         tw = Math.max(64, Math.min(2 * w, tw)); th = Math.max(64, Math.min(2 * h, th));
         return new android.graphics.Point(tw, th);
     }
-    /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_lmc_hybrid_* preferences (nice_dev.txt "hybrid_<key>"). */
+    /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_scam_hybrid_* preferences (scam_dev.txt "hybrid_<key>"). */
     public static String hybridTuningText() {
         StringBuilder out = new StringBuilder();
         String[][] keys = {
@@ -922,7 +922,7 @@ public class PreferenceKeys {
             {"boost", "boost_value"}, {"varianceThreshold", "boost_threshold"}, {"motionThreshold", "motion_threshold"},
             {"lutHiSigma", "lut_sigma"},
             // Round 5 (research/hybrid5/impl_worker.md): Sabre 6.1 kernel 0 off / 1 always / 2 auto (night: 6.1 SNR key <= s61MaxKey),
-            // highlights and outliers (hot*), LMC 9.6 Bento fallback checks. Absent keys keep the worker defaults.
+            // highlights and outliers (hot*), SCAM 9.6 Bento fallback checks. Absent keys keep the worker defaults.
             {"sabre61", "sabre61"}, {"s61MaxKey", "s61_max_key"}, {"s61Mode", "s61_mode"},
             // F6 tile-local alignment (research/hybrid5/f6_local_align.md): 0 off / 1 bilinear field / 2 constant per tile;
             // the 6.1 auto rule in daylight needs F6 and this much RMS donor motion; daylight 6.1 noise multipliers.
@@ -957,45 +957,45 @@ public class PreferenceKeys {
             // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
             // P27: the measured exposure ratio instead of a metadata ratio the data reliably disagrees with (worker default 1 since
-            // 7 October 2026; 0 = report only, nice_dev.txt "hybrid_gain_measured 0")
+            // 7 October 2026; 0 = report only, scam_dev.txt "hybrid_gain_measured 0")
             {"gainMeasured", "gain_measured"},
-            // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from nice_dev.txt
+            // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from scam_dev.txt
             // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them). P33 W2.1: "hybrid_la_stream 0" merges with
-            // the whole F6 field first (A/B), "hybrid_la_nice N" lowers the priority of the banded F6 threads.
-            {"profile", "profile"}, {"laThreads", "la_threads"}, {"laStream", "la_stream"}, {"laNice", "la_nice"},
+            // the whole F6 field first (A/B), "hybrid_la_scam N" lowers the priority of the banded F6 threads.
+            {"profile", "profile"}, {"laThreads", "la_threads"}, {"laStream", "la_stream"}, {"laScam", "la_scam"},
         };
         for (String[] k : keys) {
-            Float dev = niceDevValue("hybrid_" + k[1]);
+            Float dev = scamDevValue("hybrid_" + k[1]);
             String v = dev != null ? dev.toString() : hybridString(k[1], "");
             if (v == null || v.isEmpty()) continue;
             try { out.append(k[0]).append(' ').append(Float.parseFloat(v.trim())).append('\n'); } catch (NumberFormatException ignored) {}
         }
         if (!hybridSwitch("shasta", true)) out.append("shastaEnable 0\n");
         // Rejection boost where the local motion varies (GCam 11 Z channel of the F6 field); a switch, not a number.
-        Float boostDev = niceDevValue("hybrid_motion_boost");
+        Float boostDev = scamDevValue("hybrid_motion_boost");
         out.append("boostEnable ").append(boostDev != null ? boostDev : hybridSwitch("motion_boost", true) ? 1f : 0f).append('\n');
         // Switches of the worker's round-5 fixes (on by default there): written only when turned off.
         if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
-        if (!hybridSwitch("bento_lmc", true)) out.append("bentoLmc 0\n");
+        if (!hybridSwitch("bento_scam", true)) out.append("bentoScam 0\n");
         if (!hybridSwitch("rawca_auto", true)) out.append("rawCaAuto 0\n");
         if (!hybridSwitch("rawca_avoid_shift", true)) out.append("rawCaAvoidShift 0\n");
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
         return out.toString();
     }
-    /** The hybrid's N frames from the ZSL ring (pref_lmc_hybrid_zsl_frames, 4..44, default 30). */
+    /** The hybrid's N frames from the ZSL ring (pref_scam_hybrid_zsl_frames, 4..44, default 30). */
     public static int getHybridZslFrames() {
         return Math.round(hybridValue("zsl_frames", 30f));
     }
     /**
-     * LMC hybrid tone: the ArkCam 1.23 / LMC 9.6 photo tone (ArkStats -> ArkFusion -> ArkCombine: Smart-HDR AE, exposure
+     * SCAM Hybrid tone: the ArkCam 1.23 / SCAM 9.6 photo tone (ArkStats -> ArkFusion -> ArkCombine: Smart-HDR AE, exposure
      * fusion on a guided filter, OKLab grading, AgX Custom, detail of the Sabre merge) instead of the SCAMERA exposure,
-     * Exposure Fusion and AgX render. pref_lmc_hybrid_ark_tone, on by default; nice_dev.txt "hybrid_ark_tone 0/1".
-     * Its knobs are pref_lmc_hybrid_ark_&lt;key&gt; (read with {@link #hybridValue}, defaults = ArkCam 2.85 X8U).
+     * Exposure Fusion and AgX render. pref_scam_hybrid_ark_tone, on by default; scam_dev.txt "hybrid_ark_tone 0/1".
+     * Its knobs are pref_scam_hybrid_ark_&lt;key&gt; (read with {@link #hybridValue}, defaults = ArkCam 2.85 X8U).
      */
     /**
-     * Master switch of every noise reduction of the hybrid (pref_lmc_hybrid_denoise, on by default; nice_dev.txt
-     * "hybrid_denoise 0/1"): off skips the denoise after the merge (GCam/LMC finish or NLM, despeckle), the Bento
+     * Master switch of every noise reduction of the hybrid (pref_scam_hybrid_denoise, on by default; scam_dev.txt
+     * "hybrid_denoise 0/1"): off skips the denoise after the merge (GCam/SCAM finish or NLM, despeckle), the Bento
      * highlight denoise of the ARK fusion and the chroma denoise of lifted shadows. The merge itself is untouched.
      */
     public static boolean isHybridDenoiseEnabled() {
@@ -1003,70 +1003,70 @@ public class PreferenceKeys {
     }
     /**
      * Sharpening of the ARK render, shared by both routes: "ark" (ArkCam's own luma sharpening before the detail delta,
-     * ArkLumaSharpen), "rt" (RawTherapee with its own settings), "scam" (NiceSharpen) or "off" after the tone.
-     * pref_lmc_hybrid_sharp_mode (nice_dev.txt "hybrid_sharp_mode 0|1|2|3" = rt, scam, off, ark), default ark.
+     * ArkLumaSharpen), "rt" (RawTherapee with its own settings), "scam" (ScamSharpen) or "off" after the tone.
+     * pref_scam_hybrid_sharp_mode (scam_dev.txt "hybrid_sharp_mode 0|1|2|3" = rt, scam, off, ark), default ark.
      */
-    public static String niceSharpenMode() {
-        Float dev = niceDevValue("hybrid_sharp_mode");
+    public static String scamSharpenMode() {
+        Float dev = scamDevValue("hybrid_sharp_mode");
         if (dev != null) return dev >= 2.5f ? "ark" : dev >= 1.5f ? "off" : dev >= 0.5f ? "scam" : "rt";
         String v = hybridString("sharp_mode", "ark");
         return "rt".equals(v) || "scam".equals(v) || "off".equals(v) ? v : "ark";
     }
-    /** RawTherapee USM / microcontrast amount multiplier on a hybrid shot (pref_lmc_hybrid_sharp_strength), 1 elsewhere. */
+    /** RawTherapee USM / microcontrast amount multiplier on a hybrid shot (pref_scam_hybrid_sharp_strength), 1 elsewhere. */
     private static float hybridSharpStrength() {
         return isHybridShotProcessing() ? Math.max(0f, Math.min(2f, hybridValue("sharp_strength", 1f))) : 1f;
     }
-    /** Weight of the other burst frames in the NICE reference, 0..1 (1 = all frames). */
-    public static float getNiceMerge() {
-        return Math.max(0f, Math.min(1f, niceInternalValue("merge", 100f) / 100f));
+    /** Weight of the other burst frames in the SCAM reference, 0..1 (1 = all frames). */
+    public static float getScamMerge() {
+        return Math.max(0f, Math.min(1f, routeInternalValue("merge", 100f) / 100f));
     }
-    /** Extra EV for the NICE long frame over the stock plan (0 = stock). */
-    public static float getNiceLongBoostEv() {
-        return niceInternalValue("long_boost_ev", 1.1f);
+    /** Extra EV for the SCAM long frame over the stock plan (0 = stock). */
+    public static float getScamLongBoostEv() {
+        return routeInternalValue("long_boost_ev", 1.1f);
     }
     /** Normal-exposure N frames taken from the ZSL ring: SCAM HDR 4..50; on a hybrid shot the hybrid's own count. */
-    public static int getNiceZslFrames() {
-        return Math.round(niceInternalValue("zsl_frames", 4f));
+    public static int getScamZslFrames() {
+        return Math.round(routeInternalValue("zsl_frames", 4f));
     }
 
 
 
-    private static long niceDevStamp = -1, niceDevChecked;
-    private static java.util.Map<String, Float> niceDevValues = java.util.Collections.emptyMap();
+    private static long scamDevStamp = -1, scamDevChecked;
+    private static java.util.Map<String, Float> scamDevValues = java.util.Collections.emptyMap();
     /**
-     * Developer overrides for the NICE internal values: "key value" lines in nice_dev.txt of the app's external files
-     * dir (key without the pref_vivo_nice_ prefix) replace the preference for the next shot. Re-read when the file
+     * Developer overrides for the SCAM internal values: "key value" lines in scam_dev.txt of the app's external files
+     * dir (key without the pref_scamhdr_ prefix) replace the preference for the next shot. Re-read when the file
      * changes, at most every 2 s.
      */
-    /** Developer switch from nice_dev.txt ("key 0" = off); {@code fallback} without the line. */
-    public static boolean niceDevSwitch(String key, boolean fallback) {
-        Float v = niceDevValue(key);
+    /** Developer switch from scam_dev.txt ("key 0" = off); {@code fallback} without the line. */
+    public static boolean scamDevSwitch(String key, boolean fallback) {
+        Float v = scamDevValue(key);
         return v == null ? fallback : v != 0f;
     }
 
-    /** True when nice_dev.txt sets this line (an A/B override that wins over the stored setting). */
-    public static boolean niceDevOverrides(String key) {
-        return niceDevValue(key) != null;
+    /** True when scam_dev.txt sets this line (an A/B override that wins over the stored setting). */
+    public static boolean scamDevOverrides(String key) {
+        return scamDevValue(key) != null;
     }
 
-    /** The number of a nice_dev.txt line ("key value"); {@code fallback} without the line. */
-    public static float niceDevNumber(String key, float fallback) {
-        Float v = niceDevValue(key);
+    /** The number of a scam_dev.txt line ("key value"); {@code fallback} without the line. */
+    public static float scamDevNumber(String key, float fallback) {
+        Float v = scamDevValue(key);
         return v == null ? fallback : v;
     }
 
-    private static Float niceDevValue(String key) {
+    private static Float scamDevValue(String key) {
         long now = System.nanoTime();
-        if (niceDevStamp == -1 || now - niceDevChecked > 2_000_000_000L) {
-            niceDevChecked = now;
+        if (scamDevStamp == -1 || now - scamDevChecked > 2_000_000_000L) {
+            scamDevChecked = now;
             java.util.Map<String, Float> values = java.util.Collections.emptyMap();
             long stamp = 0;
             try {
                 java.io.File dir = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getExternalFilesDir(null);
-                java.io.File file = dir == null ? null : new java.io.File(dir, "nice_dev.txt");
+                java.io.File file = dir == null ? null : new java.io.File(dir, "scam_dev.txt");
                 if (file != null && file.isFile()) {
                     stamp = file.lastModified();
-                    if (stamp == niceDevStamp) return niceDevValues.get(key);
+                    if (stamp == scamDevStamp) return scamDevValues.get(key);
                     values = new java.util.HashMap<>();
                     for (String line : new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8).split("\r?\n")) {
                         String[] parts = line.trim().split("\\s+");
@@ -1074,30 +1074,30 @@ public class PreferenceKeys {
                     }
                 }
             } catch (java.io.IOException | RuntimeException ignored) { }
-            niceDevStamp = stamp;
-            niceDevValues = values;
+            scamDevStamp = stamp;
+            scamDevValues = values;
         }
-        return niceDevValues.get(key);
+        return scamDevValues.get(key);
     }
 
     /**
-     * LMC hybrid number pref_lmc_hybrid_&lt;key&gt;, clamped by its SettingsNumericRules bounds; nice_dev.txt
+     * SCAM Hybrid number pref_scam_hybrid_&lt;key&gt;, clamped by its SettingsNumericRules bounds; scam_dev.txt
      * "hybrid_&lt;key&gt; v" overrides it; unset or invalid: the hybrid default of the key, else {@code fallback}.
      * Independent of the shot profile and of SCAM HDR.
      */
     public static float hybridValue(String key, float fallback) {
-        Float override = niceDevValue("hybrid_" + key);
+        Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override;
         return hybridStored(key, fallback);
     }
-    /** LMC hybrid switch pref_lmc_hybrid_&lt;key&gt; (Boolean or "0"/"1"); nice_dev.txt "hybrid_&lt;key&gt; 0/1" overrides it. */
+    /** SCAM Hybrid switch pref_scam_hybrid_&lt;key&gt; (Boolean or "0"/"1"); scam_dev.txt "hybrid_&lt;key&gt; 0/1" overrides it. */
     public static boolean hybridSwitch(String key, boolean fallback) {
-        Float override = niceDevValue("hybrid_" + key);
+        Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override > 0f;
         return hybridStoredSwitch(key, fallback);
     }
     /**
-     * nice_dev.txt overrides of hybrid list settings for A/B without the menu: "hybrid_&lt;key&gt; i" picks the i-th entry value
+     * scam_dev.txt overrides of hybrid list settings for A/B without the menu: "hybrid_&lt;key&gt; i" picks the i-th entry value
      * (order of arrays.xml), e.g. "hybrid_dn_engine 1" = nlm. Other list keys have their own getters (output, downsampler,
      * sharp_mode) or none.
      */
@@ -1106,11 +1106,11 @@ public class PreferenceKeys {
         HYBRID_DEV_LISTS.put("dn_engine", new String[]{"gcam", "nlm"});
         HYBRID_DEV_LISTS.put("dn_strength_map", new String[]{"auto", "frames", "uniform"});
     }
-    /** LMC hybrid text value pref_lmc_hybrid_&lt;key&gt; (a ListPreference entry value), {@code fallback} when unset. */
+    /** SCAM Hybrid text value pref_scam_hybrid_&lt;key&gt; (a ListPreference entry value), {@code fallback} when unset. */
     public static String hybridString(String key, String fallback) {
         final String[] devList = HYBRID_DEV_LISTS.get(key);
         if (devList != null) {
-            Float dev = niceDevValue("hybrid_" + key);
+            Float dev = scamDevValue("hybrid_" + key);
             if (dev != null) {
                 int i = Math.round(dev);
                 if (i >= 0 && i < devList.length) return devList[i];
@@ -1122,7 +1122,7 @@ public class PreferenceKeys {
         } catch (RuntimeException error) { return fallback; }
     }
     /**
-     * LMC hybrid number list pref_lmc_hybrid_&lt;key&gt; = "a,b,c,..." (e.g. a value per noise level), each value clamped by
+     * SCAM Hybrid number list pref_scam_hybrid_&lt;key&gt; = "a,b,c,..." (e.g. a value per noise level), each value clamped by
      * {@link SettingsNumericRules#listBounds}; {@code fallback} when unset, of another length or not a number.
      */
     public static float[] hybridList(String key, float[] fallback) {
@@ -1132,7 +1132,7 @@ public class PreferenceKeys {
         catch (RuntimeException error) { v = ""; }
         return SettingsNumericRules.listValue(full, v, fallback);
     }
-    /** Stores pref_lmc_hybrid_&lt;key&gt;: a Boolean as a switch, anything else as text (quick-settings chips). */
+    /** Stores pref_scam_hybrid_&lt;key&gt;: a Boolean as a switch, anything else as text (quick-settings chips). */
     public static void setHybridValue(String key, Object value) {
         if (value instanceof Boolean) preferenceKeys.settingsManager.set("default_scope", HYBRID_PREFIX + key, (boolean) (Boolean) value);
         else preferenceKeys.settingsManager.set("default_scope", HYBRID_PREFIX + key, String.valueOf(value));
@@ -1154,25 +1154,25 @@ public class PreferenceKeys {
         try { return preferenceKeys.settingsManager.getBoolean("default_scope", HYBRID_PREFIX + key, def); }
         catch (RuntimeException error) { return def; }
     }
-    /** nice_dev.txt override of a shared knob on a hybrid shot: "hybrid_&lt;key&gt;", else the plain "&lt;key&gt;" line. */
+    /** scam_dev.txt override of a shared knob on a hybrid shot: "hybrid_&lt;key&gt;", else the plain "&lt;key&gt;" line. */
     private static Float hybridDevValue(String key) {
-        Float override = niceDevValue("hybrid_" + key);
-        return override != null ? override : niceDevValue(key);
+        Float override = scamDevValue("hybrid_" + key);
+        return override != null ? override : scamDevValue(key);
     }
     /**
      * The key a SCAM HDR preference is read from for the current shot: on a hybrid shot its hybrid copy (see
-     * {@link #hybridCopyKey}), otherwise the key itself. For nodes that read pref_nice_* / pref_agx_nice_* directly.
+     * {@link #hybridCopyKey}), otherwise the key itself. For nodes that read pref_scamold_* / pref_agx_scam_* directly.
      */
     public static String profileKey(String key) {
         return key != null && isHybridShot() ? hybridCopyKey(key) : key;
     }
     /**
-     * The hybrid's copy of a SCAM HDR key: pref_vivo_nice_hybrid_&lt;k&gt;, pref_vivo_nice_&lt;k&gt;, pref_nice_&lt;k&gt; -&gt;
-     * pref_lmc_hybrid_&lt;k&gt;; pref_agx_nice_&lt;k&gt; -&gt; pref_lmc_hybrid_agx_&lt;k&gt;; pref_vivo_hdr_&lt;k&gt; -&gt;
-     * pref_lmc_hybrid_hdr_&lt;k&gt;; any other key is returned unchanged. The settings migration uses the same mapping.
+     * The hybrid's copy of a SCAM HDR key: pref_scamhdr_hybrid_&lt;k&gt;, pref_scamhdr_&lt;k&gt;, pref_scamold_&lt;k&gt; -&gt;
+     * pref_scam_hybrid_&lt;k&gt;; pref_agx_scam_&lt;k&gt; -&gt; pref_scam_hybrid_agx_&lt;k&gt;; pref_scamroute_&lt;k&gt; -&gt;
+     * pref_scam_hybrid_hdr_&lt;k&gt;; any other key is returned unchanged. The settings migration uses the same mapping.
      */
     public static String hybridCopyKey(String key) {
-        return LmcHybridKeys.copyKey(key);
+        return ScamHybridKeys.copyKey(key);
     }
     /** A number of a SCAM HDR key read directly (RawTherapeeSettings style), from the hybrid's copy on a hybrid shot. */
     public static float profileNumber(String key, float fallback, float lo, float hi) {
@@ -1180,11 +1180,11 @@ public class PreferenceKeys {
     }
 
     /**
-     * SCAM HDR internal value pref_vivo_nice_&lt;key&gt;, clamped by SettingsNumericRules (nice_dev.txt "key v" overrides it).
-     * On a hybrid shot the same call reads the hybrid's copy pref_lmc_hybrid_&lt;key&gt; (nice_dev.txt "hybrid_&lt;key&gt;",
+     * SCAM HDR internal value pref_scamhdr_&lt;key&gt;, clamped by SettingsNumericRules (scam_dev.txt "key v" overrides it).
+     * On a hybrid shot the same call reads the hybrid's copy pref_scam_hybrid_&lt;key&gt; (scam_dev.txt "hybrid_&lt;key&gt;",
      * then "key") and never the SCAM HDR key; keys starting with "hybrid_" always name a hybrid setting.
      */
-    public static float niceInternalValue(String key, float fallback) {
+    public static float routeInternalValue(String key, float fallback) {
         if (key.startsWith("hybrid_")) return hybridValue(key.substring("hybrid_".length()), fallback);
         if (isHybridShot()) {
             Float override = hybridDevValue(key);
@@ -1193,8 +1193,8 @@ public class PreferenceKeys {
         return scamInternalValue(key, fallback);
     }
     private static float scamInternalValue(String key, float fallback) {
-        String fullKey="pref_vivo_nice_"+key;
-        Float override = niceDevValue(key);
+        String fullKey="pref_scamhdr_"+key;
+        Float override = scamDevValue(key);
         if (override != null) return override;
         try {
             return (float)SettingsNumericRules.value(fullKey,

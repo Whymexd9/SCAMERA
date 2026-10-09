@@ -30,7 +30,7 @@ public class RTSharpening extends Node {
     /** RawTherapee's Lab L scale; its UI values are expressed against this. */
     private static final float RT_L_SCALE = 32768.0f;
     // RawTherapee sharpening follows its own settings in every mode, including
-    // NICE / vivo HDR; "Резкость постобработки HDR" only scales sensor sharpening.
+    // SCAM / scam HDR; "Резкость постобработки HDR" only scales sensor sharpening.
     private float hdrSharpenScale() {
         return 1f;
     }

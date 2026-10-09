@@ -9,7 +9,7 @@ import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 
 /**
- * ARK photo tone of the LMC hybrid and SCAM HDR (the one tonemap of both routes): the ArkCam 1.23 / LMC 9.6 tone of libfc_suppressor.so (Smart-HDR AE, exposure
+ * ARK photo tone of the SCAM Hybrid and SCAM HDR (the one tonemap of both routes): the ArkCam 1.23 / SCAM 9.6 tone of libfc_suppressor.so (Smart-HDR AE, exposure
  * fusion on a guided filter, OKLab grading, AgX Custom; research/hybrid5/tone_port.md sections 2 and 7) with the
  * high-frequency detail of the Sabre merge. Route: ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine ->
  * [sharpening -> ArkSharpenGuard]. This class holds the per-shot state handed between those nodes, their settings and the colour
@@ -53,7 +53,7 @@ public final class ArkTone {
         }
     }
 
-    /** Hybrid ARK setting pref_lmc_hybrid_ark_&lt;key&gt; (nice_dev.txt "hybrid_ark_&lt;key&gt;" overrides it). */
+    /** Hybrid ARK setting pref_scam_hybrid_ark_&lt;key&gt; (scam_dev.txt "hybrid_ark_&lt;key&gt;" overrides it). */
     static float value(String key, float fallback) {
         return PreferenceKeys.hybridValue("ark_" + key, fallback);
     }
@@ -91,7 +91,7 @@ public final class ArkTone {
 
     /**
      * AgX saturation factor for shots rendered with the OPPO tuned ISP matrix (Find X7 Ultra). 0.6 matched ArkCam 2.85 with
-     * the X8U config at night (research/hybrid5); against ArkCam LMC 9.6 with its X7U config (owner's pair 2026-10-08, main and
+     * the X8U config at night (research/hybrid5); against ArkCam SCAM 9.6 with its X7U config (owner's pair 2026-10-08, main and
      * 3x tele, indoor ~3800 K) 0.6 left half of ArkCam's chroma (C*ab x0.48, lightness-normalised), and the numpy reference of
      * the tone put the match at 1.1. 1 = no compensation.
      */

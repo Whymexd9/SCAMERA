@@ -14,8 +14,8 @@ Abbreviations: PK = `settings/PreferenceKeys.java`, SA = `settings/SettingsAvail
 - After every phase, run these checks:
   - `bash ./gradlew :app:compileDebugJavaWithJavac :app:testDebugUnitTest`. Use `bash` because `gradlew` may lack the exec bit.
   - Every host check from `.github/workflows/build-test-apk.yml`, exactly as CI runs it:
-    - the worker build `g++ ... vivo-neural-worker.cpp ... && ... --transport-check`;
-    - `tools/check_vivo_nice_probe.cpp`;
+    - the worker build `g++ ... scam-neural-worker.cpp ... && ... --transport-check`;
+    - `tools/check_scam_probe.cpp`;
     - `tools/check_settings_model.py`;
     - the python checks.
   - A leftover grep for the removed names.
@@ -51,7 +51,7 @@ If a getter still reads the value, it keeps acting invisibly. For every removed 
    - `HybridSettingsTest` — not in CI; run it anyway.
    - `BurstPolicyTest`, `CameraResumeTest`.
    - The aapt2 assertions in `build-test-apk.yml` (about lines 251-257).
-   - `.github/workflows/check-hexquad.yml` together with `tools/check_vivo_hexquad_controls.py`.
+   - `.github/workflows/check-hexquad.yml` together with `tools/check_scam_hexquad_controls.py`.
 
 ### Dynamic (tunable) screens
 
@@ -92,25 +92,25 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 | `gcam_finish_screen` | No (PP ~665; `scene_ae` is off for NICE, CC ~2559). |
 | `vivo_hdr_screen` | `pref_vivo_hdr_luma`, `pref_vivo_hdr_chroma` and `pref_vivo_hdr_sharpen` only on "autonomous HDR without NICE", which is removed. The rest is SCAM HDR. |
 | `vivo_remosaic_screen` | In SCAM HDR mosaic mode: block, profile, steered, clamp, flatfield, phase, `pref_tetra_response_key`, `hexquad_*`, `quad2x2_*`. Not used there: `hexquad_exposure_ev`, `pref_hexquad_frames`, `pref_quad_frames`, `hexquad_full_resolution` (x2 is forbidden there), `*_post_denoise`. |
-| Global | `pref_save_raw_key` (merged DNG, HP ~602-623), Ultra HDR (`LinearExposure` snapshot), watermark (`RotateWatermark` in every branch), 16:9 (`VivoNiceRgb` ~227, `SaverImplementation` ~46), zoom. |
+| Global | `pref_save_raw_key` (merged DNG, HP ~602-623), Ultra HDR (`LinearExposure` snapshot), watermark (`RotateWatermark` in every branch), 16:9 (`ScamRgb` ~227, `SaverImplementation` ~46), zoom. |
 
 ### Shared infrastructure that must stay
 
-- **Capture:** `scameraBracketPlan`, `HybridPlan`, `VivoStockAe`, the ZSL ring.
-- **Merge:** `LmcHybridBurst`, `vivo-nice-hybrid.h`, `VivoNiceBurst`, `VivoNiceMosaic`.
+- **Capture:** `scameraBracketPlan`, `HybridPlan`, `ScamStockAe`, the ZSL ring.
+- **Merge:** `ScamHybridBurst`, `scam-hybrid.h`, `ScamBurst`, `ScamMosaic`.
 - **SCAM HDR mosaic:**
   - `HexQuadBurst.processForNice`;
   - `MobileRemosaicProcessor.mergeForNice` (mosaic = `mfr`);
-  - `RemosaicCore`, `TetraDetailRemosaic` (`VivoNiceMosaic` ~197, PK ~620).
-- **Worker and client:** `VivoNeuralClient` / `VivoNeuralWorker` and the one native worker `app/src/main/cpp/vivo-neural-worker.cpp`. That worker hosts NICE, the hybrid, HexQuad/Quad and the CRE runtime — and VSR, which goes.
+  - `RemosaicCore`, `TetraDetailRemosaic` (`ScamMosaic` ~197, PK ~620).
+- **Worker and client:** `ScamNeuralClient` / `ScamNeuralWorker` and the one native worker `app/src/main/cpp/scam-neural-worker.cpp`. That worker hosts NICE, the hybrid, HexQuad/Quad and the CRE runtime — and VSR, which goes.
 - **Post path:**
-  - `VivoNiceRgb`, `HighlightRecovery`, `NiceDenoise`, `LmcDenoise`;
+  - `ScamRgb`, `HighlightRecovery`, `ScamHdrDenoise`, `ScamDenoise`;
   - Ark* (`ArkStats`, `ArkFusion`, `ArkLumaSharpen`, `ArkCombine`, `ArkSharpenGuard`);
   - `LinearExposure`, `NiceExposureFusion`, `VivoHdrTone` (a subclass of `HeadroomRender` — keep `HeadroomRender`), `AgxTone`;
-  - `LmcCurves`, `NiceLocalContrast`, `NiceSharpen`, `RTSharpening`, `HybridFinalResize`, `RotateWatermark`.
+  - `ScamCurves`, `ScamLocalContrast`, `ScamSharpen`, `RTSharpening`, `HybridFinalResize`, `RotateWatermark`.
 - **Ultra HDR:** `ultrahdr/*` and `PP.RunHDRGainMap`.
 - **Live RAW viewfinder** (`PP.BuildPreviewPipeline` ~572, vivo branch): `Bayer2Float`, `BinnedDemosaic`, `ABLC`, `LinearExposure`, `VivoHdrTone`.
-- **Hybrid final resize:** `VivoPostDownscale.resizeTo` (HP ~744, `PK.hybridDownsampler`).
+- **Hybrid final resize:** `ScamPostDownscale.resizeTo` (HP ~744, `PK.hybridDownsampler`).
 - **Saving:** `Parameters` (CCM, DCP, LSC, black level), `ImageSaver`, `DngCreator`.
 
 ## 3. Phases
@@ -120,9 +120,9 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 **Java:**
 - Delete `processing/ml/VivoRaisrProcessor.java` and `processing/ml/VivoVsrProcessor.java`.
 - Delete the HP block ~751-786: upscale plus "Lanczos after Vivo".
-- In `VivoPostDownscale`: keep `resizeTo` and what it needs. Delete `process(...)` and the size/kernel options that only it uses.
+- In `ScamPostDownscale`: keep `resizeTo` and what it needs. Delete `process(...)` and the size/kernel options that only it uses.
 - PK: delete `isRaisrEnabled`, `getRaisr*`, `getVivoUpscaleBackend`, `getVivoDownscaleKernel`, `getVivoDownscaleSize`. `getRaisrMode` and `getRaisrFilterScale` are already dead.
-- Delete the VSR entry points in `VivoNeuralWorker` / `VivoNeuralClient`.
+- Delete the VSR entry points in `ScamNeuralWorker` / `ScamNeuralClient`.
 - Delete the SA RAISR/downscale rules (~190-200).
 
 **Native:** delete:
@@ -130,7 +130,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 - `vivo-raisr-abi.h`, `vivo-raisr-controls.h`;
 - `vivo-softpqe-abi.h`, `vivo-softpqe-controls.h`;
 - `vivo-vsr.h`;
-- the VSR paths in `vivo-neural-worker.cpp`;
+- the VSR paths in `scam-neural-worker.cpp`;
 - whatever builds or packages the upscale worker (CMake, gradle, jniLibs).
 
 **Assets and resources:** delete `app/src/main/assets/vivo-upscale/`, `res/values/vivo_upscale.xml`, `res/values/softpqe_controls.xml` and the related arrays and strings.
@@ -139,7 +139,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 - Delete `tools/vivo-upscale/`.
 - Delete `tools/check_lanczos_downscale.py` only if it does not cover `resizeTo`.
 - Delete the `build-test-apk.yml` steps that build or check the upscale worker, RAISR, SoftPQE or VSR.
-- In `tools/package_vivo_neural.py` and `tools/ci_neural_assets.py`, drop the VSR, RAISR and SoftPQE entries from the pinned/required list. Every NICE, CRE, HexQuad and Quad file must stay required. Bundle v2 itself is untouched; it just stops shipping those files.
+- In `tools/package_scam_neural.py` and `tools/ci_neural_assets.py`, drop the VSR, RAISR and SoftPQE entries from the pinned/required list. Every NICE, CRE, HexQuad and Quad file must stay required. Bundle v2 itself is untouched; it just stops shipping those files.
 
 **Settings:** remove the whole `raisr_settings_screen`, including "Даунскейл после Vivo", `vivo_downscale_explanation` and `softpqe_sr_only_info`. Apply the removal recipe.
 
@@ -181,7 +181,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
   - `android:dependency` attributes in XML;
   - `DeviceDefaults` (~30-31: PHY110/PKJ110 put the old switches);
   - `SettingsMigration` ~249 (enables the hybrid on PHY110);
-  - the `nice_dev.txt` "hybrid 0/1" override (PK ~1034);
+  - the `scam_dev.txt` "hybrid 0/1" override (PK ~1034);
   - SA hybrid/SCAM HDR rules;
   - the HP shot profile (~100-110).
 - **Hybrid default on every phone:**
@@ -190,7 +190,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
   - `DeviceDefaults` (~30-31, ~66 and the other SCAM HDR values for PHY110/PKJ110): stop pre-selecting SCAM HDR. The SCAM HDR tuning values may stay; they only matter when the user picks SCAM HDR. The route itself is not written by `DeviceDefaults`.
   - `SettingsMigration` ~249 (PHY110 hybrid switch): drop or fold it into the route migration.
   - Existing installs: the route migration above keeps an explicit user choice (hybrid on → `hybrid`; SCAM HDR on → `scamhdr`). Only fresh installs and "Сбросить всё" land on `hybrid` by default.
-- **Gates:** with no incompatible routes left, simplify `isVivoRouteCompatible`, MFSR/remosaic gates in PK ~537-640 and the SA messages. This also removes the trap where SA allows SCAMERA remosaic but `LmcHybridBurst` ~61 and `VivoNiceBurst` ~53 throw on `isRemosaicEnabled`.
+- **Gates:** with no incompatible routes left, simplify `isVivoRouteCompatible`, MFSR/remosaic gates in PK ~537-640 and the SA messages. This also removes the trap where SA allows SCAMERA remosaic but `ScamHybridBurst` ~61 and `ScamBurst` ~53 throw on `isRemosaicEnabled`.
 
 ### P4 — Remove the legacy capture and merge
 
@@ -199,7 +199,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 - Remove the MFSR capture count (`multiFrameCaptureCount`).
 - Remove the standalone neural burst (`neuralBurstFrames`, `HexQuadZslSelector`), unless `processForNice` frame selection uses it — check first.
 - `needsExposureBracket` (~2525) becomes "NICE always brackets".
-- Keep `scameraBracketPlan`, `HybridPlan`, `VivoStockAe` and the ZSL logic.
+- Keep `scameraBracketPlan`, `HybridPlan`, `ScamStockAe` and the ZSL logic.
 
 **Merge (HP):**
 - Remove the standalone MFSR/CAL route (~427). Keep `MobileRemosaicProcessor.mergeForNice`.
@@ -210,13 +210,13 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 **Delete when unreferenced:**
 - `ESD4D`, `PyramidAlignment`, FlowNet/KernelNet (`pref_processing_backend_key`), `BurstFrameSelector`;
 - the HDR+ merge, Sabre RAW (`pref_mfsr_engine_key` = `sabre`, `pref_gcam_cyclops`);
-- the ESD4D VIVO_HDR branch and its `vivohdr/*` merge shaders (keep the shaders `VivoHdrTone` uses), `VivoHdrDenoise`;
+- the ESD4D VIVO_HDR branch and its `scamhdr/*` merge shaders (keep the shaders `VivoHdrTone` uses), `VivoHdrDenoise`;
 - `VivoNeuralRemosaic` (per-frame `vivo_neural`), the standalone `Remosaic` node in PP, `processing/ml` AI denoise.
 
 **Standalone remosaic settings:**
 - Remove `pref_remosaic_enabled_key`, `pref_remosaic_backend_key`, `pref_hexquad_frames`, `pref_quad_frames`, `hexquad_exposure_ev`, `hexquad_full_resolution`, `hexquad_post_denoise`, `quad2x2_exposure_ev`, `quad2x2_post_denoise`.
 - Keep the GPU remosaic tuning keys and the `hexquad_*` / `quad2x2_*` NN tuning used by SCAM HDR mosaic.
-- Update `check-hexquad.yml` and `tools/check_vivo_hexquad_controls.py`: they require `hexquad_exposure_ev` (0, [-2..2]).
+- Update `check-hexquad.yml` and `tools/check_scam_hexquad_controls.py`: they require `hexquad_exposure_ev` (0, [-2..2]).
 - Clean up `SettingsActivity` ~217-247 and ~321-388 (remosaic backend listeners and probes). Keep the probes that SCAM HDR / neural still use.
 
 **Settings removed (recipe):**
@@ -298,7 +298,7 @@ The owner's rule: the word "LMC" must not appear anywhere in the UI, and the eng
 - titles, summaries and list entries in `preferences.xml`;
 - `res/values*` strings and arrays (all locales);
 - dialogs, toasts and notifications;
-- labels built in Java (`ModuleConceptFragment`, `SettingsActivity`, diagnostics screens, `NiceDiagnostics` text shown to the user);
+- labels built in Java (`ModuleConceptFragment`, `SettingsActivity`, diagnostics screens, `ScamDiagnostics` text shown to the user);
 - search results and favorites.
 
 Replacements:
@@ -318,7 +318,7 @@ For any other occurrence: drop "LMC 9.6" when it is only a provenance note, othe
 
 What does **not** change, to avoid a settings migration and to keep stored values and backups valid:
 - preference keys (`pref_lmc_hybrid_*`, `pref_lmc_tone_curve`, …);
-- class names, log tags, file names (`hybrid_tuning.txt`, `nice_dev.txt`), docs and code comments.
+- class names, log tags, file names (`hybrid_tuning.txt`, `scam_dev.txt`), docs and code comments.
 
 Check: grep every `res/values*/*.xml`, `preferences.xml`, and the string literals in `ui/**`, `settings/**` and `processing/**` that end up in views or toasts for `LMC`. No user-visible hit may remain. Add a unit test that fails if any title, summary or entry in the inflated preference tree contains "LMC".
 
@@ -520,7 +520,7 @@ Check: grep every `res/values*/*.xml`, `preferences.xml`, and the string literal
 
 ### P22 — Quad / Tetra remosaic of the Hybrid: more detail (owner's request, 2026-10-06)
 
-- **Today (P14 / P15):** the GCam QuadBayerRgbMerge design, re-implemented in `vivo-nice-hybrid.h` (not a port of the GCam 11
+- **Today (P14 / P15):** the GCam QuadBayerRgbMerge design, re-implemented in `scam-hybrid.h` (not a port of the GCam 11
   native code): every Quad / Tetra frame splits into b² plain-Bayer sub-frames with composed site offsets, the unchanged
   Bayer merge accumulates them on the 2× / 4× grid, then chroma median and false-colour suppression. Checked on synthetic
   bursts and on the X7 Ultra (1× / 5.9× Quad).
@@ -557,7 +557,7 @@ Check: grep every `res/values*/*.xml`, `preferences.xml`, and the string literal
   request) are packed 10-bit data (contiguous 5120-byte rows, MIPI-style by the statistics) behind ImageFormat.RAW_SENSOR
   with unchanged RAW16 metadata (rowStride 8192, 25 165 824 B). Every reader copied them as uint16: rows 0-1919 = codes up
   to 65535, rows 1920-3071 = zeros. The post-shutter frames on the same reader are plain (sharpness 0.01-0.4 vs 1.2-6.6,
-  Shasta / Bento statistics), camera 3 is plain. Likely trigger (not verified on bytes): VivoNicePreview's PD2454 stock
+  Shasta / Bento statistics), camera 3 is plain. Likely trigger (not verified on bytes): ScamPreview's PD2454 stock
   profile (~80 vendor tags incl. MultiSportStagger, preview.hdr.state 2, rawHdr, sceneMode 0xc80000), applied on every vivo,
   on both routes, every session; all tags were accepted by the X100 Ultra HAL. A 12-bit 4096x2560 payload has the same size,
   so no blind unpacker was written.
@@ -874,7 +874,7 @@ The settings live in different places now; the curated groups use these keys.
     setDefaults), dependency, session-time flag.
   - The curated groups follow the key table with the owner's answers; 8 default tiles.
   - Not pinnable: sensor configs, device-only, DCP, spoof, theme, Quad, free text except «удлинение L», actions, screens.
-  - The MediaTek / Xiaomi visibility rules, the effective route, nice_dev.txt and the dependencies live in ShadeCatalog.
+  - The MediaTek / Xiaomi visibility rules, the effective route, scam_dev.txt and the dependencies live in ShadeCatalog.
   - `settings/ShadeTiles`: `ui_shade_tiles`, at most 12, unknown keys and repeats dropped on read, a `removeObsolete`
     block; it travels in the config's main file.
   - Short values in both locales (at most 8 characters, except «Нейро+Sabre»). New 24dp icons: JPEG, RAW, R+J,
@@ -966,7 +966,7 @@ The settings live in different places now; the curated groups use these keys.
     values the sensor does not deliver (see P27).
   - `Selected remosaic backend is unavailable; select SCAMERA in settings` (11:56:41, legacy ESD4D path, removed in P4).
 - **Steps:**
-  1. Client: log the worker's exit code / signal and the last stderr lines on every failed job (VivoNeuralClient:297).
+  1. Client: log the worker's exit code / signal and the last stderr lines on every failed job (ScamNeuralClient:297).
   2. Worker: every GL stage of the hybrid checks shader compile / link logs, `glGetError` after dispatch and the
      `GL_MAX_COMPUTE_*` / SSBO size limits, and reports a readable error instead of dying.
   3. Reproduce on Mali: owner's X200 Pro on adb (replay the burst `nice_burst.bin` with the worker, like rp.sh on the OPPO).
@@ -985,7 +985,7 @@ The settings live in different places now; the curated groups use these keys.
   - The fatal member left was the Hybrid falling into SCAM HDR's strict normal-back when fewer than 4 ring frames matched
     within 0.05 EV (X300 Ultra 2026-10-06: AE ramp after a module switch, 'NICE: incomplete results 3/7; RAW buffer lost').
 - **Done:**
-  - **Every capture series is tolerant** (`VivoNiceCaptureSequence`, hybrid ZSL, hybrid normal-back `hybridFuture`, SCAM HDR
+  - **Every capture series is tolerant** (`ScamCaptureSequence`, hybrid ZSL, hybrid normal-back `hybridFuture`, SCAM HDR
     ZSL and normal-back):
     - a lost / failed / foreign / duplicate / invalid result or a missing / duplicate / null RAW drops that frame only, with
       every reason kept;
@@ -994,7 +994,7 @@ The settings live in different places now; the curated groups use these keys.
     - `HybridPlan.classify`: within 0.4 EV the planned role (plans that worked merge as before);
     - otherwise ×1.5+ → bracketed, ×0.5- → ultrashort, ×0.71..×1.035 → N, else dropped.
     - The role reaches the frame (`ImageFrame.measuredRole`).
-  - **Hybrid N without the SCAM HDR planner** (`hybridNPlan`, `VivoStockAe.Plan.nOnly`).
+  - **Hybrid N without the SCAM HDR planner** (`hybridNPlan`, `ScamStockAe.Plan.nOnly`).
     - Ring selection (`selectHybridRing`): frames at the newest frame's exposure first; widened only to fill
       min(requested, 8), only darker, down to −0.5 EV; never emptied while one frame is left.
     - Empty ring → `HybridPlan.buildNormalBack` (4 N after the shutter + Bento / Shasta).
@@ -1005,8 +1005,8 @@ The settings live in different places now; the curated groups use these keys.
     - an L beyond the sensor in normal-back → 6 requests + synthetic L;
     - S / ES slotted by measured exposure;
     - Java's exposure window = the worker's (x1/256..256);
-    - any SCAM HDR failure (frames, VivoNiceMosaic, worker) → Hybrid merge of the same frames.
-  - **LmcHybridBurst:**
+    - any SCAM HDR failure (frames, ScamMosaic, worker) → Hybrid merge of the same frames.
+  - **ScamHybridBurst:**
     - drops unusable frames (no data / role / exposure, packed, out of range) instead of failing;
     - no N → the closest frame is the base;
     - LONG / short frames at the N exposure are merged as N;
@@ -1030,10 +1030,10 @@ The settings live in different places now; the curated groups use these keys.
     - 16:9 height even;
     - per-frame `capture failed` / `buffer lost` log lines.
 - **Tests:**
-  - `check_nice_capture_sequence.py` (56 checks; tolerant cases incl. the X300 Ultra shape; strict constructor still
+  - `check_scam_capture_sequence.py` (56 checks; tolerant cases incl. the X300 Ultra shape; strict constructor still
     rejects) now in CI;
   - `HybridPlanTest` (classify, unchanged X200 Pro plans, normal-back, AE);
-  - `LmcHybridBurstRolesTest` (LONG at N merged as N, promoted base, drops, noise fallback);
+  - `ScamHybridBurstRolesTest` (LONG at N merged as N, promoted base, drops, noise fallback);
   - `CameraResumeTest` +3 (X300 Ultra ring ramp, darker-only widening, one frame).
   - Unit tests: 183, only the known `testGetCameraOutputSize_withTwoParameter` fails.
 - **Done later (2026-10-06, local e63687c):** learned honoured ISO / shutter limits (`ExposureLimits`: two clamped results
@@ -1083,7 +1083,7 @@ The settings live in different places now; the curated groups use these keys.
   fringes of the opposite sign; time per burst; plain-Bayer output bit-identical with the setting off.
 - **Done (2026-10-06; branch `rawca` in `SCAMERA-PC/wt-rawca`, local commits 948e9d7, f017eed, 60fe990, not pushed).** Owner's
   decision: both variants, selectable, default off.
-  - **Port:** `app/src/main/cpp/vivo-nice-rawca.h` = CA_correct_RT (RT's scalar path line by line, with RT's buffer layout and
+  - **Port:** `app/src/main/cpp/scam-rawca.h` = CA_correct_RT (RT's scalar path line by line, with RT's buffer layout and
     quirks), standard library only. Burst extensions:
     - fits / avoid-colour-shift factors carried from the base frame to the other frames;
     - uint16 ↔ RT's working scale with a grey-world WB (the NCH has no WB);
@@ -1092,7 +1092,7 @@ The settings live in different places now; the curated groups use these keys.
     - 1 "base": RT's auto fit of the base frame (or manual red / blue). After the merge, one `correctRgb` per fitted pass moves
       R / B of the merged RGB onto G (RT's colour-difference rule on the dense grid). Replaces P19's shift.
     - 2 "frames": the same estimate. Then every frame (base included) gets RT's correction pass with the base's fits and factors,
-      before alignment / merge. This runs as a new GLES 3.1 compute pre-pass (`vivo-nice-rawca-gpu.h`, own EGL context), with
+      before alignment / merge. This runs as a new GLES 3.1 compute pre-pass (`scam-rawca-gpu.h`, own EGL context), with
       the CPU port as fallback. The corrected copies go to a recursive `hybridReconstruct` with `rawCa 0`.
     - Mosaic streams (P14 / P22): both modes run on the plain-Bayer sub-frames (estimate on sub-frame 0 of the base; the
       sub-frames are corrected in place).
@@ -1276,7 +1276,7 @@ The settings live in different places now; the curated groups use these keys.
   Later, with more risk: F6 on the GPU, per-frame accumulation.
 - **Not to take:**
   - translation-only alignment on large tiles;
-  - dropping RL / NiceDenoise;
+  - dropping RL / ScamHdrDenoise;
   - dropping L / ES;
   - RGBA16F for 12-14-bit RAW;
   - TurboJPEG instead of jpegli;
@@ -1301,7 +1301,7 @@ The settings live in different places now; the curated groups use these keys.
      blob cache already hid most of the compile).
 - **Totals:** worker replays daylight 1x 4.6 → 3.8 s, 2x 7.3 → 6.0 s, lamp 5.0 → 4.0 s, Quad 7.8 → 6.2 s. App on the OPPO
   1x (Quad stream, 27 frames → 96 sub-frames): press → JPEG ~11.1 → ~10.9 s; the rest is the 96-sub-frame GPU merge
-  (4.2 s, P29's target), F6 0.85 s, binned CRE alignment 0.7 s, PostPipeline 2.2 s (NiceDenoise 1 s).
+  (4.2 s, P29's target), F6 0.85 s, binned CRE alignment 0.7 s, PostPipeline 2.2 s (ScamHdrDenoise 1 s).
 - **Note:** the OPPO's hybrid diagnostics switch (1x · ID 2) was on from the P22 work (+8 s per shot): turned off.
 - **2026-10-07, against ArkCam v40 on the OPPO** (same scene, 3 shots each, press → saved JPEG, 4096x3072 both):
   SCAMERA 1x normal (Hybrid diagnostics off) 7.6-7.9 s: capture 0.57, wait 0.32, worker 4.7-4.8 (CRE global align 0.9,
@@ -1366,7 +1366,7 @@ The settings live in different places now; the curated groups use these keys.
 ### P35 — Remember a module's mosaic block once detected (owner, 2026-10-07; to do)
 
 - Owner: «если у нас уже определило что модулю нужен ремозаик, то пускай он применяется в дальнейшем сразу же».
-- Today the block is decided per shot from the data: the hybrid (LmcHybridBurst:134) runs MosaicBlockDetector on the first
+- Today the block is decided per shot from the data: the hybrid (ScamHybridBurst:134) runs MosaicBlockDetector on the first
   usable frame, and an unconfident answer (< 50 tile votes or < 60 % agreement: dark, flat or clipped scenes) is merged as
   plain Bayer, so a Quad stream can come out with the lattice. SCAM HDR (HdrxProcessor.niceMosaicStream) is covered only when
   the module declares sensor mode 5 / 7 or mosaic_block. Only the viewfinder's MosaicStream remembers a block per module key,
@@ -1425,7 +1425,7 @@ The settings live in different places now; the curated groups use these keys.
 - Suspects, in order: (1) the mid-stream flush resets the HAL's preview EIS / OIS state on this vivo HAL, and the plain
   repeating request does not re-arm it (only a new session does); (2) the manual (AE OFF) bracket / AE-restore frames switch
   the vendor preview stabilisation off and it stays off.
-- Quick owner test with the current build: nice_dev.txt (Android/data/org.codeaurora.snapcam/files/) line
+- Quick owner test with the current build: scam_dev.txt (Android/data/org.codeaurora.snapcam/files/) line
   "hybrid_fast_capture 0" disables the flush → if stabilisation survives the shot, suspect (1).
 - Do: per-frame log of the preview results' LENS_OPTICAL_STABILIZATION_MODE / CONTROL_VIDEO_STABILIZATION_MODE / OIS samples
   (STATISTICS_OIS_DATA_MODE where supported) for ~1 s before and after the shot; dev switches for no-flush and no-AE-restore;
@@ -1635,32 +1635,32 @@ The settings live in different places now; the curated groups use these keys.
   EISsolution / qcamera3 EISMode session keys the stock app sets.
 
 - 2026-10-09, owner: the vivo vendor keys may be what breaks the X300U's stabilisation (non-vivo phones never get them:
-  VivoNicePreview.supported() is vivo / iQOO only and the HAL rejects unknown tags). Done: the stock preview profile recorded on
+  ScamPreview.supported() is vivo / iQOO only and the HAL rejects unknown tags). Done: the stock preview profile recorded on
   the X200 Ultra (≈80 vivo.control / vivo.capability tags, vivo.control.zoom_ratio, motion metering, Camera2 scene mode
   FACE_PRIORITY, preview EIS 5) is sent only on PD2454; other vivo phones (X300U v2562) get the NICE keys alone (MagicEnable,
   capture.nice, sceneMode NICE bank). Then the owner: «Scam HDR на остальных виво не работает, он работает только на 200 ультра и
   смартфонах на 8 элит» — so the NICE preview (all its vivo keys, session MagicEnable included) runs only on PD2454
-  (VivoNicePreview.vendorKeys()); other vivo phones get the plain Camera2 preview. nice_dev "vivo_stock_profile 1" = old
+  (ScamPreview.vendorKeys()); other vivo phones get the plain Camera2 preview. nice_dev "vivo_stock_profile 1" = old
   behaviour. Owner: check X300U stabilisation after a shot.
 
 ### P55 — Rebrand inside the APK: no "LMC", "Vivo", "NICE" anywhere; everything "scam" (owner, 2026-10-08; to do)
 - Owner: «удалить все упоминания LMC, Vivo, NIce из нашего апк. Заменяй всё на scam».
 - Scope: everything that ships in the APK — UI strings (values / values-ru), settings keys shown to the user, log tags and log
   lines (NICE_HDR, NICE_CAPTURE, NICE_PIPELINE, NICE_DIAG, "LMC hybrid", "Vivo Neural"...), class / package / file names
-  (VivoNiceBurst, VivoNiceRgb, VivoNicePreview, LmcHybridBurst, LmcDenoise, vivo-nice-hybrid.h, vivo-neural-worker, libvivo*),
+  (ScamBurst, ScamRgb, ScamPreview, ScamHybridBurst, ScamDenoise, scam-hybrid.h, vivo-neural-worker, libvivo*),
   asset names, diagnostic zip names (NICE-*.zip), JNI symbols, preference keys (pref_lmc_hybrid_*, pref_nice_*, isVivoNiceEnabled),
-  nice_dev.txt, native strings in the worker binary. Replace with "scam" naming (e.g. SCAM_HDR / ScamBurst / scam_dev.txt / SCAM-*.zip).
+  scam_dev.txt, native strings in the worker binary. Replace with "scam" naming (e.g. SCAM_HDR / ScamBurst / scam_dev.txt / SCAM-*.zip).
 - Must keep working: stored preferences (migrate old keys -> new keys once, DeviceDefaults versions), the vendor Camera2 tag names
   (vivo.control.*, vivo.parameter.* are the HAL's own keys — cannot be renamed; keep them as data, never as our naming), the
   vendor library / AEC runtime names that the HAL or a vendor lib loads by name (only if loading needs them), CI workflow, tools,
   tests (rename with the code), research docs outside the APK can stay. Device checks (vivo/OPPO), md5 gates on the worker
   unchanged (renames only), unit + CI lists updated, tools/check_* that grep names updated.
-- Check: unzip the APK and grep -i for lmc|vivo|nice (strings, dex via dexdump/strings, .so via strings) — only vendor HAL tag names
+- Check: unzip the APK and grep -i for scam|vivo|nice (strings, dex via dexdump/strings, .so via strings) — only vendor HAL tag names
   and third-party library internals may remain; list them in the report.
 
 ### P56 — Sabre x2 (2x output grid) does not work with ISZ (owner, 2026-10-08; to do)
 - Owner: «с isz не работает Sabre X2».
-- Cause (by design today): LmcHybridBurst.java ~line 155: wants2x = ... && mosaicBlock <= 1 — a Quad / Tetra (ISZ) stream never
+- Cause (by design today): ScamHybridBurst.java ~line 155: wants2x = ... && mosaicBlock <= 1 — a Quad / Tetra (ISZ) stream never
   gets the 2x grid; the native mosaic merge (P29/P35) outputs the sensor grid 4080x3072 ("HYBRID OUTPUT: Sabre 4x grid 4080x3072"
   = 4x of the binned 1020x768 frames, kernel in sensor px). The log says "hybrid output mode=2x ... twoX=false" without a reason line.
 - Do: (1) log why 2x was refused for a mosaic stream; (2) make the native merge write a 2x grid of the sensor (8160x6144) when the
@@ -1689,7 +1689,7 @@ The settings live in different places now; the curated groups use these keys.
 ### P58 — OnePlus 15: artifacts in blown highlights (owner's 1_15.zip, 2026-10-08; to do)
 - OnePlus 15 (CPH2747, camera 2, hybrid + Bento). Blown sky through leaves turns pink / magenta with white blotches
   (IMG_20261008_180208: research crop of the window). Log: Bento applied (factor 2.71, 2 ultrashorts, motion 1.75 %), then
-  VivoNiceRgb per-channel recovery "hi=2.478(plateau),2.484(plateau),0.0(off)": R and G recovered to the plateau, BLUE off -> the
+  ScamRgb per-channel recovery "hi=2.478(plateau),2.484(plateau),0.0(off)": R and G recovered to the plateau, BLUE off -> the
   recovered sky keeps R,G high and B at the old clip = pink. Other shots of the session: hi=0(off),6.74,0(off) (k 7.35) and the
   "plateau / nominal" mixes; usClipped 0.06-0.19 on later shots. CLIP FLAGS R=118 G=52 B=90, bento=335020.
 - Do: replay with the NICE zip (NICE-20261008-181021, input.nch if present); fix the per-channel recovery so a channel without a

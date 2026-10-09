@@ -91,30 +91,30 @@ jobs:
 
       - name: Check neural packing and CFA gate
         run: |
-          g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_vivo_neural_capture.cpp -ldl -o /tmp/check-vivo-neural-capture
-          /tmp/check-vivo-neural-capture
+          g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_scam_neural_capture.cpp -ldl -o /tmp/check-scam-neural-capture
+          /tmp/check-scam-neural-capture
           # The worker includes the EGL/GLES GPU helpers (hexquad / super-resolution).
           sudo apt-get update -qq
           sudo apt-get install -y libegl-dev libgles-dev
-          g++ -pthread -std=c++17 -O2 -Wall -Wextra app/src/main/cpp/vivo-neural-worker.cpp -ldl -lEGL -lGLESv2 -o /tmp/vivo-neural-worker
-          /tmp/vivo-neural-worker --transport-check
+          g++ -pthread -std=c++17 -O2 -Wall -Wextra app/src/main/cpp/scam-neural-worker.cpp -ldl -lEGL -lGLESv2 -o /tmp/scam-neural-worker
+          /tmp/scam-neural-worker --transport-check
 
       - name: Build debug APK
         # The APK build only starts after the host checks pass.
         env:
           SCAMERA_VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
-          python3 tools/fetch_vivo_ae_runtime.py
-          node tools/vivo-zsl-live/check_ae_solver_context.js
-          python3 tools/check_nice_legacy_isolation.py
-          python3 tools/check_vivo_nice_ae_context.py
-          python3 tools/check_vivo_nice_measured_exposure.py
-          python3 tools/check_nice_capture_sequence.py
+          python3 tools/fetch_scam_ae_runtime.py
+          node tools/scam-zsl-live/check_ae_solver_context.js
+          python3 tools/check_scam_legacy_isolation.py
+          python3 tools/check_scam_ae_context.py
+          python3 tools/check_scam_measured_exposure.py
+          python3 tools/check_scam_capture_sequence.py
           sudo apt-get update -qq
           sudo apt-get install -y python3-numpy libegl1 libgl1-mesa-dri libegl-dev libgles-dev
           python3 -m venv /tmp/tetra-gpu-check
           /tmp/tetra-gpu-check/bin/pip install moderngl==5.12.0 numpy==2.3.5
-          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_vivo_hdr_gpu.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_scam_hdr_gpu.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_ark_highlights.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_highlight_recovery.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_highlight_neutral.py
@@ -132,23 +132,23 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
           /usr/bin/python3 tools/check_lanczos_downscale.py
           LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/photo_look_gl.py
-          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_preprocess.cpp -lEGL -lGLESv2 -o /tmp/check-nice-preprocess
-          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-preprocess
-          g++ -std=c++17 -O2 -fsanitize=address,undefined tools/check_vivo_nice_capture.cpp -lEGL -lGLESv2 -o /tmp/check-nice-capture
-          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-capture
-          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_motion_capture.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-nice-motion-capture
-          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-motion-capture
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_preprocess.cpp -lEGL -lGLESv2 -o /tmp/check-scam-preprocess
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-preprocess
+          g++ -std=c++17 -O2 -fsanitize=address,undefined tools/check_scam_capture.cpp -lEGL -lGLESv2 -o /tmp/check-scam-capture
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-capture
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_motion_capture.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-scam-motion-capture
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-motion-capture
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_measured_gain.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-measured-gain
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-measured-gain
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_prefetch.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-prefetch
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-prefetch
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_native_widen.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-native-widen
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-native-widen
-          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_vivo_nice_probe.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-nice-probe
-          ASAN_OPTIONS=detect_leaks=0 /tmp/check-nice-probe /tmp/nice-probe-fixture
-          python3 tools/check_nice_reference_metadata.py
+          g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_probe.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-scam-probe
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-probe /tmp/scam-probe-fixture
+          python3 tools/check_scam_reference_metadata.py
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.util.AsyncLogTest" --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.processing.RawPayloadCheckTest" --tests "com.particlesdevs.photoncamera.settings.BackupLensMatchTest" --tests "com.particlesdevs.photoncamera.settings.DeviceDefaultsTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.capture.VivoStockAePlanTest" --tests "com.particlesdevs.photoncamera.capture.HybridPlanTest" --tests "com.particlesdevs.photoncamera.capture.ExposureLimitsTest" --tests "com.particlesdevs.photoncamera.capture.FlushLossStatsTest" --tests "com.particlesdevs.photoncamera.processing.RawBinTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurstAnyResolutionTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurstRolesTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" --tests "com.particlesdevs.photoncamera.settings.ShadeCatalogTest" --tests "com.particlesdevs.photoncamera.settings.ShadeTilesTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeUiTest" --tests "com.particlesdevs.photoncamera.util.LangTest" --tests "com.particlesdevs.photoncamera.settings.QuadBayerResetTest" --tests "com.particlesdevs.photoncamera.settings.HybridSettingsTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.LensLabelLocaleTest" --tests "com.particlesdevs.photoncamera.ui.camera.PermissionPlanTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.LensButtonTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.BottomChromeTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotSpeedBitExactTest" --tests "com.particlesdevs.photoncamera.processing.MosaicBlockDetectorSpeedTest" --tests "com.particlesdevs.photoncamera.processing.render.ParametersBlackFloorTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.LmcHybridBurstCrashTest" --tests "com.particlesdevs.photoncamera.control.ZoomControllerRangeTest" --tests "com.particlesdevs.photoncamera.processing.MosaicBlockStoreTest" --tests "com.particlesdevs.photoncamera.settings.ModuleChoiceTest" --tests "com.particlesdevs.photoncamera.capture.XiaomiTeleZoomTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ZoomDialDetentTest" --tests "com.particlesdevs.photoncamera.processing.PhotoFormatTest" --tests "com.particlesdevs.photoncamera.settings.PhotoFormatSettingsTest" --tests "com.particlesdevs.photoncamera.processing.AvifOutputTest" --tests "com.particlesdevs.photoncamera.settings.AvifSettingsTest" --tests "com.particlesdevs.photoncamera.processing.ultrahdr.UltraHdrContainerStreamTest" --tests "com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputerTest" --tests "com.particlesdevs.photoncamera.manual.ParamControllerEvLockTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualFormatTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualPanelUiTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualRulerTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualRangeTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.TopBarSummaryTest" --tests "com.particlesdevs.photoncamera.settings.FormatChoiceTest" --tests "com.particlesdevs.photoncamera.capture.SafeStreamSizesTest" --tests "com.particlesdevs.photoncamera.capture.StabilizationTraceTest" --tests "com.particlesdevs.photoncamera.capture.VivoNicePreviewTest" --tests "com.particlesdevs.photoncamera.capture.PreviewStallTest" --tests "com.particlesdevs.photoncamera.control.SubjectMappingTest" --tests "com.particlesdevs.photoncamera.control.subject.FaceDetectModesTest" --tests "com.particlesdevs.photoncamera.control.subject.SubjectPolicyTest" --tests "com.particlesdevs.photoncamera.control.subject.PatchTrackerTest" --tests "com.particlesdevs.photoncamera.processing.heif.HevcNalTest" --tests "com.particlesdevs.photoncamera.processing.heif.HeifContainerWriterTest" --tests "com.particlesdevs.photoncamera.processing.heif.P010Test" --tests "com.particlesdevs.photoncamera.processing.heif.TileGridTest" --tests "com.particlesdevs.photoncamera.processing.heif.Heic10SupportTest" --tests "com.particlesdevs.photoncamera.processing.heif.TenBitBitmapsTest" --tests "com.particlesdevs.photoncamera.processing.ml.Lanczos1010102Test" --tests "com.particlesdevs.photoncamera.processing.opengl.TenBitReadbackTest" --tests "com.particlesdevs.photoncamera.processing.PhotoOutputHeic10Test" --tests "com.particlesdevs.photoncamera.settings.SettingsAuditFixTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ViewfinderScaleLayoutTest" --tests "com.particlesdevs.photoncamera.capture.PreviewGapMeterTest" --tests "com.particlesdevs.photoncamera.capture.PreviewContinuityTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.PlainShotSpeedTest" --tests "com.particlesdevs.photoncamera.control.ZoomStreamCropTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.VivoNiceRgbOneChannelOffTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.viewfinder.VfDrawMeterTest" --tests "com.particlesdevs.photoncamera.control.FovSelfCheckTest" --tests "com.particlesdevs.photoncamera.gallery.dng.DngPreviewTest" --tests "com.particlesdevs.photoncamera.gallery.GalleryLauncherIconTest" --tests "com.particlesdevs.photoncamera.gallery.ui.GalleryUiTest" --tests "com.particlesdevs.photoncamera.processing.color.OutputColourTest" --tests "com.particlesdevs.photoncamera.processing.color.IccProfilesTest" --tests "com.particlesdevs.photoncamera.processing.color.IccEmbedTest" --tests "com.particlesdevs.photoncamera.processing.color.HlgRenditionTest" --tests "com.particlesdevs.photoncamera.processing.color.DefaultOutputGoldenTest" --tests "com.particlesdevs.photoncamera.processing.heif.HeifColourTest" --tests "com.particlesdevs.photoncamera.processing.PhotoOutputColourTest" --tests "com.particlesdevs.photoncamera.settings.ColourSettingsTest" :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest --tests "com.particlesdevs.photoncamera.util.AsyncLogTest" --tests "com.particlesdevs.photoncamera.settings.SettingsMenuTest" --tests "com.particlesdevs.photoncamera.settings.ViewfinderUiTest" --tests "com.particlesdevs.photoncamera.settings.ApprovedConceptsTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawFrameTest" --tests "com.particlesdevs.photoncamera.processing.LiveRawMeterTest" --tests "com.particlesdevs.photoncamera.processing.RawPayloadCheckTest" --tests "com.particlesdevs.photoncamera.settings.BackupLensMatchTest" --tests "com.particlesdevs.photoncamera.settings.DeviceDefaultsTest" --tests "com.particlesdevs.photoncamera.capture.CameraResumeTest" --tests "com.particlesdevs.photoncamera.capture.ScamStockAePlanTest" --tests "com.particlesdevs.photoncamera.capture.HybridPlanTest" --tests "com.particlesdevs.photoncamera.capture.ExposureLimitsTest" --tests "com.particlesdevs.photoncamera.capture.FlushLossStatsTest" --tests "com.particlesdevs.photoncamera.processing.RawBinTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurstAnyResolutionTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurstRolesTest" --tests "com.particlesdevs.photoncamera.remosaic.BurstPolicyTest" --tests "com.particlesdevs.photoncamera.capture.PreviewFrameMatcherTest" --tests "com.particlesdevs.photoncamera.capture.TimestampFrameRouterTest" --tests "com.particlesdevs.photoncamera.processing.color.DcpProfileTest" --tests "com.particlesdevs.photoncamera.settings.ShadeCatalogTest" --tests "com.particlesdevs.photoncamera.settings.ShadeTilesTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeUiTest" --tests "com.particlesdevs.photoncamera.util.LangTest" --tests "com.particlesdevs.photoncamera.settings.QuadBayerResetTest" --tests "com.particlesdevs.photoncamera.settings.HybridSettingsTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.LensLabelLocaleTest" --tests "com.particlesdevs.photoncamera.ui.camera.PermissionPlanTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.LensButtonTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.BottomChromeTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotSpeedBitExactTest" --tests "com.particlesdevs.photoncamera.processing.MosaicBlockDetectorSpeedTest" --tests "com.particlesdevs.photoncamera.processing.render.ParametersBlackFloorTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurstCrashTest" --tests "com.particlesdevs.photoncamera.control.ZoomControllerRangeTest" --tests "com.particlesdevs.photoncamera.processing.MosaicBlockStoreTest" --tests "com.particlesdevs.photoncamera.settings.ModuleChoiceTest" --tests "com.particlesdevs.photoncamera.capture.XiaomiTeleZoomTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ZoomDialDetentTest" --tests "com.particlesdevs.photoncamera.processing.PhotoFormatTest" --tests "com.particlesdevs.photoncamera.settings.PhotoFormatSettingsTest" --tests "com.particlesdevs.photoncamera.processing.AvifOutputTest" --tests "com.particlesdevs.photoncamera.settings.AvifSettingsTest" --tests "com.particlesdevs.photoncamera.processing.ultrahdr.UltraHdrContainerStreamTest" --tests "com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputerTest" --tests "com.particlesdevs.photoncamera.manual.ParamControllerEvLockTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualFormatTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualPanelUiTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualRulerTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ManualRangeTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.TopBarSummaryTest" --tests "com.particlesdevs.photoncamera.settings.FormatChoiceTest" --tests "com.particlesdevs.photoncamera.capture.SafeStreamSizesTest" --tests "com.particlesdevs.photoncamera.capture.StabilizationTraceTest" --tests "com.particlesdevs.photoncamera.capture.ScamPreviewTest" --tests "com.particlesdevs.photoncamera.settings.BrandMigrationTest" --tests "com.particlesdevs.photoncamera.capture.PreviewStallTest" --tests "com.particlesdevs.photoncamera.control.SubjectMappingTest" --tests "com.particlesdevs.photoncamera.control.subject.FaceDetectModesTest" --tests "com.particlesdevs.photoncamera.control.subject.SubjectPolicyTest" --tests "com.particlesdevs.photoncamera.control.subject.PatchTrackerTest" --tests "com.particlesdevs.photoncamera.processing.heif.HevcNalTest" --tests "com.particlesdevs.photoncamera.processing.heif.HeifContainerWriterTest" --tests "com.particlesdevs.photoncamera.processing.heif.P010Test" --tests "com.particlesdevs.photoncamera.processing.heif.TileGridTest" --tests "com.particlesdevs.photoncamera.processing.heif.Heic10SupportTest" --tests "com.particlesdevs.photoncamera.processing.heif.TenBitBitmapsTest" --tests "com.particlesdevs.photoncamera.processing.ml.Lanczos1010102Test" --tests "com.particlesdevs.photoncamera.processing.opengl.TenBitReadbackTest" --tests "com.particlesdevs.photoncamera.processing.PhotoOutputHeic10Test" --tests "com.particlesdevs.photoncamera.settings.SettingsAuditFixTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.ViewfinderScaleLayoutTest" --tests "com.particlesdevs.photoncamera.capture.PreviewGapMeterTest" --tests "com.particlesdevs.photoncamera.capture.PreviewContinuityTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.PlainShotSpeedTest" --tests "com.particlesdevs.photoncamera.control.ZoomStreamCropTest" --tests "com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamRgbOneChannelOffTest" --tests "com.particlesdevs.photoncamera.ui.camera.views.viewfinder.VfDrawMeterTest" --tests "com.particlesdevs.photoncamera.control.FovSelfCheckTest" --tests "com.particlesdevs.photoncamera.gallery.dng.DngPreviewTest" --tests "com.particlesdevs.photoncamera.gallery.GalleryLauncherIconTest" --tests "com.particlesdevs.photoncamera.gallery.ui.GalleryUiTest" --tests "com.particlesdevs.photoncamera.processing.color.OutputColourTest" --tests "com.particlesdevs.photoncamera.processing.color.IccProfilesTest" --tests "com.particlesdevs.photoncamera.processing.color.IccEmbedTest" --tests "com.particlesdevs.photoncamera.processing.color.HlgRenditionTest" --tests "com.particlesdevs.photoncamera.processing.color.DefaultOutputGoldenTest" --tests "com.particlesdevs.photoncamera.processing.heif.HeifColourTest" --tests "com.particlesdevs.photoncamera.processing.PhotoOutputColourTest" --tests "com.particlesdevs.photoncamera.settings.ColourSettingsTest" :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload settings test reports
         if: always()
@@ -168,13 +168,13 @@ jobs:
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libmobileRemosaic.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/liblanczosDownscale.so'
           unzip -l app/build/outputs/apk/debug/*.apk | grep 'lib/arm64-v8a/libscameraAvif.so'
-          unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/vivo-neural/arm64-v8a/vivo-neural-worker'
+          unzip -l app/build/outputs/apk/debug/*.apk | grep 'assets/scam-neural/arm64-v8a/scam-neural-worker'
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
-          python3 tools/fetch_vivo_ae_runtime.py --apk "$APK"
-          unzip -p "$APK" assets/vivo-neural/arm64-v8a/vivo-neural-worker > /tmp/vivo-neural-worker-android
-          readelf -h /tmp/vivo-neural-worker-android | grep AArch64
-          readelf -l /tmp/vivo-neural-worker-android | grep /system/bin/linker64
-          readelf -d /tmp/vivo-neural-worker-android > /tmp/neural-deps.txt
+          python3 tools/fetch_scam_ae_runtime.py --apk "$APK"
+          unzip -p "$APK" assets/scam-neural/arm64-v8a/scam-neural-worker > /tmp/scam-neural-worker-android
+          readelf -h /tmp/scam-neural-worker-android | grep AArch64
+          readelf -l /tmp/scam-neural-worker-android | grep /system/bin/linker64
+          readelf -d /tmp/scam-neural-worker-android > /tmp/neural-deps.txt
           grep -q PIE /tmp/neural-deps.txt
           cat /tmp/neural-deps.txt
           if grep -q 'libc++_shared.so' /tmp/neural-deps.txt; then
@@ -185,8 +185,8 @@ jobs:
           PREFS_PATH=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump resources "$APK" | grep -A1 'xml/preferences$' | grep -o 'res/[^ ]*\.xml' | head -1)
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file "$PREFS_PATH" > /tmp/apk-preferences.txt
           grep -q 'pref_merge_route' /tmp/apk-preferences.txt
-          grep -q 'lmc_hybrid_screen' /tmp/apk-preferences.txt
-          grep -q 'vivo_hdr_screen' /tmp/apk-preferences.txt
+          grep -q 'scam_hybrid_screen' /tmp/apk-preferences.txt
+          grep -q 'scam_hdr_screen' /tmp/apk-preferences.txt
           grep -q 'output_settings_screen' /tmp/apk-preferences.txt
           if grep -q 'rt_denoise_screen\|gcam_finish_screen\|aces_group_screen' /tmp/apk-preferences.txt; then
             echo "Removed legacy post-processing screens are back"
@@ -210,13 +210,13 @@ jobs:
         run: |
           mkdir -p out
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
-          python3 tools/package_vivo_neural.py \
+          python3 tools/package_scam_neural.py \
             --template "$APK" \
             --bundle-dir "$RUNNER_TEMP/neural-assets/bundle" \
             --hexquad-dir "$RUNNER_TEMP/neural-assets/hexquad" \
-            --nice-dir "$RUNNER_TEMP/neural-assets/nice" \
+            --scam-dir "$RUNNER_TEMP/neural-assets/nice" \
             --apksigner "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" \
-            --output "out/SCAMERA-0.98-${{ steps.ver.outputs.code }}-NICE.apk"
+            --output "out/SCAMERA-0.98-${{ steps.ver.outputs.code }}-SCAM.apk"
           (cd out && sha256sum *.apk > SHA256SUMS.txt)
           cat out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
