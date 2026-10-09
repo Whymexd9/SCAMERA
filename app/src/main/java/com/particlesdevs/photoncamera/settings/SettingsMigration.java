@@ -547,6 +547,22 @@ public final class SettingsMigration {
             e.putInt(SCAM_DEFAULTS_REV, 1);
             markOnly = true;
         }
+        // Night noise protection (AGC Noise-based Gain Clamp): legacy ISO threshold (default 100) moves to AGC noise threshold 0.05.
+        // Stored values >= 1.0 are legacy ISO values and move to "0.05".
+        if (!values.containsKey(NIGHT_THRESH_REV)) {
+            Object night = values.get(ScamHybridKeys.PREFIX + "ark_night_thresh");
+            if (night != null) {
+                try {
+                    float f = Float.parseFloat(String.valueOf(night).trim());
+                    if (f >= 1.0f) {
+                        ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "ark_night_thresh", night instanceof String ? "0.05" : (Object) 0.05f);
+                        changed = true;
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            e.putInt(NIGHT_THRESH_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
@@ -560,6 +576,8 @@ public final class SettingsMigration {
     static final String PRECISION_REV = "pref_scam_hybrid_precision_rev";
     /** Marker of the one-time move of the former SCAM HDR defaults (diagnostics on, stock planner) to off / SCAMERA. */
     static final String SCAM_DEFAULTS_REV = "pref_scamhdr_defaults_rev";
+    /** Marker of the one-time move of the former night protection threshold (default 100) to AGC noise clamp (0.05). */
+    static final String NIGHT_THRESH_REV = "pref_scam_hybrid_night_thresh_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {

@@ -17,7 +17,7 @@
     <string name="prefs_scam_hybrid_capture_category_title">Bento — ультракороткий кадр</string>
     <string name="prefs_scam_hybrid_bento_summary">%s. Кадр с экспозицией N/8 заменяет пересвеченные участки базового кадра (маска: порог 0.98, расширение 4, сглаживание σ=1; отказ при малой площади клиппинга, дырах ≥15 ячеек или если сам кадр клиппирован более чем на 62 %%). Авто — снимается при наличии клиппинга в ZSL-кадре.</string>
     <string name="prefs_scam_hybrid_bento_frames_title">Bento: кадров</string>
-    <string name="prefs_scam_hybrid_bento_frames_summary">%s. Внутри маски пересвета свет берётся только из ультракоротких кадров. Один кадр: шум ×8 по усилению и решётка Байера одного кадра. Второй кадр той же экспозиции вдвое снижает шум в светах и сдвигом рук заполняет пропуски R/B; цена — ещё один кадр после нажатия (~30–50 мс) и ~25 МБ памяти.</string>
+    <string name="prefs_scam_hybrid_bento_frames_summary">%s. Внутри маски пересвета свет берётся только из ультракоротких кадров. Один кадр: шум ×8 по усилению. Два кадра той же экспозиции вдвое снижают шум в светах и сдвигом рук заполняют пропуски R/B. Три кадра обеспечивают более 3 не-bracketed кадров, необходимых для слияния Mochi.</string>
     <string name="prefs_scam_hybrid_bento_validate_title">Bento: проверка кадров</string>
     <string name="prefs_scam_hybrid_bento_validate_summary">%s. Проверка (ультракороткий кадр заметно темнее базы — движение) для каждого ультракороткого кадра: вес кадра в маске — по его собственной валидности, база возвращается только там, где не годится ни один. Режим 2 считает движением и незасвеченную ячейку базы, которую ультракороткий кадр показывает заметно ярче (рука ушла с лампы). Убирает тёмный силуэт руки в лампе, если рука есть не во всех кадрах.</string>
     <string name="prefs_scam_hybrid_bento_motion_max_title">Bento: отказ при движении, % маски</string>
@@ -133,7 +133,7 @@
     <string name="prefs_scam_hybrid_bento_chroma_sigma_title">Bento: цвет кромок светов, σ px</string>
     <string name="prefs_scam_hybrid_bento_chroma_sigma_summary">Внутри маски R и B берутся как G × отношения R/G, B/G ультракоротких кадров на изотропном ядре этой ширины (px сенсора). С узким ядром R и B идут от ближайшего отсчёта решётки, и на наклонной кромке засвета цвет ступенькой меняется через 2 px — оранжево-синий пунктир. 2 по умолчанию, 0 — выключено (как раньше).</string>
     <string name="prefs_scam_hybrid_shasta_sharpness_title">Shasta: порог резкости</string>
-    <string name="prefs_scam_hybrid_shasta_sharpness_summary">Длинный кадр с резкостью ниже доли резкости базового кадра отбрасывается. По умолчанию 0.8. Меньше — допускается больший смаз.</string>
+    <string name="prefs_scam_hybrid_shasta_sharpness_summary">Длинный кадр с резкостью ниже доли резкости базового кадра отбрасывается. По умолчанию 0.35. Меньше — допускается больше кадров с рук.</string>
     <string name="prefs_scam_hybrid_shasta_max_ratio_title">Shasta: предел отношения экспозиций</string>
     <string name="prefs_scam_hybrid_shasta_max_ratio_summary">Если длинный кадр ярче базового более чем в это число раз, длинные кадры не сливаются. По умолчанию 32.</string>
     <string name="prefs_scam_hybrid_merge_highlights_screen_title">Света и горячие пиксели</string>
@@ -365,8 +365,8 @@
     <string name="prefs_scam_hybrid_ark_hl_blend_summary">0 — AE целиком уступает защите светов, 1 — защита выключена. ArkCam: 0,33.</string>
     <string name="prefs_scam_hybrid_ark_night_dim_title">Ночное затемнение (степень AE)</string>
     <string name="prefs_scam_hybrid_ark_night_dim_summary">AE в степени x при x ≠ 1. ArkCam: 1.</string>
-    <string name="prefs_scam_hybrid_ark_night_thresh_title">Базовое ISO ночной защиты</string>
-    <string name="prefs_scam_hybrid_ark_night_thresh_summary">Выше этого ISO (опорного кадра, то есть превью) цель AE плавно снижается до 0,29× у максимального аналогового ISO сенсора, а тени фьюжном не поднимаются (ночной фактор). ArkCam: 100.</string>
+    <string name="prefs_scam_hybrid_ark_night_thresh_title">Ограничение усиления по шуму матрицы (AGC)</string>
+    <string name="prefs_scam_hybrid_ark_night_thresh_summary">%s. Ограничение усиления экспозиции по физическому шуму матрицы (как в AGC): множитель экспозиции тонмапинга ограничивается по модели шума кадра (SENSOR_NOISE_PROFILE) как max_gain = max(порог / σ_mid, 1.0) и абсолютным потолком 9.0×. Предотвращает переэкспонирование и шум ночью. По умолчанию 0.05.</string>
     <string name="prefs_scam_hybrid_ark_input_ev_title">Масштаб входа, EV</string>
     <string name="prefs_scam_hybrid_ark_input_ev_summary">Единый множитель линейного входа до статистики (2^EV): приведение к масштабу G_CLEAN (ds_linear_rgb Google), на котором работает AE ArkCam. 0 — по умолчанию: вход Hybrid (белый сенсора = 1) уже в этом масштабе (замер: G_CLEAN = RAW × 0,85–0,96).</string>
     <string name="prefs_scam_hybrid_ark_smart_category_title">Smart HDR и локальный контраст</string>

@@ -168,7 +168,7 @@ struct HybridTuning {
     // research/hybrid5/ark_sharpen_device.md. Not on the 2x grid: a static burst there has no sub-pixel diversity (not measured).
     float dayKernelScale=0.5f;
     // Shasta
-    float shastaSharpness=0.8f;  // bracketed_sharpness_threshold
+    float shastaSharpness=0.35f; // bracketed_sharpness_threshold
     float shastaMaxRatio=32.f;   // max bracketed/base TET ratio
     float shastaSat=0.5f;        // sharpness pixels: guide mean below this share of white in both frames. The guide is a 4x4 mean:
                                  // at 0.9 blocks along bright edges still held clipped sites of the x2 brighter bracketed frame, their
@@ -6274,20 +6274,39 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
             }
         }
     }
-    std::vector<int> normals;int us=-1,br=-1;
+    std::vector<int> normals;std::vector<int> usList,brList;
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
         if(fr.role==kRoleNormal)normals.push_back(f);
-        else if(fr.role==kRoleUltrashort&&tune.bento>0&&(us<0||fr.exposure<input.frames[us].exposure))us=f;
-        else if(fr.role==kRoleBracketed&&tune.shastaEnable&&(br<0||std::abs(fr.orderMs-input.frames[0].orderMs)<std::abs(input.frames[br].orderMs-input.frames[0].orderMs)))br=f;
+        else if(fr.role==kRoleUltrashort&&tune.bento>0)usList.push_back(f);
+        else if(fr.role==kRoleBracketed&&tune.shastaEnable)brList.push_back(f);
     }
     const float t0=input.frames[0].orderMs;
     std::stable_sort(normals.begin(),normals.end(),[&](int a,int c){return std::abs(input.frames[a].orderMs-t0)<std::abs(input.frames[c].orderMs-t0);});
-    const int extras=(us>=0&&budget>=4?1:0)+(br>=0&&budget>=6?1:0);
+    std::stable_sort(usList.begin(),usList.end(),[&](int a,int c){return input.frames[a].exposure<input.frames[c].exposure;});
+    std::stable_sort(brList.begin(),brList.end(),[&](int a,int c){return std::abs(input.frames[a].orderMs-t0)<std::abs(input.frames[c].orderMs-t0);});
+    const int maxUs=std::clamp(tune.bentoFrames,1,3);
+    int wantUs=0;
+    for(int f:usList){
+        if(wantUs>=maxUs)break;
+        if(wantUs==0||std::abs(std::log(input.frames[f].exposure/input.frames[usList[0]].exposure))<std::log(1.3f))wantUs++;
+    }
+    const int wantBr=int(brList.size());
+    const int extras=(wantUs>0&&budget>=4?wantUs:0)+(wantBr>0&&budget>=6?std::min(wantBr,std::max(0,budget-(wantUs>0&&budget>=4?wantUs:0)-1)):0);
     std::vector<int> pick{0};
     for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
-    if(us>=0&&budget>=4&&int(pick.size())<budget)pick.push_back(us);
-    if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
+    int usAdded=0;
+    for(int f:usList){
+        if(usAdded>=wantUs||int(pick.size())>=budget||budget<4)break;
+        if(usAdded==0||std::abs(std::log(input.frames[f].exposure/input.frames[usList[0]].exposure))<std::log(1.3f)){
+            pick.push_back(f);
+            usAdded++;
+        }
+    }
+    for(int f:brList){
+        if(int(pick.size())>=budget||budget<6)break;
+        pick.push_back(f);
+    }
     {
         std::string line="HYBRID MOSAIC: block "+std::to_string(b)+", "+std::to_string(per)+" plain-Bayer sub-frames "+std::to_string(vw)+"x"+std::to_string(vh)
             +" per frame, "+std::to_string(pick.size())+" of "+std::to_string(n)+" frames (GPU holds "+std::to_string(kHybridGpuFrames)+" sub-frames):";

@@ -211,6 +211,8 @@ public final class ArkStats extends Node {
             final boolean early = !legacy && earlySharpen != null && earlySharpen.runEarly(pipeline, WorkingTexture);
             int iso = pipeline.mParameters.iso, maxIso = maxAnalogIso();
             ArkAe.Settings settings = ArkTone.settings();
+            settings.noiseS = pipeline.noiseS;
+            settings.noiseO = pipeline.noiseO;
             settings.sat *= ArkTone.ccmSatComp(pipeline.mParameters);
             ArkAe.Result r = half ? ArkAe.smartHdrHalf(pixels.asShortBuffer(), 4, lowSize.x, lowSize.y, settings, iso, maxIso)
                     : ArkAe.smartHdr(pixels.asFloatBuffer(), 4, lowSize.x, lowSize.y, settings, iso, maxIso);

@@ -104,6 +104,7 @@
     <string-array name="shade_s_bento_frames">
         <item>1</item>
         <item>2</item>
+        <item>3</item>
     </string-array>
     <string-array name="shade_s_sharp">
         <item>ARK</item>

@@ -36,15 +36,22 @@ public final class RawPayloadCheck {
         public final String error;
         /** Share of the sampled values at or above 4x (white + 1), and of the sampled rows that are all zero. */
         public final float impossibleShare, zeroRowShare;
+        public final boolean packed10;
 
         Result(String error, float impossibleShare, float zeroRowShare) {
+            this(error, impossibleShare, zeroRowShare, false);
+        }
+
+        Result(String error, float impossibleShare, float zeroRowShare, boolean packed10) {
             this.error = error; this.impossibleShare = impossibleShare; this.zeroRowShare = zeroRowShare;
+            this.packed10 = packed10;
         }
 
         public boolean plain() { return error == null; }
+        public boolean isPacked10() { return packed10; }
     }
 
-    private static final Result UNCHECKED = new Result(null, 0, 0);
+    private static final Result UNCHECKED = new Result(null, 0, 0, false);
 
     public static Result check(Image image, int whiteLevel) {
         if (image == null || image.getFormat() != ImageFormat.RAW_SENSOR) return UNCHECKED;
@@ -79,11 +86,13 @@ public final class RawPayloadCheck {
             if (zero) zeroRows++;
         }
         float share = total == 0 ? 0 : (float) impossible / total, zeroShare = (float) zeroRows / rows;
+        boolean packed10 = (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= 0.28f && zeroShare <= 0.45f)
+                || (share >= 0.50f && zeroShare >= 0.28f);
         if (share >= IMPOSSIBLE_SHARE || (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= ZERO_ROW_SHARE))
             return new Result(String.format(Locale.ROOT,
                     "RAW is not plain 16-bit: %.1f %% of samples at or above 4x white %d, %.1f %% zero rows (%s)",
-                    share * 100, whiteLevel, zeroShare * 100, geometry), share, zeroShare);
-        return new Result(null, share, zeroShare);
+                    share * 100, whiteLevel, zeroShare * 100, geometry), share, zeroShare, packed10);
+        return new Result(null, share, zeroShare, false);
     }
 
     /** White level the check compares against: the larger of the static and the frame's dynamic white, 0 when unknown. */

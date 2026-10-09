@@ -2324,6 +2324,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 || Build.BRAND.equalsIgnoreCase("iqoo")
                 || Build.BRAND.equalsIgnoreCase("nothing")
                 || Build.BRAND.equalsIgnoreCase("google")
+                || Build.BRAND.equalsIgnoreCase("xiaomi")
+                || Build.BRAND.equalsIgnoreCase("redmi")
+                || Build.BRAND.equalsIgnoreCase("poco")
         ))
         ) {
             mImageReaderRaw = ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg, 0x00100000);

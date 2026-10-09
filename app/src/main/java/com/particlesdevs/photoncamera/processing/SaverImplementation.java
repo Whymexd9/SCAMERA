@@ -1,10 +1,12 @@
 package com.particlesdevs.photoncamera.processing;
 
+import android.graphics.ImageFormat;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.media.Image;
 import android.media.ImageReader;
+import java.nio.ByteBuffer;
 
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.capture.CaptureController;
@@ -58,11 +60,19 @@ public class SaverImplementation {
         // Post-shutter frames are kept but marked: the burst writers drop or refuse a frame that is not plain 16-bit.
         RawPayloadCheck.Result payload = RawPayloadCheck.check(image,
                 RawPayloadCheck.whiteLevel(CaptureController.mCameraCharacteristics, null));
-        if (!payload.plain()) {
+        ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+        int format = image.getFormat();
+        int rowStride = image.getPlanes()[0].getRowStride();
+        if (payload.isPacked10()) {
+            com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter RAW_SENSOR holds packed MIPI RAW10 payload, unpacking to plain uint16");
+            format = ImageFormat.RAW10;
+            rowStride = width * 5 / 4;
+            payload = new RawPayloadCheck.Result(null, payload.impossibleShare, payload.zeroRowShare, true);
+        } else if (!payload.plain()) {
             com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
             RawPayloadCheck.dumpOnce(image, payload, PhotonCamera.getSettings().mCameraID);
         }
-        ImageFrame frame = new ImageFrame(image.getPlanes()[0].getBuffer(), image.getFormat(), width, image.getPlanes()[0].getRowStride(), offset, capacity, shotArena);
+        ImageFrame frame = new ImageFrame(buffer, format, width, rowStride, offset, capacity, shotArena);
         frame.rawPayloadError = payload.error;
         frame.timestamp = image.getTimestamp();
 

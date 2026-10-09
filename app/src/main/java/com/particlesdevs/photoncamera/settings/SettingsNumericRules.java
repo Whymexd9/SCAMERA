@@ -28,7 +28,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_bento_trigger": return new double[]{0,0.1,0};
             case "pref_scam_hybrid_bento_weight": return new double[]{0.1,8,0};
             case "pref_scam_hybrid_bento_sigma": return new double[]{0.5,2,0};
-            case "pref_scam_hybrid_bento_frames": return new double[]{1,2,1};
+            case "pref_scam_hybrid_bento_frames": return new double[]{1,3,1};
             case "pref_scam_hybrid_bento_chroma_sigma": return new double[]{0,4,0};
             case "pref_scam_hybrid_cdm": return new double[]{0.01,2,0};
             case "pref_scam_hybrid_kernel": return new double[]{0.5,2,0};
@@ -82,7 +82,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_ark_ae_min_limit": return new double[]{0.1,1,0};
             case "pref_scam_hybrid_ark_hl_overflow": return new double[]{0.5,8,0};
             case "pref_scam_hybrid_ark_hl_blend": return new double[]{0,1,0};
-            case "pref_scam_hybrid_ark_night_thresh": return new double[]{50,12800,0};
+            case "pref_scam_hybrid_ark_night_thresh": return new double[]{0.01,0.20,0};
             case "pref_scam_hybrid_ark_night_dim": return new double[]{0.5,1.5,0};
             case "pref_scam_hybrid_ark_face_priority": return new double[]{0,1,0};
             case "pref_scam_hybrid_ark_metering": return new double[]{0,2,1};

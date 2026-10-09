@@ -81,7 +81,11 @@ public final class HybridPlan {
      * Ultrashort frames per shot: 1 = SCAM 9.6, 2 (default) = a second one at the same exposure; the worker merges both inside the
      * mask (half the noise of the x8 replacement, the hand shake between them fills the R/B lattice of a single Bayer frame).
      */
-    public static int bentoFrames() { return Math.max(1, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento_frames", 2f)))); }
+    public static int bentoFrames() {
+        int count = Math.round(PreferenceKeys.hybridValue("bento_frames", 2f));
+        if (PreferenceKeys.getHybridMochi() > 0) count = Math.max(count, 3);
+        return Math.max(1, Math.min(3, count));
+    }
     public static float bentoTriggerClip() { return Math.max(0f, Math.min(0.1f, PreferenceKeys.hybridValue("bento_trigger", 0.0005f))); }
     public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.hybridValue("shasta_max_ratio", 32f))); }
 
@@ -124,7 +128,7 @@ public final class HybridPlan {
             }
             double ratio = (double) ns * iso / n;
             if (ratio > maxBracketRatio()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
-            else if (ratio < 1.5) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
+            else if (ratio < 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
             else for (int i = 0; i < count; i++) out.add(new Request(ImageFrame.CaptureRole.LONG, ns, iso, ratio));
         } else why.append(" shasta off");
         // Nothing to add after the shutter: one more frame at N keeps the capture path uniform.

@@ -25,6 +25,8 @@ public final class ArkAe {
         public float aeTarget = 0.15f, maxBoost = 5.0f, minLimit = 0.5f;
         public float hlOverflow = 2.0f, hlBlend = 0.33f;
         public float nightThresh = 100f, nightDim = 1.0f, facePriority = 0.7f;
+        public double noiseS = 0.0, noiseO = 0.0;
+        public float noiseMax = 0.05f;
         public int metering = 0;
         public float brightThresh = 0.8f, darkThresh = 15f, darkPixelThresh = 10f, hlBoost = 1.0f, contrastBoost = 0.5f;
         public float shadowStr = 2.0f, highlightStr = 2.0f;
@@ -38,6 +40,7 @@ public final class ArkAe {
     public static final class Result {
         public float ae = 1f, clip = 1f, deficit = 1f, effS, effH, nf = 1f;
         public float p10, p50, p98, p995, mean, geo, gmax, ovArea, flat, spread, r, m, realPeak;
+        public float maxGainByNoise = 0f;
         public boolean bento;
         public float slope, sp, tp, minEv, maxEv, sat, ev;
         public int look;
@@ -46,6 +49,7 @@ public final class ArkAe {
         public String describe() {
             return String.format(Locale.ROOT,
                     "clip=%.3f gmax=%.3f ae=%.4f geo=%.5f mean=%.5f p10=%.5f p50=%.5f p98=%.5f p995=%.5f nf=%.3f deficit=%.4f"
+                            + (maxGainByNoise > 0f ? String.format(Locale.ROOT, " gainClamp=%.3f", maxGainByNoise) : "")
                             + " effS=%.4f effH=%.4f flat=%.3f spread=%.4f ov=%.4f bento=%d agx(slope=%.3f sp=%.2f tp=%.2f ev=[%.2f,%.2f]+%.2f sat=%.2f look=%d)",
                     clip, gmax, ae, geo, mean, p10, p50, p98, p995, nf, deficit, effS, effH, flat, spread, ovArea, bento ? 1 : 0,
                     slope, sp, tp, minEv, maxEv, ev, sat, look);
@@ -178,8 +182,10 @@ public final class ArkAe {
         r.nf = (float) nf;
         final double mxB = s.maxBoost, mnL = s.minLimit;
         double deficit = 1.0, ae;
+        final boolean hasNoiseModel = s.noiseS > 0 || s.noiseO > 0;
         if (meter > 1e-4) {                                                                  // 0x72c50
-            double target = (0.2857143 + 0.7142857 * Math.pow(nf, 0.6)) * s.aeTarget;          // 0x72c74-0x72ca4
+            // In AGC target is not lowered by ISO; protection against noise and dark overexposure is built on Noise-based Gain Clamp
+            double target = hasNoiseModel ? s.aeTarget : (0.2857143 + 0.7142857 * Math.pow(nf, 0.6)) * s.aeTarget;          // 0x72c74-0x72ca4
             ae = target / meter;                                                             // 0x72cb0
             double nd = s.nightDim;
             if (nd > 0.01 && Math.abs(nd - 1) > 0.001) ae = Math.pow(ae, nd);                  // 0x72cb4-0x72cd8
@@ -193,8 +199,23 @@ public final class ArkAe {
             aeF = Math.max(aeF, mnL);                                                          // 0x72d4c
             if (aeF < aeC && aeF > 0.001 && aeC > 0.001) deficit = aeC / aeF;                  // 0x72d60-0x72d74
             ae = Math.max(Math.min(mxB, aeF), mnL);                                            // 0x72da8-0x72dc4
+            // AGC Noise-based Gain Clamp: limit exposure multiplier by SNR of sensor noise model
+            if (hasNoiseModel) {
+                double sigmaMid = Math.sqrt(Math.max(0.5 * s.noiseS + s.noiseO, 1e-10));
+                double maxGainByNoise = Math.max(s.noiseMax / sigmaMid, 1.0);
+                r.maxGainByNoise = (float) maxGainByNoise;
+                if (ae > maxGainByNoise) {
+                    ae = maxGainByNoise;
+                }
+            }
+            if (ae > 9.0f) {
+                ae = 9.0f;
+            }
         } else {
             ae = Math.max(Math.min(mxB, 1.0), mnL);
+            if (ae > 9.0f) {
+                ae = 9.0f;
+            }
         }
         r.ae = (float) ae;
         r.deficit = (float) deficit;

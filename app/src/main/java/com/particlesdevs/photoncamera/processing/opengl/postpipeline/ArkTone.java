@@ -65,8 +65,10 @@ public final class ArkTone {
         s.maxBoost = value("ae_max_boost", 5.0f);
         s.minLimit = Math.min(value("ae_min_limit", 0.5f), s.maxBoost);
         s.hlOverflow = value("hl_overflow", 2.0f);
-        s.hlBlend = value("hl_blend", 0.33f);
-        s.nightThresh = value("night_thresh", 100f);
+        float nightVal = value("night_thresh", 0.05f);
+        if (nightVal >= 1.0f) nightVal = 0.05f; // migration of legacy ISO values (e.g. 100)
+        s.nightThresh = nightVal;
+        s.noiseMax = nightVal;
         s.nightDim = value("night_dim", 1.0f);
         s.facePriority = value("face_priority", 0.7f);
         s.metering = Math.round(value("metering", 0f));

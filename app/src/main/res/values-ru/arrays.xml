@@ -71,7 +71,8 @@
     </string-array>
     <string-array name="scam_hybrid_bento_frames_entries">
         <item>1 кадр</item>
-        <item>2 кадра (по умолчанию)</item>
+        <item>2 кадра</item>
+        <item>3 кадра (Mochi)</item>
     </string-array>
     <string-array name="scam_hybrid_sharp_mode_entries">
         <item>ARK: как ArkCam (по умолчанию)</item>

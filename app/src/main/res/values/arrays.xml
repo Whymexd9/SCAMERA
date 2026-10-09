@@ -181,11 +181,13 @@
     </string-array>
     <string-array name="scam_hybrid_bento_frames_entries">
         <item>1 frame</item>
-        <item>2 frames (default)</item>
+        <item>2 frames</item>
+        <item>3 frames (Mochi)</item>
     </string-array>
     <string-array name="scam_hybrid_bento_frames_values" translatable="false">
         <item>1</item>
         <item>2</item>
+        <item>3</item>
     </string-array>
     <string-array name="scam_hybrid_sharp_mode_entries">
         <item>ARK: as in ArkCam (default)</item>

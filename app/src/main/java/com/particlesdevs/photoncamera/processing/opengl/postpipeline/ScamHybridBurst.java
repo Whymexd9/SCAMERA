@@ -193,14 +193,15 @@ public final class ScamHybridBurst implements ScamTransport {
         normal.sort(Comparator.comparingLong(f -> -f.timestamp)); // newest first
         // P27 any resolution: above 16 MP the worker's working set grows with the frame, so N is capped by the memory available
         // now (DESIGN 5); the oldest N frames go first, as at the worker limit. At 16 MP or less nothing changes.
-        int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - 7;
+        final int reservedExtras = com.particlesdevs.photoncamera.capture.HybridPlan.bentoFrames() + 5;
+        int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
         String limitReason = "worker limit";
         final long available = (long) width * height > SABRE_2X_MAX_INPUT ? memoryAvailable() : -1;
         // RAW CA "every frame" (rawCa 2) keeps a corrected copy of every plain-Bayer frame in the worker.
         final boolean caCopies = PreferenceKeys.hybridValue("rawca_mode", 0f) >= 2f;
         final int budget = memoryFrameBudget(width, height, mosaicBlock, available, caCopies);
         if (budget != Integer.MAX_VALUE) {
-            final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(7, bracketed.size() + shorts.size()));
+            final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
             Log.i("SCAM_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
                     + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * width * height) / (1 << 20) + " MB, "
                     + (long) perFrameBytes(width, height, mosaicBlock, caCopies) / (1 << 20) + " MB per frame"
@@ -222,7 +223,7 @@ public final class ScamHybridBurst implements ScamTransport {
         final double ref = product(base);
         add(base, ROLE_NORMAL, ref, newest);
         // The worker holds at most WORKER_MAX_FRAMES frames (uniform arrays); the oldest N frames go first,
-        // two slots stay for the ultrashort frames and five for the bracketed ones.
+        // reserved slots stay for the ultrashort frames and the bracketed ones.
         int normals = 1;
         for (ImageFrame f : normal) {
             if (f == base) continue;
@@ -234,7 +235,7 @@ public final class ScamHybridBurst implements ScamTransport {
         int bracketedCount = 0;
         for (ImageFrame f : bracketed) {
             double r = product(f) / ref;
-            if (r < 1.5) {
+            if (r < 1.2) {
                 if (normalBand(r) && normals < normalLimit && add(f, ROLE_NORMAL, ref, newest)) {
                     normals++;
                     Log.w("SCAM_HDR", "hybrid: bracketed frame " + f.number + " at x" + (float) r + " of the base, merged as N");

@@ -17,7 +17,7 @@
     <string name="prefs_scam_hybrid_capture_category_title">Bento: ultra-short frame</string>
     <string name="prefs_scam_hybrid_bento_summary">%s. A frame with N/8 exposure replaces the overexposed areas of the base frame (mask: threshold 0.98, dilation 4, smoothing σ=1; skipped when the clipped area is small, with holes ≥15 cells, or if the frame itself is more than 62 %% clipped). Auto: taken when the ZSL frame has clipping.</string>
     <string name="prefs_scam_hybrid_bento_frames_title">Bento frames</string>
-    <string name="prefs_scam_hybrid_bento_frames_summary">%s. Inside the overexposure mask the light comes only from the ultra-short frames. One frame: noise ×8 from the gain and the Bayer grid of a single frame. A second frame at the same exposure halves the noise in the highlights and fills R/B gaps through hand shake; the cost is one more frame after the press (~30–50 ms) and ~25 MB of memory.</string>
+    <string name="prefs_scam_hybrid_bento_frames_summary">%s. Inside the overexposure mask the light comes only from the ultra-short frames. One frame: noise ×8 from the gain and the Bayer grid of a single frame. Two frames at the same exposure halve the noise in the highlights and fill R/B gaps through hand shake. Three frames provide the 3+ non-bracketed frames required for Mochi photometric merge.</string>
     <string name="prefs_scam_hybrid_bento_validate_title">Bento: frame check</string>
     <string name="prefs_scam_hybrid_bento_validate_summary">%s. The check (an ultra-short frame clearly darker than the base means motion) runs for each ultra-short frame: the frame weight in the mask follows its own validity, and the base comes back only where none of them fits. Mode 2 also counts as motion an unclipped base cell that the ultra-short frame shows clearly brighter (a hand moved off a lamp). Removes the dark silhouette of a hand in a lamp when the hand is not in every frame.</string>
     <string name="prefs_scam_hybrid_bento_motion_max_title">Bento: skip on motion, % of mask</string>
@@ -133,7 +133,7 @@
     <string name="prefs_scam_hybrid_bento_chroma_sigma_title">Bento: highlight edge colour, σ px</string>
     <string name="prefs_scam_hybrid_bento_chroma_sigma_summary">Inside the mask R and B are taken as G × the R/G, B/G ratios of the ultra-short frames on an isotropic kernel of this width (sensor px). With a narrow kernel R and B come from the nearest grid sample, and on a slanted clipped edge the colour changes in 2 px steps: an orange-blue dotted line. Default 2, 0: off (as before).</string>
     <string name="prefs_scam_hybrid_shasta_sharpness_title">Shasta: sharpness threshold</string>
-    <string name="prefs_scam_hybrid_shasta_sharpness_summary">A long frame with sharpness below this share of the base frame sharpness is dropped. Default 0.8. Lower allows more blur.</string>
+    <string name="prefs_scam_hybrid_shasta_sharpness_summary">A long frame with sharpness below this share of the base frame sharpness is dropped. Default 0.35. Lower allows more handheld frames without dropping.</string>
     <string name="prefs_scam_hybrid_shasta_max_ratio_title">Shasta: exposure ratio limit</string>
     <string name="prefs_scam_hybrid_shasta_max_ratio_summary">If a long frame is brighter than the base by more than this factor, long frames are not merged. Default 32.</string>
     <string name="prefs_scam_hybrid_merge_highlights_screen_title">Highlights and hot pixels</string>
@@ -365,8 +365,8 @@
     <string name="prefs_scam_hybrid_ark_hl_blend_summary">0: AE fully yields to highlight protection, 1: protection off. ArkCam: 0.33.</string>
     <string name="prefs_scam_hybrid_ark_night_dim_title">Night dimming (AE power)</string>
     <string name="prefs_scam_hybrid_ark_night_dim_summary">AE to the power x when x ≠ 1. ArkCam: 1.</string>
-    <string name="prefs_scam_hybrid_ark_night_thresh_title">Night protection base ISO</string>
-    <string name="prefs_scam_hybrid_ark_night_thresh_summary">Above this ISO (of the reference frame, that is the preview) the AE target smoothly drops to 0.29× at the sensor\'s maximum analog ISO, and the fusion does not lift the shadows (night factor). ArkCam: 100.</string>
+    <string name="prefs_scam_hybrid_ark_night_thresh_title">Noise-based gain clamp (AGC)</string>
+    <string name="prefs_scam_hybrid_ark_night_thresh_summary">%s. Physical noise-based gain clamp from AGC: tonemapping exposure multiplier is capped by the sensor noise model (SENSOR_NOISE_PROFILE) as max_gain = max(threshold / σ_mid, 1.0) and absolute max 9.0×. Prevents overexposure and noisy shadows in night shots. Default 0.05.</string>
     <string name="prefs_scam_hybrid_ark_input_ev_title">Input scale, EV</string>
     <string name="prefs_scam_hybrid_ark_input_ev_summary">One multiplier of the linear input before the statistics (2^EV): brings it to the G_CLEAN scale (Google ds_linear_rgb) that ArkCam AE works on. 0 by default: the Hybrid input (sensor white = 1) is already at this scale (measured: G_CLEAN = RAW × 0.85–0.96).</string>
     <string name="prefs_scam_hybrid_ark_smart_category_title">Smart HDR and local contrast</string>
