@@ -335,4 +335,91 @@ public class XiaomiTeleZoomTest {
         assertTrue("toward the command", XiaomiTeleZoom.movedToward(100f, 75f, 80f));
         assertFalse("jitter", XiaomiTeleZoom.movedToward(100f, 75f, 75.6f));
     }
+
+    /**
+     * P41b, the owner's stock capture 2026-10-09 (userZoomRatio -> opticalZoomTargetRatio of the HAL): 3.2 -> 3.40,
+     * 3.54 -> 3.68, 3.88 -> 3.96, 4.16 -> 4.19, 4.3 -> 4.30, 5.02 / 6.0 -> 4.30 (held, crop above).
+     */
+    @Test
+    public void theStockDialMapsToTheHalsOpticalTarget() {
+        float[][] stock = {{3.2f, 3.40f}, {3.54f, 3.68f}, {3.88f, 3.96f}, {4.16f, 4.19f}, {4.3f, 4.30f}, {5.02f, 4.30f}, {6.0f, 4.30f}};
+        for (float[] s : stock)
+            assertEquals("UI " + s[0], s[1], XiaomiTeleZoom.stockOpticalTarget(s[0], REAL, UI), 0.006f);
+    }
+
+    /** P41b: on the logical camera zoomRatio = userZoomRatio = the dial, the photo is cropped by what the tele's RAW lacks. */
+    @Test
+    public void theLogicalCameraGetsTheDialAndThePhotoTheRest() {
+        XiaomiTeleZoom.Plan p = XiaomiTeleZoom.planLogical(100f, Float.NaN, false, 100f);
+        assertTrue(p.logical);
+        assertEquals("the stock camera's 4.3", 4.30000019f, p.zoomRatio, E);
+        assertEquals(p.zoomRatio, p.userZoom, E);
+        assertEquals("the lens due at 100 mm: no crop", 1f, p.residual, E);
+        assertEquals(100f, p.rawMm, E);
+        // 75-100 mm: the HAL's optics, nothing left for the photo when the lens follows
+        for (float mm = 75f; mm <= 100f; mm += 5f) {
+            XiaomiTeleZoom.Plan o = XiaomiTeleZoom.planLogical(mm, mm, false, 100f);
+            assertEquals("at " + mm, 1f, o.residual, E);
+            assertEquals(mm / XiaomiTeleZoom.MM_PER_USER, o.zoomRatio, E);
+        }
+        // the lens pinned at 74.4 mm by the HAL (third-party pipeline): the photo crops the rest
+        XiaomiTeleZoom.Plan pinned = XiaomiTeleZoom.planLogical(100f, 74.4f, false, 100f);
+        assertEquals("clamped to the lens range", 75f, pinned.rawMm, E);
+        assertEquals(100f / 75f, pinned.residual, 1e-3f);
+        assertEquals("the request does not change", 4.30000019f, pinned.zoomRatio, E);
+        // above 100 mm: optics held, crop
+        XiaomiTeleZoom.Plan crop = XiaomiTeleZoom.planLogical(150f, 100f, false, 100f);
+        assertEquals(100f, crop.opticalMm, E);
+        assertEquals(1.5f, crop.residual, E);
+        // the HAL's mode 9 at ~8.5x (stock): the RAW frame is 2x the lens
+        XiaomiTeleZoom.Plan isz = XiaomiTeleZoom.planLogical(400f, 100f, true, 100f);
+        assertEquals(200f, isz.rawMm, E);
+        assertEquals(2f, isz.residual, E);
+        assertEquals("17.2x, inside ExtendedMaxZoom", 400f / XiaomiTeleZoom.MM_PER_USER, isz.zoomRatio, E);
+        XiaomiTeleZoom.Plan atIsz = XiaomiTeleZoom.planLogical(8.5f * XiaomiTeleZoom.MM_PER_USER, 100f, true, 100f);
+        assertEquals("the stock switch at 8.5x: never below 1", 1f, atIsz.residual, E);
+        // without ExtendedMaxZoom: the logical camera's 10x, the dial still in userZoomRatio
+        XiaomiTeleZoom.Plan limited = XiaomiTeleZoom.planLogical(300f, 100f, true, 10f);
+        assertEquals(10f, limited.zoomRatio, E);
+        assertEquals(300f / XiaomiTeleZoom.MM_PER_USER, limited.userZoom, E);
+        assertEquals("below the tele's widest: held at 75 mm", 75f, XiaomiTeleZoom.planLogical(50f, Float.NaN, false, 100f).mm, E);
+        // the RAW viewfinder crops the same as the photo there
+        assertEquals(pinned.residual, XiaomiTeleZoom.cropOf(pinned), E);
+    }
+
+    @Test
+    public void theLogicalCameraThatHoldsTheTeleIsPicked() {
+        java.util.Map<String, java.util.Set<String>> ids = new java.util.HashMap<>();
+        ids.put("5", new java.util.HashSet<>(java.util.Arrays.asList("3", "2", "4")));
+        ids.put("0", new java.util.HashSet<>(java.util.Arrays.asList("3", "2", "4")));
+        ids.put("6", new java.util.HashSet<>(java.util.Arrays.asList("2", "3")));
+        java.util.Set<String> smooth = new java.util.HashSet<>(java.util.Arrays.asList("0", "5", "6"));
+        assertEquals("the lowest id holding the tele", "0", XiaomiTeleZoom.pickLogical("4", ids, smooth));
+        assertNull("no logical camera holds camera 7", XiaomiTeleZoom.pickLogical("7", ids, smooth));
+        assertNull("without the smooth-transition optics", XiaomiTeleZoom.pickLogical("4", ids, new java.util.HashSet<>()));
+        assertEquals("5", XiaomiTeleZoom.pickLogical("4", ids, new java.util.HashSet<>(java.util.Collections.singletonList("5"))));
+        assertTrue(XiaomiTeleZoom.compareIds("2", "10") < 0);
+        // not this phone (unit test): never routed
+        assertNull(XiaomiTeleZoom.logicalRoute(null, "4", null, true));
+    }
+
+    @Test
+    public void aFailedLogicalSessionStepsDown() {
+        assertEquals("stock 0x9002 -> regular", 0, XiaomiTeleZoom.nextOperationMode(XiaomiTeleZoom.STOCK_OPERATION_MODE));
+        assertEquals("regular -> the tele alone", -1, XiaomiTeleZoom.nextOperationMode(0));
+        assertEquals(36866, XiaomiTeleZoom.STOCK_OPERATION_MODE);
+    }
+
+    @Test
+    public void theFollowVerdictOnTheLogicalCamera() {
+        assertEquals("follows", 1, XiaomiTeleZoom.logicalFollow(100f, 99f, 0));
+        assertEquals("pinned for FOLLOW_MS", -1, XiaomiTeleZoom.logicalFollow(100f, 74.4f, XiaomiTeleZoom.FOLLOW_MS));
+        assertEquals("pinned, not long enough", 0, XiaomiTeleZoom.logicalFollow(100f, 74.4f, 100));
+        assertEquals("at 75 mm nothing tells", 0, XiaomiTeleZoom.logicalFollow(77f, 74.4f, 10_000));
+        assertEquals("on the way", 0, XiaomiTeleZoom.logicalFollow(100f, 96f, 10_000));
+        assertEquals("no report", 0, XiaomiTeleZoom.logicalFollow(100f, Float.NaN, 10_000));
+        assertTrue(XiaomiTeleZoom.clamped(17.2f, 10f));
+        assertFalse(XiaomiTeleZoom.clamped(17.2f, 17.2f));
+        assertFalse(XiaomiTeleZoom.clamped(4.3f, null));
+    }
 }

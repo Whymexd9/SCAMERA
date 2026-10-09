@@ -66,6 +66,19 @@ import java.util.Locale;
  * the focal length as before) and logs it, and the request also names the HAL's own optical target
  * ({@code opticalZoomTargetRatio} for the commanded position; {@code xiaomi_opt_target 0} leaves it out): when the glass still
  * does not move, the follow check now sees it and the module crops instead (the right field of view at every zoom).
+ *
+ * <p>P41b, the owner's stock-camera capture (2026-10-09, research/xiaomi17u/STOCK_ZOOM_2026-10-09.md): the stock camera never
+ * opens the tele alone. It runs the logical SAT camera (physical 3, 2, 4) with zoomRatio = userZoomRatio = the dial's ratio
+ * (3.2-4.3 moves the glass, HAL target = 3.4 + (UI - 3.2) * 0.9 / 1.1; above 4.3 a crop; the HAL itself goes to the full-size
+ * mode 2 at ~7x and to the in-sensor zoom mode 9 at ~8.5x), session keys ExtendedMaxZoom = 1 and EnableInsensorZoom = 1,
+ * operation mode 0x9002. Third-party apps can open the same kind of logical camera (camera 0 on the 17U). So the tele module
+ * now opens through it ({@link #logicalRoute}): the viewfinder is the logical camera's stream (the HAL's own optics, crop and
+ * mode switches, as in the stock camera), the RAW stream stays the tele's physical stream, and the photo is cropped by what the
+ * RAW frame lacks against the HAL's reported lens position ({@link #planLogical}). No current_mode is sent there (the HAL
+ * switches the modes, as for the stock camera) and no package or clientName is claimed. When the logical camera refuses the
+ * session, the next attempt uses a regular session, then the tele alone as before ({@link #stepDownRoute}). Dev switches:
+ * {@code xiaomi_logical 0} (the tele alone), {@code xiaomi_opmode N} (operation mode N, 0 = regular),
+ * {@code xiaomi_tele_fallback 1} (the HAL may show the main camera in low light, as for the stock camera).
  */
 public final class XiaomiTeleZoom {
     private static final String TAG = "XiaomiTeleZoom";
@@ -122,13 +135,18 @@ public final class XiaomiTeleZoom {
         public final float opticalMm;
         /** Field of view of the RAW frame (mm): lens position x ISZ factor. */
         public final float rawMm;
+        /** P41b: a plan of the logical SAT camera (zoomRatio on the main camera's scale, the HAL moves the lens itself). */
+        public final boolean logical;
         Plan(float mm, float userZoom, float zoomRatio, float residual, boolean isz, float opticalMm, float rawMm) {
+            this(mm, userZoom, zoomRatio, residual, isz, opticalMm, rawMm, false);
+        }
+        Plan(float mm, float userZoom, float zoomRatio, float residual, boolean isz, float opticalMm, float rawMm, boolean logical) {
             this.mm = mm; this.userZoom = userZoom; this.zoomRatio = zoomRatio; this.residual = residual; this.isz = isz;
-            this.opticalMm = opticalMm; this.rawMm = rawMm;
+            this.opticalMm = opticalMm; this.rawMm = rawMm; this.logical = logical;
         }
         @Override public String toString() {
-            return String.format(Locale.ROOT, "%.1f mm: userZoom %.4f zoomRatio %.4f crop %.3f optics %.1f raw %.1f%s",
-                    mm, userZoom, zoomRatio, residual, opticalMm, rawMm, isz ? " ISZ" : "");
+            return String.format(Locale.ROOT, "%.1f mm: userZoom %.4f zoomRatio %.4f crop %.3f optics %.1f raw %.1f%s%s",
+                    mm, userZoom, zoomRatio, residual, opticalMm, rawMm, isz ? " ISZ" : "", logical ? " (logical camera)" : "");
         }
     }
 
@@ -269,6 +287,66 @@ public final class XiaomiTeleZoom {
         if (requested != isz) return false;
         if (resultMode != null) return (resultMode == ISZ_MODE) == isz;
         return matchingFrames >= BARRIER_BLIND_FRAMES;
+    }
+
+    // ---------------------------------------------------------------- P41b: the logical SAT camera (pure)
+
+    /** The stock dial's ratio of a focal length (main camera = 1): the stock camera's userZoomRatio and logical zoomRatio. */
+    static float dialRatio(float mm) {
+        return mm / MM_PER_USER;
+    }
+
+    /**
+     * The keys and the photo's crop on the logical SAT camera for {@code mm}, as the stock camera sends them: zoomRatio =
+     * userZoomRatio = the dial's ratio (zoomRatio at most {@code maxZoomRatio}, the camera's range); the HAL moves the lens over
+     * 75-100 mm and crops above. {@code lensMm}: the lens position the HAL reports (NaN: the position due for {@code mm}, the
+     * stock camera's map); {@code isz}: the HAL reports mode 9 (the RAW frame is the centre half of the field). The photo is
+     * cropped by what the tele's RAW frame lacks.
+     */
+    static Plan planLogical(float mm, float lensMm, boolean isz, float maxZoomRatio) {
+        mm = clamp(mm, OPT_MIN, MAX_MM);
+        final float optical = clamp(mm, OPT_MIN, OPT_MAX);
+        final float lens = Float.isNaN(lensMm) ? optical : clamp(lensMm, OPT_MIN, OPT_MAX);
+        final float factor = isz ? 2f : 1f;
+        final float dial = dialRatio(mm);
+        final float zoomRatio = maxZoomRatio > 0f ? Math.min(dial, maxZoomRatio) : dial;
+        return new Plan(mm, dial, zoomRatio, Math.max(1f, mm / (lens * factor)), isz, optical, lens * factor, true);
+    }
+
+    /** The HAL's optical target for a dial ratio as the stock dumps show it (3.2 -> 3.4, 4.3 -> 4.3, held above). */
+    static float stockOpticalTarget(float dial, float[] real, float[] ui) {
+        return halRatioOf(dial * MM_PER_USER, real, ui);
+    }
+
+    /** The HAL reports a zoomRatio more than 1 % under the request: it clamps, the viewfinder is wider than the photo there. */
+    static boolean clamped(float requested, Float reported) {
+        return reported != null && reported < requested * 0.99f;
+    }
+
+    /**
+     * The logical camera ({@code physicalIds}: camera id -> its physical cameras) that holds the tele {@code physicalId} and
+     * lists the smooth-transition optics ({@code smooth}); the lowest id when several do, null when none.
+     */
+    static String pickLogical(String physicalId, java.util.Map<String, java.util.Set<String>> physicalIds, java.util.Set<String> smooth) {
+        String best = null;
+        for (java.util.Map.Entry<String, java.util.Set<String>> e : physicalIds.entrySet()) {
+            if (e.getValue() == null || !e.getValue().contains(physicalId) || !smooth.contains(e.getKey())) continue;
+            if (best == null || compareIds(e.getKey(), best) < 0) best = e.getKey();
+        }
+        return best;
+    }
+
+    static int compareIds(String a, String b) {
+        try {
+            return Integer.compare(Integer.parseInt(a), Integer.parseInt(b));
+        } catch (NumberFormatException e) {
+            return a.compareTo(b);
+        }
+    }
+
+    /** The operation mode after a failed logical session in {@code failed}: a regular session (0), then none (-1 = the tele alone). */
+    static int nextOperationMode(int failed) {
+        return failed != 0 ? 0 : -1;
     }
 
     /** Stock-like zoom marks on the ruler for the tele at {@code teleRatio}: 100 mm (4.3×), 200 mm (8.6×), 400 mm (17.2×). */
@@ -439,9 +517,10 @@ public final class XiaomiTeleZoom {
     public static boolean active() { return last != null; }
     /**
      * P41: outside ISZ the preview is the ISP's; in ISZ (mode 9) the HAL's preview is the raw colour mosaic (purple on the
-     * owner's 17U), so the developed RAW viewfinder takes over there.
+     * owner's 17U), so the developed RAW viewfinder takes over there. P41b: on the logical camera the ISP preview throughout
+     * (the stock camera shows the HAL's mode-9 preview).
      */
-    public static boolean ispPreview() { return last != null && !isz; }
+    public static boolean ispPreview() { return last != null && (routed || !isz); }
 
     /**
      * Crop the HAL applies to the preview on top of the RAW frame's field of view (zoomRatio relative to the optics
@@ -452,7 +531,10 @@ public final class XiaomiTeleZoom {
     }
 
     static float cropOf(Plan p) {
-        return p == null ? 1f : Math.max(1f, p.zoomRatio * MM_PER_RATIO / (p.userZoom * MM_PER_USER));
+        if (p == null) return 1f;
+        // P41b: the tele's physical RAW frame is not cropped by the logical camera's zoom: what it lacks is the photo's crop
+        if (p.logical) return p.residual;
+        return Math.max(1f, p.zoomRatio * MM_PER_RATIO / (p.userZoom * MM_PER_USER));
     }
     static void reset() {
         isz = false; last = null; lastToggleMs = 0; lastTraceMs = 0; teleRatio = 0f;
@@ -464,10 +546,21 @@ public final class XiaomiTeleZoom {
         halReport = true; halTarget = true; realRange = REAL_RANGE; uiRange = UI_RANGE; targetKeyOk = null;
         loggedOptLens = Float.NaN; loggedOptTarget = Float.NaN; loggedOptState = Integer.MIN_VALUE;
         opticsMissingLogged = false; thirdPartyLogged = false;
+        routeDisabled = false; routeOpMode = Integer.MIN_VALUE; searchedFor = null; foundLogical = null; logicalMaxZoom = LOGICAL_MAX;
+        routed = false; extendedZoom = false; teleFallback = false;
+        routedLensMm = Float.NaN; routedMode = null; clampLogged = false; followLogged = false; logicalFarSinceMs = 0;
     }
 
     /** A new camera session: the ISZ state of the previous one does not carry over (its first request sets the mode). */
     public static void startSession() {
+        startSession(false, false);
+    }
+
+    /**
+     * A new camera session; {@code logical}: it runs on the logical SAT camera ({@link #logicalRoute}), {@code allowTeleFallback}:
+     * the HAL may show the main camera there in low light (dev switch {@code xiaomi_tele_fallback 1}).
+     */
+    public static void startSession(boolean logical, boolean allowTeleFallback) {
         isz = false;
         iszUsed = false;
         last = null;
@@ -479,6 +572,162 @@ public final class XiaomiTeleZoom {
         loggedOptTarget = Float.NaN;
         loggedOptState = Integer.MIN_VALUE;
         thirdPartyLogged = false;
+        routed = logical;
+        teleFallback = allowTeleFallback;
+        // the logical session's parameters carry ExtendedMaxZoom (applySessionKeys clears this when the key is refused)
+        extendedZoom = logical;
+        routedLensMm = Float.NaN;
+        routedMode = null;
+        clampLogged = false;
+        followLogged = false;
+        logicalFarSinceMs = 0;
+    }
+
+    // ---------------------------------------------------------------- P41b: the logical SAT camera route
+
+    static final String KEY_EXT_MAX_ZOOM = "org.codeaurora.qcamera3.sessionParameters.ExtendedMaxZoom";
+    static final String KEY_ISZ_SESSION = "org.codeaurora.qcamera3.sessionParameters.EnableInsensorZoom";
+    static final String KEY_TELE_FALLBACK_OFF = "com.xiaomi.teleFallback.isDisable";
+    /** The stock camera's operation mode on the logical camera (its dumpsys: CUSTOM 36866). */
+    public static final int STOCK_OPERATION_MODE = 0x9002;
+    /** The logical camera's zoomRatio range ends here without ExtendedMaxZoom (17U camera 0: 0.6-10). */
+    static final float LOGICAL_MAX = 10f;
+    /** The 17U HAL's zoomRatio limit with ExtendedMaxZoom (platformCapabilities.ExtendedMaxZoom = 100); the dial ends at 17.2. */
+    static final float EXTENDED_MAX = 100f;
+    private static final CaptureRequest.Key<Integer> EXT_MAX_ZOOM = new CaptureRequest.Key<>(KEY_EXT_MAX_ZOOM, Integer.class);
+    private static final CaptureRequest.Key<Integer> ISZ_SESSION = new CaptureRequest.Key<>(KEY_ISZ_SESSION, Integer.class);
+    private static final CaptureRequest.Key<Byte> TELE_FALLBACK_OFF = new CaptureRequest.Key<>(KEY_TELE_FALLBACK_OFF, Byte.class);
+
+    /** The route failed in this process: the tele opens alone (crop mode as before). */
+    private static volatile boolean routeDisabled;
+    /** Operation mode of the logical session; MIN_VALUE until the first session picks it from the dev switch. */
+    private static volatile int routeOpMode = Integer.MIN_VALUE;
+    private static String searchedFor, foundLogical;
+    private static volatile float logicalMaxZoom = LOGICAL_MAX;
+    /** The session runs on the logical camera; its session parameters carried ExtendedMaxZoom; tele fallback allowed. */
+    private static volatile boolean routed, extendedZoom, teleFallback;
+    /** Lens position (mm) the HAL reports on the logical camera in this session, and the sensor mode it reports. */
+    private static volatile float routedLensMm = Float.NaN;
+    private static volatile Integer routedMode;
+    private static boolean clampLogged, followLogged;
+    private static long logicalFarSinceMs;
+
+    /** The current session runs on the logical SAT camera. */
+    public static boolean routed() { return routed && last != null; }
+
+    /**
+     * P41b: the logical camera to open for the tele {@code physicalId} (the HAL's own optics and preview, as for the stock
+     * camera), or null: another phone, the switch or {@code devOn} ({@code xiaomi_logical}) off, the route failed earlier in this
+     * process, not the tele, no logical camera holds it.
+     */
+    public static String logicalRoute(android.hardware.camera2.CameraManager m, String physicalId, CameraCharacteristics physical, boolean devOn) {
+        if (!devOn || routeDisabled || m == null || physicalId == null || physicalId.isEmpty() || Build.VERSION.SDK_INT < 28
+                || !enabled() || !teleModule(physical)) return null;
+        synchronized (XiaomiTeleZoom.class) {
+            if (physicalId.equals(searchedFor)) return foundLogical;
+            searchedFor = physicalId;
+            foundLogical = null;
+            java.util.Map<String, java.util.Set<String>> ids = new java.util.TreeMap<>();
+            java.util.Set<String> smooth = new java.util.TreeSet<>();
+            java.util.Map<String, Float> top = new java.util.HashMap<>();
+            try {
+                for (String id : m.getCameraIdList()) {
+                    try {
+                        CameraCharacteristics c = m.getCameraCharacteristics(id);
+                        java.util.Set<String> physicals = c.getPhysicalCameraIds();
+                        if (physicals == null || physicals.isEmpty()) continue;
+                        ids.put(id, physicals);
+                        if (floats(c, KEY_REAL_RANGE) != null) smooth.add(id);
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            android.util.Range<Float> range = c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+                            if (range != null) top.put(id, range.getUpper());
+                        }
+                    } catch (android.hardware.camera2.CameraAccessException | RuntimeException e) {
+                        Log.w(TAG, "logical route: camera " + id + " unreadable: " + e.getMessage());
+                    }
+                }
+            } catch (android.hardware.camera2.CameraAccessException | RuntimeException e) {
+                Log.w(TAG, "logical route: no camera list: " + e.getMessage());
+            }
+            foundLogical = pickLogical(physicalId, ids, smooth);
+            if (foundLogical != null) {
+                Float upper = top.get(foundLogical);
+                logicalMaxZoom = upper != null && upper > 1f ? upper : LOGICAL_MAX;
+            }
+            Log.i(TAG, "logical cameras " + ids + ", with smooth-transition optics " + smooth + ": " + (foundLogical == null
+                    ? "none holds the tele " + physicalId + ", it opens alone"
+                    : "the tele " + physicalId + " opens through logical camera " + foundLogical + " (zoomRatio up to " + logicalMaxZoom + ")"));
+            return foundLogical;
+        }
+    }
+
+    /** Operation mode of the logical session: the dev switch's ({@code xiaomi_opmode}, stock 0x9002) until a failure stepped down. */
+    public static int operationMode(int devMode) {
+        if (routeOpMode == Integer.MIN_VALUE) routeOpMode = Math.max(0, devMode);
+        return routeOpMode;
+    }
+
+    /**
+     * P41b: the logical session failed ({@code reason}: configuration, preview stall). Returns true when the logical camera is
+     * tried again with a regular session, false when the tele opens alone for the rest of this process.
+     */
+    public static boolean stepDownRoute(String reason) {
+        final int failed = routeOpMode == Integer.MIN_VALUE ? 0 : routeOpMode;
+        final int next = nextOperationMode(failed);
+        if (next >= 0) {
+            routeOpMode = next;
+            Log.w(TAG, "logical camera session failed (" + reason + ") with operation mode 0x" + Integer.toHexString(failed)
+                    + ": a regular session next");
+            return true;
+        }
+        disableRoute(reason);
+        return false;
+    }
+
+    /** P41b: the logical camera does not open or run for this app: the tele alone from now on (this process). */
+    public static void disableRoute(String reason) {
+        routeDisabled = true;
+        Log.w(TAG, "logical camera route off (" + reason + "): the tele opens alone for the rest of this process (crop mode as before)");
+    }
+
+    /**
+     * P41b: the stock camera's session keys of the logical camera: ExtendedMaxZoom (zoomRatio past 10) and EnableInsensorZoom
+     * (the HAL's mode 9), and teleFallback.isDisable unless allowed (the RAW stream is the tele's: the viewfinder must not show
+     * the main camera). Returns the keys set, for the log.
+     */
+    public static String applySessionKeys(CaptureRequest.Builder b) {
+        StringBuilder s = new StringBuilder();
+        extendedZoom = trySet(b, EXT_MAX_ZOOM, 1);
+        if (extendedZoom) s.append("ExtendedMaxZoom=1 ");
+        if (trySet(b, ISZ_SESSION, 1)) s.append("EnableInsensorZoom=1 ");
+        if (!teleFallback && trySet(b, TELE_FALLBACK_OFF, (byte) 1)) s.append("teleFallback.isDisable=1");
+        return s.toString().trim();
+    }
+
+    private static <T> boolean trySet(CaptureRequest.Builder b, CaptureRequest.Key<T> key, T value) {
+        if (b == null) return false;
+        try {
+            b.set(key, value);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** The logical camera's keys of a plan: the stock camera's zoomRatio = userZoomRatio, no sensor mode (the HAL's choice). */
+    private static void setLogical(CaptureRequest.Builder b, Plan p) {
+        b.set(USER_ZOOM, p.userZoom);
+        b.set(CaptureRequest.CONTROL_ZOOM_RATIO, p.zoomRatio);
+        b.set(SENSOR_MODE, null);
+        // the session keys again with the session's values, as in the stock camera's requests (a different value in a request
+        // would make the framework reconfigure the session)
+        if (extendedZoom) trySet(b, EXT_MAX_ZOOM, 1);
+        trySet(b, ISZ_SESSION, 1);
+        if (!teleFallback) trySet(b, TELE_FALLBACK_OFF, (byte) 1);
+    }
+
+    private static float logicalLimit() {
+        return extendedZoom ? EXTENDED_MAX : logicalMaxZoom;
     }
 
     private static float[] floats(CameraCharacteristics c, String name) {
@@ -571,6 +820,23 @@ public final class XiaomiTeleZoom {
         teleRatio = moduleZoom;
         final long now = android.os.SystemClock.elapsedRealtime();
         final float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
+        if (routed) {
+            // P41b: the HAL drives the lens and the sensor mode from zoomRatio, as for the stock camera; the RAW frame's crop
+            // follows the lens position and mode it reports
+            final Integer mode = routedMode;
+            final Plan p = planLogical(mm, routedLensMm, mode != null && mode == ISZ_MODE, logicalLimit());
+            setLogical(b, p);
+            final boolean changed = last != null && p.isz != isz;
+            if (changed) lastToggleMs = now;
+            isz = p.isz;
+            last = p;
+            if (changed) Log.i(TAG, "the HAL " + (p.isz ? "entered" : "left") + " the in-sensor zoom (mode 9) at " + p);
+            else if (now - lastTraceMs >= 300) {
+                lastTraceMs = now;
+                Log.d(TAG, "zoom " + p + (Float.isNaN(routedLensMm) ? "" : String.format(Locale.ROOT, " lens %.1f mm (HAL)", routedLensMm)));
+            }
+            return p;
+        }
         final boolean nextIsz = iszEnabled && nextIsz(mm, isz, last == null ? Long.MAX_VALUE : now - lastToggleMs);
         // forced crop mode: the lens stands at 75 mm (its reported position follows the claim, so it is not read back)
         final float fixed = forceCrop ? OPT_MIN : lensFixed && lensCheck
@@ -598,7 +864,7 @@ public final class XiaomiTeleZoom {
     /** True when the ISZ state wanted for the current zoom differs from the one applied (a toggle waits for the debounce). */
     public static boolean togglePending(float moduleZoom, float zoom) {
         Plan p = last;
-        if (p == null || moduleZoom <= 0f) return false;
+        if (p == null || p.logical || moduleZoom <= 0f) return false;
         float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
         return (iszEnabled && nextIsz(mm, isz)) != isz;
     }
@@ -680,6 +946,16 @@ public final class XiaomiTeleZoom {
         if (b == null || p == null) return false;
         try {
             Integer before = b.get(SENSOR_MODE);
+            if (p.logical) {
+                // P41b: the zoom limit is known once the session keys are set (ExtendedMaxZoom refused: 10)
+                if (p.zoomRatio > logicalLimit()) last = p = planLogical(p.mm, routedLensMm, p.isz, logicalLimit());
+                if (before != null && !tunableWarned) {
+                    tunableWarned = true;
+                    Log.w(TAG, "module tunable current_mode=" + before + " not sent on the logical camera: the HAL switches the modes");
+                }
+                setLogical(b, p);
+                return true;
+            }
             Integer planned = modeFor(p.isz, iszUsed, normalMode);
             if (before != null && !before.equals(planned) && !tunableWarned) {
                 tunableWarned = true;
@@ -714,11 +990,14 @@ public final class XiaomiTeleZoom {
     /** {@link #frameReady} for a captured frame. */
     public static boolean frameReady(CaptureResult r, int framesSinceChange, int matchingFrames) {
         if (r == null) return framesSinceChange >= BARRIER_MAX_FRAMES;
+        // P41b: on the logical camera the HAL switched the mode by itself (nothing requested): its report decides
+        if (routed) return frameReady(isz ? Integer.valueOf(ISZ_MODE) : null, resultMode(r), isz, framesSinceChange, matchingFrames);
         return frameReady(requestMode(r), resultMode(r), isz, framesSinceChange, matchingFrames);
     }
 
     /** True when the frame's request asked for the mode now applied (counts the frames of the blind barrier). */
     public static boolean requestMatches(CaptureResult r) {
+        if (r != null && routed) return true;
         return r != null && Integer.valueOf(ISZ_MODE).equals(requestMode(r)) == isz;
     }
 
@@ -736,6 +1015,7 @@ public final class XiaomiTeleZoom {
     public static boolean onResult(CaptureResult r, CaptureResult lensResult, boolean lensCheck) {
         Plan p = last;
         if (p == null || r == null) return false;
+        if (p.logical) return onLogicalResult(r, lensResult == null ? r : lensResult, p);
         if (lensResult == null) lensResult = r;
         long now = android.os.SystemClock.elapsedRealtime();
         Integer mode = resultMode(r);
@@ -802,6 +1082,77 @@ public final class XiaomiTeleZoom {
         return false;
     }
 
+    /**
+     * Whether the lens follows the HAL's own command on the logical camera: 1 = it stands within 2 mm of the position due for
+     * the zoom ({@code dueMm}), -1 = more than 5 mm off for {@link #FOLLOW_MS} with the zoom inside the optical range, 0 = not
+     * decided yet. Only zooms more than 5 mm past 75 mm count (at 75 mm a pinned lens looks the same as a moving one).
+     */
+    static int logicalFollow(float dueMm, float lensMm, long farForMs) {
+        if (Float.isNaN(lensMm) || dueMm <= OPT_MIN + 5f) return 0;
+        if (Math.abs(dueMm - lensMm) <= 2f) return 1;
+        return Math.abs(dueMm - lensMm) > 5f && farForMs >= FOLLOW_MS ? -1 : 0;
+    }
+
+    /**
+     * P41b: a preview result on the logical camera. The HAL's optical report gives the lens position (the photo's crop follows
+     * it: {@link #last} and the residual are updated in place, the request stays), its sensor mode report the in-sensor zoom
+     * (returns true then: the keys are applied again and the RAW stream waits for the new mode). Logged once: whether the lens
+     * follows for this app, whether the HAL clamps the zoomRatio.
+     */
+    private static boolean onLogicalResult(CaptureResult r, CaptureResult lensResult, Plan p) {
+        final long now = android.os.SystemClock.elapsedRealtime();
+        boolean again = false;
+        Integer mode = intOf(lensResult, r, RESULT_MODE);
+        if (mode != null && !mode.equals(routedMode)) {
+            final boolean wasIsz = routedMode != null && routedMode == ISZ_MODE;
+            routedMode = mode;
+            Log.i(TAG, "sensor mode reported " + mode + " on the logical camera (the HAL's choice, none requested)"
+                    + (mode == ISZ_MODE ? ": in-sensor zoom, the RAW frame is the centre half of the field" : ""));
+            again = (mode == ISZ_MODE) != wasIsz;
+        }
+        logThirdParty(r);
+        final Float current = floatOf(lensResult, r, OPT_CURRENT);
+        logOptics(lensResult, r, current, p);
+        final float lens = current == null ? Float.NaN : opticalMmOf(current, realRange, uiRange);
+        if (!Float.isNaN(lens)) {
+            if (Float.isNaN(routedLensMm) || Math.abs(lens - routedLensMm) >= 0.5f) {
+                routedLensMm = lens;
+                if (!again) {
+                    // the request does not change with the lens: only the photo's crop (and the RAW viewfinder's) follows it
+                    Plan np = planLogical(p.mm, lens, p.isz, logicalLimit());
+                    last = np;
+                    com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(np.residual);
+                }
+            }
+            if (!followLogged) {
+                if (Math.abs(p.opticalMm - lens) > 5f) {
+                    if (logicalFarSinceMs == 0) logicalFarSinceMs = now;
+                } else logicalFarSinceMs = 0;
+                int verdict = logicalFollow(p.opticalMm, lens, logicalFarSinceMs == 0 ? 0 : now - logicalFarSinceMs);
+                if (verdict != 0) {
+                    followLogged = true;
+                    Log.i(TAG, String.format(Locale.ROOT, verdict > 0
+                            ? "the lens follows on the logical camera: %.1f mm for %.1f mm (optical zoom works for this app)"
+                            : "the lens stays at %.1f mm for %.1f mm on the logical camera too: the HAL keeps its optics from this"
+                            + " app; the photo is cropped from the lens position", lens, p.opticalMm));
+                }
+            }
+        } else if (!opticsMissingLogged) {
+            opticsMissingLogged = true;
+            Log.i(TAG, "logical camera: no com.xiaomi.optical.zoom report, the photo's crop assumes the stock lens map");
+        }
+        if (!clampLogged && Build.VERSION.SDK_INT >= 30) {
+            Float reported = null;
+            try { reported = r.get(CaptureResult.CONTROL_ZOOM_RATIO); } catch (RuntimeException ignored) { /* none */ }
+            if (clamped(p.zoomRatio, reported)) {
+                clampLogged = true;
+                Log.w(TAG, String.format(Locale.ROOT, "the HAL clamps zoomRatio to %.3f (asked %.3f): past it the viewfinder is wider"
+                        + " than the photo", reported, p.zoomRatio));
+            }
+        }
+        return again;
+    }
+
     private static Float floatOf(CaptureResult lensResult, CaptureResult r, CaptureResult.Key<Float> key) {
         Float v = null;
         try { v = lensResult.get(key); } catch (RuntimeException ignored) { /* not this HAL's tag */ }
@@ -847,10 +1198,11 @@ public final class XiaomiTeleZoom {
         loggedOptLens = lens;
         loggedOptTarget = tgt;
         loggedOptState = st;
-        float claimed = p.userZoom * MM_PER_USER;
+        float claimed = p.logical ? p.opticalMm : p.userZoom * MM_PER_USER;
         Log.i(TAG, String.format(Locale.ROOT, "optics (HAL): current %.3f = lens %.1f mm, target %.3f = %.1f mm, state %d; commanded %.1f mm"
                         + " (HAL %.3f%s)%s", current == null ? Float.NaN : current, lens, tgt, opticalMmOf(tgt, realRange, uiRange), st,
-                claimed, halRatioOf(claimed, realRange, uiRange), halTarget && Boolean.TRUE.equals(targetKeyOk) ? ", sent as target" : "",
-                lensFixed ? " crop mode" : ""));
+                claimed, halRatioOf(claimed, realRange, uiRange),
+                p.logical ? ", due by the stock map on the logical camera" : halTarget && Boolean.TRUE.equals(targetKeyOk) ? ", sent as target" : "",
+                lensFixed && !p.logical ? " crop mode" : ""));
     }
 }

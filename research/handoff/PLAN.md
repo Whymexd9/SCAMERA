@@ -1482,6 +1482,13 @@ The settings live in different places now; the curated groups use these keys.
   and the SCAM HDR screen / route choice are hidden (replaces the MediaTek-only lock). Tests emulate SM8750; new test for the
   fallback. Work focus: the hybrid only.
 
+- 2026-10-09 owner sent `x17u_stock (2).zip` (stock camera capture: 0.6-30x zoom steps, logcat 163 MB, getprop, dumps).
+  Stock opens SAT logical camera 5 with op mode 0x9002 (36866), session keys ExtendedMaxZoom=1, EnableInsensorZoom=1,
+  teleFallback.isDisable=0, zoomRatio = userZoomRatio = dial ratio (3.2-4.3 moves glass, above 4.3 crop; HAL switches mode 2
+  at ~7x and mode 9 at ~8.5x). Implemented P41b: tele opens through logical SAT camera 0, session keys and op mode matched to stock,
+  logical preview (HAL controls optics and modes) with physical RAW on camera 4, automatic step-down ladder (0x9002 -> 0 -> camera 4 alone).
+  Photo crop is residual from HAL reported lens position. Report: `research/xiaomi17u/STOCK_ZOOM_2026-10-09.md`.
+
 ---
 ## Status 2026-10-08 (pushed main 9bf9ea8)
 - P33 speed wave 2 done (bit-exact on all replay bursts; plain Bayer worker ~2.2 -> 1.7 s; module-open prewarm at low priority, off the camera thread).

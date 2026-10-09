@@ -822,6 +822,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             cameraDevice.close();
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            if (mXiaomiRouted) {
+                // P41b: the logical camera failed for this app: the tele alone from now on
+                mXiaomiRouted = false;
+                XiaomiTeleZoom.disableRoute("logical camera error " + error);
+                scheduleRecovery("Xiaomi logical camera error " + error);
+                return;
+            }
             if (revertToLastGoodCamera("error " + error)) return;
             if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
                 showToast(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
@@ -992,7 +999,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Log.d(TAG, "ID:" + mCameraCharacteristicsMap.get(physicalID));
         CameraCharacteristics chars = mCameraCharacteristicsMap.get(physicalID);
         if (chars == null) chars = characteristicsOnDemand(physicalID);
-        if (chars != null) return chars;
+        if (chars != null) {
+            routeXiaomiTele();
+            return chars;
+        }
         String requestedSlot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
         int wanted = com.particlesdevs.photoncamera.settings.ModuleChoice.wantedFacing(requestedSlot, null);
         String side = com.particlesdevs.photoncamera.settings.ModuleChoice.side(wanted);
@@ -1028,6 +1038,60 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         logicalID = fallback;
         physicalID = fallback;
         return mCameraCharacteristicsMap.get(fallback);
+    }
+
+    /** P41b: this camera runs through the logical SAT camera of the Xiaomi 17 Ultra (see {@link #routeXiaomiTele}). */
+    private volatile boolean mXiaomiRouted;
+
+    /**
+     * P41b (the owner's 17U stock capture, 2026-10-09): the tele opens through the logical SAT camera that holds it, as the stock
+     * camera does ({@link XiaomiTeleZoom#logicalRoute}). logicalID becomes that camera, physicalID stays the tele (its RAW
+     * stream and characteristics); Settings.mCameraID is not changed. A "logical-physical" ID chosen by the user stays as it is.
+     */
+    private void routeXiaomiTele() {
+        mXiaomiRouted = false;
+        if (!Objects.equals(logicalID, physicalID)) return;
+        try {
+            String logical = XiaomiTeleZoom.logicalRoute(mCameraManager, physicalID, mCameraCharacteristicsMap.get(physicalID),
+                    PreferenceKeys.scamDevSwitch("xiaomi_logical", true));
+            if (logical != null && !logical.equals(physicalID)) {
+                logicalID = logical;
+                mXiaomiRouted = true;
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Xiaomi logical route: " + e.getMessage());
+        }
+    }
+
+    /** P41b: the logical camera did not open: the tele opens alone (the route is off for this process). */
+    private boolean retryWithoutXiaomiRoute(int width, int height, Exception e) {
+        final Handler handler = mBackgroundHandler;
+        if (!mXiaomiRouted || handler == null) return false;
+        mXiaomiRouted = false;
+        XiaomiTeleZoom.disableRoute("logical camera " + logicalID + " does not open: " + e.getMessage());
+        handler.post(() -> openCamera(width, height));
+        return true;
+    }
+
+    /** P41b: the logical camera refused the session or stalled: a regular session on it, then the tele alone. */
+    private boolean retryXiaomiRoute(CameraCaptureSession session, String reason) {
+        if (!mXiaomiRouted) return false;
+        final boolean again = XiaomiTeleZoom.stepDownRoute(reason);
+        try { if (session != null) session.close(); } catch (Exception ignored) {}
+        if (again) {
+            final CameraDevice device = mCameraDevice;
+            final Handler handler = mBackgroundHandler;
+            if (device == null || handler == null) return false;
+            handler.post(() -> {
+                if (!isCameraResumed || mCameraDevice != device) return;
+                createCameraPreviewSession(false);
+            });
+        } else {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (isCameraResumed) restartCamera();
+            });
+        }
+        return true;
     }
 
     /** Asks the camera service for a camera the start-up list did not have; null when it does not know it either. */
@@ -1416,6 +1480,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 logicalID = curID;
                 physicalID = logicalID;
             }
+            routeXiaomiTele();
             
             UpdateCameraCharacteristics(physicalID);
             //Thread thr = new Thread(mImageSaver);
@@ -1869,6 +1934,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w(TAG, "PREVIEW_STALL: " + mStallRestarts + " restarts brought no frame, leaving the camera as it is");
             return;
         }
+        // P41b: a stalled logical session steps down (a regular session, then the tele alone) before the restart
+        if (mXiaomiRouted) XiaomiTeleZoom.stepDownRoute("preview stall, no frame for " + noFrame + " ms");
         mStallRestarts++;
         mPreviewSessionStartMs = 0;
         handler.removeCallbacks(mStallCheck);
@@ -2098,6 +2165,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     physicalID = ids[1];
                     //isDualSession = true;
                 }
+                routeXiaomiTele();
+                if (mXiaomiRouted) Log.i(TAG, "camera " + physicalID + " opens through logical camera " + logicalID + " (P41b)");
 
                 // The retry budget belongs to one camera: switching modules during a provider restart used it up for the next one.
                 if (!logicalID.equals(mOpenRetryId)) { mOpenRetryId = logicalID; mOpenRetries = 0; }
@@ -2109,6 +2178,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // the next open waited 1 s and failed with "Time out waiting to lock camera opening").
                 mCameraOpenCloseLock.release();
                 Log.e(TAG, Log.getStackTraceString(e));
+                if (retryWithoutXiaomiRoute(width, height, e)) return;
                 // CAMERA_ERROR / CAMERA_DISCONNECTED while the provider restarts: the same retry as an unknown device.
                 if (e.getReason() == CameraAccessException.CAMERA_ERROR || e.getReason() == CameraAccessException.CAMERA_DISCONNECTED)
                     retryOpen(width, height, e);
@@ -2118,6 +2188,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // taking the app down with the HAL.
                 mCameraOpening.set(false);
                 mCameraOpenCloseLock.release();
+                if (retryWithoutXiaomiRoute(width, height, e)) return;
                 retryOpen(width, height, e);
             } catch (InterruptedException e) {
                 mCameraOpening.set(false);
@@ -2454,7 +2525,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (mMosaicPreview) LiveRawFrame.setEnabled(true);
             LiveRawFrame.setMosaicPreview(mMosaicPreview);
             mModeBarrier = false;
-            XiaomiTeleZoom.startSession();
+            final boolean xiaomiLogical = mXiaomiRouted && !Objects.equals(physicalID, logicalID);
+            XiaomiTeleZoom.startSession(xiaomiLogical, PreferenceKeys.scamDevSwitch("xiaomi_tele_fallback", false));
             setCaptureRequestBuilder();
             if (mMosaicPreview && XiaomiTeleZoom.ispPreview()) {
                 // P41: the switch owns the tele's sensor mode (a module's tunable current_mode is overridden): ISP preview
@@ -2467,13 +2539,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             List<Surface> surfaces = configureSurfaces(isBurstSession);
             Log.d(TAG, "createCameraPreviewSession() surfaces:" + Arrays.toString(surfaces.toArray()));
             ArrayList<OutputConfiguration> outputConfigurations = new ArrayList<>();
+            final Surface rawSurface = mImageReaderRaw == null ? null : mImageReaderRaw.getSurface();
+            final Surface yuvSurface = mImageReaderPreview == null ? null : mImageReaderPreview.getSurface();
             for (Surface surfacei : surfaces) {
                 var config = new OutputConfiguration(surfacei);
-                if(!Objects.equals(physicalID, logicalID) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
+                // P41b: on the Xiaomi logical camera the viewfinder (and a recording) is the logical camera's stream, zoomed and
+                // switched by the HAL as for the stock camera; the image readers stay the tele's physical streams
+                final boolean logicalStream = xiaomiLogical && surfacei != rawSurface && surfacei != yuvSurface;
+                if(!Objects.equals(physicalID, logicalID) && !logicalStream && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
                     config.setPhysicalCameraId(physicalID);
                 }
                 outputConfigurations.add(config);
             }
+            if (xiaomiLogical) Log.i(TAG, "P41b: session on logical camera " + logicalID + ": viewfinder logical, readers on camera "
+                    + physicalID + ", operation mode 0x" + Integer.toHexString(XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting())));
 
             CameraCaptureSession.StateCallback stateCallback =
                     new CameraCaptureSession.StateCallback() {
@@ -2595,6 +2674,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             return;
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                        if (retryXiaomiRoute(cameraCaptureSession, "session configuration")) return;
                         if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                         if (retryWithoutScamSession(cameraCaptureSession)) return;
                         if (retryConfigureFallback(cameraCaptureSession)) return;
@@ -2605,12 +2685,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             };
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 SessionConfiguration configuration = new SessionConfiguration(
-                        sessionType,
+                        xiaomiLogical ? XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting()) : sessionType,
                         outputConfigurations,
                         processExecutor,
                         stateCallback
                 );
-                if (scamPreview || mForcedStabEis) {
+                if (scamPreview || mForcedStabEis || xiaomiLogical) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
@@ -2618,6 +2698,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         if (scamPreview) ScamPreview.applySession(scamSession);
                         // P54b: the stock Photo mode sets the EIS key as a session parameter too
                         if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
+                        // P41b: the stock camera's session keys of the logical camera
+                        if (xiaomiLogical) Log.i(TAG, "P41b: logical session keys: " + XiaomiTeleZoom.applySessionKeys(scamSession));
                         configuration.setSessionParameters(scamSession.build());
                     } catch (IllegalArgumentException unsupported) {
                         Log.w("SCAM_CAPTURE", "SCAM session control unavailable", unsupported);
@@ -2629,7 +2711,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
+            // P41b: a logical session the framework refuses outright (no onConfigureFailed follows) steps down as well
+            if (mXiaomiRouted) retryXiaomiRoute(null, "session: " + e.getMessage());
         }
+    }
+
+    /** P41b: dev switch {@code xiaomi_opmode}: the logical session's operation mode (stock 0x9002 = 36866, 0 = regular). */
+    private static int xiaomiOperationModeSetting() {
+        return Math.round(PreferenceKeys.scamDevNumber("xiaomi_opmode", XiaomiTeleZoom.STOCK_OPERATION_MODE));
     }
 
     /**
@@ -3600,7 +3689,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     imageCrop.width()/(float)img.getWidth(), imageCrop.height()/(float)img.getHeight()};
             // Camera2 crop coordinates are in the active sensor array, not in the RAW buffer.
             Rect active = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-            Rect sensorCrop = colorResult == null ? null : colorResult.get(CaptureResult.SCALER_CROP_REGION);
+            // P41b: on the Xiaomi logical camera the result's crop region is the logical stream's, not the tele RAW frame's
+            Rect sensorCrop = colorResult == null || XiaomiTeleZoom.routed() ? null : colorResult.get(CaptureResult.SCALER_CROP_REGION);
             if (active != null && sensorCrop != null && active.width()>0 && active.height()>0) {
                 Rect clipped = new Rect(sensorCrop);
                 if (clipped.intersect(active)) {

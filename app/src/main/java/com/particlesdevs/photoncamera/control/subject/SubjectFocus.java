@@ -326,6 +326,12 @@ public final class SubjectFocus implements SubjectFrames.Sink {
         } catch (RuntimeException ignored) {
             // keys missing on this HAL
         }
+        // P41b: on the Xiaomi logical camera crop region and zoomRatio belong to the logical stream; the tele's RAW frame is
+        // not cropped by them (XiaomiTeleZoom.previewCrop holds its whole crop)
+        if (XiaomiTeleZoom.routed() && SubjectFrames.rawDisplayed()) {
+            crop = null;
+            zoom = null;
+        }
         float cl = 0, ct = 0, cw = activeW, ch = activeH;
         if (crop != null && crop.width() > 0 && crop.height() > 0) {
             cl = crop.left;

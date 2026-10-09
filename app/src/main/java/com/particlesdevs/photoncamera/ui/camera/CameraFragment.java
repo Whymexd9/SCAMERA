@@ -971,6 +971,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             if (sensorSize != null && sensorSize.getWidth() > 0) {
                 eqFocalLength = Math.round((36.0f / sensorSize.getWidth()) * fl * zoom);
             }
+            // P41b: on the Xiaomi logical camera zoomRatio is on the main camera's scale: the dial's focal length instead
+            com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.Plan xiaomi = com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.last();
+            if (xiaomi != null && xiaomi.logical) eqFocalLength = Math.round(xiaomi.mm);
 
             Float apVal = result.get(CaptureResult.LENS_APERTURE);
             if (apVal != null && apVal > 0.0f) {
