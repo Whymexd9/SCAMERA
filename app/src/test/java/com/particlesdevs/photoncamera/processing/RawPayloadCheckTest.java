@@ -155,4 +155,58 @@ public class RawPayloadCheckTest {
         for (int y = 0; y < H; y += 37) for (int x = 0; x < W; x += 13)
             assertEquals(v[y][x], out.getShort((y * W + x) * 2) & 0xffff);
     }
+
+    /** MIPI RAW14 rows (7 bytes per 4 px, P72) of the 14-bit values v x scale, {@code stride} apart, into a RAW16-sized buffer. */
+    private static ByteBuffer packedMipi14(int[][] v, int scale, int stride) {
+        ByteBuffer into = zeroed();
+        for (int y = 0; y < H; y++) for (int x = 0, at = y * stride; x < W; x += 4, at += 7) {
+            int p0 = v[y][x] * scale, p1 = v[y][x + 1] * scale, p2 = v[y][x + 2] * scale, p3 = v[y][x + 3] * scale;
+            into.put(at, (byte) (p0 >> 6)); into.put(at + 1, (byte) (p1 >> 6)); into.put(at + 2, (byte) (p2 >> 6)); into.put(at + 3, (byte) (p3 >> 6));
+            into.put(at + 4, (byte) ((p0 & 0x3f) | ((p1 & 3) << 6)));
+            into.put(at + 5, (byte) (((p1 >> 2) & 0x0f) | ((p2 & 0x0f) << 4)));
+            into.put(at + 6, (byte) (((p2 >> 4) & 3) | ((p3 & 0x3f) << 2)));
+        }
+        return into;
+    }
+
+    @Test
+    public void raw14With14BitValuesIsReadShiftedTo10Bit() {
+        // Xiaomi 17 Ultra in-sensor zoom (mode 9): 7140 of 8160 bytes a row; here 896 of 1024
+        int[][] v = scene(1, 21);
+        ByteBuffer b = packedMipi14(v, 16, W * 14 / 8);
+        assertFalse(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        assertEquals(0, RawPayloadCheck.packedStride(b, W, H)); // not RAW10
+        RawPayloadCheck.Layout l = RawPayloadCheck.packedLayout(b, W, H, BLACK, WHITE);
+        assertNotNull(l);
+        assertEquals(com.particlesdevs.photoncamera.util.RawUnpack.RAW14_TO_10, l.format);
+        assertEquals(W * 14 / 8, l.stride);
+        ByteBuffer out = ByteBuffer.allocateDirect(W * H * 2).order(ByteOrder.nativeOrder());
+        assertTrue(com.particlesdevs.photoncamera.util.RawUnpack.unpack(b.duplicate(), l.format, W, H, l.stride, out));
+        for (int y = 0; y < H; y += 37) for (int x = 0; x < W; x += 13)
+            assertEquals(v[y][x], out.getShort((y * W + x) * 2) & 0xffff);
+        assertTrue(RawPayloadCheck.fits(l, RawPayloadCheck.dataEnd(b), W, H));
+    }
+
+    @Test
+    public void raw14With10BitValuesIsReadAsIs() {
+        int[][] v = scene(1, 22);
+        RawPayloadCheck.Layout l = RawPayloadCheck.packedLayout(packedMipi14(v, 1, 912), W, H, BLACK, WHITE);
+        assertNotNull(l);
+        assertEquals(com.particlesdevs.photoncamera.util.RawUnpack.RAW14, l.format);
+        assertEquals(912, l.stride);
+    }
+
+    @Test
+    public void raw10IsStillFoundFirstAndGarbageIsRefused() {
+        RawPayloadCheck.Layout l = RawPayloadCheck.packedLayout(packedMipi10(scene(1, 23), zeroed()), W, H, BLACK, WHITE);
+        assertNotNull(l);
+        assertEquals(android.graphics.ImageFormat.RAW10, l.format);
+        assertFalse(RawPayloadCheck.fits(l, W * 14 / 8 * H, W, H));
+        // random bytes in the RAW14 geometry: no plausible image
+        ByteBuffer junk = zeroed();
+        Random r = new Random(24);
+        for (int i = 0; i < W * 14 / 8 * H; i++) junk.put(i, (byte) (1 + r.nextInt(255)));
+        assertEquals(null, RawPayloadCheck.packedLayout(junk, W, H, BLACK, WHITE));
+        assertEquals(null, RawPayloadCheck.packedLayout(plain(scene(1, 25), 1), W, H, BLACK, WHITE));
+    }
 }

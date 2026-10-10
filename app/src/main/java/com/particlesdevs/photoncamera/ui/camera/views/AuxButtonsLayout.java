@@ -61,6 +61,11 @@ public class AuxButtonsLayout extends LinearLayout {
      * for functional purpose
      */
     private final HashMap<Integer, String> auxButtonsMap = new HashMap<>();
+    /** P72: zoom preset buttons (view id -> zoom) of a module (their slot in {@link #auxButtonsMap}): 17 Ultra tele 4.3x / 6.45x / 8.6x. */
+    private final HashMap<Integer, Float> presetMap = new HashMap<>();
+    /** Zooms the active module to a preset (CameraFragment.zoomTo). */
+    private java.util.function.Consumer<Float> presetZoom;
+    public void setPresetZoom(java.util.function.Consumer<Float> presetZoom) { this.presetZoom = presetZoom; }
 
     private final LinearLayout.LayoutParams buttonParams;
     private AuxButtonListener auxButtonListener;
@@ -141,12 +146,18 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             }
         }
         List<String> visible = new ArrayList<>(), labels = new ArrayList<>();
-        for (String slot : slots) if (ModuleRegistry.visible(slot)) {visible.add(slot);labels.add(ModuleRegistry.label(slot));}
+        for (String slot : slots) if (ModuleRegistry.visible(slot)) {
+            visible.add(slot);labels.add(ModuleRegistry.label(slot));
+            for (float p : presets(slot)) labels.add(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.presetLabel(p));
+        }
         if (!visible.equals(displayedSlots) || !labels.equals(displayedLabels)) {
-            removeAllViews();auxButtonsMap.clear();
+            removeAllViews();auxButtonsMap.clear();presetMap.clear();
             displayedSlots.clear();displayedSlots.addAll(visible);
             displayedLabels.clear();displayedLabels.addAll(labels);
-            for(int i=0;i<visible.size();i++)addNewButton(visible.get(i),labels.get(i));
+            for (String slot : visible) {
+                addNewButton(slot, ModuleRegistry.label(slot));
+                for (float p : presets(slot)) presetMap.put(addNewButton(slot, com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.presetLabel(p)), p);
+            }
         }
         setListenerAndSelected(activeId);
         updateVisibility();
@@ -154,13 +165,30 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
 
     private void setListenerAndSelected(String activeId) {
         View.OnClickListener auxButtonListener = this::onAuxButtonClick;
+        final float zoom = com.particlesdevs.photoncamera.control.ZoomController.zoom();
         for (int i = 0; i < getChildCount(); i++) {
             View button = getChildAt(i);
             button.setOnClickListener(auxButtonListener);
-            button.setSelected(ModuleRegistry.active().equals(auxButtonsMap.get(button.getId())) ||
-                    (!ModuleRegistry.slots().contains(ModuleRegistry.active()) && activeId.equals(ModuleRegistry.camera(auxButtonsMap.get(button.getId())))));
+            String slot = auxButtonsMap.get(button.getId());
+            boolean module = ModuleRegistry.active().equals(slot) ||
+                    (!ModuleRegistry.slots().contains(ModuleRegistry.active()) && activeId.equals(ModuleRegistry.camera(slot)));
+            button.setSelected(module && selectedHere(button.getId(), slot, zoom));
         }
         styleSelection();
+    }
+
+    /** P72: the 17 Ultra tele's zoom presets after its own button; empty elsewhere. */
+    private static float[] presets(String slot) {
+        return com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.presets(ModuleRegistry.zoom(slot));
+    }
+
+    /** Within the active module: its preset button at that zoom, else the module's own button. */
+    private boolean selectedHere(int id, String slot, float zoom) {
+        Float preset = presetMap.get(id);
+        if (preset != null) return Math.abs(zoom - preset) < 0.03f;
+        for (java.util.Map.Entry<Integer, Float> e : presetMap.entrySet())
+            if (slot != null && slot.equals(auxButtonsMap.get(e.getKey())) && Math.abs(zoom - e.getValue()) < 0.03f) return false;
+        return true;
     }
 
     private void updateVisibility() {
@@ -199,6 +227,20 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
                 child.setSelected(view.equals(child));
             }
             styleSelection();
+            Float preset = presetMap.get(view.getId());
+            if (preset != null && auxButtonListener != null) {
+                // P72: a zoom preset of a module: the zoom only on the active module, else that module at this zoom
+                String slot = auxButtonsMap.get(view.getId());
+                if (slot.equals(ModuleRegistry.active())) {
+                    if (presetZoom != null) presetZoom.accept(preset);
+                } else {
+                    ModuleRegistry.select(slot);
+                    com.particlesdevs.photoncamera.control.ZoomController.onPreset(slot, preset);
+                    if (getContext() instanceof android.app.Activity) touchDial();
+                    auxButtonListener.onAuxButtonClicked(ModuleRegistry.camera(slot));
+                }
+                return;
+            }
             if (auxButtonListener != null)
             {
                 String slot=auxButtonsMap.get(view.getId());
@@ -210,7 +252,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         }
     }
 
-    private void addNewButton(String cameraId, String buttonText) {
+    private int addNewButton(String cameraId, String buttonText) {
         LensButton b = new LensButton(getContext());
         b.setLayoutParams(buttonParams);
         b.setText(display(buttonText));
@@ -220,6 +262,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setId(buttonId);
         this.auxButtonsMap.put(buttonId, cameraId);
         addView(b);
+        return buttonId;
     }
 
     /** The selected button shows the live zoom ("2.3×") while it differs from the module's own ratio. */
@@ -229,8 +272,13 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             View v = getChildAt(i);
             String slot = auxButtonsMap.get(v.getId());
             if (!(v instanceof Button) || slot == null) continue;
-            boolean selected = slot.equals(active);
+            boolean selected = slot.equals(active) && selectedHere(v.getId(), slot, zoom);
             v.setSelected(selected);
+            Float preset = presetMap.get(v.getId());
+            if (preset != null) {
+                ((Button) v).setText(display(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.presetLabel(preset)));
+                continue;
+            }
             ((Button) v).setText(selected && Math.abs(zoom - ModuleRegistry.zoom(slot)) >= 0.05f
                     ? display(String.format(Locale.US, "%.1f×", zoom).replace(".0×", "×")) : display(ModuleRegistry.label(slot)));
         }

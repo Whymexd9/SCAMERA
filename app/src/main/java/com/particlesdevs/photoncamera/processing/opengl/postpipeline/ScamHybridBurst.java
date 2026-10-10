@@ -37,6 +37,23 @@ public final class ScamHybridBurst implements ScamTransport {
     /** P27: N frames of the conservative retry after a failed merge. */
     private static final int CONSERVATIVE_NORMALS = 16;
     /** P27: worker tuning of the conservative retry (no tile-local alignment, Sabre 6.1 kernel, rim or chroma passes). */
+    /**
+     * P72: frames read in different layouts (Xiaomi 17 Ultra tele in in-sensor zoom: packed RAW10 and RAW14 frames alternate;
+     * their field and colour block are not known to match) are not merged together: the layout most frames have stays (on a tie
+     * the first frame's), the others are dropped and counted.
+     */
+    static void keepOneLayout(List<ImageFrame> frames) {
+        java.util.Map<Integer, Integer> count = new java.util.LinkedHashMap<>();
+        for (ImageFrame f : frames) count.merge(f.sourceFormat, 1, Integer::sum);
+        if (count.size() <= 1) return;
+        int keep = frames.get(0).sourceFormat;
+        for (java.util.Map.Entry<Integer, Integer> e : count.entrySet()) if (e.getValue() > count.get(keep)) keep = e.getKey();
+        final int kept = keep;
+        frames.removeIf(f -> f.sourceFormat != kept);
+        Log.w("SCAM_HDR", "hybrid: frames of " + count.size() + " RAW layouts " + count + " (format: frames): only 0x"
+                + Integer.toHexString(kept) + " merged, " + frames.size() + " frames");
+    }
+
     private static final String CONSERVATIVE_TUNING = "localAlign 0\nsabre61 0\nrimRatio 0\nchromaDiff 0\n";
     /**
      * P27 any resolution: largest input of the Sabre 2x grid (its 2w x 2h RGB float32 is 768 MB at 16 MP, today's largest 2x
@@ -132,6 +149,7 @@ public final class ScamHybridBurst implements ScamTransport {
             usable.add(f);
         }
         if (usable.isEmpty()) throw new IOException(Lang.t("Hybrid: ни одного пригодного RAW-кадра (", "Hybrid: no usable RAW frame (") + source.size() + Lang.t(" получено)", " received)"));
+        keepOneLayout(usable);
         // P35: the stream's stored block (or a declared Quad / Tetra sensor mode) without the detector; a binned burst is another
         // grid and is always measured.
         final int knownBlock = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(

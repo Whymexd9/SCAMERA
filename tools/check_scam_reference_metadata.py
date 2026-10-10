@@ -61,6 +61,12 @@ public final class ShotArena {
  public ByteBuffer copy(ByteBuffer b,int o,int n){return null;}
  public ByteBuffer copyUnpacked(ByteBuffer b,int o,int f,int w,int r,int c){return null;}
 }''',
+BASE+'util/RawUnpack.java': '''package com.particlesdevs.photoncamera.util; import java.nio.*;
+public final class RawUnpack {
+ public static final int RAW14 = 0x7E04, RAW14_TO_10 = 0x7E14;
+ public static boolean isRaw14(int f){return f==RAW14||f==RAW14_TO_10;}
+ public static boolean unpack(ByteBuffer s,int f,int w,int h,int r,ByteBuffer d){return true;}
+}''',
 BASE+'util/Allocator.java': '''package com.particlesdevs.photoncamera.util; import java.nio.*;
 public class Allocator {
  public static boolean binning=false;
@@ -70,7 +76,7 @@ public class Allocator {
  public static ByteBuffer allocateAndCopyConvertBinning(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
  public static ByteBuffer allocateAndCopyConvert12(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
  public static ByteBuffer allocateAndCopyConvert12Binning(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
- public static boolean isPackedRaw(int f){return f==0x25||f==0x26;}
+ public static boolean isPackedRaw(int f){return f==0x25||f==0x26||RawUnpack.isRaw14(f);}
  public static void free(ByteBuffer b){}
 }''',
 'Check.java': '''import android.hardware.camera2.CaptureResult;

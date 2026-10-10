@@ -118,13 +118,102 @@ public final class RawPayloadCheck {
         while (end > 0 && buffer.get(end - 1) == 0) end--;
         // No zero tail (a plain frame, or packed rows over a stale frame): nothing to read the stride from.
         if (end <= 0 || end > capacity - rowBytes) return 0;
-        for (int stride = rowBytes; stride <= rowBytes + 512; stride++) {
+        // Row padding up to 128 bytes (seen: 20 on the 17 Ultra, 16 / 64 in the tests); a larger one would also take a RAW14
+        // payload (P72: 7 / 5 of the RAW10 row) for RAW10 on narrow frames.
+        for (int stride = rowBytes; stride <= rowBytes + 128; stride++) {
             long first = (long) (height - 1) * stride + rowBytes, all = (long) height * stride;
             if (all > capacity) break;
             // A zero last low-bits byte (or a zero padding tail) ends the data a few bytes early.
             if (first <= end + 8L && end <= all) return stride;
         }
         return 0;
+    }
+
+    /** Format and row stride of a packed payload behind RAW_SENSOR (RawUnpack format codes), see {@link #packedLayout}. */
+    public static final class Layout {
+        public final int format, stride;
+        Layout(int format, int stride) { this.format = format; this.stride = stride; }
+        public String describe() {
+            return (format == android.graphics.ImageFormat.RAW10 ? "packed MIPI RAW10"
+                    : format == com.particlesdevs.photoncamera.util.RawUnpack.RAW14_TO_10 ? "packed MIPI RAW14 (14-bit values, read >> 4)"
+                    : "packed MIPI RAW14") + " (stride " + stride + ")";
+        }
+    }
+
+    /**
+     * P72: the packed layout of a RAW_SENSOR payload, or null. Packed MIPI RAW10 first ({@link #packedStride}); else MIPI RAW14,
+     * Xiaomi 17 Ultra tele in in-sensor zoom (owner's log 2026-10-10, mode 9): 4080x3072, rowStride 8160, data up to 87.5 % of
+     * the buffer = 7140 bytes a row = 4080 x 14 / 8. The stride is read from the zero tail as for RAW10. RAW14 is taken only
+     * when sample rows decode to a plausible image: values from 16 x the black level up (the darkest 2 % of the samples) are
+     * 14-bit and read >> 4 into the declared 10-bit range; then at most 30 % of the samples may exceed 1.05 x white (a wrong
+     * layout put 83 % of 16-bit reads above 4 x white). Anything else stays refused.
+     */
+    public static Layout packedLayout(ByteBuffer buffer, int width, int height, int black, int white) {
+        int stride10 = packedStride(buffer, width, height);
+        if (stride10 > 0) return new Layout(android.graphics.ImageFormat.RAW10, stride10);
+        if (buffer == null || width < 4 || (width & 3) != 0 || height < 2 || white <= 0) return null;
+        final int rowBytes = width * 14 / 8, capacity = buffer.capacity();
+        if ((long) rowBytes * height > capacity) return null;
+        final int end = dataEnd(buffer);
+        if (end <= 0 || end > capacity - rowBytes) return null;
+        int stride = 0;
+        for (int s = rowBytes; s <= rowBytes + 512; s++) {
+            long first = (long) (height - 1) * s + rowBytes, all = (long) height * s;
+            if (all > capacity) break;
+            if (first <= end + 8L && end <= all) { stride = s; break; }
+        }
+        if (stride == 0) return null;
+        // sample rows: every 4th group of 64 rows spread over the frame
+        int[] values = new int[2 * 64 * (width / 16 + 1)];
+        int n = 0;
+        for (int r = 0; r < 64; r++) {
+            final int y = (int) ((long) (2 * r + 1) * height / 128);
+            for (int g = 0; g + 3 < width / 4; g += 4) {
+                int[] v = com.particlesdevs.photoncamera.util.RawUnpack.raw14(buffer, y * stride + g * 7);
+                values[n++] = v[0]; values[n++] = v[1];
+            }
+        }
+        if (n < 1000) return null;
+        int[] sorted = java.util.Arrays.copyOf(values, n);
+        java.util.Arrays.sort(sorted);
+        final int low = sorted[n / 50];
+        final int shift = low >= 8 * Math.max(black, 1) ? 4 : 0;
+        int over = 0;
+        for (int i = 0; i < n; i++) if ((values[i] >> shift) > white * 1.05f) over++;
+        if (over > 0.3f * n) return null;
+        return new Layout(shift == 4 ? com.particlesdevs.photoncamera.util.RawUnpack.RAW14_TO_10
+                : com.particlesdevs.photoncamera.util.RawUnpack.RAW14, stride);
+    }
+
+    /** P72: the payload ending at {@code end} (see {@link #dataEnd}) has {@code layout}'s geometry (a cheap per-frame test). */
+    public static boolean fits(Layout layout, int end, int width, int height) {
+        final int rowBytes = com.particlesdevs.photoncamera.util.RawUnpack.packedRowBytes(layout.format, width);
+        if (rowBytes <= 0 || end <= 0) return false;
+        long first = (long) (height - 1) * layout.stride + rowBytes, all = (long) height * layout.stride;
+        return first <= end + 8L && end <= all;
+    }
+
+    /** Offset after the last non-zero byte of the buffer, found by the zero tail of 64-byte blocks (see packedStride). */
+    public static int dataEnd(ByteBuffer buffer) {
+        final int capacity = buffer.capacity(), block = 64;
+        int lo = 0, hi = capacity / block;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (zeroBlock(buffer, mid * block, Math.min(block, capacity - mid * block))) hi = mid; else lo = mid + 1;
+        }
+        int end = Math.min(capacity, lo * block);
+        while (end > 0 && buffer.get(end - 1) == 0) end--;
+        return end;
+    }
+
+    /** Smallest black level of the sensor (static pattern), 64 when unknown. */
+    public static int blackLevel(CameraCharacteristics characteristics) {
+        android.hardware.camera2.params.BlackLevelPattern pattern = characteristics == null ? null
+                : characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        if (pattern == null) return 64;
+        int min = Integer.MAX_VALUE;
+        for (int i = 0; i < 4; i++) min = Math.min(min, pattern.getOffsetForIndex(i & 1, i >> 1));
+        return min;
     }
 
     private static boolean zeroBlock(ByteBuffer buffer, int from, int length) {
@@ -153,6 +242,8 @@ public final class RawPayloadCheck {
         // A packed RAW10 payload whose stride is read from the data is understood and unpacked (Xiaomi 17 Ultra tele): no zip
         // in Download/SCAMERA on every start for it.
         if (result.isPacked10() && packedStride(image.getPlanes()[0].getBuffer(), image.getWidth(), image.getHeight()) > 0) return;
+        // P72: a packed RAW14 payload that decodes plausibly is understood too (no zip)
+        if (packedLayout(image.getPlanes()[0].getBuffer(), image.getWidth(), image.getHeight(), 64, 1023) != null) return;
         if (!sDumped.add(String.valueOf(cameraId))) return;
         try {
             Image.Plane plane = image.getPlanes()[0];

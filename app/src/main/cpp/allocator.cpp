@@ -373,6 +373,31 @@ static void decodeRaw10Row(const uint8_t* row_start, uint16_t* dst, int width) {
     }
 }
 
+// P72: packed MIPI RAW14 (Xiaomi 17 Ultra tele in in-sensor zoom, mode 9: 7140 bytes per 4080-wide row behind RAW_SENSOR).
+// 4 samples in 7 bytes: bytes 0..3 the high 8 bits, bytes 4..6 the low 6 bits (b4 = p1[1:0]<<6 | p0[5:0], b5 = p2[3:0]<<4 |
+// p1[5:2], b6 = p3[5:0]<<2 | p2[5:4]). Format codes (RawUnpack): 0x7E04 as is, 0x7E14 shifted right by 4 (14-bit values into
+// the 10-bit range the metadata declares).
+constexpr int kRaw14=0x7E04,kRaw14To10=0x7E14;
+static bool isRaw14(int format){return format==kRaw14||format==kRaw14To10;}
+static void decodeRaw14Row(const uint8_t* row_start, uint16_t* dst, int width, int shift) {
+    for (int px = 0, col = 0; px + 3 < width; px += 4, col += 7) {
+        const uint8_t* g = row_start + col;
+        dst[px]     = (uint16_t)(((g[0] << 6) | (g[4] & 0x3F)) >> shift);
+        dst[px + 1] = (uint16_t)(((g[1] << 6) | (g[4] >> 6) | ((g[5] & 0x0F) << 2)) >> shift);
+        dst[px + 2] = (uint16_t)(((g[2] << 6) | (g[5] >> 4) | ((g[6] & 0x03) << 4)) >> shift);
+        dst[px + 3] = (uint16_t)(((g[3] << 6) | (g[6] >> 2)) >> shift);
+    }
+}
+static long packedRowBytes(int format, int width) {
+    return format == 0x25 ? long(width) * 10 / 8 : format == 0x26 ? long(width) * 12 / 8 : isRaw14(format) ? long(width) * 14 / 8 : 0;
+}
+static void decodeRaw12Row(const uint8_t* row_start, uint16_t* dst, int width);
+static void decodePackedRow(int format, const uint8_t* in, uint16_t* out, int width) {
+    if (format == 0x25) decodeRaw10Row(in, out, width);
+    else if (format == 0x26) decodeRaw12Row(in, out, width);
+    else decodeRaw14Row(in, out, width, format == kRaw14To10 ? 4 : 0);
+}
+
 // Helper: Bayer-aware 2x2 binning matching dngCreator::applyBayerBinning.
 // Each output pixel combines 4 same-colour pixels from a 4x4 input block.
 // input is width*height uint16_t (packed, no stride padding).
@@ -619,15 +644,15 @@ Java_com_particlesdevs_photoncamera_util_RawUnpack_nativeUnpack(JNIEnv* env, jcl
                                                                 jint height, jint rowStride, jobject dst) {
     auto* in = static_cast<const uint8_t*>(src ? env->GetDirectBufferAddress(src) : nullptr);
     auto* out = static_cast<uint16_t*>(dst ? env->GetDirectBufferAddress(dst) : nullptr);
-    if (!in || !out || width < 4 || height < 1 || (format != 0x25 && format != 0x26)) return JNI_FALSE;
-    const long rowBytes = format == 0x25 ? long(width) * 10 / 8 : long(width) * 12 / 8;
+    if (!in || !out || width < 4 || height < 1 || (format != 0x25 && format != 0x26 && !isRaw14(format))) return JNI_FALSE;
+    if (isRaw14(format) && (width & 3) != 0) return JNI_FALSE;
+    const long rowBytes = packedRowBytes(format, width);
     if (rowStride < rowBytes || env->GetDirectBufferCapacity(src) < long(height - 1) * rowStride + rowBytes
             || env->GetDirectBufferCapacity(dst) < long(width) * height * 2) return JNI_FALSE;
     const int threads = std::max(1, std::min(4, int(std::thread::hardware_concurrency())));
     auto rows = [&](int y0, int y1) {
         for (int y = y0; y < y1; ++y) {
-            if (format == 0x25) decodeRaw10Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
-            else decodeRaw12Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
+            decodePackedRow(format, in + size_t(y) * rowStride, out + size_t(y) * width, width);
         }
     };
     std::vector<std::thread> pool;
@@ -645,8 +670,9 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopyUnpack(JNIEnv* env, 
                                                                     jint height) {
     auto* src = origin ? static_cast<const uint8_t*>(env->GetDirectBufferAddress(origin)) : nullptr;
     const jlong srcCapacity = origin ? env->GetDirectBufferCapacity(origin) : 0;
-    if (!src || (format != 0x25 && format != 0x26) || width < 4 || height < 1 || originOffset < 0) return nullptr;
-    const long rowBytes = format == 0x25 ? long(width) * 10 / 8 : long(width) * 12 / 8;
+    if (!src || (format != 0x25 && format != 0x26 && !isRaw14(format)) || width < 4 || height < 1 || originOffset < 0) return nullptr;
+    if (isRaw14(format) && (width & 3) != 0) return nullptr;
+    const long rowBytes = packedRowBytes(format, width);
     if (rowStride < rowBytes || long(originOffset) + long(height - 1) * rowStride + rowBytes > srcCapacity) return nullptr;
     const size_t bytes = size_t(width) * size_t(height) * 2;
     if (bytes > size_t(INT32_MAX)) return nullptr; // a direct buffer view holds at most 2 GiB (ART aborts above it)
@@ -663,8 +689,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopyUnpack(JNIEnv* env, 
     const int threads = std::max(1, std::min(4, int(std::thread::hardware_concurrency())));
     auto rows = [&](int y0, int y1) {
         for (int y = y0; y < y1; ++y) {
-            if (format == 0x25) decodeRaw10Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
-            else decodeRaw12Row(in + size_t(y) * rowStride, out + size_t(y) * width, width);
+            decodePackedRow(format, in + size_t(y) * rowStride, out + size_t(y) * width, width);
         }
     };
     std::vector<std::thread> pool;

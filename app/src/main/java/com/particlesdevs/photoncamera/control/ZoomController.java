@@ -128,14 +128,17 @@ public final class ZoomController {
     }
 
     /**
-     * Back to a wider module only below the active module's ratio minus this: a zoom held at a module's border no longer
-     * switches back and forth (Xiaomi 17 Ultra: five restarts of the logical camera in 9 s between 3.16x and 3.19x).
+     * The border hysteresis sits above the longer module's ratio: up to it only from this far past its ratio (x1.03: the 17
+     * Ultra tele from 3.32x), down to the wider module as soon as the zoom is below the active one's. A zoom held at a border no
+     * longer switches back and forth (Xiaomi 17 Ultra: five restarts of the logical camera in 9 s between 3.16x and 3.19x), and
+     * a module is never held below its own ratio: P67 held the tele down to 3.1x, which it cannot show, so every pinch step
+     * there snapped back to 3.225x and the picture jumped (owner's video, 2026-10-10); the wider module crops meanwhile.
      */
-    static final float DOWN_HYSTERESIS = 0.1f;
+    static final float UP_HYSTERESIS = 1.03f;
 
     /** Whether a switch from the active module (ratio {@code activeRatio}) to a module of ratio {@code targetRatio} waits. */
     static boolean holdsActive(float z, float activeRatio, float targetRatio) {
-        return targetRatio < activeRatio && z >= activeRatio - DOWN_HYSTERESIS;
+        return targetRatio > activeRatio && z < targetRatio * UP_HYSTERESIS;
     }
 
     public static float minZoom() {
@@ -203,15 +206,27 @@ public final class ZoomController {
         return !active.equals(zoomSlot) || !inRange(z, base, upper);
     }
 
-    /** P37: a zoom belongs to a module with ratio {@code base} when below the next module's ratio {@code upper}. */
+    /**
+     * P37: a zoom belongs to a module with ratio {@code base} when below the next module's ratio {@code upper} (up to its switch
+     * point {@link #UP_HYSTERESIS}: the wider module crops there until the switch).
+     */
     static boolean inRange(float z, float base, float upper) {
-        return z >= base - ROUNDING && z < upper + ROUNDING;
+        return z >= base - ROUNDING && (upper == Float.MAX_VALUE || z < upper * UP_HYSTERESIS + ROUNDING);
     }
 
     /** A lens button was tapped: zoom goes to that module's own ratio. */
     public static void onButton(String slot) {
         initialized = true;
         zoom = ModuleRegistry.zoom(slot);
+        residual = Math.max(1f, zoom / ModuleRegistry.nativeRatio(slot));
+        zoomSlot = slot;
+        lastSwitch = android.os.SystemClock.elapsedRealtime();
+    }
+
+    /** P72: a zoom preset button of {@code slot} (17 Ultra tele: 4.3x / 6.45x / 8.6x): the module with that zoom. */
+    public static void onPreset(String slot, float z) {
+        initialized = true;
+        zoom = Math.max(minZoom(), Math.min(maxZoom(), z));
         residual = Math.max(1f, zoom / ModuleRegistry.nativeRatio(slot));
         zoomSlot = slot;
         lastSwitch = android.os.SystemClock.elapsedRealtime();

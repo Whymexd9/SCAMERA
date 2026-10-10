@@ -485,6 +485,26 @@ public final class XiaomiTeleZoom {
 
     public static String stopLabel(float ratio) { return label(ratio); }
 
+    /**
+     * P72 (owner, 2026-10-10): buttons after the tele's own one for the ends of its optical zoom and of the optical zoom inside
+     * the 2x ISZ: 4.3x (the lens at 100 mm), 6.45x (ISZ on, the lens back at 75 mm), 8.6x (ISZ with the lens at 100 mm). Empty
+     * when {@code teleRatio} is not this phone's tele or the smooth zoom is off.
+     */
+    public static float[] presets(float teleRatio) {
+        if (!isTele(teleRatio) || !enabled()) return new float[0];
+        return presetsFor(teleRatio);
+    }
+    static float[] presetsFor(float teleRatio) {
+        // the ISZ start a hair past 150 mm: float rounding must not leave it just below the switch-on point
+        return new float[]{teleRatio * OPT_MAX / OPT_MIN, teleRatio * ISZ_ON / OPT_MIN + 0.002f, teleRatio * ISZ_MAX / OPT_MIN};
+    }
+    /** Preset label with up to two decimals («4.3×», «6.45×», «8.6×»). */
+    public static String presetLabel(float ratio) {
+        String s = String.format(Locale.US, "%.2f", ratio);
+        s = s.replaceAll("0+$", "").replaceAll("\\.$", "");
+        return s + "×";
+    }
+
     // ---------------------------------------------------------------- session state
 
     private static volatile boolean isz;
@@ -561,7 +581,7 @@ public final class XiaomiTeleZoom {
         halReport = true; halTarget = true; realRange = REAL_RANGE; uiRange = UI_RANGE; targetKeyOk = null;
         loggedOptLens = Float.NaN; loggedOptTarget = Float.NaN; loggedOptState = Integer.MIN_VALUE;
         opticsMissingLogged = false; thirdPartyLogged = false;
-        routeDisabled = false; routeOpMode = Integer.MIN_VALUE; searchedFor = null; foundLogical = null; logicalMaxZoom = LOGICAL_MAX;
+        routeDisabled = false; routeOpMode = Integer.MIN_VALUE; sameModeRetries = 0; searchedFor = null; foundLogical = null; logicalMaxZoom = LOGICAL_MAX;
         routed = false; extendedZoom = false; teleFallback = false;
         routedLensMm = Float.NaN; routedMode = null; clampLogged = false; followLogged = false; logicalFarSinceMs = 0;
         routedIszWanted = false; routedNormalMode = null;
@@ -620,6 +640,8 @@ public final class XiaomiTeleZoom {
     private static volatile boolean routeDisabled;
     /** Operation mode of the logical session; MIN_VALUE until the first session picks it from the dev switch. */
     private static volatile int routeOpMode = Integer.MIN_VALUE;
+    /** P72: restarts of the logical session in the same operation mode after it had run (stepDownRoute). */
+    private static volatile int sameModeRetries;
     private static String searchedFor, foundLogical;
     private static volatile float logicalMaxZoom = LOGICAL_MAX;
     /** The session runs on the logical camera; its session parameters carried ExtendedMaxZoom; tele fallback allowed. */
@@ -693,7 +715,23 @@ public final class XiaomiTeleZoom {
      * tried again with a regular session, false when the tele opens alone for the rest of this process.
      */
     public static boolean stepDownRoute(String reason) {
+        return stepDownRoute(reason, false);
+    }
+
+    /**
+     * P72: {@code ranBefore}: the session delivered frames before it stopped (owner's log 2026-10-10: 26 s of 0x9002 with the
+     * optics, the frames stopped 3 s after leaving the in-sensor zoom). A HAL hiccup, not a mode this app cannot run: the same
+     * operation mode is tried again, twice per process, before stepping down (stepping down at once left the lens parked at 75 mm
+     * for the rest of the process).
+     */
+    public static boolean stepDownRoute(String reason, boolean ranBefore) {
         final int failed = routeOpMode == Integer.MIN_VALUE ? 0 : routeOpMode;
+        if (ranBefore && failed > 0 && sameModeRetries < 2) {
+            sameModeRetries++;
+            Log.w(TAG, "logical camera session failed (" + reason + ") with operation mode 0x" + Integer.toHexString(failed)
+                    + " after it ran: the same mode again (" + sameModeRetries + " of 2)");
+            return true;
+        }
         final int next = nextOperationMode(failed);
         if (next >= 0) {
             routeOpMode = next;

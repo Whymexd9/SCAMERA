@@ -1993,7 +1993,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return;
         }
         // P41b: a stalled logical session steps down (a regular session, then the tele alone) before the restart
-        if (mXiaomiRouted) XiaomiTeleZoom.stepDownRoute("preview stall, no frame for " + noFrame + " ms");
+        if (mXiaomiRouted) XiaomiTeleZoom.stepDownRoute("preview stall, no frame for " + noFrame + " ms", mLastPreviewResultMs != 0);
         mStallRestarts++;
         mPreviewSessionStartMs = 0;
         handler.removeCallbacks(mStallCheck);
@@ -2551,7 +2551,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !sPlainPreviewCameras.contains(physicalID);
             mPayloadFrames = 0;
             mPayloadBad = false;
-            mPackedStride = 0;
+            mPreviewLayouts.clear();
+            mLayoutTs = Long.MIN_VALUE;
             Log.i("SCAM_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isScamHybridEnabled() ? "SCAM_HYBRID" : PreferenceKeys.isScamEnabled() ? "SCAM_RAW" : "SCAMERA"));
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
@@ -3549,14 +3550,43 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     // RawPayloadCheck on the preview stream: the first frames of every session, then every 30th.
     private int mPayloadFrames;
     private volatile boolean mPayloadBad;
-    /** Preview RAW_SENSOR frames hold packed MIPI RAW10 rows this far apart (0: plain 16-bit). */
-    private volatile int mPackedStride;
-    /** The format a RAW frame is read as: RAW10 for a packed RAW_SENSOR payload ({@link #mPackedStride}). */
+    /**
+     * Packed layouts seen behind this session's preview RAW_SENSOR frames (Xiaomi 17 Ultra tele: MIPI RAW10 in mode 4; in the
+     * in-sensor zoom, mode 9, RAW10 and RAW14 frames alternate, P72). Empty: plain 16-bit. Every frame picks its own by where its
+     * data ends ({@link #frameLayout}); the full check runs only on a frame none fits.
+     */
+    private final java.util.List<com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout> mPreviewLayouts = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private long mLayoutTs = Long.MIN_VALUE;
+    private com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout mLayoutOfTs;
+    private synchronized com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout frameLayout(Image img) {
+        if (mPreviewLayouts.isEmpty() || img.getFormat() != ImageFormat.RAW_SENSOR) return null;
+        if (img.getTimestamp() == mLayoutTs) return mLayoutOfTs;
+        java.nio.ByteBuffer buffer = img.getPlanes()[0].getBuffer();
+        final int end = com.particlesdevs.photoncamera.processing.RawPayloadCheck.dataEnd(buffer);
+        com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout found = null;
+        for (com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout l : mPreviewLayouts)
+            if (com.particlesdevs.photoncamera.processing.RawPayloadCheck.fits(l, end, img.getWidth(), img.getHeight())) { found = l; break; }
+        if (found == null && end < buffer.capacity() - img.getWidth()) {
+            found = packedLayout(img);
+            if (found != null) addPreviewLayout(found);
+        }
+        mLayoutTs = img.getTimestamp();
+        mLayoutOfTs = found;
+        return found;
+    }
+    private void addPreviewLayout(com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout layout) {
+        for (com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout l : mPreviewLayouts) if (l.format == layout.format && l.stride == layout.stride) return;
+        mPreviewLayouts.add(layout);
+        Log.i(TAG, "preview RAW of camera " + physicalID + ": " + layout.describe() + ", unpacked for the viewfinder");
+    }
+    /** The format a RAW frame is read as: its packed layout behind RAW_SENSOR ({@link #frameLayout}), else its own. */
     private int readFormat(Image img) {
-        return mPackedStride > 0 && img.getFormat() == ImageFormat.RAW_SENSOR ? ImageFormat.RAW10 : img.getFormat();
+        com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout l = frameLayout(img);
+        return l != null ? l.format : img.getFormat();
     }
     private int readStride(Image img) {
-        return mPackedStride > 0 && img.getFormat() == ImageFormat.RAW_SENSOR ? mPackedStride : img.getPlanes()[0].getRowStride();
+        com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout l = frameLayout(img);
+        return l != null ? l.stride : img.getPlanes()[0].getRowStride();
     }
     private boolean mScamPreviewActive;
     /** P54b: this session holds the stabilisation on (ForcedStabilization: X300 Ultra); with the vivo EIS key. */
@@ -3575,14 +3605,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (n >= 4 && n % 30 != 0) return;
         com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(img, rawPayloadWhite(null));
-        if (payload.plain()) { mPayloadBad = false; mPackedStride = 0; return; }
-        if (payload.isPacked10()) {
-            // Xiaomi 17 Ultra tele on the logical camera: packed MIPI RAW10 behind RAW_SENSOR, read as RAW10 with its own stride by
-            // the colour-block measurement and the developed RAW viewfinder (the forced 2x ISZ shows that viewfinder)
-            int stride = com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedStride(img.getPlanes()[0].getBuffer(), img.getWidth(), img.getHeight());
-            if (stride > 0) {
-                if (mPackedStride != stride) Log.i(TAG, "preview RAW of camera " + physicalID + ": packed MIPI RAW10 (stride " + stride + "), read as RAW10");
-                mPackedStride = stride;
+        if (payload.plain()) { mPayloadBad = false; mPreviewLayouts.clear(); return; }
+        if (img.getFormat() == ImageFormat.RAW_SENSOR) {
+            // Xiaomi 17 Ultra tele on the logical camera: packed MIPI RAW10 / RAW14 behind RAW_SENSOR, read in that layout by the
+            // colour-block measurement and the developed RAW viewfinder (the forced 2x ISZ shows that viewfinder)
+            com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout layout = packedLayout(img);
+            if (layout != null) {
+                addPreviewLayout(layout);
                 mPayloadBad = false;
                 return;
             }
@@ -3724,6 +3753,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             LiveRawFrame.setEnabled(false);
             return;
         }
+        // P72: a packed session (17 Ultra tele) whose frame fits none of its layouts and is not plain either: skipped (the last
+        // developed frame stays) instead of developing it as 16-bit
+        if (!mPreviewLayouts.isEmpty() && img.getFormat() == ImageFormat.RAW_SENSOR && frameLayout(img) == null
+                && com.particlesdevs.photoncamera.processing.RawPayloadCheck.dataEnd(img.getPlanes()[0].getBuffer())
+                   < img.getPlanes()[0].getBuffer().capacity() - img.getWidth()) return;
         try {
             Image.Plane plane = img.getPlanes()[0];
             CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
@@ -3898,7 +3932,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // The newest ring frame whose RAW is plain 16-bit: a packed payload reads as ~62 % clipped (X100 Ultra) and planned
         // the bracket from garbage. None plain: no clipping is assumed (the shot then takes N after the shutter).
         Image newest = null;
-        int packedStride = 0;
+        com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packed = null;
         synchronized (mZslBufferLock) {
             int looked = 0;
             for (java.util.Iterator<Image> it = mZslRingBuffer.descendingIterator(); it.hasNext() && looked < 4; looked++) {
@@ -3906,12 +3940,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload = com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(
                         candidate, rawPayloadWhite(mHexZslResults.get(candidate.getTimestamp())));
                 if (payload.plain()) { newest = candidate; break; }
-                // Xiaomi 17 Ultra tele (logical camera 0): packed MIPI RAW10 behind RAW_SENSOR; its clipping is read from the
-                // high bytes (every tele shot planned clip = 0 and no short frame before, 2026-10-10)
-                if (payload.isPacked10()) {
-                    int stride = com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedStride(
-                            candidate.getPlanes()[0].getBuffer(), candidate.getWidth(), candidate.getHeight());
-                    if (stride > 0) { newest = candidate; packedStride = stride; break; }
+                // Xiaomi 17 Ultra tele (logical camera 0): packed MIPI RAW10 / RAW14 behind RAW_SENSOR; its clipping is read from
+                // the high bytes (every tele shot planned clip = 0 and no short frame before, 2026-10-10)
+                if (candidate.getFormat() == ImageFormat.RAW_SENSOR) {
+                    packed = packedLayout(candidate);
+                    if (packed != null) { newest = candidate; break; }
                 }
             }
             if (newest == null && looked > 0) Log.w("SCAM_CAPTURE", "ZSL clip estimate: no plain 16-bit RAW among the newest " + looked);
@@ -3921,16 +3954,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
             int limit = (int) ((white == null ? 1023 : white) * 0.95f);
             Image.Plane plane = newest.getPlanes()[0];
-            if (packedStride > 0) {
-                // MIPI RAW10: bytes 0..3 of each 5-byte group are the high 8 bits of four samples
+            if (packed != null) {
+                // MIPI RAW10 / RAW14: bytes 0..3 of each 5- / 7-byte group are the high 8 bits of four samples (RAW14 read >> 4:
+                // its high byte is the 10-bit value >> 2 as RAW10's)
+                final int group = com.particlesdevs.photoncamera.util.RawUnpack.isRaw14(packed.format) ? 7 : 5;
                 java.nio.ByteBuffer bytes = plane.getBuffer().duplicate();
-                int w = newest.getWidth(), h = newest.getHeight(), limitHigh = limit >> 2;
+                int w = newest.getWidth(), h = newest.getHeight();
+                int limitHigh = packed.format == com.particlesdevs.photoncamera.util.RawUnpack.RAW14 ? limit >> 6 : limit >> 2;
                 long clipped = 0, total = 0;
-                byte[] row = new byte[w * 5 / 4];
+                byte[] row = new byte[w * group / 4];
                 for (int y = 0; y < h; y += 8) {
-                    bytes.position(y * packedStride);
+                    bytes.position(y * packed.stride);
                     bytes.get(row, 0, row.length);
-                    for (int g = 0; g + 4 < row.length; g += 5) {
+                    for (int g = 0; g + group - 1 < row.length; g += group) {
                         if ((row[g] & 0xff) >= limitHigh) clipped++;
                         total++;
                     }
@@ -3978,18 +4014,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void dropNonPlainRaw(List<Image> images, java.util.Map<Long, TotalCaptureResult> results) {
         mZslPackedStride.clear();
         int dropped = 0, packed = 0;
-        String first = null;
+        String first = null, packedFirst = null;
         for (java.util.Iterator<Image> it = images.iterator(); it.hasNext();) {
             Image image = it.next();
             com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
                     com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(image, rawPayloadWhite(results.get(image.getTimestamp())));
             if (payload.plain()) continue;
-            if (payload.isPacked10()) {
-                // Xiaomi 17 Ultra tele through logical camera 0: packed MIPI RAW10 behind RAW_SENSOR, unpacked on copy.
-                Image.Plane plane = image.getPlanes()[0];
-                int stride = com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedStride(plane.getBuffer(), image.getWidth(), image.getHeight());
-                if (stride > 0) {
-                    mZslPackedStride.put(image.getTimestamp(), stride);
+            if (image.getFormat() == ImageFormat.RAW_SENSOR) {
+                // Xiaomi 17 Ultra tele through logical camera 0: packed MIPI RAW10 (mode 4) or RAW14 (mode 9, P72) behind
+                // RAW_SENSOR, unpacked on copy.
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout layout = packedLayout(image);
+                if (layout != null) {
+                    mZslPackedStride.put(image.getTimestamp(), layout);
+                    if (packedFirst == null) packedFirst = layout.describe();
                     packed++;
                     continue;
                 }
@@ -4003,12 +4040,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             dropped++;
         }
         if (dropped > 0) Log.w("SCAM_HDR", "ZSL: " + dropped + " ring RAWs dropped (" + first + "), " + images.size() + " kept");
-        if (packed > 0) Log.w("SCAM_HDR", "ZSL: " + packed + " ring RAWs hold packed MIPI RAW10 (stride "
-                + mZslPackedStride.values().iterator().next() + "), unpacked on copy");
+        if (packed > 0) Log.w("SCAM_HDR", "ZSL: " + packed + " ring RAWs hold " + packedFirst + " (first), unpacked on copy");
     }
 
-    /** Ring RAWs (by timestamp) whose RAW_SENSOR buffer holds packed MIPI RAW10, with the packed rows' stride. */
-    private final java.util.Map<Long, Integer> mZslPackedStride = new java.util.HashMap<>();
+    /** P72: the packed layout behind a RAW_SENSOR image of this camera (RAW10 / RAW14), or null. */
+    private com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packedLayout(Image image) {
+        CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+        return com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedLayout(image.getPlanes()[0].getBuffer(),
+                image.getWidth(), image.getHeight(),
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.blackLevel(c == null ? mCameraCharacteristics : c),
+                rawPayloadWhite(null));
+    }
+
+    /** Ring RAWs (by timestamp) whose RAW_SENSOR buffer holds packed MIPI RAW10 / RAW14, with the layout. */
+    private final java.util.Map<Long, com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout> mZslPackedStride = new java.util.HashMap<>();
 
     private List<ImageFrame> drainZslNormalFrames(int requestedCount,ScamStockAe.Plan stockPlan,boolean defer) {
         return drainZslNormalFrames(requestedCount,stockPlan,defer,false);
@@ -4099,12 +4144,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     : (pixelStride > 0 ? rowStride / pixelStride : img.getWidth());
             int height = img.getHeight();
             int capacity = img.getPlanes()[0].getBuffer().capacity();
-            Integer packedStride = mZslPackedStride.get(img.getTimestamp());
-            if (packedStride != null) {
-                format = ImageFormat.RAW10;
+            com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packedLayout = mZslPackedStride.get(img.getTimestamp());
+            if (packedLayout != null) {
+                format = packedLayout.format;
                 width = img.getWidth();
-                rowStride = packedStride;
-                capacity = packedStride * height;
+                rowStride = packedLayout.stride;
+                capacity = packedLayout.stride * height;
             }
             int offset = 0;
             if (PhotonCamera.getSettings().aspect169 && width > height) {
@@ -4121,7 +4166,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             ImageFrame frame = defer
                     ? ImageFrame.deferred(img, format, width, rowStride, offset, capacity)
                     : new ImageFrame(img.getPlanes()[0].getBuffer(), format, width, rowStride, offset, capacity);
-            frame.timestamp = img.getTimestamp();frame.fromZsl=true;
+            frame.timestamp = img.getTimestamp();frame.fromZsl=true;frame.sourceFormat=format;
             frame.setCaptureMetadata(selectedMetadata.get(frame.timestamp));
             frame.width = PhotonCamera.getSettings().binning ? width / 2 : width;
             frame.height = PhotonCamera.getSettings().binning ? height / 2 : height;

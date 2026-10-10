@@ -370,6 +370,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             });
         if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
             ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setDialRefresh(this::showZoomLabel);
+        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
+            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setPresetZoom(this::zoomTo); // P72 17U presets
         refreshZoomDial();
     }
 

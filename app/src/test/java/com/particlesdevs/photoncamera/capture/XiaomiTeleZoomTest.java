@@ -445,4 +445,20 @@ public class XiaomiTeleZoomTest {
         // without the forced ISZ the dial is the zoom (the stock camera's map)
         org.junit.Assert.assertEquals(7f, XiaomiTeleZoom.planLogical(7f * mmPerX, Float.NaN, false, 100f, false).userZoom, 1e-3f);
     }
+
+    /** P72 (owner 2026-10-10): presets after the tele button at the ends of the optics and of the optics inside 2x ISZ. */
+    @Test
+    public void presetsAreTheOpticalEndsWithAndWithoutIsz() {
+        float[] p = XiaomiTeleZoom.presetsFor(XiaomiTeleZoom.STOCK_RATIO);
+        assertEquals(3, p.length);
+        assertEquals(4.3f, p[0], 0.01f);
+        assertEquals(6.45f, p[1], 0.01f);
+        assertEquals(8.6f, p[2], 0.01f);
+        assertEquals("4.3×", XiaomiTeleZoom.presetLabel(p[0]));
+        assertEquals("6.45×", XiaomiTeleZoom.presetLabel(p[1]));
+        assertEquals("8.6×", XiaomiTeleZoom.presetLabel(p[2]));
+        // 6.45x turns the forced ISZ on (150 mm), 4.3x does not
+        assertTrue(XiaomiTeleZoom.nextIsz(p[1] * XiaomiTeleZoom.MM_PER_USER, false, 10_000));
+        assertFalse(XiaomiTeleZoom.nextIsz(p[0] * XiaomiTeleZoom.MM_PER_USER, false, 10_000));
+    }
 }

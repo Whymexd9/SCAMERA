@@ -50,11 +50,16 @@ public class ZoomControllerRangeTest {
         org.junit.Assert.assertEquals("back2", ZoomController.pick(slots, ratios, copies, 0.5f, "back0"));
     }
 
-    /** A zoom held just below a module's ratio keeps the module (no back-and-forth restarts at the border). */
+    /**
+     * The longer module takes over 3 % past its ratio; the wider one at once below the active ratio (a module cannot show less
+     * than its own ratio): no back-and-forth at the border and no snap back to the tele's 3.225x (owner's video 2026-10-10).
+     */
     @Test
-    public void downSwitchWaitsBelowTheHysteresis() {
-        org.junit.Assert.assertTrue(ZoomController.holdsActive(3.16f, 3.2f, 1f));
-        org.junit.Assert.assertFalse(ZoomController.holdsActive(3.05f, 3.2f, 1f));
-        org.junit.Assert.assertFalse(ZoomController.holdsActive(3.3f, 1f, 3.2f)); // up switches are not held
+    public void upSwitchWaitsPastTheTargetDownSwitchDoesNot() {
+        org.junit.Assert.assertTrue(ZoomController.holdsActive(3.25f, 1f, 3.225f));   // main crops on to 3.32x
+        org.junit.Assert.assertTrue(ZoomController.holdsActive(3.3f, 1f, 3.225f));
+        org.junit.Assert.assertFalse(ZoomController.holdsActive(3.33f, 1f, 3.225f));  // then the tele
+        org.junit.Assert.assertFalse(ZoomController.holdsActive(3.16f, 3.225f, 1f));  // below the tele: the main camera at once
+        org.junit.Assert.assertFalse(ZoomController.holdsActive(0.9f, 1f, 0.6f));
     }
 }

@@ -50,17 +50,19 @@ public class SaverImplementation {
         } else {
             width = rowStride / image.getPlanes()[0].getPixelStride();
         }
-        if (payload.isPacked10()) {
-            // Xiaomi 17 Ultra tele through logical camera 0: packed MIPI RAW10 behind RAW_SENSOR. The frame is read as RAW10
-            // with the packed rows' own stride and size (the RAW16 capacity made a 4080x4915 frame the merge refused).
-            int packedStride = RawPayloadCheck.packedStride(buffer, image.getWidth(), height);
-            if (packedStride > 0) {
-                com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter RAW_SENSOR holds packed MIPI RAW10 (stride "
-                        + packedStride + "), unpacking to plain uint16");
-                format = ImageFormat.RAW10;
+        if (!payload.plain() && format == ImageFormat.RAW_SENSOR) {
+            // Xiaomi 17 Ultra tele through logical camera 0: packed MIPI RAW10 (mode 4) or RAW14 (in-sensor zoom, mode 9, P72)
+            // behind RAW_SENSOR. The frame is read in that format with the packed rows' own stride and size (the RAW16 capacity
+            // made a 4080x4915 frame the merge refused).
+            RawPayloadCheck.Layout layout = RawPayloadCheck.packedLayout(buffer, image.getWidth(), height,
+                    RawPayloadCheck.blackLevel(CaptureController.mCameraCharacteristics),
+                    RawPayloadCheck.whiteLevel(CaptureController.mCameraCharacteristics, null));
+            if (layout != null) {
+                com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter RAW_SENSOR holds " + layout.describe() + ", unpacking to plain uint16");
+                format = layout.format;
                 width = image.getWidth();
-                rowStride = packedStride;
-                capacity = packedStride * height;
+                rowStride = layout.stride;
+                capacity = layout.stride * height;
                 payload = new RawPayloadCheck.Result(null, payload.impossibleShare, payload.zeroRowShare, true);
             }
         }
@@ -80,6 +82,7 @@ public class SaverImplementation {
         Allocator.binning = PhotonCamera.getSettings().binning;
         ImageFrame frame = new ImageFrame(buffer, format, width, rowStride, offset, capacity, shotArena);
         frame.rawPayloadError = payload.error;
+        frame.sourceFormat = format;
         frame.timestamp = image.getTimestamp();
 
         if (Allocator.binning) {

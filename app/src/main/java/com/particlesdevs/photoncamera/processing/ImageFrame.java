@@ -18,6 +18,11 @@ public class ImageFrame {
     public boolean fromZsl = false;
     /** RawPayloadCheck verdict of the reader Image this frame was copied from; null = plain 16-bit. */
     public String rawPayloadError;
+    /**
+     * P72: format the RAW was read in (the stream's, or the packed layout behind RAW_SENSOR: RAW10, RawUnpack.RAW14*). The 17
+     * Ultra tele in in-sensor zoom alternates RAW10 and RAW14 frames; one merge takes frames of one layout only.
+     */
+    public int sourceFormat;
     /** SCAM: L exposure ratio for an L built from the ZSL N frames (0 = L was captured). */
     public float syntheticLongRatio = 0;
     public int width, height;
@@ -139,6 +144,11 @@ public class ImageFrame {
             buffer = direct;
             return;
         }
+        if (com.particlesdevs.photoncamera.util.RawUnpack.isRaw14(format)) {
+            // P72: packed RAW14 without the shot's arena: unpacked here (liballocator has no binning copy for it)
+            buffer = unpackRaw14(in, shift, format, width, row_stride, capacity, Allocator.binning);
+            return;
+        }
         if (Allocator.binning) {
             int height = capacity / row_stride;
             if (format == 0x25) {
@@ -189,6 +199,19 @@ public class ImageFrame {
         return frame;
     }
 
+    /** P72: a packed RAW14 frame ({@code capacity} bytes of rows from {@code offset}) to uint16, binned 2x2 when asked. */
+    private static ByteBuffer unpackRaw14(ByteBuffer in, int offset, int format, int width, int rowStride, int capacity, boolean binning) {
+        final int height = capacity / rowStride;
+        ByteBuffer src = in.duplicate();
+        src.position(offset);
+        ByteBuffer plain = ByteBuffer.allocateDirect(width * height * 2).order(java.nio.ByteOrder.nativeOrder());
+        if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(src, format, width, height, rowStride, plain))
+            throw new IllegalStateException("RAW14 frame does not fit its geometry");
+        ByteBuffer out = binning ? Allocator.allocateAndCopyBinning(width * height * 2, plain, width, height, width * 2) : plain;
+        out.position(0);
+        return out;
+    }
+
     /** Copies a deferred frame out of the ImageReader and releases its slot. */
     public synchronized void materialize() {
         if (pendingImage == null) return;
@@ -200,6 +223,8 @@ public class ImageFrame {
                     : arena.copy(in, pendingShift, pendingCapacity);
             if (direct != null) {
                 // the shot's arena (P30)
+            } else if (com.particlesdevs.photoncamera.util.RawUnpack.isRaw14(pendingFormat)) {
+                direct = unpackRaw14(in, pendingShift, pendingFormat, pendingWidth, pendingRowStride, pendingCapacity, pendingBinning);
             } else if (pendingBinning) {
                 int height = pendingCapacity / pendingRowStride;
                 direct = pendingFormat == 0x25

@@ -1939,3 +1939,19 @@ The settings live in different places now; the curated groups use these keys.
 - Pixel 7 only: Bento "always" behaves as auto (no ultrashort frames without clipping); RL 3 at 1.2 on camera 4 (2x) while
   the setting holds the device default 1.5 (DeviceDefaults.rl3Amount).
 - Redmi Note 11 Pro only: hybrid_profile 1 written to the tuning (per-pass GPU times).
+
+### P72 — Xiaomi 17 Ultra: module switching, zoom presets, in-sensor zoom RAW14 (done, device check pending)
+- Owner's video + log 2026-10-10 (07:50-07:52): pinching below the tele's 3.225x was held by the P67 down-hysteresis; the tele
+  cannot show less, so every step snapped back to 3.225x (`sync ... -> 3.225`) until a jump to the main camera at 3.01x; going
+  up, the tele took over at 3.18x (below its ratio). Now: down to the wider module at once below the active ratio, up only from
+  1.03 x the longer module's ratio (tele from 3.32x); ZoomController.inRange follows (no snap-back while the main camera crops).
+- Buttons after «3.2×» on this phone (smooth zoom on): «4.3×» (lens 100 mm), «6.45×» (2x ISZ on, lens back at 75 mm), «8.6×»
+  (ISZ, lens 100 mm). XiaomiTeleZoom.presets, ZoomController.onPreset, AuxButtonsLayout preset buttons.
+- Mode 9 (ISZ) delivers packed MIPI RAW14 (7140 of 8160 bytes a row) alternating with packed RAW10 frames: the preview fell
+  back to the purple ISP picture every ~3 s and 4 post-shutter + 16 ring frames were dropped. RawUnpack / liballocator decode
+  RAW14 (RawUnpack.RAW14 / RAW14_TO_10 = >> 4 when the darkest samples sit at 16 x black); RawPayloadCheck.packedLayout finds it
+  by the zero tail and a plausibility test; the viewfinder picks each frame's layout (frameLayout); a merge keeps the layout
+  most frames have (ScamHybridBurst.keepOneLayout, logged). RAW10 row padding search narrowed to 128 bytes.
+- A preview stall of the 0x9002 logical session after it ran (07:36: frames stopped 3 s after leaving mode 9) retries the same
+  operation mode twice before stepping down (stepping down parked the lens at 75 mm for the rest of the process).
+- Open: whether RAW14 frames share the RAW10 frames' field and colour block (the merge log line tells which layout won).

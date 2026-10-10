@@ -17,7 +17,7 @@ public class Allocator{
     public native static ByteBuffer allocateAndCopyConvert12(int capacity, ByteBuffer origin, int width, int row_stride, int offset);
     public native static ByteBuffer allocateAndCopyConvert12Binning(int capacity, ByteBuffer origin, int width, int row_stride, int offset);
     /** Packed MIPI RAW formats that are unpacked to uint16 on copy. */
-    public static boolean isPackedRaw(int format) { return format == 0x25 || format == 0x26; }
+    public static boolean isPackedRaw(int format) { return format == 0x25 || format == 0x26 || RawUnpack.isRaw14(format); }
     public native static ByteBuffer allocateAndCopyBinning(int capacity, ByteBuffer origin, int width, int height, int row_stride);
 
     /** Reconstructs a synthetic Bayer SR mosaic while preserving CFA phases. */

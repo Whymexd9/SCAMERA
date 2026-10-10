@@ -84,6 +84,26 @@ public class ScamHybridBurstRolesTest {
         Field f = ScamHybridBurst.class.getDeclaredField("base"); f.setAccessible(true); return (ImageFrame) f.get(burst);
     }
 
+    /** P72: 17 Ultra in-sensor zoom alternates packed RAW10 and RAW14 frames: one merge keeps the layout most frames have. */
+    @Test public void framesOfOneRawLayoutOnly() {
+        List<ImageFrame> frames = new ArrayList<>();
+        int[] formats = {0x7E14, 0x25, 0x25, 0x7E14, 0x25};
+        for (int f : formats) { ImageFrame frame = frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100); frame.sourceFormat = f; frames.add(frame); }
+        ScamHybridBurst.keepOneLayout(frames);
+        assertEquals(3, frames.size());
+        for (ImageFrame f : frames) assertEquals(0x25, f.sourceFormat);
+        // a tie keeps the first frame's layout; one layout: nothing dropped
+        List<ImageFrame> tie = new ArrayList<>();
+        for (int f : new int[]{0x7E14, 0x25}) { ImageFrame frame = frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100); frame.sourceFormat = f; tie.add(frame); }
+        ScamHybridBurst.keepOneLayout(tie);
+        assertEquals(1, tie.size());
+        assertEquals(0x7E14, tie.get(0).sourceFormat);
+        List<ImageFrame> plain = new ArrayList<>();
+        for (int i = 0; i < 3; i++) { ImageFrame frame = frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100); frame.sourceFormat = 0x20; plain.add(frame); }
+        ScamHybridBurst.keepOneLayout(plain);
+        assertEquals(3, plain.size());
+    }
+
     @Test public void longFramesDeliveredAtNAreMergedAsN() throws Exception {
         List<ImageFrame> frames = new ArrayList<>();
         for (int i = 0; i < 3; i++) frames.add(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 320));
