@@ -351,6 +351,14 @@ public class Gyro {
         }
     }
 
+    /** P78: gyro shakiness of one ring frame (no state of the burst changes); NaN without gyro samples in its exposure window. */
+    public float zslShake(long frameTs, long exposureNs, boolean comparableClock) {
+        synchronized (circleLock) {
+            GyroBurst burst = GyroExposureWindow.extract(circleIntervalStarts, circleBurst, circleCount, frameTs, exposureNs, comparableClock);
+            return burst.samples > 0 ? burst.shakiness : Float.NaN;
+        }
+    }
+
     public void CompleteSequence() {
         integrate = false;
         gyroburst = false;

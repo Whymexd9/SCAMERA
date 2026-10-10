@@ -355,6 +355,8 @@ public final class ScamDenoise extends Node {
         final Point full = input.mSize;
         final Point size0 = new Point((full.x + s - 1) / s, (full.y + s - 1) / s);
         final ScamDenoiseTables.Config cfg = readConfig();
+        final float chromaNight = com.particlesdevs.photoncamera.settings.DeviceDefaults.chromaDenoiseFactor(par.iso);
+        cfg.chromaMult *= chromaNight;
         final boolean despeckle = PreferenceKeys.hybridSwitch("despeckle", true);
         final boolean darkFade = PreferenceKeys.hybridSwitch("dn_dark_fade", true);
         final float[] darkChroma = darkChroma(pipeline.signedRgb);
@@ -683,7 +685,7 @@ public final class ScamDenoise extends Node {
             log.append(" snr=").append(round(snr)).append(snrFixed > 0f ? "(fixed)" : "")
                .append(" mu=").append(mu).append(" gain=").append(round(gain)).append(" p50=").append(p50)
                .append(" g01=").append(round(GY[0][0])).append(" rho=").append(rhoS).append('/').append(rhoR)
-               .append(" model=").append(modelSource).append(" sY=").append(sY).append(" rY=").append(rY)
+               .append(" model=").append(modelSource).append(chromaNight != 1f ? " chromaNight=x" + chromaNight : "").append(" sY=").append(sY).append(" rY=").append(rY)
                .append(" luma ").append(lp[0]).append(" str=").append(col(luma, 0)).append(" rev=").append(col(luma, 1))
                .append(" out=").append(col(luma, 2)).append(" levels").append(lumaLog)
                .append(" chroma ").append(cp[0]).append(" str=").append(col(chroma, 0)).append(" out=").append(col(chroma, 1))

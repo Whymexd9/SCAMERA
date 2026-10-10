@@ -871,26 +871,33 @@ bool cellClipped(int f,int ci,int cj){ // canonical cell
     }
     return false;
 }
+// P76: one invocation per word of two rows (rows chunkU + 2 gid.y and the next): the 2x2 cell's clip test (4 RAW sites) once for
+// both rows of the cell instead of once per row. A pair past the end of a dispatched run recomputes its row as the next run does
+// (the result depends on the RAW values and the site flags only).
 void main(){
     int f=frameIdx+int(gl_GlobalInvocationID.z);
-    int wx=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
-    if(wx>=size.x/2||row>=int(frameGeo[f].z))return;
-    int Y=int(frameGeo[f].y)+row;
-    uint idx=frameGeo[f].x+uint(row*size.x+2*wx);
-    uint word=frames[idx>>1],read=word;
-    int lastCell=-2;bool clip=false;
-    for(int k=0;k<2;k++){
-        int X=2*wx+k;
-        int x=X-cfaShift.x,y=Y-cfaShift.y;   // canonical
-        uint fl=siteOutlier(f,x,y);
-        if((mFlagsU.z&1)!=0&&x>=0&&y>=0){
-            if((x>>1)!=lastCell){lastCell=x>>1;clip=cellClipped(f,x>>1,y>>1);} // both sites share the cell unless the CFA shifts x
-            if(clip)fl|=2u;
+    int wx=int(gl_GlobalInvocationID.x),row0=chunkU+2*int(gl_GlobalInvocationID.y);
+    if(wx>=size.x/2||row0>=int(frameGeo[f].z))return;
+    int lastX=-2,lastY=-2;bool clip=false;
+    for(int rr=0;rr<2;rr++){
+        int row=row0+rr;
+        if(row>=int(frameGeo[f].z))break;
+        int Y=int(frameGeo[f].y)+row;
+        uint idx=frameGeo[f].x+uint(row*size.x+2*wx);
+        uint word=frames[idx>>1],read=word;
+        for(int k=0;k<2;k++){
+            int X=2*wx+k;
+            int x=X-cfaShift.x,y=Y-cfaShift.y;   // canonical
+            uint fl=siteOutlier(f,x,y);
+            if((mFlagsU.z&1)!=0&&x>=0&&y>=0){
+                if((x>>1)!=lastX||(y>>1)!=lastY){lastX=x>>1;lastY=y>>1;clip=cellClipped(f,x>>1,y>>1);} // the sites of one cell share it
+                if(clip)fl|=2u;
+            }
+            uint sh=uint(16*k);
+            word=(word&~(0xC000u<<sh))|((fl&3u)<<(14u+sh));
         }
-        uint sh=uint(16*k);
-        word=(word&~(0xC000u<<sh))|((fl&3u)<<(14u+sh));
+        if(word!=read)frames[idx>>1]=word; // most words carry no flag; an unchanged word is not written back
     }
-    if(word!=read)frames[idx>>1]=word; // P76: most words carry no flag; an unchanged word is not written back
 }
 )";
 
@@ -1024,15 +1031,24 @@ void main(){
     if(fParam[f].y>0.0&&inside){
         int ix=int(floor(o.x)),iy=int(floor(o.y));
         float fx=o.x-float(ix),fy=o.y-float(iy);
-        // P76: the 3x3 cells around (ix, iy) read once; the bilinear sample takes 4 of them (13 reads a cell before)
+#ifdef SHARED_TILES
+        // P76 (Adreno): the 3x3 cells around (ix, iy) read once; the bilinear sample takes 4 of them (13 reads a cell before). Mali
+        // keeps the 13 reads (the 9 vec4 held across the variance made the pass slower on the Mali-G57).
         vec4 c3[9];
         for(int k=0;k<9;k++)c3[k]=cellAt(f,ix-1+k%3,iy-1+k/3);
         vec4 c00=c3[4],c10=c3[5],c01=c3[7],c11=c3[8];
+#else
+        vec4 c00=cellAt(f,ix,iy),c10=cellAt(f,ix+1,iy),c01=cellAt(f,ix,iy+1),c11=cellAt(f,ix+1,iy+1);
+#endif
         vec3 g=(c00.xyz*(1.0-fx)+c10.xyz*fx)*(1.0-fy)+(c01.xyz*(1.0-fx)+c11.xyz*fx)*fy;
         bool dclip=max(max(c00.w,c10.w),max(c01.w,c11.w))>0.5;
         // donor texture variance over its 3x3 cells
         vec3 m=vec3(0.0),m2=vec3(0.0);
+#ifdef SHARED_TILES
         for(int k=0;k<9;k++){vec3 u=c3[k].xyz;m+=u*(1.0/9.0);m2+=u*u*(1.0/9.0);}
+#else
+        for(int dj=0;dj<=2;dj++)for(int di=0;di<=2;di++){vec3 u=cellAt(f,ix-1+di,iy-1+dj).xyz;m+=u*(1.0/9.0);m2+=u*u*(1.0/9.0);}
+#endif
         vec3 dv=max(m2-m*m,vec3(0.0));
         // 9-cell variance estimate of noise alone: (1 + 0.5 + 1)/3 of the single-site u variance, times 8/9.
         float Lf=max(dot(m*m,vec3(1.0/3.0))-epsU(),0.0);
@@ -1076,11 +1092,16 @@ uniform int cy0;
 uniform int cy1;
 uniform vec4 dl; // offset, scale, bento active, floor (rejection below it does not spread)
 uniform int validPlanesU; // bentoValidate: per-ultrashort-frame validity planes after the mask plane (0 = none)
-// P76: the 12x12 rejection weights around the group's 8x8 cells, read once per group (25 reads a cell before).
+#ifdef SHARED_TILES
+// P76 (Adreno: SHARED_TILES): the 12x12 rejection weights around the group's 8x8 cells, read once per group (25 reads a cell
+// before; Adreno 750 dilate 533 -> 234 ms, float rounding differs by <= 2.3e-6). Mali keeps the plain reads: its shared memory is
+// the same cache as the buffer, and the tile and barrier made the pass 20 % slower on the Mali-G57.
 shared float dilR[144];
+#endif
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=cy0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
+#ifdef SHARED_TILES
     {
         int bx=int(gl_WorkGroupID.x)*8-2,by=cy0+chunkU+int(gl_WorkGroupID.y)*8-2,fr=clamp(f,1,max(frameCount-1,1));
         for(int k=int(gl_LocalInvocationIndex);k<144;k+=64){
@@ -1089,12 +1110,18 @@ void main(){
         }
     }
     barrier();
+#endif
     if(cx>=w2||cy>=cy1||f>=frameCount)return;
     float s=0.0,wc=1.0;
     for(int dj=-2;dj<=2;dj++)for(int di=-2;di<=2;di++){
+#ifdef SHARED_TILES
         // the clamped site of the tile: clamp(by + k / 12) is clamp(cy + dj) for the column / row of this cell
         int ty=cy+dj-(cy0+chunkU+int(gl_WorkGroupID.y)*8-2),tx=cx+di-(int(gl_WorkGroupID.x)*8-2);
         float v=dilR[ty*12+tx];
+#else
+        int y=clamp(cy+dj,ry0,ry1-1),x=clamp(cx+di,0,w2-1);
+        float v=rawR[(f-1)*(ry1-ry0)*w2+(y-ry0)*w2+x];
+#endif
         s+=max(1.0-v-dl.w,0.0)/max(1.0-dl.w,1.0e-3);
         if(di==0&&dj==0)wc=v;
     }
@@ -3005,16 +3032,18 @@ public:
             markProgram=timed("mark",kHybMark,true);
             guideProgram=timed("guide",kHybGuide);
             cellsProgram=timed("cells",kHybCells);
-            rejectProgram=timed("reject",kHybReject);
+            // P76: the shared-memory variants (Adreno only; debugging: SCAM_HYB_NO_TILES=1 builds the Mali variants anywhere)
+            const std::string tiles=std::string(adreno&&!std::getenv("SCAM_HYB_NO_TILES")?"#define SHARED_TILES 1\n":"");
+            rejectProgram=timed("reject",(tiles+kHybReject).c_str());
             if(sumsCarry){ // the same program with a carry word per frame (the source without it stays byte-identical: same cache entry)
-                std::string body=kHybDilate;
+                std::string body=tiles+kHybDilate;
                 const std::string plain="atomicAdd(sums[f],uint(clamp(r,0.0,1.0)*255.0+0.5));";
                 const size_t at=body.find(plain);
                 if(at==std::string::npos)throw std::runtime_error("HYBRID GPU: dilate program without its sum");
                 body.replace(at,plain.size(),"{uint v=uint(clamp(r,0.0,1.0)*255.0+0.5);uint old=atomicAdd(sums[f],v);"
                     "if(old>0xFFFFFFFFu-v)atomicAdd(sums[frameCount+3+f],1u);}");
                 dilateProgram=timed("dilate",body.c_str());
-            } else dilateProgram=timed("dilate",kHybDilate);
+            } else dilateProgram=timed("dilate",(tiles+kHybDilate).c_str());
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
@@ -3728,7 +3757,7 @@ public:
                             if(!need&&runStart>=0){
                                 for(int r=runStart;r<r0;r+=chunk){
                                     glUniform1i(chunkLoc,r);
-                                    glDispatchCompute(GLuint((w2+7)/8),GLuint((std::min(chunk,r0-r)+7)/8),1);
+                                    glDispatchCompute(GLuint((w2+7)/8),GLuint((std::min(chunk,r0-r)+15)/16),1); // two rows an invocation
                                 }
                                 runStart=-1;
                             }
@@ -3739,7 +3768,17 @@ public:
                     if(profile){glFinish();passMs[7]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-markStarted).count();}
                 } else {
                 glUniform1i(frameIdx,0);
-                dispatchRows(markProgram,w2,maxRows,frames,chunkOf(128),7);
+                // two rows an invocation (kHybMark): chunkU stays in rows, the groups cover half of them
+                const GLint chunkLoc=loc(markProgram,"chunkU");
+                const int chunk=chunkOf(128);
+                const auto markStarted=std::chrono::steady_clock::now();
+                for(int r=0;r<maxRows;r+=chunk){
+                    glUniform1i(chunkLoc,r);
+                    glDispatchCompute(GLuint((w2+7)/8),GLuint((std::min(chunk,maxRows-r)+15)/16),GLuint(std::max(frames,1)));
+                }
+                glFlush();
+                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                if(profile){glFinish();passMs[7]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-markStarted).count();}
                 }
                 check("mark");
             }

@@ -121,7 +121,7 @@ public class DeviceDefaultsTest {
         assertFalse(main.contains("pref_scam_hybrid_ark_ccm_sat"));
     }
 
-    /** Owner 2026-10-10: Redmi Note 11 Pro (viva) 12 N frames, 2 Shasta frames, ARK RL 3 amount 1.2; also in module profiles. */
+    /** Owner 2026-10-10: Redmi Note 11 Pro (viva) 12 N frames, 2 Shasta frames, ARK RL 3 amount 1.5 (v5); also in module profiles. */
     @Test public void redmiNote11ProMergesFewerFrames() {
         ShadowBuild.setManufacturer("Xiaomi");
         ShadowBuild.setModel("2201116TG");
@@ -137,7 +137,7 @@ public class DeviceDefaultsTest {
         for (SharedPreferences p : new SharedPreferences[]{main, module}) {
             assertEquals("12", p.getString("pref_scam_hybrid_zsl_frames", ""));
             assertEquals("2", p.getString("pref_scam_hybrid_shasta_frames", ""));
-            assertEquals("1.2", p.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+            assertEquals("1.5", p.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
         }
         assertFalse(main.contains("pref_camera_package_spoof_enabled"));
         assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
@@ -146,6 +146,31 @@ public class DeviceDefaultsTest {
         DeviceDefaults.applyOnce(context, main);
         assertEquals("20", main.getString("pref_scam_hybrid_zsl_frames", ""));
         meta.edit().clear().commit();
+    }
+
+    /** Owner 2026-10-10 evening: a Redmi Note 11 Pro on the v4 defaults gets RL 3 at 1.5 and keeps its other settings. */
+    @Test public void redmiNote11ProV5TakesRl3At15() {
+        ShadowBuild.setManufacturer("Xiaomi");
+        ShadowBuild.setModel("2201116TG");
+        ShadowBuild.setDevice("viva");
+        SharedPreferences main = prefs("defaults_note11pro_v4");
+        main.edit().putInt("device_defaults_version", 4).putString("pref_scam_hybrid_zsl_frames", "20")
+                .putString("pref_scam_hybrid_ark_sharp_rl3_amount", "1.2").commit();
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertEquals("1.5", main.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+        assertEquals("20", main.getString("pref_scam_hybrid_zsl_frames", ""));
+        assertEquals(5, main.getInt("device_defaults_version", 0));
+    }
+
+    /** Owner 2026-10-10: the Redmi Note 11 Pro's colour denoise is 20 % stronger in low light only; other phones unchanged. */
+    @Test public void redmiNote11ProNightChromaDenoise() {
+        ShadowBuild.setManufacturer("Xiaomi");
+        ShadowBuild.setDevice("viva");
+        assertEquals(1.2f, DeviceDefaults.chromaDenoiseFactor(7746), 0f);
+        assertEquals(1f, DeviceDefaults.chromaDenoiseFactor(800), 0f);
+        ShadowBuild.setManufacturer("Google");
+        ShadowBuild.setDevice("panther");
+        assertEquals(1f, DeviceDefaults.chromaDenoiseFactor(7746), 0f);
     }
 
     /** Owner 2026-10-10: Pixel 7 (panther) ARK RL 3 amount 1.5, nothing else. */

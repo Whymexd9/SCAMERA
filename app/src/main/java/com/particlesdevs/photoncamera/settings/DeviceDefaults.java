@@ -24,10 +24,11 @@ public final class DeviceDefaults {
      * Find X8 Ultra streams RAW10 by default. 3 (owner, 2026-10-08): the Find X7 Ultra opens with the camera package spoof of com.ss.android.ugc.aweme (all three methods: the
      * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the ARK tone at 1.1. 4 (owner,
      * 2026-10-10): the Redmi Note 11 Pro (Helio G96, Mali-G57 MC2: 19 frames took 16.7 s of GPU merge) merges 12 N frames and
-     * 2 Shasta frames, with the ARK RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. A phone whose marker is older gets only the
+     * 2 Shasta frames, with the ARK RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. 5 (owner,
+     * 2026-10-10 evening, shots with the P77 build): the Redmi Note 11 Pro takes RL 3 at 1.5. A phone whose marker is older gets only the
      * entries of the newer versions, so an update never resets the user's other settings.
      */
-    static final int VERSION = 4;
+    static final int VERSION = 5;
     /** The package the Find X7 Ultra's camera service shows every lens to (owner's choice). */
     static final String X7U_SPOOF_PACKAGE = "com.ss.android.ugc.aweme";
     private DeviceDefaults() {}
@@ -50,6 +51,8 @@ public final class DeviceDefaults {
             out.put("pref_scam_hybrid_shasta_frames", "2");
             out.put("pref_scam_hybrid_ark_sharp_rl3_amount", "1.2");
         }
+        // v5: Redmi Note 11 Pro RL 3 at 1.5 (owner, after the P77 shots)
+        if (since < 5 && note11Pro) out.put("pref_scam_hybrid_ark_sharp_rl3_amount", String.valueOf(NOTE11PRO_RL3));
         // v4: Pixel 7 (owner 2026-10-10, his shots of p7.zip were taken with it)
         if (since < 4 && pixel7) out.put("pref_scam_hybrid_ark_sharp_rl3_amount", String.valueOf(PIXEL7_RL3));
         if (!oppo) return out;
@@ -67,8 +70,18 @@ public final class DeviceDefaults {
         return out;
     }
 
+    /** RL 3 amount of the Redmi Note 11 Pro default (v5). */
+    static final float NOTE11PRO_RL3 = 1.5f;
+    /**
+     * P78 (owner, 2026-10-10): the Redmi Note 11 Pro (no OIS) takes the colour denoise 20 % stronger in low light (base ISO from
+     * {@link #NOTE11PRO_NIGHT_ISO}: his night shots at ISO 7700); x1 elsewhere and on every other phone.
+     */
+    public static float chromaDenoiseFactor(int iso) {
+        return iso >= NOTE11PRO_NIGHT_ISO && redmiNote11Pro() ? 1.2f : 1f;
+    }
+    static final int NOTE11PRO_NIGHT_ISO = 3200;
     /** Redmi Note 11 Pro 4G (Helio G96): device viva (owner's log, model 2201116TG). */
-    static boolean redmiNote11Pro() {
+    public static boolean redmiNote11Pro() {
         return "Xiaomi".equalsIgnoreCase(Build.MANUFACTURER) && "viva".equalsIgnoreCase(Build.DEVICE);
     }
 

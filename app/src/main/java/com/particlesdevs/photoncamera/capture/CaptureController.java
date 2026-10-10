@@ -4178,6 +4178,46 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return selected;
     }
 
+    /**
+     * P78: a camera without OIS (Redmi Note 11 Pro: 60 ms handheld frames at night, gyro shake 10..60 x apart inside one burst)
+     * takes the steadiest of the newest 2 x requested ring frames at the exposure instead of simply the newest; the newest frame
+     * stays (the shutter moment). Reorders {@code exact} (newest first) so that its first {@code requested} frames are the kept ones.
+     */
+    private void steadiestFirst(List<Image> exact, java.util.Map<Long,TotalCaptureResult> metadata, int requested) {
+        if (requested < 2 || exact.size() <= requested || isOisSupported(mCameraCharacteristics)) return;
+        if (!PreferenceKeys.scamDevSwitch("zsl_steadiest", true)) return;
+        final boolean comparable = isGyroClockComparable();
+        float[] all = new float[Math.min(exact.size(), 2 * requested)];
+        int pool = 0; // the newest frames with gyro samples (the gyro ring holds ~2 s)
+        for (; pool < all.length; pool++) {
+            Image image = exact.get(pool);
+            CaptureResult r = metadata.get(image.getTimestamp());
+            Long exposure = r != null ? r.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
+            all[pool] = exposure != null ? PhotonCamera.getGyro().zslShake(image.getTimestamp(), exposure, comparable) : Float.NaN;
+            if (!(all[pool] >= 0f)) break;
+        }
+        if (pool <= requested) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: gyro samples for " + pool + " ring frames only, newest kept"); return; }
+        int[] order = steadiestOrder(java.util.Arrays.copyOf(all, pool));
+        if (order == null) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: no gyro samples, newest frames kept"); return; }
+        List<Image> head = new ArrayList<>(exact.subList(0, pool));
+        for (int i = 0; i < pool; i++) exact.set(i, head.get(order[i]));
+        StringBuilder l = new StringBuilder("hybrid ZSL steadiest (no OIS): ").append(requested).append(" of the newest ").append(pool)
+                .append(", ring positions");
+        for (int i = 0; i < requested; i++) l.append(' ').append(order[i]);
+        Log.i("SCAM_HDR", l.toString());
+    }
+
+    /** Order of the pool frames (0 = newest, always first): then by gyro shakiness, lowest first; null when any is unknown. */
+    static int[] steadiestOrder(float[] shake) {
+        for (float s : shake) if (!(s >= 0f)) return null;
+        Integer[] rest = new Integer[shake.length - 1];
+        for (int i = 1; i < shake.length; i++) rest[i - 1] = i;
+        java.util.Arrays.sort(rest, (a, b) -> shake[a] != shake[b] ? Float.compare(shake[a], shake[b]) : Integer.compare(a, b));
+        int[] order = new int[shake.length];
+        for (int i = 1; i < shake.length; i++) order[i] = rest[i - 1];
+        return order;
+    }
+
     /** P77: the longest gap between two ring frames of one shot (and 4 exposures of the base for long frames); the frames before it
      *  are another moment of the scene. */
     static final long ZSL_RING_MAX_GAP_NS = 500_000_000L;
@@ -4221,6 +4261,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w("SCAM_HDR", "hybrid ZSL: " + stale + " frames at the newest exposure dropped: older than a gap of more than "
                     + maxGap / 1_000_000 + " ms in the ring");
         }
+        steadiestFirst(exact, metadata, requestedCount);
         List<Image> keep = new ArrayList<>(exact.subList(0, Math.min(exact.size(), Math.max(1, requestedCount))));
         for (Image image : exact.subList(keep.size(), exact.size())) rest.add(image);
         final int fill = Math.min(Math.max(1, requestedCount), 8);

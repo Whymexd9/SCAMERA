@@ -2022,3 +2022,18 @@ The settings live in different places now; the curated groups use these keys.
   merged as blotches on the wall (owner: not there in reality). `selectHybridRing` drops the frames behind a gap of more than
   max(0.5 s, 4 base exposures).
 - Open: owner's shots with the new build (the same scenes), Mali timings with the shared-memory passes.
+- 2026-10-10 evening (owner's r11p.zip, P77 build): noise factor applied in every shot (x0.22..0.31 by day, x1/16 at night),
+  ring frames contiguous, no ghosts on the cat. Mali-G57 per shot vs the old build: flags -60 %, cells -50 %, mark unchanged,
+  dilate +20 %, reject slightly slower -> P78.
+
+### P78 — Redmi Note 11 Pro without OIS: steadiest ZSL frames, RL 3 1.5, night colour denoise, Mali pass variants (2026-10-10)
+- No OIS (LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION without ON, every such camera): of the newest 2 x requested ring frames at
+  the exposure the newest and then the steadiest by gyro shakiness are kept (`steadiestFirst` / `steadiestOrder`, only frames
+  with gyro samples; dev switch `zsl_steadiest 0` = newest as before). Night shots there: 60 ms frames, shake 10..60 x apart.
+- DeviceDefaults v5: Redmi Note 11 Pro RL 3 amount 1.5. `DeviceDefaults.chromaDenoiseFactor`: its colour denoise x1.2 from base
+  ISO 3200 (ScamDenoise multiplies `dn_chroma_mult`; log `chromaNight=x1.2`).
+- GPU: kHybDilate / kHybReject shared-memory variants only on Adreno (`SHARED_TILES`; SCAM_HYB_NO_TILES=1 for debugging); every
+  other GPU runs the earlier code: on the OPPO with SCAM_HYB_NO_TILES the output is the pre-P76 md5 (syn_b1 103304c8, x7u_1x
+  ae73516c, hand 0a46d3be), i.e. cells / flags / mark / reject are bit-identical everywhere. kHybMark: one invocation per word of
+  two rows (the cell clip test once per cell, not per row); Adreno md5 unchanged (P76 references).
+- Open: Mali timings of the owner's next log.
