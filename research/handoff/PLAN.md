@@ -1955,3 +1955,19 @@ The settings live in different places now; the curated groups use these keys.
 - A preview stall of the 0x9002 logical session after it ran (07:36: frames stopped 3 s after leaving mode 9) retries the same
   operation mode twice before stepping down (stepping down parked the lens at 75 mm for the rest of the process).
 - Open: whether RAW14 frames share the RAW10 frames' field and colour block (the merge log line tells which layout won).
+
+### P73 — Hybrid Quad / Tetra reconstruction: detail check (done, Tetra day kernel changed; device check pending)
+- Owner, 2026-10-10: «перепроверь 2x2 и 4x4 ремозаик, особенно деталь» (Hybrid route only). Bench: a natural scene (Pixel 7 shot,
+  linearised, 4096x3072) through tools/quad/gen_mosaic_burst.py (daylight noise 4e-5, 1 and 8 frames, b1 / b2 / b4), worker replays
+  on the OPPO, luma PSNR and per-band signal transfer (cross-spectrum / scene spectrum) on the four most textured 1024 px crops.
+- Found: the native kernel is the binned one x b x mosaicKernelScale; the shared daylight 0.7 made the Tetra kernel twice as wide
+  in sensor px as the Quad one. Tetra 8 frames kept 0.59 / 0.29 / 0.10 of the 0.12-0.2 / 0.2-0.3 / 0.3-0.42 cyc/px bands (Bayer
+  0.96 / 0.89 / 0.77, Quad 0.90 / 0.73 / 0.55); 1 frame 0.02 (a binned image). Edge / flat scales did not move it, the kernel scale did.
+- Fix: mosaicTetraKernelScale 0.35 by day (Tetra T1; night keeps mosaicTetraNight*). Tetra 8 frames: 38.2 dB (was 33.2),
+  0.87 / 0.69 / 0.48; synthetic chart: neutral false colour 0.037 -> 0.017, edges +1.5 dB, background 75.4 -> 70.6 dB (Quad 66.6,
+  Bayer 62.5), lattice 3.3 -> 4.8. 0.25 gave a little more detail at more lattice (8.5) and noise (67.2 dB).
+- Replays: syn_b1 / syn_b2 / hand / x7u_1x / isz2 unchanged, v10_1 / v10_2 (real night Tetra) unchanged, syn_b4 changed
+  (daylight Tetra, intended): new reference e7177fe4.
+- Quad left at 0.7 (tuned in P34 on real bursts against ArkCam); on the synthetic natural scene 0.5 gave +1.1 dB. Tetra 2x grid
+  (P56) by day uses the new scale too (not measured separately).
+- Open: a real daylight Tetra burst (vivo 10x ISZ outdoors) to confirm noise / lattice on the phone.

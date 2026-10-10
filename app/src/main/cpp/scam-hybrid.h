@@ -342,6 +342,14 @@ struct HybridTuning {
     // amplitude <= 0.05 % (split 0.22-1.4 %); syn_b4 at device noise: background lattice ratio 13.9 (noise level; kernel 0.7 or edge
     // 0.4 with kernel 0.9: 21-26), zone plates +0.2 dB, false colour -9 %, 4-8 px transfer +22 %.
     float mosaicTetraNightKernelScale=1.f,mosaicTetraNightEdgeScale=0.4f,mosaicTetraNightFlatScale=1.6667f;
+    // P73: Tetra T1 (block 4) kernel scale by day (0 = mosaicKernelScale). The native precision is the binned one / (b s)^2, so the
+    // shared 0.7 made the Tetra kernel twice as wide in sensor px as the Quad one (b 4 against 2): 1 frame of a natural scene kept 2 %
+    // of the 0.12-0.2 cyc/px band, 8 frames 59 % (plain Bayer 96 %). 0.35 = the Quad kernel in sensor px. Synthetic natural scene
+    // (tools/quad gen_mosaic_burst, daylight noise, 8 frames, OPPO): luma PSNR 33.2 -> 38.2 dB, band transfer 0.59 / 0.29 / 0.10 ->
+    // 0.87 / 0.69 / 0.48 (0.12-0.2 / 0.2-0.3 / 0.3-0.42 cyc/px); synthetic chart: neutral false colour 0.037 -> 0.017, edges
+    // +1.5 dB, background 75.4 -> 70.6 dB (Quad 66.6, plain Bayer 62.5), lattice 3.3 -> 4.8. Night (6.1 night key) keeps the
+    // Tetra night point above.
+    float mosaicTetraKernelScale=0.35f;
     int mosaicNativeClamp=2;     // P34: ArkCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
                                  // 1 per component as ArkCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
                                  // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split). Tetra (P35): the range in
@@ -455,7 +463,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
             ||set("mosaicNativeFlatScale",&t.mosaicNativeFlatScale)||set("mosaicNativeClamp",nullptr,&t.mosaicNativeClamp)
             ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)
-            ||set("mosaicTetraNightKernelScale",&t.mosaicTetraNightKernelScale)||set("mosaicTetraNightEdgeScale",&t.mosaicTetraNightEdgeScale)
+            ||set("mosaicTetraNightKernelScale",&t.mosaicTetraNightKernelScale)||set("mosaicTetraKernelScale",&t.mosaicTetraKernelScale)||set("mosaicTetraNightEdgeScale",&t.mosaicTetraNightEdgeScale)
             ||set("mosaicTetraNightFlatScale",&t.mosaicTetraNightFlatScale)||set("mosaicNativeAlongScale",&t.mosaicNativeAlongScale)
             ||set("mosaicKernelG",&t.mosaicKernelG)||set("mosaicKernelRB",&t.mosaicKernelRB)
             ||set("mosaicChromaFill",nullptr,&t.mosaicChromaFill)||set("mosaicFillSupport",&t.mosaicFillSupport)
@@ -6719,7 +6727,8 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const bool tetra2x=b==4&&!t2&&gridAsked==2&&int64_t(W)*Ht<=kHybridClassicPixels&&tune.mosaicNative2x!=0;
     const int window=b==4&&!t2?std::clamp(tetra2x&&tune.mosaicTetraWindow2x>0?tune.mosaicTetraWindow2x:2*tune.mosaicWindow,1,8)
                               :std::clamp(tune.mosaicWindow,1,6);
-    const float kernelScale=std::clamp(tune.mosaicKernelScale,0.1f,4.f);
+    // P73: Tetra T1 by day has its own scale (the Quad kernel in sensor px)
+    const float kernelScale=std::clamp(mb==4&&tune.mosaicTetraKernelScale>0.f?tune.mosaicTetraKernelScale:tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
     const bool fullWindow=tune.mosaicWindowFull!=0;
