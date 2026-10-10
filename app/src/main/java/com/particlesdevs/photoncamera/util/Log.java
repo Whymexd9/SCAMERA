@@ -243,12 +243,14 @@ public class Log {
     }
 
     public static void d(String tag, String message) {
+        ScameraTimingLog.mirror("D", tag, message); // P80: the timing file, also while the regular log is off
         if(!logEnabled) return;
         android.util.Log.d(tag, message);
         writeToFile("D", tag, message);
     }
 
     public static void w(String tag, String message) {
+        ScameraTimingLog.mirror("W", tag, message); // P80: the timing file, also while the regular log is off
         if(!logEnabled) return;
         android.util.Log.w(tag, message);
         writeToFile("W", tag, message);
@@ -261,6 +263,7 @@ public class Log {
     }
 
     public static void e(String tag, String message) {
+        ScameraTimingLog.mirror("E", tag, message); // P80: the timing file, also while the regular log is off
         if(!logEnabled) return;
         android.util.Log.e(tag, message);
         writeToFile("E", tag, message);
@@ -273,6 +276,7 @@ public class Log {
     }
 
     public static void i(String tag, String message) {
+        ScameraTimingLog.mirror("I", tag, message); // P80: the timing file, also while the regular log is off
         if(!logEnabled) return;
         android.util.Log.i(tag, message);
         writeToFile("I", tag, message);

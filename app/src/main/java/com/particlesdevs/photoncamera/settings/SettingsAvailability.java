@@ -152,7 +152,7 @@ public final class SettingsAvailability {
             if (key.equals("pref_ultrahdr_key"))
                 return Lang.t("Только для JPEG: включите «Также сохранять JPEG» — Ultra HDR будет в нём.",
                         "JPEG only: turn on “Also save a JPEG” to get Ultra HDR in that JPEG.");
-            if (key.equals("pref_jpeg_quality"))
+            if (key.equals("pref_jpeg_quality") || key.equals("pref_jpeg_fast_encoder"))
                 return Lang.t("Для JPEG: выберите формат JPEG или включите «Также сохранять JPEG».",
                         "For JPEG: choose the JPEG format or turn on “Also save a JPEG”.");
         }

@@ -2964,6 +2964,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     +" sensorCutoffNs="+scamZslShutterTimestamp+" cutoffSource=latest_preview_result"
                     +" route="+PreferenceKeys.mergeRoute());
             mShotInProgress = true;
+            // P80: «Замер времени проходов GPU» on: this shot's timing lines also go to Download/SCAMERA/SCAMERA-timings.log
+            com.particlesdevs.photoncamera.util.ScameraTimingLog.shot(PhotonCamera.getAppContext(), PreferenceKeys.hybridSwitch("profile", false),
+                    android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " (" + android.os.Build.DEVICE + ") camera " + physicalID
+                    + " route " + PreferenceKeys.mergeRoute());
             com.particlesdevs.photoncamera.processing.ShotTimeline.begin("shutter");
             final long shotGeneration = ++mShutterGeneration;
             if (isZslMode()) {

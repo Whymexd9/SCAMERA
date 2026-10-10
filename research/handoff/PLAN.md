@@ -2037,3 +2037,38 @@ The settings live in different places now; the curated groups use these keys.
   ae73516c, hand 0a46d3be), i.e. cells / flags / mark / reject are bit-identical everywhere. kHybMark: one invocation per word of
   two rows (the cell clip test once per cell, not per row); Adreno md5 unchanged (P76 references).
 - Open: Mali timings of the owner's next log.
+
+### P79 — Redmi Note 11 Pro: fastest processing within 10 % quality (owner, 2026-10-10; not pushed yet: owner's order)
+- GPU profile off by default again (P69 had it on for the Redmi): profile 1 (a glFinish after every pass) made the merge
+  30-60 % slower on the OPPO replays (x7u 4.0 -> 3.0 s, hand 4.7 -> 2.4 s, syn_b2 4.5 -> 1.8 s total), output unchanged. New
+  switch «Замер времени проходов GPU» (pref_scam_hybrid_profile, Hybrid diagnostics) or scam_dev.txt "hybrid_profile 1".
+- Bento "always" works as auto on the Redmi (as on the Pixel 7): its 3 ultrashort frames went through every GPU pass with
+  weight 0 in each shot ("would fall back: not enough clipping"); with clipping in the buffered frame Bento runs as before.
+- s61Mode 6 on the Redmi (quality trade allowed there): donors take the base 6.1 covariance, no per-frame covariance in the
+  cells pass (Mali-G57 1.1-2.6 s a shot). OPPO: synthetic PSNR 46.24 -> 46.30 / 42.24 -> 42.24 dB, real x7u detail energy
+  -0.2 %, output rms difference 2.7 % of the signal. A user / scam_dev s61_mode value is kept.
+- Not traded: N frames (12 -> 10 would be +9.5 % noise), F6 local alignment (CPU, parallel to the merge; check "strips waited"
+  in the next log once the GPU is faster).
+
+### P80 — CPU steps of the shot to the GPU, timing file, fast JPEG (owner, 2026-10-10; Colour processing of 9.6 dropped by the owner)
+- Table of CPU steps measured on the OPPO (Adreno 750) before porting; only what pays was moved:
+  1. Chroma median of the mosaic results on the GPU (`scam-chroma-gpu.h` ChromaMedianGpu; context built during the merge,
+     torn down on a helper thread; tuning chromaGpu 0 = CPU): 740-850 -> 300-440 ms a Quad / Tetra / ISZ shot. The boxes sum in
+     float and the soft counts run in float: max |diff| 1.9e-6 (syn_b2), 6e-8 (v10_1); chromaGpu 0 gives the old md5.
+  2. Mosaic preparation: measured 0.2 s (binning 0.2 s, site response 4-18 ms on real bursts, 0.58 s on syn_b2 only), not the
+     0.6-0.8 s estimated; a row-wise CPU rewrite was bit-identical but slower (reverted). HYBRID MOSAIC NATIVE: total now
+     reports before / merge / after.
+  3. Mochi was already on the GPU (54-133 ms a frame on Adreno 750, ~650 ms on the Mali-G57): the base rows are uploaded once
+     for every bracketed frame of the shot (bit-identical, x7u mochi 2: frames 2.. 20-35 % faster).
+  4. Worker -> app RGB as IEEE half floats (job marker rgb-half; scam_dev "hybrid_rgb_half 0" = float32): 96 instead of 168 MB
+     for 12 MP, ScamRgb reads the halves (clip statistics, decimated float copy) and uploads RGBA16F bands. The first stage stored
+     the RGB in half floats anyway; transport error <= 5e-4 relative, trailers byte-identical. Write on the OPPO 144 -> 118 ms.
+  5. ScamRgb statistics: already on a helper thread alongside the upload (0-46 ms left on the shot's path): not moved.
+  6. F6 local alignment on the GPU: not done. On the flagships it runs alongside the GPU merge (not on the shot's path); on the
+     Redmi the GPU is the bottleneck and the F6 field would take GPU time from the merge.
+  7. «Быстрый JPEG» (pref_jpeg_fast_encoder, «Конфиг», off): Android's encoder (4:2:0) instead of jpegli; the owner chooses.
+- «Замер времени проходов GPU» on: every timing line of the shot also goes to Download/SCAMERA/SCAMERA-timings.log
+  (ScameraTimingLog: a header at the shutter, then the lines with ms / elapsed / TIMELINE; test ScameraTimingLogTest).
+- Control md5 since P80 (default tuning): syn_b1 5b988db1, x7u_1x 52bcce71 (plain Bayer, unchanged); mosaic series (GPU chroma
+  median): syn_b2 0bfa468b, syn_b4 fc0b4a35, hand 1d1ac3bc, isz2 3c58de7a, v10_1 104bd930, v10_2 94ec0f73. With chromaGpu 0 the
+  P76 references (hand 6cab2c98, isz2 99c972ae, syn_b4 421efc48).

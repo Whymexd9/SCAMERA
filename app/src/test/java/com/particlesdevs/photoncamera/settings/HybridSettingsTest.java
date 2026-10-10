@@ -378,13 +378,21 @@ public class HybridSettingsTest {
         for(String k:new String[]{"jsrPhase 1\n","jsrLca 1\n","jsrAuto2x 1\n","jsrPoly 2.0\n"})assertTrue(k+tuning,tuning.contains(k));
     }
 
-    @Test public void gpuProfileOnlyOnTheRedmiNote11Pro() {
+    /** P79: the per-pass GPU times (a glFinish after every pass, 30-60 % slower merge) are off by default on every phone. */
+    @Test public void gpuProfileOffByDefault() {
         assertFalse(PreferenceKeys.hybridTuningText().contains("profile "));
         org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");
         org.robolectric.shadows.ShadowBuild.setDevice("viva");
-        assertTrue(PreferenceKeys.hybridTuningText().contains("profile 1\n"));
+        assertFalse(PreferenceKeys.hybridTuningText().contains("profile "));
+        // P79: the Redmi Note 11 Pro merges with the base frame's 6.1 covariance (owner allowed up to 10 % quality for speed)
+        assertTrue(PreferenceKeys.hybridTuningText().contains("s61Mode 6\n"));
         org.robolectric.shadows.ShadowBuild.setDevice("nezha");
         assertFalse(PreferenceKeys.hybridTuningText().contains("profile "));
+        assertFalse(PreferenceKeys.hybridTuningText().contains("s61Mode "));
+        // the switch in the Hybrid diagnostics turns them on (owner, 2026-10-10)
+        prefs.edit().putBoolean("pref_scam_hybrid_profile", true).commit();
+        assertTrue(PreferenceKeys.hybridTuningText().contains("profile 1\n"));
+        prefs.edit().remove("pref_scam_hybrid_profile").commit();
     }
 
     @Test public void p68FormerDefaultsMoveOnce() {

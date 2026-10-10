@@ -345,6 +345,9 @@ public final class ScamNeuralClient {
             // the network or the burst is a Quad/Tetra mosaic (HdrxProcessor), and the hybrid would read the mosaic
             // as plain Bayer (vivo tele in ISZ: blue image, 3 October). Without the model the worker falls back itself.
             final boolean hybridMerge=scamBurst instanceof ScamHybridBurst;
+            // P80: the hybrid RGB comes back as half floats (marker rgb-half): half the bytes written, read and uploaded
+            final boolean rgbHalf=hybridMerge&&ScamHybridBurst.halfTransport();
+            if(rgbHalf&&!new File(dir,"rgb-half").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер half","Could not create the half marker"));
             if(hybridMerge){
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
@@ -482,7 +485,7 @@ public final class ScamNeuralClient {
                     (raw!=null||burst!=null?Lang.t("Отчёт последней съёмки","Last capture report"):Lang.t("Скопировать отчёт","Copy report"))+".");
             if(raw==null&&burst==null&&scamBurst==null)return null;
             final int ow=scamBurst!=null?scamBurst.outputWidth():w,oh=scamBurst!=null?scamBurst.outputHeight():h;
-            long expected=scamBurst!=null?(long)ow*oh*12:burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
+            long expected=scamBurst!=null?(long)ow*oh*(rgbHalf?6:12):burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException(Lang.t("Слишком большой нейрорезультат","Neural result too large"));
             final long outputBytes=scamOut!=null?scamOut.size():output.length();
             // Trailers after the RGB, each optional, in this order: merged Bayer RAW (sensor grid, w*h*2, if requested), the
@@ -503,7 +506,8 @@ public final class ScamNeuralClient {
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);
                 final float noiseK=reportNumber(report,"HYBRID NOISE CHECK:","-> model x",1f);
-                ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;}
+                ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;
+                ScamHybridBurst.lastRgbHalf=rgbHalf;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null||scamBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException(Lang.t("Недостаточно памяти для результата","Not enough memory for the result"));

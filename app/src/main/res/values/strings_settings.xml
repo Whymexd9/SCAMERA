@@ -466,6 +466,10 @@
     <string name="prefs_scam_hybrid_ark_vibrance_green_summary">Green hues, saturated ones protected. ArkCam 2.85: 0.20.</string>
     <string name="prefs_scam_hybrid_diag_category_title">Diagnostics</string>
     <string name="prefs_scam_hybrid_diagnostics_title">Save processing stages</string>
+    <string name="prefs_jpeg_fast_encoder_title">Fast JPEG</string>
+    <string name="prefs_jpeg_fast_encoder_summary">Saves the JPEG with the system encoder: about twice as fast, but the colour of fine detail is kept at half resolution and the file is a little larger. Off: the jpegli encoder (better quality).</string>
+    <string name="prefs_scam_hybrid_profile_title">Time every GPU pass</string>
+    <string name="prefs_scam_hybrid_profile_summary">Writes the time of each merge step (HYBRID GPU ms) to the log, and every timing of the shot (capture, merge, processing, saving) to Download/SCAMERA/SCAMERA-timings.log, to find what is slow on this phone. The merge itself gets 30–60 % slower while it is on; the photo does not change.</string>
     <string name="prefs_scam_hybrid_diagnostics_summary">After a Hybrid shot a ZIP with intermediate images and numeric data is saved to Download/SCAMERA. Slows processing down and takes space.</string>
     <string name="prefs_scam_hybrid_dev_note_title">scam_dev.txt file</string>
     <string name="prefs_scam_hybrid_dev_note_summary">“key value” lines in Android/data/…/files/scam_dev.txt override settings without the menu: “hybrid 0/1” toggles Hybrid itself (A/B with SCAM HDR), “hybrid_&lt;key&gt; value” sets any parameter of this section (key without pref_scam_hybrid_).</string>

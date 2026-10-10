@@ -577,6 +577,10 @@ public final class ScamHybridBurst implements ScamTransport {
     public static volatile float lastBentoFactor = 1f, lastBentoUsClipped = 0f;
     /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
     public static volatile float lastNoiseFactor = 1f;
+    /** P80: the last hybrid RGB is IEEE half floats (6 B a pixel, the worker's rgb-half output), not float32. */
+    public static volatile boolean lastRgbHalf;
+    /** P80: whether the worker returns the RGB as half floats; scam_dev.txt "hybrid_rgb_half 0" keeps float32. */
+    static boolean halfTransport() { return PreferenceKeys.scamDevSwitch("hybrid_rgb_half", true); }
     /** Size of the RGB returned by the last hybrid merge (sensor size unless the Sabre 2x output is on). */
     public static volatile android.graphics.Point lastOutputSize;
     /** Final JPEG size of the last hybrid shot (the bitmap is resized to it after the whole pipeline). */
@@ -822,7 +826,7 @@ public final class ScamHybridBurst implements ScamTransport {
         out.position(0);
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
-        lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f;
+        lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
         ScamRgb.lastClipFlags = null;
         ScamBurst.lastEffectiveFrames = null;
         ScamBurst.lastMergedDng = null;

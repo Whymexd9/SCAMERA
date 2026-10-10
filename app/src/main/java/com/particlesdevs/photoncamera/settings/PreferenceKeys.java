@@ -226,6 +226,14 @@ public class PreferenceKeys {
         return (float) SettingsNumericRules.value("pref_watermark_size",
                 preferenceKeys.settingsManager.getString("default_scope", "pref_watermark_size", "7"), 7);
     }
+    /**
+     * P80 «Быстрый JPEG»: Android's encoder (libjpeg-turbo, 4:2:0) instead of jpegli (4:4:4) for the saved JPEGs: ~2x faster to
+     * encode, colour detail at half resolution and a slightly larger file. Off by default (jpegli).
+     */
+    public static boolean getJpegFastEncoder() {
+        try { return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_jpeg_fast_encoder", false); }
+        catch (RuntimeException e) { return false; }
+    }
     /** P24: quality of every saved JPEG (plain, Ultra HDR base image and gain map), 70-100, default 98 as before. */
     public static int getJpegQuality() {
         return (int) Math.round(SettingsNumericRules.value("pref_jpeg_quality",
@@ -979,10 +987,15 @@ public class PreferenceKeys {
             if (v == null || v.isEmpty()) continue;
             try { out.append(k[0]).append(' ').append(Float.parseFloat(v.trim())).append('\n'); } catch (NumberFormatException ignored) {}
         }
-        // P69 (owner, 2026-10-10): per-pass GPU times on by default on the Redmi Note 11 Pro (Mali-G57 MC2: 16.7 s merge, the
-        // passes to speed up are not known yet); a glFinish after each pass costs some time. scam_dev.txt "hybrid_profile 0" turns it off.
-        if (scamDevValue("hybrid_profile") == null && hybridString("profile", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
-            out.append("profile 1\n");
+        // P69 had the per-pass GPU times on by default on the Redmi Note 11 Pro; P79: off again (the glFinish after every pass made
+        // the merge 30-60 % slower on the OPPO replays, its output unchanged). The switch «Замер времени проходов GPU»
+        // (pref_scam_hybrid_profile) or scam_dev.txt "hybrid_profile 1" turns them on (the dev value is written by the loop above).
+        if (scamDevValue("hybrid_profile") == null && hybridSwitch("profile", false)) out.append("profile 1\n");
+        // P79 (owner allowed up to 10 % quality for speed on the Redmi Note 11 Pro only): its donors take the base frame's 6.1 kernel
+        // covariance (s61Mode 6, no per-frame covariance pass over 36 RAW sites a cell; Mali-G57 cells pass 1.1-2.6 s a shot). OPPO
+        // replays: synthetic PSNR 46.24 -> 46.30 / 42.24 -> 42.24 dB, real handheld x7u detail energy -0.2 %.
+        if (scamDevValue("hybrid_s61_mode") == null && hybridString("s61_mode", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
+            out.append("s61Mode 6\n");
         // P74 «Опыты JSR»: switches, written only when on (the worker keeps them off)
         if (hybridSwitch("jsr_phase", false)) out.append("jsrPhase 1\n");
         if (hybridSwitch("jsr_lca", false)) out.append("jsrLca 1\n");

@@ -112,7 +112,9 @@ public final class HybridPlan {
         // Ultrashort (Bento): lower the gain first, then the shutter.
         // P71 (owner, 2026-10-10): on the Pixel 7 "always" takes the ultrashort frames only where the buffered frame clips, as
         // auto (its forced Bento ran on masks of 0.001-0.01 % of the frame: ~130 ms a shot with nothing to replace)
-        final int bento = bentoMode() == 2 && DeviceDefaults.pixel7() ? 1 : bentoMode();
+        // P79: the Redmi Note 11 Pro as well (3 of its 17 frames went through every GPU pass with weight 0: "would fall back: not
+        // enough clipping" in each of the owner's shots).
+        final int bento = bentoMode() == 2 && (DeviceDefaults.pixel7() || DeviceDefaults.redmiNote11Pro()) ? 1 : bentoMode();
         if (bento == 2 || (bento == 1 && clipFraction > bentoTriggerClip())) {
             final double factor = ultrashortFactor(), target = n / factor;
             int iso = (int) Math.max(isos.getLower(), Math.min(nIso, Math.round(target / nShutterNs)));

@@ -153,7 +153,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   Проверки: `tools/check_ui_language.py`, `tools/check_settings_model.py` (JDK в PATH, `PYTHONUTF8=1`).
 - GLSL перед сборкой: `glslc --target-env=opengl -std=310es`; uniform не называть как встроенные функции (`step`).
 - Replay склейки на OPPO (без UI): скрипт `rp0.sh` (путь в HANDOFF §3), серии `/data/local/tmp/*.nch`; эталоны md5:
-  syn_b1 5b988db1, syn_b2 99f29aab, syn_b4 421efc48, hand 6cab2c98, isz2 99c972ae, x7u_1x 52bcce71, v10_1 58c09ee5, v10_2 2176b21b (P76). Пути в adb —
+  syn_b1 5b988db1, x7u_1x 52bcce71, syn_b2 0bfa468b, syn_b4 fc0b4a35, hand 1d1ac3bc, isz2 3c58de7a, v10_1 104bd930, v10_2 94ec0f73 (P80; chromaGpu 0 = P76 refs). Пути в adb —
   `C:/...`, не `/c/...`.
 - Локальный APK (только по просьбе): `bash local-tools/build-local.sh` из `SCAMERA-PC`; подпись локальная, поверх
   CI-версии не встаёт. Владельцу по умолчанию — APK из CI, сверенный с `SHA256SUMS.txt`.

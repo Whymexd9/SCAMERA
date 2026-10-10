@@ -139,21 +139,26 @@ public final class ScamRgb extends Node {
      * fewer than 53 bits), so the order of the additions does not matter. parts 1 = the single walk as before.
      */
     static ChannelClip channelClip(java.nio.ByteBuffer rgb, boolean bento, float k, float usClipped, boolean flags, int parts) {
+        return channelClip(rgb, bento, k, usClipped, flags, parts, false);
+    }
+    /** P80: half = the RGB is IEEE half floats (the worker's rgb-half output): the same walk on the widened values. */
+    static ChannelClip channelClip(java.nio.ByteBuffer rgb, boolean bento, float k, float usClipped, boolean flags, int parts, boolean half) {
         ChannelClip cc = new ChannelClip();
         final java.nio.ByteBuffer view = rgb.duplicate().order(java.nio.ByteOrder.nativeOrder());
-        final int n = view.asFloatBuffer().limit() / 3;
+        final int n = (half ? view.asShortBuffer().limit() : view.asFloatBuffer().limit()) / 3;
         final float inv = bento && k > 1f ? 1f / k : 0f;
         final long samples = (n + 16L) / 17L;
         final int chunks = parts <= 1 || samples < 65536 ? 1 : 4 * parts;
         final ClipPart[] part = new ClipPart[chunks];
         final java.util.function.IntConsumer walk = c -> {
             final ClipPart p = new ClipPart();
-            final java.nio.FloatBuffer f = view.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            final java.nio.FloatBuffer f = half ? null : view.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            final java.nio.ShortBuffer hb = half ? view.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer() : null;
             final long s1 = samples * (c + 1) / chunks;
             for (long s = samples * c / chunks; s < s1; s++) {
                 final int i = (int) (s * 17L);
                 for (int ch = 0; ch < 3; ch++) {
-                    final float v = f.get(i * 3 + ch);
+                    final float v = half ? HalfFloat.TABLE[hb.get(i * 3 + ch) & 0xffff] : f.get(i * 3 + ch);
                     if (v > p.max[ch]) p.max[ch] = v;
                     histogram(p.hLo[ch], p.sLo[ch], v);
                     if (inv > 0f) histogram(p.hHi[ch], p.sHi[ch], v * inv);
@@ -224,13 +229,93 @@ public final class ScamRgb extends Node {
     }
 
     /** Every `stride`-th pixel of the linear RGB: enough for the percentile statistics of the later nodes. */
-    private static java.nio.ByteBuffer decimate(java.nio.ByteBuffer rgb,int stride){
+    private static java.nio.ByteBuffer decimate(java.nio.ByteBuffer rgb,int stride,boolean half){
+        // P80: a half-float RGB gives the same float32 copy (widened) to the later nodes
+        if(half){
+            java.nio.ShortBuffer f=rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+            int n=f.limit()/3,m=(n+stride-1)/stride;
+            java.nio.ByteBuffer out=java.nio.ByteBuffer.allocateDirect(m*12).order(java.nio.ByteOrder.nativeOrder());
+            java.nio.FloatBuffer o=out.asFloatBuffer();
+            for(int i=0,k=0;i<n;i+=stride,k++)for(int c=0;c<3;c++)o.put(k*3+c,HalfFloat.TABLE[f.get(i*3+c)&0xffff]);
+            return out;
+        }
         java.nio.FloatBuffer f=rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
         int n=f.limit()/3,m=(n+stride-1)/stride;
         java.nio.ByteBuffer out=java.nio.ByteBuffer.allocateDirect(m*12).order(java.nio.ByteOrder.nativeOrder());
         java.nio.FloatBuffer o=out.asFloatBuffer();
         for(int i=0,k=0;i<n;i+=stride,k++){o.put(k*3,f.get(i*3));o.put(k*3+1,f.get(i*3+1));o.put(k*3+2,f.get(i*3+2));}
         return out;
+    }
+    private static final ThreadLocal<short[][]> REPACK_HALF_ROW = ThreadLocal.withInitial(() -> new short[][]{new short[0], new short[0]});
+    /** P80: rows [y0, y0 + rows) of the half-float RGB as RGBA16F (alpha 1.0 = 0x3C00) into dst from its start, the same bits. */
+    static void halfRgbToRgbaRows(java.nio.ByteBuffer rgb, int w, int y0, int rows, java.nio.ByteBuffer dst) {
+        final java.nio.ByteBuffer src = rgb.duplicate().order(java.nio.ByteOrder.nativeOrder());
+        final java.nio.ByteBuffer out = dst.duplicate().order(java.nio.ByteOrder.nativeOrder());
+        ParallelWork.forEach(rows, r -> {
+            short[][] t = REPACK_HALF_ROW.get();
+            if (t[0].length < 3 * w) { t[0] = new short[3 * w]; t[1] = new short[4 * w]; }
+            final short[] a3 = t[0], a4 = t[1];
+            final java.nio.ShortBuffer s = src.asShortBuffer();
+            s.position((y0 + r) * 3 * w);
+            s.get(a3, 0, 3 * w);
+            for (int x = 0, i = 0, o = 0; x < w; x++, i += 3, o += 4) {
+                a4[o] = a3[i]; a4[o + 1] = a3[i + 1]; a4[o + 2] = a3[i + 2]; a4[o + 3] = (short) 0x3C00;
+            }
+            final java.nio.ShortBuffer d = out.asShortBuffer();
+            d.position(r * 4 * w);
+            d.put(a4, 0, 4 * w);
+        });
+    }
+    /**
+     * P80: the half-float RGB uploaded as RGBA16F in row bands of ~16 MB (alpha 1.0), the next band repacked while the driver
+     * takes the current one (as {@link #uploadRgba}); the first stage reads .rgb. Null when the staging memory is not there.
+     */
+    static GLTexture uploadHalfRgba(Point size, java.nio.ByteBuffer rgb) {
+        final int w = size.x, h = size.y;
+        final int band = Math.max(1, Math.min(h, (16 << 20) / (8 * w)));
+        final java.nio.ByteBuffer[] stage = new java.nio.ByteBuffer[2];
+        stage[0] = com.particlesdevs.photoncamera.util.Allocator.allocate(band * w * 8);
+        stage[1] = stage[0] == null ? null : com.particlesdevs.photoncamera.util.Allocator.allocate(band * w * 8);
+        if (stage[1] == null) {
+            if (stage[0] != null) com.particlesdevs.photoncamera.util.Allocator.free(stage[0]);
+            return null;
+        }
+        final java.util.concurrent.ExecutorService repack = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "SCAMERA-rgba16-repack");
+            t.setDaemon(true);
+            return t;
+        });
+        java.util.concurrent.Future<?> next = null;
+        GLTexture tex = null;
+        try {
+            tex = new GLTexture(size, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            next = repack.submit(() -> halfRgbToRgbaRows(rgb, w, 0, Math.min(band, h), stage[0]));
+            for (int y0 = 0, k = 0; y0 < h; y0 += band, k++) {
+                next.get();
+                next = null;
+                final int rows = Math.min(band, h - y0), y1 = y0 + band, k1 = k + 1;
+                if (y1 < h) next = repack.submit(() -> halfRgbToRgbaRows(rgb, w, y1, Math.min(band, h - y1), stage[k1 & 1]));
+                glBindTexture(GL_TEXTURE_2D, tex.mTextureID);
+                stage[k & 1].position(0);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y0, w, rows, GL_RGBA, android.opengl.GLES30.GL_HALF_FLOAT, stage[k & 1]);
+            }
+            return tex;
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (tex != null) tex.close();
+            final Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw new IllegalStateException(cause);
+        } catch (InterruptedException e) {
+            if (tex != null) tex.close();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while uploading the RGB", e);
+        } finally {
+            if (next != null) try { next.get(); } catch (Exception ignored) {}
+            repack.shutdown();
+            com.particlesdevs.photoncamera.util.Allocator.free(stage[0]);
+            com.particlesdevs.photoncamera.util.Allocator.free(stage[1]);
+        }
     }
     private static final ThreadLocal<int[][]> REPACK_ROW = ThreadLocal.withInitial(() -> new int[][]{new int[0], new int[0]});
 
@@ -376,13 +461,15 @@ public final class ScamRgb extends Node {
         final boolean bento=ScamHybridBurst.lastBentoApplied;
         final float bentoK=ScamHybridBurst.lastBentoFactor,bentoUs=ScamHybridBurst.lastBentoUsClipped;
         final boolean withFlags=flags!=null;
+        // P80: the worker's half-float RGB (6 B a pixel); its size confirms it
+        final boolean half=hybrid&&ScamHybridBurst.lastRgbHalf&&big!=null&&big.limit()>=size.x*size.y*6&&big.limit()<size.x*size.y*12; // (a copy may be larger: PostAb)
         if(hybrid)strength=Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_recovery",100f)/100f));
         final java.util.concurrent.FutureTask<InputStats> side=new java.util.concurrent.FutureTask<>(()->{
             InputStats s=new InputStats();
             final long t0=System.currentTimeMillis();
-            if(hybrid)s.cc=channelClip(big,bento,bentoK,bentoUs,withFlags); else s.clip=clipLevels(big);
+            if(hybrid)s.cc=channelClip(big,bento,bentoK,bentoUs,withFlags,ParallelWork.threads(),half); else s.clip=clipLevels(big);
             final long t1=System.currentTimeMillis();
-            if(owned)s.decimated=decimate(big,61);
+            if(owned)s.decimated=decimate(big,61,half);
             s.statMs=t1-t0;s.decimateMs=System.currentTimeMillis()-t1;
             return s;
         });
@@ -393,8 +480,13 @@ public final class ScamRgb extends Node {
         GLTexture input=null;
         boolean rgbaBands=false;
         try{
+            if(half){
+                input=uploadHalfRgba(size,big);rgbaBands=input!=null;
+                if(input==null)throw new IllegalStateException("no staging memory for the half-float RGB upload");
+            } else {
             if(rgbaUploadWanted(glGetString(GL_RENDERER))){input=uploadRgba(size,big);rgbaBands=input!=null;}
             if(input==null)input=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_32,3),big,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            }
         }finally{
             if(input==null)awaitQuietly(side); // never release the buffer under the helper thread (an exception on its way out)
         }
@@ -427,7 +519,7 @@ public final class ScamRgb extends Node {
         // P33 W2.4 / P48: where the time between the worker result and the lens shading goes (stats and decimate on the helper
         // thread, alongside the upload; wait = what the upload left of them)
         com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","scamrgb input ms: upload="+(uploadDone-uploadStart)/1000000
-                +(rgbaBands?" (rgba bands)":" (rgb)")+" stats="+stats.statMs+" decimate="+stats.decimateMs
+                +(half?" (rgba16f bands)":rgbaBands?" (rgba bands)":" (rgb)")+" stats="+stats.statMs+" decimate="+stats.decimateMs
                 +" wait="+(sideDone-uploadDone)/1000000+" free="+(System.nanoTime()-sideDone)/1000000);
         GLTexture flagsTex=null,chromaNear=null,chromaWide=null,chromaHuge=null;
         try {

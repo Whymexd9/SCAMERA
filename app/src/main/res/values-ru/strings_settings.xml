@@ -466,6 +466,10 @@
     <string name="prefs_scam_hybrid_ark_vibrance_green_summary">Зелёные оттенки, с защитой насыщенных. ArkCam 2.85: 0,20.</string>
     <string name="prefs_scam_hybrid_diag_category_title">Диагностика</string>
     <string name="prefs_scam_hybrid_diagnostics_title">Сохранять этапы обработки</string>
+    <string name="prefs_jpeg_fast_encoder_title">Быстрый JPEG</string>
+    <string name="prefs_jpeg_fast_encoder_summary">Сохраняет JPEG системным кодером: примерно вдвое быстрее, но цвет мелких деталей хранится в половинном разрешении, а файл чуть больше. Выключено — кодер jpegli (лучше качество).</string>
+    <string name="prefs_scam_hybrid_profile_title">Замер времени проходов GPU</string>
+    <string name="prefs_scam_hybrid_profile_summary">Пишет в лог время каждого шага склейки (HYBRID GPU ms), а все тайминги снимка (съёмка, склейка, обработка, сохранение) — в Download/SCAMERA/SCAMERA-timings.log, чтобы найти, что тормозит на этом телефоне. Пока включено, склейка идёт на 30–60 % медленнее; само фото не меняется.</string>
     <string name="prefs_scam_hybrid_diagnostics_summary">После снимка Hybrid сохраняется ZIP с промежуточными изображениями и числовыми данными в Download/SCAMERA. Замедляет обработку и занимает место.</string>
     <string name="prefs_scam_hybrid_dev_note_title">Файл scam_dev.txt</string>
     <string name="prefs_scam_hybrid_dev_note_summary">Строки «ключ значение» в Android/data/…/files/scam_dev.txt перекрывают настройки без меню: «hybrid 0/1» — сам Hybrid (A/B со SCAM HDR), «hybrid_&lt;ключ&gt; значение» — любой параметр этого раздела (ключ без pref_scam_hybrid_).</string>

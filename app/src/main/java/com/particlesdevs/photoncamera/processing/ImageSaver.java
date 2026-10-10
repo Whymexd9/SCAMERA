@@ -184,7 +184,8 @@ public class ImageSaver {
             final long encodeStart = System.nanoTime();
             try {
                 // jpegli 4:4:4 first; if it fails, the file is rewritten from the start by Android's encoder (4:2:0).
-                if (JpegliEncoder.available()) {
+                // P80 «Быстрый JPEG»: Android's encoder directly.
+                if (JpegliEncoder.available() && !com.particlesdevs.photoncamera.settings.PreferenceKeys.getJpegFastEncoder()) {
                     try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
                         if (icc == null) {
                             JpegliEncoder.compress(img, jpgQuality, outputStream);

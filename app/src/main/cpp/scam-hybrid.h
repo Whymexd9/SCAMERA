@@ -19,6 +19,7 @@
 // effective-frames map and the merged Bayer RAW for the DNG.
 #include "scam-superres-gpu.h"
 #include "scam-rawca-gpu.h" // P28 RAW CA (CA_correct_RT port, burst / GPU pre-pass)
+#include "scam-chroma-gpu.h" // P80 mosaicChromaMedian on the GPU
 #include "scam-crash.h"
 #include <atomic>
 #include <chrono>
@@ -272,6 +273,8 @@ struct HybridTuning {
     // rejection took moving objects for noise: ghosts), scaled down by it (down to x1/16). 0 = off. -1 is internal (decided before
     // the merge).
     int noiseMeasured=1;
+    // P80: 1 (default) = the chroma median of the mosaic results on the GPU (ChromaMedianGpu, float rounding only), 0 = CPU.
+    int chromaGpu=1;
     // P74 JSR experiments (settings group «Опыты JSR», all off by default; ideas of Jiangtherapee Super Resolution, no code):
     // jsrPhase 1: the donors' kernel narrows with the phase coverage of the burst (jsrCoverage): sigma x clamp((h / h1)^strength,
     // minSigma, 1), h = green fill distance of all frames, h1 = of the base alone (sensor px).
@@ -490,7 +493,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
             // P27
-            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)
+            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)
             ||set("jsrPhase",nullptr,&t.jsrPhase)||set("jsrPhaseStrength",&t.jsrPhaseStrength)||set("jsrPhaseMinSigma",&t.jsrPhaseMinSigma)
             ||set("jsrAuto2x",nullptr,&t.jsrAuto2x)||set("jsrAuto2xMaxGap",&t.jsrAuto2xMaxGap)
             ||set("jsrLca",nullptr,&t.jsrLca)||set("jsrPoly",nullptr,&t.jsrPoly)||set("jsrPolyDegree",nullptr,&t.jsrPolyDegree)||set("jsrPolyClamp",&t.jsrPolyClamp)
@@ -2685,6 +2688,8 @@ class HybridGpu {
     // P62 Mochi (compiled on first use): programs and buffers (0 base rows, 1 frame rows, 2 tiles, 3 tile info, 4 final, 5 out)
     GLuint mochiStatsProgram=0,mochiBlurProgram=0,mochiApplyProgram=0,mochiBuf[6]{};
     size_t mochiCap[6]{};
+    // P80: the base rows already in mochiBuf[0] (frame pointer and rows): the next bracketed frame of the shot reuses them
+    const uint16_t* mochiBasePtr=nullptr;int mochiBaseR0=-1,mochiBaseR1=-1;
     size_t natNormCap=0;
     GLuint natFastProgram(int block,int r,bool marked,bool fill){
         const bool tetra=block==4;
@@ -3135,7 +3140,11 @@ public:
         for(int ty0=0;ty0<ny;ty0+=bandTiles){
             const int ty1=std::min(ny,ty0+bandTiles),r0=16*ty0,r1=std::min(h,16*ty1);
             const int b0=std::max(0,r0-marginLo)&~1,b1=std::min(h,r1+marginHi+1)&~1;
-            upload(0,in.frames[0],b0,b1);upload(1,in.frames[f],r0,r1);altR0=r0;altR1=r1;
+            if(mochiBasePtr!=in.frames[0]||mochiBaseR0!=b0||mochiBaseR1!=b1){
+                upload(0,in.frames[0],b0,b1);mochiBasePtr=in.frames[0];mochiBaseR0=b0;mochiBaseR1=b1;
+            } else buffer(0,size_t(b1-b0)*rowBytes); // the same rows of the same base: bound, not uploaded again
+            if(ny>bandTiles)mochiBasePtr=nullptr;   // several bands overwrite it: no reuse
+            upload(1,in.frames[f],r0,r1);altR0=r0;altR1=r1;
             buffer(2,tileBytes);buffer(3,tileBytes);
             common(mochiStatsProgram);
             const GLuint p=mochiStatsProgram;
@@ -6622,7 +6631,18 @@ constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
 // max(1, b/2) px apart (Quad: 5 px, Tetra: 9 px). Green stays; R and B follow the median differences. Colour detail finer than the
 // colour block is not real in a mosaic.
 // osc (optional): per colour block of the base RAW, the oscillation of its own sites (see hybridReconstructMosaic), (w/b) x (h/b).
-inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr){
+// P80: gpu = try ChromaMedianGpu first (float rounding of its boxes and soft counts only); *how gets "gpu" or "cpu (reason)".
+inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr,bool gpu=false,
+                               std::string* how=nullptr){
+    if(gpu){
+        // within the GPU storage of one call and a quarter of MemAvailable (any RAW size: 8192x6144 needs 2.4 GB, it stays here)
+        const uint64_t avail=hybridMemAvailable();
+        const size_t need=ChromaMedianGpu::bytesFor(w,h);
+        if(int64_t(w)*h<=int64_t(16800000)&&(avail==0||need<avail/4)){
+            try{auto g=chromaTake();g->process(rgb,w,h,block,osc);if(how)*how="gpu: "+g->times+" ms";chromaGiveBack(std::move(g));return;}
+            catch(const std::exception& e){if(how)*how=std::string("cpu (")+e.what()+")";}
+        } else if(how)*how="cpu (size)";
+    } else if(how)*how="cpu";
     const int d=std::max(1,block/2);
     std::vector<float> u(size_t(w)*h),v(size_t(w)*h),t(size_t(w)*h);
     // Chroma as ratios to green (camera RGB before WB: differences R-G of a bright neighbour put on a dark line drove R and B
@@ -6737,6 +6757,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h;
     if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
+    if(tune.chromaGpu>0)chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
     const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
     // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, one
     // ultrashort (Bento) and one bracketed (Shasta) frame when there is room
@@ -6947,8 +6968,9 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
                 for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++n;}
                 osc[size_t(J)*bw+I]=float(s/std::max(n,1));}});
         }
-        mosaicChromaMedian(rgb,ow,oh,b,osc.empty()?nullptr:&osc);
-        report("HYBRID MOSAIC: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px) "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
+        std::string how;
+        mosaicChromaMedian(rgb,ow,oh,b,osc.empty()?nullptr:&osc,tune.chromaGpu>0,&how);
+        report("HYBRID MOSAIC: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px, "+how+") "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
     }
     int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2)); // replays: the tuning grid
     if(gridOut==2&&int64_t(W)*Ht>kHybridClassicPixels){ // any RAW size: the 2x grid only up to 16 MP (see hybridReconstruct)
@@ -7025,6 +7047,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h,bb=b*b;
+    if(tune.chromaGpu>0)chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
     if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
     const int vw=W/b,vh=Ht/b,n=int(input.frames.size());
     // The mosaic the merge reads: the sensor's (Quad; Tetra T1), or for Tetra T2 the Quad mosaic of its 2x2 sub-blocks.
@@ -7087,6 +7110,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
         report(line);
     }
     // ---- response of the site classes (the normal frames picked, up to 4)
+    const auto gainStart=Clock::now();
     std::array<float,64> gain;gain.fill(1.f);
     if(tune.mosaicGain){
         std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<4)gf.push_back(f);
@@ -7103,6 +7127,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // sites would hide it (replay of a x1.6 synthetic burst: Bento mask 1.8 % of the cells instead of 5.6 %).
     // T2: the Quad site (u, v) is the mean of the gained sensor sites (2u..2u+1, 2v..2v+1) (white when one clipped), with the black of
     // its Tetra block's phase (vb, as the split's sub-frames), so the merge reads it without gains (natV.y = 0).
+    const auto binStart=Clock::now();
     const size_t vpix=size_t(vw)*vh,qpix=size_t(MW)*MH;
     std::vector<uint16_t> binned(vpix*pick.size()),quad(t2?qpix*pick.size():0);
     const float clipAt=input.white-1.f;
@@ -7176,7 +7201,9 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     }
     std::vector<uint8_t> vEff,vClip;
     HybridStats st;
+    const auto prepDone=Clock::now(); // P80: the CPU steps around the merge in the total report
     std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
+    const auto mergeDone=Clock::now();
     std::vector<uint16_t>().swap(binned);
     // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults, on the merged mosaic's
     // grid and block; kept apart from it so that mosaicPath 0 stays untouched). T2: the oscillation of the Quad sites (the merge's);
@@ -7220,8 +7247,9 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                 for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++cnt;}
                 osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
         }
-        mosaicChromaMedian(rgb,ow,oh,mb*k2,&osc); // P56: the block (and its taps) in output px
-        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result) "
+        std::string how;
+        mosaicChromaMedian(rgb,ow,oh,mb*k2,&osc,tune.chromaGpu>0,&how); // P56: the block (and its taps) in output px
+        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result, "+how+") "
             +std::to_string(int(millis(Clock::now()-c0)))+" ms");
     }
     std::vector<uint16_t>().swap(quad);
@@ -7268,7 +7296,10 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
             }
         });
     }
-    report("HYBRID MOSAIC NATIVE: total "+std::to_string(int(millis(Clock::now()-started)))+" ms");
+    report("HYBRID MOSAIC NATIVE: total "+std::to_string(int(millis(Clock::now()-started)))+" ms (before the merge "
+        +std::to_string(int(millis(prepDone-started)))+": pick "+std::to_string(int(millis(gainStart-started)))+" response "
+        +std::to_string(int(millis(binStart-gainStart)))+" binning "+std::to_string(int(millis(prepDone-binStart)))+", merge "+std::to_string(int(millis(mergeDone-prepDone)))+", after it "
+        +std::to_string(int(millis(Clock::now()-mergeDone)))+")");
     if(statsOut)*statsOut=st;
     return out;
 }

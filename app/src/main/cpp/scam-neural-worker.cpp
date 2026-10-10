@@ -240,6 +240,20 @@ int main(int argc,char** argv) {
                     if(n<=0){close(out);throw std::runtime_error("Incomplete SCAM output");}p+=n;bytes-=size_t(n);}
             };
             std::vector<std::pair<const void*,size_t>> parts{{result.data(),result.size()*sizeof(float)}};
+            // P80: the job marker `rgb-half` (the app asks for it, SCAM Hybrid only): the RGB as IEEE half floats (round to nearest
+            // even), half the bytes to write, read and upload; the app's first stage stores it in half floats anyway (its input
+            // texture is sampled into RGBA16F). The trailers stay as they are.
+            std::vector<uint16_t> half; // (scam::floatToHalf: portable, the host checks build this file with g++ on x86 too)
+            if(hybrid&&access((std::string(argv[2])+"/rgb-half").c_str(),F_OK)==0){
+                half.resize(result.size());
+                scam::mergeRowBands(int((result.size()+65535)/65536),[&](int b0,int b1){
+                    for(size_t i=size_t(b0)*65536;i<std::min(result.size(),size_t(b1)*65536);++i){
+                        half[i]=scam::floatToHalf(result[i]);
+                    }
+                });
+                parts[0]={half.data(),half.size()*sizeof(uint16_t)};
+                report("SCAM RGB: written as half floats ("+std::to_string(half.size()*2>>20)+" MB)");
+            }
             // Optional trailer: merged Bayer RAW (uint16, sensor layout) for the DNG.
             if(!mergedDng.empty())parts.emplace_back(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
             // Optional second trailer: effective merged frames per pixel (uint8, 1/8 frame), w*h bytes.

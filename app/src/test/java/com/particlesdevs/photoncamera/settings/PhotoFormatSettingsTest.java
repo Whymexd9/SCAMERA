@@ -98,10 +98,11 @@ public class PhotoFormatSettingsTest {
         int jpeg = order.indexOf("pref_jpeg_quality");
         // «HEIC 10 бит» sits right under the HEIC quality, the five AVIF rows follow the WebP ones (AvifSettingsTest), then the
         // P46 «Цветовое пространство» and «HDR в HEIC / AVIF» (ColourSettingsTest)
-        assertEquals(Arrays.asList(PhotoFormat.KEY, "pref_jpeg_quality", PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_HEIC_10BIT,
+        // P80 «Быстрый JPEG» right under the JPEG quality
+        assertEquals(Arrays.asList(PhotoFormat.KEY, "pref_jpeg_quality", "pref_jpeg_fast_encoder", PhotoFormat.KEY_HEIC_QUALITY, PhotoFormat.KEY_HEIC_10BIT,
                 PhotoFormat.KEY_WEBP_QUALITY, PhotoFormat.KEY_WEBP_LOSSLESS, PhotoFormat.KEY_AVIF_QUALITY, PhotoFormat.KEY_AVIF_LOSSLESS,
                 PhotoFormat.KEY_AVIF_DEPTH, PhotoFormat.KEY_AVIF_CHROMA, PhotoFormat.KEY_AVIF_SPEED, PhotoFormat.KEY_COLOR_SPACE,
-                PhotoFormat.KEY_HDR, PhotoFormat.KEY_ALSO_JPEG, "pref_ultrahdr_key"), order.subList(jpeg - 1, jpeg + 14));
+                PhotoFormat.KEY_HDR, PhotoFormat.KEY_ALSO_JPEG, "pref_ultrahdr_key"), order.subList(jpeg - 1, jpeg + 15));
         assertFalse(((androidx.preference.TwoStatePreference) config.findPreference(PhotoFormat.KEY_HEIC_10BIT)).isChecked());
         ListPreference format = config.findPreference(PhotoFormat.KEY);
         assertArrayEquals(new CharSequence[]{"jpeg", "heic", "webp", "avif"}, format.getEntryValues());

@@ -139,6 +139,16 @@ public class HybridPlanTest {
         assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, HybridPlan.build(10_000_000L, 659, 0.01f, camera(12000)).requests.get(0).role);
     }
 
+    /** P79: the Redmi Note 11 Pro takes Bento "always" as auto too (weight-0 ultrashort frames cost every GPU pass there). */
+    @Test public void redmiNote11ProTakesBentoOnlyWhereTheFrameClips() {
+        pinned.put("bento", 2f);
+        org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");
+        org.robolectric.shadows.ShadowBuild.setDevice("viva");
+        HybridPlan clean = HybridPlan.build(10_000_000L, 659, 0f, camera(12000));
+        for (HybridPlan.Request r : clean.requests) assertNotEquals(ImageFrame.CaptureRole.EXTRA_SHORT, r.role);
+        assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, HybridPlan.build(10_000_000L, 659, 0.01f, camera(12000)).requests.get(0).role);
+    }
+
     @Test public void forcedShastaIgnoresTheRatioLimitButNotAFrameAtN() {
         pinned.put("shasta_ev", 4f);       // x16 of N
         pinned.put("shasta_max_ratio", 8f);
