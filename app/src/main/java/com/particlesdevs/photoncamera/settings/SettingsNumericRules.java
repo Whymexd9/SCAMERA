@@ -21,6 +21,12 @@ public final class SettingsNumericRules {
             case "pref_scamhdr_planner_es_ev": return new double[]{2,9,0};
             case "pref_scam_hybrid_shasta_frames": return new double[]{1,5,1};
             case "pref_scam_hybrid_shasta_mode": return new double[]{1,2,1};
+            case "pref_scam_hybrid_jsr_phase_strength": return new double[]{0.1,1.5,0};
+            case "pref_scam_hybrid_jsr_phase_min_sigma": return new double[]{0.2,1,0};
+            case "pref_scam_hybrid_jsr_auto2x_gap": return new double[]{0.2,1.5,0};
+            case "pref_scam_hybrid_jsr_poly": return new double[]{0,2,1};
+            case "pref_scam_hybrid_jsr_poly_degree": return new double[]{1,4,1};
+            case "pref_scam_hybrid_jsr_poly_clamp": return new double[]{0.05,1,0};
             case "pref_scam_hybrid_shasta_motion_max": return new double[]{0,100,0};
             case "pref_scam_hybrid_shasta_ev": return new double[]{1,4,0};
             case "pref_scam_hybrid_shasta_sharpness": return new double[]{0.3,1,0};

@@ -270,6 +270,20 @@ struct HybridTuning {
     // frame on flat blocks); when the measured noise is at least 1.5 x the model, every frame's slope / offset is scaled by it (up
     // to x4). 0 = off. -1 is internal (decided before the merge).
     int noiseMeasured=1;
+    // P74 JSR experiments (settings group «Опыты JSR», all off by default; ideas of Jiangtherapee Super Resolution, no code):
+    // jsrPhase 1: the donors' kernel narrows with the phase coverage of the burst (jsrCoverage): sigma x clamp((h / h1)^strength,
+    // minSigma, 1), h = green fill distance of all frames, h1 = of the base alone (sensor px).
+    // jsrAuto2x 1: a requested 2x grid (Sabre 2x, plain or native mosaic) is merged on the 1x grid and resized 2x when the green fill
+    // distance is above jsrAuto2xMaxGap sensor px (the frames do not sample finer than the sensor: the 2x grid would add time and
+    // lattice, no detail). jsrPoly (F6 field): 1 = a robust polynomial (degree <= jsrPolyDegree) per frame replaces the tile field,
+    // 2 = the tile field kept within jsrPolyClamp px of the polynomial.
+    int jsrPhase=0;float jsrPhaseStrength=0.5f,jsrPhaseMinSigma=0.4f;
+    int jsrAuto2x=0;float jsrAuto2xMaxGap=0.5f;
+    int jsrPoly=0,jsrPolyDegree=4;float jsrPolyClamp=0.25f;
+    // jsrLca 1: the P19 lateral CA model of the base frame moves every R / B site of every frame to its corrected position inside
+    // the merge (plain Bayer; JSR: CA compensation before the fusion, the same channel geometry for all frames) instead of resampling
+    // the merged R / B afterwards. The merge programs get JSR_LCA only then (the default programs are compiled as before).
+    int jsrLca=0;
     // P62 Mochi (GCam 11 PhotometricMerge): each bracketed frame gets a per-tile photometric correction against the base on the GPU
     // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = GCam's rule (more than 3 non-bracketed frames),
     // 2 = whenever a bracketed frame is merged.
@@ -475,6 +489,9 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
             // P27
             ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)
+            ||set("jsrPhase",nullptr,&t.jsrPhase)||set("jsrPhaseStrength",&t.jsrPhaseStrength)||set("jsrPhaseMinSigma",&t.jsrPhaseMinSigma)
+            ||set("jsrAuto2x",nullptr,&t.jsrAuto2x)||set("jsrAuto2xMaxGap",&t.jsrAuto2xMaxGap)
+            ||set("jsrLca",nullptr,&t.jsrLca)||set("jsrPoly",nullptr,&t.jsrPoly)||set("jsrPolyDegree",nullptr,&t.jsrPolyDegree)||set("jsrPolyClamp",&t.jsrPolyClamp)
             ||set("mochi",nullptr,&t.mochi);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
@@ -1077,6 +1094,18 @@ void initAcc(out Acc a){a.num=vec3(0.0);a.den=vec3(0.0);a.cover=0.0;a.clipNum=ve
 struct Acc{vec3 num;vec3 den;float cover;vec3 clipNum;vec3 clipDen;float usClip;};
 void initAcc(out Acc a){a.num=vec3(0.0);a.den=vec3(0.0);a.cover=0.0;a.clipNum=vec3(0.0);a.clipDen=vec3(0.0);a.usClip=0.0;}
 #endif
+#ifdef JSR_LCA
+uniform vec4 jsrCaA; // P74: k1 / k2 of R, k1 / k2 of B (P19 model: displacement 2 (k1 + k2 r^2) q RAW px, q = (cell - centre) / half)
+uniform vec4 jsrCaB; // centre x / y (cells), 1 / half
+vec2 jsrSite(int c,vec2 s){
+    if(c==1)return s;
+    vec2 q=(0.5*s-jsrCaB.xy)*jsrCaB.z;float r2=dot(q,q);
+    float k=c==0?jsrCaA.x+jsrCaA.y*r2:jsrCaA.z+jsrCaA.w*r2;
+    return s-2.0*k*q;
+}
+#else
+#define jsrSite(c,s) (s)
+#endif
 float kernelW(vec2 d,vec3 P){
     return exp2(-0.72135*(d.x*d.x*P.x+d.y*d.y*P.y+2.0*d.x*d.y*P.z))+kD.z; // exp(-0.5 d'Pd) + floor
 }
@@ -1103,7 +1132,7 @@ void frameSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool win){
         int bx=int(floor((O.x-float(px))*0.5))*2+px,by=int(floor((O.y-float(py))*0.5))*2+py;
         for(int dj=0;dj<=2;dj+=2)for(int di=0;di<=2;di+=2){
             int sx=bx+di,sy=by+dj;
-            vec2 d=vec2(float(sx),float(sy))-O;
+            vec2 d=jsrSite(c,vec2(float(sx),float(sy)))-O;
             if(win&&max(abs(d.x),abs(d.y))>1.5)continue;
             float kw=kernelW(d,P);
             if(kw<0.002&&f!=0&&role!=5)continue;
@@ -1151,7 +1180,7 @@ void frameSamplesPlain(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool 
         int bx=int(floor((O.x-float(px))*0.5))*2+px,by=int(floor((O.y-float(py))*0.5))*2+py;
         for(int dj=0;dj<=2;dj+=2)for(int di=0;di<=2;di+=2){
             int sx=bx+di,sy=by+dj;
-            vec2 d=vec2(float(sx),float(sy))-O;
+            vec2 d=jsrSite(c,vec2(float(sx),float(sy)))-O;
             if(win&&max(abs(d.x),abs(d.y))>1.5)continue;
             float kw=kernelW(d,P);
             if(kw<0.002&&f!=0&&role!=5)continue;
@@ -2833,6 +2862,7 @@ public:
         std::vector<const uint16_t*> frames;            // 0 = base
         std::vector<BackwardHomography> homography;     // per frame
         std::vector<float> gain,weight,kmul,noiseSlope,noiseOffset;
+        bool lcaOn=false;std::array<float,8> lca{}; // P74 jsrLca: k1R k2R k1B k2B cx cy invHalf (programs built with JSR_LCA)
         std::vector<int> role;
         float baseSlope=0,baseOffset=0,white=0;
         const std::vector<float>* mask=nullptr;         // per cell (w/2 x h/2), 0 = no Bento
@@ -2876,6 +2906,8 @@ public:
     // false only for a merge with both thresholds 0: the vivo X200 Pro's Mali worker died compiling kHybFlags (owner's log
     // 2026-10-07), the app's retry turns the tests off and the merge then runs without those two programs. true = as before.
     const bool outlierPrograms=true;
+    // P74 jsrLca: "#define JSR_LCA 1" before the merge / rim / chroma bodies (empty = the programs as before)
+    static std::string& mergeDefs(){static std::string d;return d;} // one merge per worker process; read by the GPU built ahead too
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
                        const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
                        bool withOutlierPrograms=true)
@@ -2932,12 +2964,12 @@ public:
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
-                const std::string body=defs+kHybMergeCommon+kHybMergeMain1;
+                const std::string body=mergeDefs()+defs+kHybMergeCommon+kHybMergeMain1;
                 mergeProgram=timed("merge",body.c_str());
             }
-            if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
+            if(rimPass){const std::string body=mergeDefs()+"#define RIM_STATS 1\n"+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
-            if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
+            if(chromaPass){const std::string body=mergeDefs()+"#define RIM_STATS 1\n#define CHROMA_PASS 1\n"+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
             if(nativeMosaic){ // P29: new programs only, the ones above are compiled from the same sources as without it
                 natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
                 natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybNatFlags).c_str());
@@ -3244,6 +3276,11 @@ public:
         glUniform1i(loc(dilateProgram,"validPlanesU"),bento?int(in.maskValid.size()):0);
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
+        if(in.lcaOn)for(GLuint pr:{mergeProgram,rimProgram,chromaProgram}){ // P74 jsrLca (programs built with JSR_LCA)
+            if(!pr)continue;
+            glUseProgram(pr);glUniform4f(loc(pr,"jsrCaA"),in.lca[0],in.lca[1],in.lca[2],in.lca[3]);glUniform4f(loc(pr,"jsrCaB"),in.lca[4],in.lca[5],in.lca[6],0.f);
+        }
+        glUseProgram(mergeProgram);
         {const float us=std::max(0.3f,tune.bentoUsSigma),cs=tune.bentoChromaSigma;
          // The merge program stays exactly as it was: on Adreno 750 even one more term in its clip-flag condition made the whole
          // merge ~15x slower (and changed its rounding). The Bento colour pass gets its own uniforms.
@@ -5101,6 +5138,121 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
 // the base and of the normal frame nearest in time, 32x32-site blocks: temporal noise = var(base - frame) / 2 (the block's mean
 // difference removed), the block counts as flat when the base's own variance is at most 1.5 x that (texture, edges and motion
 // raise it far above). Ratio = temporal noise / model (slope x level + offset, mean of both frames); the median of the flat blocks.
+// P74 (JSR experiments, owner 2026-10-10; idea from Jiangtherapee Super Resolution's "sampling distances / phase redundancy", no
+// code taken): how densely the merged frames' sites of one colour cover the CFA period, in sensor px. For every donor its offset to
+// the base at 3x3 points of the frame (homography; the F6 field is not known yet), the sites of the colour of all frames brought to
+// base positions modulo the colour period 2b (b = colour block: 1 Bayer, 2 Quad, 4 Tetra; binned coordinates x b for a mosaic), and
+// the fill distance = the largest distance from any point of the period to the nearest site (median of the 3x3 points). One Bayer
+// frame: green 1 px; one Tetra frame: green 2.5 px; well-spread frames: a fraction of a pixel.
+// P74 jsrPoly (JSR's alignment idea: a global model plus a smooth polynomial residual field fitted to reliable correspondences,
+// the degree lowered when they are few): the F6 tile field of one frame (nx x ny tiles, x / y offset per tile, level px, 0 = a tile
+// left on the homography) as a 2D polynomial of degree <= maxDegree, fitted to the refined tiles that are not moving (the Z channel
+// below zMax) with 3 Huber reweightings (delta 0.3 px); a degree needs 3 tiles per coefficient, else one less. mode 1: every tile
+// takes the polynomial; 2: refined tiles keep their own offset within +-clamp of it, the others take it. Returns the degree used
+// (-1 = too few tiles, field unchanged).
+inline int jsrPolyField(std::vector<float>& field,const std::vector<float>* motion,int nx,int ny,int maxDegree,int mode,float clampPx){
+    if(nx<2||ny<2||field.size()!=size_t(nx)*ny*2)return -1;
+    std::vector<int> use;
+    for(int k=0;k<nx*ny;++k){
+        const bool refined=field[size_t(k)*2]!=0.f||field[size_t(k)*2+1]!=0.f;
+        const bool still=!motion||motion->size()!=size_t(nx)*ny||(*motion)[size_t(k)]<1.f;
+        if(refined&&still)use.push_back(k);
+    }
+    int degree=std::clamp(maxDegree,0,4);
+    while(degree>=0&&int(use.size())<3*(degree+1)*(degree+2)/2)--degree;
+    if(degree<0)return -1;
+    const int terms=(degree+1)*(degree+2)/2;
+    auto basis=[&](int k,double* t){
+        const double x=2.0*(k%nx)/std::max(nx-1,1)-1.0,y=2.0*(k/nx)/std::max(ny-1,1)-1.0;
+        int m=0;for(int d=0;d<=degree;++d)for(int e=0;e<=d;++e)t[m++]=std::pow(x,d-e)*std::pow(y,e);
+    };
+    std::array<std::vector<double>,2> coef;
+    for(int axis=0;axis<2;++axis){
+        std::vector<double> wgt(use.size(),1.0),c(size_t(terms),0.0);
+        for(int it=0;it<4;++it){
+            std::vector<double> A(size_t(terms)*terms,0.0),r(size_t(terms),0.0);double t[15];
+            for(size_t u=0;u<use.size();++u){
+                basis(use[u],t);const double v=field[size_t(use[u])*2+axis];
+                for(int a=0;a<terms;++a){r[a]+=wgt[u]*t[a]*v;for(int bb=0;bb<terms;++bb)A[size_t(a)*terms+bb]+=wgt[u]*t[a]*t[bb];}
+            }
+            for(int a=0;a<terms;++a)A[size_t(a)*terms+a]+=1e-9; // Gaussian elimination with partial pivoting
+            for(int col=0;col<terms;++col){
+                int piv=col;for(int row=col+1;row<terms;++row)if(std::abs(A[size_t(row)*terms+col])>std::abs(A[size_t(piv)*terms+col]))piv=row;
+                for(int k=0;k<terms;++k)std::swap(A[size_t(col)*terms+k],A[size_t(piv)*terms+k]);std::swap(r[col],r[piv]);
+                const double d=A[size_t(col)*terms+col];if(std::abs(d)<1e-15)return -1;
+                for(int row=0;row<terms;++row){if(row==col)continue;const double fct=A[size_t(row)*terms+col]/d;
+                    if(fct==0.0)continue;for(int k=col;k<terms;++k)A[size_t(row)*terms+k]-=fct*A[size_t(col)*terms+k];r[row]-=fct*r[col];}
+            }
+            for(int a=0;a<terms;++a)c[a]=r[a]/A[size_t(a)*terms+a];
+            for(size_t u=0;u<use.size();++u){ // Huber weights for the next pass
+                basis(use[u],t);double fit=0;for(int a=0;a<terms;++a)fit+=c[a]*t[a];
+                const double e=std::abs(field[size_t(use[u])*2+axis]-fit);wgt[u]=e<=0.3?1.0:0.3/e;
+            }
+        }
+        coef[axis]=c;
+    }
+    double t[15];
+    for(int k=0;k<nx*ny;++k){
+        basis(k,t);
+        const bool refined=field[size_t(k)*2]!=0.f||field[size_t(k)*2+1]!=0.f;
+        for(int axis=0;axis<2;++axis){
+            double fit=0;for(int a=0;a<terms;++a)fit+=coef[axis][a]*t[a];
+            float& v=field[size_t(k)*2+axis];
+            v=mode==2&&refined?float(fit+std::clamp(double(v)-fit,-double(clampPx),double(clampPx))):float(fit);
+        }
+    }
+    return degree;
+}
+
+struct JsrCoverage { double green=0,red=0,greenSingle=0,redSingle=0; int frames=0; };
+inline double jsrFillDistance(const std::vector<std::array<float,2>>& offsets,int b,bool green){
+    const int P=2*b;
+    std::vector<std::array<float,2>> pts;
+    for(const auto& o:offsets)for(int y=0;y<P;++y)for(int x=0;x<P;++x){
+        const int bx=x/b,by=y/b;const bool g=((bx+by)&1)!=0;
+        if(green?!g:(bx!=0||by!=0))continue; // canonical RGGB blocks: red (0,0), green (1,0) / (0,1)
+        float px=std::fmod(float(x)-o[0],float(P)),py=std::fmod(float(y)-o[1],float(P));
+        if(px<0)px+=float(P);
+        if(py<0)py+=float(P);
+        pts.push_back({px,py});
+    }
+    if(pts.empty())return double(P);
+    const int steps=32;double worst=0;
+    for(int j=0;j<steps;++j)for(int i=0;i<steps;++i){
+        const float ex=(i+0.5f)*float(P)/steps,ey=(j+0.5f)*float(P)/steps;
+        float best=1e9f;
+        for(const auto& p:pts){
+            float dx=std::abs(ex-p[0]),dy=std::abs(ey-p[1]);
+            dx=std::min(dx,float(P)-dx);dy=std::min(dy,float(P)-dy);
+            best=std::min(best,dx*dx+dy*dy);
+        }
+        worst=std::max(worst,double(best));
+    }
+    return std::sqrt(worst);
+}
+// local(f, x, y): the F6 offset of frame f at (x, y), stream px (the Tetra native path aligns its binned frames almost entirely there)
+inline JsrCoverage jsrCoverage(const std::vector<BackwardHomography>& H,const std::vector<int>& donors,int w,int h,int b,
+                               const std::function<std::array<float,2>(int,int,int)>& local){
+    JsrCoverage c;c.frames=int(donors.size())+1;
+    std::vector<double> g,r;
+    for(int sy=1;sy<=3;++sy)for(int sx=1;sx<=3;++sx){
+        const int x=w*sx/4,y=h*sy/4;
+        std::vector<std::array<float,2>> off{{0.f,0.f}};
+        for(int f:donors){
+            const DonorPoint p=H[size_t(f)].project(x,y);
+            const float up=H[size_t(f)].upRatio>0?H[size_t(f)].upRatio:1.f;
+            const std::array<float,2> l=local?local(f,x,y):std::array<float,2>{0.f,0.f};
+            off.push_back({(p.x/up-float(x)+l[0])*float(b),(p.y/up-float(y)+l[1])*float(b)});
+        }
+        g.push_back(jsrFillDistance(off,b,true));r.push_back(jsrFillDistance(off,b,false));
+    }
+    std::nth_element(g.begin(),g.begin()+4,g.end());std::nth_element(r.begin(),r.begin()+4,r.end());
+    c.green=g[4];c.red=r[4];
+    const std::vector<std::array<float,2>> base{{0.f,0.f}};
+    c.greenSingle=jsrFillDistance(base,b,true);c.redSingle=jsrFillDistance(base,b,false);
+    return c;
+}
+
 struct HybridNoiseCheck { double ratio=0; long flat=0,blocks=0; int frame=-1; };
 inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     HybridNoiseCheck res;
@@ -5209,6 +5361,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // at most 2 GiB. The header refuses it (MappedHybridBurst); a replay's tuning grid falls back to the sensor grid. A mosaic's
     // sub-frames take their b x grid: it is the sensor grid of the stream.
     const bool fineGridRefused=input.subFrames<=1&&int64_t(w)*h>kHybridClassicPixels;
+    HybridGpu::mergeDefs()=tune.jsrLca>0&&!native&&tune.caCorrect&&tune.rawCa==0?"#define JSR_LCA 1\n":""; // P74, before any GPU of this merge
     // A Burst view for the shared helpers (sampleRaw, guides, alignment): slot 0 = base.
     Burst b;b.w=w;b.h=h;b.cfa=input.cfa;b.white=input.white;b.black=input.black;b.canonicalRggb=true;
     for(int s=0;s<7;++s){b.raw[s]=input.frames[0].raw;b.exposure[s]=1;b.iso[s]=std::max(1u,input.frames[0].iso);}
@@ -5307,7 +5460,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // every frame holds its gray image (4 B per quad) until its field is complete: within a quarter of MemAvailable, else the
     // whole field first as before. tune laStream 0 / SCAM_NO_F6_STREAM / SCAM_LA_DUMP: the whole field first.
     std::unique_ptr<LaStream> laStream;double laStreamBaseMs=0;bool laStreamTried=false;
-    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!large&&input.subFrames<=1&&laAhead.valid()
+    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&tune.jsrPoly==0&&tune.jsrPhase==0&&tune.jsrAuto2x==0&&!large&&input.subFrames<=1&&laAhead.valid()
             &&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
     auto streamFeed=[&](int f){
         if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
@@ -5773,6 +5926,16 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             jobs.clear();
             report("HYBRID LOCAL ALIGN: failed ("+laFailure+"); merging with the homographies only");
         }
+        if(tune.jsrPoly>0&&!laFailed&&!jobs.empty()){ // P74: the tile fields as robust polynomials (whole-field path)
+            std::string degs;
+            for(int f:jobs){
+                const int d=jsrPolyField(laFields[f],&laMotions[f],laBase.g0.nx,laBase.g0.ny,tune.jsrPolyDegree,tune.jsrPoly,tune.jsrPolyClamp);
+                float maxY=0;for(size_t k=1;k<laFields[f].size();k+=2)maxY=std::max(maxY,std::abs(laFields[f][k]));
+                fstats[f].maxAbsY=maxY;degs+=" "+std::to_string(f)+":"+std::to_string(d);
+            }
+            report(std::string("HYBRID JSR FIELD: ")+(tune.jsrPoly==2?"tile field within +-"+std::to_string(tune.jsrPolyClamp)+" px of":"replaced by")
+                +" a robust polynomial per frame (frame:degree, -1 = too few tiles, kept):"+degs);
+        }
         std::string per;double partMs[7]{};
         for(int f:jobs){
             const LaFrameStats& st=fstats[f];
@@ -5800,6 +5963,45 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         } // P33 W2.1: end of the whole-field path
         }
     } else report("HYBRID LOCAL ALIGN: off");
+    // ---- P74 JSR experiments: phase coverage of the burst (kernel width, 2x grid decision)
+    float jsrKmul=1.f;bool jsrCoarse=false;
+    if(tune.jsrPhase>0||tune.jsrAuto2x>0){
+        std::vector<int> donors;
+        for(int f=1;f<n;++f)if(keep[f]&&aligned[f]&&input.frames[f].role!=kRoleUltrashort)donors.push_back(f);
+        const int cb=native?std::max(1,native->block):1;
+        // the F6 field (whole-field path: jsrPhase / jsrAuto2x run F6 before the merge), nearest tile, RAW px of the stream
+        auto local=[&](int f,int x,int y)->std::array<float,2>{
+            if(!laOn||size_t(f)>=laFields.size()||laFields[size_t(f)].size()!=size_t(laG0.nx)*laG0.ny*2)return {0.f,0.f};
+            const float st=float(2*laG0.stride),o=laG0.raw(laG0.centre(0));
+            const int i=std::clamp(int(std::lround((x+0.5f-o)/st)),0,laG0.nx-1),j=std::clamp(int(std::lround((y+0.5f-o)/st)),0,laG0.ny-1);
+            const size_t k=(size_t(j)*laG0.nx+i)*2;
+            return {laFields[size_t(f)][k],laFields[size_t(f)][k+1]};
+        };
+        const JsrCoverage cov=jsrCoverage(H,donors,w,h,cb,local);
+        std::string offs;
+        for(size_t k=0;k<donors.size()&&k<4;++k){
+            const DonorPoint q=H[size_t(donors[k])].project(w/2,h/2);const float up=H[size_t(donors[k])].upRatio;
+            const auto l=local(donors[k],w/2,h/2);
+            char v[64];std::snprintf(v,sizeof(v)," %d:%+.2f,%+.2f",donors[k],(q.x/up-w/2+l[0])*cb,(q.y/up-h/2+l[1])*cb);offs+=v;
+        }
+        std::string line="HYBRID JSR PHASE: "+std::to_string(cov.frames)+" frames (centre offsets, sensor px:"+offs+"), green fill distance "+std::to_string(cov.green)
+            +" px (one frame "+std::to_string(cov.greenSingle)+"), red "+std::to_string(cov.red)+" (one frame "+std::to_string(cov.redSingle)+")";
+        if(tune.jsrPhase>0&&cov.greenSingle>0){
+            const double ratio=std::max(cov.green,1e-3)/cov.greenSingle;
+            const float sigma=std::clamp(float(std::pow(ratio,double(std::clamp(tune.jsrPhaseStrength,0.f,2.f)))),
+                                         std::clamp(tune.jsrPhaseMinSigma,0.1f,1.f),1.f);
+            jsrKmul=1.f/(sigma*sigma);
+            line+=", donor kernel sigma x"+std::to_string(sigma);
+        }
+        const int requested=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+        const bool fine=native?requested==2*cb:requested==2;
+        if(tune.jsrAuto2x>0&&fine){
+            jsrCoarse=cov.green>tune.jsrAuto2xMaxGap;
+            line+=jsrCoarse?", 2x grid: merged on the 1x grid and resized (fill distance above "+std::to_string(tune.jsrAuto2xMaxGap)+" px)"
+                           :", 2x grid kept";
+        }
+        report(line);
+    }
     // ---- per-frame weights (SCAM driver): A = min(cap, ((TET_f/TET_b)^2 read_b/read_f)^fwe), LUTsigma(A)
     HybridGpu::Frames in;
     in.w=w;in.h=h;in.cfa=input.cfa;
@@ -5830,7 +6032,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         in.homography.push_back(f==0?BackwardHomography{}:H[f]);
         in.gain.push_back(1.f/t);
         in.weight.push_back(A);
-        in.kmul.push_back(1.f/(ls*ls));
+        in.kmul.push_back(1.f/(ls*ls)*(f>0&&fr.role!=kRoleUltrashort?jsrKmul:1.f)); // P74 jsrPhase
         in.role.push_back(fr.role);
         in.noiseSlope.push_back(std::max(fr.slope,1e-9f));
         in.noiseOffset.push_back(std::max(fr.offset,0.f));
@@ -5897,6 +6099,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             worth?"corrected":!ca.ok?"not measurable":"below the threshold",caMs);
         report(line);
         if(worth)caModel=ca;
+        if(worth&&tune.jsrLca>0&&!native&&!HybridGpu::mergeDefs().empty()){ // P74: in the merge instead of on the result
+            in.lcaOn=true;in.lca={ca.k1[0],ca.k2[0],ca.k1[1],ca.k2[1],ca.cx,ca.cy,ca.invHalf,0.f};
+            caModel=HybridCa{};
+            report("HYBRID JSR CA: R / B sites of every frame moved by the model inside the merge (no resample of the result)");
+        }
     }
     // A daylight 6.1 kernel is chosen for the local alignment (it loses without it): where the field is missing (F6 failed) or
     // the GPU cannot use it, the round-4 kernel instead.
@@ -5925,6 +6132,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // grid 4 only for the Tetra sub-frames of hybridReconstructMosaic (their 4x grid is the sensor grid of the stream) and the native
     // mosaic merge (Tetra sensor grid, Quad Sabre 2x grid); grid 8 only for the native Tetra Sabre 2x grid (P56)
     int grid=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const int jsrUp=jsrCoarse&&grid>=2?2:1; // P74 jsrAuto2x: merged on the coarse grid, resized 2x at the end
+    if(jsrUp==2)grid/=2;
     if(grid>1&&fineGridRefused){
         report("HYBRID OUTPUT: "+std::to_string(grid)+"x grid refused for "+std::to_string(w)+"x"+std::to_string(h)+" ("+std::to_string(grid)+"x RGB "
             +hybridMB(uint64_t(w)*h*grid*grid*12)+" MB, only up to 16 MP); sensor grid");
@@ -6175,6 +6384,29 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     report("HYBRID STAGES ms: align="+std::to_string(stats.alignMs)+" localAlign="+std::to_string(stats.localAlignMs)+" mask="+std::to_string(stats.maskMs)+" merge="+std::to_string(stats.mergeMs)
         +" total="+std::to_string(millis(Clock::now()-started))+" merged="+std::to_string(stats.merged)+" droppedBracketed="+std::to_string(stats.droppedBracketed)
         +" bento="+std::to_string(stats.bento));
+    if(jsrUp==2){ // P74 jsrAuto2x: the coarse-grid result to the requested grid (output X at coarse (X + 0.5) / 2 - 0.5)
+        const int W2=outW*2,H2=outH*2;
+        std::vector<float> up(size_t(W2)*H2*3);
+        mergeRowBands(H2,[&](int y0,int y1){
+            for(int Y=y0;Y<y1;++Y){
+                const float fy=std::clamp((Y+0.5f)*0.5f-0.5f,0.f,float(outH-1));const int iy=std::min(int(fy),std::max(outH-2,0));const float wy=fy-iy;
+                for(int X=0;X<W2;++X){
+                    const float fx=std::clamp((X+0.5f)*0.5f-0.5f,0.f,float(outW-1));const int ix=std::min(int(fx),std::max(outW-2,0));const float wx=fx-ix;
+                    const size_t a=(size_t(iy)*outW+ix)*3,o=(size_t(Y)*W2+X)*3,dn=outH>1?size_t(outW)*3:0,rt=outW>1?3:0;
+                    for(int c=0;c<3;++c)up[o+c]=(out[a+c]*(1-wx)+out[a+rt+c]*wx)*(1-wy)+(out[a+dn+c]*(1-wx)+out[a+dn+rt+c]*wx)*wy;
+                }
+            }
+        });
+        out.swap(up);
+        auto nearest=[&](std::vector<uint8_t>* v){
+            if(!v||v->size()!=size_t(outW)*outH)return;
+            std::vector<uint8_t> u(size_t(W2)*H2);
+            for(int Y=0;Y<H2;++Y)for(int X=0;X<W2;++X)u[size_t(Y)*W2+X]=(*v)[size_t(std::min(Y/2,outH-1))*outW+std::min(X/2,outW-1)];
+            v->swap(u);
+        };
+        nearest(effMap);nearest(clipFlags);
+        report("HYBRID JSR 2x: merged "+std::to_string(outW)+"x"+std::to_string(outH)+", resized to "+std::to_string(W2)+"x"+std::to_string(H2));
+    }
     if(statsOut)*statsOut=stats;
     return out;
 }

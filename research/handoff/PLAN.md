@@ -1971,3 +1971,31 @@ The settings live in different places now; the curated groups use these keys.
 - Quad left at 0.7 (tuned in P34 on real bursts against ArkCam); on the synthetic natural scene 0.5 gave +1.1 dB. Tetra 2x grid
   (P56) by day uses the new scale too (not measured separately).
 - Open: a real daylight Tetra burst (vivo 10x ISZ outdoors) to confirm noise / lattice on the phone.
+
+### P75 — Plain-language descriptions of every setting (open)
+- Owner, 2026-10-10: simplify the description of every parameter so an ordinary user understands what it does; each description
+  says roughly what happens when the value goes up / down (or the switch is turned on / off). RU (values-ru) and EN (values);
+  keep the technical notes out of the UI text (code comments / PLAN instead).
+
+### P74 — «Опыты JSR»: ideas of Jiangtherapee Super Resolution next to Sabre (done, all off by default; device comparison pending)
+- github.com/y-g-jiang/Jiangtherapee-Super-Resolution-World-Best: no licence, binary releases + NN weights; ideas only, no code.
+- Settings group Hybrid -> Склейка -> «Опыты JSR» (pref_scam_hybrid_jsr_*), worker keys jsr*; off = bit-identical merge (control
+  md5 unchanged: syn_b1/b2/b4, hand, x7u_1x, isz2, v10_1).
+- jsrPhase: green fill distance of the burst's sites over the CFA period (homography + F6 field, sensor px; jsrCoverage) against
+  one frame's; donor kernel sigma x clamp((h/h1)^0.5, 0.4, 1). Natural-scene bench, 8 frames: Bayer 46.24 -> 46.79 dB (top band
+  0.77 -> 0.82), Quad 40.23 -> 41.00 (0.55 -> 0.69), Tetra 38.15 -> 38.75 (0.48 -> 0.55); flat noise -6..+7 %.
+  Found on the way: on the Tetra native path the global homography is the identity, F6 carries the whole shift.
+- jsrLca: the P19 CA model moves every frame's R / B sites inside the merge (JSR_LCA define, kHybMergeCommon only; plain Bayer)
+  instead of resampling the result. Synthetic lateral CA (0.8 px corners): 45.03 -> 46.50 dB, top band 0.73 -> 0.80, colour
+  error 2.19e-3 -> 2.25e-3. Found: RAW CA modes 1 / 2 (RawTherapee port) misjudged that CA (4.4 / 1.7 px corners, colour error
+  x1.7-1.9): look at P28 separately.
+- jsrAuto2x: a requested 2x grid merges at 1x and resizes when the green fill distance > 0.5 px (1 Bayer frame: 912 ms vs 1347;
+  8 Quad frames 0.53 px: 1396 vs 2795 ms; 8 Bayer frames 0.46 px: 2x kept). 2x detail not measurable on this bench.
+- jsrPoly: per-frame robust polynomial (deg <= 4, Huber) of the F6 field, replace or limit (+-0.25). Real handheld bursts: merge
+  factors -1..-2 % (replace), ~0 (limit): no gain there; meant for repeating patterns (none at hand).
+- Bench: tools/quad gen_mosaic_burst + scratchpad remo/ (eval_one.py, bench.sh), natural scene from the Pixel 7 shot.
+
+### P76 — Fastest possible photo processing on every CPU / GPU without any quality change (open, next after the push)
+- Owner, 2026-10-10: speed up processing to the maximum on all processors / GPUs, with no effect on quality. Deep work.
+  Gates: control replay md5 bit-identical (or proven equal output), per-stage timings on OPPO (Adreno 750), Mali logs (Redmi
+  profile, Pixel 7), post pipeline timings.

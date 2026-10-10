@@ -952,6 +952,10 @@ public class PreferenceKeys {
             {"mosaicTetraNightFlatScale", "mosaic_tetra_night_flat_scale"},
             // P73: Tetra T1 kernel scale by day (worker default 0.35, the Quad kernel in sensor px; dev key only)
             {"mosaicTetraKernelScale", "mosaic_tetra_kernel_scale"},
+            // P74 «Опыты JSR» (the switches jsr_phase / jsr_lca / jsr_auto2x are written below; all off by default)
+            {"jsrPhaseStrength", "jsr_phase_strength"}, {"jsrPhaseMinSigma", "jsr_phase_min_sigma"},
+            {"jsrAuto2xMaxGap", "jsr_auto2x_gap"}, {"jsrPoly", "jsr_poly"}, {"jsrPolyDegree", "jsr_poly_degree"},
+            {"jsrPolyClamp", "jsr_poly_clamp"},
             // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
             // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
             {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
@@ -979,6 +983,10 @@ public class PreferenceKeys {
         // passes to speed up are not known yet); a glFinish after each pass costs some time. scam_dev.txt "hybrid_profile 0" turns it off.
         if (scamDevValue("hybrid_profile") == null && hybridString("profile", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
             out.append("profile 1\n");
+        // P74 «Опыты JSR»: switches, written only when on (the worker keeps them off)
+        if (hybridSwitch("jsr_phase", false)) out.append("jsrPhase 1\n");
+        if (hybridSwitch("jsr_lca", false)) out.append("jsrLca 1\n");
+        if (hybridSwitch("jsr_auto2x", false)) out.append("jsrAuto2x 1\n");
         final int shasta = getHybridShastaMode();
         if (shasta == 0) out.append("shastaEnable 0\n");
         else if (shasta == 2) out.append("shastaForce 1\n");

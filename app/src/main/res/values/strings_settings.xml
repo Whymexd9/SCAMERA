@@ -725,4 +725,25 @@
     <string name="prefs_face_detect_summary">Faces are framed on the viewfinder and steer autofocus and exposure (manual focus, manual exposure and a tap focus take precedence). Camera modes are used only where the lens offers them; Software reads the viewfinder image.</string>
     <string name="prefs_tracking_af_title">Tracking autofocus</string>
     <string name="prefs_tracking_af_summary">Locks focus and exposure onto a subject and follows it across the frame. When it is lost, continuous autofocus takes over again. Tapping elsewhere returns to the tap focus.</string>
+    <string name="prefs_scam_hybrid_jsr_screen_title">JSR experiments</string>
+    <string name="prefs_scam_hybrid_jsr_screen_summary">Ideas from Jiangtherapee Super Resolution to compare with our merge. All off by default</string>
+    <string name="prefs_scam_hybrid_jsr_note_summary">Each experiment can be turned on alone and compared with it off. With every experiment off the merge works exactly as before.</string>
+    <string name="prefs_scam_hybrid_jsr_phase_title">Sharper when the frames landed well</string>
+    <string name="prefs_scam_hybrid_jsr_phase_summary">The merge checks how differently the frames of the burst are shifted. When the shifts cover a pixel densely, fine detail is rebuilt more precisely and the merge blurs less. On: fine texture (leaves, brick, fabric) is sharper, noise on smooth areas may show a little more.</string>
+    <string name="prefs_scam_hybrid_jsr_phase_strength_title">How much sharper</string>
+    <string name="prefs_scam_hybrid_jsr_phase_strength_summary">Higher: sharper on a good burst, but more noise and grid pattern on smooth areas. Lower: softer and cleaner. 0.5 is the tested middle.</string>
+    <string name="prefs_scam_hybrid_jsr_phase_min_sigma_title">Sharpening limit</string>
+    <string name="prefs_scam_hybrid_jsr_phase_min_sigma_summary">Keeps the merge from getting too sharp. Lower allows more (more noise), higher is more careful. 1: the experiment changes nothing.</string>
+    <string name="prefs_scam_hybrid_jsr_lca_title">Remove colour fringes before the merge</string>
+    <string name="prefs_scam_hybrid_jsr_lca_summary">The lens shifts red and blue towards the frame edges (colour fringes). Normally they are removed after the merge, which softens the picture a little. On: every frame is aligned per colour before the merge: frame edges slightly sharper, no more fringing. Plain sensors only (not Quad / Tetra).</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_title">Sabre 2x only when it helps</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_summary">2x adds detail only when the frames are shifted by fractions of a pixel in different directions. On: when the shifts are not enough, the photo is merged at normal size and enlarged: faster, no false grid, same photo size.</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_gap_title">Threshold for 2x</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_gap_summary">How densely the frames must cover a pixel for a 2x merge. Lower: 2x less often (only on a very good burst); higher: 2x more often.</string>
+    <string name="prefs_scam_hybrid_jsr_poly_title">Smooth frame alignment</string>
+    <string name="prefs_scam_hybrid_jsr_poly_summary">%s. Frames are fitted to each other area by area. On a repeating pattern (grilles, tiles) an area can catch the wrong element. A smooth model evens such mistakes out but follows small local shifts less closely. Off: as now.</string>
+    <string name="prefs_scam_hybrid_jsr_poly_degree_title">Smooth alignment: flexibility</string>
+    <string name="prefs_scam_hybrid_jsr_poly_degree_summary">Higher: the model follows bends of the frame more closely (a turning hand, for example); lower: it is flatter and safer on patterns.</string>
+    <string name="prefs_scam_hybrid_jsr_poly_clamp_title">Smooth alignment: area freedom</string>
+    <string name="prefs_scam_hybrid_jsr_poly_clamp_summary">«Limit» mode only. How far an area may move away from the smooth model. Higher: closer to the normal alignment; lower: closer to the smooth model.</string>
 </resources>

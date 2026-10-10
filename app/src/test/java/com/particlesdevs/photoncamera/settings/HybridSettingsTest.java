@@ -361,6 +361,23 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("shastaEnable 0\n"));assertFalse(tuning,tuning.contains("shastaForce"));
     }
 
+    /** P74: «Опыты JSR» off by default (nothing written: the merge as before); each switch reaches the worker. */
+    @Test public void jsrExperimentsOffByDefaultAndReachTheWorker() {
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String k:new String[]{"jsrPhase ","jsrLca ","jsrAuto2x ","jsrPoly "})assertFalse(k+tuning,tuning.contains(k));
+        prefs.edit().clear().commit();
+        PreferenceScreen settings=inflate();
+        assertNotNull(settings.findPreference("scam_hybrid_jsr_screen"));
+        assertFalse(prefs.getBoolean("pref_scam_hybrid_jsr_phase",true));
+        assertEquals("0",prefs.getString("pref_scam_hybrid_jsr_poly","?"));
+        manager.set("default_scope","pref_scam_hybrid_jsr_phase",true);
+        manager.set("default_scope","pref_scam_hybrid_jsr_lca",true);
+        manager.set("default_scope","pref_scam_hybrid_jsr_auto2x",true);
+        manager.set("default_scope","pref_scam_hybrid_jsr_poly","2");
+        tuning=PreferenceKeys.hybridTuningText();
+        for(String k:new String[]{"jsrPhase 1\n","jsrLca 1\n","jsrAuto2x 1\n","jsrPoly 2.0\n"})assertTrue(k+tuning,tuning.contains(k));
+    }
+
     @Test public void gpuProfileOnlyOnTheRedmiNote11Pro() {
         assertFalse(PreferenceKeys.hybridTuningText().contains("profile "));
         org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");

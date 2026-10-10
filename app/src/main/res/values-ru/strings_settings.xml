@@ -725,4 +725,25 @@
     <string name="prefs_face_detect_summary">Лица обводятся в видоискателе и ведут автофокус и экспозицию (ручной фокус, ручная экспозиция и фокус касанием важнее). Режимы камеры работают только там, где объектив их поддерживает; «Программный» анализирует изображение видоискателя.</string>
     <string name="prefs_tracking_af_title">Следящий автофокус</string>
     <string name="prefs_tracking_af_summary">Фокус и экспозиция цепляются за объект и следуют за ним по кадру. Если объект потерян, снова работает непрерывный автофокус. Касание в другом месте возвращает обычный фокус касанием.</string>
+    <string name="prefs_scam_hybrid_jsr_screen_title">Опыты JSR</string>
+    <string name="prefs_scam_hybrid_jsr_screen_summary">Идеи из Jiangtherapee Super Resolution для сравнения с нашей склейкой. Всё выключено по умолчанию</string>
+    <string name="prefs_scam_hybrid_jsr_note_summary">Каждый опыт можно включать отдельно и сравнивать снимки с выключенным. Пока опыты выключены, склейка работает ровно как раньше.</string>
+    <string name="prefs_scam_hybrid_jsr_phase_title">Резче, когда кадры легли удачно</string>
+    <string name="prefs_scam_hybrid_jsr_phase_summary">Склейка проверяет, насколько по-разному сдвинуты кадры серии. Если сдвиги покрывают пиксель плотно, мелкие детали собираются точнее, и размытие при склейке уменьшается. Включено — мелкая текстура (листва, кирпич, ткань) резче, шум на ровных местах может стать чуть заметнее.</string>
+    <string name="prefs_scam_hybrid_jsr_phase_strength_title">Насколько сильно повышать резкость</string>
+    <string name="prefs_scam_hybrid_jsr_phase_strength_summary">Больше — резче при удачной серии, но больше шума и «сетки» на ровных местах. Меньше — мягче и чище. 0,5 — проверенная середина.</string>
+    <string name="prefs_scam_hybrid_jsr_phase_min_sigma_title">Предел повышения резкости</string>
+    <string name="prefs_scam_hybrid_jsr_phase_min_sigma_summary">Не даёт сделать склейку слишком резкой. Меньше — разрешает сильнее (больше шума), больше — осторожнее. 1 — опыт ничего не меняет.</string>
+    <string name="prefs_scam_hybrid_jsr_lca_title">Цветную кайму убирать до склейки</string>
+    <string name="prefs_scam_hybrid_jsr_lca_summary">Объектив сдвигает красный и синий к краям кадра (цветная кайма). Обычно она убирается уже после склейки, и картинка от этого чуть мягче. Включено — каждый кадр выравнивается по цветам ещё до склейки: края кадра чуть резче, каймы не больше. Только для обычной матрицы (не Quad/Tetra).</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_title">Сабр 2×: только когда есть смысл</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_summary">Режим 2× даёт больше деталей, только если кадры серии сдвинуты на доли пикселя в разные стороны. Включено — если сдвигов не хватает, кадр склеивается в обычном размере и потом увеличивается: быстрее и без ложной «сетки», размер фото тот же.</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_gap_title">Порог для 2×</string>
+    <string name="prefs_scam_hybrid_jsr_auto2x_gap_summary">Насколько плотно кадры должны покрывать пиксель, чтобы склеивать в 2×. Меньше — 2× реже (только при очень удачной серии), больше — 2× чаще.</string>
+    <string name="prefs_scam_hybrid_jsr_poly_title">Гладкое выравнивание кадров</string>
+    <string name="prefs_scam_hybrid_jsr_poly_summary">%s. Кадры подгоняются друг к другу по участкам. На повторяющемся узоре (решётки, плитка) участок может «зацепиться» не за тот элемент. Гладкая модель такие ошибки сглаживает, но хуже следит за мелкими местными сдвигами. Выключено — как сейчас.</string>
+    <string name="prefs_scam_hybrid_jsr_poly_degree_title">Гладкое выравнивание: гибкость</string>
+    <string name="prefs_scam_hybrid_jsr_poly_degree_summary">Больше — модель лучше повторяет изгибы кадра (например от поворота руки), меньше — она ровнее и надёжнее на узорах.</string>
+    <string name="prefs_scam_hybrid_jsr_poly_clamp_title">Гладкое выравнивание: свобода участков</string>
+    <string name="prefs_scam_hybrid_jsr_poly_clamp_summary">Только в режиме «Ограничить». Насколько участок может отходить от гладкой модели. Больше — ближе к обычному выравниванию, меньше — ближе к гладкой модели.</string>
 </resources>

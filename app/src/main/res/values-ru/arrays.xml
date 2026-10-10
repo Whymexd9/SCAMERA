@@ -213,4 +213,9 @@
         <item>После экспозиции ae</item>
         <item>G_CLEAN, как ArkCam</item>
     </string-array>
+    <string-array name="scam_hybrid_jsr_poly_entries">
+        <item>Выключено</item>
+        <item>Заменить на гладкую модель</item>
+        <item>Ограничить гладкой моделью</item>
+    </string-array>
 </resources>
