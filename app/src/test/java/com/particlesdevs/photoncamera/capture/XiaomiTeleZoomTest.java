@@ -422,4 +422,27 @@ public class XiaomiTeleZoomTest {
         assertFalse(XiaomiTeleZoom.clamped(17.2f, 17.2f));
         assertFalse(XiaomiTeleZoom.clamped(4.3f, null));
     }
+
+    /**
+     * P41c: the 2x ISZ with the optical zoom on the logical camera, in the dial's ratios: from 6.45x the HAL's dial is half the
+     * zoom (the lens 3.225x-4.3x again), the RAW frame in mode 9 covers twice the lens, the photo's crop is what is left.
+     */
+    @Test
+    public void forcedIszHalvesTheDialOnTheLogicalCamera() {
+        float mmPerX = XiaomiTeleZoom.MM_PER_USER;
+        // 7.0x: ISZ, the lens at 3.5x, no crop once the HAL reports mode 9 with the lens there
+        XiaomiTeleZoom.Plan p = XiaomiTeleZoom.planLogical(7f * mmPerX, 3.5f * mmPerX, true, 100f, true);
+        org.junit.Assert.assertEquals(3.5f, p.userZoom, 1e-3f);
+        org.junit.Assert.assertEquals(3.5f, p.zoomRatio, 1e-3f);
+        org.junit.Assert.assertEquals(1f, p.residual, 1e-3f);
+        // 12x: the lens at 4.3x in ISZ (8.6x), the rest a crop of the ISZ frame
+        p = XiaomiTeleZoom.planLogical(12f * mmPerX, 4.3f * mmPerX, true, 100f, true);
+        org.junit.Assert.assertEquals(12f / 8.6f, p.residual, 1e-3f);
+        // ISZ from 6.45x (2 x 3.225x), off below 6.41x
+        org.junit.Assert.assertTrue(XiaomiTeleZoom.nextIsz(6.46f * mmPerX, false));
+        org.junit.Assert.assertFalse(XiaomiTeleZoom.nextIsz(6.4f * mmPerX, false));
+        org.junit.Assert.assertFalse(XiaomiTeleZoom.nextIsz(6.39f * mmPerX, true));
+        // without the forced ISZ the dial is the zoom (the stock camera's map)
+        org.junit.Assert.assertEquals(7f, XiaomiTeleZoom.planLogical(7f * mmPerX, Float.NaN, false, 100f, false).userZoom, 1e-3f);
+    }
 }

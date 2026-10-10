@@ -1879,3 +1879,21 @@ The settings live in different places now; the curated groups use these keys.
   devices the scan now also compares the 35 mm focal length (50 vs 25 mm; 21 vs 23.5 mm), and a Pixel rescans once (scan_revision
   p66). The 2x module then gets zoom 2.0 from its own field (no second crop). Needs the owner's Pixel 7 log: the modules list,
   opening 0-4 / 0-5, the RAW colour block of camera 4.
+
+### P67 — Owner's logs of 2026-10-09/10: Xiaomi 17 Ultra, Xiaomi 13 Ultra, OPPO Find X9 Ultra, Realme GT8 Pro (done, device check pending)
+- 13 Ultra / Find X9 Ultra / GT8 Pro: P54d (d4f2533) put PREVIEW_STABILIZATION and the session parameters (with the module's
+  vendor tag, agingtest.mode.select) on every brand; those sessions stalled (13U) or killed the HAL with onError 4 (OPPO family).
+  Photo-mode stabilisation and its session parameters are vivo / iQOO only again (CaptureController.vivoBrand); video keeps ON.
+  com.xiaomi.sessionparams.clientName = com.android.camera is never sent (no stock-camera impersonation on any phone).
+- Recovery: a module that never delivered a frame and fails reverts to the last module that did (sGoodModules, by slot);
+  onError / onDisconnected stop the preview-stall watchdog and drop the session; the stall restart count resets only after a
+  second of frames; publishLiveRawFrame without a matched result returns (57 NPEs on the GT8 Pro).
+- 17 Ultra: the gallery crash (ViewPager cast: the pager's generated id equals a page id) fixed in ImageViewerFragment.getSsivAt;
+  the ZSL clip estimate reads packed RAW10 (short frames were never planned on the tele); module picking prefers the active /
+  original module over a duplicate of the same ratio and waits 0.1x below a module's ratio before switching down; no
+  raw-payload zip for an understood packed RAW10. GT8 Pro: the RAW viewfinder's dynamic black only within 25 % of the static one.
+- 17 Ultra ISZ (owner: «при 8.5 не включался ISZ», decision: force mode 9; «2x ISZ с оптическим зумом», in x): the HAL never
+  entered mode 2 / 9 for this app (zoomRatio clamped to 3.225, mode 4 up to 17x). On the logical camera current_mode 9 is now
+  requested from 6.45x (2 x 3.225x) with the HAL's dial at half the zoom: 3.225-4.3x lens, 4.3-6.45x crop, 6.45-8.6x the lens
+  again inside 2x ISZ, 8.6-17.2x crop of the ISZ frame; below 6.41x the mode reported before is requested again. The preview RAW
+  (packed RAW10) is read with its stride by the colour-block measurement and the developed RAW viewfinder, shown in mode 9.

@@ -217,19 +217,12 @@ public class VendorTagUtils {
             boolean requestRemosaic = requestQuad && !"direct_quad".equals(quadMode);
             byte enable = (byte) (requestRemosaic ? 1 : 0);
             remosaicApplied = false;
-             var clientName = new CaptureRequest.Key<>("com.xiaomi.sessionparams.clientName", String.class);
-            if (com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) {
-                // Owner: no impersonation of the stock camera on the Xiaomi 17 Ultra. Its dumps (2026-10-08) showed this
-                // clientName in our requests while the HAL still reported xiaomi.thirdparty.isThirdParty = 1 (it knows the
-                // real package), so the key only claimed to be the stock camera without changing the HAL's pipeline.
-                if (!clientNameSkipLogged) {
-                    clientNameSkipLogged = true;
-                    Log.i(TAG, "Xiaomi 17 Ultra: com.xiaomi.sessionparams.clientName not sent (no stock-camera impersonation)");
-                }
-            } else if(isSupported(builder,clientName)) {
-                Log.d(TAG, "com.xiaomi.sessionparams.clientName supported");
-                builder.set(clientName, "com.android.camera");
-                setPhysical(builder, clientName, "com.android.camera", physicalId);
+            // Owner: no impersonation of the stock camera on any phone. com.xiaomi.sessionparams.clientName = com.android.camera is
+            // never sent: the 17 Ultra's HAL still knew the real package (isThirdParty = 1), and on the 13 Ultra (2026-10-10 log)
+            // the sessions that carried it stopped delivering frames.
+            if (!clientNameSkipLogged) {
+                clientNameSkipLogged = true;
+                Log.i(TAG, "com.xiaomi.sessionparams.clientName not sent (no stock-camera impersonation)");
             }
             if(requestQuad) {
                 var remosaicEnabled = new CaptureRequest.Key<>("xiaomi.remosaic.enabled", Byte.class);

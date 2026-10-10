@@ -393,7 +393,14 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
 
     private CustomSSIV getSsivAt(int position) {
         if (adapter == null || viewPager == null) return null;
-        return viewPager.findViewById(adapter.getSsivId(position));
+        // The pages only (Xiaomi 17 Ultra crash, 2026-10-09): findViewById tests the pager itself first, and its generated id
+        // can equal a page id (BASE_ID + position), which returned the ViewPager and failed the cast.
+        int id = adapter.getSsivId(position);
+        for (int i = 0; i < viewPager.getChildCount(); i++) {
+            View child = viewPager.getChildAt(i);
+            if (child instanceof CustomSSIV && child.getId() == id) return (CustomSSIV) child;
+        }
+        return null;
     }
 
     private void onQuickCompare() {

@@ -74,8 +74,11 @@ import java.util.Locale;
  * operation mode 0x9002. Third-party apps can open the same kind of logical camera (camera 0 on the 17U). So the tele module
  * now opens through it ({@link #logicalRoute}): the viewfinder is the logical camera's stream (the HAL's own optics, crop and
  * mode switches, as in the stock camera), the RAW stream stays the tele's physical stream, and the photo is cropped by what the
- * RAW frame lacks against the HAL's reported lens position ({@link #planLogical}). No current_mode is sent there (the HAL
- * switches the modes, as for the stock camera) and no package or clientName is claimed. When the logical camera refuses the
+ * RAW frame lacks against the HAL's reported lens position ({@link #planLogical}). No package or clientName is claimed.
+ * P41c (owner's 17U logs 2026-10-09/10, owner's decision): the HAL did not switch to mode 9 for this app at any zoom (zoomRatio
+ * clamped to 3.225, mode 4 up to 17x), so the 2x ISZ with the optical zoom is requested on the logical camera: current_mode 9
+ * from 6.45x (2 x 3.225x) with the HAL's dial at half the zoom (the lens 3.225x-4.3x again inside ISZ = 6.45x-8.6x, a crop of
+ * the ISZ frame above), back to the mode reported before below 6.4x; the developed RAW viewfinder in mode 9. When the logical camera refuses the
  * session, the next attempt uses a regular session, then the tele alone as before ({@link #stepDownRoute}). Dev switches:
  * {@code xiaomi_logical 0} (the tele alone), {@code xiaomi_opmode N} (operation mode N, 0 = regular),
  * {@code xiaomi_tele_fallback 1} (the HAL may show the main camera in low light, as for the stock camera).
@@ -88,6 +91,8 @@ public final class XiaomiTeleZoom {
     static final float MM_PER_USER = 100f / 4.30000019f;
     /** mm per zoomRatio unit: the tele's 74.419 mm (owner: 100 mm = 1.34375). */
     static final float MM_PER_RATIO = 100f / 1.34375f;
+    // in the dial's ratios (x the main camera, MM_PER_USER mm each): the lens 3.225x-4.3x, 2x ISZ from 6.45x (the lens again
+    // 3.225x-4.3x inside it = 6.45x-8.6x), above 8.6x a crop of the ISZ frame up to 17.2x
     static final float OPT_MIN = 75f, OPT_MAX = 100f, ISZ_ON = 150f, ISZ_OFF = 149f, ISZ_MAX = 200f, MAX_MM = 400f;
     /** The tele's button ratio as the stock camera labels it: 75 mm / 23.256 mm = 3.225 («3.2×»). */
     static final float STOCK_RATIO = OPT_MIN / MM_PER_USER;
@@ -304,11 +309,21 @@ public final class XiaomiTeleZoom {
      * cropped by what the tele's RAW frame lacks.
      */
     static Plan planLogical(float mm, float lensMm, boolean isz, float maxZoomRatio) {
+        return planLogical(mm, lensMm, isz, maxZoomRatio, false);
+    }
+
+    /**
+     * {@code forcedIsz}: the 2x ISZ with the optical zoom (owner, 2026-10-10: the HAL never entered mode 9 by itself for this
+     * app, it clamped zoomRatio to 3.225): the request asks for mode 9 and the HAL's dial is half the focal length, so 150-200 mm
+     * is the lens's 75-100 mm inside ISZ and above 200 mm a crop of the ISZ frame.
+     */
+    static Plan planLogical(float mm, float lensMm, boolean isz, float maxZoomRatio, boolean forcedIsz) {
         mm = clamp(mm, OPT_MIN, MAX_MM);
-        final float optical = clamp(mm, OPT_MIN, OPT_MAX);
+        final float halMm = forcedIsz ? mm / 2f : mm;
+        final float optical = clamp(halMm, OPT_MIN, OPT_MAX);
         final float lens = Float.isNaN(lensMm) ? optical : clamp(lensMm, OPT_MIN, OPT_MAX);
         final float factor = isz ? 2f : 1f;
-        final float dial = dialRatio(mm);
+        final float dial = dialRatio(halMm);
         final float zoomRatio = maxZoomRatio > 0f ? Math.min(dial, maxZoomRatio) : dial;
         return new Plan(mm, dial, zoomRatio, Math.max(1f, mm / (lens * factor)), isz, optical, lens * factor, true);
     }
@@ -520,7 +535,7 @@ public final class XiaomiTeleZoom {
      * owner's 17U), so the developed RAW viewfinder takes over there. P41b: on the logical camera the ISP preview throughout
      * (the stock camera shows the HAL's mode-9 preview).
      */
-    public static boolean ispPreview() { return last != null && (routed || !isz); }
+    public static boolean ispPreview() { return last != null && (routed ? !(isz && routedIszWanted) : !isz); }
 
     /**
      * Crop the HAL applies to the preview on top of the RAW frame's field of view (zoomRatio relative to the optics
@@ -549,6 +564,7 @@ public final class XiaomiTeleZoom {
         routeDisabled = false; routeOpMode = Integer.MIN_VALUE; searchedFor = null; foundLogical = null; logicalMaxZoom = LOGICAL_MAX;
         routed = false; extendedZoom = false; teleFallback = false;
         routedLensMm = Float.NaN; routedMode = null; clampLogged = false; followLogged = false; logicalFarSinceMs = 0;
+        routedIszWanted = false; routedNormalMode = null;
     }
 
     /** A new camera session: the ISZ state of the previous one does not carry over (its first request sets the mode). */
@@ -578,6 +594,8 @@ public final class XiaomiTeleZoom {
         extendedZoom = logical;
         routedLensMm = Float.NaN;
         routedMode = null;
+        routedIszWanted = false;
+        routedNormalMode = null;
         clampLogged = false;
         followLogged = false;
         logicalFarSinceMs = 0;
@@ -608,6 +626,9 @@ public final class XiaomiTeleZoom {
     private static volatile boolean routed, extendedZoom, teleFallback;
     /** Lens position (mm) the HAL reports on the logical camera in this session, and the sensor mode it reports. */
     private static volatile float routedLensMm = Float.NaN;
+    /** P41b + forced ISZ: mode 9 is requested on the logical camera, and the last mode it reported outside ISZ. */
+    private static volatile boolean routedIszWanted;
+    private static volatile Integer routedNormalMode;
     private static volatile Integer routedMode;
     private static boolean clampLogged, followLogged;
     private static long logicalFarSinceMs;
@@ -715,10 +736,20 @@ public final class XiaomiTeleZoom {
     }
 
     /** The logical camera's keys of a plan: the stock camera's zoomRatio = userZoomRatio, no sensor mode (the HAL's choice). */
-    private static void setLogical(CaptureRequest.Builder b, Plan p) {
+    private static void setLogical(CaptureRequest.Builder b, Plan p, String physicalId) {
         b.set(USER_ZOOM, p.userZoom);
         b.set(CaptureRequest.CONTROL_ZOOM_RATIO, p.zoomRatio);
-        b.set(SENSOR_MODE, null);
+        // forced ISZ: mode 9 asked for; after it the mode reported before, explicitly (a request without the key leaves the
+        // sensor in mode 9); otherwise none (the HAL's own choice)
+        final Integer mode = modeFor(routedIszWanted, iszUsed, routedNormalMode);
+        b.set(SENSOR_MODE, mode);
+        if (physicalId != null && !physicalId.isEmpty() && Build.VERSION.SDK_INT >= 28) {
+            try {
+                b.setPhysicalCameraKey(SENSOR_MODE, mode, physicalId);
+            } catch (RuntimeException ignored) {
+                // the logical request's key applies
+            }
+        }
         // the session keys again with the session's values, as in the stock camera's requests (a different value in a request
         // would make the framework reconfigure the session)
         if (extendedZoom) trySet(b, EXT_MAX_ZOOM, 1);
@@ -821,11 +852,21 @@ public final class XiaomiTeleZoom {
         final long now = android.os.SystemClock.elapsedRealtime();
         final float mm = clamp(OPT_MIN * zoom / moduleZoom, OPT_MIN, MAX_MM);
         if (routed) {
-            // P41b: the HAL drives the lens and the sensor mode from zoomRatio, as for the stock camera; the RAW frame's crop
-            // follows the lens position and mode it reports
+            // P41b: the HAL drives the lens from the dial, as for the stock camera; the RAW frame's crop follows the lens position
+            // and mode it reports. P41c (owner, 2026-10-10): the HAL never entered mode 9 for this app (zoomRatio clamped to
+            // 3.225), so from 6.45x the request asks for mode 9 and the dial is halved: 2x ISZ with the optical zoom
             final Integer mode = routedMode;
-            final Plan p = planLogical(mm, routedLensMm, mode != null && mode == ISZ_MODE, logicalLimit());
-            setLogical(b, p);
+            final boolean wantIsz = nextIsz(mm, routedIszWanted, last == null ? Long.MAX_VALUE : now - lastToggleMs);
+            if (wantIsz != routedIszWanted) {
+                routedIszWanted = wantIsz;
+                if (wantIsz) iszUsed = true;
+                lastToggleMs = now;
+                Log.i(TAG, "logical camera: in-sensor zoom (mode 9) " + (wantIsz ? "requested" : "released, back to mode " + routedNormalMode)
+                        + String.format(Locale.ROOT, " at %.2fx (2x ISZ with the optical zoom from %.2fx: the lens at %.2fx)",
+                        dialRatio(mm), dialRatio(ISZ_ON), dialRatio(wantIsz ? mm / 2f : mm)));
+            }
+            final Plan p = planLogical(mm, routedLensMm, mode != null && mode == ISZ_MODE, logicalLimit(), routedIszWanted);
+            setLogical(b, p, physicalId);
             final boolean changed = last != null && p.isz != isz;
             if (changed) lastToggleMs = now;
             isz = p.isz;
@@ -948,12 +989,12 @@ public final class XiaomiTeleZoom {
             Integer before = b.get(SENSOR_MODE);
             if (p.logical) {
                 // P41b: the zoom limit is known once the session keys are set (ExtendedMaxZoom refused: 10)
-                if (p.zoomRatio > logicalLimit()) last = p = planLogical(p.mm, routedLensMm, p.isz, logicalLimit());
+                if (p.zoomRatio > logicalLimit()) last = p = planLogical(p.mm, routedLensMm, p.isz, logicalLimit(), routedIszWanted);
                 if (before != null && !tunableWarned) {
                     tunableWarned = true;
-                    Log.w(TAG, "module tunable current_mode=" + before + " not sent on the logical camera: the HAL switches the modes");
+                    Log.w(TAG, "module tunable current_mode=" + before + " not sent on the logical camera: the zoom owns the mode (9 = 2x ISZ from 6.45x)");
                 }
-                setLogical(b, p);
+                setLogical(b, p, physicalId);
                 return true;
             }
             Integer planned = modeFor(p.isz, iszUsed, normalMode);
@@ -1106,7 +1147,8 @@ public final class XiaomiTeleZoom {
         if (mode != null && !mode.equals(routedMode)) {
             final boolean wasIsz = routedMode != null && routedMode == ISZ_MODE;
             routedMode = mode;
-            Log.i(TAG, "sensor mode reported " + mode + " on the logical camera (the HAL's choice, none requested)"
+            if (mode != ISZ_MODE) routedNormalMode = mode;
+            Log.i(TAG, "sensor mode reported " + mode + " on the logical camera" + (routedIszWanted ? " (mode 9 requested)" : " (the HAL's choice, none requested)")
                     + (mode == ISZ_MODE ? ": in-sensor zoom, the RAW frame is the centre half of the field" : ""));
             again = (mode == ISZ_MODE) != wasIsz;
         }
@@ -1119,7 +1161,7 @@ public final class XiaomiTeleZoom {
                 routedLensMm = lens;
                 if (!again) {
                     // the request does not change with the lens: only the photo's crop (and the RAW viewfinder's) follows it
-                    Plan np = planLogical(p.mm, lens, p.isz, logicalLimit());
+                    Plan np = planLogical(p.mm, lens, p.isz, logicalLimit(), routedIszWanted);
                     last = np;
                     com.particlesdevs.photoncamera.control.ZoomController.overrideResidual(np.residual);
                 }

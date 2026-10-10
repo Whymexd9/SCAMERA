@@ -700,8 +700,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                        @NonNull TotalCaptureResult result) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
+                if (mLastPreviewResultMs == 0) markModuleGood();
                 mLastPreviewResultMs = android.os.SystemClock.elapsedRealtime();
-                mStallRestarts = 0;
+                // Restarts count as successful only after a second of frames: one result per new session reset the count and the
+                // stall restarts never stopped (Xiaomi 13 Ultra, 14 restarts in a row, 2026-10-10)
+                if (mPreviewSessionStartMs > 0 && mLastPreviewResultMs - mPreviewSessionStartMs > 1000) mStallRestarts = 0;
                 Long frameNs = result.get(CaptureResult.SENSOR_FRAME_DURATION);
                 if (frameNs != null) mPreviewFrameMs = frameNs / 1_000_000L;
                 Object exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
@@ -808,6 +811,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override
         public void onDisconnected(@NonNull CameraDevice cameraDevice) {
             rescueInFlightShot("camera disconnected");
+            stopStallWatch();
             mCameraOpenCloseLock.release();
             mCameraOpening.set(false);
             cameraDevice.close();
@@ -817,6 +821,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override
         public void onError(@NonNull CameraDevice cameraDevice, int error) {
             rescueInFlightShot("camera error " + error);
+            stopStallWatch();
             mCameraOpenCloseLock.release();
             mCameraOpening.set(false);
             cameraDevice.close();
@@ -829,6 +834,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 scheduleRecovery("Xiaomi logical camera error " + error);
                 return;
             }
+            if (revertToLastGoodModule("error " + error)) return;
             if (revertToLastGoodCamera("error " + error)) return;
             if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
                 showToast(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
@@ -939,6 +945,48 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * A camera that never ran in this process failed (configuration, device error): back to the last camera that did, instead of a
      * frozen viewfinder or reopening the failing one again and again. False when there is none to go back to.
      */
+    /**
+     * Modules (slots) that delivered a preview frame in this process, and the last of them. A module is its Camera ID plus its
+     * vendor keys: the OPPO Find X9 Ultra / Realme GT8 Pro ISZ modules (camera 4 + agingtest.mode.select) killed the HAL while
+     * the plain camera 4 ran, so the camera-level record (marked at onConfigured) never reverted and the recovery reopened the
+     * failing module again and again (2026-10-10 logs).
+     */
+    private static final java.util.Set<String> sGoodModules = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static volatile String sLastGoodModule;
+
+    private void markModuleGood() {
+        try {
+            String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+            sGoodModules.add(slot);
+            sLastGoodModule = slot;
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    /** A module that never delivered a frame failed: back to the last module that did (another slot), with a toast. */
+    private boolean revertToLastGoodModule(String reason) {
+        final String current;
+        try {
+            current = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+        } catch (RuntimeException e) {
+            return false;
+        }
+        final String good = sLastGoodModule;
+        if (good == null || good.equals(current) || sGoodModules.contains(current) || mReverting || !isCameraResumed) return false;
+        mReverting = true;
+        final String label = com.particlesdevs.photoncamera.settings.ModuleRegistry.label(current);
+        Log.e(TAG, "module " + current + " (" + label + ") failed (" + reason + ") before its first frame: back to module " + good);
+        showToast(Lang.t("Модуль " + label + " не запускается на этом телефоне (" + reason + "), возврат к предыдущему",
+                "Module " + label + " does not start on this phone (" + reason + "), back to the previous one"));
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            mReverting = false;
+            com.particlesdevs.photoncamera.settings.ModuleRegistry.select(good);
+            PreferenceKeys.setCameraID(com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(good));
+            restartCamera();
+        });
+        return true;
+    }
+
     private boolean revertToLastGoodCamera(String reason) {
         final String current = PhotonCamera.getSettings().mCameraID;
         final String good = sLastGoodCamera;
@@ -1912,6 +1960,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * frames (black viewfinder, vivo 5x tele) while no shot is in flight: log the state and restart the camera, as switching the
      * module did by hand. At most PreviewStall.MAX_RESTARTS restarts in a row without a frame in between.
      */
+    /**
+     * A dead device: the preview-stall watchdog stops (it restarted the camera behind the error recovery and past its limit on
+     * the OPPO Find X9 Ultra, 2026-10-10), and the session is dropped so no control reaches the closed device.
+     */
+    private void stopStallWatch() {
+        mPreviewSessionStartMs = 0;
+        if (mBackgroundHandler != null) mBackgroundHandler.removeCallbacks(mStallCheck);
+        mCaptureSession = null;
+    }
+
     private void checkPreviewStall() {
         final Handler handler = mBackgroundHandler;
         if (handler == null || !isCameraResumed || mPreviewSessionStartMs == 0) return;
@@ -2493,6 +2551,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !sPlainPreviewCameras.contains(physicalID);
             mPayloadFrames = 0;
             mPayloadBad = false;
+            mPackedStride = 0;
             Log.i("SCAM_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isScamHybridEnabled() ? "SCAM_HYBRID" : PreferenceKeys.isScamEnabled() ? "SCAM_RAW" : "SCAMERA"));
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
@@ -2699,7 +2758,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 );
                 boolean vivoEis = ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID);
                 mVivoEisSession = vivoEis;
-                int vsMode = getPreferredVideoStabilizationMode(mCameraCharacteristics, mIsRecordingVideo, PreferenceKeys.isEisPhotoOn());
+                // P54d's stabilisation mode as a session parameter on vivo only: on the Xiaomi 13 Ultra and the OPPO Find X9 Ultra
+                // (2026-10-10 logs) every session with session parameters / PREVIEW_STABILIZATION next to the RAW stream stopped
+                // delivering frames or killed the HAL (onError 4); before P54d no other brand got session parameters.
+                int vsMode = vivoBrand() ? getPreferredVideoStabilizationMode(mCameraCharacteristics, mIsRecordingVideo, PreferenceKeys.isEisPhotoOn())
+                        : CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
                 if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
@@ -3486,6 +3549,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     // RawPayloadCheck on the preview stream: the first frames of every session, then every 30th.
     private int mPayloadFrames;
     private volatile boolean mPayloadBad;
+    /** Preview RAW_SENSOR frames hold packed MIPI RAW10 rows this far apart (0: plain 16-bit). */
+    private volatile int mPackedStride;
+    /** The format a RAW frame is read as: RAW10 for a packed RAW_SENSOR payload ({@link #mPackedStride}). */
+    private int readFormat(Image img) {
+        return mPackedStride > 0 && img.getFormat() == ImageFormat.RAW_SENSOR ? ImageFormat.RAW10 : img.getFormat();
+    }
+    private int readStride(Image img) {
+        return mPackedStride > 0 && img.getFormat() == ImageFormat.RAW_SENSOR ? mPackedStride : img.getPlanes()[0].getRowStride();
+    }
     private boolean mScamPreviewActive;
     /** P54b: this session holds the stabilisation on (ForcedStabilization: X300 Ultra); with the vivo EIS key. */
     private boolean mForcedStab;
@@ -3503,7 +3575,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (n >= 4 && n % 30 != 0) return;
         com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(img, rawPayloadWhite(null));
-        if (payload.plain()) { mPayloadBad = false; return; }
+        if (payload.plain()) { mPayloadBad = false; mPackedStride = 0; return; }
+        if (payload.isPacked10()) {
+            // Xiaomi 17 Ultra tele on the logical camera: packed MIPI RAW10 behind RAW_SENSOR, read as RAW10 with its own stride by
+            // the colour-block measurement and the developed RAW viewfinder (the forced 2x ISZ shows that viewfinder)
+            int stride = com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedStride(img.getPlanes()[0].getBuffer(), img.getWidth(), img.getHeight());
+            if (stride > 0) {
+                if (mPackedStride != stride) Log.i(TAG, "preview RAW of camera " + physicalID + ": packed MIPI RAW10 (stride " + stride + "), read as RAW10");
+                mPackedStride = stride;
+                mPayloadBad = false;
+                return;
+            }
+        }
         if (!mPayloadBad) {
             Log.w(TAG, "preview RAW of camera " + physicalID + ": " + payload.error
                     + (mScamPreviewActive ? " (vivo stock preview profile on)" : ""));
@@ -3592,13 +3675,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Integer wl = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
                 if (wl != null && wl > black) white = wl;
                 java.nio.ByteBuffer samples = plane.getBuffer();
-                int sampleStride = plane.getRowStride();
-                if (com.particlesdevs.photoncamera.util.RawUnpack.isPacked(img.getFormat())) {
+                int sampleStride = readStride(img);
+                final int readFormat = readFormat(img);
+                if (com.particlesdevs.photoncamera.util.RawUnpack.isPacked(readFormat)) {
                     // RAW10 / RAW12: measured on the unpacked frame (only the first frames of a session are measured)
                     final int bytes = img.getWidth() * img.getHeight() * 2;
                     if (mMosaicUnpacked == null || mMosaicUnpacked.capacity() < bytes)
                         mMosaicUnpacked = java.nio.ByteBuffer.allocateDirect(bytes).order(java.nio.ByteOrder.nativeOrder());
-                    if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(samples.duplicate(), img.getFormat(), img.getWidth(), img.getHeight(),
+                    if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(samples.duplicate(), readFormat, img.getWidth(), img.getHeight(),
                             sampleStride, mMosaicUnpacked)) return;
                     samples = mMosaicUnpacked.duplicate().order(java.nio.ByteOrder.nativeOrder());
                     samples.position(0); samples.limit(bytes);
@@ -3633,7 +3717,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private void publishLiveRawFrame(Image img, TotalCaptureResult matchedResult) {
-        if (!LiveRawFrame.isEnabled() || img == null) return;
+        if (!LiveRawFrame.isEnabled() || img == null || matchedResult == null) return; // no result: nothing to develop it with
         if (!isRawFormat(img.getFormat())) return;
         if (mPayloadBad) {
             // The developed RAW viewfinder would show the same garbage: the ISP preview takes over for this session.
@@ -3677,7 +3761,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 android.hardware.camera2.params.ColorSpaceTransform matrix=colorResult.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
                 if(matrix!=null)for(int col=0;col<3;col++)for(int row=0;row<3;row++)ccm[col*3+row]=matrix.getElement(col,row).floatValue();
                 float[] dynamicBlack=colorResult.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
-                if(dynamicBlack!=null&&dynamicBlack.length==4)black=dynamicBlack;
+                // A dynamic black far from the static one is another scale, not a drift (Realme GT8 Pro: 16 for a static 64, the
+                // RAW viewfinder's shadows lifted by 48 DN; the photo uses 64): kept only within 25 % of it (OPPO X8U drifts 64 -> 60)
+                if(dynamicBlack!=null&&dynamicBlack.length==4&&plausibleDynamicBlack(dynamicBlack,black))black=dynamicBlack;
                 Integer dynamicWhite=colorResult.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
                 if(dynamicWhite!=null)white=dynamicWhite;
             }
@@ -3725,13 +3811,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if(count>0){shotNoise/=count;readNoise/=count;}
             }
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                    plane.getRowStride(), cfa, white, black, gains, ccm,shading,sw,sh,crop,
+                    readStride(img), cfa, white, black, gains, ccm,shading,sw,sh,crop,
                     com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
                             ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
                     !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise,
-                    img.getFormat());
+                    readFormat(img));
             if (mTextureView != null) mTextureView.requestRender();
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
@@ -3812,12 +3898,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // The newest ring frame whose RAW is plain 16-bit: a packed payload reads as ~62 % clipped (X100 Ultra) and planned
         // the bracket from garbage. None plain: no clipping is assumed (the shot then takes N after the shutter).
         Image newest = null;
+        int packedStride = 0;
         synchronized (mZslBufferLock) {
             int looked = 0;
             for (java.util.Iterator<Image> it = mZslRingBuffer.descendingIterator(); it.hasNext() && looked < 4; looked++) {
                 Image candidate = it.next();
-                if (com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(candidate,
-                        rawPayloadWhite(mHexZslResults.get(candidate.getTimestamp()))).plain()) { newest = candidate; break; }
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload = com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(
+                        candidate, rawPayloadWhite(mHexZslResults.get(candidate.getTimestamp())));
+                if (payload.plain()) { newest = candidate; break; }
+                // Xiaomi 17 Ultra tele (logical camera 0): packed MIPI RAW10 behind RAW_SENSOR; its clipping is read from the
+                // high bytes (every tele shot planned clip = 0 and no short frame before, 2026-10-10)
+                if (payload.isPacked10()) {
+                    int stride = com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedStride(
+                            candidate.getPlanes()[0].getBuffer(), candidate.getWidth(), candidate.getHeight());
+                    if (stride > 0) { newest = candidate; packedStride = stride; break; }
+                }
             }
             if (newest == null && looked > 0) Log.w("SCAM_CAPTURE", "ZSL clip estimate: no plain 16-bit RAW among the newest " + looked);
         }
@@ -3826,6 +3921,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
             int limit = (int) ((white == null ? 1023 : white) * 0.95f);
             Image.Plane plane = newest.getPlanes()[0];
+            if (packedStride > 0) {
+                // MIPI RAW10: bytes 0..3 of each 5-byte group are the high 8 bits of four samples
+                java.nio.ByteBuffer bytes = plane.getBuffer().duplicate();
+                int w = newest.getWidth(), h = newest.getHeight(), limitHigh = limit >> 2;
+                long clipped = 0, total = 0;
+                byte[] row = new byte[w * 5 / 4];
+                for (int y = 0; y < h; y += 8) {
+                    bytes.position(y * packedStride);
+                    bytes.get(row, 0, row.length);
+                    for (int g = 0; g + 4 < row.length; g += 5) {
+                        if ((row[g] & 0xff) >= limitHigh) clipped++;
+                        total++;
+                    }
+                }
+                return total == 0 ? 0f : (float) clipped / total;
+            }
             java.nio.ShortBuffer data = plane.getBuffer().duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
             int stride = plane.getRowStride() / 2, w = newest.getWidth(), h = newest.getHeight();
             long clipped = 0, total = 0;
@@ -3844,6 +3955,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w("SCAM_CAPTURE", "ZSL clip estimate unavailable: " + e);
             return 0f;
         }
+    }
+
+    /** A dynamic black level within 25 % of the static one (per channel; a static black of 0 accepts anything). */
+    static boolean plausibleDynamicBlack(float[] dynamic, float[] fixed) {
+        if (dynamic == null || fixed == null || fixed.length < dynamic.length) return dynamic != null;
+        for (int i = 0; i < dynamic.length; i++)
+            if (fixed[i] > 0f && Math.abs(dynamic[i] - fixed[i]) > 0.25f * fixed[i]) return false;
+        return true;
     }
 
     /** White level for RawPayloadCheck: the previewed physical camera, the frame's dynamic white when its result is known. */
@@ -5444,7 +5563,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (isRecordingVideo) {
             if (hasOn) return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON;
             if (hasPreviewStab) return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION;
-        } else {
+        } else if (vivoBrand()) {
+            // Photo mode: P54d (vivo X200 FE / X300 Ultra) only. Elsewhere the photo preview keeps no stabilisation mode, as
+            // before P54d (Xiaomi 13 Ultra / OPPO Find X9 Ultra: mode 2 next to the RAW stream stalled or killed the HAL).
             if (hasPreviewStab) {
                 return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION;
             }
@@ -5453,6 +5574,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         }
         return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+    }
+
+    /** vivo / iQOO: the brands P54d's photo-mode stabilisation (PREVIEW_STABILIZATION, session parameter) was made for. */
+    static boolean vivoBrand() {
+        return "vivo".equalsIgnoreCase(Build.BRAND) || "iqoo".equalsIgnoreCase(Build.BRAND) || "vivo".equalsIgnoreCase(Build.MANUFACTURER);
     }
 
     private void applyVideoStabilization(CaptureRequest.Builder builder) {

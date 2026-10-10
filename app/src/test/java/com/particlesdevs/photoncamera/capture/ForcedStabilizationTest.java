@@ -1,5 +1,6 @@
 package com.particlesdevs.photoncamera.capture;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -44,5 +45,30 @@ public class ForcedStabilizationTest {
         assertFalse(CaptureController.isOisSupported(new int[]{0}));
         assertFalse(CaptureController.isOisSupported(new int[0]));
         assertFalse(CaptureController.isOisSupported((int[]) null));
+    }
+
+    /**
+     * P54d's photo-mode stabilisation is for vivo only: on the Xiaomi 13 Ultra and the OPPO Find X9 Ultra (2026-10-10) a photo
+     * session with it (and its session parameters) stalled or killed the HAL. Video keeps ON everywhere. (Build.BRAND is not
+     * vivo in the unit tests.)
+     */
+    @Test
+    public void photoPreviewStabilisationOnlyOnVivo() {
+        android.hardware.camera2.CameraCharacteristics chars = org.mockito.Mockito.mock(android.hardware.camera2.CameraCharacteristics.class);
+        org.mockito.Mockito.when(chars.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES))
+                .thenReturn(new int[]{0, 1, 2});
+        assertFalse(CaptureController.vivoBrand());
+        assertEquals(0, CaptureController.getPreferredVideoStabilizationMode(chars, false, true));
+        assertEquals(1, CaptureController.getPreferredVideoStabilizationMode(chars, true, true));
+        assertEquals(0, CaptureController.getPreferredVideoStabilizationMode(chars, true, false));
+    }
+
+    /** The RAW viewfinder's dynamic black: a drift is taken, another scale (16 for 64, Realme GT8 Pro) is not. */
+    @Test
+    public void dynamicBlackOnlyNearTheStaticOne() {
+        float[] fixed = {64, 64, 64, 64};
+        assertTrue(CaptureController.plausibleDynamicBlack(new float[]{60, 61, 60, 62}, fixed));
+        assertFalse(CaptureController.plausibleDynamicBlack(new float[]{16, 16, 16, 16}, fixed));
+        assertTrue(CaptureController.plausibleDynamicBlack(new float[]{16, 16, 16, 16}, new float[]{0, 0, 0, 0}));
     }
 }

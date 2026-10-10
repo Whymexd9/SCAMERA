@@ -149,7 +149,11 @@ public final class RawPayloadCheck {
      * payload ends) go to Download/SCAMERA/raw-payload-*.zip with its metadata, so the layout can be read from real bytes.
      */
     public static void dumpOnce(Image image, Result result, String cameraId) {
-        if (image == null || result == null || result.plain() || !sDumped.add(String.valueOf(cameraId))) return;
+        if (image == null || result == null || result.plain()) return;
+        // A packed RAW10 payload whose stride is read from the data is understood and unpacked (Xiaomi 17 Ultra tele): no zip
+        // in Download/SCAMERA on every start for it.
+        if (result.isPacked10() && packedStride(image.getPlanes()[0].getBuffer(), image.getWidth(), image.getHeight()) > 0) return;
+        if (!sDumped.add(String.valueOf(cameraId))) return;
         try {
             Image.Plane plane = image.getPlanes()[0];
             ByteBuffer src = plane.getBuffer().duplicate();

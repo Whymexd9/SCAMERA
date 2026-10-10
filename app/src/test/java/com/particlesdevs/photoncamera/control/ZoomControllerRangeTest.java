@@ -37,4 +37,24 @@ public class ZoomControllerRangeTest {
         assertTrue(ZoomController.inRange(0.58f, 0.6f, 1f));
         assertTrue(ZoomController.inRange(1.04f, 0.6f, 1f));
     }
+
+    /** Xiaomi 17 Ultra (2026-10-10): a duplicate module of the same ratio is not picked over the original or the active one. */
+    @Test
+    public void sameRatioPrefersTheActiveThenTheOriginal() {
+        java.util.List<String> slots = java.util.Arrays.asList("back2", "back1", "back0", "back3");
+        float[] ratios = {0.8f, 1f, 3.1f, 3.1f};
+        boolean[] copies = {false, false, false, true};
+        org.junit.Assert.assertEquals("back0", ZoomController.pick(slots, ratios, copies, 3.3f, "back1"));
+        org.junit.Assert.assertEquals("back3", ZoomController.pick(slots, ratios, copies, 3.3f, "back3"));
+        org.junit.Assert.assertEquals("back1", ZoomController.pick(slots, ratios, copies, 2f, "back0"));
+        org.junit.Assert.assertEquals("back2", ZoomController.pick(slots, ratios, copies, 0.5f, "back0"));
+    }
+
+    /** A zoom held just below a module's ratio keeps the module (no back-and-forth restarts at the border). */
+    @Test
+    public void downSwitchWaitsBelowTheHysteresis() {
+        org.junit.Assert.assertTrue(ZoomController.holdsActive(3.16f, 3.2f, 1f));
+        org.junit.Assert.assertFalse(ZoomController.holdsActive(3.05f, 3.2f, 1f));
+        org.junit.Assert.assertFalse(ZoomController.holdsActive(3.3f, 1f, 3.2f)); // up switches are not held
+    }
 }

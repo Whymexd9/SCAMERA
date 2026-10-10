@@ -99,9 +99,43 @@ public final class ZoomController {
     public static String pick(float z) {
         List<String> slots = lenses();
         if (slots.isEmpty()) return null;
-        String best = slots.get(0);
-        for (String slot : slots) if (ModuleRegistry.zoom(slot) <= z + ROUNDING) best = slot;
-        return best;
+        float[] ratios = new float[slots.size()];
+        boolean[] copies = new boolean[slots.size()];
+        for (int i = 0; i < ratios.length; i++) {
+            ratios[i] = ModuleRegistry.zoom(slots.get(i));
+            copies[i] = ModuleRegistry.duplicateOf(slots.get(i)) != null;
+        }
+        return pick(slots, ratios, copies, z, ModuleRegistry.active());
+    }
+
+    /**
+     * {@link #pick(float)} on given modules (ascending ratios): among modules of the same ratio the active one, else the
+     * original rather than its duplicate (Xiaomi 17 Ultra 2026-10-10: every pinch on «3,1×» switched to «3,1× (2)», the last
+     * slot of that ratio, and restarted the camera).
+     */
+    static String pick(List<String> slots, float[] ratios, boolean[] copies, float z, String active) {
+        if (slots.isEmpty()) return null;
+        int best = 0;
+        for (int i = 0; i < slots.size(); i++) if (ratios[i] <= z + ROUNDING) best = i;
+        float ratio = ratios[best];
+        int chosen = -1;
+        for (int i = 0; i < slots.size(); i++) {
+            if (Math.abs(ratios[i] - ratio) > 0.001f) continue;
+            if (slots.get(i).equals(active)) return slots.get(i);
+            if (chosen < 0 || (copies[chosen] && !copies[i])) chosen = i;
+        }
+        return slots.get(chosen < 0 ? best : chosen);
+    }
+
+    /**
+     * Back to a wider module only below the active module's ratio minus this: a zoom held at a module's border no longer
+     * switches back and forth (Xiaomi 17 Ultra: five restarts of the logical camera in 9 s between 3.16x and 3.19x).
+     */
+    static final float DOWN_HYSTERESIS = 0.1f;
+
+    /** Whether a switch from the active module (ratio {@code activeRatio}) to a module of ratio {@code targetRatio} waits. */
+    static boolean holdsActive(float z, float activeRatio, float targetRatio) {
+        return targetRatio < activeRatio && z >= activeRatio - DOWN_HYSTERESIS;
     }
 
     public static float minZoom() {
@@ -193,6 +227,8 @@ public final class ZoomController {
         zoom = z;
         String active = ModuleRegistry.active();
         String target = pick(z);
+        if (target != null && !target.equals(active) && ModuleRegistry.slots().contains(active)
+                && holdsActive(z, ModuleRegistry.zoom(active), ModuleRegistry.zoom(target))) target = active;
         String result = null;
         long now = android.os.SystemClock.elapsedRealtime();
         if (target != null && !target.equals(active) && now - lastSwitch >= SWITCH_INTERVAL_MS) {
