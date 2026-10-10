@@ -233,7 +233,9 @@ public final class ArkLumaSharpen extends Node {
         float[][] rl = {
                 {ArkTone.value("sharp_rl1_kernel", 2f), ArkTone.value("sharp_rl1_rad", 1f), ArkTone.value("sharp_rl1_amount", 1f), ArkTone.value("sharp_rl1_iters", 3f)},
                 {ArkTone.value("sharp_rl2_kernel", 1f), ArkTone.value("sharp_rl2_rad", 0f), ArkTone.value("sharp_rl2_amount", 0f), ArkTone.value("sharp_rl2_iters", 0f)},
-                {ArkTone.value("sharp_rl3_kernel", 0f), ArkTone.value("sharp_rl3_rad", 0.5f), ArkTone.value("sharp_rl3_amount", 1f), ArkTone.value("sharp_rl3_iters", 3f)}};
+                {ArkTone.value("sharp_rl3_kernel", 0f), ArkTone.value("sharp_rl3_rad", 0.5f),
+                        com.particlesdevs.photoncamera.settings.DeviceDefaults.rl3Amount(ArkTone.value("sharp_rl3_amount", 1f), pipeline.mParameters.cameraID),
+                        ArkTone.value("sharp_rl3_iters", 3f)}};
 
         GLTexture gainMap = pipeline.GainMap;
         GLTexture fallback = null;

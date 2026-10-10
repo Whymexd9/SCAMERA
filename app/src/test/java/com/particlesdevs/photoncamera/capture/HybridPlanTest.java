@@ -23,6 +23,8 @@ import static org.mockito.Mockito.*;
 @Config(sdk=35, application=Application.class)
 public class HybridPlanTest {
     private MockedStatic<PreferenceKeys> prefs;
+    /** Settings of the logs the plans below came from (before P68: Bento auto, 5 Shasta frames); empty = the app defaults. */
+    private final java.util.Map<String, Float> pinned = new java.util.HashMap<>();
     private MockedStatic<com.particlesdevs.photoncamera.app.PhotonCamera> photon;
 
     @Before public void setup() {
@@ -37,7 +39,9 @@ public class HybridPlanTest {
         photon.when(() -> com.particlesdevs.photoncamera.app.PhotonCamera.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
         prefs = mockStatic(PreferenceKeys.class);
         prefs.when(() -> PreferenceKeys.hybridSwitch(anyString(), anyBoolean())).thenAnswer(i -> i.getArgument(1));
-        prefs.when(() -> PreferenceKeys.hybridValue(anyString(), anyFloat())).thenAnswer(i -> i.getArgument(1));
+        pinned.put("bento", 1f);
+        pinned.put("shasta_frames", 5f);
+        prefs.when(() -> PreferenceKeys.hybridValue(anyString(), anyFloat())).thenAnswer(i -> pinned.getOrDefault(i.<String>getArgument(0), i.getArgument(1)));
         prefs.when(PreferenceKeys::getAntibandingHz).thenReturn(0);
     }
     @After public void cleanup() { prefs.close(); photon.close(); }
@@ -114,6 +118,38 @@ public class HybridPlanTest {
         assertEquals(ImageFrame.CaptureRole.LONG, r.role);
         assertEquals(320, r.iso);
         assertEquals(20_000_000L, r.shutterNs);
+    }
+
+    @Test public void p68DefaultsTakeThreeUltrashortThenThreeShastaFrames() {
+        // owner, 10 October 2026: Bento always with 3 frames, 3 Shasta frames; no clipping needed for Bento
+        pinned.clear();
+        HybridPlan plan = HybridPlan.build(10_000_000L, 659, 0f, camera(12000));
+        assertEquals(6, plan.requests.size());
+        for (int i = 0; i < 3; i++) assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, plan.requests.get(i).role);
+        for (int i = 3; i < 6; i++) { assertEquals(ImageFrame.CaptureRole.LONG, plan.requests.get(i).role); assertEquals(1318, plan.requests.get(i).iso); }
+    }
+
+    @Test public void pixel7TakesBentoOnlyWhereTheFrameClips() {
+        pinned.put("bento", 2f);
+        assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, HybridPlan.build(10_000_000L, 659, 0f, camera(12000)).requests.get(0).role);
+        org.robolectric.shadows.ShadowBuild.setManufacturer("Google");
+        org.robolectric.shadows.ShadowBuild.setDevice("panther");
+        HybridPlan clean = HybridPlan.build(10_000_000L, 659, 0f, camera(12000));
+        for (HybridPlan.Request r : clean.requests) assertNotEquals(ImageFrame.CaptureRole.EXTRA_SHORT, r.role);
+        assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, HybridPlan.build(10_000_000L, 659, 0.01f, camera(12000)).requests.get(0).role);
+    }
+
+    @Test public void forcedShastaIgnoresTheRatioLimitButNotAFrameAtN() {
+        pinned.put("shasta_ev", 4f);       // x16 of N
+        pinned.put("shasta_max_ratio", 8f);
+        assertTrue(HybridPlan.build(10_000_000L, 100, 0f, camera(12000)).description.contains("brackets skipped (ratio"));
+        prefs.when(PreferenceKeys::getHybridShastaMode).thenReturn(2);
+        HybridPlan forced = HybridPlan.build(10_000_000L, 100, 0f, camera(12000));
+        assertEquals(5, forced.requests.size());
+        for (HybridPlan.Request r : forced.requests) assertEquals(ImageFrame.CaptureRole.LONG, r.role);
+        // the gain range ends at N and the shutter cannot grow (N at the handheld cap): no bracket even when forced
+        HybridPlan atN = HybridPlan.build(125_000_000L, 12000, 0f, camera(12000));
+        assertTrue(atN.description, atN.description.contains("brackets skipped (ratio 1.00)"));
     }
 
     @Test public void normalBackTakesNAfterTheShutterThenTheExtras() {

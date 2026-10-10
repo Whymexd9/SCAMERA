@@ -59,6 +59,10 @@
         <item>20 МП (2× → 20)</item>
         <item>2× (≈50 МП, без уменьшения)</item>
     </string-array>
+    <string-array name="scam_hybrid_shasta_mode_entries">
+        <item>Авто (проверка резкости)</item>
+        <item>Всегда</item>
+    </string-array>
     <string-array name="scam_hybrid_bento_entries">
         <item>Выключено</item>
         <item>Авто (при клиппинге)</item>

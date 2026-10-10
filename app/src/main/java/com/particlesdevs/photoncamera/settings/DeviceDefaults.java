@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Factory configuration of the OPPO Find X7 Ultra (PHY110) and Find X8 Ultra (PKJ110). Applied once per defaults version
+ * Factory configuration of the OPPO Find X7 Ultra (PHY110), Find X8 Ultra (PKJ110), Redmi Note 11 Pro (viva) and Pixel 7 (panther). Applied once per defaults version
  * (marker {@code device_defaults_version}, not a per-module key) when the app first runs after install or update: on the
  * main preferences, and the per-module entries also on the shared baseline and every module profile that already exists.
  * The user changes anything afterwards; a newer defaults version applies only its own entries.
@@ -22,10 +22,12 @@ public final class DeviceDefaults {
     /**
      * 1: the SCAM HDR set of both OPPO phones (removed 2026-10-08: SCAM HDR never runs there). 2 (owner, 2026-10-06): the
      * Find X8 Ultra streams RAW10 by default. 3 (owner, 2026-10-08): the Find X7 Ultra opens with the camera package spoof of com.ss.android.ugc.aweme (all three methods: the
-     * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the ARK tone at 1.1. A phone
-     * whose marker is older gets only the entries of the newer versions, so an update never resets the user's other settings.
+     * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the ARK tone at 1.1. 4 (owner,
+     * 2026-10-10): the Redmi Note 11 Pro (Helio G96, Mali-G57 MC2: 19 frames took 16.7 s of GPU merge) merges 12 N frames and
+     * 2 Shasta frames, with the ARK RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. A phone whose marker is older gets only the
+     * entries of the newer versions, so an update never resets the user's other settings.
      */
-    static final int VERSION = 3;
+    static final int VERSION = 4;
     /** The package the Find X7 Ultra's camera service shows every lens to (owner's choice). */
     static final String X7U_SPOOF_PACKAGE = "com.ss.android.ugc.aweme";
     private DeviceDefaults() {}
@@ -39,8 +41,18 @@ public final class DeviceDefaults {
     static Map<String, Object> forDevice(Context context, int since) {
         String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(java.util.Locale.ROOT);
         final boolean oppo = "OPPO".equalsIgnoreCase(Build.MANUFACTURER) && (model.equals("PHY110") || model.equals("PKJ110"));
-        if (!oppo) return null;
+        final boolean note11Pro = redmiNote11Pro(), pixel7 = pixel7();
+        if (!oppo && !note11Pro && !pixel7) return null;
         Map<String, Object> out = new LinkedHashMap<>();
+        // v4: Redmi Note 11 Pro (owner's log 2026-10-10: device viva, model 2201116TG)
+        if (since < 4 && note11Pro) {
+            out.put("pref_scam_hybrid_zsl_frames", "12");
+            out.put("pref_scam_hybrid_shasta_frames", "2");
+            out.put("pref_scam_hybrid_ark_sharp_rl3_amount", "1.2");
+        }
+        // v4: Pixel 7 (owner 2026-10-10, his shots of p7.zip were taken with it)
+        if (since < 4 && pixel7) out.put("pref_scam_hybrid_ark_sharp_rl3_amount", String.valueOf(PIXEL7_RL3));
+        if (!oppo) return out;
         // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit on copy; the RAW viewfinder needs RAW_SENSOR and is off).
         if (since < 2 && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
         // v3: the Find X7 Ultra shows its tele / ultra-wide lenses to a whitelisted package only, and its tuned ISP matrix
@@ -53,6 +65,27 @@ public final class DeviceDefaults {
             out.put("pref_scam_hybrid_ark_ccm_sat", "1.1");
         }
         return out;
+    }
+
+    /** Redmi Note 11 Pro 4G (Helio G96): device viva (owner's log, model 2201116TG). */
+    static boolean redmiNote11Pro() {
+        return "Xiaomi".equalsIgnoreCase(Build.MANUFACTURER) && "viva".equalsIgnoreCase(Build.DEVICE);
+    }
+
+    /** RL 3 amount of the Pixel 7 default (v4). */
+    static final float PIXEL7_RL3 = 1.5f, PIXEL7_RL3_2X = 1.2f;
+    /**
+     * P71 (owner, 2026-10-10): on the Pixel 7 the 2x module (camera 4, full-resolution crop of the main sensor) takes RL 3 at 1.2
+     * while the setting holds the device default 1.5 (light outlines on thin branches at 1.5); any other stored value is the
+     * user's and stays. Module settings may be shared by every lens, so this is decided per shot, not stored.
+     */
+    public static float rl3Amount(float stored, String cameraId) {
+        if (Math.abs(stored - PIXEL7_RL3) < 1e-4f && "4".equals(cameraId) && pixel7()) return PIXEL7_RL3_2X;
+        return stored;
+    }
+    /** Pixel 7: Google, device panther (owner's log 2026-10-10). */
+    public static boolean pixel7() {
+        return "Google".equalsIgnoreCase(Build.MANUFACTURER) && "panther".equalsIgnoreCase(Build.DEVICE);
     }
 
     public static void applyOnce(Context context, SharedPreferences main) {
@@ -74,7 +107,7 @@ public final class DeviceDefaults {
             if (meta.getBoolean("baseline", false))
                 write(context.getSharedPreferences("module_profile_v2_common", Context.MODE_PRIVATE), perModule);
             main.edit().putInt(MARKER, VERSION).apply();
-            Log.i(TAG, "OPPO " + Build.MODEL + ": device configuration v" + stored + " -> v" + VERSION + " applied (" + defaults.size() + " settings)");
+            Log.i(TAG, Build.MANUFACTURER + " " + Build.MODEL + ": device configuration v" + stored + " -> v" + VERSION + " applied (" + defaults.size() + " settings)");
         } catch (RuntimeException failure) {
             Log.e(TAG, "device defaults not applied: " + failure);
         }

@@ -121,6 +121,66 @@ public class DeviceDefaultsTest {
         assertFalse(main.contains("pref_scam_hybrid_ark_ccm_sat"));
     }
 
+    /** Owner 2026-10-10: Redmi Note 11 Pro (viva) 12 N frames, 2 Shasta frames, ARK RL 3 amount 1.2; also in module profiles. */
+    @Test public void redmiNote11ProMergesFewerFrames() {
+        ShadowBuild.setManufacturer("Xiaomi");
+        ShadowBuild.setModel("2201116TG");
+        ShadowBuild.setDevice("viva");
+        Context context = RuntimeEnvironment.getApplication();
+        SharedPreferences meta = prefs("module_profiles_meta");
+        meta.edit().putBoolean("exists_back3", true).commit();
+        SharedPreferences module = prefs("module_profile_v2_back3");
+        SharedPreferences main = prefs("defaults_note11pro");
+        // the stored former defaults of the hybrid (the screen was opened before) are replaced
+        main.edit().putString("pref_scam_hybrid_zsl_frames", "30").putString("pref_scam_hybrid_shasta_frames", "5").commit();
+        DeviceDefaults.applyOnce(context, main);
+        for (SharedPreferences p : new SharedPreferences[]{main, module}) {
+            assertEquals("12", p.getString("pref_scam_hybrid_zsl_frames", ""));
+            assertEquals("2", p.getString("pref_scam_hybrid_shasta_frames", ""));
+            assertEquals("1.2", p.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+        }
+        assertFalse(main.contains("pref_camera_package_spoof_enabled"));
+        assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
+        // applied once: a later choice stays
+        main.edit().putString("pref_scam_hybrid_zsl_frames", "20").commit();
+        DeviceDefaults.applyOnce(context, main);
+        assertEquals("20", main.getString("pref_scam_hybrid_zsl_frames", ""));
+        meta.edit().clear().commit();
+    }
+
+    /** Owner 2026-10-10: Pixel 7 (panther) ARK RL 3 amount 1.5, nothing else. */
+    @Test public void pixel7TakesRl3At15() {
+        ShadowBuild.setManufacturer("Google");
+        ShadowBuild.setModel("Pixel 7");
+        ShadowBuild.setDevice("panther");
+        SharedPreferences main = prefs("defaults_pixel7");
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertEquals("1.5", main.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+        assertFalse(main.contains("pref_scam_hybrid_zsl_frames"));
+        assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
+    }
+
+    /** Owner 2026-10-10: Pixel 7 2x (camera 4) takes RL 3 at 1.2 while the setting is the device default; elsewhere unchanged. */
+    @Test public void pixel7TwoTimesTakesRl3At12() {
+        ShadowBuild.setManufacturer("Google");
+        ShadowBuild.setDevice("panther");
+        assertEquals(1.2f, DeviceDefaults.rl3Amount(1.5f, "4"), 0f);
+        assertEquals(1.5f, DeviceDefaults.rl3Amount(1.5f, "2"), 0f);
+        assertEquals(1.8f, DeviceDefaults.rl3Amount(1.8f, "4"), 0f); // the user's own value
+        ShadowBuild.setDevice("viva");
+        ShadowBuild.setManufacturer("Xiaomi");
+        assertEquals(1.5f, DeviceDefaults.rl3Amount(1.5f, "4"), 0f);
+    }
+
+    @Test public void otherXiaomiPhonesGetNothing() {
+        ShadowBuild.setManufacturer("Xiaomi");
+        ShadowBuild.setModel("25128PNA1C");
+        ShadowBuild.setDevice("nezha");
+        SharedPreferences main = prefs("defaults_17u");
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertTrue(main.getAll().isEmpty());
+    }
+
     @Test public void otherPhonesGetNothing() {
         ShadowBuild.setManufacturer("vivo");
         ShadowBuild.setModel("V2366GA");

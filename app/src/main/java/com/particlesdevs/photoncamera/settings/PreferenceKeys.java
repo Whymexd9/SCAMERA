@@ -774,9 +774,18 @@ public class PreferenceKeys {
     /** Hybrid defaults that differ from the fallback the shared nodes pass; any other key keeps the caller's fallback. */
     private static final Map<String, Float> HYBRID_DEFAULTS = new HashMap<>();
     static {
-        // The Sabre kernel shows detail from ~12-15 frames and keeps gaining towards ArkCam's ~30 (owner 2026-10-07: 20 -> 30,
-        // SettingsMigration moves a stored former default); SCAM HDR SCAM: 4.
-        HYBRID_DEFAULTS.put("zsl_frames", 30f);
+        // N frames from the ZSL ring: owner 2026-10-07 20 -> 30, owner 2026-10-10 back to 20 (P68; SettingsMigration moves a
+        // stored former default); SCAM HDR SCAM: 4.
+        HYBRID_DEFAULTS.put("zsl_frames", 20f);
+        // P68 (owner, 10 October 2026), every phone: Sabre 6.1 kernel always, Mochi always, Bento always with 3 ultrashort frames,
+        // Shasta always with 3 frames. The worker keeps its own defaults (replays unchanged); the app writes these keys when unset.
+        HYBRID_DEFAULTS.put("sabre61", 1f);
+        HYBRID_DEFAULTS.put("mochi", 2f);
+        HYBRID_DEFAULTS.put("bento", 2f);
+        HYBRID_DEFAULTS.put("bento_frames", 3f);
+        HYBRID_DEFAULTS.put("shasta_mode", 2f);
+        HYBRID_DEFAULTS.put("shasta_frames", 3f);
+        HYBRID_DEFAULTS.put("shasta_motion_max", 4f);
         HYBRID_DEFAULTS.put("soft_tone", 0f);    // AgX + Exposure Fusion with the Bento headroom
         HYBRID_DEFAULTS.put("bento_factor", 8f); // SCAM ultrashort_tet_factor
     }
@@ -904,6 +913,8 @@ public class PreferenceKeys {
             {"bentoUsSigma", "bento_sigma"}, {"bentoFrames", "bento_frames"}, {"bentoChromaSigma", "bento_chroma_sigma"},
             {"dilateFloor", "dilate_floor"}, {"widenBelow", "widen_below"}, {"chromaDiff", "chroma_diff"},
             {"bentoValidate", "bento_validate"}, {"bentoMotionMax", "bento_motion_max"},
+            // P68: motion fallback of forced Shasta frames, % of the blocks (the Shasta mode is written below)
+            {"shastaMotionMax", "shasta_motion_max"},
             {"rawNoise", "tensor_noise"}, {"snrScale", "snr_scale"},
             {"boost", "boost_value"}, {"varianceThreshold", "boost_threshold"}, {"motionThreshold", "motion_threshold"},
             {"lutHiSigma", "lut_sigma"},
@@ -945,6 +956,8 @@ public class PreferenceKeys {
             // P27: the measured exposure ratio instead of a metadata ratio the data reliably disagrees with (worker default 1 since
             // 7 October 2026; 0 = report only, scam_dev.txt "hybrid_gain_measured 0")
             {"gainMeasured", "gain_measured"},
+            // P71: the noise model checked against the burst (worker default 1; scam_dev.txt "hybrid_noise_measured 0" = off)
+            {"noiseMeasured", "noise_measured"},
             // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto (GCam rule) / 2 force
             {"mochi", "mochi"},
             // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from scam_dev.txt
@@ -955,10 +968,18 @@ public class PreferenceKeys {
         for (String[] k : keys) {
             Float dev = scamDevValue("hybrid_" + k[1]);
             String v = dev != null ? dev.toString() : hybridString(k[1], "");
+            // P68: a key with an app default (HYBRID_DEFAULTS) is written also when unset; any other keeps the worker default
+            if ((v == null || v.isEmpty()) && HYBRID_DEFAULTS.containsKey(k[1])) v = HYBRID_DEFAULTS.get(k[1]).toString();
             if (v == null || v.isEmpty()) continue;
             try { out.append(k[0]).append(' ').append(Float.parseFloat(v.trim())).append('\n'); } catch (NumberFormatException ignored) {}
         }
-        if (!hybridSwitch("shasta", true)) out.append("shastaEnable 0\n");
+        // P69 (owner, 2026-10-10): per-pass GPU times on by default on the Redmi Note 11 Pro (Mali-G57 MC2: 16.7 s merge, the
+        // passes to speed up are not known yet); a glFinish after each pass costs some time. scam_dev.txt "hybrid_profile 0" turns it off.
+        if (scamDevValue("hybrid_profile") == null && hybridString("profile", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
+            out.append("profile 1\n");
+        final int shasta = getHybridShastaMode();
+        if (shasta == 0) out.append("shastaEnable 0\n");
+        else if (shasta == 2) out.append("shastaForce 1\n");
         // Rejection boost where the local motion varies (GCam 11 Z channel of the F6 field); a switch, not a number.
         Float boostDev = scamDevValue("hybrid_motion_boost");
         out.append("boostEnable ").append(boostDev != null ? boostDev : hybridSwitch("motion_boost", true) ? 1f : 0f).append('\n');
@@ -971,14 +992,21 @@ public class PreferenceKeys {
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
         return out.toString();
     }
-    /** The hybrid's N frames from the ZSL ring (pref_scam_hybrid_zsl_frames, 4..44, default 30). */
+    /** The hybrid's N frames from the ZSL ring (pref_scam_hybrid_zsl_frames, 4..44, default 20). */
     public static int getHybridZslFrames() {
-        return Math.round(hybridValue("zsl_frames", 30f));
+        return Math.round(hybridValue("zsl_frames", 20f));
     }
-    /** P62 Mochi: GCam 11 photometric merge of bracketed frames on GPU (pref_scam_hybrid_mochi: 0 off, 1 auto, 2 force). */
+    /** P62 Mochi: GCam 11 photometric merge of bracketed frames on GPU (pref_scam_hybrid_mochi: 0 off, 1 auto, 2 force; default 2, P68). */
     public static int getHybridMochi() {
-        return (int) Math.round(SettingsNumericRules.value("pref_scam_hybrid_mochi",
-                preferenceKeys.settingsManager.getString("default_scope", "pref_scam_hybrid_mochi", "0"), 0));
+        return Math.round(hybridValue("mochi", 2f));
+    }
+    /**
+     * P68 Shasta: 0 off (switch pref_scam_hybrid_shasta), else pref_scam_hybrid_shasta_mode 1 auto (the worker's sharpness gate and
+     * ratio limit) or 2 always (default: the frames skip both and fall back only on motion, pref_scam_hybrid_shasta_motion_max).
+     */
+    public static int getHybridShastaMode() {
+        if (!hybridSwitch("shasta", true)) return 0;
+        return Math.max(1, Math.min(2, Math.round(hybridValue("shasta_mode", 2f))));
     }
     /**
      * SCAM Hybrid tone: the ArkCam 1.23 / SCAM 9.6 photo tone (ArkStats -> ArkFusion -> ArkCombine: Smart-HDR AE, exposure

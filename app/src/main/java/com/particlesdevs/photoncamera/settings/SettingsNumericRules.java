@@ -20,6 +20,8 @@ public final class SettingsNumericRules {
             case "pref_scamhdr_planner_s_ev": return new double[]{1,5,0};
             case "pref_scamhdr_planner_es_ev": return new double[]{2,9,0};
             case "pref_scam_hybrid_shasta_frames": return new double[]{1,5,1};
+            case "pref_scam_hybrid_shasta_mode": return new double[]{1,2,1};
+            case "pref_scam_hybrid_shasta_motion_max": return new double[]{0,100,0};
             case "pref_scam_hybrid_shasta_ev": return new double[]{1,4,0};
             case "pref_scam_hybrid_shasta_sharpness": return new double[]{0.3,1,0};
             case "pref_scam_hybrid_shasta_max_ratio": return new double[]{2,100,0};

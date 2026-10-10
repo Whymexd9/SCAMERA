@@ -13,7 +13,7 @@
     <string name="prefs_scam_hybrid_capture_screen_title">Frames and capture</string>
     <string name="prefs_scam_hybrid_capture_screen_summary">N frames from ZSL, Bento, Shasta</string>
     <string name="prefs_scam_hybrid_zsl_frames_title">N frames from ZSL</string>
-    <string name="prefs_scam_hybrid_zsl_frames_summary">4–44, default 30 (ArkCam merges about 30). Normal-exposure frames from the ZSL buffer before the press (no more than the buffer holds at the same exposure). Sabre detail shows from about 12–15 frames and keeps growing towards 30; each frame adds about 0.1 s to the merge and 25 MB of memory at 12 MP (a Quad stream merges at most the frames of «Frames in the mosaic merge»).</string>
+    <string name="prefs_scam_hybrid_zsl_frames_summary">4–44, default 20. Normal-exposure frames from the ZSL buffer before the press (no more than the buffer holds at the same exposure). Sabre detail shows from about 12–15 frames and keeps growing towards 30; each frame adds about 0.1 s to the merge and 25 MB of memory at 12 MP (a Quad stream merges at most the frames of «Frames in the mosaic merge»).</string>
     <string name="prefs_scam_hybrid_capture_category_title">Bento: ultra-short frame</string>
     <string name="prefs_scam_hybrid_bento_summary">%s. A frame with N/8 exposure replaces the overexposed areas of the base frame (mask: threshold 0.98, dilation 4, smoothing σ=1; skipped when the clipped area is small, with holes ≥15 cells, or if the frame itself is more than 62 %% clipped). Auto: taken when the ZSL frame has clipping.</string>
     <string name="prefs_scam_hybrid_bento_frames_title">Bento frames</string>
@@ -27,9 +27,13 @@
     <string name="prefs_scam_hybrid_bento_trigger_title">Bento: clipping threshold for Auto</string>
     <string name="prefs_scam_hybrid_bento_trigger_summary">Share of overexposed pixels in the ZSL frame from which an ultra-short frame is taken. 0: any clipping.</string>
     <string name="prefs_scam_hybrid_shasta_category_title">Shasta: long frames</string>
-    <string name="prefs_scam_hybrid_shasta_summary">After the press, 1–5 frames are taken with 2^EV times the exposure of N, through gain at the shutter of N, like ArkCam on the same phone (5 frames, 10 ms × gain 2.2): with no extra blur they pass the sharpness threshold and lower shadow noise. The shutter gets longer only beyond the sensor gain range (up to 1/8 s handheld). A blurred frame is dropped (threshold in “Merge”).</string>
+    <string name="prefs_scam_hybrid_shasta_summary">After the press, 1–5 frames are taken with 2^EV times the exposure of N, through gain at the shutter of N, like ArkCam on the same phone (5 frames, 10 ms × gain 2.2): with no extra blur they pass the sharpness threshold and lower shadow noise. The shutter gets longer only beyond the sensor gain range (up to 1/8 s handheld). In “Auto” a blurred frame is dropped (threshold in “Merge”); in “Always” only a frame that moved.</string>
+    <string name="prefs_scam_hybrid_shasta_mode_title">Shasta: mode</string>
+    <string name="prefs_scam_hybrid_shasta_mode_summary">%s. Auto: a Shasta frame is dropped when it is softer than the threshold of “Merge” or the exposure ratio exceeds its limit. Always: neither check, the frame is dropped only on motion (below).</string>
+    <string name="prefs_scam_hybrid_shasta_motion_max_title">Shasta: drop on motion, % of the frame</string>
+    <string name="prefs_scam_hybrid_shasta_motion_max_summary">“Always” mode only. 8×8 blocks of the aligned Shasta frame, brought to the base exposure, are compared with the base (unclipped blocks only); a block moved when it differs by more than 4σ of noise plus 15 %%. If more than this share of the blocks moved, the frame is dropped, as Bento on motion. Default 4; lower drops more often, 100 never.</string>
     <string name="prefs_scam_hybrid_shasta_frames_title">Shasta: number of frames</string>
-    <string name="prefs_scam_hybrid_shasta_frames_summary">1–5, default 5 (as in ArkCam). Each frame adds ~33 ms after the press and ~25 MB of memory.</string>
+    <string name="prefs_scam_hybrid_shasta_frames_summary">1–5, default 3. Each frame adds ~33 ms after the press and ~25 MB of memory.</string>
     <string name="prefs_scam_hybrid_shasta_ev_title">Shasta: EV above N</string>
     <string name="prefs_scam_hybrid_shasta_ev_summary">1–4, default 1 (×2; ArkCam by day ×1.9). Higher gives brighter shadows but more gain in each frame.</string>
     <string name="prefs_scam_hybrid_noise_screen_title">Noise model</string>

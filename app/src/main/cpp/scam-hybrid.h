@@ -174,6 +174,9 @@ struct HybridTuning {
                                  // at 0.9 blocks along bright edges still held clipped sites of the x2 brighter bracketed frame, their
                                  // truncated gradients scored it 74-77 % of the base at the same shutter (all dropped); 0.4-0.6: 96-100 %
     int shastaEnable=1;
+    int shastaForce=0;           // P68: 1 = bracketed frames skip the sharpness gate and the ratio limit; a frame is dropped only when
+                                 // more than shastaMotionMax % of its unclipped 8x8 blocks moved against the base (shastaMotion)
+    float shastaMotionMax=4.f;   // P68: motion fallback of the forced Shasta frames, % of the blocks (100 = never)
     // misc
     int snrFixed=0;
     float snrScale=0.25f;
@@ -263,6 +266,10 @@ struct HybridTuning {
     // MAD, consistent across the frames of the exposure, 0.5..2 x the metadata), all others with the metadata ratio; 0 = report
     // only (HYBRID GAIN CHECK). -1 is internal (decided before the merge).
     int gainMeasured=1;
+    // P71: 1 (default) = the noise model of the frames is checked against the burst (hybridMeasureNoise: base vs the nearest normal
+    // frame on flat blocks); when the measured noise is at least 1.5 x the model, every frame's slope / offset is scaled by it (up
+    // to x4). 0 = off. -1 is internal (decided before the merge).
+    int noiseMeasured=1;
     // P62 Mochi (GCam 11 PhotometricMerge): each bracketed frame gets a per-tile photometric correction against the base on the GPU
     // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = GCam's rule (more than 3 non-bracketed frames),
     // 2 = whenever a bracketed frame is merged.
@@ -431,7 +438,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("grid",nullptr,&t.grid)||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
-            ||set("shastaEnable",nullptr,&t.shastaEnable)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
+            ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)
@@ -459,7 +466,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
             ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
             // P27
-            ||set("gainMeasured",nullptr,&t.gainMeasured)
+            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)
             ||set("mochi",nullptr,&t.mochi);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
@@ -3862,6 +3869,47 @@ inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Guide& qf,float e
     return p;
 }
 
+// P68 motion of a forced Shasta frame (the Bento motion fallback for bracketed frames): 8x8 RAW blocks (4x4 canonical cells),
+// the aligned frame gained down to base units against the base, per colour mean. A block moved when a colour differs by more than
+// 4 sigma of the two means (noise model of both frames) plus 15 % of the base level (gain mismatch, sub-pixel edges of the block
+// mean). Blocks with a site at or above clip in either frame (the brighter frame clips first) are not counted.
+struct ShastaMotion { long blocks=0,moved=0; double share() const {return blocks>0?100.0*double(moved)/double(blocks):0.0;} };
+inline ShastaMotion shastaMotion(const Burst& b,int slot,const BackwardHomography& h,float exposure,float baseSlope,float baseOffset,
+                                 float slope,float offset,float clip){
+    ShastaMotion res;
+    const int w2=b.w/2,h2=b.h/2,bw=w2/4,bh=h2/4;
+    const float e=std::max(exposure,1e-6f);
+    std::atomic<long> blocks{0},moved{0};
+    mergeRowBands(bh,[&](int y0,int y1){
+        long lb=0,lm=0;
+        for(int by=y0;by<y1;++by)for(int bx=0;bx<bw;++bx){
+            float sb[3]={0,0,0},sf[3]={0,0,0};bool clipped=false;
+            for(int cy=4*by;cy<4*by+4&&!clipped;++cy)for(int cx=4*bx;cx<4*bx+4;++cx){
+                const DonorPoint o=h.bayerOrigin(2*cx,2*cy);
+                const int ux=std::clamp(int(std::lround(o.x*0.5f)),0,w2-1),uy=std::clamp(int(std::lround(o.y*0.5f)),0,h2-1);
+                for(int p=0;p<4;++p){
+                    const float vb=b.sample(0,2*cx+(p&1),2*cy+(p>>1)),vf=b.sample(slot,2*ux+(p&1),2*uy+(p>>1));
+                    if(vb>=clip||vf>=clip){clipped=true;break;}
+                    const int k=p==0?0:p==3?2:1; // canonical RGGB
+                    sb[k]+=vb;sf[k]+=vf;
+                }
+                if(clipped)break;
+            }
+            if(clipped)continue;
+            ++lb;
+            static const float count[3]={16.f,32.f,16.f};
+            for(int k=0;k<3;++k){
+                const float mb=sb[k]/count[k],mf=sf[k]/count[k];
+                const float var=(baseSlope*mb+baseOffset+(slope*mf+offset)/(e*e))/count[k];
+                if(std::abs(mf/e-mb)>4.f*std::sqrt(std::max(var,0.f))+0.15f*mb){++lm;break;}
+            }
+        }
+        blocks+=lb;moved+=lm;
+    });
+    res.blocks=blocks;res.moved=moved;
+    return res;
+}
+
 struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0,maskCells=0;std::vector<float> mask;
     std::vector<float> smooth,valid; /* the mask before the SCAM check, and the per-cell (1 - error) factor of the checked frame */ };
 
@@ -5040,12 +5088,75 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
                                                         std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags);
 
 // native (P29): the raw mosaic behind a binned burst (hybridReconstructMosaicNative only); null for every other merge.
+// P71: noise of the burst against the frames' noise model (owner's Pixel 7, 2x = full-resolution crop of the main sensor: merge
+// factors 0.55-0.69 on every frame where 1x had 0.93, the HAL profile 4.1e-5 next to 3.6e-5 of the binned 1x). One green phase of
+// the base and of the normal frame nearest in time, 32x32-site blocks: temporal noise = var(base - frame) / 2 (the block's mean
+// difference removed), the block counts as flat when the base's own variance is at most 1.5 x that (texture, edges and motion
+// raise it far above). Ratio = temporal noise / model (slope x level + offset, mean of both frames); the median of the flat blocks.
+struct HybridNoiseCheck { double ratio=0; long flat=0,blocks=0; int frame=-1; };
+inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
+    HybridNoiseCheck res;
+    const int n=int(in.frames.size());
+    for(int f=1;f<n;++f)if(in.frames[f].role==kRoleNormal&&(res.frame<0||std::abs(in.frames[f].orderMs)<std::abs(in.frames[res.frame].orderMs)))res.frame=f;
+    if(res.frame<0||in.w<64||in.h<64)return res;
+    const HybridFrame& a=in.frames[0];const HybridFrame& b=in.frames[res.frame];
+    const int phase=in.cfa^1,px=phase&1,py=phase>>1; // a green phase (red = cfa, blue = cfa ^ 3)
+    const float black=in.black[phase],range=std::max(in.white-black,1.f);
+    const double slope=0.5*(double(a.slope)+b.slope),offset=0.5*(double(a.offset)+b.offset);
+    const int bw=in.w/64,bh=in.h/64; // 32x32 sites of the phase
+    std::vector<float> ratio(size_t(bw)*bh,-1.f);
+    mergeRowBands(bh,[&](int y0,int y1){
+        for(int by=y0;by<y1;++by)for(int bx=0;bx<bw;++bx){
+            double s0=0,s00=0,sd=0,sdd=0;bool bad=false;
+            for(int j=0;j<32&&!bad;++j){
+                const size_t row=size_t(64*by+2*j+py)*in.w;
+                for(int i=0;i<32;++i){
+                    const size_t at=row+64*bx+2*i+px;
+                    const double v0=(double(a.raw[at])-black)/range,v1=(double(b.raw[at])-black)/range;
+                    if(v0>=0.9||v1>=0.9){bad=true;break;}
+                    s0+=v0;s00+=v0*v0;const double d=v0-v1;sd+=d;sdd+=d*d;
+                }
+            }
+            if(bad)continue;
+            const double m=s0/1024,var0=s00/1024-m*m,noise=0.5*(sdd/1024-(sd/1024)*(sd/1024));
+            const double model=slope*std::max(m,0.0)+offset;
+            if(m<=0.002||model<=0||noise<=0||var0>1.5*noise)continue;
+            ratio[size_t(by)*bw+bx]=float(noise/model);
+        }
+    });
+    std::vector<float> flat;
+    for(float r:ratio)if(r>0)flat.push_back(r);
+    res.blocks=long(bw)*bh;res.flat=long(flat.size());
+    if(flat.empty())return res;
+    std::nth_element(flat.begin(),flat.begin()+flat.size()/2,flat.end());
+    res.ratio=flat[flat.size()/2];
+    return res;
+}
+
 inline std::vector<float> hybridReconstruct(const HybridInput& input,const HybridTuning& tune,
                                             const ScamAlignment& alignment,
                                             const std::function<void(const std::string&)>& report,
                                             std::vector<uint16_t>* mergedDng,std::vector<uint8_t>* effMap,
                                             HybridStats* statsOut=nullptr,std::vector<uint8_t>* clipFlags=nullptr,
                                             const HybridPresetAlignment* preset=nullptr,const HybridMosaicNative* native=nullptr) {
+    if(tune.noiseMeasured>0&&input.mosaic==1&&input.subFrames<=1&&!native&&!preset){
+        // P71: plain Bayer only (one green phase = every other site; a Quad / Tetra stream mixes colours there), decided once.
+        // Above x6 the model is kept: no HAL profile seen was that far off, a mismatch that large is a different header model
+        // (the synthetic replay series: x40..x400) or a measurement fault.
+        const HybridNoiseCheck c=hybridMeasureNoise(input);
+        HybridTuning t2=tune;t2.noiseMeasured=-1;
+        const bool scale=c.flat>=100&&c.ratio>=1.5&&c.ratio<=6.0;
+        if(c.frame>=0)report("HYBRID NOISE CHECK: base vs frame "+std::to_string(c.frame)+", "+std::to_string(c.flat)+" flat of "
+            +std::to_string(c.blocks)+" blocks, measured / model "+std::to_string(c.ratio)
+            +(scale?" -> model x"+std::to_string(std::min(c.ratio,4.0))+" for every frame":c.ratio>6.0&&c.flat>=100?" -> model kept (implausible)":" -> model kept"));
+        if(scale){
+            HybridInput measured=input;
+            const float k=float(std::min(c.ratio,4.0));
+            for(auto& fr:measured.frames){fr.slope*=k;fr.offset*=k;}
+            return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+        }
+        return hybridReconstruct(input,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+    }
     if(tune.gainMeasured>0){
         // gainMeasured 1: the measured ratio where the data is reliable (hybridApplyMeasuredGains), decided once on the stream
         // frames as they came (a colour-block mosaic before its sub-frames or binned frames: one decision for all of them, from
@@ -5420,6 +5531,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             const double pct=sp.base>0?sp.frame/sp.base:1.0;
             report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(sp.frame)+" base="+std::to_string(sp.base)
                 +" pixels="+std::to_string(sp.pixels)+" ("+std::to_string(100*pct)+" % of base)");
+            if(tune.shastaForce){
+                // P68 forced Shasta: no sharpness gate, no ratio limit; the frame falls back only on motion (as Bento)
+                if(tune.shastaMotionMax<100.f){
+                    Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
+                    const ShastaMotion m=shastaMotion(one,1,H[f],fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f);
+                    const bool drop=m.share()>tune.shastaMotionMax;
+                    report("HYBRID SHASTA motion frame="+std::to_string(f)+" moved="+std::to_string(m.moved)+" of "+std::to_string(m.blocks)
+                        +" blocks ("+std::to_string(m.share())+" %"+(drop?" > "+std::to_string(tune.shastaMotionMax)+" %: dropped)":", forced)"));
+                    if(drop){keep[f]=false;++stats.droppedBracketed;continue;}
+                }
+                continue;
+            }
             if(pct<tune.shastaSharpness){keep[f]=false;++stats.droppedBracketed;continue;}
             maxRatio=std::max(maxRatio,fr.exposure);
         }

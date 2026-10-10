@@ -494,10 +494,12 @@ public final class SettingsMigration {
         // moves to 30; any other value is the user's and stays. Its own one-time marker, set in the first run whatever it
         // finds: a value copied from SCAM HDR in this run (the hybrid took the shots with it) is not in `values` and stays,
         // and a 20 chosen after this run is never moved.
+        boolean zslMovedTo30 = false;
         if (!values.containsKey(ZSL_FRAMES_REV)) {
             Object frames = values.get(ScamHybridKeys.PREFIX + "zsl_frames");
             if (frames != null && isNumber(frames, 20f)) {
                 ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "zsl_frames", frames instanceof String ? "30" : (Object) 30f);
+                zslMovedTo30 = true;
                 changed = true;
             }
             e.putInt(ZSL_FRAMES_REV, 1);
@@ -514,6 +516,23 @@ public final class SettingsMigration {
                 changed = true;
             }
             e.putInt(MOSAIC_FRAMES_REV, 1);
+            markOnly = true;
+        }
+        // P68 defaults (owner, 10 October 2026, every phone): N frames 30 -> 20, Sabre 6.1 kernel auto -> always, Mochi off -> always,
+        // Bento auto -> always with 2 -> 3 frames, Shasta frames 5 -> 3 (Shasta "always" is a new row, pref_scam_hybrid_shasta_mode).
+        // A stored former XML default (written when the screen was first shown) moves once, any other value is the user's and
+        // stays; a 30 the N-frames move above wrote in this run is that former default too. Own marker, set in the first run.
+        if (!values.containsKey(P68_DEFAULTS_REV)) {
+            final String[] keys = {"zsl_frames", "sabre61", "mochi", "bento", "bento_frames", "shasta_frames"};
+            final float[] former = {30f, 2f, 0f, 1f, 2f, 5f}, now = {20f, 1f, 2f, 2f, 3f, 3f};
+            for (int i = 0; i < keys.length; i++) {
+                final String key = ScamHybridKeys.PREFIX + keys[i];
+                Object v = values.get(key);
+                if (v == null || !(isNumber(v, former[i]) || (i == 0 && zslMovedTo30))) continue;
+                ModuleProfiles.put(e, key, v instanceof String ? PreferenceNumber.format(now[i], false) : (Object) now[i]);
+                changed = true;
+            }
+            e.putInt(P68_DEFAULTS_REV, 1);
             markOnly = true;
         }
         // Slider precision (settings audit H1, 8 October 2026): the sliders stored two decimals, so the first opening of the
@@ -572,6 +591,8 @@ public final class SettingsMigration {
     private static final String DEFAULTS_REV = "pref_scam_hybrid_defaults_rev";
     /** Marker of the one-time move of a stored former default of pref_scam_hybrid_zsl_frames (20) to 30. */
     static final String ZSL_FRAMES_REV = "pref_scam_hybrid_zsl_frames_rev";
+    /** Marker of the one-time move of the P68 former defaults (N frames, Sabre 6.1, Mochi, Bento, Shasta frames). */
+    static final String P68_DEFAULTS_REV = "pref_scam_hybrid_p68_defaults_rev";
     /** Marker of the one-time move of a stored former default of pref_scam_hybrid_mosaic_frames (24) to 30. */
     static final String MOSAIC_FRAMES_REV = "pref_scam_hybrid_mosaic_frames_rev";
     /** Marker of the one-time move of the two-decimal slider defaults "0.00" (Bento auto threshold) and "1.41" (LUT sigma). */

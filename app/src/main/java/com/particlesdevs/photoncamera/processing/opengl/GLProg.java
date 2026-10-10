@@ -50,6 +50,44 @@ public class GLProg implements AutoCloseable {
     private static synchronized void dropBinary(String key) {
         Binary old = BINARIES.remove(key);
         if (old != null) binaryBytes -= old.data.length;
+        GLProgramDiskCache disk = disk();
+        if (disk != null && driver != null) disk.drop(driver, key);
+    }
+    /** P69: the binaries also on disk (GLProgramDiskCache): the first shot after a start loads them instead of compiling. */
+    private static GLProgramDiskCache disk;
+    private static boolean diskTried;
+    /** Renderer, GL version and build fingerprint: part of every disk name (read with a current context). */
+    private static String driver;
+    private static synchronized GLProgramDiskCache disk() {
+        if (!diskTried) {
+            diskTried = true;
+            try {
+                android.content.Context context = PhotonCamera.getAppContext();
+                if (context != null) disk = new GLProgramDiskCache(new File(context.getCacheDir(), "glprog"));
+            } catch (RuntimeException ignored) {}
+        }
+        return disk;
+    }
+    private static synchronized String driver() {
+        if (driver == null) {
+            String renderer = glGetString(GL_RENDERER), version = glGetString(GL_VERSION);
+            glGetError();
+            if (renderer == null || version == null) return null;
+            driver = renderer + "|" + version + "|" + android.os.Build.FINGERPRINT;
+        }
+        return driver;
+    }
+    /** The binary of {@code key}: from this process, else from disk (then kept in this process too). */
+    private static Binary loadBinary(String key) {
+        Binary b = binaryFor(key);
+        if (b != null) return b;
+        GLProgramDiskCache disk = disk();
+        String id = disk == null ? null : driver();
+        Object[] stored = id == null ? null : disk.load(id, key);
+        if (stored == null) return null;
+        b = new Binary((Integer) stored[0], (byte[]) stored[1]);
+        storeBinary(key, b);
+        return b;
     }
     /** "programs: N compiled in X ms, M from driver binaries in Y ms" since the last call (logged per shot). */
     public static synchronized String takeProgramStats() {
@@ -58,7 +96,7 @@ public class GLProg implements AutoCloseable {
         return text;
     }
     private int programFromBinary(String key) {
-        Binary b = binaryFor(key);
+        Binary b = loadBinary(key);
         if (b == null) return 0;
         int program = glCreateProgram();
         glProgramBinary(program, b.format, java.nio.ByteBuffer.wrap(b.data), b.data.length);
@@ -78,6 +116,9 @@ public class GLProg implements AutoCloseable {
         byte[] bytes = new byte[written[0]];
         data.position(0); data.get(bytes);
         storeBinary(key, new Binary(format[0], bytes));
+        GLProgramDiskCache disk = disk();
+        String id = disk == null ? null : driver();
+        if (id != null) disk.store(id, key, format[0], bytes);
     }
     private final int vertexShader;
     private final GLSquareModel mSquare = new GLSquareModel();

@@ -171,7 +171,7 @@ public class HybridSettingsTest {
         PreferenceKeys.beginShotProfile(true);
         assertTrue(PreferenceKeys.isHybridShot());assertTrue(PreferenceKeys.isScamHybridShot());
         assertEquals(1f,PreferenceKeys.routeInternalValue("noise_photon",1f),0f);
-        assertEquals(30,PreferenceKeys.getScamZslFrames());assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        assertEquals(20,PreferenceKeys.getScamZslFrames());assertEquals(20,PreferenceKeys.getHybridZslFrames());
         assertTrue(PreferenceKeys.isScamDespeckleEnabled());
         assertFalse(PreferenceKeys.useStockBracketPlanner());
         assertEquals("auto",PreferenceKeys.getScamCreSource());
@@ -229,9 +229,11 @@ public class HybridSettingsTest {
     }
 
     @Test public void roundFiveWorkerKeysReachTheTuningFile() {
-        // Unset: the worker keeps its own defaults (Sabre 6.1 auto, cell clip, outlier sites, SCAM Bento checks).
+        // Unset: the worker keeps its own defaults (cell clip, outlier sites, SCAM Bento checks); the Sabre 6.1 kernel has an app
+        // default since P68 (always), written also when unset.
         String tuning=PreferenceKeys.hybridTuningText();
-        for(String k:new String[]{"sabre61","hotSigma","cellClip","bentoScam","s61MaxKey"})assertFalse(tuning,tuning.contains(k+" "));
+        for(String k:new String[]{"hotSigma","cellClip","bentoScam","s61MaxKey"})assertFalse(tuning,tuning.contains(k+" "));
+        assertTrue(tuning,tuning.contains("sabre61 1.0\n"));
         manager.set("default_scope","pref_scam_hybrid_sabre61","0");
         manager.set("default_scope","pref_scam_hybrid_s61_max_key","20");
         manager.set("default_scope","pref_scam_hybrid_hot_sigma","0");
@@ -241,9 +243,12 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("sabre61 0.0\n"));assertTrue(tuning,tuning.contains("s61MaxKey 20.0\n"));
         assertTrue(tuning,tuning.contains("hotSigma 0.0\n"));
         assertTrue(tuning,tuning.contains("cellClip 0\n"));assertTrue(tuning,tuning.contains("bentoScam 0\n"));
-        // XML defaults equal the worker defaults (setDefaultValues writes them into every user's preferences).
+        // XML default = the app default (setDefaultValues writes it into every user's preferences): «Всегда» = "1".
         PreferenceScreen settings=inflate(),hybrid=settings.findPreference("scam_hybrid_screen");
         assertEquals("2",((ListPreference)hybrid.findPreference("pref_scam_hybrid_sabre61")).getEntryValues()[2].toString());
+        prefs.edit().clear().commit();
+        inflate();
+        assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61","?"));
         assertNotNull(settings.findPreference("pref_scam_hybrid_highlight_recovery"));
         assertNotNull(hybrid.findPreference("pref_scam_hybrid_hot_base_sigma"));
     }
@@ -285,19 +290,24 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
     }
 
-    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void mochiKeysReachTheTuningFileAndDefaultOff() {
-        mochiKeysReachTheTuningFileAndDefaultOff("Фотометрия Mochi");
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void mochiKeysReachTheTuningFileAndDefaultAlways() {
+        mochiKeysReachTheTuningFileAndDefaultAlways("Фотометрия Mochi");
     }
 
-    @Test public void mochiKeysReachTheTuningFileAndDefaultOffInEnglish() {
-        mochiKeysReachTheTuningFileAndDefaultOff("Mochi photometric merge");
+    @Test public void mochiKeysReachTheTuningFileAndDefaultAlwaysInEnglish() {
+        mochiKeysReachTheTuningFileAndDefaultAlways("Mochi photometric merge");
     }
 
-    private void mochiKeysReachTheTuningFileAndDefaultOff(String pageTitle) {
-        // P62: unset, nothing is written (worker default mochi 0 = off)
+    private void mochiKeysReachTheTuningFileAndDefaultAlways(String pageTitle) {
+        // P68: unset, the app default 2 (always) is written (the worker's own default stays 0 for replays)
         String tuning=PreferenceKeys.hybridTuningText();
-        assertFalse(tuning,tuning.contains("mochi "));
+        assertTrue(tuning,tuning.contains("mochi 2.0\n"));
+        assertEquals(2,PreferenceKeys.getHybridMochi());
+
+        manager.set("default_scope","pref_scam_hybrid_mochi","0");
         assertEquals(0,PreferenceKeys.getHybridMochi());
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("mochi 0.0\n"));
 
         manager.set("default_scope","pref_scam_hybrid_mochi","1");
         assertEquals(1,PreferenceKeys.getHybridMochi());
@@ -309,7 +319,7 @@ public class HybridSettingsTest {
         tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("mochi 2.0\n"));
 
-        // the page: «Hybrid -> Склейка -> Фотометрия Mochi», XML defaults = worker defaults (off: 0)
+        // the page: «Hybrid -> Склейка -> Фотометрия Mochi», XML default = the app default (always: 2)
         PreferenceScreen settings=inflate(),merge=settings.findPreference("scam_hybrid_merge_screen");
         PreferenceScreen page=merge.findPreference("scam_hybrid_mochi_screen");
         assertNotNull(page);assertEquals(pageTitle,page.getTitle().toString());
@@ -318,9 +328,79 @@ public class HybridSettingsTest {
         assertArrayEquals(new CharSequence[]{"0","1","2"},mode.getEntryValues());
         prefs.edit().clear().commit();
         settings=inflate();
-        assertEquals("0",prefs.getString("pref_scam_hybrid_mochi","?"));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_mochi","?"));
         tuning=PreferenceKeys.hybridTuningText();
-        assertTrue(tuning,tuning.contains("mochi 0.0\n"));
+        assertTrue(tuning,tuning.contains("mochi 2.0\n"));
+    }
+
+    @Test public void p68DefaultsOnEveryPhone() {
+        // owner, 10 October 2026: XML defaults stored on the first opening, and the same values written to the worker when unset
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String line:new String[]{"sabre61 1.0\n","mochi 2.0\n","bento 2.0\n","bentoFrames 3.0\n","shastaMotionMax 4.0\n","shastaForce 1\n"})
+            assertTrue(line+tuning,tuning.contains(line));
+        assertEquals(2,PreferenceKeys.getHybridShastaMode());
+        assertEquals(20,PreferenceKeys.getHybridZslFrames());
+        prefs.edit().clear().commit();
+        inflate();
+        assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames","?"));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61","?"));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_mochi","?"));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_bento","?"));
+        assertEquals("3",prefs.getString("pref_scam_hybrid_bento_frames","?"));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_shasta_mode","?"));
+        assertEquals(3f,Float.parseFloat(prefs.getString("pref_scam_hybrid_shasta_frames","?")),0f);
+        assertEquals(4f,Float.parseFloat(prefs.getString("pref_scam_hybrid_shasta_motion_max","?")),0f);
+        // Shasta auto: the worker's sharpness gate (no force line); Shasta off: disabled whatever the mode
+        manager.set("default_scope","pref_scam_hybrid_shasta_mode","1");
+        tuning=PreferenceKeys.hybridTuningText();
+        assertFalse(tuning,tuning.contains("shastaForce"));assertFalse(tuning,tuning.contains("shastaEnable"));
+        manager.set("default_scope","pref_scam_hybrid_shasta_mode","2");
+        manager.set("default_scope","pref_scam_hybrid_shasta",false);
+        assertEquals(0,PreferenceKeys.getHybridShastaMode());
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("shastaEnable 0\n"));assertFalse(tuning,tuning.contains("shastaForce"));
+    }
+
+    @Test public void gpuProfileOnlyOnTheRedmiNote11Pro() {
+        assertFalse(PreferenceKeys.hybridTuningText().contains("profile "));
+        org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");
+        org.robolectric.shadows.ShadowBuild.setDevice("viva");
+        assertTrue(PreferenceKeys.hybridTuningText().contains("profile 1\n"));
+        org.robolectric.shadows.ShadowBuild.setDevice("nezha");
+        assertFalse(PreferenceKeys.hybridTuningText().contains("profile "));
+    }
+
+    @Test public void p68FormerDefaultsMoveOnce() {
+        // stored former XML defaults move once; a value chosen before or after stays
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_scam_hybrid_zsl_frames","30")
+                .putString("pref_scam_hybrid_sabre61","2").putString("pref_scam_hybrid_mochi","0").putString("pref_scam_hybrid_bento","1")
+                .putString("pref_scam_hybrid_bento_frames","2").putString("pref_scam_hybrid_shasta_frames","5").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames",""));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61",""));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_mochi",""));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_bento",""));
+        assertEquals("3",prefs.getString("pref_scam_hybrid_bento_frames",""));
+        assertEquals("3",prefs.getString("pref_scam_hybrid_shasta_frames",""));
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        // chosen after the move: stays
+        prefs.edit().putString("pref_scam_hybrid_zsl_frames","30").putString("pref_scam_hybrid_sabre61","2").commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("30",prefs.getString("pref_scam_hybrid_zsl_frames",""));assertEquals("2",prefs.getString("pref_scam_hybrid_sabre61",""));
+        // chosen before (not a former default): stays, the marker is set anyway
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_scam_hybrid_zsl_frames","25").putString("pref_scam_hybrid_sabre61","0").commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("25",prefs.getString("pref_scam_hybrid_zsl_frames",""));assertEquals("0",prefs.getString("pref_scam_hybrid_sabre61",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.P68_DEFAULTS_REV,0));
+        // a build older than the 20 -> 30 move: its stored 20 ends at today's 20 in one run
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putString("pref_scam_hybrid_zsl_frames","20").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames",""));
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames",""));
     }
 
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void nativeMosaicKeysReachTheTuningFileAndDefaultToTheNativeMerge() {
@@ -610,8 +690,9 @@ public class HybridSettingsTest {
 
     @Test public void hybridZslFramesFormerDefaultMovesTo30Once() {
         // a stored 20 is the former XML default: it moves to 30 once; the run reports the change, the next one does not
+        // (the P68 move 30 -> 20 marked as done: this rule alone; the chain is p68FormerDefaultsMoveOnce)
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",6)
-                .putString("pref_scam_hybrid_zsl_frames","20").commit();
+                .putInt(SettingsMigration.P68_DEFAULTS_REV,1).putString("pref_scam_hybrid_zsl_frames","20").commit();
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("30",prefs.getString("pref_scam_hybrid_zsl_frames",""));
         assertEquals(30,PreferenceKeys.getHybridZslFrames());
@@ -622,15 +703,15 @@ public class HybridSettingsTest {
         assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames",""));
         // any other stored value is the user's and stays; the marker is set anyway
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",6)
-                .putString("pref_scam_hybrid_zsl_frames","25").commit();
+                .putInt(SettingsMigration.P68_DEFAULTS_REV,1).putString("pref_scam_hybrid_zsl_frames","25").commit();
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("25",prefs.getString("pref_scam_hybrid_zsl_frames",""));
         assertEquals(1,prefs.getInt(SettingsMigration.ZSL_FRAMES_REV,0));
-        // nothing stored (fresh install, the screen never shown): the default 30 applies, only the marker is written
+        // nothing stored (fresh install, the screen never shown): the default (20 since P68) applies, only the marker is written
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",6).commit();
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
         assertFalse(prefs.contains("pref_scam_hybrid_zsl_frames"));
-        assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        assertEquals(20,PreferenceKeys.getHybridZslFrames());
         prefs.edit().putString("pref_scam_hybrid_zsl_frames","20").commit();
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames",""));
@@ -678,8 +759,8 @@ public class HybridSettingsTest {
         SharedPreferences meta=context.getSharedPreferences("module_profiles_meta",Context.MODE_PRIVATE);
         meta.edit().clear().putBoolean("exists_back1",true).putBoolean("exists_back2",true).commit();
         SharedPreferences old=context.getSharedPreferences("module_profile_v2_back1",Context.MODE_PRIVATE);
-        old.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_zsl_frames","20")
-                .putString("pref_scam_hybrid_mosaic_frames","24").commit();
+        old.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt(SettingsMigration.P68_DEFAULTS_REV,1)
+                .putString("pref_scam_hybrid_zsl_frames","20").putString("pref_scam_hybrid_mosaic_frames","24").commit();
         SharedPreferences moved=context.getSharedPreferences("module_profile_v2_back2",Context.MODE_PRIVATE);
         moved.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt(SettingsMigration.ZSL_FRAMES_REV,1)
                 .putInt(SettingsMigration.MOSAIC_FRAMES_REV,1).putString("pref_scam_hybrid_zsl_frames","20")
@@ -716,7 +797,7 @@ public class HybridSettingsTest {
         SettingsMigration.migrateScamHybrid(prefs,false);
         assertEquals("scamhdr",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         assertFalse(prefs.contains("pref_scam_hybrid_zsl_frames"));assertFalse(prefs.contains("pref_scam_hybrid_fusion_dark_ev"));
-        assertEquals(30,PreferenceKeys.getHybridZslFrames());
+        assertEquals(20,PreferenceKeys.getHybridZslFrames());
         // A later run (engine key gone, "auto" off SM8750 would read as the hybrid) copies nothing either.
         prefs.edit().putString("pref_scamhdr_fusion_detail","0.7").commit();
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));

@@ -159,6 +159,14 @@
         <item>20</item>
         <item>2x</item>
     </string-array>
+    <string-array name="scam_hybrid_shasta_mode_entries">
+        <item>Auto (sharpness check)</item>
+        <item>Always</item>
+    </string-array>
+    <string-array name="scam_hybrid_shasta_mode_values" translatable="false">
+        <item>1</item>
+        <item>2</item>
+    </string-array>
     <string-array name="scam_hybrid_bento_entries">
         <item>Off</item>
         <item>Auto (on clipping)</item>

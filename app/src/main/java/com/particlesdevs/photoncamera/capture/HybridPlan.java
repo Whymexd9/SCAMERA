@@ -5,6 +5,7 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.util.Range;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
+import com.particlesdevs.photoncamera.settings.DeviceDefaults;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -71,18 +72,21 @@ public final class HybridPlan {
 
     /** Preferences of the plan: the hybrid's own pref_scam_hybrid_* (scam_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
     public static boolean shastaEnabled() { return PreferenceKeys.hybridSwitch("shasta", true); }
-    public static int bracketCount() { return Math.max(0, Math.min(5, Math.round(PreferenceKeys.hybridValue("shasta_frames", 5f)))); }
+    public static int bracketCount() { return Math.max(0, Math.min(5, Math.round(PreferenceKeys.hybridValue("shasta_frames", 3f)))); }
+    /** P68: Shasta "always": the frames are taken whatever their ratio to N (above 1.2) and merged unless they moved (worker). */
+    public static boolean shastaForced() { return PreferenceKeys.getHybridShastaMode() == 2; }
     public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 1f))); }
     /** 0 off, 1 auto (needs clipping in the buffered frame), 2 force. */
-    public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 1f)))); }
+    public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 2f)))); }
     /** Ultrashort exposure = N / factor; SCAM ultrashort_tet_factor 8 (default). */
     public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.hybridValue("bento_factor", 8f))); }
     /**
-     * Ultrashort frames per shot: 1 = SCAM 9.6, 2 (default) = a second one at the same exposure; the worker merges both inside the
-     * mask (half the noise of the x8 replacement, the hand shake between them fills the R/B lattice of a single Bayer frame).
+     * Ultrashort frames per shot: 1 = SCAM 9.6, 2 = a second one at the same exposure; the worker merges both inside the
+     * mask (half the noise of the x8 replacement, the hand shake between them fills the R/B lattice of a single Bayer frame);
+     * 3 (default since P68) = the more than 3 non-bracketed frames Mochi needs.
      */
     public static int bentoFrames() {
-        int count = Math.round(PreferenceKeys.hybridValue("bento_frames", 2f));
+        int count = Math.round(PreferenceKeys.hybridValue("bento_frames", 3f));
         if (PreferenceKeys.getHybridMochi() > 0) count = Math.max(count, 3);
         return Math.max(1, Math.min(3, count));
     }
@@ -106,7 +110,9 @@ public final class HybridPlan {
         List<Request> out = new ArrayList<>();
         StringBuilder why = new StringBuilder();
         // Ultrashort (Bento): lower the gain first, then the shutter.
-        final int bento = bentoMode();
+        // P71 (owner, 2026-10-10): on the Pixel 7 "always" takes the ultrashort frames only where the buffered frame clips, as
+        // auto (its forced Bento ran on masks of 0.001-0.01 % of the frame: ~130 ms a shot with nothing to replace)
+        final int bento = bentoMode() == 2 && DeviceDefaults.pixel7() ? 1 : bentoMode();
         if (bento == 2 || (bento == 1 && clipFraction > bentoTriggerClip())) {
             final double factor = ultrashortFactor(), target = n / factor;
             int iso = (int) Math.max(isos.getLower(), Math.min(nIso, Math.round(target / nShutterNs)));
@@ -127,7 +133,7 @@ public final class HybridPlan {
                 ns = snapAntibanding(Math.max(nShutterNs, Math.min(cap, Math.round(target / iso))), nShutterNs);
             }
             double ratio = (double) ns * iso / n;
-            if (ratio > maxBracketRatio()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
+            if (ratio > maxBracketRatio() && !shastaForced()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
             else if (ratio < 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
             else for (int i = 0; i < count; i++) out.add(new Request(ImageFrame.CaptureRole.LONG, ns, iso, ratio));
         } else why.append(" shasta off");

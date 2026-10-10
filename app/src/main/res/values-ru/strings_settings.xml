@@ -13,7 +13,7 @@
     <string name="prefs_scam_hybrid_capture_screen_title">Кадры и захват</string>
     <string name="prefs_scam_hybrid_capture_screen_summary">N-кадров из ZSL, Bento, Shasta</string>
     <string name="prefs_scam_hybrid_zsl_frames_title">N-кадров из ZSL</string>
-    <string name="prefs_scam_hybrid_zsl_frames_summary">4–44, по умолчанию 30 (ArkCam склеивает около 30). Кадры обычной экспозиции из ZSL-буфера до нажатия (берётся не больше, чем есть в буфере с той же экспозицией). Детализация Sabre заметна примерно с 12–15 кадров и растёт до 30; каждый кадр добавляет к склейке около 0,1 с и 25 МБ памяти на 12 Мп (Quad-поток склеивает не больше кадров, чем задано в «Кадров в склейке мозаики»).</string>
+    <string name="prefs_scam_hybrid_zsl_frames_summary">4–44, по умолчанию 20. Кадры обычной экспозиции из ZSL-буфера до нажатия (берётся не больше, чем есть в буфере с той же экспозицией). Детализация Sabre заметна примерно с 12–15 кадров и растёт до 30; каждый кадр добавляет к склейке около 0,1 с и 25 МБ памяти на 12 Мп (Quad-поток склеивает не больше кадров, чем задано в «Кадров в склейке мозаики»).</string>
     <string name="prefs_scam_hybrid_capture_category_title">Bento — ультракороткий кадр</string>
     <string name="prefs_scam_hybrid_bento_summary">%s. Кадр с экспозицией N/8 заменяет пересвеченные участки базового кадра (маска: порог 0.98, расширение 4, сглаживание σ=1; отказ при малой площади клиппинга, дырах ≥15 ячеек или если сам кадр клиппирован более чем на 62 %%). Авто — снимается при наличии клиппинга в ZSL-кадре.</string>
     <string name="prefs_scam_hybrid_bento_frames_title">Bento: кадров</string>
@@ -27,9 +27,13 @@
     <string name="prefs_scam_hybrid_bento_trigger_title">Bento: порог клиппинга для авто</string>
     <string name="prefs_scam_hybrid_bento_trigger_summary">Доля пересвеченных пикселей ZSL-кадра, с которой снимается ультракороткий кадр. 0 — любой клиппинг.</string>
     <string name="prefs_scam_hybrid_shasta_category_title">Shasta — длинные кадры</string>
-    <string name="prefs_scam_hybrid_shasta_summary">После нажатия снимаются 1–5 кадров с экспозицией в 2^EV раз больше N — усилением при выдержке N, как ArkCam на этом же телефоне (5 кадров, 10 мс × усиление 2.2): без лишнего смаза они проходят порог резкости и снижают шум теней. Выдержка удлиняется только сверх диапазона усиления сенсора (до 1/8 с с рук). Кадр со смазом отбрасывается (порог — в «Склейке»).</string>
+    <string name="prefs_scam_hybrid_shasta_summary">После нажатия снимаются 1–5 кадров с экспозицией в 2^EV раз больше N — усилением при выдержке N, как ArkCam на этом же телефоне (5 кадров, 10 мс × усиление 2.2): без лишнего смаза они проходят порог резкости и снижают шум теней. Выдержка удлиняется только сверх диапазона усиления сенсора (до 1/8 с с рук). В режиме «Авто» кадр со смазом отбрасывается (порог — в «Склейке»), в режиме «Всегда» — только кадр с движением.</string>
+    <string name="prefs_scam_hybrid_shasta_mode_title">Shasta: режим</string>
+    <string name="prefs_scam_hybrid_shasta_mode_summary">%s. Авто: кадр Shasta отбрасывается, если он мягче порога из «Склейки» или отношение экспозиций выше предела. Всегда: без этих проверок, кадр отбрасывается только при движении (ниже).</string>
+    <string name="prefs_scam_hybrid_shasta_motion_max_title">Shasta: отказ при движении, % кадра</string>
+    <string name="prefs_scam_hybrid_shasta_motion_max_summary">Только в режиме «Всегда». Блоки 8×8 выровненного кадра Shasta, приведённого к экспозиции базы, сравниваются с базой (только незасвеченные); блок с движением — разница больше 4σ шума плюс 15 %%. Если таких блоков больше этой доли, кадр отбрасывается, как Bento при движении. 4 по умолчанию; меньше — отказ чаще, 100 — никогда.</string>
     <string name="prefs_scam_hybrid_shasta_frames_title">Shasta: число кадров</string>
-    <string name="prefs_scam_hybrid_shasta_frames_summary">1–5, по умолчанию 5 (как ArkCam). Каждый кадр — ещё ~33 мс после нажатия и ~25 МБ памяти.</string>
+    <string name="prefs_scam_hybrid_shasta_frames_summary">1–5, по умолчанию 3. Каждый кадр — ещё ~33 мс после нажатия и ~25 МБ памяти.</string>
     <string name="prefs_scam_hybrid_shasta_ev_title">Shasta: EV над N</string>
     <string name="prefs_scam_hybrid_shasta_ev_summary">1–4, по умолчанию 1 (×2; ArkCam днём ×1.9). Больше — светлее тени, но выше усиление каждого кадра.</string>
     <string name="prefs_scam_hybrid_noise_screen_title">Модель шума</string>

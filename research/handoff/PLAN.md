@@ -1897,3 +1897,45 @@ The settings live in different places now; the curated groups use these keys.
   requested from 6.45x (2 x 3.225x) with the HAL's dial at half the zoom: 3.225-4.3x lens, 4.3-6.45x crop, 6.45-8.6x the lens
   again inside 2x ISZ, 8.6-17.2x crop of the ISZ frame; below 6.41x the mode reported before is requested again. The preview RAW
   (packed RAW10) is read with its stride by the colour-block measurement and the developed RAW viewfinder, shown in mode 9.
+
+### P68 — Hybrid defaults on every phone, forced Shasta with a motion fallback (done, not pushed; device check pending)
+- Owner, 2026-10-10: defaults Sabre 6.1 kernel «Всегда», Mochi «Всегда», Bento «Всегда», Bento frames 3, N frames 20, Shasta
+  frames 3, Shasta «Всегда». XML defaults and HYBRID_DEFAULTS changed; the app writes sabre61 / mochi / bento / bentoFrames /
+  shastaMotionMax to hybrid_tuning.txt also when unset (worker defaults unchanged: replay md5 syn_b1/b2/b4, hand, x7u_1x,
+  isz2 unchanged). SettingsMigration P68_DEFAULTS_REV moves stored former defaults once (30, "2", "0", "1", "2", 5).
+- New rows under the Shasta switch: «Shasta: режим» (pref_scam_hybrid_shasta_mode 1 auto / 2 always) and «Shasta: отказ при
+  движении, % кадра» (pref_scam_hybrid_shasta_motion_max, 4). Always = worker shastaForce 1: no sharpness gate, no ratio limit
+  (also in HybridPlan), a frame is dropped when more than shastaMotionMax % of its unclipped 8x8 blocks differ from the base by
+  > 4 sigma + 15 % (shastaMotion). Replays: still scenes 0.01 % (x7u_1x), 2.2 % (hand), 1.6 % (isz2); hand with 1 % dropped.
+
+### P69 — Redmi Note 11 Pro (viva, Helio G96, Mali-G57 MC2): speed and device defaults (done, not pushed; device check pending)
+- Owner's log 2026-10-10 (Desktop/log-2026-10-10 11 pro.txt, APK before P67): shot 29.7 s; worker 19.4 s of which merge 16.7 s
+  (19 frames, Sabre 6.1, F6 7.1 s on the CPU alongside, strips waited 0 ms); post pipeline 5.7 s of which 2954 ms compiling 32
+  programs (in-process binary cache empty on the first shot after start); viewfinder 4-5 fps while the GPU merges.
+- DeviceDefaults v4 (owner): 12 N frames, 2 Shasta frames, ARK RL 3 amount 1.2 (main preferences and module profiles).
+- GLProgramDiskCache: post-pipeline program binaries on disk (driver + source key), loaded on the first shot after a start.
+- Open: per-pass GPU times on Mali (scam_dev.txt "hybrid_profile 1") to speed the merge itself; viewfinder starvation.
+
+### P70 — Pixel 7: check that the merge and the denoise work as intended (open)
+- Owner 2026-10-10: Desktop/т/p7/p7.zip (3 JPEG 08:51:42/52/59 + log-2026-10-10_P7.txt); RL 3 amount was 1.5 on these shots.
+- DeviceDefaults v4: Pixel 7 (Google, device panther) RL 3 amount 1.5 by default (owner).
+- Review of p7.zip (100 % crops + log): merge works on all three lenses (camera 3 ultra-wide 0.6x, 2 main 1x, 4 = main sensor 2x
+  crop): no ghosts or double edges on wind-moved branches, alignment residual 0.1-0.5 px, Sabre 6.1 on, 18-23 frames, no worker
+  errors, programs from driver binaries (32 in 24-36 ms). Denoise (scam-denoise, camera noise model) leaves no visible luma noise in
+  sky / shadows. Findings to act on:
+  - 2x (camera 4): merge factors 0.55-0.69 on every frame (1x / 0.6x: 0.89-0.95), effective frames 11.8 of 19, Mochi corrections
+    3.6 DN10 (0.9 on 0.6x); softer result. Suspect: the HAL noise profile (slope 4.1e-5, near the binned 1x 3.6e-5) understates
+    the noise of the full-resolution crop -> over-rejection. Check with a still 2x burst (factors should approach 0.9).
+  - Deep shadows of 1x (085152) are smooth to waxy; compare at denoise strength 0.75 / off.
+  - 085152 dropped all 5 Shasta frames: the stored shastaSharpness is 0.8 (default 0.35), scores 76-78 %; with P68 Shasta "always"
+    they are kept unless they moved.
+  - Bento "always" runs on masks of 679-2031 cells (clipping 0.001-0.01 %), ~130 ms each, no visible effect.
+  - RL 3 at 1.5: no strong halos at 100 %; thin branches of 2x show light outlines.
+
+### P71 — Pixel 7 follow-up (done, not verified on the phone)
+- Worker noiseMeasured (default 1, plain Bayer only): HYBRID NOISE CHECK compares base vs the nearest normal frame on flat
+  32x32 green blocks; measured / model 1.5..6 scales every frame's slope / offset (up to x4), above 6 is reported as implausible
+  and kept. Replays: x7u_1x 0.95, uw 1.24 (kept); control md5 unchanged (syn_b1/b2/b4, hand, x7u_1x, isz2, uw).
+- Pixel 7 only: Bento "always" behaves as auto (no ultrashort frames without clipping); RL 3 at 1.2 on camera 4 (2x) while
+  the setting holds the device default 1.5 (DeviceDefaults.rl3Amount).
+- Redmi Note 11 Pro only: hybrid_profile 1 written to the tuning (per-pass GPU times).
