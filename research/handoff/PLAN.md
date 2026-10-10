@@ -1999,3 +1999,26 @@ The settings live in different places now; the curated groups use these keys.
 - Owner, 2026-10-10: speed up processing to the maximum on all processors / GPUs, with no effect on quality. Deep work.
   Gates: control replay md5 bit-identical (or proven equal output), per-stage timings on OPPO (Adreno 750), Mali logs (Redmi
   profile, Pixel 7), post pipeline timings.
+- Step 1 (2026-10-10, all SoCs: Snapdragon 8 Gen 2 / 8 Gen 3 / 8 Elite / 8 Elite Gen 5, Dimensity / Mali, Tensor):
+  - CPU `mosaicChromaMedian`: interior median-5 without clamps, row pointers, row blends, column bands for the box filters
+    (bit-identical; OPPO 0.8-1.0 s -> 0.75-0.84 s per mosaic shot).
+  - GPU passes read their neighbourhoods once per 8x8 group from shared memory: `kHybCells` (the 6.1 per-frame covariance read
+    36 RAW sites a cell, each quad for 9 cells; `sabreQuad61` / `sabreCov61Q`), `kHybFlags` (25 + 25 reads a site), `kHybDilate`
+    (25 reads a cell); `kHybReject` reuses its 3x3 cells for the bilinear sample; `kHybMark` / `kHybNatMark` write a RAW word only
+    when its flag bits change. Cells / flags / reject / mark bit-identical; dilate differs by float rounding only (Adreno 750:
+    max |diff| 1.2e-7 on x7u_1x, 2.3e-6 on syn_b4 at signal 0.015 / 0.3, trailers equal).
+  - OPPO profile 1, x7u_1x: flags 309 -> 132-193, mark 393 -> 304, cells 623 -> 536-543, dilate 533 -> 234-240 ms. Mali-G57
+    (Redmi Note 11 Pro: cells 2.0-3.0 s, mark 1.2-1.8 s, flags 0.8-0.9 s, dilate 0.5-0.8 s a shot) waits for the owner's log.
+  - New control md5 (since this step): syn_b1 5b988db1, syn_b2 99f29aab, syn_b4 421efc48, hand 6cab2c98, x7u_1x 52bcce71,
+    isz2 99c972ae, v10_1 58c09ee5, v10_2 2176b21b.
+  - Owner allowed up to 10 % quality loss on the Redmi Note 11 Pro only; nothing traded yet (needs its Mali timings first).
+
+### P77 — Redmi Note 11 Pro: ghosts on moving objects and blotches on walls (2026-10-10, owner's archive «redmi 11 pro.zip»)
+- Noise: HYBRID NOISE CHECK measured / model 0.06..0.24 in every shot (spatial noise of the reference RAW ~0.05 of the model as
+  well): the HAL SENSOR_NOISE_PROFILE is ~16 x too high, the rejection took motion for noise (double images, the smeared cat).
+  The worker now scales the model down as it scaled it up (ratio 0.02..0.67 -> x max(ratio, 1/16)); the finish denoise
+  (`ScamDenoise`) takes the same factor from the report line (`ScamHybridBurst.lastNoiseFactor`, test ScamNoiseFactorReportTest).
+- ZSL ring: 4 of 12 frames were 3.6 s older than the other 8 (same exposure before an AE ramp): the scene of another moment,
+  merged as blotches on the wall (owner: not there in reality). `selectHybridRing` drops the frames behind a gap of more than
+  max(0.5 s, 4 base exposures).
+- Open: owner's shots with the new build (the same scenes), Mali timings with the shared-memory passes.

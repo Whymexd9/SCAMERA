@@ -575,6 +575,8 @@ public final class ScamHybridBurst implements ScamTransport {
     public static volatile boolean lastBentoApplied;
     /** Bento factor k of the last shot (the ultrashort content saturates at k in base-frame units) and the share of the mask where the ultrashort itself was clipped. */
     public static volatile float lastBentoFactor = 1f, lastBentoUsClipped = 0f;
+    /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
+    public static volatile float lastNoiseFactor = 1f;
     /** Size of the RGB returned by the last hybrid merge (sensor size unless the Sabre 2x output is on). */
     public static volatile android.graphics.Point lastOutputSize;
     /** Final JPEG size of the last hybrid shot (the bitmap is resized to it after the whole pipeline). */
@@ -820,7 +822,7 @@ public final class ScamHybridBurst implements ScamTransport {
         out.position(0);
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
-        lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f;
+        lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f;
         ScamRgb.lastClipFlags = null;
         ScamBurst.lastEffectiveFrames = null;
         ScamBurst.lastMergedDng = null;

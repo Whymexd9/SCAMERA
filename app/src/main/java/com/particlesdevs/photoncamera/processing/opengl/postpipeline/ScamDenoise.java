@@ -382,6 +382,12 @@ public final class ScamDenoise extends Node {
                     O[c] = (float) Math.max(1e-12, par.noiseModeler.baseModel[c].second);
                 }
                 modelSource = "camera";
+                // P77: the factor the worker measured on the burst and merged with (Redmi Note 11 Pro: HAL profile ~16 x too high)
+                final float k = ScamHybridBurst.lastNoiseFactor;
+                if (k != 1f) {
+                    for (int c = 0; c < 3; c++) { S[c] *= k; O[c] *= k; }
+                    modelSource = "camera x" + k;
+                }
             }
             final float photon = PreferenceKeys.hybridValue("noise_photon", 1f), readout = PreferenceKeys.hybridValue("noise_readout", 1f);
             float sY = 0f, rY = 0f, sG = 0f, rG = 0f;

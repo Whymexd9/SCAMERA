@@ -268,7 +268,9 @@ struct HybridTuning {
     int gainMeasured=1;
     // P71: 1 (default) = the noise model of the frames is checked against the burst (hybridMeasureNoise: base vs the nearest normal
     // frame on flat blocks); when the measured noise is at least 1.5 x the model, every frame's slope / offset is scaled by it (up
-    // to x4). 0 = off. -1 is internal (decided before the merge).
+    // to x4); P77: at most 0.67 x the model (Redmi Note 11 Pro: 0.06..0.24 in every shot, its HAL profile is ~16 x too high and the
+    // rejection took moving objects for noise: ghosts), scaled down by it (down to x1/16). 0 = off. -1 is internal (decided before
+    // the merge).
     int noiseMeasured=1;
     // P74 JSR experiments (settings group «Опыты JSR», all off by default; ideas of Jiangtherapee Super Resolution, no code):
     // jsrPhase 1: the donors' kernel narrows with the phase coverage of the burst (jsrCoverage): sigma x clamp((h / h1)^strength,
@@ -666,16 +668,26 @@ float laMotionAt(int f,int x,int y){
 uniform vec4 k61aU; // covariance_parameters1: f5/f0 (shrunk), 1/(f0 f4) (stretched), f2 (gradient clip), 1/f0 (base); w = 0: off
 uniform vec4 k61bU; // 1/(f0 f1) (blurred), 1/f3 (transition), 1/kernelScale^2, tensor noise multiplier
 uniform vec4 k61cU; // green difference noise multiplier
+// P76: quad luma Y and |sqrt g1 - sqrt g2| of quad (i,j) of frame f; kHybCells keeps them in shared memory for the 3x3 cells around.
+vec2 sabreQuad61(int f,int i,int j){
+    float g=fParam[f].x;int X=2*i,Z=2*j;
+    float r=sqrt(max(sampleRawM(f,X,Z)*g,0.0)),g1=sqrt(max(sampleRawM(f,X+1,Z)*g,0.0));
+    float g2=sqrt(max(sampleRawM(f,X,Z+1)*g,0.0)),b=sqrt(max(sampleRawM(f,X+1,Z+1)*g,0.0));
+    return vec2(0.25*(r+g1+g2+b),abs(g1-g2));
+}
+vec3 sabreCov61Q(int f,float Y[9],float gd,float lum);
 vec3 sabreCov61(int f,int i,int j){
-    float Y[9];float gd=0.0,lum=0.0;float g=fParam[f].x;
+    float Y[9];float gd=0.0,lum=0.0;
     for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
-        int X=2*(i+di),Z=2*(j+dj);
-        float r=sqrt(max(sampleRawM(f,X,Z)*g,0.0)),g1=sqrt(max(sampleRawM(f,X+1,Z)*g,0.0));
-        float g2=sqrt(max(sampleRawM(f,X,Z+1)*g,0.0)),b=sqrt(max(sampleRawM(f,X+1,Z+1)*g,0.0));
+        vec2 q=sabreQuad61(f,i+di,j+dj);
         float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
-        float y=0.25*(r+g1+g2+b);
-        Y[(dj+1)*3+di+1]=y;gd+=abs(g1-g2)*w;lum+=y*w;
+        Y[(dj+1)*3+di+1]=q.x;gd+=q.y*w;lum+=q.x*w;
     }
+    return sabreCov61Q(f,Y,gd,lum);
+}
+// The 6.1 precision from the 3x3 quad lumas Y and the weighted green difference gd / luma lum around the cell.
+vec3 sabreCov61Q(int f,float Y[9],float gd,float lum){
+    float g=fParam[f].x;
     float v=max(lum*lum,1.0e-6);vec2 nm=fNoiseP[f].xy;
     float varU=(nm.x*v*g+nm.y*g*g)/(4.0*v);
     // tensor: E[eigenvalue] of pure noise = var(Y) = varU/4 (gradient^2 units); green difference: the shader filters an AMPLITUDE
@@ -767,15 +779,29 @@ vec4 siteExcess(float p[25],bool green){
     float level=(P5(-1,0)+P5(1,0)+P5(0,-1)+P5(0,1)+P5(-1,-1)+P5(1,-1)+P5(-1,1)+P5(1,1))*0.125; // around the site, without it
     return vec4(c-med,med,cross,level);
 }
+// P76: the 12x12 sites around the group's 8x8 sites (mean frame, base frame), read once per group (25 reads of each a site before).
+shared float flagMean[144];
+shared float flagBase[144];
 void main(){
     int x=int(gl_GlobalInvocationID.x),r=chunkU+int(gl_GlobalInvocationID.y);
+    int bx=int(gl_WorkGroupID.x)*8-2,br=chunkU+int(gl_WorkGroupID.y)*8-2;
+    bool meanTest=hotU.x>=3&&(hotU.y&1)!=0,baseTest=(hotU.y&2)!=0;
+    for(int k=int(gl_LocalInvocationIndex);k<144;k+=64){
+        int tx=bx+k%12,tr=br+k/12;
+        // rows of the strip +-2 only (the mean buffer holds no more): a row past them is read by no site of the strip
+        tr=clamp(tr,-2,2*(ry1-ry0)+1);
+        flagMean[k]=meanTest?mAt(tx,2*ry0+tr):0.0;
+        flagBase[k]=baseTest?sampleRawM(0,tx,2*ry0+tr):0.0;
+    }
+    barrier();
     if(x>=size.x||r>=2*(ry1-ry0))return;
     int y=2*ry0+r;
     bool green=phaseColor[((y&1)<<1)|(x&1)]==1;
     uint bits=0u;
     float p[25];
-    if(hotU.x>=3&&(hotU.y&1)!=0){ // hot and dead sites; sigma of the mean of n frames (the median of 8 adds ~15 %)
-        for(int k=0;k<25;k++)p[k]=mAt(x-2+k%5,y-2+k/5);
+    int t0=(r-br-2)*12+(x-bx-2);
+    if(meanTest){ // hot and dead sites; sigma of the mean of n frames (the median of 8 adds ~15 %)
+        for(int k=0;k<25;k++)p[k]=flagMean[t0+(k/5)*12+k%5];
         vec4 e=siteExcess(p,green);
         if(hotSigU.w<=0.0||e.w<hotSigU.w){
             float sd=sqrt(max((baseNoise.x*max(e.y,0.0)+baseNoise.y)/float(hotU.x),1.0e-14))*1.15;
@@ -783,8 +809,8 @@ void main(){
             if(ex>hotSigU.x*sd&&cr<hotSigU.z*ex&&e.y<0.9)bits|=1u; // a stuck (white) site counts too: its neighbours stay dark
         }
     }
-    if((hotU.y&2)!=0){
-        for(int k=0;k<25;k++)p[k]=sampleRawM(0,x-2+k%5,y-2+k/5);
+    if(baseTest){
+        for(int k=0;k<25;k++)p[k]=flagBase[t0+(k/5)*12+k%5];
         vec4 e=siteExcess(p,green);
         if(hotSigU.w<=0.0||e.w<hotSigU.w){
             float sd=sqrt(max(baseNoise.x*max(e.y,0.0)+baseNoise.y,1.0e-14))*1.1;
@@ -851,7 +877,7 @@ void main(){
     if(wx>=size.x/2||row>=int(frameGeo[f].z))return;
     int Y=int(frameGeo[f].y)+row;
     uint idx=frameGeo[f].x+uint(row*size.x+2*wx);
-    uint word=frames[idx>>1];
+    uint word=frames[idx>>1],read=word;
     int lastCell=-2;bool clip=false;
     for(int k=0;k<2;k++){
         int X=2*wx+k;
@@ -864,7 +890,7 @@ void main(){
         uint sh=uint(16*k);
         word=(word&~(0xC000u<<sh))|((fl&3u)<<(14u+sh));
     }
-    frames[idx>>1]=word;
+    if(word!=read)frames[idx>>1]=word; // P76: most words carry no flag; an unchanged word is not written back
 }
 )";
 
@@ -946,9 +972,16 @@ static const char* kHybCells=R"(
 uniform int cellFrameU; // first donor of this dispatch - 1
 uniform int dcovU;      // 1: DCov holds every donor cell (merge mode bit 1) and gets the 6.1 precision; 0 / unset: not written
                         // (with the 6.1 kernel but without the per-frame covariance DCov is a 16-byte stub)
+// P76: the 10x10 quads around the group's 8x8 cells, read once per group (sabreCov61 read each quad for 9 cells: 36 RAW sites a cell).
+shared vec2 cellQuad[100];
 void main(){
     int w2=size.x/2;
     int f=int(gl_GlobalInvocationID.z)+1+cellFrameU;
+    int fs=clamp(f,0,frameCount-1); // the whole group has one frame (local size z = 1): every branch below is uniform for it
+    bool cov=dcovU!=0&&k61aU.w>0.0&&fParam[fs].y>0.0&&int(fParam[fs].w)!=5;
+    int bx=int(gl_WorkGroupID.x)*8-1,by=fCells[fs].x+chunkU+int(gl_WorkGroupID.y)*8-1;
+    if(cov)for(int k=int(gl_LocalInvocationIndex);k<100;k+=64)cellQuad[k]=sabreQuad61(fs,bx+k%10,by+k/10);
+    barrier();
     if(f>=frameCount)return;
     int cx=int(gl_GlobalInvocationID.x),cy=fCells[f].x+chunkU+int(gl_GlobalInvocationID.y);
     if(cx>=w2||cy>=fCells[f].x+fCells[f].y)return;
@@ -956,8 +989,15 @@ void main(){
     vec3 u=cellU(f,cx,cy,cl,gd);
     uint idx=uint(fCells[f].z)+uint((cy-fCells[f].x)*w2+cx);
     cells[idx]=vec4(u,cl?1.0:0.0);
-    if(dcovU!=0&&k61aU.w>0.0&&fParam[f].y>0.0&&int(fParam[f].w)!=5){
-        vec3 P=sabreCov61(f,cx,cy);
+    if(cov){
+        float Y[9];float qd=0.0,lum=0.0;
+        int q0=(cy-by-1)*10+(cx-bx-1);
+        for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
+            vec2 q=cellQuad[q0+(dj+1)*10+di+1];
+            float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
+            Y[(dj+1)*3+di+1]=q.x;qd+=q.y*w;lum+=q.x*w;
+        }
+        vec3 P=sabreCov61Q(f,Y,qd,lum);
         dcov[idx]=uvec2(packHalf2x16(P.xy),packHalf2x16(vec2(P.z,0.0)));
     }
 }
@@ -984,12 +1024,15 @@ void main(){
     if(fParam[f].y>0.0&&inside){
         int ix=int(floor(o.x)),iy=int(floor(o.y));
         float fx=o.x-float(ix),fy=o.y-float(iy);
-        vec4 c00=cellAt(f,ix,iy),c10=cellAt(f,ix+1,iy),c01=cellAt(f,ix,iy+1),c11=cellAt(f,ix+1,iy+1);
+        // P76: the 3x3 cells around (ix, iy) read once; the bilinear sample takes 4 of them (13 reads a cell before)
+        vec4 c3[9];
+        for(int k=0;k<9;k++)c3[k]=cellAt(f,ix-1+k%3,iy-1+k/3);
+        vec4 c00=c3[4],c10=c3[5],c01=c3[7],c11=c3[8];
         vec3 g=(c00.xyz*(1.0-fx)+c10.xyz*fx)*(1.0-fy)+(c01.xyz*(1.0-fx)+c11.xyz*fx)*fy;
         bool dclip=max(max(c00.w,c10.w),max(c01.w,c11.w))>0.5;
         // donor texture variance over its 3x3 cells
         vec3 m=vec3(0.0),m2=vec3(0.0);
-        for(int dj=0;dj<=2;dj++)for(int di=0;di<=2;di++){vec3 u=cellAt(f,ix-1+di,iy-1+dj).xyz;m+=u*(1.0/9.0);m2+=u*u*(1.0/9.0);}
+        for(int k=0;k<9;k++){vec3 u=c3[k].xyz;m+=u*(1.0/9.0);m2+=u*u*(1.0/9.0);}
         vec3 dv=max(m2-m*m,vec3(0.0));
         // 9-cell variance estimate of noise alone: (1 + 0.5 + 1)/3 of the single-site u variance, times 8/9.
         float Lf=max(dot(m*m,vec3(1.0/3.0))-epsU(),0.0);
@@ -1033,14 +1076,25 @@ uniform int cy0;
 uniform int cy1;
 uniform vec4 dl; // offset, scale, bento active, floor (rejection below it does not spread)
 uniform int validPlanesU; // bentoValidate: per-ultrashort-frame validity planes after the mask plane (0 = none)
+// P76: the 12x12 rejection weights around the group's 8x8 cells, read once per group (25 reads a cell before).
+shared float dilR[144];
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=cy0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
+    {
+        int bx=int(gl_WorkGroupID.x)*8-2,by=cy0+chunkU+int(gl_WorkGroupID.y)*8-2,fr=clamp(f,1,max(frameCount-1,1));
+        for(int k=int(gl_LocalInvocationIndex);k<144;k+=64){
+            int y=clamp(by+k/12,ry0,ry1-1),x=clamp(bx+k%12,0,w2-1);
+            dilR[k]=rawR[(fr-1)*(ry1-ry0)*w2+(y-ry0)*w2+x];
+        }
+    }
+    barrier();
     if(cx>=w2||cy>=cy1||f>=frameCount)return;
     float s=0.0,wc=1.0;
     for(int dj=-2;dj<=2;dj++)for(int di=-2;di<=2;di++){
-        int y=clamp(cy+dj,ry0,ry1-1),x=clamp(cx+di,0,w2-1);
-        float v=rawR[(f-1)*(ry1-ry0)*w2+(y-ry0)*w2+x];
+        // the clamped site of the tile: clamp(by + k / 12) is clamp(cy + dj) for the column / row of this cell
+        int ty=cy+dj-(cy0+chunkU+int(gl_WorkGroupID.y)*8-2),tx=cx+di-(int(gl_WorkGroupID.x)*8-2);
+        float v=dilR[ty*12+tx];
         s+=max(1.0-v-dl.w,0.0)/max(1.0-dl.w,1.0e-3);
         if(di==0&&dj==0)wc=v;
     }
@@ -1839,7 +1893,7 @@ void main(){
     if(f>127||wx>=natU.y/2||row>=int(nGeo[f].z))return;
     int Y=int(nGeo[f].y)+row;
     uint idx=nGeo[f].x+uint(row*natU.y+2*wx);
-    uint word=nwords[idx>>1];
+    uint word=nwords[idx>>1],read=word;
     for(int k=0;k<2;k++){
         int X=2*wx+k;
         int x=X-(cfaShift.x<<natV.x),y=Y-(cfaShift.y<<natV.x); // canonical
@@ -1848,7 +1902,7 @@ void main(){
         uint sh=uint(16*k);
         word=(word&~(0xC000u<<sh))|((fl&3u)<<(14u+sh));
     }
-    nwords[idx>>1]=word;
+    if(word!=read)nwords[idx>>1]=word; // P76: as kHybMark, an unchanged word is not written back
 }
 )";
 
@@ -5302,16 +5356,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(tune.noiseMeasured>0&&input.mosaic==1&&input.subFrames<=1&&!native&&!preset){
         // P71: plain Bayer only (one green phase = every other site; a Quad / Tetra stream mixes colours there), decided once.
         // Above x6 the model is kept: no HAL profile seen was that far off, a mismatch that large is a different header model
-        // (the synthetic replay series: x40..x400) or a measurement fault.
+        // (the synthetic replay series: x40..x400) or a measurement fault. Below x1/50 as well (identical frames, a frame copied twice).
         const HybridNoiseCheck c=hybridMeasureNoise(input);
         HybridTuning t2=tune;t2.noiseMeasured=-1;
-        const bool scale=c.flat>=100&&c.ratio>=1.5&&c.ratio<=6.0;
+        const bool up=c.ratio>=1.5&&c.ratio<=6.0,down=c.ratio>=0.02&&c.ratio<=0.67;
+        const bool scale=c.flat>=100&&(up||down);
+        const double k=up?std::min(c.ratio,4.0):std::max(c.ratio,1.0/16);
         if(c.frame>=0)report("HYBRID NOISE CHECK: base vs frame "+std::to_string(c.frame)+", "+std::to_string(c.flat)+" flat of "
             +std::to_string(c.blocks)+" blocks, measured / model "+std::to_string(c.ratio)
-            +(scale?" -> model x"+std::to_string(std::min(c.ratio,4.0))+" for every frame":c.ratio>6.0&&c.flat>=100?" -> model kept (implausible)":" -> model kept"));
+            +(scale?" -> model x"+std::to_string(k)+" for every frame":(c.ratio>6.0||c.ratio<0.02)&&c.flat>=100?" -> model kept (implausible)":" -> model kept"));
         if(scale){
             HybridInput measured=input;
-            const float k=float(std::min(c.ratio,4.0));
             for(auto& fr:measured.frames){fr.slope*=k;fr.offset*=k;}
             return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
         }
@@ -6551,13 +6606,22 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     };
     for(std::vector<float>* ch:{&u,&v}){
         std::vector<float>& c=*ch;
+        // P76: the same taps and selections; the clamps only at the borders, the five rows of the vertical pass taken once per row
         mergeRowBands(h,[&](int y0,int y1){
             for(int y=y0;y<y1;++y){const float* r=c.data()+size_t(y)*w;float* o=t.data()+size_t(y)*w;
-                for(int x=0;x<w;++x){auto at=[&](int k){return r[std::clamp(x+k*d,0,w-1)];};o[x]=med5(at(-2),at(-1),at(0),at(1),at(2));}}
+                const int in0=std::min(2*d,w),in1=std::max(in0,w-2*d);
+                auto edge=[&](int x){auto at=[&](int k){return r[std::clamp(x+k*d,0,w-1)];};o[x]=med5(at(-2),at(-1),at(0),at(1),at(2));};
+                for(int x=0;x<in0;++x)edge(x);
+                for(int x=in0;x<in1;++x)o[x]=med5(r[x-2*d],r[x-d],r[x],r[x+d],r[x+2*d]);
+                for(int x=in1;x<w;++x)edge(x);}
         });
         mergeRowBands(h,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){auto at=[&](int k){return t[size_t(std::clamp(y+k*d,0,h-1))*w+x];};
-                c[size_t(y)*w+x]=med5(at(-2),at(-1),at(0),at(1),at(2));}
+            for(int y=y0;y<y1;++y){
+                const float* a0=t.data()+size_t(std::clamp(y-2*d,0,h-1))*w;const float* a1=t.data()+size_t(std::clamp(y-d,0,h-1))*w;
+                const float* a2=t.data()+size_t(y)*w;const float* a3=t.data()+size_t(std::clamp(y+d,0,h-1))*w;
+                const float* a4=t.data()+size_t(std::clamp(y+2*d,0,h-1))*w;float* o=c.data()+size_t(y)*w;
+                for(int x=0;x<w;++x)o[x]=med5(a0[x],a1[x],a2[x],a3[x],a4[x]);
+            }
         });
     }
     std::vector<float>().swap(t); // any RAW size: every temporary goes once used (~40 B per pixel at the peak before)
@@ -6569,15 +6633,21 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     // colour Nyquist period of the mosaic. Every decision of this pass is continuous (median, ratios, soft counts, smoothstep
     // ramps, max), so a tiny change of the merge gives a tiny change of the colour.
     const int r1=block,r2=2*block,r3=3*block;
+    // P76: one scratch plane for every box (each allocated and zeroed its own: ~80 ms of 750 at 12 MP) and the column pass in
+    // bands of 64 columns handed out 4 at a time (the band of ~31 columns read half a cache line per row); every column's
+    // additions are the same, in the same order: the same floats.
+    std::vector<float> boxTmp;
     auto box=[&](const std::vector<float>& in,std::vector<float>& out,int r){
-        std::vector<float> tmp(in.size());
+        std::vector<float>& tmp=boxTmp;tmp.resize(in.size());
         mergeRowBands(h,[&](int y0,int y1){for(int y=y0;y<y1;++y){const float* a=in.data()+size_t(y)*w;float* o=tmp.data()+size_t(y)*w;double acc=0;
             for(int x=-r;x<=r;++x)acc+=a[std::clamp(x,0,w-1)];
             for(int x=0;x<w;++x){o[x]=float(acc/(2*r+1));acc+=a[std::min(x+r+1,w-1)]-a[std::max(x-r,0)];}}});
         out.resize(in.size());
         // P30: the column sums run down the rows for a band of columns at once (the same per-column additions in the same
         // order; one column at a time read a new cache line for every sample).
-        mergeRowBands(w,[&](int x0,int x1){
+        constexpr int kCols=64;
+        mergeRowBands((w+kCols-1)/kCols,[&](int b0,int b1){
+            const int x0=b0*kCols,x1=std::min(w,b1*kCols);
             std::vector<double> acc(size_t(x1-x0),0.0);
             for(int x=x0;x<x1;++x){double a=0;for(int y=-r;y<=r;++y)a+=tmp[size_t(std::clamp(y,0,h-1))*w+x];acc[size_t(x-x0)]=a;}
             for(int y=0;y<h;++y){
@@ -6605,16 +6675,19 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     const float z0=0.51f/(2*block),z1=1.02f/(2*block);
     const int bw=w/block,bh=h/block;
     const bool rawOsc=osc&&int(osc->size())==bw*bh;
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){
-        const float t=std::clamp((z[i]-z0)/(z1-z0),0.f,1.f);float k=t*t*(3.f-2.f*t);
-        if(rawOsc){ // detail the merge already smoothed in the luma but the sites still show
-            const int X=int(i%size_t(w)),Y=int(i/size_t(w));
-            const float o=(*osc)[size_t(std::min(Y/block,bh-1))*bw+std::min(X/block,bw-1)];
-            const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);k=std::max(k,t2*t2*(3.f-2.f*t2));
+    mergeRowBands(h,[&](int y0,int y1){for(int Y=y0;Y<y1;++Y){ // P76: by rows (no division per pixel), the same values
+        const float* oscRow=rawOsc?osc->data()+size_t(std::min(Y/block,bh-1))*bw:nullptr;
+        for(int X=0;X<w;++X){
+            const size_t i=size_t(Y)*w+X;
+            const float t=std::clamp((z[i]-z0)/(z1-z0),0.f,1.f);float k=t*t*(3.f-2.f*t);
+            if(oscRow){ // detail the merge already smoothed in the luma but the sites still show
+                const float o=oscRow[std::min(X/block,bw-1)];
+                const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);k=std::max(k,t2*t2*(3.f-2.f*t2));
+            }
+            u[i]+=k*(ul[i]-u[i]);v[i]+=k*(vl[i]-v[i]);
         }
-        u[i]+=k*(ul[i]-u[i]);v[i]+=k*(vl[i]-v[i]);
     }});
-    std::vector<float>().swap(z);std::vector<float>().swap(ul);std::vector<float>().swap(vl);
+    std::vector<float>().swap(z);std::vector<float>().swap(ul);std::vector<float>().swap(vl);std::vector<float>().swap(boxTmp);
     rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=std::max(rgb[i*3+1],0.f)+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
 }
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,

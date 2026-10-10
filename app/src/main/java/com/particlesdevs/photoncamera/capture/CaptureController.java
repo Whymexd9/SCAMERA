@@ -4178,6 +4178,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return selected;
     }
 
+    /** P77: the longest gap between two ring frames of one shot (and 4 exposures of the base for long frames); the frames before it
+     *  are another moment of the scene. */
+    static final long ZSL_RING_MAX_GAP_NS = 500_000_000L;
+    static long ringMaxGapNs(CaptureResult base) {
+        Long exposure = base != null ? base.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
+        return Math.max(ZSL_RING_MAX_GAP_NS, exposure != null ? 4 * exposure : 0L);
+    }
+
     /** P27: the Hybrid's ring selection (see drainZslNormalFrames); closes the frames it does not keep. */
     private void selectHybridRing(List<Image> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
         Image base = null;
@@ -4191,6 +4199,28 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             else rest.add(image);
         }
         exact.sort(java.util.Comparator.comparingLong(Image::getTimestamp).reversed());
+        // P77: frames of the same exposure behind a gap of the ring (the AE went away and came back) show another moment of the
+        // scene: everything that moved since then ghosts (Redmi Note 11 Pro: 4 of 12 frames 3.6 s older than the other 8).
+        int stale = 0;
+        final long maxGap = ringMaxGapNs(metadata.get(base.getTimestamp()));
+        for (int i = 1; i < exact.size(); i++) {
+            if (exact.get(i - 1).getTimestamp() - exact.get(i).getTimestamp() > maxGap) {
+                List<Image> old = exact.subList(i, exact.size());
+                stale = old.size();
+                rest.addAll(old);
+                old.clear();
+                break;
+            }
+        }
+        if (stale > 0) {
+            final long oldest = exact.get(exact.size() - 1).getTimestamp() - maxGap;
+            for (java.util.Iterator<Image> it = darker.iterator(); it.hasNext(); ) {
+                Image image = it.next();
+                if (image.getTimestamp() < oldest) { rest.add(image); it.remove(); }
+            }
+            Log.w("SCAM_HDR", "hybrid ZSL: " + stale + " frames at the newest exposure dropped: older than a gap of more than "
+                    + maxGap / 1_000_000 + " ms in the ring");
+        }
         List<Image> keep = new ArrayList<>(exact.subList(0, Math.min(exact.size(), Math.max(1, requestedCount))));
         for (Image image : exact.subList(keep.size(), exact.size())) rest.add(image);
         final int fill = Math.min(Math.max(1, requestedCount), 8);

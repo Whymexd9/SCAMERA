@@ -501,7 +501,9 @@ public final class ScamNeuralClient {
             if(scamBurst!=null){ScamBurst.lastMergedDng=null;ScamBurst.lastEffectiveFrames=null;ScamRgb.lastClipFlags=null;
                 ScamHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
-                ScamHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);}
+                ScamHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);
+                final float noiseK=reportNumber(report,"HYBRID NOISE CHECK:","-> model x",1f);
+                ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             ByteBuffer result=(burst!=null||scamBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException(Lang.t("Недостаточно памяти для результата","Not enough memory for the result"));
