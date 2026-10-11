@@ -278,6 +278,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         updateScaleText();
         if (chrome != null) chrome.centre(position);
         CustomSSIV page = getSsivAt(position);
+        if (adapter != null) adapter.reloadIfGaveUp(page, position); // P81
         if (page != null && page.isReady()) {
             page.setDoubleTapZoomScale(page.getMinScale() * 2.5f);
             page.setSwipeDownListener(isCompareMode() ? null : this::onGalleryButtonClick);
@@ -289,6 +290,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         super.onResume();
         if (adapter != null && viewPager != null) {
             int position = viewPager.getCurrentItem();
+            adapter.reloadIfGaveUp(getSsivAt(position), position); // P81
             if (adapter.isHdrActive(position)) {
                 UltraHdrGalleryUtil.setWindowHdr(getActivity(), true);
                 updateHdrToggleUi(adapter.isHdrAvailable(position), true);

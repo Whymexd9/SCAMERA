@@ -34,13 +34,18 @@ public class GalleryDecodeRetryTest {
     }
 
     @Test
-    public void twoRetriesWithGrowingPauses() {
-        assertTrue(GalleryDecodeRetry.mayRetry(0));
-        assertTrue(GalleryDecodeRetry.mayRetry(1));
-        assertFalse(GalleryDecodeRetry.mayRetry(2));
+    public void retriesOutlastTheSlowestEncode() {
+        for (int i = 0; i < 5; i++) assertTrue(GalleryDecodeRetry.mayRetry(i));
+        assertFalse(GalleryDecodeRetry.mayRetry(5));
         assertFalse(GalleryDecodeRetry.mayRetry(-1));
         assertEquals(700, GalleryDecodeRetry.delayMs(0));
         assertEquals(1400, GalleryDecodeRetry.delayMs(1));
+        long total = 0;
+        for (int i = 0; i < 5; i++) total += GalleryDecodeRetry.delayMs(i);
+        // P81: a 12 MP WebP took 7.4-7.7 s and a 12-bit AVIF 9.3 s to save on the X200 Ultra (log 2026-10-08 / 10)
+        assertTrue(total > 2 * 9300);
+        assertEquals(11200, GalleryDecodeRetry.delayMs(4));
+        assertEquals(11200, GalleryDecodeRetry.delayMs(9));
     }
 
     @Test

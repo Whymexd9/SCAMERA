@@ -16,7 +16,9 @@ import com.particlesdevs.photoncamera.processing.PhotoFormat;
  */
 final class GalleryDecodeRetry {
     static final int FALLBACK_MAX_SIDE = 4096;
-    static final int MAX_RETRIES = 2;
+    // P81: up to ~22 s (0.7 + 1.4 + 2.8 + 5.6 + 11.2): a 12 MP WebP takes 7-8 s to encode, a 12-bit AVIF up to 9 s, and the
+    // gallery may open the file the camera has just started to write (the MediaStore row exists from the first byte).
+    static final int MAX_RETRIES = 5;
     private static final long FIRST_DELAY_MS = 700;
 
     private GalleryDecodeRetry() {}
@@ -40,8 +42,8 @@ final class GalleryDecodeRetry {
         return retriesDone >= 0 && retriesDone < MAX_RETRIES;
     }
 
-    /** Pause before retry number {@code retriesDone + 1}: 0.7 s, then 1.4 s. */
+    /** Pause before retry number {@code retriesDone + 1}: 0.7 s, doubling each time. */
     static long delayMs(int retriesDone) {
-        return FIRST_DELAY_MS << Math.max(0, Math.min(retriesDone, 4));
+        return FIRST_DELAY_MS << Math.max(0, Math.min(retriesDone, MAX_RETRIES - 1));
     }
 }

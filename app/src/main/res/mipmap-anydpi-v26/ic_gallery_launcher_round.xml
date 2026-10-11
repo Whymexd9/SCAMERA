@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/scamera_icon_background" />
-    <foreground android:drawable="@drawable/sgallery_icon_generated" />
+    <foreground android:drawable="@drawable/sgallery_icon_scaled" />
     <monochrome android:drawable="@drawable/gallery_launch_mono" />
 </adaptive-icon>

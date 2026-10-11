@@ -1,5 +1,7 @@
 package com.particlesdevs.photoncamera.capture;
 
+import com.particlesdevs.photoncamera.processing.RingFrame;
+
 import com.particlesdevs.photoncamera.api.CameraEventsListener;
 import android.app.Activity;
 import android.app.Application;
@@ -121,11 +123,11 @@ public class CameraResumeTest {
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
     public void scamZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
         put(controller,"scamZslShutterTimestamp",9L);
-        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var ring=(ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         java.util.List<Image> raws=new java.util.ArrayList<>();
         for(long timestamp=1;timestamp<=9;timestamp++) {
-            Image image=rawImage(timestamp);raws.add(image);ring.add(image);
+            Image image=rawImage(timestamp);raws.add(image);ring.add(RingFrame.of(image));
             if(timestamp<9)metadata.put(timestamp,exposure(24_999_987L,10775));
         }
         var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
@@ -149,12 +151,12 @@ public class CameraResumeTest {
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
     public void scamZslUsesShutterCutoffAndCurrentRawForBracketBase() throws Exception {
-        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var ring=(ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         // Out-of-order delivery, a post-press frame and an unrelated preview
         // exposure must not change this shot's selection or bracket base.
         for(long timestamp:new long[]{5,3,7,2,6,4}) {
-            ring.add(rawImage(timestamp));metadata.put(timestamp,exposure(timestamp*1000000,100));
+            ring.add(RingFrame.of(rawImage(timestamp)));metadata.put(timestamp,exposure(timestamp*1000000,100));
         }
         TotalCaptureResult expected=metadata.get(6L);
         put(controller,"scamZslShutterTimestamp",6L);
@@ -171,9 +173,9 @@ public class CameraResumeTest {
         }
     }
     @Test public void scamZslWithoutShutterTimestampDoesNotClaimBufferedFrames() throws Exception {
-        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var ring=(ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
-        Image image=rawImage(1);ring.add(image);metadata.put(1L,exposure(25000000,100));
+        Image image=rawImage(1);ring.add(RingFrame.of(image));metadata.put(1L,exposure(25000000,100));
         put(controller,"scamZslShutterTimestamp",0L);
         var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
@@ -196,10 +198,10 @@ public class CameraResumeTest {
     }
     @Test public void scamZslWithoutMeasuredExposureReturnsEmptyForManualFallback() throws Exception {
         put(controller,"scamZslShutterTimestamp",3L);
-        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var ring=(ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
         Image missing=rawImage(1),zeroTime=rawImage(2),zeroIso=rawImage(3);
-        ring.add(missing);ring.add(zeroTime);ring.add(zeroIso);
+        ring.add(RingFrame.of(missing));ring.add(RingFrame.of(zeroTime));ring.add(RingFrame.of(zeroIso));
         metadata.put(2L,exposure(0,100));metadata.put(3L,exposure(25_000_000,0));
         var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class);
         method.setAccessible(true);
@@ -226,7 +228,7 @@ public class CameraResumeTest {
     }
     @Test public void closeDrainsZslBeforeClosingReaderAndDropsLaterCallbacks() throws Exception {
         Image image=mock(Image.class);ImageReader raw=mock(ImageReader.class);
-        ((ArrayDeque<Image>)get(controller,"mZslRingBuffer")).add(image);
+        ((ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer")).add(RingFrame.of(image));
         controller.mImageReaderRaw=raw; // Preview reader may independently be null.
         controller.mPreviewRequestBuilder=newRequestBuilder();
         CaptureController.mPreviewCaptureResult=mock(TotalCaptureResult.class);
@@ -337,9 +339,9 @@ public class CameraResumeTest {
     @SuppressWarnings("unchecked")
     private java.util.List<com.particlesdevs.photoncamera.processing.ImageFrame> drainHybrid(long cutoff,long[] timestamps,int[] isos,int requested) throws Exception {
         put(controller,"scamZslShutterTimestamp",cutoff);
-        var ring=(ArrayDeque<Image>)get(controller,"mZslRingBuffer");
+        var ring=(ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer");
         var metadata=(java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults");
-        for(int i=0;i<timestamps.length;i++){ring.add(rawImage(timestamps[i]));metadata.put(timestamps[i],exposure(10_000_000L,isos[i]));}
+        for(int i=0;i<timestamps.length;i++){ring.add(RingFrame.of(rawImage(timestamps[i])));metadata.put(timestamps[i],exposure(10_000_000L,isos[i]));}
         var method=CaptureController.class.getDeclaredMethod("drainZslNormalFrames",int.class,ScamStockAe.Plan.class,boolean.class,boolean.class);
         method.setAccessible(true);
         try(var prefs=mockStatic(PreferenceKeys.class);
@@ -386,7 +388,7 @@ public class CameraResumeTest {
     }
     @SuppressWarnings("unchecked")
     private void cleanupRing() throws Exception {
-        ((ArrayDeque<Image>)get(controller,"mZslRingBuffer")).clear();
+        ((ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer")).clear();
         ((java.util.Map<Long,TotalCaptureResult>)get(controller,"mHexZslResults")).clear();
     }
 

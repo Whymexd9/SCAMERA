@@ -60,6 +60,32 @@ public class GLPreview extends GLSurfaceView {
         // which is why the log looked healthy. ES 3.0 is backwards compatible
         // with the existing ES 2.0 preview shaders.
         setEGLContextClientVersion(3);
+        // P90: the viewfinder's context at high GPU priority (EGL_IMG_context_priority), the processing contexts are low
+        // (GLContext, worker): the viewfinder's few-ms draws go ahead of the shot's passes. Without the extension: a plain context.
+        setEGLContextFactory(new EGLContextFactory() {
+            private static final int EGL_CONTEXT_CLIENT_VERSION = 0x3098, PRIORITY = 0x3100, HIGH = 0x3101;
+
+            @Override
+            public javax.microedition.khronos.egl.EGLContext createContext(javax.microedition.khronos.egl.EGL10 egl,
+                    javax.microedition.khronos.egl.EGLDisplay display, javax.microedition.khronos.egl.EGLConfig config) {
+                String ext = egl.eglQueryString(display, javax.microedition.khronos.egl.EGL10.EGL_EXTENSIONS);
+                if (ext != null && ext.contains("EGL_IMG_context_priority")
+                        && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("vf_gpu_priority", 1f) != 0f) {
+                    javax.microedition.khronos.egl.EGLContext c = egl.eglCreateContext(display, config,
+                            javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT,
+                            new int[]{EGL_CONTEXT_CLIENT_VERSION, 3, PRIORITY, HIGH, javax.microedition.khronos.egl.EGL10.EGL_NONE});
+                    if (c != null && c != javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT) return c;
+                }
+                return egl.eglCreateContext(display, config, javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT,
+                        new int[]{EGL_CONTEXT_CLIENT_VERSION, 3, javax.microedition.khronos.egl.EGL10.EGL_NONE});
+            }
+
+            @Override
+            public void destroyContext(javax.microedition.khronos.egl.EGL10 egl, javax.microedition.khronos.egl.EGLDisplay display,
+                                       javax.microedition.khronos.egl.EGLContext context) {
+                egl.eglDestroyContext(display, context);
+            }
+        });
         setRenderer(mRenderer);
         setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
     }

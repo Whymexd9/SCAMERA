@@ -17,10 +17,10 @@ import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.particlesdevs.photoncamera.gallery.glide.GalleryKeys;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.signature.ObjectKey;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -269,10 +269,13 @@ public final class ViewerChrome {
             f.setContentDescription(GalleryUi.dayTime(item.getFile().getLastModified(), System.currentTimeMillis()));
             f.setStateDescription(on ? Lang.t("текущий", "current") : null);
             f.setOnClickListener(v -> open.open(holder.getAbsoluteAdapterPosition()));
-            if (item.getFile().getFileUri() != null)
+            if (item.getFile().getFileUri() != null && GalleryKeys.waitForFile(i, item.getFile(), () -> {
+                if (holder.getAbsoluteAdapterPosition() == position) notifyItemChanged(position);
+            })) Glide.with(i).clear(i); // P89: after the camera has finished writing the file
+            else if (item.getFile().getFileUri() != null)
                 Glide.with(i).asBitmap().load(item.getFile().getFileUri())
                         .apply(new RequestOptions().diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                                .signature(new ObjectKey(item.getFile().getDisplayName() + item.getFile().getLastModified()))
+                                .signature(GalleryKeys.of(item.getFile()))
                                 .override(132, 132).centerCrop())
                         .into(i);
         }

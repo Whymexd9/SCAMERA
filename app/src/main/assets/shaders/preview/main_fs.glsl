@@ -10,6 +10,8 @@ uniform bool mirror;
 // burst and cannot appear in a live frame.
 uniform sampler2D uToneCurve;
 uniform bool uLookEnabled;
+// P90: a post-shutter series frame brought back to the viewfinder's exposure (ViewfinderGain), 1.0 for viewfinder frames
+uniform float uGain;
 out vec4 Output;
 in vec2 texCoord;
 void main() {
@@ -33,6 +35,7 @@ void main() {
     vec4 dc = vec4(1.0,0.0,1.0,0.0);
     if(enablePeak)
         color = color + dc*32.0*diff*w;
+    if (uGain != 1.0) color.rgb = pow(clamp(pow(max(color.rgb, 0.0), vec3(2.2)) * uGain, 0.0, 1.0), vec3(1.0 / 2.2));
     if (uLookEnabled) {
         // LiveSceneMeter derives this response in the display domain of the ISP stream.
         // Decoding gamma here would darken the stream before an encoded-domain curve.

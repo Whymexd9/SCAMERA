@@ -2072,3 +2072,151 @@ The settings live in different places now; the curated groups use these keys.
 - Control md5 since P80 (default tuning): syn_b1 5b988db1, x7u_1x 52bcce71 (plain Bayer, unchanged); mosaic series (GPU chroma
   median): syn_b2 0bfa468b, syn_b4 fc0b4a35, hand 1d1ac3bc, isz2 3c58de7a, v10_1 104bd930, v10_2 94ec0f73. With chromaGpu 0 the
   P76 references (hand 6cab2c98, isz2 99c972ae, syn_b4 421efc48).
+
+### P81 — Gallery: crashes on swipe, WebP / AVIF blank until a restart (owner, 2026-10-11)
+- Crashes: all 9 entries of the X200 Ultra's SCAMERA-crash.log (2026-10-09..10) are the ViewPager-cast ClassCastException that
+  fe419b2 (P67) fixed; the phone ran the build of 2026-10-09 22:44, older than that fix.
+- WebP blank until a restart: the camera writes the file in place for 7.4-7.7 s (WebP 12 MP; a 12-bit AVIF 9.3 s) and its
+  MediaStore row exists from the first byte; the viewer gave up after 2 retries (2.1 s), and every Glide key was name +
+  DATE_ADDED, which never changes, so a picture decoded from the unfinished file stayed cached. Now: 5 retries (~22 s), a page
+  that gave up is decoded again when shown or on resume (ImageAdapter.reloadIfGaveUp), keys carry the file's current length
+  and mtime (gallery/glide/GalleryKeys, test GalleryKeysTest) in the viewer, grid, filmstrip and histogram.
+- «WebP: Display P3 profile not added … .webp.icc.tmp: Operation not permitted»: DCIM refuses a non-image extension. The ICC
+  (WebP) and colr (HEIC) rewrites take their scratch copy in the app's cache and write it back in place (the MediaStore row
+  and content URI stay).
+- AVIF: the decoder of P65 (750bf96) is newer than the build on the X200 Ultra; device check of a 12-bit 4:4:4 file pending.
+
+### P82 — Manual mode: shutter / ISO priority (owner, 2026-10-11)
+- One of ISO and shutter by hand, the other follows the scene (EV applies): Android 16 CONTROL_AE_PRIORITY_MODE where the
+  module lists it (Xiaomi 17 Ultra [0 1 2]; a HAL that does not keep the hand-set value 15 frames in a row falls back),
+  else AE off and the free parameter moves on the viewfinder's mean brightness (LiveSceneMeter -> manual/SceneLuma, 64 x 64
+  every eighth frame, only while the loop runs): the target is the AE's own brightness (first measurement after the switch,
+  which keeps the AE's exposure), 1/6-stop dead band, 2/3 of the error a step, <= 2 stops (manual/ExposurePriority, test
+  ExposurePriorityTest). Before, the other parameter stayed frozen at the last metered value.
+- Open: the ISO / shutter range the rulers show (owner: «не отображается верно») — what is wrong on which phone / lens is not
+  in a log yet. Found on the way: a hand-set shutter longer than 1/5 s reaches the viewfinder only as 1/5 s and the photo takes
+  the viewfinder's (ZSL) exposure, so the photo is 1/5 s too. -> P84.
+- Owner's answer on the range (2026-10-11): the minimum and maximum of ISO and shutter are wrong. Which phone / lens and what
+  the rulers show vs what is expected: still to be seen on a device (the X200 Ultra was not connected).
+
+### P84 — Manual shutter longer than 1/8 s: PSL instead of ZSL (owner, 2026-10-11; done, device check pending)
+- The Hybrid with a hand-set shutter > 1/8 s (ParamController.PSL_SHUTTER_NS) takes N after the shutter at that shutter
+  (hybridNPlan(manualPsl) -> HybridPlan.buildNormalBack, 4 N + Bento / Shasta of the plan), the ring is released, the RAWs are
+  routed as with an empty ring. ISO: the hand-set one, or in shutter priority the viewfinder's exposure (<= 1/5 s) moved onto
+  the long shutter (ParamController.pslIso, test ExposurePriorityTest). The SCAM HDR route keeps the ring.
+
+### P85 — Gallery button: the badge inside the gallery icon 20 % smaller (owner, 2026-10-11; queued)
+
+### P86 — Photo mode «Движение» (owner, 2026-10-11; queued)
+- A separate photo mode for moving subjects: the best possible quality of what moves and the fastest capture (no moment
+  missed), fast processing; HDR may be weaker.
+- Its own settings group inside the Hybrid settings group.
+- To work out: capture (shutter-moment frame, short exposures, fewer / no bracketed Shasta frames, ZSL ring at the press),
+  merge (reject / motion masks favouring the base frame, Bento only where it does not ghost), processing time budget, the
+  shutter-to-shutter interval; measure on the OPPO replays and the owner's handheld shots.
+
+### P87 — Manual rulers' ISO / shutter range, priority on every phone (owner, 2026-10-11; done, device check pending)
+- Owner's screenshots (X200 Ultra): stock pro mode ISO 72..12800 (main, ultra-wide), 50..3200 (tele), up to 32 s; ours
+  1144..3200, then 1144..5359 on the same module. Camera service dump (2026-10-11): every module declares
+  sensitivityRange [1144 3200] (tele [400 800]) and exposureTimeRange up to 0.33 s, with maxFrameDuration 33 s (tele 29 s);
+  the vivo keys com.vivo.pro_isoMin 72 / pro_isoMax 12800 on the main and ultra-wide modules, none on the tele. MotionCam Pro
+  5.0.9 (decompiled) reads only SENSOR_INFO_SENSITIVITY_RANGE.
+- capture/ExposureRanges (test ExposureRangesTest), through CameraProperties.rangeProvider: ISO = declared ∪ vendor pro range
+  ∪ the ISO extremes the module's own AE used (kept per physical camera in prefs, scam_exposure_ranges); shutter ceiling =
+  maxFrameDuration rounded down to a stop when the declared ceiling is >= 4x below it (main 32 s, tele 25 s). The priority loop
+  and the PSL ISO use the same ranges.
+- Priority, in order: Android 16 CONTROL_AE_PRIORITY_MODE (X200 Ultra lists only [0]); the Qualcomm vendor priority as MotionCam
+  does it (disassembled: org.codeaurora.qcamera3.iso_exp_priority select_priority 0 = ISO with use_iso_exp_priority and
+  use_iso_value = ISO, 1 = exposure with use_iso_exp_priority = ns and use_iso_value 0, AE on; all 0 for auto); else the
+  software loop of P82, which works on every phone. Each HAL way falls back to the next after 15 frames off the hand-set value.
+- To check on the phone: the HAL honours ISO 72 / 12800 and shutters > 0.33 s for our package (ExposureLimits learns caps).
+
+### P88 — MotionCam's frame buffer vs our ZSL ring (owner, 2026-10-11; queued)
+- Study how MotionCam Pro buffers RAW frames (decompiled 5.0.9: GpuRawBufferManager, high-priority buffers / containers in
+  libnative-camera-host.so, NDK and Java capture backends) and whether our ZSL ring (CaptureController ring, ShotArena memfd,
+  stale-frame cutoff P77) can be improved: capacity, memory, copy cost, shutter-moment latency.
+- First read (2026-10-11, symbols of libnative-camera-host.so): every RAW is copied into the app's own buffers when it arrives
+  (RawImageConsumer::doCopyImage -> RawImageBuffer; AImageReader via onRawImageAvailable), so the camera's image goes back to
+  the HAL at once and the reader stays small; the history lives in GPU (Vulkan) memory sized to a memory budget
+  (GpuRawBufferManager::initBuffers / growInputBuffersToBudget / setTargetInputFrameBuffers / bufferSpaceUse, memory events
+  onMemoryAdjusting / onMemoryStable, clearOldBuffers); a shot takes frames from that history without another copy
+  (consumeBuffersForCapture(n), copyFramesFromZsl(n), consumeLatestBuffer, setBurstModeHistoryEnabled, createContainer into an
+  in-memory container).
+- Ours: the ring holds the camera's own Images (ImageReader maxImages, «Буфер ZSL» up to 50 HAL buffers held) and copies the
+  N frames into the ShotArena memfd after the press.
+- Idea to measure: copy-on-arrival into a preallocated memfd ring the worker maps (ShotArena as a ring), the reader down to a
+  few images: no copy after the press (shutter-to-merge latency), fewer HAL buffers held (preview stalls, HAL memory), ring
+  depth set by a memory budget. Cost: ~24 MB a 12 MP frame, 0.7 GB/s at 30 fps of memcpy (battery, heat): copy only frames the
+  shot can use (exposure-matched, every k-th) or only while the shutter button is touched. Prototype and measure on the OPPO
+  before deciding.
+
+### P89 — Gallery: black photos right after the shot (owner, 2026-10-11; done, device check pending)
+- Log: WebP Display P3 saved in 11.1 s, AVIF HLG in 36.8 s; a WebP read while it is written decodes with the missing part
+  black (BitmapFactory takes incomplete input) and was shown and cached as it was. processing/SavingFiles: PhotoOutput marks
+  each file while it writes it (encode + EXIF / ICC); the viewer page, grid, filmstrip and the binding thumbnail wait for it
+  (GalleryKeys.waitForFile, every 0.4 s, at most 3 min), then decode under the new length / mtime key.
+- Tele ISO: the stock pro range 50..3200 of the X200 Ultra tele (ExposureRanges.knownProRange, it declares 400..800) under the
+  AE widening the owner keeps; long shutter on the device still capped at 1/3 s: ExposureRanges logs declared / maxFrameDuration.
+
+### P84b — Manual long shutter: N at the hand-set shutter, no LONG frames (owner's 4 s shot, 2026-10-11)
+- Log of the 4 s shot: normal-back clamped N to the declared 0.33 s (the HAL then gave 0.5 s and 4 s frames exactly), the plan
+  added three 4 s LONG frames at ISO 144, the 16 s series ended in camera error 4 and the photo was merged from 0.33 s frames.
+- HybridPlan.manualLong: manualNormals(t) N frames (4 down to 1, the series about 8 s at most) at exactly the hand-set shutter
+  and ISO, plus the plan's Bento frames; no LONG (test HybridPlanTest). Device check pending.
+
+- P88 measurement (X200 Ultra log, 2026-10-11): the ring copy after the press is "ZSL copy 20 RAWs in 144 ms" / "11 RAWs in
+  62 ms", started after the series submit and overlapped with it (series 192-196 ms, preview->series ~300 ms): copy-on-arrival
+  would take < 0.15 s off a shot that is not waiting on it, for a continuous ~0.7 GB/s memcpy. Not implemented. What the log
+  shows instead: "38 ring RAWs not used (exposure +0.07..+0.12 EV from the newest frame)" of 49 — the ring holds ~1.1 GB of HAL
+  buffers of which a fifth matched the shot; candidates: a smaller ring, or frames kept by exposure match.
+
+### P84c — The 4 s shot's camera error: session reconfiguration; Shasta from the shutter; viewfinder at 10 fps (owner, 2026-10-11)
+- logcat of the 4 s shot: "reconfigureCamera: Can't idle device in 12.500000 seconds!" then error 4. AE_TARGET_FPS_RANGE is a
+  session key on the X200 Ultra: the series (still template's range) and the viewfinder's repeating request (its own) made the
+  service reconfigure between them, waiting for idle behind the three 4 s frames. The Hybrid series now takes the
+  viewfinder's fps range. (The same switch may be part of the ~0.7 s viewfinder gap around every shot: check PREVIEW_GAP.)
+- Owner: the series may take any time, with Bento and Shasta that help it: manualLong = 4 N at the hand-set shutter, Bento
+  always, every Shasta LONG of the plan with its ratio from a longer shutter at the same ISO (4 s -> 8 s ISO 72, not 4 s ISO
+  144), the gain only past the module's shutter ceiling (HybridPlan.manualShasta, tests).
+- Viewfinder in manual at most 1/10 s (10 fps, ParamController.PREVIEW_SHUTTER_MAX_NS, was 1/5 s); PSL from 1/10 s (the ring
+  holds viewfinder frames).
+
+### P90 — Viewfinder freeze at the shot and during processing (owner, 2026-10-11; built, device check pending)
+- Measured (X200 Ultra, PREVIEW_GAP / VF_DRAW): 718-822 ms viewfinder gap at every shot (preview->series ~300 ms, series
+  ~200 ms, series->preview ~250 ms); during processing single draws up to 167 ms.
+- ArkCam 1.05 / GCam keep the viewfinder in the requests; ours sent a RAW-only series. Now the Hybrid / SCAM series also
+  targets the viewfinder surface (scam_dev "series_viewfinder", default 1) and MainRenderer scales each series frame back to
+  the viewfinder's exposure (ViewfinderGain: sensor timestamp -> ISO x shutter recorded at onCaptureStarted, main_fs.glsl
+  uGain in linear light), so the Bento / Shasta frames do not flash. With P84c (the series takes the viewfinder's
+  AE_TARGET_FPS_RANGE, a session key on the X200 Ultra) the HAL no longer reconfigures between preview and series.
+- SurfaceTexture frame callbacks on their own HandlerThread (VfFrames, display priority) instead of the main looper; the
+  viewfinder's EGL context at high priority (EGL_IMG_context_priority, scam_dev "vf_gpu_priority"; processing contexts are low).
+
+### P91 — ZSL ring: hybrid of ours, MotionCam, ArkCam 1.05 and LMC (owner, 2026-10-11; built, device check pending)
+- Studied: MotionCam Pro 5.0.9 (every RAW copied into its own GPU buffers on arrival, depth by a memory budget,
+  consumeBuffersForCapture without a copy); ArkCam 1.05 (com.arkcam, decompiled: RAW reader min(max(2 x frames, 8), 48),
+  acquireLatestImage, each frame pushed into a native ring of max(30, 2 x frames) / 40 and its Image closed at once, live view
+  from RAW, post-shutter only 2 ultrashort frames without flush); LMC 9.6 remod (GCam: 25 ZSL + a few post-shutter frames,
+  ImageReader of 50); ours (ring of up to 50 HAL Images, reader ring + 3 = 53 HAL buffers, copy after the press into a
+  per-shot memfd, exposure tiers / stale gap / steadiest selection).
+- Built: capture/ZslRing — one memfd ring; every preview RAW copied into a free slot on arrival and its Image closed
+  (processing/RingFrame: the ring holds RingFrames, a camera Image when no memfd); depth min(setting, 40 % of available
+  memory / slot) + 16 spare slots for the shot; RAW reader down to scam_dev "zsl_reader" (default 20). Native per-slot view
+  counts (allocator.cpp arenaView / arenaSlotRefs): a slot is written again only when no view is left, so a shot's frames stay
+  pinned while the merge runs and the ring keeps cycling the other slots. A plain RAW16 ring frame goes to the worker as a
+  view of its slot (no copy after the press); packed / cropped / binned frames are converted into reserved slots of the same
+  memfd, and the post-shutter series too (also for PSL shots), so the whole burst is one arena for the worker (no transport
+  copy). The frame selection is unchanged. scam_dev "zsl_memfd_ring 0": the old ring. Tests ZslRingBudgetTest,
+  CameraResumeTest (ring frames as RingFrame).
+- To check: PREVIEW_GAP / VF_DRAW at shots and while processing, "ZSL ring in memfd" line, shot-to-shot, memory, md5 of a
+  replay is unaffected (the worker reads the same bytes).
+
+### P92 — Processing continues when the app is left (owner, 2026-10-11; built, device check pending)
+- Behind the screen the app (and its merge worker, a child process) was cached and frozen or killed. processing/
+  ProcessingKeepAlive: a foreground service (specialUse, FOREGROUND_SERVICE + FOREGROUND_SERVICE_SPECIAL_USE, a silent
+  low-priority notification «Обработка фото…», a partial wake lock of at most 10 min) started at the shutter (takePicture,
+  while the app is in front: a start from the background is refused on Android 12+), stopping itself 3 s after nothing is
+  captured, queued (sScamPending) or processed.
+
+### P85b — SGallery launcher frame 15 % smaller (owner, 2026-10-11; done)
+- drawable/sgallery_icon_scaled: the generated foreground inset 7.5 % on every side, used by ic_gallery_launcher(_round).

@@ -21,6 +21,9 @@
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" tools:ignore="HighSamplingRate" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- P92: photo processing keeps running behind the screen (a foreground service while a shot is processed) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
     <!-- Removed MANAGE_EXTERNAL_STORAGE - now using Storage Access Framework (SAF)
@@ -192,5 +195,13 @@
         <activity android:name=".ui.settings.ScamActivity"
             android:exported="false" android:process=":scam"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+        <service
+            android:name="com.particlesdevs.photoncamera.processing.ProcessingKeepAlive"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Finishing the merge and the save of a photo taken just before the app was left" />
+        </service>
     </application>
 </manifest>

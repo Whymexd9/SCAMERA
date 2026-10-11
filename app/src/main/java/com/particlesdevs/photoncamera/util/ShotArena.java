@@ -20,9 +20,30 @@ public final class ShotArena {
     private final int slots;
     private final AtomicInteger next = new AtomicInteger();
     private volatile boolean released;
+    /** P91: the slots' byte offsets in the ZSL ring's memfd (null: slot i at HEADER + i * slotBytes of an own memfd). */
+    private final long[] offsets;
+    /** P91: given the ring's slots back on release (the memfd is the ring's). */
+    private final Runnable onRelease;
 
     private ShotArena(int id, long slotBytes, long frameBytes, int slots) {
+        this(id, slotBytes, frameBytes, slots, null, null);
+    }
+
+    private ShotArena(int id, long slotBytes, long frameBytes, int slots, long[] offsets, Runnable onRelease) {
         this.id = id; this.slotBytes = slotBytes; this.frameBytes = frameBytes; this.slots = slots;
+        this.offsets = offsets; this.onRelease = onRelease;
+    }
+
+    /** P91: an arena of reserved slots of the ZSL ring's memfd (capture/ZslRing.reserve). */
+    public static ShotArena inRing(int id, long slotBytes, long frameBytes, long[] offsets, Runnable onRelease) {
+        return new ShotArena(id, slotBytes, frameBytes, offsets.length, offsets, onRelease);
+    }
+
+    /** The arena's memfd id (the ring's for a ring arena). */
+    public int id() { return id; }
+
+    private long slotOffset(int slot) {
+        return offsets != null ? offsets[slot] : HEADER + slot * slotBytes;
     }
 
     /** An arena of {@code slots} frames of up to {@code frameBytes} each, or null. */
@@ -39,7 +60,7 @@ public final class ShotArena {
         if (released || bytes <= 0 || bytes > frameBytes) return null;
         final int slot = next.getAndIncrement();
         if (slot >= slots) return null;
-        return Allocator.arenaCopy(id, HEADER + slot * slotBytes, src, srcOffset, bytes);
+        return Allocator.arenaCopy(id, slotOffset(slot), src, srcOffset, bytes);
     }
 
     /** A packed RAW10 / RAW12 frame ({@code capacity} bytes of rows {@code rowStride} apart) unpacked into the next slot; null as copy(). */
@@ -49,14 +70,15 @@ public final class ShotArena {
         if ((long) width * height * 2 > frameBytes || height < 1) return null;
         final int slot = next.getAndIncrement();
         if (slot >= slots) return null;
-        return Allocator.arenaCopyUnpack(id, HEADER + slot * slotBytes, src, srcOffset, format, width, rowStride, height);
+        return Allocator.arenaCopyUnpack(id, slotOffset(slot), src, srcOffset, format, width, rowStride, height);
     }
 
     /** No more frames for this shot (the memfd stays until its frames are freed). */
     public void release() {
         if (released) return;
         released = true;
-        Allocator.arenaRelease(id);
+        if (onRelease != null) onRelease.run(); // the ring's memfd stays; its slots are pinned by their views
+        else Allocator.arenaRelease(id);
     }
 
     @Override public String toString() { return "arena " + id + " " + slots + " x " + (slotBytes >> 20) + " MB"; }

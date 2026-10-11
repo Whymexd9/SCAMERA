@@ -223,6 +223,8 @@ public final class PhotoOutput {
                 final long start = System.nanoTime();
                 final StringBuilder how = new StringBuilder();
                 boolean ok;
+                SavingFiles.begin(file); // P89: the gallery waits for it
+                try {
                 switch (f) {
                     case HEIC:
                         ok = Build.VERSION.SDK_INT >= PhotoFormat.HEIC_MIN_SDK && (p3 || hdrGain != null
@@ -251,6 +253,9 @@ public final class PhotoOutput {
                             ok = saveJpeg(file, pixels.eightBit(last), exif, gain, last);
                         }
                         break;
+                }
+                } finally {
+                    SavingFiles.end(file);
                 }
                 Log.d(TAG, f + how.toString() + " " + (ok ? "saved" : "failed") + " in " + (System.nanoTime() - start) / 1000000 + " ms: " + file.getFileName());
                 if (ok) Log.i(TAG, "encode params " + f + ": " + encodeParams(f) + ", " + fileSize(file) + " bytes"); // P61

@@ -243,6 +243,20 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         timerFrameCountViewModel = new ViewModelProvider(this).get(TimerFrameCountViewModel.class);
         manualModeConsole = ManualInstanceProvider.getNewManualModeConsole();
+        // P87: the manual rulers' ISO / shutter range (vendor pro range, frame-duration ceiling, the AE's own ISO extremes)
+        com.particlesdevs.photoncamera.circularbarlib.camera.CameraProperties.rangeProvider =
+                new com.particlesdevs.photoncamera.circularbarlib.camera.CameraProperties.RangeProvider() {
+                    @Override
+                    public android.util.Range<Integer> iso(CameraCharacteristics c) {
+                        return com.particlesdevs.photoncamera.capture.ExposureRanges.iso(c,
+                                captureController == null ? null : captureController.physicalId());
+                    }
+
+                    @Override
+                    public android.util.Range<Long> exposure(CameraCharacteristics c) {
+                        return com.particlesdevs.photoncamera.capture.ExposureRanges.shutter(c);
+                    }
+                };
         auxButtonsViewModel = new ViewModelProvider(this).get(AuxButtonsViewModel.class);
         surfaceView = cameraFragmentBinding.layoutViewfinder.surfaceView;
         textureView = cameraFragmentBinding.layoutViewfinder.texture;

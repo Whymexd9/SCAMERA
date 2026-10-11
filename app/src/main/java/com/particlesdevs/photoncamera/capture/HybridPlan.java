@@ -179,6 +179,49 @@ public final class HybridPlan {
         return new HybridPlan(out, nShutterNs, nIso, "hybrid normal-back: " + out + " | " + extrasText);
     }
 
+    /** P84b: the N frames of a hand-set long shutter (the owner: the series may take as long as it needs). */
+    static final int MANUAL_NORMALS = 4;
+
+    /**
+     * P84b (owner, 2026-10-11: «всё равно делай брекет кадры, бенто и шаста, так чтобы они приносили пользу для серии»): the
+     * hand-set long shutter after the press (PSL). N frames at exactly {@code shutterNs} / {@code iso} (the camera honoured 0.5 and
+     * 4 s on the X200 Ultra although it declares 0.33 s, so no clamp to the declared range); Bento always (a long exposure clips
+     * where the 1/5 s viewfinder frame did not, so the ring's clipping says nothing); every Shasta LONG frame of the plan. The
+     * series takes as long as it needs (owner); the 4 s shot's camera error was the session reconfiguration (P84c), not its length.
+     */
+    public static HybridPlan manualLong(long shutterNs, int iso, float clipFraction, CameraCharacteristics characteristics,
+                                        ExposureLimits limits) {
+        List<Request> bento = new ArrayList<>(), longs = new ArrayList<>();
+        String extrasText;
+        try {
+            HybridPlan extras = build(shutterNs, iso, Math.max(clipFraction, 1f), characteristics, limits);
+            for (Request r : extras.requests) {
+                if (r.role == ImageFrame.CaptureRole.LONG) longs.add(r);
+                else if (r.role != ImageFrame.CaptureRole.NORMAL) bento.add(r);
+            }
+            extrasText = extras.description;
+        } catch (RuntimeException e) {
+            extrasText = "no Bento / Shasta (" + e.getMessage() + ")";
+        }
+        final int normals = MANUAL_NORMALS;
+        List<Request> out = new ArrayList<>();
+        for (int i = 0; i < normals; i++) out.add(new Request(ImageFrame.CaptureRole.NORMAL, shutterNs, iso, 1.0));
+        out.addAll(bento);
+        // Shasta: the plan's brightness ratio from a longer shutter at the same ISO (more light, the point of the frame), the
+        // gain only for what the module's shutter ceiling cannot give; the declared 0.33 s of the X200 Ultra had made it ISO x2
+        final long ceiling = characteristics == null ? shutterNs : Math.max(shutterNs, ExposureRanges.shutter(characteristics).getUpper());
+        final int isoMax = characteristics == null ? iso : Math.max(iso, ExposureRanges.iso(characteristics, null).getUpper());
+        for (Request r : longs) out.add(manualShasta(shutterNs, iso, r.ratio, ceiling, isoMax));
+        return new HybridPlan(out, shutterNs, iso, "hybrid manual long shutter: " + out + " | " + extrasText);
+    }
+
+    /** P84b: a Shasta frame {@code ratio} times N: the shutter first (up to {@code ceilingNs}), then the gain (up to {@code isoMax}). */
+    static Request manualShasta(long shutterNs, int iso, double ratio, long ceilingNs, int isoMax) {
+        final long ns = Math.max(shutterNs, Math.min(ceilingNs, Math.round(shutterNs * ratio)));
+        final int gain = (int) Math.max(iso, Math.min(isoMax, Math.round(iso * ratio * shutterNs / ns)));
+        return new Request(ImageFrame.CaptureRole.LONG, ns, gain, (double) ns * gain / ((double) shutterNs * iso));
+    }
+
     private static Range<Long> capped(Range<Long> r, long cap) {
         if (r == null || cap >= r.getUpper()) return r;
         return new Range<>(r.getLower(), Math.max(r.getLower(), cap));

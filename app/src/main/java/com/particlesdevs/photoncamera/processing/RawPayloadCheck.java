@@ -54,9 +54,13 @@ public final class RawPayloadCheck {
     private static final Result UNCHECKED = new Result(null, 0, 0, false);
 
     public static Result check(Image image, int whiteLevel) {
+        return image == null ? UNCHECKED : check(RingFrame.of(image), whiteLevel);
+    }
+
+    /** P91: the check on a ZSL ring frame (the camera's Image or its copy in the ring's memfd). */
+    public static Result check(RingFrame image, int whiteLevel) {
         if (image == null || image.getFormat() != ImageFormat.RAW_SENSOR) return UNCHECKED;
-        Image.Plane plane = image.getPlanes()[0];
-        return check(plane.getBuffer(), image.getWidth(), image.getHeight(), plane.getRowStride(), whiteLevel);
+        return check(image.buffer(), image.getWidth(), image.getHeight(), image.rowStride(), whiteLevel);
     }
 
     /** The check on a little-endian RAW16 buffer as the reader delivers it (rows {@code rowStride} bytes apart). */
@@ -238,23 +242,26 @@ public final class RawPayloadCheck {
      * payload ends) go to Download/SCAMERA/raw-payload-*.zip with its metadata, so the layout can be read from real bytes.
      */
     public static void dumpOnce(Image image, Result result, String cameraId) {
+        if (image != null) dumpOnce(RingFrame.of(image), result, cameraId);
+    }
+
+    public static void dumpOnce(RingFrame image, Result result, String cameraId) {
         if (image == null || result == null || result.plain()) return;
         // A packed RAW10 payload whose stride is read from the data is understood and unpacked (Xiaomi 17 Ultra tele): no zip
         // in Download/SCAMERA on every start for it.
-        if (result.isPacked10() && packedStride(image.getPlanes()[0].getBuffer(), image.getWidth(), image.getHeight()) > 0) return;
+        if (result.isPacked10() && packedStride(image.buffer(), image.getWidth(), image.getHeight()) > 0) return;
         // P72: a packed RAW14 payload that decodes plausibly is understood too (no zip)
-        if (packedLayout(image.getPlanes()[0].getBuffer(), image.getWidth(), image.getHeight(), 64, 1023) != null) return;
+        if (packedLayout(image.buffer(), image.getWidth(), image.getHeight(), 64, 1023) != null) return;
         if (!sDumped.add(String.valueOf(cameraId))) return;
         try {
-            Image.Plane plane = image.getPlanes()[0];
-            ByteBuffer src = plane.getBuffer().duplicate();
+            ByteBuffer src = image.buffer().duplicate();
             src.position(0);
             int capacity = src.capacity();
             String meta = String.format(Locale.ROOT,
                     "camera=%s device=%s format=%d size=%dx%d rowStride=%d pixelStride=%d capacity=%d timestamp=%d%n%s%n"
                             + "head.bin=[0,%d) mid58.bin starts at %d, mid34.bin starts at %d%n",
                     cameraId, android.os.Build.DEVICE, image.getFormat(), image.getWidth(), image.getHeight(),
-                    plane.getRowStride(), plane.getPixelStride(), capacity, image.getTimestamp(), result.error,
+                    image.rowStride(), image.pixelStride(), capacity, image.getTimestamp(), result.error,
                     Math.min(capacity, 256 << 10), Math.max(0, capacity / 8 * 5 - (32 << 10)), Math.max(0, capacity / 4 * 3 - (32 << 10)));
             byte[] head = slice(src, 0, 256 << 10), mid58 = slice(src, capacity / 8 * 5 - (32 << 10), 64 << 10),
                     mid34 = slice(src, capacity / 4 * 3 - (32 << 10), 64 << 10);

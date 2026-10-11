@@ -7,7 +7,6 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -32,8 +31,8 @@ public final class HeifColourPatch {
 
     /** Patches {@code file} in place (through a temporary file). False when nothing was changed. */
     public static boolean patch(Path file, byte[] icc, int nclxPrimaries) throws IOException {
-        final Path tmp = file.resolveSibling(file.getFileName() + ".colr.tmp");
-        boolean written = false;
+        // P81: the scratch copy in the app's cache, written back in place (DCIM refuses a ".colr.tmp" next to the photo)
+        final Path tmp = com.particlesdevs.photoncamera.processing.color.IccEmbed.scratchFor(file);
         try (FileChannel in = FileChannel.open(file, StandardOpenOption.READ)) {
             final long size = in.size();
             long metaStart = -1, metaSize = 0;
@@ -59,19 +58,25 @@ public final class HeifColourPatch {
             final ByteBuffer mb = ByteBuffer.wrap(meta);
             while (mb.hasRemaining()) if (in.read(mb, metaStart + mb.position()) < 0) throw new IOException("truncated meta");
             final byte[] patched = patchMeta(meta, metaStart, icc, nclxPrimaries, moov && metaStart + metaSize < size);
-            if (patched == null) return false;
-            try (FileChannel out = FileChannel.open(tmp, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            if (patched == null) {
+                Files.deleteIfExists(tmp);
+                return false;
+            }
+            try (FileChannel out = FileChannel.open(tmp, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
                 for (long p = 0; p < metaStart; ) p += in.transferTo(p, metaStart - p, out);
                 final ByteBuffer m = ByteBuffer.wrap(patched);
                 while (m.hasRemaining()) out.write(m);
                 for (long p = metaStart + metaSize; p < size; ) p += in.transferTo(p, size - p, out);
-                out.force(false);
             }
-            written = true;
-        } finally {
-            if (!written) Files.deleteIfExists(tmp);
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
         }
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        try {
+            com.particlesdevs.photoncamera.processing.color.IccEmbed.copyBack(tmp, file);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
         return true;
     }
 

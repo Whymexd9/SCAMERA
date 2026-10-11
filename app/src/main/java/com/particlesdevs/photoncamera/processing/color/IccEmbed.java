@@ -9,7 +9,6 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 
@@ -190,17 +189,38 @@ public final class IccEmbed {
      * chunks copied without loading them. {@code width} / {@code height}: the canvas, for a simple file that needs a VP8X.
      */
     public static void addToWebp(Path file, byte[] icc, int width, int height) throws IOException {
-        final Path tmp = file.resolveSibling(file.getFileName() + ".icc.tmp");
-        boolean done = false;
-        try (FileChannel in = FileChannel.open(file, StandardOpenOption.READ);
-             FileChannel out = FileChannel.open(tmp, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            webp(in, out, icc, width, height);
-            out.force(false);
-            done = true;
+        final Path tmp = scratchFor(file);
+        try {
+            try (FileChannel in = FileChannel.open(file, StandardOpenOption.READ);
+                 FileChannel out = FileChannel.open(tmp, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                webp(in, out, icc, width, height);
+            }
+            copyBack(tmp, file);
         } finally {
-            if (!done) Files.deleteIfExists(tmp);
+            Files.deleteIfExists(tmp);
         }
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * P81: the scratch file of an in-place rewrite of {@code file}, in the app's cache (java.io.tmpdir). Not next to the
+     * photo: in DCIM the media storage refuses a file whose extension is not an image's ("….webp.icc.tmp: Operation not
+     * permitted" on the X200 Ultra, so the WebP stayed sRGB-tagged).
+     */
+    public static Path scratchFor(Path file) throws IOException {
+        return Files.createTempFile("rewrite-", "-" + file.getFileName());
+    }
+
+    /**
+     * P81: writes {@code from} over {@code file} in place (same file, so its MediaStore row and content URI stay: a rename
+     * over it would give the gallery a new row) and syncs it.
+     */
+    public static void copyBack(Path from, Path file) throws IOException {
+        try (FileChannel in = FileChannel.open(from, StandardOpenOption.READ);
+             FileChannel out = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            final long size = in.size();
+            for (long p = 0; p < size; ) p += in.transferTo(p, size - p, out);
+            out.force(false);
+        }
     }
 
     /** {@link #addToWebp} on bytes (tests, checks). */

@@ -183,4 +183,28 @@ public class HybridPlanTest {
         assertEquals(1, HybridPlan.single(0, 0).requests.size());
         assertFalse(HybridPlan.single(10_000_000L, 100).requests.get(0).autoExposure);
     }
+
+    /** P84b (owner's 4 s shot, X200 Ultra 2026-10-11: N had been clamped to the declared 0.33 s). */
+    @Test public void manualLongShutterKeepsItsShutter() {
+        HybridPlan plan = HybridPlan.manualLong(4_000_000_000L, 72, 0f, null, null);
+        assertEquals(HybridPlan.MANUAL_NORMALS, plan.requests.size()); // no characteristics: no Bento / Shasta either
+        for (HybridPlan.Request r : plan.requests) {
+            assertEquals(ImageFrame.CaptureRole.NORMAL, r.role);
+            assertEquals(4_000_000_000L, r.shutterNs);
+            assertEquals(72, r.iso);
+        }
+    }
+
+    /** P84b: a Shasta frame of a long hand-set shutter takes its light from the shutter, the gain only past the ceiling. */
+    @Test public void manualShastaTakesALongerShutterFirst() {
+        HybridPlan.Request r = HybridPlan.manualShasta(4_000_000_000L, 72, 2.0, 32_000_000_000L, 12800);
+        assertEquals(8_000_000_000L, r.shutterNs);
+        assertEquals(72, r.iso);
+        assertEquals(2.0, r.ratio, 1e-9);
+        // 20 s x2 at a 32 s ceiling: 32 s, ISO 90 (x2.0)
+        r = HybridPlan.manualShasta(20_000_000_000L, 72, 2.0, 32_000_000_000L, 12800);
+        assertEquals(32_000_000_000L, r.shutterNs);
+        assertEquals(90, r.iso);
+        assertEquals(ImageFrame.CaptureRole.LONG, r.role);
+    }
 }

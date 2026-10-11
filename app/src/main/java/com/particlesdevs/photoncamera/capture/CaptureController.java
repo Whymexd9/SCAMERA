@@ -87,6 +87,7 @@ import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
 import com.particlesdevs.photoncamera.processing.parameters.ResolutionSolution;
 import com.particlesdevs.photoncamera.processing.LiveRawFrame;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
+import com.particlesdevs.photoncamera.processing.RingFrame;
 import com.particlesdevs.photoncamera.settings.SensorConfigInjector;
 import com.particlesdevs.photoncamera.settings.annotations.SensorConfig;
 import com.particlesdevs.photoncamera.ui.camera.CameraFragment;
@@ -323,7 +324,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public CaptureResult takeRawMetadata(long timestamp) { return rawMetadata.remove(timestamp); }
 
 
-    private final ArrayDeque<Image> mZslRingBuffer = new ArrayDeque<>();
+    private final ArrayDeque<RingFrame> mZslRingBuffer = new ArrayDeque<>();
+    /** P91: the ring's memfd (null: the camera's own Images are held, as before or when no memfd is available). */
+    private ZslRing mZslRing;
     private final Object mZslBufferLock = new Object();
     private final java.util.LinkedHashMap<Long, TotalCaptureResult> mHexZslResults = new java.util.LinkedHashMap<>();
     private volatile boolean mZslCapturing = false;
@@ -472,10 +475,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 observeMosaic(img);
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
-                    mZslRingBuffer.addLast(img);
-                    int maxFrames = zslRingCapacity();
+                    mZslRingBuffer.addLast(ringFrameLocked(img));
+                    int maxFrames = ringCapacityLocked();
                     while (mZslRingBuffer.size() > maxFrames) {
-                        Image old = mZslRingBuffer.pollFirst();
+                        RingFrame old = mZslRingBuffer.pollFirst();
                         if (old != null) old.close();
                     }
                 }
@@ -717,6 +720,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P27: the AE restore frame after a shot is a manual request at N: it re-checks the learned limits.
                 final ExposureLimits limits = mExposureLimits;
                 if (limits != null) limits.observeManual(request, result);
+                paramController.onPreviewResult(result); // P82 shutter / ISO priority
+                // P87: the ISO extremes the camera's own AE uses (the manual rulers' range)
+                if (iso != null) {
+                    Integer aeMode = request.get(CaptureRequest.CONTROL_AE_MODE);
+                    if (aeMode != null && aeMode != CaptureRequest.CONTROL_AE_MODE_OFF)
+                        ExposureRanges.observeAutoIso(physicalID, (int) iso);
+                }
                 if (focus != null) mFocus = (float) focus;
                 if (mTemp != null) mPreviewTemp = mTemp;
                 if (mPreviewTemp == null) {
@@ -1271,6 +1281,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         this.processExecutor = processExecutor;
         this.paramController = new ParamController(this);
+        // P92: the processing foreground service runs while a shot is captured, queued or merged
+        com.particlesdevs.photoncamera.processing.ProcessingKeepAlive.busy = () -> sScamPending.get() > 0 || nextShotPending() || isProcessing;
 
         this.fillInCameraCharacteristics();
     }
@@ -1559,6 +1571,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public void closeCamera() {
         rescueInFlightShot("camera closed");
+        releaseZslRing();
         mStabTrace.stop();
         mPreviewSessionStartMs = 0;
         if (mBackgroundHandler != null) mBackgroundHandler.removeCallbacks(mStallCheck);
@@ -2157,6 +2170,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private String physicalID = "";
+
+    /** P87: the physical camera the session's RAW and characteristics come from (the manual rulers' range is kept per camera). */
+    public String physicalId() {
+        return physicalID;
+    }
     private String logicalID = "";
 
     /**
@@ -2327,7 +2345,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // The ring buffer can hold up to zslRingCapacity() frames, and the
             // reader has to have room for all of them plus the in-flight ones,
             // otherwise acquireNextImage starves once the ring is full.
-            maxjpg = Math.min(zslRingCapacity() + 3, 103);
+            // P91: with the ring in the app's memfd the reader only passes frames through (copied on arrival) and holds the
+            // post-shutter series: scam_dev "zsl_reader" (default 20; LMC keeps 50, ArkCam 1.05 min(max(2 x frames, 8), 48))
+            maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true)
+                    ? Math.max(8, Math.min(Math.min(zslRingCapacity() + 3, 103), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
+                    : Math.min(zslRingCapacity() + 3, 103);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         // Diagnostics: the vivo X200 Pro's 4096x3072 RAW holds its image in 4000x3000 (zeros elsewhere, black stripe at the edge);
         // whether the arrays say so decides how a crop to the valid area can be done.
@@ -2869,7 +2891,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         synchronized (mZslBufferLock) {
             mHexZslResults.clear();
             while (!mZslRingBuffer.isEmpty()) {
-                Image img = mZslRingBuffer.pollFirst();
+                RingFrame img = mZslRingBuffer.pollFirst();
                 if (img != null) img.close();
             }
         }
@@ -2921,6 +2943,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public boolean takePicture() {
+        // P92: the shot survives the app going behind the screen (started here, while the app is in front)
+        com.particlesdevs.photoncamera.processing.ProcessingKeepAlive.hold(PhotonCamera.getAppContext());
         synchronized (mPreviewStateLock) {
             Log.i(TAG, "SHUTTER camera=" + physicalID + " state=" + mState
                     + " processing=" + isProcessing + " zsl=" + mZslCapturing
@@ -3289,9 +3313,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         int run = 0;
         synchronized (mZslBufferLock) {
             Long exposure = null; Integer iso = null;
-            java.util.Iterator<Image> it = mZslRingBuffer.descendingIterator();
+            java.util.Iterator<RingFrame> it = mZslRingBuffer.descendingIterator();
             while (it.hasNext()) {
-                Image image = it.next();
+                RingFrame image = it.next();
                 if (image.getTimestamp() <= mScamTailTimestamp) break;
                 TotalCaptureResult result = mHexZslResults.get(image.getTimestamp());
                 if (result == null) { if (run == 0) continue; else break; }
@@ -3648,10 +3672,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             if (isZslMode() && passModeBarrier(img, result)) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
-                mZslRingBuffer.addLast(img);
+                mZslRingBuffer.addLast(ringFrameLocked(img)); // P91: copied into the ring's memfd (img closed) or held as it is
                 retained = true;
-                while (mZslRingBuffer.size() > zslRingCapacity()) {
-                    Image old = mZslRingBuffer.pollFirst();
+                while (mZslRingBuffer.size() > ringCapacityLocked()) {
+                    RingFrame old = mZslRingBuffer.pollFirst();
                     if (old != null) old.close();
                 }
             }
@@ -3862,6 +3886,59 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /**
+     * P91: the frame for the ring. With «zsl_memfd_ring» (scam_dev, default on) the camera's RAW is copied into the ring's
+     * memfd and its Image goes back at once (ArkCam 1.05 / MotionCam: the reader holds a few buffers, not the whole ring); the
+     * oldest ring frame makes room when every slot is taken. Without a memfd the Image itself is held, as before.
+     */
+    private RingFrame ringFrameLocked(Image img) {
+        if (mZslRingUnavailable || !PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true)) return RingFrame.of(img);
+        final long need = Math.max(img.getPlanes()[0].getBuffer().capacity(), (long) img.getWidth() * img.getHeight() * 2);
+        if (mZslRing == null || mZslRing.slotBytes() < need) {
+            if (mZslRing != null) {
+                // a larger stream (another lens / mode): the ring's frames go, then the ring
+                while (!mZslRingBuffer.isEmpty()) mZslRingBuffer.pollFirst().close();
+                mZslRing.close();
+            }
+            mZslRing = ZslRing.create(PhotonCamera.getAppContext(), zslRingCapacity(), need);
+            if (mZslRing == null) { mZslRingUnavailable = true; return RingFrame.of(img); }
+        }
+        RingFrame f = mZslRing.store(img);
+        while (f == null && !mZslRingBuffer.isEmpty()) {
+            mZslRingBuffer.pollFirst().close();
+            f = mZslRing.store(img);
+        }
+        return f != null ? f : RingFrame.of(img);
+    }
+
+    private boolean mZslRingUnavailable;
+
+    /** The frames the ring keeps: the setting, within the memfd's slots. */
+    private int ringCapacityLocked() {
+        return mZslRing != null ? Math.min(zslRingCapacity(), mZslRing.ringSlots()) : zslRingCapacity();
+    }
+
+    /** P91: the ring's memfd goes (camera closed); frames a shot still holds keep it until they are freed. */
+    private void releaseZslRing() {
+        synchronized (mZslBufferLock) {
+            while (!mZslRingBuffer.isEmpty()) mZslRingBuffer.pollFirst().close();
+            if (mZslRing != null) mZslRing.close();
+            mZslRing = null;
+            mZslRingUnavailable = false;
+        }
+    }
+
+    /**
+     * P91: the shot's own frames (converted ring frames, the post-shutter series) in free slots of the ring's memfd, so the
+     * whole burst is one arena for the worker; a separate arena when the ring has none.
+     */
+    private com.particlesdevs.photoncamera.util.ShotArena shotArena(int frames, long frameBytes) {
+        ZslRing ring;
+        synchronized (mZslBufferLock) { ring = mZslRing; }
+        com.particlesdevs.photoncamera.util.ShotArena a = ring != null ? ring.reserve(frames, frameBytes) : null;
+        return a != null ? a : com.particlesdevs.photoncamera.util.ShotArena.create(frames, frameBytes);
+    }
+
     public static int zslRingCapacity() {
         // One global, user-adjustable capacity. Capture counts never resize the ring.
         return PreferenceKeys.getZslBufferCountValue();
@@ -3906,6 +3983,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * (the Hybrid then lets the camera's AE expose its frames).
      */
     private ScamStockAe.Plan hybridNPlan() {
+        return hybridNPlan(false);
+    }
+
+    private ScamStockAe.Plan hybridNPlan(boolean manualPsl) {
+        // P84: a hand-set shutter longer than 1/8 s: N at that shutter, exposed after the shutter (PSL)
+        final long pslNs=manualPsl?paramController.pslShutterNs():0;
+        if(pslNs>0) {
+            final int pslIso=paramController.pslIso(pslNs);
+            mLastZslClipFraction=0;
+            Log.i("SCAM_CAPTURE","bracket=HYBRID N="+pslNs+"ns ISO"+pslIso+" from=manual_psl (shutter longer than the viewfinder's 1/10 s)");
+            return ScamStockAe.Plan.nOnly(pslNs,pslIso,scamZslShutterTimestamp,mSessionGeneration.get());
+        }
         CaptureResult n;String source="zsl_cutoff";
         synchronized (mZslBufferLock) {
             n=mHexZslResults.get(scamZslShutterTimestamp);
@@ -3935,12 +4024,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private float zslClipFraction() {
         // The newest ring frame whose RAW is plain 16-bit: a packed payload reads as ~62 % clipped (X100 Ultra) and planned
         // the bracket from garbage. None plain: no clipping is assumed (the shot then takes N after the shutter).
-        Image newest = null;
+        RingFrame newest = null;
         com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packed = null;
         synchronized (mZslBufferLock) {
             int looked = 0;
-            for (java.util.Iterator<Image> it = mZslRingBuffer.descendingIterator(); it.hasNext() && looked < 4; looked++) {
-                Image candidate = it.next();
+            for (java.util.Iterator<RingFrame> it = mZslRingBuffer.descendingIterator(); it.hasNext() && looked < 4; looked++) {
+                RingFrame candidate = it.next();
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload = com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(
                         candidate, rawPayloadWhite(mHexZslResults.get(candidate.getTimestamp())));
                 if (payload.plain()) { newest = candidate; break; }
@@ -3957,12 +4046,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         try {
             Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
             int limit = (int) ((white == null ? 1023 : white) * 0.95f);
-            Image.Plane plane = newest.getPlanes()[0];
             if (packed != null) {
                 // MIPI RAW10 / RAW14: bytes 0..3 of each 5- / 7-byte group are the high 8 bits of four samples (RAW14 read >> 4:
                 // its high byte is the 10-bit value >> 2 as RAW10's)
                 final int group = com.particlesdevs.photoncamera.util.RawUnpack.isRaw14(packed.format) ? 7 : 5;
-                java.nio.ByteBuffer bytes = plane.getBuffer().duplicate();
+                java.nio.ByteBuffer bytes = newest.buffer().duplicate();
                 int w = newest.getWidth(), h = newest.getHeight();
                 int limitHigh = packed.format == com.particlesdevs.photoncamera.util.RawUnpack.RAW14 ? limit >> 6 : limit >> 2;
                 long clipped = 0, total = 0;
@@ -3977,8 +4065,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 return total == 0 ? 0f : (float) clipped / total;
             }
-            java.nio.ShortBuffer data = plane.getBuffer().duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
-            int stride = plane.getRowStride() / 2, w = newest.getWidth(), h = newest.getHeight();
+            java.nio.ShortBuffer data = newest.buffer().duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+            int stride = newest.rowStride() / 2, w = newest.getWidth(), h = newest.getHeight();
             long clipped = 0, total = 0;
             // Bulk row reads: per-sample get() on the direct view cost ~10 ms per press.
             short[] row = new short[w];
@@ -4015,12 +4103,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Ring RAWs whose payload is not plain 16-bit (RawPayloadCheck) leave the burst before anything reads them. With fewer than
      * four left the existing normal-back path takes N after the shutter (those frames were plain on the X100 Ultra).
      */
-    private void dropNonPlainRaw(List<Image> images, java.util.Map<Long, TotalCaptureResult> results) {
+    private void dropNonPlainRaw(List<RingFrame> images, java.util.Map<Long, TotalCaptureResult> results) {
         mZslPackedStride.clear();
         int dropped = 0, packed = 0;
         String first = null, packedFirst = null;
-        for (java.util.Iterator<Image> it = images.iterator(); it.hasNext();) {
-            Image image = it.next();
+        for (java.util.Iterator<RingFrame> it = images.iterator(); it.hasNext();) {
+            RingFrame image = it.next();
             com.particlesdevs.photoncamera.processing.RawPayloadCheck.Result payload =
                     com.particlesdevs.photoncamera.processing.RawPayloadCheck.check(image, rawPayloadWhite(results.get(image.getTimestamp())));
             if (payload.plain()) continue;
@@ -4049,8 +4137,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /** P72: the packed layout behind a RAW_SENSOR image of this camera (RAW10 / RAW14), or null. */
     private com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packedLayout(Image image) {
+        return packedLayout(RingFrame.of(image));
+    }
+
+    private com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packedLayout(RingFrame image) {
         CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
-        return com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedLayout(image.getPlanes()[0].getBuffer(),
+        return com.particlesdevs.photoncamera.processing.RawPayloadCheck.packedLayout(image.buffer(),
                 image.getWidth(), image.getHeight(),
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.blackLevel(c == null ? mCameraCharacteristics : c),
                 rawPayloadWhite(null));
@@ -4072,7 +4164,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Ultra 2026-10-06: 3 of 15 ring frames matched, the shot fell into SCAM HDR's strict normal-back and was lost).
      */
     private List<ImageFrame> drainZslNormalFrames(int requestedCount,ScamStockAe.Plan stockPlan,boolean defer,boolean hybrid) {
-        List<Image> rawImages;
+        List<RingFrame> rawImages;
         java.util.Map<Long,TotalCaptureResult> selectedMetadata;
         synchronized (mZslBufferLock) {
             rawImages = new ArrayList<>(mZslRingBuffer);
@@ -4088,8 +4180,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // pairs BEFORE taking the newest N images, so older complete ZSL
             // frames can fill the burst without guessing another frame's ISO.
             boolean firstMismatch=true;
-            for (java.util.Iterator<Image> it = rawImages.iterator(); it.hasNext();) {
-                Image image = it.next();
+            for (java.util.Iterator<RingFrame> it = rawImages.iterator(); it.hasNext();) {
+                RingFrame image = it.next();
                 TotalCaptureResult result = selectedMetadata.get(image.getTimestamp());
                 Long exposure = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
@@ -4113,12 +4205,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // planned N exposure is not what the preview stream ran at
                 // (low light: longer N than preview), the stock takes N after
                 // the shutter. The caller submits all seven planned requests.
-                for(Image image:rawImages)image.close();
+                for(RingFrame image:rawImages)image.close();
                 Log.i("SCAM_HDR","normalBack: no four buffered RAWs at planned N; N captured after shutter");
                 return new ArrayList<>();
             }
         }
-        rawImages.sort(java.util.Comparator.comparingLong(Image::getTimestamp));
+        rawImages.sort(java.util.Comparator.comparingLong(RingFrame::getTimestamp));
         int take = Math.min(rawImages.size(), Math.max(0, requestedCount));
         int skip = rawImages.size() - take;
         for (int i = 0; i < skip; i++) rawImages.get(i).close();
@@ -4140,14 +4232,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         double exposureProduct = exposureSeconds * isoValue;
         List<ImageFrame> selected = new ArrayList<>();
         for (int i = skip; i < rawImages.size(); i++) {
-            Image img = rawImages.get(i);
+            RingFrame img = rawImages.get(i);
             int format = img.getFormat();
-            int rowStride = img.getPlanes()[0].getRowStride();
-            int pixelStride = img.getPlanes()[0].getPixelStride();
+            int rowStride = img.rowStride();
+            int pixelStride = img.pixelStride();
             int width = com.particlesdevs.photoncamera.util.Allocator.isPackedRaw(format) ? img.getWidth()
                     : (pixelStride > 0 ? rowStride / pixelStride : img.getWidth());
             int height = img.getHeight();
-            int capacity = img.getPlanes()[0].getBuffer().capacity();
+            int capacity = img.buffer().capacity();
             com.particlesdevs.photoncamera.processing.RawPayloadCheck.Layout packedLayout = mZslPackedStride.get(img.getTimestamp());
             if (packedLayout != null) {
                 format = packedLayout.format;
@@ -4169,7 +4261,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // submitted, in parallel with its exposure (startZslCopy).
             ImageFrame frame = defer
                     ? ImageFrame.deferred(img, format, width, rowStride, offset, capacity)
-                    : new ImageFrame(img.getPlanes()[0].getBuffer(), format, width, rowStride, offset, capacity);
+                    : new ImageFrame(img.buffer(), format, width, rowStride, offset, capacity);
             frame.timestamp = img.getTimestamp();frame.fromZsl=true;frame.sourceFormat=format;
             frame.setCaptureMetadata(selectedMetadata.get(frame.timestamp));
             frame.width = PhotonCamera.getSettings().binning ? width / 2 : width;
@@ -4187,14 +4279,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * takes the steadiest of the newest 2 x requested ring frames at the exposure instead of simply the newest; the newest frame
      * stays (the shutter moment). Reorders {@code exact} (newest first) so that its first {@code requested} frames are the kept ones.
      */
-    private void steadiestFirst(List<Image> exact, java.util.Map<Long,TotalCaptureResult> metadata, int requested) {
+    private void steadiestFirst(List<RingFrame> exact, java.util.Map<Long,TotalCaptureResult> metadata, int requested) {
         if (requested < 2 || exact.size() <= requested || isOisSupported(mCameraCharacteristics)) return;
         if (!PreferenceKeys.scamDevSwitch("zsl_steadiest", true)) return;
         final boolean comparable = isGyroClockComparable();
         float[] all = new float[Math.min(exact.size(), 2 * requested)];
         int pool = 0; // the newest frames with gyro samples (the gyro ring holds ~2 s)
         for (; pool < all.length; pool++) {
-            Image image = exact.get(pool);
+            RingFrame image = exact.get(pool);
             CaptureResult r = metadata.get(image.getTimestamp());
             Long exposure = r != null ? r.get(CaptureResult.SENSOR_EXPOSURE_TIME) : null;
             all[pool] = exposure != null ? PhotonCamera.getGyro().zslShake(image.getTimestamp(), exposure, comparable) : Float.NaN;
@@ -4203,7 +4295,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (pool <= requested) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: gyro samples for " + pool + " ring frames only, newest kept"); return; }
         int[] order = steadiestOrder(java.util.Arrays.copyOf(all, pool));
         if (order == null) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: no gyro samples, newest frames kept"); return; }
-        List<Image> head = new ArrayList<>(exact.subList(0, pool));
+        List<RingFrame> head = new ArrayList<>(exact.subList(0, pool));
         for (int i = 0; i < pool; i++) exact.set(i, head.get(order[i]));
         StringBuilder l = new StringBuilder("hybrid ZSL steadiest (no OIS): ").append(requested).append(" of the newest ").append(pool)
                 .append(", ring positions");
@@ -4231,25 +4323,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /** P27: the Hybrid's ring selection (see drainZslNormalFrames); closes the frames it does not keep. */
-    private void selectHybridRing(List<Image> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
-        Image base = null;
-        for (Image image : rawImages) if (base == null || image.getTimestamp() > base.getTimestamp()) base = image;
+    private void selectHybridRing(List<RingFrame> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
+        RingFrame base = null;
+        for (RingFrame image : rawImages) if (base == null || image.getTimestamp() > base.getTimestamp()) base = image;
         final double ref = product(metadata.get(base.getTimestamp()));
-        List<Image> exact = new ArrayList<>(), darker = new ArrayList<>(), rest = new ArrayList<>();
-        for (Image image : rawImages) {
+        List<RingFrame> exact = new ArrayList<>(), darker = new ArrayList<>(), rest = new ArrayList<>();
+        for (RingFrame image : rawImages) {
             double ev = Math.log(product(metadata.get(image.getTimestamp())) / ref) / Math.log(2);
             if (Math.abs(ev) <= 0.05) exact.add(image);
             else if (ev >= -0.5 && ev < 0) darker.add(image);
             else rest.add(image);
         }
-        exact.sort(java.util.Comparator.comparingLong(Image::getTimestamp).reversed());
+        exact.sort(java.util.Comparator.comparingLong(RingFrame::getTimestamp).reversed());
         // P77: frames of the same exposure behind a gap of the ring (the AE went away and came back) show another moment of the
         // scene: everything that moved since then ghosts (Redmi Note 11 Pro: 4 of 12 frames 3.6 s older than the other 8).
         int stale = 0;
         final long maxGap = ringMaxGapNs(metadata.get(base.getTimestamp()));
         for (int i = 1; i < exact.size(); i++) {
             if (exact.get(i - 1).getTimestamp() - exact.get(i).getTimestamp() > maxGap) {
-                List<Image> old = exact.subList(i, exact.size());
+                List<RingFrame> old = exact.subList(i, exact.size());
                 stale = old.size();
                 rest.addAll(old);
                 old.clear();
@@ -4258,21 +4350,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (stale > 0) {
             final long oldest = exact.get(exact.size() - 1).getTimestamp() - maxGap;
-            for (java.util.Iterator<Image> it = darker.iterator(); it.hasNext(); ) {
-                Image image = it.next();
+            for (java.util.Iterator<RingFrame> it = darker.iterator(); it.hasNext(); ) {
+                RingFrame image = it.next();
                 if (image.getTimestamp() < oldest) { rest.add(image); it.remove(); }
             }
             Log.w("SCAM_HDR", "hybrid ZSL: " + stale + " frames at the newest exposure dropped: older than a gap of more than "
                     + maxGap / 1_000_000 + " ms in the ring");
         }
         steadiestFirst(exact, metadata, requestedCount);
-        List<Image> keep = new ArrayList<>(exact.subList(0, Math.min(exact.size(), Math.max(1, requestedCount))));
-        for (Image image : exact.subList(keep.size(), exact.size())) rest.add(image);
+        List<RingFrame> keep = new ArrayList<>(exact.subList(0, Math.min(exact.size(), Math.max(1, requestedCount))));
+        for (RingFrame image : exact.subList(keep.size(), exact.size())) rest.add(image);
         final int fill = Math.min(Math.max(1, requestedCount), 8);
         int widened = 0;
         if (keep.size() < fill) {
             darker.sort(java.util.Comparator.comparingDouble(image -> -product(metadata.get(image.getTimestamp()))));
-            for (Image image : darker) {
+            for (RingFrame image : darker) {
                 if (keep.size() < fill) { keep.add(image); widened++; } else rest.add(image);
             }
         } else rest.addAll(darker);
@@ -4285,7 +4377,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (!rest.isEmpty()) {
             double evMin = Double.POSITIVE_INFINITY, evMax = Double.NEGATIVE_INFINITY;
             long oldest = Long.MAX_VALUE, newestUnused = Long.MIN_VALUE;
-            for (Image image : rest) {
+            for (RingFrame image : rest) {
                 final double ev = Math.log(product(metadata.get(image.getTimestamp())) / ref) / Math.log(2);
                 if (ev < evMin) evMin = ev;
                 if (ev > evMax) evMax = ev;
@@ -4296,7 +4388,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + String.format(java.util.Locale.ROOT, "%+.2f..%+.2f EV", evMin, evMax) + " from the newest frame, timestamps "
                     + oldest + ".." + newestUnused + ")");
         }
-        for (Image image : rest) image.close();
+        for (RingFrame image : rest) image.close();
         rawImages.clear();
         rawImages.addAll(keep);
     }
@@ -4334,13 +4426,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // The SCAM Hybrid takes the SCAM capture route with its own settings (independent of SCAM HDR; wins over it).
             final boolean scamHybridSelected = scamCapture && PreferenceKeys.isScamHybridEnabled();
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
+            // P84: the Hybrid with a hand-set shutter longer than 1/8 s takes its frames after the shutter (PSL), not from the ring
+            final boolean manualPsl = scamHybridSelected && paramController.pslShutterNs() > 0;
             ScamStockAe.Plan planned;
             boolean scamToHybrid=false;
             {
                 if(!hybridZslRequested)throw new IllegalStateException((scamHybridSelected?"Hybrid":"SCAM HDR")+Lang.t(" требует ZSL RAW-поток"," needs the ZSL RAW stream"));
                 // The hybrid's N is the ring at the preview exposure (P27: its own N, never the SCAM HDR planner).
                 if(scamHybridSelected) {
-                    planned=hybridNPlan();
+                    planned=hybridNPlan(manualPsl);
                 } else if(!PreferenceKeys.useStockBracketPlanner()) {
                     try {
                         planned=scameraBracketPlan();
@@ -4406,8 +4500,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             {
                 mLiveRawRouter.clear();
                 mNativeRawPslCapture=true;mZslCapturing=true;
-                if(!hybridZslRequested) synchronized(mZslBufferLock) {
-                    for(Image image:mZslRingBuffer)image.close();
+                if(!hybridZslRequested || manualPsl) synchronized(mZslBufferLock) {
+                    for(RingFrame image:mZslRingBuffer)image.close();
                     mZslRingBuffer.clear();mHexZslResults.clear();
                 }
             }
@@ -4431,6 +4525,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // SCAM keeps the preview running: its L/S/ES must not reach the
                 // viewfinder (they flashed dark/bright there), as in the stock camera.
                 captureBuilder.addTarget(mImageReaderRaw.getSurface());
+                // P90 (owner: the viewfinder froze 0.7-0.8 s at every shot): as ArkCam / GCam, the series also feeds the viewfinder;
+                // the renderer scales each series frame back to the viewfinder's exposure (ViewfinderGain), so nothing flashes.
+                // scam_dev "series_viewfinder 0": RAW only, as before.
+                if (surface != null && PreferenceKeys.scamDevSwitch("series_viewfinder", true)) {
+                    captureBuilder.addTarget(surface);
+                    com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.setReference(
+                            mPreviewIso * (mPreviewExposureTime / 1e9));
+                }
             }
             Camera2ApiAutoFix.resetTileSize();
             applyZoom(captureBuilder, false);
@@ -4479,7 +4581,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // SCAM HDR's plan: four N, short S and ES, long L (the N normally come from the ZSL ring); the hybrid
             // takes its own N count from the ring and its Bento / Shasta requests from HybridPlan.
             int denoiseFrameCount = 4, shortFrameCount = 2, longFrameCount = 1;
-            if (hybridZslRequested) {
+            if (manualPsl) {
+                // as an empty ring: every frame after the shutter, the viewfinder keeps running, RAWs routed by their timestamp
+                mHybridZslCapture = false;
+                mZslCapturing = true;
+                mPendingZslNormalFrames = new ArrayList<>();
+                if (scamZslRequested) {
+                    mLiveRawRouter.clear();
+                    mScamRouted = true;
+                }
+                Log.i("SCAM_CAPTURE", "manual shutter " + paramController.pslShutterNs() + " ns: PSL, the ZSL ring is not used");
+            } else if (hybridZslRequested) {
                 // Block preview RAWs first. Do not route them into ImageSaver:
                 // queued preview images would consume the bracket frame slots.
                 mHybridZslCapture = false;
@@ -4600,7 +4712,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         plan=HybridPlan.single(nNs,nIso);
                     }
                 } else {
-                    plan=stockPlan!=null
+                    plan=manualPsl && stockPlan!=null
+                            ? HybridPlan.manualLong(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,mExposureLimits)
+                            : stockPlan!=null
                             ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4,mExposureLimits)
                             : HybridPlan.autoExposure(4);
                 }
@@ -4622,6 +4736,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     Integer v=mPreviewRequestBuilder.get(key);
                     if(v!=null) captureBuilder.set(key,v);
                 }
+                // P84c: AE_TARGET_FPS_RANGE is a session parameter on the X200 Ultra (availableSessionKeys): a series request with
+                // the still template's range and the viewfinder's repeating request with its own made the camera service
+                // reconfigure between them, waiting for idle; behind three 4 s frames that wait passed its 12.5 s limit
+                // ("reconfigureCamera: Can't idle device in 12.5 seconds") and the camera died (error 4). The series takes the
+                // viewfinder's range (manual AE-off frames are timed by their exposure, not by this range).
+                android.util.Range<Integer> fps=mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE);
+                if(fps!=null) captureBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,fps);
                 captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                 long[] times=new long[plan.requests.size()];
                 for(int i=0;i<plan.requests.size();i++) {
@@ -4685,10 +4806,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P30: the Hybrid's RAWs (ring and post-shutter) are copied straight into one memfd the worker maps (ShotArena);
             // without it (no memfd, binning, packed RAW) they are copied into native buffers as before.
             com.particlesdevs.photoncamera.util.ShotArena arenaForShot = null;
-            if (scamHybridShot && hybridZsl && !PhotonCamera.getSettings().binning) {
-                int frameBytes = 0;
-                for (ImageFrame f : mPendingZslNormalFrames) frameBytes = Math.max(frameBytes, f.pendingBytes());
-                if (frameBytes > 0) arenaForShot = com.particlesdevs.photoncamera.util.ShotArena.create(mPendingZslNormalFrames.size() + captures.size(), frameBytes);
+            if (scamHybridShot && !PhotonCamera.getSettings().binning) {
+                // P91: in free slots of the ring's memfd (ring frames of a plain RAW16 stream are views of their own slots and
+                // take none); also for a shot without ring frames (PSL), its series then reaches the worker without the copy
+                int frameBytes = 0, copies = 0;
+                for (ImageFrame f : mPendingZslNormalFrames) {
+                    frameBytes = Math.max(frameBytes, f.pendingBytes());
+                    if (!f.viewable()) copies++;
+                }
+                if (frameBytes == 0 && mImageReaderRaw != null) frameBytes = mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() * 2;
+                if (frameBytes > 0) arenaForShot = shotArena(copies + captures.size(), frameBytes);
                 if (arenaForShot != null) {
                     for (ImageFrame f : mPendingZslNormalFrames) f.arena = arenaForShot;
                     mImageSaver.shotArena = arenaForShot;
@@ -4745,6 +4872,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                              long timestamp,
                                              long frameNumber) {
                     if (shotDone.get()) return;
+                    Long startNs = request.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
+                    Integer startIso = request.get(CaptureRequest.SENSOR_SENSITIVITY);
+                    if (startNs != null && startIso != null) // P90: its viewfinder frame's brightness
+                        com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.record(timestamp, startIso * (startNs / 1e9));
                     if (mNativeRawPslCapture || mScamRouted || (mLiveRawSession && !isZslMode())) mLiveRawRouter.request(timestamp, true);
                     if (mScamRouted) mScamTailTimestamp = Math.max(mScamTailTimestamp, timestamp);
                     mPreviewGap.seriesStart(timestamp);

@@ -20,10 +20,10 @@ import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.target.CustomViewTarget;
 import com.bumptech.glide.request.target.Target;
 import com.bumptech.glide.request.transition.Transition;
-import com.bumptech.glide.signature.ObjectKey;
 import com.davemorrissey.labs.subscaleview.ImageSource;
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView;
 import com.particlesdevs.photoncamera.gallery.compare.SSIVListener;
+import com.particlesdevs.photoncamera.gallery.glide.GalleryKeys;
 import com.particlesdevs.photoncamera.gallery.helper.UltraHdrGalleryUtil;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.gallery.views.CustomSSIV;
@@ -51,6 +51,8 @@ public class ImageAdapter extends PagerAdapter {
     private final Target<Bitmap>[] hdrTargets;
     /** P46: colour of each page's file, 1 + UltraHdrGalleryUtil.COLOUR_*; 0 = not probed yet. */
     private final byte[] colour;
+    /** P81: pages whose decode gave up (the file was still being written): decoded again when shown. */
+    private final boolean[] gaveUp;
     private ImageViewClickListener imageViewClickListener;
     private SSIVListener ssivListener;
     private SubsamplingScaleImageView.OnImageEventListener imageEventListener;
@@ -68,6 +70,7 @@ public class ImageAdapter extends PagerAdapter {
         this.hdrBitmaps = new Bitmap[size];
         this.hdrTargets = new Target[size];
         this.colour = new byte[size];
+        this.gaveUp = new boolean[size];
     }
 
     public void setSsivListener(SSIVListener ssivListener) {
@@ -109,6 +112,17 @@ public class ImageAdapter extends PagerAdapter {
             scaleImageView.setTouchCallBack(ssivListener);
         }
 
+        loadPage(scaleImageView, galleryItem, fileName);
+        if (inBounds(position)) gaveUp[position] = false;
+        container.addView(scaleImageView);
+        return scaleImageView;
+    }
+
+    /** The page's picture; P89: after the camera has finished writing the file. */
+    private void loadPage(CustomSSIV scaleImageView, GalleryItem galleryItem, String fileName) {
+        if (GalleryKeys.waitForFile(scaleImageView, galleryItem.getFile(), () -> {
+            if (!released && scaleImageView.getParent() != null) loadPage(scaleImageView, galleryItem, fileName);
+        })) return;
         if (GalleryDecodeRetry.shouldUseTiledDecode(fileName)) {
             // JPEG: BitmapRegionDecoder tiles smoothly and safely on Android; falls back to Glide if tiling fails.
             scaleImageView.setOnImageEventListener(new BitmapFallback(imageEventListener, scaleImageView, galleryItem));
@@ -120,8 +134,6 @@ public class ImageAdapter extends PagerAdapter {
             scaleImageView.setOnImageEventListener(imageEventListener);
             loadGlideBitmap(scaleImageView, galleryItem, 0, imageEventListener);
         }
-        container.addView(scaleImageView);
-        return scaleImageView;
     }
 
     /**
@@ -135,7 +147,7 @@ public class ImageAdapter extends PagerAdapter {
         Glide.with(page.getContext().getApplicationContext())
                 .asBitmap()
                 .load(item.getFile().getFileUri())
-                .apply(RequestOptions.signatureOf(new ObjectKey(name + item.getFile().getLastModified())))
+                .apply(RequestOptions.signatureOf(GalleryKeys.of(item.getFile())))
                 // Zoomable but bounded: at most 4096 px on the long side (~50 MB), never upscaled.
                 .override(GalleryDecodeRetry.FALLBACK_MAX_SIDE, GalleryDecodeRetry.FALLBACK_MAX_SIDE)
                 .downsample(DownsampleStrategy.CENTER_INSIDE)
@@ -162,12 +174,30 @@ public class ImageAdapter extends PagerAdapter {
                         } else {
                             com.particlesdevs.photoncamera.util.Log.w(GALLERY_TAG,
                                     "Glide failed to decode " + name + " after " + retryCount + " retries - giving up");
+                            markGaveUp(item);
                             if (listener != null) {
                                 listener.onImageLoadError(new IOException("Failed to decode " + name));
                             }
                         }
                     }
                 });
+    }
+
+    private void markGaveUp(GalleryItem item) {
+        final int position = galleryItemList.indexOf(item);
+        if (inBounds(position)) gaveUp[position] = true;
+    }
+
+    /**
+     * P81: decodes the page again when an earlier decode gave up (a WebP / AVIF opened while the camera still wrote it);
+     * the shown page of a later swipe or of the return to the viewer.
+     */
+    public void reloadIfGaveUp(@Nullable SubsamplingScaleImageView page, int position) {
+        if (page == null || released || !inBounds(position) || !gaveUp[position] || page.isImageLoaded()) return;
+        gaveUp[position] = false;
+        final GalleryItem item = galleryItemList.get(position);
+        com.particlesdevs.photoncamera.util.Log.d(GALLERY_TAG, "decoding " + item.getFile().getDisplayName() + " again");
+        loadGlideBitmap(page, item, 0, imageEventListener); // a JPEG page here has already failed its tiled decode
     }
 
     /**
@@ -209,6 +239,7 @@ public class ImageAdapter extends PagerAdapter {
 
         private void fallBack(Exception e) {
             if (fellBack || released) {
+                if (fellBack) markGaveUp(item);
                 if (host != null) host.onImageLoadError(e);
                 return;
             }

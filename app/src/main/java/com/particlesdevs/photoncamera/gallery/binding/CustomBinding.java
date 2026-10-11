@@ -7,10 +7,10 @@ import android.widget.ImageView;
 
 import androidx.databinding.BindingAdapter;
 
+import com.particlesdevs.photoncamera.gallery.glide.GalleryKeys;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.signature.ObjectKey;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.gallery.views.Histogram;
 
@@ -58,13 +58,15 @@ public class CustomBinding {
     @BindingAdapter("loadImage")
     public static void loadImage(ImageView imageView, GalleryItem galleryItem) {
         if (galleryItem != null) {
+            // P89: after the camera has finished writing the file
+            if (GalleryKeys.waitForFile(imageView, galleryItem.getFile(), () -> loadImage(imageView, galleryItem))) return;
             Glide
                     .with(imageView)
                     .asBitmap()
                     .load(galleryItem.getFile().getFileUri())
                     .apply(new RequestOptions()
                             .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                            .signature(new ObjectKey(galleryItem.getFile().getDisplayName() + galleryItem.getFile().getLastModified()))
+                            .signature(GalleryKeys.of(galleryItem.getFile()))
                             .override(200, 200)
                             .centerCrop()
                     )

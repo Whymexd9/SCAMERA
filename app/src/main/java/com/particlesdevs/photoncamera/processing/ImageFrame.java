@@ -173,9 +173,11 @@ public class ImageFrame {
 
     // Deferred ZSL copy: the frame keeps its reader Image until materialize(), so
     // the bracket can be submitted before ~20 RAWs are copied out of the reader.
-    private Image pendingImage;
+    private RingFrame pendingImage;
     private int pendingFormat, pendingRowStride, pendingShift, pendingCapacity, pendingWidth;
     private boolean pendingBinning;
+    /** P91: the frame is a view of its ZSL ring slot (no copy was made). */
+    public boolean zeroCopy;
     /** P30: the shot's arena the deferred copy goes into (null: a native copy). */
     public com.particlesdevs.photoncamera.util.ShotArena arena;
     /** Bytes the deferred copy will take (0 when not deferred): a packed RAW10 / RAW12 frame is unpacked to 16 bit. */
@@ -185,9 +187,23 @@ public class ImageFrame {
                 ? pendingWidth * (pendingCapacity / pendingRowStride) * 2 : pendingCapacity;
     }
 
+    /** P91: the deferred frame can go to the worker as a view of its ring slot (plain RAW16, no crop / binning / unpack). */
+    public boolean viewable() {
+        if (pendingImage == null || pendingImage.arenaSlot() == null) return false;
+        final int height = pendingRowStride > 0 ? pendingCapacity / pendingRowStride : 0;
+        return !pendingBinning && pendingShift == 0 && !Allocator.isPackedRaw(pendingFormat)
+                && !com.particlesdevs.photoncamera.util.RawUnpack.isRaw14(pendingFormat)
+                && pendingRowStride == pendingWidth * 2 && pendingCapacity == pendingWidth * height * 2;
+    }
+
     private ImageFrame() {}
 
     public static ImageFrame deferred(Image image, int format, int width, int rowStride, int shift, int capacity) {
+        return deferred(RingFrame.of(image), format, width, rowStride, shift, capacity);
+    }
+
+    /** P91: a ZSL ring frame (the camera's Image or its copy in the ring's memfd). */
+    public static ImageFrame deferred(RingFrame image, int format, int width, int rowStride, int shift, int capacity) {
         ImageFrame frame = new ImageFrame();
         frame.pendingImage = image;
         frame.pendingFormat = format;
@@ -216,7 +232,19 @@ public class ImageFrame {
     public synchronized void materialize() {
         if (pendingImage == null) return;
         try {
-            ByteBuffer in = pendingImage.getPlanes()[0].getBuffer();
+            // P91: a plain RAW16 ring frame in the ring's memfd goes to the worker as it is: one more view of its slot (pinned until
+            // the merge frees it), no copy after the press
+            final long[] slot = pendingImage.arenaSlot();
+            if (viewable()) {
+                ByteBuffer view = Allocator.arenaView((int) slot[0], slot[1], pendingCapacity);
+                if (view != null) {
+                    view.position(0);
+                    buffer = view;
+                    zeroCopy = true;
+                    return;
+                }
+            }
+            ByteBuffer in = pendingImage.buffer();
             ByteBuffer direct = arena == null || pendingBinning ? null
                     : Allocator.isPackedRaw(pendingFormat)
                     ? arena.copyUnpacked(in, pendingShift, pendingFormat, pendingWidth, pendingRowStride, pendingCapacity)

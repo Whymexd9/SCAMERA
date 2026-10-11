@@ -78,6 +78,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 mSTexture.updateTexImage();
                 mUpdateST = false;
                 mHaveFrame = true;
+                mFrameGain = ViewfinderGain.gainFor(mSTexture.getTimestamp()); // P90
             }
         }
         applyPendingTransform();
@@ -122,6 +123,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         if (liveLook) updateToneCurve();
         final boolean lookOn = mCurveReady && liveLook;
         GLES20.glUniform1i(uLookEnabled, lookOn ? 1 : 0);
+        GLES20.glUniform1f(uGain, mFrameGain);
         // Bind the curve to unit 1 unconditionally. An unset sampler2D defaults to
         // unit 0, where the external OES preview texture already lives, and two
         // samplers of different types on one unit is undefined - on this device it
@@ -141,8 +143,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // Driven by the setting, not by lookOn: on the first frames no curve
         // has been published yet, and gating on one would mean never producing
         // the first one.
-        if (liveLook) {
-            mSceneMeter.measure(pVertex, pTexCoord, hTex[0]);
+        // P82: also while the manual panel's software shutter / ISO priority needs the viewfinder's brightness
+        if (liveLook || com.particlesdevs.photoncamera.manual.SceneLuma.wanted()) {
+            mSceneMeter.measure(pVertex, pTexCoord, hTex[0], liveLook);
             GLES20.glUseProgram(hProgramHandle);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
@@ -214,7 +217,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mSubjectGrabber.onContextCreated();
         initTex();
         mSTexture = new SurfaceTexture(hTex[0]);
-        mSTexture.setOnFrameAvailableListener(this);
+        // P90: frame callbacks on their own thread, not the main looper (a SurfaceTexture made on the GL thread, which has no
+        // looper, posts them to the main thread: every busy moment of the UI during processing held the viewfinder back)
+        mSTexture.setOnFrameAvailableListener(this, frameHandler());
 
         String vss_default = PhotonCamera.getAssetLoader().getString("shaders/preview/main_vs.glsl");
         String fss_default = PhotonCamera.getAssetLoader().getString("shaders/preview/main_fs.glsl");
@@ -235,6 +240,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mCurveReady = false;
         uToneCurve = GLES20.glGetUniformLocation(hProgram, "uToneCurve");
         uLookEnabled = GLES20.glGetUniformLocation(hProgram, "uLookEnabled");
+        uGain = GLES20.glGetUniformLocation(hProgram, "uGain");
         mirror = GLES20.glGetUniformLocation(hProgram, "mirror");
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
@@ -263,6 +269,21 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
     }
+
+    private static android.os.Handler sFrameHandler;
+
+    private static synchronized android.os.Handler frameHandler() {
+        if (sFrameHandler == null) {
+            android.os.HandlerThread t = new android.os.HandlerThread("VfFrames", android.os.Process.THREAD_PRIORITY_DISPLAY);
+            t.start();
+            sFrameHandler = new android.os.Handler(t.getLooper());
+        }
+        return sFrameHandler;
+    }
+
+    /** P90: the gain of the frame on the texture (a series frame scaled to the viewfinder's exposure), and its uniform. */
+    private float mFrameGain = 1f;
+    private int uGain = -1;
 
     public synchronized void onFrameAvailable(SurfaceTexture st) {
         mUpdateST = true;

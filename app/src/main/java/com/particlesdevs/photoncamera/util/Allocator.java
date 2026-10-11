@@ -36,5 +36,9 @@ public class Allocator{
     public native static long[] arenaOf(ByteBuffer buffer);
     public native static int arenaFd(int id);
     public native static void arenaRelease(int id);
+    /** P91: one more view of a slot (a ring frame handed to a shot); the slot stays pinned until the view is freed. */
+    public native static ByteBuffer arenaView(int id, long offset, int bytes);
+    /** P91: views left of the slot at {@code offset}; 0 = free to write again, -1 = no such arena. */
+    public native static int arenaSlotRefs(int id, long offset);
     public native static long getMemoryCount();
 }

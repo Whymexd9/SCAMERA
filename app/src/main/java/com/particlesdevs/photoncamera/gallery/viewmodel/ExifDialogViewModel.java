@@ -16,12 +16,12 @@ import androidx.annotation.Nullable;
 import androidx.exifinterface.media.ExifInterface;
 import androidx.lifecycle.AndroidViewModel;
 
+import com.particlesdevs.photoncamera.gallery.glide.GalleryKeys;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.transition.Transition;
-import com.bumptech.glide.signature.ObjectKey;
 import com.particlesdevs.photoncamera.api.ParseExif;
 import com.particlesdevs.photoncamera.gallery.files.ImageFile;
 import com.particlesdevs.photoncamera.gallery.files.MediaFile;
@@ -177,7 +177,7 @@ public class ExifDialogViewModel extends AndroidViewModel {
                         .load(imageFile.getFileUri())
                         .apply(new RequestOptions()
                                 .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                                .signature(new ObjectKey("hist" + imageFile.getDisplayName() + imageFile.getLastModified()))
+                                .signature(GalleryKeys.of(imageFile, "hist"))
                                 .override(800) //800*800
                                 .fitCenter().useUnlimitedSourceGeneratorsPool(true))
                 .into(new CustomTarget<Bitmap>() {

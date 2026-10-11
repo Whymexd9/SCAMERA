@@ -89,7 +89,7 @@ final class LiveSceneMeter {
      * restored before returning.
      */
     void measure(java.nio.FloatBuffer pVertex, java.nio.FloatBuffer pTexCoord,
-                 int previewTexture) {
+                 int previewTexture, boolean curve) {
         if (failed) return;
         if (++frameCounter < EVERY_N_FRAMES) return;
         frameCounter = 0;
@@ -124,7 +124,7 @@ final class LiveSceneMeter {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, prevFbo[0]);
         GLES20.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
-        publish();
+        publish(curve);
     }
 
     void onContextCreated() {
@@ -134,13 +134,18 @@ final class LiveSceneMeter {
         PreviewLook.clear();
     }
 
-    private void publish() {
+    private void publish(boolean withCurve) {
         java.util.Arrays.fill(hist, 0);
         readback.position(0);
+        long sum = 0;
         for (int i = 0; i < TILE * TILE; i++) {
             int y = readback.get(i * 4) & 0xFF;
+            sum += y;
             hist[y * (BINS - 1) / 255]++;
         }
+        // P82: the mean brightness for the manual panel's shutter / ISO priority
+        com.particlesdevs.photoncamera.manual.SceneLuma.publish(sum / (255.0 * TILE * TILE));
+        if (!withCurve) return;
         float mpy = ToneCurveBuilder.gainFromHistogram(hist, TARGET, GAIN_MAX);
         mpy = ToneCurveBuilder.normalizeGain(mpy, BINS);
         if (!Float.isFinite(mpy) || mpy <= 0.0f) return;

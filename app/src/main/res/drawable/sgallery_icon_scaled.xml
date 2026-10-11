@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P85 (owner, 2026-10-11): the SGallery frame 15 % smaller inside the launcher icon (7.5 % inset on every side). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/sgallery_icon_generated"
+    android:inset="7.5%" />

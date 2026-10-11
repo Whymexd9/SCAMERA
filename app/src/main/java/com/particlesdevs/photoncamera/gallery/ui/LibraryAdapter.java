@@ -18,10 +18,10 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.particlesdevs.photoncamera.gallery.glide.GalleryKeys;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.signature.ObjectKey;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.gallery.helper.UltraHdrGalleryUtil;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
@@ -268,18 +268,27 @@ public final class LibraryAdapter extends RecyclerView.Adapter<RecyclerView.View
             if (Boolean.TRUE.equals(uhdr)) badges.addView(badge(c, R.drawable.ic_gallery_uhdr));
             else if (uhdr == null && uri != null && loadPictures && isJpeg(item)) probe(c, uri);
             cell.setContentDescription(describe(item, format, Boolean.TRUE.equals(uhdr)));
-            if (uri != null && loadPictures) {
-                Glide.with(image)
-                        .asBitmap()
-                        .load(uri)
-                        .apply(new RequestOptions()
-                                .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                                .signature(new ObjectKey(item.getFile().getDisplayName() + item.getFile().getLastModified()))
-                                .override(240, 240)
-                                .centerCrop())
-                        .into(image);
-            }
+            if (uri != null && loadPictures) loadThumb(item, uri);
             applySelection();
+        }
+
+        /** The cell's picture; P89: after the camera has finished writing the file. */
+        private void loadThumb(GalleryItem it, Uri uri) {
+            if (GalleryKeys.waitForFile(image, it.getFile(), () -> {
+                if (item == it) loadThumb(it, uri);
+            })) {
+                Glide.with(image).clear(image);
+                return;
+            }
+            Glide.with(image)
+                    .asBitmap()
+                    .load(uri)
+                    .apply(new RequestOptions()
+                            .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                            .signature(GalleryKeys.of(it.getFile()))
+                            .override(240, 240)
+                            .centerCrop())
+                    .into(image);
         }
 
         private void probe(Context c, Uri uri) {
