@@ -78,6 +78,14 @@ public class Allocator {
  public static ByteBuffer allocateAndCopyConvert12Binning(int n,ByteBuffer b,int w,int r,int s){return ByteBuffer.allocate(n);}
  public static boolean isPackedRaw(int f){return f==0x25||f==0x26||RawUnpack.isRaw14(f);}
  public static void free(ByteBuffer b){}
+ public static ByteBuffer arenaView(int id,long offset,int bytes){return null;}
+}''',
+'com/particlesdevs/photoncamera/processing/RingFrame.java': '''package com.particlesdevs.photoncamera.processing;
+import java.nio.ByteBuffer;
+public interface RingFrame {
+ long getTimestamp(); int getFormat(); int getWidth(); int getHeight(); int rowStride(); int pixelStride();
+ ByteBuffer buffer(); default long[] arenaSlot(){return null;} void close();
+ static RingFrame of(android.media.Image image){return null;}
 }''',
 'Check.java': '''import android.hardware.camera2.CaptureResult;
 import android.util.Pair; import java.nio.ByteBuffer;
