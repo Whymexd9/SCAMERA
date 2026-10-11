@@ -2425,3 +2425,16 @@ Reports: X8U, X9U, X7U (root), X100U, X200U (root), X200 Pro, vivo V2515 (MT6993
   ultra-wide 4 previews at 13.5 fps. Nothing to fix from the report.
 - S24 Ultra: same report as P99 / P100.
 - Generic: no OPPO / OnePlus / vivo / Xiaomi phone in these reports lists CROPPED_RAW (only the S24 Ultra).
+
+### P102 — SCAM TEST report of the Motorola Edge 50 Pro (eqe, SM7550, Android 15, root; owner, 2026-10-11; read)
+
+- Cameras: listed 0 (logical main, physical 2 / 3 / 5) and 1 (front); hidden 2 main 5.9 mm (OV50E, 4096x3072 binned,
+  com.lenovo.moto.envinfo.snapshot_crop_region 8192x6144 = full 50 MP), 3 UW 2.13 mm (4208x3120), 4 logical, 5 tele 7.06 mm.
+  ISO main 100-25500 (UW / tele 1600), exposure only up to 0.25 s everywhere (Qualcomm priority range repeats it).
+  OIS listed and ON in the templates of 0 / 2 / 4 / 5 (no hidden OIS). No CROPPED_RAW. Preview 3.5-12 fps in the test is the
+  dim scene (AE 33-100 ms), not a HAL limit. RAW hold: stalls and 61-263 failures (P91 holds).
+- Vendor (com.lenovo.moto.*): control.exp_pri (long, 0 in requests: an exposure-priority / long-shutter value?),
+  control.super_zoom (request key: the stock super zoom / ISZ?), control.scene_mode, envinfo.analog_gain / iso100_gain /
+  lux_idx / awb_cct / lens_pos per frame, tf.ipe_ccm_value (ISP CCM) and ipe_gamma_value (256-point ISP gamma),
+  uwdc.process_in_app (UW distortion correction left to the app), SATFallback.T2W / W2UW. Candidates for a Motorola profile:
+  super_zoom as an ISZ module and exp_pri past 0.25 s - both need a test on the phone (values unknown).
