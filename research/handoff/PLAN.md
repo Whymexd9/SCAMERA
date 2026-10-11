@@ -2507,3 +2507,24 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Check on the phone: tap «DCG» on the main; log "DCG14 session keys" (no "n/a"), "DCG14 camera 2 …: sensorScenario [2, x]"
   with x != 1, "wide RAW: … -> white 16383"; a shot in high contrast vs. off. If the scenario stays 1: try dcg14_hdr_mode 1,
   then dcg14_camera_scenario / dcg14_sensor_scenario values.
+
+### P105 — SCAM TEST report of the Xiaomi Mi 10T Pro (M2007J3SG, apollo, SM8250, Lineage-based Android 15 on MIUI 14 vendor, root; owner, 2026-10-11; read)
+
+- Main = Samsung HMX 108 MP Tetracell (camera 0, 6.72 mm f/1.69, OIS): RAW_SENSOR / RAW10 only 6016x4512 (2x2 binned, plain
+  Bayer GRBG, black 64 / white 1023, values checked), JPEG / YUV / HEIC up to 6016x4512 (HIGH_RES burst, 12 fps); no
+  max-resolution maps, no ULTRA_HIGH_RESOLUTION, no STREAM_USE_CASE (no CROPPED_RAW).
+- 108 MP exists only in vendor statics: org.codeaurora.qcamera3.quadra_cfa.is_qcfa_sensor = 1, qcfa_dimension 12032x9024,
+  quadra_cfa.availableStreamConfigurations / xiaomi.scaler.availableStreamConfigurations / availableSuperResolutionStream-
+  Configurations list 12032x9024 (and 12032x6768, 9248x6944) for formats 33 JPEG, 34 PRIVATE, 35 YUV only - no RAW at
+  108 MP even there; org.quic.camera2.sensormode.info.SensorModeTable: 12032x9024 @ 10 fps (full, remosaic in
+  com.qti.node.remosaic / libremosaiclib), 6016x4512 @ 30 (binned), no crop (in-sensor zoom) mode. The AOSP framework of this
+  ROM only configures sizes of the public map, so a third-party app cannot get a 12032x9024 stream; the stock way (MIUI
+  framework + package checks) is out (no spoof). Front: QCFA 5184x3880, RAW 2592x1940.
+- ISZ: no session keys (only com.xiaomi.sessionparams.cameraxConnection / clientName / operation, xiaomi.pro.video.movie.enabled);
+  com.qti.insensor_control.seamless_insensor_state / com.qti.izoom_control.state_izoom_snapshot exist in the registry only (not
+  in statics, templates or results). Untested idea (sensor-mode switch, owner's approval): xiaomi.quadcfa.enabled /
+  xiaomi.remosaic.enabled (byte) as module keys with the 6016x4512 RAW - the HAL might run the 10 fps full mode and crop the
+  centre (a 2x Quad-pattern RAW), or refuse.
+- Opening the hidden logical camera 4 (main + UW) for streams killed the camera provider (configure Broken pipe, provider
+  SIGSEGV, all devices removed 22:19:41) - as the 15 Ultra's camera 4 (P101): keep hidden logical cameras out of the modules.
+- Ring depth 24 RAW frames (stopped by free memory: 54 MB per frame), exposure up to 32 s on the main, ISO 50-1600.
