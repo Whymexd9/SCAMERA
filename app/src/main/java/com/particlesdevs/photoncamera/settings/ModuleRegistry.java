@@ -21,7 +21,7 @@ public final class ModuleRegistry {
                 CameraLensData c=cameras.get(Math.min(i,cameras.size()-1));
                 e.putString("module_auto_"+slot,c.getCameraId());
                 e.putBoolean("module_visible_"+slot,i<cameras.size());
-                e.putString("module_label_"+slot,String.format(java.util.Locale.US,"%.1f×",c.getZoomFactor()).replace(".0×","×"));
+                e.putString("module_label_"+slot,ZoomLabels.label(c.getZoomFactor(),android.os.Build.BRAND));
             }
         }e.apply();
         // Slots are created once. Lenses that appear later (hidden cameras unlocked by the package
@@ -37,10 +37,22 @@ public final class ModuleRegistry {
                 if(next>=cameras.size())break;
                 CameraLensData c=cameras.get(next++);assigned.add(c.getCameraId());
                 fill.putString("module_auto_"+slot,c.getCameraId());fill.putBoolean("module_visible_"+slot,true);
-                fill.putString("module_label_"+slot,String.format(java.util.Locale.US,"%.1f×",c.getZoomFactor()).replace(".0×","×"));
+                fill.putString("module_label_"+slot,ZoomLabels.label(c.getZoomFactor(),android.os.Build.BRAND));
             }
             fill.putString("module_lens_sig_"+side,signature.toString()).apply();
         }
+        // P100c: each lens's measured field of view (its native zoom) and, on brands with stock steps (Samsung), the stock
+        // label of the automatic modules created before (an S24 Ultra kept «2.7×» / «5.1×» for its 3× / 5× teles)
+        SharedPreferences.Editor fov=prefs().edit();
+        for(CameraLensData c:cameras)fov.putFloat("module_fov_"+c.getCameraId(),c.getZoomFactor());
+        if(ZoomLabels.snaps(android.os.Build.BRAND))for(int i=0;i<8;i++){
+            String slot=side+i;String auto=prefs().getString("module_auto_"+slot,null);if(auto==null)continue;
+            for(CameraLensData c:cameras)if(c.getCameraId().equals(auto)){
+                String measured=String.format(java.util.Locale.US,"%.1f×",c.getZoomFactor()).replace(".0×","×");
+                if(measured.equals(prefs().getString("module_label_"+slot,"")))fov.putString("module_label_"+slot,ZoomLabels.label(c.getZoomFactor(),android.os.Build.BRAND));
+            }
+        }
+        fov.apply();
         List<String> out=new ArrayList<>();for(int i=0;i<8;i++)out.add(side+i);return out;
     }
     public static String camera(String slot){String manual=prefs().getString("module_id_"+slot,"").trim();return manual.isEmpty()?prefs().getString("module_auto_"+slot,slot):manual;}
@@ -76,7 +88,13 @@ public final class ModuleRegistry {
     /** Zoom ratio at which the module's frame is uncropped: its own ratio for sensor-crop modules, else the widest module on the same Camera ID. */
     public static float nativeRatio(String slot){
         if(sensorCrop(slot))return zoom(slot);
-        String id=camera(slot);float min=zoom(slot);
+        String id=camera(slot);
+        // P100c: where labels snap to stock steps, the lens's measured field of view is its native zoom (S24 Ultra 3× tele = 2.73)
+        if(ZoomLabels.snaps(android.os.Build.BRAND)&&prefs().contains("module_fov_"+id)){
+            float fov=prefs().getFloat("module_fov_"+id,0f);
+            if(fov>0f)return fov;
+        }
+        float min=zoom(slot);
         for(String other:slots())if(visible(other)&&!sensorCrop(other)&&camera(other).equals(id))min=Math.min(min,zoom(other));
         return min;
     }

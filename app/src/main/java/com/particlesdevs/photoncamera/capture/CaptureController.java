@@ -1680,18 +1680,35 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void logSensorModeIndex(CaptureResult result) {
         if (mCroppedRawSession && result != null) {
             android.graphics.Rect crop = CroppedRaw.of(result, physicalID, logicalID);
-            if (crop != null && !CroppedRaw.same(crop, mLastRawCrop)) {
+            // P100b (S24 Ultra, 2026-05-18: x1.0 at zoom 2.62 for ~1 s): which result held the crop, and the zoom the HAL ran
+            final boolean physical = !Objects.equals(physicalID, logicalID) && crop != null
+                    && Objects.equals(crop, CroppedRaw.of(physicalResult(result)));
+            Float ratio = null;
+            if (Build.VERSION.SDK_INT >= 30) {
+                try {
+                    ratio = result.get(CaptureResult.CONTROL_ZOOM_RATIO);
+                } catch (RuntimeException ignored) {
+                    // not reported
+                }
+            }
+            final boolean zoomStep = ratio != null && Math.abs(ratio - mLastRawCropZoom) >= 0.25f;
+            if (crop != null && (!CroppedRaw.same(crop, mLastRawCrop) || zoomStep)) {
                 android.graphics.Rect active = mCameraCharacteristics == null ? null
                         : mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
                 Log.i("SCAM_CAPTURE", "raw crop " + crop + " of " + active + ": x" + CroppedRaw.factor(crop, active)
-                        + (CroppedRaw.factor(crop, active) > 1f ? " (in-sensor zoom)" : ""));
+                        + (CroppedRaw.factor(crop, active) > 1f ? " (in-sensor zoom)" : "")
+                        + " [" + (physical ? "physical " + physicalID : "logical " + logicalID) + " result, zoomRatio " + ratio + "]");
                 mLastRawCrop = crop;
+                if (ratio != null) mLastRawCropZoom = ratio;
             }
         }
         if (sModeIndexMissing || result == null) return;
         int[] v;
         try {
-            v = result.get(SENSOR_MODE_INDEX);
+            // the physical camera's own mode in a logical session (S24 Ultra), else the logical result's
+            CaptureResult own = physicalResult(result);
+            v = own != null ? own.get(SENSOR_MODE_INDEX) : null;
+            if (v == null) v = result.get(SENSOR_MODE_INDEX);
         } catch (RuntimeException unknown) {
             sModeIndexMissing = true;
             return;
@@ -1699,6 +1716,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (v == null || v.length == 0 || v[0] == mLastModeIndex) return;
         Log.i("SCAM_CAPTURE", "sensor mode index " + mLastModeIndex + " -> " + v[0] + " (camera " + physicalID + ")");
         mLastModeIndex = v[0];
+    }
+
+    private float mLastRawCropZoom = -1f;
+
+    /** The physical camera's own result inside a logical session's TotalCaptureResult, or null. */
+    private CaptureResult physicalResult(CaptureResult result) {
+        if (!(result instanceof TotalCaptureResult) || Build.VERSION.SDK_INT < 28 || Objects.equals(physicalID, logicalID)) return null;
+        try {
+            return ((TotalCaptureResult) result).getPhysicalCameraResults().get(physicalID);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static final CaptureResult.Key<int[]> SENSOR_MODE_INDEX = new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class);
@@ -2697,6 +2726,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             mCroppedRawSession = croppedRaw;
             mLastRawCrop = null;
+            mLastRawCropZoom = -1f;
             if (croppedRaw) Log.i("SCAM_CAPTURE", "camera " + physicalID + ": RAW stream with CROPPED_RAW (in-sensor zoom from ~2x, P100)");
             if (xiaomiLogical) Log.i(TAG, "P41b: session on logical camera " + logicalID + ": viewfinder logical, readers on camera "
                     + physicalID + ", operation mode 0x" + Integer.toHexString(XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting())));

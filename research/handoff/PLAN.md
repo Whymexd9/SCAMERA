@@ -2557,3 +2557,17 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   also at 2.63x before the switch to the tele: the physical camera's own result is read first now (CroppedRaw.of(result,
   physical, logical)), in the log line and the hybrid ring. The 5x tele 7 reports Rect(0,0-0,0): treated as no crop.
 - Check: «2×» button on the main; at 2x the log "raw crop … xF (in-sensor zoom)" with F ≈ 2.
+
+### P100c — S24 Ultra: stock zoom steps on the lens strip, ISZ logging (owner, 2026-10-12; done, not on a device)
+
+- Owner's log 21:43 (build with P100b): the «2×» module back4 is created on "0-5"; passing it by pinch at 2.62x for ~1 s kept
+  the raw crop x1.0 and sensor mode 34 (main camera 5, not the tele: the 3x tele 6 took over at 2.78x). The screencast
+  (Screen_Recording_20260518_211733) shows the strip «0,6× 1× 2,7× 5,1×».
+- Labels / zoom: the automatic ratio is the field of view against the main (metadata 35 mm eq.: 13.6 / 22.3 / 61.0 / 112.7 mm =
+  0.61 / 1 / 2.73 / 5.05). ZoomLabels: on Samsung the label and the module zoom snap to the stock steps 0.6 / 1 / 2 / 3 / 5 / 10
+  (within 12 %); the measured field of view is stored per camera (module_fov_<id>) and is the native ratio there, so at 3x the
+  tele is cropped 3 / 2.73 = 1.1 and the frame does not widen at the switch from the main. Existing automatic labels equal to
+  the measured ratio are renamed on the next start. Other brands unchanged. Test ZoomLabelsTest.
+- Log: "raw crop … [physical 5 | logical 0 result, zoomRatio Z]" on a crop change or a 0.25 zoom step; the sensor mode index
+  is read from the physical camera's result first.
+- Check: strip «0,6× 1× 2× 3× 5×»; on «2×» held 3-5 s: raw crop / sensor mode lines.
