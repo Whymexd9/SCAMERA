@@ -757,6 +757,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
+                logSensorModeIndex(result);
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.scamDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
@@ -1669,6 +1670,29 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 //            Log.e(TAG, Log.getStackTraceString(e));
 //        }
 //    }
+
+    /**
+     * P99: the sensor mode the Qualcomm HAL reports (com.qti.sensorbps.mode_index; the Galaxy S24 Ultra showed 2..34), logged
+     * when it changes, so a vendor key added per module (Settings, sensor settings per module, «Добавить vendor tag») can be
+     * seen to switch the mode. Silent where the HAL has no such tag.
+     */
+    private void logSensorModeIndex(CaptureResult result) {
+        if (sModeIndexMissing || result == null) return;
+        int[] v;
+        try {
+            v = result.get(SENSOR_MODE_INDEX);
+        } catch (RuntimeException unknown) {
+            sModeIndexMissing = true;
+            return;
+        }
+        if (v == null || v.length == 0 || v[0] == mLastModeIndex) return;
+        Log.i("SCAM_CAPTURE", "sensor mode index " + mLastModeIndex + " -> " + v[0] + " (camera " + physicalID + ")");
+        mLastModeIndex = v[0];
+    }
+
+    private static final CaptureResult.Key<int[]> SENSOR_MODE_INDEX = new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class);
+    private static volatile boolean sModeIndexMissing;
+    private int mLastModeIndex = Integer.MIN_VALUE;
 
     /** P86: the «Движение» mode's AE range on this camera (null: the mode is off or the camera lists no fixed range). */
     private Range<Integer> motionFpsRange() {
