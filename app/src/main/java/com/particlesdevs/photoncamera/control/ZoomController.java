@@ -50,6 +50,13 @@ public final class ZoomController {
     /** Centre-crop factor of the frame being processed (recorded at the shutter). */
     public static float shotResidual() { return shotResidual; }
     public static void markShot() { shotResidual = effective(residual, streamCrop); }
+    /**
+     * P100: the shot's RAW already holds an in-sensor zoom of {@code factor} (CROPPED_RAW): the photo's own crop is divided by it
+     * (never below 1). Only the photo: the viewfinder's zoom is unchanged.
+     */
+    public static void rawCropOfShot(float factor) {
+        if (factor > 1f) shotResidual = Math.max(1f, shotResidual / factor);
+    }
 
     /** The crop still to do when the stream already holds {@code streamCrop}: never below 1. */
     static float effective(float residual, float streamCrop) {

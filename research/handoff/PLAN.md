@@ -2384,3 +2384,21 @@ Reports: X8U, X9U, X7U (root), X100U, X200U (root), X200 Pro, vivo V2515 (MT6993
 - Other per-frame tags: samsung.android.sensor.wdrExposureTime / wdrSensitivity (2 values), drcRatio, captureTotalGain;
   samsung.android.control.multiExposureTimeList / multiSensorSensitivityList (5 entries, request templates, 0) - a possible
   in-request bracket, untested; samsung.android.listener.gyro.gyroTimestamp.
+
+### P100 — In-sensor zoom (ISZ) on the Galaxy S24 Ultra through CROPPED_RAW, as a «2×» module (owner, 2026-10-11; done, not on a device)
+
+- S24U report: SCALER_AVAILABLE_STREAM_USE_CASES lists 6 (CROPPED_RAW, API 34) on the main camera 0 / 20 / 23 and the 5x
+  tele 24; results carry android.scaler.rawCropRegion (1x: (32,0)-(4048,3060)); the max-resolution arrays say binning 2x2.
+  CROPPED_RAW is the Android in-sensor-zoom RAW: at the HAL's ISZ ratio the RAW stream (same 4080x3060) holds the sensor's
+  centre read at full resolution (remosaicked), rawCropRegion shows the part held. The 200 / 50 MP RAW10 sizes stay
+  unusable (not in the public stream map; the framework refuses them).
+- CroppedRaw: the RAW_SENSOR output gets setStreamUseCase(CROPPED_RAW) where listed (scam_dev cropped_raw 0 = off; a refused
+  session is configured again without it, per camera); preview results log "raw crop ... xF (in-sensor zoom)" on change;
+  the hybrid ring keeps only frames of the base frame's crop; ZoomController.rawCropOfShot divides the photo's own crop by
+  the RAW's crop (no second crop; the viewfinder zoom unchanged). Also "sensor mode index A -> B" from
+  com.qti.sensorbps.mode_index.
+- IszModule: once per main camera with CROPPED_RAW, a duplicate module «2×» (zoom 2, same camera, not a sensor-crop module so
+  the viewfinder sends zoom ratio 2 to the HAL); deleting it keeps it deleted (module_isz_offered_<camera>). scam_dev
+  isz_module 0 = off.
+- Check on the S24U: «2×» button present; log "RAW stream with CROPPED_RAW", "raw crop ... x2 (in-sensor zoom)" with the RAW
+  still 4080x3060, the photo 4080x3060 with 2x detail (not upscaled), no double crop.

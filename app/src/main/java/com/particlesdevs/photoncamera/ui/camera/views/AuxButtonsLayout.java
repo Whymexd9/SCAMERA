@@ -128,6 +128,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
         ModuleRegistry.initialize("front", auxButtonsModel.getFrontCameras());
         ModuleRegistry.initialize("back", auxButtonsModel.getBackCameras());
+        // P100: a main camera with in-sensor zoom (CROPPED_RAW, Galaxy S24 Ultra) gets its «2×» button once
+        com.particlesdevs.photoncamera.settings.IszModule.ensure(manager.getContext());
         // A config imported before the slots existed (fresh install) maps its module profiles now.
         com.particlesdevs.photoncamera.settings.BackupRestoreUtil.applyPending(manager.getContext());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";

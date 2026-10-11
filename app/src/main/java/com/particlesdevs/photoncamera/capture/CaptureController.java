@@ -1677,6 +1677,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * seen to switch the mode. Silent where the HAL has no such tag.
      */
     private void logSensorModeIndex(CaptureResult result) {
+        if (mCroppedRawSession && result != null) {
+            android.graphics.Rect crop = CroppedRaw.of(result);
+            if (crop != null && !CroppedRaw.same(crop, mLastRawCrop)) {
+                android.graphics.Rect active = mCameraCharacteristics == null ? null
+                        : mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                Log.i("SCAM_CAPTURE", "raw crop " + crop + " of " + active + ": x" + CroppedRaw.factor(crop, active)
+                        + (CroppedRaw.factor(crop, active) > 1f ? " (in-sensor zoom)" : ""));
+                mLastRawCrop = crop;
+            }
+        }
         if (sModeIndexMissing || result == null) return;
         int[] v;
         try {
@@ -2659,6 +2669,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             List<Surface> surfaces = configureSurfaces(isBurstSession);
             Log.d(TAG, "createCameraPreviewSession() surfaces:" + Arrays.toString(surfaces.toArray()));
             ArrayList<OutputConfiguration> outputConfigurations = new ArrayList<>();
+            boolean croppedRaw = false;
             final Surface rawSurface = mImageReaderRaw == null ? null : mImageReaderRaw.getSurface();
             final Surface yuvSurface = mImageReaderPreview == null ? null : mImageReaderPreview.getSurface();
             for (Surface surfacei : surfaces) {
@@ -2669,8 +2680,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if(!Objects.equals(physicalID, logicalID) && !logicalStream && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
                     config.setPhysicalCameraId(physicalID);
                 }
+                // P100: in-sensor zoom (ISZ) through the RAW stream's CROPPED_RAW use case where the camera lists it
+                if (surfacei == rawSurface && mTargetFormat == ImageFormat.RAW_SENSOR && Build.VERSION.SDK_INT >= 34
+                        && !sCroppedRawRefused.contains(physicalID) && CroppedRaw.supported(mCameraCharacteristics)) {
+                    try {
+                        config.setStreamUseCase(CroppedRaw.USE_CASE);
+                        croppedRaw = true;
+                    } catch (RuntimeException e) {
+                        Log.w(TAG, "CROPPED_RAW not set: " + e);
+                    }
+                }
                 outputConfigurations.add(config);
             }
+            mCroppedRawSession = croppedRaw;
+            mLastRawCrop = null;
+            if (croppedRaw) Log.i("SCAM_CAPTURE", "camera " + physicalID + ": RAW stream with CROPPED_RAW (in-sensor zoom from ~2x, P100)");
             if (xiaomiLogical) Log.i(TAG, "P41b: session on logical camera " + logicalID + ": viewfinder logical, readers on camera "
                     + physicalID + ", operation mode 0x" + Integer.toHexString(XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting())));
 
@@ -2805,6 +2829,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
                         if (retryXiaomiRoute(cameraCaptureSession, "session configuration")) return;
+                        if (retryWithoutCroppedRaw(cameraCaptureSession)) return;
                         if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                         if (retryWithoutScamSession(cameraCaptureSession)) return;
                         if (retryConfigureFallback(cameraCaptureSession)) return;
@@ -2880,6 +2905,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         });
         return true;
     }
+
+    /** P100: a session refused with the CROPPED_RAW RAW stream is configured again without it (this camera, this run). */
+    private boolean retryWithoutCroppedRaw(CameraCaptureSession session) {
+        if (!mCroppedRawSession || mCameraDevice == null || !sCroppedRawRefused.add(physicalID)) return false;
+        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session refused with CROPPED_RAW, again without it");
+        mCroppedRawSession = false;
+        session.close();
+        createCameraPreviewSession(false);
+        return true;
+    }
+
+    private static final java.util.Set<String> sCroppedRawRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile boolean mCroppedRawSession;
+    private android.graphics.Rect mLastRawCrop;
 
     private boolean retryWithoutLiveRaw(CameraCaptureSession session) {
         if (!mLiveRawSession || mLiveRawRejected || mCameraDevice == null || isZslMode()) return false;
@@ -4383,6 +4422,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void selectHybridRing(List<RingFrame> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
         RingFrame base = null;
         for (RingFrame image : rawImages) if (base == null || image.getTimestamp() > base.getTimestamp()) base = image;
+        // P100: with CROPPED_RAW every frame says which part of the sensor it holds; frames of another crop (the in-sensor zoom
+        // switched while they were taken) are not merged with the base, and the photo is not cropped again by what the RAW holds
+        final android.graphics.Rect baseCrop = mCroppedRawSession ? CroppedRaw.of(metadata.get(base.getTimestamp())) : null;
+        if (baseCrop != null) {
+            int other = 0;
+            for (java.util.Iterator<RingFrame> it = rawImages.iterator(); it.hasNext(); ) {
+                RingFrame image = it.next();
+                if (image != base && !CroppedRaw.same(baseCrop, CroppedRaw.of(metadata.get(image.getTimestamp())))) {
+                    image.close();
+                    it.remove();
+                    other++;
+                }
+            }
+            final android.graphics.Rect active = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            final float isz = CroppedRaw.factor(baseCrop, active);
+            com.particlesdevs.photoncamera.control.ZoomController.rawCropOfShot(isz);
+            Log.i("SCAM_HDR", "hybrid ZSL raw crop " + baseCrop + ": x" + isz + (isz > 1f ? " in-sensor zoom" : "")
+                    + (other > 0 ? ", " + other + " ring frames of another crop dropped" : ""));
+        }
         final double ref = product(metadata.get(base.getTimestamp()));
         List<RingFrame> exact = new ArrayList<>(), darker = new ArrayList<>(), rest = new ArrayList<>();
         for (RingFrame image : rawImages) {
