@@ -6,7 +6,7 @@ description: Работа над SCAMERA — Android-камерой (форк Ph
 # SCAMERA
 
 Репозиторий: `SCAMERA-PC/project` (git), GitHub `Whymexd9/SCAMERA`. Перед работой прочитать
-`research/handoff/HANDOFF.md` (состояние, правила, команды) и нужный пункт `research/handoff/PLAN.md` (P1…P62).
+`research/handoff/HANDOFF.md` (состояние, правила, команды) и нужный пункт `research/handoff/PLAN.md` (P1…P106; свежие находки по отчётам SCAM TEST — P93–P106).
 Корень `SCAMERA-PC/`: `AGENTS.md`, `HANDOFF.md` (история порта NICE/AE, сентябрь), `COLLAB.md`, `evidence/`, `reports/`.
 `local-secrets/` не читать и ничего оттуда не копировать.
 
@@ -22,7 +22,9 @@ description: Работа над SCAMERA — Android-камерой (форк Ph
 - Не добавлять настройки, которые не влияют на расчёт. Не выдумывать API, теги HAL, типы ключей — проверять по
   `CameraCharacteristics`/дампам.
 - Правки показывать диффом. Не трогать GLSL `kHybMergeMain1` в `app/src/main/cpp/scam-hybrid.h`.
-- Режимы сенсора не переключать (`forceSensorMode` и т.п.). Исключение — Xiaomi 17 Ultra (HAL сам, см. ниже).
+- Режимы сенсора не переключать (`forceSensorMode` и т.п.). Исключения: Xiaomi 17 Ultra (HAL сам, см. ниже); vivo X500 Pro Max
+  DCG 14 бит (P104, кнопка, разрешено владельцем); вендорные теги, которые владелец сам ставит в модуль. Новое — спросить.
+- SCAM TEST (`SCAMERA-PC/scam-test/`, `com.scam.test`) — отдельное приложение; его отчёты только входные данные.
 - Без root (root необязателен). Без подмены пакета/`clientName` стоковой камеры.
 - Части ArkCam комбинировать с нашим пайплайном, а не подменять.
 - Тесты не отключать и не ослаблять. md5 контрольных серий не должен меняться без умысла.
@@ -94,7 +96,15 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 | OPPO Find X9 Ultra | н/п | н/п | модуль 6× на 3×-камере с вендорным 2× ISZ | был двойной кроп 2048×1536 (P60) |
 | Xiaomi 17 Ultra | 25128PNA1C (`nezha`), SM8850, Adreno | 16; root н/п | логические SAT 0/5/6 = физ. 3 (сверхширик), 2 (основная 23.256 мм), 4 (теле 75–100 мм, оптический зум); 7 = системная репроцессинга | лог.0 RAW 4096×3072 (основная); кам.4 4080×3072; режим 4 обычный, 2 = 8160×6144 QUADCFA (~7×), 9 = ISZ 4080×3072 (≥8.5×) — переключает HAL сам |
 | Google Pixel 7 | Tensor G2, Mali-G710 | н/п | 2 основная, 3 сверхширик | н/п |
-| OnePlus 15 | CPH2747 | н/п | 2 | н/п |
+| OnePlus 15 | CPH2747, SM8850 | root (отчёт) | 0–4 | OIS спрятан HAL (ON в шаблонах); AE priority нативный; DCG-режимы HAL |
+| OPPO Find X9 Ultra | CPH2841 | н/п | 0–5 | OIS спрятан HAL; AE priority нативный; EnableHDRDCGMode |
+| OPPO Find X9 Pro | PLG110, MT6993 | н/п | 0–4 | MTK ISZ-ключи, `com.oplus.custom.support.raw.200m.size` (не проверено) |
+| vivo X500 Pro Max | V2602A / PD2602, MT6995 | н/п | 0 лог., 2 основная IMX09C, 3/5/6 теле S5KHPE, 4 UW | сценарий 3RD_APP_HDR = DCG 14 бит (P104) |
+| Galaxy S24 Ultra | SM-S928B | н/п | 0 лог., 20/23/24… | CROPPED_RAW (ISZ, P100), RAW-ридер ≥16 |
+| Xiaomi 15 Ultra | 25010PN30G | root | 0/1 + скрытые 2–7 | теле 4 в одиночку роняет провайдер |
+| Mi 10T Pro | M2007J3SG, SM8250 | — | 0 основная HMX 108 МП | RAW 6016×4512; 108 МП — P105, отложено |
+| Redmi Note 11 Pro | 2201116TG (`viva`), MT6781, Mali-G57 MC2 | нет | 0 основная HM2 | RAW 4000×3000; без OIS; HAL глохнет, если держать RAW (P106) |
+| Motorola Edge 50 Pro | SM7550 | root | 0 лог., 2/3/5 | `super_zoom`, `exp_pri` (P102) |
 | Nubia NX563J | н/п | 10 | н/п | н/п |
 
 Известные особенности:
