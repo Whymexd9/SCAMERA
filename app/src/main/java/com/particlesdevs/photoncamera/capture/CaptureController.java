@@ -2852,7 +2852,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // delivering frames or killed the HAL (onError 4); before P54d no other brand got session parameters.
                 int vsMode = vivoBrand() ? getPreferredVideoStabilizationMode(mCameraCharacteristics, mIsRecordingVideo, PreferenceKeys.isEisPhotoOn())
                         : CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
-                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
+                // P102: vendor keys the owner set on the module («Добавить vendor tag») are session parameters as well (the
+                // Motorola Edge 50 Pro's com.lenovo.moto.control.super_zoom is a session key); only when there are such keys
+                final boolean moduleKeys = !com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID).isEmpty();
+                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
