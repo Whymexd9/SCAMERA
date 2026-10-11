@@ -2528,3 +2528,22 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Opening the hidden logical camera 4 (main + UW) for streams killed the camera provider (configure Broken pipe, provider
   SIGSEGV, all devices removed 22:19:41) - as the 15 Ultra's camera 4 (P101): keep hidden logical cameras out of the modules.
 - Ring depth 24 RAW frames (stopped by free memory: 54 MB per frame), exposure up to 32 s on the main, ISO 50-1600.
+
+### P106 — SCAM TEST report of the Redmi Note 11 Pro (2201116TG, viva, MT6781 Helio G96, Mali-G57 MC2, HyperOS 1 / Android 13, no root; owner, 2026-10-11; read)
+
+- Main HM2 108 MP (6.04 mm f/1.9, no OIS, CFA GBRG, black 64 / white 1023): RAW only 4000x3000 (3x3 binned, plain 16-bit,
+  30 fps); com.xiaomi.qcfa.supported = 1, xiaomi.sensorSize.size 4000x3000; com.xiaomi.scaler.availableStreamConfigurations
+  tops at 4000x3000 too: no full-resolution stream anywhere. ISO 50-6400 (max analog 640), exposure up to 30 s; logical camera
+  5 (role 61) says ISO 100-15500. Hidden 2 = UW 1.65 mm 3264x2448 (15 s), 3 / 4 = 2 MP 1600x1200 fixed-focus (roles 25 / 22:
+  macro and depth), front 2328x1752 (ISO 8000, 0.4 s). No priority AE, no extensions, EIS ON only.
+- RAW hold test: the HAL stalled with 1 RAW frame held by the app and then closed the device (onError 4); afterwards every
+  camera was «disabled by policy» for the test app, so the ring depth search and the hidden cameras are untested. P91 (copy
+  on arrival) is required here; never hold camera Images on this phone.
+- Unused per-frame HAL data: com.mediatek.3afeature.aishutExistMotion / aishutExposuretime / aishutISO (MediaTek AI shutter:
+  motion flag and its suggested exposure; also on X9 Pro, X500 Pro Max, V2515, X200 Pro) -> HalMotion candidate (this phone has
+  no OIS); com.xiaomi.statsconfigs.AecLux (lux) and com.mediatek.3afeature.aeLuxIndex; aeSensorGain / aeIspGain (x1024),
+  com.xiaomi.sensorbps.gain.
+- Request keys worth a phone test: com.mediatek.control.capture.inSensorZoom.mode (MediaTek ISZ; values unknown, no
+  characteristics), remosaicenable / seamless.remosaicenable, processRaw.enable, raw.bpp, packedRaw.enable,
+  xiaomi.remosaic.enabled, xiaomi.supernight.raw.enabled; MTK AE com.mediatek.3afeature.aeIsoSpeed / aePlineIndex.
+- HW HEIF encoder c2.mtk.heif.encoder up to 16368 (8-bit).
