@@ -2402,3 +2402,26 @@ Reports: X8U, X9U, X7U (root), X100U, X200U (root), X200 Pro, vivo V2515 (MT6993
   isz_module 0 = off.
 - Check on the S24U: «2×» button present; log "RAW stream with CROPPED_RAW", "raw crop ... x2 (in-sensor zoom)" with the RAW
   still 4080x3060, the photo 4080x3060 with 2x detail (not upscaled), no double crop.
+
+### P101 — SCAM TEST reports 3: OnePlus 15, Find X9 Pro, Find X8 Ultra (root), Xiaomi 15 Ultra, vivo X500 Pro Max (owner, 2026-10-11; read)
+
+- OnePlus 15 (CPH2747, SM8850, root): 5 cameras listed, AE priority [0 1 2] native, exposure up to 54-74 s; OIS OFF only in the
+  characteristics but ON in the main / tele templates (0, 2, 4) -> added to halHiddenOis (done, 75ebecb). OPPO pro ISO range
+  com.oplus.pro.extension.iso.range 50-3200 on main / tele (read by ExposureRanges, P98). SCAM TEST reported a RAW
+  ImageReader limit of 7 (probe process aborted at 8): not real for the app (P58 shots ran with a reader of ~23) - probe
+  artifact after 4 earlier probe crashes.
+- Find X9 Pro (PLG110, MT6993, Android 17): ISO 100-19200, 32 s on every camera, no RAW hold failures; OIS OFF in the
+  characteristics and in the templates (not added to halHiddenOis; forced OIS requests ON anyway, P95). MediaTek
+  insensorzoomPlatformSupport = 1, request keys remosaicenable / seamless.remosaicenable, session key
+  insensorzoomIsInternalAP, com.oplus.custom.support.raw.size (request + session), com.oplus.custom.support.raw.200m.size,
+  com.oplus.capture.turboraw.zslpsl.num - candidates for an ISZ module on the X9 Pro, untested.
+- Find X8 Ultra (root): pro ISO range main 50-12800, UW / teles 50-3200; vendor exposure = declared (30 s); OIS ON in the
+  templates of 0 / 2 / 4 / 5 (already in halHiddenOis); ring depth 57-58.
+- Xiaomi 15 Ultra (25010PN30G, xuanyuan, root): listed 0 / 1, hidden 2-7; exposure declared 1 s; OIS ON in the main / tele
+  templates. Opening the hidden tele camera 4 (11.5 mm) alone with YUV + RAW gave 0 preview frames and the camera provider
+  restarted (all devices removed, 12:51:56): its tele probably needs the logical camera as on the 17 Ultra (P41b). Open: route
+  the 15U tele through its logical camera, or keep camera 4 out of the module list there.
+- vivo X500 Pro Max (V2602A, MT6995, Android 17): ISO 50/67-19200, 32 s, OIS on main / teles, no RAW hold failures;
+  ultra-wide 4 previews at 13.5 fps. Nothing to fix from the report.
+- S24 Ultra: same report as P99 / P100.
+- Generic: no OPPO / OnePlus / vivo / Xiaomi phone in these reports lists CROPPED_RAW (only the S24 Ultra).
