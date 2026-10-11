@@ -12,12 +12,14 @@ public class HalHiddenOisTest {
         assertTrue(CaptureController.halHiddenOis("OPPO", "PHY110"));
         assertTrue(CaptureController.halHiddenOis("OPPO", "PKJ110"));
         assertTrue(CaptureController.halHiddenOis("oppo", "cph2841"));
+        assertTrue(CaptureController.halHiddenOis("OnePlus", "CPH2747"));
     }
 
     @Test
     public void otherPhonesFollowCamera2() {
         assertFalse(CaptureController.halHiddenOis("Xiaomi", "2201116TG"));
         assertFalse(CaptureController.halHiddenOis("OPPO", "CPH2747"));
+        assertFalse(CaptureController.halHiddenOis("OPPO", "PLG110")); // Find X9 Pro: OFF in the templates as well
         assertFalse(CaptureController.halHiddenOis("vivo", "V2454A"));
         assertFalse(CaptureController.halHiddenOis("OPPO", null));
     }

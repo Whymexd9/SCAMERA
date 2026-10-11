@@ -5919,8 +5919,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     static boolean halHiddenOis(String manufacturer, String model) {
-        if (!"OPPO".equalsIgnoreCase(manufacturer) || model == null) return false;
+        if (model == null) return false;
         final String m = model.toUpperCase(java.util.Locale.ROOT);
+        // OnePlus 15 (SCAM TEST 2026-10-11): OIS OFF only in the characteristics, ON in the main / tele templates (0, 2, 4)
+        if ("OnePlus".equalsIgnoreCase(manufacturer)) return m.equals("CPH2747");
+        if (!"OPPO".equalsIgnoreCase(manufacturer)) return false;
         return m.equals("PHY110") || m.equals("PKJ110") || m.equals("CPH2841");
     }
 
