@@ -2680,8 +2680,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if(!Objects.equals(physicalID, logicalID) && !logicalStream && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
                     config.setPhysicalCameraId(physicalID);
                 }
-                // P100: in-sensor zoom (ISZ) through the RAW stream's CROPPED_RAW use case where the camera lists it
+                // P100: in-sensor zoom (ISZ) through the RAW stream's CROPPED_RAW use case where the camera lists it; not on the
+                // Xiaomi tele (P41 / P41b crop the photo from the HAL's own zoom report: a second crop source would divide twice)
                 if (surfacei == rawSurface && mTargetFormat == ImageFormat.RAW_SENSOR && Build.VERSION.SDK_INT >= 34
+                        && !xiaomiLogical && !XiaomiTeleZoom.active()
                         && !sCroppedRawRefused.contains(physicalID) && CroppedRaw.supported(mCameraCharacteristics)) {
                     try {
                         config.setStreamUseCase(CroppedRaw.USE_CASE);

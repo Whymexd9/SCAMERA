@@ -2438,3 +2438,40 @@ Reports: X8U, X9U, X7U (root), X100U, X200U (root), X200 Pro, vivo V2515 (MT6993
   lux_idx / awb_cct / lens_pos per frame, tf.ipe_ccm_value (ISP CCM) and ipe_gamma_value (256-point ISP gamma),
   uwdc.process_in_app (UW distortion correction left to the app), SATFallback.T2W / W2UW. Candidates for a Motorola profile:
   super_zoom as an ISZ module and exp_pri past 0.25 s - both need a test on the phone (values unknown).
+
+### P103 — Hidden features in all SCAM TEST reports (owner, 2026-10-11: «найди все скрытые функции и фишки»; read, one fix)
+
+Newest report per phone (15 phones). Already known items (P93-P102) are not repeated.
+- Fix (done, not on a device): the Xiaomi 17 Ultra also lists CROPPED_RAW (logical 0 / 5 / 6, main 2, tele 4; P101 said
+  "only the S24 Ultra"), so P100 turns on there by itself (and IszModule offers «2×» on the main). The tele keeps its P41 /
+  P41b crop from the HAL zoom report: CROPPED_RAW is not set on a P41b logical session or while XiaomiTeleZoom is active
+  (two crop sources would divide the photo's crop twice).
+- Standard Camera2, unused by the app:
+  - LOW_LIGHT_BOOST_BRIGHTNESS_PRIORITY (AE mode 6, luminance range 0.5-10 lux): X200 Ultra (all cameras), Xiaomi 17 Ultra.
+    Brighter viewfinder in the dark; affects the ring frames' exposure too - test before use.
+  - Settings override ZOOM (lower zoom latency): Xiaomi 17U logical 5 / 6, X100 Ultra 2 / 5, X200 Ultra 0 / 2 / 9.
+  - Camera2 extensions (JPEG / YUV, no RAW): Night on every phone; 17U all five (AUTO, FACE_RETOUCH, BOKEH, HDR, NIGHT),
+    15U AUTO / BOKEH / NIGHT, S24U FACE_RETOUCH / BOKEH / NIGHT, OPPO BOKEH / NIGHT.
+  - Extended scene mode BOKEH (still / continuous): X7U, 13U 6, 17U 5, Moto, X100U, X200U, vivo MediaTek.
+  - AE priority (Android 16) native also on the 17 Ultra (ParamController already uses it where listed).
+- Sensor HDR / DR (all switch the sensor mode: need the owner's approval and a phone):
+  - Qualcomm session key org.codeaurora.qcamera3.sessionParameters.EnableHDRDCGMode, static
+    org.codeaurora.qcamera3.supportedHDRmodes.HDRDCGModes: 17U HAL 0 [658949 3588 3076], 1 [3588], 2 [3588 658949],
+    3 [3076], 4 [3588]; OnePlus 15 [657924] on two cameras; X8U [2563] on one; per-frame com.qti.stats_control.DCGMode (0 in
+    every result seen). Encoding of the mode values unknown.
+  - Xiaomi 17U: session key com.xiaomi.sessionparams.enableLofic, per-frame com.xiaomi.stats.internal.perFrame.loficAERatioInfo
+    (float ratio 1.0 + 0 now), supportVideoLofic.
+  - vivo Qualcomm (X100U, X200U) and MediaTek vivo: session key vivo.control.EnableDCGHDR; vivo.control.SportStagger /
+    MultiSportStagger (com.vivo.SupportSportStagger = 1: «1X sport capture with dual stream»; ScamPreview sends 0 / [1,3]).
+  - X500 Pro Max (MT6995) scenario tables (/odm/etc/camera/scenario_table_*.xml): main IMX06H has DCG sensor-merged 14-bit
+    Bayer (modes 18, 19 LOFIC, 20 crop 2x) in the video scenario, DCG AP-merge 2-exposure (14, 26), LBMF 2-exposure (15, 17)
+    = CUSTOM_CAMERA_SCENARIO_MOTION_DEBLUR; third-party apps get CUSTOM_CAMERA_SCENARIO_3RD_APP = binned mode 0 only.
+    Session keys com.mediatek.seamlessfeature.cameraScenario / sensorScenario pick them (values unknown).
+- Motion (P86 candidates): MediaTek AI shutter com.mediatek.3afeature.aishutterMode (session; modes {0, 1} on X9 Pro,
+  X500 Pro Max, V2515), com.oplus.aishutter.enable (X9 Pro); com.oplus.fastmotion.mode.enable (X7U, session);
+  vivo.control.is_motion_autofocus / motionCaptureMode (vivo session keys); xiaomi.ai.misd.motionCaptureEnabled (13U).
+- RAW / resolution: org.codeaurora.qcamera3.sessionParameters.EnableIdealRAW on every Qualcomm phone (com.qti.chi.rawcbinfo.
+  IdealRaw on 13U / 15U); EnableSnapshotOnlyInsensorZoom (Moto); com.xiaomi.control.qcfa.isSuperRemosaic (15U, 17U);
+  com.oplus.snapshot.rawformat (X9U); vivo.control.ultra_highresolution / advance_fullsize / ai_highresolution / is_ProRaw_on;
+  enableQLL + org.quic.camera.swcapabilities.isQLLSupported (Qualcomm low-light engine, YUV path).
+- Nothing above is wired except the 17U guard; each needs a phone test (and the sensor-mode ones the owner's approval).

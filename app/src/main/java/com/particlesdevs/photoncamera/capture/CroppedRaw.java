@@ -11,7 +11,8 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 
 /**
  * P100 In-sensor zoom through the Android 14 stream use case CROPPED_RAW (Galaxy S24 Ultra: the main camera 0 / 20 / 23 and the
- * 5x tele 24 list it, every result carries android.scaler.rawCropRegion; SCAM TEST 2026-05-18). The RAW stream configured with
+ * 5x tele 24 list it, every result carries android.scaler.rawCropRegion; SCAM TEST 2026-05-18; the Xiaomi 17 Ultra lists it on
+ * the logical 0 / 5 / 6, the main 2 and the tele 4, the tele keeps its own P41 path). The RAW stream configured with
  * it follows the zoom: from about 2x the HAL reads the centre of the sensor at full resolution (remosaicked to Bayer) into the
  * same 4080x3060 RAW instead of cropping the binned frame, so a 2x photo has real 2x detail (owner: «нам нужен именно ISZ, а
  * не просто кроп с 12 мп»). rawCropRegion says which part of the active array a RAW frame holds; the photo's own zoom crop is
