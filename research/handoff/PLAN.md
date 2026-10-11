@@ -2107,13 +2107,26 @@ The settings live in different places now; the curated groups use these keys.
 
 ### P85 — Gallery button: the badge inside the gallery icon 20 % smaller (owner, 2026-10-11; queued)
 
-### P86 — Photo mode «Движение» (owner, 2026-10-11; queued)
+### P86 — Photo mode «Движение» (owner, 2026-10-11; done, not on a device)
 - A separate photo mode for moving subjects: the best possible quality of what moves and the fastest capture (no moment
   missed), fast processing; HDR may be weaker.
 - Its own settings group inside the Hybrid settings group.
 - To work out: capture (shutter-moment frame, short exposures, fewer / no bracketed Shasta frames, ZSL ring at the press),
   merge (reject / motion masks favouring the base frame, Bento only where it does not ghost), processing time budget, the
   shutter-to-shutter interval; measure on the OPPO replays and the owner's handheld shots.
+- Done 2026-10-11 (owner: switch beside the settings gear in the viewfinder, «красивая иконка и анимация», «максимально
+  хорошее движение и максимально быстрый буфер», «максимально возможный фпс видоискателя»):
+  - settings/MotionMode + PreferenceKeys.isMotionMode (global pref_motion_mode, also a row under the route selector);
+    hybridValue / hybridSwitch return the mode's own pref_scam_hybrid_mm_<key> for zsl_frames 8, shasta off, bento auto,
+    motion_boost on, boost_value 10, motion_threshold 0.5 (group «Движение» in Hybrid, scam_hybrid_motion_screen, with
+    mm_fps: 0 = maximum).
+  - Viewfinder + ZSL ring: the highest fixed AE range [f, f] within the RAW stream's min frame duration (X8U / X200 Pro
+    [60, 60] if RAW keeps up, else [30, 30]): exposure <= 1/f, ring refreshed most often; toggling restarts the session
+    (AE range is a session key).
+  - Top bar: motion_mode_button (44dp card left of the gear): off = gear card, subject standing; on = accent card, the
+    subject overshoots forward and three speed lines are drawn one after another (topbar_avd_motion_on / _off), the card
+    springs 0.86 -> 1. Tests MotionModeTest, ViewfinderUiTest (position / size).
+  - Check on the phones: log "motion mode: camera N AE range [f, f]", ring frame exposure, press-to-frame time, merge time.
 
 ### P87 — Manual rulers' ISO / shutter range, priority on every phone (owner, 2026-10-11; done, device check pending)
 - Owner's screenshots (X200 Ultra): stock pro mode ISO 72..12800 (main, ultra-wide), 50..3200 (tele), up to 32 s; ours
@@ -2220,3 +2233,136 @@ The settings live in different places now; the curated groups use these keys.
 
 ### P85b — SGallery launcher frame 15 % smaller (owner, 2026-10-11; done)
 - drawable/sgallery_icon_scaled: the generated foreground inset 7.5 % on every side, used by ic_gallery_launcher(_round).
+
+### P93 — SCAM TEST report of the OPPO Find X7 Ultra with root (owner, 2026-10-11; read)
+- File: Desktop/SCAM-TEST_OPPO-PHY110_20261011-080917.txt (com.scam.test, Android 16, 142 k lines, root sections).
+- Without the package spoof the app sees cameras 0 (logical, physical 2 + 3), 1 (front), 2 (main 8.67 mm), 3 (UW 2.59 mm);
+  the HAL has 7: 4 = 15.38 mm (3x tele), 5 = 22.36 mm (6x tele), 6 = main 8.67 mm (another mode), all ISO 100..6400,
+  exposure up to 32 s (4) / 105 s (5).
+- aeAvailablePriorityModes [0] on every module (no Android 16 priority); org.codeaurora.qcamera3.iso_exp_priority
+  present in the static metadata (iso_available_modes, exposure_time_range), not in the app's request-key list: the P87
+  Qualcomm way is tried and falls back to the software loop after 15 frames if the HAL ignores it.
+- aeTargetFpsRange is a session key here too (P84c applies).
+- ImageReader hold test, RAW_SENSOR 4096x3072 (~24 MB): camera 0 stalls with 13 frames held (116 capture failures),
+  cameras 1 / 2 hold 62 but with 164 / 187 capture failures; YUV holds 62 without failures. The old ZSL ring held up to 50
+  camera Images: evidence for P91 (copy on arrival, reader of 20). maxImages <= 62 (63 aborts natively).
+- OIS: Camera2 lists only OFF on every module while the device tree has qcom,ois@0 / @1 (the hardware has OIS, the HAL does
+  not expose it): isOisSupported() is false on the OPPO, so the P78 steadiest-frame selection runs there (harmless: it keeps
+  the newest frame and picks the least shaken of the rest).
+
+### P94 — SCAM TEST reports of the Find X8 Ultra, Find X9 Ultra, X100 Ultra, X200 Ultra (owner, 2026-10-11; read)
+
+- Find X8 Ultra (PKJ110, no root): 6 cameras listed without a spoof (0 = logical 2/3/4/5, 1 front, 2 main 8.67 mm, 3 UW,
+  4 tele 16.53 mm, 5 tele 24.85 mm). ISO 100-6400 (UW 100-16000), exposure up to 30 s, frame duration up to 36-105 s.
+  aeAvailablePriorityModes [0], no iso_exp_priority keys: priority goes through the software loop.
+- Find X9 Ultra (CPH2841, owner: «это оппо X9U»): 6 cameras listed; main RAW 4080x3064; ISO main 100-9100, tele 20.1 mm
+  100-12700, 34.8 mm 100-16000; exposure up to 30 s. aeAvailablePriorityModes [0 1 2] on every camera and aePriorityMode is
+  a request key: the HAL priority path of ParamController applies; the result also carries iso_exp_priority.use_iso_value.
+- X100 Ultra (V2366GA): only 0 / 1 listed (2-6 hidden, 6 = mono 3840x1080). ISO 50-3200 (tele 22.48 mm 50-6400), exposure
+  up to 22-29 s declared without narrowing (unlike the X200 Ultra). RAW_SENSOR from the test is plain 16-bit.
+- X200 Ultra (V2454A, root): declared ranges narrowed as known (main/UW 1144-3200, 0.33 s; tele 400-800, 0.23 s);
+  com.vivo.pro_isoMin/Max 72/12800 on main/UW only, none on the tele (the tele's postRawSensitivityBoostRange 100-3199 is not
+  a sensor range); iso_exp_priority.exposure_time_range repeats the narrowed exposure (so the vendor shutter priority stops at
+  0.33 s; the preview is capped at 1/10 s anyway). Logical camera 0: the RAW hold test got 0 frames (stalled) - the app runs
+  on the physical cameras, check the test itself.
+- All four: aeTargetFpsRange is a session key (P84c covers every phone). Every OPPO module lists OIS OFF only.
+- RAW hold test (maxImages 62): RAW_SENSOR held -> capture failures on every phone (X8U 34-40, X9U 33-39, X200U 1-22,
+  X100U ~1900-2300, the X100U also for YUV/PRIVATE), YUV on the OPPOs 0-3. Supports P91's short reader. Open: the test only
+  holds 62, so the depth where failures start is unknown - a stepped hold test (8/12/16/20/24/32) in SCAM TEST would set the
+  zsl_reader default per phone.
+
+### P95 — OIS forced on every phone (owner, 2026-10-11: «нужен рабочий OIS на оппо, форсировать его работу на всех смартах»; done, not on a device)
+
+- Found in the SCAM TEST reports: the Find X8 / X9 Ultra list LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION = [OFF] on every
+  module, yet TEMPLATE_PREVIEW / STILL_CAPTURE / ZSL carry OIS ON on the main and tele modules (0/2/4/5) and the live results
+  report ON; MANUAL carries OFF. UW and front: OFF everywhere, and the HAL's gyro config says "ultrawide ois_on false".
+- CaptureController.oisRequestable: OIS mode requests (applyOisMode on the preview and the series, the P54b forced
+  stabilisation) now go to every camera, not only to those listing ON; the user's «OIS off» (oisMode 2) still sends OFF.
+  scam_dev "ois_force 0" restores the listed-only behaviour. Log once per camera: "OIS forced ON on camera <id>".
+- hasOisHardware / halHiddenOis (PHY110, PKJ110, CPH2841): the P78 steadiest-frame selection is skipped there (gyro shake
+  does not show what OIS removed). HUD OIS badge follows the reported result mode.
+- Check on the OPPO: stab_trace 1 -> reqOis/resOis on the preview and the series of the main, UW and tele; no capture
+  failures from the forced key on the UW/front (where the HAL may reject it).
+
+### P96 — SCAM TEST reports 2: Find X9 Ultra (16:08), X100 Ultra (11:07), Xiaomi 13 Ultra (2304FPN6DG, root), Find X7 Ultra (root) (owner, 2026-10-11; read)
+
+- Find X9 Ultra, memory-bounded hold test: 24-53 RAW_SENSOR frames held with 0 capture failures on every camera (the first
+  report's 33-39 failures were at 62 held). The X9U is not short of camera buffers below ~50.
+- Xiaomi 13 Ultra: the HAL stalls with 7-9 RAW frames held by the app on every camera (19-880 capture failures), and the
+  camera provider died during the hold test of camera 6 (all devices removed at 14:11:55; cameras 7-12 missing from the report).
+  The old ZSL ring (up to 50 held Images) could not have worked there; P91 (copy on arrival, Image closed at once) fits, and
+  the post-shutter frames are copied on arrival too (SaverImplementation -> ImageFrame into the shot arena). Exposure is
+  declared up to 1 s (front 0.5 s), maxFrameDuration 1 s; ISO main 50-3200, others 50-804 / 50-1119. OIS listed [0 1] on
+  main / tele modules. The HAL carries org.quic.camera.manualExposure.disableFPSLimits (byte) and overrideSensorFrameDuration
+  (int64) in its requests/results (the 17U stock app always sends 0): a possible route past 1 s - untested, needs a device.
+- Find X7 Ultra: as P93 (logical 0 stalls at 13 held, physical 0/2/3 hold 62 with 113-212 failures); OIS ON in the
+  PREVIEW / STILL templates and results of cameras 0 and 2, OFF on UW 3 and front 1 (as the X8U / X9U, see P95).
+- X100 Ultra: unchanged (holding RAW / YUV / PRIVATE -> thousands of failures).
+- SCAM TEST 1.10: after a stalled hold, the other formats of that camera skip the hold test (kept the Xiaomi provider alive).
+
+### P97 — SCAM TEST report of the vivo X200 Pro (V2405A, MT6991, Mali; owner, 2026-10-11; read, one fix done)
+
+- Cameras: listed 0 (logical main, physical 2/3/4) and 1 (front, FULL, no RAW capability); unlisted 2 main 6.54 mm,
+  3 tele 22.48 mm (OIS [1] = ON only), 4 UW 2.32 mm (RAW 4080x3060), 5 = auxiliary: focal 0.0, ISO [0, 0], 1920x1080,
+  black 256.
+- Fix (done, not on a device): CameraManager2.isAuxiliarySensor also drops sensors with focal length 0, ISO max 0 or
+  exposure max 0 (AuxiliarySensors.noLensGainOrExposure; X200 Pro camera 5 = P39's configure-failure / error 4 loop, X200
+  Ultra camera 7 = exposure [0, 0], no preview frame); the camera scan cache is dropped once (aux_revision "aux2"); the lens
+  switch refuses such an id with «служебный поток». Test AuxiliarySensorTest.
+- RAW: the main (0 and 2) delivers 4096x3072 with the last row all zero (the known 4000x3000 picture with zero padding; the
+  arrays still say 4096x3072); tele and UW have signal in the last row. Black-floor skip of the padding exists (Parameters);
+  a crop of the saved photo to the valid area is still open (needs a shot from the phone to measure the area).
+- ISO: logical 0 says 71-6400, its physical main 2 says 72-12800 (the app can show 12800 on the main if the logical HAL
+  takes it - untested). Exposure up to 16 s on rear modules, front 0.43 s. Priority modes [0] only: software loop.
+- Hold test (MediaTek HAL): 52-62 RAW frames held on every camera with 0 capture failures - no buffer limit concern.
+- Front camera (owner: «сможем её запустить?»): FULL, no RAW capability; the HAL accepts PRIV 1920x1440 + YUV 3264x2448 (and
+  + JPEG / PRIVATE) and streams 27 fps; a YUV / PRIVATE reader configures up to maxImages 52 (53+: configure failed) and holds
+  52 without failures. P52 (retry without the vivo stock preview profile, 9f6a459) is on main, unconfirmed by the owner.
+  Found and fixed (P91 regression): a YUV ring frame went into the memfd ring, which copies one plane (colour lost), and the
+  reader was cut to 20 while YUV Images stay held (the ring would starve). Now multi-plane frames are held as Images and the
+  short reader applies to RAW streams only. Open: the photo route of a RAW-less camera is untested on the phone.
+
+### P98 — Vendor tags worth using, from all SCAM TEST reports of 2026-10-11 (owner's question; candidates, nothing wired yet)
+
+Reports: X8U, X9U, X7U (root), X100U, X200U (root), X200 Pro, vivo V2515 (MT6993), Xiaomi 13U (root), Xiaomi 17U (root).
+- Real exposure / ISO ranges above the declared ones (manual mode, ExposureRanges):
+  - OPPO X7U: com.oplus.pro.extension.iso.range (int32[2], support flag com.oplus.pro.extension.iso.support = 1): main
+    50-12800, UW / teles 50-3200 (declared 100-6400) - the OPPO twin of com.vivo.pro_isoMin/Max. X8U / X9U: unknown (no root
+    dump), try reading it by name. iso_exp_priority.exposure_time_range on X7U: UW 91 s, 6x tele 105 s (declared 36 / 32 s).
+  - Xiaomi 17U: xiaomi.sensor.info.exposureTimeRange / maxFrameDuration up to 36-180 s and iso_exp_priority.exposure_time_range
+    100-112 s on main / tele, while Camera2 declares 1 s; com.xiaomi.sensorInfo.fullsizeQuad.isoRange 50-12800. Long frames
+    probably need org.quic.camera.manualExposure.disableFPSLimits / overrideSensorFrameDuration (present on every Qualcomm
+    phone; stock 17U always sends 0) - device test needed.
+  - vivo X200 Pro / V2515 (MediaTek): request keys vivo.control.maxExposureTime, vivo.control.iso / iso_total,
+    vivo.control.slowShutterExposureTime (V2515) - candidates past the declared 16 s.
+- Motion / handshake (P86 «Движение», N-frame exposure cap, steadiest frames):
+  com.qti.stats_control.ais_safe_exposure_time (X8U 5.6 ms, X7U 40 ms: the HAL's motion-safe shutter), motion_detected,
+  ais_motion_type (X8U / X7U); com.oplus.rawhdr.shake.state (X8U / X9U / X7U; X9U reported 1 while handheld);
+  vivo.feedback.motionResult / gyroDetect (vivo); xiaomi.thermal.IsOnTripod (17U).
+- Per-frame gyro / OIS synced to the sensor (alignment hints, P78 without the gyro-clock problem): vivo.parameter.captureGyroData
+  + captureOisData (X100U, X200U, X200 Pro, V2515), vivo.feedback.oisPerframeDatas (MTK vivo), com.oplus.gyro.data (OPPO,
+  3 floats), com.mediatek.3afeature.gyrodata, com.xiaomi.ThridPartyGyroState.gyroData (17U, 4 KB); exposure start:
+  org.quic.camera.qtimer.startOfExposure (Qualcomm), vivo.feedback.shutterReadoutTimestamp (MTK).
+- OIS: com.xiaomi.camera.supportedfeatures.TeleOisSupported = 1, com.xiaomi.EISSensorMeta.isOisManagerSupported = 1 (17U).
+- Colour / black: com.oplus.custom.ccm (52 bytes per frame on all three OPPOs; X7U's CC14 tuning is empty -> OppoTunedColor),
+  vivo.feedback.ccm (X100U / X200 Pro / V2515), vivo.feedback.blackLevel (MTK vivo; the X200 Pro padding issue).
+- MediaTek RAW control: com.mediatek.control.capture.packedRaw.enable / raw.bpp (request keys, X200 Pro / V2515).
+- Already used: com.vivo.pro_isoMin/Max, iso_exp_priority.*, com.qti.chi.statsaec.AecLux, Xiaomi optical zoom keys,
+  vivo AEC frame control / rawHDR keys, EnableInsensorZoom / ExtendedMaxZoom, mediatek remosaicenable.
+- Done 2026-10-11 (owner: «делай все 4 пункта» = groups 1-4 above; not on a device):
+  1. ExposureRanges: OPPO com.oplus.pro.extension.iso.range joins the vivo pro range (ISO ruler); the shutter ceiling also
+     rises to the vendor exposure range (iso_exp_priority.exposure_time_range, xiaomi.sensor.info.exposureTimeRange) on a stop
+     (max 32 s). LongExposureKeys: a series frame longer than SENSOR_INFO_MAX_FRAME_DURATION sets disableFPSLimits = 1,
+     overrideSensorFrameDuration = its exposure and SENSOR_FRAME_DURATION (others back to 0), only where the template has the
+     keys (scam_dev long_exposure_keys 0 = off); the vivo X200U (33 s frame limit) is unaffected. MediaTek vivo
+     maxExposureTime / iso keys not used: their meaning is unknown.
+  2. HalMotion: motion flags (qti motion_detected, oplus rawhdr.shake.state, vivo motionResult) + ais_safe_exposure_time;
+     while the HAL reports motion a Shasta frame's shutter is capped at that safe exposure (never below N; not for the manual
+     long shutter); the plan line says "HAL motion: shutter cap". scam_dev hal_motion 0 = off.
+  3. Steadiest-frame selection (cameras without OIS) falls back to the HAL's per-frame shake (|com.oplus.gyro.data|,
+     |vivo.feedback.gyroDetect|) when the phone gyro has no samples. vivo captureGyroData / captureOisData / gyroData not
+     parsed (undocumented layouts).
+  4. Parameters: an identity colorCorrection.transform (X7U) is replaced by com.oplus.custom.ccm (OplusCcm: 4-byte header +
+     9 LE floats, rows sum to 1; scam_dev oplus_ccm 0 = off). The X7U's OppoTunedColor path still wins where it applies.
+     vivo.feedback.ccm equals the standard transform (nothing new); vivo.feedback.blackLevel is not in live results.
+  Tests VendorHintsTest, OplusCcmTest (681/681).

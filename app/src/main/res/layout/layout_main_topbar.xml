@@ -89,6 +89,23 @@
                     android:visibility="gone"/>
         </FrameLayout>
 
+        <!-- P86: the «Движение» photo mode switch beside the gear (owner, 2026-10-11): same 44dp card, the icon animates on a
+             toggle (CameraUIViewImpl.bindMotionMode). -->
+        <ImageButton
+                android:id="@+id/motion_mode_button"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="8dp"
+                android:minWidth="0dp" android:minHeight="0dp"
+                android:onClick="@{top_bar_click_listener}"
+                android:background="@drawable/shade_gear_card"
+                android:src="@drawable/topbar_ic_motion_off"
+                android:scaleType="fitCenter"
+                android:padding="10dp"
+                android:contentDescription="@string/motion_mode_off"
+                android:tooltipText="@string/motion_mode_off"
+                bindRotate="@{uimodel}"/>
+
         <!-- The settings entry at every level (in FULL under the scrim: a tap there lowers the shade first). -->
         <ImageButton
                 android:id="@+id/settings_button"

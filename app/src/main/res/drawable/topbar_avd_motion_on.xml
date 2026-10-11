@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P86 «Движение» switch on: the subject starts moving forward and the speed lines are drawn behind it, one after another. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+        <group android:name="lines">
+            <path android:name="line1" android:pathData="M10,8.2 L3.2,8.2" android:trimPathStart="1" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
+            <path android:name="line2" android:pathData="M9.6,12 L1.6,12" android:trimPathStart="1" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
+            <path android:name="line3" android:pathData="M10,15.8 L4.6,15.8" android:trimPathStart="1" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
+        </group>
+        <group android:name="subject" android:translateX="-4">
+            <path android:pathData="M12,12 a4.2,4.2 0 1,0 8.4,0 a4.2,4.2 0 1,0 -8.4,0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7"/>
+            <path android:pathData="M14.6,12 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0" android:fillColor="#FFFFFFFF"/>
+        </group>
+    </vector>
+    </aapt:attr>
+    <target android:name="subject">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:propertyName="translateX" android:valueFrom="-4" android:valueTo="0" android:valueType="floatType"
+                android:duration="320" android:interpolator="@android:interpolator/overshoot"/>
+        </aapt:attr>
+    </target>
+    <target android:name="line1">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:propertyName="trimPathStart" android:valueFrom="1" android:valueTo="0" android:valueType="floatType"
+                android:duration="260" android:startOffset="0" android:interpolator="@android:interpolator/fast_out_slow_in"/>
+        </aapt:attr>
+    </target>
+    <target android:name="line2">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:propertyName="trimPathStart" android:valueFrom="1" android:valueTo="0" android:valueType="floatType"
+                android:duration="260" android:startOffset="50" android:interpolator="@android:interpolator/fast_out_slow_in"/>
+        </aapt:attr>
+    </target>
+    <target android:name="line3">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:propertyName="trimPathStart" android:valueFrom="1" android:valueTo="0" android:valueType="floatType"
+                android:duration="260" android:startOffset="100" android:interpolator="@android:interpolator/fast_out_slow_in"/>
+        </aapt:attr>
+    </target>
+</animated-vector>

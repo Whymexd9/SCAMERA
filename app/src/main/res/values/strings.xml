@@ -296,5 +296,22 @@
     <!-- Settings sheet row pin (TalkBack, tooltip) -->
     <!-- Top bar gear that opens SettingsActivity (TalkBack, tooltip) -->
     <string name="sheet_all_settings">All settings</string>
+    <string name="motion_mode_on">Motion mode: on</string>
+    <string name="motion_mode_off">Motion mode: off</string>
+    <string name="motion_mode_on_toast">Motion: fast buffer, sharp moving subjects</string>
+    <string name="motion_mode_off_toast">Photo</string>
+    <string name="prefs_scam_motion_on_title">Motion mode</string>
+    <string name="prefs_scam_motion_on_summary">The same switch as the motion icon beside the settings gear in the viewfinder</string>
+    <string name="prefs_scam_motion_screen_title">Motion</string>
+    <string name="prefs_scam_motion_screen_summary">Mode of the switch beside the settings gear: the fastest buffer, sharp moving subjects, fast processing; HDR is weaker</string>
+    <string name="prefs_scam_motion_fps_title">Viewfinder and buffer rate</string>
+    <string name="prefs_scam_motion_fps_summary">%s. Maximum: the fastest fixed rate the camera and its RAW stream allow; no buffer frame is exposed longer than one frame interval</string>
+    <string name="prefs_scam_motion_frames_title">Frames to merge</string>
+    <string name="prefs_scam_motion_frames_summary">The newest buffer frames at the press: fewer frames span less time and merge faster</string>
+    <string name="prefs_scam_motion_shasta_summary">Bracketed long frames after the shot; off by default: they smear what moves</string>
+    <string name="prefs_scam_motion_bento_summary">%s. Ultrashort frames for the highlights; by default only where the frame clips</string>
+    <string name="prefs_scam_motion_boost_summary">Stronger rejection of moving areas in the merge</string>
+    <string name="prefs_scam_motion_boost_value_summary">Strength of the rejection of moving areas (photo: 6)</string>
+    <string name="prefs_scam_motion_threshold_summary">Local motion (RAW px) from which a tile counts as moving; lower = sooner (photo: 1.5)</string>
 </resources>
 

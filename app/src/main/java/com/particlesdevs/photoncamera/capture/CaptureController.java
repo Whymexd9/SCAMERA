@@ -1670,6 +1670,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 //        }
 //    }
 
+    /** P86: the «Движение» mode's AE range on this camera (null: the mode is off or the camera lists no fixed range). */
+    private Range<Integer> motionFpsRange() {
+        if (!com.particlesdevs.photoncamera.settings.MotionMode.on() || mIsRecordingVideo) return null;
+        ImageReader raw = mImageReaderRaw;
+        Size size = raw != null ? new Size(raw.getWidth(), raw.getHeight()) : null;
+        return com.particlesdevs.photoncamera.settings.MotionMode.fpsRange(mCameraCharacteristics, mTargetFormat, size);
+    }
+
     private Range<Integer> getSelectedFpsRange() {
         switch (PhotonCamera.getSettings().fpsMode) {
             case 1: return new Range<>(24, 24);
@@ -2347,7 +2355,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // otherwise acquireNextImage starves once the ring is full.
             // P91: with the ring in the app's memfd the reader only passes frames through (copied on arrival) and holds the
             // post-shutter series: scam_dev "zsl_reader" (default 20; LMC keeps 50, ArkCam 1.05 min(max(2 x frames, 8), 48))
-            maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true)
+            // A YUV ring (no RAW) still holds the camera's Images: reader = ring + 3, as before.
+            maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true) && isRawFormat(mTargetFormat)
                     ? Math.max(8, Math.min(Math.min(zslRingCapacity() + 3, 103), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
                     : Math.min(zslRingCapacity() + 3, 103);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
@@ -2722,6 +2731,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             // Finally, we start displaying the camera preview.
                             mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
                                     scamPreview ? ScamPreview.STOCK_FPS : getSelectedFpsRange());
+                            // P86 «Движение»: the fastest fixed rate the RAW stream allows (exposure <= 1/f, ring refreshed most often)
+                            Range<Integer> motionFps = motionFpsRange();
+                            if (motionFps != null) {
+                                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, motionFps);
+                                Log.i("SCAM_CAPTURE", "motion mode: camera " + physicalID + " AE range " + motionFps);
+                            }
                             mPreviewInputRequest = mPreviewRequestBuilder.build();
                             if (isBurstSession && isDualSession) {
                                 switch (CameraFragment.mSelectedMode) {
@@ -3893,6 +3908,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private RingFrame ringFrameLocked(Image img) {
         if (mZslRingUnavailable || !PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true)) return RingFrame.of(img);
+        // A camera without RAW (vivo X200 Pro front: YUV only, SCAM TEST 2026-10-11) rings YUV: a slot holds one plane, so a
+        // multi-plane frame is held as the camera's Image, as before P91.
+        if (img.getPlanes().length != 1) return RingFrame.of(img);
         final long need = Math.max(img.getPlanes()[0].getBuffer().capacity(), (long) img.getWidth() * img.getHeight() * 2);
         if (mZslRing == null || mZslRing.slotBytes() < need) {
             if (mZslRing != null) {
@@ -4280,7 +4298,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * stays (the shutter moment). Reorders {@code exact} (newest first) so that its first {@code requested} frames are the kept ones.
      */
     private void steadiestFirst(List<RingFrame> exact, java.util.Map<Long,TotalCaptureResult> metadata, int requested) {
-        if (requested < 2 || exact.size() <= requested || isOisSupported(mCameraCharacteristics)) return;
+        if (requested < 2 || exact.size() <= requested || hasOisHardware(mCameraCharacteristics)) return;
         if (!PreferenceKeys.scamDevSwitch("zsl_steadiest", true)) return;
         final boolean comparable = isGyroClockComparable();
         float[] all = new float[Math.min(exact.size(), 2 * requested)];
@@ -4292,12 +4310,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             all[pool] = exposure != null ? PhotonCamera.getGyro().zslShake(image.getTimestamp(), exposure, comparable) : Float.NaN;
             if (!(all[pool] >= 0f)) break;
         }
-        if (pool <= requested) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: gyro samples for " + pool + " ring frames only, newest kept"); return; }
+        String source = "gyro";
+        if (pool <= requested) {
+            // P98: the phone's gyro has no samples for these frames (clock not comparable, ring older than ~2 s): the shake
+            // value the HAL put into each frame's result (OPPO gyro.data, vivo gyroDetect), when every candidate has one
+            final int n = all.length;
+            int hal = 0;
+            for (; hal < n; hal++) {
+                all[hal] = HalMotion.shake(metadata.get(exact.get(hal).getTimestamp()));
+                if (!(all[hal] >= 0f)) break;
+            }
+            if (hal <= requested) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: gyro samples for " + pool + " ring frames only, newest kept"); return; }
+            pool = hal;
+            source = "HAL shake";
+        }
         int[] order = steadiestOrder(java.util.Arrays.copyOf(all, pool));
         if (order == null) { Log.i("SCAM_HDR", "hybrid ZSL steadiest: no gyro samples, newest frames kept"); return; }
         List<RingFrame> head = new ArrayList<>(exact.subList(0, pool));
         for (int i = 0; i < pool; i++) exact.set(i, head.get(order[i]));
-        StringBuilder l = new StringBuilder("hybrid ZSL steadiest (no OIS): ").append(requested).append(" of the newest ").append(pool)
+        StringBuilder l = new StringBuilder("hybrid ZSL steadiest (no OIS, ").append(source).append("): ").append(requested).append(" of the newest ").append(pool)
                 .append(", ring positions");
         for (int i = 0; i < requested; i++) l.append(' ').append(order[i]);
         Log.i("SCAM_HDR", l.toString());
@@ -4545,7 +4576,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             captureBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL);
 
             int[] stabilizationModes = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-            if (isOisSupported(stabilizationModes)) {
+            if (oisRequestable(stabilizationModes)) {
                 Log.d(TAG, "LENS_OPTICAL_STABILIZATION_MODE");
                 applyOisMode(captureBuilder, true);//Fix ois bugs for preview and burst
             }
@@ -4698,6 +4729,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // known N exposure the camera's AE exposes the frames. Planning never throws.
                 IsoExpoSelector.fullpairs.clear();
                 HybridPlan plan;
+                // P98: while the HAL reports motion, a bracketed frame's shutter stays within its motion-safe exposure
+                HybridPlan.setMotionCap(manualPsl?0:HalMotion.motionCapNs(mNativeZslBase!=null?mNativeZslBase:mPreviewCaptureResult));
+                try {
                 if(hybridZsl) {
                     // N = the newest ring frame (the base of the selection): its own exposure, not the cutoff plan's.
                     CaptureResult base=mNativeZslBase;
@@ -4718,6 +4752,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4,mExposureLimits)
                             : HybridPlan.autoExposure(4);
                 }
+                } finally { HybridPlan.setMotionCap(0); }
                 hybridPlanHolder[0]=plan;
                 Log.i("SCAM_CAPTURE",plan.description);
                 for(ImageFrame normal:mPendingZslNormalFrames) {
@@ -4748,6 +4783,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 for(int i=0;i<plan.requests.size();i++) {
                     HybridPlan.Request r=plan.requests.get(i);
                     plan.apply(captureBuilder,i);
+                    // P98: a frame past the declared frame-duration limit (Xiaomi 17 Ultra: 1 s) lifts the Qualcomm FPS limit
+                    if(!r.autoExposure&&LongExposureKeys.apply(captureBuilder,r.shutterNs,
+                            mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION)))
+                        Log.i("SCAM_CAPTURE","long frame "+r.shutterNs/1e6+" ms: Qualcomm FPS limit lifted (P98)");
                     captureBuilder.setTag(new ImageFrame.ScamCaptureTag(mShutterGeneration,captures.size(),r.role));
                     CaptureRequest request=captureBuilder.build();captures.add(request);mCaptureRequest=request;
                     times[i]=r.shutterNs;
@@ -5457,7 +5496,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public void applyFpsRange() {
         if (mPreviewRequestBuilder == null) return;
         PhotonCamera.getSettings().fpsMode = PreferenceKeys.getFpsMode();
-        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, getSelectedFpsRange());
+        Range<Integer> motionFps = motionFpsRange();
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, motionFps != null ? motionFps : getSelectedFpsRange());
         rebuildPreviewBuilder();
     }
 
@@ -5786,6 +5826,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /**
+     * Whether the lens is optically stabilised, also where Camera2 does not say so: the OPPO Find X7 / X8 / X9 Ultra list OIS
+     * OFF only on every module (SCAM TEST reports, 2026-10-11) while every module has OIS (owner; qcom,ois nodes in the X7U
+     * device tree) that the HAL drives itself. Only for decisions about the frames; OIS modes are still sent only where listed.
+     */
+    static boolean hasOisHardware(CameraCharacteristics chars) {
+        return isOisSupported(chars) || halHiddenOis(Build.MANUFACTURER, Build.MODEL);
+    }
+
+    static boolean halHiddenOis(String manufacturer, String model) {
+        if (!"OPPO".equalsIgnoreCase(manufacturer) || model == null) return false;
+        final String m = model.toUpperCase(java.util.Locale.ROOT);
+        return m.equals("PHY110") || m.equals("PKJ110") || m.equals("CPH2841");
+    }
+
+    /**
      * Selects the best video/preview stabilization mode supported by this camera and Android version.
      * In video mode: prefers CONTROL_VIDEO_STABILIZATION_MODE_ON.
      * In photo mode: if EIS Photo is enabled, prefers CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
@@ -5843,8 +5898,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean oisForceable() {
         int[] modes = mCameraCharacteristics == null ? null
                 : mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-        return isOisSupported(modes) && oisMode != 2;
+        return oisRequestable(modes) && oisMode != 2;
     }
+
+    /**
+     * P95 (owner, 2026-10-11: «нужен рабочий OIS на оппо, форсировать его работу на всех смартах»): the OIS mode is sent on
+     * every camera, also where Camera2 lists OFF only. The OPPO Find X8 / X9 Ultra HALs list OFF only yet their own preview and
+     * still templates carry ON on the main and tele modules and the results report ON (SCAM TEST, 2026-10-11): the HAL takes
+     * the key, it only hides it from the list. scam_dev "ois_force 0" goes back to the listed modes only.
+     */
+    private boolean oisRequestable(int[] modes) {
+        if (isOisSupported(modes)) return true;
+        if (!PreferenceKeys.scamDevSwitch("ois_force", true)) return false;
+        String id = physicalID;
+        if (id != null && sOisForcedLogged.add(id))
+            Log.i("SCAM_CAPTURE", "OIS forced ON on camera " + id + " (Camera2 lists " + java.util.Arrays.toString(modes) + ")");
+        return true;
+    }
+
+    private static final java.util.Set<String> sOisForcedLogged = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * Dynamically applies Optical Image Stabilization (OIS) configuration to a CaptureRequest.
@@ -5855,7 +5927,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void applyOisMode(CaptureRequest.Builder builder, boolean isStillCapture) {
         int[] stabilizationModes = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
-        if (isOisSupported(stabilizationModes)) {
+        if (oisRequestable(stabilizationModes)) {
             int oisMode = this.oisMode;
             if (oisMode == 2) {
                 // Always Off

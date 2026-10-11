@@ -1132,13 +1132,29 @@ public class PreferenceKeys {
     public static float hybridValue(String key, float fallback) {
         Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override;
+        // P86: in the «Движение» mode its own value of the key (pref_scam_hybrid_mm_<key>, the mode's default)
+        if (MotionMode.replaces(key) && isMotionMode()) return hybridStored(MotionMode.PREFIX + key, MotionMode.DEFAULTS.get(key));
         return hybridStored(key, fallback);
     }
     /** SCAM Hybrid switch pref_scam_hybrid_&lt;key&gt; (Boolean or "0"/"1"); scam_dev.txt "hybrid_&lt;key&gt; 0/1" overrides it. */
     public static boolean hybridSwitch(String key, boolean fallback) {
         Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override > 0f;
+        if (MotionMode.replaces(key) && isMotionMode()) return hybridStoredSwitch(MotionMode.PREFIX + key, MotionMode.DEFAULTS.get(key) > 0f);
         return hybridStoredSwitch(key, fallback);
+    }
+
+    /** P86: the «Движение» photo mode (global switch beside the settings gear). */
+    public static boolean isMotionMode() {
+        try {
+            return preferenceKeys != null && preferenceKeys.settingsManager.getBoolean("default_scope", MotionMode.PREF, false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    public static void setMotionMode(boolean value) {
+        preferenceKeys.settingsManager.set("default_scope", MotionMode.PREF, value);
     }
     /**
      * scam_dev.txt overrides of hybrid list settings for A/B without the menu: "hybrid_&lt;key&gt; i" picks the i-th entry value

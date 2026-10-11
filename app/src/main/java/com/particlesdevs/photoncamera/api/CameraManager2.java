@@ -75,6 +75,14 @@ public final class CameraManager2 {
                 mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
                 Log.d("CameraManager2", "Package spoof changed (" + spoofSignature + "): camera scan cache dropped");
             }
+            // A scan from before the auxiliary sensors without lens / gain / exposure were left out (isAuxiliarySensor) runs once more.
+            if (!"aux2".equals(mSettingsManager.getString(_CAMERAS, "aux_revision", ""))) {
+                mSettingsManager.set(_CAMERAS, "aux_revision", "aux2");
+                mSettingsManager.remove(_CAMERAS, ALL_CAMERA_IDS_KEY);
+                mSettingsManager.remove(_CAMERAS, ALL_CAMERA_LENS_KEY);
+                mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
+                Log.d("CameraManager2", "camera scan cache dropped (auxiliary sensors without lens / gain / exposure)");
+            }
             // P66: a Pixel scanned before the sensor-crop modules were told apart (knownLens) scans once more.
             if (Build.BRAND.equalsIgnoreCase("google") && !"p66".equals(mSettingsManager.getString(_CAMERAS, "scan_revision", ""))) {
                 mSettingsManager.set(_CAMERAS, "scan_revision", "p66");
@@ -177,9 +185,16 @@ public final class CameraManager2 {
      * 'unknown device' for 4.5 s; owner's log 2026-10-05).
      */
     public static boolean isAuxiliarySensor(CameraCharacteristics characteristics) {
-        Integer cfa = characteristics == null ? null : characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
-        return cfa != null && (cfa == 5 || cfa == 6); // SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO / _NIR (API 29)
+        if (characteristics == null) return false;
+        Integer cfa = characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+        if (cfa != null && (cfa == 5 || cfa == 6)) return true; // SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO / _NIR (API 29)
+        float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+        android.util.Range<Integer> iso = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+        android.util.Range<Long> exposure = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+        return AuxiliarySensors.noLensGainOrExposure(focal != null && focal.length > 0 ? focal[0] : Float.NaN,
+                iso != null ? iso.getUpper() : -1, exposure != null ? exposure.getUpper() : -1L);
     }
+
 
     public static boolean isAuxiliarySensor(CameraManager cameraManager, String id) {
         if (cameraManager == null || id == null) return false;

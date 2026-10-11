@@ -1065,6 +1065,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         if (chars != null) {
             int[] stabModes = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
             oisSupported = CaptureController.isOisSupported(stabModes);
+            // P95: OIS is requested also where Camera2 lists OFF only; the badge then follows what the camera reports
+            CaptureResult last = CaptureController.mPreviewCaptureResult;
+            Integer reported = last != null ? last.get(CaptureResult.LENS_OPTICAL_STABILIZATION_MODE) : null;
+            if (!oisSupported && reported != null && reported == CaptureResult.LENS_OPTICAL_STABILIZATION_MODE_ON) oisSupported = true;
             if (oisSupported && captureController != null) {
                 int oisMode = captureController.oisMode;
                 if (oisMode == 2) {

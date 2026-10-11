@@ -28,7 +28,7 @@ public final class ModuleProfiles {
             "pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key",
             "pref_root_enabled","pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",
             "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
-            "pref_show_gradient_key","pref_antibanding_hz_key",ScamHybridKeys.ROUTE)));
+            "pref_show_gradient_key","pref_antibanding_hz_key",ScamHybridKeys.ROUTE,MotionMode.PREF)));
     /** Key prefixes of {@link #GLOBAL_KEYS}: the photo format rows (pref_photo_format, pref_photo_also_jpeg, the qualities, AVIF), the caption, the theme. */
     static final String[] GLOBAL_PREFIXES={"pref_photo_","pref_jpeg_","pref_heic_","pref_webp_","pref_avif_","pref_watermark_","pref_theme"};
     /** A setting shared by every lens ({@link #GLOBAL_KEYS}). */

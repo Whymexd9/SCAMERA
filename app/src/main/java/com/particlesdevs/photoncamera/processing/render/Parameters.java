@@ -667,6 +667,7 @@ public class Parameters {
         File customCCT = new File(Environment.getExternalStorageDirectory() + "//DCIM//PhotonCamera//", "customCCT.txt");
         //ColorSpaceTransform CST = PhotonCamera.getCaptureController().mColorSpaceTransform;//= result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         ColorSpaceTransform CST = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        CST = oplusCcmInstead(CST, result);
         Log.d(TAG, "result colorCorrection transform=" + CST + " gains=" + result.get(CaptureResult.COLOR_CORRECTION_GAINS));
         assert calibration2 != null;
         assert forwardt1 != null;
@@ -766,6 +767,31 @@ public class Parameters {
                 sceneCct = wbCct;
             }
         }
+    }
+
+    /**
+     * P98: an identity colorCorrection.transform (OPPO Find X7 Ultra) is replaced by the OPPO ISP matrix of the same frame
+     * (com.oplus.custom.ccm) when there is a valid one; any other transform is kept. scam_dev "oplus_ccm 0" turns it off.
+     */
+    private static ColorSpaceTransform oplusCcmInstead(ColorSpaceTransform cst, CaptureResult result) {
+        if (cst == null || result == null || !PreferenceKeys.scamDevSwitch("oplus_ccm", true)) return cst;
+        Rational[] r = new Rational[9];
+        cst.copyElements(r, 0);
+        float[] m = new float[9];
+        for (int i = 0; i < 9; i++) m[i] = r[i].floatValue();
+        if (!com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(m)) return cst;
+        float[] oplus;
+        try {
+            oplus = com.particlesdevs.photoncamera.processing.color.OplusCcm.parse(result.get(new CaptureResult.Key<>(
+                    com.particlesdevs.photoncamera.processing.color.OplusCcm.TAG_NAME, byte[].class)));
+        } catch (RuntimeException noTag) {
+            return cst;
+        }
+        if (oplus == null) return cst;
+        int[] q = new int[18];
+        for (int i = 0; i < 9; i++) { q[2 * i] = Math.round(oplus[i] * 1024f); q[2 * i + 1] = 1024; }
+        Log.d(TAG, "Identity colour transform replaced by the OPPO ISP matrix " + Arrays.toString(oplus));
+        return new ColorSpaceTransform(q);
     }
 
     /** The reported transform of a vivo SCAM HDR capture: a full matrix whose rows sum to about 1 (white stays white). */

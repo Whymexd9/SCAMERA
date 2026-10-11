@@ -167,6 +167,18 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <string-array name="scam_motion_fps_entries">
+        <item>Maximum of the camera</item>
+        <item>60 fps</item>
+        <item>30 fps</item>
+        <item>24 fps</item>
+    </string-array>
+    <string-array name="scam_motion_fps_values" translatable="false">
+        <item>0</item>
+        <item>60</item>
+        <item>30</item>
+        <item>24</item>
+    </string-array>
     <string-array name="scam_hybrid_bento_entries">
         <item>Off</item>
         <item>Auto (on clipping)</item>

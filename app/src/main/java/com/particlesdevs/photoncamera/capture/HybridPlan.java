@@ -52,6 +52,20 @@ public final class HybridPlan {
         }
     }
     private static final long HANDHELD_SHUTTER_CAP_NS = 125_000_000L;
+    /**
+     * P98: the HAL's motion-safe exposure while it reports motion (HalMotion.motionCapNs), set by the camera around one plan
+     * build; 0 = none. It lowers the handheld cap of a bracketed frame's shutter, never below the N shutter.
+     */
+    static volatile long sMotionCapNs;
+
+    public static void setMotionCap(long ns) { sMotionCapNs = Math.max(0, ns); }
+
+    /** The handheld shutter cap of a plan with N at {@code nShutterNs} and the HAL's motion cap {@code motionCapNs}. */
+    static long handheldCap(long nShutterNs, long motionCapNs) {
+        long cap = HANDHELD_SHUTTER_CAP_NS;
+        if (motionCapNs > 0) cap = Math.min(cap, motionCapNs);
+        return Math.max(nShutterNs, cap);
+    }
     private static final double VERIFY_TOLERANCE_EV = 0.4;
     /**
      * P27: a frame that missed its plan is merged as an N frame when it is at most 0.5 EV darker or 0.05 EV brighter than N.
@@ -131,13 +145,14 @@ public final class HybridPlan {
             int iso = (int) Math.max(isos.getLower(), Math.min(isos.getUpper(), Math.round(target / nShutterNs)));
             long ns = nShutterNs;
             if ((double) ns * iso < target * 0.95) {
-                final long cap = Math.min(times.getUpper(), Math.max(nShutterNs, HANDHELD_SHUTTER_CAP_NS));
+                final long cap = Math.min(times.getUpper(), handheldCap(nShutterNs, sMotionCapNs));
                 ns = snapAntibanding(Math.max(nShutterNs, Math.min(cap, Math.round(target / iso))), nShutterNs);
             }
             double ratio = (double) ns * iso / n;
             if (ratio > maxBracketRatio() && !shastaForced()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
             else if (ratio < 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
             else for (int i = 0; i < count; i++) out.add(new Request(ImageFrame.CaptureRole.LONG, ns, iso, ratio));
+            if (sMotionCapNs > 0) why.append(String.format(Locale.ROOT, " HAL motion: shutter cap %.1fms", handheldCap(nShutterNs, sMotionCapNs) / 1e6));
         } else why.append(" shasta off");
         // Nothing to add after the shutter: one more frame at N keeps the capture path uniform.
         if (out.isEmpty()) out.add(new Request(ImageFrame.CaptureRole.NORMAL, nShutterNs, nIso, 1.0));

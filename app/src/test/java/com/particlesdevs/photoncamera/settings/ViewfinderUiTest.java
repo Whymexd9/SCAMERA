@@ -93,6 +93,11 @@ public class ViewfinderUiTest {
         assertEquals(44,gear.getWidth());assertEquals(gear.getWidth(),gear.getHeight());
         assertEquals("the gear is pinned to the right edge",top.getWidth()-top.getPaddingRight(),gear.getRight());
         assertTrue("badges must not run under the gear",badges.getRight()<=gear.getLeft());
+        // P86: the «Движение» switch is a 44dp card left of the gear, the badges clear of it
+        View motion=top.findViewById(R.id.motion_mode_button);
+        assertEquals(44,motion.getWidth());assertEquals(44,motion.getHeight());
+        assertEquals(gear.getLeft()-8,motion.getRight());assertTrue(badges.getRight()<=motion.getLeft());
+        assertNotNull(((ImageButton)motion).getDrawable());
         // §4: route and format are 24dp accent icons in one 44dp card, 40dp buttons with a 1dp divider; names are descriptions.
         ImageButton route=top.findViewById(R.id.route_badge),format=top.findViewById(R.id.format_badge);
         assertEquals(44,badges.getHeight());assertEquals(40,route.getWidth());assertEquals(40,format.getWidth());

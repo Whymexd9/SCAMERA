@@ -17,7 +17,11 @@ import com.particlesdevs.photoncamera.util.Log;
  * the widest of:
  * <ul>
  *   <li>the declared SENSOR_INFO ranges;</li>
- *   <li>the vendor's pro-mode range where it publishes one (vivo com.vivo.pro_isoMin / pro_isoMax);</li>
+ *   <li>the vendor's pro-mode range where it publishes one (vivo com.vivo.pro_isoMin / pro_isoMax; P98: OPPO
+ *       com.oplus.pro.extension.iso.range, the Find X7 Ultra main 50..12800 against 100..6400 declared);</li>
+ *   <li>P98: a shutter up to the vendor's exposure range (org.codeaurora.qcamera3.iso_exp_priority.exposure_time_range: X7U
+ *       ultra-wide 91 s against 36 s declared; xiaomi.sensor.info.exposureTimeRange: 17 Ultra 36..180 s against 1 s), on a
+ *       photographic stop; frames past the declared ceiling carry the Qualcomm FPS-limit keys (CaptureController);</li>
  *   <li>a shutter up to SENSOR_INFO_MAX_FRAME_DURATION when the declared ceiling is far below it (vivo: 0.33 s declared,
  *       frames up to 33 s), on a photographic stop;</li>
  *   <li>the ISO extremes the module's own AE was seen to use, kept per camera across sessions (the vivo tele: no vendor key,
@@ -49,17 +53,50 @@ public final class ExposureRanges {
 
     /** Shutter range: the declared one, its ceiling raised to the frame-duration limit when that is 4x or more above it. */
     static Range<Long> shutter(@Nullable Range<Long> declared, @Nullable Long maxFrameDurationNs) {
+        return shutter(declared, maxFrameDurationNs, null);
+    }
+
+    /**
+     * P98: also raised to the vendor's exposure ceiling ({@code vendorMaxNs}, may be null) when that is above the declared one,
+     * on a stop. A vendor ceiling below the declared one (the X200 Ultra repeats its narrowed 0.33 s) changes nothing.
+     */
+    static Range<Long> shutter(@Nullable Range<Long> declared, @Nullable Long maxFrameDurationNs, @Nullable Long vendorMaxNs) {
         long lo = declared != null ? declared.getLower() : 100_000L, hi = declared != null ? declared.getUpper() : 1_000_000_000L;
-        if (maxFrameDurationNs != null && maxFrameDurationNs >= 4 * hi) {
-            long stop = 0;
-            for (double s : LONG_STOPS) {
-                long ns = Math.round(s * 1e9);
-                if (ns <= maxFrameDurationNs) stop = ns;
-            }
-            hi = Math.max(hi, stop);
-        }
+        long ceiling = 0;
+        if (maxFrameDurationNs != null && maxFrameDurationNs >= 4 * hi) ceiling = maxFrameDurationNs;
+        if (vendorMaxNs != null && vendorMaxNs > hi) ceiling = Math.max(ceiling, vendorMaxNs);
+        if (ceiling > 0) hi = Math.max(hi, stopBelow(ceiling));
         lo = Math.max(1, lo);
         return new Range<>(lo, Math.max(lo, hi));
+    }
+
+    private static long stopBelow(long ceilingNs) {
+        long stop = 0;
+        for (double s : LONG_STOPS) {
+            long ns = Math.round(s * 1e9);
+            if (ns <= ceilingNs) stop = ns;
+        }
+        return stop;
+    }
+
+    /** P98: the vendor exposure ceilings a camera publishes (Qualcomm priority range, Xiaomi sensor info); null when none. */
+    @Nullable
+    static Long vendorExposureMax(@Nullable CameraCharacteristics c) {
+        if (c == null) return null;
+        Long best = null;
+        for (String name : new String[]{"org.codeaurora.qcamera3.iso_exp_priority.exposure_time_range", "xiaomi.sensor.info.exposureTimeRange"}) {
+            long[] v = vendorLongs(c, name);
+            if (v != null && v.length >= 2 && v[1] > 0 && (best == null || v[1] > best)) best = v[1];
+        }
+        return best;
+    }
+
+    /** P98: the OPPO pro mode's ISO range (com.oplus.pro.extension.iso.range, int32[2]); null when the camera has none. */
+    @Nullable
+    static int[] oppoProIso(@Nullable CameraCharacteristics c) {
+        if (c == null) return null;
+        int[] v = vendorInts(c, "com.oplus.pro.extension.iso.range");
+        return v != null && v.length >= 2 && v[0] > 0 && v[1] > v[0] ? new int[]{v[0], v[1]} : null;
     }
 
     /** The module's ISO range for the ruler. */
@@ -67,6 +104,10 @@ public final class ExposureRanges {
         if (c == null) return iso(null, null, null, 0, 0);
         int[] learned = learned(cameraId);
         Integer vMin = vendorInt(c, "com.vivo.pro_isoMin"), vMax = vendorInt(c, "com.vivo.pro_isoMax");
+        if (vMin == null || vMax == null) {
+            int[] oppo = oppoProIso(c);
+            if (oppo != null) { vMin = oppo[0]; vMax = oppo[1]; }
+        }
         if (vMin == null || vMax == null) {
             int[] known = knownProRange(android.os.Build.DEVICE, focalLength(c));
             if (known != null) { vMin = known[0]; vMax = known[1]; }
@@ -103,9 +144,39 @@ public final class ExposureRanges {
         if (c == null) return shutter(null, null);
         final Range<Long> declared = c.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
         final Long maxFrame = c.get(CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION);
-        final Range<Long> out = shutter(declared, maxFrame);
-        logOnce("shutter " + System.identityHashCode(c), "shutter declared " + declared + " maxFrameDuration " + maxFrame + " -> " + out);
+        final Long vendor = vendorExposureMax(c);
+        final Range<Long> out = shutter(declared, maxFrame, vendor);
+        logOnce("shutter " + System.identityHashCode(c), "shutter declared " + declared + " maxFrameDuration " + maxFrame
+                + " vendor " + vendor + " -> " + out);
         return out;
+    }
+
+    @Nullable
+    private static int[] vendorInts(CameraCharacteristics c, String name) {
+        try {
+            for (CameraCharacteristics.Key<?> k : c.getKeys()) {
+                if (!name.equals(k.getName())) continue;
+                Object v = c.get(k);
+                if (v instanceof int[]) return (int[]) v;
+            }
+            return c.get(new CameraCharacteristics.Key<>(name, int[].class));
+        } catch (RuntimeException ignored) {
+            return null; // no such vendor tag on this camera
+        }
+    }
+
+    @Nullable
+    private static long[] vendorLongs(CameraCharacteristics c, String name) {
+        try {
+            for (CameraCharacteristics.Key<?> k : c.getKeys()) {
+                if (!name.equals(k.getName())) continue;
+                Object v = c.get(k);
+                if (v instanceof long[]) return (long[]) v;
+            }
+            return c.get(new CameraCharacteristics.Key<>(name, long[].class));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     @Nullable

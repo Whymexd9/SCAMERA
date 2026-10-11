@@ -149,6 +149,41 @@ public class CameraUIViewImpl implements CameraUIView {
         com.particlesdevs.photoncamera.settings.FormatChoice format = com.particlesdevs.photoncamera.settings.FormatChoice.current();
         icon(topbar.formatBadge, format.icon, accent, context.getString(R.string.topbar_format, format.longLabel()));
         topbar.formatBadge.setTag(format.name());
+        bindMotionMode(topbar.motionModeButton, com.particlesdevs.photoncamera.settings.MotionMode.on(), false);
+    }
+
+    /**
+     * P86 The «Движение» switch beside the gear: off, the gear's card with the subject standing in the accent; on, the card
+     * filled with the accent (as the shade's active tiles) and the subject moving with its speed lines. {@code animate}: the
+     * icon plays its transition (speed lines drawn one after another, the subject overshooting forward; or wiped away) and
+     * the card springs (scale 0.86 -> 1 with an overshoot).
+     */
+    public static void bindMotionMode(ImageButton button, boolean on, boolean animate) {
+        if (button == null) return;
+        Context context = button.getContext();
+        int accent = ShadeStyle.accent(context);
+        Object shown = button.getTag(R.id.motion_mode_button);
+        if (!animate && Boolean.valueOf(on).equals(shown)) return;
+        button.setTag(R.id.motion_mode_button, on);
+        String name = context.getString(on ? R.string.motion_mode_on : R.string.motion_mode_off);
+        button.setContentDescription(name);
+        button.setTooltipText(name);
+        button.setActivated(on);
+        if (on) button.setBackground(ShadeStyle.pressable(context, ShadeStyle.tint(accent, 0.22f), accent, 16));
+        else button.setBackgroundResource(R.drawable.shade_gear_card);
+        button.setImageTintList(ColorStateList.valueOf(accent));
+        if (!animate) {
+            button.setImageResource(on ? R.drawable.topbar_ic_motion_on : R.drawable.topbar_ic_motion_off);
+            return;
+        }
+        Drawable d = androidx.core.content.ContextCompat.getDrawable(context, on ? R.drawable.topbar_avd_motion_on : R.drawable.topbar_avd_motion_off);
+        button.setImageDrawable(d);
+        if (d instanceof android.graphics.drawable.Animatable) ((android.graphics.drawable.Animatable) d).start();
+        button.animate().cancel();
+        button.setScaleX(0.86f);
+        button.setScaleY(0.86f);
+        button.animate().scaleX(1f).scaleY(1f).setDuration(280)
+                .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
     }
 
     private static void icon(ImageButton button, int icon, int accent, String name) {

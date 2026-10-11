@@ -74,6 +74,17 @@ final class CameraUIController implements CameraUIEventsListener,
             case R.id.settings_button:
                 cameraFragment.launchSettings();
                 break;
+            case R.id.motion_mode_button: {
+                // P86: the «Движение» mode; its AE frame rate is a session parameter, so the session starts again
+                final boolean on = !com.particlesdevs.photoncamera.settings.MotionMode.on();
+                com.particlesdevs.photoncamera.settings.MotionMode.set(on);
+                if (view instanceof android.widget.ImageButton)
+                    CameraUIViewImpl.bindMotionMode((android.widget.ImageButton) view, on, true);
+                cameraFragment.showSnackBar(cameraFragment.getString(on ? R.string.motion_mode_on_toast : R.string.motion_mode_off_toast));
+                Log.i(TAG, "motion mode " + (on ? "on" : "off"));
+                this.restartCamera();
+                break;
+            }
             case R.id.format_badge:
                 cameraFragment.openFormatChooser();
                 break;
@@ -125,9 +136,9 @@ final class CameraUIController implements CameraUIEventsListener,
         if (context != null && com.particlesdevs.photoncamera.api.CameraManager2.isAuxiliarySensor(
                 (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE), id)) {
             // Not opened: the camera stays on the current module (see CameraManager2.isAuxiliarySensor).
-            Log.w(TAG, "camera " + id + " is a MONO / NIR auxiliary stream, not opened");
-            cameraFragment.showSnackBar(Lang.t(context, "Камера " + id + " — монохромный служебный поток, снимать с неё нельзя",
-                    "Camera " + id + " is a monochrome auxiliary stream and cannot take photos"));
+            Log.w(TAG, "camera " + id + " is an auxiliary stream (MONO / NIR or no lens / gain / exposure), not opened");
+            cameraFragment.showSnackBar(Lang.t(context, "Камера " + id + " — служебный поток, снимать с неё нельзя",
+                    "Camera " + id + " is an auxiliary stream and cannot take photos"));
             return;
         }
         cameraFragment.onLensSwitch();

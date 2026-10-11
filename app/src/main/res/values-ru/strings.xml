@@ -207,4 +207,21 @@
         <item>x2 — текущая модель</item>
         <item>x1 — экспериментальная</item>
     </string-array>
+    <string name="motion_mode_on">Режим «Движение»: вкл</string>
+    <string name="motion_mode_off">Режим «Движение»: выкл</string>
+    <string name="motion_mode_on_toast">Движение: быстрый буфер, резкие движущиеся объекты</string>
+    <string name="motion_mode_off_toast">Фото</string>
+    <string name="prefs_scam_motion_on_title">Режим «Движение»</string>
+    <string name="prefs_scam_motion_on_summary">Тот же переключатель, что значок движения рядом с шестерёнкой в видоискателе</string>
+    <string name="prefs_scam_motion_screen_title">Движение</string>
+    <string name="prefs_scam_motion_screen_summary">Режим переключателя рядом с шестерёнкой: самый быстрый буфер, резкие движущиеся объекты, быстрая обработка; HDR слабее</string>
+    <string name="prefs_scam_motion_fps_title">Частота видоискателя и буфера</string>
+    <string name="prefs_scam_motion_fps_summary">%s. Максимум: самая высокая фиксированная частота, которую позволяют камера и её поток RAW; ни один кадр буфера не экспонируется дольше одного интервала кадра</string>
+    <string name="prefs_scam_motion_frames_title">Кадров в склейке</string>
+    <string name="prefs_scam_motion_frames_summary">Самые свежие кадры буфера в момент нажатия: чем меньше кадров, тем короче отрезок времени и быстрее склейка</string>
+    <string name="prefs_scam_motion_shasta_summary">Длинные брекет-кадры после снимка; по умолчанию выкл: они смазывают движущееся</string>
+    <string name="prefs_scam_motion_bento_summary">%s. Ультракороткие кадры для светов; по умолчанию только там, где кадр клипует</string>
+    <string name="prefs_scam_motion_boost_summary">Сильнее отбраковка движущихся областей при склейке</string>
+    <string name="prefs_scam_motion_boost_value_summary">Сила отбраковки движущихся областей (в фото: 6)</string>
+    <string name="prefs_scam_motion_threshold_summary">Местное движение (пиксели RAW), с которого тайл считается движущимся; меньше = раньше (в фото: 1.5)</string>
 </resources>
