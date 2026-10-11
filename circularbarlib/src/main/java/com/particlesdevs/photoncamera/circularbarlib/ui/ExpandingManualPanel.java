@@ -22,6 +22,7 @@ import com.particlesdevs.photoncamera.circularbarlib.R;
  */
 public class ExpandingManualPanel extends LinearLayout {
     private View tabs, scale, toggle, dot;
+    private android.widget.FrameLayout endSlot;
     private ImageView toggleIcon;
     private ValueAnimator animator;
     private float progress;
@@ -44,6 +45,7 @@ public class ExpandingManualPanel extends LinearLayout {
         tabs = findViewById(R.id.buttons_container);
         scale = findViewById(R.id.knobViewContainer);
         toggle = findViewById(R.id.manual_toggle);
+        endSlot = findViewById(R.id.manual_end_slot);
         dot = findViewById(R.id.manual_toggle_dot);
         toggleIcon = findViewById(R.id.manual_toggle_icon);
         Context c = getContext();
@@ -91,6 +93,19 @@ public class ExpandingManualPanel extends LinearLayout {
         return dot != null && dot.getVisibility() == VISIBLE;
     }
 
+    /**
+     * The slot at the strip's right end, opposite the toggle, for one square button of the app (empty and gone by default).
+     * Shown while the strip is collapsed; the expanded tabs take its place.
+     */
+    public android.widget.FrameLayout endSlot() {
+        return endSlot;
+    }
+
+    /** Re-evaluates the end slot after the app added or removed its view. */
+    public void refreshEndSlot() {
+        updateFrame();
+    }
+
     public boolean isExpanded() {
         return expanded;
     }
@@ -128,6 +143,11 @@ public class ExpandingManualPanel extends LinearLayout {
         tabs.setScaleX(.6f + .4f * p);
         // The first animation frame has p=0. Later frames must restore visibility.
         tabs.setVisibility(expanded || p > 0 ? VISIBLE : INVISIBLE);
+        if (endSlot != null) {
+            boolean filled = false;
+            for (int i = 0; i < endSlot.getChildCount(); i++) filled |= endSlot.getChildAt(i).getVisibility() == VISIBLE;
+            endSlot.setVisibility(filled && !expanded && p == 0 ? VISIBLE : GONE);
+        }
     }
 
     /** Whether the shade allows the panel on screen (the shade is HIDDEN). */

@@ -758,6 +758,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
                 logSensorModeIndex(result);
+                Dcg14Mode.onResult(result, physicalID);
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.scamDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
@@ -2857,11 +2858,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P102: vendor keys the owner set on the module («Добавить vendor tag») are session parameters as well (the
                 // Motorola Edge 50 Pro's com.lenovo.moto.control.super_zoom is a session key); only when there are such keys
                 final boolean moduleKeys = !com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID).isEmpty();
-                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
+                // P103 / P104: the HAL features of «Движение», Ideal RAW and the X500 Pro Max's DCG 14 bit are session keys
+                final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
+                final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics);
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
+                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14
+                        || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
                         VendorTagUtils.builderSessionApply(scamSession, false, useMaximumResolutionKey, physicalID);
+                        if (dcg14) Log.i("SCAM_CAPTURE", "DCG14 session keys on camera " + physicalID + ": "
+                                + Dcg14Mode.apply(scamSession, mCameraCharacteristics, physicalID));
                         if (scamPreview) ScamPreview.applySession(scamSession);
                         // P54b: the stock Photo mode sets the EIS key as a session parameter too
                         if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
@@ -3004,6 +3012,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         applyVideoStabilization(mPreviewRequestBuilder);
         mInitialMeteringAE = mPreviewRequestBuilder.get(CONTROL_AE_REGIONS);
         mPreviewMeteringAE = mInitialMeteringAE;
+        // P103: zoom override and the low-light boost of the viewfinder, where the camera lists them
+        HiddenFeatures.applyPreview(mPreviewRequestBuilder, mCameraCharacteristics, mIsRecordingVideo);
         mPreviewAEMode = mPreviewRequestBuilder.get(CONTROL_AE_MODE);
         applyZoom(mPreviewRequestBuilder, false);
         // P42: face statistics on the preview request only (modes the module advertises).
@@ -4133,7 +4143,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (newest == null || mCameraCharacteristics == null || newest.getFormat() != ImageFormat.RAW_SENSOR) return 0f;
         try {
             Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
-            int limit = (int) ((white == null ? 1023 : white) * 0.95f);
+            // P104: a RAW measured wider than declared (DCG 14 bit) clips at its own range
+            int limit = (int) (Math.max(white == null ? 1023 : white,
+                    com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite()) * 0.95f);
             if (packed != null) {
                 // MIPI RAW10 / RAW14: bytes 0..3 of each 5- / 7-byte group are the high 8 bits of four samples (RAW14 read >> 4:
                 // its high byte is the 10-bit value >> 2 as RAW10's)

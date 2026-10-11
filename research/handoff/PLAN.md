@@ -2475,3 +2475,35 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   com.oplus.snapshot.rawformat (X9U); vivo.control.ultra_highresolution / advance_fullsize / ai_highresolution / is_ProRaw_on;
   enableQLL + org.quic.camera.swcapabilities.isQLLSupported (Qualcomm low-light engine, YUV path).
 - Nothing above is wired except the 17U guard; each needs a phone test (and the sensor-mode ones the owner's approval).
+- Done 2026-10-11 (owner: «1-3 делай»; not on a device): HiddenFeatures - «Движение» sends com.mediatek.3afeature.aishutterMode = 1
+  (byte), com.oplus.fastmotion.mode.enable = 1 (byte), vivo.control.is_motion_autofocus = 1 (int32) where the camera lists them
+  as session keys (scam_dev motion_hal_keys 0 = off); scam_dev "ideal_raw 1" sends EnableIdealRAW = 1 (byte); the viewfinder
+  sends CONTROL_SETTINGS_OVERRIDE ZOOM where listed (scam_dev zoom_override 0 = off); setting «Яркий видоискатель в темноте»
+  (pref_low_light_boost, global, off) puts the viewfinder on AE mode 6 where listed (not in «Движение», video or manual).
+  Session parameters are only built when one of these keys is listed. Test HiddenFeaturesTest.
+
+### P104 — «DCG 14 бит» switch for the vivo X500 Pro Max (owner, 2026-10-11; done, not on a device)
+
+- Report facts (SCAM-TEST_vivo-V2602A_20261011-184617, PD2602): main IMX09C, telephotos S5KHPE; the 14-bit DCG tables quoted
+  first (imx06h*) belong to PD2608, not this phone. imx09cpd2602: CUSTOM_CAMERA_SCENARIO_3RD_APP = FAEC mode 14;
+  CUSTOM_CAMERA_SCENARIO_3RD_APP_HDR = DCG_SENSOR_MERGE_14BIT_BAYER mode 33 («dcg 1:16») + FAEC; MOTION_DEBLUR = LBMF 2-exp
+  40 / 41 + crop 46; video default and 60 fps = DCG 14-bit 18 / 19 (LOFIC) / 20 (crop 2x). S5KHPE 3RD_APP_HDR = DCG AP merge
+  2-exp mode 25. /vendor/etc/camera/sensormode-selector/PD2602.json chooses scenarios: DCG / Sport / LBMF / LN2 results only
+  under AppType vivo (package based; no spoof); third-party apps get PHOTO (CameraScenario 532) / VIDEO (552); the selector's
+  CameraScenario numbers are not the XML order (unknown enum). Results carry com.mediatek.seamlessfeature.sensorScenario as
+  (camera, scenario) pairs, {2, 1} = binned on the main. Main / tele list availableVhdrModes {8, 128, 0}, HDR photo {0, 3, 1}.
+- Done: Dcg14Mode (V2602* / PD2602 only, cameras listing VHDR 128) sends on the session and every request
+  com.mediatek.hdrfeature.hdrMode + SessionParamhdrMode = dcg14_hdr_mode (default 3), vivo.control.EnableDCGHDR = dcg14_dcghdr
+  (1), vivo.control.session.seamlesscontrol = dcg14_seamless (1), optional cameraScenario = dcg14_camera_scenario and
+  sensorScenario = [camera, dcg14_sensor_scenario] (default -1 = not sent); scam_dev dcg14 0 hides it. Log "DCG14 camera …"
+  on change of sensorScenario / vhdrResult / hdrDetectionResult / dynamic white and black; "DCG14 session keys …".
+- Button (owner: «справа в нижнем углу напротив кнопки ручника, квадратной и меньше»): 40dp square in the manual strip's new
+  end slot (ExpandingManualPanel.endSlot, the toggle is 52 x 58dp), shown while the strip is collapsed, only on cameras with
+  the mode; tap = toggle + snackbar + camera restart (Dcg14Button).
+- Wide RAW: RawPayloadCheck takes a plain RAW whose samples pass 1.5x the declared white (2+ samples, no zero tail, all within
+  12 / 14 bits) as 4095 / 16383 white instead of refusing it (log "wide RAW: …"); Parameters.applyWideRaw raises the white
+  and scales the black when the darkest samples sit >= 4x the declared black; the ZSL clip estimate uses that white.
+  scam_dev raw_wide 0 = off. Tests in RawPayloadCheckTest.
+- Check on the phone: tap «DCG» on the main; log "DCG14 session keys" (no "n/a"), "DCG14 camera 2 …: sensorScenario [2, x]"
+  with x != 1, "wide RAW: … -> white 16383"; a shot in high contrast vs. off. If the scenario stays 1: try dcg14_hdr_mode 1,
+  then dcg14_camera_scenario / dcg14_sensor_scenario values.

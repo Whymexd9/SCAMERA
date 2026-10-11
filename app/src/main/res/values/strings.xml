@@ -313,5 +313,12 @@
     <string name="prefs_scam_motion_boost_summary">Stronger rejection of moving areas in the merge</string>
     <string name="prefs_scam_motion_boost_value_summary">Strength of the rejection of moving areas (photo: 6)</string>
     <string name="prefs_scam_motion_threshold_summary">Local motion (RAW px) from which a tile counts as moving; lower = sooner (photo: 1.5)</string>
+    <string name="prefs_low_light_boost_title">Bright viewfinder in the dark</string>
+    <string name="prefs_low_light_boost_summary">The camera\'s low-light boost (Android 15, where the camera has it): a brighter, slower viewfinder in the dark; the buffered frames get its longer exposures too. Not in Motion</string>
+    <string name="dcg14_on">DCG 14-bit: on</string>
+    <string name="dcg14_off">DCG 14-bit: off</string>
+    <string name="dcg14_on_toast">DCG 14-bit on: the sensor\'s dual-gain HDR mode is requested, the camera restarts</string>
+    <string name="dcg14_off_toast">DCG 14-bit off</string>
+    <string name="dcg14_not_here">DCG 14-bit works on the main camera and the telephotos</string>
 </resources>
 

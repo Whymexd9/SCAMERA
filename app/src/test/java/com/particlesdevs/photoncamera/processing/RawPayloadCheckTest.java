@@ -209,4 +209,38 @@ public class RawPayloadCheckTest {
         assertEquals(null, RawPayloadCheck.packedLayout(junk, W, H, BLACK, WHITE));
         assertEquals(null, RawPayloadCheck.packedLayout(plain(scene(1, 25), 1), W, H, BLACK, WHITE));
     }
+
+    /** P104: a plain 14-bit RAW behind white 1023 (vivo X500 Pro Max DCG sensor merge) is taken, with its own white. */
+    @Test
+    public void wide14BitPlainRawIsKeptWithItsWhite() {
+        RawPayloadCheck.setWideEnabled(true);
+        RawPayloadCheck.Result r = RawPayloadCheck.check(plain(scene(1, 31), 16), W, H, STRIDE, WHITE);
+        assertTrue(r.error, r.plain());
+        assertEquals(16383, RawPayloadCheck.wideWhite());
+        assertTrue(RawPayloadCheck.wideLow() >= 4 * BLACK);
+        assertTrue(RawPayloadCheck.check(plain(scene(1, 32), 1), W, H, STRIDE, WHITE).plain());
+        assertEquals(0, RawPayloadCheck.wideWhite());
+    }
+
+    @Test
+    public void wideWhiteRules() {
+        assertEquals(16383, RawPayloadCheck.wideWhite(16000, 100, 0f, 1023));
+        assertEquals(4095, RawPayloadCheck.wideWhite(4000, 100, 0f, 1023));
+        assertEquals(0, RawPayloadCheck.wideWhite(1023, 0, 0f, 1023));     // plain 10-bit
+        assertEquals(0, RawPayloadCheck.wideWhite(16000, 1, 0f, 1023));    // a single sample is no range
+        assertEquals(0, RawPayloadCheck.wideWhite(16000, 100, 0.3f, 1023)); // zero tail: packed payload
+        assertEquals(0, RawPayloadCheck.wideWhite(60000, 100, 0f, 1023));  // beyond 14 bits
+        assertEquals(0, RawPayloadCheck.wideWhite(16000, 100, 0f, 4095));  // declared 12 bits and more: not judged
+    }
+
+    @Test
+    public void wideRawCanBeSwitchedOff() {
+        RawPayloadCheck.setWideEnabled(false);
+        try {
+            assertFalse(RawPayloadCheck.check(plain(scene(1, 33), 16), W, H, STRIDE, WHITE).plain());
+            assertEquals(0, RawPayloadCheck.wideWhite());
+        } finally {
+            RawPayloadCheck.setWideEnabled(true);
+        }
+    }
 }

@@ -77,5 +77,10 @@
                 android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_wb"
                 app:manualChipIcon="@drawable/manual_ic_wb" />
         </LinearLayout>
+        <!-- The app's own square button at the strip's right end, opposite the toggle (vivo X500 Pro Max: DCG 14-bit); shown only
+             while the strip is collapsed and the app put a view in it. -->
+        <FrameLayout android:id="@+id/manual_end_slot" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_gravity="center_vertical" android:layout_marginStart="8dp"
+            android:visibility="gone" />
     </LinearLayout>
 </com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel>

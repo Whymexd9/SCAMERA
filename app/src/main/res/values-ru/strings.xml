@@ -224,4 +224,11 @@
     <string name="prefs_scam_motion_boost_summary">Сильнее отбраковка движущихся областей при склейке</string>
     <string name="prefs_scam_motion_boost_value_summary">Сила отбраковки движущихся областей (в фото: 6)</string>
     <string name="prefs_scam_motion_threshold_summary">Местное движение (пиксели RAW), с которого тайл считается движущимся; меньше = раньше (в фото: 1.5)</string>
+    <string name="prefs_low_light_boost_title">Яркий видоискатель в темноте</string>
+    <string name="prefs_low_light_boost_summary">Усиление камеры при слабом свете (Android 15, где камера его поддерживает): видоискатель ярче и медленнее в темноте; кадры буфера тоже снимаются с его длинной выдержкой. Не в режиме «Движение»</string>
+    <string name="dcg14_on">DCG 14 бит: вкл</string>
+    <string name="dcg14_off">DCG 14 бит: выкл</string>
+    <string name="dcg14_on_toast">DCG 14 бит вкл: запрошен режим сенсора с двойным усилением, камера перезапускается</string>
+    <string name="dcg14_off_toast">DCG 14 бит выкл</string>
+    <string name="dcg14_not_here">DCG 14 бит работает на основной камере и телеобъективах</string>
 </resources>

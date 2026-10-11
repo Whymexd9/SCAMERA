@@ -263,6 +263,22 @@ public class Parameters {
         //hotPixels = PhotonCamera.getCameraFragment().mHotPixelMap;
     }
 
+    /**
+     * P104: the shot's RAW was measured wider than the declared white (RawPayloadCheck: the X500 Pro Max's DCG 14-bit sensor
+     * merge with white 1023 in the metadata): the white rises to the measured range, the black scales with it when the darkest
+     * samples sit well above the declared black (the pedestal moved with the data). No override set by the user is touched.
+     */
+    void applyWideRaw(int wide, int low) {
+        if (wide <= whiteLevel || whiteLevelOverride >= 0) return;
+        final float scale = (wide + 1f) / (whiteLevel + 1f);
+        float black = Float.MAX_VALUE;
+        for (float b : blackLevel) black = Math.min(black, b);
+        final boolean scaleBlack = blackLevelOverride < 0 && black > 0 && low >= 4f * black;
+        if (scaleBlack) for (int i = 0; i < blackLevel.length; i++) blackLevel[i] *= scale;
+        Log.i(TAG, "wide RAW: white " + whiteLevel + " -> " + wide + (scaleBlack ? ", black x" + scale : ", black kept") + " (low " + low + ")");
+        whiteLevel = wide;
+    }
+
     public void FillDynamicParameters(CaptureResult result, CaptureRequest request, int ISO) {
         // Selection may change the reference after the first metadata pass.
         // Missing tags must not retain another frame's dynamic calibration.
@@ -363,6 +379,8 @@ public class Parameters {
         if(blackLevelOverride >= 0) {
             for (int i = 0; i < 4; i++) blackLevel[i] = blackLevelOverride;
         }
+        applyWideRaw(com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite(),
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideLow());
         Float aperture = result.get(CaptureResult.LENS_APERTURE);
         if (aperture == null) {
             aperture = request.get(CaptureRequest.LENS_APERTURE);

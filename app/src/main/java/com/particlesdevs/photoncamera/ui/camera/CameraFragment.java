@@ -1635,6 +1635,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             awbKelvin.setCharacteristics(characteristics);
             manualModeConsole.init(activity, characteristics);
             manualModeConsole.onResume();
+            // P104: the X500 Pro Max's DCG 14 bit switch at the manual strip's right end
+            if (cameraFragmentBinding != null)
+                Dcg14Button.bind(CameraFragment.this, cameraFragmentBinding.manualMode, characteristics);
         }
 
         @Override

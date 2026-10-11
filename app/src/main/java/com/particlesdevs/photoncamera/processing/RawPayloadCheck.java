@@ -76,7 +76,9 @@ public final class RawPayloadCheck {
         ShortBuffer data = view.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
         final int limit = 4 * (whiteLevel + 1), rows = Math.min(ROWS, height), step = Math.max(1, width / SAMPLES);
         long impossible = 0, total = 0;
-        int zeroRows = 0;
+        int zeroRows = 0, max = 0, overWhite = 0, n = 0;
+        final int[] samples = new int[ROWS * SAMPLES];
+        final float wideFrom = whiteLevel * 1.5f;
         for (int r = 0; r < rows; r++) {
             int y = rows == 1 ? 0 : (int) ((long) r * (height - 1) / (rows - 1));
             int base = (int) ((long) y * rowStride / 2);
@@ -84,6 +86,9 @@ public final class RawPayloadCheck {
             for (int i = 0, x = step / 2; i < SAMPLES && x < width; i++, x += step) {
                 int v = data.get(base + x) & 0xffff;
                 if (v >= limit) impossible++;
+                if (v > max) max = v;
+                if (v > wideFrom) overWhite++;
+                if (n < samples.length) samples[n++] = v;
                 if (v != 0) zero = false;
                 total++;
             }
@@ -92,11 +97,59 @@ public final class RawPayloadCheck {
         float share = total == 0 ? 0 : (float) impossible / total, zeroShare = (float) zeroRows / rows;
         boolean packed10 = (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= 0.28f && zeroShare <= 0.45f)
                 || (share >= 0.50f && zeroShare >= 0.28f);
+        // P104: a plain RAW wider than its declared white (vivo X500 Pro Max DCG sensor merge: 14-bit Bayer, white 1023 declared)
+        final int wide = sWideEnabled ? wideWhite(max, overWhite, zeroShare, whiteLevel) : 0;
+        if (wide > 0) {
+            int[] sorted = java.util.Arrays.copyOf(samples, n);
+            java.util.Arrays.sort(sorted);
+            noteWide(wide, sorted[n / 200], max, whiteLevel);
+            return new Result(null, share, zeroShare, false);
+        }
         if (share >= IMPOSSIBLE_SHARE || (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= ZERO_ROW_SHARE))
             return new Result(String.format(Locale.ROOT,
                     "RAW is not plain 16-bit: %.1f %% of samples at or above 4x white %d, %.1f %% zero rows (%s)",
                     share * 100, whiteLevel, zeroShare * 100, geometry), share, zeroShare, packed10);
+        noteWide(0, 0, max, whiteLevel);
         return new Result(null, share, zeroShare, false);
+    }
+
+    /** P104 dev switch raw_wide (CaptureController sets it per session). */
+    private static volatile boolean sWideEnabled = true;
+    private static volatile int sWideWhite, sWideLow;
+
+    public static void setWideEnabled(boolean enabled) {
+        sWideEnabled = enabled;
+        if (!enabled) sWideWhite = 0;
+    }
+
+    /** White level of the last checked plain frame when it was wider than declared (4095 / 16383), else 0. */
+    public static int wideWhite() {
+        return sWideWhite;
+    }
+
+    /** 0.5th percentile of that frame's samples (where its black sits). */
+    public static int wideLow() {
+        return sWideLow;
+    }
+
+    /**
+     * The white of a plain RAW whose samples pass the declared white: at least two sampled values above 1.5x the declared white
+     * (a plain 10-bit sample never passes it), no zero tail (packed payloads end in zero rows), and every value within 12 / 14
+     * bits; 0 otherwise.
+     */
+    static int wideWhite(int max, int overWhite, float zeroShare, int declaredWhite) {
+        if (declaredWhite <= 0 || declaredWhite >= 4095 || zeroShare >= 0.05f || overWhite < 2 || max <= declaredWhite * 1.5f) return 0;
+        if (max <= 4095) return 4095;
+        if (max <= 16383) return 16383;
+        return 0;
+    }
+
+    private static void noteWide(int wide, int low, int max, int declaredWhite) {
+        if (wide != sWideWhite) com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", wide > 0
+                ? String.format(Locale.ROOT, "wide RAW: samples up to %d over declared white %d -> white %d (0.5%% at %d)", max, declaredWhite, wide, low)
+                : "RAW back within declared white " + declaredWhite);
+        sWideWhite = wide;
+        sWideLow = low;
     }
 
     /**

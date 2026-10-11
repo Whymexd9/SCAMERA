@@ -1153,6 +1153,15 @@ public class PreferenceKeys {
         }
     }
 
+    /** P103: «Яркий видоискатель в темноте» (global). */
+    public static boolean isLowLightBoost() {
+        try {
+            return preferenceKeys != null && preferenceKeys.settingsManager.getBoolean("default_scope",
+                    com.particlesdevs.photoncamera.capture.HiddenFeatures.PREF_LOW_LIGHT_BOOST, false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
     public static void setMotionMode(boolean value) {
         preferenceKeys.settingsManager.set("default_scope", MotionMode.PREF, value);
     }
