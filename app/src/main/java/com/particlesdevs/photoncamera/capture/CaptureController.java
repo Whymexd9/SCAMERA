@@ -1679,7 +1679,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void logSensorModeIndex(CaptureResult result) {
         if (mCroppedRawSession && result != null) {
-            android.graphics.Rect crop = CroppedRaw.of(result);
+            android.graphics.Rect crop = CroppedRaw.of(result, physicalID, logicalID);
             if (crop != null && !CroppedRaw.same(crop, mLastRawCrop)) {
                 android.graphics.Rect active = mCameraCharacteristics == null ? null
                         : mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
@@ -4441,12 +4441,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         for (RingFrame image : rawImages) if (base == null || image.getTimestamp() > base.getTimestamp()) base = image;
         // P100: with CROPPED_RAW every frame says which part of the sensor it holds; frames of another crop (the in-sensor zoom
         // switched while they were taken) are not merged with the base, and the photo is not cropped again by what the RAW holds
-        final android.graphics.Rect baseCrop = mCroppedRawSession ? CroppedRaw.of(metadata.get(base.getTimestamp())) : null;
+        final android.graphics.Rect baseCrop = mCroppedRawSession ? CroppedRaw.of(metadata.get(base.getTimestamp()), physicalID, logicalID) : null;
         if (baseCrop != null) {
             int other = 0;
             for (java.util.Iterator<RingFrame> it = rawImages.iterator(); it.hasNext(); ) {
                 RingFrame image = it.next();
-                if (image != base && !CroppedRaw.same(baseCrop, CroppedRaw.of(metadata.get(image.getTimestamp())))) {
+                if (image != base && !CroppedRaw.same(baseCrop, CroppedRaw.of(metadata.get(image.getTimestamp()), physicalID, logicalID))) {
                     image.close();
                     it.remove();
                     other++;

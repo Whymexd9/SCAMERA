@@ -38,7 +38,9 @@ public final class IszModule {
             final String cameraId = ModuleRegistry.camera(main);
             if (p.getBoolean(OFFERED + cameraId, false)) return;
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
-            CameraCharacteristics c = manager == null ? null : manager.getCameraCharacteristics(cameraId);
+            // the module's camera may be "logical-physical" (Galaxy S24 Ultra: "0-5"); its RAW comes from the physical camera
+            CameraCharacteristics c = manager == null ? null
+                    : manager.getCameraCharacteristics(SensorConfigPreferenceGenerator.toPhysicalId(cameraId));
             if (!CroppedRaw.supported(c)) return;
             String target = ModuleRegistry.duplicate(main);
             SharedPreferences.Editor e = p.edit().putBoolean(OFFERED + cameraId, true);

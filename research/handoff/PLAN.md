@@ -2547,3 +2547,13 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   characteristics), remosaicenable / seamless.remosaicenable, processRaw.enable, raw.bpp, packedRaw.enable,
   xiaomi.remosaic.enabled, xiaomi.supernight.raw.enabled; MTK AE com.mediatek.3afeature.aeIsoSpeed / aePlineIndex.
 - HW HEIF encoder c2.mtk.heif.encoder up to 16368 (8-bit).
+
+### P100b — S24 Ultra: no «2×» module (owner's log 2026-05-18, build 30749; fixed, not on a device)
+
+- The module of the main camera is "0-5" (session on logical 0, RAW from physical 5): IszModule asked
+  getCameraCharacteristics("0-5") -> IllegalArgumentException on every start, so the module was never created. Now the physical
+  part of a "logical-physical" id is used.
+- CROPPED_RAW was set on cameras 5 and 7, but the raw crop was read from the logical result (always the 1x trim (32,0)-(4048,3060)),
+  also at 2.63x before the switch to the tele: the physical camera's own result is read first now (CroppedRaw.of(result,
+  physical, logical)), in the log line and the hybrid ring. The 5x tele 7 reports Rect(0,0-0,0): treated as no crop.
+- Check: «2×» button on the main; at 2x the log "raw crop … xF (in-sensor zoom)" with F ≈ 2.

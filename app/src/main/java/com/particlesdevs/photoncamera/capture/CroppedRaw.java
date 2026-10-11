@@ -45,10 +45,32 @@ public final class CroppedRaw {
     public static Rect of(@Nullable CaptureResult r) {
         if (r == null || Build.VERSION.SDK_INT < 34) return null;
         try {
-            return r.get(CaptureResult.SCALER_RAW_CROP_REGION);
+            // the S24 Ultra's 5x tele reports Rect(0, 0 - 0, 0): no crop known
+            Rect crop = r.get(CaptureResult.SCALER_RAW_CROP_REGION);
+            return crop == null || crop.isEmpty() ? null : crop;
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /**
+     * The raw crop of a physical camera's RAW stream in a logical session (Galaxy S24 Ultra: session on logical 0, RAW from
+     * physical 5; owner's log 2026-05-18): its own physical result carries the crop, the logical result only the logical
+     * camera's. Falls back to the logical result.
+     */
+    @Nullable
+    public static Rect of(@Nullable CaptureResult r, @Nullable String physicalId, @Nullable String logicalId) {
+        if (r instanceof android.hardware.camera2.TotalCaptureResult && physicalId != null && !physicalId.equals(logicalId)
+                && Build.VERSION.SDK_INT >= 28) {
+            try {
+                CaptureResult physical = ((android.hardware.camera2.TotalCaptureResult) r).getPhysicalCameraResults().get(physicalId);
+                Rect crop = of(physical);
+                if (crop != null) return crop;
+            } catch (RuntimeException ignored) {
+                // no physical results
+            }
+        }
+        return of(r);
     }
 
     /** How much of a zoom the RAW already holds: the active width over the crop width, 1 below {@link #MIN_FACTOR}. */
