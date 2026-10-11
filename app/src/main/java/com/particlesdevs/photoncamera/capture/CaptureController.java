@@ -2357,7 +2357,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // post-shutter series: scam_dev "zsl_reader" (default 20; LMC keeps 50, ArkCam 1.05 min(max(2 x frames, 8), 48))
             // A YUV ring (no RAW) still holds the camera's Images: reader = ring + 3, as before.
             maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true) && isRawFormat(mTargetFormat)
-                    ? Math.max(8, Math.min(Math.min(zslRingCapacity() + 3, 103), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
+                    // floor 16: the Galaxy S24 Ultra's RAW stream ran at 15 fps with 8 reader buffers, 28 with 12, 30 from 16 (SCAM
+                    // TEST ring depth search, 2026-05-18); the «Движение» ring of 8 frames would otherwise get a reader of 11
+                    ? Math.max(16, Math.min(Math.min(zslRingCapacity() + 3, 103), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
                     : Math.min(zslRingCapacity() + 3, 103);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         // Diagnostics: the vivo X200 Pro's 4096x3072 RAW holds its image in 4000x3000 (zeros elsewhere, black stripe at the edge);

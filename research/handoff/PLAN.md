@@ -2366,3 +2366,21 @@ Reports: X8U, X9U, X7U (root), X100U, X200U (root), X200 Pro, vivo V2515 (MT6993
      9 LE floats, rows sum to 1; scam_dev oplus_ccm 0 = off). The X7U's OppoTunedColor path still wins where it applies.
      vivo.feedback.ccm equals the standard transform (nothing new); vivo.feedback.blackLevel is not in live results.
   Tests VendorHintsTest, OplusCcmTest (681/681).
+
+### P99 — SCAM TEST report of the Galaxy S24 Ultra (SM-S928B, e3q, Snapdragon; taken with the package spoof com.ss.android.ugc.aweme; owner, 2026-10-11; read)
+
+- Cameras: listed 0 (logical main 6.3 mm), 1 / 3 fronts, 2 UW; with the spoof also 5 (main), 6 (7.9 mm 3x), 7 (18.6 mm 5x),
+  logical groups 20 / 21 / 23 / 24, physical 52 / 54 / 56 / 58. Main ISO 12-3200, exposure only up to 117 ms (logical) /
+  255 ms (physical 5, maxFrameDuration 255 ms); UW / fronts up to 150 ms. OIS on main and teles. Priority modes [0].
+- Sensor modes (owner's question: a key like vivo.control.forceSensorMode?): no request key that forces a mode index.
+  Closest: samsung.android.sensor.pixelMode (byte, 0 in every template; android.sensor.pixelMode also a request key) and a
+  hidden size table (static 0x81200021 / 0x81200027, names not readable without the registry): camera 20 = 16320x12240
+  (200 MP) and 8160x6120 (50 MP) as RAW10 (format 37) next to 4080x3060 RAW_SENSOR; the max-resolution arrays of 5 / 7 /
+  23 / 24 / 54 / 56 equal 4080x3060 with binning 2x2 (in-sensor 2x crop) but no ULTRA_HIGH_RESOLUTION capability.
+  Qualcomm session keys EnableInsensorZoom / ExtendedMaxZoom are request keys; com.qti.sensorbps.mode_index reports the active
+  mode (2, 6, 8, 15, 16, 34 seen). All untested: switching needs the owner's approval and a phone.
+- RAW hold 62 frames: 108-193 capture failures (P91 holds). Ring depth search (SCAM TEST 1.11): 8 reader buffers -> 15 fps,
+  12 -> 28 fps, 16+ -> 30 fps, 57 fails. Done: the RAW reader floor is 16 (was 8; the motion mode's ring of 8 gave 11).
+- Other per-frame tags: samsung.android.sensor.wdrExposureTime / wdrSensitivity (2 values), drcRatio, captureTotalGain;
+  samsung.android.control.multiExposureTimeList / multiSensorSensitivityList (5 entries, request templates, 0) - a possible
+  in-request bracket, untested; samsung.android.listener.gyro.gyroTimestamp.
