@@ -179,6 +179,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
             generateSensorConfigPreferences();
+            // «Для разработчика»: the hidden scam_dev.txt lines (DevKeys), edited in the file itself
+            DeveloperPreferences.populate(getPreferenceScreen(), getPreferenceManager().getContext());
             fullPreferenceScreen = getPreferenceScreen();
             if (rootKey != null) {
                 PreferenceScreen selected = findPreference(rootKey);

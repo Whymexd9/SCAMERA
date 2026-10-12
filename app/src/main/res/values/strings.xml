@@ -329,5 +329,7 @@
     <string name="full_res_on_toast">Full resolution on: 50 MP RAW, frames after the shutter, the camera restarts</string>
     <string name="full_res_off_toast">Full resolution off</string>
     <string name="dcg14_not_here">DCG 14-bit works on the main camera and the telephotos</string>
+    <string name="prefs_developer_settings_screen_title">For developers</string>
+    <string name="prefs_developer_settings_screen_summary">Hidden switches of scam_dev.txt for experiments and debugging</string>
 </resources>
 

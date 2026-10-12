@@ -240,4 +240,6 @@
     <string name="full_res_on_toast">Полное разрешение вкл: RAW 50 Мп, кадры после нажатия, камера перезапускается</string>
     <string name="full_res_off_toast">Полное разрешение выкл</string>
     <string name="dcg14_not_here">DCG 14 бит работает на основной камере и телеобъективах</string>
+    <string name="prefs_developer_settings_screen_title">Для разработчика</string>
+    <string name="prefs_developer_settings_screen_summary">Скрытые переключатели scam_dev.txt для опытов и отладки</string>
 </resources>
