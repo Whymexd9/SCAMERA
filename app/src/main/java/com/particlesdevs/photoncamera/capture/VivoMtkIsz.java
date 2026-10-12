@@ -85,10 +85,10 @@ public final class VivoMtkIsz {
         }
     }
 
-    /** «1,3×» / «7×» / «14×»: one decimal below 10 (comma), none above; a whole number without it. */
+    /** «1.3×» / «7×» / «14×» as the automatic labels are stored (the strip shows the decimal comma on a Russian UI). */
     static String label(float zoom) {
         String s = zoom >= 10f || Math.abs(zoom - Math.round(zoom)) < 0.05f
-                ? String.valueOf(Math.round(zoom)) : String.format(Locale.US, "%.1f", zoom).replace('.', ',');
+                ? String.valueOf(Math.round(zoom)) : String.format(Locale.US, "%.1f", zoom);
         return s + "×";
     }
 

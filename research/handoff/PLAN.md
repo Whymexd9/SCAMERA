@@ -2711,7 +2711,7 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Scenario tables: main IMX09C CROP_2X_4CELL 12 (no 4x), tele S5KHPE CROP_2X_4CELL 12 + CROP_4X_16CELL 15, ultra-wide JN5 / JN1
   FULL_4CELL only. Selector: AppType vivo + photo UI mode: seamless.roiRemosaic 4 -> ROIREMOSAIC (2x crop, HW remosaic),
   remosaicenable 1 + seamless.remosaic.enable 1 -> SATREMOSAIC.
-- Built (VivoMtkIsz, not on a device): duplicate modules main «2×», ultra-wide «1,3×» (2x), tele «7×» (2x) and «14×» (4x),
+- Built (VivoMtkIsz, not on a device): duplicate modules main «2×», ultra-wide «1.3×» (2x), tele «7×» (2x) and «14×» (4x),
   each with the module vendor key vivo.control.seamless.roiRemosaic 4 (editable in the module settings); while one is
   active the package spoof opens the camera as com.android.camera. The real field of view is measured (P60 fov_check). The
   DCG14 log line now carries vivo.feedback.SensorCropRegion / isROIRemosaicPreview. scam_dev vivo_isz 0 = off.
