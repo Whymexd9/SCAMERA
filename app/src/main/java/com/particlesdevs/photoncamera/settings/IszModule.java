@@ -28,6 +28,8 @@ public final class IszModule {
     /** Creates the ISZ button of the back main camera when it can and has not done so before. */
     public static void ensure(Context context) {
         if (context == null || !PreferenceKeys.scamDevSwitch("isz_module", true)) return;
+        // vivo MediaTek: VivoMtkIsz makes the main «2×» (a second «2×» here was one too many, X200 Pro video 2026-10-13)
+        if (com.particlesdevs.photoncamera.capture.VivoMtkIsz.enabled()) return;
         try {
             SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);

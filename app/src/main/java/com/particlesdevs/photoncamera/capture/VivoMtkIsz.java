@@ -90,6 +90,7 @@ public final class VivoMtkIsz {
             SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
             android.hardware.camera2.CameraManager manager =
                     (android.hardware.camera2.CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            removeExtras(p, manager);
             String main = null, wide = null;
             float wideZoom = 0f;
             List<String> teles = new ArrayList<>();
@@ -163,6 +164,67 @@ public final class VivoMtkIsz {
     /** P109c: the vivo HAL's "Function not implemented (-38)" while it still releases the previous camera (CaptureController). */
     static boolean busyHalError(@Nullable String message) {
         return message != null && message.contains("(-38)");
+    }
+
+    /** A module button as {@link #extras} sees it. */
+    static final class Mod {
+        final String slot, camera;
+        final float zoom;
+        final int factor;
+        final boolean duplicate;
+
+        Mod(String slot, String camera, float zoom, int factor, boolean duplicate) {
+            this.slot = slot;
+            this.camera = camera;
+            this.zoom = zoom;
+            this.factor = factor;
+            this.duplicate = duplicate;
+        }
+    }
+
+    /**
+     * P109g (owner, 2026-10-13: «удали лишние модули»): the back buttons that are too many. ISZ modules on a camera that is no
+     * longer a physical camera of the list (V2515: «17×» / «33×» on the logical «0-2»), a second ISZ module of the same camera
+     * and factor, and (once, {@code sameZoom}) a duplicate without ISZ on the camera and zoom of an ISZ module (X200 Pro video:
+     * two «2×» on camera 2, the other one the 1x field cropped). Originals are never removed.
+     */
+    static List<String> extras(List<Mod> mods, java.util.Set<String> physical, boolean sameZoom) {
+        List<String> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Mod m : mods) {
+            if (!m.duplicate || m.factor <= 0) continue;
+            if (!physical.contains(m.camera) || !seen.add(m.camera + "_" + m.factor)) out.add(m.slot);
+        }
+        if (sameZoom) for (Mod m : mods) {
+            if (!m.duplicate || m.factor > 0 || out.contains(m.slot)) continue;
+            for (Mod isz : mods)
+                if (isz.factor > 0 && !out.contains(isz.slot) && isz.camera.equals(m.camera)
+                        && Math.abs(m.zoom / isz.zoom - 1f) < 0.05f) { out.add(m.slot); break; }
+        }
+        return out;
+    }
+
+    private static final String CLEANUP = "module_vivo_isz_cleanup_1";
+
+    private static void removeExtras(SharedPreferences p, @Nullable android.hardware.camera2.CameraManager manager) {
+        List<Mod> mods = new ArrayList<>();
+        java.util.Set<String> physical = new java.util.HashSet<>();
+        for (String slot : ModuleRegistry.slots()) {
+            if (!slot.startsWith("back") || !ModuleRegistry.visible(slot)) continue;
+            String camera = ModuleRegistry.camera(slot);
+            if (opens(manager, camera)) physical.add(camera);
+            mods.add(new Mod(slot, camera, ModuleRegistry.zoom(slot), p.getInt(MARK + slot, 0), ModuleRegistry.duplicateOf(slot) != null));
+        }
+        if (physical.isEmpty()) return; // the camera list is not readable now: nothing is judged stale
+        boolean once = !p.getBoolean(CLEANUP, false);
+        for (String slot : extras(mods, physical, once)) {
+            String label = ModuleRegistry.label(slot), camera = ModuleRegistry.camera(slot);
+            if (ModuleRegistry.remove(slot)) {
+                p.edit().remove(MARK + slot).apply();
+                Log.i(TAG, "extra module " + slot + " («" + label + "», camera " + camera + ") removed");
+            }
+        }
+        if (once) p.edit().putBoolean(CLEANUP, true).apply();
     }
 
     /** A physical camera of the current camera list: not «logical-physical», and its characteristics are there. */

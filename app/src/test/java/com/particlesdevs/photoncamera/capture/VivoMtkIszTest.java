@@ -38,4 +38,24 @@ public class VivoMtkIszTest {
         org.junit.Assert.assertFalse(VivoMtkIsz.busyHalError("Error configuring streams: Broken pipe (-32)"));
         org.junit.Assert.assertFalse(VivoMtkIsz.busyHalError(null));
     }
+
+    @Test
+    public void extraModulesAreRemoved() {
+        java.util.List<VivoMtkIsz.Mod> mods = java.util.Arrays.asList(
+                new VivoMtkIsz.Mod("back0", "4", 0.7f, 0, false),
+                new VivoMtkIsz.Mod("back1", "2", 1f, 0, false),
+                new VivoMtkIsz.Mod("back2", "3", 3.8f, 0, false),
+                new VivoMtkIsz.Mod("back3", "2", 2f, 2, true),   // main ISZ «2×»
+                new VivoMtkIsz.Mod("back4", "3", 7.6f, 2, true),
+                new VivoMtkIsz.Mod("back5", "3", 15f, 4, true),
+                new VivoMtkIsz.Mod("back6", "2", 2f, 0, true),   // the second «2×» (X200 Pro video)
+                new VivoMtkIsz.Mod("back7", "0-2", 17f, 2, true), // V2515 log_4: ISZ on the logical camera
+                new VivoMtkIsz.Mod("back8", "3", 7.6f, 2, true)); // a second 2x ISZ of the tele
+        java.util.Set<String> physical = new java.util.HashSet<>(java.util.Arrays.asList("2", "3", "4"));
+        assertEquals(java.util.Arrays.asList("back7", "back8", "back6"), VivoMtkIsz.extras(mods, physical, true));
+        assertEquals(java.util.Arrays.asList("back7", "back8"), VivoMtkIsz.extras(mods, physical, false));
+        // an original is never removed, and an ISZ module of a duplicate of another zoom stays
+        org.junit.Assert.assertTrue(VivoMtkIsz.extras(java.util.Arrays.asList(
+                new VivoMtkIsz.Mod("back1", "2", 2f, 0, false), new VivoMtkIsz.Mod("back3", "2", 2f, 2, true)), physical, true).isEmpty());
+    }
 }
