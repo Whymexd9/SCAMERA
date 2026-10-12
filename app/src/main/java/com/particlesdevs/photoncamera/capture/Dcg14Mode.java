@@ -210,9 +210,8 @@ public final class Dcg14Mode {
     public static String spoofPackage() {
         // P109 (owner, 2026-10-13: «мы можем спуф включить на постоянку для этого смартфона чтобы не переключать туда-сюда»):
         // on the X500 Pro Max every camera opens as the vivo camera, for DCG / LOFIC, the ISZ modules and plain shots alike
-        if (device()) return PreferenceKeys.scamDevSwitch("dcg14_spoof", true) ? VIVO_CAMERA_PACKAGE : null;
-        // P109b: other vivo MediaTek phones open as the vivo camera while an ISZ module is active
-        return VivoMtkIsz.activeFactor() > 0 ? VIVO_CAMERA_PACKAGE : null;
+        // P109b (owner: «на виво сделай подмену как на 500 про макс»): every vivo MediaTek phone, always
+        return VivoMtkIsz.device() && PreferenceKeys.scamDevSwitch("dcg14_spoof", true) ? VIVO_CAMERA_PACKAGE : null;
     }
 
     /** Sets the mode's keys on a session-parameter or request builder; returns what was set ("" when inactive). */

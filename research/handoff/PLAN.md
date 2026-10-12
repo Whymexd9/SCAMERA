@@ -2731,5 +2731,6 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   insensorzoomPlatformSupport 1, session key insensorzoomIsInternalAP, oplus alternativecropregion results: its ISZ is the
   HAL's 2x step on the logical camera (as the S24 Ultra). Xiaomi 13T: logical camera 4 zoom steps {0.6, 1.0, 2.0},
   xiaomi.insensorzoom.enabled; Redmi Note 11 Pro: com.mediatek.control.capture.inSensorZoom.mode, no 2.0 step. Not built:
-  needs a session on the logical camera with the HAL's zoom ratio 2 (open item).
+  needs a session on the logical camera with the HAL's zoom ratio 2 (open item).- Owner (2026-10-13): no ISZ work for OPPO / Xiaomi MediaTek; «на виво сделай подмену как на 500 про макс»: every vivo MediaTek
+  phone opens its cameras as com.android.camera always (Dcg14Mode.spoofPackage; dcg14_spoof 0 = off).
 
