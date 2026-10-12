@@ -840,6 +840,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             cameraDevice.close();
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            Dcg14Mode.onCameraError(error); // a DCG / LOFIC search try that broke the camera ends the search
             if (mXiaomiRouted) {
                 // P41b: the logical camera failed for this app: the tele alone from now on
                 mXiaomiRouted = false;

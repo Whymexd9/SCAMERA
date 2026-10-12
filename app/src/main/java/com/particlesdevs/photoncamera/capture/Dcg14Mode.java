@@ -180,6 +180,23 @@ public final class Dcg14Mode {
         Log.i(TAG, "DCG search (" + name(m) + "): try " + i + "/" + steps.size() + " on camera " + physicalId + ": " + sStep);
     }
 
+    /**
+     * A camera error during a search try (owner, 2026-10-13: «при попытке dcg+lofic включить получаю ошибку 4»: the try killed
+     * the vivo camera provider): the search of this mode stops (marked done) so the next session runs without tries.
+     */
+    public static void onCameraError(int error) {
+        if (sStepIndex < 0 || sStep == null) return;
+        SharedPreferences p = prefs();
+        int m = mode();
+        if (p == null || p.getInt("found_" + m, -1) >= 0) return;
+        p.edit().putBoolean("exhausted_" + m, true).commit();
+        sSearching = false;
+        sStep = null;
+        Log.w(TAG, "DCG search (" + name(m) + "): stopped at try " + sStepIndex + " by camera error " + error
+                + " (long press on the button searches on)");
+        notifyListener();
+    }
+
     /** Sets the mode's keys on a session-parameter or request builder; returns what was set ("" when inactive). */
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (builder == null || !active(c)) return "";
