@@ -3000,9 +3000,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (n > 2) return false;
         sBusyRetries.put(id, n);
         mBusyRetryPending = true;
-        // P109d: the second try goes without the vivo UI module, in case it is the key the HAL refuses
-        if (n == 2 && mVivoUiSession && sVivoUiRefused.add(physicalID))
-            Log.w("SCAM_CAPTURE", "camera " + physicalID + ": the second try without the vivo UI module");
+
         final long delay = 500L * n;
         Log.w(TAG, "camera " + id + ": vivo HAL busy (-38), reopening the same camera in " + delay + " ms (try " + n + ")");
         new Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
@@ -3028,6 +3026,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mVivoUiSession && device != null && handler != null && sVivoUiRefused.add(physicalID)) {
             // P109d: a camera that refuses the session with the vivo UI module runs without it (this run)
             Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo UI module; retry without it");
+            if (mBusyRetryPending) return true; // the -38 path already reopens the camera (retryBusyVivoHal)
             try { session.close(); } catch (Exception ignored) {}
             handler.post(() -> {
                 if (!isCameraResumed || mCameraDevice != device) return;

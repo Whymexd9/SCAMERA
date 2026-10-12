@@ -2748,4 +2748,11 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   marked offered any more, the module comes once a button is deleted; the log lists the buttons.
 - Other session keys of interest on V2515 (not used yet): vivo.control.forceSensorMode, vivo.control.EngineerRemosaicMode,
   vivo.control.advance_fullsize, vivo.control.ultra_highresolution, com.mediatek.seamlessfeature.sensorScenario.
+- X200 Pro test (owner's log 2026-10-13_6, APK 7df72e2): ISZ WORKS without the UI module - FovSelfCheck measured field 1/2.00
+  on the main 2x (camera 2) and the tele 2x (camera 3), the RAW stays a Bayer stream (block 1) under roiRemosaic 4
+  (ROIREMOSAIC: HW-remosaiced 2x crop); the ultra-wide 2x read 1/2.00 too (cached). com.vivo.current_ui_module 1 failed every
+  session (-38), so it is off by default now (scam_dev vivo_ui_module 1 to try). The 4x tele module sends the same key (its
+  field was not measured: scene changed); the 4x crop key is still unknown.
+- FovSelfCheck cache key now holds the package-spoof signature: V2515's «1/1.00 (measured earlier)» was cached before the
+  spoof, so the module was cropped digitally; it is measured again.
 

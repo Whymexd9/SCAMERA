@@ -61,4 +61,12 @@ public class FovSelfCheckTest {
         assertEquals(0f, g[0], 1e-3f);
         assertEquals(255f, g[2], 0.5f);
     }
+
+    @org.junit.Test
+    public void theCacheKeyHoldsThePackageSpoof() {
+        org.junit.Assert.assertEquals("back3|2|roi=4;", FovSelfCheck.key("back3", "2", "roi=4;", "off"));
+        org.junit.Assert.assertEquals("back3|2|roi=4;", FovSelfCheck.key("back3", "2", "roi=4;", null));
+        org.junit.Assert.assertEquals("back3|2|roi=4;|on:a|com.android.camera|b",
+                FovSelfCheck.key("back3", "2", "roi=4;", "on:a|com.android.camera|b")); // V2515: 1/1.00 cached before the spoof
+    }
 }

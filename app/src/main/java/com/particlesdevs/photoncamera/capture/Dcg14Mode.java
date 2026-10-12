@@ -264,14 +264,16 @@ public final class Dcg14Mode {
      * session parameter and a global request parameter, 1 in Photo, vivo-camera-app-log 2026-09-20). The sensor-mode
      * selectors of PD2602 / PD2502 / PD2405 reach ROIREMOSAIC (seamless.roiRemosaic 4) and the photo HDR only under a photo UI
      * mode (1 / 13 / 70 / 74 / 7): without it the ISZ module's field of view stayed that of its camera (V2515 log 2026-10-13_4,
-     * FovSelfCheck 1/1.00). Sent while the vivo-camera spoof is on; scam_dev "vivo_ui_module N" (-1 = not sent).
+     * FovSelfCheck 1/1.00, a value cached before the spoof). Off by default since the X200 Pro (log 2026-10-13_6): every
+     * session with it failed (-38) and the ISZ modules cropped 2x without it (FovSelfCheck 1/2.00 main and tele). scam_dev
+     * "vivo_ui_module N" sends it while the vivo-camera spoof is on (-1 = not sent).
      */
     public static boolean wantsUiModule() {
         return spoofPackage() != null && uiModule() >= 0;
     }
 
     static int uiModule() {
-        return Math.round(PreferenceKeys.scamDevNumber("vivo_ui_module", 1f));
+        return Math.round(PreferenceKeys.scamDevNumber("vivo_ui_module", -1f));
     }
 
     public static String applyUiModule(CaptureRequest.Builder builder) {

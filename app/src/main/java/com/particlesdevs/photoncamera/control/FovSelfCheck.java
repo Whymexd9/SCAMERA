@@ -40,7 +40,7 @@ public final class FovSelfCheck implements SubjectFrames.Sink {
     });
 
     // session (set from the camera thread)
-    private volatile String cameraId = "", slot = "", signature = "";
+    private volatile String cameraId = "", slot = "", signature = "", spoof = "off";
     private volatile boolean vendor, measuring;
     private volatile long sessionAtMs;
     private volatile float sessionCrop = Float.NaN;
@@ -71,6 +71,7 @@ public final class FovSelfCheck implements SubjectFrames.Sink {
         slot = moduleSlot == null ? "" : moduleSlot;
         signature = vendorSignature == null ? "" : vendorSignature;
         vendor = !signature.isEmpty();
+        spoof = spoofOf(context);
         sessionAtMs = SystemClock.elapsedRealtime();
         lastScale = Float.NaN;
         final float cached = vendor ? cached(context, key()) : Float.NaN;
@@ -84,7 +85,25 @@ public final class FovSelfCheck implements SubjectFrames.Sink {
     /** The stream crop measured for the current session's module (NaN: not measured, the block rule applies). */
     public float sessionCrop() { return sessionCrop; }
 
-    private String key() { return slot + "|" + cameraId + "|" + signature; }
+    /**
+     * The package spoof is part of the key: the same vendor key gives another field with the camera opened as another app (vivo
+     * MediaTek: roiRemosaic crops only for AppType vivo; V2515 log 2026-10-13_4 kept «1/1.00 (measured earlier)» from a
+     * session before the spoof, so the module was cropped digitally). A plain session ("off") keeps the old key.
+     */
+    static String key(String slot, String cameraId, String signature, String spoof) {
+        String k = slot + "|" + cameraId + "|" + signature;
+        return spoof == null || spoof.isEmpty() || "off".equals(spoof) ? k : k + "|" + spoof;
+    }
+
+    private String key() { return key(slot, cameraId, signature, spoof); }
+
+    private static String spoofOf(Context context) {
+        try {
+            return context == null ? "off" : com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof.signature(context);
+        } catch (Throwable e) {
+            return "off";
+        }
+    }
 
     @Override
     public boolean wantsFrame(long nowNs) {
