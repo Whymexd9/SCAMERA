@@ -2663,4 +2663,7 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - App restarts 2-14 s after module switches (0-5 -> 0-2, 0-4, 0-6): no Java exception, no crash file. ExitReasons now logs the
   previous process's ApplicationExitInfo (reason, PSS / RSS, tombstone text for a native crash) at the next start. Suspects:
   memory (each camera's memfd ring 66 x 24 MB = 1.6 GB, 95 MB slots in full resolution) or a native fault in the ring code.
+- 2026-10-12 (owner: «у пикселя DCG работает в raw12 и raw sensor сразу же на основной камере, так что переключатель можно
+  убрать»): the Pixel DCG switch, its RAW12 preference and the sequoiaIdcgEnabled key are removed; the full-resolution switch
+  takes the manual strip's end slot on the Pixel.
 

@@ -9,7 +9,6 @@ import android.widget.ImageButton;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.capture.Dcg14Mode;
-import com.particlesdevs.photoncamera.capture.PixelPro10;
 import com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
 import com.particlesdevs.photoncamera.util.Log;
@@ -24,8 +23,8 @@ import com.particlesdevs.photoncamera.util.Log;
  * -> LOFIC (its own icon) -> off; while the mode has no working try the camera restarts by itself through the tries of
  * DcgSearch (a snackbar says when one worked or none did); a long press searches on from the next try.
  * <p>
- * P108: the same button on the Pixel 10 Pro / Pro XL's main camera (RAW12 stream, PixelPro10): on / off; the full-resolution
- * switch (FullResButton) floats above it.
+ * P108: the Pixel 10 Pro / Pro XL has no DCG switch (its main camera is DCG in every RAW format); its full-resolution switch
+ * (FullResButton) takes the slot there, or floats above this button where both exist.
  */
 final class Dcg14Button {
     private static final String TAG = "Dcg14Button";
@@ -39,8 +38,7 @@ final class Dcg14Button {
         FrameLayout slot = panel.endSlot();
         if (slot == null) return;
         ImageButton button = slot.findViewById(R.id.dcg14_button);
-        final boolean pixel = PixelPro10.device();
-        if (!Dcg14Mode.device() && !pixel) {
+        if (!Dcg14Mode.device()) {
             if (button != null) slot.removeView(button);
             panel.refreshEndSlot();
             FullResButton.bind(fragment, panel, slot, characteristics);
@@ -55,10 +53,7 @@ final class Dcg14Button {
             button.setPadding(pad, pad, pad, pad);
             button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
             button.setImageResource(R.drawable.manual_ic_dcg14);
-            button.setOnClickListener(v -> {
-                if (PixelPro10.device()) togglePixel(fragment, (ImageButton) v);
-                else toggle(fragment, (ImageButton) v);
-            });
+            button.setOnClickListener(v -> toggle(fragment, (ImageButton) v));
             button.setOnLongClickListener(v -> {
                 searchAgain(fragment);
                 return true;
@@ -72,9 +67,9 @@ final class Dcg14Button {
             if (Dcg14Mode.found()) fragment.showSnackBar(fragment.getString(R.string.dcg14_found_toast));
             else if (Dcg14Mode.exhausted()) fragment.showSnackBar(fragment.getString(R.string.dcg14_none_toast));
         });
-        boolean here = pixel ? PixelPro10.dcgAvailable(characteristics) : Dcg14Mode.available(characteristics);
+        boolean here = Dcg14Mode.available(characteristics);
         button.setVisibility(here ? View.VISIBLE : View.GONE);
-        style(button, pixel ? (PixelPro10.dcgOn() ? Dcg14Mode.DCG : Dcg14Mode.OFF) : Dcg14Mode.mode());
+        style(button, Dcg14Mode.mode());
         panel.refreshEndSlot();
         // P108: the Pixel's full-resolution switch above the DCG button (or in the slot where the camera has no DCG)
         FullResButton.bind(fragment, panel, slot, characteristics);
@@ -95,17 +90,8 @@ final class Dcg14Button {
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }
 
-    private static void togglePixel(CameraFragment fragment, ImageButton button) {
-        boolean on = !PixelPro10.dcgOn();
-        PixelPro10.setDcg(on);
-        style(button, on ? Dcg14Mode.DCG : Dcg14Mode.OFF);
-        fragment.showSnackBar(fragment.getString(on ? R.string.pixel_dcg_on_toast : R.string.pixel_dcg_off_toast));
-        Log.i(TAG, "Pixel DCG (RAW12) " + (on ? "on" : "off"));
-        if (fragment.captureController != null) fragment.captureController.restartCamera();
-    }
-
     private static void searchAgain(CameraFragment fragment) {
-        if (PixelPro10.device() || !Dcg14Mode.on()) return;
+        if (!Dcg14Mode.on()) return;
         Dcg14Mode.searchAgain();
         fragment.showSnackBar(fragment.getString(R.string.dcg14_search_toast));
         if (fragment.captureController != null) fragment.captureController.restartCamera();

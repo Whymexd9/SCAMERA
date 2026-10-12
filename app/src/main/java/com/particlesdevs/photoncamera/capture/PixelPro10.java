@@ -25,7 +25,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * P108 Pixel 10 Pro (blazer) / 10 Pro XL (mustang): the in-sensor-zoom modules and the DCG switch (owner, 2026-10-12: «на Pixel
+ * P108 Pixel 10 Pro (blazer) / 10 Pro XL (mustang): the in-sensor-zoom modules and the full-resolution switch (owner, 2026-10-12: «на Pixel
  * 10 pro xl не отображаются все модули, не хватает ISZ модулей, также на этом смарте доступен DCG с raw12, сделай его включение
  * аналогично 500 про макс по кнопке в видоискателе с перезапуском видоискателя»; «не только на 10 про хл, но и на 10 про»).
  * <p>
@@ -37,25 +37,22 @@ import java.util.Set;
  * camera (a deleted one stays deleted). A crop module whose field is within 15 % of an existing one (UW 2x crop = 1.02x) is
  * left out.
  * <p>
- * DCG: the main camera lists RAW12 4080x3072 (white 4095); owner, 2026-10-12: «у пикселя при использовании raw12 работает dcg».
- * The switch makes the RAW stream RAW12 where the camera lists it (unpacked like RAW10 / RAW12 already are); the camera restarts.
- * The registry's com.google.internal.sequoiaIdcgEnabled (byte, not in the request-key lists) is sent only with scam_dev
- * "pixel_idcg 1".
+ * DCG: no switch (owner, 2026-10-12: «у пикселя DCG работает в raw12 и raw sensor сразу же на основной камере, так что
+ * переключатель можно убрать»): the main camera's RAW is DCG in every format; the P108 switch (RAW12 + iDCG) is gone.
  * <p>
  * Full resolution (owner: «добавь кнопку сверху кнопки DCG»; MotionCam Pro takes 50 MP on this phone): a RAW size of
  * SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION (as MotionCam lists it, no ULTRA_HIGH_RESOLUTION capability on the Pixel):
  * RAW10 8160x6144 @ 24 fps on 0 / 2 / 5, 8064x6048 @ 15 on 6 / 9. That stream takes MAXIMUM_RESOLUTION requests only, so every
  * stream of the session is configured for that mode with sizes of the max-resolution map (viewfinder / YUV 1440x1080 for 4:3)
  * and every request carries it: the ZSL ring keeps working (owner: «в режиме полного разрешения ZSL должен тоже работать»),
- * the RAW viewfinder is off (50 MP at 24 fps), the readers hold 8 frames. A refused session runs binned again
+ * the RAW viewfinder shows the frame 2x2-binned (the ISP's own one is green in that mode), the readers hold 8 frames. A refused session runs binned again
  * (CaptureController.retryWithoutFullRes). Nothing is verified on the phone.
  */
 public final class PixelPro10 {
     private static final String TAG = "PixelPro10";
     private static final String PREFS = "scam_pixel10";
-    private static final String KEY_DCG = "dcg", KEY_FULL = "full_res";
+    private static final String KEY_FULL = "full_res";
     private static final String OFFERED = "module_pixel_offered_";
-    static final String IDCG_KEY = "com.google.internal.sequoiaIdcgEnabled";
     /** Fields closer than this to a visible module's are the same module. */
     static final float SAME_FIELD = 0.15f;
 
@@ -180,59 +177,10 @@ public final class PixelPro10 {
         return s == null ? 0f : s.getWidth();
     }
 
-    // ---- DCG ----
-
     @Nullable
     private static SharedPreferences prefs() {
         Context c = PhotonCamera.getAppContext();
         return c == null ? null : c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    }
-
-    public static boolean dcgOn() {
-        SharedPreferences p = prefs();
-        return p != null && p.getBoolean(KEY_DCG, false);
-    }
-
-    public static void setDcg(boolean on) {
-        SharedPreferences p = prefs();
-        if (p != null) p.edit().putBoolean(KEY_DCG, on).apply();
-    }
-
-    /** The camera lists a RAW12 stream (the main sensor) on a Pixel 10 Pro / Pro XL. */
-    public static boolean dcgAvailable(@Nullable CameraCharacteristics c) {
-        if (c == null || !device() || !PreferenceKeys.scamDevSwitch("pixel_dcg", true)) return false;
-        StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-        if (map == null) return false;
-        Size[] sizes = map.getOutputSizes(ImageFormat.RAW12);
-        return sizes != null && sizes.length > 0;
-    }
-
-    public static boolean dcgActive(@Nullable CameraCharacteristics c) {
-        return dcgOn() && dcgAvailable(c);
-    }
-
-    /** RAW12 first while the switch is on and the map lists it. */
-    public static boolean preferRaw12(@Nullable StreamConfigurationMap map) {
-        if (map == null || !device() || !dcgOn()) return false;
-        Size[] sizes = map.getOutputSizes(ImageFormat.RAW12);
-        return sizes != null && sizes.length > 0;
-    }
-
-    /** The internal iDCG key goes out (scam_dev pixel_idcg 1) with the DCG switch. */
-    public static boolean idcgActive(@Nullable CameraCharacteristics c) {
-        return dcgActive(c) && PreferenceKeys.scamDevSwitch("pixel_idcg", false);
-    }
-
-    /** sequoiaIdcgEnabled = 1 on a session-parameter or request builder; returns what was set ("" when inactive). */
-    public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c) {
-        if (builder == null || !idcgActive(c)) return "";
-        CaptureRequest.Key<Byte> key = new CaptureRequest.Key<>(IDCG_KEY, Byte.class);
-        try {
-            builder.set(key, (byte) 1);
-            return IDCG_KEY + "=1";
-        } catch (RuntimeException e) {
-            return IDCG_KEY + " n/a";
-        }
     }
 
     // ---- full resolution ----

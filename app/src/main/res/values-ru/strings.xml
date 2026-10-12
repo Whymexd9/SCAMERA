@@ -235,8 +235,6 @@
     <string name="dcg14_found_toast">DCG: сенсор перешёл в 14-битный режим</string>
     <string name="dcg14_none_toast">DCG: способ включить режим сенсора не найден</string>
     <string name="dcg14_search_toast">DCG: поиск продолжается (камера несколько раз перезапустится)</string>
-    <string name="pixel_dcg_on_toast">DCG вкл: поток RAW12 с двойным усилением, камера перезапускается</string>
-    <string name="pixel_dcg_off_toast">DCG выкл</string>
     <string name="full_res_on">Полное разрешение: вкл</string>
     <string name="full_res_off">Полное разрешение: выкл</string>
     <string name="full_res_on_toast">Полное разрешение вкл: RAW 50 Мп, кадры после нажатия, камера перезапускается</string>

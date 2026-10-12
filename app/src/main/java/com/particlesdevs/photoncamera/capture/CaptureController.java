@@ -1346,9 +1346,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private static int resolveRawFormat(StreamConfigurationMap map) {
         String mode = PreferenceKeys.getRawStreamFormat();
         int[] order;
-        // P108: the Pixel 10 Pro / Pro XL's DCG switch takes the RAW12 stream
-        if (PixelPro10.preferRaw12(map)) order = new int[]{ImageFormat.RAW12, ImageFormat.RAW_SENSOR, ImageFormat.RAW10};
-        else if ("raw10".equals(mode)) order = new int[]{ImageFormat.RAW10, ImageFormat.RAW_SENSOR, ImageFormat.RAW12};
+        if ("raw10".equals(mode)) order = new int[]{ImageFormat.RAW10, ImageFormat.RAW_SENSOR, ImageFormat.RAW12};
         else if ("raw12".equals(mode)) order = new int[]{ImageFormat.RAW12, ImageFormat.RAW_SENSOR, ImageFormat.RAW10};
         else order = new int[]{ImageFormat.RAW_SENSOR, ImageFormat.RAW10, ImageFormat.RAW12};
         if (map != null) for (int format : order) {
@@ -2927,7 +2925,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final boolean moduleKeys = !com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID).isEmpty();
                 // P103 / P104: the HAL features of «Движение», Ideal RAW and the X500 Pro Max's DCG 14 bit are session keys
                 final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
-                final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics) || PixelPro10.idcgActive(mCameraCharacteristics);
+                final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics);
                 // P107: this session's DCG / LOFIC try (before the session parameters and the preview builder take its keys)
                 Dcg14Mode.beginSession(mCameraCharacteristics, physicalID);
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
@@ -2938,8 +2936,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 CameraDevice.TEMPLATE_PREVIEW);
                         VendorTagUtils.builderSessionApply(scamSession, false, useMaximumResolutionKey, physicalID);
                         if (dcg14) Log.i("SCAM_CAPTURE", "DCG14 session keys on camera " + physicalID + ": "
-                                + Dcg14Mode.apply(scamSession, mCameraCharacteristics, physicalID)
-                                + PixelPro10.apply(scamSession, mCameraCharacteristics) + ", RAW format " + mTargetFormat);
+                                + Dcg14Mode.apply(scamSession, mCameraCharacteristics, physicalID));
                         if (scamPreview) ScamPreview.applySession(scamSession);
                         // P54b: the stock Photo mode sets the EIS key as a session parameter too
                         if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
