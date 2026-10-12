@@ -46,8 +46,7 @@ public final class ExitReasons {
                     if (e.getReason() == ApplicationExitInfo.REASON_CRASH) {
                         // the Java stack is in ScameraCrashReporter's file only: its last report into this log
                         String report = lastCrashReport(context);
-                        if (!report.isEmpty()) Log.w(TAG, "last crash report:
-" + report);
+                        if (!report.isEmpty()) Log.w(TAG, "last crash report:\n" + report);
                     }
                     if (e.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE || e.getReason() == ApplicationExitInfo.REASON_ANR) {
                         String trace = trace(e);
