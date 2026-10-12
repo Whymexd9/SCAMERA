@@ -17,11 +17,13 @@ final class CameraPackageSpoofSettings {
     }
 
     static String getGenericPackage(Context context) {
-        return getPackage(context, KEY_GENERIC_PACKAGE);
+        String dcg = com.particlesdevs.photoncamera.capture.Dcg14Mode.spoofPackage();
+        return dcg != null ? dcg : getPackage(context, KEY_GENERIC_PACKAGE);
     }
 
     static String getBinderPackage(Context context) {
-        return getPackage(context, KEY_BINDER_PACKAGE);
+        String dcg = com.particlesdevs.photoncamera.capture.Dcg14Mode.spoofPackage();
+        return dcg != null ? dcg : getPackage(context, KEY_BINDER_PACKAGE);
     }
 
     // With the master switch off (the default) every method gets our own package,

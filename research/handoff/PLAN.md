@@ -2702,4 +2702,8 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Missed before: hdrMode 1 (photo HDR; photo modes {0, 3, 1}, only 3 was sent) and vivo.control.shdr_enable. Now the DCG
   switch sends hdrMode 1 (dcg14_hdr_mode) and shdr_enable 1 (dcg14_shdr; int, else byte), no hint, no search.
 - Owner: the RAW-format try with the hint (raw10.convertfmt / raw.bpp + hint 133) is skipped.
+- P107d (owner, 2026-10-13: «у нас есть спуф в приложении, нужно в нем подменить имя пакета на нужное для работы DCG»): while
+  DCG / LOFIC is on (X500 Pro Max), the package spoof (generic + Binder) opens the cameras as com.android.camera (VivoCamera.apk,
+  AppType vivo in the selector). scam_dev dcg14_spoof 0 = off; dcg14_uimode N sends vivo.control.currentmodeS (the selector's
+  photo HDR is under UIMode 1 / 13 / 70 / 74 / 80 / 81; key and type unverified). Not on a device.
 

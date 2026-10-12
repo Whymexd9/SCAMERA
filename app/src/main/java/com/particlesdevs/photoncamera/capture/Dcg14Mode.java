@@ -197,6 +197,21 @@ public final class Dcg14Mode {
         notifyListener();
     }
 
+    /** The vivo camera's own package (VivoCamera.apk), its app type «vivoCamera» in the HAL's sensor-mode selector. */
+    public static final String VIVO_CAMERA_PACKAGE = "com.android.camera";
+
+    /**
+     * P107d (owner, 2026-10-13: «у нас есть спуф в приложении, нужно в нем подменить имя пакета на нужное для работы DCG»): the
+     * X500 Pro Max's sensor-mode selector (sensormode-selector/PD2602.json) gives the DCG / sensor-HDR results only to AppType
+     * vivo; while DCG or LOFIC is on, the package spoof (generic CameraManager context + Binder) opens the cameras as
+     * com.android.camera. scam_dev "dcg14_spoof 0" turns it off. Null = no DCG spoof (the spoof settings apply as set).
+     */
+    @Nullable
+    public static String spoofPackage() {
+        if (!device() || !on() || !PreferenceKeys.scamDevSwitch("dcg14_spoof", true)) return null;
+        return VIVO_CAMERA_PACKAGE;
+    }
+
     /** Sets the mode's keys on a session-parameter or request builder; returns what was set ("" when inactive). */
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (builder == null || !active(c)) return "";
@@ -215,6 +230,10 @@ public final class Dcg14Mode {
         // P107c: the sensor-HDR key (session and request; vivo's own video path picks MFHDR by it), type unknown: int, else byte
         int shdr = Math.round(PreferenceKeys.scamDevNumber("dcg14_shdr", 1f));
         if (shdr >= 0) setIntOrByte(builder, "vivo.control.shdr_enable", shdr, out);
+        // P107d: the selector's photo HDR (PHOTOHDR1 / 2) sits under UIMode 1 / 13 / 70 / 74 / 80 / 81 of the vivo app; the
+        // UI mode is probably vivo.control.currentmodeS (type unknown): sent only with scam_dev "dcg14_uimode N"
+        int ui = Math.round(PreferenceKeys.scamDevNumber("dcg14_uimode", -1f));
+        if (ui >= 0) setIntOrByte(builder, "vivo.control.currentmodeS", ui, out);
         int camera = cameraNumber(physicalId);
         DcgSearch.Step step = sStep;
         int scenario = Math.round(PreferenceKeys.scamDevNumber("dcg14_camera_scenario", -1f));
