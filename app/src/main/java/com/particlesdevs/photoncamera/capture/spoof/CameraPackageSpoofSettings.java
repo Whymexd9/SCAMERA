@@ -16,14 +16,20 @@ final class CameraPackageSpoofSettings {
         return getPackage(context, KEY_OPLUS_PACKAGE);
     }
 
+    // The owner's spoof settings win (owner, 2026-10-13: «я разрешаю работу с любым пакетом»); with the spoof off, the X500 Pro
+    // Max's DCG / LOFIC switch opens the cameras as the vivo camera (Dcg14Mode.spoofPackage)
     static String getGenericPackage(Context context) {
-        String dcg = com.particlesdevs.photoncamera.capture.Dcg14Mode.spoofPackage();
+        String dcg = enabled(context) ? null : com.particlesdevs.photoncamera.capture.Dcg14Mode.spoofPackage();
         return dcg != null ? dcg : getPackage(context, KEY_GENERIC_PACKAGE);
     }
 
     static String getBinderPackage(Context context) {
-        String dcg = com.particlesdevs.photoncamera.capture.Dcg14Mode.spoofPackage();
+        String dcg = enabled(context) ? null : com.particlesdevs.photoncamera.capture.Dcg14Mode.spoofPackage();
         return dcg != null ? dcg : getPackage(context, KEY_BINDER_PACKAGE);
+    }
+
+    private static boolean enabled(Context context) {
+        return PreferenceManager.getDefaultSharedPreferences(context).getBoolean(KEY_ENABLED, false);
     }
 
     // With the master switch off (the default) every method gets our own package,
