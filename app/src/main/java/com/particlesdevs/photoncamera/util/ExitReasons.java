@@ -43,6 +43,12 @@ public final class ExitReasons {
                             e.getProcessName(), e.getPid(), e.getTimestamp(), reason(e.getReason()), e.getStatus(),
                             e.getImportance(), e.getPss() / 1024, e.getRss() / 1024, e.getDescription());
                     Log.w(TAG, line);
+                    if (e.getReason() == ApplicationExitInfo.REASON_CRASH) {
+                        // the Java stack is in ScameraCrashReporter's file only: its last report into this log
+                        String report = lastCrashReport(context);
+                        if (!report.isEmpty()) Log.w(TAG, "last crash report:
+" + report);
+                    }
                     if (e.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE || e.getReason() == ApplicationExitInfo.REASON_ANR) {
                         String trace = trace(e);
                         if (!trace.isEmpty()) Log.w(TAG, "trace of pid " + e.getPid() + ":\n" + trace);
@@ -53,6 +59,26 @@ public final class ExitReasons {
                 Log.w(TAG, "exit reasons not read: " + t);
             }
         }, "ExitReasons").start();
+    }
+
+    /** The last report of SCAMERA-crash.log in the app's external files (at most 8 KB of it). */
+    static String lastCrashReport(Context context) {
+        try {
+            java.io.File dir = context.getExternalFilesDir(null);
+            java.io.File f = dir == null ? null : new java.io.File(dir, "SCAMERA-crash.log");
+            if (f == null || !f.isFile()) return "";
+            long len = f.length(), from = Math.max(0, len - 8192);
+            byte[] buf = new byte[(int) (len - from)];
+            try (java.io.RandomAccessFile r = new java.io.RandomAccessFile(f, "r")) {
+                r.seek(from);
+                r.readFully(buf);
+            }
+            String text = new String(buf, java.nio.charset.StandardCharsets.UTF_8);
+            int at = text.lastIndexOf("SCAMERA crash report");
+            return at >= 0 ? text.substring(at).trim() : text.trim();
+        } catch (Throwable t) {
+            return "crash file not read: " + t;
+        }
     }
 
     private static String trace(ApplicationExitInfo e) {
