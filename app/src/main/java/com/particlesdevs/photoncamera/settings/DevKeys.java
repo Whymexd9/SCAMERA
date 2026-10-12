@@ -133,7 +133,8 @@ public final class DevKeys {
         // vivo X500 Pro Max
         k.add(s(vivo, "dcg14", true, Lang.t("Кнопка DCG 14 бит на X500 Pro Max", "The DCG 14-bit button on the X500 Pro Max")));
         k.add(s(vivo, "dcg14_search", false, Lang.t("Автопоиск режима DCG/LOFIC (может ронять камеру vivo!)", "Automatic DCG / LOFIC mode search (may crash the vivo camera!)")));
-        k.add(n(vivo, "dcg14_hdr_mode", "3", Lang.t("com.mediatek.hdrfeature.hdrMode (-1 — не слать)", "com.mediatek.hdrfeature.hdrMode (-1: not sent)")));
+        k.add(n(vivo, "dcg14_hdr_mode", "1", Lang.t("com.mediatek.hdrfeature.hdrMode: 1 — HDR фото, 3 — HDR видео (-1 — не слать)", "com.mediatek.hdrfeature.hdrMode: 1 photo HDR, 3 video HDR (-1: not sent)")));
+        k.add(n(vivo, "dcg14_shdr", "1", Lang.t("vivo.control.shdr_enable — сенсорный HDR (-1 — не слать)", "vivo.control.shdr_enable, the sensor HDR (-1: not sent)")));
         k.add(n(vivo, "dcg14_dcghdr", "1", Lang.t("vivo.control.EnableDCGHDR (-1 — не слать)", "vivo.control.EnableDCGHDR (-1: not sent)")));
         k.add(n(vivo, "dcg14_seamless", "1", Lang.t("vivo.control.session.seamlesscontrol (-1 — не слать)", "vivo.control.session.seamlesscontrol (-1: not sent)")));
         k.add(n(vivo, "dcg14_camera_scenario", "-1", Lang.t("cameraScenario вручную (-1 — нет)", "cameraScenario by hand (-1: none)")));

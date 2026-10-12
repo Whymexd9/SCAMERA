@@ -25,7 +25,7 @@ import java.util.List;
  * the right end of the manual strip).
  * <p>
  * P104 sent the HDR keys a third-party app has (session keys; values from scam_dev, -1 = not sent):
- * {@code com.mediatek.hdrfeature.hdrMode} / {@code SessionParamhdrMode} = dcg14_hdr_mode (3), {@code vivo.control.EnableDCGHDR} =
+ * {@code com.mediatek.hdrfeature.hdrMode} / {@code SessionParamhdrMode} = dcg14_hdr_mode (P104: 3, P107c: 1), {@code vivo.control.EnableDCGHDR} =
  * dcg14_dcghdr (1), {@code vivo.control.session.seamlesscontrol} = dcg14_seamless (1). The owner's log of 2026-10-12 shows them
  * accepted but the main camera still binned (sensorScenario [2, 1], dynamic white 1023). P107 adds the sensor-mode choice of
  * MediaTek's seamless feature: the tries of {@link DcgSearch} (session {@code com.mediatek.seamlessfeature.cameraScenario},
@@ -201,7 +201,9 @@ public final class Dcg14Mode {
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (builder == null || !active(c)) return "";
         StringBuilder out = new StringBuilder();
-        int hdr = Math.round(PreferenceKeys.scamDevNumber("dcg14_hdr_mode", 3f));
+        // P107c (dump re-read 2026-10-13): the photo HDR modes are {0, 3, 1}; 3 (video HDR) never switched the sensor, the
+        // photo HDR 1 is the default now
+        int hdr = Math.round(PreferenceKeys.scamDevNumber("dcg14_hdr_mode", 1f));
         if (hdr >= 0) {
             set(builder, "com.mediatek.hdrfeature.hdrMode", new int[]{hdr}, out);
             set(builder, "com.mediatek.hdrfeature.SessionParamhdrMode", new int[]{hdr}, out);
@@ -210,6 +212,9 @@ public final class Dcg14Mode {
         if (dcg >= 0) set(builder, "vivo.control.EnableDCGHDR", new int[]{dcg}, out);
         int seamless = Math.round(PreferenceKeys.scamDevNumber("dcg14_seamless", 1f));
         if (seamless >= 0) set(builder, "vivo.control.session.seamlesscontrol", new int[]{seamless}, out);
+        // P107c: the sensor-HDR key (session and request; vivo's own video path picks MFHDR by it), type unknown: int, else byte
+        int shdr = Math.round(PreferenceKeys.scamDevNumber("dcg14_shdr", 1f));
+        if (shdr >= 0) setIntOrByte(builder, "vivo.control.shdr_enable", shdr, out);
         int camera = cameraNumber(physicalId);
         DcgSearch.Step step = sStep;
         int scenario = Math.round(PreferenceKeys.scamDevNumber("dcg14_camera_scenario", -1f));
@@ -230,6 +235,26 @@ public final class Dcg14Mode {
             return Integer.parseInt(physicalId);
         } catch (NumberFormatException e) {
             return -1;
+        }
+    }
+
+    private static void setIntOrByte(CaptureRequest.Builder builder, String name, int value, StringBuilder out) {
+        try {
+            CaptureRequest.Key<int[]> key = new CaptureRequest.Key<>(name, int[].class);
+            builder.get(key);
+            builder.set(key, new int[]{value});
+            out.append(name).append("=[").append(value).append("] ");
+            return;
+        } catch (RuntimeException ignored) {
+            // not an int32 tag (or unknown): the byte form
+        }
+        try {
+            CaptureRequest.Key<byte[]> key = new CaptureRequest.Key<>(name, byte[].class);
+            builder.get(key);
+            builder.set(key, new byte[]{(byte) value});
+            out.append(name).append("=byte[").append(value).append("] ");
+        } catch (RuntimeException e) {
+            out.append(name).append(" n/a ");
         }
     }
 

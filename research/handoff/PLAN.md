@@ -2694,3 +2694,12 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   vendor tombstone) to see which stream or format the DCG mode refuses; candidate tries: RAW-only session with hint 133,
   MediaTek packedRaw / raw.bpp request keys, the RAW stream at the mode's size.
 
+### P107c - X500 Pro Max dump re-read (owner: «изучи внимательно его дамп»; 2026-10-13)
+- Read all 96 configs of the report. Confirmed: every HDR branch of sensormode-selector/PD2602.json (DCGHDR1/2, PHOTOHDR1/2,
+  VIDEO60_DCG, MFHDR by vivo.control.shdr_enable, LN2) is under AppType vivo / VIVODEMO; a 3rd_party app gets PHOTO / VIDEO
+  by the ratio only. StaticAppNameConfig / AEtuning: app types vivoCamera, engcamera, CTS, Wechat, TikTok, QQ, protake,
+  3rd_party (by package; no spoof). camera_config.xml: sensor mode «DCG» only as the Bokeh / BokehTele2L master.
+- Missed before: hdrMode 1 (photo HDR; photo modes {0, 3, 1}, only 3 was sent) and vivo.control.shdr_enable. Now the DCG
+  switch sends hdrMode 1 (dcg14_hdr_mode) and shdr_enable 1 (dcg14_shdr; int, else byte), no hint, no search.
+- Owner: the RAW-format try with the hint (raw10.convertfmt / raw.bpp + hint 133) is skipped.
+
