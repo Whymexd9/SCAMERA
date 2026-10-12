@@ -257,5 +257,8 @@ public class VendorTagUtils {
                 com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics);
         com.particlesdevs.photoncamera.capture.Dcg14Mode.apply(builder,
                 com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics, physicalId);
+        // P108: the Pixel 10 Pro / Pro XL's DCG (sequoiaIdcgEnabled) on the session and every request
+        com.particlesdevs.photoncamera.capture.PixelPro10.apply(builder,
+                com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics);
     }
 }

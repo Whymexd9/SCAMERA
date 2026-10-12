@@ -1,0 +1,224 @@
+package com.particlesdevs.photoncamera.capture;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.ImageFormat;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.StreamConfigurationMap;
+import android.os.Build;
+import android.util.Size;
+import android.util.SizeF;
+
+import androidx.annotation.Nullable;
+
+import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.settings.ModuleRegistry;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
+import com.particlesdevs.photoncamera.settings.ZoomLabels;
+import com.particlesdevs.photoncamera.util.Log;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * P108 Pixel 10 Pro (blazer) / 10 Pro XL (mustang): the in-sensor-zoom modules and the DCG switch (owner, 2026-10-12: «на Pixel
+ * 10 pro xl не отображаются все модули, не хватает ISZ модулей, также на этом смарте доступен DCG с raw12, сделай его включение
+ * аналогично 500 про макс по кнопке в видоискателе с перезапуском видоискателя»; «не только на 10 про хл, но и на 10 про»).
+ * <p>
+ * SCAM TEST report of the 10 Pro XL (2026-10-12): logical back camera 0 of physical 2 (main 6.9 mm, 4080x3072 binned of
+ * 8160x6144), 3 (UW 2.02 mm), 4 (tele 17.906 mm), 5 / 6 / 9 = the same lenses on half the sensor width (physical size 4.896 /
+ * 2.82 / 2.82 mm: the 2x in-sensor crops of main, tele and UW). The owner's viewfinder showed only 0.5x / 1x / 4.5x.
+ * {@link #ensureModules} adds every physical camera of the back logical camera whose field of view no visible module has, as
+ * "0-<id>" (session on the logical camera, readers on the physical one), labelled by its field against the main, once per
+ * camera (a deleted one stays deleted). A crop module whose field is within 15 % of an existing one (UW 2x crop = 1.02x) is
+ * left out.
+ * <p>
+ * DCG: the main camera lists RAW12 4080x3072 (white 4095) and the vendor registry has com.google.internal.sequoiaIdcgEnabled
+ * (byte; Google's intra-scene dual conversion gain, not in the request-key lists). The switch makes the RAW stream RAW12 where the
+ * camera lists it (unpacked like RAW10 / RAW12 already are) and sends sequoiaIdcgEnabled = 1 on the session and every request;
+ * the camera restarts. Nothing is verified on the phone.
+ */
+public final class PixelPro10 {
+    private static final String TAG = "PixelPro10";
+    private static final String PREFS = "scam_pixel10";
+    private static final String KEY_DCG = "dcg";
+    private static final String OFFERED = "module_pixel_offered_";
+    static final String IDCG_KEY = "com.google.internal.sequoiaIdcgEnabled";
+    /** Fields closer than this to a visible module's are the same module. */
+    static final float SAME_FIELD = 0.15f;
+
+    private PixelPro10() {}
+
+    public static boolean device() {
+        return device(Build.MANUFACTURER, Build.DEVICE);
+    }
+
+    static boolean device(@Nullable String manufacturer, @Nullable String device) {
+        if (manufacturer == null || device == null || !manufacturer.equalsIgnoreCase("google")) return false;
+        String d = device.toLowerCase(Locale.ROOT);
+        return d.equals("mustang") || d.equals("blazer");
+    }
+
+    /** Field of view against the main camera from focal length and sensor width (35 mm-equivalent ratio). */
+    static float field(float focal, float width, float mainFocal, float mainWidth) {
+        if (width <= 0f || mainWidth <= 0f || mainFocal <= 0f) return 0f;
+        return (focal / width) / (mainFocal / mainWidth);
+    }
+
+    /** Whether a field is new against the visible modules' fields. */
+    static boolean newField(float field, List<Float> known) {
+        if (field <= 0f) return false;
+        for (float k : known) if (k > 0f && Math.abs(field / k - 1f) < SAME_FIELD) return false;
+        return true;
+    }
+
+    /** Adds the back logical camera's physical cameras the module strip lacks (in-sensor crops), once each. */
+    public static void ensureModules(@Nullable Context context) {
+        if (context == null || !device() || !PreferenceKeys.scamDevSwitch("pixel_modules", true)) return;
+        try {
+            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            if (manager == null) return;
+            CameraCharacteristics logical = manager.getCameraCharacteristics("0");
+            Set<String> physical = logical.getPhysicalCameraIds();
+            if (physical.isEmpty()) return;
+            String mainId = null;
+            for (String slot : ModuleRegistry.slots())
+                if (slot.startsWith("back") && ModuleRegistry.visible(slot) && Math.abs(ModuleRegistry.zoom(slot) - 1f) < 0.05f) {
+                    mainId = toPhysical(ModuleRegistry.camera(slot));
+                    break;
+                }
+            CameraCharacteristics main = manager.getCameraCharacteristics(mainId != null ? mainId : "2");
+            float mainFocal = focal(main), mainWidth = width(main);
+            List<Float> known = new ArrayList<>();
+            List<String> knownIds = new ArrayList<>();
+            for (String slot : ModuleRegistry.slots())
+                if (slot.startsWith("back") && ModuleRegistry.visible(slot)) {
+                    String id = toPhysical(ModuleRegistry.camera(slot));
+                    knownIds.add(id);
+                    try {
+                        CameraCharacteristics c = manager.getCameraCharacteristics(id);
+                        known.add(field(focal(c), width(c), mainFocal, mainWidth));
+                    } catch (Exception ignored) {
+                        known.add(ModuleRegistry.zoom(slot));
+                    }
+                }
+            StringBuilder report = new StringBuilder();
+            SharedPreferences.Editor e = p.edit();
+            boolean changed = false;
+            for (String id : physical) {
+                CameraCharacteristics c = manager.getCameraCharacteristics(id);
+                Integer facing = c.get(CameraCharacteristics.LENS_FACING);
+                float f = field(focal(c), width(c), mainFocal, mainWidth);
+                report.append(id).append('=').append(String.format(Locale.US, "%.2f", f)).append("x ");
+                if (facing == null || facing != CameraCharacteristics.LENS_FACING_BACK) continue;
+                if (knownIds.contains(id) || p.getBoolean(OFFERED + id, false) || !newField(f, known)) continue;
+                String slot = freeBackSlot(p);
+                e.putBoolean(OFFERED + id, true);
+                changed = true;
+                if (slot == null) {
+                    Log.w(TAG, "no free module slot for camera 0-" + id);
+                    continue;
+                }
+                String cameraId = "0-" + id;
+                e.putString("module_auto_" + slot, cameraId).putBoolean("module_visible_" + slot, true)
+                        .putString("module_label_" + slot, ZoomLabels.label(f, Build.BRAND))
+                        .putString("module_zoom_" + slot, String.format(Locale.US, "%.2f", f))
+                        .putBoolean("module_sensorcrop_" + slot, false)
+                        .putFloat("module_fov_" + cameraId, f);
+                known.add(f);
+                // the camera list materializes it at the next start like a lens the owner chose (ModuleLensFragment)
+                Set<String> user = new java.util.HashSet<>(p.getStringSet("user_camera_ids", new java.util.HashSet<>()));
+                user.add(cameraId);
+                Set<String> hidden = new java.util.HashSet<>(p.getStringSet("hidden_camera_ids", new java.util.HashSet<>()));
+                hidden.remove(cameraId);
+                e.putStringSet("user_camera_ids", user).putStringSet("hidden_camera_ids", hidden);
+                Log.i(TAG, "module " + slot + " = camera " + cameraId + " (" + String.format(Locale.US, "%.2f", f) + "x, in-sensor crop)");
+            }
+            if (changed) e.apply();
+            Log.i(TAG, "back logical 0 physical cameras: " + report.toString().trim() + "; modules on " + knownIds);
+        } catch (Exception e) {
+            Log.w(TAG, "modules not added: " + e);
+        }
+    }
+
+    private static String freeBackSlot(SharedPreferences p) {
+        for (int i = 0; i < 8; i++) if (!p.contains("module_auto_back" + i)) return "back" + i;
+        for (int i = 0; i < 8; i++) {
+            String slot = "back" + i;
+            if (!ModuleRegistry.visible(slot) && ModuleRegistry.duplicateOf(slot) == null) return slot;
+        }
+        return null;
+    }
+
+    private static String toPhysical(String id) {
+        if (id == null) return "";
+        if (id.contains("-")) return id.split("-", 2)[1];
+        if (id.contains("/")) return id.split("/", 2)[1];
+        return id;
+    }
+
+    private static float focal(CameraCharacteristics c) {
+        float[] f = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+        return f == null || f.length == 0 ? 0f : f[0];
+    }
+
+    private static float width(CameraCharacteristics c) {
+        SizeF s = c.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+        return s == null ? 0f : s.getWidth();
+    }
+
+    // ---- DCG ----
+
+    @Nullable
+    private static SharedPreferences prefs() {
+        Context c = PhotonCamera.getAppContext();
+        return c == null ? null : c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    public static boolean dcgOn() {
+        SharedPreferences p = prefs();
+        return p != null && p.getBoolean(KEY_DCG, false);
+    }
+
+    public static void setDcg(boolean on) {
+        SharedPreferences p = prefs();
+        if (p != null) p.edit().putBoolean(KEY_DCG, on).apply();
+    }
+
+    /** The camera lists a RAW12 stream (the main sensor) on a Pixel 10 Pro / Pro XL. */
+    public static boolean dcgAvailable(@Nullable CameraCharacteristics c) {
+        if (c == null || !device() || !PreferenceKeys.scamDevSwitch("pixel_dcg", true)) return false;
+        StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        if (map == null) return false;
+        Size[] sizes = map.getOutputSizes(ImageFormat.RAW12);
+        return sizes != null && sizes.length > 0;
+    }
+
+    public static boolean dcgActive(@Nullable CameraCharacteristics c) {
+        return dcgOn() && dcgAvailable(c);
+    }
+
+    /** RAW12 first while the switch is on and the map lists it. */
+    public static boolean preferRaw12(@Nullable StreamConfigurationMap map) {
+        if (map == null || !device() || !dcgOn()) return false;
+        Size[] sizes = map.getOutputSizes(ImageFormat.RAW12);
+        return sizes != null && sizes.length > 0;
+    }
+
+    /** sequoiaIdcgEnabled = 1 on a session-parameter or request builder; returns what was set ("" when inactive). */
+    public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c) {
+        if (builder == null || !dcgActive(c)) return "";
+        CaptureRequest.Key<Byte> key = new CaptureRequest.Key<>(IDCG_KEY, Byte.class);
+        try {
+            builder.set(key, (byte) 1);
+            return IDCG_KEY + "=1";
+        } catch (RuntimeException e) {
+            return IDCG_KEY + " n/a";
+        }
+    }
+}

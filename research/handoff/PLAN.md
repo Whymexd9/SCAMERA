@@ -2617,3 +2617,17 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   (manual strip end slot, camera restart): RAW12 stream (MIPI RAW12 unpack needed: RawUnpack / RawPayloadCheck / worker) +
   sequoiaIdcgEnabled 1 as a try; owner mentions «DCG4» on Pixels — not in the report, ask where it comes from.
 - Both switches on the Pixel 10 Pro (blazer) as well as the 10 Pro XL (mustang) (owner, 2026-10-12).
+- Done 2026-10-12 (not on a device): PixelPro10 — modules: every physical camera of the back logical 0 whose field (focal /
+  sensor width against the main) no visible module has becomes a module "0-<id>" once (label / zoom by its field, added to
+  user_camera_ids; the UW crop 9 at 1.02x is left out as the main's field); log «back logical 0 physical cameras: …». DCG
+  button (same end slot as the X500 Pro Max, main camera only = cameras listing RAW12): on = RAW stream RAW12 (resolveRawFormat)
+  + com.google.internal.sequoiaIdcgEnabled 1 on the session and every request, camera restart. Test PixelPro10Test.
+  scam_dev pixel_modules 0 / pixel_dcg 0 = off. Why the scan (CameraManager2, P66) did not show 5 / 6 is unknown without a
+  SCAMERA log of the phone (it should have): the log line above tells next time.
+- Full resolution (queued): MotionCam Pro 5.0.9 (decompiled NativeCameraManager.a.from) lists the outputs of
+  SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION next to the default map (flag false) and needs no ULTRA_HIGH_RESOLUTION
+  capability — the same test fits here: a RAW size in the max-resolution map (Pixel 10 Pro XL: RAW10 8160x6144 @ 24 fps on
+  0 / 2 / 5, 8064x6048 on 6 / 9). Needs: RAW reader RAW10 at that size with OutputConfiguration.setSensorPixelModeUsed(
+  MAXIMUM_RESOLUTION), SENSOR_PIXEL_MODE MAXIMUM_RESOLUTION on the requests that target it; the preview surfaces must then be
+  sizes of the max-resolution map too (PRIVATE / YUV only up to 1920x1080 / 1440x1080) or the full-resolution frames come as
+  post-shutter stills (no ZSL ring, no RAW viewfinder in that mode). Button above the DCG button, camera restart.

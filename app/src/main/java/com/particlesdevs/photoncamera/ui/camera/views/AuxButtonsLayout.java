@@ -130,6 +130,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         ModuleRegistry.initialize("back", auxButtonsModel.getBackCameras());
         // P100: a main camera with in-sensor zoom (CROPPED_RAW, Galaxy S24 Ultra) gets its «2×» button once
         com.particlesdevs.photoncamera.settings.IszModule.ensure(manager.getContext());
+        // P108: the Pixel 10 Pro / Pro XL's in-sensor crops of the back logical camera (2x main, ~9x tele) as modules, once
+        com.particlesdevs.photoncamera.capture.PixelPro10.ensureModules(manager.getContext());
         // A config imported before the slots existed (fresh install) maps its module profiles now.
         com.particlesdevs.photoncamera.settings.BackupRestoreUtil.applyPending(manager.getContext());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";
