@@ -2719,3 +2719,17 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   the 4x key of the tele (CROP_4X_16CELL) is not in the files.- Owner: «спуф ... на постоянку для этого смартфона»: on the X500 Pro Max every camera opens as com.android.camera
   (Dcg14Mode.spoofPackage; the owner's spoof settings win; scam_dev dcg14_spoof 0 = off).
 
+### P109b - ISZ on the other MediaTek phones (owner, 2026-10-13: «изучи дампы всех смартфонов на MTK и сделай для них так же рабочий ISZ»)
+- MediaTek dumps: vivo V2515 (MT6993, PD2502, root), vivo X200 Pro V2405A (MT6991, PD2405), OPPO Find X9 Pro PLG110 (MT6993),
+  Redmi Note 11 Pro 2201116TG (MT6781), Xiaomi 13T 2306EPN60G (MT6896). V2562 / V2547A are Snapdragon (SM8850).
+- vivo: PD2502 and PD2405 selectors have the X500 Pro Max branch (AppType vivo, UI mode 1/13/70/74 or 7,
+  seamless.roiRemosaic 4 -> ROIREMOSAIC). PD2502 tables: main IMX09A CROP_2X_4CELL 12, tele HP9 CROP_2X 12 + CROP_4X_16CELL 15,
+  ultra-wide JN1 no crop. Built: VivoMtkIsz for every vivo + MediaTek phone (Build.SOC_MANUFACTURER / HARDWARE mt*): main 2x,
+  each tele 2x (one per ratio), 4x on a tele whose sensor is >= 8 mm wide (200 MP class: 9.14 mm on X500 Pro Max / X200 Pro;
+  V2515 teles 6.55 mm -> 2x only), ultra-wide 2x; spoof com.android.camera while an ISZ module is active (always on X500 Pro Max).
+- OPPO Find X9 Pro: no selector in the dump (no root); logical camera 0 multiCamZoomSteps {0.6, 1.0, 2.0},
+  insensorzoomPlatformSupport 1, session key insensorzoomIsInternalAP, oplus alternativecropregion results: its ISZ is the
+  HAL's 2x step on the logical camera (as the S24 Ultra). Xiaomi 13T: logical camera 4 zoom steps {0.6, 1.0, 2.0},
+  xiaomi.insensorzoom.enabled; Redmi Note 11 Pro: com.mediatek.control.capture.inSensorZoom.mode, no 2.0 step. Not built:
+  needs a session on the logical camera with the HAL's zoom ratio 2 (open item).
+

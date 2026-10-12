@@ -45,7 +45,28 @@ public final class VivoMtkIsz {
     private VivoMtkIsz() {}
 
     public static boolean enabled() {
-        return Dcg14Mode.device() && PreferenceKeys.scamDevSwitch("vivo_isz", true);
+        return device() && PreferenceKeys.scamDevSwitch("vivo_isz", true);
+    }
+
+    /**
+     * P109b (owner, 2026-10-13: «изучи дампы всех смартфонов на MTK и сделай для них так же рабочий ISZ»): every vivo phone on
+     * MediaTek. The selectors of the X500 Pro Max (PD2602), V2515 (PD2502) and X200 Pro (PD2405) all have the same branch:
+     * AppType vivo, photo UI mode, vivo.control.seamless.roiRemosaic 4 -> ROIREMOSAIC.
+     */
+    public static boolean device() {
+        return Dcg14Mode.device() || vivoMediatek(android.os.Build.MANUFACTURER, android.os.Build.HARDWARE,
+                android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MANUFACTURER : null);
+    }
+
+    static boolean vivoMediatek(@Nullable String manufacturer, @Nullable String hardware, @Nullable String soc) {
+        if (manufacturer == null || !manufacturer.equalsIgnoreCase("vivo")) return false;
+        if (soc != null && soc.toLowerCase(Locale.ROOT).contains("mediatek")) return true;
+        return hardware != null && hardware.toLowerCase(Locale.ROOT).startsWith("mt");
+    }
+
+    /** A 200 MP-class tele (1/1.4" and larger: the X500 Pro Max / X200 Pro S5KHPE / HP9 9.14 mm wide) has the 4x crop. */
+    static boolean fourXSensor(float sensorWidthMm) {
+        return sensorWidthMm >= 8f;
     }
 
     /** The ISZ factor of the active module (2 / 4), 0 when it is not one. */
@@ -59,29 +80,53 @@ public final class VivoMtkIsz {
         }
     }
 
-    /** Creates the main 2x and tele 2x / 4x ISZ modules once (X500 Pro Max). */
+    /**
+     * Creates once: main 2x, every tele 2x (two teles of the same ratio once), 4x on a 200 MP-class tele, ultra-wide 2x
+     * (vivo MediaTek phones).
+     */
     public static void ensureModules(@Nullable Context context) {
         if (context == null || !enabled()) return;
         try {
             SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
-            String main = null, tele = null, wide = null;
-            float teleZoom = 0f, wideZoom = 0f;
+            android.hardware.camera2.CameraManager manager =
+                    (android.hardware.camera2.CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            String main = null, wide = null;
+            float wideZoom = 0f;
+            List<String> teles = new ArrayList<>();
+            List<Float> teleZooms = new ArrayList<>();
             for (String slot : ModuleRegistry.slots()) {
                 if (!slot.startsWith("back") || !ModuleRegistry.visible(slot) || ModuleRegistry.duplicateOf(slot) != null) continue;
+                if (p.getInt(MARK + slot, 0) > 0) continue;
                 float z = ModuleRegistry.zoom(slot);
                 if (main == null && Math.abs(z - 1f) < 0.05f) main = slot;
                 if (wide == null && z > 0.3f && z < 0.9f) { wide = slot; wideZoom = z; }
-                // the tele around 3.5x (the X500 Pro Max lists two: the module of the highest ratio below 6x)
-                if (z > 2.5f && z < 6f && z > teleZoom) { tele = slot; teleZoom = z; }
+                if (z >= 1.8f) {
+                    boolean same = false;
+                    for (float t : teleZooms) same |= Math.abs(z / t - 1f) < 0.05f; // X500 Pro Max: two 3.5x modules
+                    if (!same) { teles.add(slot); teleZooms.add(z); }
+                }
             }
             if (main != null) offer(context, p, main, 2, 2f, "2×");
-            if (wide != null) offer(context, p, wide, 2, wideZoom * 2f, label(wideZoom * 2f));
-            if (tele != null) {
-                offer(context, p, tele, 2, teleZoom * 2f, label(teleZoom * 2f));
-                offer(context, p, tele, 4, teleZoom * 4f, label(teleZoom * 4f));
+            for (int i = 0; i < teles.size(); i++) {
+                String tele = teles.get(i);
+                float z = teleZooms.get(i);
+                offer(context, p, tele, 2, z * 2f, label(z * 2f));
+                if (fourXSensor(sensorWidth(manager, ModuleRegistry.camera(tele)))) offer(context, p, tele, 4, z * 4f, label(z * 4f));
             }
+            if (wide != null) offer(context, p, wide, 2, wideZoom * 2f, label(wideZoom * 2f));
         } catch (Exception e) {
             Log.w(TAG, "ISZ modules not created: " + e);
+        }
+    }
+
+    private static float sensorWidth(@Nullable android.hardware.camera2.CameraManager manager, String cameraId) {
+        try {
+            String id = cameraId.contains("-") ? cameraId.split("-", 2)[1] : cameraId;
+            android.util.SizeF s = manager == null ? null : manager.getCameraCharacteristics(id)
+                    .get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+            return s == null ? 0f : s.getWidth();
+        } catch (Exception e) {
+            return 0f;
         }
     }
 

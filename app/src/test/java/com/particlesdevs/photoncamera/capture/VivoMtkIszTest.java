@@ -12,4 +12,14 @@ public class VivoMtkIszTest {
         assertEquals("7×", VivoMtkIsz.label(3.51f * 2f));
         assertEquals("14×", VivoMtkIsz.label(3.51f * 4f));
     }
+
+    @Test
+    public void vivoMediatekPhonesAndTheFourXTele() {
+        org.junit.Assert.assertTrue(VivoMtkIsz.vivoMediatek("vivo", "mt6993", null));
+        org.junit.Assert.assertTrue(VivoMtkIsz.vivoMediatek("vivo", "qcom", "Mediatek"));
+        org.junit.Assert.assertFalse(VivoMtkIsz.vivoMediatek("vivo", "qcom", "QTI")); // X200 Ultra / X300 Ultra: Snapdragon
+        org.junit.Assert.assertFalse(VivoMtkIsz.vivoMediatek("OPPO", "mt6993", "Mediatek"));
+        org.junit.Assert.assertTrue(VivoMtkIsz.fourXSensor(9.1392f)); // X500 Pro Max / X200 Pro 200 MP tele
+        org.junit.Assert.assertFalse(VivoMtkIsz.fourXSensor(6.5536f)); // V2515 teles
+    }
 }
