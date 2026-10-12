@@ -2676,4 +2676,8 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - A weak 4-px column ripple (0.01 of an 8-bit level) is far below visibility; re-check stripes on the next RAW10 photo.
 - App crash after module switches: ExitReasons says CRASH (Java); the stack is now copied from SCAMERA-crash.log at the next
   start (owner can also send Download/SCAMERA/SCAMERA-crash.log).
+- The crash after module switches (SCAMERA-crash.log, 22:24:17 / 22:24:32 / 22:35:50): IllegalStateException «The specified
+  child already has a parent» in FullResButton.bind - the button moved between the overlay (above the Pixel DCG button) and
+  the slot (a camera without RAW12) while the old parent still held it in its layout transition. Fixed: found in the slot
+  first, detached past the transition (endViewTransition), a new button when the old one is still held.
 

@@ -30,7 +30,9 @@ final class FullResButton {
 
     static void bind(CameraFragment fragment, ExpandingManualPanel panel, FrameLayout slot, CameraCharacteristics characteristics) {
         View rootView = fragment.getView();
-        ImageButton button = rootView == null ? null : rootView.findViewById(R.id.full_res_button);
+        // the slot first: the strip may not be inside the fragment's view
+        ImageButton button = slot.findViewById(R.id.full_res_button);
+        if (button == null && rootView != null) button = rootView.findViewById(R.id.full_res_button);
         if (!PixelPro10.device() || !(rootView instanceof ViewGroup)) {
             detach(button);
             return;
@@ -38,21 +40,20 @@ final class FullResButton {
         ViewGroup root = (ViewGroup) rootView;
         Context c = slot.getContext();
         int size = ShadeStyle.dp(c, Dcg14Button.SIZE_DP);
-        if (button == null) {
-            button = new ImageButton(c);
-            button.setId(R.id.full_res_button);
-            int pad = ShadeStyle.dp(c, 8);
-            button.setPadding(pad, pad, pad, pad);
-            button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
-            button.setImageResource(R.drawable.manual_ic_fullres);
-            button.setOnClickListener(v -> toggle(fragment, (ImageButton) v));
+        if (button != null && button.getParent() != null && button.getParent() != slot && button.getParent() != root) {
+            detach(button);
+            button = null;
         }
+        if (button == null) button = create(fragment, c);
         boolean here = PixelPro10.fullResAvailable(characteristics);
         View dcg = slot.findViewById(R.id.dcg14_button);
         boolean overDcg = dcg != null && dcg.getVisibility() == View.VISIBLE;
         ViewGroup wanted = overDcg ? root : slot;
         if (button.getParent() != wanted) {
             detach(button);
+            // a parent's layout transition keeps a removed child attached until it ends (Pixel 10 Pro XL crash 2026-10-12:
+            // «The specified child already has a parent» here after module switches): then a new button takes the place
+            if (button.getParent() != null) button = create(fragment, c);
             if (overDcg) {
                 wanted.addView(button, new ViewGroup.LayoutParams(size, size));
                 follow(button, slot, root, size, ShadeStyle.dp(c, GAP_DP));
@@ -95,10 +96,29 @@ final class FullResButton {
         root.getViewTreeObserver().addOnPreDrawListener(l);
     }
 
+    private static ImageButton create(CameraFragment fragment, Context c) {
+        ImageButton button = new ImageButton(c);
+        button.setId(R.id.full_res_button);
+        int pad = ShadeStyle.dp(c, 8);
+        button.setPadding(pad, pad, pad, pad);
+        button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
+        button.setImageResource(R.drawable.manual_ic_fullres);
+        button.setOnClickListener(v -> toggle(fragment, (ImageButton) v));
+        return button;
+    }
+
+    /** Off its parent, past the parent's layout transition; a child the transition still holds loses the id (no longer found). */
     private static void detach(ImageButton button) {
         if (button == null) return;
         ViewParent p = button.getParent();
-        if (p instanceof ViewGroup) ((ViewGroup) p).removeView(button);
+        if (!(p instanceof ViewGroup)) return;
+        ViewGroup g = (ViewGroup) p;
+        g.removeView(button);
+        g.endViewTransition(button);
+        if (button.getParent() != null) {
+            button.setId(View.NO_ID);
+            button.setVisibility(View.GONE);
+        }
     }
 
     private static void toggle(CameraFragment fragment, ImageButton button) {
