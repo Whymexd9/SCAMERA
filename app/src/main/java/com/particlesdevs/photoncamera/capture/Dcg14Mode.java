@@ -208,7 +208,10 @@ public final class Dcg14Mode {
      */
     @Nullable
     public static String spoofPackage() {
-        if (!device() || !on() || !PreferenceKeys.scamDevSwitch("dcg14_spoof", true)) return null;
+        if (!device()) return null;
+        // P109: the ISZ modules need AppType vivo as well
+        if (VivoMtkIsz.activeFactor() > 0) return VIVO_CAMERA_PACKAGE;
+        if (!on() || !PreferenceKeys.scamDevSwitch("dcg14_spoof", true)) return null;
         return VIVO_CAMERA_PACKAGE;
     }
 
@@ -304,7 +307,9 @@ public final class Dcg14Mode {
         int[] scenario = read(r, RES_SENSOR_SCENARIO);
         Integer white = r.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
         float[] black = r.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
-        String state = "sensorScenario " + str(scenario) + ", hint " + str(read(r, RES_HINT)) + ", vhdrResult " + str(read(r, RES_VHDR))
+        String state = "sensorScenario " + str(scenario) + ", hint " + str(read(r, RES_HINT))
+                + ", sensorCrop " + any(r, "vivo.feedback.SensorCropRegion") + ", roiRemosaic " + any(r, "vivo.feedback.isROIRemosaicPreview")
+                + ", vhdrResult " + str(read(r, RES_VHDR))
                 + ", hdrDetection " + str(read(r, RES_HDR_DETECT)) + ", dynamic white " + white
                 + ", black " + (black == null || black.length == 0 ? "-" : Math.round(black[0]));
         if (!state.equals(sLastState)) {
@@ -372,6 +377,21 @@ public final class Dcg14Mode {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /** A vendor result of unknown type (P109 ISZ feedback): int[], else byte[], else «-». */
+    private static String any(CaptureResult r, String name) {
+        try {
+            int[] v = r.get(new CaptureResult.Key<>(name, int[].class));
+            if (v != null) return Arrays.toString(v);
+        } catch (RuntimeException ignored) {
+        }
+        try {
+            byte[] v = r.get(new CaptureResult.Key<>(name, byte[].class));
+            if (v != null) return Arrays.toString(v);
+        } catch (RuntimeException ignored) {
+        }
+        return "-";
     }
 
     private static String str(@Nullable int[] v) {

@@ -132,6 +132,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         com.particlesdevs.photoncamera.settings.IszModule.ensure(manager.getContext());
         // P108: the Pixel 10 Pro / Pro XL's in-sensor crops of the back logical camera (2x main, ~9x tele) as modules, once
         com.particlesdevs.photoncamera.capture.PixelPro10.ensureModules(manager.getContext());
+        // P109: the vivo X500 Pro Max's ISZ modules (main 2x, ultra-wide 2x, tele 2x / 4x), once
+        com.particlesdevs.photoncamera.capture.VivoMtkIsz.ensureModules(manager.getContext());
         // A config imported before the slots existed (fresh install) maps its module profiles now.
         com.particlesdevs.photoncamera.settings.BackupRestoreUtil.applyPending(manager.getContext());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";
