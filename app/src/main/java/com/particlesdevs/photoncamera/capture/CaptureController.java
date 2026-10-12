@@ -760,6 +760,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewCaptureResult = result;
                 logSensorModeIndex(result);
                 Dcg14Mode.onResult(CaptureController.this, result, physicalID);
+                VivoMtkIsz.onResult(result);
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.scamDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
@@ -2703,6 +2704,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
             mMosaicMeasure = PreferenceKeys.scamDevSwitch("mosaic_preview", true);
             com.particlesdevs.photoncamera.processing.MosaicStream.startSession(mMosaicMeasure ? mosaicStreamKey() : "off");
+            VivoMtkIsz.beginSession();
             // P60: a vendor module measures its field of view against the plain module of its camera (cached once measured)
             if (photoMode && !XiaomiTeleZoom.phone() && PreferenceKeys.scamDevSwitch("fov_check", true)) try {
                 com.particlesdevs.photoncamera.control.FovSelfCheck.get().session(PhotonCamera.getAppContext(), physicalID,

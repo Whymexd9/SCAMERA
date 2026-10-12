@@ -122,6 +122,44 @@ public final class VivoMtkIsz {
         }
     }
 
+    /**
+     * P109f: the HAL's own answer per frame whether the sensor reads the ROI remosaic (V2515 result keys list
+     * vivo.feedback.isROIRemosaicPreview and vivo.feedback.SensorCropRegion). Logged on every change while an ISZ module runs,
+     * to learn whether it can drive the module's stream crop (the X200 Pro gave the uncropped stream in a dim room).
+     */
+    private static volatile boolean sSessionIsz;
+    private static volatile String sLastFeedback;
+
+    public static void beginSession() {
+        sSessionIsz = activeFactor() > 0;
+        sLastFeedback = null;
+    }
+
+    public static void onResult(android.hardware.camera2.CaptureResult r) {
+        if (!sSessionIsz || r == null) return;
+        String f = "isROIRemosaicPreview " + value(r, "vivo.feedback.isROIRemosaicPreview")
+                + ", SensorCropRegion " + value(r, "vivo.feedback.SensorCropRegion");
+        if (f.equals(sLastFeedback)) return;
+        sLastFeedback = f;
+        Long iso = null;
+        try { Integer v = r.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY); iso = v == null ? null : (long) v; } catch (RuntimeException ignored) {}
+        Log.i(TAG, "ISZ feedback: " + f + " (ISO " + iso + ")");
+    }
+
+    private static String value(android.hardware.camera2.CaptureResult r, String name) {
+        try {
+            int[] v = r.get(new android.hardware.camera2.CaptureResult.Key<>(name, int[].class));
+            if (v != null) return java.util.Arrays.toString(v);
+        } catch (RuntimeException ignored) {
+        }
+        try {
+            byte[] v = r.get(new android.hardware.camera2.CaptureResult.Key<>(name, byte[].class));
+            if (v != null) return java.util.Arrays.toString(v);
+        } catch (RuntimeException ignored) {
+        }
+        return "-";
+    }
+
     /** P109c: the vivo HAL's "Function not implemented (-38)" while it still releases the previous camera (CaptureController). */
     static boolean busyHalError(@Nullable String message) {
         return message != null && message.contains("(-38)");

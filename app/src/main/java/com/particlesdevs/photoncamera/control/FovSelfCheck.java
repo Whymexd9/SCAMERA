@@ -75,7 +75,9 @@ public final class FovSelfCheck implements SubjectFrames.Sink {
         sessionAtMs = SystemClock.elapsedRealtime();
         lastScale = Float.NaN;
         final float cached = vendor ? cached(context, key()) : Float.NaN;
-        measuring = vendor && Float.isNaN(cached);
+        // P109f: a cached field is only the start; every session measures again (X200 Pro video 2026-10-13: the ISZ module's
+        // HAL gave the uncropped stream in a dim room while the cache said 1/2.00, so the «2×» button showed the 1x field)
+        measuring = vendor;
         sessionCrop = cached;
         SubjectFrames.setSecondarySink(this);
         if (!Float.isNaN(cached)) Log.i(TAG, String.format(Locale.ROOT, "module %s: field 1/%.2f of camera %s (measured earlier)", slot, cached, cameraId));
@@ -159,6 +161,10 @@ public final class FovSelfCheck implements SubjectFrames.Sink {
         measuring = false;
         float now = ZoomController.streamCrop();
         float crop = snap(s * refResidual / residualNow);
+        if (!Float.isNaN(sessionCrop) && Math.abs(crop / sessionCrop - 1f) < AGREE) {
+            Log.d(TAG, String.format(Locale.ROOT, "module %s: field 1/%.2f of camera %s confirmed (view scale %.3f, ncc %.2f)", slot, crop, cameraId, s, ncc));
+            return;
+        }
         Log.i(TAG, String.format(Locale.ROOT, "module %s: measured field 1/%.2f of camera %s (view scale %.3f, ncc %.2f; residual %.3f vs %.3f"
                 + " on the reference; stream crop x%.2f -> x%.2f)", slot, crop, cameraId, s, ncc, residualNow, refResidual, now, crop));
         store(appContext, key(), crop);

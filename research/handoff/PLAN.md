@@ -2755,4 +2755,9 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   field was not measured: scene changed); the 4x crop key is still unknown.
 - FovSelfCheck cache key now holds the package-spoof signature: V2515's «1/1.00 (measured earlier)» was cached before the
   spoof, so the module was cropped digitally; it is measured again.
+- X200 Pro video 2026-10-13 (dim room, APK 1606131): the main «2×» ISZ button showed the 1x field (cached 1/2.00, the HAL
+  gave the uncropped stream this time; ISZ probably light-dependent in the selector), the other «2×» (camera 2, 1/1.00) the
+  real 2x. P109f: FovSelfCheck measures every vendor session again (the cache is only the start value; a different result
+  replaces it). The HAL's per-frame vivo.feedback.isROIRemosaicPreview / SensorCropRegion are logged on change
+  («ISZ feedback: ...», with ISO) to see whether they can drive the crop directly. Not pushed (owner: «на гит пока не лей»).
 
