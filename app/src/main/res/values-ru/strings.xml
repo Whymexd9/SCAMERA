@@ -230,5 +230,10 @@
     <string name="dcg14_off">DCG 14 бит: выкл</string>
     <string name="dcg14_on_toast">DCG 14 бит вкл: запрошен режим сенсора с двойным усилением, камера перезапускается</string>
     <string name="dcg14_off_toast">DCG 14 бит выкл</string>
+    <string name="dcg14_lofic">DCG + LOFIC 14 бит: вкл</string>
+    <string name="dcg14_lofic_toast">DCG + LOFIC вкл: запрошен режим сенсора с конденсатором переполнения, камера перезапускается</string>
+    <string name="dcg14_found_toast">DCG: сенсор перешёл в 14-битный режим</string>
+    <string name="dcg14_none_toast">DCG: способ включить режим сенсора не найден</string>
+    <string name="dcg14_search_toast">DCG: поиск продолжается (камера несколько раз перезапустится)</string>
     <string name="dcg14_not_here">DCG 14 бит работает на основной камере и телеобъективах</string>
 </resources>

@@ -319,6 +319,11 @@
     <string name="dcg14_off">DCG 14-bit: off</string>
     <string name="dcg14_on_toast">DCG 14-bit on: the sensor\'s dual-gain HDR mode is requested, the camera restarts</string>
     <string name="dcg14_off_toast">DCG 14-bit off</string>
+    <string name="dcg14_lofic">DCG + LOFIC 14-bit: on</string>
+    <string name="dcg14_lofic_toast">DCG + LOFIC on: the overflow mode of the sensor is requested, the camera restarts</string>
+    <string name="dcg14_found_toast">DCG: the sensor switched to the 14-bit mode</string>
+    <string name="dcg14_none_toast">DCG: no way to switch the sensor was found</string>
+    <string name="dcg14_search_toast">DCG: searching on (the camera restarts a few times)</string>
     <string name="dcg14_not_here">DCG 14-bit works on the main camera and the telephotos</string>
 </resources>
 

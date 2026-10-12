@@ -2571,3 +2571,49 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Log: "raw crop … [physical 5 | logical 0 result, zoomRatio Z]" on a crop change or a 0.25 zoom step; the sensor mode index
   is read from the physical camera's result first.
 - Check: strip «0,6× 1× 2× 3× 5×»; on «2×» held 3-5 s: raw crop / sensor mode lines.
+
+### P107 — X500 Pro Max: DCG 14-bit and DCG + LOFIC by the sensor scenario (owner, 2026-10-12: «сделай всё чтобы заставить работать DCG … если возможно, то сделай и LOFIC»; built, not on a device)
+
+- Owner's log 2026-10-12 (Desktop/log-2026-10-12.txt, P104 build): «DCG14 session keys» accepted on cameras 2 / 3 / 6 (hdrMode 3,
+  SessionParamhdrMode 3, EnableDCGHDR 1, session.seamlesscontrol 1, no n/a), but every result stayed sensorScenario [2, 1],
+  vhdrResult / hdrDetection absent, dynamic white 1023: those keys do not switch the sensor. The «DCG14 camera» line was
+  logged 2510 times (the black level drifts every frame): now the black is rounded.
+- Report (SCAM-TEST_vivo-V2602A_20261011-184617, root files):
+  - sensormode-selector/PD2602.json: a non-vivo app gets CameraScenario 532 «PHOTO» (ratio <= 1.6) / 552 «VIDEO» (>= 1.777)
+    = SensorScenario 1 (binned), CustomHint 0 — matches the live [2, 1] / [2, 0]. DCG / Sport / LBMF / LN2 results are under
+    AppType vivo only. vivo's video: CameraScenario 501 (VIDEO30), «seamless HDR 1 exposure» (session.seamlesscontrol 1) =
+    DCGHDR1 = SensorScenario 1 + seamless switching. SensorModeSelector table: PHOTO 1/0, PHOTOHDR2 9, REMOSAIC 4, ROIREMOSAIC 8,
+    SATREMOSAIC 2, 44HWREMOSAIC 13, DCGHDR2 17, MFHDR 258, 8K 259/260, PHOTOCROP hint 15, PHOTOLN2 / VIDEOLN2 hint 19.
+  - scenario_table_imx09cpd2602.xml (main IMX09C): video default (501) = BIN 2, DCG_SENSOR_MERGE_14BIT_BAYER 18,
+    DCG_SENSOR_MERGE_14BIT_BAYER_LOFIC 19 (= DCG and LOFIC together, one mode), DCG 14-bit crop 2x 20; 3RD_APP_HDR = BIN 32,
+    DCG 14-bit 33 («dcg 1:16»), FAEC 14; PHOTO_DEFAULT: LBMF 6, DCG AP-merge 2-exp 7, crops 8 / 11 / 12, full 4-cell 13 (50 MP);
+    CUSTOM_CAMERA_SCENARIO_FORCE_CAMERA_CHOOSE: CustomHint 100 + n -> sensor mode n (0..53). The numeric value of that camera
+    scenario and the enum of the seamless sensor-scenario types are not in the files.
+  - Keys: com.mediatek.seamlessfeature.cameraScenario, sensorScenario, sensorScenarioCustomHint (int[] [camera, value]) are
+    session and request keys; sensorScenarioSwitchPolicy request; results carry sensorScenario and the hint. hdrMode is a
+    request key only (not a session key). jsons/HW_PD2602_tuning.json has seamlessMode 1286 «QUAD2x2_HDR_ISZ2X_DCG» (tuning).
+- Built: DcgSearch (tries, likeliest first: hint 133 / 118; request sweep of sensorScenario 2..40; camera scenario 501 + hints
+  and sweep; camera scenarios 500..560 with hint 133; LOFIC: hints 119 / 124 / 129) and Dcg14Mode: one try per session, the next
+  try remembered before the session (a try that kills the session is skipped after the restart), request sweep by
+  rebuildPreviewBuilder every 10 results, a try ends after 24 results; FOUND = dynamic white / wide RAW above 1.5x 1023 or a
+  sensor scenario other than 1 for the camera; the try (and swept value) is kept per mode and used from then on. Button: tap
+  off -> DCG -> DCG + LOFIC (own icon) -> off; long press = search on from the next try; snackbars on found / none.
+  scam_dev dcg14_camera_scenario / dcg14_sensor_scenario still force values. Test DcgSearchTest.
+- Check on the phone: tap «DCG» on the main 1x, wait (the camera restarts by itself, up to ~66 tries), log lines «DCG search …»
+  (try N / FOUND / all tries done) and «DCG14 camera 2 …» (sensorScenario, hint, white). Then a high-contrast shot.
+
+### P108 — Pixel 10 Pro / 10 Pro XL: missing modules (ISZ), DCG button, full-resolution button (owner, 2026-10-12; queued)
+
+- Report SCAM-TEST_Google-Pixel_10_Pro_XL_20261012-172642 (mustang, Tensor G5, Android 17, no root): listed 0 (logical back,
+  physical 2 / 3 / 4 / 5 / 6 / 9) and 1 (logical front, 7 / 8). Physical: 2 main 6.9 mm 4080x3072 (2x2 of 8160x6144),
+  3 UW 2.02 mm 4032x3024, 4 tele 17.906 mm 4032x3024, 5 = main 2x crop (phys 4.896x3.686 mm = half of 2's), 6 = tele 2x crop
+  (2.82 mm wide), 9 = UW 2x crop; 7 / 8 front. The app shows only 0.5x / 1x / 4.5x (owner's screenshot): 5 (2x), 6 (~9x) and
+  9 (~1x) are the in-sensor-zoom modules of the logical camera 0 — add them as modules ("0-5", "0-6", "0-9"; 9 maybe hidden).
+- Full resolution: streamConfigurationMapMaximumResolution RAW10 8160x6144 @ 24 fps on 0 / 2 / 5, 8064x6048 on 6 / 9 (no
+  ULTRA_HIGH_RESOLUTION capability listed): SENSOR_PIXEL_MODE MAXIMUM_RESOLUTION (OutputConfiguration.setSensorPixelModeUsed).
+  Owner: a button above the DCG button to switch it, camera restart.
+- DCG: RAW12 4080x3072 (0x26) on 0 / 2 only (RAW_SENSOR white 4095); vendor registry has com.google.internal.sequoiaIdcgEnabled
+  (byte, internal; not in the request / result key lists). Owner: «доступен DCG с raw12» -> a DCG button like the X500 Pro Max
+  (manual strip end slot, camera restart): RAW12 stream (MIPI RAW12 unpack needed: RawUnpack / RawPayloadCheck / worker) +
+  sequoiaIdcgEnabled 1 as a try; owner mentions «DCG4» on Pixels — not in the report, ask where it comes from.
+- Both switches on the Pixel 10 Pro (blazer) as well as the 10 Pro XL (mustang) (owner, 2026-10-12).

@@ -758,7 +758,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
                 logSensorModeIndex(result);
-                Dcg14Mode.onResult(result, physicalID);
+                Dcg14Mode.onResult(CaptureController.this, result, physicalID);
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.scamDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
@@ -2891,6 +2891,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P103 / P104: the HAL features of «Движение», Ideal RAW and the X500 Pro Max's DCG 14 bit are session keys
                 final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
                 final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics);
+                // P107: this session's DCG / LOFIC try (before the session parameters and the preview builder take its keys)
+                Dcg14Mode.beginSession(mCameraCharacteristics, physicalID);
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
                 if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14
                         || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
