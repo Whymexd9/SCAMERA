@@ -2734,3 +2734,18 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   needs a session on the logical camera with the HAL's zoom ratio 2 (open item).- Owner (2026-10-13): no ISZ work for OPPO / Xiaomi MediaTek; «на виво сделай подмену как на 500 про макс»: every vivo MediaTek
   phone opens its cameras as com.android.camera always (Dcg14Mode.spoofPackage; dcg14_spoof 0 = off).
 
+### P109c/d - vivo MediaTek ISZ test round (owner's logs 2026-10-13_3/4/5, photoss.zip: V2515 PD2502, X200 Pro V2405A)
+- The ISZ key alone does nothing: V2515 log_4 «FovSelfCheck: module back5: field 1/1.00 of camera 2» (the 2x module saw the
+  main camera's full field; the 1944x2592 photo is the digital crop). The selector's photo UI mode is the session key
+  com.vivo.current_ui_module (V2515 session keys; the vivo camera SDK sends it as a session and global request parameter,
+  1 = Photo, vivo-camera-app-log 2026-09-20). Now sent (int, else byte) in every session while the vivo spoof is on
+  (Dcg14Mode.applyUiModule; scam_dev vivo_ui_module N, -1 = off); a camera that refuses it runs without it (this run).
+- «Function not implemented (-38)» at endConfigure + onError 4 under the spoof is transient: the first session after a module
+  switch (cameras 2, 3, 4 once each in log_5; the same camera a few seconds later ran). Was: back to the previous module.
+  Now: the same camera reopens after 0.5 s / 1 s (twice per switch; the second try without the UI module).
+- Module sources: only physical cameras of the current list (log_4: the logical «0-2» became «17×» / «33×»; IszModule threw
+  «unknown device» on every start for a slot of the unspoofed list). No free slot (X200 Pro: all 8 back buttons in use): not
+  marked offered any more, the module comes once a button is deleted; the log lists the buttons.
+- Other session keys of interest on V2515 (not used yet): vivo.control.forceSensorMode, vivo.control.EngineerRemosaicMode,
+  vivo.control.advance_fullsize, vivo.control.ultra_highresolution, com.mediatek.seamlessfeature.sensorScenario.
+

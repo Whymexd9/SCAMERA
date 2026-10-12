@@ -22,4 +22,20 @@ public class VivoMtkIszTest {
         org.junit.Assert.assertTrue(VivoMtkIsz.fourXSensor(9.1392f)); // X500 Pro Max / X200 Pro 200 MP tele
         org.junit.Assert.assertFalse(VivoMtkIsz.fourXSensor(6.5536f)); // V2515 teles
     }
+
+    @Test
+    public void onlyPhysicalCamerasOfTheCurrentListAreSources() {
+        org.junit.Assert.assertTrue(VivoMtkIsz.source("2", true));
+        org.junit.Assert.assertFalse(VivoMtkIsz.source("0-2", true)); // V2515 log_4: the logical main labelled «17×»
+        org.junit.Assert.assertFalse(VivoMtkIsz.source("0", false)); // a slot of the unspoofed camera list
+        org.junit.Assert.assertFalse(VivoMtkIsz.source(null, true));
+    }
+
+    @Test
+    public void onlyTheBusyHalErrorReopensTheSameCamera() {
+        org.junit.Assert.assertTrue(VivoMtkIsz.busyHalError(
+                "CAMERA_ERROR (3): endConfigure:879: Camera 3: Error configuring streams: Function not implemented (-38)"));
+        org.junit.Assert.assertFalse(VivoMtkIsz.busyHalError("Error configuring streams: Broken pipe (-32)"));
+        org.junit.Assert.assertFalse(VivoMtkIsz.busyHalError(null));
+    }
 }

@@ -30,17 +30,27 @@ public final class IszModule {
         if (context == null || !PreferenceKeys.scamDevSwitch("isz_module", true)) return;
         try {
             SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            if (manager == null) return;
             String main = null;
-            for (String slot : ModuleRegistry.slots())
-                if (slot.startsWith("back") && ModuleRegistry.visible(slot) && ModuleRegistry.duplicateOf(slot) == null
-                        && Math.abs(ModuleRegistry.zoom(slot) - 1f) < 0.05f) { main = slot; break; }
+            CameraCharacteristics c = null;
+            for (String slot : ModuleRegistry.slots()) {
+                if (!slot.startsWith("back") || !ModuleRegistry.visible(slot) || ModuleRegistry.duplicateOf(slot) != null
+                        || Math.abs(ModuleRegistry.zoom(slot) - 1f) >= 0.05f) continue;
+                // the module's camera may be "logical-physical" (Galaxy S24 Ultra: "0-5"); its RAW comes from the physical
+                // camera. A slot of another camera list (vivo with the package spoof on / off, V2515 log 2026-10-13_5: «unknown
+                // device» on every start) is skipped.
+                try {
+                    c = manager.getCameraCharacteristics(SensorConfigPreferenceGenerator.toPhysicalId(ModuleRegistry.camera(slot)));
+                } catch (IllegalArgumentException unknown) {
+                    continue;
+                }
+                main = slot;
+                break;
+            }
             if (main == null) return;
             final String cameraId = ModuleRegistry.camera(main);
             if (p.getBoolean(OFFERED + cameraId, false)) return;
-            CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
-            // the module's camera may be "logical-physical" (Galaxy S24 Ultra: "0-5"); its RAW comes from the physical camera
-            CameraCharacteristics c = manager == null ? null
-                    : manager.getCameraCharacteristics(SensorConfigPreferenceGenerator.toPhysicalId(cameraId));
             if (!CroppedRaw.supported(c)) return;
             String target = ModuleRegistry.duplicate(main);
             SharedPreferences.Editor e = p.edit().putBoolean(OFFERED + cameraId, true);

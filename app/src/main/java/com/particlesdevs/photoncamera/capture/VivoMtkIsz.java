@@ -97,6 +97,9 @@ public final class VivoMtkIsz {
             for (String slot : ModuleRegistry.slots()) {
                 if (!slot.startsWith("back") || !ModuleRegistry.visible(slot) || ModuleRegistry.duplicateOf(slot) != null) continue;
                 if (p.getInt(MARK + slot, 0) > 0) continue;
+                // P109c (V2515 log 2026-10-13_4): the logical «0-2» got «17×» / «33×»; ISZ is a physical camera's, and a slot
+                // left from another camera list (spoof on / off) is not a source either
+                if (!source(ModuleRegistry.camera(slot), opens(manager, ModuleRegistry.camera(slot)))) continue;
                 float z = ModuleRegistry.zoom(slot);
                 if (main == null && Math.abs(z - 1f) < 0.05f) main = slot;
                 if (wide == null && z > 0.3f && z < 0.9f) { wide = slot; wideZoom = z; }
@@ -119,6 +122,25 @@ public final class VivoMtkIsz {
         }
     }
 
+    /** P109c: the vivo HAL's "Function not implemented (-38)" while it still releases the previous camera (CaptureController). */
+    static boolean busyHalError(@Nullable String message) {
+        return message != null && message.contains("(-38)");
+    }
+
+    /** A physical camera of the current camera list: not «logical-physical», and its characteristics are there. */
+    static boolean source(@Nullable String cameraId, boolean opens) {
+        return cameraId != null && !cameraId.isEmpty() && !cameraId.contains("-") && opens;
+    }
+
+    private static boolean opens(@Nullable android.hardware.camera2.CameraManager manager, @Nullable String cameraId) {
+        if (manager == null || cameraId == null || cameraId.contains("-")) return false;
+        try {
+            return manager.getCameraCharacteristics(cameraId) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static float sensorWidth(@Nullable android.hardware.camera2.CameraManager manager, String cameraId) {
         try {
             String id = cameraId.contains("-") ? cameraId.split("-", 2)[1] : cameraId;
@@ -137,17 +159,27 @@ public final class VivoMtkIsz {
         return s + "×";
     }
 
+    private static String backSlots() {
+        StringBuilder b = new StringBuilder();
+        for (String slot : ModuleRegistry.slots())
+            if (slot.startsWith("back") && ModuleRegistry.visible(slot))
+                b.append(b.length() == 0 ? "" : ", ").append(slot).append('=').append(ModuleRegistry.camera(slot))
+                        .append(' ').append(ModuleRegistry.label(slot));
+        return b.toString();
+    }
+
     private static void offer(Context context, SharedPreferences p, String source, int factor, float zoom, String label) {
         String camera = ModuleRegistry.camera(source);
         String offered = OFFERED + camera + "_" + factor;
         if (p.getBoolean(offered, false)) return;
         String target = ModuleRegistry.duplicate(source);
-        SharedPreferences.Editor e = p.edit().putBoolean(offered, true);
         if (target == null) {
-            Log.w(TAG, "no free module slot for the " + factor + "x ISZ of camera " + camera);
-            e.apply();
+            // P109c (X200 Pro log 2026-10-13_3: all eight back buttons in use): not marked offered, so the module comes once a
+            // button is deleted
+            Log.w(TAG, "no free module slot for the " + factor + "x ISZ of camera " + camera + " (back buttons: " + backSlots() + ")");
             return;
         }
+        SharedPreferences.Editor e = p.edit().putBoolean(offered, true);
         e.putString("module_name_" + target, label)
                 .putString("module_zoom_" + target, String.format(Locale.US, "%.2f", zoom))
                 .putInt(MARK + target, factor)

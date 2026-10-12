@@ -259,6 +259,27 @@ public final class Dcg14Mode {
         }
     }
 
+    /**
+     * P109d: the vivo camera's UI module (V2515 session keys list com.vivo.current_ui_module; the vivo camera SDK sends it as a
+     * session parameter and a global request parameter, 1 in Photo, vivo-camera-app-log 2026-09-20). The sensor-mode
+     * selectors of PD2602 / PD2502 / PD2405 reach ROIREMOSAIC (seamless.roiRemosaic 4) and the photo HDR only under a photo UI
+     * mode (1 / 13 / 70 / 74 / 7): without it the ISZ module's field of view stayed that of its camera (V2515 log 2026-10-13_4,
+     * FovSelfCheck 1/1.00). Sent while the vivo-camera spoof is on; scam_dev "vivo_ui_module N" (-1 = not sent).
+     */
+    public static boolean wantsUiModule() {
+        return spoofPackage() != null && uiModule() >= 0;
+    }
+
+    static int uiModule() {
+        return Math.round(PreferenceKeys.scamDevNumber("vivo_ui_module", 1f));
+    }
+
+    public static String applyUiModule(CaptureRequest.Builder builder) {
+        StringBuilder out = new StringBuilder();
+        setIntOrByte(builder, "com.vivo.current_ui_module", uiModule(), out);
+        return out.toString().trim();
+    }
+
     private static void setIntOrByte(CaptureRequest.Builder builder, String name, int value, StringBuilder out) {
         try {
             CaptureRequest.Key<int[]> key = new CaptureRequest.Key<>(name, int[].class);

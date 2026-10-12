@@ -841,6 +841,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
             Dcg14Mode.onCameraError(error); // a DCG / LOFIC search try that broke the camera ends the search
+            if (mBusyRetryPending) return; // P109c: the same camera reopens (retryBusyVivoHal)
             if (mXiaomiRouted) {
                 // P41b: the logical camera failed for this app: the tele alone from now on
                 mXiaomiRouted = false;
@@ -973,6 +974,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
             sGoodModules.add(slot);
             sLastGoodModule = slot;
+            sBusyRetries.clear();
         } catch (RuntimeException ignored) {
         }
     }
@@ -2936,10 +2938,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P103 / P104: the HAL features of «Движение», Ideal RAW and the X500 Pro Max's DCG 14 bit are session keys
                 final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
                 final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics);
+                // P109d: the vivo photo UI module, as the vivo camera sends it (see Dcg14Mode.applyUiModule)
+                final boolean vivoUi = Dcg14Mode.wantsUiModule() && !sVivoUiRefused.contains(physicalID);
+                mVivoUiSession = vivoUi;
                 // P107: this session's DCG / LOFIC try (before the session parameters and the preview builder take its keys)
                 Dcg14Mode.beginSession(mCameraCharacteristics, physicalID);
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
-                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14
+                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14 || vivoUi
                         || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
@@ -2947,6 +2952,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         VendorTagUtils.builderSessionApply(scamSession, false, useMaximumResolutionKey, physicalID);
                         if (dcg14) Log.i("SCAM_CAPTURE", "DCG14 session keys on camera " + physicalID + ": "
                                 + Dcg14Mode.apply(scamSession, mCameraCharacteristics, physicalID));
+                        if (vivoUi) Log.i("SCAM_CAPTURE", "vivo UI module on camera " + physicalID + ": "
+                                + Dcg14Mode.applyUiModule(scamSession));
                         if (scamPreview) ScamPreview.applySession(scamSession);
                         // P54b: the stock Photo mode sets the EIS key as a session parameter too
                         if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
@@ -2967,10 +2974,42 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
+            if (retryBusyVivoHal(e)) return;
             // P41b: a logical session the framework refuses outright (no onConfigureFailed follows) steps down as well
             if (mXiaomiRouted) retryXiaomiRoute(null, "session: " + e.getMessage());
             else retryWithoutFullRes(null, "session: " + e.getMessage());
         }
+    }
+
+    /**
+     * P109c: vivo MediaTek under the vivo-camera spoof (V2515, owner's log 2026-10-13_5): the first session right after a module
+     * switch often fails with "Error configuring streams: Function not implemented (-38)" and onError 4 follows, while the HAL
+     * still releases the previous camera (cameras 2, 3 and 4 once each; the same camera opened a few seconds later ran). The old
+     * path went back to the previous module. Now the same camera is reopened after a pause, twice at most per module switch.
+     */
+    /** P109d: cameras whose session refused com.vivo.current_ui_module (this run), and whether this session sent it. */
+    private static final java.util.Set<String> sVivoUiRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile boolean mVivoUiSession;
+    private static final java.util.Map<String, Integer> sBusyRetries = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile boolean mBusyRetryPending;
+
+    private boolean retryBusyVivoHal(Exception e) {
+        if (Dcg14Mode.spoofPackage() == null || !VivoMtkIsz.busyHalError(e.getMessage()) || !isCameraResumed) return false;
+        final String id = PhotonCamera.getSettings().mCameraID;
+        final int n = sBusyRetries.getOrDefault(id, 0) + 1;
+        if (n > 2) return false;
+        sBusyRetries.put(id, n);
+        mBusyRetryPending = true;
+        // P109d: the second try goes without the vivo UI module, in case it is the key the HAL refuses
+        if (n == 2 && mVivoUiSession && sVivoUiRefused.add(physicalID))
+            Log.w("SCAM_CAPTURE", "camera " + physicalID + ": the second try without the vivo UI module");
+        final long delay = 500L * n;
+        Log.w(TAG, "camera " + id + ": vivo HAL busy (-38), reopening the same camera in " + delay + " ms (try " + n + ")");
+        new Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            mBusyRetryPending = false;
+            if (isCameraResumed && id.equals(PhotonCamera.getSettings().mCameraID)) restartCamera();
+        }, delay);
+        return true;
     }
 
     /** P41b: dev switch {@code xiaomi_opmode}: the logical session's operation mode (stock 0x9002 = 36866, 0 = regular). */
@@ -2986,6 +3025,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean retryWithoutScamSession(CameraCaptureSession session) {
         final CameraDevice device = mCameraDevice;
         final Handler handler = mBackgroundHandler;
+        if (mVivoUiSession && device != null && handler != null && sVivoUiRefused.add(physicalID)) {
+            // P109d: a camera that refuses the session with the vivo UI module runs without it (this run)
+            Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo UI module; retry without it");
+            try { session.close(); } catch (Exception ignored) {}
+            handler.post(() -> {
+                if (!isCameraResumed || mCameraDevice != device) return;
+                createCameraPreviewSession(false);
+            });
+            return true;
+        }
         if ((!mScamPreviewActive && !mForcedStabEis && !mVivoEisSession) || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
         Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo "
                 + (mScamPreviewActive ? "stock preview profile" : "EIS session key") + "; retry with the plain Camera2 preview");
