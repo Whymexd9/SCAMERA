@@ -326,6 +326,10 @@
     <string name="dcg14_search_toast">DCG: searching on (the camera restarts a few times)</string>
     <string name="pixel_dcg_on_toast">DCG on: RAW12 stream with dual conversion gain, the camera restarts</string>
     <string name="pixel_dcg_off_toast">DCG off</string>
+    <string name="full_res_on">Full resolution: on</string>
+    <string name="full_res_off">Full resolution: off</string>
+    <string name="full_res_on_toast">Full resolution on: 50 MP RAW, frames after the shutter, the camera restarts</string>
+    <string name="full_res_off_toast">Full resolution off</string>
     <string name="dcg14_not_here">DCG 14-bit works on the main camera and the telephotos</string>
 </resources>
 

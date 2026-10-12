@@ -237,5 +237,9 @@
     <string name="dcg14_search_toast">DCG: поиск продолжается (камера несколько раз перезапустится)</string>
     <string name="pixel_dcg_on_toast">DCG вкл: поток RAW12 с двойным усилением, камера перезапускается</string>
     <string name="pixel_dcg_off_toast">DCG выкл</string>
+    <string name="full_res_on">Полное разрешение: вкл</string>
+    <string name="full_res_off">Полное разрешение: выкл</string>
+    <string name="full_res_on_toast">Полное разрешение вкл: RAW 50 Мп, кадры после нажатия, камера перезапускается</string>
+    <string name="full_res_off_toast">Полное разрешение выкл</string>
     <string name="dcg14_not_here">DCG 14 бит работает на основной камере и телеобъективах</string>
 </resources>

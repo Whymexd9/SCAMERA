@@ -2624,10 +2624,24 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   + com.google.internal.sequoiaIdcgEnabled 1 on the session and every request, camera restart. Test PixelPro10Test.
   scam_dev pixel_modules 0 / pixel_dcg 0 = off. Why the scan (CameraManager2, P66) did not show 5 / 6 is unknown without a
   SCAMERA log of the phone (it should have): the log line above tells next time.
-- Full resolution (queued): MotionCam Pro 5.0.9 (decompiled NativeCameraManager.a.from) lists the outputs of
+- Full resolution (first notes; done below): MotionCam Pro 5.0.9 (decompiled NativeCameraManager.a.from) lists the outputs of
   SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION next to the default map (flag false) and needs no ULTRA_HIGH_RESOLUTION
   capability — the same test fits here: a RAW size in the max-resolution map (Pixel 10 Pro XL: RAW10 8160x6144 @ 24 fps on
   0 / 2 / 5, 8064x6048 on 6 / 9). Needs: RAW reader RAW10 at that size with OutputConfiguration.setSensorPixelModeUsed(
   MAXIMUM_RESOLUTION), SENSOR_PIXEL_MODE MAXIMUM_RESOLUTION on the requests that target it; the preview surfaces must then be
   sizes of the max-resolution map too (PRIVATE / YUV only up to 1920x1080 / 1440x1080) or the full-resolution frames come as
   post-shutter stills (no ZSL ring, no RAW viewfinder in that mode). Button above the DCG button, camera restart.
+- Done 2026-10-12 (owner: «доделай всё на пиксель», «у пикселя при использовании raw12 работает dcg», «в режиме полного
+  разрешения ZSL должен тоже работать», «красивую иконку в стиле нашего интерфейса»; not on a device):
+  - DCG = the RAW12 stream only; sequoiaIdcgEnabled only with scam_dev pixel_idcg 1 (and only then session parameters).
+  - Full resolution (PixelPro10.fullRes, scam_dev pixel_full_res 0 = off): RAW = the largest RAW of the max-resolution map
+    (RAW10 8160x6144 / 8064x6048), every output addSensorPixelModeUsed(MAXIMUM_RESOLUTION), viewfinder and YUV sizes of the
+    max-resolution map with the RAW's aspect (1440x1080), every request SENSOR_PIXEL_MODE MAXIMUM_RESOLUTION
+    (useMaximumResolutionKey), ZSL ring on (copy on arrival), RAW viewfinder off, readers 8; Parameters takes the
+    max-resolution active array for a RAW wider than the binned one (else the photo was cropped to a quarter). A refused
+    session (onConfigureFailed / exception) runs binned again with a toast (retryWithoutFullRes). Not while recording.
+  - FullResButton: icon manual_ic_fullres (corner brackets + 3x3 pixel grid, stroke 1.7 like the manual icons), floats
+    above the DCG button (overlay kept over the end slot), or sits in the slot on a camera without DCG. Tests
+    PixelFullResSizeTest (Robolectric), PixelPro10Test.
+  - Check on the phone: log «full resolution 8160x6144 format 37», «full resolution: viewfinder 1440x1080», «ZSL ring in
+    memfd … MB» (~96 MB slots), shot-to-shot and merge time at 50 MP, or «full resolution refused».

@@ -24,7 +24,8 @@ import com.particlesdevs.photoncamera.util.Log;
  * -> LOFIC (its own icon) -> off; while the mode has no working try the camera restarts by itself through the tries of
  * DcgSearch (a snackbar says when one worked or none did); a long press searches on from the next try.
  * <p>
- * P108: the same button on the Pixel 10 Pro / Pro XL's main camera (RAW12 + sequoiaIdcgEnabled, PixelPro10): on / off.
+ * P108: the same button on the Pixel 10 Pro / Pro XL's main camera (RAW12 stream, PixelPro10): on / off; the full-resolution
+ * switch (FullResButton) floats above it.
  */
 final class Dcg14Button {
     private static final String TAG = "Dcg14Button";
@@ -42,6 +43,7 @@ final class Dcg14Button {
         if (!Dcg14Mode.device() && !pixel) {
             if (button != null) slot.removeView(button);
             panel.refreshEndSlot();
+            FullResButton.bind(fragment, panel, slot, characteristics);
             return;
         }
         if (button == null) {
@@ -74,6 +76,8 @@ final class Dcg14Button {
         button.setVisibility(here ? View.VISIBLE : View.GONE);
         style(button, pixel ? (PixelPro10.dcgOn() ? Dcg14Mode.DCG : Dcg14Mode.OFF) : Dcg14Mode.mode());
         panel.refreshEndSlot();
+        // P108: the Pixel's full-resolution switch above the DCG button (or in the slot where the camera has no DCG)
+        FullResButton.bind(fragment, panel, slot, characteristics);
     }
 
     private static void toggle(CameraFragment fragment, ImageButton button) {
@@ -96,7 +100,7 @@ final class Dcg14Button {
         PixelPro10.setDcg(on);
         style(button, on ? Dcg14Mode.DCG : Dcg14Mode.OFF);
         fragment.showSnackBar(fragment.getString(on ? R.string.pixel_dcg_on_toast : R.string.pixel_dcg_off_toast));
-        Log.i(TAG, "Pixel DCG (RAW12, iDCG) " + (on ? "on" : "off"));
+        Log.i(TAG, "Pixel DCG (RAW12) " + (on ? "on" : "off"));
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }
 

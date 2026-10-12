@@ -253,6 +253,14 @@ public class Parameters {
             sensorPix = new Rect(sensorPix.left / rawBinning, sensorPix.top / rawBinning,
                     sensorPix.right / rawBinning, sensorPix.bottom / rawBinning);
         }
+        // P108: a full-resolution RAW (Pixel 10 Pro / Pro XL: 8160x6144 against the binned 4080x3072 active array) is described
+        // by the max-resolution active array
+        if (sensorPix != null && rawSize != null && rawSize.x > sensorPix.width() * 3 / 2
+                && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            Rect max = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE_MAXIMUM_RESOLUTION);
+            sensorPix = max != null && max.width() <= rawSize.x && max.height() <= rawSize.y
+                    ? new Rect(max) : new Rect(0, 0, rawSize.x, rawSize.y);
+        }
         var facing = characteristics.get(CameraCharacteristics.LENS_FACING);
         if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
             mirror = true;

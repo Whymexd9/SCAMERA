@@ -8,4 +8,5 @@
     <item name="shade_action_later" type="id"/>
     <item name="shade_action_remove" type="id"/>
     <item name="dcg14_button" type="id"/>
+    <item name="full_res_button" type="id"/>
 </resources>

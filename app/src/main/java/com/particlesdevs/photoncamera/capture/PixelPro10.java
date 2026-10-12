@@ -37,15 +37,23 @@ import java.util.Set;
  * camera (a deleted one stays deleted). A crop module whose field is within 15 % of an existing one (UW 2x crop = 1.02x) is
  * left out.
  * <p>
- * DCG: the main camera lists RAW12 4080x3072 (white 4095) and the vendor registry has com.google.internal.sequoiaIdcgEnabled
- * (byte; Google's intra-scene dual conversion gain, not in the request-key lists). The switch makes the RAW stream RAW12 where the
- * camera lists it (unpacked like RAW10 / RAW12 already are) and sends sequoiaIdcgEnabled = 1 on the session and every request;
- * the camera restarts. Nothing is verified on the phone.
+ * DCG: the main camera lists RAW12 4080x3072 (white 4095); owner, 2026-10-12: «у пикселя при использовании raw12 работает dcg».
+ * The switch makes the RAW stream RAW12 where the camera lists it (unpacked like RAW10 / RAW12 already are); the camera restarts.
+ * The registry's com.google.internal.sequoiaIdcgEnabled (byte, not in the request-key lists) is sent only with scam_dev
+ * "pixel_idcg 1".
+ * <p>
+ * Full resolution (owner: «добавь кнопку сверху кнопки DCG»; MotionCam Pro takes 50 MP on this phone): a RAW size of
+ * SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION (as MotionCam lists it, no ULTRA_HIGH_RESOLUTION capability on the Pixel):
+ * RAW10 8160x6144 @ 24 fps on 0 / 2 / 5, 8064x6048 @ 15 on 6 / 9. That stream takes MAXIMUM_RESOLUTION requests only, so every
+ * stream of the session is configured for that mode with sizes of the max-resolution map (viewfinder / YUV 1440x1080 for 4:3)
+ * and every request carries it: the ZSL ring keeps working (owner: «в режиме полного разрешения ZSL должен тоже работать»),
+ * the RAW viewfinder is off (50 MP at 24 fps), the readers hold 8 frames. A refused session runs binned again
+ * (CaptureController.retryWithoutFullRes). Nothing is verified on the phone.
  */
 public final class PixelPro10 {
     private static final String TAG = "PixelPro10";
     private static final String PREFS = "scam_pixel10";
-    private static final String KEY_DCG = "dcg";
+    private static final String KEY_DCG = "dcg", KEY_FULL = "full_res";
     private static final String OFFERED = "module_pixel_offered_";
     static final String IDCG_KEY = "com.google.internal.sequoiaIdcgEnabled";
     /** Fields closer than this to a visible module's are the same module. */
@@ -210,9 +218,14 @@ public final class PixelPro10 {
         return sizes != null && sizes.length > 0;
     }
 
+    /** The internal iDCG key goes out (scam_dev pixel_idcg 1) with the DCG switch. */
+    public static boolean idcgActive(@Nullable CameraCharacteristics c) {
+        return dcgActive(c) && PreferenceKeys.scamDevSwitch("pixel_idcg", false);
+    }
+
     /** sequoiaIdcgEnabled = 1 on a session-parameter or request builder; returns what was set ("" when inactive). */
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c) {
-        if (builder == null || !dcgActive(c)) return "";
+        if (builder == null || !idcgActive(c)) return "";
         CaptureRequest.Key<Byte> key = new CaptureRequest.Key<>(IDCG_KEY, Byte.class);
         try {
             builder.set(key, (byte) 1);
@@ -220,5 +233,102 @@ public final class PixelPro10 {
         } catch (RuntimeException e) {
             return IDCG_KEY + " n/a";
         }
+    }
+
+    // ---- full resolution ----
+
+    /** The full-resolution RAW stream of a camera: format and size of its max-resolution map. */
+    public static final class FullRes {
+        public final int format;
+        public final Size size;
+
+        FullRes(int format, Size size) {
+            this.format = format;
+            this.size = size;
+        }
+    }
+
+    public static boolean fullResOn() {
+        SharedPreferences p = prefs();
+        return p != null && p.getBoolean(KEY_FULL, false);
+    }
+
+    public static void setFullRes(boolean on) {
+        SharedPreferences p = prefs();
+        if (p != null) p.edit().putBoolean(KEY_FULL, on).apply();
+    }
+
+    /** The largest RAW of the camera's max-resolution map (RAW_SENSOR, else RAW10, else RAW12), null without one. */
+    @Nullable
+    public static FullRes fullResStream(@Nullable CameraCharacteristics c) {
+        if (c == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null;
+        StreamConfigurationMap map;
+        try {
+            map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (map == null) return null;
+        for (int format : new int[]{ImageFormat.RAW_SENSOR, ImageFormat.RAW10, ImageFormat.RAW12}) {
+            Size[] sizes;
+            try {
+                sizes = map.getOutputSizes(format);
+            } catch (RuntimeException e) {
+                continue;
+            }
+            Size best = largest(sizes);
+            if (best != null) return new FullRes(format, best);
+        }
+        return null;
+    }
+
+    @Nullable
+    static Size largest(@Nullable Size[] sizes) {
+        Size best = null;
+        if (sizes != null) for (Size s : sizes)
+            if (s != null && (best == null || (long) s.getWidth() * s.getHeight() > (long) best.getWidth() * best.getHeight())) best = s;
+        return best;
+    }
+
+    /**
+     * The largest size of the max-resolution map for a format (format < 0: the SurfaceTexture viewfinder) with the aspect of
+     * {@code like}, else the largest of any aspect; null without the map or sizes.
+     */
+    @Nullable
+    public static Size maxResSize(@Nullable CameraCharacteristics c, int format, @Nullable Size like) {
+        if (c == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null;
+        Size[] sizes;
+        try {
+            StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION);
+            if (map == null) return null;
+            sizes = format < 0 ? map.getOutputSizes(android.graphics.SurfaceTexture.class) : map.getOutputSizes(format);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        return sameAspect(sizes, like);
+    }
+
+    /** The largest of {@code sizes} within 2 % of the aspect of {@code like}, else the largest. */
+    @Nullable
+    static Size sameAspect(@Nullable Size[] sizes, @Nullable Size like) {
+        if (sizes == null || sizes.length == 0) return null;
+        if (like != null && like.getHeight() > 0) {
+            float aspect = (float) like.getWidth() / like.getHeight();
+            java.util.List<Size> same = new ArrayList<>();
+            for (Size s : sizes)
+                if (s != null && s.getHeight() > 0 && Math.abs((float) s.getWidth() / s.getHeight() / aspect - 1f) < 0.02f) same.add(s);
+            if (!same.isEmpty()) return largest(same.toArray(new Size[0]));
+        }
+        return largest(sizes);
+    }
+
+    public static boolean fullResAvailable(@Nullable CameraCharacteristics c) {
+        return device() && PreferenceKeys.scamDevSwitch("pixel_full_res", true) && fullResStream(c) != null;
+    }
+
+    /** The full-resolution stream while the switch is on (null otherwise). */
+    @Nullable
+    public static FullRes fullRes(@Nullable CameraCharacteristics c) {
+        return fullResOn() && device() && PreferenceKeys.scamDevSwitch("pixel_full_res", true) ? fullResStream(c) : null;
     }
 }

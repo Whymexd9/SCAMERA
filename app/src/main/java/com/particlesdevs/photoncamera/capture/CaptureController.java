@@ -65,6 +65,7 @@ import android.view.TextureView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
 import com.particlesdevs.photoncamera.R;
@@ -2405,7 +2406,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + ", camera " + physicalID + ")");
             mTargetFormat = resolved;
         }
+        // P108: the Pixel 10 Pro / Pro XL's full-resolution switch: the RAW stream of the max-resolution map (RAW10 8160x6144)
+        mFullResSession = false;
+        Size fullRes = null;
+        if (isRawFormat(mTargetFormat) && !sFullResRefused.contains(physicalID) && !mIsRecordingVideo) {
+            PixelPro10.FullRes fr = PixelPro10.fullRes(characteristics);
+            if (fr != null) {
+                mTargetFormat = fr.format;
+                fullRes = fr.size;
+                mFullResSession = true;
+                Log.i("SCAM_CAPTURE", "camera " + physicalID + ": full resolution " + fr.size + " format " + fr.format
+                        + " (every stream and request in MAXIMUM_RESOLUTION pixel mode, ZSL ring on, no RAW viewfinder)");
+            }
+        }
         ArrayList<Size> allTargets = getAllTargets();
+        // P108: every request of the full-resolution session in MAXIMUM_RESOLUTION pixel mode (VendorTagUtils.builderSessionApply)
+        if (mFullResSession) useMaximumResolutionKey = true;
 
         Size preview = getCameraOutputSize(map.getOutputSizes(mPreviewTargetFormat));
 
@@ -2458,6 +2474,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if(mImageReaderPreview != null)
             mImageReaderPreview.close();
 
+        if (mFullResSession) {
+            // P108: a size of the max-resolution map (the stream is a MAXIMUM_RESOLUTION one), the RAW's aspect
+            Size fullPreview = PixelPro10.maxResSize(characteristics, mPreviewTargetFormat, fullRes);
+            if (fullPreview != null) preview = fullPreview;
+            maxjpg = Math.min(maxjpg, 8); // 50 MP frames: a short reader, every frame is copied on arrival (P91)
+        }
         mImageReaderPreview = ImageReader.newInstance(preview.getWidth(), preview.getHeight(), mPreviewTargetFormat, maxjpg);
         mImageReaderPreview.setOnImageAvailableListener(mOnYuvImageAvailableListener, mBackgroundHandler);
             mBufferSize = getPreviewOutputSize(getSafeDisplay(),characteristics,PhotonCamera.getSettings().selectedMode);
@@ -2470,6 +2492,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mBufferSize = new Size(safe.getHeight(), safe.getWidth());
         }
 
+        if (fullRes != null) {
+            target = fullRes;
+            this.target = fullRes;
+            // P108: the viewfinder stream too is a size of the max-resolution map (Pixel 10 Pro XL: 1440x1080 for 4:3)
+            Size st = PixelPro10.maxResSize(characteristics, -1, fullRes);
+            if (st != null) mBufferSize = new Size(Math.min(st.getWidth(), st.getHeight()), Math.max(st.getWidth(), st.getHeight()));
+            Log.i("SCAM_CAPTURE", "full resolution: viewfinder " + st + ", YUV " + preview + ", readers " + maxjpg);
+        }
         clearZslPreviewFrames();
         if(mImageReaderRaw != null)
             mImageReaderRaw.close();
@@ -2655,7 +2685,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.i("SCAM_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isScamHybridEnabled() ? "SCAM_HYBRID" : PreferenceKeys.isScamEnabled() ? "SCAM_RAW" : "SCAMERA"));
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
-            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
+            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected && !mFullResSession
                     && isRawFormat(mTargetFormat) && PreferenceKeys.isLiveViewfinderRawEnabled();
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
@@ -2724,6 +2754,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         Log.w(TAG, "CROPPED_RAW not set: " + e);
                     }
                 }
+                // P108: every stream of the full-resolution session (sizes of the max-resolution map) in MAXIMUM_RESOLUTION mode
+                if (mFullResSession && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                    config.addSensorPixelModeUsed(CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION);
                 outputConfigurations.add(config);
             }
             mCroppedRawSession = croppedRaw;
@@ -2865,6 +2898,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
                         if (retryXiaomiRoute(cameraCaptureSession, "session configuration")) return;
                         if (retryWithoutCroppedRaw(cameraCaptureSession)) return;
+                        if (retryWithoutFullRes(cameraCaptureSession, "session configuration failed")) return;
                         if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                         if (retryWithoutScamSession(cameraCaptureSession)) return;
                         if (retryConfigureFallback(cameraCaptureSession)) return;
@@ -2892,7 +2926,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final boolean moduleKeys = !com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID).isEmpty();
                 // P103 / P104: the HAL features of «Движение», Ideal RAW and the X500 Pro Max's DCG 14 bit are session keys
                 final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
-                final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics) || PixelPro10.dcgActive(mCameraCharacteristics);
+                final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics) || PixelPro10.idcgActive(mCameraCharacteristics);
                 // P107: this session's DCG / LOFIC try (before the session parameters and the preview builder take its keys)
                 Dcg14Mode.beginSession(mCameraCharacteristics, physicalID);
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
@@ -2927,6 +2961,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.e(TAG, Log.getStackTraceString(e));
             // P41b: a logical session the framework refuses outright (no onConfigureFailed follows) steps down as well
             if (mXiaomiRouted) retryXiaomiRoute(null, "session: " + e.getMessage());
+            else retryWithoutFullRes(null, "session: " + e.getMessage());
         }
     }
 
@@ -2954,6 +2989,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return true;
     }
 
+    /**
+     * P108: a full-resolution session the camera refuses (or that the framework rejects) runs binned again: the camera restarts
+     * with the normal RAW stream (this camera, this run) and the owner sees why.
+     */
+    private boolean retryWithoutFullRes(@Nullable CameraCaptureSession session, String why) {
+        if (!mFullResSession || !sFullResRefused.add(physicalID)) return false;
+        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": full resolution refused (" + why + "), binned RAW again");
+        mFullResSession = false;
+        if (session != null) try { session.close(); } catch (Exception ignored) {}
+        showToast(Lang.t("Полное разрешение: камера отказала, обычный режим", "Full resolution: refused by the camera, normal mode"));
+        final Handler main = new Handler(android.os.Looper.getMainLooper());
+        main.post(this::restartCamera);
+        return true;
+    }
+
     /** P100: a session refused with the CROPPED_RAW RAW stream is configured again without it (this camera, this run). */
     private boolean retryWithoutCroppedRaw(CameraCaptureSession session) {
         if (!mCroppedRawSession || mCameraDevice == null || !sCroppedRawRefused.add(physicalID)) return false;
@@ -2965,6 +3015,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private static final java.util.Set<String> sCroppedRawRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** P108: Pixel 10 Pro / Pro XL full-resolution session (RAW at the max-resolution size, MAXIMUM_RESOLUTION pixel mode). */
+    private volatile boolean mFullResSession;
+    /** P108: cameras whose full-resolution session was refused (this run): they run binned. */
+    private static final java.util.Set<String> sFullResRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile boolean mCroppedRawSession;
     private android.graphics.Rect mLastRawCrop;
 
@@ -4733,6 +4787,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 applyAeMeteringRegions(captureBuilder);
             }
             VendorTagUtils.builderSessionApply(captureBuilder, true, useMaximumResolutionKey, physicalID);
+            // P108: the full-resolution RAW stream takes MAXIMUM_RESOLUTION requests only
+            if (mFullResSession && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                captureBuilder.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION);
             XiaomiTeleZoom.applyLast(captureBuilder, physicalID);
             try {
                 captureBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
