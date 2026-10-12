@@ -208,10 +208,9 @@ public final class Dcg14Mode {
      */
     @Nullable
     public static String spoofPackage() {
-        if (!device()) return null;
-        // P109: the ISZ modules need AppType vivo as well
-        if (VivoMtkIsz.activeFactor() > 0) return VIVO_CAMERA_PACKAGE;
-        if (!on() || !PreferenceKeys.scamDevSwitch("dcg14_spoof", true)) return null;
+        // P109 (owner, 2026-10-13: «мы можем спуф включить на постоянку для этого смартфона чтобы не переключать туда-сюда»):
+        // on the X500 Pro Max every camera opens as the vivo camera, for DCG / LOFIC, the ISZ modules and plain shots alike
+        if (!device() || !PreferenceKeys.scamDevSwitch("dcg14_spoof", true)) return null;
         return VIVO_CAMERA_PACKAGE;
     }
 

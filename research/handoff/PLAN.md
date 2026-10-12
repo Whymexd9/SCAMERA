@@ -2716,5 +2716,6 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   active the package spoof opens the camera as com.android.camera. The real field of view is measured (P60 fov_check). The
   DCG14 log line now carries vivo.feedback.SensorCropRegion / isROIRemosaicPreview. scam_dev vivo_isz 0 = off.
 - Open: the vivo UI-mode input of the selector (UIMode; key unknown: vivo.control.currentModeEx / currentmodeS candidates);
-  the 4x key of the tele (CROP_4X_16CELL) is not in the files.
+  the 4x key of the tele (CROP_4X_16CELL) is not in the files.- Owner: «спуф ... на постоянку для этого смартфона»: on the X500 Pro Max every camera opens as com.android.camera
+  (Dcg14Mode.spoofPackage; the owner's spoof settings win; scam_dev dcg14_spoof 0 = off).
 
