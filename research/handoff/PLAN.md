@@ -2645,3 +2645,22 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
     PixelFullResSizeTest (Robolectric), PixelPro10Test.
   - Check on the phone: log «full resolution 8160x6144 format 37», «full resolution: viewfinder 1440x1080», «ZSL ring in
     memfd … MB» (~96 MB slots), shot-to-shot and merge time at 50 MP, or «full resolution refused».
+
+### P108c — Pixel 10 Pro XL first log (owner, 2026-10-12 evening: DCG crash, restart at 1x -> 2x, green full-resolution viewfinder, processing error)
+- Modules: the scan found 2 / 3 / 4 / 5 / 6 / 9 (strip 0.5x, 1x, 1x = UW crop 9, 2x, 4.5x, 9x).
+- DCG crash (SCAMERA-debug.log 7): ArithmeticException in SaverImplementation.getFrame — a RAW12 post-shutter Image reports
+  pixel stride 0 and the width was rowStride / pixelStride (RAW10 was special-cased). Fixed: packed RAW10 / RAW12 (or pixel
+  stride 0) take the image's width.
+- Full resolution: the session configured, the ring took 95 MB slots (50 MP frames arrive), the merge ran as a native Quad
+  mosaic (measured block 2: the max-resolution RAW is unremosaicked Quad-Bayer) and saved. The ISP viewfinder in that mode is
+  green (it develops the Quad pattern as Bayer, like the 17U's purple mode-9 preview). Now the RAW viewfinder is on in full
+  resolution: LiveRawFrame bins the 2x2 same-colour cells into the plain 4080x3072 Bayer (native unpack + Java bin, at most
+  every 150 ms on the camera thread). The YUV reader stayed 1920x1440 (not part of that session's outputs): harmless.
+- Processing error (processing error.zip): the merge and the photo completed; SCAM_DIAG's stage dump read the half-float RGB
+  (P80) as float32 -> IndexOutOfBounds. Fixed (ScamDiagnostics.buffer half). The photo itself (tele 4, night, ISO 1056,
+  Sabre 2x grid) is grainy with bright speckles vs the stock one: scam-denoise left L2 / L3 luma at 0 with ARK gain 39 —
+  tuning item, open.
+- App restarts 2-14 s after module switches (0-5 -> 0-2, 0-4, 0-6): no Java exception, no crash file. ExitReasons now logs the
+  previous process's ApplicationExitInfo (reason, PSS / RSS, tombstone text for a native crash) at the next start. Suspects:
+  memory (each camera's memfd ring 66 x 24 MB = 1.6 GB, 95 MB slots in full resolution) or a native fault in the ring code.
+

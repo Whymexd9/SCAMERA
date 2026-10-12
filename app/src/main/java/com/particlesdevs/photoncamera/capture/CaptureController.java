@@ -2416,7 +2416,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 fullRes = fr.size;
                 mFullResSession = true;
                 Log.i("SCAM_CAPTURE", "camera " + physicalID + ": full resolution " + fr.size + " format " + fr.format
-                        + " (every stream and request in MAXIMUM_RESOLUTION pixel mode, ZSL ring on, no RAW viewfinder)");
+                        + " (every stream and request in MAXIMUM_RESOLUTION pixel mode, ZSL ring on, RAW viewfinder binned)");
             }
         }
         ArrayList<Size> allTargets = getAllTargets();
@@ -2685,8 +2685,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.i("SCAM_CAPTURE", "session mode=" + PhotonCamera.getSettings().selectedMode
                     + " route=" + (PreferenceKeys.isScamHybridEnabled() ? "SCAM_HYBRID" : PreferenceKeys.isScamEnabled() ? "SCAM_RAW" : "SCAMERA"));
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
-            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected && !mFullResSession
-                    && isRawFormat(mTargetFormat) && PreferenceKeys.isLiveViewfinderRawEnabled();
+            // P108: the full-resolution session always shows the RAW viewfinder (the Pixel ISP's own one is green in that mode)
+            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
+                    && isRawFormat(mTargetFormat) && (PreferenceKeys.isLiveViewfinderRawEnabled() || mFullResSession);
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
@@ -4058,7 +4059,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
                     readStride(img), cfa, white, black, gains, ccm,shading,sw,sh,crop,
-                    com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
+                    // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
+                    mFullResSession ? 2 : com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
                             ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),

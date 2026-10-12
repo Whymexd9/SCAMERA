@@ -45,7 +45,8 @@ public class SaverImplementation {
         int height = image.getHeight();
         int offset = 0;
         int capacity = buffer.capacity();
-        if (format == 0x25) {
+        // packed RAW10 / RAW12 report pixel stride 0 (the Pixel 10 Pro's DCG RAW12 crashed here, 2026-10-12): the image's width
+        if (format == 0x25 || format == ImageFormat.RAW12 || image.getPlanes()[0].getPixelStride() <= 0) {
             width = image.getWidth();
         } else {
             width = rowStride / image.getPlanes()[0].getPixelStride();

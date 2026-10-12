@@ -561,7 +561,7 @@ public final class ScamNeuralClient {
                     clip.flip();ScamRgb.lastClipFlags=clip;
                 }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
             }else if(scamBurst!=null&&scamBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
-            if(scamBurst!=null)ScamDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true);
+            if(scamBurst!=null)ScamDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true,rgbHalf);
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
             log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));

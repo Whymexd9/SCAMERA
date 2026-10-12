@@ -229,6 +229,8 @@ public class PhotonCamera extends Application {
         Log.d("PhotonCamera", "Initializing PhotonCamera Modules");
         initModules();
         super.onCreate();
+        // Why the previous process ended (a native crash or a kill leaves no line of ours): into the log once
+        com.particlesdevs.photoncamera.util.ExitReasons.logPrevious(this);
     }
     private void initModules() {
 

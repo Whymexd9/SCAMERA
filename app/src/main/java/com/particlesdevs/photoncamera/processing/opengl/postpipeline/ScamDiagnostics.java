@@ -95,6 +95,10 @@ public final class ScamDiagnostics {
     /** A diagnostic capture is being written on this thread (the dumps below do something). */
     public static boolean active() { return active.get() != null; }
     public static void buffer(String stage,ByteBuffer bytes,int width,int height,int channels,boolean linear) {
+        buffer(stage,bytes,width,height,channels,linear,false);
+    }
+    /** half: the samples are IEEE half floats (P80 hybrid RGB transport; read as float32 they ran past the buffer, 2026-10-12). */
+    public static void buffer(String stage,ByteBuffer bytes,int width,int height,int channels,boolean linear,boolean half) {
         Job j=active.get();if(j==null)return;
         try {
             int step=Math.max(1,(Math.max(width,height)+1023)/1024),w=width/step,h=height/step;
@@ -104,7 +108,8 @@ public final class ScamDiagnostics {
             for(int y=0;y<h;y++)for(int x=0;x<w;x++) {
                 int pixel=0xff000000;
                 for(int c=0;c<3;c++) {
-                    float v=in.getFloat(((y*step)*width+x*step)*channels*4+c*4);
+                    float v=half?android.util.Half.toFloat(in.getShort(((y*step)*width+x*step)*channels*2+c*2))
+                            :in.getFloat(((y*step)*width+x*step)*channels*4+c*4);
                     out.putFloat(((h-1-y)*w+x)*12+c*4,v);
                     if(!Float.isFinite(v)){invalid++;v=0;}else{min=Math.min(min,v);max=Math.max(max,v);}
                     float display=Math.max(0,Math.min(1,v));if(linear)display=(float)Math.pow(display,1/2.2);

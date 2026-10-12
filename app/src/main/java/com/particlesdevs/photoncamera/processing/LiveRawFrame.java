@@ -46,6 +46,49 @@ public final class LiveRawFrame {
     private static final float[] blackLevel = new float[] {0, 0, 0, 0};
     private static final float[] wbGains = new float[] {1, 1, 1};
     private static final float[] colorTransform = new float[] {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    /** P108: frames this large with a 2x2 mosaic are binned for the viewfinder (a 50 MP Quad-Bayer full-resolution stream). */
+    static final long QUAD_BIN_PIXELS = 30_000_000L;
+    private static final long QUAD_BIN_INTERVAL_NS = 150_000_000L;
+    private static long quadAtNs;
+    private static ByteBuffer quadFull, quadBinned;
+
+    /**
+     * P108: the Quad-Bayer frame's 2x2 same-colour cells averaged into one Bayer site each ((w/2) x (h/2) uint16, native order),
+     * from a packed RAW10 / RAW12 (unpacked first, natively) or a plain 16-bit frame; null when the geometry does not fit.
+     */
+    static synchronized ByteBuffer binQuad(ByteBuffer plane, int w, int h, int stride, int format) {
+        final java.nio.ShortBuffer src;
+        final int srcRow;
+        if (com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format)) {
+            if (quadFull == null || quadFull.capacity() < w * h * 2) quadFull = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+            quadFull.clear();
+            if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, quadFull)) return null;
+            src = quadFull.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
+            srcRow = w;
+        } else {
+            if ((stride & 1) != 0 || (long) (h - 1) * stride + w * 2L > plane.remaining()) return null;
+            ByteBuffer b = plane.duplicate().order(ByteOrder.nativeOrder());
+            b.position(plane.position());
+            src = b.slice().order(ByteOrder.nativeOrder()).asShortBuffer();
+            srcRow = stride / 2;
+        }
+        final int bw = w / 2, bh = h / 2;
+        if (quadBinned == null || quadBinned.capacity() < bw * bh * 2) quadBinned = ByteBuffer.allocateDirect(bw * bh * 2).order(ByteOrder.nativeOrder());
+        java.nio.ShortBuffer out = quadBinned.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
+        for (int y = 0; y < bh; y++) {
+            final int r0 = 2 * y * srcRow, r1 = r0 + srcRow, o = y * bw;
+            for (int x = 0; x < bw; x++) {
+                final int c = 2 * x;
+                int s = (src.get(r0 + c) & 0xFFFF) + (src.get(r0 + c + 1) & 0xFFFF) + (src.get(r1 + c) & 0xFFFF) + (src.get(r1 + c + 1) & 0xFFFF);
+                out.put(o + x, (short) ((s + 2) >> 2));
+            }
+        }
+        ByteBuffer result = quadBinned.duplicate().order(ByteOrder.nativeOrder());
+        result.clear();
+        result.limit(bw * bh * 2);
+        return result;
+    }
+
     /** Bumped on every published frame so the renderer can skip re-uploading. */
     private static int version = 0;
     private static float[] shading = {1,1,1};
@@ -106,6 +149,18 @@ public final class LiveRawFrame {
     /** format: RAW_SENSOR (16-bit rows), or RAW10 / RAW12 (packed rows, unpacked into the frame buffer: the viewfinder is the same). */
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format){
         if (!enabled || plane == null) return;
+        // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
+        // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread)
+        if (block == 2 && (long) w * h >= QUAD_BIN_PIXELS && w % 4 == 0 && h % 4 == 0) {
+            final long now = System.nanoTime();
+            if (now - quadAtNs < QUAD_BIN_INTERVAL_NS) return;
+            quadAtNs = now;
+            ByteBuffer binned = binQuad(plane, w, h, stride, format);
+            if (binned == null) return;
+            publish(binned, w / 2, h / 2, w, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
+                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR);
+            return;
+        }
         final boolean packed = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
         final long rowBytes = packed ? com.particlesdevs.photoncamera.util.RawUnpack.packedRowBytes(format, w) : w * 2L;
         if (w < 2 || h < 2 || cfa < 0 || cfa > 3 || stride < rowBytes || (!packed && (stride & 1) != 0)
