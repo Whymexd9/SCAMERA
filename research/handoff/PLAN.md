@@ -2681,3 +2681,16 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   the slot (a camera without RAW12) while the old parent still held it in its layout transition. Fixed: found in the slot
   first, detached past the transition (endViewTransition), a new button when the old one is still held.
 
+### P107b - X500 Pro Max: result of the DCG / LOFIC search (owner's log 2026-10-13 02:49-03:26)
+- All 66 DCG tries and 44 LOFIC tries ran; nothing gave a 14-bit white / wide RAW or a DCG sensor scenario.
+- Hint 133 / 118 / 119 (100 + sensor mode) with cameraScenario unset or 501 / most of 500..560: the session configures, no
+  preview frame (PREVIEW_STALL), then the vivo camera provider dies («unknown device», «Error configuring streams: Function
+  not implemented (-38) / Broken pipe (-32)», onError 4) and comes back after ~10 s. The HAL acts on the hint (it tries the
+  mode) but fails with our streams (RAW_SENSOR 4096x3072 + preview + YUV).
+- cameraScenario 504, 508, 509, 512, 522, 523, 525, 527, 543, 548 with the hint: frames flow, hint echoed, sensorScenario
+  [cam, 0] (none), white 1023: those scenarios ignore it.
+- The automatic search is off by default now (scam_dev dcg14_search 1 to run it): it crashed the provider dozens of times.
+- Next (needs the owner): the provider's own crash reason (adb logcat -b crash / -b main around one try of hint 133, or the
+  vendor tombstone) to see which stream or format the DCG mode refuses; candidate tries: RAW-only session with hint 133,
+  MediaTek packedRaw / raw.bpp request keys, the RAW stream at the mode's size.
+

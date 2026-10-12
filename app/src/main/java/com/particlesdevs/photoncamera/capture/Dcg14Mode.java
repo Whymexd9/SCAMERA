@@ -159,6 +159,12 @@ public final class Dcg14Mode {
             return;
         }
         if (p.getBoolean("exhausted_" + m, false)) return;
+        // Owner's log 2026-10-13 (all 66 DCG and 44 LOFIC tries): a sensor-mode hint (100 + mode) with our streams stalls the
+        // preview and kills the vivo camera provider («unknown device», then «Error configuring streams: Function not
+        // implemented / Broken pipe», onError 4) on most tries; the camera scenarios that stream (504, 508, 509, 512, 522,
+        // 523, 525, 527, 543, 548) report sensor scenario 0 with white 1023 (no DCG). The automatic search is off by
+        // default; scam_dev "dcg14_search 1" runs it again (each crash restarts the camera service).
+        if (!PreferenceKeys.scamDevSwitch("dcg14_search", false)) return;
         int i = p.getInt("next_" + m, 0);
         if (i >= steps.size()) {
             p.edit().putBoolean("exhausted_" + m, true).commit();
