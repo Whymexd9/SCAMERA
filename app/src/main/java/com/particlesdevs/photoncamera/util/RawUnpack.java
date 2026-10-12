@@ -18,6 +18,34 @@ public final class RawUnpack {
         NATIVE = loaded;
     }
     private RawUnpack() {}
+
+    private static volatile int sRaw10Shift, sRaw12Shift;
+
+    /**
+     * Pixel 10 Pro XL (owner's RAW10 photo, 2026-10-12: green shadows): the main camera declares 12-bit levels (white 4095,
+     * black 256) and its RAW10 stream carries 10-bit samples. The left shift that puts a packed format's samples on the
+     * camera's declared white: 0 when the white fits the format, else the bits between (4095 over RAW10 = 2).
+     */
+    public static int shiftFor(int format, int declaredWhite) {
+        final int bits = format == ImageFormat.RAW10 ? 10 : format == ImageFormat.RAW12 ? 12 : 0;
+        if (bits == 0 || declaredWhite < (1 << bits)) return 0;
+        int need = 32 - Integer.numberOfLeadingZeros(declaredWhite);
+        return Math.max(0, Math.min(6, need - bits));
+    }
+
+    /** The session's shifts for packed RAW10 / RAW12 (Java fallback and liballocator). */
+    public static void setPackedShift(int raw10, int raw12) {
+        sRaw10Shift = raw10;
+        sRaw12Shift = raw12;
+        try {
+            Allocator.setPackedShift(raw10, raw12);
+        } catch (Throwable t) {
+            // an older liballocator: only the Java path shifts
+        }
+    }
+
+    public static int raw10Shift() { return sRaw10Shift; }
+    public static int raw12Shift() { return sRaw12Shift; }
     /**
      * P72: packed MIPI RAW14 behind RAW_SENSOR (Xiaomi 17 Ultra tele in in-sensor zoom, mode 9: 7140 bytes per 4080-wide row).
      * Not an Android format: codes of this app, read only through this class and liballocator. RAW14_TO_10 shifts the 14-bit
@@ -63,18 +91,20 @@ public final class RawUnpack {
                     for (int k = 0; k < 4; k++) out.putShort((short) (v[k] >> shift));
                 }
             } else if (format == ImageFormat.RAW10) {
+                final int s = sRaw10Shift;
                 for (int x = 0; x < width; x += 4, at += 5) {
                     int b4 = src.get(at + 4) & 0xff;
-                    out.putShort((short) (((src.get(at) & 0xff) << 2) | (b4 & 3)));
-                    out.putShort((short) (((src.get(at + 1) & 0xff) << 2) | ((b4 >> 2) & 3)));
-                    out.putShort((short) (((src.get(at + 2) & 0xff) << 2) | ((b4 >> 4) & 3)));
-                    out.putShort((short) (((src.get(at + 3) & 0xff) << 2) | (b4 >> 6)));
+                    out.putShort((short) ((((src.get(at) & 0xff) << 2) | (b4 & 3)) << s));
+                    out.putShort((short) ((((src.get(at + 1) & 0xff) << 2) | ((b4 >> 2) & 3)) << s));
+                    out.putShort((short) ((((src.get(at + 2) & 0xff) << 2) | ((b4 >> 4) & 3)) << s));
+                    out.putShort((short) ((((src.get(at + 3) & 0xff) << 2) | (b4 >> 6)) << s));
                 }
             } else {
+                final int s = sRaw12Shift;
                 for (int x = 0; x < width; x += 2, at += 3) {
                     int b2 = src.get(at + 2) & 0xff;
-                    out.putShort((short) (((src.get(at) & 0xff) << 4) | (b2 & 0x0f)));
-                    out.putShort((short) (((src.get(at + 1) & 0xff) << 4) | (b2 >> 4)));
+                    out.putShort((short) ((((src.get(at) & 0xff) << 4) | (b2 & 0x0f)) << s));
+                    out.putShort((short) ((((src.get(at + 1) & 0xff) << 4) | (b2 >> 4)) << s));
                 }
             }
         }

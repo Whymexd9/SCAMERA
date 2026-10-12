@@ -22,6 +22,17 @@
 #include <unistd.h>
 std::atomic<long> memoryCount{0};
 
+// Pixel 10 Pro XL (owner's RAW10 photo, 2026-10-12: green shadows): its main camera declares 12-bit levels (black 256, white
+// 4095) and the RAW10 stream carries 10-bit samples. Packed RAW10 / RAW12 samples are shifted left by these bits when the
+// camera's declared white is wider than the format (set per session from Java, RawUnpack.setPackedShift), so every level of
+// the metadata (black, white, dynamic levels, noise profile) fits the unpacked data. 0 = as stored.
+static std::atomic<int> gRaw10Shift{0}, gRaw12Shift{0};
+extern "C" JNIEXPORT void JNICALL
+Java_com_particlesdevs_photoncamera_util_Allocator_setPackedShift(JNIEnv*, jclass, jint raw10, jint raw12) {
+    gRaw10Shift.store(raw10 < 0 || raw10 > 6 ? 0 : raw10);
+    gRaw12Shift.store(raw12 < 0 || raw12 > 4 ? 0 : raw12);
+}
+
 // P30: shot arenas. The RAW frames of a Hybrid shot are copied straight into one memfd (the worker's transport) instead of
 // malloc buffers that were copied into the memfd again before the merge (~680 MB, ~250 ms). A frame buffer inside an arena is
 // a view: free() drops a reference instead of freeing it, the arena is unmapped once released by the shot and unreferenced.
@@ -369,6 +380,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert(JNIEnv
 
     // Calculate bytes per row of actual image data (without padding)
     int bytes_per_row = (width * 10) / 8;
+    const int s = gRaw10Shift.load(std::memory_order_relaxed);
 
     // Process each row
     for (int row = 0; row < height; row++) {
@@ -386,10 +398,10 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert(JNIEnv
             uint8_t b4 = row_start[col + 4];
 
             // Convert and store as 16-bit values
-            *output++ = (b0 << 2) | (b4 & 0x03);        // Pixel 0
-            *output++ = (b1 << 2) | ((b4 >> 2) & 0x03); // Pixel 1
-            *output++ = (b2 << 2) | ((b4 >> 4) & 0x03); // Pixel 2
-            *output++ = (b3 << 2) | (b4 >> 6);          // Pixel 3
+            *output++ = (uint16_t)(((b0 << 2) | (b4 & 0x03)) << s);        // Pixel 0
+            *output++ = (uint16_t)(((b1 << 2) | ((b4 >> 2) & 0x03)) << s); // Pixel 1
+            *output++ = (uint16_t)(((b2 << 2) | ((b4 >> 4) & 0x03)) << s); // Pixel 2
+            *output++ = (uint16_t)(((b3 << 2) | (b4 >> 6)) << s);          // Pixel 3
         }
     }
 
@@ -402,16 +414,17 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvert(JNIEnv
 // Helper: decode one RAW10 row into dst (width uint16_t values)
 static void decodeRaw10Row(const uint8_t* row_start, uint16_t* dst, int width) {
     int bytes_per_row = (width * 10) / 8;
+    const int s = gRaw10Shift.load(std::memory_order_relaxed);
     for (int col = 0, px = 0; col + 4 < bytes_per_row && px + 3 < width; col += 5, px += 4) {
         uint8_t b0 = row_start[col];
         uint8_t b1 = row_start[col + 1];
         uint8_t b2 = row_start[col + 2];
         uint8_t b3 = row_start[col + 3];
         uint8_t b4 = row_start[col + 4];
-        dst[px]     = (uint16_t)((b0 << 2) | (b4 & 0x03));
-        dst[px + 1] = (uint16_t)((b1 << 2) | ((b4 >> 2) & 0x03));
-        dst[px + 2] = (uint16_t)((b2 << 2) | ((b4 >> 4) & 0x03));
-        dst[px + 3] = (uint16_t)((b3 << 2) | (b4 >> 6));
+        dst[px]     = (uint16_t)(((b0 << 2) | (b4 & 0x03)) << s);
+        dst[px + 1] = (uint16_t)(((b1 << 2) | ((b4 >> 2) & 0x03)) << s);
+        dst[px + 2] = (uint16_t)(((b2 << 2) | ((b4 >> 4) & 0x03)) << s);
+        dst[px + 3] = (uint16_t)(((b3 << 2) | (b4 >> 6)) << s);
     }
 }
 
@@ -526,12 +539,13 @@ Java_com_particlesdevs_photoncamera_util_Allocator_allocateAndCopyConvertBinning
 // Helper: decode one RAW12 row (MIPI packed, 3 bytes -> 2 pixels) into dst (width uint16_t values)
 static void decodeRaw12Row(const uint8_t* row_start, uint16_t* dst, int width) {
     int bytes_per_row = (width * 12) / 8;
+    const int s = gRaw12Shift.load(std::memory_order_relaxed);
     for (int col = 0, px = 0; col + 2 < bytes_per_row && px + 1 < width; col += 3, px += 2) {
         uint8_t b0 = row_start[col];
         uint8_t b1 = row_start[col + 1];
         uint8_t b2 = row_start[col + 2];
-        dst[px]     = (uint16_t)((b0 << 4) | (b2 & 0x0F));
-        dst[px + 1] = (uint16_t)((b1 << 4) | (b2 >> 4));
+        dst[px]     = (uint16_t)(((b0 << 4) | (b2 & 0x0F)) << s);
+        dst[px + 1] = (uint16_t)(((b1 << 4) | (b2 >> 4)) << s);
     }
 }
 

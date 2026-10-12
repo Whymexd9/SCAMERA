@@ -2667,3 +2667,13 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   убрать»): the Pixel DCG switch, its RAW12 preference and the sequoiaIdcgEnabled key are removed; the full-resolution switch
   takes the manual strip's end slot on the Pixel.
 
+### P108e - Pixel RAW10: green, crushed, banded shadows (owner's photo IMG_20261012_221728, raw10 setting, main camera)
+- Shadows R/G/B = 12/23/5 at luma 8-20, pure black at 0: the main camera declares 12-bit levels (black 256, white 4095) and the
+  RAW10 stream carries 10-bit samples (black ~64): the 12-bit black was taken off 10-bit data (crushed, posterized, green as
+  the unbalanced G survives). Packed RAW10 / RAW12 samples are now shifted onto the declared white on unpacking
+  (RawUnpack.shiftFor / setPackedShift per session; liballocator decodeRaw10Row / decodeRaw12Row / allocateAndCopyConvert,
+  Java fallback); log «declared white 4095, packed RAW10 << 2». 10-bit sensors (white 1023) unchanged. Test RawUnpackShiftTest.
+- A weak 4-px column ripple (0.01 of an 8-bit level) is far below visibility; re-check stripes on the next RAW10 photo.
+- App crash after module switches: ExitReasons says CRASH (Java); the stack is now copied from SCAMERA-crash.log at the next
+  start (owner can also send Download/SCAMERA/SCAMERA-crash.log).
+

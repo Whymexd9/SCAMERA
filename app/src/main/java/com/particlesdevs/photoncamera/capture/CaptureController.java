@@ -2404,6 +2404,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + ", camera " + physicalID + ")");
             mTargetFormat = resolved;
         }
+        // Packed RAW10 / RAW12 samples onto the camera's declared levels (Pixel 10 Pro XL main: white 4095 over RAW10)
+        {
+            Integer declaredWhite = characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+            int dw = declaredWhite == null ? 0 : declaredWhite;
+            int s10 = com.particlesdevs.photoncamera.util.RawUnpack.shiftFor(ImageFormat.RAW10, dw);
+            int s12 = com.particlesdevs.photoncamera.util.RawUnpack.shiftFor(ImageFormat.RAW12, dw);
+            com.particlesdevs.photoncamera.util.RawUnpack.setPackedShift(s10, s12);
+            if (s10 > 0 || s12 > 0) Log.i(TAG, "camera " + physicalID + ": declared white " + dw + ", packed RAW10 << " + s10 + ", RAW12 << " + s12);
+        }
         // P108: the Pixel 10 Pro / Pro XL's full-resolution switch: the RAW stream of the max-resolution map (RAW10 8160x6144)
         mFullResSession = false;
         Size fullRes = null;

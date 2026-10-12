@@ -9,6 +9,8 @@ public class Allocator{
     public static boolean binning = false;
 
     public native static ByteBuffer allocate(int capacity);
+    /** Bits packed RAW10 / RAW12 samples are shifted left by on unpacking (the camera's declared levels are wider). */
+    public native static void setPackedShift(int raw10, int raw12);
 
     public native static ByteBuffer allocateAndCopy(int capacity, ByteBuffer origin, int offset);
     public native static ByteBuffer allocateAndCopyConvert(int capacity, ByteBuffer origin, int width, int row_stride, int offset);
