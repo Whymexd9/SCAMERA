@@ -259,6 +259,30 @@ public final class VivoMtkIsz {
         return s + "×";
     }
 
+    private static final java.util.Set<String> sNoSlotLogged = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * The ISZ module of this camera and factor when it is on the strip already: marked so, or a duplicate of the camera at its
+     * zoom that sends the ROI key (restored settings lose the marks, not the module's vendor keys).
+     */
+    @Nullable
+    private static String existing(SharedPreferences p, String camera, int factor, float zoom) {
+        for (String slot : ModuleRegistry.slots()) {
+            if (!slot.startsWith("back") || !ModuleRegistry.visible(slot) || !camera.equals(ModuleRegistry.camera(slot))) continue;
+            if (p.getInt(MARK + slot, 0) == factor) return slot;
+            if (ModuleRegistry.duplicateOf(slot) != null && Math.abs(ModuleRegistry.zoom(slot) / zoom - 1f) < 0.05f
+                    && hasRoiKey(slot)) return slot;
+        }
+        return null;
+    }
+
+    private static boolean hasRoiKey(String slot) {
+        Context context = PhotonCamera.getSettingsManagerStatic() == null ? null : PhotonCamera.getSettingsManagerStatic().getContext();
+        for (VendorTagUtils.TunableKey k : TunableKeyManager.loadKeys(context, slot))
+            if (k != null && ROI_KEY.equals(k.name)) return true;
+        return false;
+    }
+
     private static String backSlots() {
         StringBuilder b = new StringBuilder();
         for (String slot : ModuleRegistry.slots())
@@ -272,11 +296,21 @@ public final class VivoMtkIsz {
         String camera = ModuleRegistry.camera(source);
         String offered = OFFERED + camera + "_" + factor;
         if (p.getBoolean(offered, false)) return;
+        // X500 Pro Max log 2026-10-13 13:07: its ISZ modules were there (back4..back7) without the offered flags (restored
+        // settings), so every camera start tried again and logged «no free module slot» four times
+        String existing = existing(p, camera, factor, zoom);
+        if (existing != null) {
+            SharedPreferences.Editor e = p.edit().putBoolean(offered, true);
+            if (p.getInt(MARK + existing, 0) != factor) e.putInt(MARK + existing, factor); // restored without its mark
+            e.apply();
+            return;
+        }
         String target = ModuleRegistry.duplicate(source);
         if (target == null) {
             // P109c (X200 Pro log 2026-10-13_3: all eight back buttons in use): not marked offered, so the module comes once a
-            // button is deleted
-            Log.w(TAG, "no free module slot for the " + factor + "x ISZ of camera " + camera + " (back buttons: " + backSlots() + ")");
+            // button is deleted; logged once per process
+            if (sNoSlotLogged.add(offered))
+                Log.w(TAG, "no free module slot for the " + factor + "x ISZ of camera " + camera + " (back buttons: " + backSlots() + ")");
             return;
         }
         SharedPreferences.Editor e = p.edit().putBoolean(offered, true);
