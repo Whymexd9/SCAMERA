@@ -203,6 +203,15 @@ public class HybridPlanTest {
         assertEquals(25_000_000L, photo.requests.get(0).shutterNs);
     }
 
+    /** P113 «Движение»: the ring's frames only, no request after the shutter (no flush, lead or AE restore frame to wait for). */
+    @Test public void motionShotsTakeNothingAfterTheShutter() {
+        HybridPlan plan = HybridPlan.zslOnly(4_000_000L, 20000);
+        assertTrue(plan.requests.isEmpty());
+        assertEquals(4_000_000L, plan.nShutterNs);
+        assertEquals(20000, plan.nIso);
+        assertTrue(plan.description, plan.description.contains("ring frames only"));
+    }
+
     @Test public void noKnownExposureLetsTheCameraExpose() {
         HybridPlan plan = HybridPlan.buildNormalBack(0, 0, 0f, camera(12000), 4);
         assertEquals(4, plan.requests.size());

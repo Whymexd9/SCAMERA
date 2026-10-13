@@ -37,6 +37,19 @@ public class MotionModeTest {
     }
 
     @Test
+    public void aFastSeriesTakesFewerFramesBehindAQueue() {
+        // P113: an empty merge queue keeps the setting; 2-3 waiting shots: 4 frames; more: 2
+        assertEquals(8, MotionMode.framesForQueue(8, 0));
+        assertEquals(8, MotionMode.framesForQueue(8, 1));
+        assertEquals(4, MotionMode.framesForQueue(8, 2));
+        assertEquals(4, MotionMode.framesForQueue(8, 3));
+        assertEquals(2, MotionMode.framesForQueue(8, 4));
+        assertEquals(2, MotionMode.framesForQueue(8, 9));
+        assertEquals(3, MotionMode.framesForQueue(3, 2)); // never more than the setting
+        assertEquals(1, MotionMode.framesForQueue(1, 5));
+    }
+
+    @Test
     public void replacesOnlyTheMergeKeysOfTheMode() {
         assertTrue(MotionMode.replaces("zsl_frames"));
         assertTrue(MotionMode.replaces("shasta"));

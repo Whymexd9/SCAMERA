@@ -262,6 +262,18 @@ public final class HybridPlan {
     }
 
     /** P27: one N frame after the shutter, the plan when Bento / Shasta cannot be planned. */
+    /**
+     * P113 «Движение» (owner, 2026-10-13: «не могу снять быстро подряд например 5 фото … таким же быстрым как моментальный
+     * снимок в стоке»): the ring's frames only, nothing after the shutter (the stock snapshot mode takes its frames from the
+     * buffer as well). No HAL flush, lead or AE restore frame, no series to wait for: the shot is complete at the press and the
+     * shutter is free for the next one.
+     */
+    public static HybridPlan zslOnly(long nShutterNs, int nIso) {
+        return new HybridPlan(new ArrayList<>(), nShutterNs, nIso,
+                String.format(Locale.ROOT, "hybrid plan: N=%.3fms*ISO%d ring frames only («Движение»: nothing after the shutter)",
+                        nShutterNs / 1e6, nIso));
+    }
+
     public static HybridPlan single(long nShutterNs, int nIso) {
         if (nShutterNs <= 0 || nIso <= 0) return autoExposure(1);
         List<Request> out = new ArrayList<>();

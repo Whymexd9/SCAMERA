@@ -3184,6 +3184,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (manager == null) return false;
         android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
         manager.getMemoryInfo(info);
+        // P113: a «Движение» shot is views of the ring's memfd (no new memory) and fewer frames behind a queue: only the
+        // system's low-memory state stops it (was: 1.5 GB free, so a merge in progress blocked the next press on most phones)
+        if (com.particlesdevs.photoncamera.settings.MotionMode.on()) return !info.lowMemory;
         return !info.lowMemory && info.availMem > 1536L * 1024 * 1024;
     }
 
@@ -3204,6 +3207,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     Log.i("SCAM_CAPTURE", "shutter queued behind current capture pending=" + mScamQueuedShots);
                     return true;
                 }
+            }
+            // P113 «Движение»: a press with no ring frame since the previous shot (faster than one frame) waits for one,
+            // instead of exposing frames after the shutter
+            final boolean motionWaited = mMotionWaitExpired;
+            mMotionWaitExpired = false;
+            if (scamShutterQueues() && !mScamFireWaiting && !motionWaited && com.particlesdevs.photoncamera.settings.MotionMode.on()
+                    && !mZslCapturing && !mShotInProgress && !burst && motionRingFrames() == 0) {
+                Log.i("SCAM_CAPTURE", "motion: shutter waits for a ring frame");
+                mScamFireWaiting = true;
+                fireQueuedScamShot(android.os.SystemClock.elapsedRealtime() + MOTION_RING_WAIT_MS);
+                return true;
             }
             if (scamShutterQueues() && !mScamFireWaiting && mScamTailTimestamp != 0 && !previewFreshAfterTail()) {
                 // Pressed just after a tail: the newest preview result still predates
@@ -3587,6 +3601,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * four ring RAWs plus the frame the shutter timestamp is taken from.
      */
     private boolean previewFreshAfterTail() {
+        // P113 «Движение»: the next shot fires as soon as the ring holds a frame (the stock snapshot mode drops to fewer frames
+        // when it is pressed fast, it does not wait); the ring's frames are all newer than the previous shot's (it drained them)
+        if (com.particlesdevs.photoncamera.settings.MotionMode.on()) return motionRingFrames() > 0;
         CaptureResult latest = mPreviewCaptureResult;
         Long ts = latest == null ? null : latest.get(CaptureResult.SENSOR_TIMESTAMP);
         if (ts == null || ts <= mScamTailTimestamp + 5 * 33_000_000L) return false;
@@ -3615,6 +3632,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return run >= 4;
     }
 
+    /** P113: how long a «Движение» press waits for its first ring frame before the shot takes its frames after the shutter. */
+    static final long MOTION_RING_WAIT_MS = 300;
+    /** P113: the wait ran out without a ring frame: the next takePicture shoots without waiting again. */
+    private volatile boolean mMotionWaitExpired;
+
+    /** P113: ring frames with their result (a shot can use them), newer than the previous shot's tail. */
+    private int motionRingFrames() {
+        int n = 0;
+        synchronized (mZslBufferLock) {
+            for (RingFrame image : mZslRingBuffer)
+                if (image.getTimestamp() > mScamTailTimestamp && mHexZslResults.get(image.getTimestamp()) != null) n++;
+        }
+        return n;
+    }
+
     private void fireQueuedScamShot(long deadline) {
         if (mBackgroundHandler == null) {mScamFireWaiting = false; return;}
         CaptureResult latest = mPreviewCaptureResult;
@@ -3623,11 +3655,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         boolean fresh = previewFreshAfterTail();
         if (!fresh && android.os.SystemClock.elapsedRealtime() < deadline) {
             mScamFireWaiting = true;
-            mBackgroundHandler.postDelayed(() -> fireQueuedScamShot(deadline), 30);
+            // P113: «Движение» looks every 5 ms (a ring frame is the whole wait), the other modes every 30 ms
+            mBackgroundHandler.postDelayed(() -> fireQueuedScamShot(deadline),
+                    com.particlesdevs.photoncamera.settings.MotionMode.on() ? 5 : 30);
             return;
         }
         Log.i("SCAM_CAPTURE", "queued shutter fires fresh=" + fresh + " previewAfterTailMs="
                 + (ts == null ? -1 : (ts - tail) / 1_000_000));
+        if (!fresh) mMotionWaitExpired = true;
         mScamFireWaiting = false;
         mScamTailTimestamp = 0;
         if (!takePicture()) Log.w("SCAM_CAPTURE", "queued shutter could not start");
@@ -4990,9 +5025,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // reference from a longer series that the graph cannot use.
                 // The graph consumes four N; frames beyond four (same exposure,
                 // newest first) are merged into those slots by the worker.
-                mPendingZslNormalFrames = drainZslNormalFrames(
-                        scamHybridShot ? PreferenceKeys.getHybridZslFrames() : Math.max(4, PreferenceKeys.getScamZslFrames()),stockPlan,
-                        scamZslRequested,scamHybridShot);
+                // P113: «Движение» behind a queue of merges takes fewer ring frames, as the stock snapshot mode
+                final int zslWanted = scamHybridShot ? PreferenceKeys.getHybridZslFrames() : Math.max(4, PreferenceKeys.getScamZslFrames());
+                final int zslFrames = scamHybridShot && com.particlesdevs.photoncamera.settings.MotionMode.on()
+                        ? com.particlesdevs.photoncamera.settings.MotionMode.framesForQueue(zslWanted, sScamPending.get()) : zslWanted;
+                if (zslFrames != zslWanted) Log.i("SCAM_CAPTURE", "motion: " + sScamPending.get() + " shots wait for their merge, "
+                        + zslFrames + " ring frames for this one (of " + zslWanted + ")");
+                mPendingZslNormalFrames = drainZslNormalFrames(zslFrames,stockPlan,scamZslRequested,scamHybridShot);
                 if (!mPendingZslNormalFrames.isEmpty()) {
                     denoiseFrameCount = mPendingZslNormalFrames.size();
                     long[] zslTimestamps = new long[denoiseFrameCount];
@@ -5099,7 +5138,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     long nNs=baseNs!=null&&baseNs>0?baseNs:stockPlan!=null?stockPlan.shutter(0):0;
                     int nIso=baseIso!=null&&baseIso>0?baseIso:stockPlan!=null?stockPlan.iso(0):0;
                     try {
-                        plan=HybridPlan.build(nNs,nIso,mLastZslClipFraction,mCameraCharacteristics,mExposureLimits);
+                        // P113: «Движение» shoots from the ring alone, as the stock snapshot mode (no frames after the shutter)
+                        plan=com.particlesdevs.photoncamera.settings.MotionMode.on() ? HybridPlan.zslOnly(nNs,nIso)
+                                : HybridPlan.build(nNs,nIso,mLastZslClipFraction,mCameraCharacteristics,mExposureLimits);
                     } catch(RuntimeException noPlan) {
                         Log.w("SCAM_CAPTURE","hybrid plan unavailable ("+noPlan.getMessage()+"): one more N frame after the shutter");
                         plan=HybridPlan.single(nNs,nIso);

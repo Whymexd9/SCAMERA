@@ -2819,3 +2819,17 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   verdict kept (button toast «found» / «none»; long press searches again). Logs «DCG route: …».
 - Check on the X500 Pro Max: DCG button on the main; «DCG route: … (under test)», «DCG14 camera 2 (DCG): sensorScenario …,
   dynamic white …», «wide RAW: … -> white 16383» and «DCG route: 14-bit RAW on the third-party 16:9 video route, kept».
+
+### P113 - «Движение» as fast as the stock snapshot mode (owner, 2026-10-13: «не могу снять быстро подряд например 5 фото, после каждого фото у нас очень большая задержка»)
+- Where the time went (X200 Ultra log 2026-10-13 10:15, Motion mode): press -> submit 20-42 ms -> first post-shutter frame
+  ~420 ms (HAL flush + latency) -> series complete 570-670 ms -> shutter free ~0.7-0.8 s; a queued press then waited for 5 frames
+  after the tail and 4 same-exposure ring RAWs (~0.2-0.3 s more); a merge in progress blocked the next press when less than
+  1.5 GB was free. The stock snapshot mode takes its frames from the buffer, falls back to fewer (one) frames when its queue
+  fills, and does not wait.
+- Done (every phone): HybridPlan.zslOnly - in «Движение» the shot is the ring's frames only (no Bento / extra N after the
+  shutter: no flush, lead, series or AE restore frame), complete at the press; the next press fires as soon as the ring holds
+  one frame (5 ms polling; a press faster than a frame waits up to 300 ms for one, then shoots as before); behind 2-3 queued
+  merges a shot takes at most 4 ring frames, behind more 2 (MotionMode.framesForQueue); the memory gate is only the system's
+  low-memory state in the mode (the frames are views of the ring's memfd). HDR is weaker (no ultrashort highlight frames).
+- Check: a fast series of 5; log «hybrid plan: … ring frames only», «shutter free» right after each SHUTTER, «motion: N shots
+  wait for their merge, k ring frames», «motion: shutter waits for a ring frame».

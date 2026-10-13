@@ -63,6 +63,17 @@ public final class MotionMode {
         PreferenceKeys.setMotionMode(value);
     }
 
+    /**
+     * P113: ring frames a «Движение» shot takes while {@code pending} earlier shots wait for their merge: all it wants with an
+     * empty queue, at most 4 behind 2-3 shots, 2 behind more (the stock snapshot mode drops to fewer frames, down to one, when its
+     * capture queue fills): a fast series keeps going without the memory and the merge time of full bursts piling up.
+     */
+    public static int framesForQueue(int wanted, int pending) {
+        if (pending >= 4) return Math.max(1, Math.min(wanted, 2));
+        if (pending >= 2) return Math.max(1, Math.min(wanted, 4));
+        return wanted;
+    }
+
     /** Whether the mode replaces this hybrid key. */
     static boolean replaces(String key) {
         return DEFAULTS.containsKey(key);
