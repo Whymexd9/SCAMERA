@@ -442,16 +442,17 @@ public class Parameters {
         float reportedMin = Float.MAX_VALUE;
         for (float b : blackLevel) reportedMin = Math.min(reportedMin, b);
         final float paddingBelow = reportedMin > 4f ? reportedMin * 0.25f : -1f;
+        final int blocks = bw * bh;
+        final float[][] means = new float[4][blocks];
+        final boolean[][] low = new boolean[4][blocks], zero = new boolean[4][blocks];
         int padding = 0;
-        float estimate = Float.MAX_VALUE;
         for (int c = 0; c < 4; c++) {
             int ox = c % 2, oy = c / 2;
-            float low1 = Float.MAX_VALUE, low2 = Float.MAX_VALUE, low3 = Float.MAX_VALUE;
             for (int by = 0; by < bh; by++) for (int bx = 0; bx < bw; bx++) {
                 // Every 4th sample of the block both ways (64 per block): the block mean
                 // stays well below 1 DN of noise, at 1/16 of the full-frame read cost.
                 long sum = 0;
-                boolean padded = false;
+                boolean padded = false, allZero = true;
                 for (int y = 0; y < bs; y += 4) {
                     int row = (by * bs + y) * 2 + oy;
                     int base = row * width + bx * bs * 2 + ox;
@@ -459,22 +460,52 @@ public class Parameters {
                         int v = data.get(base + x * 2) & 0xffff;
                         sum += v;
                         padded |= v < paddingBelow; // a block on the border of the padding: its mean is half signal
+                        allZero &= v == 0;
                     }
                 }
-                float mean = sum / (float) ((bs / 4) * (bs / 4));
-                if (padded) { padding++; continue; }
+                final int i = by * bw + bx;
+                means[c][i] = sum / (float) ((bs / 4) * (bs / 4));
+                low[c][i] = padded;
+                zero[c][i] = allZero;
+                if (padded) padding++;
+            }
+        }
+        // P114: padding is a strip of the frame (X200 Pro: 4.6 % of it), a noisy night dips below the quarter now and then. When
+        // most of the frame holds such samples the HAL delivered the RAW without its black pedestal (OPPO Find X8 Ultra, owner's
+        // log 2026-10-13 11:51-12:43 until the phone was restarted: 80-97 % of the blocks, data floor 18-23 DN for a reported 64,
+        // the bracket's measured gains +20 % / -20 %, teal shadows): the floor is then measured over every block but the zero
+        // padding (blocks of exact zeros and their neighbours), else the darkest blocks of the frame are the ones left out.
+        final boolean pedestalLost = paddingBelow > 0 && padding > 2 * blocks;
+        if (pedestalLost) Log.w(TAG, "RAW black floor: " + padding + " of " + (4 * blocks) + " blocks hold samples below " + paddingBelow
+                + " DN: not padding, the RAW came without its black pedestal; measured over every block but zero padding");
+        else if (padding > 0) Log.i(TAG, "RAW black floor: " + padding + " of " + (4 * blocks) + " blocks below " + paddingBelow
+                + " DN skipped (padding / masked area, not signal)");
+        float estimate = Float.MAX_VALUE;
+        for (int c = 0; c < 4; c++) {
+            float low1 = Float.MAX_VALUE, low2 = Float.MAX_VALUE, low3 = Float.MAX_VALUE;
+            for (int by = 0; by < bh; by++) for (int bx = 0; bx < bw; bx++) {
+                final int i = by * bw + bx;
+                if (pedestalLost ? nearZeroBlock(zero[c], bw, bh, bx, by) : low[c][i]) continue;
+                final float mean = means[c][i];
                 if (mean < low1) { low3 = low2; low2 = low1; low1 = mean; }
                 else if (mean < low2) { low3 = low2; low2 = mean; }
                 else if (mean < low3) low3 = mean;
             }
             estimate = Math.min(estimate, low3);
         }
-        if (padding > 0) Log.i(TAG, "RAW black floor: " + padding + " of " + (4 * bw * bh) + " blocks below " + paddingBelow
-                + " DN skipped (padding / masked area, not signal)");
         if (estimate == Float.MAX_VALUE) return;
         blackFloorSource = buffer;
         blackFloorEstimate = estimate;
         applyBlackFloor(estimate);
+    }
+
+    /** P114: a block of exact zeros (padding) or next to one (its border holds both). */
+    private static boolean nearZeroBlock(boolean[] zero, int bw, int bh, int bx, int by) {
+        for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+            int x = bx + dx, y = by + dy;
+            if (x >= 0 && y >= 0 && x < bw && y < bh && zero[y * bw + x]) return true;
+        }
+        return false;
     }
 
     private java.nio.ByteBuffer blackFloorSource;

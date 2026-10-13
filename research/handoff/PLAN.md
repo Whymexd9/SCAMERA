@@ -2833,3 +2833,14 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   low-memory state in the mode (the frames are views of the ring's memfd). HDR is weaker (no ultrashort highlight frames).
 - Check: a fast series of 5; log «hybrid plan: … ring frames only», «shutter free» right after each SHUTTER, «motion: N shots
   wait for their merge, k ring frames», «motion: shutter waits for a ring frame».
+
+### P114 - OPPO Find X8 Ultra: teal shadows until the phone was restarted (owner, 2026-10-13: «словил на Oppo X8 Ultra, прошло после перезапуска телефона»)
+- Owner's log 11:51-12:43: every shot «RAW black floor: 10100-12279 of 12288 blocks below 16.0 DN skipped» and «RAW black
+  level from data: 64 -> 18-23»; the bracket's measured gains +20..24 % (x2 frames) and -18..22 % (x1/8): the black subtracted
+  was too high for the data. After the restart (12:44-12:46): no low samples, gains within 1.5 %, normal colour. The HAL had
+  delivered RAW_SENSOR without its black pedestal (reported 64 static and dynamic); the padding rule (a block with a sample
+  below black / 4 is padding) left out exactly the dark blocks, so the floor came from mid-tones and the shadows lost red.
+- Done: Parameters.refineBlackLevel - when more than half of the blocks hold such samples it is not padding: the floor is
+  measured over every block except zero padding (blocks of exact zeros and their neighbours); log «RAW black floor: … not
+  padding, the RAW came without its black pedestal». The X200 Pro padding and the OPPO's 64 -> 60 drift stay as they were.
+  Tests: ParametersBlackFloorTest (pedestal lost -> black < 5; noisy night with padding keeps ~64).
