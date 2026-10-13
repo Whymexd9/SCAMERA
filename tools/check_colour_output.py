@@ -32,9 +32,19 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 SH = ROOT / 'app/src/main/assets/shaders'
 JAVA = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing'
-# SHA-256 of the token stream of ark/combine.glsl at a3e94db (before P46), #import expanded, comments dropped.
-BASELINE_COMBINE_TOKENS = 'ef87351cdb1f4119297bd776ad6639eb1fc09d1c8518c31ffe25be7c84497490'
+# SHA-256 of the token stream of ark/combine.glsl at a3e94db (before P46) without the sharpening guard (see without_guard),
+# #import expanded, comments dropped.
+BASELINE_COMBINE_TOKENS = 'e4b863e602aa7fd94ce0816e75013241664d8818fbf8394e1f3d33ae69a5186c'
 BASELINE_COMMIT = 'a3e94db'
+
+
+def without_guard(src: str) -> str:
+    """P118 (8fdb8dd): ArkSharpenGuard is gone, so combine.glsl's alpha (gain^-guardU, read only by the guard) is 1. The RGB
+    is untouched: the baseline is compared with the same edit applied."""
+    src = src.replace('uniform float guardU;               // alpha = gain^-guard: the sharpening weight read by '
+                      'ArkSharpenGuard; <= 0 -> alpha 1\n', '')
+    return src.replace('    float weight = guardU > 0.0 ? pow(max(gain, 1.0), -guardU) : 1.0;\n'
+                       '    Output = vec4(clamp(outRgb, 0.0, 1.0), weight);', '    Output = vec4(clamp(outRgb, 0.0, 1.0), 1.0);')
 
 failures: list[str] = []
 skipped: list[str] = []
@@ -187,7 +197,8 @@ def shader_part(strict: bool) -> None:
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
                               capture_output=True, check=True).stdout.decode('utf-8')
-        check(token_hash(base) == BASELINE_COMBINE_TOKENS, 'the stored baseline hash is not the %s shader' % BASELINE_COMMIT)
+        check(token_hash(without_guard(base)) == BASELINE_COMBINE_TOKENS,
+              'the stored baseline hash is not the %s shader' % BASELINE_COMMIT)
         print('  %s shader: the same token stream' % BASELINE_COMMIT)
     except (subprocess.CalledProcessError, FileNotFoundError):
         print('  (%s not in this checkout: the stored hash is the reference)' % BASELINE_COMMIT)
@@ -295,7 +306,7 @@ def gl_part(strict: bool) -> None:
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
                               capture_output=True, check=True).stdout.decode('utf-8')
-        before = render('0', expand_imports(base))
+        before = render('0', expand_imports(without_guard(base)))
         check(np.array_equal(before, srgb), 'P3_OUT 0 renders differently from the %s shader' % BASELINE_COMMIT)
         print('GPU: P3_OUT 0 = the %s shader, bit for bit (%d colours)' % (BASELINE_COMMIT, n))
     except (subprocess.CalledProcessError, FileNotFoundError):
