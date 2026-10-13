@@ -70,6 +70,13 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         VfDrawMeter.frame(System.nanoTime() - t0); // P57
     }
 
+    /** P111: sensor time of the camera frame the viewfinder showed last (the «Движение» shot's moment at the touch). */
+    private static volatile long sShownTimestamp;
+
+    public static long shownTimestamp() {
+        return sShownTimestamp;
+    }
+
     private void drawFrame() {
         // GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
@@ -79,6 +86,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 mUpdateST = false;
                 mHaveFrame = true;
                 mFrameGain = ViewfinderGain.gainFor(mSTexture.getTimestamp()); // P90
+                sShownTimestamp = mSTexture.getTimestamp(); // P111
             }
         }
         applyPendingTransform();

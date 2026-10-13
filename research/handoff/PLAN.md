@@ -2781,3 +2781,28 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   the take-over; the frame's longest shutter does not vote) -> shutters in whole half periods, at least 1/100 (1/120) s.
 - Log: «motion shutter ceiling on: AE ... ns at ISO ... -> ... ns at ISO ...», «motion shutter: mains flicker ...»,
   «motion shutter ceiling: no RAW level ...» / «no settled AE level after 90 frames ...». Not on a device yet.
+
+### P111 - «Движение» like the stock vivo «Моментальный снимок», on every phone (owner, 2026-10-13: «ловила движущиеся объекты на уровне режима "Моментальный снимок" из стока виво», «работал одинаково везде, а не только на виво»)
+- Stock study (VivoCamera 13.0.47.154 from the X200 Ultra, jadx + HAL configs; notes in SCAMERA-PC/evidence/vivo_camera_2026-10-13/
+  notes_requests.md, notes_processing.md, notes_ours.md): module motion_deblur. The HAL measures motion on the preview
+  (vivo.feedback.motionResult, levels 1..5, fed back as vivo.control.motion_level; each level its own AE tuning), the
+  capture fires on touch-down with the frame on the screen (vivo.control.displayTimeStamp), every shot a ~5-frame RAW merge
+  with best-frame pick, fresh frames when the level changed, a stagger (2-exposure) sensor mode, flicker sensor + AI
+  debanding. Vendor keys are not used: the same ideas with public Camera2 and our pipeline.
+- Done (generic):
+  - capture/MotionMeter: thumbnails of the ring RAW (a sample per 16 px), block matching of consecutive frames (checkerboard
+    of tiles, +-64 px) on a low-priority thread: camera motion (median) and subject motion (2nd largest residual), px/s.
+  - MotionShutter.Levels: the ceiling drops in half stops so the smear stays within 2 RAW px (at most 3 stops, >= 1/4000 s);
+    faster at once, back one half stop per 0.6 s. Log «motion level a -> b: subject .. px/s, camera .. px/s -> ceiling ..».
+  - The moment: the frame the viewfinder showed when the finger touched the shutter (MainRenderer.shownTimestamp, else the
+    newest result) is the ZSL cutoff (was: the newest result at release, ~0.1 s later). Log «motion: shutter at the touch».
+  - ScamHybridBurst: the base is the newest ring frame or one of the two before it (70 ms), not the post-shutter frame.
+  - Ring frames with a shutter > 1.12x the moment's frame stay out (AE frames before the ceiling: same brightness, smeared).
+  - HybridPlan.buildNormalBack (empty ring after a shot): the viewfinder's ISO and at most the ceiling's shutter (was the
+    declared ISO and up to 125 ms: 4 ms at ISO 20000 became 25 ms at ISO 3200 on the X200 Ultra).
+  - Bug: hybridTuningText sent the photo boost / motion threshold / Bento to the worker in «Движение»; now the mode's values;
+    widen_below 0 in the mode (the rejected moving subject keeps its detail, the denoise takes the noise).
+  - Flicker: AE anti-banding shutters only suggest it; the ceiling takes over short and the row profiles of the short frames
+    against a band-free AE frame decide (2 frames with > 4 % bands latch 1/100 s, 6 without clear it; 1.5 s no verdict latches).
+- Not on a device yet. Check: «motion level», «motion: shutter at the touch», «motion: base = frame», «no lamp bands» /
+  «mains flicker» lines; press-to-moment and shutter values in the ring.

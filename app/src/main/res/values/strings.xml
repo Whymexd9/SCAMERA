@@ -307,9 +307,9 @@
     <string name="prefs_scam_motion_fps_title">Viewfinder and buffer rate</string>
     <string name="prefs_scam_motion_fps_summary">%s. Maximum: the fastest fixed rate the camera and its RAW stream allow; no buffer frame is exposed longer than one frame interval</string>
     <string name="prefs_scam_motion_shutter_title">Shutter at most</string>
-    <string name="prefs_scam_motion_shutter_summary">%s. When the auto exposure of the camera picks a longer shutter, the shutter stays at this value and the ISO makes up the difference; in the dark it grows only as far as the highest ISO needs</string>
+    <string name="prefs_scam_motion_shutter_summary">%s. When the auto exposure of the camera picks a longer shutter, the shutter stays at this value and the ISO makes up the difference; the faster the subject or the camera moves, the shorter the shutter (up to 3 stops shorter). In the dark it grows only as far as the highest ISO needs</string>
     <string name="prefs_scam_motion_flicker_title">No lamp flicker</string>
-    <string name="prefs_scam_motion_flicker_summary">Under flickering lamps (50 / 60 Hz) the shutter is at least 1/100 / 1/120 s so the frame has no stripes</string>
+    <string name="prefs_scam_motion_flicker_summary">If the short frames show stripes from flickering lamps (50 / 60 Hz), the shutter is at least 1/100 / 1/120 s so the photo has none</string>
     <string name="prefs_scam_motion_frames_title">Frames to merge</string>
     <string name="prefs_scam_motion_frames_summary">The newest buffer frames at the press: fewer frames span less time and merge faster</string>
     <string name="prefs_scam_motion_shasta_summary">Bracketed long frames after the shot; off by default: they smear what moves</string>

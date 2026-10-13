@@ -228,6 +228,22 @@ public class HybridSettingsTest {
         assertArrayEquals(new float[]{1,2},PreferenceKeys.hybridList("test_list",new float[]{1,2}),0f);
     }
 
+    @Test public void motionModeMergeValuesReachTheWorker() {
+        // P86: the «Движение» values of boost / motion threshold / Bento went through hybridString, which knows no mode: the
+        // worker merged with the photo values
+        manager.set("default_scope","pref_scam_hybrid_boost_value","6");
+        manager.set("default_scope","pref_scam_hybrid_motion_threshold","1.5");
+        manager.set("default_scope","pref_scam_hybrid_bento","2");
+        PreferenceKeys.setMotionMode(true);
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("boost 10.0\n"));assertTrue(tuning,tuning.contains("motionThreshold 0.5\n"));
+        assertTrue(tuning,tuning.contains("bento 1.0\n"));assertTrue(tuning,tuning.contains("widenBelow 0.0\n"));
+        PreferenceKeys.setMotionMode(false);
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("boost 6.0\n"));assertTrue(tuning,tuning.contains("motionThreshold 1.5\n"));
+        assertTrue(tuning,tuning.contains("bento 2.0\n"));
+    }
+
     @Test public void roundFiveWorkerKeysReachTheTuningFile() {
         // Unset: the worker keeps its own defaults (cell clip, outlier sites, SCAM Bento checks); the Sabre 6.1 kernel has an app
         // default since P68 (always), written also when unset.

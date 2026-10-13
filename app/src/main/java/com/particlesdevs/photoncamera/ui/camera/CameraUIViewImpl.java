@@ -55,6 +55,12 @@ public class CameraUIViewImpl implements CameraUIView {
         this.mCaptureProgressBar = cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar;
         this.mProcessingProgressBar = bottombuttons.processingProgressBar;
         this.mShutterButton = bottombuttons.shutterButton;
+        // P111: the touch marks the moment of a «Движение» shot (the shot itself still fires on release)
+        this.mShutterButton.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN && cameraFragment.captureController != null)
+                cameraFragment.captureController.notePressDown();
+            return false;
+        });
         this.mVideoRecordingInfo = cameraFragment.cameraFragmentBinding.getRoot().findViewById(R.id.video_recording_info);
         Context context = cameraFragment.cameraFragmentBinding.getRoot().getContext();
         this.shutterRing = shutter(context, ShadeStyle.accent(context));

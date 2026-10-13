@@ -114,6 +114,25 @@ public class ScamHybridBurstRolesTest {
         for (int role : roles) assertEquals(1, role);
     }
 
+    /** P111 «Движение»: the base is the frame of the moment (the newest ring frame or one of the two before it), not the sharper
+     *  frame taken after the shutter; outside the mode the SCAM window as before. */
+    @Test public void motionBaseIsTheFrameOfTheMoment() throws Exception {
+        List<ImageFrame> frames = new ArrayList<>();
+        float[] ringSharpness = {9f, 0.5f, 2f, 1f}; // oldest .. newest ring frame
+        for (float sharp : ringSharpness) {
+            ImageFrame f = frame(ImageFrame.CaptureRole.NORMAL, 4_000_000L, 20000);
+            f.fromZsl = true; f.sharpness = sharp; frames.add(f);
+        }
+        ImageFrame after = frame(ImageFrame.CaptureRole.NORMAL, 4_000_000L, 20000);
+        after.sharpness = 5f; frames.add(after); // the frame after the shutter, the sharpest of the window
+        assertSame(after, base(burst(new ArrayList<>(frames))));
+        prefs.when(PreferenceKeys::isMotionMode).thenReturn(true);
+        // the newest ring frame (1) and the two before it (2, 0.5): the sharper one; the oldest (9) is outside the 3 candidates
+        assertSame(frames.get(2), base(burst(new ArrayList<>(frames))));
+        assertEquals(-1, ScamHybridBurst.baseFrom(java.util.Collections.singletonList(after), true));
+        assertEquals(-1, ScamHybridBurst.baseFrom(frames, false));
+    }
+
     @Test public void noNFrameMakesTheClosestFrameTheBase() throws Exception {
         // X300 Ultra 2026-10-06 shape: every N request lost, L x4.29, S x0.25 and ES x0.0625 arrived.
         List<ImageFrame> frames = new ArrayList<>();

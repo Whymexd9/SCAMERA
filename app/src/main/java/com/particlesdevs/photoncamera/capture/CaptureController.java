@@ -3223,6 +3223,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             Long previewTimestamp = mPreviewCaptureResult.get(CaptureResult.SENSOR_TIMESTAMP);
             scamZslShutterTimestamp = previewTimestamp == null ? 0 : previewTimestamp;
+            // P111 «Движение»: the frame on the screen when the finger touched the shutter, not the one at its release (a tap
+            // lasts ~0.1 s, three ring frames at 30 fps); only a touch of this session after the previous shot's tail
+            final long touched = pressTimestamp(scamZslShutterTimestamp);
+            if (touched > 0) {
+                Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "motion: shutter at the touch, cutoff %.1f ms before the release",
+                        (scamZslShutterTimestamp - touched) / 1e6));
+                scamZslShutterTimestamp = touched;
+            }
             // The vendor shutter AE snapshot (diagnostic only, never applied) walked
             // every vendor key of the result: 37 ms on the UI thread per press, and
             // this HAL does not publish it for Camera2 clients anyway.
@@ -3499,6 +3507,38 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } catch (RuntimeException e) {
             Log.e(TAG, "shot rescue failed: " + Log.getStackTraceString(e));
         }
+    }
+
+    /** P111: the newest preview result's sensor time when the finger touched the shutter, its session and wall time. */
+    private volatile long mPressPreviewTimestamp, mPressAtMs;
+    private volatile int mPressGeneration;
+
+    /**
+     * P111: the finger is on the shutter (the shot fires on release): the frame on the screen now is the moment, as the stock
+     * vivo snapshot mode sends its displayTimeStamp: the viewfinder's last shown camera frame, else the newest preview result.
+     */
+    public void notePressDown() {
+        final CaptureResult latest = mPreviewCaptureResult;
+        final Long ts = latest == null ? null : latest.get(CaptureResult.SENSOR_TIMESTAMP);
+        final long newest = ts == null ? 0 : ts;
+        final long shown = com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.shownTimestamp();
+        mPressGeneration = mSessionGeneration.get();
+        mPressAtMs = android.os.SystemClock.elapsedRealtime();
+        mPressPreviewTimestamp = shown > 0 && shown <= newest && newest - shown < 300_000_000L ? shown : newest;
+    }
+
+    /**
+     * P111: the touch's frame for the «Движение» cutoff, 0 when it does not apply (mode off, no touch: the volume key fires on
+     * key-down already; a touch of an older session, older than 1.5 s, before the previous shot's tail, or not before
+     * {@code releaseCutoff}). Used once.
+     */
+    private long pressTimestamp(long releaseCutoff) {
+        final long touched = mPressPreviewTimestamp;
+        mPressPreviewTimestamp = 0;
+        if (touched <= 0 || !com.particlesdevs.photoncamera.settings.MotionMode.on()) return 0;
+        if (mPressGeneration != mSessionGeneration.get() || android.os.SystemClock.elapsedRealtime() - mPressAtMs > 1500) return 0;
+        if (touched >= releaseCutoff || (mScamTailTimestamp != 0 && touched <= mScamTailTimestamp)) return 0;
+        return touched;
     }
 
     /** P27: a shot is between its press and the end of its post-shutter frames. */
@@ -4623,6 +4663,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return Math.max(ZSL_RING_MAX_GAP_NS, exposure != null ? 4 * exposure : 0L);
     }
 
+    /** P111: {@code frame}'s shutter is more than 12 % longer than {@code base}'s (unknown: not longer). */
+    static boolean longerShutter(CaptureResult base, CaptureResult frame) {
+        Long b = base == null ? null : base.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Long f = frame == null ? null : frame.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        return b != null && f != null && b > 0 && f > b * 1.12;
+    }
+
     /** P27: the Hybrid's ring selection (see drainZslNormalFrames); closes the frames it does not keep. */
     private void selectHybridRing(List<RingFrame> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
         RingFrame base = null;
@@ -4653,6 +4700,24 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (Math.abs(ev) <= 0.05) exact.add(image);
             else if (ev >= -0.5 && ev < 0) darker.add(image);
             else rest.add(image);
+        }
+        // P111 «Движение»: a ring frame with a longer shutter than the moment's frame is smeared even at the same brightness
+        // (the frames of the camera AE before the shutter ceiling took over); as the stock snapshot mode takes fresh frames when
+        // its motion level changed, they stay out of the merge
+        if (com.particlesdevs.photoncamera.settings.MotionMode.on()) {
+            final CaptureResult baseResult = metadata.get(base.getTimestamp());
+            int longer = 0;
+            for (List<RingFrame> tier : java.util.Arrays.asList(exact, darker)) {
+                for (java.util.Iterator<RingFrame> it = tier.iterator(); it.hasNext(); ) {
+                    RingFrame image = it.next();
+                    if (image != base && longerShutter(baseResult, metadata.get(image.getTimestamp()))) {
+                        rest.add(image);
+                        it.remove();
+                        longer++;
+                    }
+                }
+            }
+            if (longer > 0) Log.i("SCAM_HDR", "motion: " + longer + " ring frames with a longer shutter than the moment's frame left out");
         }
         exact.sort(java.util.Comparator.comparingLong(RingFrame::getTimestamp).reversed());
         // P77: frames of the same exposure behind a gap of the ring (the AE went away and came back) show another moment of the
@@ -5041,7 +5106,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     plan=manualPsl && stockPlan!=null
                             ? HybridPlan.manualLong(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,mExposureLimits)
                             : stockPlan!=null
-                            ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4,mExposureLimits)
+                            ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4,mExposureLimits,
+                                    paramController.motionCeilingNs())
                             : HybridPlan.autoExposure(4);
                 }
                 } finally { HybridPlan.setMotionCap(0); }

@@ -33,6 +33,7 @@ public final class RawLevel {
 
     public static void clear() {
         latest = null;
+        MotionMeter.clear();
     }
 
     /** One ring frame (camera's RAW reader thread). {@code plain}: the payload check found a plain 16-bit frame. */
@@ -44,6 +45,7 @@ public final class RawLevel {
             ShortBuffer s = p.getBuffer().duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
             double m = mean(s, img.getWidth(), img.getHeight(), p.getRowStride() / 2, black, white);
             if (!Double.isNaN(m)) latest = new Sample(m, img.getTimestamp());
+            MotionMeter.observe(s, img.getWidth(), img.getHeight(), p.getRowStride() / 2, black, img.getTimestamp()); // P111
         } catch (RuntimeException ignored) {
             // a frame closed under us or an odd layout: no level from it
         }

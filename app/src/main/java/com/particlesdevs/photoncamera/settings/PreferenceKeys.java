@@ -979,9 +979,12 @@ public class PreferenceKeys {
             // the whole F6 field first (A/B), "hybrid_la_scam N" lowers the priority of the banded F6 threads.
             {"profile", "profile"}, {"laThreads", "la_threads"}, {"laStream", "la_stream"}, {"laScam", "la_scam"},
         };
+        final boolean motion = isMotionMode();
         for (String[] k : keys) {
             Float dev = scamDevValue("hybrid_" + k[1]);
-            String v = dev != null ? dev.toString() : hybridString(k[1], "");
+            // P86: in «Движение» the mode's own merge values (boost, motion threshold, Bento), as hybridValue gives them
+            String v = dev != null ? dev.toString()
+                    : motion && MotionMode.replaces(k[1]) ? Float.toString(hybridValue(k[1], 0f)) : hybridString(k[1], "");
             // P68: a key with an app default (HYBRID_DEFAULTS) is written also when unset; any other keeps the worker default
             if ((v == null || v.isEmpty()) && HYBRID_DEFAULTS.containsKey(k[1])) v = HYBRID_DEFAULTS.get(k[1]).toString();
             if (v == null || v.isEmpty()) continue;

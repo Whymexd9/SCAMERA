@@ -172,14 +172,29 @@ public final class HybridPlan {
 
     public static HybridPlan buildNormalBack(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, int normals,
                                              ExposureLimits limits) {
+        return buildNormalBack(nShutterNs, nIso, clipFraction, characteristics, normals, limits, 0);
+    }
+
+    /**
+     * {@code motionCapNs} > 0 («Движение»): the N frames keep the viewfinder's ISO (the HAL gave it, only a learned cap lowers it)
+     * and a shutter no longer than the N shutter or this ceiling; what is left of the exposure stays missing (the worker scales
+     * by the ratio): a darker frame, never a smeared one. Was: the ISO clamped to the declared range and the shutter stretched
+     * up to the handheld cap (X200 Ultra after a shot: 4 ms at ISO 20000 became 25 ms at the declared ISO 3200).
+     */
+    public static HybridPlan buildNormalBack(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, int normals,
+                                             ExposureLimits limits, long motionCapNs) {
         if (nShutterNs <= 0 || nIso <= 0) return autoExposure(normals);
         Range<Long> times = characteristics == null ? null : capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
                 limits == null ? Long.MAX_VALUE : limits.shutterCap());
         Range<Integer> isos = characteristics == null ? null : capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE),
                 limits == null ? Integer.MAX_VALUE : limits.isoCap());
-        int iso = isos == null ? nIso : Math.max(isos.getLower(), Math.min(isos.getUpper(), nIso));
+        final boolean motion = motionCapNs > 0;
+        int iso = motion ? Math.max(1, Math.min(nIso, limits == null ? Integer.MAX_VALUE : limits.isoCap()))
+                : isos == null ? nIso : Math.max(isos.getLower(), Math.min(isos.getUpper(), nIso));
         long ns = Math.round((double) nShutterNs * nIso / iso);
-        if (times != null) ns = Math.max(times.getLower(), Math.min(Math.min(times.getUpper(), Math.max(nShutterNs, HANDHELD_SHUTTER_CAP_NS)), ns));
+        final long top = Math.max(nShutterNs, motion ? motionCapNs : HANDHELD_SHUTTER_CAP_NS);
+        if (times != null) ns = Math.max(times.getLower(), Math.min(Math.min(times.getUpper(), top), ns));
+        else if (motion) ns = Math.min(top, ns);
         final double ratio = (double) ns * iso / ((double) nShutterNs * nIso);
         List<Request> out = new ArrayList<>();
         for (int i = 0; i < Math.max(1, normals); i++) out.add(new Request(ImageFrame.CaptureRole.NORMAL, ns, iso, ratio));

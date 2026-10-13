@@ -31,6 +31,9 @@ public final class ScamHybridBurst implements ScamTransport {
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // SCAM: base candidates within 205 ms of the newest frame
     private static final int BASE_CANDIDATES = 4;
+    /** P111 «Движение»: the base is the frame of the moment (the newest ring frame) or one of the two before it, 70 ms at most. */
+    static final long MOTION_BASE_WINDOW_NS = 70_000_000L;
+    static final int MOTION_BASE_CANDIDATES = 3;
     // Frames one burst sends (the app's own cap: 41 N + 7 bracketed / ultrashort; the worker takes up to kHybridMaxFrames = 128,
     // scam-hybrid.h, and holds kHybridGpuFrames = 128 on the GPU).
     private static final int WORKER_MAX_FRAMES = 48;
@@ -229,15 +232,21 @@ public final class ScamHybridBurst implements ScamTransport {
         }
         // Base frame: the sharpest of the newest candidates within the SCAM time window.
         long newest = normal.get(0).timestamp;
-        ImageFrame best = normal.get(0); double bestScore = -1;
-        for (int i = 0; i < Math.min(BASE_CANDIDATES, normal.size()); i++) {
+        final int from = baseFrom(normal, com.particlesdevs.photoncamera.settings.MotionMode.on());
+        final boolean moment = from >= 0;
+        final int start = moment ? from : 0;
+        final long anchor = normal.get(start).timestamp;
+        ImageFrame best = normal.get(start); double bestScore = -1;
+        for (int i = start; i < Math.min(start + (moment ? MOTION_BASE_CANDIDATES : BASE_CANDIDATES), normal.size()); i++) {
             ImageFrame f = normal.get(i);
-            if (newest - f.timestamp > BASE_WINDOW_NS) break;
+            if (anchor - f.timestamp > (moment ? MOTION_BASE_WINDOW_NS : BASE_WINDOW_NS)) break;
             if (Float.isNaN(f.sharpness)) f.computeSharpness();
             double s = Float.isNaN(f.sharpness) ? 0 : f.sharpness;
             if (s > bestScore) { bestScore = s; best = f; }
         }
         base = best;
+        if (moment) Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "motion: base = frame %d, %.1f ms before the moment's frame (%d after it skipped)",
+                base.number, (anchor - base.timestamp) / 1e6, start));
         final double ref = product(base);
         add(base, ROLE_NORMAL, ref, newest);
         // The worker holds at most WORKER_MAX_FRAMES frames (uniform arrays); the oldest N frames go first,
@@ -289,6 +298,17 @@ public final class ScamHybridBurst implements ScamTransport {
         Log.i("SCAM_HDR", "hybrid burst: frames=" + frames.size() + " base=" + base.number + " sharpness=" + base.sharpness
                 + " normals=" + normals + " bracketed=" + bracketedCount
                 + " ultrashort=" + ultrashort + " noise=" + noiseSource + " base slope=" + noise.get(0)[0] + " offset=" + noise.get(0)[1]);
+    }
+
+    /**
+     * P111: in «Движение» the base candidates start at the newest ring frame (the one at the press: the cutoff is the touch's
+     * frame), not at a frame taken after the shutter; -1 outside the mode or without ring frames (the SCAM window as before).
+     * {@code normal} is newest first.
+     */
+    static int baseFrom(List<ImageFrame> normal, boolean motion) {
+        if (!motion) return -1;
+        for (int i = 0; i < normal.size(); i++) if (normal.get(i).fromZsl) return i;
+        return -1;
     }
 
     /** P27: a frame this much darker (or barely brighter) than the base is merged as an N frame (HybridPlan.classify's band). */

@@ -175,6 +175,34 @@ public class HybridPlanTest {
         assertEquals(ImageFrame.CaptureRole.NORMAL, plan.classify(request(0, ImageFrame.CaptureRole.NORMAL), result(16_666_667L, 12000)));
     }
 
+    /** «Движение» after a shot (empty ring): X200 Ultra, the ceiling's 4 ms at ISO 20000, declared ISO up to 3200. */
+    @Test public void motionNormalBackKeepsTheShortShutter() {
+        HybridPlan plan = HybridPlan.buildNormalBack(4_000_000L, 20000, 0f, camera(3200), 4, null, 4_000_000L);
+        for (int i = 0; i < 4; i++) {
+            HybridPlan.Request r = plan.requests.get(i);
+            assertEquals(4_000_000L, r.shutterNs);
+            assertEquals(20000, r.iso); // the viewfinder's ISO, not the declared 3200 with a 25 ms shutter
+            assertEquals(1.0, r.ratio, 0.01);
+        }
+        // a learned honoured cap lowers the ISO: the frame is darker (ratio < 1), the shutter stays within the ceiling
+        ExposureLimits limits = new ExposureLimits("test");
+        CaptureRequest q = mock(CaptureRequest.class);
+        when(q.get(CaptureRequest.CONTROL_AE_MODE)).thenReturn(CaptureRequest.CONTROL_AE_MODE_OFF);
+        when(q.get(CaptureRequest.SENSOR_SENSITIVITY)).thenReturn(20000);
+        when(q.get(CaptureRequest.SENSOR_EXPOSURE_TIME)).thenReturn(4_000_000L);
+        CaptureResult got = result(4_000_000L, 10000);
+        limits.observeManual(q, got);
+        limits.observeManual(q, got);
+        HybridPlan capped = HybridPlan.buildNormalBack(4_000_000L, 20000, 0f, camera(3200), 4, limits, 4_000_000L);
+        assertEquals(10000, capped.requests.get(0).iso);
+        assertEquals(4_000_000L, capped.requests.get(0).shutterNs);
+        assertEquals(0.5, capped.requests.get(0).ratio, 0.01);
+        // outside the mode: as before (declared ISO, the shutter carries the rest)
+        HybridPlan photo = HybridPlan.buildNormalBack(4_000_000L, 20000, 0f, camera(3200), 4, null, 0);
+        assertEquals(3200, photo.requests.get(0).iso);
+        assertEquals(25_000_000L, photo.requests.get(0).shutterNs);
+    }
+
     @Test public void noKnownExposureLetsTheCameraExpose() {
         HybridPlan plan = HybridPlan.buildNormalBack(0, 0, 0f, camera(12000), 4);
         assertEquals(4, plan.requests.size());

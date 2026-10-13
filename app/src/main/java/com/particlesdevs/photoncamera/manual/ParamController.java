@@ -200,6 +200,9 @@ public class ParamController implements Observer {
     // P110 «Движение» shutter ceiling ({@link MotionShutter}): its own AE-off request, apart from the manual priority
     private final MotionShutter.Controller motion = new MotionShutter.Controller();
     private final MotionShutter.Limits motionLimits = new MotionShutter.Limits();
+    private final MotionShutter.Levels motionLevels = new MotionShutter.Levels();
+    /** P111: the ceiling of the last viewfinder result (the setting lowered by the motion level). */
+    private long motionCapNs;
     private boolean motionNoLevelLogged, motionUnsafeLogged;
     private int motionUnlearned;
     private volatile boolean motionTap, motionActive;
@@ -207,6 +210,16 @@ public class ParamController implements Observer {
     /** The ceiling holds the viewfinder request (AE off for the camera AE, not a hand-set exposure). */
     public boolean motionCeilingActive() {
         return motionActive;
+    }
+
+    /**
+     * The «Движение» shutter ceiling in force (the setting, at least the latched mains half period), 0 when the mode is off or
+     * the exposure is set by hand: the frames after the shutter keep within it (HybridPlan.buildNormalBack).
+     */
+    public synchronized long motionCeilingNs() {
+        if (!com.particlesdevs.photoncamera.settings.MotionMode.on() || manualIso() || manualShutter()) return 0;
+        final long setting = MotionShutter.settingNs(PreferenceKeys.hybridValue("mm_shutter", 250f));
+        return motion.capNs(motionCapNs > 0 && setting > 0 ? Math.min(setting, motionCapNs) : setting);
     }
 
     /** A tap meters a new point (TouchFocus): the AE meters it, the ceiling learns that and takes over again. */
@@ -299,16 +312,33 @@ public class ParamController implements Observer {
         }
         final com.particlesdevs.photoncamera.capture.RawLevel.Sample sample = com.particlesdevs.photoncamera.capture.RawLevel.sample();
         final boolean aeOff = aeMode != null && aeMode == CaptureRequest.CONTROL_AE_MODE_OFF;
+        // P111: the setting lowered by how fast the scene moves (the stock snapshot mode's motion levels)
+        final com.particlesdevs.photoncamera.capture.MotionMeter.Sample moving = com.particlesdevs.photoncamera.capture.MotionMeter.sample();
+        final int levelBefore = motionLevels.level();
+        final long cap = motionLevels.capNs(setting, moving == null ? Double.NaN : moving.pxPerS(), moving == null ? 0 : moving.atNs,
+                System.nanoTime());
+        motionCapNs = cap;
+        if (motionLevels.level() != levelBefore && moving != null)
+            Log.i(TAG, String.format(java.util.Locale.ROOT, "motion level %d -> %d: subject %.0f px/s, camera %.0f px/s (%d of %d tiles moved) -> ceiling %d ns",
+                    levelBefore, motionLevels.level(), moving.subjectPxPerS, moving.cameraPxPerS, moving.moved, moving.textured, cap));
         // the top ISO: the rulers' range, at most what the HAL honours for AE-off requests (P27, paired with their requests)
-        motionLimits.set(setting, motionMaxNs(), isoMin(), Math.min(isoMax(), captureController.honouredIsoCap()), flickerSafe,
+        motionLimits.set(cap, motionMaxNs(), isoMin(), Math.min(isoMax(), captureController.honouredIsoCap()), flickerSafe,
                 evStops());
         final boolean wasActive = motion.active();
         final long oldShutter = motion.shutterNs(), flickerBefore = motion.flickerHalfNs();
+        final com.particlesdevs.photoncamera.capture.MotionMeter.Profile rows = com.particlesdevs.photoncamera.capture.MotionMeter.profile();
+        final long suspectBefore = motion.suspectHalfNs();
+        final boolean bandFreeBefore = motion.bandFree();
         final int action = motion.onResult(timestamp, exposure, iso, aeOff, aeState, flicker,
-                sample == null ? 0 : sample.timestampNs, sample == null ? Double.NaN : sample.level, motionLimits, System.nanoTime());
+                sample == null ? 0 : sample.timestampNs, sample == null ? Double.NaN : sample.level,
+                rows == null ? 0 : rows.timestampNs, rows == null ? null : rows.bins, motionLimits, System.nanoTime());
+        if (motion.suspectHalfNs() != suspectBefore && motion.suspectHalfNs() > 0)
+            Log.i(TAG, "motion shutter: the AE's shutters suggest mains flicker (" + motion.suspectHalfNs() + " ns), the frames decide");
         if (motion.flickerHalfNs() != flickerBefore)
             Log.i(TAG, "motion shutter: mains flicker, shutters in whole " + motion.flickerHalfNs() + " ns");
-        if (!wasActive && !aeOff && exposure > setting && Double.isNaN(motion.target()) && !motionNoLevelLogged
+        if (motion.bandFree() && !bandFreeBefore)
+            Log.i(TAG, "motion shutter: no lamp bands on the short frames, short shutters stay");
+        if (!wasActive && !aeOff && exposure > cap && Double.isNaN(motion.target()) && !motionNoLevelLogged
                 && (sample == null || ++motionUnlearned >= 90)) {
             // nothing learned: no RAW level at all, or levels that never pair with a settled AE frame (diagnosis)
             motionNoLevelLogged = true;
@@ -319,7 +349,7 @@ public class ParamController implements Observer {
         if (action == MotionShutter.APPLY) {
             if (!wasActive)
                 Log.i(TAG, "motion shutter ceiling on: AE " + exposure + " ns at ISO " + iso + " -> " + motion.shutterNs()
-                        + " ns at ISO " + motion.iso() + " (ceiling " + motion.capNs(setting) + " ns)");
+                        + " ns at ISO " + motion.iso() + " (ceiling " + motion.capNs(cap) + " ns, motion level " + motionLevels.level() + ")");
             else if (motion.shutterNs() != oldShutter)
                 Log.i(TAG, "motion shutter " + oldShutter + " -> " + motion.shutterNs() + " ns at ISO " + motion.iso());
             motionApply(builder);
@@ -577,6 +607,8 @@ public class ParamController implements Observer {
         synchronized (this) {
             // P110: a new session (lens, restart) starts on the camera AE; the ceiling learns its frames again
             motion.reset();
+            motionLevels.reset();
+            motionCapNs = 0;
             motionActive = motionTap = false;
             motionNoLevelLogged = motionUnsafeLogged = false;
             motionUnlearned = 0;

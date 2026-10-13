@@ -218,9 +218,9 @@
     <string name="prefs_scam_motion_fps_title">Частота видоискателя и буфера</string>
     <string name="prefs_scam_motion_fps_summary">%s. Максимум: самая высокая фиксированная частота, которую позволяют камера и её поток RAW; ни один кадр буфера не экспонируется дольше одного интервала кадра</string>
     <string name="prefs_scam_motion_shutter_title">Выдержка не длиннее</string>
-    <string name="prefs_scam_motion_shutter_summary">%s. Когда автоэкспозиция камеры выбирает выдержку длиннее, выдержка остаётся на этом значении, а разницу добирает ISO; в темноте она растёт ровно настолько, насколько не хватает максимального ISO</string>
+    <string name="prefs_scam_motion_shutter_summary">%s. Когда автоэкспозиция камеры выбирает выдержку длиннее, выдержка остаётся на этом значении, а разницу добирает ISO; чем быстрее движется объект или камера, тем выдержка короче (до 3 ступеней). В темноте она растёт ровно настолько, насколько не хватает максимального ISO</string>
     <string name="prefs_scam_motion_flicker_title">Без мерцания ламп</string>
-    <string name="prefs_scam_motion_flicker_summary">При мерцающих лампах (50 / 60 Гц) выдержка не короче 1/100 / 1/120 с, чтобы на кадре не было полос</string>
+    <string name="prefs_scam_motion_flicker_summary">Если на коротких кадрах видны полосы от мерцающих ламп (50 / 60 Гц), выдержка не короче 1/100 / 1/120 с, чтобы на снимке их не было</string>
     <string name="prefs_scam_motion_frames_title">Кадров в склейке</string>
     <string name="prefs_scam_motion_frames_summary">Самые свежие кадры буфера в момент нажатия: чем меньше кадров, тем короче отрезок времени и быстрее склейка</string>
     <string name="prefs_scam_motion_shasta_summary">Длинные брекет-кадры после снимка; по умолчанию выкл: они смазывают движущееся</string>

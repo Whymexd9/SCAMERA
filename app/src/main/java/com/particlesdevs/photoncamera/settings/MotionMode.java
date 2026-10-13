@@ -20,6 +20,10 @@ import java.util.Map;
  *   <li>P110: the shutter of the ring frames has a ceiling (pref_scam_hybrid_mm_shutter, 1/250 s; manual/MotionShutter):
  *       a longer shutter of the camera's AE becomes the ceiling with the ISO raised (the fixed frame rate alone left 1/30 s,
  *       the photo mode's own indoor shutter);</li>
+ *   <li>P111, after the stock vivo «Моментальный снимок» (motion deblur): the ceiling drops by how fast the scene moves
+ *       (capture/MotionMeter on the ring's RAW, MotionShutter.Levels), the moment is the frame on the screen at the touch of the
+ *       shutter, the merge's base is that frame, ring frames with a longer shutter stay out, the frames after the shutter keep
+ *       the ceiling, the moving subject keeps its detail (no widened base kernel), lamp flicker is checked on the frames;</li>
  *   <li>the hybrid takes its own values for the merge (pref_scam_hybrid_mm_&lt;key&gt;, the «Движение» group of the Hybrid
  *       settings) instead of the photo values: fewer N frames (a short time span, a fast merge), no Shasta (long frames smear
  *       what moves), Bento only where the frame clips, the strongest motion robustness.</li>
@@ -41,6 +45,9 @@ public final class MotionMode {
         d.put("boost_value", 10f);      // motion robustness boost at its maximum
         d.put("motion_threshold", 0.5f); // tiles count as moving from 0.5 RAW px of local flow (photo: 1.5)
         d.put("motion_boost", 1f);      // switch: the robustness boost on
+        // P111: no widened base kernel where donors were rejected (the moving subject): its detail stays, the denoise (stronger
+        // there through the effective-frame map) takes the noise
+        d.put("widen_below", 0f);
         DEFAULTS = Collections.unmodifiableMap(d);
     }
     /** Frame rate of the ring: 0 = the fastest the RAW stream allows (default), else this rate if the camera has it. */

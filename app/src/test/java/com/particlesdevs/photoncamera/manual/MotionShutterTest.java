@@ -25,6 +25,8 @@ public class MotionShutterTest {
         long ts = 1_000_000_000L;
         double scene;
         int frames;
+        /** Row profiles of the ring frames: null none; false a scene without flicker; true lamps that band short frames. */
+        Boolean lamps;
 
         Sim(boolean flickerSafe, double scene) {
             l.set(CAP, FRAME, ISO_MIN, ISO_MAX, flickerSafe, 0);
@@ -38,7 +40,9 @@ public class MotionShutterTest {
         int frame(long ns, int iso, boolean aeOff, Integer aeState, Integer flicker, double level) {
             ts += FRAME;
             frames++;
-            return c.onResult(ts, ns, iso, aeOff, aeState, flicker, Double.isNaN(level) ? 0 : ts, level, l, ts);
+            final float[] profile = lamps == null ? null : profile(lamps && !MotionShutter.Controller.multiple(ns, 10 * MS), frames);
+            return c.onResult(ts, ns, iso, aeOff, aeState, flicker, Double.isNaN(level) ? 0 : ts, level, profile == null ? 0 : ts,
+                    profile, l, ts);
         }
 
         /** A frame of the camera AE, settled, at the level the scene gives it. */
@@ -68,6 +72,29 @@ public class MotionShutterTest {
         double product() {
             return c.iso() * (c.shutterNs() / 1e9);
         }
+    }
+
+    /** A row profile of the scene (32 bins), with the bands 100 Hz lamps put into a short frame (phase moving per frame). */
+    private static float[] profile(boolean banded, int frame) {
+        float[] p = new float[32];
+        for (int i = 0; i < p.length; i++) {
+            double v = 1 + 0.25 * Math.sin(i / 3.0) + 0.1 * Math.cos(i / 7.0) + 0.002 * Math.sin(i * 7.3 + frame); // scene + noise
+            if (banded) v *= 1 + 0.2 * Math.sin(2 * Math.PI * i / 14.0 + frame * 2.1);
+            p[i] = (float) v;
+        }
+        return p;
+    }
+
+    @Test
+    public void bandAmplitudeSeesLampsNotTheScene() {
+        assertEquals(0, MotionShutter.Controller.bandAmplitude(profile(false, 3), profile(false, 1)), 0.01);
+        assertTrue(MotionShutter.Controller.bandAmplitude(profile(true, 3), profile(false, 1)) > 0.15);
+        // an exposure step and vignetting (a linear trend) are no bands
+        float[] ramp = profile(false, 1);
+        for (int i = 0; i < ramp.length; i++) ramp[i] *= 1.5f * (1 + 0.004f * i);
+        assertEquals(0, MotionShutter.Controller.bandAmplitude(ramp, profile(false, 1)), 0.01);
+        assertTrue(Double.isNaN(MotionShutter.Controller.bandAmplitude(profile(true, 1), null)));
+        assertTrue(Double.isNaN(MotionShutter.Controller.bandAmplitude(new float[32], profile(false, 1))));
     }
 
     @Test
@@ -240,16 +267,31 @@ public class MotionShutterTest {
 
     @Test
     public void mainsFlickerDecidesBeforeTheCeiling() {
-        // X500 Pro Max indoors: the AE at exactly 20.00 ms (anti-banding), STATISTICS_SCENE_FLICKER 0, ceiling 1/250 s
+        // X500 Pro Max indoors: the AE at exactly 20.00 ms (anti-banding), STATISTICS_SCENE_FLICKER 0, ceiling 1/250 s: the vote
+        // decides first, the short frames then show whether the lamps band
         Sim s = new Sim(true, 0.2 / 74.0);
+        s.lamps = true;
         assertEquals(MotionShutter.FLICKER_FRAMES, s.engage(20 * MS, 3700));
-        assertEquals(10 * MS, s.c.flickerHalfNs());
-        assertEquals(10 * MS, s.c.shutterNs()); // no stripes: 1/100 s at least
+        assertEquals(10 * MS, s.c.suspectHalfNs());
+        assertEquals(CAP, s.c.shutterNs());
+        for (int i = 0; i < LATENCY + MotionShutter.BAND_HITS; i++) s.held();
+        assertEquals(10 * MS, s.c.flickerHalfNs()); // bands on the short frames: no stripes, 1/100 s at least
+        assertEquals(10 * MS, s.c.shutterNs());
         assertEquals(7400, s.c.iso());
-        // an AE already at 10 ms has nothing to give: no take-over
+        // the anti-banding setting alone, no flickering lamps: the short frames have no bands, 1/250 s stays
         Sim t = new Sim(true, 0.2 / 74.0);
-        assertEquals(-1, t.engage(10 * MS, 7400));
-        assertEquals(10 * MS, t.c.flickerHalfNs());
+        t.lamps = false;
+        t.engage(20 * MS, 3700);
+        for (int i = 0; i < LATENCY + MotionShutter.BAND_MISSES; i++) t.held();
+        assertTrue(t.c.bandFree());
+        assertEquals(0, t.c.flickerHalfNs());
+        assertEquals(CAP, t.c.shutterNs());
+        // no row profiles at all: latched once the wait is over
+        Sim u = new Sim(true, 0.2 / 74.0);
+        u.engage(20 * MS, 3700);
+        for (int i = 0; i < 60; i++) u.held();
+        assertEquals(10 * MS, u.c.flickerHalfNs());
+        assertEquals(10 * MS, u.c.shutterNs());
     }
 
     @Test
@@ -276,9 +318,11 @@ public class MotionShutterTest {
 
     @Test
     public void flickerShuttersStayWholeHalfPeriods() {
-        // night under lamps: AE 30 ms at ISO 35000 (product 1050) -> ~16.8 ms at the top ISO -> 20 ms
+        // night under lamps: AE 30 ms at ISO 35000 (product 1050) -> ~16.8 ms at the top ISO -> bands -> 20 ms
         Sim s = new Sim(true, 0.2 / 1050);
+        s.lamps = true;
         assertEquals(MotionShutter.FLICKER_FRAMES, s.engage(30 * MS, 35000));
+        for (int i = 0; i < LATENCY + MotionShutter.BAND_HITS; i++) s.held();
         assertEquals(20 * MS, s.c.shutterNs());
         assertEquals(52500, s.c.iso());
     }
@@ -291,6 +335,33 @@ public class MotionShutterTest {
         s.engage(25 * MS, 35000);
         assertEquals(FRAME, s.c.shutterNs());
         assertEquals(16000, s.c.iso());
+    }
+
+    @Test
+    public void motionLevelsLowerTheCeilingByHalfStops() {
+        // 1/250 s and 2 px of smear: 500 px/s fits, 1000 px/s needs 2 ms (two half stops), a sprint is capped at 6 half stops
+        assertEquals(0, MotionShutter.Levels.wanted(CAP, 0));
+        assertEquals(0, MotionShutter.Levels.wanted(CAP, Double.NaN));
+        assertEquals(0, MotionShutter.Levels.wanted(CAP, 500));
+        assertEquals(2, MotionShutter.Levels.wanted(CAP, 1000));
+        assertEquals(MotionShutter.Levels.MAX_LEVEL, MotionShutter.Levels.wanted(CAP, 100_000));
+        MotionShutter.Levels l = new MotionShutter.Levels();
+        long t = 1_000_000_000L;
+        assertEquals(CAP, l.capNs(CAP, 300, t, t));
+        assertEquals(2 * MS, l.capNs(CAP, 1000, t, t)); // faster: at once
+        assertEquals(500_000L, l.capNs(CAP, 4000, t, t)); // a sprint: 1/2000 s
+        // the subject stops: one half stop back per 0.6 s, not at once
+        t += 100 * MS;
+        assertEquals(500_000L, l.capNs(CAP, 0, t, t));
+        t += 600 * MS;
+        assertEquals(707_107L, l.capNs(CAP, 0, t, t), 1);
+        // no measurement for a second: still
+        for (int i = 0; i < 10; i++) { t += 600 * MS; l.capNs(CAP, 4000, 0, t); }
+        assertEquals(0, l.level());
+        assertEquals(0, l.capNs(0, 4000, t, t)); // «Off»
+        // never below 1/4000 s
+        MotionShutter.Levels fast = new MotionShutter.Levels();
+        assertEquals(MotionShutter.Levels.MIN_CAP_NS, fast.capNs(MS, 100_000, t, t));
     }
 
     @Test

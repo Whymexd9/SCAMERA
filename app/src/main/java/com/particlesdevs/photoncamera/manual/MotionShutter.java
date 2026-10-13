@@ -34,6 +34,14 @@ public final class MotionShutter {
     static final int AE_CONVERGED = 2, AE_LOCKED = 3, AE_FLASH_REQUIRED = 4;
     /** Results kept for pairing a RAW level with its frame (about 0.8 s at 30 fps). */
     static final int RECORDS = 24;
+    /**
+     * P111 Lamp flicker the AE's anti-banding shutters only suggest is checked on the frames themselves (the stock vivo snapshot
+     * mode has a flicker sensor for it): row bands of more than this (half peak to peak, against a band-free frame of the AE)
+     * on two short frames latch it; six frames without them clear it for the session; no verdict within 1.5 s latches it.
+     */
+    static final double BAND_MAX = 0.04;
+    static final int BAND_HITS = 2, BAND_MISSES = 6;
+    static final long BAND_WAIT_NS = 1_500_000_000L;
 
     private MotionShutter() {}
 
@@ -52,6 +60,52 @@ public final class MotionShutter {
 
     /** One look of the controller: what the request needs. */
     public static final int NONE = 0, APPLY = 1, RELEASE = 2;
+
+    /**
+     * P111 The ceiling by how fast the scene moves (capture/MotionMeter), as the stock vivo snapshot mode's motion levels pick
+     * its exposure: the shutter that keeps the smear within {@link #BLUR_PX} RAW px, in half stops below the setting (at most
+     * {@link #MAX_LEVEL} half stops, not below 1/4000 s). A faster level at once; back one half stop per {@link #HOLD_NS} of
+     * slower motion (a subject that stops for a moment keeps the short shutter); no measurement for a second counts as still.
+     */
+    public static final class Levels {
+        static final double BLUR_PX = 2.0;
+        static final int MAX_LEVEL = 6;
+        static final long HOLD_NS = 600_000_000L, STALE_NS = 1_000_000_000L, MIN_CAP_NS = 250_000L;
+        private int level;
+        private long changedAtNs;
+
+        public int level() { return level; }
+
+        public void reset() {
+            level = 0;
+            changedAtNs = 0;
+        }
+
+        /** Half stops below the setting the motion needs ({@code pxPerS} RAW px / s, NaN or <= 0: still). */
+        static int wanted(long settingNs, double pxPerS) {
+            if (settingNs <= 0 || !(pxPerS > 0)) return 0;
+            final double needNs = BLUR_PX / pxPerS * 1e9;
+            final double halfStops = 2 * Math.log(settingNs / needNs) / Math.log(2);
+            return (int) Math.max(0, Math.min(MAX_LEVEL, Math.ceil(halfStops - 0.25)));
+        }
+
+        /** The ceiling for {@code settingNs} (0: none) after a measurement of {@code pxPerS} taken at {@code sampleAtNs}. */
+        public long capNs(long settingNs, double pxPerS, long sampleAtNs, long nowNs) {
+            if (settingNs <= 0) {
+                reset();
+                return 0;
+            }
+            final int want = nowNs - sampleAtNs > STALE_NS ? 0 : wanted(settingNs, pxPerS);
+            if (want > level) {
+                level = want;
+                changedAtNs = nowNs;
+            } else if (want < level && nowNs - changedAtNs >= HOLD_NS) {
+                level--;
+                changedAtNs = nowNs;
+            }
+            return Math.max(Math.min(settingNs, MIN_CAP_NS), Math.round(settingNs / Math.pow(2, level / 2.0)));
+        }
+    }
 
     /** What the request may use: the setting, one ring frame, the ISO range (top = what the HAL honours), EV, flicker. */
     public static final class Limits {
@@ -79,8 +133,10 @@ public final class MotionShutter {
         private int iso;
         private int over, under, stable;
         private double lastAeProduct;
-        private long flickerHalfNs;
-        private int votes50, votes60;
+        private long flickerHalfNs, suspectHalfNs, engagedAtNs, usedProfileTs;
+        private int votes50, votes60, bandHits, bandMisses;
+        private boolean bandFree;
+        private float[] refProfile;
         private long usedLevelTs, lastLevelAtNs;
         private final long[] recTs = new long[RECORDS], recNs = new long[RECORDS];
         private final int[] recIso = new int[RECORDS];
@@ -91,15 +147,21 @@ public final class MotionShutter {
         public long shutterNs() { return shutterNs; }
         public int iso() { return iso; }
         public long flickerHalfNs() { return flickerHalfNs; }
+        /** The half period the AE's shutters suggest, not yet seen on the frames (0: none). */
+        public long suspectHalfNs() { return suspectHalfNs; }
+        /** Short frames showed no row bands: the suggested flicker is cleared for the session. */
+        public boolean bandFree() { return bandFree; }
         public double target() { return target0; }
 
         /** A new session (camera, lens, restart): the AE's frames teach it again. */
         public void reset() {
             drop();
-            votes50 = votes60 = stable = 0;
+            votes50 = votes60 = stable = bandHits = bandMisses = 0;
             lastAeProduct = 0;
-            flickerHalfNs = 0;
-            usedLevelTs = lastLevelAtNs = 0;
+            flickerHalfNs = suspectHalfNs = 0;
+            bandFree = false;
+            refProfile = null;
+            usedLevelTs = lastLevelAtNs = usedProfileTs = 0;
             java.util.Arrays.fill(recTs, 0);
         }
 
@@ -126,14 +188,21 @@ public final class MotionShutter {
          */
         public int onResult(long timestampNs, long ns, int iso, boolean aeOff, Integer aeState, Integer sceneFlicker,
                             long levelTs, double level, Limits l, long nowNs) {
+            return onResult(timestampNs, ns, iso, aeOff, aeState, sceneFlicker, levelTs, level, 0, null, l, nowNs);
+        }
+
+        /** The same with the newest row profile of a ring frame ({@code profileTs} its sensor timestamp; null: none). */
+        public int onResult(long timestampNs, long ns, int iso, boolean aeOff, Integer aeState, Integer sceneFlicker,
+                            long levelTs, double level, long profileTs, float[] profile, Limits l, long nowNs) {
             final boolean settled = !aeOff && settled(aeState, ns, iso);
             record(timestampNs, ns, iso, aeOff, settled);
             if (!l.flickerSafe) {
-                flickerHalfNs = 0;
-                votes50 = votes60 = 0;
+                flickerHalfNs = suspectHalfNs = 0;
+                votes50 = votes60 = bandHits = bandMisses = 0;
             } else {
                 // the AE's own shutters vote, not the frame's longest one (33.3 ms at 30 fps is 4 x 8.33 ms by chance)
                 latchFlicker(ns, sceneFlicker, !aeOff && ns < l.maxNs * 0.97);
+                checkBands(profileTs, profile, nowNs);
             }
             int frame = -1;
             if (levelTs != 0 && levelTs != usedLevelTs && level > 0 && level <= 1) {
@@ -160,19 +229,22 @@ public final class MotionShutter {
                 over = 0;
                 return NONE;
             }
-            // under lamps the flicker vote decides first, so the ceiling starts on whole half periods
-            final int need = l.flickerSafe && flickerHalfNs == 0 && (votes50 > 0 || votes60 > 0) ? FLICKER_FRAMES : ENGAGE_FRAMES;
+            // under lamps the flicker vote decides first (then the frames themselves), so the ceiling starts knowing it
+            final int need = l.flickerSafe && flickerHalfNs == 0 && suspectHalfNs == 0 && !bandFree && (votes50 > 0 || votes60 > 0)
+                    ? FLICKER_FRAMES : ENGAGE_FRAMES;
             over = ns > cap * ENGAGE_RATIO ? over + 1 : 0;
             if (over < need) return NONE;
             over = under = 0;
             active = true;
             product = (double) aeIso * ns / 1e9;
-            lastLevelAtNs = nowNs;
+            lastLevelAtNs = engagedAtNs = nowNs;
             choose(cap, l);
             return APPLY;
         }
 
         private int hold(int frame, double level, Limits l, long nowNs) {
+            // a suggested flicker no frame has decided on in time: latched (no stripes rather than a guess)
+            if (suspectHalfNs > 0 && flickerHalfNs == 0 && nowNs - engagedAtNs > BAND_WAIT_NS) latchSuspect();
             final long cap = capNs(l.settingNs);
             if (cap <= 0) {
                 drop();
@@ -251,16 +323,81 @@ public final class MotionShutter {
             return -1;
         }
 
-        /** The mains flicker: reported by the HAL, or the AE's anti-banding shutters (whole multiples of 10 / 8.33 ms). */
+        /**
+         * The mains flicker: reported by the HAL (latched at once), or suggested by the AE's anti-banding shutters (whole
+         * multiples of 10 / 8.33 ms; the anti-banding setting alone gives them too, so the frames decide: checkBands).
+         */
         private void latchFlicker(long aeNs, Integer sceneFlicker, boolean vote) {
             if (flickerHalfNs > 0) return;
             if (sceneFlicker != null && sceneFlicker == FLICKER_50HZ) { flickerHalfNs = HALF_PERIOD_50HZ_NS; return; }
             if (sceneFlicker != null && sceneFlicker == FLICKER_60HZ) { flickerHalfNs = HALF_PERIOD_60HZ_NS; return; }
-            if (!vote) return;
+            if (!vote || bandFree || suspectHalfNs > 0) return;
             votes50 = multiple(aeNs, HALF_PERIOD_50HZ_NS) ? votes50 + 1 : 0;
             votes60 = multiple(aeNs, HALF_PERIOD_60HZ_NS) && !multiple(aeNs, HALF_PERIOD_50HZ_NS) ? votes60 + 1 : 0;
-            if (votes50 >= FLICKER_FRAMES) flickerHalfNs = HALF_PERIOD_50HZ_NS;
-            else if (votes60 >= FLICKER_FRAMES) flickerHalfNs = HALF_PERIOD_60HZ_NS;
+            if (votes50 >= FLICKER_FRAMES) suspectHalfNs = HALF_PERIOD_50HZ_NS;
+            else if (votes60 >= FLICKER_FRAMES) suspectHalfNs = HALF_PERIOD_60HZ_NS;
+        }
+
+        private void latchSuspect() {
+            flickerHalfNs = suspectHalfNs;
+            suspectHalfNs = 0;
+        }
+
+        /**
+         * A ring frame's row profile: before the take-over a settled AE frame at whole half periods is the band-free reference;
+         * under the ceiling a frame that is no whole multiple of the suggested half period shows the lamps' bands against it, or
+         * none.
+         */
+        private void checkBands(long profileTs, float[] profile, long nowNs) {
+            if (profile == null || profileTs == 0 || profileTs == usedProfileTs) return;
+            final int f = find(profileTs);
+            if (f < 0) return;
+            usedProfileTs = profileTs;
+            if (!active) {
+                if (!recAeOff[f] && recSettled[f] && (multiple(recNs[f], HALF_PERIOD_50HZ_NS) || multiple(recNs[f], HALF_PERIOD_60HZ_NS)))
+                    refProfile = profile;
+                return;
+            }
+            if (suspectHalfNs <= 0 || flickerHalfNs > 0 || !recAeOff[f] || multiple(recNs[f], suspectHalfNs)) return;
+            final double bands = bandAmplitude(profile, refProfile);
+            if (Double.isNaN(bands)) {
+                latchSuspect(); // no band-free reference to judge by
+            } else if (bands > BAND_MAX) {
+                if (++bandHits >= BAND_HITS) latchSuspect();
+            } else if (++bandMisses >= BAND_MISSES) {
+                bandFree = true;
+                suspectHalfNs = 0;
+                votes50 = votes60 = 0;
+            }
+        }
+
+        /**
+         * Row bands of {@code profile} against the band-free {@code reference} (row profiles of one scene): the ratio less its
+         * linear trend (vignetting, an exposure step), a median of three against one odd bin, half its peak to peak; NaN when
+         * the profiles do not fit.
+         */
+        public static double bandAmplitude(float[] profile, float[] reference) {
+            if (profile == null || reference == null || profile.length != reference.length || profile.length < 8) return Double.NaN;
+            final int n = profile.length;
+            final double[] q = new double[n];
+            double sx = 0, sy = 0, sxx = 0, sxy = 0;
+            for (int i = 0; i < n; i++) {
+                if (!(reference[i] > 0) || !(profile[i] > 0)) return Double.NaN;
+                q[i] = profile[i] / reference[i];
+                sx += i;
+                sy += q[i];
+                sxx += (double) i * i;
+                sxy += i * q[i];
+            }
+            final double slope = (n * sxy - sx * sy) / (n * sxx - sx * sx), mean = sy / n, offset = mean - slope * sx / n;
+            double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+            for (int i = 1; i < n - 1; i++) {
+                final double a = q[i - 1] - (offset + slope * (i - 1)), b = q[i] - (offset + slope * i), c = q[i + 1] - (offset + slope * (i + 1));
+                final double m = Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+                lo = Math.min(lo, m);
+                hi = Math.max(hi, m);
+            }
+            return (hi - lo) / 2 / mean;
         }
 
         static boolean multiple(long ns, long halfNs) {
