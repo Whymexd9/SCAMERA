@@ -131,9 +131,9 @@ public final class ShadeCatalog {
     static {
         NUMERIC_TEXT.put("pref_scamhdr_long_boost_ev", 0.1f);
     }
-    /** Never pinnable: switches a sensor mode (Quad), belongs to one phone only, or is part of the FORMAT choice (the codec). */
+    /** Never pinnable: belongs to one phone only, is part of the FORMAT choice (the codec), or is set once for the place (the lamp flicker). */
     private static final Set<String> NOT_PINNABLE = new HashSet<>(Arrays.asList(
-            PreferenceKeys.Key.KEY_QUAD_BAYER.mValue, PHOTO_FORMAT,
+            PHOTO_FORMAT, "pref_antibanding_hz_key",
             PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue, PreferenceKeys.Key.CAMERA_MODE.mValue));
 
     /** Curated look of a key: short tile name, short value labels, icon of the setting and of each value. */

@@ -27,7 +27,6 @@
     <string name="theme_follow_system">Как в системе</string>
     <string name="cfa">Фильтр Байера</string>
     <string name="energy_saving">Энергосбережение</string>
-    <string name="show_gradient">Показать градиентный фон</string>
     <string name="app_summary">RAW-камера с многокадровой обработкой SCAM Hybrid и SCAM HDR</string>
     <string name="version_title">Версия</string>
     <string name="eis_toggle_text">Стабилизация тряски</string>
@@ -37,7 +36,7 @@
     <string name="unprocessed_raw">Необработанный RAW</string>
     <string name="backup">Сохранить</string>
     <string name="reset_preferences_warning">Это сбросит настройки на стандартные, продолжить?</string>
-    <string name="backup_summary_json">Сохранить все настройки и профили модулей в XML-файл в Download/SCAMERA/XML</string>
+    <string name="backup_summary_json">Сохранить все настройки и профили модулей в файл в Download/SCAMERA/XML</string>
     <string name="app_will_restart">Приложение перезапустится</string>
     <string name="restore">Восстановить</string>
     <string name="restore_summary_json">Загрузить настройки из XML-файла в Download/SCAMERA/XML или выбрать файл</string>
@@ -107,7 +106,7 @@
     <string name="ae_metering_average">Среднее по кадру</string>
     <string name="ae_metering_spot">Точечный</string>
     <string name="ae_metering_std">Замер AE</string>
-    <string name="ultrahdr_summary">Карта усиления Ultra HDR в JPEG (второй, лёгкий проход тона)</string>
+    <string name="ultrahdr_summary">В JPEG добавляется карта яркости: на HDR-экранах света ярче. Обычный экран покажет обычное фото.</string>
     <string name="ai_denoise">ИИ-шумоподавление Bayer</string>
     <string name="ai_denoise_strength">Сила ИИ-шумоподавления</string>
     <string name="ai_denoise_luma">ИИ Luma, %</string>
@@ -115,7 +114,7 @@
     <string name="ai_denoise_model">Модель ИИ-шумоподавления</string>
     <string name="show_horizon_on_preview">Показывать горизонт в превью</string>
     <string name="sensor_configurations">Настройки сенсоров по модулям</string>
-    <string name="sensor_configurations_summary">Уровни RAW, экспозиция, стабилизация и сессия каждого модуля</string>
+    <string name="sensor_configurations_summary">Уровни RAW, стабилизация, сессия и вендорные ключи каждого модуля</string>
     <string name="options">Параметры</string>
     <string name="perm_open_settings">Открыть настройки</string>
     <string name="perm_settings_title">Нужны разрешения</string>
@@ -127,39 +126,39 @@
     <string name="perm_group_storage">Память</string>
     <string name="perm_rationale_media_title">Доступ к фото и видео</string>
     <string name="sharp_radius">Радиус</string>
-    <string name="sharp_radius_desc">Радиус размытия в пикселях. RawTherapee: 0.5</string>
+    <string name="sharp_radius_desc">Толщина подчёркнутых контуров, px. Больше — контуры толще, заметнее ореолы; меньше — тоньше.</string>
     <string name="sharp_amount">Сила, %</string>
-    <string name="sharp_amount_desc">Доля разницы, возвращаемая в изображение. RawTherapee: 200</string>
+    <string name="sharp_amount_desc">Сила нерезкой маски. Больше — резче, но больше ореолов и шума; меньше — мягче.</string>
     <string name="sharp_contrast">Порог контраста, %</string>
-    <string name="sharp_contrast_desc">Резкость гасится там, где локальный контраст ниже порога — плоские участки и шум не усиливаются. RawTherapee: 20</string>
+    <string name="sharp_contrast_desc">Ниже этого контраста резкости нет. Больше — гладкие места и шум не трогаются, меньше — резкость везде.</string>
     <string name="sharp_threshold_bl">Узел 1 (начало нарастания)</string>
     <string name="sharp_threshold_tl">Узел 2 (полная сила)</string>
     <string name="sharp_threshold_tr">Узел 3 (начало спада)</string>
     <string name="sharp_threshold_br">Узел 4 (конец спада)</string>
     <string name="sharp_edges_only">Включить</string>
-    <string name="sharp_edges_only_desc">RawTherapee: выключено</string>
+    <string name="sharp_edges_only_desc">Резкость только по краям: гладкие участки и шум не усиливаются.</string>
     <string name="sharp_edges_radius">Радиус детектора</string>
     <string name="sharp_edges_tolerance">Допуск</string>
-    <string name="sharp_edges_tolerance_desc">В шкале 0–32768. RawTherapee: 1800</string>
+    <string name="sharp_edges_tolerance_desc">Какой перепад яркости считается краем. Больше — резкость только у сильных краёв, меньше — и у слабых.</string>
     <string name="sharp_halo_control">Включить</string>
-    <string name="sharp_halo_control_desc">RawTherapee: выключено</string>
+    <string name="sharp_halo_control_desc">Контроль ореолов: резкость не выходит за яркость соседних пикселей.</string>
     <string name="sharp_halo_amount">Сила, %</string>
     <string name="sharp_micro_amount">Сила</string>
     <string name="sharp_micro_uniformity">Однородность</string>
-    <string name="sharp_micro_uniformity_desc">Выбирает набор ограничений по яркости, 0–10. RawTherapee: 5</string>
+    <string name="sharp_micro_uniformity_desc">Равномерность по яркости. Больше — сильнее, в том числе в светах и тенях; меньше — в основном в средних тонах.</string>
     <string name="sharp_micro_contrast">Порог контраста, %</string>
     <string name="sharp_micro_matrix">Матрица 3x3</string>
-    <string name="sharp_micro_matrix_desc">Выключено — 5x5, как в RawTherapee по умолчанию</string>
+    <string name="sharp_micro_matrix_desc">Окно 3x3 вместо 5x5: подчёркивается самая мелкая фактура.</string>
     <string name="sharp_usm_enabled">Включить Unsharp Mask</string>
     <string name="sharp_deconv_enabled">Включить RL-деконволюцию</string>
     <string name="sharp_micro_enabled">Включить микроконтраст</string>
     <string name="sharp_deconv_halo">Сила, %</string>
     <string name="sharp_deconv_halo_margin">Запас на текстуру</string>
-    <string name="sharp_deconv_halo_margin_desc">Доля локального размаха, которую разрешено пройти свободно — мелкая фактура не ограничивается</string>
+    <string name="sharp_deconv_halo_margin_desc">Запас для мелкой фактуры при подавлении ореолов. Больше — фактура чётче, но риск каёмок; меньше — строже.</string>
     <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
-    <string name="sharp_deconv_halo_macro_desc">Локальный контраст, выше которого подавление работает в полную силу</string>
+    <string name="sharp_deconv_halo_macro_desc">Контраст, с которого ореолы подавляются полностью. Больше — лишь на самых резких краях, меньше — и на слабых.</string>
     <string name="sharp_deconv_kernel">Тип ядра PSF</string>
-    <string name="sharp_deconv_kernel_desc">%s. Форма функции рассеяния точки для этой ступени</string>
+    <string name="sharp_deconv_kernel_desc">%s. Форма размытия, которое исправляет эта ступень.</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Гаусс (классика)</item>
         <item>Оптика / линза (Pillbox)</item>
@@ -168,18 +167,18 @@
     <string name="sharp_deconv_radius">Радиус</string>
     <string name="sharp_deconv_amount">Сила, %</string>
     <string name="sharp_deconv_iterations">Итерации</string>
-    <string name="sharp_deconv_iterations_desc">0 отключает ступень. Каждая итерация — два полноразмерных прохода</string>
+    <string name="sharp_deconv_iterations_desc">Число проходов ступени. Больше — резче, но медленнее и с артефактами; меньше — мягче; 0 — выкл.</string>
     <string name="sharp_deconv_damping">Затухание</string>
-    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где расхождение объяснимо шумом</string>
+    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где разница похожа на шум. Больше — меньше шума, но мягче; 0 — выкл.</string>
     <string name="live_viewfinder_raw">Живой видоискатель</string>
-    <string name="live_viewfinder_raw_summary">Предпросмотр с проявлением RAW. При выключении или недоступности RAW — стандартное превью камеры. Полная обработка снимка выполняется после съёмки.</string>
+    <string name="live_viewfinder_raw_summary">Видоискатель сам проявляет RAW. Выкл. — обычное превью камеры. На готовое фото не влияет.</string>
     <string name="remosaic_enabled">Включить ремозаик</string>
     <string name="remosaic_enabled_desc">Только для камер, отдающих quad или tetra мозаику</string>
     <string name="remosaic_phase_x">Фаза по X</string>
     <string name="remosaic_phase_y">Фаза по Y</string>
-    <string name="remosaic_phase_desc">Смещение сетки блоков. Неверная фаза даёт цветную сетку — подбирается по снимку</string>
+    <string name="remosaic_phase_desc">Сдвиг сетки блоков по горизонтали. Неверное значение даёт цветную сетку; нейросети нужен 0.</string>
     <string name="remosaic_profile">Характер интерполяции</string>
-    <string name="remosaic_profile_desc">Сколько сглаживания вносит ремозаик</string>
+    <string name="remosaic_profile_desc">Сколько ремозаик сглаживает картинку: мягче — меньше шума, резче — больше деталей.</string>
     <string-array name="remosaic_profile_entries">
         <item>Ближайший отсчёт — без сглаживания</item>
         <item>Резкий — узкое ядро</item>
@@ -187,13 +186,13 @@
         <item>Мягкий — широкое ядро и медиана</item>
     </string-array>
     <string name="remosaic_steered">Интерполяция по направлению</string>
-    <string name="remosaic_steered_desc">Зелёный достраивается вдоль кромки, а не поперёк. Усреднение через кромку даёт промежуточное значение, а по нему считаются цветовые разности — отсюда цветная кайма у букв и контуров</string>
+    <string name="remosaic_steered_desc">Достраивает зелёный вдоль краёв, а не поперёк — меньше цветной каймы у букв и контуров.</string>
     <string name="remosaic_clamp">Ограничение цветовых разностей</string>
-    <string name="remosaic_clamp_desc">Интерполированная разность не выходит за пределы измеренных рядом. На ровной поверхности не меняет ничего, на кромке срезает выброс — тот самый розовый ореол</string>
+    <string name="remosaic_clamp_desc">Не даёт цвету на краях выходить за соседние значения — убирает розовый ореол.</string>
     <string name="remosaic_dump">Сохранять выход ремозаика</string>
     <string name="remosaic_dump_desc">Кладёт рядом с обычным DNG ещё один — ровно то, что записал узел, до демозаика. Нужен, чтобы отличить ошибку самого ремозаика от ошибки стадий после него. Каждый снимок занимает ещё 24 МБ</string>
     <string name="remosaic_flatfield">Плоское поле блока</string>
-    <string name="remosaic_flatfield_desc">Фотосайты внутри блока отличаются откликом — на этом сенсоре до 12 %, и по-своему для каждого цвета. Профиль снимается с самого кадра и делится обратно, иначе он входит в зелёное поле и с обратным знаком в цветовые разности: цветной налёт на мелкой структуре. Эталонное приложение этого не делает, поэтому по умолчанию выключено — включать как эксперимент</string>
+    <string name="remosaic_flatfield_desc">Выравнивает разный отклик пикселей в блоке — меньше цветного налёта. Эксперимент.</string>
     <string name="remosaic_backend_title">Алгоритм ремозаика</string>
     <string-array name="remosaic_backend_entries">
         <item>SCAMERA</item>
@@ -202,7 +201,7 @@
         <item>HP9 HexQuad — NPU, 6 кадров (тест)</item>
         <item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item>
     </string-array>
-    <string name="tetra_response_summary">Оценивает отклик пикселей 4×4 и его плавное изменение по кадру. При недостатке данных применяется общая коррекция. Если меняется текстура или цвет, сравните с выключенной коррекцией.</string>
+    <string name="tetra_response_summary">Убирает периодическую сетку на снимках Tetra 4×4, выравнивая отклик пикселей.</string>
     <string-array name="hexquad_model_entries">
         <item>x2 — текущая модель</item>
         <item>x1 — экспериментальная</item>
@@ -212,24 +211,24 @@
     <string name="motion_mode_on_toast">Движение: быстрый буфер, резкие движущиеся объекты</string>
     <string name="motion_mode_off_toast">Фото</string>
     <string name="prefs_scam_motion_on_title">Режим «Движение»</string>
-    <string name="prefs_scam_motion_on_summary">Тот же переключатель, что значок движения рядом с шестерёнкой в видоискателе</string>
+    <string name="prefs_scam_motion_on_summary">Для движения: короткая выдержка и меньше кадров, чтобы объект был резким. Как значок в видоискателе.</string>
     <string name="prefs_scam_motion_screen_title">Движение</string>
-    <string name="prefs_scam_motion_screen_summary">Режим переключателя рядом с шестерёнкой: самый быстрый буфер, резкие движущиеся объекты, быстрая обработка; HDR слабее</string>
+    <string name="prefs_scam_motion_screen_summary">Настройки режима «Движение»: быстрый буфер и чёткие движущиеся объекты</string>
     <string name="prefs_scam_motion_fps_title">Частота видоискателя и буфера</string>
-    <string name="prefs_scam_motion_fps_summary">%s. Максимум: самая высокая фиксированная частота, которую позволяют камера и её поток RAW; ни один кадр буфера не экспонируется дольше одного интервала кадра</string>
+    <string name="prefs_scam_motion_fps_summary">%s. Частота видоискателя и буфера в режиме «Движение». Выше — короче выдержка и чётче движение.</string>
     <string name="prefs_scam_motion_shutter_title">Выдержка не длиннее</string>
-    <string name="prefs_scam_motion_shutter_summary">%s. Когда автоэкспозиция камеры выбирает выдержку длиннее, выдержка остаётся на этом значении, а разницу добирает ISO; чем быстрее движется объект или камера, тем выдержка короче (до 3 ступеней). В темноте она растёт ровно настолько, насколько не хватает максимального ISO</string>
+    <string name="prefs_scam_motion_shutter_summary">%s. Самая длинная выдержка в режиме «Движение». Короче — чётче движение, но шумнее (выше ISO).</string>
     <string name="prefs_scam_motion_flicker_title">Без мерцания ламп</string>
-    <string name="prefs_scam_motion_flicker_summary">Если на коротких кадрах видны полосы от мерцающих ламп (50 / 60 Гц), выдержка не короче 1/100 / 1/120 с, чтобы на снимке их не было</string>
+    <string name="prefs_scam_motion_flicker_summary">Не даёт выдержке стать короче мерцания ламп, чтобы на фото не было полос.</string>
     <string name="prefs_scam_motion_frames_title">Кадров в склейке</string>
-    <string name="prefs_scam_motion_frames_summary">Самые свежие кадры буфера в момент нажатия: чем меньше кадров, тем короче отрезок времени и быстрее склейка</string>
-    <string name="prefs_scam_motion_shasta_summary">Длинные брекет-кадры после снимка; по умолчанию выкл: они смазывают движущееся</string>
-    <string name="prefs_scam_motion_bento_summary">%s. Ультракороткие кадры для светов; по умолчанию только там, где кадр клипует</string>
-    <string name="prefs_scam_motion_boost_summary">Сильнее отбраковка движущихся областей при склейке</string>
-    <string name="prefs_scam_motion_boost_value_summary">Сила отбраковки движущихся областей (в фото: 6)</string>
-    <string name="prefs_scam_motion_threshold_summary">Местное движение (пиксели RAW), с которого тайл считается движущимся; меньше = раньше (в фото: 1.5)</string>
+    <string name="prefs_scam_motion_frames_summary">Сколько кадров склеивать в режиме «Движение». Больше — меньше шума, но дольше; меньше — быстрее.</string>
+    <string name="prefs_scam_motion_shasta_summary">Светлые кадры после нажатия в режиме «Движение»: меньше шума в тенях, но движущееся смазывается.</string>
+    <string name="prefs_scam_motion_bento_summary">%s. Тёмный кадр для пересвеченных мест в режиме «Движение». Авто — только когда есть пересвет.</string>
+    <string name="prefs_scam_motion_boost_summary">В режиме «Движение» сильнее убирает призраки там, где части кадра движутся по-разному.</string>
+    <string name="prefs_scam_motion_boost_value_summary">Сила подавления призраков в режиме «Движение». Больше — меньше призраков, но шумнее; меньше — наоборот.</string>
+    <string name="prefs_scam_motion_threshold_summary">Режим «Движение»: с какого сдвига участок считается подвижным. Меньше — меньше призраков, больше — чище.</string>
     <string name="prefs_low_light_boost_title">Яркий видоискатель в темноте</string>
-    <string name="prefs_low_light_boost_summary">Усиление камеры при слабом свете (Android 15, где камера его поддерживает): видоискатель ярче и медленнее в темноте; кадры буфера тоже снимаются с его длинной выдержкой. Не в режиме «Движение»</string>
+    <string name="prefs_low_light_boost_summary">В темноте видоискатель ярче, но медленнее; кадры буфера длиннее. Android 15, не в «Движении».</string>
     <string name="dcg14_on">DCG 14 бит: вкл</string>
     <string name="dcg14_off">DCG 14 бит: выкл</string>
     <string name="dcg14_on_toast">DCG 14 бит вкл: запрошен режим сенсора с двойным усилением, камера перезапускается</string>
@@ -245,5 +244,5 @@
     <string name="full_res_off_toast">Полное разрешение выкл</string>
     <string name="dcg14_not_here">DCG 14 бит работает на основной камере и телеобъективах</string>
     <string name="prefs_developer_settings_screen_title">Для разработчика</string>
-    <string name="prefs_developer_settings_screen_summary">Скрытые переключатели scam_dev.txt для опытов и отладки</string>
+    <string name="prefs_developer_settings_screen_summary">Скрытые параметры scam_dev.txt для опытов и отладки</string>
 </resources>

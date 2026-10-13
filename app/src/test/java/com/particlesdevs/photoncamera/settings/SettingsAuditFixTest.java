@@ -148,6 +148,22 @@ public class SettingsAuditFixTest {
         assertEquals(1,PreferenceKeys.getAfMode());assertFalse(PreferenceKeys.isCameraSoundsOn());
     }
 
+    /** P118: «Частота мерцания» is a list; the old default 120 becomes «Авто» once, another number the nearest entry. */
+    @Test public void antibandingBecomesAList() {
+        assertEquals("-1",SettingsMigration.antibandingEntry(120));assertEquals("100",SettingsMigration.antibandingEntry(50));
+        assertEquals("120",SettingsMigration.antibandingEntry(60));assertEquals("100",SettingsMigration.antibandingEntry(100));
+        assertEquals("0",SettingsMigration.antibandingEntry(0));assertEquals("120",SettingsMigration.antibandingEntry(130));
+        prefs.edit().clear().putString("pref_antibanding_hz_key","120").commit();
+        SettingsMigration.migrateAntibanding(prefs);
+        assertEquals("-1",prefs.getString("pref_antibanding_hz_key",null));
+        prefs.edit().putString("pref_antibanding_hz_key","120").commit();
+        SettingsMigration.migrateAntibanding(prefs);
+        assertEquals("a later choice of 120 stays","120",prefs.getString("pref_antibanding_hz_key",null));
+        assertEquals(120,PreferenceKeys.getAntibandingHz());
+        prefs.edit().putString("pref_antibanding_hz_key","0").commit();
+        assertEquals(0,PreferenceKeys.getAntibandingHz());
+    }
+
     /** S1 (owner): the shared settings are one list, never per module; processing / tuning / sensor settings stay per module. */
     @Test public void sharedSettingsAreNeverPerModule() {
         String[] global={PreferenceKeys.ROUTE_KEY,"pref_camera_sounds_key","pref_timer_sound_key","pref_show_grid_key","pref_photo_format",
@@ -157,7 +173,7 @@ public class SettingsAuditFixTest {
                 "pref_watermark_line2","pref_watermark_logo","pref_watermark_size","pref_watermark_opacity","pref_root_enabled",
                 "pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",
                 "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
-                "pref_theme_key","pref_show_gradient_key","pref_antibanding_hz_key"};
+                "pref_theme_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
         for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scamhdr_luma","pref_sharp_radius_key","pref_cfa_key","pref_dng_lossless",
                 "pref_dcp_profile_key","pref_raw_stream_format","hexquad_luma"})

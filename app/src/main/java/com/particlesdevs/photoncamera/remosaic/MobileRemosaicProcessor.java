@@ -60,7 +60,7 @@ public final class MobileRemosaicProcessor {
                     1f,1f,out);
             if(!ok) throw new IllegalStateException(Lang.t("Multi-frame Remosaic: ошибка nativeProcess", "Multi-frame Remosaic: nativeProcess error"));
             p.cfaPattern=(byte)java.util.Arrays.asList("RGGB","GRBG","GBRG","BGGR").indexOf(cfa);
-            p.baseCfaPattern=p.cfaPattern;p.quadCfa=false;p.remosaicDone=true;
+            p.baseCfaPattern=p.cfaPattern;p.remosaicDone=true;
             // Keep original RAW levels: native reconstruction does not normalize them.
             p.hotPixels=new android.graphics.Point[0];
             out.position(0);

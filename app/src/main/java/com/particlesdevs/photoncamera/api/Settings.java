@@ -12,7 +12,6 @@ public class Settings {
     public boolean aspect169;
     public boolean binning;
     public boolean DebugData;
-    public boolean roundEdge;
     /** Ultra HDR in effect: the switch is on and the shot writes a JPEG (JPEG format or «Также сохранять JPEG»). */
     public boolean ultraHdr;
     /** P46 «HDR в HEIC / AVIF» in effect for this shot (processing.color.HdrOutput.wanted): the HEIC / AVIF is HLG. */
@@ -23,7 +22,6 @@ public class Settings {
     public int contrastConst = 0;//TODO
     public double mergeStrength;
     public int rawSaver;
-    public boolean QuadBayer;
     public int cfaPattern;
     public int theme;
     public boolean remosaic;//TODO
@@ -47,14 +45,12 @@ public class Settings {
         binning = false; // both routes merge the full-resolution RAW (software binning was a legacy option)
         Allocator.binning = binning;
         DebugData = PreferenceKeys.isFullDebugOn();
-        roundEdge = PreferenceKeys.isRoundEdgeOn();
 //        contrastConst = get(contrastConst, "ContrastConst");///////TODO
         mergeStrength = 1f;
         cfaPattern = PreferenceKeys.getCFAValue();
         rawSaver = PreferenceKeys.isSaveRaw();
         remosaic = PreferenceKeys.isRemosaicOn();
         eisPhoto = PreferenceKeys.isEisPhotoOn();
-        QuadBayer = PreferenceKeys.isQuadBayerOn();
         fpsMode = PreferenceKeys.getFpsMode();
         // The gain-map pass (linear snapshot, no deferred GL teardown, no in-pipeline resize) runs only when a JPEG carries it.
         ultraHdr = PreferenceKeys.isUltraHdrActive();

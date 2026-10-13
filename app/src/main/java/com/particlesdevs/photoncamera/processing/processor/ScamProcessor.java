@@ -396,7 +396,7 @@ public class ScamProcessor extends ProcessorBase {
         // which lowers the noise part of the gradient energy on its own - so it is logged for diagnosis and used only
         // against the same exposure, never as a cross-exposure threshold.
         // W1.5: the frames are independent, so they are measured in parallel (each writes its own sharpness).
-        final int sharpnessBlock = PreferenceKeys.isScamMosaic() || processingParameters.quadCfa ? PreferenceKeys.getRemosaicBlockSize() : 1;
+        final int sharpnessBlock = PreferenceKeys.isScamMosaic() ? PreferenceKeys.getRemosaicBlockSize() : 1;
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("sharp_start");
         final ArrayList<ImageFrame> measured = images;
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(measured.size(), k -> measured.get(k).computeSharpness(sharpnessBlock));
@@ -456,6 +456,7 @@ public class ScamProcessor extends ProcessorBase {
                 processingParameters.FillDynamicParameters(referenceMetadata, captureRequest,
                         scamReference.measuredIso);
                 refineBlackFromDarkestFrame(processingParameters, images);
+                applyMosaicNeutral(processingParameters, scamReference, referenceMetadata);
                 ParseExif.syncWithParameters(exifData, processingParameters);
                 Log.i("SCAM_HDR", "Reference calibration timestamp=" + scamReference.timestamp
                         + " ISO=" + processingParameters.iso
@@ -731,6 +732,38 @@ public class ScamProcessor extends ProcessorBase {
      * colour block measured on the first frame. A plain-Bayer module keeps its Bayer frames (vivo X100 Ultra main, owner's log
      * 2026-10-05: 'mode=neural_sabre block=4' remosaicked a 4096x3072 Bayer stream as Tetra).
      */
+    /**
+     * P121: a Quad / Tetra stream (an ISZ module without the sensor's remosaic): the camera's neutral is not the scene's (its ISP
+     * reads the mosaic as Bayer), so the neutral of the reference frame is measured and put on the camera's curve learned in
+     * plain-Bayer sessions (MosaicNeutral). scam_dev.txt "mosaic_awb 0": the camera's neutral as before.
+     */
+    private static void applyMosaicNeutral(Parameters p, ImageFrame ref, CaptureResult meta) {
+        if (!PreferenceKeys.scamDevSwitch("mosaic_awb", true) || p.rawBinning > 1 || ref == null || ref.buffer == null
+                || ref.buffer.capacity() < (long) ref.width * ref.height * 2) return;
+        int block = com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
+        if (block <= 0) {
+            final float black = (p.blackLevel[0] + p.blackLevel[1] + p.blackLevel[2] + p.blackLevel[3]) / 4f;
+            final com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result r =
+                    com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(ref.buffer, ref.width, ref.height, ref.width * 2,
+                            black, p.whiteLevel, 8);
+            block = r.confident ? r.block : 1;
+        }
+        if (block <= 1) return;
+        com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
+                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(String.valueOf(p.physicalID), ref.buffer,
+                        ref.width, ref.height, ref.width * 2, p.baseCfaPattern, p.blackLevel, p.whiteLevel, block);
+        final String camera = String.format(java.util.Locale.ROOT, "%.3f / %.3f", p.whitePoint[0] / p.whitePoint[1], p.whitePoint[2] / p.whitePoint[1]);
+        if (own == null) {
+            Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", too few usable cells; the camera's neutral " + camera + " kept");
+            return;
+        }
+        Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", camera " + camera + " -> " + own.how);
+        p.customNeutral = own.neutral;
+        p.ownNeutral = true;
+        p.ReCalcColor(true, meta);
+    }
+
     private static boolean scamMosaicStream(java.util.List<ImageFrame> images, Parameters p) {
         if (PreferenceKeys.scamMosaicDeclared()) return true;
         // P35: the stream's stored block decides without the detector (a binned burst is always measured).

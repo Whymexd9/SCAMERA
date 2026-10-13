@@ -464,7 +464,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         Uri uri = galleryItem.getFile().getFileUri();
         Intent editIntent = new Intent(Intent.ACTION_EDIT);
         editIntent.setDataAndType(uri, mediaTypeOf(fileName));
-        String outPutFileUri = uri.toString().replace(fileName, ImagePath.generateNewFileName("IMG") + '.' + FileUtils.getExtension(fileName));
+        String outPutFileUri = uri.toString().replace(fileName, ImagePath.newBaseName() + '.' + FileUtils.getExtension(fileName));
         editIntent.putExtra(MediaStore.EXTRA_OUTPUT, outPutFileUri);
         editIntent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivityForResult(Intent.createChooser(editIntent, null), Constants.REQUEST_EDIT_IMAGE);

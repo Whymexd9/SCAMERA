@@ -81,13 +81,15 @@ public class ImageSaver {
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
-        // Named at capture time, like the stock camera, not when processing starts.
-        String suffix = uniqueSuffix(ImagePath.newImageFilePath().getFileName().toString());
-        saver.ownedDngFile = withSuffix(ImagePath.newDNGFilePath(), suffix);
-        saver.ownedImageFile = withSuffix(ImagePath.newImageFilePath(), suffix);
+        // Named at capture time, like the stock camera, not when processing starts; one name for the DNG and the photo (P119: a
+        // template with milliseconds gave each call its own).
+        final String base = ImagePath.newBaseName();
+        final String name = base + uniqueSuffix(base);
+        saver.ownedDngFile = ImagePath.dngFile(name);
+        saver.ownedImageFile = ImagePath.imageFile(name);
     }
 
-    // Names have one-second resolution; queued shots can share a second.
+    // Names of the default template have one-second resolution; queued shots can share a second.
     private static String lastReservedName = "";
     private static int lastReservedCount = 0;
     private static synchronized String uniqueSuffix(String name) {
@@ -95,12 +97,6 @@ public class ImageSaver {
         lastReservedName = name;
         lastReservedCount = 0;
         return "";
-    }
-    private static java.nio.file.Path withSuffix(java.nio.file.Path path, String suffix) {
-        if (suffix.isEmpty()) return path;
-        String name = path.getFileName().toString();
-        int dot = name.lastIndexOf('.');
-        return path.resolveSibling(dot < 0 ? name + suffix : name.substring(0, dot) + suffix + name.substring(dot));
     }
 
     /** Removes and closes the given frames of this burst (post-shutter RAWs the hybrid dropped). */
@@ -266,7 +262,6 @@ public class ImageSaver {
                                                      String reconstructionLabel) {
             DngCreator dngCreator = new DngCreator();
             dngCreator.setParameters(parameters);
-            dngCreator.setQuadCFAMetadata(false);
             dngCreator.setCFAPattern(parameters.baseCfaPattern);
             dngCreator.setDescription("SCAMERA Synthetic Mosaic SR; computational CFA reconstruction; "
                     + reconstructionLabel + "; not original sensor RAW");

@@ -9,7 +9,6 @@
 #include <string>
 
 struct DngMetadata {
-    bool quad_cfa_metadata = false;
     int width = 0;
     int height = 0;
     int orientation = 0; // Default orientation

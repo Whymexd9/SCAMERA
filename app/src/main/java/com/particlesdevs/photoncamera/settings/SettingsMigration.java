@@ -55,11 +55,28 @@ public final class SettingsMigration {
      */
     public static void resetRemovedSettings(android.content.res.Resources res) {
         boolean eis = res.getBoolean(R.bool.pref_eis_photo_default);
-        boolean quad = res.getBoolean(R.bool.pref_quad_bayer_default);
         if (PreferenceKeys.isEisPhotoOn() != eis) PreferenceKeys.setEisPhoto(eis);
-        if (PreferenceKeys.isQuadBayerOn() != quad) PreferenceKeys.setQuadBayer(quad);
         if (PreferenceKeys.getFpsMode() != 0) PreferenceKeys.setFpsMode(0);
         if (PreferenceKeys.getBracketingMode() != 0) PreferenceKeys.setBracketingMode(0);
+    }
+
+    /**
+     * P118: «Частота мерцания» is a list (Авто / 100 / 120 / Выкл.), once per preference set: the old default 120 (60 Hz mains,
+     * wrong in 50 Hz countries) becomes «Авто»; another number the nearest entry (50 / 60 as mains: 100 / 120), 0 or less off.
+     */
+    public static void migrateAntibanding(SharedPreferences preferences) {
+        if (preferences.contains("settings_antibanding_list_v1")) return;
+        SharedPreferences.Editor e = preferences.edit().putBoolean("settings_antibanding_list_v1", true);
+        Object stored = preferences.getAll().get("pref_antibanding_hz_key");
+        if (stored != null) e.putString("pref_antibanding_hz_key", antibandingEntry(PreferenceNumber.read(stored, 120)));
+        e.commit();
+    }
+
+    static String antibandingEntry(double hz) {
+        if (!Double.isFinite(hz) || hz == 120) return "-1";
+        if (hz <= 0) return "0";
+        if (hz <= 70) hz *= 2; // the mains frequency typed instead of the flicker
+        return hz < 110 ? "100" : "120";
     }
 
     /** ZSL ring capacity 50 once for each restored module snapshot (the RAW MFSR keys go with removeObsolete). */
@@ -129,7 +146,15 @@ public final class SettingsMigration {
             "pref_chroma_nr_seekbar_key", "pref_luma_nr_seekbar_key", "pref_gain_seekbar_key", "pref_sharpness_seekbar_key",
             "pref_nr_luma_enabled_key", "pref_nr_chroma_enabled_key", "pref_live_viewfinder_look_key", "pref_align_method_key",
             // The former HDR switch of the top bar (read by nothing since the two SCAM routes)
-            "pref_hdrx_key"));
+            "pref_hdrx_key",
+            // P118: Quad Bayer at full resolution (forced off since P25, its capture branches unreachable) and «Quad Bayer —
+            // совместимость» (vendor remosaic tags, a -2 CFA mark that sent every SCAM HDR shot to the hybrid, a 4x4 DNG CFA);
+            // Quad / Tetra streams come from the ISZ modules and the hybrid measures their colour block itself
+            "pref_quad_bayer_key", "scamera_quad_bayer_enabled", "scamera_quad_bayer_mode", "scamera_quad_dng_metadata",
+            // P118: «Показать градиентный фон» (its theme set the background to the colour it already had)
+            "pref_show_gradient_key",
+            // P118: two ArkCore exposure rows nothing read (faces never reach processing; the trade-off is fixed at 0.33)
+            "pref_scam_hybrid_ark_face_priority", "pref_scam_hybrid_ark_hl_blend"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -140,7 +165,11 @@ public final class SettingsMigration {
             "pref_tunable_amaze_",
             // P10: AgX, Exposure Fusion and the headroom tone of both routes (and the hybrid's copies)
             "pref_agx_", "pref_scamroute_", "pref_scamhdr_fusion_", "pref_scam_hybrid_hdr_", "pref_scam_hybrid_fusion_",
-            "pref_scam_hybrid_agx_"};
+            "pref_scam_hybrid_agx_",
+            // P118: RAW CA as RawTherapee's CA_correct (P28) is gone; the merge's own lateral CA fit (P19) stays
+            "pref_scam_hybrid_rawca_",
+            // P118: «Опыты JSR» (phase kernel, CA in the merge, polynomial field); «Sabre 2× только когда есть смысл» is its own row
+            "pref_scam_hybrid_jsr_"};
     /**
      * Removed rows of the per-module sensor settings (pref_sensorconfig_&lt;slot or camera id&gt;_&lt;field&gt;): the exposure limits
      * «Максимальное ISO», «Максимальная выдержка» and «Баланс выдержки и ISO», which no capture code read (settings audit).
@@ -170,11 +199,6 @@ public final class SettingsMigration {
             for (String key : in) if (!isObsolete(key)) out.add(key);
             if (out.size() != in.size()) { e.putString(ShadeTiles.KEY, ShadeTiles.join(out)); changed = true; }
         }
-        // Quad Bayer switches the RAW stream to the full sensor mode, which the hybrid's ZSL burst must not: a profile of an
-        // older build (main, a module, a restored config) cannot bring it back on. Before P25 the camera screen forced it off
-        // on every resume / lens switch; resetRemovedSettings only covers the screen's start.
-        Object quad = prefs.getAll().get("pref_quad_bayer_key");
-        if (quad != null && PreferenceNumber.bool(quad, false)) { e.putBoolean("pref_quad_bayer_key", false); changed = true; }
         // «Фильтр Байера» lost MONO (4: every Hybrid / SCAM HDR shot failed, both need a 2x2 CFA) and QUAD (-2: did nothing,
         // the Quad stream is set in «Quad Bayer — совместимость»); a stored one of them becomes «Авто» (-1).
         Object cfa = prefs.getAll().get(CFA_KEY);

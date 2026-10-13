@@ -23,10 +23,8 @@
     <string name="pref_remosaic_key" translatable="false">pref_remosaic_key</string>
     <string name="pref_theme_key" translatable="false">pref_theme_key</string>
     <string name="pref_theme_accent_key" translatable="false">pref_theme_accent_key</string>
-    <string name="pref_show_gradient_key" translatable="false">pref_show_gradient_key</string>
     <string name="pref_af_mode_key" translatable="false">pref_af_mode_key</string>
     <string name="pref_eis_photo_key" translatable="false">pref_eis_photo_key</string>
-    <string name="pref_quad_bayer_key" translatable="false">pref_quad_bayer_key</string>
     <string name="pref_fps_preview_key" translatable="false">pref_fps_preview_key</string>
     <string name="pref_ultrahdr_key" translatable="false">pref_ultrahdr_key</string>
     <string name="camera_id" translatable="false">camera_id</string>

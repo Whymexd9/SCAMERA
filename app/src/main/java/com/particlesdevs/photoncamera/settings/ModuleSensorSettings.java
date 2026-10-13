@@ -22,10 +22,10 @@ public final class ModuleSensorSettings {
     /** English text of a @SensorConfig description (the annotations hold the Russian text); other texts as they are. */
     public static String description(String text){
         switch(text){
-            case "Уровень чёрного этого сенсора вручную (-1 = авто)":return Lang.t(text,"Manual black level of this sensor (-1 = auto)");
-            case "Уровень белого для всех каналов вручную (-1 = из метаданных)":return Lang.t(text,"Manual white level for all channels (-1 = from metadata)");
-            case "Оптическая стабилизация. В режиме «Авто» OIS выключается на штативе и в Unlimited, чтобы кадр не дрейфовал":return Lang.t(text,"Optical stabilization. In “Auto” OIS turns off on a tripod and in Unlimited so the frame does not drift");
-            case "Тип capture-сессии Camera2 (0 = обычная)":return Lang.t(text,"Camera2 capture session type (0 = normal)");
+            case "Ручной уровень чёрного, -1 — авто. Больше — тени темнее и проваливаются; меньше — тени серые.":return Lang.t(text,"Manual black level, -1 is auto. Higher: darker, crushed shadows; lower: greyish shadows.");
+            case "Ручной уровень белого, -1 — от камеры. Больше — снимок темнее; меньше — света выгорают раньше.":return Lang.t(text,"Manual white level, -1 is from the camera. Higher: darker shot; lower: highlights clip sooner.");
+            case "Оптическая стабилизация. Авто выключает её на штативе и в Unlimited, чтобы кадр не плыл.":return Lang.t(text,"Optical stabilization. Auto turns it off on a tripod and in Unlimited so the frame does not drift.");
+            case "Режим сессии камеры, 0 — обычный. Другие числа — режимы производителя; неверное может не открыть камеру.":return Lang.t(text,"Camera session mode, 0 is normal. Other numbers are vendor modes; a wrong one may stop the camera opening.");
             default:return text;
         }
     }

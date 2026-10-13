@@ -59,9 +59,6 @@
             <item name="colorSecondary">#E7E9F0</item><item name="colorControlActivated">#E7E9F0</item><item name="android:colorAccent">#E7E9F0</item>
 </style>
 
-    <style name="GradientBackgroundTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
-        <item name="cameraFragmentBackground">@color/settings_bg</item>
-    </style>
     <style name="LavenderAccentTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimary">#C7B5FF</item><item name="colorAccent">#C7B5FF</item><item name="colorSecondary">#C7B5FF</item><item name="colorControlActivated">#C7B5FF</item><item name="android:colorAccent">#C7B5FF</item><item name="colorPrimaryContainer">#413555</item><item name="colorOnPrimary">#18131F</item><item name="colorOnSecondary">#18131F</item>
     </style>

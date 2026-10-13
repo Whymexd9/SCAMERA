@@ -5,16 +5,13 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 
 import com.particlesdevs.photoncamera.util.Log;
-import com.particlesdevs.photoncamera.settings.ScameraPreferences;
 
 import java.lang.reflect.Array;
 import java.util.List;
 
 public class VendorTagUtils {
     private static final String TAG = "VendorTagUtils";
-    private static volatile boolean remosaicApplied;
     private static volatile boolean clientNameSkipLogged;
-    public static boolean wasRemosaicApplied() { return remosaicApplied; }
     private static boolean isSupported(CaptureRequest.Builder builder,
                                        CaptureRequest.Key<?> key) {
         boolean supported = true;
@@ -213,38 +210,12 @@ public class VendorTagUtils {
     @SuppressLint({"NewApi", "LocalSuppress"})
     public static void builderSessionApply(CaptureRequest.Builder builder, boolean burst, boolean useMaximumResolutionKey, String physicalId) {
         try {
-            boolean requestQuad = burst && ScameraPreferences.quadBayerEnabled();
-            String quadMode = ScameraPreferences.quadBayerMode();
-            boolean requestRemosaic = requestQuad && !"direct_quad".equals(quadMode);
-            byte enable = (byte) (requestRemosaic ? 1 : 0);
-            remosaicApplied = false;
             // Owner: no impersonation of the stock camera on any phone. com.xiaomi.sessionparams.clientName = com.android.camera is
             // never sent: the 17 Ultra's HAL still knew the real package (isThirdParty = 1), and on the 13 Ultra (2026-10-10 log)
             // the sessions that carried it stopped delivering frames.
             if (!clientNameSkipLogged) {
                 clientNameSkipLogged = true;
                 Log.i(TAG, "com.xiaomi.sessionparams.clientName not sent (no stock-camera impersonation)");
-            }
-            if(requestQuad) {
-                var remosaicEnabled = new CaptureRequest.Key<>("xiaomi.remosaic.enabled", Byte.class);
-                if (isSupported(builder, remosaicEnabled)) {
-                    builder.set(remosaicEnabled, enable);
-                    setPhysical(builder, remosaicEnabled, enable, physicalId);
-                    remosaicApplied |= requestRemosaic;
-                }
-                var remosaicQuadEnabled = new CaptureRequest.Key<>("xiaomi.quadcfa.enabled", Byte.class);
-                if (isSupported(builder, remosaicQuadEnabled)) {
-                    builder.set(remosaicQuadEnabled, enable);
-                    setPhysical(builder, remosaicQuadEnabled, enable, physicalId);
-                    remosaicApplied |= requestRemosaic;
-                }
-                var remosaicEnabled2 = new CaptureRequest.Key<>("com.mediatek.control.capture.remosaicenable", int[].class);
-                if (isSupported(builder, remosaicEnabled2)) {
-                    int[] value = new int[]{requestRemosaic ? 1 : 0};
-                    builder.set(remosaicEnabled2, value);
-                    setPhysical(builder, remosaicEnabled2, value, physicalId);
-                    remosaicApplied |= requestRemosaic;
-                }
             }
         } catch (Exception e){
             Log.w(TAG, "Error applying vendor tags to CaptureRequest.Builder", e);

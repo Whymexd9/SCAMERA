@@ -67,7 +67,6 @@ public class ScamHybridBurstRolesTest {
     private static Parameters parameters() {
         Parameters p = new Parameters();
         p.rawSize = new Point(64, 64); p.cfaPattern = 0; p.whiteLevel = 1023; p.blackLevel = new float[]{64, 64, 64, 64};
-        p.quadCfa = true; // P27 (H14): ignored by the hybrid, it measures the stream itself
         return p;
     }
     private static Object burst(List<ImageFrame> frames) throws Exception {
@@ -146,19 +145,19 @@ public class ScamHybridBurstRolesTest {
         assertEquals(1, (int) list(b, "roles").get(0));
     }
 
-    @Test public void directQuadBayerStreamIsMergedWithTheSensorColourOrder() throws Exception {
-        // P27 (H14): Parameters marks a direct Quad Bayer stream cfaPattern -2 (quadCfa); the hybrid takes the sensor's
-        // colour order (baseCfaPattern) and measures the colour block itself, instead of refusing the shot.
+    @Test public void colourOrderOfTheStreamIsMergedAndNoBayerIsRefused() throws Exception {
+        // The hybrid takes the stream's 2x2 colour order and measures a Quad / Tetra colour block itself (P118: the -2 mark of
+        // «Quad Bayer — совместимость» is gone); a pattern that is no 2x2 order is refused.
         Parameters p = parameters();
-        p.cfaPattern = -2; p.baseCfaPattern = 3;
+        p.cfaPattern = 3; p.baseCfaPattern = 3;
         Constructor<ScamHybridBurst> c = ScamHybridBurst.class.getDeclaredConstructor(List.class, Parameters.class, boolean.class);
         c.setAccessible(true);
         ScamHybridBurst b = c.newInstance(List.of(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100)), p, false);
         assertEquals(3, b.cfa());
-        p.quadCfa = false;   // a negative pattern without the Quad mark is still refused
+        p.cfaPattern = -2;
         try {
             c.newInstance(List.of(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 100)), p, false);
-            fail("cfaPattern -2 without quadCfa must be refused");
+            fail("cfaPattern -2 must be refused");
         } catch (InvocationTargetException expected) {
             assertTrue(expected.getCause() instanceof java.io.IOException);
         }

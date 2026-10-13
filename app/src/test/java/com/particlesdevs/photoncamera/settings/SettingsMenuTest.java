@@ -419,8 +419,7 @@ public class SettingsMenuTest {
     }
 
     @Test public void openingPagesDoesNotRewriteGalleryOrThemeSwitches(){
-        prefs.edit().putString(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue,"0")
-                .putString(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue,"0").commit();
+        prefs.edit().putString(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue,"0").commit();
         inflate(); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         Map<String,?> before=prefs.getAll();
         java.util.List<String> changed=new ArrayList<>();
@@ -430,7 +429,6 @@ public class SettingsMenuTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         prefs.unregisterOnSharedPreferenceChangeListener(observer);
         assertFalse(changed.toString(),changed.contains(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue));
-        assertFalse(changed.toString(),changed.contains(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue));
         assertEquals(before.get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue),prefs.getAll().get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue));
     }
 

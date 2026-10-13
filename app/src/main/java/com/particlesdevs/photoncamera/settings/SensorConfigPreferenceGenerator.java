@@ -106,8 +106,8 @@ public class SensorConfigPreferenceGenerator {
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
             for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
             submenu.setTitle(Lang.t(context, "Настройки сенсоров по модулям", "Sensor settings per module"));
-            submenu.setSummary(Lang.t(context, "Уровни RAW, стабилизация и сессия каждого модуля",
-                    "RAW levels, stabilization and session of each module"));
+            submenu.setSummary(Lang.t(context, "Уровни RAW, стабилизация, сессия и вендорные ключи каждого модуля",
+                    "RAW levels, stabilization, session and vendor keys of each module"));
             if (physicalIds.isEmpty()) {
                 Log.w(TAG, "No camera ids found, cannot generate sensor config preferences.");
                 addNoSensorsPreference(context, submenu);

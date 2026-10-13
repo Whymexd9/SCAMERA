@@ -16,7 +16,7 @@
     <string name="highlight_suppression">Highlight recovery (0–200)</string>
 
     <string name="ultrahdr" translatable="false">Ultra HDR</string>
-    <string name="ultrahdr_summary">Encode JPEGs with an Ultra HDR gain map (requires a second, lightweight tone pass)</string>
+    <string name="ultrahdr_summary">Adds a brightness map to the JPEG: brighter highlights on HDR screens. Normal screens show a normal photo.</string>
     <string name="ai_denoise">AI Bayer noise reduction</string>
     <string name="ai_denoise_available">UNet Fast or NAFNet Quality · NPU via NNAPI, with an explicit CPU fallback</string>
     <string name="ai_denoise_strength">AI noise reduction strength</string>
@@ -44,7 +44,6 @@
     <string name="theme_follow_system">Follow system</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="show_gradient">Show Gradient Background</string>
     <string name="unprocessed_raw">Unprocessed RAW</string>
     <string name="frame_count_summary">Number of constant-exposure denoising frames</string>
     <string name="app_summary">RAW camera with multi-frame SCAM Hybrid and SCAM HDR processing</string>
@@ -60,7 +59,7 @@
     <string name="reset">Reset All</string>
     <string name="reset_preferences_warning">This will reset all settings to their default values. Continue?</string>
     <string name="backup">Backup</string>
-    <string name="backup_summary_json">Save all settings and module profiles to an XML file in Download/SCAMERA/XML</string>
+    <string name="backup_summary_json">Save all settings and module profiles to a file in Download/SCAMERA/XML</string>
     <string name="app_will_restart">App Will Restart</string>
     <string name="restore">Restore</string>
     <string name="restore_summary_json">Load settings from an XML file in Download/SCAMERA/XML, or pick a file</string>
@@ -68,7 +67,7 @@
     <string name="af_mode">Auto Focus Mode</string>
     <string name="multiple_deleted_success">%1$s file(s) deleted! %2$s cleared.</string>
     <string name="sensor_configurations">Sensor settings per module</string>
-    <string name="sensor_configurations_summary">RAW levels, exposure, stabilization and session of each module</string>
+    <string name="sensor_configurations_summary">RAW levels, stabilization, session and vendor keys of each module</string>
     <string name="this_device">Your Device - %1$s</string>
     <string name="sync_on">Sync. On</string>
     <string name="sync_off">Sync. Off</string>
@@ -167,33 +166,33 @@
 
 
     <string name="sharp_radius">Radius</string>
-    <string name="sharp_radius_desc">Blur radius in pixels. RawTherapee: 0.5</string>
+    <string name="sharp_radius_desc">Width of the sharpened outlines, px. Higher: thicker outlines, more halos; lower: finer.</string>
     <string name="sharp_amount">Amount, %</string>
-    <string name="sharp_amount_desc">Share of the difference added back to the image. RawTherapee: 200</string>
+    <string name="sharp_amount_desc">Unsharp mask strength. Higher: sharper, but more halos and noise; lower: softer.</string>
     <string name="sharp_contrast">Contrast threshold, %</string>
-    <string name="sharp_contrast_desc">Sharpening fades where local contrast is below the threshold, so flat areas and noise are not boosted. RawTherapee: 20</string>
+    <string name="sharp_contrast_desc">Contrast below which sharpening is skipped. Higher: flat areas and noise untouched; lower: sharpens all.</string>
     <string name="sharp_threshold_bl">Point 1 (ramp-up starts)</string>
     <string name="sharp_threshold_tl">Point 2 (full strength)</string>
     <string name="sharp_threshold_tr">Point 3 (fall-off starts)</string>
     <string name="sharp_threshold_br">Point 4 (fall-off ends)</string>
     <string name="sharp_edges_only">Enable</string>
-    <string name="sharp_edges_only_desc">RawTherapee: off</string>
+    <string name="sharp_edges_only_desc">Sharpen edges only: flat areas and noise are not boosted.</string>
     <string name="sharp_edges_radius">Detector radius</string>
-    <string name="sharp_edges_radius_desc" translatable="false">RawTherapee: 1.9</string>
+    <string name="sharp_edges_radius_desc">Edge search radius. Higher: only large outlines are sharpened; lower: fine detail too.</string>
     <string name="sharp_edges_tolerance">Tolerance</string>
-    <string name="sharp_edges_tolerance_desc">On a 0–32768 scale. RawTherapee: 1800</string>
+    <string name="sharp_edges_tolerance_desc">Brightness step that counts as an edge. Higher: only strong edges sharpened; lower: weak ones too.</string>
     <string name="sharp_halo_control">Enable</string>
-    <string name="sharp_halo_control_desc">RawTherapee: off</string>
+    <string name="sharp_halo_control_desc">Halo control: sharpening stays within the brightness of neighbouring pixels.</string>
     <string name="sharp_halo_amount">Amount, %</string>
-    <string name="sharp_halo_amount_desc" translatable="false">RawTherapee: 85</string>
+    <string name="sharp_halo_amount_desc">Halo control strength, %. Higher: fewer light and dark fringes; lower: crisper, but with fringes.</string>
     <string name="sharp_micro_amount">Strength</string>
-    <string name="sharp_micro_amount_desc" translatable="false">RawTherapee: 20</string>
+    <string name="sharp_micro_amount_desc">Microcontrast strength. Higher: more visible texture, and noise; lower: softer.</string>
     <string name="sharp_micro_uniformity">Uniformity</string>
-    <string name="sharp_micro_uniformity_desc">Selects the set of brightness limits, 0–10. RawTherapee: 5</string>
+    <string name="sharp_micro_uniformity_desc">Evenness across brightness. Higher: stronger, also in highlights and shadows; lower: mostly midtones.</string>
     <string name="sharp_micro_contrast">Contrast threshold, %</string>
-    <string name="sharp_micro_contrast_desc" translatable="false">RawTherapee: 20</string>
+    <string name="sharp_micro_contrast_desc">Contrast below which microcontrast is skipped. Higher: flat areas and noise untouched; lower: everywhere.</string>
     <string name="sharp_micro_matrix">3x3 matrix</string>
-    <string name="sharp_micro_matrix_desc">Off: 5x5, the RawTherapee default</string>
+    <string name="sharp_micro_matrix_desc">3x3 window instead of 5x5: the finest texture is boosted.</string>
     <string name="wide169" translatable="false">16:9</string>
     <bool name="pref_sharp_usm_enabled_default">true</bool>
     <bool name="pref_sharp_deconv_enabled_default">false</bool>
@@ -223,11 +222,11 @@
     <string name="pref_sharp_deconv_damping_3_default" translatable="false">0</string>
     <string name="sharp_deconv_halo">Strength, %</string>
     <string name="sharp_deconv_halo_margin">Texture margin</string>
-    <string name="sharp_deconv_halo_margin_desc">Share of the local range that passes freely, so fine texture is not limited</string>
+    <string name="sharp_deconv_halo_margin_desc">Leeway for fine texture in halo suppression. Higher: crisper texture, risk of fringes; lower: stricter.</string>
     <string name="sharp_deconv_halo_macro">Macro edge threshold</string>
-    <string name="sharp_deconv_halo_macro_desc">Local contrast above which the suppression works at full strength</string>
+    <string name="sharp_deconv_halo_macro_desc">Contrast from which halos are fully suppressed. Higher: only on the hardest edges; lower: on weaker too.</string>
     <string name="sharp_deconv_kernel">PSF kernel type</string>
-    <string name="sharp_deconv_kernel_desc">%s. Shape of the point spread function for this stage</string>
+    <string name="sharp_deconv_kernel_desc">%s. Shape of the blur this stage corrects.</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Gaussian (classic)</item>
         <item>Optics / lens (Pillbox)</item>
@@ -241,23 +240,23 @@
     <string name="sharp_deconv_radius">Radius</string>
     <string name="sharp_deconv_amount">Amount, %</string>
     <string name="sharp_deconv_iterations">Iterations</string>
-    <string name="sharp_deconv_iterations_desc">0 turns the stage off. Each iteration is two full-size passes</string>
+    <string name="sharp_deconv_iterations_desc">Passes of the stage. Higher: sharper but slower, more artefacts; lower: softer; 0: stage off.</string>
     <string name="sharp_deconv_damping">Damping</string>
-    <string name="sharp_deconv_damping_desc">Fades the correction where noise explains the difference</string>
+    <string name="sharp_deconv_damping_desc">Holds back correction where the difference looks like noise. Higher: less noise, but softer; 0: off.</string>
     <string name="pref_zsl_buffer_count_default" translatable="false">50</string>
     <string name="zsl_buffer_count">ZSL buffer frames</string>
-    <string name="zsl_buffer_count_summary">RAW buffer before the shutter press: 1–100 frames, 50 by default (~25 MB per frame; with 100 the camera does not start on the X200 Ultra). One size for all modules and for the photo and night modes. The number of merged frames is set separately.</string>
+    <string name="zsl_buffer_count_summary">RAW frames kept before the press. Higher: more memory used; lower: the merge may run short of frames.</string>
     <string name="live_viewfinder_raw">Live viewfinder</string>
-    <string name="live_viewfinder_raw_summary">Preview developed from RAW. When it is off or RAW is unavailable, the standard camera preview is shown. The full processing of the shot runs after capture.</string>
+    <string name="live_viewfinder_raw_summary">The viewfinder develops the RAW itself. Off: the standard camera preview. The photo is not affected.</string>
     <string name="pref_remosaic_phase_default" translatable="false">0</string>
     <string name="remosaic_enabled">Enable remosaic</string>
     <string name="remosaic_enabled_desc">Only for cameras that output a quad or tetra mosaic</string>
     <string name="remosaic_phase_x">X phase</string>
     <string name="remosaic_phase_y">Y phase</string>
-    <string name="remosaic_phase_desc">Offset of the block grid. A wrong phase gives a colour grid; tune it on a shot</string>
+    <string name="remosaic_phase_desc">Horizontal offset of the block grid. A wrong value gives a colour grid; the neural mode needs 0.</string>
     <string name="pref_remosaic_profile_default" translatable="false">2</string>
     <string name="remosaic_profile">Interpolation style</string>
-    <string name="remosaic_profile_desc">How much smoothing the remosaic adds</string>
+    <string name="remosaic_profile_desc">How much the remosaic smooths the image: softer gives less noise, sharper keeps more detail.</string>
     <string-array name="remosaic_profile_entries">
         <item>Nearest sample — no smoothing</item>
         <item>Sharp — narrow kernel</item>
@@ -275,17 +274,17 @@
     <bool name="pref_remosaic_flatfield_default">false</bool>
     <bool name="pref_remosaic_dump_default">false</bool>
     <string name="remosaic_steered">Directional interpolation</string>
-    <string name="remosaic_steered_desc">Green is filled in along an edge, not across it. Averaging across an edge gives an in-between value, and the colour differences are computed from it: hence the colour fringes on letters and outlines</string>
+    <string name="remosaic_steered_desc">Fills in green along edges, not across them: fewer colour fringes on letters and outlines.</string>
     <string name="remosaic_clamp">Colour difference clamp</string>
-    <string name="remosaic_clamp_desc">An interpolated difference stays within the ones measured nearby. On a flat surface it changes nothing; on an edge it cuts the overshoot, that very pink halo</string>
+    <string name="remosaic_clamp_desc">Keeps colour on edges within the nearby values: removes the pink halo.</string>
     <string name="remosaic_dump">Save the remosaic output</string>
     <string name="remosaic_dump_desc">Saves one more DNG next to the normal one: exactly what the node wrote, before demosaicing. It tells an error of the remosaic itself from an error of the later stages. Each shot takes 24 MB more</string>
     <string name="remosaic_flatfield">Block flat field</string>
-    <string name="remosaic_flatfield_desc">Photosites inside a block differ in response, by up to 12 % on this sensor and differently for each colour. The profile is measured on the frame itself and divided out; otherwise it goes into the green field, and with the opposite sign into the colour differences: a colour cast on fine structure. The reference app does not do this, so it is off by default; turn it on as an experiment</string>
+    <string name="remosaic_flatfield_desc">Evens out the different pixel response inside a block: less colour cast. Experimental.</string>
     <string name="remosaic_backend_title">Remosaic algorithm</string>
     <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — after Vivo</item><item>SCAM Neural — NPU, root (experimental)</item><item>HP9 HexQuad — NPU, 6 frames (test)</item><item>Quad 2×2 — NPU, 4 frames (main, 2x ISZ)</item></string-array>
     <string-array name="remosaic_backend_values" translatable="false"><item>scamera</item><item>tetra_detail</item><item>scam_neural</item><item>hp9_hexquad</item><item>imx06c_quad</item></string-array>
-    <string name="tetra_response_summary">Estimates the 4×4 pixel response and its smooth change across the frame. With too little data a common correction is used. If texture or colour changes, compare with the correction off.</string>
+    <string name="tetra_response_summary">Removes the periodic grid on Tetra 4×4 shots by evening out the pixel response.</string>
     <string-array name="hexquad_model_entries"><item>x2 — current model</item><item>x1 — experimental</item></string-array>
     <string-array name="hexquad_model_values" translatable="false"><item>2</item><item>1</item></string-array>
     <!-- Settings sheet handles (TalkBack) -->
@@ -300,24 +299,24 @@
     <string name="motion_mode_on_toast">Motion: fast buffer, sharp moving subjects</string>
     <string name="motion_mode_off_toast">Photo</string>
     <string name="prefs_scam_motion_on_title">Motion mode</string>
-    <string name="prefs_scam_motion_on_summary">The same switch as the motion icon beside the settings gear in the viewfinder</string>
+    <string name="prefs_scam_motion_on_summary">For motion: short shutter and fewer frames so the subject stays sharp. Same as the viewfinder icon.</string>
     <string name="prefs_scam_motion_screen_title">Motion</string>
-    <string name="prefs_scam_motion_screen_summary">Mode of the switch beside the settings gear: the fastest buffer, sharp moving subjects, fast processing; HDR is weaker</string>
+    <string name="prefs_scam_motion_screen_summary">Settings of the Motion mode: a fast buffer and sharp moving subjects</string>
     <string name="prefs_scam_motion_fps_title">Viewfinder and buffer rate</string>
-    <string name="prefs_scam_motion_fps_summary">%s. Maximum: the fastest fixed rate the camera and its RAW stream allow; no buffer frame is exposed longer than one frame interval</string>
+    <string name="prefs_scam_motion_fps_summary">%s. Viewfinder and buffer rate in Motion mode. Higher: shorter exposures and sharper motion.</string>
     <string name="prefs_scam_motion_shutter_title">Shutter at most</string>
-    <string name="prefs_scam_motion_shutter_summary">%s. When the auto exposure of the camera picks a longer shutter, the shutter stays at this value and the ISO makes up the difference; the faster the subject or the camera moves, the shorter the shutter (up to 3 stops shorter). In the dark it grows only as far as the highest ISO needs</string>
+    <string name="prefs_scam_motion_shutter_summary">%s. Longest shutter in Motion mode. Shorter: sharper motion but more noise (higher ISO).</string>
     <string name="prefs_scam_motion_flicker_title">No lamp flicker</string>
-    <string name="prefs_scam_motion_flicker_summary">If the short frames show stripes from flickering lamps (50 / 60 Hz), the shutter is at least 1/100 / 1/120 s so the photo has none</string>
+    <string name="prefs_scam_motion_flicker_summary">Keeps the shutter no shorter than the lamp flicker, so the photo has no stripes.</string>
     <string name="prefs_scam_motion_frames_title">Frames to merge</string>
-    <string name="prefs_scam_motion_frames_summary">The newest buffer frames at the press: fewer frames span less time and merge faster</string>
-    <string name="prefs_scam_motion_shasta_summary">Bracketed long frames after the shot; off by default: they smear what moves</string>
-    <string name="prefs_scam_motion_bento_summary">%s. Ultrashort frames for the highlights; by default only where the frame clips</string>
-    <string name="prefs_scam_motion_boost_summary">Stronger rejection of moving areas in the merge</string>
-    <string name="prefs_scam_motion_boost_value_summary">Strength of the rejection of moving areas (photo: 6)</string>
-    <string name="prefs_scam_motion_threshold_summary">Local motion (RAW px) from which a tile counts as moving; lower = sooner (photo: 1.5)</string>
+    <string name="prefs_scam_motion_frames_summary">Frames merged in Motion mode. Higher: less noise but slower; lower: faster.</string>
+    <string name="prefs_scam_motion_shasta_summary">Bright frames after the press in Motion mode: less shadow noise, but moving things smear.</string>
+    <string name="prefs_scam_motion_bento_summary">%s. Dark frame for overexposed areas in Motion mode. Auto: only when something is clipped.</string>
+    <string name="prefs_scam_motion_boost_summary">In Motion mode, removes ghosts harder where parts of the frame move differently.</string>
+    <string name="prefs_scam_motion_boost_value_summary">Ghost suppression strength in Motion mode. Higher: fewer ghosts but more noise; lower: the opposite.</string>
+    <string name="prefs_scam_motion_threshold_summary">Motion mode: shift from which an area counts as moving. Lower: fewer ghosts; higher: less noise.</string>
     <string name="prefs_low_light_boost_title">Bright viewfinder in the dark</string>
-    <string name="prefs_low_light_boost_summary">The camera\'s low-light boost (Android 15, where the camera has it): a brighter, slower viewfinder in the dark; the buffered frames get its longer exposures too. Not in Motion</string>
+    <string name="prefs_low_light_boost_summary">In the dark the viewfinder is brighter but slower; buffer frames are longer. Android 15, not in Motion.</string>
     <string name="dcg14_on">DCG 14-bit: on</string>
     <string name="dcg14_off">DCG 14-bit: off</string>
     <string name="dcg14_on_toast">DCG 14-bit on: the sensor\'s dual-gain HDR mode is requested, the camera restarts</string>
@@ -333,6 +332,6 @@
     <string name="full_res_off_toast">Full resolution off</string>
     <string name="dcg14_not_here">DCG 14-bit works on the main camera and the telephotos</string>
     <string name="prefs_developer_settings_screen_title">For developers</string>
-    <string name="prefs_developer_settings_screen_summary">Hidden switches of scam_dev.txt for experiments and debugging</string>
+    <string name="prefs_developer_settings_screen_summary">Hidden scam_dev.txt switches for experiments and debugging</string>
 </resources>
 

@@ -123,15 +123,8 @@ public final class SettingsAvailability {
         String output = text("pref_scam_hybrid_output", "sensor").trim();
         if (key.equals("pref_scam_hybrid_downsampler") && !any(output, "12", "16", "20"))
             return Lang.t("Только при «Разрешение» 12, 16 или 20 МП.", "Only with “Resolution” 12, 16 or 20 MP.");
-        if (key.equals("pref_scam_hybrid_dn_chroma_2x_keep") && output.equals("sensor"))
+        if (any(key, "pref_scam_hybrid_dn_chroma_2x_keep", "pref_scam_hybrid_auto2x") && output.equals("sensor"))
             return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2×.", "2× grid only: “Resolution” 12, 16, 20 MP or 2×.");
-        // P28 RAW CA: the rows under the mode list follow it and the auto switch.
-        if (key.startsWith("pref_scam_hybrid_rawca_") && !key.equals("pref_scam_hybrid_rawca_mode")) {
-            if (text("pref_scam_hybrid_rawca_mode", "0").equals("0")) return Lang.t("Выберите режим «Коррекция ХА в RAW».", "Select a “RAW CA correction” mode.");
-            boolean auto = on("pref_scam_hybrid_rawca_auto", true);
-            if (any(key, "pref_scam_hybrid_rawca_red", "pref_scam_hybrid_rawca_blue") && auto) return Lang.t("Только без автоподбора.", "Only when “Auto detect” is off.");
-            if (key.equals("pref_scam_hybrid_rawca_passes") && !auto) return Lang.t("Только с автоподбором.", "Only when “Auto detect” is on.");
-        }
         // P29 mosaic merge: the native rows follow the merge list, the split's edge kernel only acts on the split (P35: Tetra takes
         // the native merge too with "Tetra path" at its default, so the row is live only with the split for Quad or for Tetra).
         if (key.startsWith("pref_scam_hybrid_mosaic_")) {
@@ -205,7 +198,6 @@ public final class SettingsAvailability {
         if (key.startsWith("pref_remosaic_") && !scamMosaic) return Lang.t("Используется в SCAM HDR с мозаикой Quad / Tetra (модули ISZ).", "Used in SCAM HDR with a Quad / Tetra mosaic (ISZ modules).");
         if (key.equals("pref_tetra_response_key") && !(scamMosaic && (mosaicMode.equals("detail") || mosaicMode.startsWith("neural"))))
             return Lang.t("Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.", "Correction for the SCAM HDR “Tetra Detail” and “Neural remosaic” mosaic modes.");
-        if (any(key,"scamera_quad_bayer_mode","scamera_quad_dng_metadata") && !on("scamera_quad_bayer_enabled", false)) return Lang.t("Включите обработку Quad Bayer.", "Turn on Quad Bayer handling.");
         if (key.startsWith("pref_sharp_")) {
             String master = key.contains("deconv") ? "pref_sharp_deconv_enabled_key"
                     : key.contains("micro") ? "pref_sharp_micro_enabled_key" : "pref_sharp_usm_enabled_key";

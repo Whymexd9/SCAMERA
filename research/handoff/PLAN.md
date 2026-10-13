@@ -2908,3 +2908,81 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   the panes through the parent FragmentManager (they belong to the child one), swap() re-adds panes whose pages share ids,
   the old ScaleAndPan sync (gone in P116). WebP / AVIF: which file, its size and bit depth (10-bit AVIF / HEIC-like
   RGBA_1010102?), Glide vs SSIV path in ImageAdapter (line ~131), thumbnails vs viewer.
+
+### P118 - Settings: fixed, checked, the needless ones gone (owner, 2026-10-13: «Исправь и проверь работоспособность всего, лишнее/ненужное/дублирующее удали полностью», screenshots of the settings; «Это можешь вырезать» on «Хроматическая аберрация RAW»; «Эту группу настроек ты тоже можешь вырезать кроме Сабр 2х когда это имеет смысл, улучши этот параметр ... в зависимости от освещения»; «поменяй описание у абсолютно всех настроек и параметров на минимально возможное»)
+- Gone, with their code, strings, tests and stored values (SettingsMigration.removeObsolete):
+  - «Хроматическая аберрация RAW» (P28: RawTherapee CA_correct port scam-rawca*.h, tools/rawca, the worker's rawCa keys, the
+    memory budget of its frame copies). The merge's own lateral CA fit (P19) stays; it is how CA is removed.
+  - «Quad Bayer — совместимость» and the hidden «Quad Bayer» full resolution: the switch never changed the stream (pref_quad_bayer_key
+    was forced off since P25, its CaptureController branches unreachable); it only sent vendor remosaic tags with the shot, marked the
+    CFA -2 (every SCAM HDR shot then fell back to the hybrid on vivo) and wrote a 4x4 QBCFA into DNGs of plain Bayer frames.
+    Quad / Tetra streams come from the ISZ modules; the hybrid measures their colour block itself.
+  - «Показать градиентный фон»: its theme set the camera background to the colour it already had.
+  - «Опыты JSR» (phase kernel, CA inside the merge, polynomial field). The JSR_LCA stub in kHybMergeCommon stays untouched
+    (never defined now; the merge GLSL is not edited, see the Adreno 750 note).
+  - ArkCore «Приоритет лица» and «Компромисс защиты светов»: read by nothing (faces never reach processing; the trade-off is a
+    fixed 0.33 in ArkAe).
+- «Sabre 2× только когда есть смысл» (was «Опыты JSR» → jsrAuto2x, off): its own row under «Разрешение», on by default, live on
+  the 2x grid only. The worker (auto2x, off in replays) keeps the 2x grid only when the burst samples finer than the sensor (green
+  fill distance <= 0.5 px, as before) AND the light allows detail at 2x: SNR of a 2x cell = base noise model at 0.1 of white x
+  sqrt(frames / 4) >= 20; else 1x merge + 2x resize. Log: «HYBRID SABRE 2X: ... -> 2x grid kept / 1x grid, resized (...)».
+  Thresholds not tuned on phone shots yet (auto2xMaxGap, auto2xMinSnr in the tuning file).
+- «Включить закруглённые края» did nothing: the viewfinder frame (P25) masked 26dp corners always, over the switch's 40 px ones.
+  The frame follows the switch now (off = square corners); the old corners are gone.
+- «Показать данные отладки»: level 3 is «Рамки AF / AE и данные кадра» (was «Полная отладка», confused with the processing log
+  «Полный журнал обработки»); the summary said «данные автофокуса» only. The row was not disabled: the screenshot was taken under
+  the open list's scrim.
+- «Частота мерцания» → «Мерцание ламп», a list Авто / Сеть 50 Гц / Сеть 60 Гц / Выкл. (default Авто; the stored old default 120,
+  wrong in 50 Hz countries, becomes Авто once). Auto: STATISTICS_SCENE_FLICKER of the preview, else six AE shutters on whole
+  periods of one mains at two multiples, else the region (capture/MainsFlicker). Only the long Shasta frames of the hybrid snap.
+- «16:9»: one crop for every frame (processing/Wide169): the frames after the press kept an odd row count (4080 wide: 2295 rows)
+  and were dropped or failed the merge; rows and first row on multiples of 8 (whole Quad / Tetra blocks); no second crop in
+  PostPipeline / ScamRgb (the output was a row taller than its data); the lens shading map is cut to the crop's rows (the top and
+  bottom of 16:9 photos got the sensor edges' brightening). DNG (all aspect ratios): the gain map area is the stored image as
+  (xmin, ymin, xmax, ymax); the active array's (top, left, bottom, right) went into those arguments, so it spanned rows up to the
+  image width and columns up to its height.
+- Kept on purpose: «Фильтр Байера» (works; only for a HAL with a wrong CFA, per module with per-lens settings), «RAW-метаданные»
+  (three working rows: dynamic black / white level, no front mirror).
+- Every settings description rewritten short (RU / EN, about 470 rows plus the per-module and «RAW-метаданные» rows): what the
+  setting is and what a higher / lower value (or on) does; the meaning checked in the code. Rows that had none got one; summaries
+  that were the title string got their own. Icons: the sounds and the rounded corners got their own.
+- Found while rewriting (not changed, worth a look): «Карта силы» Auto = «Карта эффективных кадров»; Bento frames 1-2 do nothing
+  while Mochi is «Всегда» (3 dark frames always); the Sabre 6.1 «Авто» rows (max key, min motion) and the old kernel's SNR scale /
+  tensor noise do nothing while 6.1 is «Всегда» (default); Shasta sharpness / max ratio skipped with Shasta «Всегда» (default);
+  motion boost rows need F6; the colour fill support needs the fill on; the AgX curve sliders act in «Свой» look only;
+  pref_color_method_key is overridden on vivo (ISP CCM) and OPPO (tuned CCM).
+- Tests: 823 unit tests, only DevKeysCoverageTest fails (another agent's uncommitted vivo_qcom keys); new MainsFlickerTest,
+  Wide169Test, FileNamePatternTest, HybridSettingsTest.rawCaIsGone / auto2xOnByDefaultAndJsrGone, QuadBayerResetTest,
+  SettingsAuditFixTest.antibandingBecomesAList. CaptureControllerTest passes again (its QuadBayer branch read null settings).
+  check_ui_language, check_settings_model PASS; the worker and dngCreator.cpp compile (NDK clang -fsyntax-only).
+  Not tested on a phone.
+
+### P119 - «Название фото»: SCA instead of IMG, a template like ArkCam's (owner, 2026-10-13: «у фото подписать вместо IMG сделать SCA», «Дай возможность настраивать как это сделано в ArcCam»)
+- Output settings → «Название фото»: the template (date / time variables yyyy yy MM dd HH mm ss SSS, any other text kept as it
+  is), the name it gives now, tap-to-insert variables, ready templates, «Сбросить» / «Отмена» / «Сохранить» (ui/settings/
+  FileNameDialog, processing/FileNamePattern). Default SCA_yyyyMMdd_HHmmss; characters a file name cannot hold are dropped.
+- One name per shot for the DNG and the photo (ImageSaver / DefaultSaver called the name generator per file: with milliseconds
+  they would differ). The gallery's edit copy uses the template too. Videos keep VID_.
+
+### P120 - OPEN: SCAM TEST reports of the nubia NX563J and the vivo V2547DA (X300 Ultra, root) (owner, 2026-10-13: «изучить очень внимательно и точно отчёты чтобы найти что-то что мы можем исправить/улучшить использовать, либо расширить функционал/возможности для данных смартфонов. X300 Ultra тут с рут доступом»)
+- Reports (outside git): SCAMERA-PC/reports/scam-test/SCAM-TEST_nubia-NX563J_20261013-062017.txt (11.6 k lines),
+  SCAM-TEST_vivo-V2547DA_20261013-083557.txt (199 k lines, root sections).
+- To do: cameras, RAW sizes / CFA / levels, sensor modes and vendor tags (ISZ, DCG, remosaic), AE / OIS / EIS facts, what SCAMERA
+  does on these phones today and what it could use (root on the X300 Ultra: vendor libraries, tuning, the worker paths).
+
+### P121 - ISZ without remosaic: white balance as without ISZ (owner, 2026-10-13: «при использовании ISZ без ремозаика баланс белого не работает нормально на всех смартфонах, придумай как это исправить ... сделать его аналогичным тому как он работает без ISZ ... Если да, то реализуй»)
+- Code check: the merge keeps the colour of a Quad / Tetra mosaic (same CFA order, per-site gains within a colour, per-colour
+  black / white); every route takes the white point from the frame's SENSOR_NEUTRAL_COLOR_POINT and nothing else. So the neutral
+  the camera reports for an un-remosaiced mosaic stream is the suspect: its ISP reads the mosaic as Bayer (the purple / green ISP
+  pictures of P41b / P108), every 2x2 phase then holds about the same mix of R, G and B, its AWB sees a grey scene. Not confirmed
+  on a phone (no ISZ shot log in the repo).
+- Now (processing/color/MosaicNeutral, ScamProcessor.applyMosaicNeutral): a shot whose stream has a colour block > 1 measures the
+  neutral of its reference frame (each colour block averaged, shades of grey p = 4 over cells neither clipped nor dark) and puts it
+  on the camera's own illuminant curve: the neutral points the same physical camera reported in plain-Bayer viewfinder sessions with
+  the AWB settled (ParamController.learnNeutral, every 16th result, kept per camera in SharedPreferences «mosaic_awb_curve»).
+  Without a curve yet the measured neutral is used. The ISP colour transform (vivo) is skipped for such a neutral (picked at the
+  camera's wrong one). DNG AsShotNeutral, ArkTone and the neural route follow. Log: «mosaic white balance: colour block b, camera
+  r / b -> measured ..., on the curve of camera N ...». scam_dev.txt "mosaic_awb 0": the camera's neutral as before.
+- Tests: MosaicNeutralTest (Quad / Tetra BGGR mosaics with ±4 % site gains: R/G and B/G within 3 %; clipped / tiny frames give
+  nothing; the projection on the curve). To check on phones: one scene with the ISZ module and its plain module, daylight and
+  tungsten; the log lines above.

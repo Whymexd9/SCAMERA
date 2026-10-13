@@ -18,7 +18,6 @@
 // float) in base units, canonical RGGB geometry (the caller restores the sensor origin), plus the
 // effective-frames map and the merged Bayer RAW for the DNG.
 #include "scam-superres-gpu.h"
-#include "scam-rawca-gpu.h" // P28 RAW CA (CA_correct_RT port, burst / GPU pre-pass)
 #include "scam-chroma-gpu.h" // P80 mosaicChromaMedian on the GPU
 #include "scam-crash.h"
 #include <atomic>
@@ -255,13 +254,6 @@ struct HybridTuning {
     // moves R or B by at least caMinShift RAW px at the corner)
     int caCorrect=1;
     float caMinShift=0.25f;
-    // P28 RAW CA correction as RawTherapee's CA_correct_RT (scam-rawca.h, scam-rawca-gpu.h). rawCa: 0 off (default; P19
-    // above as before), 1 "base": the fit of the base frame moves R / B of the merged RGB onto G once, 2 "frames": every frame
-    // corrected before the alignment / merge (GPU pre-pass). Either replaces P19 (caCorrect is skipped). rawCaAuto 1: RT's auto fit
-    // with rawCaPasses passes; 0: RT's manual red / blue (rawCaRed / rawCaBlue, px at the frame edge). rawCaAvoidShift: RT's avoid
-    // colour shift. rawCaGpu 0: frames mode on the CPU (diagnostics).
-    int rawCa=0,rawCaAuto=1,rawCaPasses=2,rawCaAvoidShift=1,rawCaGpu=1;
-    float rawCaRed=0,rawCaBlue=0;
     // P27 (VERIFY-11): 1 (default) = the frames of a bracketed / ultrashort exposure whose data reliably disagrees with their
     // metadata exposure ratio by more than 5 % are merged with the measured ratio (hybridApplyMeasuredGains: enough tiles, low
     // MAD, consistent across the frames of the exposure, 0.5..2 x the metadata), all others with the metadata ratio; 0 = report
@@ -275,20 +267,12 @@ struct HybridTuning {
     int noiseMeasured=1;
     // P80: 1 (default) = the chroma median of the mosaic results on the GPU (ChromaMedianGpu, float rounding only), 0 = CPU.
     int chromaGpu=1;
-    // P74 JSR experiments (settings group «Опыты JSR», all off by default; ideas of Jiangtherapee Super Resolution, no code):
-    // jsrPhase 1: the donors' kernel narrows with the phase coverage of the burst (jsrCoverage): sigma x clamp((h / h1)^strength,
-    // minSigma, 1), h = green fill distance of all frames, h1 = of the base alone (sensor px).
-    // jsrAuto2x 1: a requested 2x grid (Sabre 2x, plain or native mosaic) is merged on the 1x grid and resized 2x when the green fill
-    // distance is above jsrAuto2xMaxGap sensor px (the frames do not sample finer than the sensor: the 2x grid would add time and
-    // lattice, no detail). jsrPoly (F6 field): 1 = a robust polynomial (degree <= jsrPolyDegree) per frame replaces the tile field,
-    // 2 = the tile field kept within jsrPolyClamp px of the polynomial.
-    int jsrPhase=0;float jsrPhaseStrength=0.5f,jsrPhaseMinSigma=0.4f;
-    int jsrAuto2x=0;float jsrAuto2xMaxGap=0.5f;
-    int jsrPoly=0,jsrPolyDegree=4;float jsrPolyClamp=0.25f;
-    // jsrLca 1: the P19 lateral CA model of the base frame moves every R / B site of every frame to its corrected position inside
-    // the merge (plain Bayer; JSR: CA compensation before the fusion, the same channel geometry for all frames) instead of resampling
-    // the merged R / B afterwards. The merge programs get JSR_LCA only then (the default programs are compiled as before).
-    int jsrLca=0;
+    // P118 «Sabre 2× только когда есть смысл» (P74's JSR experiment jsrAuto2x; the other JSR experiments are gone): auto2x 1 = a
+    // requested 2x grid (Sabre 2x, plain or native mosaic) is merged on the 1x grid and resized 2x when the frames do not sample
+    // finer than the sensor (green fill distance above auto2xMaxGap sensor px) or when the light is too low for detail at 2x (SNR
+    // of a 2x cell below auto2xMinSnr: the base frame's noise model at 0.1 of white, sqrt(frames / 4) of the merge's averaging).
+    // Off here (replays as before); the app writes it with the switch (on by default).
+    int auto2x=0;float auto2xMaxGap=0.5f,auto2xMinSnr=20.f;
     // P62 Mochi (GCam 11 PhotometricMerge): each bracketed frame gets a per-tile photometric correction against the base on the GPU
     // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = GCam's rule (more than 3 non-bracketed frames),
     // 2 = whenever a bracketed frame is merged.
@@ -489,14 +473,9 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
             ||set("mosaicNativeWidenMul",&t.mosaicNativeWidenMul)||set("mosaicNativeWidenFrames",&t.mosaicNativeWidenFrames)
             ||set("mosaicTetraWidenMul",&t.mosaicTetraWidenMul)||set("mosaicTetraWidenFrames",&t.mosaicTetraWidenFrames)
-            // P28
-            ||set("rawCa",nullptr,&t.rawCa)||set("rawCaAuto",nullptr,&t.rawCaAuto)||set("rawCaPasses",nullptr,&t.rawCaPasses)
-            ||set("rawCaAvoidShift",nullptr,&t.rawCaAvoidShift)||set("rawCaGpu",nullptr,&t.rawCaGpu)||set("rawCaRed",&t.rawCaRed)||set("rawCaBlue",&t.rawCaBlue)
             // P27
             ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)
-            ||set("jsrPhase",nullptr,&t.jsrPhase)||set("jsrPhaseStrength",&t.jsrPhaseStrength)||set("jsrPhaseMinSigma",&t.jsrPhaseMinSigma)
-            ||set("jsrAuto2x",nullptr,&t.jsrAuto2x)||set("jsrAuto2xMaxGap",&t.jsrAuto2xMaxGap)
-            ||set("jsrLca",nullptr,&t.jsrLca)||set("jsrPoly",nullptr,&t.jsrPoly)||set("jsrPolyDegree",nullptr,&t.jsrPolyDegree)||set("jsrPolyClamp",&t.jsrPolyClamp)
+            ||set("auto2x",nullptr,&t.auto2x)||set("auto2xMaxGap",&t.auto2xMaxGap)||set("auto2xMinSnr",&t.auto2xMinSnr)
             ||set("mochi",nullptr,&t.mochi);
         }
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
@@ -2948,7 +2927,6 @@ public:
         std::vector<const uint16_t*> frames;            // 0 = base
         std::vector<BackwardHomography> homography;     // per frame
         std::vector<float> gain,weight,kmul,noiseSlope,noiseOffset;
-        bool lcaOn=false;std::array<float,8> lca{}; // P74 jsrLca: k1R k2R k1B k2B cx cy invHalf (programs built with JSR_LCA)
         std::vector<int> role;
         float baseSlope=0,baseOffset=0,white=0;
         const std::vector<float>* mask=nullptr;         // per cell (w/2 x h/2), 0 = no Bento
@@ -2992,8 +2970,6 @@ public:
     // false only for a merge with both thresholds 0: the vivo X200 Pro's Mali worker died compiling kHybFlags (owner's log
     // 2026-10-07), the app's retry turns the tests off and the merge then runs without those two programs. true = as before.
     const bool outlierPrograms=true;
-    // P74 jsrLca: "#define JSR_LCA 1" before the merge / rim / chroma bodies (empty = the programs as before)
-    static std::string& mergeDefs(){static std::string d;return d;} // one merge per worker process; read by the GPU built ahead too
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
                        const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
                        bool withOutlierPrograms=true)
@@ -3052,12 +3028,12 @@ public:
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
-                const std::string body=mergeDefs()+defs+kHybMergeCommon+kHybMergeMain1;
+                const std::string body=defs+kHybMergeCommon+kHybMergeMain1;
                 mergeProgram=timed("merge",body.c_str());
             }
-            if(rimPass){const std::string body=mergeDefs()+"#define RIM_STATS 1\n"+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
+            if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
-            if(chromaPass){const std::string body=mergeDefs()+"#define RIM_STATS 1\n#define CHROMA_PASS 1\n"+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
+            if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
             if(nativeMosaic){ // P29: new programs only, the ones above are compiled from the same sources as without it
                 natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
                 natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybNatFlags).c_str());
@@ -3368,11 +3344,6 @@ public:
         glUniform1i(loc(dilateProgram,"validPlanesU"),bento?int(in.maskValid.size()):0);
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
-        if(in.lcaOn)for(GLuint pr:{mergeProgram,rimProgram,chromaProgram}){ // P74 jsrLca (programs built with JSR_LCA)
-            if(!pr)continue;
-            glUseProgram(pr);glUniform4f(loc(pr,"jsrCaA"),in.lca[0],in.lca[1],in.lca[2],in.lca[3]);glUniform4f(loc(pr,"jsrCaB"),in.lca[4],in.lca[5],in.lca[6],0.f);
-        }
-        glUseProgram(mergeProgram);
         {const float us=std::max(0.3f,tune.bentoUsSigma),cs=tune.bentoChromaSigma;
          // The merge program stays exactly as it was: on Adreno 750 even one more term in its clip-flag condition made the whole
          // merge ~15x slower (and changed its rounding). The Bento colour pass gets its own uniforms.
@@ -5240,74 +5211,14 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
 // the base and of the normal frame nearest in time, 32x32-site blocks: temporal noise = var(base - frame) / 2 (the block's mean
 // difference removed), the block counts as flat when the base's own variance is at most 1.5 x that (texture, edges and motion
 // raise it far above). Ratio = temporal noise / model (slope x level + offset, mean of both frames); the median of the flat blocks.
-// P74 (JSR experiments, owner 2026-10-10; idea from Jiangtherapee Super Resolution's "sampling distances / phase redundancy", no
+// P74 / P118 (Sabre 2x only when it helps, owner 2026-10-10 / 13; idea from Jiangtherapee Super Resolution's "sampling distances / phase redundancy", no
 // code taken): how densely the merged frames' sites of one colour cover the CFA period, in sensor px. For every donor its offset to
 // the base at 3x3 points of the frame (homography; the F6 field is not known yet), the sites of the colour of all frames brought to
 // base positions modulo the colour period 2b (b = colour block: 1 Bayer, 2 Quad, 4 Tetra; binned coordinates x b for a mosaic), and
 // the fill distance = the largest distance from any point of the period to the nearest site (median of the 3x3 points). One Bayer
 // frame: green 1 px; one Tetra frame: green 2.5 px; well-spread frames: a fraction of a pixel.
-// P74 jsrPoly (JSR's alignment idea: a global model plus a smooth polynomial residual field fitted to reliable correspondences,
-// the degree lowered when they are few): the F6 tile field of one frame (nx x ny tiles, x / y offset per tile, level px, 0 = a tile
-// left on the homography) as a 2D polynomial of degree <= maxDegree, fitted to the refined tiles that are not moving (the Z channel
-// below zMax) with 3 Huber reweightings (delta 0.3 px); a degree needs 3 tiles per coefficient, else one less. mode 1: every tile
-// takes the polynomial; 2: refined tiles keep their own offset within +-clamp of it, the others take it. Returns the degree used
-// (-1 = too few tiles, field unchanged).
-inline int jsrPolyField(std::vector<float>& field,const std::vector<float>* motion,int nx,int ny,int maxDegree,int mode,float clampPx){
-    if(nx<2||ny<2||field.size()!=size_t(nx)*ny*2)return -1;
-    std::vector<int> use;
-    for(int k=0;k<nx*ny;++k){
-        const bool refined=field[size_t(k)*2]!=0.f||field[size_t(k)*2+1]!=0.f;
-        const bool still=!motion||motion->size()!=size_t(nx)*ny||(*motion)[size_t(k)]<1.f;
-        if(refined&&still)use.push_back(k);
-    }
-    int degree=std::clamp(maxDegree,0,4);
-    while(degree>=0&&int(use.size())<3*(degree+1)*(degree+2)/2)--degree;
-    if(degree<0)return -1;
-    const int terms=(degree+1)*(degree+2)/2;
-    auto basis=[&](int k,double* t){
-        const double x=2.0*(k%nx)/std::max(nx-1,1)-1.0,y=2.0*(k/nx)/std::max(ny-1,1)-1.0;
-        int m=0;for(int d=0;d<=degree;++d)for(int e=0;e<=d;++e)t[m++]=std::pow(x,d-e)*std::pow(y,e);
-    };
-    std::array<std::vector<double>,2> coef;
-    for(int axis=0;axis<2;++axis){
-        std::vector<double> wgt(use.size(),1.0),c(size_t(terms),0.0);
-        for(int it=0;it<4;++it){
-            std::vector<double> A(size_t(terms)*terms,0.0),r(size_t(terms),0.0);double t[15];
-            for(size_t u=0;u<use.size();++u){
-                basis(use[u],t);const double v=field[size_t(use[u])*2+axis];
-                for(int a=0;a<terms;++a){r[a]+=wgt[u]*t[a]*v;for(int bb=0;bb<terms;++bb)A[size_t(a)*terms+bb]+=wgt[u]*t[a]*t[bb];}
-            }
-            for(int a=0;a<terms;++a)A[size_t(a)*terms+a]+=1e-9; // Gaussian elimination with partial pivoting
-            for(int col=0;col<terms;++col){
-                int piv=col;for(int row=col+1;row<terms;++row)if(std::abs(A[size_t(row)*terms+col])>std::abs(A[size_t(piv)*terms+col]))piv=row;
-                for(int k=0;k<terms;++k)std::swap(A[size_t(col)*terms+k],A[size_t(piv)*terms+k]);std::swap(r[col],r[piv]);
-                const double d=A[size_t(col)*terms+col];if(std::abs(d)<1e-15)return -1;
-                for(int row=0;row<terms;++row){if(row==col)continue;const double fct=A[size_t(row)*terms+col]/d;
-                    if(fct==0.0)continue;for(int k=col;k<terms;++k)A[size_t(row)*terms+k]-=fct*A[size_t(col)*terms+k];r[row]-=fct*r[col];}
-            }
-            for(int a=0;a<terms;++a)c[a]=r[a]/A[size_t(a)*terms+a];
-            for(size_t u=0;u<use.size();++u){ // Huber weights for the next pass
-                basis(use[u],t);double fit=0;for(int a=0;a<terms;++a)fit+=c[a]*t[a];
-                const double e=std::abs(field[size_t(use[u])*2+axis]-fit);wgt[u]=e<=0.3?1.0:0.3/e;
-            }
-        }
-        coef[axis]=c;
-    }
-    double t[15];
-    for(int k=0;k<nx*ny;++k){
-        basis(k,t);
-        const bool refined=field[size_t(k)*2]!=0.f||field[size_t(k)*2+1]!=0.f;
-        for(int axis=0;axis<2;++axis){
-            double fit=0;for(int a=0;a<terms;++a)fit+=coef[axis][a]*t[a];
-            float& v=field[size_t(k)*2+axis];
-            v=mode==2&&refined?float(fit+std::clamp(double(v)-fit,-double(clampPx),double(clampPx))):float(fit);
-        }
-    }
-    return degree;
-}
-
-struct JsrCoverage { double green=0,red=0,greenSingle=0,redSingle=0; int frames=0; };
-inline double jsrFillDistance(const std::vector<std::array<float,2>>& offsets,int b,bool green){
+struct GridCoverage { double green=0,red=0,greenSingle=0,redSingle=0; int frames=0; };
+inline double gridFillDistance(const std::vector<std::array<float,2>>& offsets,int b,bool green){
     const int P=2*b;
     std::vector<std::array<float,2>> pts;
     for(const auto& o:offsets)for(int y=0;y<P;++y)for(int x=0;x<P;++x){
@@ -5333,9 +5244,9 @@ inline double jsrFillDistance(const std::vector<std::array<float,2>>& offsets,in
     return std::sqrt(worst);
 }
 // local(f, x, y): the F6 offset of frame f at (x, y), stream px (the Tetra native path aligns its binned frames almost entirely there)
-inline JsrCoverage jsrCoverage(const std::vector<BackwardHomography>& H,const std::vector<int>& donors,int w,int h,int b,
+inline GridCoverage gridCoverage(const std::vector<BackwardHomography>& H,const std::vector<int>& donors,int w,int h,int b,
                                const std::function<std::array<float,2>(int,int,int)>& local){
-    JsrCoverage c;c.frames=int(donors.size())+1;
+    GridCoverage c;c.frames=int(donors.size())+1;
     std::vector<double> g,r;
     for(int sy=1;sy<=3;++sy)for(int sx=1;sx<=3;++sx){
         const int x=w*sx/4,y=h*sy/4;
@@ -5346,12 +5257,12 @@ inline JsrCoverage jsrCoverage(const std::vector<BackwardHomography>& H,const st
             const std::array<float,2> l=local?local(f,x,y):std::array<float,2>{0.f,0.f};
             off.push_back({(p.x/up-float(x)+l[0])*float(b),(p.y/up-float(y)+l[1])*float(b)});
         }
-        g.push_back(jsrFillDistance(off,b,true));r.push_back(jsrFillDistance(off,b,false));
+        g.push_back(gridFillDistance(off,b,true));r.push_back(gridFillDistance(off,b,false));
     }
     std::nth_element(g.begin(),g.begin()+4,g.end());std::nth_element(r.begin(),r.begin()+4,r.end());
     c.green=g[4];c.red=r[4];
     const std::vector<std::array<float,2>> base{{0.f,0.f}};
-    c.greenSingle=jsrFillDistance(base,b,true);c.redSingle=jsrFillDistance(base,b,false);
+    c.greenSingle=gridFillDistance(base,b,true);c.redSingle=gridFillDistance(base,b,false);
     return c;
 }
 
@@ -5448,14 +5359,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     if(input.frames.empty()||int(input.frames.size())>kHybridMaxFrames)throw std::runtime_error("HYBRID: 1.."+std::to_string(kHybridMaxFrames)+" frames");
-    if(tune.rawCa==2){ // P28 frames mode: every frame corrected (scam-rawca-gpu.h), then this merge on them without it
-        HybridInput corrected=input;std::vector<std::vector<uint16_t>> caStore;
-        // the sub-frames of a colour-block mosaic (subFrames > 1) are hybridReconstructMosaic's own buffer: corrected in place
-        if(scam_rawca::hybridRawCaFrames(corrected,tune,report,caStore,input.subFrames>1)){
-            HybridTuning t2=tune;t2.rawCa=0;t2.caCorrect=0;
-            return hybridReconstruct(corrected,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
-        }
-    }
     const int w=input.w,h=input.h;
     // Any RAW size: pixels of the stream (a mosaic's sub-frames: b^2 per stream frame). Above kHybridClassicPixels the merge follows
     // the real limits (memory, GPU strips, output grid); up to it every step is exactly as before.
@@ -5464,7 +5367,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // at most 2 GiB. The header refuses it (MappedHybridBurst); a replay's tuning grid falls back to the sensor grid. A mosaic's
     // sub-frames take their b x grid: it is the sensor grid of the stream.
     const bool fineGridRefused=input.subFrames<=1&&int64_t(w)*h>kHybridClassicPixels;
-    HybridGpu::mergeDefs()=tune.jsrLca>0&&!native&&tune.caCorrect&&tune.rawCa==0?"#define JSR_LCA 1\n":""; // P74, before any GPU of this merge
     // A Burst view for the shared helpers (sampleRaw, guides, alignment): slot 0 = base.
     Burst b;b.w=w;b.h=h;b.cfa=input.cfa;b.white=input.white;b.black=input.black;b.canonicalRggb=true;
     for(int s=0;s<7;++s){b.raw[s]=input.frames[0].raw;b.exposure[s]=1;b.iso[s]=std::max(1u,input.frames[0].iso);}
@@ -5549,7 +5451,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         return built;
     });
     std::future<std::pair<HybridCa,double>> caAhead;
-    if(ahead&&tune.caCorrect&&tune.rawCa==0)caAhead=tasks.run([&input]{
+    if(ahead&&tune.caCorrect)caAhead=tasks.run([&input]{
         const auto t0=Clock::now();
         const HybridCa ca=hybridRawCa(input);
         return std::make_pair(ca,std::chrono::duration<double,std::milli>(Clock::now()-t0).count());
@@ -5562,8 +5464,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // Bayer and the native mosaic's binned frames up to kHybridClassicPixels (the split's sub-frames share their fields frame-wide);
     // every frame holds its gray image (4 B per quad) until its field is complete: within a quarter of MemAvailable, else the
     // whole field first as before. tune laStream 0 / SCAM_NO_F6_STREAM / SCAM_LA_DUMP: the whole field first.
+    // P118: a requested 2x grid (Sabre 2x of a plain stream or of a native mosaic) that «Sabre 2× только когда есть смысл» checks
+    // with the whole F6 field (not the banded stream)
+    const int requestedGrid=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const int colourBlock=native?std::max(1,native->block):1;
+    const bool fine2x=native?requestedGrid==2*colourBlock:requestedGrid==2;
     std::unique_ptr<LaStream> laStream;double laStreamBaseMs=0;bool laStreamTried=false;
-    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&tune.jsrPoly==0&&tune.jsrPhase==0&&tune.jsrAuto2x==0&&!large&&input.subFrames<=1&&laAhead.valid()
+    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!(tune.auto2x>0&&fine2x)&&!large&&input.subFrames<=1&&laAhead.valid()
             &&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
     auto streamFeed=[&](int f){
         if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
@@ -6029,16 +5936,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             jobs.clear();
             report("HYBRID LOCAL ALIGN: failed ("+laFailure+"); merging with the homographies only");
         }
-        if(tune.jsrPoly>0&&!laFailed&&!jobs.empty()){ // P74: the tile fields as robust polynomials (whole-field path)
-            std::string degs;
-            for(int f:jobs){
-                const int d=jsrPolyField(laFields[f],&laMotions[f],laBase.g0.nx,laBase.g0.ny,tune.jsrPolyDegree,tune.jsrPoly,tune.jsrPolyClamp);
-                float maxY=0;for(size_t k=1;k<laFields[f].size();k+=2)maxY=std::max(maxY,std::abs(laFields[f][k]));
-                fstats[f].maxAbsY=maxY;degs+=" "+std::to_string(f)+":"+std::to_string(d);
-            }
-            report(std::string("HYBRID JSR FIELD: ")+(tune.jsrPoly==2?"tile field within +-"+std::to_string(tune.jsrPolyClamp)+" px of":"replaced by")
-                +" a robust polynomial per frame (frame:degree, -1 = too few tiles, kept):"+degs);
-        }
         std::string per;double partMs[7]{};
         for(int f:jobs){
             const LaFrameStats& st=fstats[f];
@@ -6066,13 +5963,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         } // P33 W2.1: end of the whole-field path
         }
     } else report("HYBRID LOCAL ALIGN: off");
-    // ---- P74 JSR experiments: phase coverage of the burst (kernel width, 2x grid decision)
-    float jsrKmul=1.f;bool jsrCoarse=false;
-    if(tune.jsrPhase>0||tune.jsrAuto2x>0){
+    // ---- P118 Sabre 2x only when it helps (P74's jsrAuto2x, now with the light): the phase coverage of the burst and the SNR of a
+    // 2x cell decide whether a requested 2x grid is merged as such or on the 1x grid and resized
+    bool coarse2x=false;
+    if(tune.auto2x>0&&fine2x){
         std::vector<int> donors;
         for(int f=1;f<n;++f)if(keep[f]&&aligned[f]&&input.frames[f].role!=kRoleUltrashort)donors.push_back(f);
-        const int cb=native?std::max(1,native->block):1;
-        // the F6 field (whole-field path: jsrPhase / jsrAuto2x run F6 before the merge), nearest tile, RAW px of the stream
+        // the F6 field (whole-field path: the measure needs it before the merge), nearest tile, RAW px of the stream
         auto local=[&](int f,int x,int y)->std::array<float,2>{
             if(!laOn||size_t(f)>=laFields.size()||laFields[size_t(f)].size()!=size_t(laG0.nx)*laG0.ny*2)return {0.f,0.f};
             const float st=float(2*laG0.stride),o=laG0.raw(laG0.centre(0));
@@ -6080,29 +5977,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             const size_t k=(size_t(j)*laG0.nx+i)*2;
             return {laFields[size_t(f)][k],laFields[size_t(f)][k+1]};
         };
-        const JsrCoverage cov=jsrCoverage(H,donors,w,h,cb,local);
-        std::string offs;
-        for(size_t k=0;k<donors.size()&&k<4;++k){
-            const DonorPoint q=H[size_t(donors[k])].project(w/2,h/2);const float up=H[size_t(donors[k])].upRatio;
-            const auto l=local(donors[k],w/2,h/2);
-            char v[64];std::snprintf(v,sizeof(v)," %d:%+.2f,%+.2f",donors[k],(q.x/up-w/2+l[0])*cb,(q.y/up-h/2+l[1])*cb);offs+=v;
-        }
-        std::string line="HYBRID JSR PHASE: "+std::to_string(cov.frames)+" frames (centre offsets, sensor px:"+offs+"), green fill distance "+std::to_string(cov.green)
-            +" px (one frame "+std::to_string(cov.greenSingle)+"), red "+std::to_string(cov.red)+" (one frame "+std::to_string(cov.redSingle)+")";
-        if(tune.jsrPhase>0&&cov.greenSingle>0){
-            const double ratio=std::max(cov.green,1e-3)/cov.greenSingle;
-            const float sigma=std::clamp(float(std::pow(ratio,double(std::clamp(tune.jsrPhaseStrength,0.f,2.f)))),
-                                         std::clamp(tune.jsrPhaseMinSigma,0.1f,1.f),1.f);
-            jsrKmul=1.f/(sigma*sigma);
-            line+=", donor kernel sigma x"+std::to_string(sigma);
-        }
-        const int requested=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
-        const bool fine=native?requested==2*cb:requested==2;
-        if(tune.jsrAuto2x>0&&fine){
-            jsrCoarse=cov.green>tune.jsrAuto2xMaxGap;
-            line+=jsrCoarse?", 2x grid: merged on the 1x grid and resized (fill distance above "+std::to_string(tune.jsrAuto2xMaxGap)+" px)"
-                           :", 2x grid kept";
-        }
+        const GridCoverage cov=gridCoverage(H,donors,w,h,colourBlock,local);
+        // light: the base frame's SNR at 0.1 of white (its noise model, normalised units), averaged by the frames that share a
+        // 2x cell (a quarter of them each); below auto2xMinSnr the 2x grid shows its lattice and noise, not detail
+        const double level=0.1,snr1=level/std::sqrt(std::max(1e-12,double(baseSlope)*level+double(baseOffset)));
+        const double snr2x=snr1*std::sqrt(double(cov.frames)/4.0);
+        const bool sparse=cov.green>tune.auto2xMaxGap,dark=snr2x<tune.auto2xMinSnr;
+        coarse2x=sparse||dark;
+        char line[320];
+        std::snprintf(line,sizeof(line),"HYBRID SABRE 2X: %d frames, green fill distance %.2f px (limit %.2f, one frame %.2f), SNR of a 2x cell %.1f"
+            " (limit %.0f) -> %s",cov.frames,cov.green,double(tune.auto2xMaxGap),cov.greenSingle,snr2x,double(tune.auto2xMinSnr),
+            !coarse2x?"2x grid kept":sparse&&dark?"1x grid, resized (no finer sampling, too dark)":sparse?"1x grid, resized (no finer sampling)"
+            :"1x grid, resized (too dark)");
         report(line);
     }
     // ---- per-frame weights (SCAM driver): A = min(cap, ((TET_f/TET_b)^2 read_b/read_f)^fwe), LUTsigma(A)
@@ -6135,7 +6021,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         in.homography.push_back(f==0?BackwardHomography{}:H[f]);
         in.gain.push_back(1.f/t);
         in.weight.push_back(A);
-        in.kmul.push_back(1.f/(ls*ls)*(f>0&&fr.role!=kRoleUltrashort?jsrKmul:1.f)); // P74 jsrPhase
+        in.kmul.push_back(1.f/(ls*ls));
         in.role.push_back(fr.role);
         in.noiseSlope.push_back(std::max(fr.slope,1e-9f));
         in.noiseOffset.push_back(std::max(fr.offset,0.f));
@@ -6187,9 +6073,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     in.k61a=k61a;in.k61b=k61b;in.k61c=k61c;
     in.mergeMode=sabre61?(tune.s61Mode&7):0;
     HybridCa caModel;
-    scam_rawca::BaseEstimate rawCaBase; // P28 base mode: CA_correct_RT's fit of the base frame, applied to the merged RGB
-    if(tune.rawCa==1)rawCaBase=scam_rawca::hybridRawCaEstimate(input,tune,report);
-    if(tune.caCorrect&&tune.rawCa==0){ // P19 lateral CA of R / B, measured on the base frame, corrected on the merged RGB (P28 replaces it)
+    if(tune.caCorrect){ // P19 lateral CA of R / B, measured on the base frame, corrected on the merged RGB
         const auto caStarted=Clock::now();
         HybridCa ca;double caMs=0;
         if(caAhead.valid()){const auto built=caAhead.get();ca=built.first;caMs=built.second;} // P31: fitted during the alignment
@@ -6202,11 +6086,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             worth?"corrected":!ca.ok?"not measurable":"below the threshold",caMs);
         report(line);
         if(worth)caModel=ca;
-        if(worth&&tune.jsrLca>0&&!native&&!HybridGpu::mergeDefs().empty()){ // P74: in the merge instead of on the result
-            in.lcaOn=true;in.lca={ca.k1[0],ca.k2[0],ca.k1[1],ca.k2[1],ca.cx,ca.cy,ca.invHalf,0.f};
-            caModel=HybridCa{};
-            report("HYBRID JSR CA: R / B sites of every frame moved by the model inside the merge (no resample of the result)");
-        }
     }
     // A daylight 6.1 kernel is chosen for the local alignment (it loses without it): where the field is missing (F6 failed) or
     // the GPU cannot use it, the round-4 kernel instead.
@@ -6235,8 +6114,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // grid 4 only for the Tetra sub-frames of hybridReconstructMosaic (their 4x grid is the sensor grid of the stream) and the native
     // mosaic merge (Tetra sensor grid, Quad Sabre 2x grid); grid 8 only for the native Tetra Sabre 2x grid (P56)
     int grid=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
-    const int jsrUp=jsrCoarse&&grid>=2?2:1; // P74 jsrAuto2x: merged on the coarse grid, resized 2x at the end
-    if(jsrUp==2)grid/=2;
+    const int up2x=coarse2x&&grid>=2?2:1; // P118 Sabre 2x not worth it: merged on the coarse grid, resized 2x at the end
+    if(up2x==2)grid/=2;
     if(grid>1&&fineGridRefused){
         report("HYBRID OUTPUT: "+std::to_string(grid)+"x grid refused for "+std::to_string(w)+"x"+std::to_string(h)+" ("+std::to_string(grid)+"x RGB "
             +hybridMB(uint64_t(w)*h*grid*grid*12)+" MB, only up to 16 MP); sensor grid");
@@ -6397,7 +6276,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)+caBandsMs))
             +" ms ("+std::to_string(during)+" rows during the merge, "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms after it)");
     }
-    if(rawCaBase.ok)scam_rawca::hybridRawCaApply(out,outW,outH,grid,rawCaBase,tune.rawCaAvoidShift!=0,report); // P28 base mode
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
         sensorRgb.assign(size_t(w)*h*3,0.f);
         mergeRowBands(h,[&](int y0,int y1){
@@ -6487,7 +6365,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     report("HYBRID STAGES ms: align="+std::to_string(stats.alignMs)+" localAlign="+std::to_string(stats.localAlignMs)+" mask="+std::to_string(stats.maskMs)+" merge="+std::to_string(stats.mergeMs)
         +" total="+std::to_string(millis(Clock::now()-started))+" merged="+std::to_string(stats.merged)+" droppedBracketed="+std::to_string(stats.droppedBracketed)
         +" bento="+std::to_string(stats.bento));
-    if(jsrUp==2){ // P74 jsrAuto2x: the coarse-grid result to the requested grid (output X at coarse (X + 0.5) / 2 - 0.5)
+    if(up2x==2){ // P118: the coarse-grid result to the requested grid (output X at coarse (X + 0.5) / 2 - 0.5)
         const int W2=outW*2,H2=outH*2;
         std::vector<float> up(size_t(W2)*H2*3);
         mergeRowBands(H2,[&](int y0,int y1){
@@ -6508,7 +6386,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             v->swap(u);
         };
         nearest(effMap);nearest(clipFlags);
-        report("HYBRID JSR 2x: merged "+std::to_string(outW)+"x"+std::to_string(outH)+", resized to "+std::to_string(W2)+"x"+std::to_string(H2));
+        report("HYBRID SABRE 2X: merged "+std::to_string(outW)+"x"+std::to_string(outH)+", resized to "+std::to_string(W2)+"x"+std::to_string(H2));
     }
     if(statsOut)*statsOut=stats;
     return out;
@@ -7194,10 +7072,6 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
         // the binned colour passes would correct the native output at the wrong positions with the binned base's sums (P29 review)
         report("HYBRID MOSAIC NATIVE: colour-difference, clip-border and Bento colour passes off (they work on the binned frames; native variants not built)");
         vt.chromaDiff=0.f;vt.rimRatio=0;vt.bentoChroma=0.f;
-    }
-    if(vt.rawCa==2){ // the frames mode would correct the binned frames only, not the mosaic the merge reads
-        vt.rawCa=1;
-        report("HYBRID MOSAIC NATIVE: RAW CA frames mode is not available on the native mosaic path; base mode instead");
     }
     std::vector<uint8_t> vEff,vClip;
     HybridStats st;

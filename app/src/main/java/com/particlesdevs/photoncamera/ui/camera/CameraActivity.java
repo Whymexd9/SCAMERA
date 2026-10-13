@@ -250,8 +250,7 @@ public class CameraActivity extends BaseActivity {
     private String themeSignature() {
         com.particlesdevs.photoncamera.settings.SettingsManager sm=ScameraApp.getSettingsManagerStatic();
         return sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME)+"/"+
-                sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME_ACCENT)+"/"+
-                sm.getBoolean("default_scope",PreferenceKeys.Key.KEY_SHOW_GRADIENT);
+                sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME_ACCENT);
     }
 
     @Override

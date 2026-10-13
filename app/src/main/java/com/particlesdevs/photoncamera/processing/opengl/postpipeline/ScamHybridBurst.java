@@ -113,13 +113,11 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     private ScamHybridBurst(List<ImageFrame> source, Parameters p, boolean conservative) throws IOException {
         width = p.rawSize.x; height = p.rawSize.y; white = p.whiteLevel; black = p.blackLevel.clone();
-        // P27 (H14): a direct Quad Bayer stream is marked cfaPattern -2 (Parameters.quadCfa); its colour order is the
-        // sensor's (baseCfaPattern) and the hybrid measures the colour block itself.
-        cfa = p.quadCfa && p.cfaPattern < 0 ? p.baseCfaPattern : p.cfaPattern;
+        cfa = p.cfaPattern;
         this.conservative = conservative;
         diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
-        // P27 (H14): p.quadCfa does not stop the hybrid: it measures the colour block of the stream itself (header word 14).
+        // The hybrid measures the colour block (Quad / Tetra) of the stream itself (header word 14).
         if (cfa < 0 || cfa > 3 || com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException(Lang.t("Hybrid: нужен RAW с порядком CFA 2×2, без программного биннинга", "Hybrid: needs a RAW with a 2×2 CFA order, without software binning"));
         if (black.length != 4) throw new IOException(Lang.t("Hybrid: нужны четыре уровня чёрного", "Hybrid: needs four black levels"));
@@ -218,15 +216,12 @@ public final class ScamHybridBurst implements ScamTransport {
         int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
         String limitReason = "worker limit";
         final long available = (long) width * height > SABRE_2X_MAX_INPUT ? memoryAvailable() : -1;
-        // RAW CA "every frame" (rawCa 2) keeps a corrected copy of every plain-Bayer frame in the worker.
-        final boolean caCopies = PreferenceKeys.hybridValue("rawca_mode", 0f) >= 2f;
-        final int budget = memoryFrameBudget(width, height, mosaicBlock, available, caCopies);
+        final int budget = memoryFrameBudget(width, height, mosaicBlock, available);
         if (budget != Integer.MAX_VALUE) {
             final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
             Log.i("SCAM_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
                     + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * width * height) / (1 << 20) + " MB, "
-                    + (long) perFrameBytes(width, height, mosaicBlock, caCopies) / (1 << 20) + " MB per frame"
-                    + (caCopies ? ", RAW CA copies" : "") + ") -> at most "
+                    + (long) perFrameBytes(width, height, mosaicBlock) / (1 << 20) + " MB per frame) -> at most "
                     + Math.min(byMemory, normalLimit) + " N");
             if (byMemory < normalLimit) { normalLimit = byMemory; limitReason = "memory budget"; }
         }
@@ -436,17 +431,10 @@ public final class ScamHybridBurst implements ScamTransport {
 
     /** Worker memory of one more frame of a w x h stream (see {@link #STRIP_BYTES_PER_COLUMN}); a mosaic adds its worker copy. */
     static double perFrameBytes(int w, int h, int mosaicBlock) {
-        return perFrameBytes(w, h, mosaicBlock, false);
-    }
-
-    /** {@code caCopies}: RAW CA corrects every frame (rawCa 2): a plain-Bayer frame adds its corrected copy (2 B per pixel). */
-    static double perFrameBytes(int w, int h, int mosaicBlock, boolean caCopies) {
         final double px = (double) w * h;
         double bytes = STRIP_BYTES_PER_COLUMN * w + FIELD_BYTES_PER_PIXEL * px;
         // A Quad / Tetra stream: the worker keeps each picked frame and its binned copy (2 B + 2/b^2 B per pixel).
         if (mosaicBlock >= 2) bytes += 2.0 * px * (1 + 1.0 / ((double) mosaicBlock * mosaicBlock));
-        // A mosaic is corrected in place; a plain-Bayer frame gets a corrected copy.
-        else if (caCopies) bytes += 2.0 * px;
         return bytes;
     }
 
@@ -456,14 +444,10 @@ public final class ScamHybridBurst implements ScamTransport {
      * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
      */
     static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes) {
-        return memoryFrameBudget(w, h, mosaicBlock, availableBytes, false);
-    }
-
-    static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes, boolean caCopies) {
         final long px = (long) w * h;
         if (px <= SABRE_2X_MAX_INPUT || availableBytes <= 0) return Integer.MAX_VALUE;
         final double free = MEMORY_SHARE * availableBytes - FIXED_BYTES_PER_PIXEL * px;
-        return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock, caCopies))));
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock))));
     }
 
     /**

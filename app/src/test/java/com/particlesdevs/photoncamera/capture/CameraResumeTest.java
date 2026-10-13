@@ -113,7 +113,7 @@ public class CameraResumeTest {
             var error=assertThrows(java.lang.reflect.InvocationTargetException.class,
                     ()->constructor.newInstance(frames,p));
             assertTrue(error.getCause().getMessage().contains("Camera2"));
-            normal.noiseSlope=.00015f;p.quadCfa=true;
+            normal.noiseSlope=.00015f;p.cfaPattern=4; // RGB: no 2x2 CFA
             error=assertThrows(java.lang.reflect.InvocationTargetException.class,
                     ()->constructor.newInstance(frames,p));
             assertTrue(error.getCause().getMessage().contains("Bayer"));

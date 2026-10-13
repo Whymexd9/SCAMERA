@@ -62,8 +62,9 @@ public class DefaultSaver extends SaverImplementation {
             bufferLock = false;
             return;
         }*/
-        Path dngFile = ImagePath.newDNGFilePath();
-        Path imageFile = ImagePath.newImageFilePath();
+        final String name = ImagePath.newBaseName(); // one name for both (P119)
+        Path dngFile = ImagePath.dngFile(name);
+        Path imageFile = ImagePath.imageFile(name);
         //Remove broken images
             /*for(int i =0; i<IMAGE_BUFFER.size();i++){
                 try{

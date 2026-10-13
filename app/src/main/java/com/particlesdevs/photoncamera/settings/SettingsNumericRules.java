@@ -21,12 +21,6 @@ public final class SettingsNumericRules {
             case "pref_scamhdr_planner_es_ev": return new double[]{2,9,0};
             case "pref_scam_hybrid_shasta_frames": return new double[]{1,5,1};
             case "pref_scam_hybrid_shasta_mode": return new double[]{1,2,1};
-            case "pref_scam_hybrid_jsr_phase_strength": return new double[]{0.1,1.5,0};
-            case "pref_scam_hybrid_jsr_phase_min_sigma": return new double[]{0.2,1,0};
-            case "pref_scam_hybrid_jsr_auto2x_gap": return new double[]{0.2,1.5,0};
-            case "pref_scam_hybrid_jsr_poly": return new double[]{0,2,1};
-            case "pref_scam_hybrid_jsr_poly_degree": return new double[]{1,4,1};
-            case "pref_scam_hybrid_jsr_poly_clamp": return new double[]{0.05,1,0};
             case "pref_scam_hybrid_shasta_motion_max": return new double[]{0,100,0};
             case "pref_scam_hybrid_shasta_ev": return new double[]{1,4,0};
             case "pref_scam_hybrid_shasta_sharpness": return new double[]{0.3,1,0};
@@ -96,10 +90,8 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_ark_ae_max_boost": return new double[]{1,16,0};
             case "pref_scam_hybrid_ark_ae_min_limit": return new double[]{0.1,1,0};
             case "pref_scam_hybrid_ark_hl_overflow": return new double[]{0.5,8,0};
-            case "pref_scam_hybrid_ark_hl_blend": return new double[]{0,1,0};
             case "pref_scam_hybrid_ark_night_thresh": return new double[]{0.01,0.20,0};
             case "pref_scam_hybrid_ark_night_dim": return new double[]{0.5,1.5,0};
-            case "pref_scam_hybrid_ark_face_priority": return new double[]{0,1,0};
             case "pref_scam_hybrid_ark_metering": return new double[]{0,2,1};
             case "pref_scam_hybrid_ark_bright_thresh": return new double[]{0.2,2,0};
             case "pref_scam_hybrid_ark_dark_thresh": return new double[]{1,50,0};
@@ -185,12 +177,8 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mosaic_tetra_night_kernel_scale": return new double[]{0.25,2,0};
             case "pref_scam_hybrid_mosaic_tetra_night_edge_scale": return new double[]{0.25,1,0};
             case "pref_scam_hybrid_mosaic_tetra_night_flat_scale": return new double[]{0.25,4,0};
-            // P28 RAW CA (worker rawCa*): mode 0 off / 1 base frame / 2 every frame, RawTherapee's auto passes and manual red / blue
-            case "pref_scam_hybrid_rawca_mode": return new double[]{0,2,1};
             // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto (GCam rule) / 2 force
             case "pref_scam_hybrid_mochi": return new double[]{0,2,1};
-            case "pref_scam_hybrid_rawca_passes": return new double[]{1,5,1};
-            case "pref_scam_hybrid_rawca_red": case "pref_scam_hybrid_rawca_blue": return new double[]{-4,4,0};
             case "pref_scam_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_scam_hybrid_highlight_defringe": return new double[]{0,1,0};
             case "pref_scam_hybrid_highlight_band": return new double[]{0,1,0};
@@ -216,7 +204,7 @@ public final class SettingsNumericRules {
             return bounds("pref_scamhdr_" + k);
         }
         switch (key) {
-            case "pref_antibanding_hz_key": return new double[]{0,1000,1};
+            case "pref_antibanding_hz_key": return new double[]{-1,1000,1};
             default: return null;
         }
     }

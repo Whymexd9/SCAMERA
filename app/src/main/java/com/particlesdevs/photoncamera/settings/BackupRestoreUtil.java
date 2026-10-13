@@ -249,6 +249,7 @@ public class BackupRestoreUtil {
     private static void migrate(SharedPreferences prefs) {
         BrandMigration.migrate(prefs); // P55: a backup written before the SCAM rename
         SettingsMigration.migrateMultiFrame(prefs);
+        SettingsMigration.migrateAntibanding(prefs);
         SettingsMigration.migrateScamHybrid(prefs, false);
         SettingsMigration.migrateShadeTiles(prefs);
         SettingsMigration.removeObsolete(prefs);

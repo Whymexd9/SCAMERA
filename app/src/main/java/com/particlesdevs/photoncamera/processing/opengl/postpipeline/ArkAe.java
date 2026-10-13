@@ -24,7 +24,7 @@ public final class ArkAe {
     public static final class Settings {
         public float aeTarget = 0.15f, maxBoost = 5.0f, minLimit = 0.5f;
         public float hlOverflow = 2.0f, hlBlend = 0.33f;
-        public float nightThresh = 100f, nightDim = 1.0f, facePriority = 0.7f;
+        public float nightThresh = 100f, nightDim = 1.0f;
         public double noiseS = 0.0, noiseO = 0.0;
         public float noiseMax = 0.05f;
         public int metering = 0;

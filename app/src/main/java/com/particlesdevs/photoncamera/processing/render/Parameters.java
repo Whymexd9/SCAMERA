@@ -23,8 +23,6 @@ import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
 import com.particlesdevs.photoncamera.processing.parameters.FrameNumberSelector;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
-import com.particlesdevs.photoncamera.settings.ScameraPreferences;
-import com.particlesdevs.photoncamera.api.VendorTagUtils;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.util.Allocator;
 
@@ -49,9 +47,8 @@ public class Parameters {
     public int multiFrameCount; // Actual equal-exposure RAWs merged by the native backend.
     public double exposureTime = 1.0/30.0; // Default to 1/30s if not available
     public byte cfaPattern;
-    /** Physical 2x2 CFA reported by Camera2; cfaPattern may be -2 for direct Quad CFA. */
+    /** Physical 2x2 CFA reported by Camera2 (cfaPattern after a remosaic is the order it wrote). */
     public byte baseCfaPattern;
-    public boolean quadCfa;
     /**
      * Set once a mosaic frame has been rearranged into plain bayer - by the
      * merge, which does it per frame as it loads them, or by the post-pipeline
@@ -121,26 +118,26 @@ public class Parameters {
     public int logicalID = 0;
 
     @Tunable(title = "Use Dynamic Black Level", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
-            description = "Брать динамический уровень чёрного из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)"
+            description = "Брать уровень чёрного из каждого кадра, а не из паспорта камеры. На части телефонов работает нестабильно."
     )
     boolean useDynamicBlackLevel;
 
     @Tunable(title = "Use Dynamic White Level", category = "Parameters", defaultValue = 1, min = 0, max = 1, step = 1,
-            description = "Брать динамический уровень белого из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)"
+            description = "Брать уровень белого из каждого кадра, а не из паспорта камеры. На части телефонов работает нестабильно."
     )
     boolean useDynamicWhiteLevel;
 
     @SensorConfig(title = "White Level Override",
             defaultValue = -1, min = -1, max = 65535, step = 1,
-            description = "Уровень белого для всех каналов вручную (-1 = из метаданных)")
+            description = "Ручной уровень белого, -1 — от камеры. Больше — снимок темнее; меньше — света выгорают раньше.")
     int whiteLevelOverride;
 
     @Tunable(title = "Disable front mirror", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
-            description = "Не зеркалить снимки фронтальной камеры")
+            description = "Фото с фронтальной камеры сохраняются без зеркального отражения, как видит камера.")
     boolean disableMirror;
 
     @SensorConfig(title = "Black Level Override",
-            description = "Уровень чёрного этого сенсора вручную (-1 = авто)",
+            description = "Ручной уровень чёрного, -1 — авто. Больше — тени темнее и проваливаются; меньше — тени серые.",
             min = -1.0f, max = 8192.0f, step = 1.0f, defaultValue = -1.0f
     )
     float blackLevelOverride;
@@ -173,10 +170,6 @@ public class Parameters {
             cfaPattern = (byte) ScameraApp.getSettings().cfaPattern;
         }
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
-        quadCfa = ScameraPreferences.quadBayerDirectRequested()
-                && !VendorTagUtils.wasRemosaicApplied()
-                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamMosaic();
-        if (quadCfa) cfaPattern = -2;
         float[] flen = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         if (flen == null || flen.length <= 0) {
             flen = new float[1];
@@ -364,6 +357,16 @@ public class Parameters {
                 mapSize = new Point(1, 1);
                 hasGainMap = false;
             }
+            // P118 «16:9»: the frames are a centred crop (Wide169) and the map covers the whole frame: its rows of the crop only
+            final com.particlesdevs.photoncamera.api.Settings s = ScameraApp.getSettings();
+            if (hasGainMap && mapSize.y > 1 && s != null && s.aspect169 && rawSize != null && sensorPix != null
+                    && rawSize.x > rawSize.y && sensorPix.width() > 0) {
+                final int full = (int) Math.round((double) rawSize.x * sensorPix.height() / sensorPix.width());
+                if (com.particlesdevs.photoncamera.processing.Wide169.rows(rawSize.x, full) == rawSize.y)
+                    gainMap = com.particlesdevs.photoncamera.processing.Wide169.cropGainMap(gainMap, mapSize.x, mapSize.y, full,
+                            com.particlesdevs.photoncamera.processing.Wide169.firstRow(rawSize.x, full), rawSize.y);
+                else Log.w(TAG, "16:9 frame " + rawSize + " is not the crop of " + rawSize.x + "x" + full + ": lens shading map kept");
+            }
             hotPixels = result.get(CaptureResult.STATISTICS_HOT_PIXEL_MAP);
             if (rawBinning > 1) hotPixels = new Point[0]; // sensor coordinates; a binned site averages it away
             ReCalcColor(false, result);
@@ -531,6 +534,8 @@ public class Parameters {
     }
 
     public float[] customNeutral;
+    /** P121: the neutral is SCAMERA's own (a mosaic stream): the ISP's colour transform picked at the camera's neutral does not fit. */
+    public boolean ownNeutral;
 
     public void ReCalcColor(boolean customNeutr, CaptureResult result) {
         CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
@@ -689,7 +694,7 @@ public class Parameters {
         // vivo X200 Ultra: the DNG matrices in the characteristics are generic (the interpolation always lands near D65), but the
         // HAL reports the colour transform its ISP tuning uses at the scene's colour temperature, together with the
         // matching white balance gains. SCAM HDR renders with that matrix (the same idea as the OPPO tuned CCM per CCT).
-        if (!oppoTuned && ispCcmUsable(CST)) {
+        if (!oppoTuned && !ownNeutral && ispCcmUsable(CST)) {
             wrongCalibration = true;
             Log.d(TAG, "Using the ISP colour transform of the capture result (vivo)");
         }
@@ -811,7 +816,6 @@ public class Parameters {
         params.remosaicDone = remosaicDone;
         params.cfaPattern = cfaPattern;
         params.baseCfaPattern = baseCfaPattern;
-        params.quadCfa = quadCfa;
         params.usedDynamic = usedDynamic;
         params.blackLevel = blackLevel.clone();
         params.whitePoint = whitePoint.clone();

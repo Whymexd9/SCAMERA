@@ -101,6 +101,7 @@ public class SettingsManager {
         BrandMigration.migrateAll(mContext);
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
         SettingsMigration.migrateMultiFrame(mDefaultPreferences);
+        SettingsMigration.migrateAntibanding(mDefaultPreferences);
         DeviceDefaults.applyOnce(mContext, mDefaultPreferences);
         // After the device defaults: the SCAM Hybrid's own section takes over the SCAM HDR engine choice.
         SettingsMigration.migrateScamHybrid(mContext, mDefaultPreferences);

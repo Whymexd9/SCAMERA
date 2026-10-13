@@ -73,7 +73,6 @@ public final class ScamMosaic {
         }
         remosaicGpu(work, merged, p, cfa);
         p.cfaPattern = (byte) emitted;
-        p.quadCfa = false;
         p.remosaicDone = true;
         Log.i(TAG, "SCAM HDR mosaic done: frames=" + work.size() + (merged != null ? " merged reference (" + mode + ")" : "")
                 + " ms=" + (SystemClock.elapsedRealtime() - start));

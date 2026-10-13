@@ -177,14 +177,7 @@ public class PostPipeline extends GLBasePipeline {
             rawSliced = new Point(finalSize);
             cropSize = new Point(finalSize);
         }
-        if (ScameraApp.getSettings().aspect169) {
-            if (rawSliced.x > rawSliced.y) {
-                rawSliced = new Point(rawSliced.x, rawSliced.x * 9 / 16);
-            } else {
-                rawSliced = new Point(rawSliced.y * 9 / 16, rawSliced.y);
-            }
-            cropSize =  new Point(rawSliced);
-        }
+        // «16:9»: the frames arrive cropped (Wide169); a second crop here made the output a row taller than its data (P118)
         Point rotatedSize = getRotatedCoords(rawSliced);
         if (mParameters.rawSize.x * mParameters.rawSize.y < ResolutionSolution.smallRes) {
             GLDrawParams.TileSize = 8;
@@ -327,14 +320,6 @@ public class PostPipeline extends GLBasePipeline {
         captureDemosaic = false;
         Point rawSliced = parameters.rawSize;
         cropSize = new Point(parameters.rawSize);
-        if (ScameraApp.getSettings().aspect169) {
-            if (rawSliced.x > rawSliced.y) {
-                rawSliced = new Point(rawSliced.x, rawSliced.x * 9 / 16);
-            } else {
-                rawSliced = new Point(rawSliced.y * 9 / 16, rawSliced.y);
-            }
-            cropSize =  new Point(rawSliced);
-        }
         Point rotatedSize = getRotatedCoords(rawSliced);
         // The gain map must be pixel-aligned with the stored SDR base; any
         // size/orientation mismatch displaces the boost field from the scene.

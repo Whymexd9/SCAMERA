@@ -89,19 +89,6 @@ public class SettingsModelCheck {
         active(s,"pref_scam_hybrid_ark_ae_target");active(s,"pref_scam_hybrid_sharp_mode");inactive(s,"pref_scam_hybrid_cdm");
         if(SettingsNumericRules.bounds("pref_scam_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_scam_hybrid_enabled")!=null)
             throw new AssertionError("unbounded hybrid copies got bounds");
-        // P28 RAW CA: off by default (rows below the mode explain themselves), passes with auto, red / blue without; bounds
-        Map<String,Object> ca=new HashMap<>();
-        active(ca,"pref_scam_hybrid_rawca_mode");inactive(ca,"pref_scam_hybrid_rawca_passes");inactive(ca,"pref_scam_hybrid_rawca_avoid_shift");
-        ca.put("pref_scam_hybrid_rawca_mode","2");
-        active(ca,"pref_scam_hybrid_rawca_passes");active(ca,"pref_scam_hybrid_rawca_auto");active(ca,"pref_scam_hybrid_rawca_avoid_shift");inactive(ca,"pref_scam_hybrid_rawca_red");
-        ca.put("pref_scam_hybrid_rawca_auto",false);active(ca,"pref_scam_hybrid_rawca_red");active(ca,"pref_scam_hybrid_rawca_blue");inactive(ca,"pref_scam_hybrid_rawca_passes");
-        ca.put("pref_merge_route","scamhdr");inactive(ca,"pref_scam_hybrid_rawca_mode");
-        eq(SettingsNumericRules.value("pref_scam_hybrid_rawca_mode","7",0),2);
-        eq(SettingsNumericRules.value("pref_scam_hybrid_rawca_passes","9",2),5);
-        eq(SettingsNumericRules.value("pref_scam_hybrid_rawca_passes","1.6",2),2);
-        eq(SettingsNumericRules.value("pref_scam_hybrid_rawca_red","-9",0),-4);
-        if(SettingsNumericRules.error("pref_scam_hybrid_rawca_blue","4.5")==null)throw new AssertionError("RAW CA blue beyond 4 px accepted");
-        if(SettingsNumericRules.error("pref_scam_hybrid_rawca_passes","0")==null)throw new AssertionError("RAW CA without a pass accepted");
         // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto / 2 force
         eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","1",0),1);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","5",0),2);
@@ -258,6 +245,6 @@ public class SettingsModelCheck {
         for(String k:new String[]{"scam_hdr_screen","scam_diagnostics_screen","scam_probe","scam_neural_probe"})
             if(!new SettingsAvailability(scam).scamHdrSupported(false).hidden(k)||new SettingsAvailability(scam).hidden(k))throw new AssertionError("SCAM HDR row visibility "+k);
         if(!new SettingsAvailability(scam).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SCAM Hybrid bounds, RAW CA, native mosaic, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / planner / colour method availability");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SCAM Hybrid bounds, native mosaic, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / planner / colour method availability");
     }
 }

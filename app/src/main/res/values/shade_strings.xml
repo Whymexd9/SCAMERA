@@ -136,7 +136,7 @@
         <item>Off</item>
         <item>HUD</item>
         <item>HUD+hist</item>
-        <item>Full</item>
+        <item>AF/AE</item>
     </string-array>
 
     <string name="shade_scrim">Lower the settings panel</string>

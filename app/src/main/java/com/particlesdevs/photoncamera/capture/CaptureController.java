@@ -233,12 +233,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(title = "Session Type",
             defaultValue = 0, min = 0, max = 65535, step = 0,
-            description = "Тип capture-сессии Camera2 (0 = обычная)")
+            description = "Режим сессии камеры, 0 — обычный. Другие числа — режимы производителя; неверное может не открыть камеру.")
     public int sessionType = 0;
 
     @SensorConfig(
             title = "OIS Mode",
-            description = "Оптическая стабилизация. В режиме «Авто» OIS выключается на штативе и в Unlimited, чтобы кадр не дрейфовал",
+            description = "Оптическая стабилизация. Авто выключает её на штативе и в Unlimited, чтобы кадр не плыл.",
             entries = {"On", "Auto", "Off"},
             entryValues = {"0", "1", "2"},
             defaultValue = 0
@@ -1459,20 +1459,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         int largestSizeIdx = sizes.length - 1;
         int largestSizeArea = sizes[largestSizeIdx].getWidth() * sizes[largestSizeIdx].getHeight();
 
-        if (ScameraApp.getSettings().QuadBayer) {
-            target = sizes[largestSizeIdx];
-            Rect preCorrectionActiveArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE);
-            Rect activeArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-            if (preCorrectionActiveArraySize != null && activeArraySize != null) {
-                double k = (double) (target.getHeight()) / activeArraySize.bottom;
-                mul(preCorrectionActiveArraySize, k);
-                mul(activeArraySize, k);
-                CameraReflectionApi.set(mCameraCharacteristics, CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE, activeArraySize);
-                CameraReflectionApi.set(mCameraCharacteristics, CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE, preCorrectionActiveArraySize);
-            }
-            return target;
-        }
-
         if (largestSizeArea <= ResolutionSolution.highRes) {
             target = sizes[largestSizeIdx];
             return target;
@@ -1496,20 +1482,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         int largestSizeIdx = sizes.length - 1;
         int largestSizeArea = sizes[largestSizeIdx].getWidth() * sizes[largestSizeIdx].getHeight();
 
-        if (largestSizeArea <= ResolutionSolution.highRes || ScameraApp.getSettings().QuadBayer) {
+        if (largestSizeArea <= ResolutionSolution.highRes) {
             temp = sizes[largestSizeIdx];
-            if (ScameraApp.getSettings().QuadBayer) {
-                Rect preCorrectionActiveArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE);
-                Rect activeArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-
-                if (preCorrectionActiveArraySize != null && activeArraySize != null) {
-                    double k = (double) (temp.getHeight()) / activeArraySize.bottom;
-                    mulForTest(preCorrectionActiveArraySize, k);
-                    mulForTest(activeArraySize, k);
-                    CameraReflectionApi.set(mCameraCharacteristics, CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE, activeArraySize);
-                    CameraReflectionApi.set(mCameraCharacteristics, CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE, preCorrectionActiveArraySize);
-                }
-            }
             return temp;
         } else if (sizes.length > 1) {
             temp = sizes[largestSizeIdx - 1];
@@ -1986,51 +1960,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Size[] targetSizes = map.getOutputSizes(mTargetFormat);
         if(targetSizes != null)
             allTargets.addAll(Arrays.asList(targetSizes));
-        if(ScameraApp.getSettings().QuadBayer) {
-            useMaximumResolutionKey = false;
-            int[] capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
-            for (int capability : capabilities) {
-                if (capability == CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
-                    Size arraySize = null;
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        arraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE_MAXIMUM_RESOLUTION);
-                    }
-                    if(arraySize != null) {
-                        useMaximumResolutionKey = true;
-                        allTargets.add(arraySize);
-                    }
-                }
-            }
-            if(!useMaximumResolutionKey) {
-                Size[] highResSizes = map.getHighResolutionOutputSizes(mTargetFormat);
-                // Extend targetSizes with high resolution sizes
-                if (highResSizes != null && highResSizes.length > 0) {
-                    allTargets.addAll(Arrays.asList(highResSizes));
-                }
-                var keys = CameraReflectionApi.getCameraCharacteristicsKeys(characteristics, null, true);
-                for (Object keyObj : keys) {
-                    try {
-                        if (keyObj instanceof CameraCharacteristics.Key<?>) {
-                            CameraCharacteristics.Key<?> key = (CameraCharacteristics.Key<?>) keyObj;
-                            if (key.getName().contains("StreamConfigurations")) {
-                                Object res = characteristics.get(key);
-                                int[] vals = (int[]) res;
-                                for (int i = 0; i < vals.length; i += 4) {
-                                    int format = vals[i];
-                                    int width = vals[i + 1];
-                                    int height = vals[i + 2];
-                                    if (format == mTargetFormat) {
-                                        allTargets.add(new Size(width, height));
-                                        Log.d(TAG, "Added custom resolution(" + key.getName() + "):" + width + " " + height);
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-        }
         return allTargets;
     }
     @SuppressLint("MissingPermission")
@@ -2500,8 +2429,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         clearZslPreviewFrames();
         if(mImageReaderRaw != null)
             mImageReaderRaw.close();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && (ScameraApp.getSettings().QuadBayer
-                || !(Build.BRAND.equalsIgnoreCase("oppo")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && (!(Build.BRAND.equalsIgnoreCase("oppo")
                 || Build.BRAND.equalsIgnoreCase("vivo")
                 || Build.BRAND.equalsIgnoreCase("oneplus")
                 || Build.BRAND.equalsIgnoreCase("realme")
@@ -4437,11 +4365,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             int offset = 0;
             if (ScameraApp.getSettings().aspect169 && width > height) {
-                // Even rows (P27): a 4080-wide stream gave 2295 rows, which the merges refuse.
-                height = (width * 9 / 16) & ~1;
-                int offsetH = (img.getHeight() - height) / 2;
-                offsetH -= offsetH % 2;
-                offset = rowStride * offsetH;
+                // P118: the one 16:9 crop of every frame of the shot (whole colour blocks, the post-shutter frames the same size)
+                final int full = img.getHeight();
+                height = com.particlesdevs.photoncamera.processing.Wide169.rows(width, full);
+                offset = rowStride * com.particlesdevs.photoncamera.processing.Wide169.firstRow(width, full);
                 capacity = rowStride * height;
             }
             Allocator.binning = ScameraApp.getSettings().binning;
@@ -5937,21 +5864,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.v(TAG, "Maximum Duration Reached, Call stopRecordingVideo()");
             stopRecordingVideo();
         }
-    }
-
-    private void mul(Rect in, double k) {
-        in.bottom *= k;
-        in.left *= k;
-        in.right *= k;
-        in.top *= k;
-    }
-
-    @TestOnly
-    private static void mulForTest(Rect in, double k) {
-        in.bottom *= k;
-        in.left *= k;
-        in.right *= k;
-        in.top *= k;
     }
 
     @Override

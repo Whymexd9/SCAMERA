@@ -80,7 +80,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   `clipband.glsl` света, `hlrecovery/`, `scamdn/` шумодав, `scamlc/`, `scamsharp/`, `sharpening/`, `chromadn/`,
   `remosaic/`, `preview/`, `ultrahdr/`, `utils/`;
 - строками в заголовках: `scam-hybrid.h` (`kHyb*`: склейка, `kHybMergeMosaic/Fast`, `kHybMochi*`, Bento, chroma),
-  `scam-superres-gpu.h`, `scam-rawca-gpu.h`, `scam-hexquad-gpu-shaders.h`.
+  `scam-superres-gpu.h`, `scam-hexquad-gpu-shaders.h`.
 
 ## Устройства (только из файлов проекта; «н/п» = не подтверждено)
 

@@ -21,7 +21,6 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
     private final Paint whitePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint textPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
     private final Paint rectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Path path = new Path();
     public boolean isCanvasDrawn = false;
     private RectF afRectToDraw = new RectF();
     private RectF aeRectToDraw = new RectF();
@@ -104,7 +103,6 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
         // PreferenceKeys is uninitialized in the layout editor, skip overlay drawing there.
         if (isInEditMode()) return;
         drawGrid(canvas);
-        drawRoundEdges(canvas);
     }
 
     private void drawGrid(Canvas canvas) {
@@ -171,16 +169,6 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
             return ((a + b) / b);
         } else {
             return goldenRatio(b, a + b);
-        }
-    }
-
-    private void drawRoundEdges(Canvas canvas) {
-        if (PreferenceKeys.isRoundEdgeOn()) {
-            path.reset();
-            path.addRoundRect(new RectF(canvas.getClipBounds()), 40, 40, Path.Direction.CW);
-            path.setFillType(Path.FillType.INVERSE_EVEN_ODD);
-            canvas.clipPath(path);
-            canvas.drawColor(Color.BLACK);
         }
     }
 

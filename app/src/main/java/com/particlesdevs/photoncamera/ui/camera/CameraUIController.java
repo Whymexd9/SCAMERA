@@ -205,10 +205,6 @@ final class CameraUIController implements CameraUIEventsListener,
                         PreferenceKeys.setAeMode((Integer) value); // 0 torch, 1 off
                         cameraFragment.captureController.setPreviewAEModeRebuild(PreferenceKeys.getAeMode());
                         break;
-                    case QUAD:
-                        PreferenceKeys.setQuadBayer(value.equals(1));
-                        this.restartCamera();
-                        break;
                     case GRID:
                         PreferenceKeys.setGridValue((Integer) value);
                         cameraFragment.invalidateSurfaceView();

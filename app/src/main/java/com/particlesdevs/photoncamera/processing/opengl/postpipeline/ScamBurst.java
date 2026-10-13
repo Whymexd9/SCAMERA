@@ -51,7 +51,7 @@ public final class ScamBurst implements ScamTransport {
                 && "PD2454".equalsIgnoreCase(android.os.Build.DEVICE);
         physicalId = p.physicalID;
         trainedSensor = stockDevice && (p.physicalID == 3 || p.physicalID == 4);
-        if(p.quadCfa||cfa<0||cfa>3||com.particlesdevs.photoncamera.util.Allocator.binning)
+        if(cfa<0||cfa>3||com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException(Lang.t("SCAM HDR: нужен обычный Bayer RAW, без Quad/Tetra, ремозаика и программного биннинга","SCAM HDR: needs a plain Bayer RAW, without Quad/Tetra, remosaic or software binning"));
         if(black.length!=4)throw new IOException(Lang.t("SCAM HDR: нужны четыре уровня чёрного","SCAM HDR: needs four black levels"));
         if(width<64||height<64||(width&1)!=0||(height&1)!=0||(long)width*height>16000000)

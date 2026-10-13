@@ -476,10 +476,6 @@ public:
         }
     }
 
-    void setQuadCFAMetadata(bool enabled) {
-        metadata.quad_cfa_metadata = enabled;
-    }
-
     void setGainMap(const float* gainMap, int xmin, int ymin, int xmax, int ymax, int width, int height) {
         float* gainMap0 = new float[width * height];
         float* gainMap1 = new float[width * height];
@@ -641,10 +637,7 @@ public:
         dng_image0->SetBlackLevelRepeatDim(2, 2);
 
         // Set CFA pattern
-        if (metadata.quad_cfa_metadata) {
-            dng_image0->SetCFARepeatPatternDim(4, 4);
-            dng_image0->SetCFAPattern(16, metadata.cfa_pattern);
-        } else {
+        {
             dng_image0->SetCFARepeatPatternDim(2, 2);
             // The first four entries were expanded, so reconstruct the physical 2x2 cells.
             unsigned char bayer[4] = {metadata.cfa_pattern[0], metadata.cfa_pattern[2],
@@ -1123,11 +1116,6 @@ public:
         if (creator) {
             creator->setCFAPattern(pattern);
         }
-    }
-
-    JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator_setQuadCFAMetadata(JNIEnv *env, jobject obj, jlong creatorPtr, jboolean enabled) {
-        DngCreator* creator = reinterpret_cast<DngCreator*>(creatorPtr);
-        if (creator) creator->setQuadCFAMetadata(enabled == JNI_TRUE);
     }
 
     JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator_setGainMap(JNIEnv *env, jobject obj, jlong creatorPtr, jfloatArray gainMap, jint xmin, jint ymin, jint xmax, jint ymax, jint width, jint height) {

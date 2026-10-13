@@ -46,12 +46,13 @@ public class PreferenceKeys {
      * Off by default so the two behaviours can be compared on one build.
      */
     /**
-     * Mains frequency used to snap the TET model's shutter to a whole number of flicker
-     * periods, matching GCam's apply_antibanding. 120 covers 60 Hz mains (the burst dump
-     * reports scene_flicker 120); 100 covers 50 Hz. 0 disables the snap.
+     * «Частота мерцания»: the lamp flicker (Hz) the long Shasta frames of the hybrid snap to (HybridPlan.snapAntibanding, GCam's
+     * apply_antibanding). -1 «Авто» (default, P118): what the camera reports or its AE shows, else the region's mains
+     * (MainsFlicker); 100 = 50 Hz mains, 120 = 60 Hz mains; 0 = no snap.
      */
     public static int getAntibandingHz() {
-        return Integer.parseInt(getAcesString("pref_antibanding_hz_key", "120"));
+        final int hz = Integer.parseInt(getAcesString("pref_antibanding_hz_key", "-1"));
+        return hz < 0 ? com.particlesdevs.photoncamera.capture.MainsFlicker.hz() : hz;
     }
 
 
@@ -106,7 +107,6 @@ public class PreferenceKeys {
         SettingsManager settingsManager = preferenceKeys.settingsManager;
         Resources resources = context.getResources();
         settingsManager.setInitial("default_scope", Key.KEY_EIS_PHOTO, resources.getBoolean(R.bool.pref_eis_photo_default));
-        settingsManager.setInitial("default_scope", Key.KEY_QUAD_BAYER, resources.getBoolean(R.bool.pref_quad_bayer_default));
         settingsManager.setInitial("default_scope", Key.KEY_REMOSAIC, resources.getBoolean(R.bool.pref_remosaic_default));
         settingsManager.setInitial("default_scope", Key.KEY_ULTRAHDR, resources.getBoolean(R.bool.pref_ultrahdr_default));
         settingsManager.setInitial("default_scope", Key.KEY_FPS_PREVIEW, 0);
@@ -175,14 +175,20 @@ public class PreferenceKeys {
         map.put("white", Integer.valueOf(R.style.WhiteTheme));
         SettingsManager sm = preferenceKeys.settingsManager;
         String theme = sm.getString("default_scope", Key.KEY_THEME_ACCENT, activity.getResources().getString(R.string.pref_theme_accent_default_value));
-        boolean showGradient = sm.getBoolean("default_scope", Key.KEY_SHOW_GRADIENT, activity.getResources().getBoolean(R.bool.pref_show_gradient_def_value));
-        if (showGradient) {
-            activity.getTheme().applyStyle(R.style.GradientBackgroundTheme, true);
-        }
         if (theme != null) {
             Integer themeRes = map.get(theme.toLowerCase());
             activity.getTheme().applyStyle(themeRes != null ? themeRes.intValue() : 0, true);
         }
+    }
+
+    /** «Название фото» (P119): the file name template of new photos (processing.FileNamePattern). */
+    public static String getFileNamePattern() {
+        return preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.FileNamePattern.KEY,
+                com.particlesdevs.photoncamera.processing.FileNamePattern.DEFAULT);
+    }
+
+    public static void setFileNamePattern(String pattern) {
+        preferenceKeys.settingsManager.set("default_scope", com.particlesdevs.photoncamera.processing.FileNamePattern.KEY, pattern);
     }
 
     public static int getAfDataValue() {
@@ -958,13 +964,6 @@ public class PreferenceKeys {
             {"mosaicTetraNightFlatScale", "mosaic_tetra_night_flat_scale"},
             // P73: Tetra T1 kernel scale by day (worker default 0.35, the Quad kernel in sensor px; dev key only)
             {"mosaicTetraKernelScale", "mosaic_tetra_kernel_scale"},
-            // P74 «Опыты JSR» (the switches jsr_phase / jsr_lca / jsr_auto2x are written below; all off by default)
-            {"jsrPhaseStrength", "jsr_phase_strength"}, {"jsrPhaseMinSigma", "jsr_phase_min_sigma"},
-            {"jsrAuto2xMaxGap", "jsr_auto2x_gap"}, {"jsrPoly", "jsr_poly"}, {"jsrPolyDegree", "jsr_poly_degree"},
-            {"jsrPolyClamp", "jsr_poly_clamp"},
-            // P28 RAW CA as RawTherapee's CA_correct_RT (worker default 0 = off): mode 1 = the base frame's field on the merged RGB,
-            // 2 = every frame corrected on the GPU before the merge; RT's auto passes, manual red / blue (switches below)
-            {"rawCa", "rawca_mode"}, {"rawCaPasses", "rawca_passes"}, {"rawCaRed", "rawca_red"}, {"rawCaBlue", "rawca_blue"},
             // P27: the measured exposure ratio instead of a metadata ratio the data reliably disagrees with (worker default 1 since
             // 7 October 2026; 0 = report only, scam_dev.txt "hybrid_gain_measured 0")
             {"gainMeasured", "gain_measured"},
@@ -997,10 +996,8 @@ public class PreferenceKeys {
         // replays: synthetic PSNR 46.24 -> 46.30 / 42.24 -> 42.24 dB, real handheld x7u detail energy -0.2 %.
         if (scamDevValue("hybrid_s61_mode") == null && hybridString("s61_mode", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
             out.append("s61Mode 6\n");
-        // P74 «Опыты JSR»: switches, written only when on (the worker keeps them off)
-        if (hybridSwitch("jsr_phase", false)) out.append("jsrPhase 1\n");
-        if (hybridSwitch("jsr_lca", false)) out.append("jsrLca 1\n");
-        if (hybridSwitch("jsr_auto2x", false)) out.append("jsrAuto2x 1\n");
+        // P118 «Sabre 2× только когда есть смысл» (on by default; the worker keeps it off for replays)
+        if (hybridSwitch("auto2x", true)) out.append("auto2x 1\n");
         final int shasta = getHybridShastaMode();
         if (shasta == 0) out.append("shastaEnable 0\n");
         else if (shasta == 2) out.append("shastaForce 1\n");
@@ -1011,8 +1008,6 @@ public class PreferenceKeys {
         if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_scam", true)) out.append("bentoScam 0\n");
-        if (!hybridSwitch("rawca_auto", true)) out.append("rawCaAuto 0\n");
-        if (!hybridSwitch("rawca_avoid_shift", true)) out.append("rawCaAvoidShift 0\n");
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
         return out.toString();
     }
@@ -1422,16 +1417,8 @@ public class PreferenceKeys {
         preferenceKeys.settingsManager.set("default_scope", Key.KEY_FPS_PREVIEW, value);
     }
 
-    public static boolean isQuadBayerOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_QUAD_BAYER);
-    }
-
     public static boolean isUltraHdrOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_ULTRAHDR);
-    }
-
-    public static void setQuadBayer(boolean value) {
-        preferenceKeys.settingsManager.set("default_scope", Key.KEY_QUAD_BAYER, value);
     }
 
     public static String getCameraID() {
@@ -1573,7 +1560,6 @@ public class PreferenceKeys {
         KEY_FOCUS_PEAK(R.string.pref_peak_method_key),
         KEY_THEME(R.string.pref_theme_key),
         KEY_THEME_ACCENT(R.string.pref_theme_accent_key),
-        KEY_SHOW_GRADIENT(R.string.pref_show_gradient_key),
         KEY_HIDE_GALLERY_ICON(R.string.pref_hide_gallery_icon_key),
         KEY_AF_MODE(R.string.pref_af_mode_key),
         KEY_AE_MODE(R.string.pref_ae_mode_key),
@@ -1587,7 +1573,6 @@ public class PreferenceKeys {
         KEY_CFA(R.string.pref_cfa_key),
         KEY_REMOSAIC(R.string.pref_remosaic_key),
         KEY_EIS_PHOTO(R.string.pref_eis_photo_key),
-        KEY_QUAD_BAYER(R.string.pref_quad_bayer_key),
         KEY_FPS_PREVIEW(R.string.pref_fps_preview_key),
         KEY_ULTRAHDR(R.string.pref_ultrahdr_key),
         CAMERA_ID(R.string.camera_id),

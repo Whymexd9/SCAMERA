@@ -635,7 +635,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // Update toolbar title when fragment resumes (e.g., after navigating back)
             setupToolbar();
             updateSettingsAvailability();
+            showFileNamePreview();
             mSettingsManager.getDefaultPreferences().registerOnSharedPreferenceChangeListener(this);
+        }
+
+        /** «Название фото»: the row shows the name a photo taken now gets (P119). */
+        private void showFileNamePreview() {
+            Preference row = findPreference(com.particlesdevs.photoncamera.processing.FileNamePattern.KEY);
+            if (row == null || !isAdded()) return;
+            row.setSummary(getString(R.string.prefs_file_name_summary) + "\n" + com.particlesdevs.photoncamera.processing.FileNamePattern.format(
+                    PreferenceKeys.getFileNamePattern(), System.currentTimeMillis()) + ".jpg");
         }
 
         @Override public void onPause() {
@@ -772,9 +781,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_THEME_ACCENT.mValue)) {
                 restartActivity();
 
-            }
-            if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue)) {
-                restartActivity();
             }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue)) {
                 Log.d("SettingsFragment", "Hide gallery icon changed, expected key: " + PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue);
@@ -921,6 +927,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 if (noiseModelImportLauncher != null) {
                     noiseModelImportLauncher.launch(new String[]{"*/*"});
                 }
+                return true;
+            }
+            if (com.particlesdevs.photoncamera.processing.FileNamePattern.KEY.equals(preference.getKey())) {
+                FileNameDialog.show(requireContext(), this::showFileNamePreview);
                 return true;
             }
             if ("pref_noise_model_export_key".equals(preference.getKey())) {

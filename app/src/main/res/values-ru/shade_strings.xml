@@ -136,7 +136,7 @@
         <item>Выкл.</item>
         <item>HUD</item>
         <item>HUD+гист</item>
-        <item>Полная</item>
+        <item>AF/AE</item>
     </string-array>
 
     <string name="shade_scrim">Опустить шторку</string>

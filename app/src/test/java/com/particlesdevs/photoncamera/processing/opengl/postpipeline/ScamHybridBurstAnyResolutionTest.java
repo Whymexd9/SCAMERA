@@ -140,11 +140,7 @@ public class ScamHybridBurstAnyResolutionTest {
         final int four = ScamHybridBurst.memoryFrameBudget(8160, 6120, 1, 4L << 30);
         assertTrue(six + " vs " + four, six > four && four > 0);
         assertEquals("50 MP: the fixed cost alone is above 60 % of 3 GB", 0, ScamHybridBurst.memoryFrameBudget(8160, 6120, 1, 3L << 30));
-        assertTrue("RAW CA on every frame: a corrected copy per plain-Bayer frame lowers the budget",
-                ScamHybridBurst.memoryFrameBudget(8160, 6120, 1, 6L << 30, true) < six);
-        assertEquals("a mosaic is corrected in place", ScamHybridBurst.memoryFrameBudget(8160, 6120, 2, 6L << 30),
-                ScamHybridBurst.memoryFrameBudget(8160, 6120, 2, 6L << 30, true));
-        assertEquals("16 MP or less: never capped", Integer.MAX_VALUE, ScamHybridBurst.memoryFrameBudget(4080, 3060, 1, 1L << 30, true));
+        assertEquals("16 MP or less: never capped", Integer.MAX_VALUE, ScamHybridBurst.memoryFrameBudget(4080, 3060, 1, 1L << 30));
         assertTrue("the worker's copy of a mosaic frame counts",
                 ScamHybridBurst.memoryFrameBudget(8160, 6120, 2, 6L << 30) < six);
 

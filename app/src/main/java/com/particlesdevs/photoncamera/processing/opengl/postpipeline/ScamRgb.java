@@ -536,11 +536,7 @@ public final class ScamRgb extends Node {
             p.main1=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main2=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main3=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
-            int ox=0,oy=0;
-            if(com.particlesdevs.photoncamera.app.ScameraApp.getSettings().aspect169){
-                int w=size.x,h=size.y;
-                if(w>h)oy=2*((h-w*9/16)/4);else ox=2*((w-h*9/16)/4);
-            }
+            int ox=0,oy=0; // «16:9»: the frames arrive cropped (Wide169, P118)
             // Sabre 2x grid: the local chroma blocks keep their SENSOR size (8 x 8), sampled one sensor pixel apart.
             final int s=Math.max(1,Math.round(p.mParameters.outputScale));
             final int block=8*s;

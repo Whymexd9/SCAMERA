@@ -4,7 +4,6 @@ import android.media.Image;
 import android.os.Build;
 
 import com.particlesdevs.photoncamera.processing.render.Parameters;
-import com.particlesdevs.photoncamera.settings.ScameraPreferences;
 
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -47,7 +46,6 @@ public class DngCreator {
     private native void setIso(long nativePtr, short iso);
     private native void setExposureTime(long nativePtr, double exposureTime);
     private native void setCFAPattern(long nativePtr, int pattern);
-    private native void setQuadCFAMetadata(long nativePtr, boolean enabled);
     private native void setGainMap(long nativePtr, float[] gainMap, int xmin, int ymin, int xmax, int ymax, int width, int height);
     private native void setAperture(long nativePtr, double aperture);
     private native void setFocalLength(long nativePtr, double focalLength);
@@ -405,10 +403,6 @@ public class DngCreator {
         setCFAPattern(nativePtr, pattern);
     }
 
-    public void setQuadCFAMetadata(boolean enabled) {
-        setQuadCFAMetadata(nativePtr, enabled);
-    }
-
     public void setGainMap(float[] gainMap, int xmin, int ymin, int xmax, int ymax, int width, int height) {
         if (gainMap.length < 4) {
             throw new IllegalArgumentException("Gain map must have 4 elements");
@@ -503,13 +497,13 @@ public class DngCreator {
         setCameraCalibration2(toDouble(parameters.calibrationTransform2));
         setAsShotNeutral(toDouble(parameters.whitePoint));
         setCFAPattern(parameters.baseCfaPattern);
-        setQuadCFAMetadata(ScameraPreferences.quadDng4x4(parameters.quadCfa));
         setOrientation(parameters.cameraRotation/90);
+        // the stored image as (xmin, ymin, xmax, ymax): the active array's (top, left, bottom, right) went in here before (P118)
         setGainMap(parameters.gainMap,
-                   parameters.sensorPix.top,
-                   parameters.sensorPix.left,
-                   parameters.sensorPix.bottom,
-                   parameters.sensorPix.right,
+                   0,
+                   0,
+                   parameters.rawSize.x,
+                   parameters.rawSize.y,
                    parameters.mapSize.x,
                    parameters.mapSize.y);
     }

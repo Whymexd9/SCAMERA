@@ -392,9 +392,9 @@ public class TunablePreferenceGenerator {
     /** English text of a @Tunable description (the annotations hold the Russian text); other texts as they are. */
     static String description(String text) {
         switch (text) {
-            case "Брать динамический уровень чёрного из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)": return Lang.t(text, "Take the dynamic black level from the Camera2 capture result when there is one (unstable on some devices)");
-            case "Брать динамический уровень белого из результата съёмки Camera2, если он есть (на некоторых устройствах нестабильно)": return Lang.t(text, "Take the dynamic white level from the Camera2 capture result when there is one (unstable on some devices)");
-            case "Не зеркалить снимки фронтальной камеры": return Lang.t(text, "Do not mirror front camera photos");
+            case "Брать уровень чёрного из каждого кадра, а не из паспорта камеры. На части телефонов работает нестабильно.": return Lang.t(text, "Take the black level from each frame instead of the camera spec. Unstable on some phones.");
+            case "Брать уровень белого из каждого кадра, а не из паспорта камеры. На части телефонов работает нестабильно.": return Lang.t(text, "Take the white level from each frame instead of the camera spec. Unstable on some phones.");
+            case "Фото с фронтальной камеры сохраняются без зеркального отражения, как видит камера.": return Lang.t(text, "Front camera photos are saved without mirroring, as the camera sees them.");
             default: return text;
         }
     }

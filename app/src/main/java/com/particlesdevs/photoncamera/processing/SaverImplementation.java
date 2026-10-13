@@ -71,14 +71,12 @@ public class SaverImplementation {
             com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
             RawPayloadCheck.dumpOnce(image, payload, ScameraApp.getSettings().mCameraID);
         }
-        if(ScameraApp.getSettings().aspect169){
-            if(width > height){
-                height = width * 9 / 16;
-                int offsetH = (image.getHeight() - height) / 2;
-                offsetH -= offsetH % 2;
-                offset = rowStride * offsetH;
-                capacity = rowStride * height;
-            }
+        if(ScameraApp.getSettings().aspect169 && width > height){
+            // P118: the crop of the ZSL ring's frames (Wide169); this one kept an odd row count the merge dropped
+            final int full = image.getHeight();
+            height = Wide169.rows(width, full);
+            offset = rowStride * Wide169.firstRow(width, full);
+            capacity = rowStride * height;
         }
         Allocator.binning = ScameraApp.getSettings().binning;
         ImageFrame frame = new ImageFrame(buffer, format, width, rowStride, offset, capacity, shotArena);

@@ -162,6 +162,8 @@ public class ParamController implements Observer {
     /** P82: one viewfinder result (camera thread): checks the camera's priority AE, or moves the software loop. */
     public synchronized void onPreviewResult(CaptureResult result) {
         if (result == null) return;
+        com.particlesdevs.photoncamera.capture.MainsFlicker.observe(result); // P118 «Частота мерцания» Авто
+        learnNeutral(result); // P121
         motionStep(result);
         if (priority == ExposurePriority.NONE) return;
         CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
@@ -223,6 +225,29 @@ public class ParamController implements Observer {
     }
 
     /** A tap meters a new point (TouchFocus): the AE meters it, the ceiling learns that and takes over again. */
+    /**
+     * P121: the viewfinder neutrals of a plain-Bayer stream (the AWB settled) are points of the camera's illuminant curve, which
+     * the white balance of its ISZ streams without remosaic is put on (MosaicNeutral). Every 16th result.
+     */
+    private int neutralSkip;
+    private void learnNeutral(CaptureResult result) {
+        if ((++neutralSkip & 15) != 0 || com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1) return;
+        try {
+            final Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE), state = result.get(CaptureResult.CONTROL_AWB_STATE);
+            if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO) return;
+            if (state != null && state != CaptureResult.CONTROL_AWB_STATE_CONVERGED && state != CaptureResult.CONTROL_AWB_STATE_LOCKED) return;
+            final android.util.Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+            if (n == null || n.length < 3 || !(n[1].floatValue() > 0f)) return;
+            String id = captureController.physicalId();
+            if (id == null) return;
+            id = id.substring(id.lastIndexOf('/') + 1);
+            com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext());
+            com.particlesdevs.photoncamera.processing.color.MosaicNeutral.learn(id,
+                    n[0].floatValue() / n[1].floatValue(), n[2].floatValue() / n[1].floatValue());
+        } catch (RuntimeException ignored) {
+        }
+    }
+
     public void motionMeteringTap() {
         motionTap = true;
     }

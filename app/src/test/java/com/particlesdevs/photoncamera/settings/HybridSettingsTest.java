@@ -269,41 +269,13 @@ public class HybridSettingsTest {
         assertNotNull(hybrid.findPreference("pref_scam_hybrid_hot_base_sigma"));
     }
 
-    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void rawCaKeysReachTheTuningFileAndDefaultOff() {
-        rawCaKeysReachTheTuningFileAndDefaultOff("Хроматическая аберрация RAW");
-    }
-
-    /** The same on an English system: the page title is English (i18n). */
-    @Test public void rawCaKeysReachTheTuningFileAndDefaultOffInEnglish() {
-        rawCaKeysReachTheTuningFileAndDefaultOff("RAW chromatic aberration");
-    }
-
-    private void rawCaKeysReachTheTuningFileAndDefaultOff(String pageTitle) {
-        // P28: unset, nothing is written (worker default rawCa 0 = off, P19 as before)
-        String tuning=PreferenceKeys.hybridTuningText();
-        for(String k:new String[]{"rawCa","rawCaAuto","rawCaPasses","rawCaRed","rawCaBlue","rawCaAvoidShift"})assertFalse(tuning,tuning.contains(k+" "));
+    /** P118: RAW CA as RawTherapee's CA_correct (P28) is gone: no page, a stored key never reaches the worker and is dropped. */
+    @Test public void rawCaIsGone() {
         manager.set("default_scope","pref_scam_hybrid_rawca_mode","2");
-        manager.set("default_scope","pref_scam_hybrid_rawca_passes","3");
-        manager.set("default_scope","pref_scam_hybrid_rawca_auto",false);
-        manager.set("default_scope","pref_scam_hybrid_rawca_red","1.5");
-        manager.set("default_scope","pref_scam_hybrid_rawca_blue","-0.5");
-        manager.set("default_scope","pref_scam_hybrid_rawca_avoid_shift",false);
-        tuning=PreferenceKeys.hybridTuningText();
-        assertTrue(tuning,tuning.contains("rawCa 2.0\n"));assertTrue(tuning,tuning.contains("rawCaPasses 3.0\n"));
-        assertTrue(tuning,tuning.contains("rawCaAuto 0\n"));assertTrue(tuning,tuning.contains("rawCaRed 1.5\n"));
-        assertTrue(tuning,tuning.contains("rawCaBlue -0.5\n"));assertTrue(tuning,tuning.contains("rawCaAvoidShift 0\n"));
-        // the page: «Hybrid -> Склейка -> Хроматическая аберрация RAW», XML defaults = worker defaults (off, auto, 2 passes, avoid)
-        PreferenceScreen settings=inflate(),merge=settings.findPreference("scam_hybrid_merge_screen");
-        PreferenceScreen page=merge.findPreference("scam_hybrid_rawca_screen");
-        assertNotNull(page);assertEquals(pageTitle,page.getTitle().toString());
-        ListPreference mode=page.findPreference("pref_scam_hybrid_rawca_mode");
-        assertArrayEquals(new CharSequence[]{"0","1","2"},mode.getEntryValues());
-        prefs.edit().clear().commit();
-        settings=inflate();
-        assertEquals("0",prefs.getString("pref_scam_hybrid_rawca_mode","?"));
-        assertTrue(prefs.getBoolean("pref_scam_hybrid_rawca_auto",false));assertTrue(prefs.getBoolean("pref_scam_hybrid_rawca_avoid_shift",false));
-        tuning=PreferenceKeys.hybridTuningText();
-        assertTrue(tuning,tuning.contains("rawCa 0.0\n"));assertFalse(tuning,tuning.contains("rawCaAuto 0"));
+        assertFalse(PreferenceKeys.hybridTuningText().contains("rawCa"));
+        PreferenceScreen merge=inflate().findPreference("scam_hybrid_merge_screen");
+        assertNotNull(merge);assertNull(merge.findPreference("scam_hybrid_rawca_screen"));
+        assertTrue(SettingsMigration.isObsolete("pref_scam_hybrid_rawca_mode"));
     }
 
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void mochiKeysReachTheTuningFileAndDefaultAlways() {
@@ -377,21 +349,23 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("shastaEnable 0\n"));assertFalse(tuning,tuning.contains("shastaForce"));
     }
 
-    /** P74: «Опыты JSR» off by default (nothing written: the merge as before); each switch reaches the worker. */
-    @Test public void jsrExperimentsOffByDefaultAndReachTheWorker() {
-        String tuning=PreferenceKeys.hybridTuningText();
-        for(String k:new String[]{"jsrPhase ","jsrLca ","jsrAuto2x ","jsrPoly "})assertFalse(k+tuning,tuning.contains(k));
+    /** P118: «Опыты JSR» are gone; «Sabre 2× только когда есть смысл» is on by default, next to «Разрешение», live on the 2x grid. */
+    @Test public void auto2xOnByDefaultAndJsrGone() {
         prefs.edit().clear().commit();
         PreferenceScreen settings=inflate();
-        assertNotNull(settings.findPreference("scam_hybrid_jsr_screen"));
-        assertFalse(prefs.getBoolean("pref_scam_hybrid_jsr_phase",true));
-        assertEquals("0",prefs.getString("pref_scam_hybrid_jsr_poly","?"));
-        manager.set("default_scope","pref_scam_hybrid_jsr_phase",true);
-        manager.set("default_scope","pref_scam_hybrid_jsr_lca",true);
-        manager.set("default_scope","pref_scam_hybrid_jsr_auto2x",true);
-        manager.set("default_scope","pref_scam_hybrid_jsr_poly","2");
-        tuning=PreferenceKeys.hybridTuningText();
-        for(String k:new String[]{"jsrPhase 1\n","jsrLca 1\n","jsrAuto2x 1\n","jsrPoly 2.0\n"})assertTrue(k+tuning,tuning.contains(k));
+        assertNull(settings.findPreference("scam_hybrid_jsr_screen"));
+        PreferenceScreen hybrid=settings.findPreference("scam_hybrid_screen");
+        assertNotNull(hybrid.findPreference("pref_scam_hybrid_auto2x"));
+        assertTrue(prefs.getBoolean("pref_scam_hybrid_auto2x",false));
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("auto2x 1\n"));
+        for(String k:new String[]{"jsrPhase","jsrLca","jsrAuto2x","jsrPoly"})assertFalse(k+tuning,tuning.contains(k));
+        manager.set("default_scope","pref_scam_hybrid_auto2x",false);
+        assertFalse(PreferenceKeys.hybridTuningText().contains("auto2x"));
+        assertTrue(SettingsMigration.isObsolete("pref_scam_hybrid_jsr_phase"));
+        Map<String,Object> s=new HashMap<>();
+        assertNotNull("sensor grid: nothing to decide",new SettingsAvailability(s).reason("pref_scam_hybrid_auto2x"));
+        s.put("pref_scam_hybrid_output","16");assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_auto2x"));
     }
 
     /** P79: the per-pass GPU times (a glFinish after every pass, 30-60 % slower merge) are off by default on every phone. */

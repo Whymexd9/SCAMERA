@@ -69,7 +69,6 @@ public final class ArkTone {
         s.nightThresh = nightVal;
         s.noiseMax = nightVal;
         s.nightDim = value("night_dim", 1.0f);
-        s.facePriority = value("face_priority", 0.7f);
         s.metering = Math.round(value("metering", 0f));
         s.brightThresh = value("bright_thresh", 0.8f);
         s.darkThresh = value("dark_thresh", 15f);
