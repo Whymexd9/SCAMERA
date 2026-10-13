@@ -116,13 +116,72 @@ public final class Dcg14Mode {
     /** Whether the current mode has a try that worked. */
     public static boolean found() {
         SharedPreferences p = prefs();
-        return p != null && p.getInt("found_" + mode(), -1) >= 0;
+        return p != null && (p.getInt("found_" + mode(), -1) >= 0 || p.getBoolean("route_found_" + mode(), false));
     }
 
     /** Whether the current mode's search ran out of tries. */
     public static boolean exhausted() {
         SharedPreferences p = prefs();
-        return p != null && p.getBoolean("exhausted_" + mode(), false);
+        return p != null && (p.getBoolean("exhausted_" + mode(), false)
+                || p.getBoolean("route_done_" + mode(), false) && !p.getBoolean("route_found_" + mode(), false));
+    }
+
+    // ---- P112 the third-party video route (owner, 2026-10-13: «закончи с запуском DCG на 500 про макс») ----
+    // The vivo camera's own keys under the package spoof never gave a 14-bit RAW (the video UI mode they need fails -38, the
+    // P107 tries stall or stay binned). The selector (PD2602.json) gives every other app the VIDEO scenario (552) when its streams
+    // are 16:9, and the main IMX09C's video scenario is the 14-bit DCG mode: a plain third-party session (no spoof) with a 16:9
+    // viewfinder is the second route. A route has ROUTE_RESULTS viewfinder results to show a 14-bit RAW; the verdict is kept.
+    static final int ROUTE_SPOOF = 0, ROUTE_VIDEO = 1;
+    static final int ROUTE_RESULTS = 60;
+    private static volatile boolean sRouteCheck;
+    private static volatile int sRouteResults;
+
+    /** The X500 Pro Max itself (the route is about its selector and its main IMX09C). */
+    private static boolean x500ProMax() {
+        return device(Build.MODEL, Build.DEVICE);
+    }
+
+    /** This mode's route: ROUTE_SPOOF (the vivo camera's keys under the package spoof) or ROUTE_VIDEO. */
+    static int route() {
+        SharedPreferences p = prefs();
+        return p == null ? ROUTE_SPOOF : p.getInt("route_" + mode(), ROUTE_SPOOF);
+    }
+
+    /** DCG on the third-party video route: no package spoof, a 16:9 viewfinder (CaptureController.getAspect). */
+    public static boolean videoRoute() {
+        return x500ProMax() && mode() == DCG && route() == ROUTE_VIDEO;
+    }
+
+    static String routeName(int route) {
+        return route == ROUTE_VIDEO ? "third-party 16:9 video" : "vivo camera keys";
+    }
+
+    /** One viewfinder result of a route under test: a 14-bit RAW keeps it, else after ROUTE_RESULTS the next route. */
+    private static void routeStep(CaptureController controller, @Nullable Integer white, String state) {
+        final SharedPreferences p = prefs();
+        if (p == null) {
+            sRouteCheck = false;
+            return;
+        }
+        final int m = mode();
+        if (DcgSearch.fourteenBit(white, RawPayloadCheck.wideWhite(), 1023)) {
+            sRouteCheck = false;
+            p.edit().putBoolean("route_done_" + m, true).putBoolean("route_found_" + m, true).commit();
+            Log.i(TAG, "DCG route: 14-bit RAW on the " + routeName(route()) + " route, kept; result " + state);
+            notifyListener();
+            return;
+        }
+        if (++sRouteResults < ROUTE_RESULTS) return;
+        sRouteCheck = false;
+        if (route() == ROUTE_SPOOF) {
+            p.edit().putInt("route_" + m, ROUTE_VIDEO).commit();
+            Log.i(TAG, "DCG route: no 14-bit RAW with the vivo camera keys (" + state + "); next: a third-party session at 16:9");
+        } else {
+            p.edit().putInt("route_" + m, ROUTE_SPOOF).putBoolean("route_done_" + m, true).commit();
+            Log.i(TAG, "DCG route: no 14-bit RAW at 16:9 either (" + state + "); back to the vivo camera keys");
+            notifyListener();
+        }
+        new Handler(Looper.getMainLooper()).post(controller::restartCamera);
     }
 
     /** Searches on from the try after the kept one (or from the start when the last search ran out). */
@@ -131,7 +190,8 @@ public final class Dcg14Mode {
         if (p == null) return;
         int m = mode(), found = p.getInt("found_" + m, -1);
         boolean exhausted = p.getBoolean("exhausted_" + m, false);
-        SharedPreferences.Editor e = p.edit().putInt("found_" + m, -1).putInt("found_sweep_" + m, -1).putBoolean("exhausted_" + m, false);
+        SharedPreferences.Editor e = p.edit().putInt("found_" + m, -1).putInt("found_sweep_" + m, -1).putBoolean("exhausted_" + m, false)
+                .putInt("route_" + m, ROUTE_SPOOF).putBoolean("route_done_" + m, false).putBoolean("route_found_" + m, false);
         if (found >= 0) e.putInt("next_" + m, found + 1);
         else if (exhausted) e.putInt("next_" + m, 0);
         e.commit();
@@ -147,6 +207,11 @@ public final class Dcg14Mode {
         sSweepValue = sPrevSweepValue = -1;
         sResults = sInBlock = sSweepPos = 0;
         SharedPreferences p = prefs();
+        // P112: DCG on the main of the X500 Pro Max, no verdict yet: this session's route is watched
+        sRouteResults = 0;
+        sRouteCheck = p != null && x500ProMax() && mode() == DCG && active(c) && "2".equals(physicalId)
+                && !p.getBoolean("route_done_" + DCG, false);
+        if (sRouteCheck || videoRoute()) Log.i(TAG, "DCG route: " + routeName(route()) + (sRouteCheck ? " (under test)" : " (kept)"));
         if (p == null || !active(c) || !"2".equals(physicalId) && mode() == LOFIC) return;
         int m = mode();
         List<DcgSearch.Step> steps = DcgSearch.steps(m == LOFIC);
@@ -185,6 +250,14 @@ public final class Dcg14Mode {
      * the vivo camera provider): the search of this mode stops (marked done) so the next session runs without tries.
      */
     public static void onCameraError(int error) {
+        // P112: the video route broke the camera: back to the vivo camera keys, the verdict kept
+        if (sRouteCheck && route() == ROUTE_VIDEO) {
+            sRouteCheck = false;
+            SharedPreferences p = prefs();
+            if (p != null) p.edit().putInt("route_" + mode(), ROUTE_SPOOF).putBoolean("route_done_" + mode(), true).commit();
+            Log.w(TAG, "DCG route: camera error " + error + " at 16:9, back to the vivo camera keys");
+            notifyListener();
+        }
         if (sStepIndex < 0 || sStep == null) return;
         SharedPreferences p = prefs();
         int m = mode();
@@ -208,6 +281,7 @@ public final class Dcg14Mode {
      */
     @Nullable
     public static String spoofPackage() {
+        if (videoRoute()) return null; // P112: a plain third-party session
         // P109 (owner, 2026-10-13: «мы можем спуф включить на постоянку для этого смартфона чтобы не переключать туда-сюда»):
         // on the X500 Pro Max every camera opens as the vivo camera, for DCG / LOFIC, the ISZ modules and plain shots alike
         // P109b (owner: «на виво сделай подмену как на 500 про макс»): every vivo MediaTek phone, always
@@ -340,6 +414,7 @@ public final class Dcg14Mode {
             sLastState = state;
             Log.i(TAG, "DCG14 camera " + physicalId + " (" + name(mode()) + "): " + state);
         }
+        if (sRouteCheck && !sSearching && controller != null) routeStep(controller, white, state);
         DcgSearch.Step step = sStep;
         if (!sSearching || step == null || controller == null) return;
         sResults++;

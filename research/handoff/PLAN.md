@@ -2806,3 +2806,16 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
     against a band-free AE frame decide (2 frames with > 4 % bands latch 1/100 s, 6 without clear it; 1.5 s no verdict latches).
 - Not on a device yet. Check: «motion level», «motion: shutter at the touch», «motion: base = frame», «no lamp bands» /
   «mains flicker» lines; press-to-moment and shutter values in the ring.
+
+### P112 - DCG on the X500 Pro Max: the third-party video route (owner, 2026-10-13: «закончи с запуском DCG на 500 про макс»)
+- Where it stands: the vivo camera's keys under the package spoof never gave a 14-bit RAW (log 2026-10-13 13:33: with
+  com.vivo.current_ui_module 3 every session -38; without it sensorScenario [2, 1], white 1023); the P107 search (66 DCG / 44
+  LOFIC tries of MediaTek's seamless keys) stalled the provider or stayed binned. The selector (PD2602.json) keeps DCG / Sport /
+  LBMF to the vivo camera and lists of other apps; any other app gets PHOTO(532) / VIDEO(552) by the streams' aspect ratio
+  (>= 1777 -> VIDEO). The main IMX09C's video scenario is the 14-bit DCG mode. Not pursued: how the HAL tells clients apart.
+- Done: Dcg14Mode route state per mode. DCG on the main (camera 2), no verdict: the session is watched for 60 results; a 14-bit
+  white (dynamic or a wide RAW) keeps the route; else the next route: a plain third-party session (no package spoof) with a
+  16:9 viewfinder (CaptureController.getAspect); if that gives none either, or breaks the camera, back to the spoof route,
+  verdict kept (button toast «found» / «none»; long press searches again). Logs «DCG route: …».
+- Check on the X500 Pro Max: DCG button on the main; «DCG route: … (under test)», «DCG14 camera 2 (DCG): sensorScenario …,
+  dynamic white …», «wide RAW: … -> white 16383» and «DCG route: 14-bit RAW on the third-party 16:9 video route, kept».

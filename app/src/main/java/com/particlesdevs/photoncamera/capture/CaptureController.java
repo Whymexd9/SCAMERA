@@ -2111,7 +2111,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
     private Size getAspect(CameraMode targetMode){
         Size aspectRatio;
-        if (targetMode == CameraMode.VIDEO || targetMode == CameraMode.RAWVIDEO || PhotonCamera.getSettings().aspect169) {
+        // P112: DCG on the X500 Pro Max's third-party video route: 16:9 streams get the selector's VIDEO scenario (the DCG mode)
+        if (targetMode == CameraMode.VIDEO || targetMode == CameraMode.RAWVIDEO || PhotonCamera.getSettings().aspect169
+                || Dcg14Mode.videoRoute()) {
             aspectRatio = new Size(9, 16);
         } else {
             aspectRatio = new Size(3, 4);
