@@ -152,19 +152,8 @@ public final class VivoQcomIsz {
         Log.i(TAG, "ISZ module " + target + " («" + label + "», " + what + " of camera " + camera + "): session " + KEY + " " + mode);
     }
 
-    // ---- DCG 14 bit by the button of the manual strip (Dcg14Button), as on the X500 Pro Max (owner: «включение DCG по кнопке
+    // ---- DCG 14 bit by the button of the manual strip (Dcg14Button, its on / off in Dcg14Mode; owner: «включение DCG по кнопке
     // как у 500 про макс»), on the main, the ultra-wide and the tele (their 14-bit Open Gate modes)
-    private static final String PREFS = "scam_x300u_dcg";
-
-    public static boolean dcgOn() {
-        Context c = ScameraApp.getAppContext();
-        return c != null && c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("on", false);
-    }
-
-    public static void setDcg(boolean on) {
-        Context c = ScameraApp.getAppContext();
-        if (c != null) c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", on).apply();
-    }
 
     /** The DCG sensor mode of a camera role, 0 for none. */
     static int dcgMode(@Nullable String role) {
@@ -186,9 +175,8 @@ public final class VivoQcomIsz {
         return c != null && enabled() && dcgMode(c) > 0;
     }
 
-    /** DCG for this session: the button on, the tele, and the module forces no sensor mode of its own (an ISZ module). */
-    public static boolean dcgActive(@Nullable android.hardware.camera2.CameraCharacteristics c) {
-        if (!dcgOn() || !dcgAvailable(c)) return false;
+    /** The active module forces no sensor mode of its own (an ISZ module): DCG may set one. */
+    public static boolean plainModule() {
         try {
             return ModuleRegistry.sensorMode(ModuleRegistry.active()) == 0;
         } catch (RuntimeException e) {
@@ -199,9 +187,9 @@ public final class VivoQcomIsz {
     /** Sets the DCG sensor mode as a session parameter; the log text of what was done. */
     public static String applyDcg(android.hardware.camera2.CaptureRequest.Builder session,
                                   @Nullable android.hardware.camera2.CameraCharacteristics c) {
-        if (session == null || !dcgActive(c)) return "off";
+        int mode = dcgMode(c);
+        if (session == null || mode <= 0) return "off";
         try {
-            int mode = dcgMode(c);
             session.set(new android.hardware.camera2.CaptureRequest.Key<>(KEY, Integer.class), mode);
             return KEY + " " + mode + " (DCG 14 bit)";
         } catch (RuntimeException e) {

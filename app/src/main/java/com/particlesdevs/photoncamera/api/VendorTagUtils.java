@@ -204,7 +204,6 @@ public class VendorTagUtils {
                 CaptureRequest.Key<?> key = tunableKey.toCaptureRequestKey();
                 boolean supported = isSupported(builder, key);
                 tunableKey.supported = supported;
-                com.particlesdevs.photoncamera.capture.VivoMtkIsz.noteRoiKey(physicalId, tunableKey.name, supported);
                 if (supported) {
                     Object parsedValue = tunableKey.parseValue();
                     setKeyValue(builder, key, parsedValue);
@@ -238,10 +237,8 @@ public class VendorTagUtils {
             builder.set(CaptureRequest.SENSOR_PIXEL_MODE, CaptureRequest.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION);
         }
         com.particlesdevs.photoncamera.settings.TunableKeyManager.applyTunableKeys(builder, physicalId);
-        // P103 / P104: the HAL keys of «Движение» / Ideal RAW and of the X500 Pro Max's DCG 14 bit, on the session and every request
+        // P103: the HAL keys of «Движение» / Ideal RAW, on the session and every request
         com.particlesdevs.photoncamera.capture.HiddenFeatures.apply(builder,
                 com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics);
-        com.particlesdevs.photoncamera.capture.Dcg14Mode.apply(builder,
-                com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics, physicalId);
     }
 }

@@ -3055,3 +3055,16 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Module vendor keys: each has an on / off switch on its card («Сессия» / «Запрос», value, taken / unknown / not tried; off cards
   dimmed); off keys are not sent and a switched-off forceSensorMode is no sensor mode (ModuleRegistry.forcedMode).
 - Tests 830 (only DevKeysCoverageTest: another agent's keys); VivoQcomIszTest, ModuleKeysSwitchTest.
+
+### P123 - vivo MediaTek ISZ and DCG removed (owner, 2026-10-13: «На виво на мтк не работает ISZ и DCG, поэтому мы можем их убрать на всех смартфонах где пытались добавить»)
+- Gone: capture/VivoMtkIsz (P109: roiRemosaic ISZ modules on every vivo MediaTek phone, its ROI-key bookkeeping and feedback log),
+  capture/DcgSearch and the X500 Pro Max route of Dcg14Mode (P104-P112: MediaTek HDR / seamless / sensorScenario keys, the
+  DCG / LOFIC search, LOFIC, the 16:9 video route, the vivo UI module), the automatic vivo-camera package spoof of vivo MediaTek
+  phones (Dcg14Mode.spoofPackage; the owner's own spoof settings stay), the -38 busy-HAL reopen and the UI-module retry in
+  CaptureController, eleven scam_dev keys (dcg14_*, vivo_isz, vivo_ui_module), the LOFIC icon and texts.
+- Kept: the DCG button and Dcg14Mode as its on / off switch, now for the X300 Ultra (P122; VivoQcomIsz.applyDcg on the session
+  only: the per-request Dcg14Mode.apply call is gone, forceSensorMode is a session key).
+- Once on a vivo MediaTek phone (IszModule.removeVivoMtk): the ISZ duplicates P109 made (marked module_vivo_isz_<slot>) are
+  removed with all module_vivo_isz_* flags.
+- Tests: IszModuleTest; VivoQcomIszTest takes the on / off step; VivoMtkIszTest, DcgSearchTest and the X500 Pro Max device test
+  removed.

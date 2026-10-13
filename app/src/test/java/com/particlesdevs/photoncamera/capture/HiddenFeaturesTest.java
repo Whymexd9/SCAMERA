@@ -45,14 +45,4 @@ public class HiddenFeaturesTest {
         assertFalse(HiddenFeatures.contains(null, 6));
         assertFalse(HiddenFeatures.contains(new int[]{0, 1}, 6));
     }
-
-    @Test
-    public void dcg14OnlyOnTheX500ProMax() {
-        assertTrue(Dcg14Mode.device("V2602A", "PD2602"));
-        assertTrue(Dcg14Mode.device("v2602a", null));
-        assertTrue(Dcg14Mode.device(null, "PD2602"));
-        assertFalse(Dcg14Mode.device("V2454A", "PD2454"));
-        assertFalse(Dcg14Mode.device("PKJ110", "OP5DD3L1"));
-        assertFalse(Dcg14Mode.device(null, null));
-    }
 }

@@ -36,6 +36,8 @@ public class VivoQcomIszTest {
         assertEquals(11, VivoQcomIsz.dcgMode("wide"));
         assertEquals(20, VivoQcomIsz.dcgMode("tele"));
         assertEquals(0, VivoQcomIsz.dcgMode(null));
+        assertEquals(Dcg14Mode.DCG, Dcg14Mode.next(Dcg14Mode.OFF));
+        assertEquals("on / off, no LOFIC step any more", Dcg14Mode.OFF, Dcg14Mode.next(Dcg14Mode.DCG));
     }
 
     @Test public void modulesCarryTheModeAsASessionKey() {

@@ -22,14 +22,16 @@ public final class IszModule {
     static final float ZOOM = 2f;
     static final String LABEL = "2×";
     private static final String OFFERED = "module_isz_offered_";
+    /** P109's vivo MediaTek ISZ modules (VivoMtkIsz, removed in P123): their marks and offered / refused flags. */
+    static final String VIVO_MTK = "module_vivo_isz_";
+    private static final String VIVO_MTK_REMOVED = "module_vivo_mtk_isz_removed";
 
     private IszModule() {}
 
     /** Creates the ISZ button of the back main camera when it can and has not done so before. */
     public static void ensure(Context context) {
         if (context == null || !PreferenceKeys.scamDevSwitch("isz_module", true)) return;
-        // vivo MediaTek: VivoMtkIsz makes the main «2×» (a second «2×» here was one too many, X200 Pro video 2026-10-13)
-        if (com.particlesdevs.photoncamera.capture.VivoMtkIsz.enabled()) return;
+        removeVivoMtk();
         try {
             SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
@@ -65,5 +67,35 @@ public final class IszModule {
         } catch (Exception e) {
             Log.w(TAG, "in-sensor zoom module not created: " + e);
         }
+    }
+
+    /**
+     * P123 (owner, 2026-10-13: «На виво на мтк не работает ISZ и DCG»): the ISZ modules P109 made on vivo MediaTek phones (main
+     * «2×», tele «7×» / «14×», ultra-wide 2x: duplicates with vivo.control.seamless.roiRemosaic 4) gave no sensor crop. Once:
+     * those duplicates go and their marks with them.
+     */
+    private static void removeVivoMtk() {
+        if (!vivoMediatek(android.os.Build.MANUFACTURER, android.os.Build.HARDWARE,
+                android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MANUFACTURER : null)) return;
+        try {
+            SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+            if (p.getBoolean(VIVO_MTK_REMOVED, false)) return;
+            for (String slot : ModuleRegistry.slots()) {
+                if (p.getInt(VIVO_MTK + slot, 0) <= 0 || ModuleRegistry.duplicateOf(slot) == null) continue;
+                String label = ModuleRegistry.label(slot);
+                if (ModuleRegistry.remove(slot)) Log.i(TAG, "vivo MediaTek ISZ module " + slot + " («" + label + "») removed");
+            }
+            SharedPreferences.Editor e = p.edit();
+            for (String k : p.getAll().keySet()) if (k.startsWith(VIVO_MTK)) e.remove(k);
+            e.putBoolean(VIVO_MTK_REMOVED, true).apply();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "vivo MediaTek ISZ modules not removed: " + e);
+        }
+    }
+
+    static boolean vivoMediatek(String manufacturer, String hardware, String soc) {
+        if (manufacturer == null || !manufacturer.equalsIgnoreCase("vivo")) return false;
+        if (soc != null && soc.toLowerCase(java.util.Locale.ROOT).contains("mediatek")) return true;
+        return hardware != null && hardware.toLowerCase(java.util.Locale.ROOT).startsWith("mt");
     }
 }

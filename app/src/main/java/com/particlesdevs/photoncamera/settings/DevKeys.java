@@ -132,20 +132,9 @@ public final class DevKeys {
         k.add(s(xiaomi, "xiaomi_crop_mode", false, Lang.t("Режим кропа теле (опыт)", "Tele crop mode (experiment)")));
         k.add(s(xiaomi, "xiaomi_isz", false, Lang.t("ISZ теле (опыт)", "Tele ISZ (experiment)")));
         k.add(s(xiaomi, "xiaomi_tele_fallback", false, Lang.t("Запасной путь теле при сбое", "Tele fallback route on failure")));
-        // vivo X500 Pro Max
-        k.add(s(vivo, "dcg14", true, Lang.t("Кнопка DCG 14 бит на X500 Pro Max", "The DCG 14-bit button on the X500 Pro Max")));
-        k.add(s(vivo, "dcg14_search", false, Lang.t("Автопоиск режима DCG/LOFIC (может ронять камеру vivo!)", "Automatic DCG / LOFIC mode search (may crash the vivo camera!)")));
-        k.add(n(vivo, "dcg14_hdr_mode", "1", Lang.t("com.mediatek.hdrfeature.hdrMode: 1 — HDR фото, 3 — HDR видео (-1 — не слать)", "com.mediatek.hdrfeature.hdrMode: 1 photo HDR, 3 video HDR (-1: not sent)")));
-        k.add(s(vivo, "vivo_isz", true, Lang.t("ISZ-модули X500 Pro Max (основная 2×, ширик 2×, теле 2×/4×) и подмена пакета для них", "X500 Pro Max ISZ modules (main 2x, ultra-wide 2x, tele 2x / 4x) and their package spoof")));
-        k.add(s(vivo, "dcg14_spoof", true, Lang.t("vivo на MediaTek: камера всегда открывается как com.android.camera (камера vivo) — для DCG и ISZ", "vivo on MediaTek: the camera always opens as com.android.camera (the vivo camera), for DCG and ISZ")));
+        // vivo
+        k.add(s(vivo, "dcg14", true, Lang.t("Кнопка DCG 14 бит (X300 Ultra)", "The DCG 14-bit button (X300 Ultra)")));
         k.add(s(vivo, "vivo_teleconverter", false, Lang.t("Показывать камеры-профили телеконвертера vivo (Tele…External) — только с надетой насадкой", "Show the vivo teleconverter camera profiles (Tele…External): only with the extender attached")));
-        k.add(n(vivo, "vivo_ui_module", "-1", Lang.t("com.vivo.current_ui_module — модуль интерфейса vivo в сессии (1 — Фото; X200 Pro отвечает ошибкой -38; -1 — не слать)", "com.vivo.current_ui_module, the vivo UI module in the session (1: Photo; the X200 Pro answers -38; -1: not sent)")));
-        k.add(n(vivo, "dcg14_uimode", "-1", Lang.t("vivo.control.currentmodeS — режим интерфейса vivo для селектора (-1 — не слать)", "vivo.control.currentmodeS, the vivo UI mode for the selector (-1: not sent)")));
-        k.add(n(vivo, "dcg14_shdr", "1", Lang.t("vivo.control.shdr_enable — сенсорный HDR (-1 — не слать)", "vivo.control.shdr_enable, the sensor HDR (-1: not sent)")));
-        k.add(n(vivo, "dcg14_dcghdr", "1", Lang.t("vivo.control.EnableDCGHDR (-1 — не слать)", "vivo.control.EnableDCGHDR (-1: not sent)")));
-        k.add(n(vivo, "dcg14_seamless", "2", Lang.t("vivo.control.session.seamlesscontrol: 2 — DCG (с режимом видео vivo_ui_module 3), 1 — без DCG (-1 — не слать)", "vivo.control.session.seamlesscontrol: 2 DCG (with the video UI mode vivo_ui_module 3), 1 no DCG (-1: not sent)")));
-        k.add(n(vivo, "dcg14_camera_scenario", "-1", Lang.t("cameraScenario вручную (-1 — нет)", "cameraScenario by hand (-1: none)")));
-        k.add(n(vivo, "dcg14_sensor_scenario", "-1", Lang.t("sensorScenario вручную (-1 — нет)", "sensorScenario by hand (-1: none)")));
         // Pixel 10 Pro / Pro XL
         k.add(s(pixel, "pixel_modules", true, Lang.t("Добавлять ISZ-кропы логической камеры как модули", "Add the logical camera's ISZ crops as modules")));
         k.add(s(pixel, "pixel_full_res", true, Lang.t("Кнопка полного разрешения (50 Мп)", "The full-resolution button (50 MP)")));

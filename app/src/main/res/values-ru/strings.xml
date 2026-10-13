@@ -193,16 +193,10 @@
     <string name="dcg14_off">DCG 14 бит: выкл</string>
     <string name="dcg14_on_toast">DCG 14 бит вкл: запрошен режим сенсора с двойным усилением, камера перезапускается</string>
     <string name="dcg14_off_toast">DCG 14 бит выкл</string>
-    <string name="dcg14_lofic">DCG + LOFIC 14 бит: вкл</string>
-    <string name="dcg14_lofic_toast">DCG + LOFIC вкл: запрошен режим сенсора с конденсатором переполнения, камера перезапускается</string>
-    <string name="dcg14_found_toast">DCG: сенсор перешёл в 14-битный режим</string>
-    <string name="dcg14_none_toast">DCG: способ включить режим сенсора не найден</string>
-    <string name="dcg14_search_toast">DCG: поиск продолжается (камера несколько раз перезапустится)</string>
     <string name="full_res_on">Полное разрешение: вкл</string>
     <string name="full_res_off">Полное разрешение: выкл</string>
     <string name="full_res_on_toast">Полное разрешение вкл: RAW 50 Мп, кадры после нажатия, камера перезапускается</string>
     <string name="full_res_off_toast">Полное разрешение выкл</string>
-    <string name="dcg14_not_here">DCG 14 бит работает на основной камере и телеобъективах</string>
     <string name="prefs_developer_settings_screen_title">Для разработчика</string>
     <string name="prefs_developer_settings_screen_summary">Скрытые параметры scam_dev.txt для опытов и отладки</string>
 </resources>

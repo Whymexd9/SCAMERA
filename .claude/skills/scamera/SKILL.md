@@ -25,6 +25,7 @@ description: Работа над SCAMERA — Android-камерой (форк Ph
 - Режимы сенсора переключать разрешено (владелец, 2026-10-13). vivo на Snapdragon: `vivo.control.forceSensorMode` только
   как ключ сессии (X300 Ultra: 2× ISZ Quad 21/10/5 на 14/35/85 мм, теле 4× Tetra 7, DCG 14 бит 11/17/20; ремозаичные 6/31 не
   использовать), P122 `capture/VivoQcomIsz`.
+- vivo на MediaTek: ISZ и DCG не работают (владелец, 2026-10-13), удалены в P123 — не возвращать.
 - SCAM TEST (`SCAMERA-PC/scam-test/`, `com.scam.test`) — отдельное приложение; его отчёты только входные данные.
 - Без root (root необязателен). Без подмены пакета/`clientName` стоковой камеры.
 - Части ArkCam комбинировать с нашим пайплайном, а не подменять.
@@ -100,7 +101,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 | OnePlus 15 | CPH2747, SM8850 | root (отчёт) | 0–4 | OIS спрятан HAL (ON в шаблонах); AE priority нативный; DCG-режимы HAL |
 | OPPO Find X9 Ultra | CPH2841 | н/п | 0–5 | OIS спрятан HAL; AE priority нативный; EnableHDRDCGMode |
 | OPPO Find X9 Pro | PLG110, MT6993 | н/п | 0–4 | MTK ISZ-ключи, `com.oplus.custom.support.raw.200m.size` (не проверено) |
-| vivo X500 Pro Max | V2602A / PD2602, MT6995 | н/п | 0 лог., 2 основная IMX09C, 3/5/6 теле S5KHPE, 4 UW | сценарий 3RD_APP_HDR = DCG 14 бит (P104) |
+| vivo X500 Pro Max | V2602A / PD2602, MT6995 | н/п | 0 лог., 2 основная IMX09C, 3/5/6 теле S5KHPE, 4 UW | DCG 14 бит и ISZ не работают, удалены (P123) |
 | Galaxy S24 Ultra | SM-S928B | н/п | 0 лог., 20/23/24… | CROPPED_RAW (ISZ, P100), RAW-ридер ≥16 |
 | Xiaomi 15 Ultra | 25010PN30G | root | 0/1 + скрытые 2–7 | теле 4 в одиночку роняет провайдер |
 | Mi 10T Pro | M2007J3SG, SM8250 | — | 0 основная HMX 108 МП | RAW 6016×4512; 108 МП — P105, отложено |
