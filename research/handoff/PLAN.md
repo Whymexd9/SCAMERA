@@ -2873,3 +2873,38 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Checks: a clean copy of the commit: 806 unit tests, failing only the old CaptureControllerTest (809 / + DevKeysCoverageTest
   in the shared tree: another agent's uncommitted vivo_qcom keys); check_ui_language / check_settings_model / check_scam_* PASS; rawdevelop_fs compiles offline (glslc).
   Not tested on a phone: the RAW viewfinder look (ISZ / mosaic modes), the watermark, DCIM/SCAMERA/Log, the themed icon.
+
+### P116 - Gallery compare: zoom and pan together through the photos (owner, 2026-10-13: «В галерее сделай синхронный сдвиг фото с учётом разного зума. И сделай относительный зум не зависящий от разрешения»)
+- Before: «Зум и сдвиг вместе» copied the touched pane's SSIV scale and centre in source pixels to the other pane, so a
+  12 MP photo next to a 50 MP one showed a different zoom (pill 250 % vs 120 %) and a different place, and panes at a
+  different zoom drifted apart while panning.
+- Now gallery/compare/PaneLink: photo 2 = a * photo 1 + b in source pixels, pane 2's scale = pane 1's / a. Linked at the
+  touch-down (ImageCompareFragment, CustomSSIV.TouchCallBack.onTouchedView) as the panes are shown: new photos or a swap link
+  them centred at their fit (a = the size ratio: the same relative zoom whatever the resolution), or by the EXIF 35 mm
+  focal lengths when both photos have them and they differ (a 2x photo next to a 1x one: the same scene point stays in the
+  middle, the pan of one moves the other through its own zoom); switching «Зум и сдвиг вместе» on again links them as they
+  are, so a zoom or offset set while it was off is kept. The touched pane leads; the other follows its scale and centre.
+- SCAMERA photos have no FocalLengthIn35mmFilm (ParseExif leaves it out): a 1x / 2x pair of ours is linked as shown; zoom
+  one pane with the switch off to match the other, then switch it on.
+- Tests: PaneLinkTest 3/3 (12 vs 50 MP, 2x vs 1x, a zoom and offset kept), GalleryUiTest 7/7. Not in the CI test list yet
+  (that line of build-test-apk.yml has another agent's uncommitted change). Not tested on a phone.
+
+### P117 - OPEN: SGallery crashes, WebP / AVIF black (owner, 2026-10-13, screen recording VID_20261013_174745 on an OPPO / ColorOS phone)
+- Crashes in the compare screen, the app closes to the home screen: the top right button «Поменять местами» (swap();
+  owner: «Вылет был при нажати на верхнюю правую кнопку») - twice in the recording, about 0.7 s after compare opened, and
+  once after the share sheet was cancelled. A Robolectric probe (ImageCompareFragment in the gallery NavHostFragment,
+  swap twice, close) did not crash without photos: it needs loaded pages (SSIV / Glide / Ultra HDR window mode) or that phone. The photos in the recording carry the old «SHOT ON PHOTON CAMERA» banner (P115 replaced it).
+- Owner: «Галерея всё ещё вылетает при различных обстоятельствах» - not only compare; «Вылетает и на других смартфонах»:
+  the swap crash is not one phone's. And: «Вылетает с ultraHDR или если выбран не JPEG формат» - the photos shown are Ultra
+  HDR or HEIC / WebP / AVIF / DNG. Those are exactly the pages ImageAdapter loads asynchronously as Glide cachedBitmaps
+  (loadGlideBitmap, decodeHdrBitmap; a plain JPEG is SSIV tiles from the file): first suspect a decode / retry / HDR
+  callback reaching a pane that swap() has just destroyed (detachPage clears Glide and recycles the page), and the
+  window HDR mode of the old / new pane (UltraHdrGalleryUtil.setWindowHdr in onPause / onResume). The probe above had
+  no photos; with a WebP / AVIF / Ultra HDR JPEG in GalleryViewModel it should reproduce it.
+- WebP and AVIF photos still show a black square instead of the photo (P65 added the native AVIF decoder, P81 the reload
+  of pages decoded while the file was being written: neither fixed it on the owner's phone).
+- Next: the crash report of that phone (Download/SCAMERA/SCAMERA-crash.log, the log in DCIM/SCAMERA/Log from P115 on,
+  DCIM/PhotonCamera/PhotonLog before) - not guessed; candidates to check against it: ImageCompareFragment.onDestroy removes
+  the panes through the parent FragmentManager (they belong to the child one), swap() re-adds panes whose pages share ids,
+  the old ScaleAndPan sync (gone in P116). WebP / AVIF: which file, its size and bit depth (10-bit AVIF / HEIC-like
+  RGBA_1010102?), Glide vs SSIV path in ImageAdapter (line ~131), thumbnails vs viewer.

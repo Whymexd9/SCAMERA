@@ -393,6 +393,32 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         return getSsivAt(viewPager.getCurrentItem());
     }
 
+    private Uri focal35Uri;
+    private float focal35;
+
+    /**
+     * The 35 mm equivalent focal length of the shown photo (EXIF FocalLengthIn35mmFilm), 0 when it has none: the compare
+     * panes link a 2x photo to a 1x one by it (PaneLink.byFieldOfView). Read once per photo.
+     */
+    public float currentFocal35() {
+        if (viewPager == null || getContext() == null) return 0f;
+        int position = viewPager.getCurrentItem();
+        if (position < 0 || position >= galleryItems.size()) return 0f;
+        Uri uri = galleryItems.get(position).getFile().getFileUri();
+        if (uri == null) return 0f;
+        if (!uri.equals(focal35Uri)) {
+            focal35Uri = uri;
+            focal35 = 0f;
+            try (java.io.InputStream in = requireContext().getContentResolver().openInputStream(uri)) {
+                if (in != null) focal35 = Math.max(0, new androidx.exifinterface.media.ExifInterface(in)
+                        .getAttributeInt(androidx.exifinterface.media.ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, 0));
+            } catch (java.io.IOException | RuntimeException e) {
+                com.particlesdevs.photoncamera.util.Log.d(TAG, "no 35 mm focal length: " + e.getMessage());
+            }
+        }
+        return focal35;
+    }
+
     private CustomSSIV getSsivAt(int position) {
         if (adapter == null || viewPager == null) return null;
         // The pages only (Xiaomi 17 Ultra crash, 2026-10-09): findViewById tests the pager itself first, and its generated id

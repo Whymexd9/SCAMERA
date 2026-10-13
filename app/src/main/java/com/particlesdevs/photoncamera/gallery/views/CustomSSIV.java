@@ -46,7 +46,7 @@ public class CustomSSIV extends SubsamplingScaleImageView {
     @Override
     public boolean onTouchEvent(@NonNull MotionEvent event) {
         if (touchCallBack != null) {
-            touchCallBack.onTouched(getId());
+            touchCallBack.onTouchedView(this);
         }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
@@ -77,6 +77,11 @@ public class CustomSSIV extends SubsamplingScaleImageView {
 
     public interface TouchCallBack {
         void onTouched(int id);
+
+        /** Before the view handles the event. The view itself: the two compare panes show pages of the same id when they show the same photo. */
+        default void onTouchedView(CustomSSIV view) {
+            onTouched(view.getId());
+        }
     }
 }
 

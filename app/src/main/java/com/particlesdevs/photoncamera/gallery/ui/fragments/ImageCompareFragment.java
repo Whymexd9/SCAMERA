@@ -31,10 +31,11 @@ import androidx.navigation.fragment.NavHostFragment;
 
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView;
 import com.particlesdevs.photoncamera.R;
+import com.particlesdevs.photoncamera.gallery.compare.PaneLink;
 import com.particlesdevs.photoncamera.gallery.compare.SSIVListener;
-import com.particlesdevs.photoncamera.gallery.compare.ScaleAndPan;
 import com.particlesdevs.photoncamera.gallery.ui.GallerySheets;
 import com.particlesdevs.photoncamera.gallery.ui.GalleryUi;
+import com.particlesdevs.photoncamera.gallery.views.CustomSSIV;
 import com.particlesdevs.photoncamera.util.Lang;
 
 import java.io.File;
@@ -42,7 +43,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URLConnection;
 import java.nio.file.Files;
-import java.util.Observable;
 
 import static com.particlesdevs.photoncamera.gallery.helper.Constants.*;
 
@@ -51,7 +51,7 @@ import static com.particlesdevs.photoncamera.gallery.helper.Constants.*;
  *
  * <p>P59b: compare in the card style (GALLERY_TASK.md §5): header «Сравнение» with back and swap, two panes (stacked;
  * side by side in landscape) each with its label card (route + format icons, time, ISO; a tap shows the full EXIF) and zoom
- * pill, the «Зум и сдвиг вместе» switch card (both panes follow each other) and the share card button (the screenshot of
+ * pill, the «Зум и сдвиг вместе» switch card (both panes follow each other through the photos: PaneLink) and the share card button (the screenshot of
  * both panes, as before). Back returns to where compare was opened from.
  */
 public class ImageCompareFragment extends Fragment {
@@ -147,6 +147,8 @@ public class ImageCompareFragment extends Fragment {
         card.setStateDescription(toSync ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
         card.setOnClickListener(v -> {
             toSync = !toSync;
+            // On again: linked as the panes are shown now, so a zoom or place set while it was off is kept
+            if (toSync) ssivListener.relink(false);
             GallerySheets.setToggle(sw, toSync);
             card.setStateDescription(toSync ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
         });
@@ -173,6 +175,7 @@ public class ImageCompareFragment extends Fragment {
         trans.add(pane1Id, fragment1, "image_container1");
         trans.add(pane2Id, fragment2, "image_container2");
         trans.commitAllowingStateLoss();
+        ssivListener.relink(true);
     }
 
     private ImageViewerFragment pane(int position) {
@@ -261,45 +264,87 @@ public class ImageCompareFragment extends Fragment {
         getParentFragmentManager().beginTransaction().remove(fragment1).remove(fragment2).commitAllowingStateLoss();
     }
 
+    /**
+     * «Зум и сдвиг вместе» through the photos, not their pixels (PaneLink): the pane being touched leads, the other follows
+     * through the link, so photos of a different resolution keep the same relative zoom and place, and panes at a different
+     * zoom (one magnified while the switch was off, a 2x photo next to a 1x one) keep the same scene point while either pans
+     * or zooms. Before: the leading pane's scale and centre in source pixels were copied, which put a 12 MP photo and a 50 MP
+     * one at different zooms and places.
+     */
     private class SSIVListenerImpl extends SSIVListener {
-        private final ScaleAndPan scaleAndPan = new ScaleAndPan();
         private final Handler mainHandler = new Handler(Looper.getMainLooper());
-        private int idTouched = 0;
+        private SubsamplingScaleImageView touched;
+        private PaneLink link;
+        private SubsamplingScaleImageView linked1, linked2;
+        /** Link again at the next touch; by the photos' field of view (new photos) or as the panes are shown (switch on). */
+        private boolean relink = true, byFieldOfView = true;
 
-        SSIVListenerImpl() {
-            scaleAndPan.addObserver(this::update);
+        void relink(boolean fieldOfView) {
+            relink = true;
+            byFieldOfView = fieldOfView;
         }
 
         @Override
         public void onScaleChanged(float newScale, int origin) {
-            scaleAndPan.setOrigin(origin);
-            scaleAndPan.setScale(newScale);
+            update();
         }
 
         @Override
         public void onCenterChanged(PointF newCenter, int origin) {
-            scaleAndPan.setOrigin(origin);
-            scaleAndPan.setCenter(newCenter);
+            update();
         }
 
         @Override
         public void onTouched(int id) {
-            idTouched = id;
         }
 
-        public void update(Observable o, Object arg) {
+        @Override
+        public void onTouchedView(CustomSSIV view) {
+            touched = view;
+            // Before the gesture moves anything: the link is the panes' state at the touch-down
+            if (toSync) ensureLink();
+        }
+
+        private void ensureLink() {
+            SubsamplingScaleImageView v1 = fragment1.getCurrentSSIV(), v2 = fragment2.getCurrentSSIV();
+            if (v1 != linked1 || v2 != linked2) relink(true); // another photo in a pane
+            if (!relink || v1 == null || v2 == null || !v1.isReady() || !v2.isReady()) return;
+            PointF c1 = v1.getCenter(), c2 = v2.getCenter();
+            if (c1 == null || c2 == null) return;
+            float f1 = fragment1.currentFocal35(), f2 = fragment2.currentFocal35();
+            if (byFieldOfView && f1 > 0f && f2 > 0f && Math.abs(f2 / f1 - 1f) > 0.02f) {
+                link = PaneLink.byFieldOfView(diagonal(v1), c1.x, c1.y, f1, diagonal(v2), c2.x, c2.y, f2);
+            } else {
+                link = PaneLink.asShown(v1.getScale(), c1.x, c1.y, v2.getScale(), c2.x, c2.y);
+            }
+            linked1 = v1;
+            linked2 = v2;
+            relink = false;
+        }
+
+        private float diagonal(SubsamplingScaleImageView v) {
+            return (float) Math.hypot(v.getSWidth(), v.getSHeight());
+        }
+
+        public void update() {
             // Posted: either pane (or this fragment) may be destroyed when it runs; both helpers tolerate that.
             mainHandler.post(() -> {
-                if (toSync) copyZoomPan(fragment1.getCurrentSSIV(), fragment2.getCurrentSSIV(), (ScaleAndPan) o);
+                if (toSync) follow(fragment1.getCurrentSSIV(), fragment2.getCurrentSSIV());
                 fragment1.updateScaleText();
                 fragment2.updateScaleText();
             });
         }
 
-        private void copyZoomPan(SubsamplingScaleImageView v1, SubsamplingScaleImageView v2, ScaleAndPan scaleAndPan) {
-            if (v1 == null || v2 == null) return;
-            if (v1.getId() == idTouched) v2.setScaleAndCenter(scaleAndPan.getScale(), scaleAndPan.getCenter());
-            if (v2.getId() == idTouched) v1.setScaleAndCenter(scaleAndPan.getScale(), scaleAndPan.getCenter());
+        private void follow(SubsamplingScaleImageView v1, SubsamplingScaleImageView v2) {
+            if (v1 == null || v2 == null || touched == null || !v1.isReady() || !v2.isReady()) return;
+            ensureLink();
+            if (link == null || v1 != linked1 || v2 != linked2) return;
+            PointF c;
+            if (touched == v1 && (c = v1.getCenter()) != null) {
+                v2.setScaleAndCenter(link.scale2(v1.getScale()), new PointF(link.x2(c.x), link.y2(c.y)));
+            } else if (touched == v2 && (c = v2.getCenter()) != null) {
+                v1.setScaleAndCenter(link.scale1(v2.getScale()), new PointF(link.x1(c.x), link.y1(c.y)));
+            }
         }
     }
 }
