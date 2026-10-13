@@ -266,13 +266,33 @@ public class ParamController implements Observer {
         builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, motion.shutterNs());
         builder.set(CaptureRequest.SENSOR_SENSITIVITY, motion.iso());
         builder.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(motion.shutterNs(), motionMaxNs()));
+        setPostRawBoost(builder, motion.underRatio());
         captureController.rebuildPreviewBuilder();
+    }
+
+    /**
+     * P124: the viewfinder's brightness while the ceiling stays under the scene's exposure (the moving scene keeps its short
+     * shutter, the top ISO the HAL gives is short of it): the camera's post-RAW gain, which the ring's RAW frames never see
+     * (the photo is brightened by the tone stage); 100 (none) otherwise.
+     */
+    private static void setPostRawBoost(CaptureRequest.Builder builder, double ratio) {
+        final CameraCharacteristics c = CaptureController.mCameraCharacteristics;
+        if (builder == null || c == null) return;
+        try {
+            final android.util.Range<Integer> range = c.get(CameraCharacteristics.CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE);
+            if (range == null) return;
+            final long boost = Math.round(100 * Math.max(1, ratio));
+            builder.set(CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST,
+                    (int) Math.max(range.getLower(), Math.min(range.getUpper(), boost)));
+        } catch (RuntimeException ignored) {
+        }
     }
 
     /** The ceiling lets go; {@code resetAe}: the camera AE in the viewfinder request again (not when the panel owns it). */
     private void motionRelease(String why, boolean resetAe) {
         motion.drop();
         motionActive = false;
+        setPostRawBoost(captureController.mPreviewRequestBuilder, 1);
         Log.i(TAG, "motion shutter ceiling off: " + why);
         if (resetAe) {
             captureController.resetPreviewAEMode();
@@ -317,6 +337,7 @@ public class ParamController implements Observer {
             if (motion.active()) {
                 motion.drop();
                 motionActive = false;
+                setPostRawBoost(builder, 1);
                 Log.i(TAG, "motion shutter ceiling: tap, the AE meters it first");
             }
         } else if (motion.active()) {
@@ -348,7 +369,7 @@ public class ParamController implements Observer {
                     levelBefore, motionLevels.level(), moving.subjectPxPerS, moving.cameraPxPerS, moving.moved, moving.textured, cap));
         // the top ISO: the rulers' range, at most what the HAL honours for AE-off requests (P27, paired with their requests)
         motionLimits.set(cap, motionMaxNs(), isoMin(), Math.min(isoMax(), captureController.honouredIsoCap()), flickerSafe,
-                evStops());
+                evStops()).under(motionLevels.level() > 0 ? MotionShutter.MOTION_UNDER_STOPS : 0);
         final boolean wasActive = motion.active();
         final long oldShutter = motion.shutterNs(), flickerBefore = motion.flickerHalfNs();
         final com.particlesdevs.photoncamera.capture.MotionMeter.Profile rows = com.particlesdevs.photoncamera.capture.MotionMeter.profile();
@@ -374,12 +395,15 @@ public class ParamController implements Observer {
         if (action == MotionShutter.APPLY) {
             if (!wasActive)
                 Log.i(TAG, "motion shutter ceiling on: AE " + exposure + " ns at ISO " + iso + " -> " + motion.shutterNs()
-                        + " ns at ISO " + motion.iso() + " (ceiling " + motion.capNs(cap) + " ns, motion level " + motionLevels.level() + ")");
+                        + " ns at ISO " + motion.iso() + " (ceiling " + motion.capNs(cap) + " ns, motion level " + motionLevels.level()
+                        + String.format(java.util.Locale.ROOT, ", %.2f stops under, viewfinder gain)", Math.log(motion.underRatio()) / Math.log(2)));
             else if (motion.shutterNs() != oldShutter)
-                Log.i(TAG, "motion shutter " + oldShutter + " -> " + motion.shutterNs() + " ns at ISO " + motion.iso());
+                Log.i(TAG, "motion shutter " + oldShutter + " -> " + motion.shutterNs() + " ns at ISO " + motion.iso()
+                        + String.format(java.util.Locale.ROOT, " (%.2f stops under)", Math.log(motion.underRatio()) / Math.log(2)));
             motionApply(builder);
         } else if (action == MotionShutter.RELEASE) {
             Log.i(TAG, "motion shutter ceiling off: bright enough or no RAW level, the camera AE again");
+            setPostRawBoost(builder, 1);
             captureController.resetPreviewAEMode();
             captureController.rebuildPreviewBuilder();
         }

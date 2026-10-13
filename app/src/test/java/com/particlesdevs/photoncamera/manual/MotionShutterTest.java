@@ -328,6 +328,44 @@ public class MotionShutterTest {
     }
 
     @Test
+    public void aMovingSceneUnderLampsKeepsOneHalfPeriod() {
+        // P124, OPPO Find X7 Ultra 2026-10-13 22:26: a waving hand under 100 Hz lamps at night, the HAL honouring ISO 12800.
+        // Brightness first gave 16.7..33 ms (a copy of the hand per lamp pulse); moving, the top ISO stays up to 2 stops short.
+        Sim s = new Sim(true, 0.2 / 160);
+        s.l.set(CAP, FRAME, ISO_MIN, 12800, true, 0).under(MotionShutter.MOTION_UNDER_STOPS);
+        s.lamps = true;
+        s.engage(20 * MS, 8000); // the AE at anti-banding 20 ms
+        for (int i = 0; i < LATENCY + MotionShutter.BAND_HITS; i++) s.held();
+        assertEquals(10 * MS, s.c.shutterNs());
+        assertEquals(12800, s.c.iso());
+        for (int i = 0; i < 60; i++) s.held(); // the level learned under the ceiling: still one half period
+        assertEquals(10 * MS, s.c.shutterNs());
+        // 160 ISO·s wanted, 12800 x 10 ms = 128 in force: the viewfinder's post-RAW gain makes up x1.25
+        assertEquals(1.25, s.c.underRatio(), 0.08);
+        assertEquals(1.0, new MotionShutter.Controller().underRatio(), 0);
+        // still scene (no motion level): brightness first, as before
+        Sim still = new Sim(true, 0.2 / 160);
+        still.l.set(CAP, FRAME, ISO_MIN, 12800, true, 0);
+        still.lamps = true;
+        still.engage(20 * MS, 8000);
+        for (int i = 0; i < LATENCY + MotionShutter.BAND_HITS; i++) still.held();
+        assertEquals(20 * MS, still.c.shutterNs());
+    }
+
+    @Test
+    public void aMovingNightWithoutLampsStaysShort() {
+        // night 875 ISO·s, the HAL honouring ISO 16000: one whole frame (33 ms) for the brightness; moving: ~13.7 ms
+        Sim s = new Sim(false, 0.2 / 875);
+        s.l.set(CAP, FRAME, ISO_MIN, 16000, false, 0).under(MotionShutter.MOTION_UNDER_STOPS);
+        s.engage(25 * MS, 35000);
+        assertEquals(875.0 / 16000 / 4 * 1e3, s.c.shutterNs() / 1e6, 0.01);
+        assertEquals(16000, s.c.iso());
+        assertEquals(10 * MS, MotionShutter.quantizeDown(19 * MS, 10 * MS));
+        assertEquals(10 * MS, MotionShutter.quantizeDown(4 * MS, 10 * MS));
+        assertEquals(7 * MS, MotionShutter.quantizeDown(7 * MS, 0));
+    }
+
+    @Test
     public void theHonouredIsoLengthensTheShutter() {
         // the HAL gives at most ISO 16000 for AE-off requests (ExposureLimits): night 875 -> one frame at ISO 16000
         Sim s = new Sim(false, 0.2 / 875);

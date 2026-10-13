@@ -42,12 +42,24 @@ public final class MotionShutter {
     static final double BAND_MAX = 0.04;
     static final int BAND_HITS = 2, BAND_MISSES = 6;
     static final long BAND_WAIT_NS = 1_500_000_000L;
+    /**
+     * P124 Stops below the scene's exposure the ceiling takes at the top ISO while the scene moves, before its shutter grows
+     * (OPPO Find X7 Ultra log 2026-10-13 22:26, a waving hand under 100 Hz lamps: ceiling 8.3 ms, the top ISO short of the
+     * scene, the shutter went 16.7 -> 25 -> 33 ms and every lamp pulse left a copy of the hand in the frame). The tone stage
+     * brightens the photo (LinearExposure, up to 128x); the merge and the denoise take the noise.
+     */
+    public static final double MOTION_UNDER_STOPS = 2;
 
     private MotionShutter() {}
 
     /** The setting's ceiling: 1/{@code denominator} s; 0 or less: no ceiling (returns 0). */
     public static long settingNs(float denominator) {
         return denominator > 0 ? Math.round(1e9 / denominator) : 0;
+    }
+
+    /** {@code ns} rounded down to whole half periods, at least one (none: unchanged). */
+    static long quantizeDown(long ns, long halfNs) {
+        return halfNs <= 0 ? ns : Math.max(halfNs, ns / halfNs * halfNs);
     }
 
     /** {@code ns} rounded up to whole half periods (none: unchanged), but not beyond {@code maxNs} rounded down to them. */
@@ -112,7 +124,7 @@ public final class MotionShutter {
         long settingNs, maxNs;
         int isoMin, isoMax;
         boolean flickerSafe;
-        double evStops;
+        double evStops, underStops;
 
         public Limits set(long settingNs, long maxNs, int isoMin, int isoMax, boolean flickerSafe, double evStops) {
             this.settingNs = settingNs;
@@ -121,6 +133,13 @@ public final class MotionShutter {
             this.isoMax = isoMax;
             this.flickerSafe = flickerSafe;
             this.evStops = evStops;
+            this.underStops = 0;
+            return this;
+        }
+
+        /** P124: the scene moves: up to {@code stops} under its exposure at the top ISO before the shutter passes the ceiling. */
+        public Limits under(double stops) {
+            this.underStops = Math.max(0, stops);
             return this;
         }
     }
@@ -152,6 +171,15 @@ public final class MotionShutter {
         /** Short frames showed no row bands: the suggested flicker is cleared for the session. */
         public boolean bandFree() { return bandFree; }
         public double target() { return target0; }
+
+        /**
+         * P124: how far the request in force stays under the scene's exposure (1: not at all; the top ISO short of the scene or
+         * the moving scene's {@link Limits#under}): the viewfinder's post-RAW gain makes it up, the RAW frames keep it.
+         */
+        public double underRatio() {
+            final double inForce = (double) iso * shutterNs / 1e9;
+            return active && inForce > 0 && product > 0 ? Math.max(1, product / inForce) : 1;
+        }
 
         /** A new session (camera, lens, restart): the AE's frames teach it again. */
         public void reset() {
@@ -287,13 +315,17 @@ public final class MotionShutter {
             return shutterNs == oldShutter && iso == oldIso ? NONE : APPLY;
         }
 
-        /** Shortest shutter the top ISO allows (not below the ceiling, not beyond one frame), then the ISO for it. */
+        /**
+         * Shortest shutter the top ISO allows (not below the ceiling, not beyond one frame), then the ISO for it. While the scene
+         * moves (P124) the top ISO may stay up to {@link Limits#under} stops short of the scene first, and lamp shutters round
+         * down to whole half periods: one lamp pulse per frame, not a copy of the subject for each.
+         */
         private void choose(long cap, Limits l) {
             final int top = Math.max(l.isoMin, l.isoMax);
             final long frame = Math.max(cap, l.maxNs);
-            long s = Math.round(product / top * 1e9);
+            long s = Math.round(product / top / Math.pow(2, l.underStops) * 1e9);
             s = Math.max(cap, Math.min(frame, s));
-            s = quantize(s, flickerHalfNs, frame);
+            s = l.underStops > 0 ? quantizeDown(s, flickerHalfNs) : quantize(s, flickerHalfNs, frame);
             shutterNs = Math.max(1, s);
             iso = (int) Math.max(l.isoMin, Math.min(top, Math.round(product / (shutterNs / 1e9))));
         }

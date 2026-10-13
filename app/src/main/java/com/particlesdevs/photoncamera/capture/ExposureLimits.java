@@ -43,7 +43,10 @@ public final class ExposureLimits {
         final boolean timeOk = Math.abs((double) rt / qt - 1) <= 0.015;
         final String before = toString();
         if (isoOk) {
-            if (qi >= isoCap) isoCap = Integer.MAX_VALUE;   // the HAL gives this gain after all
+            // the HAL gives more gain after all; a request at the cap itself proves nothing (P124, OPPO Find X7 Ultra log
+            // 2026-10-13 22:37: ISO 6400 honoured cleared the cap 6400 and the next 9600 learned it again, the «Движение»
+            // shutter swung 25 <-> 33 ms with it)
+            if (qi > isoCap) isoCap = Integer.MAX_VALUE;
             if (ri.equals(capCandidate)) capVotes = 0;
         } else if (ri < qi && timeOk) {
             capVotes = ri == capCandidate ? capVotes + 1 : 1;
@@ -51,7 +54,7 @@ public final class ExposureLimits {
             if (capVotes >= 2) isoCap = Math.min(isoCap, ri);
         }
         if (timeOk) {
-            if (qt >= shutterCap) shutterCap = Long.MAX_VALUE;
+            if (qt > shutterCap) shutterCap = Long.MAX_VALUE;
         } else if (rt < qt) {
             shutterVotes = Math.abs((double) rt / Math.max(1, shutterCandidate) - 1) <= 0.015 ? shutterVotes + 1 : 1;
             shutterCandidate = rt;

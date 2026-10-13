@@ -37,7 +37,10 @@ public class ExposureLimitsTest {
         assertEquals(Integer.MAX_VALUE, l.isoCap());
         l.observeManual(manual(10_000_000L, 640), result(10_000_000L, 320));
         assertEquals(320, l.isoCap());
-        // a later request the HAL honours at or above the cap clears it
+        // a request at the cap itself, honoured, keeps it (P124: the cap flapped 6400 <-> none on the OPPO Find X7 Ultra)
+        assertTrue(l.observeManual(manual(10_000_000L, 320), result(10_000_000L, 320)));
+        assertEquals(320, l.isoCap());
+        // a later request the HAL honours above the cap clears it
         assertTrue(l.observeManual(manual(10_000_000L, 400), result(10_000_000L, 400)));
         assertEquals(Integer.MAX_VALUE, l.isoCap());
     }
