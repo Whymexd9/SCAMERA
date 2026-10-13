@@ -77,13 +77,22 @@ public final class ModuleRegistry {
     }
     public static boolean sensorCrop(String slot){
         if(prefs().contains("module_sensorcrop_"+slot))return prefs().getBoolean("module_sensorcrop_"+slot,false);
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("forceSensorMode\"[^}]*\"value\":\"(\\d+)\"").matcher(prefs().getString("pref_sensorconfig_"+slot+"_tunablekeys",""));
-        return m.find()&&!"0".equals(m.group(1));
+        return sensorMode(slot)!=0;
     }
     /** The module's forced vendor sensor mode (vivo.control.forceSensorMode): 7 = 4x ISZ Tetra, 5 = 2x ISZ Quad, 0 = none. */
     public static int sensorMode(String slot){
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("forceSensorMode\"[^}]*\"value\":\"(\\d+)\"").matcher(prefs().getString("pref_sensorconfig_"+slot+"_tunablekeys",""));
-        try{return m.find()?Integer.parseInt(m.group(1)):0;}catch(NumberFormatException e){return 0;}
+        return forcedMode(prefs().getString("pref_sensorconfig_"+slot+"_tunablekeys",""));
+    }
+    /** The value of the first switched-on vivo.control.forceSensorMode key of a module's vendor key list (JSON), 0 without one. */
+    static int forcedMode(String json){
+        java.util.regex.Matcher o=java.util.regex.Pattern.compile("\\{[^{}]*\\}").matcher(json==null?"":json);
+        while(o.find()){
+            String key=o.group();
+            if(!key.contains("forceSensorMode\"")||key.contains("\"enabled\":false"))continue;
+            java.util.regex.Matcher v=java.util.regex.Pattern.compile("\"value\":\"(\\d+)\"").matcher(key);
+            try{return v.find()?Integer.parseInt(v.group(1)):0;}catch(NumberFormatException e){return 0;}
+        }
+        return 0;
     }
     /** Zoom ratio at which the module's frame is uncropped: its own ratio for sensor-crop modules, else the widest module on the same Camera ID. */
     public static float nativeRatio(String slot){

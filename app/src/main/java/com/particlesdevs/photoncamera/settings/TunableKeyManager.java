@@ -54,7 +54,8 @@ public class TunableKeyManager {
         if (context == null || physicalId == null || physicalId.isEmpty()) return "";
         StringBuilder out = new StringBuilder();
         for (VendorTagUtils.TunableKey k : loadKeys(context, ModuleSensorSettings.runtimeScope(physicalId)))
-            if (k != null && "CaptureRequest".equals(k.type)) out.append(k.name).append('=').append(k.value).append(';');
+            if (k != null && k.enabled && ("CaptureRequest".equals(k.type) || VendorTagUtils.TunableKey.TYPE_SESSION.equals(k.type)))
+                out.append(k.name).append('=').append(k.value).append(';');
         return out.toString();
     }
 
@@ -77,6 +78,18 @@ public class TunableKeyManager {
         List<VendorTagUtils.TunableKey> keys = loadKeys(context, scope);
         if (keys.isEmpty()) return;
         VendorTagUtils.applyTunableKeys(builder, keys, physicalId);
+        saveKeys(context, scope, keys);
+    }
+
+    /** P122: the module's session-only keys (TunableKey.TYPE_SESSION) on the builder of the session parameters. */
+    public static void applySessionKeys(CaptureRequest.Builder builder, String physicalId) {
+        Context context = ScameraApp.getSettingsManagerStatic() != null
+                ? ScameraApp.getSettingsManagerStatic().getContext() : null;
+        if (context == null || builder == null || physicalId == null || physicalId.isEmpty()) return;
+        String scope = ModuleSensorSettings.runtimeScope(physicalId);
+        List<VendorTagUtils.TunableKey> keys = loadKeys(context, scope);
+        if (keys.isEmpty()) return;
+        VendorTagUtils.applyTunableKeys(builder, keys, physicalId, true);
         saveKeys(context, scope, keys);
     }
 }

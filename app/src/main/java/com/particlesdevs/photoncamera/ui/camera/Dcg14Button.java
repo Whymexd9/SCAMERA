@@ -38,7 +38,8 @@ final class Dcg14Button {
         FrameLayout slot = panel.endSlot();
         if (slot == null) return;
         ImageButton button = slot.findViewById(R.id.dcg14_button);
-        if (!Dcg14Mode.device()) {
+        final boolean x300 = com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled();
+        if (!Dcg14Mode.device() && !x300) {
             if (button != null) slot.removeView(button);
             panel.refreshEndSlot();
             FullResButton.bind(fragment, panel, slot, characteristics);
@@ -53,12 +54,23 @@ final class Dcg14Button {
             button.setPadding(pad, pad, pad, pad);
             button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
             button.setImageResource(R.drawable.manual_ic_dcg14);
-            button.setOnClickListener(v -> toggle(fragment, (ImageButton) v));
-            button.setOnLongClickListener(v -> {
+            button.setOnClickListener(v -> {
+                if (x300) toggleX300(fragment, (ImageButton) v);
+                else toggle(fragment, (ImageButton) v);
+            });
+            if (!x300) button.setOnLongClickListener(v -> {
                 searchAgain(fragment);
                 return true;
             });
             slot.addView(button);
+        }
+        if (x300) {
+            // P122: the X300 Ultra's main / ultra-wide / tele: DCG 14 bit by their sensor modes (VivoQcomIsz), on / off
+            button.setVisibility(com.particlesdevs.photoncamera.capture.VivoQcomIsz.dcgAvailable(characteristics) ? View.VISIBLE : View.GONE);
+            style(button, com.particlesdevs.photoncamera.capture.VivoQcomIsz.dcgOn() ? Dcg14Mode.DCG : Dcg14Mode.OFF);
+            panel.refreshEndSlot();
+            FullResButton.bind(fragment, panel, slot, characteristics);
+            return;
         }
         final ImageButton bound = button;
         Dcg14Mode.setListener(() -> {
@@ -87,6 +99,21 @@ final class Dcg14Button {
         fragment.showSnackBar(fragment.getString(mode == Dcg14Mode.LOFIC ? R.string.dcg14_lofic_toast
                 : mode == Dcg14Mode.DCG ? R.string.dcg14_on_toast : R.string.dcg14_off_toast));
         Log.i(TAG, "DCG 14 bit mode " + Dcg14Mode.name(mode));
+        if (fragment.captureController != null) fragment.captureController.restartCamera();
+    }
+
+    /** P122: the X300 Ultra's tele DCG on / off (no LOFIC, no search: the sensor mode is known). */
+    private static void toggleX300(CameraFragment fragment, ImageButton button) {
+        boolean on = !com.particlesdevs.photoncamera.capture.VivoQcomIsz.dcgOn();
+        com.particlesdevs.photoncamera.capture.VivoQcomIsz.setDcg(on);
+        style(button, on ? Dcg14Mode.DCG : Dcg14Mode.OFF);
+        button.animate().cancel();
+        button.setScaleX(0.86f);
+        button.setScaleY(0.86f);
+        button.animate().scaleX(1f).scaleY(1f).setDuration(260)
+                .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
+        fragment.showSnackBar(fragment.getString(on ? R.string.dcg14_on_toast : R.string.dcg14_off_toast));
+        Log.i(TAG, "X300 Ultra DCG 14 bit " + (on ? "on" : "off"));
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }
 

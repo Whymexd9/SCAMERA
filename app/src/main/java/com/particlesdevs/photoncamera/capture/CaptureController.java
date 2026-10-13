@@ -2847,7 +2847,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P107: this session's DCG / LOFIC try (before the session parameters and the preview builder take its keys)
                 Dcg14Mode.beginSession(mCameraCharacteristics, physicalID);
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
-                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14 || vivoUi
+                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || VivoQcomIsz.dcgActive(mCameraCharacteristics) || hiddenKeys || dcg14 || vivoUi
                         || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
@@ -2866,6 +2866,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         // P41b: the stock camera's session keys of the logical camera
                         if (xiaomiLogical) Log.i(TAG, "P41b: logical session keys: " + XiaomiTeleZoom.applySessionKeys(scamSession));
+                        // P122: the module's session-only vendor keys (vivo X300 Ultra: forceSensorMode)
+                        com.particlesdevs.photoncamera.settings.TunableKeyManager.applySessionKeys(scamSession, physicalID);
+                        if (VivoQcomIsz.dcgActive(mCameraCharacteristics)) Log.i("SCAM_CAPTURE", "X300 Ultra DCG on camera " + physicalID
+                                + ": " + VivoQcomIsz.applyDcg(scamSession, mCameraCharacteristics));
                         configuration.setSessionParameters(scamSession.build());
                     } catch (IllegalArgumentException unsupported) {
                         Log.w("SCAM_CAPTURE", "SCAM session control unavailable", unsupported);

@@ -38,6 +38,11 @@ public class TunableKeyDialog {
         EditText nameEdit = addEdit(context, container, Lang.t(context,"Имя ключа","Key name"), existing != null ? existing.name : "");
         Spinner valueTypeSpinner = addSpinner(context, container, Lang.t(context,"Тип значения","Value type"), VALUE_TYPES, existing != null ? existing.valueType : "Integer");
         EditText valueEdit = addEdit(context, container, Lang.t(context,"Значение","Value"), existing != null ? existing.value : "0");
+        // P122: a key some HALs take only in the session parameters (vivo X300 Ultra: vivo.control.forceSensorMode)
+        android.widget.CheckBox sessionOnly = new android.widget.CheckBox(context);
+        sessionOnly.setText(Lang.t(context, "Только при открытии сессии (не в каждом кадре)", "Session only (not in every request)"));
+        sessionOnly.setChecked(existing != null && VendorTagUtils.TunableKey.TYPE_SESSION.equals(existing.type));
+        container.addView(sessionOnly);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(isNew ? Lang.t(context,"Новый vendor tag","New vendor tag") : "Vendor tag");
@@ -49,11 +54,12 @@ public class TunableKeyDialog {
                 return;
             }
             VendorTagUtils.TunableKey key = new VendorTagUtils.TunableKey();
-            key.type = "CaptureRequest";
+            key.type = sessionOnly.isChecked() ? VendorTagUtils.TunableKey.TYPE_SESSION : "CaptureRequest";
             key.name = name;
             key.valueType = (String) valueTypeSpinner.getSelectedItem();
             key.value = valueEdit.getText().toString().trim();
             key.tested = existing != null && existing.tested;
+            key.enabled = existing == null || existing.enabled;
             key.supported = existing != null && existing.supported;
 
             List<VendorTagUtils.TunableKey> list = TunableKeyManager.loadKeys(context, sensorId);

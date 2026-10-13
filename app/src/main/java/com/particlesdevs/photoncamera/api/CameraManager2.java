@@ -157,7 +157,7 @@ public final class CameraManager2 {
 
     /** com.vivo.chi.override.CameraType («Master», «Tele3xLong», «Tele3xLongExternal», «DUMMY»…), null when absent. */
     @androidx.annotation.Nullable
-    static String vivoCameraType(CameraCharacteristics characteristics) {
+    public static String vivoCameraType(CameraCharacteristics characteristics) {
         try {
             byte[] v = characteristics.get(new CameraCharacteristics.Key<>("com.vivo.chi.override.CameraType", byte[].class));
             if (v == null) return null;

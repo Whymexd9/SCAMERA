@@ -134,6 +134,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         com.particlesdevs.photoncamera.capture.PixelPro10.ensureModules(manager.getContext());
         // P109: the vivo X500 Pro Max's ISZ modules (main 2x, ultra-wide 2x, tele 2x / 4x), once
         com.particlesdevs.photoncamera.capture.VivoMtkIsz.ensureModules(manager.getContext());
+        // P122: the vivo X300 Ultra's tele 2x ISZ (forceSensorMode of camera_config.xml), once
+        com.particlesdevs.photoncamera.capture.VivoQcomIsz.ensureModules(manager.getContext());
         // A config imported before the slots existed (fresh install) maps its module profiles now.
         com.particlesdevs.photoncamera.settings.BackupRestoreUtil.applyPending(manager.getContext());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";

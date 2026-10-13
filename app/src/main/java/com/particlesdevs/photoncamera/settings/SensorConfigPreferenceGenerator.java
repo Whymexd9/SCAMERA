@@ -161,8 +161,8 @@ public class SensorConfigPreferenceGenerator {
         addButton.setKey("pref_sensorconfig_" + physicalId + "_add_tunablekey");
         addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
         addButton.setTitle(Lang.t(context, "Добавить vendor tag", "Add vendor tag"));
-        addButton.setSummary(Lang.t(context, "Параметр сессии выбранного модуля: тип, имя и значение",
-                "Session parameter of the selected module: type, name and value"));
+        addButton.setSummary(Lang.t(context, "Ключ камеры для этого модуля: имя, тип и значение. Переключатель у ключа включает и выключает его",
+                "A camera key for this module: name, type and value. The switch next to a key turns it on and off"));
         addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.ic_add);
         addButton.setOrder(10000);
         addButton.setOnPreferenceClickListener(preference -> {

@@ -49,7 +49,9 @@ public class VendorTagUtils {
      * {@link CaptureRequest.Builder} during capture.
      */
     public static class TunableKey {
-        /** "CaptureRequest" or "CaptureResult" */
+        /** P122: a key set in the session parameters only, never in a request (vivo X300 Ultra's forceSensorMode). */
+        public static final String TYPE_SESSION = "Session";
+        /** "CaptureRequest", {@link #TYPE_SESSION} or "CaptureResult" */
         public String type = "CaptureRequest";
         /** Vendor tag string, e.g. "com.qti.sensorbps.mode_index" */
         public String name = "";
@@ -61,6 +63,8 @@ public class VendorTagUtils {
         public boolean supported = false;
         /** Whether the key has been tested yet (only possible via VendorTagUtils at capture) */
         public boolean tested = false;
+        /** P122: off = kept in the list but not sent (module settings switch); older lists have no field: on. */
+        public boolean enabled = true;
 
         public TunableKey() {}
 
@@ -178,11 +182,20 @@ public class VendorTagUtils {
      * settings UI can show green/red feedback afterwards.
      */
     public static void applyTunableKeys(CaptureRequest.Builder builder, List<TunableKey> keys, String physicalId) {
+        applyTunableKeys(builder, keys, physicalId, false);
+    }
+
+    /**
+     * {@code session}: the builder of the session parameters, which takes the {@link TunableKey#TYPE_SESSION} keys only (the
+     * request keys reach it through builderSessionApply); otherwise the request keys, the session keys skipped.
+     */
+    public static void applyTunableKeys(CaptureRequest.Builder builder, List<TunableKey> keys, String physicalId, boolean session) {
         if (builder == null || keys == null) return;
         for (TunableKey tunableKey : keys) {
             if (tunableKey == null) continue;
+            if (!tunableKey.enabled || TunableKey.TYPE_SESSION.equals(tunableKey.type) != session) continue;
             tunableKey.tested = true;
-            if (!"CaptureRequest".equals(tunableKey.type)) {
+            if (!"CaptureRequest".equals(tunableKey.type) && !TunableKey.TYPE_SESSION.equals(tunableKey.type)) {
                 Log.w(TAG, "Tunable key " + tunableKey.name + " is a " + tunableKey.type + " key, cannot be applied to the request builder");
                 tunableKey.supported = false;
                 continue;
@@ -195,7 +208,8 @@ public class VendorTagUtils {
                 if (supported) {
                     Object parsedValue = tunableKey.parseValue();
                     setKeyValue(builder, key, parsedValue);
-                    if (physicalId != null && !physicalId.isEmpty()) {
+                    // the session parameters take the key as it is (as MotionCam sets its session keys), no physical copy
+                    if (!session && physicalId != null && !physicalId.isEmpty()) {
                         setPhysical(builder, key, parsedValue, physicalId);
                     }
                     Log.d(TAG, "Applied tunable key " + tunableKey.name + " = " + tunableKey.value + " (" + tunableKey.valueType + ")");

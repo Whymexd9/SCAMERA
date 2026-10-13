@@ -3035,3 +3035,23 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
     route key vcf.parameter.seamlessMode is not in this phone's session keys); 50 / 200 MP RAW; teleconverter tuning present; the
     tele's real ISO range (declared 50-800, own AE 12800) to check in a log; SCAM TEST again with cameras 6 and 7 skipped (8-11
     were lost when the service went down).
+
+### P122 - vivo X300 Ultra sensor modes; module vendor keys on / off (owner, 2026-10-13: «Я даю тебе разрешение переключать сенсормоды», «На виво на снапах сенсормоды можно переключать с помощью vivo.control.forceSensorMode реквеста», a table of the X300U's working modes, «посмотри как сделаны реквесты в моушн камере», «дай возможность включать и выключать реквесты если у меня вписано несколько штук и обнови для этой группы настроек интерфейс»)
+- The table (community, X300U): forceSensorMode works as a SESSION key only. 14 mm: 21 = 2x ISZ Quad (5/10/11/23 14-bit, 8/14/19
+  60-120 fps); 35 mm: 10 = 2x ISZ Quad (15/17/19/21 14-bit, 18/20/22 fast); 85 mm: 5 = 2x ISZ Quad, 6 = 4x ISZ remosaiced, 7 = 4x ISZ
+  Quad-Quad (Tetra), 31 = 2x ISZ remosaiced, 20 = Open Gate 30 fps 14-bit (DCG; «14-bit modes on the telephoto are DCG and they work
+  fine»; on 14 / 35 mm the 14-bit modes are not). camera_config.xml PreviewRoiQuadSensorMode 5 (PD2547) / 31 (V2562) agrees.
+- Session-only vendor keys (VendorTagUtils.TunableKey.TYPE_SESSION «Session»): set in the session parameters only, without a
+  physical copy, never in a request (as MotionCam: VendorRequestTagValue.isSessionKey -> the session parameters builder);
+  TunableKeyManager.applySessionKeys in CaptureController's session block; the key dialog has «Только при открытии сессии».
+- capture/VivoQcomIsz (X300 Ultra of any region: PD2547 / V2547* / V2562 or the market name «X300 Ultra»; PD2454 stays
+  VivoQcomModes'): ISZ modules without remosaic (owner: «Isz используй без ремозаика»), once each, by the camera's vivo
+  CameraType (Master / Wide / Tele3P5x): «2×» main (10), «1.2×» UW (21), «7.4×» tele 2x (5), «15×» tele 4x Tetra (7). DCG 14 bit
+  by the DCG button of the manual strip as on the X500 Pro Max (owner: «включение DCG по кнопке как у 500 про макс», «ISZ и DCG
+  доступен у 300 ультра на всех трех модулях»): Open Gate main 17, UW 11, tele 20 as a session key while the button is on and
+  the module forces no mode of its own; the camera restarts on the tap. Hybrid merges the mosaics natively (block measured;
+  5 / 7 declared), P121 white balance, raw_wide takes the 14-bit range. scam_dev "vivo_qcom_roi 0": none of it. Not tested on
+  the phone.
+- Module vendor keys: each has an on / off switch on its card («Сессия» / «Запрос», value, taken / unknown / not tried; off cards
+  dimmed); off keys are not sent and a switched-off forceSensorMode is no sensor mode (ModuleRegistry.forcedMode).
+- Tests 830 (only DevKeysCoverageTest: another agent's keys); VivoQcomIszTest, ModuleKeysSwitchTest.
