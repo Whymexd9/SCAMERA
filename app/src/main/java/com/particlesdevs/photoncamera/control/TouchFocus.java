@@ -180,6 +180,8 @@ public class TouchFocus {
         }
         focusCircleView.removeCallbacks(hideFocusCircleRunnable);
         focusCircleView.post(() -> showFocusCircle(fx, fy));
+        // P110: the «Движение» shutter ceiling lets the AE meter the tapped point first
+        if (captureController.getParamController() != null) captureController.getParamController().motionMeteringTap();
         startFocusSequence(region);
         focusCircleView.postDelayed(hideFocusCircleRunnable, AUTO_HIDE_DELAY_MS);
     }

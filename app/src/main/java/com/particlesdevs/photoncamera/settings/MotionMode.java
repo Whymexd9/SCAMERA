@@ -17,6 +17,9 @@ import java.util.Map;
  * <ul>
  *   <li>the viewfinder and the ZSL ring run at the fastest fixed frame rate the RAW stream allows (the AE range [f, f]): the
  *       ring is refreshed most often and no ring frame is exposed longer than 1/f s, so the frame at the press is sharp;</li>
+ *   <li>P110: the shutter of the ring frames has a ceiling (pref_scam_hybrid_mm_shutter, 1/250 s; manual/MotionShutter):
+ *       a longer shutter of the camera's AE becomes the ceiling with the ISO raised (the fixed frame rate alone left 1/30 s,
+ *       the photo mode's own indoor shutter);</li>
  *   <li>the hybrid takes its own values for the merge (pref_scam_hybrid_mm_&lt;key&gt;, the «Движение» group of the Hybrid
  *       settings) instead of the photo values: fewer N frames (a short time span, a fast merge), no Shasta (long frames smear
  *       what moves), Bento only where the frame clips, the strongest motion robustness.</li>

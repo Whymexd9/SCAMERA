@@ -473,6 +473,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 if (!passModeBarrier(img)) { img.close(); return; }
                 watchRawPayload(img);
+                observeRawLevel(img, null);
                 observeMosaic(img);
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
@@ -3870,6 +3871,42 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private static final java.util.Set<String> sPlainPreviewCameras = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /**
+     * P110: the RAW level of a ring frame for the «Движение» shutter ceiling (RawLevel), only while the mode is on and the
+     * payload is a plain 16-bit RAW (no packed layout in use). The previewed physical camera's levels, the frame's dynamic
+     * white when its result is at hand, a wide payload (P104 DCG 14 bit) at its own range.
+     */
+    private void observeRawLevel(Image img, CaptureResult result) {
+        if (!com.particlesdevs.photoncamera.settings.MotionMode.on()) return;
+        CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+        if (c == null) c = mCameraCharacteristics;
+        if (c == null) return;
+        final int white = com.particlesdevs.photoncamera.processing.RawPayloadCheck.whiteLevel(c, result);
+        if (white <= 0) return;
+        android.hardware.camera2.params.BlackLevelPattern pattern = c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        float black = 0;
+        if (pattern != null) {
+            for (int i = 0; i < 4; i++) black += pattern.getOffsetForIndex(i % 2, i / 2);
+            black /= 4f;
+        }
+        final float[] range = RawLevel.range(black, white, com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite());
+        RawLevel.observe(img, !mPayloadBad && mPreviewLayouts.isEmpty(), range[0], range[1]);
+    }
+
+    /** P110: the ISO the HAL honours for AE-off requests of this camera and RAW size (P27), MAX_VALUE while none is learned. */
+    public int honouredIsoCap() {
+        final ExposureLimits limits = mExposureLimits;
+        return limits == null ? Integer.MAX_VALUE : limits.isoCap();
+    }
+
+    /**
+     * P110: the repeating viewfinder request must not run AE off (P54c, X300 Ultra forced stabilisation: the HAL's preview
+     * stabilisation path never sees an AE OFF request).
+     */
+    public boolean previewAeOffUnsafe() {
+        return mForcedStab && ForcedStabilization.rawOnlySwitch();
+    }
+
     private void watchRawPayload(Image img) {
         int n = mPayloadFrames++;
         if (n >= 4 && n % 30 != 0) return;
@@ -3910,6 +3947,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         try {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture || mScamRingFrozen) return;
             watchRawPayload(img);
+            observeRawLevel(img, result);
             publishLiveRawFrame(img, result);
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             if (isZslMode() && passModeBarrier(img, result)) synchronized (mZslBufferLock) {
@@ -4121,7 +4159,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
-                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE)),shotNoise,readNoise,
+                    // P110: the «Движение» shutter ceiling runs AE off for the camera AE: still the automatic rendering
+                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE))
+                            || paramController.motionCeilingActive(),shotNoise,readNoise,
                     readFormat(img));
             if (mTextureView != null) mTextureView.requestRender();
         } catch (Exception e) {

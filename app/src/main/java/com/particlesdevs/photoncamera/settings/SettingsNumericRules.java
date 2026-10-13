@@ -76,6 +76,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mm_motion_threshold": return new double[]{0.25,8,0};
             case "pref_scam_hybrid_mm_bento": return new double[]{0,2,1};
             case "pref_scam_hybrid_mm_fps": return new double[]{0,240,1};
+            case "pref_scam_hybrid_mm_shutter": return new double[]{0,8000,1};
             case "pref_scam_hybrid_sharp_strength": return new double[]{0,2,0};
             case "pref_scam_hybrid_sharp_amount": return new double[]{0,2,0};
             case "pref_scam_hybrid_noise_photon": case "pref_scam_hybrid_noise_readout": return new double[]{0.25,4,0};

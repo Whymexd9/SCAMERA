@@ -2761,3 +2761,23 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   replaces it). The HAL's per-frame vivo.feedback.isROIRemosaicPreview / SensorCropRegion are logged on change
   («ISZ feedback: ...», with ISO) to see whether they can drive the crop directly. Not pushed (owner: «на гит пока не лей»).
 
+
+### P110 - «Движение»: shutter ceiling (owner, 2026-10-13: «он не отличается в плане захвата движения от обычного»)
+- Cause: P86 only fixed the AE range at [30, 30], i.e. at most 1/30 s - what the photo AE already picks indoors and at night
+  (X500 Pro Max log 2026-10-13: ring frames 20-30 ms, up to ISO 35000 at night, in both modes), so motion smeared the same.
+- Now (manual/MotionShutter, ParamController.motionStep): the camera AE runs until its settled shutter (AE state
+  CONVERGED / LOCKED / FLASH_REQUIRED, or 8 still frames) passes the ceiling («Выдержка не длиннее», 1/250 s default;
+  1/1000 ... 1/125, Off) by 15 % for 3 frames; then AE off with the same exposure (ISO x shutter) at the shortest shutter
+  the top ISO allows (>= ceiling, <= one ring frame; top = rulers' ISO, at most ExposureLimits' honoured AE-off ISO).
+- Level loop: the ring RAW's mean (capture/RawLevel, 40x30 grid of 2x2 sites, every viewfinder mode; wide P104 payload at
+  its own range) is paired with its own frame's exposure by sensor timestamp, so frames in flight from an older request
+  give the same scene estimate (no overshoot, no windup; the product is clamped to what the request can follow). Holds the
+  AE's settled level x 2^EV (1/6 stop deadband, 2/3 damping, 2 stops max); a clipped frame may only lower the exposure.
+  Back to the AE when the exposure fits ISO min at the ceiling (4 levels) or after 2 s without a level.
+- AE written on behind it (3A reset after a shot, the console): its request again at once. A tap (TouchFocus): the AE meters
+  the point, the ceiling learns it and takes over again. Nothing during a shot, while ISO / shutter is set by hand, or
+  under the X300 Ultra forced stabilisation (P54c: AE-off viewfinder request). RAW viewfinder keeps its auto rendering.
+- Mains flicker («Без мерцания ламп», on): STATISTICS_SCENE_FLICKER, or 6 AE shutters in whole 10 / 8.33 ms (decided before
+  the take-over; the frame's longest shutter does not vote) -> shutters in whole half periods, at least 1/100 (1/120) s.
+- Log: «motion shutter ceiling on: AE ... ns at ISO ... -> ... ns at ISO ...», «motion shutter: mains flicker ...»,
+  «motion shutter ceiling: no RAW level ...» / «no settled AE level after 90 frames ...». Not on a device yet.

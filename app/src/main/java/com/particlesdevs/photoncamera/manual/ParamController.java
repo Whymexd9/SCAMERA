@@ -161,7 +161,9 @@ public class ParamController implements Observer {
 
     /** P82: one viewfinder result (camera thread): checks the camera's priority AE, or moves the software loop. */
     public synchronized void onPreviewResult(CaptureResult result) {
-        if (priority == ExposurePriority.NONE || result == null) return;
+        if (result == null) return;
+        motionStep(result);
+        if (priority == ExposurePriority.NONE) return;
         CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
         if (builder == null) return;
         if (halPriority || qcomPriority) {
@@ -193,6 +195,140 @@ public class ParamController implements Observer {
             appliedAtNs = System.nanoTime();
             captureController.rebuildPreviewBuilder();
         }
+    }
+
+    // P110 «Движение» shutter ceiling ({@link MotionShutter}): its own AE-off request, apart from the manual priority
+    private final MotionShutter.Controller motion = new MotionShutter.Controller();
+    private final MotionShutter.Limits motionLimits = new MotionShutter.Limits();
+    private boolean motionNoLevelLogged, motionUnsafeLogged;
+    private int motionUnlearned;
+    private volatile boolean motionTap, motionActive;
+
+    /** The ceiling holds the viewfinder request (AE off for the camera AE, not a hand-set exposure). */
+    public boolean motionCeilingActive() {
+        return motionActive;
+    }
+
+    /** A tap meters a new point (TouchFocus): the AE meters it, the ceiling learns that and takes over again. */
+    public void motionMeteringTap() {
+        motionTap = true;
+    }
+
+    /** The longest shutter of a ring frame: one frame of the ring (its AE target range), at most 1/10 s. */
+    private long motionMaxNs() {
+        CaptureRequest.Builder b = captureController.mPreviewRequestBuilder;
+        android.util.Range<Integer> fps = b == null ? null : b.get(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE);
+        long frameNs = fps != null && fps.getUpper() > 0 ? ExposureIndex.sec / fps.getUpper() : PREVIEW_SHUTTER_MAX_NS;
+        return Math.min(frameNs, PREVIEW_SHUTTER_MAX_NS);
+    }
+
+    /** The ceiling's request: AE off at its shutter and ISO, the frame no longer than one ring frame. */
+    private void motionApply(CaptureRequest.Builder builder) {
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+        builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, motion.shutterNs());
+        builder.set(CaptureRequest.SENSOR_SENSITIVITY, motion.iso());
+        builder.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(motion.shutterNs(), motionMaxNs()));
+        captureController.rebuildPreviewBuilder();
+    }
+
+    /** The ceiling lets go; {@code resetAe}: the camera AE in the viewfinder request again (not when the panel owns it). */
+    private void motionRelease(String why, boolean resetAe) {
+        motion.drop();
+        motionActive = false;
+        Log.i(TAG, "motion shutter ceiling off: " + why);
+        if (resetAe) {
+            captureController.resetPreviewAEMode();
+            captureController.rebuildPreviewBuilder();
+        }
+    }
+
+    /**
+     * P110: one viewfinder result for the «Движение» ceiling. Nothing while ISO or shutter is set by hand (the manual panel
+     * then owns the exposure), during a shot (the series owns the requests), or without a RAW level (no ceiling then: the
+     * camera AE as before).
+     */
+    private void motionStep(CaptureResult result) {
+        final CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
+        if (builder == null) return;
+        final boolean on = com.particlesdevs.photoncamera.settings.MotionMode.on();
+        final long setting = on ? MotionShutter.settingNs(PreferenceKeys.hybridValue("mm_shutter", 250f)) : 0;
+        final boolean manual = manualIso() || manualShutter();
+        if (setting <= 0 || manual) {
+            if (motion.active()) motionRelease(manual ? "exposure set by hand" : "mode or setting off", !manual);
+            motionTap = false;
+            return;
+        }
+        if (captureController.subjectRegionsFrozen()) return; // a shot in flight: its requests, not ours
+        if (captureController.previewAeOffUnsafe()) {
+            if (!motionUnsafeLogged) {
+                motionUnsafeLogged = true;
+                Log.i(TAG, "motion shutter ceiling: not under the forced stabilisation (P54c: the viewfinder request keeps AE on)");
+            }
+            if (motion.active()) motionRelease("forced stabilisation", true);
+            return;
+        }
+        final Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        final Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+        final Integer aeMode = result.get(CaptureResult.CONTROL_AE_MODE);
+        final Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+        if (exposure == null || iso == null || timestamp == null) return;
+        if (motionTap) {
+            // the tap wrote AE on with its region: the AE meters the point, the ceiling learns it before it takes over again
+            motionTap = false;
+            if (motion.active()) {
+                motion.drop();
+                motionActive = false;
+                Log.i(TAG, "motion shutter ceiling: tap, the AE meters it first");
+            }
+        } else if (motion.active()) {
+            // something else wrote AE on behind the ceiling (the 3A reset after a shot, the manual console): its request again
+            final Integer want = builder.get(CaptureRequest.CONTROL_AE_MODE);
+            if (want == null || want != CaptureRequest.CONTROL_AE_MODE_OFF) {
+                Log.i(TAG, "motion shutter: the viewfinder request had AE on again, the ceiling's request");
+                motionApply(builder);
+            }
+        }
+        final boolean flickerSafe = PreferenceKeys.hybridSwitch("mm_flicker", true);
+        Integer flicker = null;
+        if (flickerSafe) {
+            try {
+                flicker = result.get(CaptureResult.STATISTICS_SCENE_FLICKER);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        final com.particlesdevs.photoncamera.capture.RawLevel.Sample sample = com.particlesdevs.photoncamera.capture.RawLevel.sample();
+        final boolean aeOff = aeMode != null && aeMode == CaptureRequest.CONTROL_AE_MODE_OFF;
+        // the top ISO: the rulers' range, at most what the HAL honours for AE-off requests (P27, paired with their requests)
+        motionLimits.set(setting, motionMaxNs(), isoMin(), Math.min(isoMax(), captureController.honouredIsoCap()), flickerSafe,
+                evStops());
+        final boolean wasActive = motion.active();
+        final long oldShutter = motion.shutterNs(), flickerBefore = motion.flickerHalfNs();
+        final int action = motion.onResult(timestamp, exposure, iso, aeOff, aeState, flicker,
+                sample == null ? 0 : sample.timestampNs, sample == null ? Double.NaN : sample.level, motionLimits, System.nanoTime());
+        if (motion.flickerHalfNs() != flickerBefore)
+            Log.i(TAG, "motion shutter: mains flicker, shutters in whole " + motion.flickerHalfNs() + " ns");
+        if (!wasActive && !aeOff && exposure > setting && Double.isNaN(motion.target()) && !motionNoLevelLogged
+                && (sample == null || ++motionUnlearned >= 90)) {
+            // nothing learned: no RAW level at all, or levels that never pair with a settled AE frame (diagnosis)
+            motionNoLevelLogged = true;
+            Log.i(TAG, sample == null ? "motion shutter ceiling: no RAW level on this camera yet, the camera AE as before"
+                    : "motion shutter ceiling: no settled AE level after 90 frames (AE state " + aeState + ", level frame "
+                    + sample.timestampNs + ", result " + timestamp + "), the camera AE as before");
+        }
+        if (action == MotionShutter.APPLY) {
+            if (!wasActive)
+                Log.i(TAG, "motion shutter ceiling on: AE " + exposure + " ns at ISO " + iso + " -> " + motion.shutterNs()
+                        + " ns at ISO " + motion.iso() + " (ceiling " + motion.capNs(setting) + " ns)");
+            else if (motion.shutterNs() != oldShutter)
+                Log.i(TAG, "motion shutter " + oldShutter + " -> " + motion.shutterNs() + " ns at ISO " + motion.iso());
+            motionApply(builder);
+        } else if (action == MotionShutter.RELEASE) {
+            Log.i(TAG, "motion shutter ceiling off: bright enough or no RAW level, the camera AE again");
+            captureController.resetPreviewAEMode();
+            captureController.rebuildPreviewBuilder();
+        }
+        motionActive = motion.active();
     }
 
     private void stopPriority(CaptureRequest.Builder builder) {
@@ -422,6 +558,7 @@ public class ParamController implements Observer {
                 SHUTTER = -1;
                 FOCUS = -1;
                 synchronized (this) {
+                    // the «Движение» ceiling stays: the console's 3A reset writes AE on, motionStep puts its request back
                     priority = ExposurePriority.NONE;
                     CaptureRequest.Builder b = captureController.mPreviewRequestBuilder;
                     if (b != null) stopPriority(b); // the priority tags back to off (AE is reset by the console)
@@ -437,6 +574,14 @@ public class ParamController implements Observer {
     }
 
     public void setupPreview() {
+        synchronized (this) {
+            // P110: a new session (lens, restart) starts on the camera AE; the ceiling learns its frames again
+            motion.reset();
+            motionActive = motionTap = false;
+            motionNoLevelLogged = motionUnsafeLogged = false;
+            motionUnlearned = 0;
+            com.particlesdevs.photoncamera.capture.RawLevel.clear();
+        }
         applyWhiteBalance(captureController.mPreviewRequestBuilder);
         if (manualParamModel != null) {
             if (manualIso() || manualShutter())

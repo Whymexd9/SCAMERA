@@ -69,6 +69,13 @@
         <item>30 к/с</item>
         <item>24 к/с</item>
     </string-array>
+    <string-array name="scam_motion_shutter_entries">
+        <item>1/1000 с</item>
+        <item>1/500 с</item>
+        <item>1/250 с</item>
+        <item>1/125 с</item>
+        <item>Выкл. (интервал кадра)</item>
+    </string-array>
     <string-array name="scam_hybrid_bento_entries">
         <item>Выключено</item>
         <item>Авто (при клиппинге)</item>
