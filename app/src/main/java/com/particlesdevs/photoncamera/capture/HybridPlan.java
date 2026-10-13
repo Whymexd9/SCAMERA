@@ -270,7 +270,7 @@ public final class HybridPlan {
      */
     public static HybridPlan zslOnly(long nShutterNs, int nIso) {
         return new HybridPlan(new ArrayList<>(), nShutterNs, nIso,
-                String.format(Locale.ROOT, "hybrid plan: N=%.3fms*ISO%d ring frames only («Движение»: nothing after the shutter)",
+                String.format(Locale.ROOT, "hybrid plan: N=%.3fms*ISO%d ring frames only (Motion mode: nothing after the shutter)",
                         nShutterNs / 1e6, nIso));
     }
 
