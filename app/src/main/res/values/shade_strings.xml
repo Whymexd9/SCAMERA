@@ -6,7 +6,6 @@
     <string name="shade_group_format">Format</string>
     <string name="shade_group_hybrid">Hybrid</string>
     <string name="shade_group_scamhdr">SCAM HDR</string>
-    <string name="shade_group_color">Colour and sharpness</string>
     <string name="shade_group_view">Viewfinder</string>
 
     <string name="shade_on">On</string>
@@ -51,12 +50,10 @@
     <string name="shade_t_hybrid_frames">N frames Hybrid</string>
     <string name="shade_t_luma">Luma</string>
     <string name="shade_t_chroma">Chroma</string>
-    <string name="shade_t_sharp">Sharpening</string>
     <string name="shade_t_rejection">Rejection</string>
     <string name="shade_t_scam_frames">N frames SCAM</string>
     <string name="shade_t_long_boost">L boost</string>
     <string name="shade_t_mosaic">ISZ mosaic</string>
-    <string name="shade_t_usm">USM</string>
     <string name="shade_t_grid">Grid</string>
     <string name="shade_t_peak">Focus peak</string>
     <string name="shade_t_live_raw">Live RAW</string>
@@ -104,12 +101,6 @@
         <item>1</item>
         <item>2</item>
         <item>3</item>
-    </string-array>
-    <string-array name="shade_s_sharp">
-        <item>ARK</item>
-        <item>RT</item>
-        <item>SCAM</item>
-        <item>Off</item>
     </string-array>
     <string-array name="shade_s_mosaic">
         <item>Bayer</item>

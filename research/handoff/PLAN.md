@@ -2986,3 +2986,52 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Tests: MosaicNeutralTest (Quad / Tetra BGGR mosaics with ±4 % site gains: R/G and B/G within 3 %; clipped / tiny frames give
   nothing; the projection on the curve). To check on phones: one scene with the ISZ module and its plain module, daylight and
   tungsten; the log lines above.
+
+### P117 (continued, 2026-10-13 evening) - fixed in code, not checked on a phone
+- WebP / AVIF (and HEIC, DNG) black in the viewer and the compare panes: ImageAdapter.instantiateItem started the page's decode
+  before the page was in the pager; the Glide path (every non-JPEG page) returns at once for a page without a parent, silently and
+  for good (since P59, 33dd003; P65 / P81 could not help). The page is added first now, and an early return is logged.
+  AvifGlideDecoder: the platform decode fits the request (4096 px): a power-of-two sample left a 50 MP AVIF at full size (~200 MB,
+  more than a view may draw).
+- Crash on the swap button with Ultra HDR / non-JPEG photos (code reading; no crash log): memory. Compare loaded a full-resolution
+  Ultra HDR bitmap per pane (~200 MB each at 50 MP) and every non-JPEG page as one bitmap up to 4096 px (~50 MB) with 3 pages kept
+  on each side of each pane, and a swap built two new panes before the old were gone. Now: no Ultra HDR rendition in compare, 1
+  page kept on each side in compare (2 in the viewer), the gallery bitmaps software (the compare screenshot drew hardware ones into
+  a software canvas), the screenshot drawn on the main thread (it raced the panes' tiles on a background thread), and the two
+  removals of panes through a FragmentManager they do not belong to are gone.
+- Tests: AvifGlideDecoderTest.platformDecodeFitsTheRequest; gallery tests pass. To check on a phone: compare with Ultra HDR / HEIC /
+  WebP / AVIF photos, swap many times, share; WebP / AVIF / HEIC / DNG pages show.
+
+### P118 (continued)
+- Sharpening: only ARK stays (owner, 2026-10-13: «Оставляем только резкость Ark, всё остальное вырезаем»). Gone: the mode list,
+  RawTherapee (USM, RL deconvolution, microcontrast; RTSharpening and its shaders, every pref_sharp_* row), SCAM «без ореолов»
+  (ScamSharpen, scamsharp shaders), «Выключено», «Доп. резкость после тона», the shadow guard of the post-tone sharpening
+  (ArkSharpenGuard, ark/guard.glsl; it acted only on that sharpening), the RawTherapee strength, «Деталь Sabre» (acted only
+  without the ARK sharpening). ArkLumaSharpen always runs; its own rows stay. Defaults give the same picture as before.
+- Rows that act only with another setting off its default are greyed with the reason: Sabre 6.1 «Авто» rows, the round-4 kernel
+  rows (snr scale, tensor noise), Shasta sharpness / max ratio (Shasta «Авто»), Bento trigger (Bento «Авто», also Motion mode's),
+  motion boost (needs F6), the AgX curve sliders (look «Custom»). «Карта силы»: «Карта эффективных кадров» removed (it did
+  exactly what «Авто» does; stored ones become «Авто»).
+- Tests 825, only DevKeysCoverageTest fails (another agent's uncommitted vivo_qcom keys). tools/check_ark_tone.py: the two
+  synthetic cases fail with the same numbers on the previous commit 478913e too (not from this round).
+
+### P120 (continued) - findings of the two reports; fixed what needs no phone and no sensor-mode change
+- Full notes (outside git): SCAMERA-PC/reports/scam-test/ + the study files x300u.md / nubia.md copied there.
+- Fixed:
+  - vivo X300 Ultra PD2547 / V2547DA (the owner's rooted one): the forced stabilisation (P54b/c: no HAL flush on the shot) matched
+    only V2562; now this variant too.
+  - Its camera 7 (CameraType «MultiSpectrum», gc59a0_ms) passed every check and became a «lens»; opening it took every camera
+    device down (kernel CSIPHY combo-mode error). vivo «MultiSpectrum» / «PreISP» profiles and cameras without
+    BACKWARD_COMPATIBLE (depth-only camera 8) are auxiliary now; the camera scan reruns once (aux4).
+  - ImageReader with 63 images aborts the process natively on both phones (a session takes 59): every reader is capped at 59, the
+    image ring without memfd at 56 (the ZSL slider goes to 100).
+- Open (needs the owner / a phone):
+  - nubia NX563J: the HAL's noise profile is implausible (offset ~1000x too high, the same on all 3 cameras) -> ghosts, heavy shadow
+    denoise, Sabre 2x never kept; a sanity check against the measured noise (P71) or the burst fit. RAW_SENSOR 10 of 24 fps on the
+    main camera, RAW10 listed at full rate: one RAW10 test, then DeviceDefaults raw10 for NX563J. Camera 2 is shown as 0.8x but is
+    most likely the 2x tele (0.70 m min focus, impossible view angles in its config): one pair of shots of cameras 0 and 2.
+    RAW reader usage flag 0x00100000 is set on nubia (unverified).
+  - X300 Ultra: tele ISZ 2x / 4x and DCG 14-bit (main, UW) exist but switch sensor modes (owner OK needed; the third-party DCG
+    route key vcf.parameter.seamlessMode is not in this phone's session keys); 50 / 200 MP RAW; teleconverter tuning present; the
+    tele's real ISO range (declared 50-800, own AE 12800) to check in a log; SCAM TEST again with cameras 6 and 7 skipped (8-11
+    were lost when the service went down).

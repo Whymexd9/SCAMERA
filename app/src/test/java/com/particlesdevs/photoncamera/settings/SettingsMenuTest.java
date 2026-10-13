@@ -65,7 +65,7 @@ public class SettingsMenuTest {
         for(String old:new String[]{"agx_screen","scam_hybrid_scamera_tone_screen","pref_scam_hybrid_ark_tone","pref_scamroute_gamma",
                 "pref_scamhdr_soft_tone","pref_scamhdr_fusion_enabled","pref_scamold_ae_mid","pref_expocompensation_seekbar_key"})
             assertNull(old,screen.findPreference(old));
-        for(String kept:new String[]{"scam_hybrid_ark_tone_screen","pref_scam_hybrid_ark_ae_target","pref_scam_hybrid_sharp_mode"})
+        for(String kept:new String[]{"scam_hybrid_ark_tone_screen","pref_scam_hybrid_ark_ae_target","pref_scam_hybrid_ark_sharp_gain"})
             assertNotNull(kept,screen.findPreference(kept));
         // P64: the «Hybrid curves» presets are gone (owner, 2026-10-09)
         for(String old:new String[]{"scam_curves_screen","pref_scam_tone_curve","pref_scam_tone_curve_strength","pref_scam_gamma_curve",
@@ -73,7 +73,7 @@ public class SettingsMenuTest {
             assertNull(old,screen.findPreference(old));
         java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
         SettingsAvailability scam=new SettingsAvailability(values);
-        assertNull(scam.reason("pref_scam_hybrid_ark_ae_target"));assertNull(scam.reason("pref_scam_hybrid_sharp_mode"));
+        assertNull(scam.reason("pref_scam_hybrid_ark_ae_target"));assertNull(scam.reason("pref_scam_hybrid_ark_sharp_gain"));
         assertNotNull(scam.reason("pref_scam_hybrid_cdm"));
         prefs.edit().putString("pref_agx_contrast","20").putString("pref_scamroute_gamma","1.2").putBoolean("pref_scam_hybrid_ark_tone",false)
                 .putString("pref_scam_hybrid_ark_ae_target","0.2").commit();
@@ -215,9 +215,10 @@ public class SettingsMenuTest {
         for (String key:Arrays.asList("rt_denoise_screen","gcam_finish_screen","aces_group_screen","capture_one_group_screen",
                 "scamera_darktable_screen","optical_correction_screen","expert_raw_screen","expert_noise_screen","expert_detail_screen",
                 "expert_tone_screen","pref_tunable_postpipeline_tonepipeline","pref_tunable_postpipeline_demosaicingmethod",
-                "pref_saturation_seekbar_key","pref_contrast_seekbar_key","pref_sensor_sharpening_enabled","pref_noise_iso_curve_key"))
+                "pref_saturation_seekbar_key","pref_contrast_seekbar_key","pref_sensor_sharpening_enabled","pref_noise_iso_curve_key",
+                "sharp_settings_screen")) // P118: the RawTherapee sharpening is gone too (only the ARK sharpening stays)
             assertNull(key,screen.findPreference(key));
-        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key","sharp_settings_screen"))
+        for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key"))
             assertNotNull(key,screen.findPreference(key));
         android.content.SharedPreferences prefs=androidx.preference.PreferenceManager.getDefaultSharedPreferences(
                 org.robolectric.RuntimeEnvironment.getApplication());
@@ -354,7 +355,7 @@ public class SettingsMenuTest {
             android.view.View processing=copy.requireView().findViewWithTag("group_photo_processing_screen");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
-            // «Цвет» (the RawTherapee sharpening moved next to «Резкость Hybrid» in the settings audit, the curves are gone, P64):
+            // «Цвет» (the RawTherapee sharpening left in the settings audit and is gone since P118, the curves are gone, P64):
             // the DCP profile
             assertNotNull(copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
             activity.getOnBackPressedDispatcher().onBackPressed();

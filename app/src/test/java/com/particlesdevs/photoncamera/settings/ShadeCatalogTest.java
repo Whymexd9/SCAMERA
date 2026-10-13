@@ -100,8 +100,8 @@ public class ShadeCatalogTest {
                 assertTrue(key, e.isCurated());
             }
         }
-        assertEquals(28, curated); // «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»;
-                                   // P64 removed «Кривая» (the Hybrid tone curve)
+        assertEquals(26, curated); // «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»;
+                                   // P64 removed «Кривая» (the Hybrid tone curve); P118 «Резкость» (sharp_mode) and «USM» with its group
         // The rows the owner dropped (answer 8) stay out.
         for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
@@ -112,7 +112,7 @@ public class ShadeCatalogTest {
     @Test
     public void everyEntryHasAnIconAndAKind() {
         List<ShadeCatalog.Entry> all = catalog.all();
-        assertTrue("the catalog walks the whole tree", all.size() > 300);
+        assertTrue("the catalog walks the whole tree: " + all.size(), all.size() > 280); // 291 rows since P118 (the RawTherapee sharpening page is gone)
         for (ShadeCatalog.Entry e : all) {
             assertNotNull("no icon: " + e.key, catalog.icon(e));
             assertNotNull("no icon: " + e.key, catalog.settingIcon(e));

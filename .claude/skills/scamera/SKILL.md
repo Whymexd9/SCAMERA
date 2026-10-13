@@ -77,7 +77,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 
 Шейдеры:
 - ассеты `app/src/main/assets/shaders/` (через `GLProg`, `shaders/<имя>.glsl`): `ark/` тон, `scamhdr/scamrgb.glsl`,
-  `clipband.glsl` света, `hlrecovery/`, `scamdn/` шумодав, `scamlc/`, `scamsharp/`, `sharpening/`, `chromadn/`,
+  `clipband.glsl` света, `hlrecovery/`, `scamdn/` шумодав, `scamlc/`, `chromadn/`,
   `remosaic/`, `preview/`, `ultrahdr/`, `utils/`;
 - строками в заголовках: `scam-hybrid.h` (`kHyb*`: склейка, `kHybMergeMosaic/Fast`, `kHybMochi*`, Bento, chroma),
   `scam-superres-gpu.h`, `scam-hexquad-gpu-shaders.h`.

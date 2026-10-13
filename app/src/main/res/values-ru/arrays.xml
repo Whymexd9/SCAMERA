@@ -97,19 +97,12 @@
         <item>2 кадра</item>
         <item>3 кадра (Mochi)</item>
     </string-array>
-    <string-array name="scam_hybrid_sharp_mode_entries">
-        <item>ARK: как ArkCam (по умолчанию)</item>
-        <item>RawTherapee</item>
-        <item>SCAM: без ореолов</item>
-        <item>Выключено</item>
-    </string-array>
     <string-array name="scam_hybrid_dn_engine_entries">
         <item>GCam / Hybrid (ArkCam)</item>
         <item>NLM (прежний)</item>
     </string-array>
     <string-array name="scam_hybrid_dn_map_entries">
         <item>Авто (карта кадров, если склейка её дала)</item>
-        <item>Карта эффективных кадров</item>
         <item>Равномерно</item>
     </string-array>
     <string-array name="scam_hybrid_local_align_entries">

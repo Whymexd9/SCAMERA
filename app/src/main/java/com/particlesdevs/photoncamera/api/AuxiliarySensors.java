@@ -21,6 +21,16 @@ final class AuxiliarySensors {
     static boolean vivoProfileOnly(String cameraType) {
         if (cameraType == null) return false;
         String t = cameraType.trim();
-        return t.contains("External") || t.equals("DUMMY");
+        return t.contains("External") || t.equals("DUMMY") || t.equals("MultiSpectrum") || t.equals("PreISP");
+    }
+
+    /**
+     * P120: a camera without the BACKWARD_COMPATIBLE capability (0) takes no ordinary photo request: depth-only outputs (the X300
+     * Ultra's camera 8). Unknown capabilities (null) say nothing.
+     */
+    static boolean notAPhotoCamera(int[] capabilities) {
+        if (capabilities == null) return false;
+        for (int c : capabilities) if (c == 0) return false;
+        return true;
     }
 }

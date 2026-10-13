@@ -116,10 +116,9 @@ public final class ShadeCatalog {
                     "pref_show_watermark_key"),
             new Group(R.string.shade_group_hybrid, "pref_scam_hybrid_bento", "pref_scam_hybrid_bento_frames",
                     "pref_scam_hybrid_shasta", "pref_scam_hybrid_zsl_frames", "pref_scam_hybrid_dn_luma_mult",
-                    "pref_scam_hybrid_dn_chroma_mult", "pref_scam_hybrid_sharp_mode", "pref_scam_hybrid_cdm"),
+                    "pref_scam_hybrid_dn_chroma_mult", "pref_scam_hybrid_cdm"),
             new Group(R.string.shade_group_scamhdr, "pref_scamhdr_zsl_frames", "pref_scamhdr_long_boost_ev",
                     "pref_scamhdr_mosaic"),
-            new Group(R.string.shade_group_color, "pref_sharp_usm_enabled_key"),
             new Group(R.string.shade_group_view, "pref_show_grid_key", "pref_peak_method_key", "pref_live_viewfinder_raw_key",
                     "pref_show_afdata_key", "pref_face_detect_mode", "pref_tracking_af_mode")));
 
@@ -176,12 +175,10 @@ public final class ShadeCatalog {
         spec("pref_scam_hybrid_zsl_frames", R.string.shade_t_hybrid_frames, 0, R.drawable.settings_ic_frames);
         spec("pref_scam_hybrid_dn_luma_mult", R.string.shade_t_luma, 0, R.drawable.settings_ic_noise);
         spec("pref_scam_hybrid_dn_chroma_mult", R.string.shade_t_chroma, 0, R.drawable.settings_ic_palette);
-        spec("pref_scam_hybrid_sharp_mode", R.string.shade_t_sharp, R.array.shade_s_sharp, R.drawable.settings_ic_sharp);
         spec("pref_scam_hybrid_cdm", R.string.shade_t_rejection, 0, R.drawable.settings_ic_eye);
         spec("pref_scamhdr_zsl_frames", R.string.shade_t_scam_frames, 0, R.drawable.settings_ic_frames);
         spec("pref_scamhdr_long_boost_ev", R.string.shade_t_long_boost, 0, R.drawable.settings_ic_sun);
         spec("pref_scamhdr_mosaic", R.string.shade_t_mosaic, R.array.shade_s_mosaic, R.drawable.settings_ic_mosaic);
-        spec("pref_sharp_usm_enabled_key", R.string.shade_t_usm, 0, R.drawable.settings_ic_sharp);
         spec("pref_show_grid_key", R.string.shade_t_grid, R.array.shade_s_grid, R.drawable.settings_ic_grid,
                 R.drawable.ic_sheet_grid_off, R.drawable.ic_grid_3x3, R.drawable.ic_grid_4x4, R.drawable.ic_grid_golden,
                 R.drawable.ic_grid_diagonal);

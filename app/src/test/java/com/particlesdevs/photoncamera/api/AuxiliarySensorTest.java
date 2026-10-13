@@ -29,5 +29,11 @@ public class AuxiliarySensorTest {
         org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly("Master"));
         org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly("MultiCamera"));
         org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly(null));
+        // P120: the X300 Ultra's multispectral camera 7 and its pre-ISP chip (camera 6)
+        org.junit.Assert.assertTrue(AuxiliarySensors.vivoProfileOnly("MultiSpectrum"));
+        org.junit.Assert.assertTrue(AuxiliarySensors.vivoProfileOnly("PreISP"));
+        org.junit.Assert.assertTrue(AuxiliarySensors.notAPhotoCamera(new int[]{8}));      // DEPTH_OUTPUT only
+        org.junit.Assert.assertFalse(AuxiliarySensors.notAPhotoCamera(new int[]{0, 1, 3})); // BACKWARD_COMPATIBLE, MANUAL, RAW
+        org.junit.Assert.assertFalse(AuxiliarySensors.notAPhotoCamera(null));
     }
 }

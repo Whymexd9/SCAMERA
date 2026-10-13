@@ -526,124 +526,6 @@ public class PreferenceKeys {
         return new int[]{ sharpInt(Key.KEY_REMOSAIC_PHASE_X), sharpInt(Key.KEY_REMOSAIC_PHASE_Y) };
     }
 
-    public static boolean isSharpUsmEnabled() {
-        return getBool(Key.KEY_SHARP_USM_ENABLED);
-    }
-
-    public static boolean isSharpDeconvEnabled() {
-        return getBool(Key.KEY_SHARP_DECONV_ENABLED);
-    }
-
-    public static boolean isSharpMicroEnabled() {
-        return getBool(Key.KEY_SHARP_MICRO_ENABLED);
-    }
-
-    public static float getSharpRadius() {
-        return sharpFloat(Key.KEY_SHARP_RADIUS);
-    }
-
-    public static float getSharpAmount() {
-        return sharpFloat(Key.KEY_SHARP_AMOUNT) * hybridSharpStrength();
-    }
-
-    public static float getSharpContrast() {
-        return sharpFloat(Key.KEY_SHARP_CONTRAST);
-    }
-
-    public static int getSharpThresholdBottomLeft() {
-        return sharpInt(Key.KEY_SHARP_THRESHOLD_BOTTOM_LEFT);
-    }
-
-    public static int getSharpThresholdTopLeft() {
-        return sharpInt(Key.KEY_SHARP_THRESHOLD_TOP_LEFT);
-    }
-
-    public static int getSharpThresholdTopRight() {
-        return sharpInt(Key.KEY_SHARP_THRESHOLD_TOP_RIGHT);
-    }
-
-    public static int getSharpThresholdBottomRight() {
-        return sharpInt(Key.KEY_SHARP_THRESHOLD_BOTTOM_RIGHT);
-    }
-
-    public static boolean isSharpEdgesOnly() {
-        return getBool(Key.KEY_SHARP_EDGES_ONLY);
-    }
-
-    public static float getSharpEdgesRadius() {
-        return sharpFloat(Key.KEY_SHARP_EDGES_RADIUS);
-    }
-
-    public static int getSharpEdgesTolerance() {
-        return sharpInt(Key.KEY_SHARP_EDGES_TOLERANCE);
-    }
-
-    public static boolean isSharpHaloControl() {
-        return getBool(Key.KEY_SHARP_HALO_CONTROL);
-    }
-
-    public static float getSharpHaloAmount() {
-        return sharpFloat(Key.KEY_SHARP_HALO_AMOUNT);
-    }
-
-    private static Key stageKey(Key k1, Key k2, Key k3, int stage) {
-        return stage == 2 ? k2 : (stage == 3 ? k3 : k1);
-    }
-
-    /** 0 gaussian, 1 pillbox (defocus), 2 Airy (diffraction). */
-    public static int getSharpDeconvKernel(int stage) {
-        return sharpInt(stageKey(Key.KEY_SHARP_DECONV_KERNEL_1,
-                Key.KEY_SHARP_DECONV_KERNEL_2, Key.KEY_SHARP_DECONV_KERNEL_3, stage));
-    }
-
-    public static float getSharpDeconvRadius(int stage) {
-        return sharpFloat(stageKey(Key.KEY_SHARP_DECONV_RADIUS_1,
-                Key.KEY_SHARP_DECONV_RADIUS_2, Key.KEY_SHARP_DECONV_RADIUS_3, stage));
-    }
-
-    public static float getSharpDeconvAmount(int stage) {
-        return sharpFloat(stageKey(Key.KEY_SHARP_DECONV_AMOUNT_1,
-                Key.KEY_SHARP_DECONV_AMOUNT_2, Key.KEY_SHARP_DECONV_AMOUNT_3, stage));
-    }
-
-    public static int getSharpDeconvIterations(int stage) {
-        return sharpInt(stageKey(Key.KEY_SHARP_DECONV_ITERATIONS_1,
-                Key.KEY_SHARP_DECONV_ITERATIONS_2, Key.KEY_SHARP_DECONV_ITERATIONS_3, stage));
-    }
-
-    public static float getSharpDeconvDamping(int stage) {
-        return sharpFloat(stageKey(Key.KEY_SHARP_DECONV_DAMPING_1,
-                Key.KEY_SHARP_DECONV_DAMPING_2, Key.KEY_SHARP_DECONV_DAMPING_3, stage));
-    }
-
-    public static float getSharpDeconvHalo() {
-        return sharpFloat(Key.KEY_SHARP_DECONV_HALO);
-    }
-
-    public static float getSharpDeconvHaloMargin() {
-        return sharpFloat(Key.KEY_SHARP_DECONV_HALO_MARGIN);
-    }
-
-    public static float getSharpDeconvHaloMacro() {
-        return sharpFloat(Key.KEY_SHARP_DECONV_HALO_MACRO);
-    }
-
-    public static float getSharpMicroAmount() {
-        return sharpFloat(Key.KEY_SHARP_MICRO_AMOUNT) * hybridSharpStrength();
-    }
-
-    public static int getSharpMicroUniformity() {
-        return sharpInt(Key.KEY_SHARP_MICRO_UNIFORMITY);
-    }
-
-    public static float getSharpMicroContrast() {
-        return sharpFloat(Key.KEY_SHARP_MICRO_CONTRAST);
-    }
-
-    public static boolean isSharpMicroMatrix3x3() {
-        return getBool(Key.KEY_SHARP_MICRO_MATRIX_3X3);
-    }
-
     /** SCAM: flush the HAL request queue before the bracket (shutter lag ~0.4 s -> ~0.15 s). */
     public static boolean isScamFastCapture() {
         if (isHybridShot()) return hybridSwitch("fast_capture", true);
@@ -1041,21 +923,6 @@ public class PreferenceKeys {
     public static boolean isHybridDenoiseEnabled() {
         return hybridSwitch("denoise", true);
     }
-    /**
-     * Sharpening of the ARK render, shared by both routes: "ark" (ArkCam's own luma sharpening before the detail delta,
-     * ArkLumaSharpen), "rt" (RawTherapee with its own settings), "scam" (ScamSharpen) or "off" after the tone.
-     * pref_scam_hybrid_sharp_mode (scam_dev.txt "hybrid_sharp_mode 0|1|2|3" = rt, scam, off, ark), default ark.
-     */
-    public static String scamSharpenMode() {
-        Float dev = scamDevValue("hybrid_sharp_mode");
-        if (dev != null) return dev >= 2.5f ? "ark" : dev >= 1.5f ? "off" : dev >= 0.5f ? "scam" : "rt";
-        String v = hybridString("sharp_mode", "ark");
-        return "rt".equals(v) || "scam".equals(v) || "off".equals(v) ? v : "ark";
-    }
-    /** RawTherapee USM / microcontrast amount multiplier on a hybrid shot (pref_scam_hybrid_sharp_strength), 1 elsewhere. */
-    private static float hybridSharpStrength() {
-        return isHybridShotProcessing() ? Math.max(0f, Math.min(2f, hybridValue("sharp_strength", 1f))) : 1f;
-    }
     /** Weight of the other burst frames in the SCAM reference, 0..1 (1 = all frames). */
     public static float getScamMerge() {
         return Math.max(0f, Math.min(1f, routeInternalValue("merge", 100f) / 100f));
@@ -1163,8 +1030,8 @@ public class PreferenceKeys {
     }
     /**
      * scam_dev.txt overrides of hybrid list settings for A/B without the menu: "hybrid_&lt;key&gt; i" picks the i-th entry value
-     * (order of arrays.xml), e.g. "hybrid_dn_engine 1" = nlm. Other list keys have their own getters (output, downsampler,
-     * sharp_mode) or none.
+     * (order of arrays.xml), e.g. "hybrid_dn_engine 1" = nlm. Other list keys have their own getters (output, downsampler)
+     * or none.
      */
     private static final Map<String, String[]> HYBRID_DEV_LISTS = new HashMap<>();
     static {
@@ -1516,43 +1383,6 @@ public class PreferenceKeys {
         KEY_REMOSAIC_FLATFIELD(R.string.pref_remosaic_flatfield_key),
         KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
         KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
-        KEY_SHARP_USM_ENABLED(R.string.pref_sharp_usm_enabled_key),
-        KEY_SHARP_DECONV_ENABLED(R.string.pref_sharp_deconv_enabled_key),
-        KEY_SHARP_MICRO_ENABLED(R.string.pref_sharp_micro_enabled_key),
-        KEY_SHARP_RADIUS(R.string.pref_sharp_radius_key),
-        KEY_SHARP_AMOUNT(R.string.pref_sharp_amount_key),
-        KEY_SHARP_CONTRAST(R.string.pref_sharp_contrast_key),
-        KEY_SHARP_THRESHOLD_BOTTOM_LEFT(R.string.pref_sharp_threshold_bl_key),
-        KEY_SHARP_THRESHOLD_TOP_LEFT(R.string.pref_sharp_threshold_tl_key),
-        KEY_SHARP_THRESHOLD_TOP_RIGHT(R.string.pref_sharp_threshold_tr_key),
-        KEY_SHARP_THRESHOLD_BOTTOM_RIGHT(R.string.pref_sharp_threshold_br_key),
-        KEY_SHARP_EDGES_ONLY(R.string.pref_sharp_edges_only_key),
-        KEY_SHARP_EDGES_RADIUS(R.string.pref_sharp_edges_radius_key),
-        KEY_SHARP_EDGES_TOLERANCE(R.string.pref_sharp_edges_tolerance_key),
-        KEY_SHARP_HALO_CONTROL(R.string.pref_sharp_halo_control_key),
-        KEY_SHARP_HALO_AMOUNT(R.string.pref_sharp_halo_amount_key),
-        KEY_SHARP_DECONV_HALO(R.string.pref_sharp_deconv_halo_key),
-        KEY_SHARP_DECONV_HALO_MARGIN(R.string.pref_sharp_deconv_halo_margin_key),
-        KEY_SHARP_DECONV_HALO_MACRO(R.string.pref_sharp_deconv_halo_macro_key),
-        KEY_SHARP_DECONV_KERNEL_1(R.string.pref_sharp_deconv_kernel_1_key),
-        KEY_SHARP_DECONV_RADIUS_1(R.string.pref_sharp_deconv_radius_1_key),
-        KEY_SHARP_DECONV_AMOUNT_1(R.string.pref_sharp_deconv_amount_1_key),
-        KEY_SHARP_DECONV_ITERATIONS_1(R.string.pref_sharp_deconv_iterations_1_key),
-        KEY_SHARP_DECONV_DAMPING_1(R.string.pref_sharp_deconv_damping_1_key),
-        KEY_SHARP_DECONV_KERNEL_2(R.string.pref_sharp_deconv_kernel_2_key),
-        KEY_SHARP_DECONV_RADIUS_2(R.string.pref_sharp_deconv_radius_2_key),
-        KEY_SHARP_DECONV_AMOUNT_2(R.string.pref_sharp_deconv_amount_2_key),
-        KEY_SHARP_DECONV_ITERATIONS_2(R.string.pref_sharp_deconv_iterations_2_key),
-        KEY_SHARP_DECONV_DAMPING_2(R.string.pref_sharp_deconv_damping_2_key),
-        KEY_SHARP_DECONV_KERNEL_3(R.string.pref_sharp_deconv_kernel_3_key),
-        KEY_SHARP_DECONV_RADIUS_3(R.string.pref_sharp_deconv_radius_3_key),
-        KEY_SHARP_DECONV_AMOUNT_3(R.string.pref_sharp_deconv_amount_3_key),
-        KEY_SHARP_DECONV_ITERATIONS_3(R.string.pref_sharp_deconv_iterations_3_key),
-        KEY_SHARP_DECONV_DAMPING_3(R.string.pref_sharp_deconv_damping_3_key),
-        KEY_SHARP_MICRO_AMOUNT(R.string.pref_sharp_micro_amount_key),
-        KEY_SHARP_MICRO_UNIFORMITY(R.string.pref_sharp_micro_uniformity_key),
-        KEY_SHARP_MICRO_CONTRAST(R.string.pref_sharp_micro_contrast_key),
-        KEY_SHARP_MICRO_MATRIX_3X3(R.string.pref_sharp_micro_matrix_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),

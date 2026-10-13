@@ -213,12 +213,6 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         super.onDestroyView();
     }
 
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        getParentFragmentManager().beginTransaction().remove(ImageViewerFragment.this).commitAllowingStateLoss();
-    }
-
     private void initImageAdapter(List<GalleryItem> galleryItems) {
         if (galleryItems == null) return;
         this.galleryItems = galleryItems;
@@ -260,7 +254,9 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         viewPager.setPageTransformer(true, new DepthPageTransformer());
-        viewPager.setOffscreenPageLimit(3);
+        // P117: every page of HEIC / WebP / AVIF / DNG is one decoded bitmap (up to 4096 px, ~50 MB): 3 kept on each side were
+        // 350 MB a viewer, twice that in compare and again while a swap built the new panes (the app died on the swap button)
+        viewPager.setOffscreenPageLimit(isCompareMode() ? 1 : 2);
         viewPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
             @Override
             public void onPageSelected(int position) {
@@ -299,7 +295,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
                     applyWindowColour(position, false);
                     probePageColour(position);
                 }
-                adapter.loadHdrForPosition(getSsivAt(position), position);
+                if (!isCompareMode()) adapter.loadHdrForPosition(getSsivAt(position), position);
                 updateHdrToggleUi(adapter.isHdrAvailable(position), false);
             }
         }
@@ -323,7 +319,9 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         if (adapter == null) return;
         if (lastHdrPosition >= 0 && lastHdrPosition != position) adapter.releaseHdrForPosition(getSsivAt(lastHdrPosition), lastHdrPosition);
         lastHdrPosition = position;
-        adapter.loadHdrForPosition(getSsivAt(position), position);
+        // P117: no full-resolution Ultra HDR rendition in compare (one per pane, ~200 MB each at 50 MP, again on every swap; the
+        // window cannot show two panes in HDR anyway): the panes compare the SDR pictures
+        if (!isCompareMode()) adapter.loadHdrForPosition(getSsivAt(position), position);
         if (!isCompareMode() && getActivity() != null) {
             applyWindowColour(position, adapter.isHdrActive(position));
             probePageColour(position);

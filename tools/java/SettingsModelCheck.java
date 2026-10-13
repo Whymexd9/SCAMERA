@@ -40,8 +40,6 @@ public class SettingsModelCheck {
         p.put("pref_camera_mode_key", "3");
         p.put("pref_merge_route", "scamhdr");
         p.put("pref_scamhdr_route", "vcf2");
-        // RawTherapee sharpening acts only in the "rt" mode (or ARK + «Доп. резкость после тона»), so it is chosen here.
-        p.put("pref_scam_hybrid_sharp_mode", "rt");
         Map<String,Object> saved = new HashMap<>(p);
         // Retired route values from saved/imported configs must not bypass RAW
         // processing or hide sharpening. Exercise every mode, not only Photo.
@@ -51,7 +49,7 @@ public class SettingsModelCheck {
                 p.put("pref_scamhdr_route", route);
                 active(p,"pref_scamhdr_noise_scale");
                 active(p,"pref_scamhdr_noise_photon");active(p,"pref_scamhdr_noise_readout");
-                active(p,"pref_sharp_usm_enabled_key");
+                active(p,"pref_scam_hybrid_ark_sharp_gain");
             }
         }
         p.clear();p.putAll(saved);
@@ -66,9 +64,8 @@ public class SettingsModelCheck {
         h.remove("pref_merge_route");
         active(h,"pref_scam_hybrid_cdm");active(h,"pref_scam_hybrid_sabre61");active(h,"pref_scam_hybrid_highlight_recovery");
         inactive(h,"pref_scamhdr_noise_photon");
-        // Default sharpening is ARK without «Доп. резкость после тона»: RawTherapee does not run, its rows explain it (audit H3)
-        inactive(h,"pref_sharp_usm_enabled_key");
-        h.put("pref_scam_hybrid_sharp_mode","rt");active(h,"pref_sharp_usm_enabled_key");h.remove("pref_scam_hybrid_sharp_mode");
+        // P118: the ARK sharpening is the only one, its rows are always active
+        active(h,"pref_scam_hybrid_ark_sharp_gain");
         // the removed legacy switches (RAW MFSR, standalone remosaic) no longer take the hybrid off
         h.put("pref_raw_mfsr_enabled_key",true);h.put("pref_remosaic_enabled_key",true);active(h,"pref_scam_hybrid_cdm");
         // SCAM Hybrid (own section): pref_scam_hybrid_* bounds; copies of SCAM HDR knobs keep the original bounds; number lists.
@@ -86,7 +83,7 @@ public class SettingsModelCheck {
                 ||SettingsNumericRules.bounds("pref_scam_hybrid_fusion_dark_ev")!=null)throw new AssertionError("removed tone key still bounded");
         // the ARK tone and its sharpening stay active on SCAM HDR (one tone for both routes)
         Map<String,Object> s=new HashMap<>();s.put("pref_merge_route","scamhdr");
-        active(s,"pref_scam_hybrid_ark_ae_target");active(s,"pref_scam_hybrid_sharp_mode");inactive(s,"pref_scam_hybrid_cdm");
+        active(s,"pref_scam_hybrid_ark_ae_target");active(s,"pref_scam_hybrid_ark_sharp_gain");inactive(s,"pref_scam_hybrid_cdm");
         if(SettingsNumericRules.bounds("pref_scam_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_scam_hybrid_enabled")!=null)
             throw new AssertionError("unbounded hybrid copies got bounds");
         // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto / 2 force
@@ -199,26 +196,10 @@ public class SettingsModelCheck {
         c.put("pref_avif_lossless",true);active(c,"pref_photo_hdr");
         c.put("pref_avif_lossless",false);c.put("pref_avif_depth","12");active(c,"pref_photo_hdr");
         // Settings audit H3: rows that do nothing in the current configuration explain why.
-        Map<String,Object> sh=new HashMap<>(); // sharpening "ark" (default), no extra sharpening after the tone
-        active(sh,"pref_scam_hybrid_ark_sharp_gain");active(sh,"pref_scam_hybrid_ark_sharp_rl1_kernel");active(sh,"pref_scam_hybrid_ark_post_sharp");
-        active(sh,"pref_scam_hybrid_ark_sharp_note");
-        inactive(sh,"pref_sharp_usm_enabled_key");inactive(sh,"pref_sharp_radius_key");inactive(sh,"pref_sharp_micro_enabled_key");
-        inactive(sh,"pref_scam_hybrid_sharp_strength");inactive(sh,"pref_scam_hybrid_sharp_amount");inactive(sh,"pref_scam_hybrid_ark_sharp_guard");
-        inactive(sh,"pref_scam_hybrid_ark_detail_gain");
-        sh.put("pref_scam_hybrid_ark_post_sharp",true);
-        active(sh,"pref_sharp_usm_enabled_key");active(sh,"pref_scam_hybrid_sharp_strength");active(sh,"pref_scam_hybrid_ark_sharp_guard");
-        inactive(sh,"pref_scam_hybrid_sharp_amount");
-        sh.put("pref_scam_hybrid_sharp_mode","rt");
-        active(sh,"pref_sharp_usm_enabled_key");active(sh,"pref_scam_hybrid_ark_sharp_guard");active(sh,"pref_scam_hybrid_ark_detail_gain");
-        inactive(sh,"pref_scam_hybrid_ark_sharp_gain");inactive(sh,"pref_scam_hybrid_ark_post_sharp");inactive(sh,"pref_scam_hybrid_sharp_amount");
-        sh.put("pref_scam_hybrid_sharp_mode","scam");
-        active(sh,"pref_scam_hybrid_sharp_amount");active(sh,"pref_scam_hybrid_ark_sharp_guard");inactive(sh,"pref_sharp_usm_enabled_key");
-        inactive(sh,"pref_scam_hybrid_sharp_strength");inactive(sh,"pref_scam_hybrid_ark_sharp_usm_amount");
-        sh.put("pref_scam_hybrid_sharp_mode","off");
-        inactive(sh,"pref_scam_hybrid_ark_sharp_guard");inactive(sh,"pref_sharp_usm_enabled_key");active(sh,"pref_scam_hybrid_ark_detail_gain");
-        active(sh,"pref_scam_hybrid_sharp_mode");
-        // the master switches of RawTherapee still apply inside the RawTherapee mode
-        sh.put("pref_scam_hybrid_sharp_mode","rt");sh.put("pref_sharp_usm_enabled_key",false);inactive(sh,"pref_sharp_radius_key");
+        Map<String,Object> sh=new HashMap<>(); // P118: only the ARK sharpening stays, its rows are always active
+        active(sh,"pref_scam_hybrid_ark_sharp_gain");active(sh,"pref_scam_hybrid_ark_sharp_rl1_kernel");active(sh,"pref_scam_hybrid_ark_sharp_note");
+        sh.put("pref_scam_hybrid_sharp_mode","off"); // a stored value of the removed mode list changes nothing
+        active(sh,"pref_scam_hybrid_ark_sharp_usm_amount");active(sh,"pref_scam_hybrid_ark_sharp_gain");
         Map<String,Object> dn=new HashMap<>(); // denoise engine "gcam" (default)
         active(dn,"pref_scam_hybrid_dn_luma_mult");active(dn,"pref_scam_hybrid_dn_luma_t1_snr");active(dn,"pref_scam_hybrid_dn_engine");
         inactive(dn,"pref_scam_hybrid_post_luma");inactive(dn,"pref_scam_hybrid_post_chroma");

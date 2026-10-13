@@ -6,7 +6,6 @@
     <string name="shade_group_format">Формат</string>
     <string name="shade_group_hybrid">Hybrid</string>
     <string name="shade_group_scamhdr">SCAM HDR</string>
-    <string name="shade_group_color">Цвет и резкость</string>
     <string name="shade_group_view">Видоискатель</string>
 
     <string name="shade_on">Вкл.</string>
@@ -51,12 +50,10 @@
     <string name="shade_t_hybrid_frames">N-кадров Hybrid</string>
     <string name="shade_t_luma">Luma</string>
     <string name="shade_t_chroma">Chroma</string>
-    <string name="shade_t_sharp">Резкость</string>
     <string name="shade_t_rejection">Отбраковка</string>
     <string name="shade_t_scam_frames">N-кадров SCAM</string>
     <string name="shade_t_long_boost">Удлинение L</string>
     <string name="shade_t_mosaic">Мозаика ISZ</string>
-    <string name="shade_t_usm">USM</string>
     <string name="shade_t_grid">Сетка</string>
     <string name="shade_t_peak">Пик фокуса</string>
     <string name="shade_t_live_raw">Живой RAW</string>
@@ -104,12 +101,6 @@
         <item>1</item>
         <item>2</item>
         <item>3</item>
-    </string-array>
-    <string-array name="shade_s_sharp">
-        <item>ARK</item>
-        <item>RT</item>
-        <item>SCAM</item>
-        <item>Выкл.</item>
     </string-array>
     <string-array name="shade_s_mosaic">
         <item>Bayer</item>

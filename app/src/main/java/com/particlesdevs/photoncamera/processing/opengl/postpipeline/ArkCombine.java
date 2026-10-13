@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Point;
 
-import com.particlesdevs.photoncamera.processing.opengl.GLDrawParams;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
@@ -20,16 +19,11 @@ import static android.opengl.GLES20.GL_NEAREST;
  * Kraken matrices, display power 1/gamma and film toe - with the detail delta of the full-size Sabre merge added after
  * the tone (not multiplied by the shadow lift). The colour comes from arkLow (B-spline) on the 1x grid; on the 2x grid
  * from "arkMid", the 2x2 mean of the output grid, so colour edges stay sharp at 50 MP while the statistics, the fusion
- * and the delta reference stay on arkLow. Output: display-encoded RGB; alpha = sharpening weight for ArkSharpenGuard
- * when a guard follows (the image is then written to main3, which the sharpeners leave alone), else 1.
+ * and the delta reference stay on arkLow. Output: display-encoded RGB, alpha 1.
  */
 public final class ArkCombine extends Node {
-    private final float guard;
-
-    /** @param guard exponent of the sharpening weight gain^-guard (0: no ArkSharpenGuard follows, alpha 1). */
-    public ArkCombine(float guard) {
+    public ArkCombine() {
         super("", "ArkCombine");
-        this.guard = Math.max(0f, guard);
     }
 
     @Override public void Compile() {}
@@ -49,11 +43,11 @@ public final class ArkCombine extends Node {
                     BufferUtils.getFrom(new float[]{1f, 1f, 1f, 1f}), GL_LINEAR, GL_CLAMP_TO_EDGE);
             gainMap = fallback;
         }
-        // With ArkLumaSharpen the delta is ArkCam's own (cbrt S(Ya) - cbrt ref, x1); without it the Sabre luminance with
-        // the flat ark_detail_gain.
+        // With ArkLumaSharpen (always in the pipeline since P118) the delta is ArkCam's own (cbrt S(Ya) - cbrt ref, x1);
+        // the Sabre luminance with the former default gain 2 only if no sharpened luma arrived (defensive fallback).
         final boolean sharp = st.lumaS != null;
         final float sharpMul = st.sharpMul;
-        final float detail = sharp ? ArkTone.value("sharp_gain", 1.0f) : ArkTone.value("detail_gain", 2.0f);
+        final float detail = sharp ? ArkTone.value("sharp_gain", 1.0f) : 2.0f;
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -117,21 +111,7 @@ public final class ArkCombine extends Node {
             glProg.setVar("agxAU", r.slope, r.sp, r.tp, r.sat);
             glProg.setVar("agxBU", r.minEv, r.maxEv, r.ev, (float) r.look);
             glProg.setVar("ditherU", 1);
-            final boolean keep = guard > 0f && pipeline.main3 != input;
-            glProg.setVar("guardU", keep ? guard : 0f);
-            if (keep) {
-                // Keep the toned image for the guard: the sharpeners only ping-pong main1/main2.
-                if (pipeline.main3 == null || !pipeline.main3.mSize.equals(input.mSize)) {
-                    if (pipeline.main3 != null) pipeline.main3.close();
-                    pipeline.main3 = new GLTexture(input.mSize, new GLFormat(GLFormat.DataType.FLOAT_16, GLDrawParams.WorkDim), null,
-                            GL_LINEAR, GL_CLAMP_TO_EDGE);
-                }
-                WorkingTexture = pipeline.main3;
-            } else {
-                WorkingTexture = pipeline.getMain();
-            }
-            st.guard = keep ? guard : 0f;
-            st.preSharpen = keep ? WorkingTexture : null;
+            WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
         } finally {
@@ -142,6 +122,6 @@ public final class ArkCombine extends Node {
                 + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
-                + " guard=" + guard + (pipeline.p3Output ? " output=DisplayP3" : "") + " ms=" + (System.currentTimeMillis() - started));
+                + (pipeline.p3Output ? " output=DisplayP3" : "") + " ms=" + (System.currentTimeMillis() - started));
     }
 }

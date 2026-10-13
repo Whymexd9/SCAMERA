@@ -71,8 +71,6 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mm_bento": return new double[]{0,2,1};
             case "pref_scam_hybrid_mm_fps": return new double[]{0,240,1};
             case "pref_scam_hybrid_mm_shutter": return new double[]{0,8000,1};
-            case "pref_scam_hybrid_sharp_strength": return new double[]{0,2,0};
-            case "pref_scam_hybrid_sharp_amount": return new double[]{0,2,0};
             case "pref_scam_hybrid_noise_photon": case "pref_scam_hybrid_noise_readout": return new double[]{0.25,4,0};
             // Per-channel highlight recovery of the hybrid (ScamRgb clamps the strength to 100 %).
             case "pref_scam_hybrid_highlight_recovery": return new double[]{0,100,0};
@@ -115,9 +113,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_ark_chroma_denoise": return new double[]{0,1,0};
             case "pref_scam_hybrid_ark_clarity": return new double[]{-1,2,0};
             case "pref_scam_hybrid_ark_flat_protect": return new double[]{0,10,0};
-            case "pref_scam_hybrid_ark_detail_gain": return new double[]{0,3,0};
             case "pref_scam_hybrid_ark_delta_chroma": return new double[]{0,1,0};
-            case "pref_scam_hybrid_ark_sharp_guard": return new double[]{0,1,0};
             case "pref_scam_hybrid_ark_sharp_gain": return new double[]{0,3,0};
             case "pref_scam_hybrid_ark_sharp_domain": return new double[]{0,1,1};
             case "pref_scam_hybrid_ark_sharp_scale": return new double[]{0,4,0};

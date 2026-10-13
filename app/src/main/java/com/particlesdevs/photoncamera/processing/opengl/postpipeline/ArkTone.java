@@ -10,8 +10,7 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 /**
  * ARK photo tone of the SCAM Hybrid and SCAM HDR (the one tonemap of both routes): the ArkCam 1.23 / SCAM 9.6 tone of libfc_suppressor.so (Smart-HDR AE, exposure
  * fusion on a guided filter, OKLab grading, AgX Custom; research/hybrid5/tone_port.md sections 2 and 7) with the
- * high-frequency detail of the Sabre merge. Route: ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine ->
- * [sharpening -> ArkSharpenGuard]. This class holds the per-shot state handed between those nodes, their settings and the colour
+ * high-frequency detail of the Sabre merge. Route: ArkStats -> ArkFusion -> ArkLumaSharpen -> ArkCombine. This class holds the per-shot state handed between those nodes, their settings and the colour
  * chain of ark/low.glsl and ark/combine.glsl.
  */
 public final class ArkTone {
@@ -32,10 +31,6 @@ public final class ArkTone {
         public int factor = 2;
         /** Multiplier of the input to the G_CLEAN scale (ark_input_ev). */
         public float inScale = 1f;
-        /** Exponent of the sharpening weight gain^-guard written by ArkCombine (0: no guard). */
-        public float guard;
-        /** ArkCombine's output kept for ArkSharpenGuard (main3; not owned here), null without a guard. */
-        public GLTexture preSharpen;
         /** ArkLumaSharpen: ArkCam's sharpened luminance S(Ya) (.r) on the output grid, null without ARK sharpening. */
         public GLTexture lumaS;
         /** Domain multiplier of lumaS: Ya = min(sharpMul * Y709, 1) (1 = G_CLEAN scale, ae = the delta's domain). */

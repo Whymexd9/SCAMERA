@@ -144,7 +144,7 @@ def ark_gpu(full, f, S, iso=0, max_iso=0, detail=0.0, colour_from_mid=False, raw
             'chromaDnU': S2['pref_sharp_ef_chroma_denoise_key'], 'clarityU': S2['pref_sharp_ef_clarity_key'],
             'flatProtectU': S2['pref_sharp_ef_flat_protect_key'], 'detailGainU': detail, 'filmToeU': S2['pref_ef_film_toe_key'],
             'agxAU': (S2['pref_agx_slope_key'], S2['pref_agx_sp_key'], S2['pref_agx_tp_key'], S2['pref_agx_sat_boost_key']),
-            'agxBU': (S2['pref_agx_min_ev_key'], S2['pref_agx_max_ev_key'], S2['pref_agx_ev_key'], float(look)), 'ditherU': 0, 'guardU': 0.0}
+            'agxBU': (S2['pref_agx_min_ev_key'], S2['pref_agx_max_ev_key'], S2['pref_agx_ev_key'], float(look)), 'ditherU': 0}
     comb.update(colour)
     out = run('ark/combine', (W, H), {'InputBuffer': inp, 'GainMap': gm, 'ArkLow': low, 'ArkColour': colour_tex, 'ArkFused': fused,
                                       'ArkDetailRef': ref}, comb, dtype='f2')
@@ -246,8 +246,8 @@ def lamp_edge_check():
     return ok
 
 
-def colour_and_guard_check():
-    """ark/low.glsl colour chain (matrices, white point, LSC gain, input scale, box mean) and ark/guard.glsl."""
+def colour_check():
+    """ark/low.glsl colour chain (matrices, white point, LSC gain, input scale, box mean)."""
     rng = np.random.default_rng(3)
     H, W = 37, 53
     cam = rng.uniform(0.0, 2.0, (H, W, 3)).astype(np.float32)
@@ -261,11 +261,8 @@ def colour_and_guard_check():
     pad = np.pad(lin, ((0, 3 - (H - 1) % 4), (0, 3 - (W - 1) % 4), (0, 0)), mode='edge')
     exp = pad.reshape(pad.shape[0] // 4, 4, pad.shape[1] // 4, 4, 3).mean(axis=(1, 3))
     e1 = np.abs(low - exp).max() / np.abs(exp).max()
-    pre = rng.uniform(0, 1, (H, W, 4)).astype(np.float32); sharp = rng.uniform(0, 1, (H, W, 4)).astype(np.float32)
-    out = read(run('ark/guard', (W, H), {'InputBuffer': tex(sharp), 'PreBuffer': tex(pre)}, {}))
-    e2 = np.abs(out[..., :3] - (pre[..., :3] + pre[..., 3:] * (sharp[..., :3] - pre[..., :3]))).max()
-    ok = e1 < 1e-4 and e2 < 1e-5 and np.all(out[..., 3] == 1)
-    print('arkLow colour chain rel. error %.2e, guard error %.2e  %s' % (e1, e2, 'PASS' if ok else 'FAIL'))
+    ok = e1 < 1e-4
+    print('arkLow colour chain rel. error %.2e  %s' % (e1, 'PASS' if ok else 'FAIL'))
     return ok
 
 
@@ -297,7 +294,7 @@ def synthetic(H=384, W=512):
 
 
 def main():
-    ok = colour_and_guard_check()
+    ok = colour_check()
     ok &= detail_check()
     ok &= lamp_edge_check()
     syn = synthetic()

@@ -146,87 +146,9 @@
     <string name="perm_dcim_failed">Without access to the DCIM folder RAW video cannot be saved and device configs cannot be read. Tap Retry and select the DCIM folder.</string>
     <string name="perm_retry">Retry</string>
 
-    <!-- Sharpening, RawTherapee algorithms -->
-    <string name="pref_sharp_radius_default" translatable="false">0.5</string>
-    <string name="pref_sharp_amount_default" translatable="false">75</string>
-    <string name="pref_sharp_contrast_default" translatable="false">20</string>
-    <string name="pref_sharp_threshold_bl_default" translatable="false">20</string>
-    <string name="pref_sharp_threshold_tl_default" translatable="false">80</string>
-    <string name="pref_sharp_threshold_tr_default" translatable="false">1200</string>
-    <string name="pref_sharp_threshold_br_default" translatable="false">2000</string>
-    <string name="pref_sharp_edges_radius_default" translatable="false">1.9</string>
-    <string name="pref_sharp_edges_tolerance_default" translatable="false">1800</string>
-    <string name="pref_sharp_halo_amount_default" translatable="false">85</string>
-    <string name="pref_sharp_micro_amount_default" translatable="false">20</string>
-    <string name="pref_sharp_micro_uniformity_default" translatable="false">5</string>
-    <string name="pref_sharp_micro_contrast_default" translatable="false">20</string>
-    <bool name="pref_sharp_edges_only_default">false</bool>
-    <bool name="pref_sharp_halo_control_default">true</bool>
-    <bool name="pref_sharp_micro_matrix_default">false</bool>
-
-
-    <string name="sharp_radius">Radius</string>
-    <string name="sharp_radius_desc">Width of the sharpened outlines, px. Higher: thicker outlines, more halos; lower: finer.</string>
-    <string name="sharp_amount">Amount, %</string>
-    <string name="sharp_amount_desc">Unsharp mask strength. Higher: sharper, but more halos and noise; lower: softer.</string>
-    <string name="sharp_contrast">Contrast threshold, %</string>
-    <string name="sharp_contrast_desc">Contrast below which sharpening is skipped. Higher: flat areas and noise untouched; lower: sharpens all.</string>
-    <string name="sharp_threshold_bl">Point 1 (ramp-up starts)</string>
-    <string name="sharp_threshold_tl">Point 2 (full strength)</string>
-    <string name="sharp_threshold_tr">Point 3 (fall-off starts)</string>
-    <string name="sharp_threshold_br">Point 4 (fall-off ends)</string>
-    <string name="sharp_edges_only">Enable</string>
-    <string name="sharp_edges_only_desc">Sharpen edges only: flat areas and noise are not boosted.</string>
-    <string name="sharp_edges_radius">Detector radius</string>
-    <string name="sharp_edges_radius_desc">Edge search radius. Higher: only large outlines are sharpened; lower: fine detail too.</string>
-    <string name="sharp_edges_tolerance">Tolerance</string>
-    <string name="sharp_edges_tolerance_desc">Brightness step that counts as an edge. Higher: only strong edges sharpened; lower: weak ones too.</string>
-    <string name="sharp_halo_control">Enable</string>
-    <string name="sharp_halo_control_desc">Halo control: sharpening stays within the brightness of neighbouring pixels.</string>
-    <string name="sharp_halo_amount">Amount, %</string>
-    <string name="sharp_halo_amount_desc">Halo control strength, %. Higher: fewer light and dark fringes; lower: crisper, but with fringes.</string>
-    <string name="sharp_micro_amount">Strength</string>
-    <string name="sharp_micro_amount_desc">Microcontrast strength. Higher: more visible texture, and noise; lower: softer.</string>
-    <string name="sharp_micro_uniformity">Uniformity</string>
-    <string name="sharp_micro_uniformity_desc">Evenness across brightness. Higher: stronger, also in highlights and shadows; lower: mostly midtones.</string>
-    <string name="sharp_micro_contrast">Contrast threshold, %</string>
-    <string name="sharp_micro_contrast_desc">Contrast below which microcontrast is skipped. Higher: flat areas and noise untouched; lower: everywhere.</string>
-    <string name="sharp_micro_matrix">3x3 matrix</string>
-    <string name="sharp_micro_matrix_desc">3x3 window instead of 5x5: the finest texture is boosted.</string>
     <string name="wide169" translatable="false">16:9</string>
-    <bool name="pref_sharp_usm_enabled_default">true</bool>
-    <bool name="pref_sharp_deconv_enabled_default">false</bool>
-    <bool name="pref_sharp_micro_enabled_default">false</bool>
-    <string name="sharp_usm_enabled">Enable Unsharp Mask</string>
-    <string name="sharp_deconv_enabled">Enable RL deconvolution</string>
-    <string name="sharp_micro_enabled">Enable microcontrast</string>
 
-    <!-- Richardson-Lucy, three staged PSFs -->
-    <string name="pref_sharp_deconv_halo_default" translatable="false">100</string>
-    <string name="pref_sharp_deconv_halo_margin_default" translatable="false">0.15</string>
-    <string name="pref_sharp_deconv_halo_macro_default" translatable="false">0.4</string>
-    <string name="pref_sharp_deconv_kernel_1_default" translatable="false">2</string>
-    <string name="pref_sharp_deconv_radius_1_default" translatable="false">1.0</string>
-    <string name="pref_sharp_deconv_amount_1_default" translatable="false">100</string>
-    <string name="pref_sharp_deconv_iterations_1_default" translatable="false">3</string>
-    <string name="pref_sharp_deconv_damping_1_default" translatable="false">0</string>
-    <string name="pref_sharp_deconv_kernel_2_default" translatable="false">1</string>
-    <string name="pref_sharp_deconv_radius_2_default" translatable="false">0.0</string>
-    <string name="pref_sharp_deconv_amount_2_default" translatable="false">0</string>
-    <string name="pref_sharp_deconv_iterations_2_default" translatable="false">0</string>
-    <string name="pref_sharp_deconv_damping_2_default" translatable="false">0</string>
-    <string name="pref_sharp_deconv_kernel_3_default" translatable="false">0</string>
-    <string name="pref_sharp_deconv_radius_3_default" translatable="false">0.5</string>
-    <string name="pref_sharp_deconv_amount_3_default" translatable="false">150</string>
-    <string name="pref_sharp_deconv_iterations_3_default" translatable="false">3</string>
-    <string name="pref_sharp_deconv_damping_3_default" translatable="false">0</string>
-    <string name="sharp_deconv_halo">Strength, %</string>
-    <string name="sharp_deconv_halo_margin">Texture margin</string>
-    <string name="sharp_deconv_halo_margin_desc">Leeway for fine texture in halo suppression. Higher: crisper texture, risk of fringes; lower: stricter.</string>
-    <string name="sharp_deconv_halo_macro">Macro edge threshold</string>
-    <string name="sharp_deconv_halo_macro_desc">Contrast from which halos are fully suppressed. Higher: only on the hardest edges; lower: on weaker too.</string>
-    <string name="sharp_deconv_kernel">PSF kernel type</string>
-    <string name="sharp_deconv_kernel_desc">%s. Shape of the blur this stage corrects.</string>
+    <!-- PSF of the ARK Richardson-Lucy stages (pref_scam_hybrid_ark_sharp_rl*_kernel) -->
     <string-array name="sharp_deconv_kernel_entries">
         <item>Gaussian (classic)</item>
         <item>Optics / lens (Pillbox)</item>
@@ -237,12 +159,6 @@
         <item>1</item>
         <item>2</item>
     </string-array>
-    <string name="sharp_deconv_radius">Radius</string>
-    <string name="sharp_deconv_amount">Amount, %</string>
-    <string name="sharp_deconv_iterations">Iterations</string>
-    <string name="sharp_deconv_iterations_desc">Passes of the stage. Higher: sharper but slower, more artefacts; lower: softer; 0: stage off.</string>
-    <string name="sharp_deconv_damping">Damping</string>
-    <string name="sharp_deconv_damping_desc">Holds back correction where the difference looks like noise. Higher: less noise, but softer; 0: off.</string>
     <string name="pref_zsl_buffer_count_default" translatable="false">50</string>
     <string name="zsl_buffer_count">ZSL buffer frames</string>
     <string name="zsl_buffer_count_summary">RAW frames kept before the press. Higher: more memory used; lower: the merge may run short of frames.</string>

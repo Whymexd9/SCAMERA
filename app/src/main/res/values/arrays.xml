@@ -235,18 +235,6 @@
         <item>2</item>
         <item>3</item>
     </string-array>
-    <string-array name="scam_hybrid_sharp_mode_entries">
-        <item>ARK: as in ArkCam (default)</item>
-        <item>RawTherapee</item>
-        <item>SCAM: no halos</item>
-        <item>Off</item>
-    </string-array>
-    <string-array name="scam_hybrid_sharp_mode_values" translatable="false">
-        <item>ark</item>
-        <item>rt</item>
-        <item>scam</item>
-        <item>off</item>
-    </string-array>
     <string-array name="scam_hybrid_dn_engine_entries">
         <item>GCam / Hybrid (ArkCam)</item>
         <item>NLM (previous)</item>
@@ -257,12 +245,10 @@
     </string-array>
     <string-array name="scam_hybrid_dn_map_entries">
         <item>Auto (frame map, if the merge made one)</item>
-        <item>Effective frame map</item>
         <item>Uniform</item>
     </string-array>
     <string-array name="scam_hybrid_dn_map_values" translatable="false">
         <item>auto</item>
-        <item>frames</item>
         <item>uniform</item>
     </string-array>
     <string-array name="scam_hybrid_local_align_entries">

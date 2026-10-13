@@ -89,15 +89,11 @@ public class HybridSettingsTest {
         assertNull(root.findPreference("pref_scam_hybrid_enabled"));
         assertTrue(root.findPreference(PreferenceKeys.ROUTE_KEY) instanceof androidx.preference.ListPreference);
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);collect(ark,inside);
-        // The RawTherapee sharpening (pref_sharp_*, shared by both routes) sits next to «Резкость Hybrid» since the settings audit;
-        // it keeps its own keys, so its page is the one part of ArkCore without the hybrid prefix.
-        PreferenceScreen rt=ark.findPreference("sharp_settings_screen");
-        assertNotNull(rt);assertNotNull(((PreferenceGroup)ark.findPreference("scam_hybrid_sharp_category")).findPreference("sharp_settings_screen"));
-        List<Preference> rtRows=new ArrayList<>();collect(rt,rtRows);
+        // P118: only the ARK sharpening stays; the RawTherapee page (the one part of ArkCore without the hybrid prefix) is gone.
+        assertNull(ark.findPreference("sharp_settings_screen"));
         Set<String> insideKeys=new HashSet<>();
         for(Preference p:inside){
             String key=p.getKey();
-            if(rtRows.contains(p)){assertTrue(String.valueOf(key),key==null||key.startsWith("pref_sharp_")||key.endsWith("_screen")||key.startsWith("rl_stage_")||key.equals("sharp_rt_note"));continue;}
             assertNotNull(key);insideKeys.add(key);
             if(p instanceof PreferenceGroup)continue;
             assertTrue(key,key.startsWith(PreferenceKeys.HYBRID_PREFIX));
@@ -175,13 +171,10 @@ public class HybridSettingsTest {
         assertTrue(PreferenceKeys.isScamDespeckleEnabled());
         assertFalse(PreferenceKeys.useStockBracketPlanner());
         assertEquals("auto",PreferenceKeys.getScamCreSource());
-        assertEquals("ark",PreferenceKeys.scamSharpenMode());
         manager.set("default_scope","pref_scam_hybrid_noise_photon","2,5");
         manager.set("default_scope","pref_scam_hybrid_zsl_frames","99");
-        manager.set("default_scope","pref_scam_hybrid_sharp_mode","off");
         assertEquals(2.5f,PreferenceKeys.routeInternalValue("noise_photon",1f),0f);
         assertEquals(44,PreferenceKeys.getScamZslFrames());
-        assertEquals("off",PreferenceKeys.scamSharpenMode());
         // "hybrid_<key>" always names a hybrid setting, in any profile.
         manager.set("default_scope","pref_scam_hybrid_bento_factor","12");
         assertEquals(12f,PreferenceKeys.routeInternalValue("hybrid_bento_factor",8f),0f);
@@ -193,23 +186,43 @@ public class HybridSettingsTest {
         assertEquals(3f,PreferenceKeys.routeInternalValue("noise_photon",1f),0f);
         assertEquals(8,PreferenceKeys.getScamZslFrames());
         assertFalse(PreferenceKeys.isScamDespeckleEnabled());
-        // the ARK sharpening is shared by both routes
-        assertEquals("off",PreferenceKeys.scamSharpenMode());
         assertEquals("bundled",PreferenceKeys.getScamCreSource());
         assertEquals("pref_scamold_ae_mid",PreferenceKeys.profileKey("pref_scamold_ae_mid"));
         assertEquals(12f,PreferenceKeys.routeInternalValue("hybrid_bento_factor",8f),0f);
         PreferenceKeys.endShotProfile();
     }
 
-    @Test public void rawTherapeeStrengthScalesOnlyWhileAHybridShotIsProcessed() {
-        float plain=PreferenceKeys.getSharpAmount();
-        manager.set("default_scope","pref_scam_hybrid_sharp_strength","0.5");
-        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
-        assertEquals(plain,PreferenceKeys.getSharpAmount(),0f);
-        PreferenceKeys.beginShotProfile(true);
-        assertEquals(plain*.5f,PreferenceKeys.getSharpAmount(),1e-6f);
-        PreferenceKeys.beginShotProfile(false);
-        assertEquals(plain,PreferenceKeys.getSharpAmount(),0f);
+    /**
+     * P118 (owner, 2026-10-13): only the ARK sharpening stays. The page «Резкость» keeps the ARK rows; the mode list, the
+     * RawTherapee page, «Доп. резкость после тона», the guard, the RawTherapee / SCAM amounts and the Sabre detail (used only
+     * without ARK sharpening) are gone, and their stored values are dropped.
+     */
+    @Test public void onlyTheArkSharpeningStays() {
+        PreferenceScreen root=inflate();
+        PreferenceScreen sharp=root.findPreference("scam_hybrid_ark_sharp_screen");
+        assertNotNull(sharp);
+        for(String kept:new String[]{"pref_scam_hybrid_ark_sharp_note","pref_scam_hybrid_ark_sharp_gain","pref_scam_hybrid_ark_sharp_domain",
+                "pref_scam_hybrid_ark_sharp_scale","pref_scam_hybrid_ark_sharp_usm_amount","pref_scam_hybrid_ark_sharp_bilateral_amount",
+                "pref_scam_hybrid_ark_sharp_gf_lc","pref_scam_hybrid_ark_sharp_film_grain","pref_scam_hybrid_ark_sharp_rl1_amount",
+                "pref_scam_hybrid_ark_sharp_halo_control"})
+            assertNotNull(kept,sharp.findPreference(kept));
+        String[] gone={"pref_scam_hybrid_sharp_mode","sharp_settings_screen","unsharp_settings_screen","deconvolution_settings_screen",
+                "microcontrast_settings_screen","pref_sharp_usm_enabled_key","pref_sharp_radius_key","pref_sharp_deconv_enabled_key",
+                "pref_sharp_micro_enabled_key","pref_scam_hybrid_ark_post_sharp","pref_scam_hybrid_ark_sharp_guard",
+                "pref_scam_hybrid_sharp_strength","pref_scam_hybrid_sharp_amount","pref_scam_hybrid_ark_detail_gain"};
+        for(String key:gone)assertNull(key,root.findPreference(key));
+        // the ARK rows are never greyed for a sharpening mode
+        Map<String,Object> s=new HashMap<>();s.put("pref_scam_hybrid_sharp_mode","off");
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_sharp_gain"));
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_sharp_rl1_amount"));
+        prefs.edit().clear().putString("pref_scam_hybrid_sharp_mode","rt")
+                .putBoolean("pref_scam_hybrid_ark_post_sharp",true).putString("pref_scam_hybrid_ark_sharp_guard","0.5")
+                .putString("pref_scam_hybrid_sharp_strength","1").putString("pref_scam_hybrid_sharp_amount","1.2")
+                .putString("pref_scam_hybrid_ark_detail_gain","2").putBoolean("pref_sharp_usm_enabled_key",true)
+                .putString("pref_sharp_deconv_radius_1_key","1.0").putString("pref_scamhdr_sharp_mode","1")
+                .putString("pref_scam_hybrid_ark_sharp_gain","1.5").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertEquals(java.util.Collections.singleton("pref_scam_hybrid_ark_sharp_gain"),prefs.getAll().keySet());
     }
 
     @Test public void tuningTextAndOutputUseTheNewKeys() {
@@ -267,6 +280,29 @@ public class HybridSettingsTest {
         assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61","?"));
         assertNotNull(settings.findPreference("pref_scam_hybrid_highlight_recovery"));
         assertNotNull(hybrid.findPreference("pref_scam_hybrid_hot_base_sigma"));
+    }
+
+    /** P118: rows that act only with another setting off its default are greyed with the reason; «Карта силы» has no duplicate. */
+    @Test public void conditionalRowsFollowTheirSetting() {
+        Map<String,Object> s=new HashMap<>();
+        for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
+                "pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
+            assertNotNull(k,new SettingsAvailability(s).reason(k));
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope")); // Custom is the default look
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
+        s.put("pref_scam_hybrid_sabre61","2");s.put("pref_scam_hybrid_shasta_mode","1");s.put("pref_scam_hybrid_bento","1");
+        for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
+                "pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
+            assertNull(k,new SettingsAvailability(s).reason(k));
+        s.put("pref_scam_hybrid_ark_agx_look","1");s.put("pref_scam_hybrid_local_align","0");
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope"));
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
+        // Motion mode's own Bento (Auto) uses the trigger
+        Map<String,Object> m=new HashMap<>();m.put("pref_motion_mode",true);
+        assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_bento_trigger"));
+        prefs.edit().clear().putString("pref_scam_hybrid_dn_strength_map","frames").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertEquals("auto",prefs.getString("pref_scam_hybrid_dn_strength_map",null));
     }
 
     /** P118: RAW CA as RawTherapee's CA_correct (P28) is gone: no page, a stored key never reaches the worker and is dropped. */
@@ -558,23 +594,9 @@ public class HybridSettingsTest {
         assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
     }
 
-    @Test public void defaultsRevisionThreeMovesTheFormerSharpDefaultToArk() {
-        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid")
-                .putString("pref_scam_hybrid_sharp_mode","rt").putInt("pref_scam_hybrid_defaults_rev",2).commit();
-        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertEquals("ark",prefs.getString("pref_scam_hybrid_sharp_mode",""));
-        assertEquals(7,prefs.getInt("pref_scam_hybrid_defaults_rev",0)); // revisions 6 / 7 mark at once (no mosaic key stored)
-        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
-        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid")
-                .putString("pref_scam_hybrid_sharp_mode","scam").commit();
-        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertEquals("scam",prefs.getString("pref_scam_hybrid_sharp_mode",""));
-        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
-        // after the revision a chosen RawTherapee stays
-        prefs.edit().putString("pref_scam_hybrid_sharp_mode","rt").commit();
-        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertEquals("rt",prefs.getString("pref_scam_hybrid_sharp_mode",""));
+    @Test public void defaultsRevisionThreeMovesTheFormerNoiseDefaultsToArk() {
         // the former noise-reduction safeguards (stored XML defaults) become ArkCam's values; other values stay
+        // (its former sharp_mode "rt" -> "ark" step is gone with the mode list, P118)
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",2)
                 .putString("pref_scam_hybrid_dn_revert_max","2").putString("pref_scam_hybrid_dn_coarse_stock","0.5")
                 .putString("pref_scam_hybrid_dn_chroma_floor","1.5").commit();

@@ -65,8 +65,10 @@ public final class CameraManager2 {
                 Log.d("CameraManager2", "Package spoof changed (" + spoofSignature + "): camera scan cache dropped");
             }
             // A scan from before the auxiliary sensors without lens / gain / exposure were left out (isAuxiliarySensor) runs once more.
-            if (!"aux3".equals(mSettingsManager.getString(_CAMERAS, "aux_revision", ""))) {
-                mSettingsManager.set(_CAMERAS, "aux_revision", "aux3"); // aux3: vivo teleconverter / dummy profiles
+            if (!"aux4".equals(mSettingsManager.getString(_CAMERAS, "aux_revision", ""))) {
+                // aux3: vivo teleconverter / dummy profiles; aux4 (P120): vivo multispectral / pre-ISP sensors (the X300 Ultra's
+                // camera 7 took every camera down when opened) and depth-only cameras
+                mSettingsManager.set(_CAMERAS, "aux_revision", "aux4");
                 mSettingsManager.remove(_CAMERAS, ALL_CAMERA_IDS_KEY);
                 mSettingsManager.remove(_CAMERAS, ALL_CAMERA_LENS_KEY);
                 mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
@@ -144,6 +146,7 @@ public final class CameraManager2 {
         // vivo teleconverter / dummy profiles (owner, 2026-10-13: «X300 его не поддерживает»); scam_dev vivo_teleconverter 1 keeps them
         if (AuxiliarySensors.vivoProfileOnly(vivoCameraType(characteristics))
                 && !com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vivo_teleconverter", false)) return true;
+        if (AuxiliarySensors.notAPhotoCamera(characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES))) return true;
         float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         android.util.Range<Integer> iso = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
         android.util.Range<Long> exposure = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);

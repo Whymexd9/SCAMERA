@@ -48,7 +48,7 @@ public class PostPipeline extends GLBasePipeline {
      * SCAM/GCam denoise) per tap as before, so negative taps of the colour matrix change nothing there.
      */
     public boolean signedRgb;
-    /** ARK tone of the SCAM Hybrid: state handed from ArkStats to ArkCombine / ArkSharpenGuard; null outside that route. */
+    /** ARK tone of the SCAM Hybrid: state handed from ArkStats to ArkCombine; null outside that route. */
     public ArkTone.State ark;
     public ArrayList<Bitmap> debugData = new ArrayList<>();
     public Point cropSize;
@@ -569,38 +569,23 @@ public class PostPipeline extends GLBasePipeline {
         add(new ScamRgb());
         add(new HighlightRecovery());
         add(new ScamHdrDenoise());
-        // Sharpening "ark" = ArkCam's own (ArkLumaSharpen before the delta; RawTherapee after the tone only with
-        // ark_post_sharp), else rt | scam | off after the tone. Weight of the post-tone sharpening where the fusion lifted
-        // the shadows (ArkSharpenGuard), 0 = none.
-        final String sharpen = PreferenceKeys.scamSharpenMode();
-        final boolean arkSharp = "ark".equals(sharpen);
-        final boolean arkPostSharp = arkSharp ? PreferenceKeys.hybridSwitch("ark_post_sharp", false) : !"off".equals(sharpen);
-        final float arkGuard = arkPostSharp ? Math.max(0f, PreferenceKeys.hybridValue("ark_sharp_guard", 0.5f)) : 0f;
         // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
         if (captureDemosaic) add(new LinearExposure());
         final ArkStats arkStats = new ArkStats();
         add(arkStats);
         add(new ArkFusion());
-        if (arkSharp) {
-            final ArkLumaSharpen arkLumaSharpen = new ArkLumaSharpen();
-            // W1.6: in the G_CLEAN domain the sharpening needs nothing of the AE, so ArkStats issues its GPU passes before
-            // the CPU Smart-HDR statistics run (ArkLumaSharpen then only passes the image on).
-            arkStats.earlySharpen = arkLumaSharpen;
-            add(arkLumaSharpen);
-        }
-        add(new ArkCombine(arkGuard));
-        // ArkCam's sharpening ran before the delta (sharp mode "ark"); otherwise, or with ark_post_sharp, the chosen
-        // sharpening (rt|scam, own settings) on the toned image, weakened in lifted shadows; texture only on request
-        // (ArkCam has no mid-frequency boost).
+        // The only sharpening is ArkCam's own (ArkLumaSharpen before the detail delta; P118, owner 2026-10-13: the
+        // RawTherapee and SCAM sharpenings and «off» are gone, the ARK strength rows weaken it).
+        final ArkLumaSharpen arkLumaSharpen = new ArkLumaSharpen();
+        // W1.6: in the G_CLEAN domain the sharpening needs nothing of the AE, so ArkStats issues its GPU passes before
+        // the CPU Smart-HDR statistics run (ArkLumaSharpen then only passes the image on).
+        arkStats.earlySharpen = arkLumaSharpen;
+        add(arkLumaSharpen);
+        add(new ArkCombine());
+        // Texture only on request (ArkCam has no mid-frequency boost).
         final boolean texture = PreferenceKeys.hybridSwitch("ark_texture", false);
-        Log.i("SCAM_PIPELINE", "ARK tail: sharpen=" + sharpen + (arkSharp ? " (ArkLumaSharpen, post=" + arkPostSharp + ")" : "")
-                + " guard=" + arkGuard + " texture=" + texture);
-        if (arkPostSharp) {
-            if ("scam".equals(sharpen)) add(new ScamSharpen());
-            else add(new RTSharpening());
-        }
-        if (arkGuard > 0f) add(new ArkSharpenGuard());
+        Log.i("SCAM_PIPELINE", "ARK tail: sharpen=ark (ArkLumaSharpen) texture=" + texture);
         if (texture) add(new ScamLocalContrast());
         if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
         add(new RotateWatermark(getRotation()));

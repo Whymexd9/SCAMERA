@@ -42,7 +42,7 @@ public final class DevKeys {
 
     /** scam_dev keys whose value is a menu setting as well (the line only overrides it for an A/B). */
     public static final Set<String> MENU_BACKED = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "hybrid", "hybrid_output", "hybrid_downsampler", "hybrid_profile", "hybrid_sharp_mode", "hybrid_motion_boost")));
+            "hybrid", "hybrid_output", "hybrid_downsampler", "hybrid_profile", "hybrid_motion_boost")));
 
     private static List<Key> all;
 

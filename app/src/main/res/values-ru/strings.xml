@@ -125,51 +125,11 @@
     <string name="perm_group_files">Файлы и медиаконтент</string>
     <string name="perm_group_storage">Память</string>
     <string name="perm_rationale_media_title">Доступ к фото и видео</string>
-    <string name="sharp_radius">Радиус</string>
-    <string name="sharp_radius_desc">Толщина подчёркнутых контуров, px. Больше — контуры толще, заметнее ореолы; меньше — тоньше.</string>
-    <string name="sharp_amount">Сила, %</string>
-    <string name="sharp_amount_desc">Сила нерезкой маски. Больше — резче, но больше ореолов и шума; меньше — мягче.</string>
-    <string name="sharp_contrast">Порог контраста, %</string>
-    <string name="sharp_contrast_desc">Ниже этого контраста резкости нет. Больше — гладкие места и шум не трогаются, меньше — резкость везде.</string>
-    <string name="sharp_threshold_bl">Узел 1 (начало нарастания)</string>
-    <string name="sharp_threshold_tl">Узел 2 (полная сила)</string>
-    <string name="sharp_threshold_tr">Узел 3 (начало спада)</string>
-    <string name="sharp_threshold_br">Узел 4 (конец спада)</string>
-    <string name="sharp_edges_only">Включить</string>
-    <string name="sharp_edges_only_desc">Резкость только по краям: гладкие участки и шум не усиливаются.</string>
-    <string name="sharp_edges_radius">Радиус детектора</string>
-    <string name="sharp_edges_tolerance">Допуск</string>
-    <string name="sharp_edges_tolerance_desc">Какой перепад яркости считается краем. Больше — резкость только у сильных краёв, меньше — и у слабых.</string>
-    <string name="sharp_halo_control">Включить</string>
-    <string name="sharp_halo_control_desc">Контроль ореолов: резкость не выходит за яркость соседних пикселей.</string>
-    <string name="sharp_halo_amount">Сила, %</string>
-    <string name="sharp_micro_amount">Сила</string>
-    <string name="sharp_micro_uniformity">Однородность</string>
-    <string name="sharp_micro_uniformity_desc">Равномерность по яркости. Больше — сильнее, в том числе в светах и тенях; меньше — в основном в средних тонах.</string>
-    <string name="sharp_micro_contrast">Порог контраста, %</string>
-    <string name="sharp_micro_matrix">Матрица 3x3</string>
-    <string name="sharp_micro_matrix_desc">Окно 3x3 вместо 5x5: подчёркивается самая мелкая фактура.</string>
-    <string name="sharp_usm_enabled">Включить Unsharp Mask</string>
-    <string name="sharp_deconv_enabled">Включить RL-деконволюцию</string>
-    <string name="sharp_micro_enabled">Включить микроконтраст</string>
-    <string name="sharp_deconv_halo">Сила, %</string>
-    <string name="sharp_deconv_halo_margin">Запас на текстуру</string>
-    <string name="sharp_deconv_halo_margin_desc">Запас для мелкой фактуры при подавлении ореолов. Больше — фактура чётче, но риск каёмок; меньше — строже.</string>
-    <string name="sharp_deconv_halo_macro">Порог макро-кромки</string>
-    <string name="sharp_deconv_halo_macro_desc">Контраст, с которого ореолы подавляются полностью. Больше — лишь на самых резких краях, меньше — и на слабых.</string>
-    <string name="sharp_deconv_kernel">Тип ядра PSF</string>
-    <string name="sharp_deconv_kernel_desc">%s. Форма размытия, которое исправляет эта ступень.</string>
     <string-array name="sharp_deconv_kernel_entries">
         <item>Гаусс (классика)</item>
         <item>Оптика / линза (Pillbox)</item>
         <item>Диск Эйри (волновая дифракция)</item>
     </string-array>
-    <string name="sharp_deconv_radius">Радиус</string>
-    <string name="sharp_deconv_amount">Сила, %</string>
-    <string name="sharp_deconv_iterations">Итерации</string>
-    <string name="sharp_deconv_iterations_desc">Число проходов ступени. Больше — резче, но медленнее и с артефактами; меньше — мягче; 0 — выкл.</string>
-    <string name="sharp_deconv_damping">Затухание</string>
-    <string name="sharp_deconv_damping_desc">Гасит коррекцию там, где разница похожа на шум. Больше — меньше шума, но мягче; 0 — выкл.</string>
     <string name="live_viewfinder_raw">Живой видоискатель</string>
     <string name="live_viewfinder_raw_summary">Видоискатель сам проявляет RAW. Выкл. — обычное превью камеры. На готовое фото не влияет.</string>
     <string name="remosaic_enabled">Включить ремозаик</string>

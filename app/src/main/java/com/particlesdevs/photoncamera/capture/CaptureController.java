@@ -2166,6 +2166,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private String physicalID = "";
+    /** P120: ImageReader.newInstance aborts the process natively at 63 images (SCAM TEST: X300 Ultra, nubia NX563J); a session takes 59. */
+    static final int MAX_READER_IMAGES = 59;
 
     /** P87: the physical camera the session's RAW and characteristics come from (the manual rulers' range is kept per camera). */
     public String physicalId() {
@@ -2367,8 +2369,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true) && isRawFormat(mTargetFormat)
                     // floor 16: the Galaxy S24 Ultra's RAW stream ran at 15 fps with 8 reader buffers, 28 with 12, 30 from 16 (SCAM
                     // TEST ring depth search, 2026-05-18); the «Движение» ring of 8 frames would otherwise get a reader of 11
-                    ? Math.max(16, Math.min(Math.min(zslRingCapacity() + 3, 103), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
-                    : Math.min(zslRingCapacity() + 3, 103);
+                    ? Math.max(16, Math.min(Math.min(zslRingCapacity() + 3, MAX_READER_IMAGES), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
+                    : Math.min(zslRingCapacity() + 3, MAX_READER_IMAGES);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         // Diagnostics: the vivo X200 Pro's 4096x3072 RAW holds its image in 4000x3000 (zeros elsewhere, black stripe at the edge);
         // whether the arrays say so decides how a crop to the valid area can be done.
@@ -4027,9 +4029,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     private boolean mZslRingUnavailable;
 
-    /** The frames the ring keeps: the setting, within the memfd's slots. */
+    /** The frames the ring keeps: the setting, within the memfd's slots (without it: the reader's images, P120). */
     private int ringCapacityLocked() {
-        return mZslRing != null ? Math.min(zslRingCapacity(), mZslRing.ringSlots()) : zslRingCapacity();
+        return mZslRing != null ? Math.min(zslRingCapacity(), mZslRing.ringSlots()) : Math.min(zslRingCapacity(), MAX_READER_IMAGES - 3);
     }
 
     /** P91: the ring's memfd goes (camera closed); frames a shot still holds keep it until they are freed. */

@@ -111,16 +111,21 @@ public final class AvifGlideDecoder implements ResourceDecoder<InputStream, Bitm
         return ImageDecoder.decodeBitmap(decoderSource, (decoder, info, s) -> {
             decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
             if (width > 0 && height > 0) {
-                int sample = 1;
+                // P117: inside the request (the viewer's 4096 px): a power-of-two sample kept a 50 MP photo at full size
+                // (~200 MB), which the view cannot draw
                 Size size = info.getSize();
-                int w = size.getWidth();
-                int h = size.getHeight();
-                while (w / (sample * 2) >= width && h / (sample * 2) >= height) {
-                    sample *= 2;
-                }
-                decoder.setTargetSampleSize(sample);
+                int[] fit = fitInside(size.getWidth(), size.getHeight(), width, height);
+                if (fit[0] != size.getWidth() || fit[1] != size.getHeight()) decoder.setTargetSize(fit[0], fit[1]);
             }
         });
+    }
+
+    /** {w, h} scaled down (never up) to fit inside maxW x maxH, aspect kept. */
+    @VisibleForTesting
+    static int[] fitInside(int w, int h, int maxW, int maxH) {
+        if (w <= 0 || h <= 0 || maxW <= 0 || maxH <= 0) return new int[]{w, h};
+        double s = Math.min(1.0, Math.min((double) maxW / w, (double) maxH / h));
+        return new int[]{Math.max(1, (int) Math.round(w * s)), Math.max(1, (int) Math.round(h * s))};
     }
 
     /** All of 64 sampled pixels transparent or black: a decode that produced nothing (a photo never is). */

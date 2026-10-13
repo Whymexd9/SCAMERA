@@ -67,7 +67,6 @@ uniform float filmToeU;             // film toe (0 = off)
 uniform vec4 agxAU;                 // slope, shoulder power, toe power, saturation; slope <= 0 -> 2.7, 1.35, 1.6, 1
 uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -> -8.5, 3.5, 0.3, 4
 uniform int ditherU;                // 1 = interleaved-gradient dither +-0.5 LSB (as the kernel); unset -> none
-uniform float guardU;               // alpha = gain^-guard: the sharpening weight read by ArkSharpenGuard; <= 0 -> alpha 1
 uniform int headroomU;              // 1: real headroom above 1 (clipped RAW recovered / Bento); 0: the excess is WB headroom
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
 out vec4 Output;
@@ -453,6 +452,5 @@ void main() {
         float d1 = fract(0.06711056 * float(xy.x) + 0.00583715 * float(xy.y));
         outRgb += (fract(52.9829189 * d1) - 0.5) / 255.0;
     }
-    float weight = guardU > 0.0 ? pow(max(gain, 1.0), -guardU) : 1.0;
-    Output = vec4(clamp(outRgb, 0.0, 1.0), weight);
+    Output = vec4(clamp(outRgb, 0.0, 1.0), 1.0);
 }

@@ -154,7 +154,12 @@ public final class SettingsMigration {
             // P118: «Показать градиентный фон» (its theme set the background to the colour it already had)
             "pref_show_gradient_key",
             // P118: two ArkCore exposure rows nothing read (faces never reach processing; the trade-off is fixed at 0.33)
-            "pref_scam_hybrid_ark_face_priority", "pref_scam_hybrid_ark_hl_blend"));
+            "pref_scam_hybrid_ark_face_priority", "pref_scam_hybrid_ark_hl_blend",
+            // P118: only the ARK sharpening stays (owner, 2026-10-13): the mode list, its «Доп. резкость после тона», the
+            // weight of a post-tone sharpening in lifted shadows, the RawTherapee multiplier, SCAM's amount, and the Sabre
+            // detail used only without ARK sharpening
+            "pref_scam_hybrid_sharp_mode", "pref_scam_hybrid_ark_post_sharp", "pref_scam_hybrid_ark_sharp_guard",
+            "pref_scam_hybrid_sharp_strength", "pref_scam_hybrid_sharp_amount", "pref_scam_hybrid_ark_detail_gain"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -169,7 +174,10 @@ public final class SettingsMigration {
             // P118: RAW CA as RawTherapee's CA_correct (P28) is gone; the merge's own lateral CA fit (P19) stays
             "pref_scam_hybrid_rawca_",
             // P118: «Опыты JSR» (phase kernel, CA in the merge, polynomial field); «Sabre 2× только когда есть смысл» is its own row
-            "pref_scam_hybrid_jsr_"};
+            "pref_scam_hybrid_jsr_",
+            // P118: only the ARK sharpening stays (owner, 2026-10-13): the RawTherapee sharpening page (USM, RL deconvolution,
+            // microcontrast) and the SCAM HDR sharpening knobs ScamSharpen read (pref_scamhdr_sharp_*)
+            "pref_sharp_", "pref_scamhdr_sharp_"};
     /**
      * Removed rows of the per-module sensor settings (pref_sensorconfig_&lt;slot or camera id&gt;_&lt;field&gt;): the exposure limits
      * «Максимальное ISO», «Максимальная выдержка» and «Баланс выдержки и ISO», which no capture code read (settings audit).
@@ -203,6 +211,10 @@ public final class SettingsMigration {
         // the Quad stream is set in «Quad Bayer — совместимость»); a stored one of them becomes «Авто» (-1).
         Object cfa = prefs.getAll().get(CFA_KEY);
         if (cfa != null && isRemovedCfa(cfa)) { e.putString(CFA_KEY, "-1"); changed = true; }
+        // P118: «Карта силы» lost «Карта эффективных кадров» (it did exactly what «Авто» does)
+        if ("frames".equals(prefs.getAll().get("pref_scam_hybrid_dn_strength_map"))) {
+            e.putString("pref_scam_hybrid_dn_strength_map", "auto"); changed = true;
+        }
         // Rows that store a whole number and were decimal sliders (settings audit H4): the ARK metering, AgX look, sharpening
         // domain and RL kernels are lists now, the SCAM HDR radii integer sliders. A stored "1.00" or float 1.0 becomes "1"
         // (the list value); a value that is no number at all goes, so the row's default applies.
@@ -324,7 +336,7 @@ public final class SettingsMigration {
     private static final java.util.Set<String> SHARED_SCAM_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             "zsl_frames", "gcam_tone", "highlight_recovery", "isp_ccm", "noise_photon", "noise_readout",
             "noise_source", "cre_source", "diagnostics"));
-    private static final String[] SHARED_SCAM_PREFIXES = {"fusion_", "tone_", "look", "warm_", "sharp_", "texture", "grain_"};
+    private static final String[] SHARED_SCAM_PREFIXES = {"fusion_", "tone_", "look", "warm_", "texture", "grain_"};
     /** Autonomous HDR keys that are not on the hybrid route (scam HDR denoise, capture sharpening, the reset action). */
     private static final java.util.Set<String> UNSHARED_HDR_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             "enabled", "luma", "chroma", "sharpen", "reset_tone"));
@@ -405,27 +417,15 @@ public final class SettingsMigration {
             if (values.containsKey(old)) { e.remove(old); changed = true; }
         for (String old : new String[]{"pref_scamhdr_engine", "pref_scamhdr_hybrid"})
             if (values.containsKey(old)) { e.remove(old); changed = true; }
-        // Defaults revision 2 (4 October 2026): the Sabre detail of the ARK tone moved from 1 to 2 after the A/B against
-        // ArkCam on the Oppo; a stored 1 is the old XML default written by the first round-5 build, not a user choice.
+        // Defaults revision 2 (the Sabre detail ark_detail_gain 1 -> 2) is gone with that row (P118: only the ARK sharpening
+        // stays, the detail without it is never used); revision 3 lost its sharp_mode "rt" -> "ark" step the same way.
         Object rev = values.get(DEFAULTS_REV);
         int revision = rev instanceof Integer ? (Integer) rev : 0;
         boolean markOnly = false; // a revision block below only moves the marker (not reported as a change)
-        Object detail = values.get(ScamHybridKeys.PREFIX + "ark_detail_gain");
-        if (detail != null && revision < 2) {
-            if (isNumber(detail, 1f)) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "ark_detail_gain", detail instanceof String ? "2" : (Object) 2f);
-            e.putInt(DEFAULTS_REV, 2);
-            changed = true;
-        }
-        // Defaults revision 3 (4 October 2026): the hybrid sharpening is ArkCam's own (sharp_mode "ark", ArkLumaSharpen) and
-        // the noise reduction ArkCam's exact tables (no revert cap, no stock coarse luma, no chroma floor); stored values
-        // equal to the former XML defaults ("rt", 2, 0.5, 2.75) are those defaults, not user choices.
+        // Defaults revision 3 (4 October 2026): the noise reduction is ArkCam's exact tables (no revert cap, no stock coarse
+        // luma, no chroma floor); stored values equal to the former XML defaults (2, 0.5, 2.75) are those defaults, not user choices.
         if (revision < 3) {
             boolean touched = false;
-            Object sharpMode = values.get(ScamHybridKeys.PREFIX + "sharp_mode");
-            if (sharpMode != null) {
-                if ("rt".equals(sharpMode.toString().trim())) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "sharp_mode", "ark");
-                touched = true;
-            }
             String[] keys = {"dn_revert_max", "dn_coarse_stock", "dn_chroma_floor"};
             float[] former = {2f, 0.5f, 2.75f}, ark = {9f, 0f, 0f};
             for (int i = 0; i < keys.length; i++) {
@@ -640,8 +640,8 @@ public final class SettingsMigration {
         if (key.startsWith(LEGACY_HYBRID) || key.equals("pref_scamhdr_hybrid")) return false;
         if (key.startsWith("pref_scamhdr_")) {
             String k = key.substring("pref_scamhdr_".length());
-            // sharp_mode is a number for SCAM HDR and a list (rt/scam/off) for the hybrid; the soft tone is gone for it.
-            if (k.equals("sharp_mode") || k.equals("soft_tone")) return false;
+            // The soft tone is gone for the hybrid; so are its sharpening knobs (P118: only the ARK sharpening stays).
+            if (k.equals("soft_tone")) return false;
             if (SHARED_SCAM_KEYS.contains(k)) return true;
             for (String prefix : SHARED_SCAM_PREFIXES) if (k.startsWith(prefix)) return true;
             return false;

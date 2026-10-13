@@ -112,9 +112,11 @@ public class ImageAdapter extends PagerAdapter {
             scaleImageView.setTouchCallBack(ssivListener);
         }
 
-        loadPage(scaleImageView, galleryItem, fileName);
-        if (inBounds(position)) gaveUp[position] = false;
+        // P117: in the pager first: the Glide decode of a HEIC / WebP / AVIF / DNG page starts only for a page with a parent, so a
+        // page loaded before it was added stayed black for good (nothing logged, nothing retried)
         container.addView(scaleImageView);
+        if (inBounds(position)) gaveUp[position] = false;
+        loadPage(scaleImageView, galleryItem, fileName);
         return scaleImageView;
     }
 
@@ -142,7 +144,11 @@ public class ImageAdapter extends PagerAdapter {
      */
     private void loadGlideBitmap(SubsamplingScaleImageView page, GalleryItem item, int retryCount,
                                  SubsamplingScaleImageView.OnImageEventListener listener) {
-        if (released || page.getParent() == null) return;
+        if (released || page.getParent() == null) {
+            com.particlesdevs.photoncamera.util.Log.d(GALLERY_TAG, "no decode of " + item.getFile().getDisplayName()
+                    + (released ? ": the viewer is gone" : ": the page is not in the pager"));
+            return;
+        }
         final String name = item.getFile().getDisplayName();
         Glide.with(page.getContext().getApplicationContext())
                 .asBitmap()
@@ -151,6 +157,9 @@ public class ImageAdapter extends PagerAdapter {
                 // Zoomable but bounded: at most 4096 px on the long side (~50 MB), never upscaled.
                 .override(GalleryDecodeRetry.FALLBACK_MAX_SIDE, GalleryDecodeRetry.FALLBACK_MAX_SIDE)
                 .downsample(DownsampleStrategy.CENTER_INSIDE)
+                // P117: a software bitmap: the compare screenshot draws the panes into a software canvas, which throws on a
+                // hardware bitmap
+                .disallowHardwareConfig()
                 .into(new CustomViewTarget<SubsamplingScaleImageView, Bitmap>(page) {
                     @Override
                     public void onResourceReady(@NonNull Bitmap bitmap, @Nullable Transition<? super Bitmap> transition) {

@@ -88,9 +88,10 @@ public final class ScamLocalContrast extends Node {
         float g1 = PreferenceKeys.routeInternalValue("texture_g1", 1.25f);
         float g2 = PreferenceKeys.routeInternalValue("texture_g2", 1.3f);
         float g3 = PreferenceKeys.routeInternalValue("texture_g3", 1.3f);
-        // Finest scale (about 1 px): together with ScamSharpen's unsharp mask 1.35 brings the 0.6-1.2 px signal of a daylight
-        // scene to an SCAM render's (and past a CameraPit 6.1 one), at no more noise. The merge-only SoCs (8 Gen 3 etc.) have
-        // the noisier frames, where ScamSharpen backs off and this band (gated by its own noise floor) carries the detail: 1.5.
+        // Finest scale (about 1 px): tuned together with the former SCAM unsharp mask (ScamSharpen, removed in P118), 1.35
+        // brought the 0.6-1.2 px signal of a daylight scene to an SCAM render's (and past a CameraPit 6.1 one), at no more
+        // noise. The merge-only SoCs (8 Gen 3 etc.) have the noisier frames, where this band (gated by its own noise floor)
+        // carries more of the detail: 1.5.
         float g0 = PreferenceKeys.routeInternalValue("texture_g0", PreferenceKeys.isScamNetSoc() ? 1.35f : 1.5f);
         glProg.useAssetProgram("scamlc/apply", false);
         glProg.setTexture("InputBuffer", WorkingTexture);

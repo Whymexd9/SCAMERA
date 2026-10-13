@@ -13,6 +13,9 @@ public class ForcedStabilizationTest {
         assertTrue(ForcedStabilization.phone("vivo", "V2562", "V2562"));
         assertTrue(ForcedStabilization.phone("VIVO", "v2562", null));
         assertTrue(ForcedStabilization.phone("vivo", "PD2562X", "V2562"));
+        assertTrue(ForcedStabilization.phone("vivo", "PD2547", "V2547DA")); // P120: the other X300 Ultra
+        assertTrue(ForcedStabilization.phone("vivo", "PD2547", null));
+        assertFalse(ForcedStabilization.phone("vivo", "PD2546", "V2546A"));
         assertFalse(ForcedStabilization.phone("vivo", "PD2454", "V2502A"));
         assertFalse(ForcedStabilization.phone("OPPO", "V2562", "V2562"));
         assertFalse(ForcedStabilization.phone(null, null, null));

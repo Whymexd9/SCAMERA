@@ -249,7 +249,7 @@ public class ShadeUiTest {
         assertEquals(2, catalogOpened);
         int[] closed = {0};
         ShadeCatalogView view = new ShadeCatalogView(activity, catalog, sheet.pins(), () -> closed[0]++);
-        assertTrue(view.shownKeys().size() > 300);
+        assertTrue(String.valueOf(view.shownKeys().size()), view.shownKeys().size() > 280); // 291 since P118
         assertEquals(ShadeCatalog.VIRTUAL, view.shownKeys().subList(0, 4));
         android.widget.EditText search = view.findViewWithTag("shade_catalog_search");
         search.setText("Luma");
@@ -533,7 +533,7 @@ public class ShadeUiTest {
         tile("pref_scam_hybrid_dn_luma_mult").performClick();
         layoutFull();
         assertEquals(View.GONE, card.getVisibility());
-        for (String key : new String[]{"pref_scam_hybrid_shasta", "pref_scam_hybrid_cdm", "pref_scam_hybrid_sharp_mode"}) sheet.togglePin(key);
+        for (String key : new String[]{"pref_scam_hybrid_shasta", "pref_scam_hybrid_cdm", "pref_scam_hybrid_zsl_frames"}) sheet.togglePin(key);
         assertEquals(12, sheet.pinnedKeys().size());
         layoutFull();
         assertNull("no «Добавить» tile at 12", addTile());

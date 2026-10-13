@@ -65,6 +65,7 @@ public class ImageCompareFragment extends Fragment {
     private View root, header, bar, panes;
     private int pane1Id, pane2Id;
     private final Handler shareHandler = new Handler(Looper.getMainLooper(), msg -> {
+        if (!isAdded()) return true;
         if (msg.obj instanceof Uri) shareUri((Uri) msg.obj);
         hideButtons(false);
         return true;
@@ -199,11 +200,20 @@ public class ImageCompareFragment extends Fragment {
     private void onShareClick() {
         if (root == null || panes == null) return;
         hideButtons(true);
-        final View shotView = panes;
+        // P117: the panes are drawn here, on the main thread (a background draw raced the panes' own tile decodes and recycling);
+        // only the JPEG file is written on the background thread
+        final Bitmap shot;
+        try {
+            shot = screenShot(panes);
+        } catch (RuntimeException e) {
+            com.particlesdevs.photoncamera.util.Log.w("GALLERY_DECODE", "compare screenshot failed: " + e);
+            hideButtons(false);
+            Toast.makeText(mContext, Lang.t("Не удалось", "Failed"), Toast.LENGTH_SHORT).show();
+            return;
+        }
         HandlerThread bmpThread = new HandlerThread("ScreenshotThread", Process.THREAD_PRIORITY_BACKGROUND);
         bmpThread.start();
         new Handler(bmpThread.getLooper()).post(() -> {
-            Bitmap shot = screenShot(shotView);
             Uri uri = shot != null ? saveBitmap(shot) : null;
             if (shot != null) shot.recycle();
             shareHandler.obtainMessage(0, uri).sendToTarget();
@@ -256,12 +266,6 @@ public class ImageCompareFragment extends Fragment {
     public void onDestroyView() {
         root = header = bar = panes = null;
         super.onDestroyView();
-    }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        getParentFragmentManager().beginTransaction().remove(fragment1).remove(fragment2).commitAllowingStateLoss();
     }
 
     /**

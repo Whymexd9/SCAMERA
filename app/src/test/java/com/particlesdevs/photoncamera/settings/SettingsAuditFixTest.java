@@ -129,9 +129,6 @@ public class SettingsAuditFixTest {
         assertEquals(2,PreferenceKeys.getFocusPeakValue());assertEquals(1,PreferenceKeys.getColorMethodValue());
         assertEquals(-1,PreferenceKeys.getThemeValue());
         assertTrue(PreferenceKeys.isRemosaicSteered());assertTrue(PreferenceKeys.isRemosaicClampDiffs());assertEquals(2,PreferenceKeys.getRemosaicProfile());
-        assertTrue(PreferenceKeys.isSharpUsmEnabled());assertTrue(PreferenceKeys.isSharpHaloControl());
-        assertEquals(0.5f,PreferenceKeys.getSharpRadius(),0f);assertEquals(75f,PreferenceKeys.getSharpAmount(),0f);
-        assertEquals(1800,PreferenceKeys.getSharpEdgesTolerance());assertEquals(0.4f,PreferenceKeys.getSharpDeconvHaloMacro(),1e-6f);
         // Every Key whose row declares a default reads that default (switches as "1" / "0").
         Map<String,String> xml=XmlDefaults.read(context);
         int checked=0;
@@ -141,7 +138,7 @@ public class SettingsAuditFixTest {
             assertEquals(k.name(),d,manager.getStringDefault(k));
             checked++;
         }
-        assertTrue(checked>40);
+        assertTrue(String.valueOf(checked),checked>20); // 24 since P118 removed the 37 RawTherapee sharpening keys
         assertEquals("1",xml.get("pref_camera_sounds_key"));assertEquals("0",xml.get("pref_horizon"));
         // A stored value still wins.
         prefs.edit().putString("pref_af_mode_key","1").putBoolean("pref_camera_sounds_key",false).commit();
@@ -175,7 +172,7 @@ public class SettingsAuditFixTest {
                 "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
                 "pref_theme_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
-        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scamhdr_luma","pref_sharp_radius_key","pref_cfa_key","pref_dng_lossless",
+        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scamhdr_luma","pref_scam_hybrid_ark_sharp_gain","pref_cfa_key","pref_dng_lossless",
                 "pref_dcp_profile_key","pref_raw_stream_format","hexquad_luma"})
             assertTrue(key,ModuleProfiles.isLocal(key));
         // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade).
@@ -321,9 +318,9 @@ public class SettingsAuditFixTest {
         assertEquals("1",((ListPreference)screen.findPreference("pref_scam_hybrid_ark_metering")).getValue());
         for(String key:new String[]{"pref_scamhdr_luma_radius","pref_scamhdr_chroma_radius"})
             assertFalse(key,((com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)screen.findPreference(key)).decimal());
+        // P118: only the ARK sharpening stays; the RawTherapee page is gone everywhere.
         PreferenceGroup sharp=screen.findPreference("scam_hybrid_sharp_category");
-        assertNotNull(sharp.findPreference("sharp_settings_screen"));assertNotNull(sharp.findPreference("pref_sharp_usm_enabled_key"));
-        assertNull(((PreferenceGroup)screen.findPreference("photo_processing_screen")).findPreference("sharp_settings_screen"));
+        assertNotNull(sharp.findPreference("pref_scam_hybrid_ark_sharp_gain"));assertNull(screen.findPreference("sharp_settings_screen"));
     }
 
     /** S5: inherited keys without a row that api/Settings still read are dropped; the AF data key they aliased stays. */

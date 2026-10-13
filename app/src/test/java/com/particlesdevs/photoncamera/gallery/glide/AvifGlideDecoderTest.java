@@ -30,6 +30,17 @@ public class AvifGlideDecoderTest {
         return bb.array();
     }
 
+    /** P117: a 50 MP AVIF decoded by the platform fits the viewer's 4096 px, never upscaled. */
+    @Test
+    public void platformDecodeFitsTheRequest() {
+        int[] fit = AvifGlideDecoder.fitInside(8160, 6144, 4096, 4096);
+        assertEquals(4096, fit[0]);
+        assertEquals(3084, fit[1]);
+        int[] small = AvifGlideDecoder.fitInside(2000, 1500, 4096, 4096);
+        assertEquals(2000, small[0]);
+        assertEquals(1500, small[1]);
+    }
+
     @Test
     public void isAvif_majorBrandAvif_returnsTrue() {
         byte[] data = buildFtypBox("avif", 0, "mif1");

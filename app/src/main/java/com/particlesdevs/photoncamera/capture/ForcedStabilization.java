@@ -28,13 +28,16 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 public final class ForcedStabilization {
     /** Build.DEVICE / MODEL of the vivo X300 Ultra (owner's logs 2026-10-08 / 09: manufacturer=vivo model=V2562). */
     static final String X300_ULTRA = "V2562";
+    /** P120: the X300 Ultra's other variant (SCAM TEST 2026-10-13: DEVICE PD2547, MODEL V2547DA). */
+    static final String X300_ULTRA_2 = "2547";
 
     private ForcedStabilization() {}
 
     /** The phone the forced stabilisation is for by default. */
     static boolean phone(String manufacturer, String device, String model) {
         if (!"vivo".equalsIgnoreCase(manufacturer)) return false;
-        return X300_ULTRA.equalsIgnoreCase(device) || X300_ULTRA.equalsIgnoreCase(model);
+        return X300_ULTRA.equalsIgnoreCase(device) || X300_ULTRA.equalsIgnoreCase(model)
+                || "PD2547".equalsIgnoreCase(device) || model != null && model.toUpperCase(java.util.Locale.ROOT).startsWith("V" + X300_ULTRA_2);
     }
 
     /** Forced stabilisation for this session (the default phone or the scam_dev override). */
