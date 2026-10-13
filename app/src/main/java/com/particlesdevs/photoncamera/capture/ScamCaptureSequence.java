@@ -57,10 +57,14 @@ public final class ScamCaptureSequence {
         return sequence;
     }
 
-    /** SCAM Hybrid: buffered N frames plus any post-shutter requests (ultrashort, bracketed, extra normal), in plan order. */
+    /**
+     * SCAM Hybrid: buffered N frames plus any post-shutter requests (ultrashort, bracketed, extra normal), in plan order. P113
+     * «Движение» (HybridPlan.zslOnly) takes the ring's frames only: no request (OPPO X7U log 2026-10-13 21:49: every Motion shot
+     * failed here with «requires 1..8 bracket requests» and no photo was saved).
+     */
     public static ScamCaptureSequence hybridZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp) {
-        if(shutterTimestamp<=0 || past.size()<1 || past.size()>64 || requests.isEmpty() || requests.size()>8)
-            throw new IllegalArgumentException("SCAM hybrid ZSL requires 1..64 past N and 1..8 bracket requests");
+        if(shutterTimestamp<=0 || past.size()<1 || past.size()>64 || requests.size()>8)
+            throw new IllegalArgumentException("SCAM hybrid ZSL requires 1..64 past N and 0..8 bracket requests");
         for(CaptureRequest request:requests) {
             Object tag=request.getTag();
             if(!(tag instanceof ImageFrame.ScamCaptureTag))throw new IllegalArgumentException("SCAM hybrid request has no role");

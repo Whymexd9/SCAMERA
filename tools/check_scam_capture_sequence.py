@@ -102,6 +102,11 @@ public class Check {
   var hyb3=ScamCaptureSequence.hybridZsl(hq,hz,95);hyb3.lost(hq.get(2),"HAL capture failure=0");
   check(hyb3.bindAndValidate(List.of(hz.get(0),hz.get(1))).isEmpty()&&hyb3.presentCount()==2&&hyb3.boundFutureCount()==0&&hyb3.droppedCount()==1);
   check(hyb3.droppedSummary().contains("1 buffered N RAWs missing"));
+  // P113 «Движение»: the ring's frames only, no post-shutter request
+  var ringOnly=ScamCaptureSequence.hybridZsl(List.of(),hz,95);ringOnly.requireCompleteMetadata();
+  check(ringOnly.futureCount==0&&ringOnly.bindAndValidate(new ArrayList<ImageFrame>(hz)).isEmpty()&&ringOnly.presentCount()==3);
+  rejects(()->ScamCaptureSequence.hybridZsl(List.of(),List.of(),95));
+  rejects(()->ScamCaptureSequence.hybridZsl(List.of(),hz,95).bindAndValidate(List.of()));
   var nothing=ScamCaptureSequence.hybridZsl(hq,hz,95);for(var q:hq)nothing.lost(q,"RAW buffer lost");
   rejects(()->nothing.bindAndValidate(List.of()));
   var strictZsl=new ScamCaptureSequence(hq,hz);
