@@ -194,6 +194,7 @@ public class VendorTagUtils {
                 CaptureRequest.Key<?> key = tunableKey.toCaptureRequestKey();
                 boolean supported = isSupported(builder, key);
                 tunableKey.supported = supported;
+                com.particlesdevs.photoncamera.capture.VivoMtkIsz.noteRoiKey(physicalId, tunableKey.name, supported);
                 if (supported) {
                     Object parsedValue = tunableKey.parseValue();
                     setKeyValue(builder, key, parsedValue);

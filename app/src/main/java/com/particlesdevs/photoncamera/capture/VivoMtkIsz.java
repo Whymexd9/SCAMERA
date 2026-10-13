@@ -101,7 +101,7 @@ public final class VivoMtkIsz {
                 // P109c (V2515 log 2026-10-13_4): the logical «0-2» got «17×» / «33×»; ISZ is a physical camera's, and a slot
                 // left from another camera list (spoof on / off) is not a source either
                 if (!source(ModuleRegistry.camera(slot), opens(manager, ModuleRegistry.camera(slot))
-                        && !profileOnly(manager, ModuleRegistry.camera(slot)))) continue;
+                        && !profileOnly(manager, ModuleRegistry.camera(slot)) && roiKeyKnown(manager, ModuleRegistry.camera(slot)))) continue;
                 float z = ModuleRegistry.zoom(slot);
                 if (main == null && Math.abs(z - 1f) < 0.05f) main = slot;
                 if (wide == null && z > 0.3f && z < 0.9f) { wide = slot; wideZoom = z; }
@@ -222,6 +222,16 @@ public final class VivoMtkIsz {
                 Log.i(TAG, "module " + slot + " («" + label + "», camera " + camera + ") hidden: vivo teleconverter profile");
                 continue;
             }
+            if (p.getInt(MARK + slot, 0) > 0 && ModuleRegistry.duplicateOf(slot) != null && !roiKeyKnown(manager, camera)) {
+                // P109k (X500 Pro Max log 2026-10-13 13:07: «vendor tag vivo.control.seamless.roiRemosaic is not supported» x25;
+                // its dump has the key only in the selector file): an ISZ module there was a digital crop under an ISZ label
+                String label = ModuleRegistry.label(slot);
+                if (ModuleRegistry.remove(slot)) {
+                    p.edit().remove(MARK + slot).apply();
+                    Log.i(TAG, "ISZ module " + slot + " («" + label + "», camera " + camera + ") removed: the HAL has no " + ROI_KEY);
+                }
+                continue;
+            }
             if (opens(manager, camera)) physical.add(camera);
             mods.add(new Mod(slot, camera, ModuleRegistry.zoom(slot), p.getInt(MARK + slot, 0), ModuleRegistry.duplicateOf(slot) != null));
         }
@@ -240,6 +250,37 @@ public final class VivoMtkIsz {
     /** A physical camera of the current camera list: not «logical-physical», and its characteristics are there. */
     static boolean source(@Nullable String cameraId, boolean opens) {
         return cameraId != null && !cameraId.isEmpty() && !cameraId.contains("-") && opens;
+    }
+
+    private static final String ROI_REFUSED = "module_vivo_isz_roi_refused_";
+
+    /**
+     * P109k: the HAL's own answer to the ROI key, from the request builder (VendorTagUtils.applyTunableKeys): X500 Pro Max
+     * (log 2026-10-13 13:07) «vendor tag vivo.control.seamless.roiRemosaic is not supported» x25, its dump names the key only in
+     * the selector file; V2515 / X200 Pro take it. Kept per camera; a later acceptance clears it.
+     */
+    public static void noteRoiKey(@Nullable String physicalId, String keyName, boolean supported) {
+        if (!ROI_KEY.equals(keyName)) return;
+        try {
+            String camera = physicalId != null && !physicalId.isEmpty() ? physicalId : ModuleRegistry.camera(ModuleRegistry.active());
+            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            boolean was = p.getBoolean(ROI_REFUSED + camera, false);
+            if (was == !supported) return;
+            if (supported) p.edit().remove(ROI_REFUSED + camera).apply();
+            else p.edit().putBoolean(ROI_REFUSED + camera, true).apply();
+            Log.i(TAG, "camera " + camera + ": the HAL " + (supported ? "takes " : "refuses ") + ROI_KEY);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    /** False once the HAL refused the ROI key on this camera (no ISZ modules there). */
+    static boolean roiKeyKnown(@Nullable android.hardware.camera2.CameraManager manager, @Nullable String cameraId) {
+        if (cameraId == null) return false;
+        try {
+            return !PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(ROI_REFUSED + cameraId, false);
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     /** A vivo teleconverter / dummy profile (CameraManager2.isAuxiliarySensor): no ISZ source, its buttons are hidden. */
